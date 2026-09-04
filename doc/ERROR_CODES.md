@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (520)
+## All codes (523)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -262,6 +262,8 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `MAILBOX_ARCHIVED` | 422 | 1× | — |
 | `MAILBOX_AUTH_FAILED` | — | 1× | — |
 | `MAILBOX_FORBIDDEN` | 403 | 2× | — |
+| `MAILBOX_OAUTH_REQUIRED` | — | 1× | — |
+| `MAIL_ROUTE_TRAPPED` | 422 | 1× | — |
 | `MAIL_SEND_FAILED` | — | 1× | — |
 | `MAINTENANCE_READ_ONLY` | 423 | 1× | — |
 | `MANDATORY_ITEMS_OUTSTANDING` | 422 | 1× | — |
@@ -292,11 +294,11 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_EDITABLE` | 400 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 3× | — |
-| `NOT_FOUND` | 404, 422 | 609× | — |
+| `NOT_FOUND` | 404, 422 | 610× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_OPEN` | 409, 422 | 3× | — |
 | `NOT_OPERATIONAL` | 422 | 1× | — |
-| `NOT_PENDING` | 422 | 1× | — |
+| `NOT_PENDING` | 422 | 2× | — |
 | `NOT_PERSONAL` | 422 | 1× | — |
 | `NOT_PRICED_BY_QUOTATION` | — | 1× | — |
 | `NOT_QUALIFIED` | 422 | 1× | — |
@@ -329,7 +331,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NO_DOCUMENT` | 409 | 1× | — |
 | `NO_DOCUMENT_LOADER` | — | 1× | — |
 | `NO_DOC_TYPE` | 422 | 4× | — |
-| `NO_DOSSIER` | 422 | 1× | — |
+| `NO_DOSSIER` | 422 | 2× | — |
 | `NO_EFFECTIVE_CODE` | 422 | 1× | — |
 | `NO_EFFECTIVE_TAX` | 422 | 1× | — |
 | `NO_EMPLOYEE` | 400, 422 | 5× | — |
@@ -353,7 +355,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NO_RATE` | 404, 422 | 2× | — |
 | `NO_RATE_MATCH` | 404 | 1× | — |
 | `NO_REASON` | 422 | 2× | — |
-| `NO_RECIPIENT` | 422 | 3× | — |
+| `NO_RECIPIENT` | 422 | 4× | — |
 | `NO_RECIPIENT_TIMEZONE` | — | 1× | — |
 | `NO_REPLY_ADDRESS` | 422 | 1× | — |
 | `NO_REVENUE_ACCOUNT` | 422 | 1× | — |
@@ -369,6 +371,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NO_VALIDATOR` | 422 | 1× | — |
 | `NO_VAT_ACCOUNT` | 422 | 2× | — |
 | `NO_WORKING_DAYS` | 422 | 1× | — |
+| `NUDGE_QUOTA_EXHAUSTED` | 429 | 1× | — |
 | `OAUTH_PROBE_FAILED` | 502 | 1× | — |
 | `ODOMETER_BACKWARDS` | 422 | 1× | — |
 | `OPS_CODE_TAKEN` | 422 | 1× | — |
@@ -538,7 +541,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `USER_NOT_ACTIVE` | 422 | 1× | — |
 | `USE_APPROVE` | 422 | 1× | — |
 | `VACANCY_CLOSED` | — | 1× | — |
-| `VALIDATION_ERROR` | 422 | 236× | — |
+| `VALIDATION_ERROR` | 422 | 237× | — |
 | `VARIANCE_UNEXPLAINED` | 422 | 1× | — |
 | `VEHICLE_COMMITTED` | — | 1× | — |
 | `VEHICLE_NOT_FOUND` | 404 | 1× | — |

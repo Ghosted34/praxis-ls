@@ -10,7 +10,7 @@
 | #   | Decision                | Resolution                                                                                                                                       |
 | --- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
 | D1  | Email domain onboarding | **Support both; default to full Cloudflare delegation; MX-only as fallback**                                                                     |
-| D2  | Outbound transport      | **Free-tier transactional SMTP (Brevo) now; Amazon SES at scale — no paid subscription. Cloudflare handles inbound only (Email Routing, free).** |
+| D2  | Outbound transport      | **Managed transactional SMTP (SMTP2GO) now; Amazon SES at scale. Cloudflare handles inbound only (Email Routing, free).** |
 
 Those are treated as settled below — no longer open forks.
 
@@ -66,28 +66,30 @@ Cloudflare does not store mail, and Praxis does not need it to — **Praxis is t
 
 ```
  OUTBOUND  module → email.service.send(section) → nodemailer (SMTP, provider-agnostic)
-                                                → Brevo free tier  (Amazon SES at scale) → recipient
+                                                → SMTP2GO relay    (Amazon SES at scale) → recipient
  INBOUND   sender → tenant MX (Cloudflare) → Email Routing (free) → Email Worker
                   → POST /api/tenant/mail/ingest/cloudflare (HMAC) → email_inbound (+ vault, auto-link)
  CONTROL   provisionTenant() → CF API: create ≤5 addresses + MX (inbound) + sender SPF/DKIM/DMARC
                              → email_connection + email_identity + section bindings + email_domain
 ```
 
-**Cost model — $0 now.** Inbound is free (Cloudflare Email Routing, unlimited). Outbound rides a **free transactional tier** (Brevo, ~9k/mo) for the low-volume system fallback and early tenants; tenants who connect their own mailbox send through their own provider at no cost to Praxis. The only future spend is **Amazon SES at ~$0.10/1,000** once outbound across many tenant domains outgrows the free tier — usage-based pennies, not a subscription, and by then revenue-funded. Swapping Brevo → SES is a creds change in the platform console; nodemailer and the code are unchanged.
+**Cost model.** Inbound is free (Cloudflare Email Routing, unlimited). Outbound rides **SMTP2GO** — free at 1,000/month (200/day) for the low-volume system fallback and early tenants, $15/mo at the first paid tier; tenants who connect their own mailbox send through their own provider at no cost to Praxis. The only larger future spend is **Amazon SES at ~$0.10/1,000** once outbound across many tenant domains outgrows SMTP2GO — usage-based pennies, and by then revenue-funded. Swapping SMTP2GO → SES is a creds change in the platform console; nodemailer and the code are unchanged.
 
-**Decisions applied:** onboarding supports **both** delegation and MX-only, defaulting to delegation (WS-E5); outbound sends through a **free-tier transactional SMTP — Brevo now, Amazon SES at scale — via nodemailer, no paid subscription** (WS-E1).
+**Decisions applied:** onboarding supports **both** delegation and MX-only, defaulting to delegation (WS-E5); outbound sends through a **managed transactional SMTP — SMTP2GO now, Amazon SES at scale — via nodemailer** (WS-E1).
 
-> **Admin note — why Brevo now, Amazon SES later, and not a self-hosted SMTP on our server.**
-> Sending mail is a _reputation_ problem, not a configuration one. SPF/DKIM/DMARC (Google's sender rules) only prove _identity_ — they get mail _considered_, not _inboxed_. Placement is decided by IP/domain reputation, complaint rates and warmup, none of which can be configured. A single server IP starts cold, often sits in a tainted range with port 25 blocked, and — worst — one bad tenant would sink _every_ tenant's deliverability on the one shared IP. Managed senders run warmed, monitored IP pools, which is the genuinely hard part. So: **Brevo free tier now** — 300 emails/day, which suffices because only tenants _without_ their own mailbox draw on it (own-mailbox tenants send through their own provider). **Past 300/day, sends queue until the next-day reset** — unacceptable for OTPs — so nearing that cap is the trigger to move the fallback to **Amazon SES** ($0.10/1k, no daily cap, unlimited domains; a creds-only swap). This is fully compatible with tenant provisioning — outbound is just SMTP creds swapped in the platform console (nodemailer and the code are unchanged), while **inbound for the 5 tenant addresses stays on free Cloudflare Email Routing**, independent of who sends. Self-hosting remains a future option only with a dedicated, clean IP plus ongoing deliverability ops.
+> **Admin note — why SMTP2GO now, Amazon SES later, and never the shared cPanel box.**
+> Sending mail is a _reputation_ problem, not a configuration one. SPF/DKIM/DMARC (Google's sender rules) only prove _identity_ — they get mail _considered_, not _inboxed_. Placement is decided by IP/domain reputation, complaint rates and warmup, none of which can be configured. A single server IP starts cold, often sits in a tainted range with port 25 blocked, and — worst — one bad tenant would sink _every_ tenant's deliverability on the one shared IP. Managed senders run warmed, monitored IP pools, which is the genuinely hard part. So: **SMTP2GO now** — free at 1,000/month and 200/day, which suffices because only tenants _without_ their own mailbox draw on it (own-mailbox tenants send through their own provider); the paid tier is $15/mo when that is outgrown. Nearing a cap is the trigger to move the fallback to **Amazon SES** ($0.10/1k, unlimited domains; a creds-only swap). This is fully compatible with tenant provisioning — outbound is just SMTP creds swapped in the platform console (nodemailer and the code are unchanged), while **inbound for the 5 tenant addresses stays on free Cloudflare Email Routing**, independent of who sends.
+>
+> **And never the shared cPanel/Exim box, for a second reason beyond reputation.** A cPanel server treats every domain it hosts as a LOCAL destination (`/etc/localdomains`) and stops consulting DNS for it. Relay a tenant's mail through a box that also hosts a recipient's website, and mail to that recipient is delivered into a local mailbox on the server instead of being routed to their real MX — answered 250, logged SENT, never delivered and never bounced. This is not hypothetical: it is what swallowed every message to a Microsoft 365 tenant whose site we co-hosted, silently, for weeks. `deliverability/route-check.js` now detects the signature from DNS alone, but the structural fix is that the relay must never be a machine that hosts tenant domains. Self-hosting remains a future option only with a dedicated, clean IP that hosts nothing else, plus ongoing deliverability ops.
 
 ### WS-E1 — Cloudflare (DNS + inbound routing) client + vaulted token · **PLANNED · M**
 
 A typed, axios-only client (matching the Graph/Gmail adapter style — no SDK) for the Cloudflare v4 API, used for **inbound routing and DNS only** — Cloudflare does no sending here: zones (verify), Email Routing (enable, create/list/delete addresses, catch-all → Worker), DNS (MX for inbound + the sender's SPF/DKIM/DMARC TXT records).
 
 - **File:** `src/services/integrations/cloudflare.service.js` — `verifyZone`, `enableRouting`, `createAddress`, `deleteAddress`, `setCatchAllWorker`, `putDnsRecord`, `getDeliverabilityDns`. Timeout + never-throw-into-caller contract with typed errors; retry/backoff on 429/5xx (respect CF's account rate limit).
-- **Outbound is separate.** Sending goes through the free-tier SMTP provider (Brevo) via `email.service` + nodemailer; its SMTP creds live in the platform settings vault (**Platform Console → Integrations → Mail sender**), env fallback only. Amazon SES is a later drop-in — same nodemailer transport, different creds, no code change.
+- **Outbound is separate.** Sending goes through the managed SMTP provider (SMTP2GO) via `email.service` + nodemailer; its SMTP creds live in the platform settings vault (**Platform Console → Integrations → Mail sender**), env fallback only. Amazon SES is a later drop-in — same nodemailer transport, different creds, no code change.
 - **Auth:** a **scoped Cloudflare API token**, entered in **Platform Console → Integrations → Cloudflare** and stored encrypted — the deploy-wide **account token** in the platform settings vault (`cloudflare.account`), or a per-tenant **zone token** in that tenant's `integration_secret` (`cf_zone:<tenantId>`) when a tenant supplies their own. Never on a row; never primarily in `.env`.
-- **Non-secret config** (safe as env): `CLOUDFLARE_API_BASE` (default `https://api.cloudflare.com/client/v4`), `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_ROUTING_WORKER_NAME`. **Secrets** (`CLOUDFLARE_INGEST_HMAC_SECRET`, the CF token, the Brevo SMTP key) resolve platform-vault → env, env being fallback only.
+- **Non-secret config** (safe as env): `CLOUDFLARE_API_BASE` (default `https://api.cloudflare.com/client/v4`), `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_ROUTING_WORKER_NAME`. **Secrets** (`CLOUDFLARE_INGEST_HMAC_SECRET`, the CF token, the SMTP2GO key) resolve platform-vault → env, env being fallback only.
 - **Verification:** unit tests with mocked CF responses per method; one live smoke test against a sandbox zone that creates then deletes an address.
 
 ### WS-E2 — Auto-provision ≤5 addresses on tenant creation · **PLANNED · L**
@@ -95,7 +97,7 @@ A typed, axios-only client (matching the Graph/Gmail adapter style — no SDK) f
 Extend `provisionTenant()` (`provisioning.service.js`) with an email step, gated on the tenant's domain being onboarded (WS-E5):
 
 1. `verifyZone`; if not onboarded, mark email `PENDING_DOMAIN` and stop (non-fatal — the tenant still provisions).
-2. `enableRouting` (inbound); `putDnsRecord` for the inbound **MX** and the **sender's SPF/DKIM/DMARC** TXT records (provided by Brevo/SES), DMARC `p=quarantine` default.
+2. `enableRouting` (inbound); `putDnsRecord` for the inbound **MX** and the **sender's SPF/DKIM/DMARC** records (provided by SMTP2GO/SES), DMARC `p=quarantine` default.
 3. `createAddress` × ≤5, each routed to the ingest Worker; default local-parts seeded from a template (`contact`, `billing`, `docs`, `hr`, `noreply`).
 4. Insert ≤5 `email_connection` (provider `cloudflare_routing`) each linked to an `email_identity`; write default `email_section_binding` rows (WS-E3); record `email_domain` (WS-E5).
 
@@ -130,7 +132,7 @@ ALTER TABLE email_identity ADD COLUMN IF NOT EXISTS label text;   -- the tenant'
 
 - **Cloudflare Email Worker** (one per account): the `email()` handler POSTs a JSON envelope to `POST /api/tenant/mail/ingest/cloudflare` on the tenant host, HMAC-signed (`CLOUDFLARE_INGEST_HMAC_SECRET`) with the recipient address (selects tenant + connection); large attachments to R2 by reference, small ones inline base64 under a cap.
 - **Ingest endpoint** (declared **before** `authMiddleware`, like the existing OAuth callback/webhook routes): verify HMAC + timestamp (replay window) → resolve tenant from recipient domain → resolve `email_connection` by address → run the **existing** ingest path (`cleanHtml`, dedup index `ux_email_inbound_dedup`, `persistAttachments`→vault, `autoLink`→dossier/client, `emitEvent('email.received')`, `publishMailEvent`→realtime). Unknown recipients 202-and-drop (no enumeration).
-- **New adapter** `providers/cloudflareRouting.provider.js`: `verify()` (zone + routing); inbound as **push** (`fetchSince` is a no-op — the webhook is the ingress). **Outbound** for these addresses goes through the shared free-tier SMTP (`email.service` + nodemailer, Brevo/SES), not Cloudflare — the adapter's `sendEmail`/`createReply` delegate to it. Business code stays provider-agnostic.
+- **New adapter** `providers/cloudflareRouting.provider.js`: `verify()` (zone + routing); inbound as **push** (`fetchSince` is a no-op — the webhook is the ingress). **Outbound** for these addresses goes through the shared managed SMTP (`email.service` + nodemailer, SMTP2GO/SES), not Cloudflare — the adapter's `sendEmail`/`createReply` delegate to it. Business code stays provider-agnostic.
 - **Verification:** an email to a provisioned address appears in that tenant's Mail view within seconds, deduped on redelivery, attachments vaulted, auto-linked on a dossier ref — identical assertions to the IMAP path.
 
 ### WS-E5 — Domain onboarding (both paths) · **PLANNED · M**
@@ -281,7 +283,7 @@ Where a tenant needs a surface Praxis doesn't natively integrate, expose the con
 
 - **Security.** Every new secret (Cloudflare token, ingest HMAC, SMTP credential) lives in the vault, never on a row. Ingest and delivery webhooks are HMAC-signed with a replay window. The single canonical OAuth callback verifies the signed `state` before resolving a tenant, so a forged callback cannot bind a mailbox to the wrong tenant (BUILT). Rotation (WS-I2) is itself a security control — a rotatable credential is one you can respond to a leak with.
 - **Observability.** Every new job (ingest, domain-verification worker, re-verify sweep, deliverability webhook) emits to the existing metrics + structured-log + error-reporter stack (`workers.js` wraps handlers with duration + request-id + terminal-failure reporting). Integration state changes (`VERIFIED`→`ERROR`) feed the health view (WS-I1) and can raise an alert.
-- **Cost — $0 now.** Inbound is free (Cloudflare Email Routing, unlimited); outbound rides a free transactional tier (Brevo, ~9k/mo); Microsoft/Google OAuth apps are free; tenants who bring their own mailbox send on their own dime. The only future spend is Amazon SES (~$0.10/1k) once outbound outgrows the free tier — usage-based pennies, revenue-funded, not a subscription. Google's restricted-scope verification is a time cost, not a money cost.
+- **Cost — near $0 now.** Inbound is free (Cloudflare Email Routing, unlimited); outbound rides SMTP2GO (free to 1,000/month, then $15/mo); Microsoft/Google OAuth apps are free; tenants who bring their own mailbox send on their own dime. The only larger future spend is Amazon SES (~$0.10/1k) once outbound outgrows SMTP2GO — usage-based pennies, revenue-funded. Google's restricted-scope verification is a time cost, not a money cost.
 - **Tenancy invariants.** Per-tenant integration data and secrets stay in the tenant DB; deploy-wide app config (OAuth apps, Cloudflare account token) in the platform DB / env. The ingest webhook resolves the tenant from the recipient domain and the OAuth callback from the signed state — neither trusts an unauthenticated host.
 
 ---
@@ -319,7 +321,7 @@ Verified against these files this pass:
 
 `src/modules/mail/mail.service.js` · `src/modules/mail/mail.controller.js` · `src/modules/mail/mail.routes.js` · `src/modules/mail/providers/*` · `src/services/email.service.js` · `src/services/platform/mail-fallback.service.js` · `src/services/platform/settings.probes.js` · `src/services/tenant/registry.service.js` (`resolveBySlug`) · `src/middleware/host-tenent-resolver.js` (state-based tenant resolution) · `src/services/platform/provisioning.service.js` · `client/src/features/comms/mail.tsx` · `migrations/tenant/0410_notifications_ux.sql` · `migrations/tenant/0483_email_connection.sql`
 
-Cloudflare capability claims (§3) verified against Cloudflare Email Routing documentation; Brevo/Amazon SES free-tier and pricing against their current docs, August 2026.
+Cloudflare capability claims (§3) verified against Cloudflare Email Routing documentation; SMTP2GO/Amazon SES tiers and pricing against their current docs, September 2026.
 
 ---
 

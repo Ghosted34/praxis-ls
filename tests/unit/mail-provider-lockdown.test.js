@@ -35,6 +35,15 @@ jest.mock(
   "../../src/modules/vault/document_vault/document_vault.service",
   () => ({ createDocument: jest.fn() }),
 );
+// `connect()` now asks who hosts the domain's mail before accepting a password.
+// That is a live MX lookup, and a unit test must not depend on somebody else's
+// zone or on the runner having DNS. Only that one export is replaced; the real
+// `cpanelPreset` below is still the real thing.
+const mockHostedProviderOf = jest.fn(async () => null);
+jest.mock("../../src/modules/mail/mail/autodiscover", () => ({
+  ...jest.requireActual("../../src/modules/mail/mail/autodiscover"),
+  hostedProviderOf: (...a) => mockHostedProviderOf(...a),
+}));
 jest.mock("sanitize-html", () => {
   const fn = (h) => h;
   fn.defaults = { allowedTags: [], allowedAttributes: {} };
@@ -213,6 +222,78 @@ describe("provider lockdown", () => {
       })
       .catch((e) => e);
     expect(err && err.code).not.toBe("PROVIDER_NOT_ENABLED");
+  });
+});
+
+/* ── A PASSWORD CANNOT REACH A MICROSOFT OR GOOGLE MAILBOX ────────────────
+ *
+ * Both providers finished removing Basic auth from the legacy protocols —
+ * Exchange Online for IMAP/POP in 2022 and for SMTP AUTH on 30 April 2026,
+ * Google by dropping "less secure app" passwords. So `imap_smtp` + a password
+ * against such a domain cannot succeed, and letting the attempt through returns
+ * a bare AUTHENTICATIONFAILED that reads as a typo. The person then retypes the
+ * password, tries an app password, and asks IT to check the account — none of
+ * which can work, because the protocol is closed.
+ *
+ * Detection is by MX so it catches a CUSTOM domain, which is the case that
+ * matters: nobody is confused about @outlook.com. */
+describe("mailboxes that cannot take a password", () => {
+  afterEach(() => mockHostedProviderOf.mockResolvedValue(null));
+
+  test.each([
+    ["microsoft", /Microsoft 365/],
+    ["google", /Google/],
+  ])("a custom domain whose MX is %s is refused before any row is written", async (key, named) => {
+    mockHostedProviderOf.mockResolvedValue({ key, source: "mx" });
+    const err = await service
+      .connect(clientWithFlag("off"), {
+        email_address: "timothee@smartls.cm",
+        provider: "imap_smtp",
+        password: "pw",
+        actor: { user_id: "u1" },
+      })
+      .catch((e) => e);
+    expect(err).toMatchObject({ code: "MAILBOX_OAUTH_REQUIRED", status: 422 });
+    expect(err.message).toMatch(named);
+    // Nothing written and no secret vaulted: the refusal is BEFORE the row.
+    expect(mailRepo.insertConnection).not.toHaveBeenCalled();
+  });
+
+  test("an ordinary mail host is still connected with a password", async () => {
+    mockHostedProviderOf.mockResolvedValue(null);
+    await service.connect(clientWithFlag("off"), {
+      email_address: "support@jbspraxis.com",
+      provider: "imap_smtp",
+      password: "pw",
+      actor: { user_id: "u1" },
+    });
+    expect(mailRepo.insertConnection).toHaveBeenCalled();
+  });
+
+  test("a resolver failure lets the connection through rather than blocking it", async () => {
+    // Fails OPEN on purpose. `hostedProviderOf` answers null for "could not
+    // tell" as well as "nobody", and a DNS hiccup must never block a mailbox
+    // that would have worked.
+    mockHostedProviderOf.mockResolvedValue(null);
+    await service.connect(clientWithFlag("off"), {
+      email_address: "a@t.cm",
+      provider: "imap_smtp",
+      actor: { user_id: "u1" },
+    });
+    expect(mailRepo.insertConnection).toHaveBeenCalled();
+  });
+
+  test("the OAuth providers are not judged by MX — the flag decides them", async () => {
+    // A Microsoft-hosted domain connecting via microsoft_graph must fail at the
+    // lockdown, not here: this guard is only about passwords.
+    mockHostedProviderOf.mockResolvedValue({ key: "microsoft", source: "mx" });
+    await expect(
+      service.connect(clientWithFlag("off"), {
+        email_address: "timothee@smartls.cm",
+        provider: "microsoft_graph",
+        actor: { user_id: "u1" },
+      }),
+    ).rejects.toMatchObject({ code: "PROVIDER_NOT_ENABLED" });
   });
 });
 

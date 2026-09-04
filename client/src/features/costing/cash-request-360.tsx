@@ -25,7 +25,7 @@
  * offer, and explains a refusal before the person meets it.
  */
 import * as React from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, useLocation, Link } from "react-router-dom";
 import { Record360Page, Record360Header } from "@/components/record-360";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -452,6 +452,18 @@ export function CashRequest360({
     await act(() => api.importCostingLines(id), tr("Budget lines loaded"));
   }
 
+  /*
+   * Why the budget could not be pulled in when the request was created.
+   *
+   * The register's New-request dialog creates the request and immediately loads
+   * its costing lines, so the sheet normally opens populated. When that load is
+   * refused — an unapproved costing, a fully-claimed one — the reason travels
+   * here in the navigation state rather than being shown on a dialog that is
+   * closing: this is the screen with the "Load from budget" button on it, so
+   * this is where a reader can act on the answer.
+   */
+  const loadFailed = (useLocation().state as { loadFailed?: string } | null)?.loadFailed || null;
+
   async function submit() {
     if (dirty && !(await save())) return;
     if (overBudget) {
@@ -573,6 +585,11 @@ export function CashRequest360({
         </Callout>
       )}
 
+      {loadFailed && (lines || []).length === 0 && (
+        <Callout tone="warn" title={tr("The budget could not be loaded")}>
+          {loadFailed}
+        </Callout>
+      )}
       {control && <BudgetBanner control={control} />}
 
       <div className="grid gap-4 lg:grid-cols-[1fr_20rem]">

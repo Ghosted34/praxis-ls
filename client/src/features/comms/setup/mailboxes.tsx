@@ -775,27 +775,32 @@ export function ConnectionsTab() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /* ── The OAuth kick-off, hidden with its two buttons ──────────────────────
+  /* ── The OAuth kick-off ───────────────────────────────────────────────────
    *
-   * Commented out rather than deleted, for the reason set out beside the
-   * buttons below: Microsoft Graph and Gmail are gated off for this programme
-   * (Q4, Q11, PR-0 P4), not abandoned. `api.startMicrosoft` and
-   * `api.startGoogle` are still exported, the adapters still have their CI
-   * tests, and the server now refuses the flow itself
-   * (`mail.service.assertProviderEnabled`, on both `startOAuth` and
-   * `completeOAuth`). Re-enabling a provider should be un-commenting this and
-   * the buttons, not rediscovering how the redirect worked.
+   * Restored for Microsoft. It is no longer a "nice to have alongside IMAP":
+   * Exchange Online removed Basic auth for IMAP and POP in 2022 and retired it
+   * for SMTP AUTH on 30 April 2026, so for a mailbox hosted on Microsoft 365
+   * this is now the ONLY way to connect one at all. There is no password that
+   * works, and `connect()` refuses to pretend otherwise.
    *
-   *   async function oauth(kind: "ms" | "gg") {
-   *     try {
-   *       const r =
-   *         kind === "ms" ? await api.startMicrosoft() : await api.startGoogle();
-   *       window.location.href = r.url;
-   *     } catch (err) {
-   *       setNote(errMsg(err));
-   *     }
-   *   }
+   * Google stays out for now: its restricted mail scopes need a security
+   * assessment that runs for weeks, and 12775 split the flags so waiting for
+   * Google no longer holds Microsoft back. `api.startGoogle` is still exported
+   * and the adapter still has its CI tests, so turning it on is this function
+   * plus a second button.
+   *
+   * The gate remains on the SERVER — `startOAuth` and `completeOAuth` both call
+   * `assertProviderEnabled` — so a tenant without the flag gets a clear refusal
+   * rather than a redirect to a provider we would then turn away.
    */
+  async function connectMicrosoft() {
+    try {
+      const r = await api.startMicrosoft();
+      window.location.href = r.url;
+    } catch (err) {
+      setNote(errMsg(err));
+    }
+  }
   async function test(id: string) {
     setBusyId(id);
     setNote("");
@@ -881,31 +886,16 @@ export function ConnectionsTab() {
         onClose={() => setConfirmTarget(null)}
         onConfirm={() => confirmTarget && void disconnect(confirmTarget)}
       />
-      {/* ── Connect Microsoft 365 / Connect Google Workspace: HIDDEN ─────────
-       *
-       * Not deleted — hidden, because the adapters are not dead code. Q4 and
-       * Q11 put Microsoft Graph and Gmail out of scope for this programme
-       * ("one provider properly rather than four adequately"), and PR-0 P4 kept
-       * them "kept and tested but gated off — server-side, not only in the UI".
-       * The adapters, their tests and `oauth()` below all still work; the day
-       * `mail.provider.oauth` is turned on, this block comes back and nothing
-       * else has to change.
-       *
-       * The server now agrees, which it did not before: `startOAuth` and
-       * `completeOAuth` both call `assertProviderEnabled`. Until that was
-       * added, the gate sat only on `connect()` — which the OAuth path never
-       * goes through, since `completeOAuth` inserts its own connection row —
-       * so hiding these two buttons was literally the only thing standing
-       * between a caller and a half-supported provider.
-       *
-       *   <Button variant="outline" onClick={() => oauth("ms")}>
-       *     Connect Microsoft 365
-       *   </Button>
-       *   <Button variant="outline" onClick={() => oauth("gg")}>
-       *     Connect Google Workspace
-       *   </Button>
-       */}
+      {/* Microsoft first, and deliberately so: for a Microsoft 365 mailbox it is
+       * the only route that exists, while "Connect a mailbox" (IMAP/SMTP) is
+       * for a mailbox on the company's own mail server. Offering the password
+       * form first to a Microsoft tenant sends them down a road that ends in an
+       * authentication failure they cannot fix. Google Workspace returns here
+       * once its scope verification clears — see `oauth()` above. */}
       <div className="flex flex-wrap items-center gap-3">
+        <Button variant="outline" onClick={() => void connectMicrosoft()}>
+          {tr("Connect Microsoft 365")}
+        </Button>
         <Button variant="outline" onClick={() => setImapOpen(true)}>
           {tr("Connect a mailbox")}
         </Button>

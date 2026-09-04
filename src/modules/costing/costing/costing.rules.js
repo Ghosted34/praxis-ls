@@ -298,6 +298,29 @@ const statusWords = (status) => STATUS_WORDS[String(status || "").toUpperCase()]
   || { fr: String(status || ""), en: String(status || "") };
 
 /**
+ * Which pending states can be chased, and what the reminder is asking for
+ * (12774). A sheet that is DRAFT, APPROVED_LOCKED or REJECTED has nobody
+ * waiting on it, so there is nothing to send and the service refuses.
+ */
+const NUDGE_STAGE = {
+  SUBMITTED_FOR_VALIDATION: "VALIDATION",
+  SUBMITTED_FOR_APPROVAL: "APPROVAL",
+};
+
+/**
+ * How many reminders one costing may send in a day. The owner's instruction,
+ * verbatim: *"we can notify just thrice a day. No more! To avoid mounting
+ * pressure on CEO."*
+ *
+ * Here rather than in a setting because it is a restraint the product places on
+ * its users, not a preference they tune — a configurable ceiling on nagging is
+ * a ceiling that gets raised. Per COSTING per day, not per recipient: a
+ * director with ten sheets waiting has ten real decisions and should hear about
+ * each; what must not happen is one sheet arriving eleven times.
+ */
+const NUDGE_DAILY_LIMIT = 3;
+
+/**
  * The budget ledger, derived from the raw rows `costing.repo.budgetForCosting`
  * returns (12771).
  *
@@ -352,4 +375,5 @@ function summariseBudget(rows = []) {
 module.exports = {
   computeCosting, lineTtc, summariseBudget, reconcile, toXaf,
   snapshotLines, diffLines, lineKey, planLineWrites, statusWords,
+  NUDGE_STAGE, NUDGE_DAILY_LIMIT,
 };

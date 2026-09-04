@@ -1238,6 +1238,32 @@ export type DomainHealthRow = {
   checked_at: string;
 };
 
+/**
+ * "Will mail we send actually REACH this domain?"
+ *
+ * The opposite question to the rest of this panel. Every other check is about a
+ * domain we send AS; this is about one we send TO, and it catches a relay that
+ * hosts the recipient's domain and would file the message into a mailbox on
+ * itself rather than routing it — accepted, never delivered, never bounced.
+ */
+export type DeliveryRouteVerdict = {
+  state: "OK" | "LOCAL_TRAP" | "UNKNOWN";
+  ok: boolean | null;
+  reason: string;
+  domain: string | null;
+  smtp_host: string | null;
+  relay_ips?: string[];
+  recipient_ips?: string[];
+  mx_hosts?: string[];
+  sender_source?: string;
+};
+
+export const checkDeliveryRoute = (domain: string) =>
+  tenant<DeliveryRouteVerdict>("/mail/deliverability/route", {
+    method: "POST",
+    body: { domain },
+  });
+
 export const listDeliverability = () => tenant<DomainHealthRow[]>("/mail/deliverability");
 export const checkDeliverability = (domain?: string) =>
   tenant("/mail/deliverability/check", {

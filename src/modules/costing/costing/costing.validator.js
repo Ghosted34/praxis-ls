@@ -85,11 +85,18 @@ const budgetQuery = z.object({
   for_cash_request: z.string().uuid().optional(),
 });
 
+// 12774 — the costing gate for one operations file. Required, not optional:
+// this endpoint answers "what is THIS file's budget doing", and without a file
+// there is no question.
+const gateQuery = z.object({
+  dossier_id: z.string().uuid(),
+});
+
 // AI-facing: costing_id in the payload → list_costings picker.
 const aiUpdate = update.extend({ costing_id: z.string().uuid() });
 const aiSetStatus = setStatus.extend({ costing_id: z.string().uuid() });
 const aiUnlock = unlock.extend({ costing_id: z.string().uuid() });
-const schemas = { create, update, setStatus, unlock, listQuery, suggestQuery, budgetQuery, aiUpdate, aiSetStatus, aiUnlock };
+const schemas = { create, update, setStatus, unlock, listQuery, suggestQuery, budgetQuery, gateQuery, aiUpdate, aiSetStatus, aiUnlock };
 const mw = (k) => (req, _res, next) => { const p = schemas[k].safeParse(req.body); if (!p.success) return next(new AppError("VALIDATION_ERROR", "Invalid body", 422, p.error.flatten().fieldErrors)); req.body = p.data; return next(); };
 /** Query-string variant: parses `req.query`, which Express makes read-only on
  *  some versions, so the parsed result is stashed rather than reassigned. */
@@ -102,5 +109,6 @@ const qw = (k) => (req, _res, next) => {
 module.exports = {
   create: mw("create"), update: mw("update"), setStatus: mw("setStatus"), unlock: mw("unlock"),
   listQuery: qw("listQuery"), suggestQuery: qw("suggestQuery"), budgetQuery: qw("budgetQuery"),
+  gateQuery: qw("gateQuery"),
   schemas,
 };

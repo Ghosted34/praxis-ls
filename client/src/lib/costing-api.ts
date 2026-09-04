@@ -637,6 +637,56 @@ export type CostingBudget = {
  * between "how much was available to me" and "how much is left now". Without
  * it an approved request is measured against a balance it is itself inside.
  */
+/* ── The costing gate (12774) ──────────────────────────────────────────────
+ *
+ * Everything the cash-request dialog needs to answer "can this file be funded,
+ * and if not, who is holding it up?" — in ONE call made the moment a file is
+ * picked. Three round trips to paint a status line is how a dialog comes to
+ * feel slow.
+ */
+export type CostingGate = {
+  dossier_id: string;
+  /** `null` when the file has no costing at all — a real answer, not an error. */
+  costing: {
+    costing_id: string;
+    doc_number: string | null;
+    status: string;
+    status_words: { fr: string; en: string };
+    total_ttc: number | null;
+    currency: string | null;
+  } | null;
+  can_fund?: boolean;
+  /** The sheet is a DRAFT with nobody named to validate it; submitting refuses
+   *  without one, so the screen asks first rather than showing a button that
+   *  fails. */
+  needs_validator?: boolean;
+  stage?: "VALIDATION" | "APPROVAL" | null;
+  awaiting?: {
+    user_id: string | null;
+    name: string | null;
+    role_id: string | null;
+    role_name: string | null;
+  } | null;
+  nudges_used?: number;
+  nudges_remaining?: number;
+  nudge_limit?: number;
+};
+export const costingGate = (dossierId: string) =>
+  tenant<CostingGate>(`/costings/gate?dossier_id=${encodeURIComponent(dossierId)}`);
+
+/** What a reminder send answers with — including what is left of today's quota. */
+export type NudgeResult = {
+  sent: number;
+  stage: "VALIDATION" | "APPROVAL";
+  nudges_used: number;
+  nudges_remaining: number;
+  nudge_limit: number;
+};
+/** Chase whoever is holding a pending costing. Three a day (12774); the server
+ *  answers 429 rather than silently doing nothing. */
+export const nudgeCosting = (id: string) =>
+  tenant<NudgeResult>(`/costings/${id}/nudge`, { method: "POST", body: {} });
+
 export const getCostingBudget = (costingId: string, forCashRequest?: string) =>
   tenant<CostingBudget>(
     `/costings/${costingId}/budget${forCashRequest ? `?for_cash_request=${forCashRequest}` : ""}`,

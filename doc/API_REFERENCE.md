@@ -6,7 +6,7 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 1521 |
+| Routes | 1532 |
 | Modules mounted | 139 |
 | API version | v1 |
 
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 1521 mounted routes, grouped by path prefix.
+All 1532 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -436,10 +436,13 @@ All 1521 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/cash-requests/` | — |
 | GET | `/api/tenant/cash-requests/:id` | — |
 | PATCH | `/api/tenant/cash-requests/:id` | — |
+| POST | `/api/tenant/cash-requests/:id/close-balance` | — |
 | POST | `/api/tenant/cash-requests/:id/disburse` | — |
 | POST | `/api/tenant/cash-requests/:id/import-costing` | — |
 | POST | `/api/tenant/cash-requests/:id/justify` | — |
+| POST | `/api/tenant/cash-requests/:id/payments/:paymentId/receipt` | — |
 | POST | `/api/tenant/cash-requests/:id/transition` | — |
+| GET | `/api/tenant/cash-requests/kpis` | — |
 
 ### `tenant/catalogue`
 
@@ -585,8 +588,11 @@ All 1521 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/costings/` | — |
 | GET | `/api/tenant/costings/:id` | — |
 | PATCH | `/api/tenant/costings/:id` | — |
+| GET | `/api/tenant/costings/:id/budget` | — |
+| POST | `/api/tenant/costings/:id/nudge` | — |
 | POST | `/api/tenant/costings/:id/status` | — |
 | POST | `/api/tenant/costings/:id/unlock` | — |
+| GET | `/api/tenant/costings/gate` | — |
 | GET | `/api/tenant/costings/kpis` | — |
 | GET | `/api/tenant/costings/suggest` | — |
 
@@ -977,6 +983,10 @@ All 1521 mounted routes, grouped by path prefix.
 | DELETE | `/api/tenant/insights/:id` | yes |
 | GET | `/api/tenant/insights/:id` | — |
 | PATCH | `/api/tenant/insights/:id` | — |
+| DELETE | `/api/tenant/insights/:id/cover` | yes |
+| POST | `/api/tenant/insights/:id/cover` | — |
+| POST | `/api/tenant/insights/:id/gallery` | — |
+| PUT | `/api/tenant/insights/:id/gallery` | — |
 | POST | `/api/tenant/insights/:id/publish` | — |
 
 ### `tenant/intake`
@@ -1115,6 +1125,7 @@ All 1521 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/mail/deliverability` | — |
 | GET | `/api/tenant/mail/deliverability/:domain/history` | — |
 | POST | `/api/tenant/mail/deliverability/check` | — |
+| POST | `/api/tenant/mail/deliverability/route` | — |
 | GET | `/api/tenant/mail/drafts` | — |
 | POST | `/api/tenant/mail/drafts` | — |
 | DELETE | `/api/tenant/mail/drafts/:id` | — |

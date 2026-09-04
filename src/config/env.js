@@ -478,6 +478,20 @@ const Schema = z.object({
   MAIL_DEFAULT_FROM: z.string().default("no-reply@praxisls.com"),
   MAIL_SUPPORT_FROM: z.string().default("support@praxisls.com"),
   MAIL_FALLBACK_FROM_NAME: z.string().default("Praxis"),
+  // The name this server announces in SMTP's HELO/EHLO greeting.
+  //
+  // Left unset, nodemailer offers the container's own hostname, and in a
+  // containerised deployment that resolves to a loopback literal — a real
+  // outbound message from this system was recorded arriving at the relay as
+  // `helo=[127.0.0.1]`. A localhost literal in HELO is a long-standing spam
+  // signal: it is checked by Microsoft 365 and Google, it cannot be
+  // forward-confirmed against the sending IP, and it costs reputation on every
+  // message. It was invisible for as long as delivery never left the building.
+  //
+  // Should be a real, resolvable name for the host that is sending. Empty means
+  // "keep nodemailer's default", so this can never break a working deployment
+  // by being unset.
+  MAIL_HELO_NAME: z.string().default(""),
 
   // Meta WhatsApp Cloud API (MOD-64 Smart Comms). Deploy-wide fallback only —
   // per-tenant creds are set + tested in Smart Comms (token encrypted in the

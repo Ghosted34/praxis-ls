@@ -46,14 +46,6 @@
       "line": 784
     },
     {
-      "file": "src/modules/mail/mail/autodiscover.js",
-      "line": 61
-    },
-    {
-      "file": "src/modules/mail/mail/autodiscover.js",
-      "line": 83
-    },
-    {
       "file": "src/modules/mail/mail/dns-check.js",
       "line": 110
     },

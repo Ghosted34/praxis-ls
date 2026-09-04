@@ -14,4 +14,17 @@ const check = (req, _res, next) => {
   return next();
 };
 
-module.exports = { check };
+// `/deliverability/route` asks about ONE recipient domain, so unlike `/check`
+// — where an absent domain means "sweep them all" — the domain is required.
+const routeSchema = z.object({
+  domain: z.string().trim().min(3).max(255),
+}).strict();
+
+const route = (req, _res, next) => {
+  const p = routeSchema.safeParse(req.body || {});
+  if (!p.success) return next(new AppError("VALIDATION_ERROR", "A recipient domain is required", 422, p.error.flatten().fieldErrors));
+  req.body = p.data;
+  return next();
+};
+
+module.exports = { check, route };

@@ -13,6 +13,7 @@ import { DocButton } from "@/components/doc-button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { Callout } from "@/components/ui/callout";
+import { useToast } from "@/components/ui/toast";
 import { ErrorState, EmptyState } from "@/components/ui/states";
 import { ApiError } from "@/lib/api-client";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
@@ -1212,6 +1213,186 @@ function CostPortfolio() {
 
 /* ═══════════════════ Cash requests ═══════════════════ */
 
+/* ── The costing gate, inside the cash-request dialog (12774) ───────────────
+ *
+ * WHY THIS EXISTS. A cash request cannot be funded until its file's costing is
+ * APPROVED_LOCKED (owner decision Q4: no money leaves without a costing). So a
+ * requester whose sheet is sitting in somebody's queue is blocked by a PERSON —
+ * and the dialog used to say nothing about who, offer nothing to do about it,
+ * and make them leave the screen to find out.
+ *
+ * The owner's rule for this panel, verbatim: *"So there is not a blocker. all
+ * should be done from within the cash request modal not having to leave."*
+ * Every state below therefore ends in an action, not an apology:
+ *
+ *   no costing        → create one (the one deep link, because a costing is a
+ *                       worksheet and not something to conjure from a dialog)
+ *   DRAFT             → name a validator and submit it, here
+ *   awaiting someone  → remind them, here — three times a day, no more
+ *   APPROVED_LOCKED   → nothing to do; say so and get out of the way
+ */
+function CostingGatePanel({
+  dossierId,
+  gate,
+  busy,
+  users,
+  onChanged,
+}: {
+  dossierId: string;
+  gate: api.CostingGate | null;
+  busy: boolean;
+  users: { user_id: string; full_name?: string | null; email?: string }[];
+  onChanged: () => void;
+}) {
+  const toast = useToast();
+  const [working, setWorking] = React.useState(false);
+  const [validatorId, setValidatorId] = React.useState("");
+  // Held locally so the count drops the instant a reminder is sent, without
+  // waiting for the gate to be re-read.
+  const [remaining, setRemaining] = React.useState<number | null>(null);
+
+  React.useEffect(() => {
+    setRemaining(null);
+    setValidatorId("");
+  }, [dossierId]);
+
+  if (!dossierId) return null;
+  if (busy && !gate) {
+    return <p className="micro">{tr("Reading this file's budget…")}</p>;
+  }
+
+  const left = remaining ?? gate?.nudges_remaining ?? 0;
+  const limit = gate?.nudge_limit ?? 3;
+
+  async function run(what: () => Promise<unknown>, done: string) {
+    setWorking(true);
+    try {
+      await what();
+      toast.success(done);
+      onChanged();
+    } catch (err) {
+      // Named where it happened rather than through the global banner: this is
+      // a panel with three buttons on it, and "which one failed" is the whole
+      // question.
+      toast.error(errMsg(err));
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  /* ── 1. No costing on this file at all ──────────────────────────────── */
+  if (!gate?.costing) {
+    return (
+      <Callout tone="warn" title={tr("This file has no costing yet")}>
+        <p className="mb-2">
+          {tr(
+            "A cash request draws on an approved costing, so the file needs one before money can be released.",
+          )}
+        </p>
+        <Link className="underline underline-offset-2" to={`${COSTING_BASE}?dossier_id=${dossierId}`}>
+          {tr("Create the costing for this file")}
+        </Link>
+      </Callout>
+    );
+  }
+
+  const c = gate.costing;
+  const ref = c.doc_number || c.costing_id.slice(0, 8);
+
+  /* ── 2. Approved: nothing to do ─────────────────────────────────────── */
+  if (gate.can_fund) {
+    return (
+      <Callout tone="ok" title={`${tr("Budget approved")} · ${ref}`}>
+        {c.total_ttc !== null
+          ? `${tr("This file's costing is approved for")} ${money(c.total_ttc)}. ${tr("Its lines load into the worksheet.")}`
+          : tr("Its lines load into the worksheet.")}
+      </Callout>
+    );
+  }
+
+  /* ── 3. A draft nobody has submitted ────────────────────────────────── */
+  if (c.status === "DRAFT") {
+    return (
+      <Callout tone="warn" title={`${tr("The costing is still a draft")} · ${ref}`}>
+        <p className="mb-2">
+          {tr("It has to be validated and approved before this request can be funded. You can send it on its way from here.")}
+        </p>
+        {gate.needs_validator && (
+          <Field label={tr("Validator")} hint={tr("Who the sheet goes to")}>
+            <Select value={validatorId} onChange={(e) => setValidatorId(e.target.value)}>
+              <option value="">—</option>
+              {users.map((u) => (
+                <option key={u.user_id} value={u.user_id}>
+                  {u.full_name || u.email || u.user_id.slice(0, 8)}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
+        <Button
+          type="button"
+          size="sm"
+          className="mt-2"
+          loading={working}
+          disabled={gate.needs_validator && !validatorId}
+          onClick={() =>
+            run(async () => {
+              // Name the validator first when the sheet has none: the server
+              // refuses SUBMIT_VALIDATION without one (NO_VALIDATOR), and a
+              // button that fails for a reason we could have fixed is a bad one.
+              if (gate.needs_validator && validatorId) {
+                await api.updateCosting(c.costing_id, { validator_id: validatorId });
+              }
+              await api.setCostingStatus(c.costing_id, "SUBMIT_VALIDATION");
+            }, tr("Costing submitted for validation"))
+          }
+        >
+          {tr("Submit for validation")}
+        </Button>
+      </Callout>
+    );
+  }
+
+  /* ── 4. Sitting in somebody's queue ─────────────────────────────────── */
+  const who =
+    gate.awaiting?.name ||
+    gate.awaiting?.role_name ||
+    (gate.stage === "VALIDATION" ? tr("the validator") : tr("the approver"));
+  return (
+    <Callout tone="warn" title={`${tr("Waiting on")} ${who} · ${ref}`}>
+      <p className="mb-2">
+        {gate.stage === "VALIDATION"
+          ? tr("The costing has been submitted and is waiting to be validated.")
+          : tr("The costing has been validated and is waiting for approval.")}
+      </p>
+      <div className="flex flex-wrap items-center gap-3">
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          loading={working}
+          disabled={left <= 0}
+          onClick={() =>
+            run(async () => {
+              const r = await api.nudgeCosting(c.costing_id);
+              setRemaining(r.nudges_remaining);
+            }, tr("Reminder sent"))
+          }
+        >
+          {tr("Send a reminder")}
+        </Button>
+        {/* The owner's ceiling, stated before the press and not only after it:
+            "Show how many more times they have please." */}
+        <span className="micro">
+          {left > 0
+            ? `${left} ${left === 1 ? tr("reminder") : tr("reminders")} ${tr("left today")} (${tr("max")} ${limit})`
+            : tr("No reminders left today — the count resets tomorrow.")}
+        </span>
+      </div>
+    </Callout>
+  );
+}
+
 /**
  * START a cash request — the CONTEXT only, never its money.
  *
@@ -1238,23 +1419,50 @@ function CashRequestForm({
   onCreated: (id: string, loadFailed: string | null) => void;
 }) {
   const { rows: dossiers } = useList<Dossier>("/operations");
-  const { rows: costings } = useList<api.Costing>("/costings");
+  const { rows: users } = useList<{
+    user_id: string;
+    full_name?: string | null;
+    email?: string;
+  }>("/users");
   const [dossierId, setDossierId] = React.useState("");
   // 10720: the legacy cash request carried beneficiary + an OPS/OVH context —
   // OPS requires an operations file, OVH requires a cost centre + justification.
   const [category, setCategory] = React.useState<"OPS" | "OVH">("OPS");
-  const [costingId, setCostingId] = React.useState("");
-  // Auto-link the dossier's APPROVED_LOCKED costing when one is picked, so
-  // "Import costing" works without hunting — the legacy linked it through the
-  // ops file automatically.
-  React.useEffect(() => {
-    if (!dossierId) return;
-    const match = (costings || []).find(
-      (c) => c.dossier_id === dossierId && c.status === "APPROVED_LOCKED",
-    );
-    if (match) setCostingId(match.costing_id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  /*
+   * THE FILE DECIDES THE COSTING. There is no picker (12774).
+   *
+   * There was one, and it listed every costing in the tenant — unfiltered, so a
+   * request against file A could be pointed at file B's budget, and the user
+   * was asked to choose from a list in which almost every entry was wrong. A
+   * file has one live costing; resolving it is the software's job.
+   *
+   * The same call answers what the sheet's STATE is and who is holding it, so
+   * the panel below can offer the way forward instead of a dead end.
+   */
+  const [gate, setGate] = React.useState<api.CostingGate | null>(null);
+  const [gateBusy, setGateBusy] = React.useState(false);
+  const loadGate = React.useCallback(async () => {
+    if (!dossierId) {
+      setGate(null);
+      return;
+    }
+    setGateBusy(true);
+    try {
+      setGate(await api.costingGate(dossierId));
+    } catch (err) {
+      // The gate is advisory on this screen — the server re-checks every rule
+      // it describes. A file whose gate cannot be read must still be pickable.
+      setGate(null);
+      reportActionError(err);
+    } finally {
+      setGateBusy(false);
+    }
   }, [dossierId]);
+  React.useEffect(() => {
+    void loadGate();
+  }, [loadGate]);
+  // The resolved costing IS the request's costing; nothing else can set it.
+  const costingId = gate?.costing?.costing_id || "";
   const [beneficiary, setBeneficiary] = React.useState("");
   const [costCenter, setCostCenter] = React.useState("");
   const [overheadJustification, setOverheadJustification] = React.useState("");
@@ -1354,20 +1562,15 @@ function CashRequestForm({
                   ))}
                 </Select>
               </Field>
-              <Field label="Costing" hint="Approved costing feeding the budget lines (Import costing).">
-                <Select
-                  value={costingId}
-                  onChange={(e) => setCostingId(e.target.value)}
-                >
-                  <option value="">—</option>
-                  {(costings || []).map((c) => (
-                    <option key={c.costing_id} value={c.costing_id}>
-                      {c.doc_number || c.costing_id.slice(0, 8)}
-                      {c.status === "APPROVED_LOCKED" ? " ✓" : ` (${c.status})`}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
+              {/* The costing is RESOLVED from the file, never picked from a
+                  list — see CostingGatePanel. */}
+              <CostingGatePanel
+                dossierId={dossierId}
+                gate={gate}
+                busy={gateBusy}
+                users={users || []}
+                onChanged={loadGate}
+              />
             </>
           ) : (
             <>

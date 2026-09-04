@@ -24,6 +24,17 @@ module.exports = {
       excludeCashRequestId: q(req).for_cash_request || null,
     })),
   })),
+  // The costing gate for one operations file (12774) — what its budget is doing
+  // and who, if anyone, is holding it up. Read-only; `null` costing is a real
+  // answer (the file has none yet), not a 404.
+  gate: asyncHandler(async (req, res) => res.json({
+    data: await req.tenantDb((c) => service.gate(c, { dossierId: q(req).dossier_id })),
+  })),
+  // Chase whoever is holding a pending sheet. Three a day (12774); the service
+  // answers 429 with the count rather than silently doing nothing.
+  nudge: asyncHandler(async (req, res) => res.json({
+    data: await req.tenantDb((c) => service.nudge(c, { id: req.params.id, actor: actor(req) })),
+  })),
   create: asyncHandler(async (req, res) => res.status(201).json({ data: await req.tenantDb((c) => service.createDraft(c, { data: req.body, actor: actor(req) })) })),
   update: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.updateDraft(c, { id: req.params.id, patch: req.body, lines: req.body.lines || null, actor: actor(req) })) })),
   setStatus: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.setStatus(c, { id: req.params.id, to: req.body.to, actor: actor(req) })) })),

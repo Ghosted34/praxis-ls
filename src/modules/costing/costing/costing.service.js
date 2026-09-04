@@ -15,7 +15,10 @@
 "use strict";
 const repo = require("./costing.repo");
 const events = require("./costing.events");
-const { computeCosting, toXaf, snapshotLines, diffLines, planLineWrites, summariseBudget } = require("./costing.rules");
+const {
+  computeCosting, toXaf, snapshotLines, diffLines, planLineWrites, summariseBudget,
+  statusWords, NUDGE_STAGE, NUDGE_DAILY_LIMIT,
+} = require("./costing.rules");
 const suggest = require("./costing.suggest");
 const numbering = require("../../../services/documents/numbering.service");
 const currency = require("../../master/currency/currency.service");
@@ -769,7 +772,178 @@ const suggestLines = (client, q = {}) =>
 // A cleared approval chain approves+locks the costing (BUILD_CONVENTIONS §2/§5).
 onApproved.register("costing", (client, { id, actor }) => setStatus(client, { id, to: "APPROVE", actor: actor || {}, viaChain: true }));
 
+
+/* ═══════════════════ THE COSTING GATE (12774) ═════════════════════════════
+ *
+ * A cash request cannot be funded until its file's costing is APPROVED_LOCKED
+ * (12771, owner decision Q4: no money leaves without a costing). So a requester
+ * whose sheet is sitting in somebody's queue is blocked by a PERSON, and until
+ * now the software told them nothing about who, offered them nothing to do
+ * about it, and made them leave the screen to find out.
+ *
+ * These two functions are the whole of that: `gate` says where the file's
+ * budget has got to and who is holding it, and `nudge` chases them — three
+ * times a day and no more.
+ */
+
+/**
+ * The costing gate for one operations file.
+ *
+ * Returns `null` when the file has no costing at all, which is a real answer
+ * and not an error: it is the state the screen offers "create one" for.
+ */
+async function gate(client, { dossierId }) {
+  if (!dossierId) throw new AppError("NO_DOSSIER", "dossier_id is required", 422);
+  const row = await repo.gateForDossier(client, dossierId);
+  if (!row) return { dossier_id: dossierId, costing: null };
+
+  const stage = NUDGE_STAGE[row.status] || null;
+  const used = Number(row.nudges_today) || 0;
+  return {
+    dossier_id: dossierId,
+    costing: {
+      costing_id: row.costing_id,
+      doc_number: row.doc_number,
+      status: row.status,
+      // A PAIR, never a joined string — the rule every projection here follows.
+      status_words: statusWords(row.status),
+      total_ttc: row.total_ttc === null || row.total_ttc === undefined ? null : Number(row.total_ttc),
+      currency: row.currency,
+    },
+    // The gate the cash request applies, answered here so the screen can
+    // explain itself before the user meets a 403 somewhere else.
+    can_fund: row.status === "APPROVED_LOCKED",
+    // Whether the sheet needs a validator named before it can be submitted —
+    // `setStatus` refuses SUBMIT_VALIDATION without one (NO_VALIDATOR), and a
+    // button that fails for a reason the screen could have shown is a bad button.
+    needs_validator: row.status === "DRAFT" && !row.validator_id,
+    stage,
+    awaiting: stage
+      ? {
+        // A step assigned to a ROLE names everyone holding it; one assigned to
+        // a person names them. Either way the screen can say who.
+        user_id: row.awaiting_user_id || (stage === "VALIDATION" ? row.validator_id : null) || null,
+        name: row.awaiting_user_name || (stage === "VALIDATION" ? row.validator_name : null) || null,
+        role_id: row.awaiting_role_id || null,
+        role_name: row.awaiting_role_name || null,
+      }
+      : null,
+    // The owner's ceiling, and what is left of it today (12774).
+    nudges_used: used,
+    nudges_remaining: Math.max(0, NUDGE_DAILY_LIMIT - used),
+    nudge_limit: NUDGE_DAILY_LIMIT,
+  };
+}
+
+/**
+ * Chase whoever is holding this costing — three times a day, no more.
+ *
+ * WHO IS CHASED, and why it is not simply "the approver". At validation the
+ * person is the one NAMED on the sheet (`validator_id`, mandatory since 12766).
+ * At approval it is whoever holds the oldest PENDING approval task, which may
+ * be a person or a role; a role names everyone holding it, because a step
+ * nobody in particular owns is still somebody's job.
+ *
+ * WHY IT REFUSES RATHER THAN SILENTLY DOING NOTHING. A quota that swallows the
+ * fourth press looks identical to a broken button. It answers 429 with the
+ * count and the reset, so the screen can say "no reminders left today" before
+ * the press and explain it after.
+ */
+async function nudge(client, { id, actor = {} }) {
+  const costing = await repo.get(client, id);
+  if (!costing) throw new AppError("NOT_FOUND", "Costing not found", 404);
+
+  const stage = NUDGE_STAGE[costing.status];
+  if (!stage) {
+    throw new AppError(
+      "NOT_PENDING",
+      `Costing ${costing.doc_number || ""} is ${costing.status} — there is nobody waiting to act on it.`.trim(),
+      422,
+      { status: costing.status },
+    );
+  }
+
+  // Before BEGIN: a refusal must not open and roll back a transaction.
+  const used = await repo.nudgesToday(client, id);
+  if (used >= NUDGE_DAILY_LIMIT) {
+    throw new AppError(
+      "NUDGE_QUOTA_EXHAUSTED",
+      `This costing has already been chased ${used} times today. The limit is ${NUDGE_DAILY_LIMIT} a day — it resets tomorrow.`,
+      429,
+      { nudges_used: used, nudges_remaining: 0, nudge_limit: NUDGE_DAILY_LIMIT },
+    );
+  }
+
+  const row = await repo.gateForDossier(client, costing.dossier_id);
+  const recipients = stage === "VALIDATION"
+    ? [costing.validator_id].filter(Boolean)
+    : (row && row.awaiting_user_id
+      ? [row.awaiting_user_id]
+      : await repo.usersInRole(client, row && row.awaiting_role_id));
+
+  if (!recipients.length) {
+    throw new AppError(
+      "NO_RECIPIENT",
+      "Nobody is named to act on this costing yet, so there is no one to remind.",
+      422,
+      { status: costing.status },
+    );
+  }
+
+  const ref = "costing:" + id;
+  const label = costing.doc_number || String(id).slice(0, 8);
+  await client.query("BEGIN");
+  try {
+    const notifications = require("../../notification/notification.service");
+    await notifications.notifyMany(client, recipients, {
+      eventTypeKey: events.NUDGED,
+      title: stage === "VALIDATION"
+        ? `Costing ${label} is waiting for your validation`
+        : `Costing ${label} is waiting for your approval`,
+      // The AMOUNT is in the body deliberately: a recipient triaging a queue
+      // decides what to open by what it costs, and a reminder that makes them
+      // open the sheet to find out has spent its one chance at their attention.
+      body: costing.total_ttc
+        ? `${Number(costing.total_ttc).toLocaleString("fr-FR")} ${costing.currency || "XAF"} — a cash request for this file cannot be funded until it is approved.`
+        : "A cash request for this file cannot be funded until it is approved.",
+      entityRef: ref,
+      priority: "HIGH",
+      url: "/costing/costings/" + id,
+      // One tag per sheet and per stage, so a second reminder REPLACES the
+      // first on the recipient's lock screen instead of stacking three
+      // identical banners — which is the pressure the quota exists to avoid.
+      pushTag: `costing-nudge:${id}:${stage}`,
+      renotify: true,
+      emailFallback: true,
+    });
+
+    for (const userId of recipients) {
+       
+      await repo.insertNudge(client, {
+        costing_id: id,
+        // DATA 2.4 — identity lives in LIVE while this row may land in SANDBOX;
+        // resolveActorId answers null rather than raising 23503.
+        recipient_user_id: await resolveActorId(client, userId),
+        stage,
+        sent_by: await resolveActorId(client, actor.user_id),
+      });
+    }
+    await audit(client, { actorUserId: actor.user_id || null, action: events.NUDGED, moduleKey: events.MODULE, entityRef: ref, after: { stage, recipients: recipients.length } });
+    await client.query("COMMIT");
+  } catch (err) { await client.query("ROLLBACK"); throw err; }
+
+  // Counted AFTER the commit, so what the screen shows is what the table holds.
+  const nowUsed = await repo.nudgesToday(client, id);
+  return {
+    sent: recipients.length,
+    stage,
+    nudges_used: nowUsed,
+    nudges_remaining: Math.max(0, NUDGE_DAILY_LIMIT - nowUsed),
+    nudge_limit: NUDGE_DAILY_LIMIT,
+  };
+}
+
 module.exports = {
   createDraft, updateDraft, setStatus, unlockTransition, get, budget,
-  list, listPaged, kpis, suggestLines,
+  list, listPaged, kpis, suggestLines, gate, nudge,
 };

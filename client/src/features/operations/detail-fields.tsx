@@ -178,13 +178,41 @@ function GeneratedControl({
   field,
   value,
   onChange,
+  capturesContainers = false,
   ...aria
 }: {
   field: DetailFieldDef;
   value: unknown;
   onChange: (v: unknown) => void;
+  /** On a file that captures equipment, this field mirrors the container list
+   *  and is server-owned — there is no unlock, only a pointer to where the
+   *  value actually comes from. Editing it here is the drift this removes. */
+  capturesContainers?: boolean;
 } & React.AriaAttributes & { id?: string }) {
   const [unlocked, setUnlocked] = React.useState(false);
+
+  // Containerised files: marks & numbers belongs to the boxes. Read-only, no
+  // key — the server refuses a manual value on these types, and offering an
+  // "Edit" that cannot stick would be the surprise, not the courtesy.
+  if (capturesContainers) {
+    return (
+      <div className="space-y-1">
+        <div className="flex min-h-9 items-center rounded-md border bg-muted/40 px-3 py-1.5">
+          <span className="min-w-0 truncate text-sm text-foreground">
+            {asString(value) || (
+              <span className="text-muted-foreground">
+                Generated from the containers on this file
+              </span>
+            )}
+          </span>
+        </div>
+        <p className="micro text-muted-foreground">
+          Mirrors the boxes on this file — change it under Edit containers.
+        </p>
+      </div>
+    );
+  }
+
   if (unlocked) {
     return (
       <div className="space-y-1">
@@ -258,6 +286,7 @@ function Control({
   onChange,
   onCreateCarrier,
   canCreatePlace = false,
+  capturesContainers = false,
   ...aria
 }: {
   field: DetailFieldDef;
@@ -267,6 +296,8 @@ function Control({
   onCreateCarrier?: (fieldKey: string, term: string, kinds: string[]) => void;
   /** May this user add a place by hand? Resolved once by the group renderer. */
   canCreatePlace?: boolean;
+  /** Does this file capture equipment? Locks the generated marks field. */
+  capturesContainers?: boolean;
 } & React.AriaAttributes & { id?: string }) {
   /*
    * `aria` is what `<Field>` cloned onto this element — id, aria-labelledby,
@@ -291,6 +322,7 @@ function Control({
         field={field}
         value={value}
         onChange={onChange}
+        capturesContainers={capturesContainers}
         {...aria}
       />
     );
@@ -464,6 +496,7 @@ export function DetailFieldGroups({
   errors,
   disabled,
   omitKeys,
+  capturesContainers,
 }: {
   groups: DetailGroupDef[];
   values: DetailValues;
@@ -476,6 +509,9 @@ export function DetailFieldGroups({
   errors?: Record<string, string[]> | null;
   disabled?: boolean;
   omitKeys?: readonly string[];
+  /** True when the file's service type captures equipment. Locks the generated
+   *  marks & numbers field to the container list — see GeneratedControl. */
+  capturesContainers?: boolean;
 }) {
   // Resolved once here rather than inside each control: hooks cannot be called
   // from a switch, and a form with three place fields should ask about the grant
@@ -512,6 +548,7 @@ export function DetailFieldGroups({
                   onChange={(v) => onChange(f.key, v)}
                   onCreateCarrier={onCreateCarrier}
                   canCreatePlace={canCreatePlace}
+                  capturesContainers={capturesContainers}
                 />
               </Field>
             ))}

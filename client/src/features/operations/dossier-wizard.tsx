@@ -364,6 +364,9 @@ export function DossierWizard({
               // Already answered in step 1 — asking twice is how the two come to
               // disagree.
               omitKeys={carrierField ? [carrierField.key] : undefined}
+              // Marks & numbers is locked to the container list on equipment
+              // files; the container step is where it changes.
+              capturesContainers={capturesContainers}
             />
           )}
           {detailsMissing.length > 0 && (

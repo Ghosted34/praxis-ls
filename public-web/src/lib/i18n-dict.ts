@@ -415,10 +415,14 @@ export const en = {
       stepStorage: "Storage",
       stepDetails: "Cargo details",
       stepContact: "Your details",
-      stepHint0: "Two answers, so we know which desk this belongs to.",
-      stepHint1: "Where it starts and where it has to end up.",
-      stepHint2: "Everything here is optional — each answer makes the price closer to final.",
-      stepHint3: "Where to send the answer.",
+      /* Keyed by STEP, not by position. The route step does not exist for a
+         service the tenant has marked as having no movement to describe, so
+         "stepHint2" meant the cargo step on a four-step enquiry and the contact
+         step on a three-step one. */
+      stepHint_need: "Two answers, so we know which desk this belongs to.",
+      stepHint_route: "Where it starts and where it has to end up.",
+      stepHint_details: "Everything here is optional — each answer makes the price closer to final.",
+      stepHint_contact: "Where to send the answer.",
       next: "Continue",
       mode: "How is it moving?",
       modeSEA: "By sea",
@@ -1196,10 +1200,10 @@ export const fr = {
       stepStorage: "Stockage",
       stepDetails: "Détails de la marchandise",
       stepContact: "Vos coordonnées",
-      stepHint0: "Deux réponses, pour savoir à quel bureau cela revient.",
-      stepHint1: "Où cela commence et où cela doit arriver.",
-      stepHint2: "Tout est facultatif ici — chaque réponse rapproche le prix du prix final.",
-      stepHint3: "Où envoyer la réponse.",
+      stepHint_need: "Deux réponses, pour savoir à quel bureau cela revient.",
+      stepHint_route: "Où cela commence et où cela doit arriver.",
+      stepHint_details: "Tout est facultatif ici — chaque réponse rapproche le prix du prix final.",
+      stepHint_contact: "Où envoyer la réponse.",
       next: "Continuer",
       mode: "Comment la marchandise voyage-t-elle ?",
       modeSEA: "Par mer",

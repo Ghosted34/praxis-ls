@@ -67,7 +67,7 @@ export function SelectCard({
       />
       <span
         className={cn(
-          "flex h-full flex-col rounded-[var(--radius)] border p-4 transition-all duration-200",
+          "lift sheen flex h-full flex-col rounded-[var(--radius)] border p-4",
           "peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-[rgb(var(--brand-orange))]",
           checked
             ? "border-[rgb(var(--brand-orange))] bg-[rgb(var(--brand-orange)/0.06)] shadow-[var(--pick-ring)]"

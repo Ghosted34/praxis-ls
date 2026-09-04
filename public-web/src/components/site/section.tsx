@@ -261,15 +261,16 @@ export function MediaCard({
     </>
   );
 
-  const cls = cn(
-    "lux-card flex flex-col overflow-hidden transition-shadow hover:shadow-[var(--shadow-m)]",
-    className,
-  );
+  /* `sheen` on every card — a lit top edge is what makes a rectangle read as an
+     object — but `lift` only on the ones that are links. A static panel that
+     rises under the pointer promises a click that never happens, which is worse
+     than a panel that sits still. */
+  const cls = cn("lux-card sheen flex flex-col overflow-hidden", className);
 
   if (!to) return <div className={cls}>{body}</div>;
 
   return (
-    <Link to={to} className={cn(cls, "group block")}>
+    <Link to={to} className={cn(cls, "lift group block")}>
       {body}
     </Link>
   );

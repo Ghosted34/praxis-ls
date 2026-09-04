@@ -13,14 +13,14 @@ import type { PlacePick } from "@/lib/places-api";
 import { useIntake } from "@/lib/use-intake";
 import { useWizardDraft } from "@/lib/use-wizard-draft";
 import { getLang } from "@/lib/i18n";
-import type { ServiceCard, ServiceMode } from "@/lib/services-api";
+import type { EnquiryShape, ServiceCard, ServiceMode } from "@/lib/services-api";
 import { pickText, pickSlug } from "@/lib/services-api";
 import {
   MODE_ICONS,
-  isStorageOnly,
   modesOf,
   routeLabelKeys,
   servicesIn,
+  shapeOfMode,
 } from "@/lib/service-modes";
 
 /**
@@ -186,7 +186,25 @@ export function QuoteWizard({
     onFailed: t("site.quote.err"),
   });
 
-  const warehousing = isStorageOnly(f.mode);
+  /**
+   * What this enquiry has to ask — the service's own answer where one is
+   * chosen, the mode's otherwise.
+   *
+   * This used to be `mode === "WAREHOUSE"`, which meant every service that was
+   * not warehousing got origin, destination and a required Incoterm. Business
+   * representation — somebody asking the tenant to act for them locally, with no
+   * cargo — was made to answer all three before the form would continue. The
+   * tenant now says which shape each service is (migration 12774) and the form
+   * reads it, so the sixteenth service they add is right too.
+   */
+  const chosen = services.find((x) => x.service_type_id === f.service_type_id);
+  const shape: EnquiryShape = chosen
+    ? chosen.enquiry_shape
+    : shapeOfMode(services, f.mode);
+  const warehousing = shape === "STORAGE";
+  /* No movement to describe, so no step to describe it in. The wizard is three
+     screens for these services, not four with one that cannot be answered. */
+  const noRoute = shape === "NONE";
   /* What is on offer under the mode currently picked. One service is not a
      question — it is the answer, and the effect below fills it in rather than
      opening a select with a single option in it. */
@@ -291,12 +309,34 @@ export function QuoteWizard({
     });
   }
 
+  /**
+   * The steps this enquiry actually has.
+   *
+   * BUILT, not a constant. A `NONE` service drops the route step entirely, so
+   * the wizard is three screens — and everything downstream reads positions out
+   * of THIS array rather than assuming step 1 is the route. That is the whole
+   * reason `problems()` below switches on a step KEY instead of an index: with a
+   * variable list, an index means a different question depending on what was
+   * picked, and validation keyed on one is validation of the wrong field.
+   */
   const STEPS: Step[] = [
     { key: "need", label: t("site.quote.stepNeed") },
-    { key: "route", label: warehousing ? t("site.quote.stepStorage") : t("site.quote.stepRoute") },
+    ...(noRoute
+      ? []
+      : [
+          {
+            key: "route",
+            label: warehousing ? t("site.quote.stepStorage") : t("site.quote.stepRoute"),
+          },
+        ]),
     { key: "details", label: t("site.quote.stepDetails") },
     { key: "contact", label: t("site.quote.stepContact") },
   ];
+  /* Clamped, because the list can shorten under somebody standing on its last
+     step: pick a route service, reach "Your details" at index 3, go back and
+     switch to a NONE service, and index 3 no longer exists. */
+  const stepIndex = Math.min(step, STEPS.length - 1);
+  const stepKey = STEPS[stepIndex].key;
 
   /**
    * What each step will not let through.
@@ -305,13 +345,13 @@ export function QuoteWizard({
    * agree — three copies of this is how a wizard ends up letting somebody reach
    * the last screen and then refusing on a field two steps back.
    */
-  function problems(index: number): Record<string, string> {
+  function problems(key: string): Record<string, string> {
     const out: Record<string, string> = {};
-    if (index === 0) {
+    if (key === "need") {
       if (!f.mode) out.mode = t("site.quote.errMode");
       if (!f.service_category.trim()) out.service_category = t("site.quote.errService");
     }
-    if (index === 1) {
+    if (key === "route") {
       if (warehousing) {
         if (f.warehouse_location.trim().length < 2) out.warehouse_location = t("site.quote.errWarehouse");
       } else {
@@ -320,7 +360,7 @@ export function QuoteWizard({
         if (!f.incoterm) out.incoterm = t("site.quote.errIncoterm");
       }
     }
-    if (index === 3) {
+    if (key === "contact") {
       if (f.requester_name.trim().length < 2) out.requester_name = t("site.quote.errName");
       if (!EMAIL_RE.test(f.requester_email.trim())) out.requester_email = t("site.quote.errEmail");
     }
@@ -329,7 +369,7 @@ export function QuoteWizard({
 
   // Step 2 (details) asks nothing required — every field on it is a nicety that
   // makes a better quote, and gating on one would be inventing a requirement.
-  const localErrors = showErrors ? problems(step) : {};
+  const localErrors = showErrors ? problems(stepKey) : {};
   const err = (k: string) => localErrors[k] || intake.fields[k] || undefined;
 
   function goTo(index: number) {
@@ -341,11 +381,11 @@ export function QuoteWizard({
   }
 
   function next() {
-    if (Object.keys(problems(step)).length > 0) {
+    if (Object.keys(problems(stepKey)).length > 0) {
       setShowErrors(true);
       return;
     }
-    const to = Math.min(step + 1, STEPS.length - 1);
+    const to = Math.min(stepIndex + 1, STEPS.length - 1);
     setFurthest((v) => Math.max(v, to));
     goTo(to);
   }
@@ -354,8 +394,11 @@ export function QuoteWizard({
     e.preventDefault();
     // Every step, not just this one — the dots let somebody jump back and leave
     // an earlier one incomplete.
+    // By key, over the steps this enquiry HAS. The old index loop checked
+    // positions 0..3 whether or not they existed, so a three-step enquiry
+    // validated its contact fields as though they were the route.
     for (let i = 0; i < STEPS.length; i += 1) {
-      if (Object.keys(problems(i)).length > 0) {
+      if (Object.keys(problems(STEPS[i].key)).length > 0) {
         setShowErrors(true);
         goTo(i);
         setShowErrors(true);
@@ -375,8 +418,12 @@ export function QuoteWizard({
       estimated_weight: Number.isFinite(weight) && weight > 0 ? weight : undefined,
       // `N/A` rather than a blank: the schema requires an incoterm, and a
       // warehousing enquiry genuinely has none. Saying so is an answer.
-      incoterm: warehousing ? "N/A" : f.incoterm,
-      ...(warehousing
+      // `N/A` rather than a blank wherever there is genuinely no delivery term:
+      // the intake schema requires the field, and saying "none" is an answer.
+      incoterm: warehousing || noRoute ? "N/A" : f.incoterm,
+      ...(noRoute
+        ? {}
+        : warehousing
         ? {
             warehouse_location: f.warehouse_location.trim(),
             warehouse_duration:
@@ -429,11 +476,15 @@ export function QuoteWizard({
     <form onSubmit={onSubmit} className="space-y-6" noValidate>
       <Stepper
         steps={STEPS}
-        current={step}
-        furthest={furthest}
+        current={stepIndex}
+        /* Clamped for the same reason `stepIndex` is: the furthest step
+           somebody reached on a four-step enquiry is not a step that exists
+           after they switch to a service with no route, and a dot that jumps to
+           nothing is worse than one that is not offered. */
+        furthest={Math.min(furthest, STEPS.length - 1)}
         onGoTo={goTo}
         label={t("site.quote.stepsLabel")}
-        counter={t("site.quote.stepCounter", { step: step + 1, total: STEPS.length })}
+        counter={t("site.quote.stepCounter", { step: stepIndex + 1, total: STEPS.length })}
       />
 
       {intake.error && (
@@ -449,14 +500,14 @@ export function QuoteWizard({
           tabIndex={-1}
           className="font-display text-h3 font-semibold tracking-tight outline-none"
         >
-          {STEPS[step].label}
+          {STEPS[stepIndex].label}
         </h3>
         <p className="mx-auto mt-2 max-w-measure text-muted-foreground">
-          {t(`site.quote.stepHint${step}`)}
+          {t(`site.quote.stepHint_${stepKey}`)}
         </p>
       </div>
 
-      {step === 0 && (
+      {stepKey === "need" && (
         <div className="space-y-4">
           <fieldset>
             <legend className="field-label">{t("site.quote.mode")}</legend>
@@ -575,7 +626,7 @@ export function QuoteWizard({
         </div>
       )}
 
-      {step === 1 && !warehousing && (
+      {stepKey === "route" && !warehousing && (
         <div className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <PlaceInput
@@ -615,7 +666,7 @@ export function QuoteWizard({
         </div>
       )}
 
-      {step === 1 && warehousing && (
+      {stepKey === "route" && warehousing && (
         <div className="grid gap-4 sm:grid-cols-2">
           <PlaceInput
             id="q-warehouse"
@@ -646,7 +697,7 @@ export function QuoteWizard({
         </div>
       )}
 
-      {step === 2 && (
+      {stepKey === "details" && (
         <div className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <Input
@@ -696,7 +747,7 @@ export function QuoteWizard({
         </div>
       )}
 
-      {step === 3 && (
+      {stepKey === "contact" && (
         <div className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <Input
@@ -750,12 +801,12 @@ export function QuoteWizard({
       <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
         <p className="text-xs text-muted-foreground">{t("site.quote.privacy")}</p>
         <div className="flex items-center gap-2">
-          {step > 0 && (
-            <Button type="button" variant="outline" onClick={() => goTo(step - 1)}>
+          {stepIndex > 0 && (
+            <Button type="button" variant="outline" onClick={() => goTo(stepIndex - 1)}>
               {t("common.back")}
             </Button>
           )}
-          {step < STEPS.length - 1 ? (
+          {stepIndex < STEPS.length - 1 ? (
             <Button type="button" size="lg" onClick={next}>
               {t("site.quote.next")}
               <ArrowRightIcon size={16} className="ml-2" />

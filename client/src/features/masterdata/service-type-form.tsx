@@ -31,6 +31,9 @@ export function ServiceTypeForm({
     name_fr: row?.name_fr ?? "",
     name_en: row?.name_en ?? "",
     territory: row?.territory ?? "",
+    // ROUTE, not "", because the column is NOT NULL with that default — an
+    // empty option here would offer a state the database does not have.
+    enquiry_shape: (row?.enquiry_shape ?? "ROUTE") as api.EnquiryShape,
     ops_reference_code: row?.ops_reference_code ?? "",
   });
   const set = (k: string, v: string) => setF((s) => ({ ...s, [k]: v }));
@@ -51,6 +54,7 @@ export function ServiceTypeForm({
           name_fr: f.name_fr,
           name_en: f.name_en || undefined,
           territory: f.territory || undefined,
+          enquiry_shape: f.enquiry_shape,
           ops_reference_code: opsCode,
         });
       } else {
@@ -60,6 +64,7 @@ export function ServiceTypeForm({
           name_fr: f.name_fr,
           name_en: f.name_en || null,
           territory: f.territory || null,
+          enquiry_shape: f.enquiry_shape,
           // Unchanged codes are not resent: the API refuses a change once a file
           // has used one, and echoing the same value would turn a name edit into
           // a rejected save on a service type that has been in use for months.
@@ -110,6 +115,30 @@ export function ServiceTypeForm({
               {api.TERRITORIES.map((t) => (
                 <option key={t} value={t}>
                   {t.replace(/_/g, " ").toLowerCase()}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          {/* Sales-side, and deliberately next to Territory so the difference is
+              visible: Territory is where the goods move, which routes a dossier.
+              This is what a stranger is asked on the public quote form, and it
+              is authored rather than guessed — the form used to infer it from
+              the service key, so anything that was not warehousing demanded an
+              origin, a destination and an Incoterm, including services that
+              move nothing at all. */}
+          <Field
+            label={tr("Quote form asks for")}
+            hint="What a visitor requesting this service has to tell you before the form will continue."
+          >
+            <Select
+              value={f.enquiry_shape}
+              onChange={(e) =>
+                set("enquiry_shape", e.target.value as api.EnquiryShape)
+              }
+            >
+              {api.ENQUIRY_SHAPES.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {tr(o.label)}
                 </option>
               ))}
             </Select>

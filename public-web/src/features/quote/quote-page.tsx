@@ -81,7 +81,14 @@ export function QuotePage() {
           <Card padded>
             <QuoteWizard services={services} />
           </Card>
-          <div>
+          {/* Sticky, and `self-start` is what makes that work: a grid item
+              stretches to the row height by default, so a sticky child inside a
+              full-height column has nothing to stick within and scrolls away
+              with the form. `top-24` clears the sticky site header.
+
+              It stops being sticky below `lg`, where the two columns stack and
+              a pinned block would sit on top of the form it is explaining. */}
+          <div className="lg:sticky lg:top-24 lg:self-start">
             <h2 className="text-title font-semibold tracking-tight">
               {t("site.quote.whatHappens")}
             </h2>

@@ -101,6 +101,17 @@ router.get("/", limit, asyncHandler(async (req, res) => {
          public page has no use for it beyond the one fact this field already
          carries. */
       mode: serviceMode(row.service_key),
+      /* What the quote form must ask for this service (migration 12774).
+ 
+         Separate from `mode` on purpose, and the distinction is the whole point:
+         the mode is DERIVED from a key and decides a glyph and a pair of route
+         labels, where being wrong costs an icon. This is AUTHORED by the tenant
+         and decides which fields a stranger is made to fill before the form will
+         let them talk to anybody — which is not a thing to guess from a string.
+ 
+         `ROUTE` when the column is somehow absent, matching its own default: a
+         payload without it must behave like every build before it existed. */
+      enquiry_shape: row.enquiry_shape || "ROUTE",
       short_description_fr: row.short_description_fr,
       short_description_en: row.short_description_en,
       claim_fr: row.claim_fr,

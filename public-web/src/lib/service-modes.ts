@@ -8,7 +8,7 @@ import {
   WarehouseIcon,
 } from "@/components/ui/icons";
 import type { IconComponent } from "@/components/ui/icon-tile";
-import type { ServiceCard, ServiceMode } from "./services-api";
+import type { EnquiryShape, ServiceCard, ServiceMode } from "./services-api";
 
 /**
  * The transport modes, as the quote wizard's first question.
@@ -94,12 +94,27 @@ export function routeLabelKeys(mode: ServiceMode | ""): {
 }
 
 /**
- * Does this mode have a route at all?
+ * The shape of the services under a mode — which decides what the wizard's
+ * second step asks, and whether it exists at all.
  *
- * Storage does not — it has a place and a duration — and this is the one branch
- * in the wizard that changes which STEP is shown rather than which label is on
- * it. It is a function rather than `mode === "WAREHOUSE"` spelled out at four
- * call sites, because the fifth call site is the one that gets it wrong.
+ * ── WHY THIS IS A FOLD AND NOT A LOOKUP ────────────────────────────────────
+ *
+ * The shape belongs to the SERVICE, and the visitor picks a mode first. So
+ * before they have chosen a service the honest answer is "whatever the services
+ * under this mode agree on" — and where they disagree, the answer is ROUTE,
+ * because asking for a route and letting somebody leave it blank is recoverable,
+ * and skipping a route the desk needed is not.
+ *
+ * Once a service IS chosen its own shape wins outright; this only covers the
+ * moment in between, and the case of a mode whose services all agree — storage,
+ * where the step has always been different.
  */
-export const isStorageOnly = (mode: ServiceMode | ""): boolean =>
-  mode === "WAREHOUSE";
+export function shapeOfMode(
+  services: ServiceCard[],
+  mode: ServiceMode | "",
+): EnquiryShape {
+  const rows = servicesIn(services, mode);
+  if (!rows.length) return "ROUTE";
+  const first = rows[0].enquiry_shape;
+  return rows.every((s) => s.enquiry_shape === first) ? first : "ROUTE";
+}

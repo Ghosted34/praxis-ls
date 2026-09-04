@@ -47,7 +47,13 @@ export function Stepper({
   return (
     <nav aria-label={label} className={cn("min-w-0", className)}>
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <ol className="flex min-w-0 flex-wrap items-center gap-x-1 gap-y-2">
+        {/* NOWRAP. Wrapping put step 4 on a line of its own inside the quote
+            card, which turns a progress strip into two rows of unequal weight
+            and pushes the question below the fold. The strip shrinks instead:
+            connectors narrow, labels truncate, and below `lg` only the step you
+            are ON keeps its label — the others are already numbers, and the
+            heading underneath says where you are. */}
+        <ol className="flex min-w-0 flex-nowrap items-center gap-x-0.5">
         {steps.map((step, i) => {
           const done = i < current;
           const here = i === current;
@@ -61,7 +67,7 @@ export function Stepper({
                   : { "aria-disabled": !here || undefined })}
                 aria-current={here ? "step" : undefined}
                 className={cn(
-                  "flex items-center gap-2 rounded-full px-2.5 py-1.5 text-sm transition-colors",
+                  "flex min-w-0 items-center gap-2 rounded-full px-2 py-1.5 text-sm transition-colors",
                   reachable && "hover:bg-[rgb(var(--ink)/0.06)]",
                   here ? "font-semibold text-foreground" : "text-muted-foreground",
                 )}
@@ -77,13 +83,20 @@ export function Stepper({
                 >
                   {done ? <CheckIcon size={12} /> : <span className="num">{i + 1}</span>}
                 </span>
-                <span className="hidden truncate sm:inline">{step.label}</span>
+                <span
+                  className={cn(
+                    "min-w-0 truncate",
+                    here ? "inline" : "hidden lg:inline",
+                  )}
+                >
+                  {step.label}
+                </span>
               </Tag>
               {i < steps.length - 1 && (
                 <span
                   aria-hidden
                   className={cn(
-                    "mx-1 h-px w-4 shrink-0 sm:w-6",
+                    "mx-0.5 h-px w-2.5 shrink-0 sm:w-4 lg:w-6",
                     done ? "bg-[rgb(var(--brand-orange))]" : "bg-border",
                   )}
                 />

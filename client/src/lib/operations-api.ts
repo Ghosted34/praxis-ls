@@ -579,12 +579,31 @@ export const cancelDeliveryNote = (id: string, reason: string) =>
  * either. `has_active_template` is surfaced because a service type without one
  * silently yields dossiers with no milestones.
  */
+/**
+ * The shape of a public quote enquiry for a service.
+ *
+ * Kept in step with ENQUIRY_SHAPE in src/modules/operations/service_type/
+ * service_type.validator.js. It is AUTHORED here rather than derived from the
+ * key, unlike the transport mode: a mode decides a glyph, and this decides which
+ * fields a stranger must fill before a quote form will let them continue.
+ */
+export type EnquiryShape = "ROUTE" | "STORAGE" | "NONE";
+
+export const ENQUIRY_SHAPES: { value: EnquiryShape; label: string }[] = [
+  { value: "ROUTE", label: "From somewhere to somewhere" },
+  { value: "STORAGE", label: "A place and a duration" },
+  { value: "NONE", label: "No movement to describe" },
+];
+
 export type ServiceType = {
   service_type_id: string;
   key: string;
   name_fr: string;
   name_en?: string | null;
   territory?: string | null;
+  /** What a public quote enquiry must ask for this service (migration 12774).
+   *  ROUTE | STORAGE | NONE, defaulting to ROUTE server-side. */
+  enquiry_shape?: EnquiryShape | null;
   is_system?: boolean;
   is_active?: boolean;
   created_at?: string | null;
@@ -599,6 +618,7 @@ export type ServiceTypeInput = {
   name_fr?: string;
   name_en?: string | null;
   territory?: string | null;
+  enquiry_shape?: EnquiryShape;
   is_active?: boolean;
   ops_reference_code?: string;
 };

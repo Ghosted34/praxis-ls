@@ -65,7 +65,11 @@ export function Hero({ copy = null }: { copy?: HeroCopy | null }) {
   const image = branding?.siteHeroUrl || login?.backgroundUrl || null;
 
   return (
-    <section className="band-hero relative overflow-hidden">
+    /* `vignette` darkens the corners of whatever photograph the tenant
+       uploaded, which is where an unlucky image puts something bright directly
+       under the navigation. Costs nothing, needs no per-image tuning, and gives
+       every photograph the same contrast floor. */
+    <section className="band-hero vignette relative overflow-hidden">
       {image ? (
         <>
           <img
@@ -183,6 +187,8 @@ export function Hero({ copy = null }: { copy?: HeroCopy | null }) {
           </div>
         </div>
 
+        {/* `.track-widget` carries the glass itself — see its note in
+            index.css on why stacking `.glass` here would lose the cascade. */}
         <div className="track-widget p-5 md:p-6">
           <p className="micro">{t("site.track.kicker")}</p>
           <h2 className="mt-1 font-display text-h3 font-semibold leading-tight tracking-tight">

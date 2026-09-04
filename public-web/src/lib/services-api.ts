@@ -23,6 +23,13 @@ export type ServiceAccent = "PRIMARY" | "ACCENT" | "SUCCESS";
 /** The seven answers `_shared/service-mode.js` can give. Kept in sync with that
  *  file by `service-modes.ts`, which is where the ordering and the labels live —
  *  this is the wire type and nothing more. */
+/**
+ * ROUTE    from somewhere to somewhere, on an agreed delivery term.
+ * STORAGE  a place and a duration, no journey.
+ * NONE     no movement to describe — the enquiry is the message.
+ */
+export type EnquiryShape = "ROUTE" | "STORAGE" | "NONE";
+
 export type ServiceMode =
   | "SEA"
   | "AIR"
@@ -53,6 +60,18 @@ export type ServiceCard = {
    * dropped from it.
    */
   mode: ServiceMode;
+  /**
+   * What a quote enquiry for this service has to ask — authored by the tenant
+   * (migration 12774), never derived.
+   *
+   * The distinction from `mode` is the point. A mode is guessed from a key and
+   * decides a glyph and a pair of route labels; being wrong there costs an icon.
+   * This decides which fields a stranger must fill before the form will let them
+   * continue, and the old version guessed that too: everything that was not
+   * warehousing got origin, destination and a required Incoterm — including
+   * business representation, where all three are questions with no answer.
+   */
+  enquiry_shape: EnquiryShape;
   short_description_fr: string | null;
   short_description_en: string | null;
   /** The one emphasised line closing the card. Migration 12755 is explicit that

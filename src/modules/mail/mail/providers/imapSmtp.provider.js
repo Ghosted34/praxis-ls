@@ -21,6 +21,7 @@
 
 const crypto = require("crypto");
 const { baseCapabilities } = require("./provider.interface");
+const { config } = require("../../../../config/env");
 
 const SENT_MAILBOX_CANDIDATES = ["Sent", "Sent Items", "Sent Mail", "INBOX.Sent"];
 
@@ -74,6 +75,10 @@ class ImapSmtpProvider {
       port: c.smtp_port || 587,
       secure: c.smtp_secure === true || c.smtp_port === 465,
       auth: c.auth_user || c.email_address ? { user: c.auth_user || c.email_address, pass: c.password } : undefined,
+      // Same HELO rule as the system mailer — see config/env MAIL_HELO_NAME. A
+      // user's mail leaves through this transport, so a loopback greeting here
+      // costs the TENANT's reputation, not ours.
+      ...(config.MAIL_HELO_NAME ? { name: config.MAIL_HELO_NAME } : {}),
     });
   }
 

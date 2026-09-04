@@ -2,11 +2,11 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 139,
-  "route_count": 1531,
+  "route_count": 1532,
   "tiers": {
     "public": 52,
     "self-scoped": 93,
-    "gated": 1386
+    "gated": 1387
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -7018,6 +7018,12 @@
       "tier": "gated"
     },
     "POST /api/tenant/mail/deliverability/check": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/mail/deliverability/route": {
       "auth": true,
       "rbac": true,
       "validated": false,

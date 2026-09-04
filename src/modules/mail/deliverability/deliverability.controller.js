@@ -13,6 +13,9 @@ module.exports = {
         : service.checkAll(c)
     )),
   })),
+  route: asyncHandler(async (req, res) => res.json({
+    data: await req.identityDb((c) => service.checkDeliveryRoute(c, req.body.domain)),
+  })),
   history: asyncHandler(async (req, res) => res.json({
     data: await req.identityDb((c) => service.history(c, req.params.domain, req.query)),
   })),

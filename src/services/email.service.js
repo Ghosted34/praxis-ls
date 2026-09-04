@@ -33,6 +33,7 @@ const settingService = require("../modules/security/setting/setting.service");
 const emailRepo = require("./email.repo");
 const { mapSmtpError, isSmtpError } = require("../modules/mail/mail/smtp-error.map");
 const sendPoints = require("../modules/mail/mail/sendpoint.service");
+const routeCheck = require("../modules/mail/deliverability/route-check");
 const origin = require("../modules/mail/mail/origin");
 const mailFallback = require("./platform/mail-fallback.service");
 const registry = require("./tenant/registry.service");
@@ -196,6 +197,11 @@ function transportFrom(cfg) {
     port: cfg.smtp_port,
     secure: cfg.smtp_port === 465,
     auth: cfg.smtp_user ? { user: cfg.smtp_user, pass: cfg.smtp_pass } : undefined,
+    // HELO/EHLO. Unset, nodemailer offers the container hostname, which in this
+    // deployment resolves to a loopback literal — mail from here was arriving as
+    // `helo=[127.0.0.1]`, a spam signal both Microsoft and Google weigh. Only
+    // passed when configured, so an unset value keeps nodemailer's own default.
+    ...(config.MAIL_HELO_NAME ? { name: config.MAIL_HELO_NAME } : {}),
   });
 }
 
@@ -307,6 +313,23 @@ async function send(client, { to, subject, html, text, from, replyTo, attachment
     document_vault_id: documentVaultId || null,
   };
   try {
+    // NEVER REPORT A SWALLOWED MESSAGE AS SENT.
+    //
+    // A relay that hosts the recipient's domain but is not that domain's mail
+    // server delivers to a local mailbox on itself, answers 250, and generates
+    // no bounce. That is not a delivery failure the transport can tell us
+    // about — it is a success from the transport's point of view, and it is why
+    // an entire tenant's mail vanished for weeks while every screen said SENT.
+    //
+    // So the proof is taken BEFORE the handoff, and a proven-unreachable
+    // recipient throws. The throw lands in the catch below, which writes FAILED
+    // to email_send_log and re-raises — the caller sees an error, the operator
+    // sees a row, and nobody is told a message arrived when it did not.
+    //
+    // Cached per relay+domain for ten minutes, so this costs no lookups in the
+    // steady state; silent on UNKNOWN, so an unproven suspicion never blocks
+    // mail; skipped for an injected test transport, which has no real relay.
+    if (!tx && cfg.smtp_host) await routeCheck.assertRoutable({ smtpHost: cfg.smtp_host, to });
     const info = await mailer.sendMail(payload);
     if (client) {
       await emailRepo.recordSend(client, {

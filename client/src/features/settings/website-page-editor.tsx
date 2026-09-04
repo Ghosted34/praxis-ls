@@ -54,8 +54,14 @@ import * as api from "@/lib/site-content-api";
 
 /* ── small shared shapes ──────────────────────────────────────────────────── */
 
+/* Named for the band a reader sees, not for the type in the database. A tenant
+   looking for the headline on their homepage is looking for "Hero", not for
+   `hero`; and "Figures" is what the row under it is, whatever the column says. */
 const BLOCK_LABEL: Record<string, string> = {
+  hero: "Hero",
   stat_counters: "Figures",
+  feature_list: "How it works",
+  cta_band: "Closing call to action",
   stat_chips: "Credentials",
 };
 
@@ -591,6 +597,12 @@ function BlockCard({
         <CounterItems block={block} metrics={metrics} onSaved={onChanged} />
       ) : block.type === "stat_chips" ? (
         <ChipItems block={block} onSaved={onChanged} />
+      ) : block.type === "hero" ? (
+        <HeroFields block={block} onSaved={onChanged} />
+      ) : block.type === "feature_list" ? (
+        <FeatureItems block={block} onSaved={onChanged} />
+      ) : block.type === "cta_band" ? (
+        <CtaFields block={block} onSaved={onChanged} />
       ) : (
         /* Listed, named, counted in the order — and not touched. A block type
            with no form here is one `public-web` does not draw yet, and a screen
@@ -982,6 +994,287 @@ function ChipItems({
         saved={saved}
         error={err}
         onSave={() => void save()}
+      />
+    </div>
+  );
+}
+
+/* ── the three bands that override dictionary copy ────────────────────────── */
+
+/**
+ * A link's label and destination, shared by the hero and the closing band.
+ *
+ * Only a rooted path is offered. The block schema also admits mailto, tel and
+ * https, and the renderer deliberately ignores those — it draws a router link,
+ * which cannot leave the app, and prefixing the site base onto an absolute URL
+ * produces `/public/https://…`. Offering a field that accepts what the page
+ * then refuses to use is how a tenant ends up with a button that goes nowhere.
+ */
+function LinkFields({
+  label,
+  href,
+  onLabel,
+  onHref,
+}: {
+  label: api.Bilingual;
+  href: string;
+  onLabel: (v: api.Bilingual) => void;
+  onHref: (v: string) => void;
+}) {
+  const bad = Boolean(href.trim()) && !href.trim().startsWith("/");
+  return (
+    <>
+      <BiRow
+        label={tr("Button")}
+        value={label}
+        onChange={onLabel}
+        placeholderFr="Demander un devis"
+        placeholderEn="Request a quote"
+      />
+      <Field
+        label={tr("Button goes to")}
+        hint={tr("A page on your own site, starting with a slash — /quote, /services, /contact.")}
+        error={bad ? tr("Start it with a slash.") : undefined}
+      >
+        <Input
+          className="font-mono"
+          value={href}
+          onChange={(e) => onHref(e.target.value)}
+          placeholder="/quote"
+        />
+      </Field>
+    </>
+  );
+}
+
+/** Save, error and "saved" for the three forms below — the same row the item
+ *  editors use, so all five blocks confirm a save the same way. */
+function useBlockSave(blockId: string, onSaved: () => void) {
+  const [busy, setBusy] = React.useState(false);
+  const [saved, setSaved] = React.useState(false);
+  const [err, setErr] = React.useState<string | null>(null);
+  const save = async (content: Record<string, unknown>) => {
+    setBusy(true);
+    setErr(null);
+    try {
+      await api.updateSiteBlock(blockId, { content });
+      setSaved(true);
+      onSaved();
+    } catch (e) {
+      setErr(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return { busy, saved, err, setSaved, save };
+}
+
+/**
+ * The hero.
+ *
+ * ── ONE TITLE, NOT TWO ─────────────────────────────────────────────────────
+ *
+ * The dictionary hero splits its headline so the second half takes the accent
+ * colour. This form offers one field, because the renderer draws a
+ * tenant-authored headline in a single colour: splitting somebody else's
+ * sentence at a word we picked, in two languages, is a decision about their
+ * writing we do not get to make. It is said here too so a writer is not
+ * hunting for the missing second box.
+ *
+ * The background image is NOT here. The hero resolves its artwork from
+ * branding — the marketing hero, then the login backdrop — and a third source
+ * competing with those two would mean a tenant who uploads in Appearance sees
+ * nothing change.
+ */
+function HeroFields({
+  block,
+  onSaved,
+}: {
+  block: api.SiteBlock;
+  onSaved: () => void;
+}) {
+  const c = (block.content ?? {}) as Partial<api.HeroContent>;
+  const [kicker, setKicker] = React.useState<api.Bilingual>({ fr: c.kicker?.fr ?? "", en: c.kicker?.en ?? "" });
+  const [title, setTitle] = React.useState<api.Bilingual>({ fr: c.title?.fr ?? "", en: c.title?.en ?? "" });
+  const [lead, setLead] = React.useState<api.Bilingual>({ fr: c.lead?.fr ?? "", en: c.lead?.en ?? "" });
+  const [ctaLabel, setCtaLabel] = React.useState<api.Bilingual>({ fr: c.cta?.label?.fr ?? "", en: c.cta?.label?.en ?? "" });
+  const [href, setHref] = React.useState(c.cta?.href ?? "");
+  const { busy, saved, err, setSaved, save } = useBlockSave(block.block_id, onSaved);
+
+  const touch = <T,>(set: (v: T) => void) => (v: T) => { setSaved(false); set(v); };
+  const hrefBad = Boolean(href.trim()) && !href.trim().startsWith("/");
+  // A button with a destination and no label, or a label and no destination, is
+  // half a button — the schema takes the pair or nothing.
+  const ctaHalf = Boolean(ctaLabel.fr.trim()) !== Boolean(href.trim());
+
+  return (
+    <div className="space-y-4">
+      <Callout tone="info" title={tr("This replaces the headline on your home page")}>
+        Until this block is published, the site shows its own wording. Publish
+        the page and what is here is what a visitor reads.
+      </Callout>
+      <BiRow label={tr("Eyebrow")} value={kicker} onChange={touch(setKicker)}
+        placeholderFr="Transit et logistique" placeholderEn="Freight forwarding and logistics" />
+      <BiRow label={tr("Headline")} value={title} onChange={touch(setTitle)} required
+        placeholderFr="Votre marchandise, suivie de bout en bout"
+        placeholderEn="Your cargo, tracked end to end" />
+      <BiRow label={tr("Lead")} value={lead} onChange={touch(setLead)}
+        placeholderFr="Le transport, les formalités et les documents sur un seul dossier."
+        placeholderEn="Transport, formalities and paperwork on one file." />
+      <LinkFields label={ctaLabel} href={href}
+        onLabel={touch(setCtaLabel)} onHref={touch(setHref)} />
+      <SaveRow
+        busy={busy}
+        disabled={!title.fr.trim() || hrefBad || ctaHalf}
+        saved={saved}
+        error={err}
+        onSave={() =>
+          void save({
+            kicker: kicker.fr.trim() ? bi(kicker) : null,
+            title: bi(title),
+            lead: lead.fr.trim() ? bi(lead) : null,
+            cta: ctaLabel.fr.trim() && href.trim()
+              ? { label: bi(ctaLabel), href: href.trim() }
+              : null,
+          })
+        }
+      />
+    </div>
+  );
+}
+
+/** The how-it-works steps. Whole-list on the site, never merged with ours — so
+ *  a list of two here is a page that explains the process in two steps, not two
+ *  of yours followed by one of ours. */
+function FeatureItems({
+  block,
+  onSaved,
+}: {
+  block: api.SiteBlock;
+  onSaved: () => void;
+}) {
+  type Item = { title: api.Bilingual; text: api.Bilingual };
+  const c = (block.content ?? {}) as Partial<api.FeatureListContent>;
+  const [heading, setHeading] = React.useState<api.Bilingual>({ fr: c.title?.fr ?? "", en: c.title?.en ?? "" });
+  const [items, setItems] = useItems<Item>(block, (raw) => {
+    const r = (raw ?? {}) as Partial<api.FeatureListItem>;
+    return {
+      title: { fr: r.title?.fr ?? "", en: r.title?.en ?? "" },
+      text: { fr: r.text?.fr ?? "", en: r.text?.en ?? "" },
+    };
+  });
+  const { busy, saved, err, setSaved, save } = useBlockSave(block.block_id, onSaved);
+  const patch = (i: number, next: Partial<Item>) => {
+    setSaved(false);
+    setItems((s) => s.map((it, n) => (n === i ? { ...it, ...next } : it)));
+  };
+  const move = (i: number, by: number) =>
+    setItems((s) => {
+      const next = [...s];
+      const [row] = next.splice(i, 1);
+      next.splice(i + by, 0, row);
+      setSaved(false);
+      return next;
+    });
+
+  return (
+    <div className="space-y-4">
+      <BiRow label={tr("Section heading")} value={heading}
+        onChange={(v) => { setSaved(false); setHeading(v); }}
+        placeholderFr="Comment cela se passe"
+        placeholderEn="What working with us looks like" />
+      {items.map((it, i) => (
+        <ItemFrame
+          key={i}
+          index={i}
+          total={items.length}
+          onMove={(by) => move(i, by)}
+          onRemove={() => { setSaved(false); setItems((s) => s.filter((_, n) => n !== i)); }}
+        >
+          <BiRow label={tr("Step")} value={it.title} required
+            onChange={(v) => patch(i, { title: v })}
+            placeholderFr="Vous nous décrivez l'expédition"
+            placeholderEn="You send us the shipment" />
+          <BiRow label={tr("Detail")} value={it.text}
+            onChange={(v) => patch(i, { text: v })} />
+        </ItemFrame>
+      ))}
+      <div>
+        <Button
+          variant="outline"
+          onClick={() => { setSaved(false); setItems((s) => [...s, { title: blank(), text: blank() }]); }}
+        >
+          {tr("Add a step")}
+        </Button>
+      </div>
+      <SaveRow
+        busy={busy}
+        disabled={items.some((i) => !i.title.fr.trim())}
+        saved={saved}
+        error={err}
+        onSave={() =>
+          void save({
+            title: heading.fr.trim() ? bi(heading) : null,
+            items: items.map((i) => ({
+              title: bi(i.title),
+              text: i.text.fr.trim() ? bi(i.text) : null,
+            })),
+          })
+        }
+      />
+    </div>
+  );
+}
+
+/**
+ * The closing call to action.
+ *
+ * Heading, lead and button. The three numbered steps the site draws beside this
+ * band stay ours: they describe what the software does when a request arrives —
+ * a reference on screen, one queue, a reply on the same channel — and a tenant
+ * rewriting them would be describing behaviour the product does not have. The
+ * block schema has no field for them either.
+ */
+function CtaFields({
+  block,
+  onSaved,
+}: {
+  block: api.SiteBlock;
+  onSaved: () => void;
+}) {
+  const c = (block.content ?? {}) as Partial<api.CtaBandContent>;
+  const [title, setTitle] = React.useState<api.Bilingual>({ fr: c.title?.fr ?? "", en: c.title?.en ?? "" });
+  const [text, setText] = React.useState<api.Bilingual>({ fr: c.text?.fr ?? "", en: c.text?.en ?? "" });
+  const [ctaLabel, setCtaLabel] = React.useState<api.Bilingual>({ fr: c.cta?.label?.fr ?? "", en: c.cta?.label?.en ?? "" });
+  const [href, setHref] = React.useState(c.cta?.href ?? "");
+  const { busy, saved, err, setSaved, save } = useBlockSave(block.block_id, onSaved);
+  const touch = <T,>(set: (v: T) => void) => (v: T) => { setSaved(false); set(v); };
+  const hrefBad = Boolean(href.trim()) && !href.trim().startsWith("/");
+  const ctaHalf = Boolean(ctaLabel.fr.trim()) !== Boolean(href.trim());
+
+  return (
+    <div className="space-y-4">
+      <BiRow label={tr("Heading")} value={title} onChange={touch(setTitle)} required
+        placeholderFr="Demander un devis" placeholderEn="Get a quote" />
+      <BiRow label={tr("Lead")} value={text} onChange={touch(setText)}
+        placeholderFr="Décrivez-nous votre expédition et nous revenons vers vous avec un prix."
+        placeholderEn="Tell us about your shipment and we will come back with a price." />
+      <LinkFields label={ctaLabel} href={href}
+        onLabel={touch(setCtaLabel)} onHref={touch(setHref)} />
+      <SaveRow
+        busy={busy}
+        disabled={!title.fr.trim() || hrefBad || ctaHalf}
+        saved={saved}
+        error={err}
+        onSave={() =>
+          void save({
+            title: bi(title),
+            text: text.fr.trim() ? bi(text) : null,
+            cta: ctaLabel.fr.trim() && href.trim()
+              ? { label: bi(ctaLabel), href: href.trim() }
+              : null,
+          })
+        }
       />
     </div>
   );

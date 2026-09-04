@@ -39,7 +39,20 @@ import { p } from "@/lib/base-path";
  * oversight — so a dark band uses the fill value as text, which is what the ink
  * step-down exists to make unnecessary on light grounds.
  */
-export function Hero() {
+/**
+ * What a tenant-authored `hero` block supplies, already read in the visitor's
+ * language. Absent on every tenant who has not published one, which is the
+ * normal case and why every field below has a dictionary fallback beside it.
+ */
+export type HeroCopy = {
+  kicker: string;
+  title: string;
+  lead: string;
+  ctaLabel: string;
+  ctaHref: string;
+};
+
+export function Hero({ copy = null }: { copy?: HeroCopy | null }) {
   const { t } = useTranslation();
   const { branding, login } = useBranding();
   // The tenant's own marketing artwork first; their login backdrop second.
@@ -124,14 +137,23 @@ export function Hero() {
               eyebrow the brand fill rather than the AA-corrected ink: on carbon
               the ink step-down measures 3.4:1 and fails, and the note at the top
               of this file records why that is a property of the colour. */}
+          {/* The tenant's headline, or ours.
+ 
+              The dictionary version is split across `titleMain` and
+              `titleAccent` so the second half carries the accent colour — the
+              §4 pattern-2 treatment. A tenant-authored title is ONE string and
+              stays one colour, deliberately: splitting somebody else's sentence
+              at a word we picked, in two languages, is a decision about their
+              writing that we do not get to make. They get their words; the
+              accent is what they trade for writing them. */}
           <SectionHead
             onDark
             as="h1"
             titleClass="hero-title"
-            eyebrow={t("site.hero.eyebrow")}
-            title={t("site.hero.titleMain")}
-            accent={t("site.hero.titleAccent")}
-            lead={t("site.hero.sub")}
+            eyebrow={copy ? copy.kicker : t("site.hero.eyebrow")}
+            title={copy ? copy.title : t("site.hero.titleMain")}
+            accent={copy ? undefined : t("site.hero.titleAccent")}
+            lead={copy ? copy.lead : t("site.hero.sub")}
           />
 
           <div className="mt-8 flex flex-wrap items-center gap-3">
@@ -139,11 +161,18 @@ export function Hero() {
                 the form was a band below — which meant the primary CTA on the
                 site depended on a scroll landing on an element the lazy chunk
                 had rendered. It is a page now, so the link is a link. */}
+            {/* An INTERNAL path only. The block schema also admits mailto,
+                tel and https, and `p()` would prefix the site base onto those
+                and produce `/public/https://…`. A router `<Link>` cannot leave
+                the app anyway, so anything that is not a rooted path falls back
+                to the quote page rather than rendering a dead button. */}
             <Link
-              to={p("/quote")}
+              to={
+                copy?.ctaHref?.startsWith("/") ? p(copy.ctaHref) : p("/quote")
+              }
               className="btn-primary inline-flex h-11 items-center rounded-[calc(var(--radius)-2px)] px-6 text-[0.9375rem] font-semibold"
             >
-              {t("site.hero.cta")}
+              {copy?.ctaLabel || t("site.hero.cta")}
             </Link>
             <Link
               to={p("/track")}

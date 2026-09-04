@@ -49,6 +49,11 @@ export type InsightCard = {
 };
 
 export type InsightArticle = InsightCard & {
+  /** Vault document ids, in the order the writer arranged them, drawn below the
+   *  body. Ids rather than URLs for the same reason `cover_id` is one:
+   *  `coverUrl()` composes the only legal URL, so a payload carrying a built
+   *  one would bake this deploy's hostname into the tenant's content. */
+  gallery_ids: string[];
   body_fr: string | null;
   body_en: string | null;
   meta_title_fr: string | null;

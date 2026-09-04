@@ -124,6 +124,121 @@ export const statCounters = (page: SitePage | null): StatCounter[] =>
       Number.isFinite((i as StatCounter).value),
   );
 
+/**
+ * ── THE OVERRIDE READERS ───────────────────────────────────────────────────
+ *
+ * Everything below reads a block the tenant authored and hands it to a band
+ * that already has copy of its own. That is the whole model, and it is worth
+ * stating once rather than in four places:
+ *
+ *   the dictionary is the DEFAULT, the page is the OVERRIDE.
+ *
+ * A band renders `site.hero.*` from `i18n-dict.ts` until a tenant publishes a
+ * home page carrying a `hero` block, at which point the block wins outright.
+ * Not a merge — a tenant must never see a headline half theirs and half ours.
+ *
+ * This is what closes the gap the whole website editor fell into: the words on
+ * the homepage were real, visible, and written into a frontend bundle where no
+ * tenant could reach them. Seed 9086 puts the same words into blocks, so the
+ * first thing a tenant sees in the editor is the page they already have.
+ *
+ * Every reader answers null when the block is absent, which is the normal state
+ * and the one the fallbacks are for.
+ */
+
+/** A link as the block schema stores it: a label plus an internal path or a
+ *  mailto/tel/https URL. Relative paths resolve against the site base, so a
+ *  link keeps working when the tenant moves off /public onto their own domain. */
+export type BlockLink = { label: Bilingual; href: string } | null;
+
+export type HeroBlock = {
+  kicker: Bilingual | null;
+  title: Bilingual;
+  lead: Bilingual | null;
+  cta: BlockLink;
+};
+
+export type FeatureItem = { title: Bilingual; text: Bilingual | null };
+
+export type FeatureListBlock = {
+  title: Bilingual | null;
+  items: FeatureItem[];
+};
+
+export type CtaBandBlock = {
+  title: Bilingual;
+  text: Bilingual | null;
+  cta: BlockLink;
+};
+
+const blockOf = (page: SitePage | null, type: string): Record<string, unknown> | null => {
+  const block = (page?.blocks || []).find((b) => b.type === type);
+  return block ? (block.content as Record<string, unknown>) : null;
+};
+
+/** A bilingual field, or null when the block omitted it. `bi()` in the block
+ *  schema requires FR and allows EN to be absent, so this only has to prove the
+ *  shape, never that both halves are present — `pickBilingual` handles that. */
+const bilingual = (v: unknown): Bilingual | null =>
+  v && typeof v === "object" && typeof (v as Bilingual).fr === "string"
+    ? (v as Bilingual)
+    : null;
+
+const linkOf = (v: unknown): BlockLink => {
+  if (!v || typeof v !== "object") return null;
+  const raw = v as { label?: unknown; href?: unknown };
+  const label = bilingual(raw.label);
+  return label && typeof raw.href === "string" && raw.href ? { label, href: raw.href } : null;
+};
+
+/**
+ * The hero, when the tenant has written one.
+ *
+ * `title` is required by the schema, so a block without one is malformed and
+ * answers null rather than rendering a hero with no headline — which on this
+ * page would be a full-bleed photograph with two buttons floating on it.
+ *
+ * `background_image` is deliberately NOT read here. The hero already resolves
+ * its artwork from branding (`siteHeroUrl`, then the login backdrop), and a
+ * third source competing with those two would mean a tenant who uploads in
+ * Settings › Branding sees nothing change. One image, one place to set it.
+ */
+export function heroBlock(page: SitePage | null): HeroBlock | null {
+  const c = blockOf(page, "hero");
+  const title = bilingual(c?.title);
+  if (!title) return null;
+  return {
+    kicker: bilingual(c?.kicker),
+    title,
+    lead: bilingual(c?.lead),
+    cta: linkOf(c?.cta),
+  };
+}
+
+/** The how-it-works list, from the first `feature_list` block. Items without a
+ *  title are dropped rather than rendered as an empty step. */
+export function featureList(page: SitePage | null): FeatureListBlock | null {
+  const c = blockOf(page, "feature_list");
+  if (!c) return null;
+  const raw = Array.isArray(c.items) ? c.items : [];
+  const items = raw
+    .map((i) => {
+      const row = i as { title?: unknown; text?: unknown };
+      const title = bilingual(row.title);
+      return title ? { title, text: bilingual(row.text) } : null;
+    })
+    .filter((i): i is FeatureItem => i !== null);
+  return items.length ? { title: bilingual(c.title), items } : null;
+}
+
+/** The closing call to action, from the first `cta_band` block. */
+export function ctaBand(page: SitePage | null): CtaBandBlock | null {
+  const c = blockOf(page, "cta_band");
+  const title = bilingual(c?.title);
+  if (!title) return null;
+  return { title, text: bilingual(c?.text), cta: linkOf(c?.cta) };
+}
+
 /** The credentials row, from the first `stat_chips` block. */
 export const statChips = (page: SitePage | null): StatChip[] =>
   itemsOf(page, "stat_chips").filter(

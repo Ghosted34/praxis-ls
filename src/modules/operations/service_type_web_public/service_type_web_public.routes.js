@@ -35,6 +35,7 @@ const { AppError, asyncHandler } = require("../../../utils/errors");
 const storage = require("../../../services/storage.service");
 const { publishedMonth } = require("../../../shared/date/published-month");
 const repo = require("../service_type_web/service_type_web.repo");
+const { serviceMode } = require("../_shared/service-mode");
 const grouping = require("./service_type_web_public.service");
 
 const router = express.Router();
@@ -85,6 +86,21 @@ router.get("/", limit, asyncHandler(async (req, res) => {
       slug_en: row.slug_en,
       name_fr: row.name_fr,
       name_en: row.name_en,
+      /* The transport mode, derived from `service_type.key` by the same
+         function the tracking page uses (`_shared/service-mode.js`).
+ 
+         It ships on the card because the quote wizard's first question — "how
+         is it moving?" — was a hardcoded list of four options in the browser,
+         which is a taxonomy the tenant does not own asked in front of a
+         taxonomy they do. With the mode on the row the form can build that
+         question FROM the published services and set it from whichever one the
+         visitor picks, instead of asking twice and hoping the answers agree.
+ 
+         The KEY itself is deliberately not sent: it is an internal identifier
+         (`SEA_FREIGHT_IMPORT`) that appears on operations paperwork, and a
+         public page has no use for it beyond the one fact this field already
+         carries. */
+      mode: serviceMode(row.service_key),
       short_description_fr: row.short_description_fr,
       short_description_en: row.short_description_en,
       claim_fr: row.claim_fr,

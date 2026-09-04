@@ -130,6 +130,15 @@ export const TruckIcon = (p: Props) => (
   </Svg>
 );
 
+export const TrainIcon = (p: Props) => (
+  <Svg {...p}>
+    <path d="M6 4h12v11H6z" />
+    <path d="M6 9.5h12" />
+    <path d="M9.5 12.2h.01M14.5 12.2h.01" />
+    <path d="m7.5 15-2 4.5M16.5 15l2 4.5" />
+  </Svg>
+);
+
 export const WarehouseIcon = (p: Props) => (
   <Svg {...p}>
     <path d="M3 10 12 5l9 5v9.5H3z" />

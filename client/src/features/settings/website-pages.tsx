@@ -38,6 +38,7 @@ import { Modal, ConfirmDialog, Field } from "@/components/ui/modal";
 import { ErrorState } from "@/components/ui/states";
 import { Callout } from "@/components/ui/callout";
 import { HubCrumb } from "@/components/tabbed-hub";
+import { WebsiteNav } from "./website-nav";
 import { useList, useRefresh, errMsg } from "@/lib/use-resource";
 import { tr } from "@/lib/i18n";
 import * as api from "@/lib/site-content-api";
@@ -160,6 +161,7 @@ export function WebsitePagesPage() {
       title={tr("Website pages")}
       description="The pages of your public site — what they are called, whether they are live, and what is on them."
       width="wide"
+      tabs={<WebsiteNav />}
       action={<Button onClick={() => setCreating(true)}>{tr("New page")}</Button>}
       toolbar={
         /* The commercial switch, stated rather than enforced. This screen is

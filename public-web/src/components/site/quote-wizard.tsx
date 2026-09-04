@@ -6,22 +6,22 @@ import { PlaceInput } from "@/components/ui/place-input";
 import { FileInput, type Attachment } from "@/components/ui/file-input";
 import { Stepper, type Step } from "@/components/ui/stepper";
 import { ErrorState, SuccessState } from "@/components/state";
-import {
-  ArrowRightIcon,
-  PlaneIcon,
-  ShipIcon,
-  TruckIcon,
-  WarehouseIcon,
-} from "@/components/ui/icons";
-import { type IconComponent } from "@/components/ui/icon-tile";
+import { ArrowRightIcon } from "@/components/ui/icons";
 import { SelectCard } from "@/components/ui/select-card";
 import { quoteRequests, type QuoteRequest } from "@/lib/intake-api";
 import type { PlacePick } from "@/lib/places-api";
 import { useIntake } from "@/lib/use-intake";
 import { useWizardDraft } from "@/lib/use-wizard-draft";
 import { getLang } from "@/lib/i18n";
-import type { ServiceCard } from "@/lib/services-api";
+import type { ServiceCard, ServiceMode } from "@/lib/services-api";
 import { pickText, pickSlug } from "@/lib/services-api";
+import {
+  MODE_ICONS,
+  isStorageOnly,
+  modesOf,
+  routeLabelKeys,
+  servicesIn,
+} from "@/lib/service-modes";
 
 /**
  * The quote desk, as four questions instead of one wall of fields.
@@ -75,36 +75,39 @@ const WAREHOUSE_DURATIONS = [
 ] as const;
 
 /**
- * The four modes the route labels branch on.
+ * The modes offered when the tenant has published NO services.
  *
- * Deliberately the visitor's own words rather than a `service_type.key`: this
- * is asked BEFORE the service is chosen, and a tenant's taxonomy is theirs to
- * name. It never leaves the browser — it decides labels and which step is
- * shown, and the answer that reaches the desk is `service_category`.
+ * ── WHY THERE IS STILL A LITERAL HERE ──────────────────────────────────────
+ *
+ * These four were once the whole of the first question, hardcoded, on every
+ * tenant — which asked a stranger to classify their shipment with a taxonomy
+ * the tenant does not own, and then asked them to TYPE the service name that
+ * the tenant does. Both are gone: where services are published, `modesOf` reads
+ * the modes off them and the service is picked, never typed.
+ *
+ * What survives is the pre-launch state, and it survives deliberately. A tenant
+ * whose service profiles are still drafts has a live quote page and no way to
+ * describe anything on it, and a form that answers "we cannot ask you yet" is
+ * worse for them than four ordinary freight options and a free-text line. It is
+ * the fallback, not the design — all four disappear the moment a profile is
+ * published.
  */
-type Mode = "SEA" | "AIR" | "ROAD" | "WAREHOUSE";
-const MODES: Mode[] = ["SEA", "AIR", "ROAD", "WAREHOUSE"];
+const FALLBACK_MODES: ServiceMode[] = ["SEA", "AIR", "ROAD", "WAREHOUSE"];
 
-/**
- * The glyph per mode, as a COMPONENT rather than an element.
- *
- * `IconTile` owns the glyph's size — see its own note on why. `ModeIcon` takes
- * a mode string and picks internally, which is right where the mode comes from
- * the API (the tracking page) and wrong here, where the four are a fixed local
- * list and the tile needs the component itself.
- */
-const MODE_ICONS: Record<Mode, IconComponent> = {
-  SEA: ShipIcon,
-  AIR: PlaneIcon,
-  ROAD: TruckIcon,
-  WAREHOUSE: WarehouseIcon,
-};
+/** How many service names a mode card lists before it stops. Three is where the
+ *  card is naming what the mode covers rather than reprinting the services page
+ *  into a radio button. */
+const NAMES_ON_CARD = 3;
 
 const EMAIL_RE = /.+@.+\..+/;
 const DRAFT_KEY = "praxis.quote.draft";
 
 type Draft = {
-  mode: Mode | "";
+  mode: ServiceMode | "";
+  /** The published service the visitor picked, so a restored draft re-selects
+   *  the same row rather than matching on a name that may since have been
+   *  reworded. Empty on the no-services fallback, where there is no row. */
+  service_type_id: string;
   service_category: string;
   origin_location: string;
   destination_location: string;
@@ -123,6 +126,7 @@ type Draft = {
 
 const EMPTY: Draft = {
   mode: "",
+  service_type_id: "",
   service_category: "",
   origin_location: "",
   destination_location: "",
@@ -139,17 +143,29 @@ const EMPTY: Draft = {
   requester_phone: "",
 };
 
-/** Which of the four route labels a mode asks for. */
-const ROUTE_LABELS: Record<Mode, { origin: string; destination: string }> = {
-  SEA: { origin: "originPort", destination: "destinationPort" },
-  AIR: { origin: "originAirport", destination: "destinationAirport" },
-  ROAD: { origin: "originPlace", destination: "destinationPlace" },
-  WAREHOUSE: { origin: "originPlace", destination: "destinationPlace" },
-};
-
-export function QuoteWizard({ services = [] }: { services?: ServiceCard[] }) {
+export function QuoteWizard({
+  services = [],
+  /**
+   * The service this form was opened FROM — the profile page's own quote band.
+   *
+   * That page rendered the wizard with no services and no context at all, so a
+   * visitor who had just read a page about sea freight import was asked, on the
+   * same screen, how their cargo was moving and which service they wanted. The
+   * answer was two scrolls above them. Passing the row makes the first step
+   * arrive already answered, and it stays editable: somebody may open the sea
+   * page and decide they want the air service.
+   */
+  preselect = null,
+}: {
+  services?: ServiceCard[];
+  preselect?: ServiceCard | null;
+}) {
   const { t } = useTranslation();
   const lang = getLang();
+  const hasServices = services.length > 0;
+  /* The first question, built from the tenant's own published services — or the
+     pre-launch literal when there are none. */
+  const modes = hasServices ? modesOf(services) : FALLBACK_MODES;
   const [f, setF, clearDraft] = useWizardDraft<Draft>(DRAFT_KEY, EMPTY);
   const [step, setStep] = React.useState(0);
   const [furthest, setFurthest] = React.useState(0);
@@ -170,7 +186,89 @@ export function QuoteWizard({ services = [] }: { services?: ServiceCard[] }) {
     onFailed: t("site.quote.err"),
   });
 
-  const warehousing = f.mode === "WAREHOUSE";
+  const warehousing = isStorageOnly(f.mode);
+  /* What is on offer under the mode currently picked. One service is not a
+     question — it is the answer, and the effect below fills it in rather than
+     opening a select with a single option in it. */
+  const choices = servicesIn(services, f.mode);
+
+  const applyService = React.useCallback(
+    (row: ServiceCard) =>
+      setF((prev) => ({
+        ...prev,
+        mode: row.mode,
+        service_type_id: row.service_type_id,
+        // The NAME, in the visitor's language, because that is what lands on the
+        // desk: `quote_request.service_category` is free text, and the person
+        // reading the lead wants the service as their own site words it.
+        service_category: pickText(row, "name", lang) || pickSlug(row, lang),
+      })),
+    [setF, lang],
+  );
+
+  /* A mode with exactly one service under it answers its own second question.
+     An effect rather than a line in the click handler, so it also covers a draft
+     restored from a previous visit and a mode arriving via `preselect` — three
+     routes into the same state, one place that settles it. */
+  React.useEffect(() => {
+    if (!f.mode || f.service_category.trim()) return;
+    const only = servicesIn(services, f.mode);
+    if (only.length === 1) applyService(only[0]);
+  }, [f.mode, f.service_category, services, applyService]);
+
+  const preselectId = preselect?.service_type_id || "";
+  React.useEffect(() => {
+    if (!preselect || !preselectId) return;
+    // Never over a draft in progress: somebody who half-filled this form and
+    // came back through a different service page keeps what they typed.
+    setF((prev) =>
+      prev.service_category.trim()
+        ? prev
+        : {
+            ...prev,
+            mode: preselect.mode,
+            service_type_id: preselect.service_type_id,
+            service_category:
+              pickText(preselect, "name", lang) || pickSlug(preselect, lang),
+          },
+    );
+    // `preselectId` only — the row object is rebuilt on every parent render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preselectId]);
+
+  /**
+   * Changing the mode drops a service that does not belong to the new one.
+   *
+   * Without this the form can be submitted saying "By air" and "Sea freight
+   * import", which is a lead the desk has to telephone about before it can
+   * price anything. On the fallback path there is no row to validate against,
+   * so the free text the visitor typed is left alone.
+   */
+  /** The first few service names under a mode, for the card's description. Cut
+   *  at NAMES_ON_CARD with an ellipsis rather than wrapping a radio card into a
+   *  paragraph. */
+  function namesUnder(m: ServiceMode): string {
+    const rows = servicesIn(services, m);
+    const names = rows
+      .slice(0, NAMES_ON_CARD)
+      .map((sv) => pickText(sv, "name", lang) || pickSlug(sv, lang));
+    return names.join(" · ") + (rows.length > NAMES_ON_CARD ? " …" : "");
+  }
+
+  function pickMode(m: ServiceMode) {
+    if (!hasServices) {
+      set("mode", m);
+      return;
+    }
+    setF((prev) => {
+      const keep = services.some(
+        (x) => x.service_type_id === prev.service_type_id && x.mode === m,
+      );
+      return keep
+        ? { ...prev, mode: m }
+        : { ...prev, mode: m, service_type_id: "", service_category: "" };
+    });
+  }
 
   const STEPS: Step[] = [
     { key: "need", label: t("site.quote.stepNeed") },
@@ -304,8 +402,7 @@ export function QuoteWizard({ services = [] }: { services?: ServiceCard[] }) {
     );
   }
 
-  const hasServices = services.length > 0;
-  const labels = ROUTE_LABELS[(f.mode || "ROAD") as Mode];
+  const labels = routeLabelKeys(f.mode);
 
   return (
     <form onSubmit={onSubmit} className="space-y-6" noValidate>
@@ -363,19 +460,30 @@ export function QuoteWizard({ services = [] }: { services?: ServiceCard[] }) {
                 exactly this — sat unused while the same two shadow values were
                 spelled out inline. One implementation, one token. */}
             <div className="mt-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {MODES.map((m) => (
+              {modes.map((m) => (
                 <SelectCard
                   key={m}
                   name="quote-mode"
                   value={m}
                   checked={f.mode === m}
-                  onChange={(v) => set("mode", v as Mode)}
+                  onChange={(v) => pickMode(v as ServiceMode)}
                   icon={MODE_ICONS[m]}
                   title={t(`site.quote.mode${m}`)}
-                  // A prospect who does not know whether "By road or rail"
-                  // covers a Douala → N'Djamena run picks nothing, and picking
-                  // nothing is where this form loses them.
-                  description={t(`site.quote.mode${m}Hint`)}
+                  /* The tenant's OWN service names, where there are any.
+ 
+                     "By sea — Sea freight import · Sea freight export ·
+                     End-to-end sea freight" answers the question the generic
+                     hint could only gesture at, and it answers it in the words
+                     the rest of the site uses. The dictionary hint is what is
+                     left when nothing is published: a prospect who does not know
+                     whether "By road or rail" covers a Douala → N'Djamena run
+                     picks nothing, and picking nothing is where this form loses
+                     them. */
+                  description={
+                    hasServices
+                      ? namesUnder(m)
+                      : t(`site.quote.mode${m}Hint`)
+                  }
                 />
               ))}
             </div>
@@ -386,22 +494,21 @@ export function QuoteWizard({ services = [] }: { services?: ServiceCard[] }) {
             )}
           </fieldset>
 
-          {hasServices ? (
-            <Select
-              label={t("site.quote.service")}
-              required
-              value={f.service_category}
-              error={err("service_category")}
-              onChange={(e) => set("service_category", e.target.value)}
-              options={[
-                { value: "", label: t("site.quote.servicePick") },
-                ...services.map((s) => ({
-                  value: pickText(s, "name", lang) || pickSlug(s, lang),
-                  label: pickText(s, "name", lang) || "",
-                })),
-              ]}
-            />
-          ) : (
+          {/*
+            THE SECOND HALF OF THE STEP, IN THREE STATES.
+
+            · Several services under the mode → a select of those services, and
+              only those. The old version listed every published service under
+              every mode, so "By air" could be submitted with "Sea freight
+              import" next to it.
+            · Exactly one → nothing to ask. It is set for them and shown as a
+              line of text, because a select with one option is a question with
+              one answer and reads as a form that has not finished loading.
+            · No published services at all → the free-text box, which is the
+              pre-launch fallback and the only path that still asks anybody to
+              type the name of a service the tenant sells.
+          */}
+          {!hasServices ? (
             <Input
               label={t("site.quote.service")}
               required
@@ -410,7 +517,34 @@ export function QuoteWizard({ services = [] }: { services?: ServiceCard[] }) {
               error={err("service_category")}
               onChange={(e) => set("service_category", e.target.value)}
             />
-          )}
+          ) : choices.length > 1 ? (
+            <Select
+              label={t("site.quote.service")}
+              required
+              value={f.service_type_id}
+              error={err("service_category")}
+              onChange={(e) => {
+                const row = services.find(
+                  (x) => x.service_type_id === e.target.value,
+                );
+                if (row) applyService(row);
+              }}
+              options={[
+                { value: "", label: t("site.quote.servicePick") },
+                ...choices.map((sv) => ({
+                  value: sv.service_type_id,
+                  label: pickText(sv, "name", lang) || pickSlug(sv, lang),
+                })),
+              ]}
+            />
+          ) : f.service_category ? (
+            <p className="rounded-[calc(var(--radius)-2px)] border bg-[var(--secondary)] px-3 py-2.5 text-sm">
+              <span className="text-muted-foreground">
+                {t("site.quote.service")}:{" "}
+              </span>
+              <span className="font-medium">{f.service_category}</span>
+            </p>
+          ) : null}
         </div>
       )}
 

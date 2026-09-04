@@ -1,14 +1,7 @@
-import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { getLang } from "@/lib/i18n";
-import {
-  getSitePage,
-  HOME_PAGE_KEY,
-  pickBilingual,
-  statChips,
-  statCounters,
-  type SitePage,
-} from "@/lib/site-api";
+import { pickBilingual, statChips, statCounters } from "@/lib/site-api";
+import { useHomePage } from "@/lib/use-site-page";
 import { CountUp } from "@/components/ui/count-up";
 
 /**
@@ -59,17 +52,11 @@ import { CountUp } from "@/components/ui/count-up";
 export function ProofStrip() {
   const { t } = useTranslation();
   const lang = getLang();
-  const [page, setPage] = React.useState<SitePage | null>(null);
-
-  React.useEffect(() => {
-    let alive = true;
-    getSitePage(HOME_PAGE_KEY).then((row) => {
-      if (alive) setPage(row);
-    });
-    return () => {
-      alive = false;
-    };
-  }, []);
+  /* The shared read, not a private one. This band used to fetch the home page
+     in its own effect; three more bands override from that same page now, and
+     four private effects would be four requests for one row, each settling on
+     its own timeline. `use-site-page` holds the promise in module scope. */
+  const { page } = useHomePage();
 
   // Three or four figures. A fifth makes the row a table, and the fourth is
   // already the one a reader stops reading at.

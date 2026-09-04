@@ -281,6 +281,7 @@ export const en = {
         "The link may be old, or mistyped. Everything published is on the index.",
       otherLanguageOnly:
         "This article has not been translated yet. Switch language to read it.",
+      gallery: "Images from this article",
     },
     hero: {
       eyebrow: "Logistics · Customs · Warehousing",
@@ -428,6 +429,18 @@ export const en = {
       modeROADHint: "Cross-border haulage and hinterland transit.",
       modeWAREHOUSE: "Storage only",
       modeWAREHOUSEHint: "Secure storage and handling, no transport leg.",
+      /* RAIL, CUSTOMS and OTHER exist because the mode list is now read off the
+         tenant's published services rather than hardcoded to four. A tenant
+         whose business is customs brokerage, or who runs the Douala–N'Djamena
+         rail corridor as its own line, gets a card for it — and OTHER is a real
+         answer, not a miss: a service none of the six words describes belongs on
+         the form rather than dropped from it. */
+      modeRAIL: "By rail",
+      modeRAILHint: "Rail corridors and the road legs at either end of them.",
+      modeCUSTOMS: "Customs only",
+      modeCUSTOMSHint: "Clearance and declarations, with the transport arranged elsewhere.",
+      modeOTHER: "Something else",
+      modeOTHERHint: "Anything the four above do not describe — tell us and we will route it.",
       stepCounter: "Step {{step}} of {{total}}",
       originPort: "Port of loading",
       destinationPort: "Port of discharge",
@@ -1054,6 +1067,7 @@ export const fr = {
       goneHint: "Le lien est peut-être ancien ou mal recopié. Tout ce qui est publié figure sur l’index.",
       otherLanguageOnly:
         "Cet article n’est pas encore traduit. Changez de langue pour le lire.",
+      gallery: "Images de cet article",
     },
     hero: {
       eyebrow: "Logistique · Douane · Entreposage",
@@ -1195,6 +1209,12 @@ export const fr = {
       modeROADHint: "Transport transfrontalier et transit vers l’hinterland.",
       modeWAREHOUSE: "Stockage uniquement",
       modeWAREHOUSEHint: "Stockage et manutention sécurisés, sans transport.",
+      modeRAIL: "Par rail",
+      modeRAILHint: "Corridors ferroviaires et les tronçons routiers à chaque extrémité.",
+      modeCUSTOMS: "Douane uniquement",
+      modeCUSTOMSHint: "Dédouanement et déclarations, le transport étant organisé ailleurs.",
+      modeOTHER: "Autre chose",
+      modeOTHERHint: "Tout ce que les options ci-dessus ne décrivent pas — dites-le-nous et nous orienterons la demande.",
       stepCounter: "Étape {{step}} sur {{total}}",
       originPort: "Port de chargement",
       destinationPort: "Port de déchargement",

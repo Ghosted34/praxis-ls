@@ -19,6 +19,7 @@ const WRITABLE = [
   "meta_title_fr", "meta_title_en",
   "meta_description_fr", "meta_description_en",
   "cover_vault_id",
+  "gallery_vault_ids",
   "tags",
   "author_user_id",
   "sort_order",
@@ -223,9 +224,45 @@ async function publicCoverForServe(client, docId) {
   return rows[0] || null;
 }
 
+/**
+ * A gallery image, for the public media route.
+ *
+ * Same fail-closed shape as `publicCoverForServe` and one clause different: the
+ * doc must be a member of the owning article's `gallery_vault_ids`, which is
+ * what `= ANY(a.gallery_vault_ids)` asserts. A doc removed from the array stops
+ * being servable on the next request even though its vault row still exists —
+ * which is the property that lets removal archive rather than delete.
+ */
+async function publicGalleryForServe(client, docId) {
+  if (!UUID_RE.test(String(docId || ""))) return null;
+  const { rows } = await client.query(
+    `SELECT v.doc_id, v.public_media_content_type, v.storage_path
+       FROM document_vault v
+       JOIN insight_article a ON v.doc_id = ANY(a.gallery_vault_ids)
+      WHERE v.doc_id = $1
+        AND v.status = 'VERIFIED'
+        AND v.public_media_scope = 'INSIGHT'
+        AND v.public_media_role = 'GALLERY'
+        AND v.public_media_content_type = ANY($2::text[])
+        AND a.is_published = true`,
+    [docId, IMAGE_TYPES],
+  );
+  return rows[0] || null;
+}
+
+/** The cover or a gallery image — the public media route serves one URL space
+ *  and does not know which of the two an id is until it asks. Cover first: it
+ *  is the one every article has. */
+async function publicMediaForServe(client, docId) {
+  return (
+    (await publicCoverForServe(client, docId)) ||
+    (await publicGalleryForServe(client, docId))
+  );
+}
+
 module.exports = {
   TABLE, WRITABLE, IMAGE_TYPES, UUID_RE,
-  publicCoverForServe,
+  publicCoverForServe, publicGalleryForServe, publicMediaForServe,
   list, count, tagsInUse, get, getBySlug, slugTaken,
   insert, update, setPublished, remove,
 };

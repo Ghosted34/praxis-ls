@@ -16,6 +16,15 @@ import {
 import { CorridorPanel } from "@/components/site/corridor-panel";
 import { PortalPreview, RouteGraphic } from "@/components/site/graphics";
 import { ProofStrip } from "@/components/site/proof-strip";
+import { useHomePage } from "@/lib/use-site-page";
+import {
+  ctaBand,
+  featureList,
+  heroBlock,
+  pickBilingual,
+  type CtaBandBlock,
+  type FeatureListBlock,
+} from "@/lib/site-api";
 import { PageShell } from "@/components/site/page-shell";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -62,18 +71,50 @@ import { p } from "@/lib/base-path";
  */
 export function MarketingPage() {
   const { t } = useTranslation();
+  const lang = getLang();
+  /* One read for the whole page. The hero, the figures strip, the how-it-works
+     list and the quote band all override from the same published home page, and
+     the module cache in `use-site-page` is what keeps that one request rather
+     than four. Null — no page, unpublished, package off — means every band
+     keeps its dictionary copy, which is what most tenants see. */
+  const { page, loading } = useHomePage();
+  const hero = heroBlock(page);
+  const how = featureList(page);
+  const cta = ctaBand(page);
+
+  /* Nothing paints until the answer is in.
+
+     Without this the hero renders our headline, the request lands, and the
+     tenant's own headline replaces it a beat later — a visible flicker on the
+     first screen of the site, on every load, for the tenants who did the work
+     of authoring one. The page is a lazily-loaded chunk already, so the wait is
+     one request against a route the visitor has just navigated to. */
+  if (loading) return null;
+
   return (
     <PageShell label={t("site.hero.title")}>
-      <Hero />
+      <Hero
+        copy={
+          hero
+            ? {
+                kicker: pickBilingual(hero.kicker, lang) || t("site.hero.eyebrow"),
+                title: pickBilingual(hero.title, lang),
+                lead: pickBilingual(hero.lead, lang) || t("site.hero.sub"),
+                ctaLabel: hero.cta ? pickBilingual(hero.cta.label, lang) : "",
+                ctaHref: hero.cta?.href || "",
+              }
+            : null
+        }
+      />
       {/* Directly under the hero, on the hero's own ground: a visitor who
           scrolls one screen has seen a number, a certification and a network
           name — or, on a tenant who has authored none, nothing at all. */}
       <ProofStrip />
       <ServicesBand />
-      <HowBand />
+      <HowBand block={how} />
       <ProofBand />
       <PortalBand />
-      <QuoteBand />
+      <QuoteBand block={cta} />
       <ContactBand />
     </PageShell>
   );
@@ -213,18 +254,29 @@ function ServicesBand() {
 /** Three steps, three endpoints: `POST /public/intake/quote-requests`, the quote
  *  the desk writes back, and the milestone ledger `GET /public/tracking/:ref`
  *  reads. The band is a description of the product, not an invention about it. */
-function HowBand() {
+function HowBand({ block }: { block: FeatureListBlock | null }) {
   const { t } = useTranslation();
-  const steps = tList<{ t: string; d: string }>("site.how.steps").map((s) => ({
-    title: s.t,
-    body: s.d,
-  }));
+  const lang = getLang();
+  /* The tenant's own steps when they have published a `feature_list`, ours
+     otherwise. Whole-list, never merged: three steps of theirs followed by one
+     of ours would describe a process that does not exist anywhere. */
+  const steps = block
+    ? block.items.map((i) => ({
+        title: pickBilingual(i.title, lang),
+        body: pickBilingual(i.text, lang),
+      }))
+    : tList<{ t: string; d: string }>("site.how.steps").map((s) => ({
+        title: s.t,
+        body: s.d,
+      }));
   return (
     <Section
       id="how"
       variant="muted"
       eyebrow={t("site.how.eyebrow")}
-      title={t("site.how.title")}
+      title={
+        (block && pickBilingual(block.title, lang)) || t("site.how.title")
+      }
       lead={t("site.how.sub")}
       divided
     >
@@ -425,15 +477,21 @@ function PortalBand() {
  *  — the hero CTA and the header button pointed here until the form got its own
  *  route — and this is where they should land. `Section`'s `scroll-mt-24` keeps
  *  the sticky header off the heading when one of those old links is followed. */
-function QuoteBand() {
+function QuoteBand({ block }: { block: CtaBandBlock | null }) {
   const { t } = useTranslation();
+  const lang = getLang();
   const steps = tList<{ t: string; d: string }>("site.quote.steps");
 
   return (
     <Section
       id="quote"
-      title={t("site.quote.title")}
-      lead={t("site.quote.sub")}
+      /* Heading and lead override; the three numbered steps below do not.
+         They describe what THIS product does when a request arrives — a
+         reference on screen, one queue, a reply on the same channel — and a
+         tenant rewriting them would be describing a behaviour the software
+         does not have. The `cta_band` schema has no field for them either. */
+      title={(block && pickBilingual(block.title, lang)) || t("site.quote.title")}
+      lead={(block && pickBilingual(block.text, lang)) || t("site.quote.sub")}
       divided
     >
       {/*
@@ -454,8 +512,19 @@ function QuoteBand() {
             {t("site.quote.bandLead")}
           </p>
           <div className="mt-6">
-            <ButtonLink to={p("/quote")} size="lg">
-              {t("site.quote.bandCta")}
+            {/* Same internal-path rule as the hero button: `p()` would prefix
+                the site base onto a mailto or an https URL, which the block
+                schema also admits. */}
+            <ButtonLink
+              to={
+                block?.cta?.href?.startsWith("/")
+                  ? p(block.cta.href)
+                  : p("/quote")
+              }
+              size="lg"
+            >
+              {(block?.cta && pickBilingual(block.cta.label, lang)) ||
+                t("site.quote.bandCta")}
               <ArrowRightIcon size={16} className="ml-2" />
             </ButtonLink>
           </div>

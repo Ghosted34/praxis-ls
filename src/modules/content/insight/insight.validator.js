@@ -51,7 +51,29 @@ const base = {
   sort_order: z.coerce.number().int().min(0).max(100000).optional(),
 };
 
+/**
+ * The cover upload.
+ *
+ * A data URL, capped well above the vault's own 10 MB so an oversized file is
+ * refused by the vault with a message about the file rather than here with a
+ * message about the string. `original_name` is carried for the vault's records
+ * and is never used to build a path — the storage key is the document id.
+ */
+const cover = z.object({
+  data_url: z.string().min(1).max(14_000_000),
+  original_name: z.string().trim().max(200).optional(),
+}).strict();
+
+/** The gallery order / removal write: the ids the article should carry, in
+ *  display order. The service ignores any id that was not already the
+ *  article's, so this cannot bind a foreign document to a public page. */
+const gallery = z.object({
+  ids: z.array(z.string().uuid()).max(12),
+}).strict();
+
 const schemas = {
+  cover,
+  gallery,
   // title_fr is the one thing an article cannot exist without: FR is the
   // default language and an untitled article has nothing to list.
   create: z.object({ ...base, title_fr: z.string().trim().min(1).max(200) }).strict(),
@@ -95,5 +117,7 @@ module.exports = {
   create: mw("create"),
   update: mw("update"),
   publish: mw("publish"),
+  cover: mw("cover"),
+  gallery: mw("gallery"),
   listQuery: mw("listQuery", "query"),
 };

@@ -628,7 +628,25 @@ export function ServiceDetailPage() {
         divided
       >
         <Card padded className="max-w-reading">
-          <QuoteWizard />
+          {/* The list AND the row this page is about.
+
+              This band used to render `<QuoteWizard />` bare, so a visitor who
+              had just read the whole of the sea-freight page was asked, on that
+              same page, how their cargo was moving and which service they
+              wanted — with no options to choose from, because the wizard had
+              never been handed the published list. It asked for the one thing
+              the page already knew, in a free-text box.
+
+              `services` is the module-cached read this page already holds, so
+              neither prop costs a request. */}
+          <QuoteWizard
+            services={services}
+            preselect={
+              services.find(
+                (row) => row.service_type_id === profile.service_type_id,
+              ) || null
+            }
+          />
         </Card>
       </Section>
     </PageShell>

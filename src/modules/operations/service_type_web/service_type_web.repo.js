@@ -313,7 +313,7 @@ async function replaceRelated(client, serviceTypeId, ids) {
 async function publicList(client) {
   const { rows } = await client.query(
     `SELECT p.service_type_id, p.slug_fr, p.slug_en,
-            st.name_fr, st.name_en,
+            st.name_fr, st.name_en, st.key AS service_key,
             p.short_description_fr, p.short_description_en,
             p.claim_fr, p.claim_en, p.accent,
             p.cover_vault_id, p.icon_vault_id,

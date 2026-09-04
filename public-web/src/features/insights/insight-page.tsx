@@ -155,6 +155,8 @@ function Article({
   const [coverOk, setCoverOk] = React.useState(true);
   const body = insightBody(article, lang);
   const src = coverUrl(article.cover_id);
+  const [broken, setBroken] = React.useState<string[]>([]);
+  const gallery = (article.gallery_ids || []).filter((id) => !broken.includes(id));
 
   return (
     <article className="mx-auto max-w-prose">
@@ -202,6 +204,43 @@ function Article({
         // for a piece written in the OTHER language — say so rather than
         // printing a heading over white space.
         <p className="mt-8 text-muted-foreground">{t("site.insights.otherLanguageOnly")}</p>
+      )}
+
+      {/* The gallery, below the body rather than inside it.
+
+          In-prose placement would need a marker in the prose, and the marker
+          would be image markup — which `Markdown` refuses on purpose: it builds
+          React nodes directly with no `dangerouslySetInnerHTML`, and that is
+          what keeps tenant-authored text safe on a page a stranger loads. A
+          fixed strip underneath is the honest version of the feature.
+
+          Each image drops itself on error rather than leaving a broken frame.
+          The media route 404s a document whose article is not published, and it
+          404s one removed from the gallery since this page was rendered — both
+          are ordinary, and a grey box with a torn-page icon is not the way to
+          say so. */}
+      {gallery.length > 0 && (
+        <figure className="mt-10">
+          <div className="grid grid-cols-2 gap-3">
+            {gallery.map((id) => (
+              <img
+                key={id}
+                src={coverUrl(id) || undefined}
+                alt=""
+                loading="lazy"
+                decoding="async"
+                onError={() => setBroken((b) => [...b, id])}
+                className="aspect-[4/3] w-full rounded-[calc(var(--radius)-2px)] border object-cover"
+              />
+            ))}
+          </div>
+          {/* No caption is invented. The allowlist that let these through
+              carries no alt text, and a screen reader told "Warehouse" under a
+              photograph nobody has described is a lie about a picture. */}
+          <figcaption className="mt-2 text-xs text-muted-foreground">
+            {t("site.insights.gallery")}
+          </figcaption>
+        </figure>
       )}
     </article>
   );

@@ -274,6 +274,14 @@ const WebsitePageEditorPage = lazyNamed(
   () => import("@/features/settings/website-page-editor"),
   "WebsitePageEditorPage",
 );
+const WebsiteInsightsPage = lazyNamed(
+  () => import("@/features/settings/website-insights"),
+  "WebsiteInsightsPage",
+);
+const WebsiteInsightEditorPage = lazyNamed(
+  () => import("@/features/settings/website-insight-editor"),
+  "WebsiteInsightEditorPage",
+);
 const TemplateStudioPage = lazyNamed(
   () => import("@/features/settings/document-templates-page"),
   "TemplateStudioPage",
@@ -666,6 +674,18 @@ export function App() {
                   block save that re-rendered the identity form would lose a
                   half-typed meta description. */}
               <Route path="settings/website" element={<WebsitePagesPage />} />
+              {/* Static before dynamic. `:pageId` would happily match the
+                  literal "articles" — React Router ranks a static segment
+                  higher, so these two win, but the ordering is written this way
+                  so a reader sees why the collision is not one. */}
+              <Route
+                path="settings/website/articles"
+                element={<WebsiteInsightsPage />}
+              />
+              <Route
+                path="settings/website/articles/:articleId"
+                element={<WebsiteInsightEditorPage />}
+              />
               <Route
                 path="settings/website/:pageId"
                 element={<WebsitePageEditorPage />}

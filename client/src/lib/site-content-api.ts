@@ -48,11 +48,58 @@ export type StatCounterItem = {
 
 export type StatChipItem = { label: Bilingual; value: Bilingual };
 
-export type EditableBlockType = "stat_counters" | "stat_chips";
+/** A link as the block schema stores it: a label plus an internal path or a
+ *  mailto/tel/https URL. The renderer only follows rooted paths — see the note
+ *  in `public-web/src/lib/site-api.ts` on why an absolute URL through `p()`
+ *  produces `/public/https://…`. */
+export type BlockLink = { label: Bilingual; href: string } | null;
 
-/** The two the public site draws. See the header. */
+export type HeroContent = {
+  kicker?: Bilingual | null;
+  title: Bilingual;
+  lead?: Bilingual | null;
+  cta?: BlockLink;
+};
+
+export type FeatureListItem = { title: Bilingual; text?: Bilingual | null };
+export type FeatureListContent = {
+  title?: Bilingual | null;
+  items: FeatureListItem[];
+};
+
+export type CtaBandContent = {
+  title: Bilingual;
+  text?: Bilingual | null;
+  cta?: BlockLink;
+};
+
+export type EditableBlockType =
+  | "hero"
+  | "stat_counters"
+  | "feature_list"
+  | "stat_chips"
+  | "cta_band";
+
+/**
+ * The five the public site draws — and the list that must grow in the SAME
+ * commit as the renderer.
+ *
+ * It held two for as long as `public-web` drew two. When the marketing page
+ * learned to prefer a tenant's `hero`, `feature_list` and `cta_band` over its
+ * own dictionary copy, those three became content a tenant could see on their
+ * site and not edit here — which is the worse half of the original defect,
+ * because a block that renders and cannot be changed reads as broken rather
+ * than as unbuilt. Hence this list, in that commit's follow-up.
+ *
+ * The order is RENDER order on the home page, not alphabetical: this is what
+ * the "add a block" menu offers, and offering them in the order they appear is
+ * the difference between a menu and a list of type names.
+ */
 export const EDITABLE_BLOCK_TYPES: EditableBlockType[] = [
+  "hero",
   "stat_counters",
+  "feature_list",
+  "cta_band",
   "stat_chips",
 ];
 

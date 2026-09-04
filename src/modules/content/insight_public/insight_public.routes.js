@@ -57,7 +57,10 @@ router.get("/", limit, v.listQuery, asyncHandler(async (req, res) => {
  * win by being more specific.
  */
 router.get("/media/:id", mediaLimit, asyncHandler(async (req, res) => {
-  const doc = await req.tenantDbIn("live", (c) => repo.publicCoverForServe(c, req.params.id));
+  // Cover or gallery — one URL space for an article's images, and the id is
+  // what says which. Both re-checks are fail-closed and both require the
+  // article to be published, so a draft's media is never servable.
+  const doc = await req.tenantDbIn("live", (c) => repo.publicMediaForServe(c, req.params.id));
   if (!doc || !doc.storage_path || doc.storage_path.startsWith("pending://")) {
     throw notFound("Media not found");
   }

@@ -133,6 +133,114 @@ describe("what happens when a send fails", () => {
   });
 });
 
+/*
+ * ── THE OUTAGE THIS SECTION EXISTS FOR ──────────────────────────────────────
+ *
+ * A PushSubscription is bound to ONE application server key. Rotate the
+ * deploy's VAPID pair and every subscription in every tenant is undeliverable
+ * from that instant — and the push services say so with 403 (our signature is
+ * not welcome), never 404/410 (the endpoint is gone).
+ *
+ * Every safety net in this file and its callers watched for the second. So the
+ * first produced a permanent, invisible outage: rows kept, device count still
+ * reassuringly non-zero, Settings still reading "You'll get alerts here", the
+ * "your device went quiet" email never sent, and the client's boot-time sync
+ * dutifully re-registering the dead subscription every single morning.
+ */
+describe("a VAPID key that has moved on", () => {
+  const KEY_HASH = require("node:crypto").createHash("sha256").update("PUB").digest("hex");
+
+  test("a subscription stamped with a superseded key is dropped WITHOUT a send", async () => {
+    const client = makeClient([{ ...SUB, vapid_key_hash: "some-older-key-hash" }]);
+    const out = await push.sendToUser(client, { user_id: "u-1", title: "T" });
+
+    expect(mockSendNotification).not.toHaveBeenCalled();
+    expect(out).toMatchObject({ sent: 0, failed: 0, pruned: 1, stale: 1 });
+    // Counted as `pruned`, which is what deliverOutbound already watches to
+    // send the lapse email — the user is unreachable, and that is the same
+    // fact whether the endpoint died or the key did.
+    expect(client.query).toHaveBeenCalledWith(
+      expect.stringMatching(/DELETE FROM push_subscription/),
+      [SUB.endpoint],
+    );
+    expect(out.reason).toBe("devices registered under a superseded key");
+  });
+
+  test("a subscription stamped with the CURRENT key is sent to as normal", async () => {
+    const out = await push.sendToUser(
+      makeClient([{ ...SUB, vapid_key_hash: KEY_HASH }]),
+      { user_id: "u-1", title: "T" },
+    );
+    expect(mockSendNotification).toHaveBeenCalledTimes(1);
+    expect(out).toMatchObject({ sent: 1, pruned: 0, stale: 0 });
+  });
+
+  test("an unstamped row (subscribed before 12770) is attempted, and a 403 drops it", async () => {
+    // The only way to classify these is to let the push service answer. 403 is
+    // "your signature is not welcome here", which is not the same as gone —
+    // but it is just as permanent, so it prunes and counts like gone.
+    const client = makeClient([{ ...SUB, vapid_key_hash: null }]);
+    mockSendNotification.mockRejectedValueOnce(
+      Object.assign(new Error("forbidden"), { statusCode: 403 }),
+    );
+    const out = await push.sendToUser(client, { user_id: "u-1", title: "T" });
+
+    expect(out).toMatchObject({ sent: 0, failed: 0, pruned: 1, stale: 1 });
+    expect(client.query).toHaveBeenCalledWith(
+      expect.stringMatching(/DELETE FROM push_subscription/),
+      [SUB.endpoint],
+    );
+  });
+
+  test("a 401 that names VAPID is the same case; a 401 that does not is an ordinary failure", async () => {
+    mockSendNotification.mockRejectedValueOnce(
+      Object.assign(new Error("invalid vapid jwt"), { statusCode: 401 }),
+    );
+    expect(await push.sendToUser(makeClient([{ ...SUB, vapid_key_hash: null }]), {
+      user_id: "u-1", title: "T",
+    })).toMatchObject({ pruned: 1, failed: 0 });
+
+    mockSendNotification.mockRejectedValueOnce(
+      Object.assign(new Error("rate limited"), { statusCode: 401 }),
+    );
+    expect(await push.sendToUser(makeClient([{ ...SUB, vapid_key_hash: null }]), {
+      user_id: "u-1", title: "T",
+    })).toMatchObject({ pruned: 0, failed: 1 });
+  });
+
+  test("a platform store that is DOWN never causes a prune", async () => {
+    /*
+     * The key resolution falls back to the env keypair when the platform store
+     * is unreachable — silently, on a path that looks like success. If the
+     * fallback key differed from the stored one, treating a fingerprint
+     * mismatch as authoritative would delete every subscription on the deploy
+     * during a five-second database blip, and manufacture the exact outage
+     * this whole mechanism exists to repair.
+     */
+    const settings = require("../../src/services/platform/settings.service");
+    settings.resolve.mockRejectedValue(new Error("platform db unreachable"));
+    const client = makeClient([{ ...SUB, vapid_key_hash: "a-different-key-hash" }]);
+
+    const out = await push.sendToUser(client, { user_id: "u-1", title: "T" });
+
+    expect(client.query).not.toHaveBeenCalledWith(
+      expect.stringMatching(/DELETE FROM push_subscription/),
+      expect.anything(),
+    );
+    expect(out).toMatchObject({ sent: 1, stale: 0 });
+    settings.resolve.mockResolvedValue(null);
+  });
+
+  test("a successful send stamps last_used_at — the column meant 'last registered' before", async () => {
+    const client = makeClient([{ ...SUB, vapid_key_hash: KEY_HASH }]);
+    await push.sendToUser(client, { user_id: "u-1", title: "T" });
+    expect(client.query).toHaveBeenCalledWith(
+      expect.stringMatching(/SET last_used_at = now\(\)/),
+      [SUB.endpoint],
+    );
+  });
+});
+
 describe("degrading cleanly", () => {
   test("no registered device is reported as such, so the caller can fall back to email", async () => {
     const out = await push.sendToUser(makeClient([]), { user_id: "u-1", title: "T" });

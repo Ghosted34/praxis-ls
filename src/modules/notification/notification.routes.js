@@ -48,6 +48,18 @@ router.delete("/push/subscribe", validator.pushUnsubscribe, controller.unsubscri
 // How many devices the caller can actually be reached on. 0 while permission
 // is granted is the "this device went quiet" case the Settings banner shows.
 router.get("/push/devices", controller.devices);
+/*
+ * The self-test. Sends a real push to the caller's OWN devices, through the
+ * same sendToUser the notification path uses, and answers with what happened.
+ *
+ * Self-targeted by construction — the recipient is `req.user`, never a body
+ * parameter — so there is no way to make it a way of pushing to somebody else.
+ * Rate-limited anyway: it is the one authenticated route that causes an
+ * outbound request per registered device, and a phone is a poor place to
+ * receive a loop.
+ */
+const testLimiter = makeLimiter({ name: "push-test", max: 10, windowMs: 10 * 60 * 1000 });
+router.post("/push/test", testLimiter, controller.testPush);
 router.post("/read-all", controller.markAllRead);
 router.post("/:id/read", controller.markRead);
 

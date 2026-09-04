@@ -279,6 +279,9 @@ export function DossierForm({
             }
             errors={fieldErrors}
             disabled={busy}
+            // Marks & numbers is locked to the container list on equipment files
+            // — the container editor is the only place it changes.
+            capturesContainers={form.data.containers?.enabled === true}
           />
         )}
 

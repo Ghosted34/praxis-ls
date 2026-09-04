@@ -76,7 +76,7 @@ import { DocGroup, DocRow, MoneyRow, PersonRow } from "./components";
 // The shared shipment/service details (0660) — the same component every
 // document, costing and quotation renders, so what ops sees on the file and
 // what a client sees on an invoice are one projection, not two.
-import { ShipmentDetailsPanel } from "./shipment-details";
+import { ShipmentDetailsPanel, ContainerSummary } from "./shipment-details";
 import { ContainerEditor } from "./container-editor";
 import { ItineraryEditor } from "./itinerary-editor";
 import { DossierForm } from "./dossier-form";
@@ -86,6 +86,7 @@ type FileHeader = api.DossierOverview["dossier"];
 
 export type File360Tab =
   | "details"
+  | "containers"
   | "itinerary"
   | "milestones"
   | "queries"
@@ -94,9 +95,11 @@ export type File360Tab =
   | "documents";
 
 /** Tab order. `details` is first and is the default: what is actually moving is
- *  the question every other tab is about. */
+ *  the question every other tab is about. `containers` sits next to it and is
+ *  shown only when the service type captures equipment (see the render). */
 export const FILE_360_TABS: readonly File360Tab[] = [
   "details",
+  "containers",
   "itinerary",
   "milestones",
   "queries",
@@ -107,6 +110,7 @@ export const FILE_360_TABS: readonly File360Tab[] = [
 
 const TAB_LABEL: Record<File360Tab, string> = {
   details: "Details",
+  containers: "Containers",
   itinerary: "Itinerary",
   milestones: "Milestones",
   queries: "Queries",
@@ -157,6 +161,61 @@ function DetailsTab({
       />
       <RelatedRail header={header} onJump={onJump} />
       {editing && block && (
+        <ContainerEditor
+          dossierId={fileId}
+          mode={block.mode}
+          onClose={() => setEditing(false)}
+          onSaved={() => details.reload()}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Just the boxes on the file — the dedicated home for equipment, so the numbers
+ * a delivery note is signed against have a tab of their own rather than living
+ * inside Details. Shown only when the service type captures containers (the tab
+ * itself is gated in the render); the panel reuses the canonical container
+ * display and opens the same editor the Details tab does.
+ */
+function ContainersTab({ fileId }: { fileId: string }) {
+  const [editing, setEditing] = React.useState(false);
+  const details = useResource(() => api.getShipmentDetails(fileId), [fileId]);
+  const block = details.data?.containers;
+
+  if (details.loading) return <SkeletonTable rows={3} cols={3} />;
+  if (details.error)
+    return <ErrorState message={details.error} />;
+  if (!block?.enabled)
+    return (
+      <EmptyState
+        title={tr("No equipment on this service type")}
+        hint="This service type does not track containers."
+      />
+    );
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
+          {block.lines.length ? tr("Edit containers") : tr("Add containers")}
+        </Button>
+      </div>
+      {block.lines.length ? (
+        <ContainerSummary block={block} />
+      ) : (
+        <EmptyState
+          title={tr("No containers recorded yet")}
+          hint="Add a line for each type on the file. Container numbers can follow when the Bill of Lading arrives."
+          action={
+            <Button size="sm" onClick={() => setEditing(true)}>
+              {tr("Add containers")}
+            </Button>
+          }
+        />
+      )}
+      {editing && (
         <ContainerEditor
           dossierId={fileId}
           mode={block.mode}
@@ -717,14 +776,23 @@ export function OperationFile360({
     d.documents.transit_orders +
     d.documents.delivery_notes +
     (d.documents.vault ?? 0);
+  // The Containers tab exists only for service types that carry boxes. A file
+  // deep-linked to `?tab=containers` that does not capture them falls back to
+  // Details rather than showing a tab that is not in the strip.
+  const capturesContainers = header.captures_containers === true;
+  const activeTab: File360Tab =
+    tab === "containers" && !capturesContainers ? "details" : tab;
   // Counts ride the label because `Segmented` takes a string — and they are the
   // TRUE counts from the response, not the length of the capped row lists.
   const count: Partial<Record<File360Tab, string>> = {
+    containers: header.container_boxes ? String(header.container_boxes) : undefined,
     milestones: msTotal ? `${msDone}/${msTotal}` : undefined,
     queries: d.queries?.count ? String(d.queries.count) : undefined,
     documents: docCount ? String(docCount) : undefined,
   };
-  const tabs = FILE_360_TABS.map((value) => ({
+  const tabs = FILE_360_TABS.filter(
+    (value) => value !== "containers" || capturesContainers,
+  ).map((value) => ({
     value,
     label: count[value]
       ? `${tr(TAB_LABEL[value])} · ${count[value]}`
@@ -791,20 +859,21 @@ export function OperationFile360({
 
       <Segmented
         label="Operations file 360 section"
-        value={tab}
+        value={activeTab}
         options={tabs}
         onChange={setTab}
       />
 
-      {tab === "details" && (
+      {activeTab === "details" && (
         <DetailsTab fileId={fileId} header={header} onJump={setTab} />
       )}
-      {tab === "itinerary" && <ItineraryEditor dossierId={fileId} />}
-      {tab === "milestones" && <MilestonesTab fileId={fileId} />}
-      {tab === "queries" && <QTickets dossierId={fileId} />}
-      {tab === "money" && <MoneyTab m={d.money} />}
-      {tab === "people" && <PeopleTab people={d.people} />}
-      {tab === "documents" && <DocumentsTab d={d} />}
+      {activeTab === "containers" && <ContainersTab fileId={fileId} />}
+      {activeTab === "itinerary" && <ItineraryEditor dossierId={fileId} />}
+      {activeTab === "milestones" && <MilestonesTab fileId={fileId} />}
+      {activeTab === "queries" && <QTickets dossierId={fileId} />}
+      {activeTab === "money" && <MoneyTab m={d.money} />}
+      {activeTab === "people" && <PeopleTab people={d.people} />}
+      {activeTab === "documents" && <DocumentsTab d={d} />}
     </div>
   );
 }

@@ -284,6 +284,8 @@ async function headerJoins(client, dossierId) {
   const { rows } = await client.query(
     "SELECT cm.name AS client_name, " +
       "st.key AS service_key, st.name_en AS service_name_en, st.name_fr AS service_name_fr, " +
+      "st.captures_containers AS captures_containers, st.container_detail_mode AS container_detail_mode, " +
+      "(SELECT COALESCE(SUM(l.qty), 0)::int FROM dossier_container_line l WHERE l.dossier_id = d.dossier_id) AS container_boxes, " +
       "rp.name AS rate_provider_name, " +
       "(SELECT COUNT(*)::int FROM milestone_instance mi WHERE mi.dossier_id = d.dossier_id) AS milestone_total, " +
       "(SELECT COUNT(*)::int FROM milestone_instance mi WHERE mi.dossier_id = d.dossier_id AND mi.status = 'DONE') AS milestone_done, " +

@@ -158,22 +158,61 @@ async function foldDetails(client, { data, existing = null, enforceRequired }) {
   const { details: values, ...rest } = data;
   const serviceTypeId = rest.service_type_id || (existing && existing.service_type_id);
   // Nothing to fold and no form to enforce: leave the write exactly as it was,
-  // so every caller that predates the SSDC keeps working untouched.
-  if (values === undefined && !enforceRequired) return rest;
-  const { patch } = await details.applyValues(client, {
-    serviceTypeId,
-    // On update the file keeps the version it was created under — republishing
-    // a form must not retroactively change what an open file is validated
-    // against. On create there is no pinned version yet, so the live one is used.
-    fieldSetId: existing ? existing.service_type_field_set_id : null,
-    values: values || {},
-    existingDetails: existing ? existing.details_json || {} : {},
-    enforceRequired,
-  });
-  // The explicit `rest` wins over the folded patch: a caller that set `pol`
-  // directly (the AI path, the sales→operations handoff) is not overridden by
-  // an absent detail value.
-  return { ...patch, ...rest };
+  // so every caller that predates the SSDC keeps working untouched — but the
+  // marks lock below still applies, because a direct `marks_numbers` write must
+  // not sneak past it on this path either.
+  let write;
+  if (values === undefined && !enforceRequired) {
+    write = rest;
+  } else {
+    const { patch } = await details.applyValues(client, {
+      serviceTypeId,
+      // On update the file keeps the version it was created under — republishing
+      // a form must not retroactively change what an open file is validated
+      // against. On create there is no pinned version yet, so the live one is used.
+      fieldSetId: existing ? existing.service_type_field_set_id : null,
+      values: values || {},
+      existingDetails: existing ? existing.details_json || {} : {},
+      enforceRequired,
+    });
+    // The explicit `rest` wins over the folded patch: a caller that set `pol`
+    // directly (the AI path, the sales→operations handoff) is not overridden by
+    // an absent detail value.
+    write = { ...patch, ...rest };
+  }
+
+  // MARKS & NUMBERS IS SERVER-OWNED ON A CONTAINERISED FILE. It mirrors the
+  // boxes (regenerated on every container write), so no form or API caller may
+  // set it — or its manual flag — by hand. Dropping both keys here, at the one
+  // choke point every create/update/promote passes through, is what makes that
+  // a guarantee rather than a hidden UI state: the derived value stands, and a
+  // file cannot silently drift from the equipment it is carrying. Non-equipment
+  // service types (break-bulk, whose marks are the shipper's own) keep the
+  // manual override untouched. Files already overridden are left as they are —
+  // this drops incoming writes, it does not clear a flag already set.
+  // Only consult the service type when there is actually a marks value to drop.
+  // Most writes carry none, and querying on every one would both waste a round
+  // trip and reach for a `client.query` that some callers (the re-plan path,
+  // whose stub client has no query method) never provide.
+  const marksInWrite =
+    Object.prototype.hasOwnProperty.call(write, "marks_numbers") ||
+    Object.prototype.hasOwnProperty.call(write, "marks_numbers_is_manual");
+  if (marksInWrite && (await capturesContainers(client, serviceTypeId))) {
+    delete write.marks_numbers;
+    delete write.marks_numbers_is_manual;
+  }
+  return write;
+}
+
+/** Does this service type carry containers? The marks lock hangs off this, so a
+ *  tenant that turns equipment capture on gets the lock with no code change. */
+async function capturesContainers(client, serviceTypeId) {
+  if (!serviceTypeId) return false;
+  const { rows } = await client.query(
+    "SELECT captures_containers FROM service_type WHERE service_type_id = $1",
+    [serviceTypeId],
+  );
+  return rows[0] && rows[0].captures_containers === true;
 }
 
 /**
@@ -552,6 +591,12 @@ async function overview(client, id) {
       service_key: head.service_key || null,
       service_name_en: head.service_name_en || null,
       service_name_fr: head.service_name_fr || null,
+      // Equipment capture rides the header so the 360 can gate its Containers
+      // tab without a second fetch: the tab exists only for service types that
+      // carry boxes, and the box count feeds its badge.
+      captures_containers: head.captures_containers === true,
+      container_detail_mode: head.container_detail_mode || null,
+      container_boxes: head.container_boxes || 0,
       rate_provider_name: head.rate_provider_name || null,
       milestone_total: head.milestone_total || 0,
       milestone_done: head.milestone_done || 0,
@@ -607,4 +652,7 @@ module.exports = {
   // Boundary-free insertion for a wider business transaction, followed by an
   // explicit post-commit initializer.
   insertForCreate, initializeCreated,
+  // Exported for the marks-lock test — the one guarantee that marks & numbers
+  // cannot be set by hand on a containerised file.
+  foldDetails, capturesContainers,
 };

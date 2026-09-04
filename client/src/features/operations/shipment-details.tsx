@@ -132,7 +132,7 @@ function ContainerUnitRow({
  * "one of the two". The identified-count on the summary lets the reader see at
  * a glance whether the manifest has landed yet.
  */
-function ContainerSummary({ block }: { block: api.ContainerBlock }) {
+export function ContainerSummary({ block }: { block: api.ContainerBlock }) {
   if (!block.enabled || !block.lines.length) return null;
   const s = block.summary;
   const anyUnits = block.lines.some((l) => l.units && l.units.length);

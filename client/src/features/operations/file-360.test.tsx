@@ -219,6 +219,57 @@ describe("Operations file 360 · the page", () => {
     ).toBeInTheDocument();
   });
 
+  it("shows a Containers tab, gated on equipment and badged with the box count", async () => {
+    const overview = {
+      ...OVERVIEW,
+      dossier: {
+        ...OVERVIEW.dossier,
+        captures_containers: true,
+        container_boxes: 5,
+      },
+    };
+    const shipment = {
+      ...SHIPMENT,
+      containers: {
+        enabled: true,
+        mode: "PER_BOX",
+        lines: [
+          {
+            dossier_container_line_id: "l-1",
+            container_type_ref_id: "t-1",
+            qty: 5,
+            container_type_en: "40' High Cube",
+            units: [],
+          },
+        ],
+        summary: { lines: 1, boxes: 5, teu: 10, identified: 0 },
+      },
+    };
+    renderScreen(<OperationFile360Page />, {
+      routes: {
+        ...routes,
+        [`/operations/${ID}/360`]: overview,
+        [`/operations/${ID}/shipment-details`]: shipment,
+      },
+      path: `/operations/files/${ID}?tab=containers`,
+      pattern: "/operations/files/:fileId",
+    });
+
+    // The tab is present and carries the true box count; deep-linked to it, the
+    // file's equipment renders rather than a blank panel.
+    expect(
+      await screen.findByRole("radio", { name: "Containers · 5" }),
+    ).toBeInTheDocument();
+    expect(await screen.findByText("40' High Cube")).toBeInTheDocument();
+  });
+
+  it("hides the Containers tab when the service type carries no equipment", async () => {
+    renderPage();
+    await screen.findByRole("heading", { level: 1, name: "SBX-2026-0001" });
+    // The default fixture does not capture containers — no tab, no dead click.
+    expect(screen.queryByRole("radio", { name: /Containers/ })).toBeNull();
+  });
+
   it("offers the lifecycle step the file is actually at", async () => {
     renderPage();
     // IN_PROGRESS advances to COMPLETED, so the control says Complete. Acting on

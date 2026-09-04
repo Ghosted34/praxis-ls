@@ -359,7 +359,7 @@ function CommandCenter() {
     },
     {
       key: "dossier",
-      label: "Dossier",
+      label: "File",
       render: (r) =>
         r.dossier_id ? (
           <span className="num text-muted-foreground">
@@ -559,7 +559,7 @@ function CommandCenter() {
         <Input
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Search invoice, client, dossier…"
+          placeholder="Search invoice, client, file…"
           className="w-full max-w-xs"
         />
       </div>

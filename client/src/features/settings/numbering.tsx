@@ -217,7 +217,7 @@ const DOC_NUMBER_MODULES: {
       { key: "MOD-61", label: "Supplier invoice" },
       { key: "MOD-30", label: "Transit order" },
       { key: "MOD-32", label: "Delivery note" },
-      { key: "MOD-29", label: "Dossier / operations file" },
+      { key: "MOD-29", label: "Operations file" },
       { key: "MOD-49", label: "Cash request / régie advance" },
     ],
   },

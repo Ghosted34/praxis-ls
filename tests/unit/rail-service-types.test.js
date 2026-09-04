@@ -115,9 +115,11 @@ describe("Rail Service Types Architecture & Data Integrity", () => {
       expect(sql).toContain("'place_receipt','Lieu d''enlèvement','Place of collection','GEO_PLACE',true,'COLLECTION'");
     });
 
-    it("enables grouped container capture on all three rail service types", () => {
+    it("enables per-box container capture on all three rail service types", () => {
       const sql = fs.readFileSync(SEED_FIELDS, "utf8");
       expect(sql).toContain("'RAIL_TRANSPORTATION','RAIL_HINTERLAND_TRANSIT','END_TO_END_RAIL_FREIGHT'");
+      // PER_BOX is the default now (12772): the seed captures box-level detail.
+      expect(sql).toContain("container_detail_mode = 'PER_BOX'");
     });
   });
 

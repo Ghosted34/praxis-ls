@@ -8,7 +8,7 @@
 import { pageShell } from "@/lib/layout";
 import { tr } from "@/lib/i18n";
 import * as React from "react";
-import { useUrlTab, useFieldHighlight } from "@/lib/use-url-tab";
+import { useUrlTab, useFieldHighlight, useDeepLinkEdit } from "@/lib/use-url-tab";
 import { useRecordParam, useTrailTitle } from "@/app/layout/nav-trail-context";
 import { Button } from "@/components/ui/button";
 import { ComposeIconButton as MailIconButton } from "@/features/comms/inbox/composer/compose-icon-button";
@@ -843,7 +843,7 @@ function EditEmployeeForm({
                 ))}
               </Select>
             </Field>
-            <Field label={tr("Full name")} required className="sm:col-span-3">
+            <Field label={tr("Full name")} required className="sm:col-span-3" data-field="full_name">
               <Input
                 value={f.full_name}
                 onChange={(e) => set("full_name", e.target.value)}
@@ -1036,7 +1036,7 @@ function EditEmployeeForm({
 
         <Section title="The engagement">
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label={tr("Employer entity")}>
+            <Field label={tr("Employer entity")} data-field="entity_id">
               <Select
                 value={f.entity_id}
                 onChange={(e) => set("entity_id", e.target.value)}
@@ -1052,7 +1052,7 @@ function EditEmployeeForm({
             <Field label={tr("Department")} hint="From your organigramme.">
               <DepartmentSelect value={dept} onChange={setDept} />
             </Field>
-            <Field label={tr("Job title")}>
+            <Field label={tr("Job title")} data-field="job_title">
               <Input
                 value={f.job_title}
                 onChange={(e) => set("job_title", e.target.value)}
@@ -1088,7 +1088,7 @@ function EditEmployeeForm({
                   ))}
               </Select>
             </Field>
-            <Field label={tr("Work email")} hint="Used to send payslips & contracts">
+            <Field label={tr("Work email")} hint="Used to send payslips & contracts" data-field="email">
               <Input
                 type="email"
                 value={f.email}
@@ -1240,7 +1240,6 @@ function EmployeeDetail({
   // Profile is the fallback: an existing `?tab=Contracts` link still lands on
   // contracts, but arriving at the dossier cold shows the record first.
   const [tab, setTab] = useUrlTab<Tab>(TABS, "Profile");
-  useFieldHighlight([tab]);
   // Latched off the ACTIVE tab rather than off the click, so a link that lands
   // on `?tab=Documents` loads that panel too — a deep link that opens an empty
   // tab is worse than no deep link.
@@ -1251,6 +1250,24 @@ function EmployeeDetail({
   const [editing, setEditing] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const eid = employee.employee_id;
+
+  /*
+   * `?focus=<employeeId>&edit=employee&field=job_title` — the whole chain a
+   * signature gap needs: the list selects the person (useRecordParam, already
+   * shipping), this opens their edit dialog, and useFieldHighlight focuses the
+   * one input. Before this, "your job title is missing" linked to a list of
+   * everyone and left the reader to find themselves in it.
+   */
+  // `editing` is a dependency: most of these anchors are inputs inside the edit
+  // dialog, which is not in the document until it opens.
+  useFieldHighlight([tab, editing]);
+
+  const deepEdit = useDeepLinkEdit("employee");
+  React.useEffect(() => {
+    if (!deepEdit.open) return;
+    setEditing(true);
+    deepEdit.clear();
+  }, [deepEdit]);
   const active = employee.is_active !== false;
 
   const navigate = useNavigate();

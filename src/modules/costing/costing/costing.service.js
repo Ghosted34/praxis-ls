@@ -1,18 +1,27 @@
 /**
- * Project costing (MOD-46, KB §6.7). A dossier budget: lines (service vs débours),
- * a margin % on the service base (débours pass-through), and a draft→validate→
- * approve lifecycle. No GL (budget only) — actuals post via cost_tracking (MOD-47).
- * SQL in the repo.
+ * Project costing (MOD-46, KB §6.7). A dossier BUDGET: what this file will cost
+ * us, HT / VAT / TTC, with a draft → validate → approve lifecycle. No GL
+ * (budget only) — actuals post via cost_tracking (MOD-47) and are reconciled
+ * against this by dossier_reconciliation. SQL in the repo.
+ *
+ * WHAT A COSTING IS NOT (12766). It is not a price, and it does not open an
+ * invoice. Costing is raised by an operations officer; the final invoice is
+ * raised by a finance officer from the accepted quotation. A document that
+ * silently creates another department's document is a control weakness rather
+ * than a convenience, so the two paths that used to do it — a synchronous
+ * `ensureDraftForCosting` here and an orchestration backstop on
+ * `costing.approved` — are both gone.
  */
 "use strict";
 const repo = require("./costing.repo");
 const events = require("./costing.events");
-const { computeCosting } = require("./costing.rules");
+const { computeCosting, toXaf, snapshotLines, diffLines, planLineWrites, summariseBudget } = require("./costing.rules");
+const suggest = require("./costing.suggest");
 const numbering = require("../../../services/documents/numbering.service");
+const currency = require("../../master/currency/currency.service");
 const executor = require("../../../services/workflow/executor");
 const onApproved = require("../../../services/workflow/on-approved");
 const { assertNoPendingChain } = require("../../../services/workflow/pending-guard");
-const finalInvoice = require("../../finance/final_invoice/final_invoice.service");
 const { emitEvent, audit, resolveActorId } = require("../../../shared/events/emit");
 const { logger } = require("../../../config/logger");
 const { AppError } = require("../../../utils/errors");
@@ -33,55 +42,46 @@ const LOCKED = new Set(["APPROVED_LOCKED", "REJECTED"]);
 const UNLOCK_FLOW = {
   REQUEST_UNLOCK: { from: "APPROVED_LOCKED", to: "UNLOCK_REQUESTED" },
   // Legacy returns to DRAFT (transition.php:192), and DRAFT is the only status
-  // updateDraft will edit (see line ~54) — anywhere else would be unlocked in
-  // name and still uneditable in fact.
+  // updateDraft will edit — anywhere else would be unlocked in name and still
+  // uneditable in fact.
   UNLOCK: { from: "UNLOCK_REQUESTED", to: "DRAFT" },
   DENY_UNLOCK: { from: "UNLOCK_REQUESTED", to: "APPROVED_LOCKED" },
 };
 
-/**
- * Refuse to reopen a costing whose final invoice has left DRAFT.
+/*
+ * WHY THERE IS NO INVOICE GUARD HERE ANY MORE (12766, owner decision).
  *
- * Approving a costing OPENS a final invoice for its dossier
- * (`ensureDraftForCosting`, called below on APPROVED_LOCKED). That invoice can
- * go on to ISSUED_LOCKED / POSTED_LOCKED (0230:66) and carry a posted
- * `entry_id`. Unlocking the costing underneath it would let the priced basis
- * change while the booked revenue stays as it was — a wrong ledger position
- * produced by a workflow completing normally, which is the same failure 10717
- * was written to remove.
+ * `assertInvoiceNotPosted` used to refuse an unlock once the dossier's final
+ * invoice had left DRAFT. Its premise was that approving a costing priced the
+ * invoice, so reopening the costing underneath a posted receivable would let
+ * the priced basis move while booked revenue stayed put.
  *
- * A DRAFT invoice is fine: nothing is posted and it is regenerated from the
- * costing anyway. Checked against the invoice table rather than a costing
- * column because the invoice is the thing that moved.
+ * That premise no longer holds twice over. The invoice prices from the accepted
+ * QUOTATION, never from the costing (`final_invoice.assertPricedSource`), and
+ * as of this change a costing does not open an invoice at all. So a posted
+ * invoice says nothing about whether this file's BUDGET is still correct.
+ *
+ * And the guard blocked a real case. A file is billed; a week later the carrier
+ * sends a detention charge because the box sat past its free time. The only
+ * correct response is to reopen the costing, add the line, raise the cash to
+ * pay it, and amend the invoice. Refusing the unlock left that spend with
+ * nowhere to be budgeted, which is how it ends up off the file's margin
+ * entirely. Rare, and precisely the case a costing exists to capture.
+ *
+ * What still protects the ledger is unchanged and lives where it belongs: an
+ * ISSUED or POSTED invoice cannot be silently edited (`updateDraft` refuses
+ * anything but DRAFT — post a reversal instead), and every unlock needs a
+ * written reason plus an APPROVER-capable grant.
  */
-async function assertInvoiceNotPosted(client, costing) {
-  if (!costing.dossier_id) return;
-  const { rows } = await client.query(
-    "SELECT invoice_id, doc_number, status FROM invoice " +
-      "WHERE dossier_id = $1 AND type = 'FINAL' AND status <> 'DRAFT' LIMIT 1",
-    [costing.dossier_id],
-  );
-  const inv = rows[0];
-  if (inv) {
-    throw new AppError(
-      "INVOICE_ISSUED",
-      `Final invoice ${inv.doc_number || inv.invoice_id} is ${inv.status}. ` +
-        "Reverse or cancel it before reopening the costing it was priced from.",
-      422,
-    );
-  }
-}
 
 /**
  * REQUEST_UNLOCK / UNLOCK / DENY_UNLOCK.
  *
- * Permissions are NOT ported from the legacy role lists
- * (REQUEST_UNLOCK: ADMIN/SALES/OPERATIONS/MANAGEMENT; UNLOCK and DENY_UNLOCK:
- * ADMIN/MANAGEMENT). Hardcoded role names are strictly less expressive than
- * this system's module grants plus the SoD capability overlay, so the routes
- * express the same intent as `edit` for the request and `approve` + APPROVER
- * for the decision — the split costing.routes.js already documents for
- * SUBMIT vs APPROVE.
+ * Permissions are NOT ported from the legacy role lists. Hardcoded role names
+ * are strictly less expressive than this system's module grants plus the SoD
+ * capability overlay, so the routes express the same intent as `edit` for the
+ * request and `approve` + APPROVER for the decision — the split
+ * costing.routes.js already documents for SUBMIT vs APPROVE.
  */
 async function unlockTransition(client, { id, action, reason = null, actor = {} }) {
   const step = UNLOCK_FLOW[action];
@@ -101,9 +101,6 @@ async function unlockTransition(client, { id, action, reason = null, actor = {} 
     // appended it to a free-text remarks blob; here it is a column.
     throw new AppError("REASON_REQUIRED", "Say why the costing needs reopening", 422);
   }
-  // Checked on the GRANT, not the request: asking is harmless, and the invoice
-  // may well be reversed between the two.
-  if (action === "UNLOCK") await assertInvoiceNotPosted(client, before);
 
   const patch = { status: step.to };
   if (action === "REQUEST_UNLOCK") {
@@ -119,6 +116,9 @@ async function unlockTransition(client, { id, action, reason = null, actor = {} 
     // DATA 2.4 — as above.
     patch.unlocked_by = await resolveActorId(client, actor.user_id);
     patch.unlocked_at = new Date().toISOString();
+    // The sheet is editable again, so it is no longer locked. Leaving the old
+    // stamp would make the printed document claim a lock that is not in force.
+    patch.locked_at = null;
   }
   // DENY_UNLOCK deliberately keeps unlock_reason and the request metadata: the
   // fact that a reopening was asked for and refused is the audit trail.
@@ -141,28 +141,218 @@ async function unlockTransition(client, { id, action, reason = null, actor = {} 
   return row;
 }
 
+/**
+ * A disbursement line's VAT columns, resolved server-side (12768).
+ *
+ * The rate is the source of truth when present: the amount is DERIVED from it
+ * here (net × rate), never trusted from the client, so a payload cannot ship a
+ * rate of 19.25% with an amount that says something else. A free-text amount
+ * (no rate) is stored as given — the exception for a supplier bill whose VAT is
+ * not a clean rate. Both are NULL on a service line, whose VAT lives in its tax
+ * code, and on a débours the user set to "No VAT".
+ */
+function debours(l) {
+  if (l.is_disbursement !== true) {
+    return { upstream_vat_rate_percent: null, upstream_vat_amount: null };
+  }
+  const rate = l.upstream_vat_rate_percent;
+  if (rate !== undefined && rate !== null && Number.isFinite(Number(rate))) {
+    const net = (Number(l.qty) || 0) * (Number(l.unit_cost) || 0);
+    return {
+      upstream_vat_rate_percent: Number(rate),
+      upstream_vat_amount: Math.round(net * (Number(rate) / 100) * 100) / 100,
+    };
+  }
+  const amt = l.upstream_vat_amount;
+  return {
+    upstream_vat_rate_percent: null,
+    upstream_vat_amount: amt !== undefined && amt !== null ? Number(amt) : null,
+  };
+}
+
+/** The columns one payload line writes, whether it is new or being amended. */
+function lineFields(l, lineNo) {
+  return {
+    dictionary_item_id: l.dictionary_item_id || null,
+    label: l.label || "Line",
+    // 12766: the sheet's order. Assigned from the payload's order, which is
+    // the order the person arranged the lines in on screen.
+    line_no: lineNo,
+    qty: l.qty || 1,
+    unit_cost: l.unit_cost || 0,
+    is_disbursement: l.is_disbursement === true,
+    // A disbursement carries its VAT as an amount (12766) and now a rate
+    // (12768), never a tax code — a tax code on a débours would post output
+    // tax we do not owe. A code arriving on one is dropped rather than stored.
+    tax_code_id: l.is_disbursement === true ? null : (l.tax_code_id || null),
+    // Which box this charge was priced for (0663). NULL for anything with no
+    // equipment dimension, which is most of the catalogue.
+    container_type_ref_id: l.container_type_ref_id || null,
+    ...debours(l),
+  };
+}
+
+/**
+ * A budget line that cash has already been requested against cannot be removed
+ * by an amendment (12771).
+ *
+ * `cash_request_line.costing_line_id` is RESTRICT, so the delete would fail
+ * anyway — with a raw 23503 and a constraint name, from inside a transaction.
+ * This is the same refusal said in a sentence, naming the requests, so the
+ * author knows the answer is "reduce it to zero", not "try again".
+ *
+ * Reducing a line BELOW what is committed stays legal and is the whole point of
+ * Q6: the ledger then shows the line over-consumed, and the balance is settled
+ * in reconciliation. It is only the disappearance of the line that is refused,
+ * because a claim pointing at nothing is a claim nobody can reconcile.
+ */
+async function assertNoClaims(client, dropping) {
+  if (!dropping.length) return;
+  const claimed = await repo.claimsOnLines(client, dropping.map((l) => l.costing_line_id));
+  if (!claimed.length) return;
+  const byId = new Map(dropping.map((l) => [l.costing_line_id, l]));
+  const named = claimed.map((c) => {
+    const line = byId.get(c.costing_line_id);
+    return `${(line && line.label) || "line"} (${(c.doc_numbers || []).join(", ")})`;
+  });
+  throw new AppError(
+    "LINE_HAS_CLAIMS",
+    `Cash has already been requested against ${named.join("; ")}. Set the line to zero instead of removing it, so the claim keeps the budget line it was drawn against.`,
+    409,
+    { lines: claimed },
+  );
+}
+
+/**
+ * Write the payload's lines onto the sheet, KEEPING the id of every line that
+ * survives (12771).
+ *
+ * ── WHY THIS IS NO LONGER A DELETE-AND-REINSERT ────────────────────────────
+ *
+ * It was, and every `costing_line_id` therefore changed on every DRAFT save. A
+ * cash request claims a budget line BY ID, so that link would have broken at
+ * exactly the moment it matters — the amendment, which is the case Q6 is
+ * entirely about. Identity is matched on the logical key `diffLines` has always
+ * used (dictionary item + container type, normalised label as the fallback),
+ * so the amendment diff and the budget link agree on what "the same line" means.
+ *
+ * Two lines can legitimately share that key — the same charge priced for a 20'
+ * and a 40' box is one item and two container types, but a hand-typed sheet can
+ * repeat a label — so the pool is a QUEUE per key and matching pops in order.
+ * A repeat therefore keeps its position rather than being matched arbitrarily.
+ *
+ * The claims guard runs BEFORE any write, so a refused amendment leaves the
+ * sheet exactly as it was rather than half-applied and rolled back.
+ */
 async function replaceLines(client, costingId, lines) {
-  await repo.deleteLines(client, costingId);
-  for (const l of lines) {
+  const prior = await repo.lineIdentities(client, costingId);
+  const { writes, keptIds, dropped } = planLineWrites(prior, lines);
+
+  // Before ANY write, so a refused amendment leaves the sheet exactly as it
+  // was rather than half-applied and rolled back.
+  await assertNoClaims(client, dropped);
+
+  await repo.deleteLinesExcept(client, costingId, keptIds);
+  for (const w of writes) {
+    const fields = lineFields(lines[w.index], w.index + 1);
      
-    await repo.insertLine(client, {
-      costing_id: costingId, dictionary_item_id: l.dictionary_item_id || null, label: l.label || "Line",
-      qty: l.qty || 1, unit_cost: l.unit_cost || 0, is_disbursement: l.is_disbursement === true, tax_code_id: l.tax_code_id || null,
-      // Which box this charge was priced for (0663). NULL for anything with no
-      // equipment dimension, which is most of the catalogue.
-      container_type_ref_id: l.container_type_ref_id || null,
+    await (w.id
+      ? repo.updateLine(client, w.id, fields)
+      : repo.insertLine(client, { costing_id: costingId, ...fields }));
+  }
+}
+
+/**
+ * Recompute the stored totals from the lines as they now stand.
+ *
+ * Read back through `listLines` rather than trusting the payload: that join is
+ * what supplies each line's own VAT rate from its tax code, and it is the same
+ * read `get` uses — so the number stored on the row and the number the
+ * worksheet footer shows cannot diverge.
+ */
+async function persistTotals(client, costingId, exchangeRateToXaf) {
+  const lines = await repo.listLines(client, costingId);
+  const totals = computeCosting(lines);
+  await repo.update(client, costingId, {
+    total_ht: totals.total_ht,
+    total_vat: totals.vat_total,
+    total_ttc: totals.total_ttc,
+    total_ttc_xaf: toXaf(totals.total_ttc, exchangeRateToXaf),
+  });
+  return totals;
+}
+
+/**
+ * The rate this sheet is priced at, defaulted from Currencies & FX.
+ *
+ * A rate typed from memory is a number nobody can check six months later.
+ * `fx_rate_daily` is synced daily and manually overridable, so the default is a
+ * real quote for the sheet's own date. An explicit rate in the payload always
+ * wins — the operator may have contracted at a different one.
+ *
+ * Falls back to 1 rather than failing: a missing FX quote must not stop someone
+ * costing a file, and the resulting sheet is still correct in its own currency.
+ */
+async function resolveRate(client, { currencyCode, explicit }) {
+  const code = String(currencyCode || "XAF").toUpperCase();
+  if (explicit !== undefined && explicit !== null && Number(explicit) > 0) return Number(explicit);
+  if (code === "XAF") return 1;
+  try {
+    const hit = await currency.rateFor(client, {
+      base: code, quote: "XAF", date: new Date().toISOString().slice(0, 10),
     });
+    const rate = Number(hit && hit.rate);
+    if (Number.isFinite(rate) && rate > 0) return rate;
+  } catch (err) {
+    // @silent:expected — no quote on file for this pair/date is ordinary (a
+    // currency added this morning, a weekend with no sync). The sheet stays
+    // valid in its own currency and the operator can type the rate.
+    logger.info({ err: err && err.message, currency: code }, "no FX quote for costing; defaulting rate to 1");
+  }
+  return 1;
+}
+
+/**
+ * Turn the one-live-costing-per-file unique index into a sentence.
+ *
+ * 12766 added `uq_costing_one_live_per_dossier`. Without this the caller gets a
+ * raw 23505 with a constraint name in it; with it they are told which sheet
+ * already exists so they can go and open it — which is the thing legacy's
+ * duplicate check was reaching for and got wrong (it searched a period-filtered
+ * endpoint, so a costing raised last month was invisible and you got a second).
+ */
+async function assertNoLiveCosting(client, dossierId) {
+  const existing = await repo.liveForDossier(client, dossierId);
+  if (existing) {
+    throw new AppError(
+      "COSTING_EXISTS",
+      `This operations file already has a costing (${existing.doc_number || existing.costing_id.slice(0, 8)}, ${existing.status}). ` +
+        "A file has one costing: open that one, and if it is approved request an unlock to amend it.",
+      409,
+      // `doc_number` rides the details so the client can render "CST-2026-0043"
+      // in its "Open existing costing" affordance rather than an id slice — the
+      // sentence in `message` is fine for a log, not for a button people press.
+      {
+        costing_id: existing.costing_id,
+        status: existing.status,
+        doc_number: existing.doc_number ?? null,
+      },
+    );
   }
 }
 
 async function createDraft(client, { data, actor = {} }) {
+  await assertNoLiveCosting(client, data.dossier_id);
+  const rate = await resolveRate(client, {
+    currencyCode: data.currency, explicit: data.exchange_rate_to_xaf,
+  });
   await client.query("BEGIN");
   try {
     const costing = await repo.insert(client, {
       dossier_id: data.dossier_id, currency: data.currency || "XAF",
       // §2.2: margin_percent is deprecated and never written — costing stops
       // at HT/VAT/TTC; margin belongs to margin_simulation + quotation.
-      exchange_rate_to_xaf: data.exchange_rate_to_xaf || 1, status: "DRAFT",
+      exchange_rate_to_xaf: rate, status: "DRAFT",
       // §3.3: remarks + the named validator (legacy save.php:29,:6,:33). The
       // assignment moment is recorded so a stalled validation is visible.
       remarks: data.remarks || null,
@@ -170,6 +360,7 @@ async function createDraft(client, { data, actor = {} }) {
       validator_assigned_at: data.validator_id ? new Date() : null,
     });
     if (Array.isArray(data.lines) && data.lines.length) await replaceLines(client, costing.costing_id, data.lines);
+    await persistTotals(client, costing.costing_id, rate);
     await audit(client, { actorUserId: actor.user_id || null, action: events.CREATED, moduleKey: events.MODULE, entityRef: "costing:" + costing.costing_id, after: costing });
     await client.query("COMMIT");
     return get(client, costing.costing_id);
@@ -184,7 +375,13 @@ async function updateDraft(client, { id, patch = {}, lines = null, actor = {} })
   try {
     const fields = {};
     // §2.2: margin_percent removed from the patchable set — deprecated column.
-    for (const k of ["currency", "exchange_rate_to_xaf", "remarks"]) if (patch[k] !== undefined) fields[k] = patch[k];
+    for (const k of ["currency", "remarks"]) if (patch[k] !== undefined) fields[k] = patch[k];
+    if (patch.currency !== undefined || patch.exchange_rate_to_xaf !== undefined) {
+      fields.exchange_rate_to_xaf = await resolveRate(client, {
+        currencyCode: patch.currency !== undefined ? patch.currency : before.currency,
+        explicit: patch.exchange_rate_to_xaf,
+      });
+    }
     // §3.3: naming (or changing) the validator stamps when it happened.
     if (patch.validator_id !== undefined) {
       fields.validator_id = patch.validator_id;
@@ -192,9 +389,118 @@ async function updateDraft(client, { id, patch = {}, lines = null, actor = {} })
     }
     if (Object.keys(fields).length) await repo.update(client, id, fields);
     if (Array.isArray(lines)) await replaceLines(client, id, lines);
+    await persistTotals(
+      client, id,
+      fields.exchange_rate_to_xaf !== undefined ? fields.exchange_rate_to_xaf : before.exchange_rate_to_xaf,
+    );
+    // Editing a costing was the one transition on this document that left no
+    // trail: `actor` was accepted and dropped. On a sheet that can be unlocked
+    // and re-approved, "who changed the figure between approvals" is precisely
+    // the question the audit log exists to answer.
+    const after = await repo.get(client, id);
+    await audit(client, {
+      actorUserId: actor.user_id || null, action: events.UPDATED, moduleKey: events.MODULE,
+      entityRef: "costing:" + id, before, after,
+    });
     await client.query("COMMIT");
     return get(client, id);
   } catch (err) { await client.query("ROLLBACK"); throw err; }
+}
+
+/**
+ * Mint the sheet's reference, once, when it first leaves the author's desk.
+ *
+ * At create would burn a sequence number on every abandoned draft; at approval
+ * would be too late for the validator, who needs something to refer to. First
+ * submit is the moment it becomes a document other people talk about.
+ *
+ * A file with no corporate entity cannot be numbered (`numbering.allocate`
+ * requires one to scope the sequence). That is a data gap on the file, not a
+ * reason to block a submission, so it is skipped and retried on the next
+ * transition — the same call is guarded on `doc_number` being null.
+ */
+async function ensureDocNumber(client, costing) {
+  if (costing.doc_number) return costing.doc_number;
+  const { rows } = await client.query("SELECT entity_id FROM dossier_visible WHERE dossier_id = $1", [costing.dossier_id]);
+  const entityId = rows[0] && rows[0].entity_id;
+  if (!entityId) {
+    logger.warn({ costing_id: costing.costing_id }, "costing submitted on a file with no corporate entity; reference not allocated");
+    return null;
+  }
+  const allocated = await numbering.allocate(client, {
+    moduleKey: events.MODULE, entityId, date: new Date().toISOString().slice(0, 10),
+  });
+  return allocated.number;
+}
+
+/**
+ * The seal each transition applies (Q22, Q27).
+ *
+ * ── WHY THE TRANSITION SIGNS, AND NOT A PERSON ─────────────────────────────
+ *
+ * The legacy costing PDF carries three stamped boxes — raised, validated,
+ * approved — and they are stamped because somebody walked the page round the
+ * office. Ours has the signature engine, so the question was only whether to
+ * ask the user for a second click after the one that already means "I approve
+ * this".
+ *
+ * It does not. The button IS the decision: a validator who has just pressed
+ * "Submit for approval" has validated, and asking them to then choose a
+ * signature card is asking the same question twice — which is how a control
+ * becomes a thing people click through. Sealing inside the transition also
+ * makes the two impossible to separate: there is no path that records an
+ * approval without a seal, and no seal that is not backed by a status change.
+ *
+ * SES, not AES (Q27). The evidence actually collected is an authenticated
+ * session, and `assurance_level` records what was collected rather than what
+ * was asked for (guide §1.3(b)). Step-up stays off for this doc type — the
+ * tenant policy seeded by 12767 leaves `stepup_enabled` false — because a
+ * costing is an internal budget and an emailed code per transition, three
+ * times per file, is the control that gets switched off.
+ *
+ * ── AND WHY A FAILURE HERE DOES NOT UNDO THE APPROVAL ──────────────────────
+ *
+ * Best-effort, deliberately. The decision is the business fact; the seal is
+ * its evidence. A tenant that has not seeded `signature_policy.COSTING`, or
+ * that has emptied it, would otherwise find every costing transition failing
+ * with EMPTY_SIGNATURE_MENU on a screen that says nothing about signatures —
+ * an approval blocked by a settings row nobody knew existed. It is logged at
+ * error level: an unsealed approval is a real gap in the evidence chain, just
+ * not one worth refusing the approval over.
+ */
+const SEAL_REASON = {
+  SUBMIT_VALIDATION: "ACKNOWLEDGED",
+  SUBMIT_APPROVAL: "REVIEWED_ACCEPTED",
+  APPROVE: "APPROVED_DISPATCH",
+};
+
+async function sealTransition(client, { id, to, doc, actor = {} }) {
+  const signReason = SEAL_REASON[to];
+  if (!signReason || !actor.user_id) return;
+  try {
+    // Required lazily: document_signature pulls the template service, which
+    // requires this module back for the costing projection.
+    const signatures = require("../../vault/document_signature/document_signature.service");
+    const presets = require("../../../services/signatures/presets");
+    const menu = await presets.resolveMenu(client, { docType: "COSTING" });
+    await signatures.signInternal(client, {
+      entityRef: "costing:" + id,
+      docType: "COSTING",
+      presetCode: menu.default,
+      signReason,
+      actor,
+      // The document as it stands INSIDE this transaction, passed in rather
+      // than left to `signInternal` to load: its own loader would run after
+      // the caller has decided WHEN to build it, and the whole point is that
+      // this payload is the post-transition sheet, not the pre-transition one.
+      doc,
+    });
+  } catch (err) {
+    logger.error(
+      { err, costing_id: id, transition: to },
+      "costing transition could not be sealed; the status change stands, the evidence does not",
+    );
+  }
 }
 
 async function setStatus(client, { id, to, actor = {}, viaChain = false }) {
@@ -215,17 +521,40 @@ async function setStatus(client, { id, to, actor = {}, viaChain = false }) {
   if (to === "APPROVE" || to === "REJECT") {
     await assertNoPendingChain(client, "costing:" + id, { viaChain, what: "costing" });
   }
-  const row = await repo.update(client, id, { status });
+
+  const patch = { status };
+  const now = new Date().toISOString();
+
+  // The reference, minted once, on the way out of the author's hands.
+  if (to === "SUBMIT_VALIDATION" || to === "SUBMIT_APPROVAL") {
+    const number = await ensureDocNumber(client, before);
+    if (number && !before.doc_number) patch.doc_number = number;
+  }
+  // Who actually validated, as distinct from who it was addressed to. DATA 2.4
+  // — resolved against the schema being written to, same as the unlock loop.
+  if (to === "SUBMIT_APPROVAL") {
+    patch.validated_by = await resolveActorId(client, actor.user_id);
+    patch.validated_at = now;
+  }
+  if (to === "APPROVE") {
+    // DATA 2.4 — as above. `approver_id` has existed since 0320 and was never
+    // written, which is why the file 360's People block showed a null approver
+    // on every costing ever approved.
+    patch.approver_id = await resolveActorId(client, actor.user_id);
+    patch.approved_at = now;
+    patch.locked_at = now;
+  }
+
+  const row = await repo.update(client, id, patch);
   // On submit-for-approval, open the tenant's configurable approval chain (if any
   // workflow is bound to costing.submitted).
   // No workflow bound → autoApproved and the manual APPROVE path stays available;
   // see the note on W8 in purchase_order.service.js for why nothing auto-advances.
   if (status === "SUBMITTED_FOR_APPROVAL") {
-    const totals = computeCosting(await repo.listLines(client, id));
-    // `totals.total_ht` — the money the sheet commits us to. (The old code read
-    // `totals.service_base`, a key computeCosting never returned, so the
-    // approval chain's amount threshold always saw null.)
-    await executor.start(client, { eventTypeKey: "costing.submitted", entityRef: "costing:" + id, amountXaf: totals ? totals.total_ht : null });
+    // `total_ht` — the money the sheet commits us to. Read from the stored
+    // column (12766) rather than recomputed: it is the figure the registry and
+    // the KPI strip show, so the threshold and the screen agree.
+    await executor.start(client, { eventTypeKey: "costing.submitted", entityRef: "costing:" + id, amountXaf: Number(row.total_ttc_xaf) || null });
   }
   if (status === "APPROVED_LOCKED") {
     await emitEvent(client, { eventTypeKey: events.APPROVED, moduleKey: events.MODULE, entityRef: "costing:" + id, actorUserId: actor.user_id || null });
@@ -234,31 +563,213 @@ async function setStatus(client, { id, to, actor = {}, viaChain = false }) {
     // after the carrier rolls the booking and ops updates the file. Never
     // throws — see shipment_details.snapshotOnto.
     await shipmentDetails.snapshotOnto(client, { table: "costing", id, dossierId: before.dossier_id });
-    // SYNCHRONOUS handoff (A7 #3): open the DRAFT final invoice now, in-request.
-    // TX-agnostic + idempotent; the async orchestration handler is a backstop and
-    // no-ops once this has run. Best-effort — a draft-shell failure must not block
-    // the approval (the backstop retries).
-    try {
-      await finalInvoice.ensureDraftForCosting(client, id);
-    } catch (err) {
-      logger.error({ err, costing_id: id }, "sync draft-invoice on costing approval failed; async backstop will retry");
-    }
+    // Freeze the LINES too (12766), so the next amendment after an unlock can
+    // show the approver what moved instead of fourteen unchanged rows.
+    await snapshotApproval(client, { costing: row, actor });
   }
+  /*
+   * The seal, LAST — after the row is updated and after the approval snapshot
+   * is frozen, so the payload it hashes is the sheet as the decision left it.
+   *
+   * Sealing before the update would attest to the status the sheet was moving
+   * OUT of: an approver's seal would read `SUBMITTED_FOR_APPROVAL`, and the
+   * verification portal would show a document whose own seal disagrees with
+   * it. `templateSvc.loadRecord` is not used to build that payload — inside
+   * this transaction it would read uncommitted rows — so the projection is
+   * built here from the row we just wrote.
+   */
+  await sealTransition(client, { id, to, doc: await sealDoc(client, row), actor });
   await audit(client, { actorUserId: actor.user_id || null, action: events.statusChange(status), moduleKey: events.MODULE, entityRef: "costing:" + id, before, after: row });
   return row;
 }
 
-async function get(client, id) {
+/**
+ * The costing as the canonical payload wants it, built inside the transaction.
+ *
+ * It is the SAME projection the document renders from — `loadRecord` — because
+ * canonical.js hashes the shape the registry produces, and hashing a second,
+ * hand-rolled shape would mean the seal attests to something the page does not
+ * show. The call is safe here for the one reason the comment at the call site
+ * gives: it reads the rows this transaction has already written, on this
+ * client, so it sees the post-transition state.
+ */
+async function sealDoc(client, row) {
+  const templateSvc = require("../../documents/template/template.service");
+  const rec = await templateSvc.loadRecord(client, "COSTING", row.costing_id);
+  return rec ? rec.data : null;
+}
+
+/** The frozen line set for one approval. Best-effort: the approval itself has
+ *  already landed, and losing a diff must not undo it. */
+async function snapshotApproval(client, { costing, actor = {} }) {
+  try {
+    const lines = await repo.listLines(client, costing.costing_id);
+    const revision = (await repo.snapshotCount(client, costing.costing_id)) + 1;
+    await repo.insertSnapshot(client, {
+      costing_id: costing.costing_id,
+      revision,
+      lines: JSON.stringify(snapshotLines(lines)),
+      total_ht: costing.total_ht,
+      total_vat: costing.total_vat,
+      total_ttc: costing.total_ttc,
+      currency: costing.currency,
+      // DATA 2.4 — FK to app_user, resolved against the schema being written to.
+      approved_by: await resolveActorId(client, actor.user_id),
+    });
+  } catch (err) {
+    logger.error({ err, costing_id: costing.costing_id }, "costing approval snapshot failed; the amendment diff will be unavailable for this revision");
+  }
+}
+
+/**
+ * The worksheet, with everything it needs to render itself.
+ *
+ * `amendment` is present only on a sheet that has been approved before and has
+ * since moved — which is exactly when somebody is about to be asked to approve
+ * it a second time and needs to know what changed.
+ */
+async function get(client, id, { lang = "en" } = {}) {
   const costing = await repo.get(client, id);
   if (!costing) return null;
   const lines = await repo.listLines(client, id);
   costing.lines = lines;
   costing.totals = computeCosting(lines);
+  costing.totals.total_ttc_xaf = toXaf(costing.totals.total_ttc, costing.exchange_rate_to_xaf);
+
+  // The file this sheet is costing — its reference, its client, its service and
+  // its carrier. The worksheet needs all four to name what it is looking at,
+  // and a sheet opened from a pasted link has a uuid and nothing else
+  // (FRONTEND_GUIDE §3.11 rule 2: the body renders from the RESPONSE).
+  costing.file = costing.dossier_id
+    ? await repo.dossierForCosting(client, costing.dossier_id)
+    : null;
+  costing.containers = costing.dossier_id
+    ? await repo.containerTypesOnFile(client, costing.dossier_id)
+    : [];
+
+  /*
+   * The shipment facts — frozen if the sheet was approved, live if it is still
+   * being worked on. Same rule, and the same fallback direction, as the transit
+   * order (transit_order.service.js:142): a draft should reflect whatever ops
+   * last learned about the file, while an approved sheet must keep citing the
+   * vessel and route it was approved WITH, because the carrier will roll the
+   * booking and ops will update the file.
+   *
+   * `shipment_details_source` reports which was used rather than leaving the
+   * reader to infer it. 0661 has been writing that snapshot onto costings since
+   * it landed, and until now nothing read it back.
+   */
+  let details = costing.shipment_details_snapshot || null;
+  let source = details ? "SNAPSHOT" : null;
+  if (!details && costing.dossier_id) {
+    try {
+      details = await shipmentDetails.forDossier(client, costing.dossier_id, { lang });
+      source = "LIVE";
+    } catch (err) {
+      // A file whose service type lost its field set must not make the costing
+      // unreadable — the same forgiving-read rule shipment_details follows.
+      logger.warn({ err, costing_id: id }, "[costing] shipment details unavailable");
+      details = null;
+    }
+  }
+  costing.shipment_details = details;
+  costing.shipment_details_source = source;
+
+  const snapshot = await repo.latestSnapshot(client, id);
+  if (snapshot) {
+    const diff = diffLines(snapshot.lines || [], lines);
+    costing.amendment = diff.has_changes
+      ? { ...diff, since_revision: snapshot.revision, approved_at: snapshot.approved_at }
+      : null;
+  } else {
+    costing.amendment = null;
+  }
   return costing;
 }
-const list = (client, q) => repo.list(client, q);
+
+/**
+ * THE BUDGET — what this sheet has authorised, and what is left of it (12771).
+ *
+ * A costing is the operations file's fulfilment budget, and this is the read
+ * that makes that true rather than merely said: per line, what was approved,
+ * what cash requests have committed against it, what has actually been paid,
+ * and what a new request may still claim.
+ *
+ * Read from the LIVE costing line, never from an approval snapshot. Amending
+ * the budget is precisely how the remaining balance is meant to move — raise
+ * Port Charges from 150 000 to 200 000 and the next request can claim 50 000
+ * more, the same evening. `cash_request.costing_revision` records which
+ * revision each request was raised against for the audit trail; it is not an
+ * input to this arithmetic.
+ *
+ * Callable on ANY status, deliberately. The gate that says a cash request needs
+ * an APPROVED_LOCKED costing lives on the request's submission, where it can
+ * name the costing and offer a way forward. Refusing the read as well would
+ * mean an operations officer could not see the budget they are waiting on.
+ *
+ * `excludeCashRequestId` answers the question a WORKSHEET asks — "how much of
+ * this budget was available to me" — rather than the registry's "how much is
+ * left now". They differ by exactly this request's own claim, which is why a
+ * request must never be measured against a balance it is itself inside.
+ */
+async function budget(client, costingId, { excludeCashRequestId = null } = {}) {
+  const costing = await repo.get(client, costingId);
+  if (!costing) throw new AppError("NOT_FOUND", "Costing not found", 404);
+  const [rows, revision] = await Promise.all([
+    // Asked on behalf of a request, the ledger leaves that request out — see
+    // `budgetForCosting`. Otherwise an approved request reads as a breach of
+    // the budget it was approved against.
+    repo.budgetForCosting(client, costingId, { excludeCashRequestId }),
+    // How many times this sheet has been approved. A cash request stamps it so
+    // an auditor can ask "against which version of the budget?" — the ledger
+    // itself never reads it.
+    repo.snapshotCount(client, costingId),
+  ]);
+  const { lines, totals } = summariseBudget(rows);
+  return {
+    costing_id: costing.costing_id,
+    doc_number: costing.doc_number || null,
+    dossier_id: costing.dossier_id,
+    status: costing.status,
+    revision,
+    currency: costing.currency,
+    exchange_rate_to_xaf: Number(costing.exchange_rate_to_xaf),
+    // The gate the cash request applies, answered here so a screen can explain
+    // itself before the user gets a 403 from somewhere else.
+    can_fund: costing.status === "APPROVED_LOCKED",
+    lines,
+    totals,
+  };
+}
+
+/** The registry page: rows plus the true match count (X-Total-Count). */
+const listPaged = (client, q) => repo.list(client, q);
+
+/**
+ * Bare array. Kept alongside `listPaged` for the AI tool registry, which
+ * describes `list` as returning a list and would otherwise be handed a
+ * `{rows, total}` envelope it has no schema for — the same split
+ * final_invoice.service.js makes, for the same reason.
+ */
+const list = async (client, q) => (await repo.list(client, q)).rows;
+
+/**
+ * The KPI strip, aggregated over the SAME filter the page used.
+ *
+ * Its own endpoint rather than a `meta` block, matching cost_tracking: the
+ * registry re-pages far more often than the totals change, and a client that
+ * wants one should not have to pay for the other.
+ */
+const kpis = (client, q) => repo.kpis(client, q);
+
+/** The standard charge set for a file, priced. Read-only — see costing.suggest. */
+const suggestLines = (client, q = {}) =>
+  suggest.build(client, { dossierId: q.dossier_id, tier: q.tier, onDate: q.on_date });
 
 // A cleared approval chain approves+locks the costing (BUILD_CONVENTIONS §2/§5).
 onApproved.register("costing", (client, { id, actor }) => setStatus(client, { id, to: "APPROVE", actor: actor || {}, viaChain: true }));
 
-module.exports = { createDraft, updateDraft, setStatus, unlockTransition, get, list };
+module.exports = {
+  createDraft, updateDraft, setStatus, unlockTransition, get, budget,
+  list, listPaged, kpis, suggestLines,
+};

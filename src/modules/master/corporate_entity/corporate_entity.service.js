@@ -146,9 +146,9 @@ async function setOpsReferencePrefix(client, { id, prefix, actor = {} }) {
     if (used.rowCount) {
       throw new AppError(
         "PREFIX_IN_USE",
-        `Operation files already carry the prefix "${before.ops_reference_prefix}". It cannot be changed without renaming references that have been issued.`,
+        `Operations files already carry the prefix "${before.ops_reference_prefix}". It cannot be changed without renaming references that have been issued.`,
         422,
-        { ops_reference_prefix: ["already used by existing operation files"] },
+        { ops_reference_prefix: ["already used by existing operations files"] },
       );
     }
   }

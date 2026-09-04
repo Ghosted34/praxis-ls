@@ -64,6 +64,24 @@ function money(value, currency) {
   return ccy ? `${grouped} ${ccy}` : grouped;
 }
 
+/**
+ * A costing's status, in words.
+ *
+ * Read from the costing rules rather than copied, because the screen, the
+ * printed sheet and this page must call the same state the same thing — and a
+ * second copy of a status vocabulary is a copy that goes stale on the next
+ * status. Required lazily: this file is loaded by the verification portal,
+ * which has no other reason to pull a costing module in.
+ *
+ * Falls back to the raw value, which is what the rules do for an unknown
+ * status: a sheet in a state nobody has named must still verify.
+ */
+function costingStatus(status, lang) {
+  const { statusWords } = require("../../modules/costing/costing/costing.rules");
+  const words = statusWords(status);
+  return lang === "en" ? words.en : words.fr;
+}
+
 const count = (v) => String(Array.isArray(v) ? v.length : 0);
 const partyName = (p) => str(p && p.name) || "—";
 const dash = (v) => (str(v).trim() || "—");
@@ -236,6 +254,39 @@ const RESOLVERS = new Map(Object.entries({
       }
       : null,
   }),
+
+  /**
+   * The costing worksheet — and the only resolver here whose reader is us.
+   *
+   * WHO SCANS THIS. Not a client: a costing is an internal budget and never
+   * leaves the building. The person holding it is an operations officer, a
+   * validator or an auditor, and the question they have is "is this the sheet
+   * that was approved, and by whom?" — which the seal answers and this fills
+   * in around.
+   *
+   * WHAT IS NOT PUBLISHED, and why it still matters that a costing never
+   * travels. `total_ttc` IS shown: unlike a salary, it is the figure the
+   * signature is about, and a verification that will not tell you the amount
+   * cannot confirm a budget at all. The LINES are counted, not listed — a
+   * charge-by-charge breakdown of what a job costs us is the one thing on this
+   * document a competitor would want, and the count is what a holder needs to
+   * confirm the sheet in their hand is the sheet that was sealed.
+   *
+   * `status` is a raw enum in the payload — it has to be, a hash cannot depend
+   * on a display string — so it is said in words here, the same words the
+   * screen and the printed sheet use.
+   */
+  COSTING: (p, lang) => ({
+    title: { fr: "Cotation", en: "Costing" },
+    fields: [
+      f("number", "Référence", "Reference", dash(p.number)),
+      f("dossier_ref", "Dossier", "File", dash(p.dossier_ref)),
+      f("status", "Statut", "Status", costingStatus(p.status, lang)),
+      f("total_ttc", "Total estimé (TTC)", "Total estimate (TTC)",
+        money(p.totals && p.totals.total_ttc, p.currency)),
+      f("line_count", "Lignes", "Lines", count(p.lines)),
+    ],
+  }),
 }));
 
 /** Doc types with a published summary. */
@@ -255,7 +306,21 @@ function summarise(docType, payload, language = "fr") {
   const resolve = typeof docType === "string" ? RESOLVERS.get(docType) : undefined;
   if (typeof resolve !== "function") return null;
   const lang = language === "en" ? "en" : "fr";
-  const out = resolve(payload && typeof payload === "object" ? payload : {});
+  /*
+   * The language is passed to the resolver as well as used below.
+   *
+   * The rule at the top of this file is that a resolver reads the STORED
+   * PAYLOAD and nothing else — no client, no query, no await. A language is
+   * none of those: it decides how a value is SAID, not which facts are
+   * available, so it cannot let a resolver answer with today's figures. Every
+   * resolver that does not need it simply ignores the second argument.
+   *
+   * It exists because a payload can hold a machine value that must be said out
+   * loud — a status enum, which a hash cannot afford to store as a display
+   * string. Without this the portal would print `APPROVED_LOCKED` at a reader
+   * in both languages, which is the defect §3.14 is about.
+   */
+  const out = resolve(payload && typeof payload === "object" ? payload : {}, lang);
   return {
     doc_type: docType,
     title: out.title[lang],

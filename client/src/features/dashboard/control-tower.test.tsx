@@ -252,14 +252,14 @@ describe("TowerHero", () => {
     const { unmount } = wrap(
       <TowerHero firstName="A" activeFiles={1} approvals={0} isTest={false} />,
     );
-    expect(screen.getByText("1 operation file in motion.")).toBeInTheDocument();
+    expect(screen.getByText("1 operations file in motion.")).toBeInTheDocument();
     unmount();
     wrap(
       <TowerHero firstName="A" activeFiles={7} approvals={2} isTest={false} />,
     );
     expect(
       screen.getByText(
-        "7 operation files in motion — 2 awaiting your approval.",
+        "7 operations files in motion — 2 awaiting your approval.",
       ),
     ).toBeInTheDocument();
   });
@@ -406,7 +406,7 @@ describe("LiveShipments", () => {
   it("offers a real empty state with a next step", () => {
     wrap(<LiveShipments shipments={[]} />);
     expect(screen.getByText("No live shipments")).toBeInTheDocument();
-    expect(screen.getByText(/Create an operation file/)).toBeInTheDocument();
+    expect(screen.getByText(/Create an operations file/)).toBeInTheDocument();
   });
 
   it("has no axe violations", async () => {
@@ -427,7 +427,7 @@ describe("Briefing", () => {
       />,
     );
     expect(
-      screen.getByRole("link", { name: /7 active operation files/ }),
+      screen.getByRole("link", { name: /7 active operations files/ }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: /2 open compliance flags/ }),
@@ -601,7 +601,7 @@ describe("ShipmentMap", () => {
     // and the count that matters to a reader is both numbers.
     expect(
       screen.getByRole("img", {
-        name: /1 sea, 0 road and 0 air legs across 1 operation file/,
+        name: /1 sea, 0 road and 0 air legs across 1 operations file/,
       }),
     ).toBeInTheDocument();
   });

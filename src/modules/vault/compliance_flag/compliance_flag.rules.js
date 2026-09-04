@@ -14,7 +14,7 @@
 const { CATALOGUE: PROOF_OBLIGATIONS } = require("../../../services/compliance/proof-obligation.service");
 
 const CATALOGUE = {
-  "cost_entry.missing_proof": { severity: "WARN", describe: "A dossier cost entry has no proof document attached (KB §6 compliance)." },
+  "cost_entry.missing_proof": { severity: "WARN", describe: "An operations file cost entry has no proof document attached (KB §6 compliance)." },
   "procurement.unmatched": { severity: "WARN", describe: "A posted supplier invoice has no matched goods-received note (three-way match)." },
   "regie.aged_unjustified": { severity: "RED", describe: "A régie d'avance is aged and unjustified (581 unresolved)." },
   "disbursement.tax_violation": { severity: "RED", describe: "A débours journal line carries a tax code — débours must be tax-free (KB §23.5)." },

@@ -16,10 +16,13 @@ describe("AI action registrar", () => {
     const writes = cat.filter((r) => r.is_write);
     expect(reads.every((r) => r.ai_enabled === true)).toBe(true);
     expect(reads.every((r) => r.requires_confirmation === false)).toBe(true);
-    // every write action names a permission "MOD-xx:action"
+    // Every write action names a permission "MOD-xx:action", and the verb has
+    // to be one `action-authz` can map to a grant column — a verb it cannot map
+    // is denied at execution, so advertising one is advertising a dead action.
+    // `validate` and `disburse` joined the vocabulary in 12771.
     expect(
       writes.every((r) =>
-        /^MOD-\d+:(create|edit|approve|view|delete)$/.test(
+        /^MOD-\d+:(create|edit|approve|view|delete|export|validate|disburse)$/.test(
           r.required_permission || "",
         ),
       ),

@@ -22,7 +22,7 @@ module.exports = {
       schema: validator.schemas.create,
       permission: { module: "MOD-36", action: "create" },
       confirm: true,
-      describe: "Create an outbound order for a client / dossier.",
+      describe: "Create an outbound order for a client / operations file.",
     },
     {
       key: "update_outbound",

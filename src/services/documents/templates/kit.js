@@ -21,11 +21,23 @@ const esc = (s) => String(s === null || s === undefined ? "" : s).replace(/[&<>"
  * (0 for XAF, 2 for USD/EUR). Without a catalogue the code is shown unchanged,
  * so this stays safe for callers that never see a resolved config.
  */
+/**
+ * Money, as it prints.
+ *
+ * A whole amount keeps no decimals — "1 000 000 XAF", which is how a
+ * Cameroonian document is written and why `minimumFractionDigits` is not
+ * simply `dec`. A fractional one keeps the currency's FULL precision: with a
+ * minimum of 0 and a maximum of 2, a VAT total of 312812.5 printed as
+ * "312 812,5 XAF" — one decimal, on a signed document, which reads as a
+ * truncation and is the kind of thing a client queries.
+ */
 const money = (n, ccy = "XAF", cfg = {}) => {
   const cur = (cfg && cfg.currencies && cfg.currencies[ccy]) || null;
   const unit = (cur && cur.symbol) || ccy;
   const dec = cur && Number.isInteger(cur.decimals) ? cur.decimals : 2;
-  return `${Number(n || 0).toLocaleString("fr-FR", { minimumFractionDigits: 0, maximumFractionDigits: dec })} ${unit}`;
+  const v = Number(n || 0);
+  const min = Number.isInteger(v) ? 0 : dec;
+  return `${v.toLocaleString("fr-FR", { minimumFractionDigits: min, maximumFractionDigits: dec })} ${unit}`;
 };
 const xaf = (n, cfg) => money(n, "XAF", cfg);
 const dateFmt = (d) => {
@@ -229,7 +241,11 @@ function defaults(brand = {}) {
     // (it survives a photocopy) and a band behind its labels.
     rule: brand.rule || "#B7C4D6",
     band: brand.band || "#F2F6FB",
-    language: "bilingual",
+    // A single language, always. See template.service.js resolveDocLanguage:
+    // the resolver picks fr/en from operator → saved → entity → 'en', and the
+    // final cfg is set from that. This default only reaches a caller that
+    // rendered the shell without going through the resolver.
+    language: "en",
     logo: { url: brand.logo_url || null, show: true, height_mm: 15, align: "left" },
     show: { tax_breakdown: true, notes: true, bank: true, signature: true, terms: true, qr: true, words: true },
     footer_text: "",

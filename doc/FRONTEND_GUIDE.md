@@ -541,6 +541,59 @@ exception, `eslint-disable-next-line praxis/no-native-dialogs` still works and
 in these configs uses. Nothing in the tree needs it today. `window.print()` and
 `beforeunload` are not matched by the rule and need no disable.
 
+### 3.11 A record's detail view — a page on desktop, a sheet on a phone
+
+A 360 is one body with two shells. Write the body as an ordinary component that
+takes an id, and give it two entry points:
+
+- a **route** (`lazyNamed` in `app/app.tsx`, §3.7) for desktop — full width, an
+  address that can be pasted into an email, and a step the back arrow can reach;
+- a **`<Dialog>`** over the list for phones, opened from a URL parameter so the
+  sheet is still a step rather than local state.
+
+**The chrome is a component, not a pattern you copy.** `components/record-360.tsx`
+holds `<Record360Page>` (the back link, the width, and the redirect that hands a
+shared desktop link to the phone's sheet), `<Record360Header>` (the `<h1>`, the
+pills, the meta line and the actions) and `<Record360Rail>` / `<Record360Card>`
+(what else the record touches). The list's half — `useRecordOpener()`, which
+decides what a row click does and exchanges a desktop `?focus=` for the route —
+is a hook, so it lives in `lib/record-360.ts`. Only the BODY is per-record:
+what a transit order shows has nothing in common with what a delivery note does.
+
+Three worked examples, all on the same chrome:
+`features/operations/file-360.tsx`, `transit-order-360.tsx` and
+`delivery-note-360.tsx`. Each exports a body plus a `…360Page` and a `…360Modal`
+around it — `<OperationFile360>`, `<OperationFile360Page>` and
+`<OperationFile360Modal>` are the naming — and neither shell adds content the
+other lacks.
+
+Three rules make it hold together:
+
+1. **Branch in JavaScript, with `useIsDesktop()` — not in CSS.** `hidden lg:block`
+   is right when both branches are cheap markup and wrong here: it would mount
+   the content twice, put a live focus trap in a phone's accessibility tree and
+   give a screen reader two of every heading. `lib/use-media-query.ts` opens with
+   this reasoning. It answers `true` before `matchMedia` resolves, so the first
+   frame is the desktop branch.
+2. **The body renders from the RESPONSE, never from a row the caller passed in.**
+   A modal opened from a list has the row in hand; a page opened from a pasted
+   link has a uuid and nothing else. If the detail endpoint returns ids only, add
+   the display fields to it — otherwise the two shells drift and the page is the
+   one that breaks.
+3. **Put the active tab in `useUrlTab()`.** The point of the route is that a
+   colleague can be sent to one tab of one record. A `useState` tab passes every
+   click-driven test and fails the only thing the route was for.
+
+Both entry points must land: whatever already deep-links to the list with
+`?focus=<id>` keeps working, so exchange that parameter for the route on desktop
+rather than leaving old links pointing at a list that has to find the row again.
+`useRecordOpener()` does this for you.
+
+**A record that grows a route usually wants its file split too.** Once the detail
+view is a 360, the list needs it and it needs the form — and one file importing
+another both ways is a cycle. The operations screens are `<list>.tsx`,
+`<record>-form.tsx` and `<record>-360.tsx`, one job each.
+
 ---
 
 ## 4. Accessibility — the floor, not the aspiration
@@ -588,6 +641,32 @@ Anything a person reads must be formatted for a person. Helpers live in `lib/for
 
 Rule of thumb: if a value is a UUID, an ISO timestamp, a dotted event key or a SCREAMING_ENUM,
 it needs a formatter before it reaches the DOM.
+
+### 5.1 Product vocabulary — the English UI does not say "dossier"
+
+The column is `dossier`, the event is `dossier.created`, the id is `dossier_id`,
+and none of that moves. But the thing a tenant reads about is an **operations
+file**, and two tenants have now said the English word "dossier" reads wrong to
+them. So:
+
+| Where | English | French |
+| --- | --- | --- |
+| Naming the thing | Operations file / Operations files | Dossier d'opérations |
+| Running prose, and any column narrow enough to need it | file / File | dossier / Dossier |
+| Its reference | File reference | Référence du dossier |
+
+French keeps "dossier" throughout, because it is the correct French word for
+exactly this and it is what a Douala ops desk says out loud. The pairing lives in
+`lib/i18n-dict.ts` (`"File": "Dossier"`, `"Operations file": "Dossier d'opérations"`),
+so `tr()` resolves it and no screen has to know.
+
+This is a rule about **strings a person reads** — labels, descriptions, hints,
+empty states, `aria-label`s, toasts, AI action copy, and any message the API
+sends back for display. It is not a rule about identifiers: renaming a variable,
+a file, an endpoint or a database column buys nothing and breaks things.
+
+The same applies to the other 360s: a lead's or a client's record is a **record**
+in English (`"The record": "Le dossier"`), not a dossier.
 
 ---
 

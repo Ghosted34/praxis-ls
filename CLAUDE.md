@@ -84,6 +84,23 @@ Node 20 (`.nvmrc`), npm. Backend lint and tests run from the repo root; each
 frontend app has its own toolchain and is linted, tested and built separately in
 CI.
 
+## Before you push: run the whole suite, not the tests you think you touched
+
+CI's `build-test` job runs `npx jest` across the **entire** backend, so a green
+build needs the entire backend green. Before every push, from the repo root:
+
+```
+npm run lint
+npx jest tests/unit        # the full unit suite — not `jest <one-file>`
+```
+
+plus the `client/` gates above (`npm run lint`, `check:*`, `npm test`) for any
+frontend change. This is the single most common way `build-test` goes red: a
+change to a **shared** function — a service like `foldDetails`, a repo helper, a
+validator — breaks a suite you did not name in a targeted `jest <file>` run, so
+a subset pass reads as green while CI is not. When you touch shared code, the
+whole unit suite is the check, and running one file is not a substitute for it.
+
 ## Conventions worth knowing
 
 - **Validation comes from `packages/shared`**, so the API and the form agree. Do

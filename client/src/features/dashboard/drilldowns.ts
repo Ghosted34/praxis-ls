@@ -153,7 +153,7 @@ export function buildSlaDrill(dossiers: Row[] | null): Drill {
       { label: "Late", value: String(late.length) },
     ],
     columns: [
-      { label: "Dossier" },
+      { label: "File" },
       { label: "Route" },
       { label: "ETA" },
       { label: "Result" },
@@ -177,10 +177,10 @@ export function buildSlaDrill(dossiers: Row[] | null): Drill {
           },
         ],
       })),
-    cta: { label: "Open operation files", to: KPI_ROUTE.sla },
+    cta: { label: "Open operations files", to: KPI_ROUTE.sla },
     empty: {
       title: "No arrivals recorded yet",
-      hint: "An on-time rate needs both an ETA and an ATA on a dossier.",
+      hint: "An on-time rate needs both an ETA and an ATA on an operations file.",
     },
   };
 }

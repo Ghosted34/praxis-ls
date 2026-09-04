@@ -563,6 +563,22 @@ function mintRotationToken() {
 const hashRotationToken = (token) =>
   require("node:crypto").createHash("sha256").update(String(token)).digest("hex");
 
+/**
+ * The fingerprint of the VAPID key in force, or null if it cannot be read.
+ *
+ * Null is a first-class answer: a subscription with no fingerprint is treated
+ * as "cannot tell" everywhere downstream and is attempted rather than dropped,
+ * so an unreachable platform store costs a diagnostic, never a device.
+ */
+async function currentKeyHash() {
+  try {
+    return (await pushService.currentKeyFingerprint()) || null;
+  } catch {
+    /* @silent:storage — the platform settings store is unreachable. */
+    return null;
+  }
+}
+
 async function subscribePush(client, actor, { subscription, userAgent }) {
   const s = subscription || {};
   const keys = s.keys || {};
@@ -571,6 +587,13 @@ async function subscribePush(client, actor, { subscription, userAgent }) {
   }
   await repo.savePushSubscription(client, actor.user_id, {
     endpoint: s.endpoint, p256dh: keys.p256dh, auth: keys.auth, userAgent,
+    // Which key this browser subscribed with. A subscription outlives the key
+    // it was minted for only in the sense that the ROW does — the endpoint
+    // stops accepting our signature the moment the deploy's VAPID pair is
+    // rotated, and answers 403 rather than 410, which is how that outage
+    // stayed invisible. Recording the fingerprint is what lets a later send
+    // recognise it without having to be told by a push service.
+    vapidKeyHash: await currentKeyHash(),
   });
 
   // This user has a working device again, so any standing "you went quiet"
@@ -618,6 +641,11 @@ async function rotatePush(client, { rotationToken, subscription }) {
   const moved = await repo.rotatePushSubscription(client, {
     tokenHash: hashRotationToken(rotationToken),
     endpoint: s.endpoint, p256dh: keys.p256dh, auth: keys.auth,
+    // A browser-initiated rotation re-subscribes with the SAME application
+    // server key it already held (push-handler.js reads it off the old
+    // subscription), so the fingerprint is unchanged — but recording the
+    // current one keeps a pre-12770 row from staying blank for ever.
+    vapidKeyHash: await currentKeyHash(),
   });
   // Deliberately the same answer for an unknown token, a spent one, and a
   // deleted subscription: this endpoint is unauthenticated, and distinguishing
@@ -641,9 +669,90 @@ async function rotatePush(client, { rotationToken, subscription }) {
   return { rotated: true, rotation_token };
 }
 
-/** How many devices the caller has registered — 0 means push reaches nobody. */
+/**
+ * What the server can actually see of this user's devices.
+ *
+ * `devices` (a bare count) is the original contract and the client's
+ * `countRegisteredDevices` still reads exactly that, so it stays first and
+ * unchanged. The rest is what the count could never say: a device can be
+ * registered and unreachable, and until now the only surface that reported
+ * push at all counted rows — so "1 device" was printed with equal confidence
+ * whether it was receiving everything or nothing.
+ *
+ * `superseded` is the count of devices holding a subscription for a VAPID key
+ * this deployment no longer signs with. It should almost always be 0: the send
+ * path drops those as it finds them. Non-zero here means the keypair was
+ * rotated and nobody has been sent anything since.
+ */
 async function pushDevices(client, actor) {
-  return { devices: await repo.countPushSubscriptions(client, actor.user_id) };
+  const devices = await repo.countPushSubscriptions(client, actor.user_id);
+  let rows = [];
+  try {
+    rows = await repo.listPushSubscriptions(client, actor.user_id);
+  } catch {
+    /* @silent:storage — 12770 not applied yet; the count above still answers
+       the question the client has always asked. */
+    return { devices, configured: Boolean(await pushService.getPublicKey()), detail: null };
+  }
+  const activeHash = await pushService.currentKeyFingerprint().catch(() => null);
+  return {
+    devices,
+    configured: Boolean(activeHash),
+    superseded: activeHash
+      ? rows.filter((r) => r.vapid_key_hash && r.vapid_key_hash !== activeHash).length
+      : 0,
+    detail: rows.map((r) => ({
+      // Never the endpoint itself — it is a capability URL (see 12752).
+      push_service: endpointHost(r.endpoint),
+      user_agent: r.user_agent,
+      registered_at: r.created_at,
+      last_delivered_at: r.last_used_at,
+      last_failed_at: r.last_failed_at,
+      last_error: r.last_error,
+      superseded_key: Boolean(activeHash && r.vapid_key_hash && r.vapid_key_hash !== activeHash),
+    })),
+  };
+}
+
+function endpointHost(endpoint) {
+  try {
+    return new URL(endpoint).host;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Send a real push to the caller's own devices and report what happened.
+ *
+ * ── WHY THIS IS A PRODUCT FEATURE AND NOT A SCRIPT ──────────────────────────
+ *
+ * Every failure in this path is silent by design, and correctly so: a
+ * notification must never be able to fail the business operation that raised
+ * it. The cost of that is a chain — VAPID keypair, subscription row, key still
+ * current, push service, service worker, OS — where a break anywhere looks
+ * from the outside exactly like "nothing happened", and the person who needs
+ * to know is a tenant admin with no access to a log.
+ *
+ * This runs the SAME `sendToUser` the notification path runs, so a pass here
+ * means alerts will land, and a failure names the link that is broken instead
+ * of leaving somebody to infer it from silence.
+ */
+async function sendPushTest(client, actor) {
+  const result = await pushService.sendToUser(client, {
+    user_id: actor.user_id,
+    title: "Push notifications are working",
+    body: "This is a test from Praxis LS. If you can read it on your phone, alerts will reach you here.",
+    url: "/settings/notifications",
+    urgency: "high",
+  });
+  return {
+    ...result,
+    ok: (result.sent || 0) > 0,
+    // The count is what the Settings panel shows next to the result, and after
+    // a test it is the POST-prune number — the honest one.
+    devices: await repo.countPushSubscriptions(client, actor.user_id).catch(() => null),
+  };
 }
 
 async function unsubscribePush(client, actor, { endpoint }) {
@@ -655,5 +764,5 @@ module.exports = {
   DEDUPE_MS, DEDUPE_TTL_S, shouldDedupe, claimDedupe, recentDedupe,
   notifyMany, deliverOutbound, resolveTenantMeta,
   mine, notify, listCategories, unreadCount, markRead, markAllRead, getPreferences, setPreferences,
-  pushPublicKey, subscribePush, unsubscribePush, rotatePush, pushDevices,
+  pushPublicKey, subscribePush, unsubscribePush, rotatePush, pushDevices, sendPushTest,
 };

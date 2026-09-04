@@ -14,11 +14,16 @@
  * THE ACTION→COLUMN MAP IS THE SHARP EDGE
  *
  * `edit` maps to `can_update`, `view` to `can_read`, and — deliberately —
- * `export` to `can_read` and `publish` to `can_update`, because the permission
- * table has no dedicated columns for those. Every one of those pairings is
- * asserted here. A refactor that "tidies" the map by dropping an alias turns a
- * gated export route into an ungated one, and nothing else in the codebase
- * would notice.
+ * `publish` to `can_update`, because the permission table still has no
+ * `can_publish`. Every pairing is asserted here. A refactor that "tidies" the
+ * map by dropping an alias turns a gated route into an ungated one, and nothing
+ * else in the codebase would notice.
+ *
+ * 12771 gave `export`, `validate` and `disburse` real columns and they are
+ * asserted against those: `export` is a right over DATA that does not follow
+ * from read, and validate/disburse are the two decisions maker-checker most
+ * wants apart from "approve". Before that, all three resolved to a broader
+ * column, so the map is now STRICTER than it was, never looser.
  *
  * `action-authz.js` (SEC H1) duplicates this map for the AI path. Both are
  * asserted against the same expectations below, so the two cannot drift into
@@ -158,8 +163,11 @@ describe("RBAC enforcement (TC-C3)", () => {
       ["update", "can_update"],
       ["delete", "can_delete"],
       ["approve", "can_approve"],
-      // Deliberate aliases: the permission table has no can_export/can_publish.
-      ["export", "can_read"],
+      // 12771 — their own columns now.
+      ["export", "can_export"],
+      ["validate", "can_validate"],
+      ["disburse", "can_disburse"],
+      // Still an alias: the permission table has no can_publish.
       ["publish", "can_update"],
     ];
 

@@ -308,7 +308,7 @@ describe("the map's own semantics", () => {
     // Three plottable legs across two files: two sea/land on the sea file, one air.
     expect(
       await screen.findByRole("img", {
-        name: /1 sea, 1 road and 1 air legs across 2 operation files/,
+        name: /1 sea, 1 road and 1 air legs across 2 operations files/,
       }),
     ).toBeInTheDocument();
   });
@@ -610,7 +610,7 @@ describe("meeting view", () => {
       await screen.findByRole("button", { name: /meeting view/i }),
     );
     expect(
-      await screen.findByText("All open operation files"),
+      await screen.findByText("All open operations files"),
     ).toBeInTheDocument();
   });
 

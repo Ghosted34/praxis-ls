@@ -321,7 +321,7 @@ export const StatusAndData = () => (
     <Row label="KpiRow — the slim strip above a list screen">
       <div className="w-full">
         <KpiRow>
-          <KpiTile label="Open dossiers" value="42" />
+          <KpiTile label="Open files" value="42" />
           <KpiTile label="In transit" value="17" tone="info" />
           <KpiTile label="Delayed" value="3" tone="warn" />
         </KpiRow>
@@ -495,7 +495,7 @@ export const TabsStory = () => {
     <Tabs
       value={tab}
       onValueChange={setTab}
-      label="Dossier sections"
+      label="Operations file sections"
       tabs={[
         {
           value: "milestones",

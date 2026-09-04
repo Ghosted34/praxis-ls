@@ -9,4 +9,4 @@ const UNLOCK_EVENT = {
   DENY_UNLOCK: "costing.unlock_denied",
 };
 const unlockEvent = (action) => UNLOCK_EVENT[action] || statusChange(action);
-module.exports = { MODULE: "MOD-46", CREATED: "costing.created", APPROVED: "costing.approved", statusChange, UNLOCK_EVENT, unlockEvent };
+module.exports = { MODULE: "MOD-46", CREATED: "costing.created", UPDATED: "costing.updated", APPROVED: "costing.approved", statusChange, UNLOCK_EVENT, unlockEvent };

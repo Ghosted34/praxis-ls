@@ -366,7 +366,7 @@ const NOUN_ARTICLE: Record<string, string> = {
   permission: "a permission",
   app_user: "a user",
   user: "a user",
-  dossier: "an operation file",
+  dossier: "an operations file",
   vehicle: "a vehicle",
   driver: "a driver",
   journal_entry: "a journal entry",

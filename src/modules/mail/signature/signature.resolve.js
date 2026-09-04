@@ -182,6 +182,10 @@ function resolve(input = {}, lang = "en") {
     show_motto_bar: layout.show_motto_bar !== false && Boolean(motto),
     show_legal: Boolean(layout.show_legal) && Boolean(legalLine),
     person: {
+      // Carried for the same reason `entity_id` is, one field up: a gap in the
+      // person's OWN record ("no job title") has to link to that person's
+      // dossier, and `/hr/employees` without it is a list of everyone.
+      employee_id: employee.employee_id || null,
       full_name: fullName,
       job_title: jobTitle,
       department,
@@ -198,6 +202,11 @@ function resolve(input = {}, lang = "en") {
       contact_line: contactLine || null,
     },
     company: {
+      // The `entity_address` row the street line and P.O. Box were read from,
+      // so a gap in either can open THAT row's modal rather than the tab it
+      // sits on. Null when the entity has no address row at all — which is the
+      // case where the link means "create one" (signature.gaps).
+      address_id: entity.addr_id || null,
       legal_name: companyName,
       address_line: addressLine,
       phone: companyPhone,

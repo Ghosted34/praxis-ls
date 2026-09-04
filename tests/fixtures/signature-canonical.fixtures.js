@@ -62,4 +62,29 @@ module.exports = {
     gross_salary: 1250000.004, trial_period_months: 3,
     clauses: [{ heading: "Confidentialité" }, { heading: "Non-concurrence" }, "Clause de mobilité"],
   },
+  /*
+   * The costing worksheet. Awkward on purpose, like the rest: a per-container
+   * charge (two demurrage lines that differ ONLY by equipment, which is what
+   * `container_type` is in the payload to distinguish), a pass-through line
+   * carrying the supplier's own VAT inside its gross, a three-decimal quantity,
+   * and a rate that is not 1 — a foreign-currency sheet is the case where
+   * dropping `exchange_rate` from the hash would let the XAF value of a signed
+   * budget be rewritten without the payload changing.
+   */
+  COSTING: {
+    number: "CST-2026-0043", date: "2026-07-27", status: "SUBMITTED_FOR_APPROVAL",
+    dossier_ref: "SBX-2026-0001", currency: "USD", exchange_rate: 600.12345678,
+    party,
+    carrier: "Maersk", incoterm: "CIF", bl_mawb: "MAEU123456",
+    pol: "Antwerp", pod: "Douala", eta: "2026-08-14",
+    lines: [
+      { label: "Fret maritime", container_type: "", qty: 2.005, unit: 450000.004, tax: 19.25, is_disbursement: false, upstream_vat: null, amount: 902250.5 },
+      { label: "Surestaries", container_type: "40'DRY", qty: 1, unit: 119250, tax: null, is_disbursement: true, upstream_vat: 19250, amount: 119250 },
+      { label: "Surestaries", container_type: "20'DRY", qty: 3, unit: 59625, tax: null, is_disbursement: true, upstream_vat: 9625.004, amount: 178875 },
+    ],
+    totals: {
+      total_ht: 1200375.5, vat_total: 173683.22, total_ttc: 1374058.72,
+      disbursement_total: 298125, upstream_vat_total: 28875,
+    },
+  },
 };

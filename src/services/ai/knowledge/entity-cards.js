@@ -15,9 +15,9 @@ const BUILDERS = [
            ORDER BY d.created_at DESC LIMIT $1`,
     card: (r) => ({
       ref: `dossier:${r.ref}`,
-      title: `Operation file ${r.ref}`,
+      title: `Operations file ${r.ref}`,
       confidentiality: "normal",
-      text: `Operation file ${r.ref} for client ${r.client || "?"} — status ${r.status}, incoterm ${r.incoterm || "?"}, route ${r.pol || "?"}→${r.pod || "?"}.`,
+      text: `Operations file ${r.ref} for client ${r.client || "?"} — status ${r.status}, incoterm ${r.incoterm || "?"}, route ${r.pol || "?"}→${r.pod || "?"}.`,
     }),
   },
   {

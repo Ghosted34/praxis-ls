@@ -166,7 +166,7 @@ function NewGrnForm({
     >
       <form className="space-y-4" onSubmit={submit}>
         <Field
-          label={tr("Dossier")}
+          label={tr("Operations file")}
           hint="Optional — the operation this delivery belongs to"
         >
           <Select

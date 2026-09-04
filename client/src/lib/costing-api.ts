@@ -3,6 +3,7 @@
  * régie d'avance. Routes mirror src/modules/costing/*.
  */
 import { tenant } from "./api-client";
+import type { ShipmentDetails } from "./operations-api";
 
 /* ── Costing sheets(/costings) ── */
 /** `container_type_ref_id` (0663) records which box the charge was priced for.
@@ -23,6 +24,25 @@ export type CostingLine = {
   container_type_code?: string | null;
   container_type_en?: string | null;
   container_type_fr?: string | null;
+  /** 12766 — the sheet's order. Lines used to read by uuid and reshuffle on
+   *  every save; the server assigns this from the order lines are sent in. */
+  line_no?: number;
+  /** 12766 — the supplier's own VAT inside a débours (the 19,250 in a 119,250
+   *  Maersk demurrage invoice). 12768: now BUDGETED into the sheet's VAT and
+   *  TTC (a costing is a cash budget, not a fiscal invoice), marked (PT). Only
+   *  ever set on a disbursement line. */
+  upstream_vat_amount?: number | null;
+  /** 12768 — the rate a débours was priced at (default TVA_STD 19.25). The
+   *  amount above is derived from it; NULL means the amount was typed by hand
+   *  or the line carries no VAT. Only ever set on a disbursement line. */
+  upstream_vat_rate_percent?: number | null;
+  /** Joined for display: what the catalogue says about this charge. */
+  item_code?: string | null;
+  unit_of_measure?: string | null;
+  subcategory?: string | null;
+  tax_code?: string | null;
+  disbursement_vat_transparent?: boolean | null;
+  varies_by_equipment?: boolean | null;
 };
 export type Costing = {
   costing_id: string;
@@ -42,6 +62,12 @@ export type Costing = {
     vat_total: number;
     total_ttc: number;
     total_cost: number;
+    /** A memo, now inside vat_total (12768): the part of the VAT that is the
+     *  supplier's own on débours (PT). See CostingLine. */
+    upstream_vat_total: number;
+    /** The sheet converted at its own stored rate; the only figure any
+     *  cross-costing sum may use. */
+    total_ttc_xaf: number;
   };
   status: string;
   created_at?: string;
@@ -55,6 +81,97 @@ export type Costing = {
   unlock_reason?: string | null;
   unlock_requested_at?: string | null;
   unlocked_at?: string | null;
+  /** 12766 — totals stored on the row, so the registry can show money without
+   *  fetching every line of every sheet. `total`/`total_cost` above never
+   *  existed as columns, which is why the registry's Total column was blank. */
+  total_ht?: number | null;
+  total_vat?: number | null;
+  total_ttc?: number | null;
+  total_ttc_xaf?: number | null;
+  /** 12766 — who actually did it, and when. `validator_id` is who the sheet was
+   *  addressed TO; `validated_by` is who validated it, and they differ whenever
+   *  somebody stands in. */
+  validated_by?: string | null;
+  validated_at?: string | null;
+  approver_id?: string | null;
+  approved_at?: string | null;
+  locked_at?: string | null;
+  /** Joined by the registry query for the list columns. */
+  dossier_ref?: string | null;
+  client_name?: string | null;
+  service_type_key?: string | null;
+  service_name_en?: string | null;
+  service_name_fr?: string | null;
+  /** 12766 — what moved since this sheet was last approved. Present only on a
+   *  sheet approved before and since changed, which is exactly when somebody is
+   *  about to be asked to approve it again. */
+  amendment?: CostingAmendment | null;
+  /** The operations file this sheet is costing. The worksheet renders from the
+   *  RESPONSE (FRONTEND_GUIDE §3.11), because a sheet opened from a pasted link
+   *  has a uuid and nothing else. Present on GET /costings/:id. */
+  file?: CostingFile | null;
+  /** The file's equipment, one entry per container type with its count — the
+   *  same rows marks & numbers is generated from. */
+  containers?: {
+    container_type_ref_id: string;
+    qty: number;
+    container_type_code?: string | null;
+    container_type_en?: string | null;
+    container_type_fr?: string | null;
+  }[];
+  /** The shipment facts, frozen if the sheet was approved and live if it is
+   *  still being worked on — a pricer prices the SHIPMENT, not a list of codes. */
+  shipment_details?: ShipmentDetails | null;
+  /** Which of the two was used. A document that cannot tell you whether it is
+   *  current or historic is how the legacy reprint problem went unnoticed. */
+  shipment_details_source?: "SNAPSHOT" | "LIVE" | null;
+};
+
+/** The file a costing belongs to, as the sheet's header needs it. */
+export type CostingFile = {
+  dossier_id: string;
+  ref: string;
+  client_name?: string | null;
+  service_type_id?: string | null;
+  service_type_key?: string | null;
+  service_name_en?: string | null;
+  service_name_fr?: string | null;
+  rate_provider_id?: string | null;
+  rate_provider_name?: string | null;
+};
+
+/** One line in the amendment block, as the re-approver reads it. */
+export type CostingAmendmentLine = {
+  key: string;
+  dictionary_item_id?: string | null;
+  container_type_ref_id?: string | null;
+  label: string;
+  qty: number;
+  unit_cost: number;
+  is_disbursement: boolean;
+  amount: number;
+  delta: number;
+  was_qty?: number;
+  was_unit_cost?: number;
+  was_amount?: number;
+};
+
+/**
+ * The diff against the last approval. Unchanged lines are COUNTED, not listed —
+ * the block's value is that an approver reads three rows rather than fourteen.
+ */
+export type CostingAmendment = {
+  added: CostingAmendmentLine[];
+  changed: CostingAmendmentLine[];
+  removed: CostingAmendmentLine[];
+  unchanged_count: number;
+  before_ht: number;
+  after_ht: number;
+  delta_ht: number;
+  delta_percent: number | null;
+  has_changes: boolean;
+  since_revision: number;
+  approved_at: string;
 };
 export type CostingInput = {
   dossier_id: string;
@@ -64,7 +181,126 @@ export type CostingInput = {
   validator_id?: string | null;
   lines?: CostingLine[];
 };
-export const listCostings = () => tenant<Costing[]>("/costings");
+/** Registry filter (12766) — mirrors legacy's list.php: a text search across
+ *  reference / file / client, a status, a currency, and a date window. */
+export type CostingListQuery = {
+  dossier_id?: string;
+  status?: string;
+  currency?: string;
+  q?: string;
+  from?: string;
+  to?: string;
+  limit?: number;
+  offset?: number;
+};
+const qs = (query: Record<string, unknown> = {}) => {
+  const p = new URLSearchParams();
+  for (const [k, v] of Object.entries(query)) {
+    if (v !== undefined && v !== null && v !== "") p.set(k, String(v));
+  }
+  const s = p.toString();
+  return s ? `?${s}` : "";
+};
+export const listCostings = (query: CostingListQuery = {}) =>
+  tenant<Costing[]>(`/costings${qs(query as Record<string, unknown>)}`);
+
+/** Counts by status and total TTC in XAF, over the SAME filter the page used —
+ *  so "Approved: 3" means three matching sheets, not three on this page. */
+export type CostingKpis = {
+  total: number;
+  draft: number;
+  to_validate: number;
+  to_approve: number;
+  approved: number;
+  unlock_requested: number;
+  total_ttc_xaf: number;
+};
+export const costingKpis = (query: CostingListQuery = {}) =>
+  tenant<CostingKpis>(`/costings/kpis${qs(query as Record<string, unknown>)}`);
+
+/* ── Suggest (12766) ── */
+
+/** One proposed line. Nothing is saved until the person picks it. */
+export type SuggestedLine = {
+  dictionary_item_id: string;
+  item_code: string;
+  label: string;
+  label_fr?: string | null;
+  subcategory?: string | null;
+  unit_of_measure?: string | null;
+  is_disbursement: boolean;
+  is_billable: boolean;
+  disbursement_vat_transparent: boolean;
+  tax_code_id: string | null;
+  tax_code: string | null;
+  tax_rate_percent: number | null;
+  tier: "BASIC" | "ADVANCED" | "FULL";
+  sort_order: number;
+  container_type_ref_id: string | null;
+  container_type_code: string | null;
+  container_type_label: string | null;
+  /** null = nothing on the file can tell us (a per-day charge); the person types it. */
+  qty: number | null;
+  qty_basis: "CONTAINERS" | "GROSS_WEIGHT" | "VOLUME" | "PACKAGES" | "DEFAULT" | "TYPED";
+  needs_equipment?: boolean;
+  /** null = no rate on file and no catalogue default — badged "needs a price". */
+  unit_cost: number | null;
+  currency: string | null;
+  price_source: "EXPENSE_RATE" | "CATALOGUE_DEFAULT" | "NONE";
+  price_note: string | null;
+  expense_rate_id: string | null;
+  effective_from: string | null;
+  rate_scope: "CARRIER_AND_TYPE" | "CARRIER" | "TYPE" | "DEFAULT" | null;
+};
+
+/**
+ * The proposal, banded by tier.
+ *
+ * Banded rather than flat because the tiers NEST (BASIC ⊆ ADVANCED ⊆ FULL):
+ * three tabs would show the same charge three times.
+ */
+export type CostingSuggestion = {
+  file: {
+    dossier_id: string;
+    ref: string;
+    client_name: string | null;
+    service_type_id: string;
+    service_type_key: string | null;
+    service_name_en: string | null;
+    service_name_fr: string | null;
+    rate_provider_id: string | null;
+    rate_provider_name: string | null;
+    containers: { container_type_ref_id: string; code: string; label: string; qty: number }[];
+  };
+  tier: "BASIC" | "ADVANCED" | "FULL";
+  bands: { tier: "BASIC" | "ADVANCED" | "FULL"; lines: SuggestedLine[] }[];
+  counts: {
+    total: number;
+    priced: number;
+    needs_price: number;
+    needs_quantity: number;
+    disbursements: number;
+  };
+  defaults: {
+    tax_code_id: string | null;
+    tax_code: string | null;
+    tax_rate_percent: number | null;
+    /** Surfaced so the wizard can say WHY no VAT is offered rather than looking
+     *  broken on a franchise-regime entity. */
+    vat_regime: string | null;
+    priced_on: string;
+  };
+};
+
+export const suggestCostingLines = (
+  dossierId: string,
+  tier: "BASIC" | "ADVANCED" | "FULL" = "FULL",
+) => tenant<CostingSuggestion>(`/costings/suggest${qs({ dossier_id: dossierId, tier })}`);
+
+/** DRAFT-only, server-side. The screen has never called this; the worksheet
+ *  in PR 2 does. */
+export const updateCosting = (id: string, body: Partial<CostingInput>) =>
+  tenant<Costing>(`/costings/${id}`, { method: "PATCH", body });
 export const getCosting = (id: string) => tenant<Costing>(`/costings/${id}`);
 export const createCosting = (body: CostingInput) =>
   tenant<Costing>("/costings", { method: "POST", body });
@@ -84,9 +320,11 @@ export const setCostingStatus = (id: string, to: CostingAction) =>
  * around that guard rather than through it.
  *
  * `reason` is required for REQUEST_UNLOCK and ignored for the two decisions.
- * UNLOCK is refused (422 INVOICE_ISSUED) when the dossier's final invoice has
- * left DRAFT — reopening a costing under a posted receivable would move the
- * priced basis while booked revenue stayed put.
+ *
+ * No invoice status blocks it (12766). A costing is a BUDGET, and what the
+ * client was billed says nothing about whether what the file cost us is still
+ * correctly stated — a carrier detention charge arriving a week after the
+ * invoice has to land on the file's budget before it can be paid and re-billed.
  */
 export type UnlockAction = "REQUEST_UNLOCK" | "UNLOCK" | "DENY_UNLOCK";
 export const unlockCosting = (
@@ -338,23 +576,109 @@ export const rejectReconSuggestion = (id: string, sid: string) =>
     method: "POST",
   });
 
+/* ── The budget a costing authorises (/costings/:id/budget) ── */
+
+/**
+ * One budget line and what is left of it (12771).
+ *
+ * `remaining` MAY BE NEGATIVE: a costing line amended below what is already
+ * committed reads over-consumed rather than clamping at zero, because the clamp
+ * would hide the one row somebody has to act on.
+ *
+ * `disbursed` is APPORTIONED — instalments are paid against the request, not
+ * its lines — so it is a display figure and nothing is gated on it.
+ */
+export type BudgetLine = {
+  costing_line_id: string;
+  line_no: number;
+  label: string;
+  item_code?: string | null;
+  dictionary_item_id?: string | null;
+  container_type_code?: string | null;
+  is_disbursement?: boolean;
+  qty: number;
+  unit_cost: number;
+  net: number;
+  vat: number;
+  budget: number;
+  committed: number;
+  pending: number;
+  disbursed: number;
+  remaining: number;
+  over_committed: boolean;
+};
+
+export type CostingBudget = {
+  costing_id: string;
+  doc_number?: string | null;
+  dossier_id?: string | null;
+  status: string;
+  revision: number;
+  currency: string;
+  exchange_rate_to_xaf: number;
+  /** APPROVED_LOCKED. The gate a cash request applies, answered here so the
+   *  screen can explain itself before the user meets a 403. */
+  can_fund: boolean;
+  lines: BudgetLine[];
+  totals: {
+    budget: number;
+    committed: number;
+    pending: number;
+    disbursed: number;
+    remaining: number;
+    over_committed_lines: number;
+  };
+};
+
+/**
+ * The budget ledger for one costing.
+ *
+ * `for_cash_request` leaves THAT request out of every total — the difference
+ * between "how much was available to me" and "how much is left now". Without
+ * it an approved request is measured against a balance it is itself inside.
+ */
+export const getCostingBudget = (costingId: string, forCashRequest?: string) =>
+  tenant<CostingBudget>(
+    `/costings/${costingId}/budget${forCashRequest ? `?for_cash_request=${forCashRequest}` : ""}`,
+  );
+
 /* ── Cash requests(/cash-requests) ── */
 export type CashLine = {
+  /** 12771 — round-tripped so an edit is unambiguous even when the label and
+   *  the amount both change. Absent means a new line. */
+  cash_request_line_id?: string;
+  /** 12771 — the BUDGET LINE this claim draws down. Required on every line of
+   *  an OPS request before it can be submitted: no money leaves without a
+   *  costing. NULL on an overhead request, which has no operations file. */
+  costing_line_id?: string | null;
   dictionary_item_id?: string | null;
   label?: string;
+  /** 12771 — the legacy line shape, back. `budget_amount` alone still works
+   *  and is read as 1 × that amount. */
+  qty?: number;
+  unit_cost?: number;
   budget_amount?: number;
   spent_amount?: number;
+  /** Set only by CLOSE_BALANCE: this line's share of what was actually paid. */
+  settled_amount?: number | null;
   is_disbursement?: boolean;
+  source?: "IMPORTED" | "MANUAL";
   /** §3.5 — legacy per-line VAT % and "Just. Req?" (10746). */
   vat_percent?: number | null;
   justification_required?: boolean;
 };
 export type DisbursementMethod = "CASH" | "BANK" | "CHEQUE" | "MOMO";
+export type CashRequestStatus =
+  | "DRAFT" | "SUBMITTED" | "VALIDATED" | "APPROVED"
+  | "PARTIALLY_DISBURSED" | "DISBURSED" | "CLOSED_SHORT"
+  | "JUSTIFIED" | "REJECTED";
+
 export type CashRequest = {
   cash_request_id: string;
   ref?: string | null;
   doc_number?: string | null;
   dossier_id?: string | null;
+  costing_id?: string | null;
   status: string;
   total_budget?: number | null;
   /** Σ of the payment rows (10719). Derived server-side, never set by hand. */
@@ -370,6 +694,63 @@ export type CashRequest = {
   disbursement_details?: Record<string, string> | null;
   /** §3.5 — the voucher footer, derived server-side on GET /:id. */
   totals?: { subtotal: number; vat_total: number; total_payable: number };
+  /** 12771 — the money unit. An OPS request inherits the costing's. */
+  currency?: string | null;
+  exchange_rate_to_xaf?: number | null;
+  amount_xaf?: number | null;
+  /** 12771 — attribution the row never carried. */
+  approved_at?: string | null;
+  rejected_at?: string | null;
+  rejection_reason?: string | null;
+  over_budget_reason?: string | null;
+  settled_at?: string | null;
+  settlement_reason?: string | null;
+  costing_revision?: number | null;
+  created_at?: string;
+};
+
+/**
+ * What a validator and an approver read before they act (12771, owner Q20).
+ *
+ * Finance validates against the budget, so "is this file budgeted for, and is
+ * this request inside it?" has to be answerable on the screen the decision is
+ * taken on. Null on an overhead request, which has no costing — and null if the
+ * ledger could not be read, because an unreadable budget must not make the
+ * request unreadable.
+ */
+export type BudgetControl = {
+  costing_id: string | null;
+  costing_doc_number: string | null;
+  costing_status: string | null;
+  can_fund?: boolean;
+  currency?: string;
+  budget_total: number;
+  committed_elsewhere: number;
+  remaining_before: number;
+  claimed_here: number;
+  remaining_after: number;
+  unbudgeted_line_count: number;
+  breaches: {
+    costing_line_id: string;
+    label: string | null;
+    claim: number;
+    remaining: number;
+    excess: number;
+  }[];
+  is_over_budget: boolean;
+};
+
+/** One instalment. The receipt is per tranche: each is handed over separately. */
+export type CashPayment = {
+  cash_request_payment_id: string;
+  amount: number;
+  paid_on: string;
+  memo?: string | null;
+  regie_advance_id?: string | null;
+  treasury_account_id?: string | null;
+  received_by?: string | null;
+  received_at?: string | null;
+  received_ack_kind?: "IN_APP" | "WET_SCAN" | null;
   created_at?: string;
 };
 export type CashRequestInput = {
@@ -383,6 +764,10 @@ export type CashRequestInput = {
   remarks?: string;
   disbursement_method?: DisbursementMethod;
   disbursement_details?: Record<string, string>;
+  /** 12771 — an OPS request INHERITS the costing's currency; these are for an
+   *  overhead request, which has no costing to inherit from. */
+  currency?: string;
+  exchange_rate_to_xaf?: number;
   lines?: CashLine[];
 };
 export const listCashRequests = () => tenant<CashRequest[]>("/cash-requests");
@@ -394,10 +779,25 @@ export const importCostingLines = (id: string) =>
     method: "POST",
     body: {},
   });
+/**
+ * Advance the request one step. 12771 adds two arguments and one destination:
+ *
+ *   `reason`             REQUIRED to reject — a rejection with no explanation
+ *                        is the one thing the requester cannot act on.
+ *   `over_budget_reason` REQUIRED to submit a claim over what the budget has
+ *                        left. It may still not be APPROVED: the reason tells
+ *                        the approver to go and amend the costing.
+ *   `"DRAFT"`            reopens a rejected request, keeping its reference.
+ */
 export const transitionCashRequest = (
   id: string,
-  to: "SUBMITTED" | "VALIDATED" | "APPROVED" | "REJECTED",
-  extra: { entity_id?: string; date?: string } = {},
+  to: "SUBMITTED" | "VALIDATED" | "APPROVED" | "REJECTED" | "DRAFT",
+  extra: {
+    entity_id?: string;
+    date?: string;
+    reason?: string;
+    over_budget_reason?: string;
+  } = {},
 ) =>
   tenant<CashRequest>(`/cash-requests/${id}/transition`, {
     method: "POST",
@@ -409,12 +809,13 @@ export const getCashRequest = (id: string) =>
   tenant<CashRequestDetail>(`/cash-requests/${id}`);
 
 export type CashRequestDetail = CashRequest & {
-  costing_id?: string | null;
   requested_by?: string | null;
   regie_advance_id?: string | null;
   amount?: number | null;
   lines?: CashLine[];
-  payments?: unknown[];
+  payments?: CashPayment[];
+  /** 12771 — the budgetary control block. Null for an overhead request. */
+  budget_control?: BudgetControl | null;
 };
 
 /**
@@ -455,6 +856,54 @@ export const disburseCashRequest = (
  * remainder is still open the server refuses with ADVANCE_NOT_CLEARED — the
  * holder returns the unspent cash on the advance itself first.
  */
+/**
+ * Settle a part-paid request at what actually moved (12771, owner Q15).
+ *
+ * Releases the unpaid commitment back to the file's budget — without it a
+ * request holds budget for ever against cash that will never move. A decision,
+ * so the server demands a written reason.
+ */
+export const closeCashRequestBalance = (id: string, reason: string) =>
+  tenant<CashRequest & { paid: number; released_to_budget: number }>(
+    `/cash-requests/${id}/close-balance`,
+    { method: "POST", body: { reason } },
+  );
+
+/**
+ * The régie holder acknowledging that they took ONE instalment — the third
+ * signature on the voucher (owner Q13).
+ *
+ * Per payment, not per request: each tranche is handed over separately, and the
+ * legacy's single `disbursed_time` on the header is the shape that cannot say
+ * who took the second one.
+ */
+export const acknowledgeCashReceipt = (
+  id: string,
+  paymentId: string,
+  body: { ack_kind?: "IN_APP" | "WET_SCAN"; received_by?: string | null } = {},
+) =>
+  tenant<CashPayment>(`/cash-requests/${id}/payments/${paymentId}/receipt`, {
+    method: "POST",
+    body,
+  });
+
+/** Edit a DRAFT request. The route has existed since the module shipped and had
+ *  no caller at all until the worksheet (12771). */
+export const updateCashRequest = (
+  id: string,
+  body: Partial<CashRequestInput> & { lines?: CashLine[] },
+) => tenant<CashRequestDetail>(`/cash-requests/${id}`, { method: "PATCH", body });
+
+/** The KPI strip, over the same filter the page used — so "Approved: 3" means
+ *  three matching requests, not three on this page. */
+export const cashRequestKpis = () =>
+  tenant<{
+    total: number; draft: number; to_validate: number; to_approve: number;
+    to_disburse: number; partially_disbursed: number; disbursed: number;
+    justified: number; rejected: number;
+    disbursed_total_xaf: number; outstanding_xaf: number;
+  }>("/cash-requests/kpis");
+
 export const justifyCashRequest = (
   id: string,
   body: { lines: CashLine[]; entity_id?: string; entry_date?: string },

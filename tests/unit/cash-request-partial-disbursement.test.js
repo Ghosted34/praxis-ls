@@ -108,9 +108,22 @@ describe("the lifecycle admits instalments", () => {
     expectCode(() => assertTransition("APPROVED", "JUSTIFIED"), "BAD_STATE");
   });
 
-  test("terminal states stay terminal", () => {
+  test("JUSTIFIED is the one terminal state", () => {
     expect(NEXT.JUSTIFIED).toEqual([]);
-    expect(NEXT.REJECTED).toEqual([]);
+  });
+
+  /*
+   * 12771 changed this deliberately. REJECTED used to be terminal, which is
+   * WORSE than the legacy it replaced: `pr_save` accepted DRAFT and REJECTED,
+   * and `pr_transition` SUBMIT accepted `from ∈ {DRAFT, REJECTED}`, so a
+   * mistyped MoMo number cost a whole document and its reference. The one way
+   * out is back to the author's desk — never forward.
+   */
+  test("a rejected request reopens to DRAFT, and to nothing else", () => {
+    expect(NEXT.REJECTED).toEqual(["DRAFT"]);
+    expect(assertTransition("REJECTED", "DRAFT")).toBe(true);
+    expectCode(() => assertTransition("REJECTED", "SUBMITTED"), "BAD_STATE");
+    expectCode(() => assertTransition("REJECTED", "APPROVED"), "BAD_STATE");
   });
 });
 

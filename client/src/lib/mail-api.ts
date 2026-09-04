@@ -1082,6 +1082,34 @@ export const updateSignatureTemplate = (
     body: patch,
   });
 
+export type SignatureMotto = {
+  signature_template_id: string;
+  name: string;
+  /** Empty string means "no motto", which is a value, not a missing record. */
+  en: string;
+  fr: string;
+};
+
+/**
+ * The motto/slogan on one template, per language.
+ *
+ * A pair of its own rather than a slice of the template PATCH, because the
+ * motto lives inside the `copy_en` / `copy_fr` blobs and writing it through
+ * those means read-modify-write — get it wrong and the confidentiality notice
+ * in the same object is erased. The server does the merge; this sends strings.
+ */
+export const getSignatureMotto = (templateId: string) =>
+  tenant<SignatureMotto>(`/mail/signature/templates/${templateId}/motto`);
+
+export const saveSignatureMotto = (
+  templateId: string,
+  body: { en?: string; fr?: string },
+) =>
+  tenant<SignatureMotto>(`/mail/signature/templates/${templateId}/motto`, {
+    method: "POST",
+    body,
+  });
+
 export async function downloadSignaturePng(opts: { language?: string; scale?: 1 | 2 | 3 } = {}) {
   const q = new URLSearchParams();
   if (opts.language) q.set("lang", opts.language);
@@ -1098,9 +1126,18 @@ export type SignatureGap = {
   owner: string;
   hint: string;
   scope: "self" | "hr" | "entity" | "brand" | "template";
-  /** null when the caller has no grant on the surface that owns the field. */
+  /**
+   * Null for either of two reasons, and they mean different things: the caller
+   * has no grant on the surface that owns the field, OR the server could not
+   * build a link that lands on the control (see `precise`). A link is never
+   * degraded to "somewhere near it".
+   */
   href: string | null;
   actionable: boolean;
+  /** The path in words — "Master data → Corporate entities → …". Always set. */
+  where: string | null;
+  /** True when `href` lands on the field itself. False means there is no href. */
+  precise: boolean;
 };
 
 export type SignatureCard = {
@@ -1165,6 +1202,30 @@ export async function downloadSignatureBatch(body: {
   const { tenantDownloadPost } = await import("./api-client");
   await tenantDownloadPost("/mail/signature/batch", body, `signatures-${stamp}.zip`);
 }
+
+export type SignatureDiagnosticStep = {
+  step: string;
+  ok: boolean;
+  why?: string;
+  [detail: string]: unknown;
+};
+
+export type SignatureDiagnostics = {
+  ok: boolean;
+  /** The step to fix. The ones after it are usually consequences. */
+  first_failure: string | null;
+  renderer_version: number;
+  steps: SignatureDiagnosticStep[];
+};
+
+/**
+ * Run the card-delivery chain and report the first broken link. MOD-70 `view`.
+ *
+ * `write: true` also stores one throwaway object, which is the only way to
+ * prove the storage leg rather than infer it.
+ */
+export const diagnoseSignature = (write = false) =>
+  tenant<SignatureDiagnostics>(`/mail/signature/diagnose${write ? "?write=true" : ""}`);
 
 export type DomainHealthRow = {
   domain_health_check_id: string;

@@ -672,7 +672,7 @@ function Landing({
             {first ? `, ${first}` : ""}
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Ask about anything on your desk — receivables, operation files,
+            Ask about anything on your desk — receivables, operations files,
             costing, procurement.
           </p>
         </div>

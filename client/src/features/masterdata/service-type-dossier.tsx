@@ -120,7 +120,7 @@ const BASE_TABS = [
   "Details",
   "Assumptions",
   "Dictionary",
-  "Dossiers",
+  "Files",
   "Commercial",
   "Automation",
 ] as const;
@@ -200,7 +200,7 @@ function ReadinessBanner({
           <div className="flex flex-wrap items-center gap-2 text-sm text-foreground">
             <Pill tone="warn">No milestone template</Pill>
             <span className="text-muted-foreground">
-              New dossiers of this service type ship with no milestone chain
+              New files of this service type ship with no milestone chain
               until a template is published.
             </span>
           </div>
@@ -222,7 +222,7 @@ function ReadinessBanner({
       ok: readiness.has_dictionary_line,
       label: "At least one financial dictionary line scoped to this service",
     },
-    { ok: readiness.ever_used, label: "Ever used on a dossier" },
+    { ok: readiness.ever_used, label: "Ever used on a file" },
     // `ever_billed` is null when the caller can't see finance — omit it then
     // rather than imply "no revenue" from a masked view.
     ...(readiness.ever_billed === null
@@ -336,9 +336,9 @@ function MilestonesTab({
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="micro">
-          Every dossier of this service type is stamped with the stages of the
+          Every file of this service type is stamped with the stages of the
           ACTIVE version at the moment it is opened. Publishing a new version
-          supersedes older ones for future dossiers only — anything already in
+          supersedes older ones for future files only — anything already in
           progress keeps the stages it was given.
         </p>
         <div className="flex gap-2">
@@ -605,7 +605,7 @@ function DictionaryTab({
         <p className="micro">
           Financial dictionary lines applicable to{" "}
           <span className="font-mono">{serviceKey}</span>. Costing sheets,
-          margin sims and invoices for dossiers of this type surface these first
+          margin sims and invoices for files of this type surface these first
           when picking a line.
         </p>
         <DeepLink href="/master/financial-dictionary">
@@ -731,7 +731,7 @@ function DossiersTab({
       </div>
       <MiniTable
         empty={dossiers.length === 0}
-        emptyLabel="No dossiers have ever been opened for this service type."
+        emptyLabel="No operations files have ever been opened for this service type."
         head={
           <>
             <Th>{tr("Reference")}</Th>
@@ -912,7 +912,7 @@ function CommercialTab({ d }: { d: api.ServiceTypeDossier }) {
           emptyLabel="No margin simulation has ever been filed under this service type."
           head={
             <>
-              <Th>{tr("Dossier")}</Th>
+              <Th>{tr("File")}</Th>
               <Th>{tr("Currency")}</Th>
               <Th r>{tr("Total cost")}</Th>
               <Th r>Total price</Th>
@@ -969,11 +969,11 @@ function CommercialTab({ d }: { d: api.ServiceTypeDossier }) {
           </div>
           <MiniTable
             empty={d.invoices.length === 0}
-            emptyLabel="No FINAL invoice has been raised on a dossier of this service type."
+            emptyLabel="No FINAL invoice has been raised on a file of this service type."
             head={
               <>
                 <Th>{tr("Number")}</Th>
-                <Th>{tr("Dossier")}</Th>
+                <Th>{tr("File")}</Th>
                 <Th>{tr("Client")}</Th>
                 <Th>{tr("Status")}</Th>
                 <Th>{tr("Due")}</Th>
@@ -1070,7 +1070,7 @@ function OverviewTab({
           At a glance
         </h3>
         <div className="grid grid-cols-2 gap-2">
-          <Stat label="Dossiers total" value={num(d.stats.dossiers_total)} />
+          <Stat label="Files total" value={num(d.stats.dossiers_total)} />
           <Stat
             label="Template versions"
             value={num(d.stats.template_versions)}
@@ -1096,8 +1096,8 @@ function AutomationTab({ st }: { st: api.ServiceType }) {
           Auto-instantiation
         </h3>
         <p className="text-sm text-muted-foreground">
-          When a dossier is opened with this service type, the ACTIVE milestone
-          template is stamped onto it automatically. Dossiers opened without a
+          When a file is opened with this service type, the ACTIVE milestone
+          template is stamped onto it automatically. Files opened without a
           service type (e.g. from the CRM auto-open when an opportunity is won)
           are skipped until a service type is chosen and can be back-filled from
           the Milestones page.
@@ -1136,7 +1136,7 @@ function AutomationTab({ st }: { st: api.ServiceType }) {
         </h3>
         <p className="text-sm text-muted-foreground">
           Service types ride MOD-29 (Operations file). Anyone who can manage
-          operation files can manage the service types those files use.
+          operations files can manage the service types those files use.
         </p>
         <p className="mt-2">
           <DeepLink href="/security/permissions">
@@ -1260,14 +1260,14 @@ export function ServiceTypeDossier({
       {/* KPI strip — same slim divided-row pattern as party-360. */}
       <KpiRow>
         <KpiTile
-          label="Dossiers"
+          label="Files"
           value={num(d.stats.dossiers_total)}
           hint={
             d.stats.dossiers_open + d.stats.dossiers_in_progress > 0
               ? `${d.stats.dossiers_open + d.stats.dossiers_in_progress} live`
               : undefined
           }
-          onClick={() => setTab("Dossiers")}
+          onClick={() => setTab("Files")}
         />
         <KpiTile
           label="Template"
@@ -1352,7 +1352,7 @@ export function ServiceTypeDossier({
           reload={reload}
         />
       )}
-      {tab === "Dossiers" && (
+      {tab === "Files" && (
         <DossiersTab
           dossiers={d.dossiers}
           more={d.dossiers_more}

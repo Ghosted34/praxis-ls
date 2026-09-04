@@ -1294,12 +1294,40 @@ export const instantiateMilestones = (body: {
 
 export type OverviewPerson = { user_id: string; name?: string | null } | null;
 export type DossierOverview = {
+  /**
+   * The header the 360 renders itself from — ids AND the display fields they
+   * resolve to. The page variant is reachable from a pasted link with nothing
+   * but a uuid, so this response has to be able to NAME the file on its own.
+   */
   dossier: {
     dossier_id: string;
     ref: string;
     status: string;
     client_id?: string | null;
     service_type_id?: string | null;
+    title?: string | null;
+    incoterm?: string | null;
+    bl_mawb?: string | null;
+    vessel_flight?: string | null;
+    pol?: string | null;
+    pod?: string | null;
+    eta?: string | null;
+    ata?: string | null;
+    promised_delivery_date?: string | null;
+    created_at?: string | null;
+    client_name?: string | null;
+    service_key?: string | null;
+    service_name_en?: string | null;
+    service_name_fr?: string | null;
+    /** Does this file's service type carry containers? Gates the Containers tab. */
+    captures_containers?: boolean;
+    container_detail_mode?: "GROUPED" | "PER_BOX" | null;
+    /** Boxes on the file (sum of container-line quantities) — the tab's badge. */
+    container_boxes?: number | null;
+    rate_provider_name?: string | null;
+    milestone_total?: number | null;
+    milestone_done?: number | null;
+    current_milestone?: string | null;
   };
   /** Lifecycle readiness — powers the "ready to complete / fully collected" prompt. */
   readiness?: {
@@ -1307,7 +1335,21 @@ export type DossierOverview = {
     fully_collected: boolean;
     ready_to_complete: boolean;
   } | null;
-  costing: { count: number; planned_cost?: number | null };
+  /** 12766 — the file's live costing, so the 360 can name it, price it and
+   *  LINK to it. It carried a count and a number before, which made the one
+   *  screen that tells you a file has a costing the one place you could not
+   *  open it. `planned_cost` is XAF-normalised at each sheet's own rate. */
+  costing: {
+    count: number;
+    planned_cost?: number | null;
+    costing_id?: string | null;
+    doc_number?: string | null;
+    status?: string | null;
+    currency?: string | null;
+    total_ht?: number | null;
+    total_vat?: number | null;
+    total_ttc?: number | null;
+  };
   costs: { actual_cost?: number | null; gl_entries: number };
   invoicing: {
     count: number;
@@ -1345,10 +1387,17 @@ export type DossierOverview = {
   /** SoD chain on the latest costing + latest locked final invoice. */
   people?: {
     costing?: {
+      costing_id?: string | null;
       doc_number?: string | null;
       status?: string | null;
       validator: OverviewPerson;
+      /** 12766 — who ACTUALLY validated, as distinct from `validator`, who the
+       *  sheet was addressed to. They differ whenever somebody stands in, and
+       *  showing only the latter credited the wrong person. */
+      validated_by?: OverviewPerson;
+      validated_at?: string | null;
       approver: OverviewPerson;
+      approved_at?: string | null;
     } | null;
     invoice?: {
       doc_number?: string | null;
@@ -1360,7 +1409,15 @@ export type DossierOverview = {
   } | null;
   milestones: Record<string, number>;
   procurement: { po_count: number; po_total?: number | null };
-  documents: { transit_orders: number; delivery_notes: number };
+  documents: {
+    transit_orders: number;
+    delivery_notes: number;
+    /** True counts — `document_rows` below is capped at 20 and cannot be counted. */
+    vault?: number;
+    invoices?: number;
+  };
+  /** Q-tickets on this file: how many, and how many still unresolved. */
+  queries?: { count: number; open: number } | null;
   document_rows?: {
     invoices?: {
       invoice_id: string;

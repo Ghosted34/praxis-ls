@@ -32,6 +32,11 @@ const grant = z
     can_update: z.boolean().optional(),
     can_delete: z.boolean().optional(),
     can_approve: z.boolean().optional(),
+    // 12771. Optional like the rest, and an OMITTED flag now means "leave it
+    // as it is" rather than "revoke it" — see permission.repo.upsertGrant.
+    can_export: z.boolean().optional(),
+    can_validate: z.boolean().optional(),
+    can_disburse: z.boolean().optional(),
   })
   // No unknown keys: a misspelled `can_aprove` would otherwise be dropped and
   // the grant written as false. On the permission matrix specifically, a

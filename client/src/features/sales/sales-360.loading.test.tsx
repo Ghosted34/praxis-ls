@@ -70,7 +70,7 @@ describe("Lead 360 · the loading state", () => {
     );
 
     // Synchronously, on the very first paint — no blank frame, no spinner.
-    expect(screen.getByRole("status", { name: /loading dossier/i })).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: /loading record/i })).toBeInTheDocument();
     expect(screen.getByText("Tema Shipping")).toBeInTheDocument();
 
     await waitFor(() =>

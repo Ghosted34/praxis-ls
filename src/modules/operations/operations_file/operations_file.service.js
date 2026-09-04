@@ -158,22 +158,61 @@ async function foldDetails(client, { data, existing = null, enforceRequired }) {
   const { details: values, ...rest } = data;
   const serviceTypeId = rest.service_type_id || (existing && existing.service_type_id);
   // Nothing to fold and no form to enforce: leave the write exactly as it was,
-  // so every caller that predates the SSDC keeps working untouched.
-  if (values === undefined && !enforceRequired) return rest;
-  const { patch } = await details.applyValues(client, {
-    serviceTypeId,
-    // On update the file keeps the version it was created under — republishing
-    // a form must not retroactively change what an open file is validated
-    // against. On create there is no pinned version yet, so the live one is used.
-    fieldSetId: existing ? existing.service_type_field_set_id : null,
-    values: values || {},
-    existingDetails: existing ? existing.details_json || {} : {},
-    enforceRequired,
-  });
-  // The explicit `rest` wins over the folded patch: a caller that set `pol`
-  // directly (the AI path, the sales→operations handoff) is not overridden by
-  // an absent detail value.
-  return { ...patch, ...rest };
+  // so every caller that predates the SSDC keeps working untouched — but the
+  // marks lock below still applies, because a direct `marks_numbers` write must
+  // not sneak past it on this path either.
+  let write;
+  if (values === undefined && !enforceRequired) {
+    write = rest;
+  } else {
+    const { patch } = await details.applyValues(client, {
+      serviceTypeId,
+      // On update the file keeps the version it was created under — republishing
+      // a form must not retroactively change what an open file is validated
+      // against. On create there is no pinned version yet, so the live one is used.
+      fieldSetId: existing ? existing.service_type_field_set_id : null,
+      values: values || {},
+      existingDetails: existing ? existing.details_json || {} : {},
+      enforceRequired,
+    });
+    // The explicit `rest` wins over the folded patch: a caller that set `pol`
+    // directly (the AI path, the sales→operations handoff) is not overridden by
+    // an absent detail value.
+    write = { ...patch, ...rest };
+  }
+
+  // MARKS & NUMBERS IS SERVER-OWNED ON A CONTAINERISED FILE. It mirrors the
+  // boxes (regenerated on every container write), so no form or API caller may
+  // set it — or its manual flag — by hand. Dropping both keys here, at the one
+  // choke point every create/update/promote passes through, is what makes that
+  // a guarantee rather than a hidden UI state: the derived value stands, and a
+  // file cannot silently drift from the equipment it is carrying. Non-equipment
+  // service types (break-bulk, whose marks are the shipper's own) keep the
+  // manual override untouched. Files already overridden are left as they are —
+  // this drops incoming writes, it does not clear a flag already set.
+  // Only consult the service type when there is actually a marks value to drop.
+  // Most writes carry none, and querying on every one would both waste a round
+  // trip and reach for a `client.query` that some callers (the re-plan path,
+  // whose stub client has no query method) never provide.
+  const marksInWrite =
+    Object.prototype.hasOwnProperty.call(write, "marks_numbers") ||
+    Object.prototype.hasOwnProperty.call(write, "marks_numbers_is_manual");
+  if (marksInWrite && (await capturesContainers(client, serviceTypeId))) {
+    delete write.marks_numbers;
+    delete write.marks_numbers_is_manual;
+  }
+  return write;
+}
+
+/** Does this service type carry containers? The marks lock hangs off this, so a
+ *  tenant that turns equipment capture on gets the lock with no code change. */
+async function capturesContainers(client, serviceTypeId) {
+  if (!serviceTypeId) return false;
+  const { rows } = await client.query(
+    "SELECT captures_containers FROM service_type WHERE service_type_id = $1",
+    [serviceTypeId],
+  );
+  return rows[0] && rows[0].captures_containers === true;
 }
 
 /**
@@ -226,7 +265,7 @@ async function createDraft(client, { data, actor = {} }) {
  */
 async function promote(client, { id, data = {}, actor = {} }) {
   const before = await repo.get(client, id);
-  if (!before) throw new AppError("NOT_FOUND", "Dossier not found", 404);
+  if (!before) throw new AppError("NOT_FOUND", "Operations file not found", 404);
   if (before.status !== "DRAFT") throw new AppError("NOT_A_DRAFT", "This file has already been opened", 422);
 
   // Enforced HERE, not at draft creation: the wizard's whole shape is that the
@@ -237,7 +276,7 @@ async function promote(client, { id, data = {}, actor = {} }) {
   let row;
   try {
     const entityId = write.entity_id || before.entity_id;
-    if (!entityId) throw new AppError("REF_REQUIRED", "entity_id is required to allocate a dossier ref", 422);
+    if (!entityId) throw new AppError("REF_REQUIRED", "entity_id is required to allocate a file reference", 422);
     // The allocator owns generate → write → retry as one step, so the reference
     // and the promoted row commit together and the unique index on `dossier.ref`
     // stays the thing that decides a collision. See operation-reference.js.
@@ -306,7 +345,7 @@ async function insertForCreate(client, { data, actor = {} }) {
     if (!gate.allowed) throw new AppError("COMPLIANCE_BLOCKED", gate.reason || "This client is hard-blocked.", 409, { blockingFlags: gate.blockingFlags });
   }
   const write = await foldDetails(client, { data, enforceRequired: true });
-  if (!write.entity_id) throw new AppError("REF_REQUIRED", "entity_id is required to allocate a dossier ref", 422);
+  if (!write.entity_id) throw new AppError("REF_REQUIRED", "entity_id is required to allocate a file reference", 422);
 
   const fields = { ...write };
   delete fields.ref;
@@ -410,7 +449,7 @@ function assertReferenceUnchanged(before, patch) {
   if (patch.ref === before.ref) return;
   throw new AppError(
     "REF_IMMUTABLE",
-    "An operation file's reference is permanent and cannot be changed",
+    "An operations file's reference is permanent and cannot be changed",
     422,
     { ref: ["already allocated as " + before.ref] },
   );
@@ -418,8 +457,8 @@ function assertReferenceUnchanged(before, patch) {
 
 async function update(client, { id, patch, actor = {} }) {
   const before = await repo.get(client, id);
-  if (!before) throw new AppError("NOT_FOUND", "Dossier not found", 404);
-  if (isTerminal(before.status)) throw new AppError("LOCKED", "A " + before.status + " dossier cannot be edited", 422);
+  if (!before) throw new AppError("NOT_FOUND", "Operations file not found", 404);
+  if (isTerminal(before.status)) throw new AppError("LOCKED", "A " + before.status + " operations file cannot be edited", 422);
   assertReferenceUnchanged(before, patch);
   const { status, ...rest } = patch;
   // An echo of the file's own reference got this far (see above); it is dropped
@@ -441,8 +480,8 @@ async function update(client, { id, patch, actor = {} }) {
 
 async function transition(client, { id, to, actor = {} }) {
   const before = await repo.get(client, id);
-  if (!before) throw new AppError("NOT_FOUND", "Dossier not found", 404);
-  if (!canTransition(before.status, to)) throw new AppError("BAD_TRANSITION", "Cannot move dossier from " + before.status + " to " + to, 422);
+  if (!before) throw new AppError("NOT_FOUND", "Operations file not found", 404);
+  if (!canTransition(before.status, to)) throw new AppError("BAD_TRANSITION", "Cannot move an operations file from " + before.status + " to " + to, 422);
   const row = await repo.update(client, id, { status: to });
   await emitEvent(client, { eventTypeKey: events.UPDATED, moduleKey: events.MODULE, entityRef: "dossier:" + id, actorUserId: actor.user_id || null });
   await audit(client, { actorUserId: actor.user_id || null, action: events.statusChange(to), moduleKey: events.MODULE, entityRef: "dossier:" + id, before, after: row });
@@ -465,8 +504,8 @@ const person = (id, name) => (id ? { user_id: id, name: name || null } : null);
  */
 async function overview(client, id) {
   const dossier = await repo.get(client, id);
-  if (!dossier) throw new AppError("NOT_FOUND", "Dossier not found", 404);
-  const agg = await repo.overview(client, id);
+  if (!dossier) throw new AppError("NOT_FOUND", "Operations file not found", 404);
+  const [agg, head] = await Promise.all([repo.overview(client, id), repo.headerJoins(client, id)]);
   const billed = Number(agg.invoices.billed_ttc || 0);
   const plannedCost = Number(agg.costing.planned_cost || 0);
   const actualCost = Number(agg.actual.actual_cost || 0);
@@ -501,7 +540,21 @@ async function overview(client, id) {
   const cp = agg.people.costing;
   const ip = agg.people.invoice;
   const people = {
-    costing: cp ? { doc_number: cp.doc_number, status: cp.status, validator: person(cp.validator_id, cp.validator_name), approver: person(cp.approver_id, cp.approver_name) } : null,
+    // 12766: `costing_id` is what makes the People block's costing clickable.
+    // `validated_by` is who actually validated, as distinct from `validator` —
+    // the person it was addressed to. Showing only the latter meant a sheet
+    // validated by someone standing in for the named validator read as though
+    // the named one had done it.
+    costing: cp ? {
+      costing_id: cp.costing_id,
+      doc_number: cp.doc_number,
+      status: cp.status,
+      validator: person(cp.validator_id, cp.validator_name),
+      validated_by: person(cp.validated_by_id, cp.validated_by_name),
+      validated_at: cp.validated_at || null,
+      approver: person(cp.approver_id, cp.approver_name),
+      approved_at: cp.approved_at || null,
+    } : null,
     invoice: ip ? { doc_number: ip.doc_number, status: ip.status, issuer: person(ip.issuer_id, ip.issuer_name), validator: person(ip.validator_id, ip.validator_name), approver: person(ip.approver_id, ip.approver_name) } : null,
   };
 
@@ -518,9 +571,52 @@ async function overview(client, id) {
   };
 
   return {
-    dossier: { dossier_id: dossier.dossier_id, ref: dossier.ref, status: dossier.status, client_id: dossier.client_id, service_type_id: dossier.service_type_id },
+    // The header the 360 renders itself from. It carries the DISPLAY fields as
+    // well as the ids because the 360 is a page now: opened from a pasted link,
+    // this response is the only thing the screen has to name the file with.
+    dossier: {
+      dossier_id: dossier.dossier_id, ref: dossier.ref, status: dossier.status,
+      client_id: dossier.client_id, service_type_id: dossier.service_type_id,
+      title: dossier.title || null,
+      incoterm: dossier.incoterm || null,
+      bl_mawb: dossier.bl_mawb || null,
+      vessel_flight: dossier.vessel_flight || null,
+      pol: dossier.pol || null,
+      pod: dossier.pod || null,
+      eta: dossier.eta || null,
+      ata: dossier.ata || null,
+      promised_delivery_date: dossier.promised_delivery_date || null,
+      created_at: dossier.created_at || null,
+      client_name: head.client_name || null,
+      service_key: head.service_key || null,
+      service_name_en: head.service_name_en || null,
+      service_name_fr: head.service_name_fr || null,
+      // Equipment capture rides the header so the 360 can gate its Containers
+      // tab without a second fetch: the tab exists only for service types that
+      // carry boxes, and the box count feeds its badge.
+      captures_containers: head.captures_containers === true,
+      container_detail_mode: head.container_detail_mode || null,
+      container_boxes: head.container_boxes || 0,
+      rate_provider_name: head.rate_provider_name || null,
+      milestone_total: head.milestone_total || 0,
+      milestone_done: head.milestone_done || 0,
+      current_milestone: head.current_milestone || null,
+    },
     readiness,
-    costing: { count: agg.costing.count, planned_cost: plannedCost },
+    // 12766: the live sheet's identity and money, so the 360 can render a real
+    // Costing card and link to it. `planned_cost` is XAF-normalised at each
+    // costing's own rate (see the repo) — it used to add currencies together.
+    costing: {
+      count: agg.costing.count,
+      planned_cost: plannedCost,
+      costing_id: cp ? cp.costing_id : null,
+      doc_number: cp ? cp.doc_number : null,
+      status: cp ? cp.status : null,
+      currency: cp ? cp.currency : null,
+      total_ht: cp ? Number(cp.total_ht || 0) : null,
+      total_vat: cp ? Number(cp.total_vat || 0) : null,
+      total_ttc: cp ? Number(cp.total_ttc || 0) : null,
+    },
     costs: { actual_cost: actualCost, gl_entries: agg.actual.entries },
     invoicing: { count: agg.invoices.count, invoiced_ttc: Number(agg.invoices.invoiced_ttc || 0), billed_ttc: billed, outstanding: Number(agg.outstanding.outstanding || 0) },
     economics: { billed_ttc: billed, actual_cost: actualCost, gross_margin: grossMargin, margin_percent: marginPercent },
@@ -528,7 +624,15 @@ async function overview(client, id) {
     people,
     milestones,
     procurement: { po_count: agg.procurement.po_count, po_total: Number(agg.procurement.po_total || 0) },
-    documents: { transit_orders: agg.transit.count, delivery_notes: agg.delivery.count },
+    documents: {
+      transit_orders: agg.transit.count,
+      delivery_notes: agg.delivery.count,
+      // True counts, so the 360's tab strip can publish them (the row lists
+      // below are capped at 20 and cannot be counted).
+      vault: agg.vault.count,
+      invoices: agg.invoices.count,
+    },
+    queries: { count: agg.queries.count, open: agg.queries.open },
     document_rows: agg.documentRows,
   };
 }
@@ -548,4 +652,7 @@ module.exports = {
   // Boundary-free insertion for a wider business transaction, followed by an
   // explicit post-commit initializer.
   insertForCreate, initializeCreated,
+  // Exported for the marks-lock test — the one guarantee that marks & numbers
+  // cannot be set by hand on a containerised file.
+  foldDetails, capturesContainers,
 };

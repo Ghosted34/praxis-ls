@@ -173,7 +173,7 @@ function PoForm({
               ))}
             </Select>
           </Field>
-          <Field label={tr("Dossier")}>
+          <Field label={tr("Operations file")}>
             <Select
               value={f.dossier_id}
               onChange={(e) => set("dossier_id", e.target.value)}

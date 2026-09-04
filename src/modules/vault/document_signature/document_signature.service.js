@@ -269,8 +269,29 @@ async function signInternal(client, opts) {
   // Identity, resolved server-side. A departure or a rename after this moment
   // must not rewrite a document that has already left the building, so these
   // are snapshots and not a join.
+  /*
+   * `job_title` IS NOT A COLUMN ON `app_user` — it is on `employee`, reached
+   * through `app_user.employee_id`. This read asked for it anyway, so
+   * `user.job_title` was always `undefined` and `signer_role` below was always
+   * null: every seal ever issued printed a bare name where the legacy stamp
+   * carried "Jean Mbarga · Chef de quai". Nothing failed, because a missing
+   * column in a SELECT list is a Postgres error only when the parser can bind
+   * it — and an unaliased single-table select of a non-existent column is
+   * exactly the shape `check-query-columns` could not see either.
+   *
+   * `signatory_name` for the same reason the document projections use it: it
+   * is the name a person wants ON PAPER, which is not always the one they log
+   * in under. Both fall back, so a user with no employee record still signs.
+   */
   const { rows: users } = await client.query(
-    "SELECT user_id, full_name, job_title, email FROM app_user WHERE user_id = $1", [actor.user_id],
+    `SELECT u.user_id,
+            COALESCE(e.signatory_name, u.full_name) AS full_name,
+            e.job_title,
+            u.email
+       FROM app_user u
+       LEFT JOIN employee e ON e.employee_id = u.employee_id
+      WHERE u.user_id = $1`,
+    [actor.user_id],
   );
   const user = users[0];
   if (!user) throw new AppError("NO_ACTOR", "Signing user not found", 401);

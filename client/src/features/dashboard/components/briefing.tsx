@@ -34,8 +34,8 @@ export function Briefing({
   const facts: Fact[] = [
     {
       n: activeFiles,
-      one: "active operation file",
-      many: "active operation files",
+      one: "active operations file",
+      many: "active operations files",
       to: "/operations/files",
     },
     {

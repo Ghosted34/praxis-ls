@@ -29,7 +29,7 @@ module.exports = {
       schema: validator.schemas.update,
       permission: { module: "MOD-41", action: "edit" },
       confirm: true,
-      describe: "Update a work order (description, cost, linked dossier).",
+      describe: "Update a work order (description, cost, linked operations file).",
     },
     {
       key: "set_work_order_status",

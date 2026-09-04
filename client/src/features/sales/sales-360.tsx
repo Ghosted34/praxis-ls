@@ -342,7 +342,7 @@ function DossierSkeleton({
 }) {
   const H = titleAs;
   return (
-    <div className="space-y-4" role="status" aria-label="Loading dossier">
+    <div className="space-y-4" role="status" aria-label="Loading record">
       <div className="rounded-xl border bg-card p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
@@ -447,7 +447,7 @@ function MoneyNotice({ visible }: { visible: boolean }) {
   if (visible) return null;
   return (
     <p className="micro">
-      Money is hidden on this dossier — it needs finance visibility (a read grant
+      Money is hidden on this record — it needs finance visibility (a read grant
       on Treasury). Counts and statuses are complete.
     </p>
   );
@@ -575,7 +575,7 @@ export function LeadDossier({
   // say so rather than throwing on `l.status` and taking the screen down with
   // an error boundary. Caught by screens.axe.test.tsx, which renders this
   // against a stubbed API.
-  if (!d.lead) return <ErrorState message="This lead's dossier came back empty." />;
+  if (!d.lead) return <ErrorState message="This lead's record came back empty." />;
   const l = d.lead;
   const k = d.kpis || ({} as LeadDossierData["kpis"]);
 
@@ -998,7 +998,7 @@ export function IntakeDossier({
   const d = res.data;
   // See the note in LeadDossier: a response missing its record must not throw.
   if (!d.request)
-    return <ErrorState message="This request's dossier came back empty." />;
+    return <ErrorState message="This request's record came back empty." />;
   const q = d.request;
   const k = d.kpis || ({} as IntakeDossierData["kpis"]);
 

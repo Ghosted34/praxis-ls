@@ -5,14 +5,16 @@
 import { pageShell } from "@/lib/layout";
 import { tr } from "@/lib/i18n";
 import * as React from "react";
+import { useNavigate, Link } from "react-router-dom";
 import { HubTabs, HubCrumb } from "@/components/tabbed-hub";
 import { Button } from "@/components/ui/button";
 import { FormButtons } from "@/components/ui/form-buttons";
 import { DocButton } from "@/components/doc-button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Modal, Field, Select } from "@/components/ui/modal";
+import { Callout } from "@/components/ui/callout";
 import { ErrorState, EmptyState } from "@/components/ui/states";
+import { ApiError } from "@/lib/api-client";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { Pill, type Tone } from "@/components/ui/pill";
@@ -33,19 +35,23 @@ import {
   JustifyForm,
   CashRequestActions,
 } from "./cash-request-actions";
+import {
+  CASH_REQUEST_BASE,
+  statusLabel as cashStatusLabel,
+  statusTone as cashStatusTone,
+} from "./cash-request-model";
 import { useList, useResource, errMsg } from "@/lib/use-resource";
 import { money, money0, num, dateFmt, todayISO } from "@/lib/format";
 import { reportActionError } from "@/lib/action-error";
-import type { Entity, DictItem, DictSearchHit } from "@/lib/masterdata-api";
-import {
-  resolveExpenseRate,
-  listCurrencies,
-  listSalesTaxCodes,
-} from "@/lib/masterdata-api";
+import type { Entity, DictItem } from "@/lib/masterdata-api";
+import { listCurrencies } from "@/lib/masterdata-api";
 import { DictionaryFinder } from "@/components/dictionary-finder";
-import type { EquipmentPick } from "@/components/equipment-step";
 import type { Dossier } from "@/lib/operations-api";
 import * as api from "@/lib/costing-api";
+import { useDebounced } from "@/lib/use-debounced";
+// The worksheet owns the route and the status vocabulary; the register links
+// into it rather than keeping a second copy of either.
+import { COSTING_BASE, statusLabel } from "./costing-model";
 
 const shell = pageShell.wide;
 const TONES: Record<string, Tone> = {
@@ -76,377 +82,146 @@ const refOf = (rows: Dossier[] | null) => {
 /* ═══════════════════ Costing sheets ═══════════════════ */
 
 /**
- * One cost line's draft state. `dictionary_item_id` is what makes the line
- * price itself: once it and (for equipment-varying items) a container type
- * are known, the line resolves against the dossier's carrier via the same
- * cascading resolver Expense Rates uses (specific carrier+type → carrier
- * general → item default). `rateStatus` is purely a UI hint — the number
- * that actually lands on the line is always `unit_cost`, editable either way.
+ * New costing — pick the file, and nothing else.
+ *
+ * The old dialog asked for the lines too, which is why it was 320 lines long
+ * and why a costing could be created and then never edited. Lines belong on the
+ * worksheet, where Suggest can fill them and the shipment strip is there to
+ * price against. This asks only what the sheet cannot derive: which file, in
+ * which currency, and who validates it.
  */
-type CostingLineDraft = {
-  dictionary_item_id?: string;
-  label: string;
-  qty: number;
-  unit_cost: number;
-  /** §3.3 — legacy per-line toggles (save.php:84 vat_applicable; débours). */
-  is_disbursement?: boolean;
-  tax_code_id?: string;
-  variesByEquipment?: boolean;
-  containerTypeRefId?: string;
-  /** Display snapshot of the container type, so the line reads correctly without
-   *  the form holding the whole registry. */
-  containerTypeLabel?: string;
-  rateStatus?: "idle" | "resolving" | "resolved" | "manual";
+/** What the server sends back when the one-live-costing-per-file guard fires
+ *  (`assertNoLiveCosting`). Rides on `ApiError.fields` when `code` is
+ *  `COSTING_EXISTS`, so the dialog can offer a real escape hatch rather than a
+ *  wall of prose ending in a dead button. */
+type ExistingCosting = {
+  costing_id: string;
+  status?: string | null;
+  doc_number?: string | null;
 };
-const BLANK_LINE: CostingLineDraft = {
-  label: "",
-  qty: 1,
-  unit_cost: 0,
-  rateStatus: "idle",
-};
-
-function CostingLineRow({
-  line,
-  dossierId,
-  vatCodes,
-  onChange,
-  onPickMulti,
-  onRemove,
-  removable,
-}: {
-  line: CostingLineDraft;
-  dossierId?: string;
-  /** Sales-applicable VAT codes for the per-line toggle (§3.3). */
-  vatCodes: { tax_code_id: string; code: string; rate_percent?: number | null }[];
-  onChange: (patch: Partial<CostingLineDraft>) => void;
-  /** One pick, several container types → several lines. The form owns line
-   *  creation; the picker only says what was chosen. */
-  onPickMulti: (
-    id: string,
-    label: string,
-    hit: DictSearchHit,
-    picks: EquipmentPick[],
-  ) => void;
-  onRemove: () => void;
-  removable: boolean;
-}) {
-  const pickItem = (id: string, label: string, hit?: DictSearchHit) => {
-    onChange({
-      dictionary_item_id: id || undefined,
-      label: id ? label : "",
-      variesByEquipment: id ? hit?.varies_by_equipment : false,
-      containerTypeRefId: undefined,
-      containerTypeLabel: undefined,
-      rateStatus: "idle",
-    });
-  };
-
-  return (
-    <div className="rounded-lg border bg-card p-2">
-      <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
-        <Field label={tr("Charge")}>
-          <DictionaryFinder
-            value={line.dictionary_item_id}
-            valueLabel={line.label}
-            dossierId={dossierId || null}
-            onPick={pickItem}
-            onPickMulti={onPickMulti}
-            placeholder="Search a charge…"
-          />
-        </Field>
-        <div className="flex items-end">
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={!removable}
-            onClick={onRemove}
-          >
-            ✕
-          </Button>
-        </div>
-      </div>
-      <div className="mt-2 grid grid-cols-2 items-end gap-2 sm:grid-cols-4">
-        {/* The container type is CHOSEN in the finder's equipment step and only
-            reported here. A second picker on the row was the thing that used to
-            drift from the file's own equipment, and it is gone. */}
-        {line.containerTypeRefId && (
-          <Field label={tr("Container type")}>
-            <p className="flex h-9 items-center text-sm text-foreground">
-              {line.containerTypeLabel || "—"}
-            </p>
-          </Field>
-        )}
-        <Field label={tr("Qty")}>
-          <Input
-            type="number"
-            className="num text-right"
-            value={String(line.qty ?? "")}
-            onChange={(e) => onChange({ qty: Number(e.target.value) })}
-          />
-        </Field>
-        <Field label={tr("Unit cost")}>
-          <Input
-            type="number"
-            className="num text-right"
-            value={String(line.unit_cost ?? "")}
-            onChange={(e) =>
-              onChange({
-                unit_cost: Number(e.target.value),
-                rateStatus: "manual",
-              })
-            }
-          />
-        </Field>
-        {/* §3.3 — the legacy sheet's per-line VAT toggle (save.php:84). A
-            débours line never carries VAT (0640 ledger rule), so the select
-            disables itself when the line is flagged pass-through. */}
-        <Field label={tr("VAT")}>
-          <Select
-            value={line.tax_code_id || ""}
-            onChange={(e) =>
-              onChange({ tax_code_id: e.target.value || undefined })
-            }
-            disabled={line.is_disbursement}
-            aria-label={tr("VAT code")}
-          >
-            <option value="">{tr("No VAT")}</option>
-            {vatCodes.map((tc) => (
-              <option key={tc.tax_code_id} value={tc.tax_code_id}>
-                {tc.code}
-                {tc.rate_percent != null ? ` (${tc.rate_percent}%)` : ""}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field label={tr("Débours")}>
-          <label className="flex h-9 items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={line.is_disbursement === true}
-              onChange={(e) =>
-                onChange({
-                  is_disbursement: e.target.checked,
-                  // pass-through is never taxed — clear the code with the flag
-                  tax_code_id: e.target.checked ? undefined : line.tax_code_id,
-                })
-              }
-              aria-label={tr("Débours (pass-through)")}
-            />
-            {tr("Pass-through")}
-          </label>
-        </Field>
-      </div>
-      {line.dictionary_item_id && (
-        <p className="mt-1 micro">
-          {line.rateStatus === "resolving"
-            ? "Resolving rate…"
-            : line.rateStatus === "resolved"
-              ? "Rate filled from the carrier's rate card — still editable."
-              : line.rateStatus === "manual"
-                ? "No rate on file for this carrier/container type — entered manually."
-                : line.variesByEquipment && !line.containerTypeRefId
-                  ? "Re-pick this charge to choose a container type and look up the rate."
-                  : null}
-        </p>
-      )}
-    </div>
-  );
-}
 
 function CostingForm({
   onClose,
-  onSaved,
+  onCreated,
 }: {
   onClose: () => void;
-  onSaved: () => void;
+  onCreated: (id: string) => void;
 }) {
+  const navigate = useNavigate();
   const { rows: dossiers } = useList<Dossier>("/operations");
-  const [dossierId, setDossierId] = React.useState("");
-  // §3.3 — the legacy header controls: Curr + Rate (conversion where you
-  // work), remarks for the validator, and the validator picker (a submission
-  // with nobody named goes to no one's queue — the server now refuses it).
-  const [currency, setCurrency] = React.useState("XAF");
-  const [rate, setRate] = React.useState("1");
-  const [remarks, setRemarks] = React.useState("");
-  const [validatorId, setValidatorId] = React.useState("");
-  const currencies = useResource(() => listCurrencies(), []);
   const { rows: users } = useList<{
     user_id: string;
     full_name?: string | null;
     email?: string;
   }>("/users");
-  // Sales-applicable VAT codes for the per-line toggle. `degraded` is surfaced
-  // — silently offering zero codes is indistinguishable from "no tax set up".
-  // Memoised because `?.codes || []` would mint a fresh [] on every render
-  // while the fetch is pending, re-running the liveTotals memo below each time
-  // (react-hooks/exhaustive-deps).
-  const vat = useResource(() => listSalesTaxCodes(), []);
-  const vatCodes = React.useMemo(() => vat.data?.codes || [], [vat.data]);
-  const [lines, setLines] = React.useState<CostingLineDraft[]>([
-    { ...BLANK_LINE },
-  ]);
-  // Live footer — the same arithmetic the server's computeCosting does
-  // (per-line VAT from the picked code's rate; débours never taxed).
-  const liveTotals = React.useMemo(() => {
-    let ht = 0;
-    let vatTotal = 0;
-    for (const l of lines) {
-      const amt = (Number(l.qty) || 0) * (Number(l.unit_cost) || 0);
-      ht += amt;
-      if (!l.is_disbursement && l.tax_code_id) {
-        const rate = Number(
-          vatCodes.find((tc) => tc.tax_code_id === l.tax_code_id)
-            ?.rate_percent || 0,
-        );
-        vatTotal += (amt * rate) / 100;
-      }
-    }
-    const r = (n: number) => Math.round(n * 100) / 100;
-    return {
-      total_ht: r(ht),
-      vat_total: r(vatTotal),
-      total_ttc: r(ht + vatTotal),
-    };
-  }, [lines, vatCodes]);
+  const currencies = useResource(() => listCurrencies(), []);
+  const [dossierId, setDossierId] = React.useState("");
+  const [currency, setCurrency] = React.useState("XAF");
+  const [validatorId, setValidatorId] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const setLine = (i: number, p: Partial<CostingLineDraft>) =>
-    setLines((ls) => ls.map((l, j) => (j === i ? { ...l, ...p } : l)));
+  /*
+   * The one-live-costing-per-file collision (12766 — `uq_costing_one_live_per_dossier`).
+   * The server refuses the create with `code: "COSTING_EXISTS"` and returns the
+   * offending sheet's id and status in `fields`; that becomes the "Open existing
+   * costing" primary action here. Without this the operator saw a wall of text
+   * naming a sheet they had no button to open and pressed "Open worksheet" a
+   * second time, which re-hit the same 409.
+   */
+  const [existing, setExisting] = React.useState<ExistingCosting | null>(null);
 
-  const dossierProviderId =
-    (dossiers || []).find((d) => d.dossier_id === dossierId)
-      ?.rate_provider_id || undefined;
-
-  // Resolve one line's rate against the dossier's carrier — cascading from a
-  // carrier+container-type match down to the item's plain default. A miss
-  // (no rate on file for that scope) is not an error state for the form: the
-  // line just falls back to whatever the user types in Unit cost.
-  const resolveLine = React.useCallback(
-    async (i: number, l: CostingLineDraft) => {
-      if (
-        !l.dictionary_item_id ||
-        (l.variesByEquipment && !l.containerTypeRefId)
-      )
-        return;
-      setLine(i, { rateStatus: "resolving" });
-      try {
-        const resolved = await resolveExpenseRate({
-          dictionary_item_id: l.dictionary_item_id,
-          rate_provider_id: dossierProviderId,
-          container_type_ref_id: l.containerTypeRefId,
-        });
-        setLine(i, {
-          unit_cost: Number(resolved.rate),
-          rateStatus: "resolved",
-        });
-      } catch {
-        setLine(i, { rateStatus: "manual" });
-      }
-    },
-    [dossierProviderId],
-  );
-
-  // Re-resolve every priced line when the dossier (and so its carrier)
-  // changes — a line picked before the dossier was chosen is not stuck with
-  // no scope, and switching dossiers re-prices for the new carrier.
-  React.useEffect(() => {
-    lines.forEach((l, i) => {
-      if (l.dictionary_item_id) resolveLine(i, l);
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dossierProviderId]);
-
-  // One pick of an equipment-varying charge becomes one line PER container
-  // type, each resolving its own rate through the cascade that already exists.
-  // The picker returns data; the form owns line creation, which is why the
-  // expansion lives here and not inside the popover.
-  const pickMulti =
-    (at: number) =>
-    (id: string, label: string, hit: DictSearchHit, picks: EquipmentPick[]) => {
-      const made: CostingLineDraft[] = picks.map((p) => ({
-        ...BLANK_LINE,
-        dictionary_item_id: id,
-        label,
-        variesByEquipment: hit.varies_by_equipment,
-        containerTypeRefId: p.container_type_ref_id,
-        containerTypeLabel: p.label,
-        qty: p.qty || 1,
-      }));
-      if (!made.length) return;
-      setLines((ls) => [...ls.slice(0, at), ...made, ...ls.slice(at + 1)]);
-      made.forEach((l, k) => resolveLine(at + k, l));
-    };
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    setError(null);
-    try {
-      await api.createCosting({
-        dossier_id: dossierId,
-        currency: currency || "XAF",
-        exchange_rate_to_xaf:
-          currency !== "XAF" && Number(rate) > 0 ? Number(rate) : undefined,
-        remarks: remarks.trim() || undefined,
-        validator_id: validatorId || undefined,
-        lines: lines
-          .filter((l) => l.label || l.dictionary_item_id)
-          .map((l) => ({
-            dictionary_item_id: l.dictionary_item_id,
-            label: l.label,
-            qty: Number(l.qty) || 1,
-            unit_cost: Number(l.unit_cost) || 0,
-            is_disbursement: l.is_disbursement === true,
-            // §3.3: the per-line VAT toggle persists as the line's tax code.
-            tax_code_id: l.tax_code_id || undefined,
-            // 0663: the equipment dimension the form used to resolve a rate with
-            // and then throw away.
-            container_type_ref_id: l.containerTypeRefId || null,
-          })),
-      });
-      onSaved();
-      onClose();
-    } catch (err) {
-      setError(errMsg(err));
-    } finally {
-      setBusy(false);
-    }
-  }
+  const file = (dossiers || []).find((d) => d.dossier_id === dossierId);
+  const openExisting = existing
+    ? () => navigate(`${COSTING_BASE}/${existing.costing_id}`)
+    : null;
 
   return (
     <Modal
       open
       onClose={onClose}
-      size="lg"
-      title="New costing sheet"
-      description="Planned cost for a dossier — what the file will cost us, HT / VAT / TTC. Pricing (margin) lives in the margin simulator and the quotation."
+      title={tr("New costing")}
+      description={tr(
+        "What this operations file will cost us. Charges are added on the worksheet — Suggest loads the standard set for the file's service.",
+      )}
     >
-      <form className="space-y-4" onSubmit={submit}>
+      <form
+        className="space-y-4"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          // A second submit while the "open existing" hand-off is already the
+          // primary action must go where it says, not re-hit the 409.
+          if (openExisting) {
+            openExisting();
+            return;
+          }
+          setBusy(true);
+          setError(null);
+          try {
+            const made = await api.createCosting({
+              dossier_id: dossierId,
+              currency,
+              validator_id: validatorId || undefined,
+            });
+            onCreated(made.costing_id);
+          } catch (err) {
+            if (
+              err instanceof ApiError &&
+              err.code === "COSTING_EXISTS" &&
+              err.fields &&
+              typeof (err.fields as ExistingCosting).costing_id === "string"
+            ) {
+              setExisting(err.fields as ExistingCosting);
+            } else {
+              setError(errMsg(err));
+            }
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        <Field label={tr("Operations file")} required>
+          <Select
+            value={dossierId}
+            onChange={(e) => {
+              setDossierId(e.target.value);
+              // A different file may or may not have its own live costing —
+              // don't strand yesterday's answer on today's question.
+              setExisting(null);
+              setError(null);
+            }}
+          >
+            <option value="">—</option>
+            {(dossiers || []).map((d) => (
+              <option key={d.dossier_id} value={d.dossier_id}>
+                {d.ref}
+                {d.rate_provider_name ? ` — ${d.rate_provider_name}` : ""}
+              </option>
+            ))}
+          </Select>
+          {file && !file.rate_provider_id && (
+            <p className="mt-1 micro">
+              {tr(
+                "No carrier confirmed on this file yet — suggested charges will fall back to each item's default rate.",
+              )}
+            </p>
+          )}
+        </Field>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label={tr("Dossier")} required>
-            <Select
-              value={dossierId}
-              onChange={(e) => setDossierId(e.target.value)}
-            >
-              <option value="">—</option>
-              {(dossiers || []).map((d) => (
-                <option key={d.dossier_id} value={d.dossier_id}>
-                  {d.ref}
-                  {d.rate_provider_name ? ` — ${d.rate_provider_name}` : ""}
-                </option>
-              ))}
+          <Field
+            label={tr("Currency")}
+            hint={tr("The rate to XAF is taken from Currencies & FX.")}
+          >
+            <Select value={currency} onChange={(e) => setCurrency(e.target.value)}>
+              {(currencies.data || [])
+                .filter((c) => c.is_active !== false)
+                .map((c) => (
+                  <option key={c.code} value={c.code}>
+                    {c.name ? `${c.code} — ${c.name}` : c.code}
+                  </option>
+                ))}
             </Select>
-            {dossierId && !dossierProviderId && (
-              <p className="mt-1 micro">
-                No carrier confirmed on this file yet — lines fall back to each
-                item's default rate.
-              </p>
-            )}
           </Field>
-          {/* §2.2: the Margin % field is gone. Costing answers "what will this
-              cost us?" and stops — the legacy sheet never had margin either. */}
-          <Field label={tr("Validator")} hint="Who this sheet is submitted to">
+          <Field label={tr("Validator")} hint={tr("Who this sheet is submitted to")}>
             <Select
               value={validatorId}
               onChange={(e) => setValidatorId(e.target.value)}
@@ -460,110 +235,39 @@ function CostingForm({
             </Select>
           </Field>
         </div>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label={tr("Currency")}>
-            <Select
-              value={currency}
-              onChange={(e) => setCurrency(e.target.value)}
-            >
-              {(currencies.data || [])
-                .filter((c) => c.is_active !== false)
-                .map((c) => (
-                  <option key={c.code} value={c.code}>
-                    {c.name ? `${c.code} — ${c.name}` : c.code}
-                  </option>
-                ))}
-            </Select>
-          </Field>
-          {currency !== "XAF" && (
-            <Field
-              label={tr("Rate to XAF")}
-              hint="The conversion the sheet was priced at"
-            >
-              <Input
-                type="number"
-                min="0"
-                step="0.0001"
-                className="num text-right"
-                value={rate}
-                onChange={(e) => setRate(e.target.value)}
-              />
-            </Field>
-          )}
-        </div>
-        <div>
-          <div className="mb-2 flex items-center justify-between">
-            <span className="micro">Cost lines</span>
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              onClick={() => setLines((l) => [...l, { ...BLANK_LINE }])}
-            >
-              + Add line
-            </Button>
-          </div>
-          <div className="space-y-2">
-            {lines.map((l, i) => (
-              <CostingLineRow
-                key={i}
-                line={l}
-                dossierId={dossierId}
-                vatCodes={vatCodes}
-                onPickMulti={pickMulti(i)}
-                removable={lines.length > 1}
-                onRemove={() => setLines((ls) => ls.filter((_, j) => j !== i))}
-                onChange={(patch) => {
-                  const next = { ...l, ...patch };
-                  setLine(i, patch);
-                  if (
-                    patch.dictionary_item_id !== undefined ||
-                    patch.containerTypeRefId !== undefined
-                  )
-                    resolveLine(i, next);
-                }}
-              />
-            ))}
-          </div>
-          {vat.data?.degraded && (
-            <p className="mt-1 micro">
+        {existing && openExisting ? (
+          <Callout
+            tone="warn"
+            title={tr("This file already has a costing")}
+            action={
+              <Button type="button" variant="outline" onClick={openExisting}>
+                {tr("Open existing costing")}
+              </Button>
+            }
+          >
+            <p>
+              <span className="num font-medium text-foreground">
+                {existing.doc_number ||
+                  `${existing.costing_id.slice(0, 8)}…`}
+              </span>
+              {existing.status ? ` · ${statusLabel(existing.status)}` : ""}
+            </p>
+            <p className="mt-1">
               {tr(
-                "Some jurisdictions failed to list their VAT codes — the VAT picker may be incomplete.",
+                "A file has one costing. Open that one; if it is approved, request an unlock to amend it.",
               )}
             </p>
-          )}
-        </div>
-
-        {/* §3.3 — the legacy footer, live: Subtotal (HT) / VAT / Total Estimate. */}
-        <div className="grid grid-cols-3 gap-3">
-          <KpiTile
-            label={tr("Subtotal (HT)")}
-            value={money(liveTotals.total_ht, currency)}
-          />
-          <KpiTile label="VAT" value={money(liveTotals.vat_total, currency)} />
-          <KpiTile
-            label={tr("Total estimate")}
-            value={money(liveTotals.total_ttc, currency)}
-          />
-        </div>
-
-        <Field
-          label={tr("Remarks")}
-          hint="Context for the validator — prints on the costing sheet"
-        >
-          <Textarea
-            rows={2}
-            value={remarks}
-            onChange={(e) => setRemarks(e.target.value)}
-          />
-        </Field>
-
-        {error && <ErrorState message={error} />}
+          </Callout>
+        ) : error ? (
+          <ErrorState message={error} />
+        ) : null}
         <FormButtons
           busy={busy}
           disabled={!dossierId || busy}
           onCancel={onClose}
-          saveLabel="Create costing"
+          saveLabel={
+            existing ? tr("Open existing costing") : tr("Open worksheet")
+          }
         />
       </form>
     </Modal>
@@ -571,440 +275,177 @@ function CostingForm({
 }
 
 /**
- * §3.3 — the costing worksheet, opened by clicking a row (the list used to be
- * inert). Lines with their VAT, the legacy footer (Subtotal HT / VAT / Total
- * Estimate), remarks, the named validator, and Print via the document studio
- * (docType COSTING).
+ * The costing register.
+ *
+ * ── WHAT CHANGED, AND WHY ──────────────────────────────────────────────────
+ *
+ * It filtered on nothing, showed a Total column against `r.total ?? r.total_cost`
+ * — two fields that were never columns, so it was permanently blank — and its
+ * KPI strip counted the rows it had been handed, which is the first fifty. So
+ * "Approved: 3" meant three on this page.
+ *
+ * 12766 gave the row its money and the API a `/kpis` endpoint that aggregates
+ * over the SAME filter, which is what legacy's "shadow query" did
+ * (`api/costing/list.php:112-130`) and the one part of its registry worth
+ * copying exactly.
  */
-function CostingDetail({
-  id,
-  dref,
-  onClose,
-}: {
-  id: string;
-  dref: Record<string, string>;
-  onClose: () => void;
-}) {
-  const costing = useResource(() => api.getCosting(id), [id]);
-  const { rows: users } = useList<{
-    user_id: string;
-    full_name?: string | null;
-    email?: string;
-  }>("/users");
-  const c = costing.data;
-  const ccy = c?.currency || "XAF";
-  const validatorName = React.useMemo(() => {
-    if (!c?.validator_id) return null;
-    const u = (users || []).find((x) => x.user_id === c.validator_id);
-    return u ? u.full_name || u.email || c.validator_id.slice(0, 8) : c.validator_id.slice(0, 8);
-  }, [users, c]);
-
-  const lineColumns: Column<api.CostingLine>[] = [
-    {
-      key: "label",
-      label: "Charge",
-      render: (l) => (
-        <span className="font-medium text-foreground">
-          {l.label || "—"}
-          {l.container_type_code ? (
-            <span className="ml-2 text-xs text-muted-foreground">
-              {l.container_type_code}
-            </span>
-          ) : null}
-        </span>
-      ),
-    },
-    {
-      key: "qty",
-      label: "Qty",
-      className: "num text-right",
-      render: (l) => String(l.qty ?? 1),
-    },
-    {
-      key: "unit_cost",
-      label: "Unit cost",
-      className: "num text-right",
-      render: (l) => money(l.unit_cost, ccy),
-    },
-    {
-      key: "vat",
-      label: "VAT",
-      render: (l) =>
-        l.is_disbursement
-          ? "—"
-          : l.tax_rate_percent != null
-            ? `${l.tax_rate_percent}%`
-            : "—",
-    },
-    {
-      key: "kind",
-      label: "Kind",
-      render: (l) =>
-        l.is_disbursement ? (
-          <Pill tone="mute">{tr("Débours")}</Pill>
-        ) : (
-          <Pill tone="blue">{tr("Service")}</Pill>
-        ),
-    },
-    {
-      key: "amount",
-      label: "Amount (HT)",
-      className: "num text-right",
-      render: (l) => money((Number(l.qty) || 1) * (Number(l.unit_cost) || 0), ccy),
-    },
-  ];
-
-  return (
-    <Modal
-      open
-      onClose={onClose}
-      title={c?.doc_number || tr("Costing sheet")}
-      description="What this file will cost us — HT / VAT / TTC. Margin lives in the margin simulator and the quotation."
-      size="wide"
-    >
-      {costing.error ? (
-        <ErrorState message={costing.error} />
-      ) : !c ? null : (
-        <div className="space-y-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <Pill tone={tone(c.status)}>{c.status}</Pill>
-            <span className="text-sm text-muted-foreground">
-              {c.dossier_id ? (dref[c.dossier_id] ?? "") : ""}
-            </span>
-            {c.currency && c.currency !== "XAF" && (
-              <Pill tone="orange">
-                {c.currency} @ {String(c.exchange_rate_to_xaf ?? 1)}
-              </Pill>
-            )}
-            {validatorName && (
-              <span className="text-xs text-muted-foreground">
-                {tr("Validator")}: {validatorName}
-                {c.validator_assigned_at
-                  ? ` (${dateFmt(c.validator_assigned_at)})`
-                  : ""}
-              </span>
-            )}
-            <span className="ml-auto">
-              {/* Print / Preview — the legacy sheet's output, via the document
-                  studio (settings section document_template, docType COSTING). */}
-              <DocButton
-                docType="COSTING"
-                id={c.costing_id}
-                title={c.doc_number || "Costing sheet"}
-                label={tr("Print / preview")}
-              />
-            </span>
-          </div>
-
-          <DataList
-            columns={lineColumns}
-            rows={c.lines || []}
-            error={null}
-            loading={false}
-            rowKey={(l, i) => String(l.costing_line_id ?? i)}
-            empty={{ title: tr("No lines") }}
-          />
-
-          {/* The legacy footer: Subtotal (HT) / VAT / Total Estimate. */}
-          <div className="grid grid-cols-3 gap-3">
-            <KpiTile
-              label={tr("Subtotal (HT)")}
-              value={money(c.totals?.total_ht, ccy)}
-              hint={
-                c.totals && c.totals.disbursement_total > 0
-                  ? `of which débours ${money(c.totals.disbursement_total, ccy)}`
-                  : undefined
-              }
-            />
-            <KpiTile label="VAT" value={money(c.totals?.vat_total, ccy)} />
-            <KpiTile
-              label={tr("Total estimate")}
-              value={money(c.totals?.total_ttc, ccy)}
-            />
-          </div>
-
-          {c.remarks && (
-            <div>
-              <p className="micro mb-1">{tr("Remarks")}</p>
-              <p className="rounded-lg border bg-card p-3 text-sm">
-                {c.remarks}
-              </p>
-            </div>
-          )}
-        </div>
-      )}
-    </Modal>
-  );
-}
-
 export function CostingPage() {
-  const { rows, error, loading, reload } = useList<api.Costing>("/costings");
-  const { rows: dossiers } = useList<Dossier>("/operations");
-  const [open, setOpen] = React.useState(false);
-  const [busyId, setBusyId] = React.useState<string | null>(null);
-  // §3.3 — rows are clickable; the worksheet opens as a detail view.
-  const [selectedId, setSelectedId] = React.useState<string | null>(null);
-  const dref = refOf(dossiers);
-  const list = rows || [];
+  const [q, setQ] = React.useState("");
+  const [status, setStatus] = React.useState<string>("");
+  const debouncedQ = useDebounced(q, 300);
 
-  // The screen had Approve and nothing else, so `costing.submitted` — the event
-  // the approval chain binds to — could never fire from the UI. A costing went
-  // DRAFT → APPROVED_LOCKED in one click by one person, with the configured
-  // chain bypassed entirely because it was never opened.
-  const [actionError, setActionError] = React.useState<string | null>(null);
-  async function setStatus(c: api.Costing, to: "SUBMIT_APPROVAL" | "APPROVE") {
-    setBusyId(c.costing_id);
-    setActionError(null);
-    try {
-      await api.setCostingStatus(c.costing_id, to);
-      reload();
-    } catch (err) {
-      // try/finally with no catch is why the old button failed silently.
-      setActionError(errMsg(err));
-    } finally {
-      setBusyId(null);
-    }
-  }
+  const query = React.useMemo(
+    () => ({ q: debouncedQ || undefined, status: status || undefined }),
+    [debouncedQ, status],
+  );
+  const qs = React.useMemo(() => JSON.stringify(query), [query]);
 
-  // The unlock loop (10718). APPROVED_LOCKED used to be terminal: a wrong rate
-  // or a carrier credit had no remedy but a second costing competing with the
-  // first for the same dossier. UNLOCK is refused server-side once the dossier's
-  // final invoice has left DRAFT, and that 422 surfaces here verbatim.
-  const [unlockFor, setUnlockFor] = React.useState<api.Costing | null>(null);
-  async function unlock(
-    c: api.Costing,
-    action: "UNLOCK" | "DENY_UNLOCK",
-  ) {
-    setBusyId(c.costing_id);
-    setActionError(null);
-    try {
-      await api.unlockCosting(c.costing_id, action);
-      reload();
-    } catch (err) {
-      setActionError(errMsg(err));
-    } finally {
-      setBusyId(null);
-    }
-  }
+  const list = useResource(() => api.listCostings(query), [qs]);
+  const kpis = useResource(() => api.costingKpis(query), [qs]);
+  const rows = list.data;
+
+  const navigate = useNavigate();
+  const [creating, setCreating] = React.useState(false);
 
   const columns: Column<api.Costing>[] = [
     {
       key: "ref",
-      label: "Ref",
+      label: tr("Reference"),
       render: (r) => (
         <span className="num font-medium text-foreground">
-          {r.doc_number || r.ref || r.costing_id?.slice(0, 8) || "—"}
+          {r.doc_number || tr("Draft — unnumbered")}
         </span>
       ),
     },
     {
-      key: "dossier_id",
-      label: "Dossier",
-      render: (r) => (r.dossier_id ? dref[r.dossier_id] || "—" : "—"),
+      key: "file",
+      label: tr("File"),
+      render: (r) => (
+        <span className="num">{r.dossier_ref || "—"}</span>
+      ),
     },
-    // §2.2: the Margin column is gone — costing carries no margin. Pricing
-    // lives in the margin simulator and the quotation.
+    {
+      key: "client",
+      label: tr("Client"),
+      render: (r) => r.client_name || "—",
+    },
+    {
+      key: "service",
+      label: tr("Service"),
+      render: (r) => r.service_name_en || r.service_type_key || "—",
+    },
+    {
+      key: "date",
+      label: tr("Raised"),
+      render: (r) => (r.created_at ? dateFmt(r.created_at) : "—"),
+    },
     {
       key: "total",
-      label: "Total",
+      label: tr("Total"),
       className: "num text-right",
-      render: (r) => money(r.total ?? r.total_cost),
+      // 12766: a real column at last. `total_ttc` is in the sheet's own
+      // currency, which is why the code rides beside it — the XAF-normalised
+      // figure is what the KPI strip sums, never this one.
+      render: (r) =>
+        r.total_ttc != null ? (
+          <span>
+            {money(r.total_ttc, r.currency || "XAF")}
+          </span>
+        ) : (
+          "—"
+        ),
     },
     {
       key: "status",
-      label: "Status",
-      render: (r) => <Pill tone={tone(r.status)}>{r.status}</Pill>,
-    },
-    {
-      key: "_a",
-      label: "",
-      render: (r) => (
-        <RowActions>
-          {/* Submit opens the approval chain; Approve is the direct path, which
-              now refuses while a chain is pending (W4). */}
-          {["DRAFT", "SUBMITTED_FOR_VALIDATION"].includes(r.status) && (
-            <Button
-              size="sm"
-              variant="outline"
-              loading={busyId === r.costing_id}
-              onClick={() => setStatus(r, "SUBMIT_APPROVAL")}
-            >
-              Submit for approval
-            </Button>
-          )}
-          {!["APPROVED_LOCKED", "REJECTED", "UNLOCK_REQUESTED"].includes(
-            r.status,
-          ) && (
-            <Button
-              size="sm"
-              variant="outline"
-              loading={busyId === r.costing_id}
-              onClick={() => setStatus(r, "APPROVE")}
-            >
-              Approve
-            </Button>
-          )}
-          {r.status === "APPROVED_LOCKED" && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setUnlockFor(r)}
-            >
-              {tr("Request unlock")}
-            </Button>
-          )}
-          {r.status === "UNLOCK_REQUESTED" && (
-            <>
-              <Button
-                size="sm"
-                variant="outline"
-                loading={busyId === r.costing_id}
-                onClick={() => unlock(r, "UNLOCK")}
-              >
-                {tr("Unlock")}
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                loading={busyId === r.costing_id}
-                onClick={() => unlock(r, "DENY_UNLOCK")}
-              >
-                {tr("Deny")}
-              </Button>
-            </>
-          )}
-        </RowActions>
-      ),
+      label: tr("Status"),
+      render: (r) => <Pill tone={tone(r.status)}>{statusLabel(r.status)}</Pill>,
     },
   ];
+
   return (
     <section className={shell}>
       <PageHeader
         eyebrow={<HubCrumb area="Costing" to="/costing" />}
         title={tr("Costing")}
-        description="Planned cost sheets per dossier — HT / VAT / TTC. Margin lives in the margin simulator and the quotation."
-        action={<Button onClick={() => setOpen(true)}>New costing</Button>}
+        description={tr(
+          "What each operations file will cost us — HT / VAT / TTC. Pricing lives in the margin simulator and the quotation.",
+        )}
+        action={<Button onClick={() => setCreating(true)}>{tr("New costing")}</Button>}
       />
       <HubTabs />
+
+      {/* Counts and money over the WHOLE filter, not the page. */}
       <KpiRow>
-        <KpiTile label="Costings" value={num(list.length)} />
+        <KpiTile label={tr("Costings")} value={num(kpis.data?.total ?? 0)} />
+        <KpiTile label={tr("To validate")} value={num(kpis.data?.to_validate ?? 0)} />
+        <KpiTile label={tr("To approve")} value={num(kpis.data?.to_approve ?? 0)} />
         <KpiTile
-          label={tr("Approved")}
-          value={num(list.filter((c) => c.status === "APPROVED_LOCKED").length)}
-        />
-        <KpiTile
-          label={tr("Draft")}
-          value={num(list.filter((c) => c.status === "DRAFT").length)}
+          label={tr("Approved total")}
+          value={money0(kpis.data?.total_ttc_xaf ?? 0)}
+          hint={tr("XAF, at each sheet's own rate")}
         />
       </KpiRow>
-      {actionError && <ErrorState message={actionError} />}
+
+      <div className="flex flex-wrap items-end gap-3">
+        <Field label={tr("Search")} hint={tr("Reference, file or client")}>
+          <Input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder={tr("CST-2026-0043, SLAS-2026-0001, FMA…")}
+          />
+        </Field>
+        <Chips
+          label={tr("Status")}
+          value={status}
+          options={[
+            { value: "", label: tr("All") },
+            { value: "DRAFT", label: tr("Draft") },
+            { value: "SUBMITTED_FOR_VALIDATION", label: tr("To validate") },
+            { value: "SUBMITTED_FOR_APPROVAL", label: tr("To approve") },
+            { value: "APPROVED_LOCKED", label: tr("Approved") },
+            { value: "UNLOCK_REQUESTED", label: tr("Unlock requested") },
+            { value: "REJECTED", label: tr("Rejected") },
+          ]}
+          onChange={setStatus}
+        />
+      </div>
+
       <DataList
         columns={columns}
         rows={rows}
-        error={error}
-        loading={loading}
+        error={list.error}
+        loading={list.loading}
         rowKey={(r) => r.costing_id}
-        onRowClick={(r) => setSelectedId(r.costing_id)}
+        // The worksheet is a route, so a row click is a navigation and the
+        // reference can be pasted into an email.
+        onRowClick={(r) => navigate(`${COSTING_BASE}/${r.costing_id}`)}
         empty={{
-          title: "No costings yet",
-          hint: "Build a costing sheet for a dossier.",
-          action: (
-            <Button onClick={() => setOpen(true)}>New costing</Button>
-          ),
+          title: q || status ? tr("No costings match") : tr("No costings yet"),
+          hint:
+            q || status
+              ? tr("Clear the filters to see the rest.")
+              : tr("Build a costing for an operations file."),
+          action:
+            q || status ? undefined : (
+              <Button onClick={() => setCreating(true)}>{tr("New costing")}</Button>
+            ),
         }}
       />
-      {open && <CostingForm onClose={() => setOpen(false)} onSaved={reload} />}
-      {selectedId && (
-        <CostingDetail
-          id={selectedId}
-          dref={dref}
-          onClose={() => setSelectedId(null)}
-        />
-      )}
-      {unlockFor && (
-        <UnlockRequestForm
-          costing={unlockFor}
-          onClose={() => setUnlockFor(null)}
-          onSaved={reload}
+
+      {creating && (
+        <CostingForm
+          onClose={() => setCreating(false)}
+          onCreated={(newId) => {
+            setCreating(false);
+            // Straight to the worksheet: an empty costing is not a destination.
+            navigate(`${COSTING_BASE}/${newId}`);
+          }}
         />
       )}
     </section>
   );
 }
 
-/**
- * REQUEST_UNLOCK needs a reason — it is the audit answer to "why is this
- * approved costing open again", and the server refuses without one
- * (REASON_REQUIRED). Its own dialog rather than a window.prompt, so the text is
- * a real labelled control.
- */
-function UnlockRequestForm({
-  costing,
-  onClose,
-  onSaved,
-}: {
-  costing: api.Costing;
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const [reason, setReason] = React.useState("");
-  const [busy, setBusy] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    setError(null);
-    try {
-      await api.unlockCosting(costing.costing_id, "REQUEST_UNLOCK", reason);
-      onSaved();
-      onClose();
-    } catch (err) {
-      setError(errMsg(err));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <Modal
-      open
-      onClose={onClose}
-      title={tr("Request unlock")}
-      description="Asks an approver to reopen this costing for correction. It returns to DRAFT only once the request is granted."
-    >
-      <form className="space-y-4" onSubmit={submit}>
-        <Field
-          label={tr("Reason")}
-          required
-          hint="Kept on the costing as the audit trail, whether or not the request is granted."
-        >
-          <Textarea
-            rows={3}
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-          />
-        </Field>
-        {error && <ErrorState message={error} />}
-        <FormButtons
-          busy={busy}
-          disabled={busy || !reason.trim()}
-          onCancel={onClose}
-          saveLabel={tr("Request unlock")}
-        />
-      </form>
-    </Modal>
-  );
-}
-
-/* ═══════════════════ Cost tracking (actuals) ═══════════════════ */
-
-/**
- * §3.4 — Cost tracking, the legacy's three tabs on OUR data model:
- * Summary & balance (portfolio + the master-ledger matrix), Actual costs
- * (per-file entries + fast multi-line entry in one transaction), Advances
- * received (per FILE — owner-decided — with optional per-item earmarks).
- */
 export function CostTrackingPage() {
   const { rows: dossiers } = useList<Dossier>("/operations");
   const [tab, setTab] = React.useState("summary");
@@ -1031,12 +472,12 @@ export function CostTrackingPage() {
         />
         {tab !== "summary" && (
           <Select
-            aria-label="Filter by dossier"
+            aria-label="Filter by operations file"
             value={dossierId}
             onChange={(e) => setDossierId(e.target.value)}
             className="max-w-xs"
           >
-            <option value="">Select a dossier…</option>
+            <option value="">Select an operations file…</option>
             {(dossiers || []).map((d) => (
               <option key={d.dossier_id} value={d.dossier_id}>
                 {d.ref}
@@ -1257,7 +698,7 @@ function ActualCostsTab({ dossierId }: { dossierId: string }) {
         rowKey={(r, i) => r.cost_entry_id || String(i)}
         empty={{
           title: "No cost entries",
-          hint: "No actuals booked to this dossier yet.",
+          hint: "No actuals booked to this file yet.",
           action: (
             <Button onClick={() => setSheetOpen(true)}>
               {tr("Record costs (sheet)")}
@@ -1685,7 +1126,7 @@ function CostPortfolio() {
   const cols: Column<api.CostPortfolioRow>[] = [
     {
       key: "ref",
-      label: "Dossier",
+      label: "File",
       render: (r) => (
         <span className="num font-medium text-foreground">{r.ref || "—"}</span>
       ),
@@ -1762,7 +1203,7 @@ function CostPortfolio() {
         rowKey={(r) => r.dossier_id}
         empty={{
           title: "Nothing tracked yet",
-          hint: "Dossiers appear here once they have an approved costing or a booked actual.",
+          hint: "Files appear here once they have an approved costing or a booked actual.",
         }}
       />
     </>
@@ -1869,7 +1310,7 @@ function CashRequestForm({
       onClose={onClose}
       size="lg"
       title="New cash request"
-      description="Request an advance against a dossier budget."
+      description="Request an advance against an operations file budget."
     >
       <form className="space-y-4" onSubmit={submit}>
         <div className="grid gap-4 sm:grid-cols-2">
@@ -1891,7 +1332,7 @@ function CashRequestForm({
           </Field>
           {category === "OPS" ? (
             <>
-              <Field label={tr("Dossier")}>
+              <Field label={tr("Operations file")}>
                 <Select
                   value={dossierId}
                   onChange={(e) => setDossierId(e.target.value)}
@@ -2151,11 +1592,14 @@ function CashRequestForm({
 export function CashRequestsPage() {
   const { rows, error, loading, reload } =
     useList<api.CashRequest>("/cash-requests");
+  // 12771 — the strip counted statuses in the browser, over whichever page it
+  // had loaded, so "Approved: 3" meant three ON THIS PAGE and was simply wrong
+  // past the first fifty rows. Its own endpoint now, over the same filter.
+  const kpis = useResource(() => api.cashRequestKpis(), []);
   const { rows: dossiers } = useList<Dossier>("/operations");
   const [open, setOpen] = React.useState(false);
   const [busyId, setBusyId] = React.useState<string | null>(null);
   const dref = refOf(dossiers);
-  const list = rows || [];
 
   // The two money actions open a dialog; the three status moves are one call.
   const [disbursing, setDisbursing] = React.useState<api.CashRequest | null>(null);
@@ -2194,15 +1638,21 @@ export function CashRequestsPage() {
     {
       key: "ref",
       label: "Ref",
+      // The reference is a LINK. A request awaiting a decision has to be
+      // openable from the row it is read on — the same fix 12766 made for the
+      // costing, whose reference was shown everywhere and clickable nowhere.
       render: (r) => (
-        <span className="num font-medium text-foreground">
+        <Link
+          className="num font-medium text-foreground underline-offset-2 hover:underline"
+          to={`${CASH_REQUEST_BASE}/${r.cash_request_id}`}
+        >
           {r.doc_number || r.ref || r.cash_request_id?.slice(0, 8) || "—"}
-        </span>
+        </Link>
       ),
     },
     {
       key: "dossier_id",
-      label: "Dossier",
+      label: "File",
       render: (r) => (r.dossier_id ? dref[r.dossier_id] || "—" : "—"),
     },
     {
@@ -2225,7 +1675,11 @@ export function CashRequestsPage() {
     {
       key: "status",
       label: "Status",
-      render: (r) => <Pill tone={tone(r.status)}>{r.status}</Pill>,
+      // Said out loud, never raw: nobody outside the schema should read
+      // PARTIALLY_DISBURSED on a screen (FRONTEND_GUIDE §5).
+      render: (r) => (
+        <Pill tone={cashStatusTone(r.status)}>{cashStatusLabel(r.status)}</Pill>
+      ),
     },
     {
       key: "_a",
@@ -2265,19 +1719,20 @@ export function CashRequestsPage() {
       <PageHeader
         eyebrow={<HubCrumb area="Costing" to="/costing" />}
         title="Cash requests"
-        description="Advances requested against dossier budgets."
+        description="Advances requested against operations file budgets."
         action={<Button onClick={() => setOpen(true)}>{tr("New request")}</Button>}
       />
       <HubTabs />
       <KpiRow>
-        <KpiTile label="Requests" value={num(list.length)} />
+        <KpiTile label={tr("Requests")} value={num(kpis.data?.total)} />
+        <KpiTile label={tr("To validate")} value={num(kpis.data?.to_validate)} />
+        <KpiTile label={tr("To approve")} value={num(kpis.data?.to_approve)} />
+        <KpiTile label={tr("To disburse")} value={num(kpis.data?.to_disburse)} />
+        {/* The one figure a count cannot give: approved money not yet paid. */}
         <KpiTile
-          label={tr("Approved")}
-          value={num(list.filter((c) => c.status === "APPROVED").length)}
-        />
-        <KpiTile
-          label="Submitted"
-          value={num(list.filter((c) => c.status === "SUBMITTED").length)}
+          label={tr("Outstanding")}
+          value={money(kpis.data?.outstanding_xaf)}
+          tone={Number(kpis.data?.outstanding_xaf) > 0 ? "warn" : undefined}
         />
       </KpiRow>
       <DataList
@@ -2288,7 +1743,7 @@ export function CashRequestsPage() {
         rowKey={(r) => r.cash_request_id}
         empty={{
           title: "No cash requests",
-          hint: "Request an advance for a dossier.",
+          hint: "Request an advance for an operations file.",
         }}
       />
       {open && (

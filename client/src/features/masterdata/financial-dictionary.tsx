@@ -441,7 +441,7 @@ function DictDossier({
             >
               {it.applicability_mode === "NON_OPERATIONAL"
                 ? "This line is not tied to operations, so it never appears in a service pick-list."
-                : "This line surfaces on every operational dossier, regardless of service type."}
+                : "This line surfaces on every operations file, regardless of service type."}
             </Callout>
           ) : d.service_tiers.length === 0 ? (
             <EmptyState

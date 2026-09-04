@@ -29,6 +29,7 @@ export function KpiTile({
   tone = "accent",
   onClick,
   ariaLabel,
+  stack = false,
 }: {
   label: string;
   value: React.ReactNode;
@@ -40,7 +41,35 @@ export function KpiTile({
   onClick?: () => void;
   /** Accessible name override for the button variant (defaults to "Open <label>"). */
   ariaLabel?: string;
+  /** Two-line layout: value on top, label + hint underneath. Used by the
+   *  costing worksheet's totals row, where the long money figure and the
+   *  qualifying "of which…" hint both want their own line. */
+  stack?: boolean;
 }) {
+  // Stacked variant: the value is a heading and the label + hint are the
+  // subtitle beneath it, on their own row. The inline layout would put the
+  // label straight after the value ("16,924,000 XAF Subtotal (HT) of which
+  // débours…"), which is what the worksheet was trying to escape.
+  if (stack) {
+    return (
+      <div className="flex min-w-0 flex-1 basis-[9rem] flex-col justify-center gap-1 px-4 py-2.5">
+        <span
+          className="num truncate text-[18px] font-semibold leading-none"
+          title={typeof value === "string" || typeof value === "number" ? String(value) : undefined}
+        >
+          {value}
+        </span>
+        {/* Wraps rather than truncates: on the worksheet's totals row the hint
+            is a real qualifier ("of which débours 16,824,000.00 XAF"), and a
+            reader who loses it to an ellipsis is a reader who never sees why
+            the subtotal is what it is. */}
+        <span className="text-[12px] leading-snug text-muted-foreground" title={hint ? `${label} · ${hint}` : label}>
+          {label}
+          {hint ? <> · {hint}</> : null}
+        </span>
+      </div>
+    );
+  }
   const body = (
     <>
       {icon && (

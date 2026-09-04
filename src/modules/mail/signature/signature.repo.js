@@ -138,6 +138,9 @@ async function loadPerson(client, userId) {
  */
 const ENTITY_SELECT = `
   SELECT ce.*,
+         -- Carried so a "no P.O. Box" gap can open THAT address row's modal
+         -- rather than the tab it sits on (signature.gaps).
+         a.address_id   AS addr_id,
          a.line1        AS addr_line1,
          a.line2        AS addr_line2,
          a.city         AS addr_city,

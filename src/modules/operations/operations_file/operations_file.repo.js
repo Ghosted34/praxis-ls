@@ -145,12 +145,29 @@ async function list(client, q = {}) {
 async function overview(client, dossierId) {
   const q = (sql) => client.query(sql, [dossierId]).then((r) => r.rows);
 
+  /*
+   * The file's BUDGET — and two defects fixed in 12766.
+   *
+   * IT SUMMED EVERY COSTING ON THE FILE, whatever its status. A rejected sheet
+   * beside its replacement, or a draft beside the approved one, double-counted
+   * the budget — so budget-vs-actual was wrong on exactly the files somebody
+   * had had to re-cost. `uq_costing_one_live_per_dossier` now makes at most one
+   * costing live, and `status <> 'REJECTED'` is what "live" means.
+   *
+   * AND IT IGNORED CURRENCY, adding a USD sheet's raw line amounts to an XAF
+   * one's. `service_type.repo.moneyRollup` grouped by currency and therefore
+   * reported a DIFFERENT figure for the same money. Converting at the costing's
+   * own stored rate — the rate its approver saw — is the answer both should
+   * have been giving; `exchange_rate_to_xaf` is NOT NULL DEFAULT 1, so an
+   * XAF sheet is unaffected.
+   */
   const [costing] = await q(
     "SELECT COUNT(DISTINCT c.costing_id)::int AS count, " +
-      "COALESCE(SUM(cl.qty * cl.unit_cost), 0) AS planned_cost, " +
-      "COALESCE(SUM(cl.qty * cl.unit_cost) FILTER (WHERE NOT cl.is_disbursement), 0) AS planned_service_cost, " +
-      "COALESCE(SUM(cl.qty * cl.unit_cost) FILTER (WHERE cl.is_disbursement), 0) AS planned_disbursement " +
-      "FROM costing c LEFT JOIN costing_line cl ON cl.costing_id = c.costing_id WHERE c.dossier_id = $1",
+      "COALESCE(SUM(cl.qty * cl.unit_cost * c.exchange_rate_to_xaf), 0) AS planned_cost, " +
+      "COALESCE(SUM(cl.qty * cl.unit_cost * c.exchange_rate_to_xaf) FILTER (WHERE NOT cl.is_disbursement), 0) AS planned_service_cost, " +
+      "COALESCE(SUM(cl.qty * cl.unit_cost * c.exchange_rate_to_xaf) FILTER (WHERE cl.is_disbursement), 0) AS planned_disbursement " +
+      "FROM costing c LEFT JOIN costing_line cl ON cl.costing_id = c.costing_id " +
+      "WHERE c.dossier_id = $1 AND c.status <> 'REJECTED'",
   );
   const [actual] = await q("SELECT COUNT(*)::int AS entries, COALESCE(SUM(amount), 0) AS actual_cost FROM cost_entry WHERE dossier_id = $1");
   const [invoices] = await q(
@@ -174,18 +191,39 @@ async function overview(client, dossierId) {
   );
   const [transit] = await q("SELECT COUNT(*)::int AS count FROM transit_order WHERE dossier_id = $1");
   const [delivery] = await q("SELECT COUNT(*)::int AS count FROM delivery_note WHERE dossier_id = $1");
+  // TRUE counts for the vault and the query tickets, not `documentRows.length`.
+  // The row lists below are capped at 20, so counting them is a number that is
+  // right until a busy file makes it silently wrong — and the 360's tab strip
+  // publishes these as "Documents 24 / Queries 3". A count that lies is worse
+  // than no count, so it is counted rather than measured. Archived scans are
+  // excluded on the same reasoning `vaultDocuments` excludes them: an archived
+  // document is no longer evidence.
+  const [vault] = await q("SELECT COUNT(*)::int AS count FROM document_vault WHERE dossier_id = $1 AND status <> 'ARCHIVED'");
+  const [queries] = await q(
+    "SELECT COUNT(*)::int AS count, COUNT(*) FILTER (WHERE status <> 'RESOLVED')::int AS open FROM q_ticket WHERE dossier_id = $1",
+  );
 
   // People (SoD): who issued/validated/approved on the money documents. Names are
   // joined in the SAME (env) schema — business rows FK app_user per schema, and the
   // sandbox seed mirrors identity users, so a missing mirror just yields null names.
+  // 12766: `costing_id` rides along so the 360 can LINK to the sheet. It could
+  // not before — the block returned a count and a number, so the one screen
+  // that tells you a file has a costing was the one place you could not open
+  // it. The totals come too, so the card shows HT/VAT/TTC without a second
+  // fetch. `validated_by` is who actually validated; `validator_id` is who it
+  // was addressed to, and they are not always the same person.
   const [costingPeople] = await q(
-    "SELECT c.status, c.doc_number, " +
+    "SELECT c.costing_id, c.status, c.doc_number, c.currency, " +
+      "c.total_ht, c.total_vat, c.total_ttc, c.total_ttc_xaf, " +
+      "c.validated_at, c.approved_at, " +
       "uv.user_id AS validator_id, uv.full_name AS validator_name, " +
+      "ud.user_id AS validated_by_id, ud.full_name AS validated_by_name, " +
       "ua.user_id AS approver_id, ua.full_name AS approver_name " +
       "FROM costing c " +
       "LEFT JOIN app_user uv ON uv.user_id = c.validator_id " +
+      "LEFT JOIN app_user ud ON ud.user_id = c.validated_by " +
       "LEFT JOIN app_user ua ON ua.user_id = c.approver_id " +
-      "WHERE c.dossier_id = $1 " +
+      "WHERE c.dossier_id = $1 AND c.status <> 'REJECTED' " +
       "ORDER BY (c.status = 'APPROVED_LOCKED') DESC, c.updated_at DESC LIMIT 1",
   );
   const [invoicePeople] = await q(
@@ -220,10 +258,46 @@ async function overview(client, dossierId) {
   );
 
   return {
-    costing, actual, invoices, outstanding, milestones, procurement, transit, delivery,
+    costing, actual, invoices, outstanding, milestones, procurement, transit, delivery, vault, queries,
     people: { costing: costingPeople || null, invoice: invoicePeople || null },
     documentRows: { invoices: invoiceRows, transit: transitRows, delivery: deliveryRows, vault: vaultRows },
   };
+}
+
+/**
+ * What the ids on a file MEAN — client name, service-type names and milestone
+ * progress, for one file.
+ *
+ * The 360's header used to carry ids only, which was fine while the only thing
+ * rendering it was a modal opened from the list: the row was already in hand,
+ * so the screen knew the client name and the service label without asking. The
+ * 360 is a PAGE now, reachable from a pasted link with nothing but a uuid, and
+ * a header reading "Operations file · SBX-2026-0001 · undefined" is what that
+ * costs. One extra query on a request that already makes a dozen.
+ *
+ * Deliberately NOT `get` with joins bolted on. `get` is what decides whether
+ * the caller may see this file at all; this only resolves what its ids mean,
+ * and keeping them apart means a change to either cannot quietly alter the
+ * other's semantics.
+ */
+async function headerJoins(client, dossierId) {
+  const { rows } = await client.query(
+    "SELECT cm.name AS client_name, " +
+      "st.key AS service_key, st.name_en AS service_name_en, st.name_fr AS service_name_fr, " +
+      "st.captures_containers AS captures_containers, st.container_detail_mode AS container_detail_mode, " +
+      "(SELECT COALESCE(SUM(l.qty), 0)::int FROM dossier_container_line l WHERE l.dossier_id = d.dossier_id) AS container_boxes, " +
+      "rp.name AS rate_provider_name, " +
+      "(SELECT COUNT(*)::int FROM milestone_instance mi WHERE mi.dossier_id = d.dossier_id) AS milestone_total, " +
+      "(SELECT COUNT(*)::int FROM milestone_instance mi WHERE mi.dossier_id = d.dossier_id AND mi.status = 'DONE') AS milestone_done, " +
+      "(SELECT mi.label FROM milestone_instance mi WHERE mi.dossier_id = d.dossier_id AND mi.status IN ('IN_PROGRESS','PENDING') ORDER BY (mi.status = 'IN_PROGRESS') DESC, mi.stage_seq ASC LIMIT 1) AS current_milestone " +
+      "FROM dossier d " +
+      "LEFT JOIN client_master cm ON cm.client_id = d.client_id " +
+      "LEFT JOIN service_type st ON st.service_type_id = d.service_type_id " +
+      "LEFT JOIN rate_provider rp ON rp.rate_provider_id = d.rate_provider_id " +
+      "WHERE d.dossier_id = $1",
+    [dossierId],
+  );
+  return rows[0] || {};
 }
 
 /**
@@ -245,4 +319,4 @@ async function vaultDocuments(client, dossierId) {
 // it against the columns the migrations actually declare. That test is the link
 // between this file and the schema — the link whose absence let `title` be
 // written for months against a column that did not exist.
-module.exports = { insert, get, update, list, listPaged, overview, vaultDocuments, WRITABLE };
+module.exports = { insert, get, update, list, listPaged, overview, headerJoins, vaultDocuments, WRITABLE };

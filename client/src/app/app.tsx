@@ -161,9 +161,35 @@ const OperationsHub = lazyNamed(
   () => import("@/features/operations/hub"),
   "OperationsHub",
 );
+// The operations file 360. Its own route, and its own chunk: it is the screen a
+// file reference in an email has to be able to point at, and it is not on the
+// path of anyone who only opened the hub.
+const OperationFile360Page = lazyNamed(
+  () => import("@/features/operations/file-360"),
+  "OperationFile360Page",
+);
+// The transit order and delivery note 360s, for the same reason: an OT number
+// and a delivery-note reference are what a broker, a client and a driver refer
+// to those documents by, so each has to be something you can send.
+const TransitOrder360Page = lazyNamed(
+  () => import("@/features/operations/transit-order-360"),
+  "TransitOrder360Page",
+);
+const DeliveryNote360Page = lazyNamed(
+  () => import("@/features/operations/delivery-note-360"),
+  "DeliveryNote360Page",
+);
 const CostingHub = lazyNamed(
   () => import("@/features/costing/hub"),
   "CostingHub",
+);
+const CashRequest360Page = lazyNamed(
+  () => import("@/features/costing/cash-request-360"),
+  "CashRequest360Page",
+);
+const CostingSheet360Page = lazyNamed(
+  () => import("@/features/costing/costing-sheet-360"),
+  "CostingSheet360Page",
 );
 const ProcurementHub = lazyNamed(
   () => import("@/features/procurement/hub"),
@@ -537,12 +563,47 @@ export function App() {
               <Route path="sales/:section" element={<SalesHub />} />
               {/* Operations — hub */}
               <Route path="operations" element={<OperationsHub />} />
+              {/* The file 360 is a full route for the same reason the entity and
+            treasury dossiers have theirs: a file reference gets pasted into an
+            email, and "open Operations, then Files, then find SBX-2026-0001" is
+            not a link. Declared before `operations/:section` — react-router
+            ranks by specificity, so the three-segment path wins either way. */}
+              <Route
+                path="operations/files/:fileId"
+                element={<OperationFile360Page />}
+              />
+              <Route
+                path="operations/transit-orders/:orderId"
+                element={<TransitOrder360Page />}
+              />
+              <Route
+                path="operations/delivery-notes/:noteId"
+                element={<DeliveryNote360Page />}
+              />
               <Route path="operations/:section" element={<OperationsHub />} />
               {/* Procurement — hub */}
               <Route path="procurement" element={<ProcurementHub />} />
               <Route path="procurement/:section" element={<ProcurementHub />} />
               {/* Costing — hub */}
               <Route path="costing" element={<CostingHub />} />
+              {/* The worksheet is a full route for the same reason the file 360
+            is: a costing under review gets sent to a validator, and "open
+            Costing, then find CST-2026-0043" is not a link. Declared before
+            `costing/:section` — react-router ranks by specificity, so the
+            three-segment path wins either way. */}
+              <Route
+                path="costing/costing/:costingId"
+                element={<CostingSheet360Page />}
+              />
+              {/* The cash-request worksheet is a full route for the same reason
+            the costing sheet is: a request awaiting approval gets SENT to a
+            validator, and "open Cash requests, then find DF-2026-0011" is not
+            a link. Declared before `costing/:section` — react-router ranks by
+            specificity, so the three-segment path wins either way. */}
+              <Route
+                path="costing/cash-requests/:cashRequestId"
+                element={<CashRequest360Page />}
+              />
               <Route path="costing/:section" element={<CostingHub />} />
               {/* Finance (new) */}
               {/* Master data — one hub, deep-linkable tabs (per-section routes still resolve) */}

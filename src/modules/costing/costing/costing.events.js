@@ -9,4 +9,7 @@ const UNLOCK_EVENT = {
   DENY_UNLOCK: "costing.unlock_denied",
 };
 const unlockEvent = (action) => UNLOCK_EVENT[action] || statusChange(action);
-module.exports = { MODULE: "MOD-46", CREATED: "costing.created", UPDATED: "costing.updated", APPROVED: "costing.approved", statusChange, UNLOCK_EVENT, unlockEvent };
+// 12774 — a reminder sent to whoever is holding a pending sheet. Its own key
+// rather than a status change, because nothing about the costing moved: this
+// records that somebody was asked to look at it.
+module.exports = { MODULE: "MOD-46", CREATED: "costing.created", UPDATED: "costing.updated", APPROVED: "costing.approved", NUDGED: "costing.nudged", statusChange, UNLOCK_EVENT, unlockEvent };

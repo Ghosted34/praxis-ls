@@ -13,6 +13,7 @@ import { DocButton } from "@/components/doc-button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { Callout } from "@/components/ui/callout";
+import { useToast } from "@/components/ui/toast";
 import { ErrorState, EmptyState } from "@/components/ui/states";
 import { ApiError } from "@/lib/api-client";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
@@ -43,7 +44,7 @@ import {
 import { useList, useResource, errMsg } from "@/lib/use-resource";
 import { money, money0, num, dateFmt, todayISO } from "@/lib/format";
 import { reportActionError } from "@/lib/action-error";
-import type { Entity, DictItem } from "@/lib/masterdata-api";
+import type { Entity } from "@/lib/masterdata-api";
 import { listCurrencies } from "@/lib/masterdata-api";
 import { DictionaryFinder } from "@/components/dictionary-finder";
 import type { Dossier } from "@/lib/operations-api";
@@ -1212,32 +1213,256 @@ function CostPortfolio() {
 
 /* ═══════════════════ Cash requests ═══════════════════ */
 
+/* ── The costing gate, inside the cash-request dialog (12774) ───────────────
+ *
+ * WHY THIS EXISTS. A cash request cannot be funded until its file's costing is
+ * APPROVED_LOCKED (owner decision Q4: no money leaves without a costing). So a
+ * requester whose sheet is sitting in somebody's queue is blocked by a PERSON —
+ * and the dialog used to say nothing about who, offer nothing to do about it,
+ * and make them leave the screen to find out.
+ *
+ * The owner's rule for this panel, verbatim: *"So there is not a blocker. all
+ * should be done from within the cash request modal not having to leave."*
+ * Every state below therefore ends in an action, not an apology:
+ *
+ *   no costing        → create one (the one deep link, because a costing is a
+ *                       worksheet and not something to conjure from a dialog)
+ *   DRAFT             → name a validator and submit it, here
+ *   awaiting someone  → remind them, here — three times a day, no more
+ *   APPROVED_LOCKED   → nothing to do; say so and get out of the way
+ */
+function CostingGatePanel({
+  dossierId,
+  gate,
+  busy,
+  users,
+  onChanged,
+}: {
+  dossierId: string;
+  gate: api.CostingGate | null;
+  busy: boolean;
+  users: { user_id: string; full_name?: string | null; email?: string }[];
+  onChanged: () => void;
+}) {
+  const toast = useToast();
+  const [working, setWorking] = React.useState(false);
+  const [validatorId, setValidatorId] = React.useState("");
+  // Held locally so the count drops the instant a reminder is sent, without
+  // waiting for the gate to be re-read.
+  const [remaining, setRemaining] = React.useState<number | null>(null);
+
+  React.useEffect(() => {
+    setRemaining(null);
+    setValidatorId("");
+  }, [dossierId]);
+
+  if (!dossierId) return null;
+  if (busy && !gate) {
+    return <p className="micro">{tr("Reading this file's budget…")}</p>;
+  }
+
+  const left = remaining ?? gate?.nudges_remaining ?? 0;
+  const limit = gate?.nudge_limit ?? 3;
+
+  async function run(what: () => Promise<unknown>, done: string) {
+    setWorking(true);
+    try {
+      await what();
+      toast.success(done);
+      onChanged();
+    } catch (err) {
+      // Named where it happened rather than through the global banner: this is
+      // a panel with three buttons on it, and "which one failed" is the whole
+      // question.
+      toast.error(errMsg(err));
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  /* ── 1. No costing on this file at all ──────────────────────────────── */
+  if (!gate?.costing) {
+    return (
+      <Callout tone="warn" title={tr("This file has no costing yet")}>
+        <p className="mb-2">
+          {tr(
+            "A cash request draws on an approved costing, so the file needs one before money can be released.",
+          )}
+        </p>
+        <Link className="underline underline-offset-2" to={`${COSTING_BASE}?dossier_id=${dossierId}`}>
+          {tr("Create the costing for this file")}
+        </Link>
+      </Callout>
+    );
+  }
+
+  const c = gate.costing;
+  const ref = c.doc_number || c.costing_id.slice(0, 8);
+
+  /* ── 2. Approved: nothing to do ─────────────────────────────────────── */
+  if (gate.can_fund) {
+    return (
+      <Callout tone="ok" title={`${tr("Budget approved")} · ${ref}`}>
+        {c.total_ttc !== null
+          ? `${tr("This file's costing is approved for")} ${money(c.total_ttc)}. ${tr("Its lines load into the worksheet.")}`
+          : tr("Its lines load into the worksheet.")}
+      </Callout>
+    );
+  }
+
+  /* ── 3. A draft nobody has submitted ────────────────────────────────── */
+  if (c.status === "DRAFT") {
+    return (
+      <Callout tone="warn" title={`${tr("The costing is still a draft")} · ${ref}`}>
+        <p className="mb-2">
+          {tr("It has to be validated and approved before this request can be funded. You can send it on its way from here.")}
+        </p>
+        {gate.needs_validator && (
+          <Field label={tr("Validator")} hint={tr("Who the sheet goes to")}>
+            <Select value={validatorId} onChange={(e) => setValidatorId(e.target.value)}>
+              <option value="">—</option>
+              {users.map((u) => (
+                <option key={u.user_id} value={u.user_id}>
+                  {u.full_name || u.email || u.user_id.slice(0, 8)}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
+        <Button
+          type="button"
+          size="sm"
+          className="mt-2"
+          loading={working}
+          disabled={gate.needs_validator && !validatorId}
+          onClick={() =>
+            run(async () => {
+              // Name the validator first when the sheet has none: the server
+              // refuses SUBMIT_VALIDATION without one (NO_VALIDATOR), and a
+              // button that fails for a reason we could have fixed is a bad one.
+              if (gate.needs_validator && validatorId) {
+                await api.updateCosting(c.costing_id, { validator_id: validatorId });
+              }
+              await api.setCostingStatus(c.costing_id, "SUBMIT_VALIDATION");
+            }, tr("Costing submitted for validation"))
+          }
+        >
+          {tr("Submit for validation")}
+        </Button>
+      </Callout>
+    );
+  }
+
+  /* ── 4. Sitting in somebody's queue ─────────────────────────────────── */
+  const who =
+    gate.awaiting?.name ||
+    gate.awaiting?.role_name ||
+    (gate.stage === "VALIDATION" ? tr("the validator") : tr("the approver"));
+  return (
+    <Callout tone="warn" title={`${tr("Waiting on")} ${who} · ${ref}`}>
+      <p className="mb-2">
+        {gate.stage === "VALIDATION"
+          ? tr("The costing has been submitted and is waiting to be validated.")
+          : tr("The costing has been validated and is waiting for approval.")}
+      </p>
+      <div className="flex flex-wrap items-center gap-3">
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          loading={working}
+          disabled={left <= 0}
+          onClick={() =>
+            run(async () => {
+              const r = await api.nudgeCosting(c.costing_id);
+              setRemaining(r.nudges_remaining);
+            }, tr("Reminder sent"))
+          }
+        >
+          {tr("Send a reminder")}
+        </Button>
+        {/* The owner's ceiling, stated before the press and not only after it:
+            "Show how many more times they have please." */}
+        <span className="micro">
+          {left > 0
+            ? `${left} ${left === 1 ? tr("reminder") : tr("reminders")} ${tr("left today")} (${tr("max")} ${limit})`
+            : tr("No reminders left today — the count resets tomorrow.")}
+        </span>
+      </div>
+    </Callout>
+  );
+}
+
+/**
+ * START a cash request — the CONTEXT only, never its money.
+ *
+ * ── WHY THERE IS NO LINE EDITOR HERE ANY MORE ──────────────────────────────
+ *
+ * There was one, and it was the pre-revamp shape: a "Budget line" dropdown
+ * over the whole financial dictionary, a free Budget box, a VAT box and a
+ * justification tick. On an OPS request every one of those is a line the
+ * server will refuse — 12771's `assertFundable` demands that each line name a
+ * `costing_line_id` (owner decision Q4: no money leaves without a costing), so
+ * a hand-typed line can be saved as a draft and can never be submitted. The
+ * dialog was inviting people to fill in a form whose contents were unusable.
+ *
+ * The lines come from the BUDGET now, on the worksheet, where the Budget /
+ * Claimed / Remaining columns can show what each claim does to the file. This
+ * dialog names the file, the costing, the beneficiary and how the money leaves
+ * — and then gets out of the way.
+ */
 function CashRequestForm({
   onClose,
-  onSaved,
+  onCreated,
 }: {
   onClose: () => void;
-  onSaved: () => void;
+  onCreated: (id: string, loadFailed: string | null) => void;
 }) {
   const { rows: dossiers } = useList<Dossier>("/operations");
-  const { rows: dict } = useList<DictItem>("/financial-dictionary");
-  const { rows: costings } = useList<api.Costing>("/costings");
+  const { rows: users } = useList<{
+    user_id: string;
+    full_name?: string | null;
+    email?: string;
+  }>("/users");
   const [dossierId, setDossierId] = React.useState("");
   // 10720: the legacy cash request carried beneficiary + an OPS/OVH context —
   // OPS requires an operations file, OVH requires a cost centre + justification.
   const [category, setCategory] = React.useState<"OPS" | "OVH">("OPS");
-  const [costingId, setCostingId] = React.useState("");
-  // Auto-link the dossier's APPROVED_LOCKED costing when one is picked, so
-  // "Import costing" works without hunting — the legacy linked it through the
-  // ops file automatically.
-  React.useEffect(() => {
-    if (!dossierId) return;
-    const match = (costings || []).find(
-      (c) => c.dossier_id === dossierId && c.status === "APPROVED_LOCKED",
-    );
-    if (match) setCostingId(match.costing_id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  /*
+   * THE FILE DECIDES THE COSTING. There is no picker (12774).
+   *
+   * There was one, and it listed every costing in the tenant — unfiltered, so a
+   * request against file A could be pointed at file B's budget, and the user
+   * was asked to choose from a list in which almost every entry was wrong. A
+   * file has one live costing; resolving it is the software's job.
+   *
+   * The same call answers what the sheet's STATE is and who is holding it, so
+   * the panel below can offer the way forward instead of a dead end.
+   */
+  const [gate, setGate] = React.useState<api.CostingGate | null>(null);
+  const [gateBusy, setGateBusy] = React.useState(false);
+  const loadGate = React.useCallback(async () => {
+    if (!dossierId) {
+      setGate(null);
+      return;
+    }
+    setGateBusy(true);
+    try {
+      setGate(await api.costingGate(dossierId));
+    } catch (err) {
+      // The gate is advisory on this screen — the server re-checks every rule
+      // it describes. A file whose gate cannot be read must still be pickable.
+      setGate(null);
+      reportActionError(err);
+    } finally {
+      setGateBusy(false);
+    }
   }, [dossierId]);
+  React.useEffect(() => {
+    void loadGate();
+  }, [loadGate]);
+  // The resolved costing IS the request's costing; nothing else can set it.
+  const costingId = gate?.costing?.costing_id || "";
   const [beneficiary, setBeneficiary] = React.useState("");
   const [costCenter, setCostCenter] = React.useState("");
   const [overheadJustification, setOverheadJustification] = React.useState("");
@@ -1248,30 +1473,15 @@ function CashRequestForm({
   const [details, setDetails] = React.useState<Record<string, string>>({});
   const setDetail = (k: string, v: string) =>
     setDetails((d) => ({ ...d, [k]: v }));
-  const [lines, setLines] = React.useState<api.CashLine[]>([
-    { dictionary_item_id: null, label: "", budget_amount: 0 },
-  ]);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const setLine = (i: number, p: Partial<api.CashLine>) =>
-    setLines((ls) => ls.map((l, j) => (j === i ? { ...l, ...p } : l)));
-
-  // Pick a budget line from the Financial Dictionary; the item's label is stored
-  // alongside its id so the request reads the same standardised category names.
-  const pickItem = (i: number, id: string) => {
-    const item = (dict || []).find((d) => d.dictionary_item_id === id);
-    setLine(i, {
-      dictionary_item_id: id || null,
-      label: item ? item.label_fr || item.code : "",
-    });
-  };
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
     try {
-      await api.createCashRequest({
+      const created = await api.createCashRequest({
         dossier_id: category === "OPS" ? dossierId || undefined : undefined,
         costing_id: costingId || undefined,
         category,
@@ -1282,20 +1492,27 @@ function CashRequestForm({
         remarks: remarks || undefined,
         disbursement_method: method || undefined,
         disbursement_details: method ? details : undefined,
-        lines: lines
-          .filter((l) => l.dictionary_item_id || l.label)
-          .map((l) => ({
-            dictionary_item_id: l.dictionary_item_id || undefined,
-            label: l.label || "Line",
-            budget_amount: Number(l.budget_amount) || 0,
-            vat_percent:
-              l.vat_percent === null || l.vat_percent === undefined
-                ? undefined
-                : Number(l.vat_percent),
-            justification_required: l.justification_required === true,
-          })),
       });
-      onSaved();
+      /*
+       * The budget, pulled in immediately (owner decision Q10: "lines arrive on
+       * file pick"). So the worksheet opens POPULATED — the three costing lines
+       * already there, defaulted to what each has left — rather than empty with
+       * a button on it.
+       *
+       * A failure here is reported, never swallowed, but it does not undo the
+       * request: an unapproved or fully-claimed costing is a real answer the
+       * requester needs to read, and the worksheet is where they read it, next
+       * to the "Load from budget" button that retries.
+       */
+      let loadFailed: string | null = null;
+      if (created.cash_request_id && costingId && category === "OPS") {
+        try {
+          await api.importCostingLines(created.cash_request_id);
+        } catch (err) {
+          loadFailed = errMsg(err);
+        }
+      }
+      onCreated(created.cash_request_id, loadFailed);
       onClose();
     } catch (err) {
       setError(errMsg(err));
@@ -1345,20 +1562,15 @@ function CashRequestForm({
                   ))}
                 </Select>
               </Field>
-              <Field label="Costing" hint="Approved costing feeding the budget lines (Import costing).">
-                <Select
-                  value={costingId}
-                  onChange={(e) => setCostingId(e.target.value)}
-                >
-                  <option value="">—</option>
-                  {(costings || []).map((c) => (
-                    <option key={c.costing_id} value={c.costing_id}>
-                      {c.doc_number || c.costing_id.slice(0, 8)}
-                      {c.status === "APPROVED_LOCKED" ? " ✓" : ` (${c.status})`}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
+              {/* The costing is RESOLVED from the file, never picked from a
+                  list — see CostingGatePanel. */}
+              <CostingGatePanel
+                dossierId={dossierId}
+                gate={gate}
+                busy={gateBusy}
+                users={users || []}
+                onChanged={loadGate}
+              />
             </>
           ) : (
             <>
@@ -1457,132 +1669,14 @@ function CashRequestForm({
           )}
         </div>
 
-        <div>
-          <div className="mb-2 flex items-center justify-between">
-            <span className="micro">Budget lines</span>
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              onClick={() =>
-                setLines((l) => [
-                  ...l,
-                  { dictionary_item_id: null, label: "", budget_amount: 0 },
-                ])
-              }
-            >
-              + Add line
-            </Button>
-          </div>
-          <div className="space-y-2">
-            {lines.map((l, i) => (
-              <div
-                key={i}
-                className="grid items-end gap-2 sm:grid-cols-[1fr_120px_90px_auto_auto]"
-              >
-                <Field label="Budget line">
-                  <Select
-                    value={l.dictionary_item_id ?? ""}
-                    onChange={(e) => pickItem(i, e.target.value)}
-                  >
-                    <option value="">Select a category…</option>
-                    {(dict || [])
-                      .filter((d) => d.is_active !== false)
-                      .map((d) => (
-                        <option
-                          key={d.dictionary_item_id}
-                          value={d.dictionary_item_id}
-                        >
-                          {d.label_fr || d.code}
-                        </option>
-                      ))}
-                  </Select>
-                </Field>
-                <Field label={tr("Budget")}>
-                  <Input
-                    type="number"
-                    className="num text-right"
-                    value={String(l.budget_amount ?? "")}
-                    onChange={(e) =>
-                      setLine(i, { budget_amount: Number(e.target.value) })
-                    }
-                  />
-                </Field>
-                {/* §3.5 — legacy per-line VAT % and "Just. Req?". */}
-                <Field label={tr("VAT %")}>
-                  <Input
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="0.01"
-                    className="num text-right"
-                    value={
-                      l.vat_percent === null || l.vat_percent === undefined
-                        ? ""
-                        : String(l.vat_percent)
-                    }
-                    onChange={(e) =>
-                      setLine(i, {
-                        vat_percent:
-                          e.target.value === ""
-                            ? null
-                            : Number(e.target.value),
-                      })
-                    }
-                  />
-                </Field>
-                <label className="flex h-9 items-center gap-1 text-xs">
-                  <input
-                    type="checkbox"
-                    checked={l.justification_required === true}
-                    onChange={(e) =>
-                      setLine(i, { justification_required: e.target.checked })
-                    }
-                    aria-label={tr("Justification required")}
-                  />
-                  {tr("Just. req?")}
-                </label>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  disabled={lines.length === 1}
-                  onClick={() => setLines((ls) => ls.filter((_, j) => j !== i))}
-                >
-                  ✕
-                </Button>
-              </div>
-            ))}
-          </div>
-        </div>
-        {/* §3.5 — the voucher footer, live: Subtotal / VAT / TOTAL PAYABLE. */}
-        {(() => {
-          const subtotal = lines.reduce(
-            (a, l) => a + (Number(l.budget_amount) || 0),
-            0,
-          );
-          const vat = lines.reduce(
-            (a, l) =>
-              a +
-              ((Number(l.budget_amount) || 0) * (Number(l.vat_percent) || 0)) /
-                100,
-            0,
-          );
-          return (
-            <p className="num text-right text-sm">
-              {tr("Subtotal")} {money(subtotal)} · {tr("VAT")} {money(vat)} ·{" "}
-              <span className="font-semibold">
-                {tr("TOTAL PAYABLE")} {money(subtotal + vat)}
-              </span>
-            </p>
-          );
-        })()}
+        {/* Where the money comes from is decided on the WORKSHEET, against the
+            budget — see the note on this component. This dialog ends here. */}
         {error && <ErrorState message={error} />}
         <FormButtons
           busy={busy}
           disabled={busy}
           onCancel={onClose}
-          saveLabel="Create request"
+          saveLabel="Create & open worksheet"
         />
       </form>
     </Modal>
@@ -1590,6 +1684,7 @@ function CashRequestForm({
 }
 
 export function CashRequestsPage() {
+  const navigate = useNavigate();
   const { rows, error, loading, reload } =
     useList<api.CashRequest>("/cash-requests");
   // 12771 — the strip counted statuses in the browser, over whichever page it
@@ -1741,13 +1836,33 @@ export function CashRequestsPage() {
         error={error}
         loading={loading}
         rowKey={(r) => r.cash_request_id}
+        // The whole row opens the worksheet, exactly as the costing register
+        // above does. The reference cell has been a link since 12771, but a
+        // register whose rows are inert while its neighbour's are clickable
+        // teaches people the detail screen does not exist — which is precisely
+        // what happened.
+        onRowClick={(r) => navigate(`${CASH_REQUEST_BASE}/${r.cash_request_id}`)}
         empty={{
           title: "No cash requests",
           hint: "Request an advance for an operations file.",
         }}
       />
       {open && (
-        <CashRequestForm onClose={() => setOpen(false)} onSaved={reload} />
+        <CashRequestForm
+          onClose={() => setOpen(false)}
+          onCreated={(newId, loadFailed) => {
+            setOpen(false);
+            // Straight to the worksheet — the rule the costing already follows
+            // above: an empty request is not a destination. This is where the
+            // budget lines are, with what each claim leaves behind, and it is
+            // the screen the requester actually works on.
+            navigate(`${CASH_REQUEST_BASE}/${newId}`, {
+              // Carried rather than shown here: the worksheet is where the
+              // retry lives, so that is where the reason belongs.
+              state: loadFailed ? { loadFailed } : undefined,
+            });
+          }}
+        />
       )}
       {disbursing && (
         <DisburseForm

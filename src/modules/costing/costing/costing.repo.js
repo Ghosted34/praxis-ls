@@ -303,11 +303,91 @@ async function kpis(client, q = {}) {
 async function liveForDossier(client, dossierId) {
   const { rows } = await client.query(
     "SELECT costing_id, doc_number, status FROM costing " +
-      "WHERE dossier_id = $1 AND status <> 'REJECTED' LIMIT 1",
+      // An APPROVED sheet first, then the most recent: `LIMIT 1` with no order
+      // was non-deterministic, so a file that had been through an unlock could
+      // answer with either version depending on the plan. One costing per file
+      // is the intent, but nothing in the schema enforces it (12774 note).
+      "WHERE dossier_id = $1 AND status <> 'REJECTED' "
+      + "ORDER BY (status = 'APPROVED_LOCKED') DESC, created_at DESC LIMIT 1",
     [dossierId],
   );
   return rows[0] || null;
 }
+
+/**
+ * The costing gate for one operations file (12774) — everything the cash
+ * request screen needs to answer "can this file be funded, and if not, who is
+ * holding it up?" in one round trip.
+ *
+ * WHY IT IS ONE QUERY AND NOT THREE. This runs the moment somebody picks a file
+ * in a dialog, before they have typed anything. Three sequential round trips to
+ * paint a status line is how a dialog comes to feel slow, and the join is
+ * cheap: the sheet, the person named to validate it, and the pending approval
+ * task that names whoever must approve it.
+ *
+ * `awaiting_role_id` matters as much as `awaiting_user_id`: a workflow step can
+ * be assigned to a ROLE, and then the person to chase is everyone holding it
+ * rather than nobody.
+ */
+async function gateForDossier(client, dossierId) {
+  const { rows } = await client.query(
+    `SELECT c.costing_id, c.doc_number, c.status, c.total_ttc, c.currency,
+            c.validator_id,
+            COALESCE(e_v.signatory_name, v.full_name) AS validator_name,
+            t.assigned_user_id AS awaiting_user_id,
+            t.assigned_role_id AS awaiting_role_id,
+            COALESCE(e_a.signatory_name, a.full_name) AS awaiting_user_name,
+            r.name AS awaiting_role_name,
+            (SELECT count(*) FROM costing_nudge n
+              WHERE n.costing_id = c.costing_id AND n.sent_on = current_date) AS nudges_today
+       FROM costing c
+       LEFT JOIN app_user v ON v.user_id = c.validator_id
+       LEFT JOIN employee e_v ON e_v.employee_id = v.employee_id
+       -- The oldest PENDING step is the one actually blocking; a chain with two
+       -- open steps is waiting on the first of them.
+       LEFT JOIN LATERAL (
+         SELECT assigned_user_id, assigned_role_id
+           FROM approval_task
+          WHERE entity_ref = 'costing:' || c.costing_id AND status = 'PENDING'
+          ORDER BY created_at LIMIT 1
+       ) t ON true
+       LEFT JOIN app_user a ON a.user_id = t.assigned_user_id
+       LEFT JOIN employee e_a ON e_a.employee_id = a.employee_id
+       LEFT JOIN role r ON r.role_id = t.assigned_role_id
+      WHERE c.dossier_id = $1 AND c.status <> 'REJECTED'
+      ORDER BY (c.status = 'APPROVED_LOCKED') DESC, c.created_at DESC
+      LIMIT 1`,
+    [dossierId],
+  );
+  return rows[0] || null;
+}
+
+/**
+ * Everyone holding a role — the recipients when a step names a role, not a
+ * person. Roles are a JOIN table (`user_role`), not a column on `app_user`, and
+ * a suspended or locked account is not somebody to chase.
+ */
+async function usersInRole(client, roleId) {
+  if (!roleId) return [];
+  const { rows } = await client.query(
+    "SELECT u.user_id FROM app_user u "
+      + "JOIN user_role ur ON ur.user_id = u.user_id "
+      + "WHERE ur.role_id = $1 AND u.status = 'ACTIVE'",
+    [roleId],
+  );
+  return rows.map((r) => r.user_id);
+}
+
+/** Reminders sent about this sheet today. The quota's numerator (12774). */
+async function nudgesToday(client, costingId) {
+  const { rows } = await client.query(
+    "SELECT count(*)::int AS n FROM costing_nudge WHERE costing_id = $1 AND sent_on = current_date",
+    [costingId],
+  );
+  return rows[0] ? rows[0].n : 0;
+}
+
+const insertNudge = (client, data) => insertOne(client, "costing_nudge", data);
 
 /* ── the approval snapshot (12766) ─────────────────────────────────────────── */
 
@@ -478,6 +558,7 @@ async function defaultSalesTaxCode(client, { entityId, onDate }) {
 module.exports = {
   insert, get, update, deleteLinesExcept, insertLine, updateLine, listLines, list, kpis,
   claimsOnLines, budgetForCosting, lineIdentities, COMMITTING_STATUSES, PENDING_STATUSES,
-  liveForDossier, insertSnapshot, latestSnapshot, snapshotCount,
+  liveForDossier, gateForDossier, usersInRole, nudgesToday, insertNudge,
+  insertSnapshot, latestSnapshot, snapshotCount,
   dossierForCosting, tieredItems, containerTypesOnFile, ratesForItems, defaultSalesTaxCode,
 };

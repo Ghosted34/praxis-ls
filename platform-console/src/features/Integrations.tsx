@@ -27,6 +27,7 @@ export function Integrations() {
           <GeoapifyCard row={byKey["geocoding.geoapify"]} onSaved={reload} />
           <VapidCard row={byKey["push.vapid"]} onSaved={reload} />
           <MailFallbackCard row={byKey["mail.fallback"]} onSaved={reload} />
+          <MicrosoftGraphCard row={byKey["mail.microsoft_graph"]} onSaved={reload} />
           <BackupStorageCard row={byKey["storage.backup"]} onSaved={reload} />
           <SignwellCard rows={byKey} onSaved={reload} />
           <AlertsCard rows={byKey} onSaved={reload} />
@@ -583,6 +584,97 @@ function VapidCard({ row, onSaved }: { row?: PlatformSetting; onSaved: () => voi
  * who haven't pointed their DNS at us never fail to receive system mail.
  * Distinct from each user's mailbox (email_connection). See
  * doc/EMAIL_TWO_CONFIGS.md. */ 
+/**
+ * Microsoft Entra app for mailbox OAuth.
+ *
+ * Deploy-wide, not per tenant: ONE multi-tenant registration serves every
+ * tenant, so it belongs beside the other infrastructure credentials.
+ *
+ * The client secret is encrypted at rest and read back as last4 only — but the
+ * reason this card exists rather than an `.env` line is the EXPIRY. An Entra
+ * secret has an end date, and when it passes every connected Microsoft mailbox
+ * stops syncing at once, which looks like a product bug rather than a calendar
+ * event. Here the expiry is written down next to the credential and the Test
+ * button answers "is this still good?" in one click.
+ */
+function MicrosoftGraphCard({ row, onSaved }: { row?: PlatformSetting; onSaved: () => void }) {
+  const v = (row?.value || {}) as Record<string, string>;
+  const { toast } = useToast();
+  const [f, setF] = useState({
+    client_id: v.client_id || "",
+    directory_id: v.directory_id || "",
+    tenant: v.tenant || "common",
+    redirect_uri: v.redirect_uri || "",
+    scopes: v.scopes || "offline_access User.Read Mail.Read Mail.Send Mail.ReadWrite",
+    secret_expires_on: v.secret_expires_on || "",
+    secret: "",
+  });
+  const [busy, setBusy] = useState(false);
+  const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement>) => setF({ ...f, [k]: e.target.value });
+  const save = async () => {
+    setBusy(true);
+    try {
+      const { secret, ...value } = f;
+      await platform.putSetting("mail", "microsoft_graph", { value, secret: secret || undefined });
+      toast("Microsoft 365 credentials saved");
+      setF({ ...f, secret: "" });
+      onSaved();
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Card title="Microsoft 365 mailboxes (Entra app)" actions={<TestButton section="mail" keyName="microsoft_graph" />}>
+      <p className="muted" style={{ fontSize: 12, marginBottom: 12 }}>
+        The app registration users consent to when they connect a Microsoft 365 mailbox. One
+        multi-tenant registration serves every tenant. Since 2022 Microsoft has not accepted a
+        password on IMAP or POP, and since April 2026 not on SMTP either, so this is the only
+        route by which a Microsoft mailbox can be connected at all. Values set here override
+        the <code>MS_GRAPH_*</code> environment variables.
+      </p>
+      <div className="form-grid" style={{ display: "grid", gap: 12, gridTemplateColumns: "1fr 1fr" }}>
+        <Field label="Application (client) ID">
+          <input className="in" value={f.client_id} onChange={set("client_id")} placeholder="00000000-0000-0000-0000-000000000000" />
+        </Field>
+        <Field label="Client secret" hint={<SecretHint row={row} label="Client secret" />}>
+          <input className="in" type="password" value={f.secret} onChange={set("secret")} placeholder="••••••••" />
+        </Field>
+        <Field label="Directory (tenant) ID" hint="The app's own directory. Required for the Test button — the multi-tenant endpoints cannot verify an app's credentials.">
+          <input className="in" value={f.directory_id} onChange={set("directory_id")} placeholder="00000000-0000-0000-0000-000000000000" />
+        </Field>
+        <Field label="Secret expires on" hint="From Certificates & secrets. Recorded so it is visible before it lapses, not after.">
+          <input className="in" value={f.secret_expires_on} onChange={set("secret_expires_on")} placeholder="2028-08-08" />
+        </Field>
+        <Field label="Sign-in audience" hint="common = work, school and personal. organizations = work and school only.">
+          <input className="in" value={f.tenant} onChange={set("tenant")} placeholder="common" />
+        </Field>
+        <Field label="Redirect URI" hint="Must match a Redirect URI registered on the app, exactly. One canonical URI serves every tenant.">
+          <input className="in" value={f.redirect_uri} onChange={set("redirect_uri")} placeholder="https://praxisls.com/api/tenant/mail/oauth/microsoft/callback" />
+        </Field>
+      </div>
+      <Field label="Delegated scopes">
+        <input className="in" value={f.scopes} onChange={set("scopes")} />
+      </Field>
+      <div className="row" style={{ justifyContent: "flex-end", marginTop: 12 }}>
+        <Button variant="primary" onClick={save} loading={busy}>Save</Button>
+      </div>
+      <details style={{ marginTop: 10, fontSize: 12, color: "var(--ink-2)" }}>
+        <summary style={{ cursor: "pointer", color: "var(--ink)", fontWeight: 600 }}>What the Test proves, and what it cannot</summary>
+        <div style={{ marginTop: 6, padding: "10px 12px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--panel-2)", lineHeight: 1.55 }}>
+          The Test asks Entra for a token using the client ID and secret against the Directory ID.
+          A pass means the app exists and the secret is current — the two things that silently
+          break. It does <strong>not</strong> prove the redirect URI is registered (Entra only
+          checks that during a real sign-in, and a mismatch shows as
+          <code> AADSTS50011</code>), nor that a customer&rsquo;s own administrator has consented
+          in <em>their</em> directory, which is separate from consent in ours.
+        </div>
+      </details>
+    </Card>
+  );
+}
+
 function MailFallbackCard({ row, onSaved }: { row?: PlatformSetting; onSaved: () => void }) {
   const v = (row?.value || {}) as Record<string, string>;
   const { toast } = useToast();

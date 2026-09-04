@@ -1127,13 +1127,22 @@ const TEMPLATES = {
        */
       const rows = Array.isArray(data.lines) ? data.lines : [];
       const hasBudget = rows.some((l) => l.budget);
+      /*
+       * The VAT column appears only when a line actually carries a rate.
+       *
+       * A cash request claims the costing's own TTC figures, so lines raised
+       * since that changed have no rate of their own and the column would be a
+       * strip of blanks down an A4 page. Requests approved before it keep
+       * theirs, because that is what was approved and what was signed.
+       */
+      const hasVat = rows.some((l) => has(l.tax) && Number(l.tax) > 0);
       const cols = [
         { key: "label", label: { fr: "Désignation", en: "Description" } },
         { key: "qty", label: { fr: "Qté", en: "Qty" }, num: true },
-        { key: "unit", label: { fr: "P.U.", en: "Unit" }, num: true },
-        { key: "vat", label: { fr: "TVA", en: "VAT" }, num: true },
+        { key: "unit", label: { fr: "P.U. (TTC)", en: "Unit (TTC)" }, num: true },
+      ].concat(hasVat ? [{ key: "vat", label: { fr: "TVA", en: "VAT" }, num: true }] : []).concat([
         { key: "claim", label: { fr: "Demandé (TTC)", en: "Requested (TTC)" }, num: true },
-      ].concat(hasBudget ? [
+      ]).concat(hasBudget ? [
         { key: "budget", label: { fr: "Budget", en: "Budget" }, num: true },
         { key: "committed", label: { fr: "Déjà engagé", en: "Claimed" }, num: true },
         { key: "after", label: { fr: "Reste après", en: "Remaining after" }, num: true },
@@ -1160,8 +1169,10 @@ const TEMPLATES = {
       });
 
       const totalsRows = [
-        [{ fr: "Sous-total", en: "Subtotal" }, k.money(t.subtotal, ccy, cfg)],
-        [{ fr: "TVA", en: "VAT" }, k.money(t.vat_total, ccy, cfg)],
+        // Same rule as the column: three rows saying one thing is how a reader
+        // learns to skip a totals block.
+        hasVat ? [{ fr: "Sous-total", en: "Subtotal" }, k.money(t.subtotal, ccy, cfg)] : null,
+        hasVat ? [{ fr: "TVA", en: "VAT" }, k.money(t.vat_total, ccy, cfg)] : null,
         [{ fr: "TOTAL À PAYER", en: "TOTAL PAYABLE" }, k.money(t.total_payable, ccy, cfg), { grand: true }],
         // Only once anything has moved: on an unpaid voucher these two rows
         // would restate the total twice and say nothing.

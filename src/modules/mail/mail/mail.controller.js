@@ -8,6 +8,7 @@ const outbox = require("./outbox.service");
 const attachments = require("./attachment.service");
 const commands = require("./commands.service");
 const { cpanelPreset } = require("./autodiscover");
+const msOAuth = require("./providers/microsoftOAuth");
 const { asyncHandler, AppError } = require("../../../utils/errors");
 const documentVault = require("../../vault/document_vault/document_vault.service");
 const { config } = require("../../../config/env");
@@ -20,7 +21,16 @@ const actor = (req) => req.user || { user_id: null };
 // so they always wrote to live — a TEST-mode user then saw an empty list while
 // their connection sat in live. Pinning reads to live makes the two agree.
 const slugOf = (req) => req.tenant && req.tenant.slug;
-const msRedirect = (req) => config.MS_GRAPH_REDIRECT_URI || `${req.protocol}://${req.get("host")}${req.baseUrl}/oauth/microsoft/callback`;
+// The canonical redirect URI, vault first then env, and only then derived from
+// the request host. The derivation is a LAST resort and is usually wrong for a
+// multi-tenant deploy: Entra matches the redirect_uri exactly, and a user
+// connecting from their own tenant subdomain would send a URI that was never
+// registered (AADSTS50011). One canonical URI works for every tenant because
+// host-tenent-resolver reads the tenant from the signed state, not the host.
+const msRedirect = async (req) => {
+  const { redirect_uri: fromStore } = await msOAuth.credentials();
+  return fromStore || `${req.protocol}://${req.get("host")}${req.baseUrl}/oauth/microsoft/callback`;
+};
 const ggRedirect = (req) => config.GOOGLE_REDIRECT_URI || `${req.protocol}://${req.get("host")}${req.baseUrl}/oauth/google/callback`;
 const { URLSearchParams } = require('url');
 
@@ -289,7 +299,16 @@ module.exports = {
   unbindSendPoint: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => sendPoints.unbind(c, { sendPointKey: req.params.key, entityId: req.query.entity_id || null, actor: actor(req) })) })),
 
   // ── Microsoft 365 OAuth (start is authed; callback + webhook are pre-auth) ──
-  msOAuthStart: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.startMicrosoftOAuth(c, { slug: slugOf(req), redirectUri: msRedirect(req), display_name: req.query.display_name, actor: actor(req) })) })),
+  msOAuthStart: asyncHandler(async (req, res) => {
+    // Resolved BEFORE the db callback: msRedirect reads the platform vault, and
+    // the callback it is passed to is not async.
+    const redirectUri = await msRedirect(req);
+    return res.json({
+      data: await req.identityDb((c) => service.startMicrosoftOAuth(c, {
+        slug: slugOf(req), redirectUri, display_name: req.query.display_name, actor: actor(req),
+      })),
+    });
+  }),
   msOAuthCallback: asyncHandler((req, res) => finishOAuth(req, res, "microsoft", (c) =>
     service.completeMicrosoftOAuth(c, { code: req.query.code, state: req.query.state, slug: slugOf(req), webhookUrl: msWebhook(req) }))),
   msWebhook: asyncHandler(async (req, res) => {

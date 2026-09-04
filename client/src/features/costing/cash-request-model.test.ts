@@ -121,17 +121,30 @@ describe("the Remaining column", () => {
 });
 
 describe("fromBudgetLine — the default is what is LEFT, not what was budgeted", () => {
-  it("carries the costing's own shape across when nothing has been claimed", () => {
-    // 2 × 99 000 stays two boxes, so an approver can see a container count
-    // change rather than one flattened number.
+  it("carries the costing's own shape across, at the TTC unit", () => {
+    // 2 × 99 000 stays TWO BOXES, so an approver can see a container count
+    // change rather than one flattened number — but the unit is now the TTC
+    // unit, because a cash request carries no VAT rate of its own.
     const l = fromBudgetLine(
       budgetLine({ label: "THC", qty: 2, unit_cost: 99000, net: 198000, vat: 38115, budget: 236115, remaining: 236115 }),
     );
     expect(l.qty).toBe(2);
-    expect(l.unit_cost).toBe(99000);
-    expect(l.vat_percent).toBeCloseTo(19.25, 4);
+    // 236 115 / 2 — the budget line's own TTC, split over its own quantity.
+    expect(l.unit_cost).toBe(118057.5);
+    expect(l.vat_percent).toBeNull();
+    // And the claim lands EXACTLY on the budget. It used to be reconstructed
+    // as net × a rate derived to four places, which could miss by a cent
+    // against a balance compared to the cent.
     expect(lineClaim(l)).toBe(236115);
     expect(l.picked).toBe(true);
+  });
+
+  it("a fractional TTC unit can only ever underclaim, never breach", () => {
+    // 100 / 3 is 33.333…; flooring the unit keeps 3 × unit at or under the
+    // budget. Overshooting would make an untouched import read as over budget.
+    const l = fromBudgetLine(budgetLine({ qty: 3, net: 100, vat: 0, budget: 100, remaining: 100 }));
+    expect(l.unit_cost).toBe(33.33);
+    expect(lineClaim(l)).toBeLessThanOrEqual(100);
   });
 
   it("a partial top-up is one line at the remaining net, not a fraction of a container", () => {
@@ -200,6 +213,71 @@ describe("fromSaved / toPayload — a round trip keeps line identity", () => {
     // it — its own claim is not counted against itself.
     expect(l.remaining).toBe(150000);
     expect(lineRemainingAfter(l)).toBe(50000);
+  });
+});
+
+describe("numerics off the wire are coerced at the boundary", () => {
+  /*
+   * THE DEFECT THIS PINS, exactly as it reached a user.
+   *
+   * `pg` returns Postgres `numeric` as a STRING — deliberately, because a float
+   * cannot hold arbitrary precision. So every money column on a cash request
+   * line arrives as text while the API types declare `number`, and TypeScript
+   * believes the declaration.
+   *
+   * It hid because every reader wraps its input in `Number()`: the grid, the
+   * totals and the Remaining column were all right on screen. Only SAVE failed.
+   *
+   * ONE field did it — `vat_percent`, the only one `fromSaved` passed through
+   * raw — on every line at once, so a three-line request reported
+   * "Expected number, received string" three times and read like three
+   * problems. A worksheet that displays perfectly and cannot be saved is the
+   * worst shape a bug can take, so the rest is coerced too rather than left to
+   * be the next one.
+   */
+  const wire = <T,>(o: T) => o as T;
+
+  it("a full-claim budget line does not carry strings into the payload", () => {
+    // qty and unit_cost — two of the three the user actually hit.
+    const line = fromBudgetLine(
+      wire(budgetLine({ qty: "2" as never, unit_cost: "75000" as never, net: "150000" as never, budget: "150000" as never, remaining: "150000" as never })),
+    );
+    expect(typeof line.qty).toBe("number");
+    expect(typeof line.unit_cost).toBe("number");
+    expect(line.qty).toBe(2);
+    expect(line.unit_cost).toBe(75000);
+    // And the derived columns are numbers too, or the Remaining maths silently
+    // becomes string concatenation.
+    expect(typeof line.remaining).toBe("number");
+    expect(typeof line.budget).toBe("number");
+  });
+
+  it("a saved line's VAT rate is coerced, and a null rate stays null", () => {
+    // The third field. `null` must NOT become 0: no VAT and 0% VAT are the same
+    // arithmetic but not the same statement, and the column is nullable.
+    const withVat = fromSaved(wire({ cash_request_line_id: "c1", label: "x", vat_percent: "19.25" as never, qty: "1" as never, unit_cost: "75000" as never }));
+    expect(typeof withVat.vat_percent).toBe("number");
+    expect(withVat.vat_percent).toBe(19.25);
+    const without = fromSaved(wire({ cash_request_line_id: "c2", label: "y", vat_percent: null, qty: 1, unit_cost: 100 }));
+    expect(without.vat_percent).toBeNull();
+  });
+
+  it("toPayload emits numbers even if a string reached the draft", () => {
+    // The belt-and-braces guard at the exit: this is the edge where a
+    // regression becomes a 422 in somebody's face rather than a wrong pixel.
+    const p = toPayload(draft(wire({ qty: "3" as never, unit_cost: "1000" as never, vat_percent: "5" as never })));
+    expect(typeof p.qty).toBe("number");
+    expect(typeof p.unit_cost).toBe("number");
+    expect(typeof p.vat_percent).toBe("number");
+    expect(p).toMatchObject({ qty: 3, unit_cost: 1000, vat_percent: 5 });
+  });
+
+  it("a nonsense value falls back rather than becoming NaN", () => {
+    // NaN in a payload is `null` after JSON.stringify, which Zod rejects with a
+    // different and more confusing message than the one we just fixed.
+    const p = toPayload(draft(wire({ qty: "" as never, unit_cost: "abc" as never })));
+    expect(p.qty).toBe(1);
+    expect(p.unit_cost).toBe(0);
   });
 });
 

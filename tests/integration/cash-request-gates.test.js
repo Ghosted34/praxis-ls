@@ -93,11 +93,25 @@ d("cash-request budget gates (real Postgres)", () => {
     expect(Number(imported.amount)).toBe(2886115);
     expect(imported.currency).toBe("XAF");
     const thc = imported.lines.find((l) => l.costing_line_id === ids.thc);
-    // Nothing claimed yet, so the costing's own shape carries across verbatim —
-    // an approver can see the container count change.
+    // Nothing claimed yet, so the costing's own SHAPE carries across — an
+    // approver can still see the container count change.
     expect(Number(thc.qty)).toBe(2);
-    expect(Number(thc.unit_cost)).toBe(99000);
-    expect(Number(thc.vat_percent)).toBeCloseTo(19.25, 2);
+    /*
+     * The unit is the TTC unit, and the line carries NO RATE OF ITS OWN.
+     *
+     * It used to import the net (99 000) plus a rate reverse-engineered from
+     * `vat / net`, and reconstruct the TTC from the two. That round trip
+     * drifted against a balance compared to the cent, showed a rate rounded to
+     * two places beside an amount computed from four, and left the tax on an
+     * approved budget line editable on the request drawing against it.
+     *
+     * (198 000 + the carrier's 38 115) / 2 containers = 118 057.50.
+     */
+    expect(Number(thc.unit_cost)).toBe(118057.5);
+    expect(thc.vat_percent).toBeNull();
+    // And the claim lands EXACTLY on the budget line, which is the property the
+    // old reconstruction could not guarantee.
+    expect(Number(thc.qty) * Number(thc.unit_cost)).toBe(236115);
   });
 
   // Q4 — no money leaves without a costing.

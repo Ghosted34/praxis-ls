@@ -11,7 +11,7 @@ const repo = require("./cash_request.repo");
 const events = require("./cash_request.events");
 const {
   assertTransition, sumField, computeTotals, assertMethod, disbursementState,
-  lineClaim, budgetBreaches, apportionSettlement, budgetControl,
+  budgetBreaches, apportionSettlement, budgetControl,
   // Which act leaves which signature (12773). In the rules because adding a key
   // puts another signature on every voucher — see the note there.
   TRANSITION_SEAL, DISBURSE_SEAL, RECEIPT_SEAL,
@@ -543,27 +543,49 @@ async function updateDraft(client, { id, lines = null, patch = {}, actor: _actor
  * case means an imported line can never breach the budget it was imported from.
  */
 function claimFromBudgetLine(row) {
-  const net = Number(row.net) || 0;
-  const vat = Number(row.vat) || 0;
   const budget = Number(row.budget) || 0;
   const remaining = Number(row.remaining) || 0;
-  // Four places: 19.25% is the common rate and a two-place rate would lose it.
-  const vatPercent = net > 0 ? Math.round((vat / net) * 1000000) / 10000 : 0;
+  const qty = Number(row.qty) || 1;
   const base = {
     costing_line_id: row.costing_line_id,
     dictionary_item_id: row.dictionary_item_id || null,
     label: row.label || "Line",
-    vat_percent: vatPercent > 0 ? vatPercent : null,
+    /*
+     * NO VAT RATE ON A CASH REQUEST LINE.
+     *
+     * It used to reverse-engineer one — `vat / net`, to four places — and then
+     * re-apply it to a net to reconstruct the TTC the budget line already knew.
+     * A round trip through a derived percentage, and it did three bad things:
+     *
+     *   · it DRIFTED. `budget` is the costing's own TTC; net × a rounded rate
+     *     is not always the same number, and the claim was compared against
+     *     `remaining` to the cent.
+     *   · it LIED ON SCREEN. The column showed the rate to two places, so a
+     *     line carrying 3.30 of VAT on 100,000 displayed "0.00" and then
+     *     charged 100,003.30 — the reader could not reconcile what they saw.
+     *   · it was EDITABLE. Changing the rate on a cash request changes the tax
+     *     on a budget line that was approved with its tax, which is exactly the
+     *     drift the ledger exists to prevent.
+     *
+     * The costing hands over an amount that is already TTC (owner decision Q8),
+     * so the claim simply IS that amount. `lineClaim` multiplies by
+     * (1 + 0/100) and returns it unchanged; every reader downstream — the
+     * ledger's SQL twin, the totals, the voucher — keeps working untouched,
+     * because a null rate was always a legal value for them.
+     */
+    vat_percent: null,
     is_disbursement: row.is_disbursement === true,
   };
 
-  const verbatim = { ...base, qty: Number(row.qty) || 1, unit_cost: Number(row.unit_cost) || 0 };
-  if (remaining >= budget && lineClaim({ ...verbatim, budget_amount: round2(verbatim.qty * verbatim.unit_cost) }) <= remaining) {
-    return verbatim;
+  // The whole line is free: keep the costing's own SHAPE, so an approver can
+  // still see two containers rather than one lump. The unit is the TTC unit;
+  // rounding it to the cent can only ever land at or under `budget`, never over.
+  if (remaining >= budget) {
+    return { ...base, qty, unit_cost: Math.floor((budget / qty) * 100) / 100 };
   }
-  // Floor, so the reconstructed TTC can only ever land at or under the balance.
-  const netClaim = Math.floor((remaining / (1 + (vatPercent || 0) / 100)) * 100) / 100;
-  return { ...base, qty: 1, unit_cost: netClaim > 0 ? netClaim : 0 };
+  // A partial top-up is not "1.4 containers", so it lands as one line at the
+  // balance — which is already TTC and needs no reconstruction.
+  return { ...base, qty: 1, unit_cost: remaining > 0 ? remaining : 0 };
 }
 
 /**

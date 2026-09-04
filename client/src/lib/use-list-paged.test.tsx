@@ -228,10 +228,9 @@ describe("useListPaged caching", () => {
     );
     render(<Probe path="/final-invoices" />, { wrapper: wrapper() });
 
+    // F-GAP-09: errMsg keeps the server's 403 message rather than flattening it.
     await waitFor(() =>
-      expect(screen.getByTestId("error")).toHaveTextContent(
-        "You don't have permission to do this.",
-      ),
+      expect(screen.getByTestId("error")).toHaveTextContent("nope"),
     );
   });
 });

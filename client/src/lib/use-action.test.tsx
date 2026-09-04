@@ -124,14 +124,22 @@ describe("useAction — expected failures are NEVER reported", () => {
       .spyOn(reporting, "reportClientError")
       .mockImplementation(() => {});
     const fn = vi.fn(async () => {
-      throw new ApiError("PERMISSION_DENIED", "No", 403);
+      throw new ApiError(
+        "SELF_APPROVAL",
+        "You raised this change — it must be approved by someone else.",
+        403,
+      );
     });
     const h = harness(fn, { success: "…" });
     await rtlAct(async () => {
       await h.current!.run();
     });
+    // F-GAP-09: the server's sentence reaches the toast verbatim. This one
+    // names WHO must act, and no amount of granting would fix it — flattening
+    // it to "You don't have permission to do this." sent readers hunting for a
+    // grant that was never the problem.
     expect(document.querySelector('[role="alert"]')?.textContent).toContain(
-      "permission",
+      "approved by someone else",
     );
     expect(report).not.toHaveBeenCalled();
   });
@@ -282,7 +290,7 @@ describe("useAction — mechanics", () => {
 
   it("run never rejects — the error is on .error", async () => {
     const fn = vi.fn(async () => {
-      throw new ApiError("PERMISSION_DENIED", "No", 403);
+      throw new ApiError("PERMISSION_DENIED", "No permission for MOD-03.approve", 403);
     });
     const h = harness(fn, { success: "…" });
     let ret: unknown;
@@ -290,6 +298,21 @@ describe("useAction — mechanics", () => {
       ret = await h.current!.run();
     });
     expect(ret).toBeUndefined();
-    expect(h.current!.error).toMatch(/permission/i);
+    expect(h.current!.error).toBe("No permission for MOD-03.approve");
+  });
+
+  /**
+   * The only 403 that gets the generic sentence: one the server sent with no
+   * message at all. `errMsg`'s fallback, not its default.
+   */
+  it("a 403 with no message falls back to the generic sentence", async () => {
+    const fn = vi.fn(async () => {
+      throw new ApiError("FORBIDDEN", "", 403);
+    });
+    const h = harness(fn, { success: "…" });
+    await rtlAct(async () => {
+      await h.current!.run();
+    });
+    expect(h.current!.error).toBe("You don't have permission to do this.");
   });
 });

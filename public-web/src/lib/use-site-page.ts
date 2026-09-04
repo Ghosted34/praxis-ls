@@ -30,7 +30,15 @@ let cache: Promise<SitePage | null> | null = null;
 
 function load(): Promise<SitePage | null> {
   if (!cache) {
-    cache = getSitePage(HOME_PAGE_KEY).catch(() => null);
+    // `Promise.resolve().then(...)` rather than calling straight into a
+    // `.catch()` chain: a `.catch` only ever sees a REJECTION, so if the read
+    // threw synchronously — no `fetch` on the global, a bad base path — the
+    // error would escape `load()` into the effect that called it and take the
+    // whole marketing page down. Wrapping first makes every failure a rejection,
+    // which is the one the caller is written to handle.
+    cache = Promise.resolve()
+      .then(() => getSitePage(HOME_PAGE_KEY))
+      .catch(() => null);
   }
   return cache;
 }

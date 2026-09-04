@@ -114,7 +114,17 @@ export function shapeOfMode(
   mode: ServiceMode | "",
 ): EnquiryShape {
   const rows = servicesIn(services, mode);
-  if (!rows.length) return "ROUTE";
+  /* NO SERVICES TO CONSULT — the pre-launch fallback, where the four hardcoded
+     mode cards are all the form has. The mode is then the only thing that knows
+     anything, and "Storage only" has meant a place and a duration since the
+     first version of this wizard.
+ 
+     Returning ROUTE here was a real regression and the tests caught it: a
+     visitor on a tenant with nothing published picked "Storage only" and was
+     asked for a port of loading, a port of discharge and a required Incoterm —
+     the exact defect this whole change set out to remove, reintroduced for the
+     tenants least able to notice it. */
+  if (!rows.length) return mode === "WAREHOUSE" ? "STORAGE" : "ROUTE";
   const first = rows[0].enquiry_shape;
   return rows.every((s) => s.enquiry_shape === first) ? first : "ROUTE";
 }

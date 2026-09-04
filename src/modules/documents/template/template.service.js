@@ -385,6 +385,7 @@ const SIMPLE = {
   PURCHASE_ORDER: { table: "purchase_order", pk: "po_id", label: "doc_number" },
   PURCHASE_REQUEST: { table: "purchase_request", pk: "pr_id", label: "doc_number" },
   CASH_REQUEST: { table: "cash_request", pk: "cash_request_id", label: "doc_number" },
+  CASH_PAYMENT_RECEIPT: { table: "cash_request_payment", pk: "cash_request_payment_id", label: null },
   COSTING: { table: "costing", pk: "costing_id", label: "doc_number" },
   REGIE_ADVANCE: { table: "regie_advance", pk: "regie_advance_id", label: null },
   WORK_ORDER: { table: "work_order", pk: "work_order_id", label: null },
@@ -974,16 +975,55 @@ async function loadRecord(client, docType, recordId) {
     };
   }
 
+  /*
+   * §3.5 / owner Q16 — the cash request voucher, at costing parity.
+   *
+   * WHAT THIS PROJECTION USED TO LEAVE OFF THE PAGE, and why each mattered.
+   *
+   * `entity_id: null`, exactly the defect the costing had: `resolveEntity`
+   * answers null with the FIRST corporate entity by created_at, so on a
+   * multi-entity tenant every voucher printed the letterhead, address and tax
+   * identifiers of whichever company was created first. It comes from the FILE
+   * now, which is the entity whose treasury is paying.
+   *
+   * NO BUDGET. A voucher is a DRAW against an approved costing (12771), and
+   * the page showed the claim with no sight of the budget it consumes — so the
+   * approving authority signed "2 650 000" with no way to know whether the
+   * file had it. The per-line Budget / Claimed / This request / Remaining set
+   * is the same one the worksheet shows on screen, for the same reason.
+   *
+   * NO REQUISITIONER. The legacy voucher's grid — name, matricule, department,
+   * job title — is one of the few parts of that screen worth copying: a cashier
+   * at a window matches a face to a row, and "Jean Mballa" alone does not do
+   * that. `signatory_name` and `staff_no` come from `employee`, the join every
+   * other projection here already makes.
+   *
+   * NO PAYMENTS. A request paid in two tranches printed as though nothing had
+   * moved, so the copy in the file disagreed with the ledger the moment the
+   * first franc left.
+   *
+   * NOTHING SEALED. The three signature boxes were ruled lines, and the three
+   * decisions (raised, approved, disbursed) are recorded in the database. They
+   * print as seals now, with the ruled boxes kept as the fallback for a voucher
+   * nobody has signed yet.
+   */
   if (docType === "CASH_REQUEST") {
     const { rows } = await client.query(
-      `SELECT cr.*, u.full_name AS requester_name, u.email AS requester_email, d.ref AS dossier_ref,
+      `SELECT cr.*, u.full_name AS requester_login_name, u.email AS requester_email,
+              d.ref AS dossier_ref, d.entity_id,
+              COALESCE(e_r.signatory_name, u.full_name) AS requester_name,
+              e_r.job_title AS requester_title, e_r.department AS requester_department,
+              e_r.staff_no AS requester_staff_no,
+              co.doc_number AS costing_ref,
               COALESCE(e_v.signatory_name, au_v.full_name) AS validated_by_name,
               e_v.job_title AS validated_by_title,
               COALESCE(e_a.signatory_name, au_a.full_name) AS approved_by_name,
               e_a.job_title AS approved_by_title
          FROM cash_request cr
          LEFT JOIN app_user u ON u.user_id = cr.requested_by
+         LEFT JOIN employee e_r ON e_r.employee_id = u.employee_id
          LEFT JOIN dossier d ON d.dossier_id = cr.dossier_id
+         LEFT JOIN costing co ON co.costing_id = cr.costing_id
          LEFT JOIN app_user au_v ON au_v.user_id = cr.validated_by
          LEFT JOIN employee e_v ON e_v.employee_id = au_v.employee_id
          LEFT JOIN app_user au_a ON au_a.user_id = cr.approver_id
@@ -993,30 +1033,271 @@ async function loadRecord(client, docType, recordId) {
     );
     const cr = rows[0];
     if (!cr) return null;
-    const lr = await client.query("SELECT label, budget_amount, vat_percent FROM cash_request_line WHERE cash_request_id = $1 ORDER BY cash_request_line_id", [recordId]);
-    const purpose = lr.rows.map((l) => l.label).filter(Boolean).join(", ");
+
+    // The line reader the worksheet itself uses, in `line_no` order — the same
+    // rule the costing branch below follows, and for the same reason: a second
+    // hand-rolled copy of an existing query is the copy that drifts.
+    const crRepo = require("../../costing/cash_request/cash_request.repo");
+    const crLines = await crRepo.listLines(client, recordId);
+    const payments = await crRepo.listPayments(client, recordId);
+
     // §3.5 — the voucher footer: Subtotal / VAT / TOTAL PAYABLE, same rule the
     // service applies (lazy require: see the transit-order branch note).
-    const { computeTotals } = require("../../costing/cash_request/cash_request.rules");
-    const totals = computeTotals(lr.rows);
+    const crRules = require("../../costing/cash_request/cash_request.rules");
+    const totals = crRules.computeTotals(crLines);
+
+    /*
+     * The budget each line draws on, joined by `costing_line_id`.
+     *
+     * Best-effort and EXCLUDING THIS REQUEST, exactly as the screen reads it:
+     * a request must be measured against the budget it is claiming from, not
+     * against one that already counts its own claim. A costing that has been
+     * deleted, or a ledger read that fails, prints a voucher without the budget
+     * columns rather than no voucher at all.
+     *
+     * These figures are deliberately NOT in the canonical payload (see
+     * canonical.js CASH_REQUEST): what a file has left changes as other
+     * requests are approved, and hashing a moving number would report an
+     * untouched voucher as amended.
+     */
+    let budgetByLine = new Map();
+    let budgetTotals = null;
+    // How many times the sheet has been approved. NOT a column on `costing` —
+    // it is the count of `costing_approval_snapshot` rows, which is why it is
+    // read from the ledger rather than joined for above.
+    let liveRevision = null;
+    if (cr.costing_id) {
+      try {
+        const costingService = require("../../costing/costing/costing.service");
+        const ledger = await costingService.budget(client, cr.costing_id, { excludeCashRequestId: recordId });
+        budgetByLine = new Map((ledger.lines || []).map((l) => [l.costing_line_id, l]));
+        budgetTotals = ledger.totals || null;
+        liveRevision = ledger.revision;
+      } catch (err) {
+        logger.warn({ err, cash_request_id: recordId }, "[documents] cash request printed without its budget columns");
+      }
+    }
+
+    const lines = crLines.map((l) => {
+      const b = l.costing_line_id ? budgetByLine.get(l.costing_line_id) : null;
+      const claim = crRules.lineClaim(l);
+      return {
+        label: l.label,
+        costing_line_id: l.costing_line_id || null,
+        qty: Number(l.qty || 1),
+        unit: Number(l.unit_cost !== null && l.unit_cost !== undefined ? l.unit_cost : l.budget_amount),
+        tax: l.vat_percent !== null && l.vat_percent !== undefined ? Number(l.vat_percent) : null,
+        is_disbursement: l.is_disbursement === true,
+        // Q17: the obligation this line puts on whoever takes the cash. It IS
+        // attested — clearing it after approval would erase a duty somebody
+        // signed for.
+        justification_required: l.justification_required === true,
+        amount: Number(l.budget_amount || 0),
+        // The claim in the money the voucher is actually paid in (TTC), which
+        // is what the budget columns below are measured against.
+        claim,
+        // Live, never hashed. `null` when there is no budget to read.
+        budget: b
+          ? {
+            approved: Number(b.budget || 0),
+            committed: Number(b.committed_elsewhere || 0),
+            remaining: Number(b.remaining || 0),
+            after: Math.round((Number(b.remaining || 0) - claim) * 100) / 100,
+          }
+          : null,
+      };
+    });
+
+    /*
+     * The payments, and the balance after each one. Running rather than final,
+     * because a voucher paid in tranches is read to answer "how much is left",
+     * and a reader should not have to subtract down a column to find out.
+     */
+    const requested = Number(cr.amount || 0);
+    let running = 0;
+    const paymentRows = payments.map((p, i) => {
+      running = Math.round((running + Number(p.amount || 0)) * 100) / 100;
+      return {
+        no: i + 1,
+        paid_on: p.paid_on || p.created_at,
+        amount: Number(p.amount || 0),
+        balance: Math.round((requested - running) * 100) / 100,
+        memo: p.memo || null,
+        received_at: p.received_at || null,
+        received_ack_kind: p.received_ack_kind || null,
+      };
+    });
+
     return {
-      entity_id: null,
+      // From the FILE, so a multi-entity tenant prints the right letterhead.
+      // An overhead request has no file and falls back to the tenant default.
+      entity_id: cr.entity_id || null,
       data: {
         number: cr.doc_number || String(cr.cash_request_id).slice(0, 8), date: cr.created_at, status: cr.status,
-        amount: Number(cr.amount), purpose, dossier_ref: cr.dossier_ref,
+        // A PAIR, never a pre-joined bilingual string — the costing's lesson:
+        // a projection that joins the two halves leaves `cfg.language` nothing
+        // to decide, and an enum must never reach a person.
+        status_words: crRules.statusWords(cr.status),
+        amount: requested, dossier_ref: cr.dossier_ref,
         beneficiary: cr.beneficiary, category: cr.category, cost_center: cr.cost_center,
         overhead_justification: cr.overhead_justification, remarks: cr.remarks,
         method: cr.disbursement_method || null,
         method_details: cr.disbursement_details || {},
-        lines: lr.rows.map((l) => ({ label: l.label, qty: 1, unit: Number(l.budget_amount), tax: l.vat_percent !== null && l.vat_percent !== undefined ? Number(l.vat_percent) : null, amount: Number(l.budget_amount) })),
+        // The budget this claim draws on, so the approver can open the sheet
+        // the figures came from.
+        costing_id: cr.costing_id || null,
+        costing_ref: cr.costing_ref || null,
+        // The revision it was APPROVED against, falling back to the sheet's
+        // current one for a voucher not yet approved.
+        // The revision it was APPROVED against, stamped on the request at
+        // approval (12771). A voucher not yet approved falls back to the
+        // sheet's current one, so the reader always knows which version of the
+        // budget the figures in front of them came from.
+        costing_revision: cr.costing_revision !== null && cr.costing_revision !== undefined
+          ? Number(cr.costing_revision)
+          : liveRevision,
+        lines,
         totals,
-        party: { name: cr.requester_name || "—", lines: [cr.requester_email].filter(Boolean) },
+        budget_totals: budgetTotals,
+        payments: paymentRows,
+        paid_total: running,
+        balance: Math.round((requested - running) * 100) / 100,
+        party: { name: cr.requester_name || cr.requester_login_name || "—", lines: [cr.requester_email].filter(Boolean) },
+        // The legacy's requisitioner grid (analysis §1.4) — the part of that
+        // screen worth copying.
+        requisitioner: {
+          name: cr.requester_name || cr.requester_login_name || null,
+          staff_no: cr.requester_staff_no || null,
+          department: cr.requester_department || null,
+          job_title: cr.requester_title || null,
+          email: cr.requester_email || null,
+        },
         validated_by_name: cr.validated_by_name || null,
         validated_by_title: cr.validated_by_title || null,
+        validated_at: cr.validated_at || null,
         approved_by_name: cr.approved_by_name || null,
         approved_by_title: cr.approved_by_title || null,
+        approved_at: cr.approved_at || null,
+        rejection_reason: cr.rejection_reason || null,
+        over_budget_reason: cr.over_budget_reason || null,
+        settlement_reason: cr.settlement_reason || null,
         received_by_name: cr.beneficiary || null,
-        currency: null,
+        amount_in_words: totals.total_payable,
+        currency: cr.currency || null,
+      },
+    };
+  }
+
+  /*
+   * Owner Q16 C — the receipt for ONE instalment.
+   *
+   * A separate document from the voucher because it records a different fact:
+   * the voucher says what was approved, the receipt says what was actually
+   * handed over, on a date, and what is still to run. Signed by TWO — the
+   * disbursing authority who released it and the person who took it — where
+   * the voucher is signed by three.
+   *
+   * Keyed on the PAYMENT, so a request paid in three tranches produces three
+   * receipts with three refs, three seals and three balances. The legacy's
+   * single `disbursed_time` on the header is precisely the shape that cannot
+   * express this.
+   */
+  if (docType === "CASH_PAYMENT_RECEIPT") {
+    const { rows } = await client.query(
+      `SELECT p.*, cr.cash_request_id, cr.doc_number AS request_number, cr.amount AS request_amount,
+              cr.currency, cr.beneficiary, cr.approved_at AS request_approved_at,
+              cr.disbursement_method, cr.requested_by,
+              d.ref AS dossier_ref, d.entity_id,
+              COALESCE(e_h.signatory_name, u_h.full_name) AS received_by_name,
+              e_h.job_title AS received_by_title, e_h.staff_no AS received_by_staff_no,
+              COALESCE(e_p.signatory_name, u_p.full_name) AS paid_by_name,
+              e_p.job_title AS paid_by_title,
+              COALESCE(e_a.signatory_name, u_a.full_name) AS approved_by_name,
+              e_a.job_title AS approved_by_title,
+              ta.label AS treasury_account_name
+         FROM cash_request_payment p
+         JOIN cash_request cr ON cr.cash_request_id = p.cash_request_id
+         LEFT JOIN dossier d ON d.dossier_id = cr.dossier_id
+         LEFT JOIN app_user u_h ON u_h.user_id = COALESCE(p.received_by, cr.requested_by)
+         LEFT JOIN employee e_h ON e_h.employee_id = u_h.employee_id
+         LEFT JOIN app_user u_p ON u_p.user_id = p.created_by
+         LEFT JOIN employee e_p ON e_p.employee_id = u_p.employee_id
+         LEFT JOIN app_user u_a ON u_a.user_id = cr.approver_id
+         LEFT JOIN employee e_a ON e_a.employee_id = u_a.employee_id
+         LEFT JOIN treasury_account ta ON ta.treasury_account_id = p.treasury_account_id
+        WHERE p.cash_request_payment_id = $1`,
+      [recordId],
+    );
+    const p = rows[0];
+    if (!p) return null;
+
+    /*
+     * Where this instalment sits in the request: everything paid UP TO AND
+     * INCLUDING it, and what was still outstanding after it.
+     *
+     * `paid_on, cash_request_payment_id` as the ordering, not `paid_on` alone:
+     * two instalments released on one day would otherwise order arbitrarily,
+     * and the two receipts could both claim to be the second — with two
+     * different balances, both sealed.
+     */
+    const { rows: siblings } = await client.query(
+      `SELECT cash_request_payment_id, amount
+         FROM cash_request_payment
+        WHERE cash_request_id = $1
+        ORDER BY paid_on, cash_request_payment_id`,
+      [p.cash_request_id],
+    );
+    let paidToDate = 0;
+    let instalmentNo = 0;
+    for (let i = 0; i < siblings.length; i += 1) {
+      paidToDate = Math.round((paidToDate + Number(siblings[i].amount || 0)) * 100) / 100;
+      // Compared against the row's OWN id, not against `recordId`: the latter
+      // arrives from a route param, and a uuid typed in upper case matches the
+      // `WHERE` above (Postgres compares uuids by value) but would never match
+      // a lower-case sibling here — leaving the receipt numbered R1 with a
+      // balance summed over every instalment.
+      if (siblings[i].cash_request_payment_id === p.cash_request_payment_id) { instalmentNo = i + 1; break; }
+    }
+    const requestTotal = Number(p.request_amount || 0);
+
+    return {
+      entity_id: p.entity_id || null,
+      data: {
+        // Derived from the request's own reference so the two documents read as
+        // one file: DF-2026-0007 / R2. There is no separate counter to keep in
+        // step, and a receipt can always be traced back by eye.
+        number: `${p.request_number || String(p.cash_request_id).slice(0, 8)} / R${instalmentNo || 1}`,
+        instalment_no: instalmentNo || 1,
+        instalment_count: siblings.length,
+        date: p.paid_on || p.created_at,
+        request_id: p.cash_request_id,
+        request_number: p.request_number || String(p.cash_request_id).slice(0, 8),
+        request_approved_at: p.request_approved_at || null,
+        dossier_ref: p.dossier_ref || null,
+        amount: Number(p.amount || 0),
+        request_total: requestTotal,
+        paid_to_date: paidToDate,
+        balance: Math.round((requestTotal - paidToDate) * 100) / 100,
+        method: p.disbursement_method || null,
+        treasury_account: p.treasury_account_name || null,
+        beneficiary: p.beneficiary || null,
+        memo: p.memo || null,
+        // The counterparty of this movement — whoever took the cash. `party` is
+        // the shape canonical.js hashes and the verification portal reads.
+        party: {
+          name: p.received_by_name || "—",
+          lines: [p.received_by_staff_no, p.received_by_title].filter(Boolean),
+        },
+        received_by_name: p.received_by_name || null,
+        received_by_title: p.received_by_title || null,
+        received_at: p.received_at || null,
+        received_ack_kind: p.received_ack_kind || null,
+        paid_by_name: p.paid_by_name || null,
+        paid_by_title: p.paid_by_title || null,
+        approved_by_name: p.approved_by_name || null,
+        approved_by_title: p.approved_by_title || null,
+        amount_in_words: Number(p.amount || 0),
+        currency: p.currency || null,
       },
     };
   }

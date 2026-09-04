@@ -37,6 +37,20 @@ module.exports = {
   disburse: asyncHandler(async (req, res) => {
     const b = req.body;
     const data = await req.tenantDb((c) => service.disburse(c, { id: req.params.id, amount: b.amount === undefined ? null : b.amount, entityId: b.entity_id, entryDate: b.entry_date, sourceDocRef: b.source_doc_ref, treasuryCoa: b.treasury_coa, treasuryAccountId: b.treasury_account_id || null, holderUserId: b.holder_user_id, memo: b.memo || null, actor: actor(req), ip: req.ip }));
+    /*
+     * The receipt for THIS instalment (12773). The service captured the vault
+     * row and sealed it inside the transaction; the bytes are rendered out of
+     * band here, exactly as the voucher's are on submit — a PDF render must
+     * never sit inside a transaction that has money in it.
+     *
+     * The VOUCHER is re-rendered too: its payments table and its balance have
+     * both just changed, and the copy in the file would otherwise disagree with
+     * the ledger from the moment the first franc left.
+     */
+    if (data && data.payment) {
+      enqueueDocument({ tenantMeta: req.tenant, env: req.env, docType: "CASH_PAYMENT_RECEIPT", recordId: data.payment.cash_request_payment_id });
+      enqueueDocument({ tenantMeta: req.tenant, env: req.env, docType: "CASH_REQUEST", recordId: req.params.id });
+    }
     res.json({ data });
   }),
   justify: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.justify(c, { id: req.params.id, lines: req.body.lines || [], entityId: req.body.entity_id || null, entryDate: req.body.entry_date || null, actor: actor(req), ip: req.ip })) })),

@@ -992,15 +992,49 @@ Tests: the 360 render, the actions each status offers, the RBAC shape, a non-CEO
 (`PERMISSION_SWEEP_BACKLOG.md` §D: *"there is no test that exercises the product as a non-CEO
 user"*).
 
-### PR 3 — Signatures, the voucher, and the OCR seam
+### PR 3 — Signatures, the voucher and the receipt · **shipped**
 
-`CASH_REQUEST` in `SIGNATURE_CEILING` + `signature_policy` seed; `sealTransition` on validate,
-approve, disburse and receive; the rebuilt voucher (Q16); `justify` writing tagged `cost_entry` rows
-(Q18); the compliance gate at close (Q17); the `costCompare` change from Q7 (débours sectioned in,
-`GROUP BY costing_line_id`).
+`CASH_REQUEST` **and `CASH_PAYMENT_RECEIPT`** in `DOC_TYPES` + `SIGNATURE_CEILING`
+(`{signable, allowsQes: false, allowsWet: true}` — both leave the building, neither is
+certified), canonical payloads for both, and `12773` seeding the tenant menu plus the three
+signing reasons the vocabulary lacked (`REQUESTED`, `DISBURSED`, `CASH_RECEIVED`).
 
-Tests: the seal at each transition, the document snapshot, one actual written per justified line,
-and a reconciliation that now shows the three débours lines from §4.
+Seals are applied by the ACT, best-effort, exactly as the costing's are:
+
+| act | document | reason | who |
+| --- | --- | --- | --- |
+| `SUBMITTED` | voucher | `REQUESTED` | the requestor |
+| `APPROVED` | voucher | `APPROVED_PAYMENT` | the approving authority |
+| first instalment | voucher | `DISBURSED` | the disbursing authority |
+| every instalment | receipt | `DISBURSED` | the disbursing authority |
+| acknowledgement | receipt | `CASH_RECEIVED` | whoever took the cash |
+
+`VALIDATED` deliberately seals nothing — Q20: *validating is a visa, not a signature.* The
+voucher's `DISBURSED` seal is applied on the FIRST instalment only, so a request paid in three
+tranches carries three signatures and not five; each tranche is attested on its own receipt.
+`WET_SCAN` acknowledgement adds no electronic seal: an ink signature must not be recorded as a
+digital one.
+
+The rebuilt voucher (Q16 B): budget columns per line, the requisitioner grid, the `COSTING REF`
+row with its revision, the payments table with a running balance, real seals with the ruled boxes
+as the fallback, and the justification obligation as a dagger with one sentence at the foot. The
+separate payment receipt (Q16 C): request details, approval date, amount disbursed and balance
+still to run, signed by two.
+
+Q17's floor lands in `replaceLines` — the one function every writer of lines goes through — so
+the catalogue can only ever tighten the tick; and `justify` refuses to close a request with a
+receipt still owed (`PROOF_REQUIRED`).
+
+**Two defects the live-database run caught that no pure test could:** `costing` has no `revision`
+column (it is the count of `costing_approval_snapshot` rows), and `cash_request_line` was read
+`ORDER BY cash_request_line_id` — a uuid — so the voucher printed its lines in an arbitrary order
+and `applySpend`'s positional fallback could record spend against the wrong line. `listPayments`
+had the same weakness with a date-only sort, which would have let two receipts released on one day
+each claim to be the second, with two different balances, both sealed.
+
+**Not in this PR, and deliberately:** the OCR seam (Q18). Nothing writes `cost_entry` and
+`dossier_reconciliation.costCompare` is untouched — that is the next module's work, recorded as a
+known gap in §2.4.
 
 ---
 

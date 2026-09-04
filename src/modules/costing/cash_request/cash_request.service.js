@@ -12,6 +12,9 @@ const events = require("./cash_request.events");
 const {
   assertTransition, sumField, computeTotals, assertMethod, disbursementState,
   lineClaim, budgetBreaches, apportionSettlement, budgetControl,
+  // Which act leaves which signature (12773). In the rules because adding a key
+  // puts another signature on every voucher — see the note there.
+  TRANSITION_SEAL, DISBURSE_SEAL, RECEIPT_SEAL,
 } = require("./cash_request.rules");
 const regie = require("../regie/regie.service");
 // The budget this document draws down (12771). The costing owns that read and
@@ -24,6 +27,9 @@ const numbering = require("../../../services/documents/numbering.service");
 const documents = require("../../../services/documents/document.service");
 const executor = require("../../../services/workflow/executor");
 const proofObligations = require("../../../services/compliance/proof-obligation.service");
+// Q17: the catalogue decides whether a line owes a receipt. One reader for that
+// question in the whole codebase — the compliance service uses the same one.
+const dictionaryRules = require("../../master/financial_dictionary/financial_dictionary.rules");
 const onApproved = require("../../../services/workflow/on-approved");
 const { assertNoPendingChain } = require("../../../services/workflow/pending-guard");
 const { emitEvent, audit, resolveActorId } = require("../../../shared/events/emit");
@@ -31,6 +37,16 @@ const { AppError } = require("../../../utils/errors");
 const { accountFor } = require("../../../shared/config/finance-accounts");
 
 const ref = (id) => "cash_request:" + id;
+/*
+ * The receipt for ONE instalment (12773, owner Q16 C).
+ *
+ * `document_vault`, `document_signature` and the verification portal are all
+ * keyed on one entity_ref per document, and the renderer derives the ref it
+ * looks seals up under as `<doc_type lowercased>:<record id>`
+ * (template.service.js). So this string is not a convention this file invents —
+ * it is the one the renderer will use, spelled here so the two cannot drift.
+ */
+const receiptRef = (paymentId) => "cash_payment_receipt:" + paymentId;
 
 // Money rounds to two places everywhere in this module. Its twin lives in
 // cash_request.rules (private there for the same reason): a rule file that
@@ -96,7 +112,11 @@ function lineFields(l, lineNo) {
  * pointing at the same budget line produce one edit and one insert rather than
  * two edits of the same row.
  */
-async function replaceLines(client, id, lines) {
+async function replaceLines(client, id, rawLines) {
+  // Q17 — the catalogue's floor, applied HERE because this is the one function
+  // every writer of lines goes through (create, edit, import). Defaulting it at
+  // three call sites is defaulting it at two of them within a year.
+  const lines = await applyCatalogueObligations(client, rawLines);
   const prior = await repo.lineIdentities(client, id);
   const byId = new Map(prior.map((p) => [p.cash_request_line_id, p]));
   const byCostingLine = new Map();
@@ -181,6 +201,119 @@ async function applySpend(client, id, lines) {
     written.push(await repo.updateLine(client, target.cash_request_line_id, fields));
   }
   return written;
+}
+
+/* ═══════════════════════ THE SEALS (12773, owner Q12) ═════════════════════
+ *
+ * ── WHY THE TRANSITION SIGNS, AND NOT A PERSON ─────────────────────────────
+ *
+ * The same argument the costing settled, and it transfers whole: the button IS
+ * the decision. An approver who has just pressed "Approve" has approved, and
+ * asking them to then choose a signature card is asking the same question
+ * twice — which is how a control becomes a thing people click through. Sealing
+ * inside the transition also makes the two inseparable: there is no path that
+ * records an approval without a seal, and no seal not backed by a status
+ * change.
+ *
+ * ── THREE SIGNATORIES, AND WHY VALIDATION IS NOT ONE OF THEM ───────────────
+ *
+ * The owner's rule (Q12, Q20): the requestor, the approving authority and the
+ * disbursing authority. *"Validating is just a visa. No official signature."*
+ * Finance checks the funds and the budget against the control block; it does
+ * not commit the company to anything, and a fourth seal on the page would
+ * misdescribe who decided.
+ *
+ *   SUBMITTED   the requestor  — raising the claim IS the assertion
+ *   APPROVED    the approver   — the authority the money moves under
+ *   first payment the disburser — on the voucher once, and on every receipt
+ *
+ * The disbursing seal lands on the VOUCHER only for the first instalment. A
+ * request paid in three tranches would otherwise carry three identical seals
+ * and a five-box signature strip; each tranche gets its own seal where it
+ * belongs, on its own receipt.
+ *
+ * ── AND WHY A FAILURE HERE DOES NOT UNDO THE DECISION ──────────────────────
+ *
+ * Best-effort, deliberately — the costing's rule, for the costing's reason.
+ * The decision is the business fact; the seal is its evidence. A tenant that
+ * has not run 12773, or has emptied its policy, would otherwise find every
+ * approval failing with EMPTY_SIGNATURE_MENU on a screen that says nothing
+ * about signatures. It is logged at error level: an unsealed approval is a
+ * real gap in the evidence chain, just not one worth refusing the money over.
+ */
+async function seal(client, { entityRef, docType, recordId, signReason, actor = {} }) {
+  if (!signReason || !actor.user_id) return;
+  try {
+    // Required lazily: document_signature pulls the template service, which
+    // requires this module back for the cash-request projection.
+    const signatures = require("../../vault/document_signature/document_signature.service");
+    const presets = require("../../../services/signatures/presets");
+    const templateSvc = require("../../documents/template/template.service");
+    const menu = await presets.resolveMenu(client, { docType });
+    /*
+     * The document as it stands INSIDE this transaction, passed in rather than
+     * left to `signInternal` to load. Its own loader would run after the caller
+     * has decided WHEN to build it, and the whole point is that this payload is
+     * the post-transition document — a seal built before the update would
+     * attest to the status the request was moving OUT of.
+     *
+     * `loadRecord` is the same projection the page renders from, because
+     * canonical.js hashes the shape the registry produces; hashing a second,
+     * hand-rolled shape would mean the seal attests to something the reader
+     * never sees. It is safe here for one reason: it reads the rows this
+     * transaction has already written, on this client.
+     */
+    const rec = await templateSvc.loadRecord(client, docType, recordId);
+    await signatures.signInternal(client, {
+      entityRef, docType, presetCode: menu.default, signReason, actor, doc: rec ? rec.data : null,
+    });
+  } catch (err) {
+    logger.error(
+      { err, entity_ref: entityRef, doc_type: docType, sign_reason: signReason },
+      "cash request step could not be sealed; the decision stands, the evidence does not",
+    );
+  }
+}
+
+/**
+ * Q17 — the justification tick, DEFAULTED FROM THE CATALOGUE and editable up
+ * but never down.
+ *
+ * `dictionary_item` already declares `receipt_requirement` and
+ * `requires_justification` (0630), and `financial_dictionary.rules
+ * .proofObligation` is the one place that reads them as an obligation. Until
+ * now `cash_request_line.justification_required` was a free boolean nothing
+ * defaulted: a requester could untick a line for an item the catalogue says
+ * ALWAYS needs a receipt, and the request would close without one.
+ *
+ * So the catalogue decides the FLOOR and the user may only be stricter. This is
+ * the rule the costing line grid already applies to VAT and to a line's nature,
+ * and its argument is the same: the legacy defaulted a VAT box to ticked and
+ * its own sample sheet charges 19.25% VAT on a customs duty. The screen renders
+ * an obliged tick DISABLED WITH ITS REASON SHOWN rather than hidden, so nobody
+ * meets a control that silently refuses to move.
+ *
+ * CONDITIONALLY_REQUIRED is deliberately not an obligation here — that is
+ * `proofObligation`'s own rule and the reason it gives is right: "it depends"
+ * cannot be decided from the catalogue row alone, and a flag raised on a maybe
+ * is noise. The user may still tick it by hand, which is exactly the point of
+ * "editable up".
+ */
+async function applyCatalogueObligations(client, lines) {
+  const ids = [...new Set(lines.map((l) => l.dictionary_item_id).filter(Boolean))];
+  if (!ids.length) return lines;
+  const { rows } = await client.query(
+    "SELECT dictionary_item_id, receipt_requirement, requires_justification "
+      + "FROM dictionary_item WHERE dictionary_item_id = ANY($1::uuid[])",
+    [ids],
+  );
+  const obliged = new Set(
+    rows.filter((r) => dictionaryRules.proofObligation(r).required).map((r) => r.dictionary_item_id),
+  );
+  if (!obliged.size) return lines;
+  return lines.map((l) => (l.dictionary_item_id && obliged.has(l.dictionary_item_id)
+    ? { ...l, justification_required: true }
+    : l));
 }
 
 /**
@@ -669,6 +802,17 @@ async function transition(client, { id, to, entityId = null, date = null, reason
        */
       await executor.start(client, { eventTypeKey: "disbursal.approved", entityRef: ref(id), amountXaf: updated.amount === null || updated.amount === undefined ? null : Number(updated.amount) });
     }
+    /*
+     * The seal, LAST — after the row is updated and after the chain is opened,
+     * so the payload it hashes is the voucher as the decision left it. Sealing
+     * before the update would attest to the status the request was moving OUT
+     * of, and the verification portal would show a document whose own seal
+     * disagrees with it.
+     */
+    await seal(client, {
+      entityRef: ref(id), docType: "CASH_REQUEST", recordId: id,
+      signReason: TRANSITION_SEAL[to], actor,
+    });
     await emitEvent(client, { eventTypeKey: events.transition(to), moduleKey: events.MODULE, entityRef: ref(id), actorUserId: actor.user_id || null });
     await audit(client, { actorUserId: actor.user_id || null, action: events.transition(to), moduleKey: events.MODULE, entityRef: ref(id), after: updated });
     await client.query("COMMIT");
@@ -766,6 +910,54 @@ async function disburse(client, { id, amount = null, entityId, entryDate, source
     if (!cr.regie_advance_id) fields.regie_advance_id = regieAdvanceId;
     const updated = await repo.update(client, id, fields);
 
+    /*
+     * THE RECEIPT FOR THIS INSTALMENT (12773, owner Q16 C).
+     *
+     * AFTER the status update, never before — the costing's rule, for the
+     * costing's reason. `status` is part of the voucher's canonical payload, so
+     * a seal applied while the request still read APPROVED would attest to the
+     * state it was moving OUT of, and the verification portal would show a
+     * document whose own newest seal disagrees with it from the moment the
+     * money left.
+     *
+     * Captured before it is sealed, so the vault row exists for `signInternal`
+     * to bind the signature to (it reads `document_vault.getByRef` and stores
+     * the artifact hash beside the content hash). The bytes are rendered
+     * afterwards, out of band, by the controller — the same shape the voucher
+     * has used since the module shipped.
+     */
+    await documents.capture(client, {
+      entityRef: receiptRef(payment.cash_request_payment_id),
+      docType: "CASH_PAYMENT_RECEIPT",
+      dossierId: cr.dossier_id || null,
+      status: "PENDING",
+      actor,
+    });
+
+    /*
+     * TWO SEALS, IN TWO PLACES.
+     *
+     * The RECEIPT gets one per instalment: this is the document that says what
+     * actually changed hands, and each tranche is its own handover.
+     *
+     * The VOUCHER gets one, and only on the FIRST instalment — the disbursing
+     * authority's signature on the request itself. `alreadyPaid` is the total
+     * BEFORE this payment (read under the same FOR UPDATE lock), so this is
+     * exactly the first tranche and never two of them racing. Without the
+     * guard a request paid in three would carry three identical seals and a
+     * five-box signature strip.
+     */
+    await seal(client, {
+      entityRef: receiptRef(payment.cash_request_payment_id),
+      docType: "CASH_PAYMENT_RECEIPT",
+      recordId: payment.cash_request_payment_id,
+      signReason: DISBURSE_SEAL,
+      actor,
+    });
+    if (alreadyPaid <= 0) {
+      await seal(client, { entityRef: ref(id), docType: "CASH_REQUEST", recordId: id, signReason: DISBURSE_SEAL, actor });
+    }
+
     const eventKey = nextStatus === "DISBURSED" ? events.DISBURSED : events.PARTIALLY_DISBURSED;
     await emitEvent(client, { eventTypeKey: eventKey, moduleKey: events.MODULE, entityRef: ref(id), actorUserId: actor.user_id || null });
     await audit(client, { actorUserId: actor.user_id || null, action: eventKey, moduleKey: events.MODULE, entityRef: ref(id), after: { amount: pay, disbursed_amount: paidNow, regie_advance_id: regieAdvanceId } });
@@ -810,6 +1002,32 @@ async function justify(client, { id, lines = [], entityId = null, entryDate = nu
     // document is exactly what the Compliance module will want to see.
     const written = lines.length ? await applySpend(client, id, lines) : [];
     if (lines.length) await checkProof(client, cr, written);
+
+    /*
+     * Q17 — ADVISORY EVERYWHERE ELSE, BLOCKING HERE.
+     *
+     * `checkProof` above raises a compliance flag and notifies; it never
+     * throws, and that is right for submit / approve / disburse: a
+     * disbursement operations need today must not wait on paperwork that
+     * arrives this afternoon. But closing the request is the LAST moment the
+     * receipt can still be produced, and a request closed without one is a
+     * document owed that nothing will ever ask for again.
+     *
+     * Read fresh from the database, not from `written`: a justification that
+     * carries some of the lines still has to answer for all of them, and the
+     * ticks come off the stored rows rather than off the payload — a caller
+     * cannot clear an obligation by omitting the line that carries it.
+     */
+    const stored = await repo.listLines(client, id);
+    const owed = stored.filter((l) => l.justification_required === true && !l.proof_vault_id);
+    if (owed.length) {
+      throw new AppError(
+        "PROOF_REQUIRED",
+        `${owed.length} line(s) on this request need a supporting document before it can be closed: ${owed.map((l) => l.label).join(", ")}`,
+        422,
+        { lines: owed.map((l) => ({ cash_request_line_id: l.cash_request_line_id, label: l.label })) },
+      );
+    }
 
     const spent = sumField(lines, "spent_amount");
     let retired = null;
@@ -962,6 +1180,28 @@ async function acknowledgeReceipt(client, { id, paymentId, ackKind = "IN_APP", r
     received_at: new Date().toISOString(),
     received_ack_kind: ackKind,
   });
+  /*
+   * The receipt's SECOND seal — the person who took the cash (12773).
+   *
+   * Only on the in-app path. `WET_SCAN` means the acknowledgement is ink on
+   * paper that has been matched back to this record; sealing it electronically
+   * as well would put a digital signature on the page in the name of somebody
+   * who signed with a pen, which is a claim about the evidence that is not
+   * true. The `allowsWet` ceiling and the PRINT_SIGN card in the tenant menu
+   * are how that path is served instead.
+   */
+  if (ackKind !== "WET_SCAN") {
+    await seal(client, {
+      entityRef: receiptRef(paymentId), docType: "CASH_PAYMENT_RECEIPT", recordId: paymentId,
+      signReason: RECEIPT_SEAL,
+      // The seal is the RECEIVER's, so it must be their session that signs it.
+      // `signInternal` takes identity from the actor and nothing from a body
+      // (its rule 1), which is exactly why `receivedBy` cannot be used here:
+      // acknowledging on somebody else's behalf records the delegation, and
+      // must not forge their signature.
+      actor,
+    });
+  }
   await audit(client, { actorUserId: actor.user_id || null, action: events.RECEIPT_ACKNOWLEDGED, moduleKey: events.MODULE, entityRef: ref(id), after: updated });
   return updated;
 }
@@ -1035,4 +1275,15 @@ onApproved.register("cash_request", async (client, { id, actor }) => {
 module.exports = {
   createDraft, updateDraft, transition, disburse, justify, importCostingLines,
   closeBalance, acknowledgeReceipt, get, list, kpis,
+  /*
+   * Exported for the unit tests, not for callers — every writer of lines
+   * already goes through `replaceLines`, which applies it.
+   *
+   * It is here because "the catalogue may tighten the tick, never loosen it"
+   * is the whole of Q17's floor, and it inverts silently: swap the condition
+   * and every obliged line simply stops being obliged, with no error, no
+   * failing gate, and nothing on any screen to notice. A stubbed-client test is
+   * the only thing that catches that, and it needs the function.
+   */
+  applyCatalogueObligations,
 };

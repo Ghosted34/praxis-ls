@@ -69,8 +69,7 @@ export function CashLineGrid({
             {!readOnly && <TH className="w-10" />}
             <TH>{tr("Charge")}</TH>
             <TH className="w-20 text-right">{tr("Qty")}</TH>
-            <TH className="w-32 text-right">{tr("Unit cost")}</TH>
-            <TH className="w-24 text-right">{tr("VAT %")}</TH>
+            <TH className="w-32 text-right">{tr("Unit cost (TTC)")}</TH>
             {budgeted && <TH className="w-32 text-right">{tr("Budget")}</TH>}
             {budgeted && <TH className="w-32 text-right">{tr("Available")}</TH>}
             <TH className="w-32 text-right">{tr("This request")}</TH>
@@ -153,28 +152,7 @@ export function CashLineGrid({
                       className="num text-right"
                       value={String(l.unit_cost)}
                       onChange={(e) => setLine(i, { unit_cost: Number(e.target.value) })}
-                      aria-label={`${tr("Unit cost")} — ${l.label || i + 1}`}
-                    />
-                  )}
-                </TD>
-                <TD className="text-right">
-                  {readOnly ? (
-                    <span className="num">{l.vat_percent ?? "—"}</span>
-                  ) : (
-                    <Input
-                      type="number"
-                      min="0"
-                      max="100"
-                      step="0.01"
-                      className="num text-right"
-                      value={l.vat_percent === null ? "" : String(l.vat_percent)}
-                      placeholder="0"
-                      onChange={(e) =>
-                        setLine(i, {
-                          vat_percent: e.target.value === "" ? null : Number(e.target.value),
-                        })
-                      }
-                      aria-label={`${tr("VAT")} — ${l.label || i + 1}`}
+                      aria-label={`${tr("Unit cost (TTC)")} — ${l.label || i + 1}`}
                     />
                   )}
                 </TD>
@@ -228,9 +206,16 @@ export function CashLineGrid({
 /* ── The footer ────────────────────────────────────────────────────────────── */
 
 /**
- * Subtotal / VAT / TOTAL PAYABLE — the legacy voucher's three names, over the
- * TICKED lines only. An unticked line is not part of this request, so counting
- * it would make the footer disagree with what is about to be submitted.
+ * What this request adds up to, over the TICKED lines only. An unticked line is
+ * not part of this request, so counting it would make the footer disagree with
+ * what is about to be submitted.
+ *
+ * Subtotal and VAT appear only when there IS one. The amounts a cash request
+ * claims are the costing's own TTC figures, so on every request raised since
+ * that changed the VAT row is zero and the subtotal restates the total — three
+ * rows saying one thing, which is how a reader learns to skip a footer. A
+ * request approved before it still shows its breakdown, because that is what
+ * was approved.
  */
 export function CashTotalsFooter({
   lines,
@@ -251,8 +236,8 @@ export function CashTotalsFooter({
   return (
     <Panel title={tr("Amount requested")}>
       <div className="space-y-2">
-        {row(tr("Subtotal"), t.subtotal)}
-        {row(tr("VAT"), t.vat_total)}
+        {t.vat_total > 0 && row(tr("Subtotal"), t.subtotal)}
+        {t.vat_total > 0 && row(tr("VAT"), t.vat_total)}
         {row(tr("TOTAL PAYABLE"), t.total_payable, true)}
       </div>
     </Panel>

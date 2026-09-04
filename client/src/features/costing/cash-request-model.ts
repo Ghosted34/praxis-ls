@@ -98,6 +98,41 @@ export const BLANK_LINE: LineDraft = {
   picked: true,
 };
 
+/**
+ * A number from the SERVER, coerced.
+ *
+ * ── WHY THIS EXISTS, AND WHY THE TYPES DID NOT CATCH IT ────────────────────
+ *
+ * `pg` returns Postgres `numeric` as a STRING, deliberately — a float cannot
+ * hold arbitrary precision, so the driver refuses to lose digits on your
+ * behalf. Every `numeric` column on a cash request line therefore arrives here
+ * as `"19.25"`, not `19.25`, while `api.CashLine` and `api.BudgetLine` both
+ * declare `number`. TypeScript believes the declaration; the runtime does not.
+ *
+ * It hid because every READER wraps its input: `lineAmount` does
+ * `Number(l.qty) * Number(l.unit_cost)`, so the grid, the totals and the
+ * Remaining column were all correct on screen. Only SAVE failed.
+ *
+ * ONE FIELD caused it, on every line at once. `fromSaved` already coerced `qty`
+ * and `unit_cost`; `vat_percent` alone was passed through raw. A worksheet
+ * reloaded from the server therefore held `"19.25"`, and Zod answered
+ * "lines: Expected number, received string" once per line — three times on a
+ * three-line request, which reads like three separate problems and is one.
+ *
+ * The budget ledger was never the source: `costing.rules.summariseBudget`
+ * coerces every figure server-side, so `api.BudgetLine` really does arrive as
+ * numbers. `cash_request.repo.listLines` is a bare `SELECT *` and does not.
+ *
+ * So the fix is at the BOUNDARY rather than at each use: a value entering
+ * `LineDraft` is made to match the type it is being given. `toPayload` coerces
+ * again on the way out — belt and braces, because that is the edge where a
+ * regression becomes a 422 in somebody's face rather than a wrong pixel.
+ */
+const num = (v: unknown, fallback = 0) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+};
+
 /** The net a line claims — `qty × unit_cost`, the server's `budget_amount`. */
 export const lineAmount = (l: Pick<LineDraft, "qty" | "unit_cost">) =>
   round2((Number(l.qty) || 0) * (Number(l.unit_cost) || 0));
@@ -108,6 +143,12 @@ export const lineAmount = (l: Pick<LineDraft, "qty" | "unit_cost">) =>
  * TTC because the budget is TTC: a costing budgets the supplier's VAT on a
  * débours as cash it will spend, so a claim that ignored its own VAT would draw
  * down less than the money that actually leaves the treasury.
+ *
+ * Since the cash request stopped carrying a VAT rate of its own, an imported
+ * line's `vat_percent` is null and this is the identity — the amount typed IS
+ * the amount claimed. The expression is kept rather than simplified away
+ * because pre-existing lines still hold a rate, and their claims must keep
+ * meaning what they meant when they were approved.
  *
  * Mirrors `cash_request.rules.lineClaim`, rounded the same way — per line, not
  * once at the foot — because a per-line balance is what it is compared against.
@@ -152,15 +193,17 @@ export function fromSaved(l: api.CashLine, budget?: api.BudgetLine): LineDraft {
     costing_line_id: l.costing_line_id ?? null,
     dictionary_item_id: l.dictionary_item_id ?? null,
     label: l.label || "",
-    qty: Number(l.qty ?? 1) || 1,
-    unit_cost: Number(l.unit_cost ?? l.budget_amount ?? 0),
-    vat_percent: l.vat_percent === undefined ? null : l.vat_percent,
+    qty: num(l.qty ?? 1, 1) || 1,
+    unit_cost: num(l.unit_cost ?? l.budget_amount),
+    // `numeric` arrives as a string; `null` stays null (no VAT is not 0% VAT).
+    vat_percent:
+      l.vat_percent === undefined || l.vat_percent === null ? null : num(l.vat_percent),
     is_disbursement: l.is_disbursement === true,
     justification_required: l.justification_required === true,
     // The ledger excludes THIS request, so `remaining` is what is available to
     // it — its own claim is not counted against itself.
-    remaining: budget ? budget.remaining : undefined,
-    budget: budget ? budget.budget : undefined,
+    remaining: budget ? num(budget.remaining) : undefined,
+    budget: budget ? num(budget.budget) : undefined,
     picked: true,
   };
 }
@@ -178,23 +221,27 @@ export function fromSaved(l: api.CashLine, budget?: api.BudgetLine): LineDraft {
  * on Import; this is what the screen shows before the user presses anything.
  */
 export function fromBudgetLine(b: api.BudgetLine): LineDraft {
-  const vatPercent = b.net > 0 ? Math.round((b.vat / b.net) * 1000000) / 10000 : 0;
-  const full = b.remaining >= b.budget;
-  // Floor, so a reconstructed partial claim can only ever land at or under the
-  // balance — a rounded rate applied back to a net can otherwise overshoot.
-  const netClaim = Math.floor((b.remaining / (1 + vatPercent / 100)) * 100) / 100;
+  const remaining = num(b.remaining);
+  const budget = num(b.budget);
+  const qty = num(b.qty, 1) || 1;
+  const full = remaining >= budget;
   return {
     costing_line_id: b.costing_line_id,
     dictionary_item_id: b.dictionary_item_id ?? null,
     label: b.container_type_code ? `${b.label} — ${b.container_type_code}` : b.label,
-    qty: full ? b.qty : 1,
-    unit_cost: full ? b.unit_cost : Math.max(netClaim, 0),
-    vat_percent: vatPercent > 0 ? vatPercent : null,
+    // The whole line free → keep the costing's SHAPE (two containers, not one
+    // lump), at the TTC unit. A partial top-up is not "1.4 containers", so it
+    // lands as one line at the balance.
+    qty: full ? qty : 1,
+    unit_cost: full ? Math.floor((budget / qty) * 100) / 100 : Math.max(remaining, 0),
+    // No rate. The costing hands over an amount that is already TTC, so there
+    // is nothing left to tax — see `claimFromBudgetLine`, which this mirrors.
+    vat_percent: null,
     is_disbursement: b.is_disbursement === true,
     justification_required: false,
-    remaining: b.remaining,
-    budget: b.budget,
-    picked: b.remaining > 0,
+    remaining,
+    budget,
+    picked: remaining > 0,
   };
 }
 
@@ -205,9 +252,12 @@ export const toPayload = (l: LineDraft): api.CashLine => ({
   costing_line_id: l.costing_line_id,
   dictionary_item_id: l.dictionary_item_id,
   label: l.label || "Line",
-  qty: l.qty,
-  unit_cost: l.unit_cost,
-  vat_percent: l.vat_percent,
+  // Coerced again on the way out. The entry points above are the real fix;
+  // this is the edge where a regression becomes a 422 in somebody's face
+  // rather than a wrong pixel, so it is guarded twice on purpose.
+  qty: num(l.qty, 1) || 1,
+  unit_cost: num(l.unit_cost),
+  vat_percent: l.vat_percent === null ? null : num(l.vat_percent),
   is_disbursement: l.is_disbursement,
   justification_required: l.justification_required,
 });

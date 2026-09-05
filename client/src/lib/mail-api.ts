@@ -97,6 +97,21 @@ export const archiveSender = (id: string) =>
 
 export type Provider = "imap_smtp" | "microsoft_graph" | "google_gmail";
 
+/**
+ * How the SENDING leg signs in.
+ *
+ * `"same"` — one username and password for receiving and sending, which is every
+ * mailbox on a single host and the default. `"separate"` — the outgoing server
+ * has its own sign-in, which is what a relay (SMTP2GO, SES, SendGrid) in front
+ * of a cPanel mailbox needs.
+ *
+ * DERIVED SERVER-SIDE from whether a separate secret exists, never stored as a
+ * mode of its own, so the form can reopen in the right state without the
+ * password ever leaving the server. `has_smtp_credentials` is the same fact as a
+ * boolean — the presence-only treatment the mailbox password already gets.
+ */
+export type SmtpAuthMode = "same" | "separate";
+
 export type Connection = {
   email_connection_id: string;
   email_address: string;
@@ -110,6 +125,9 @@ export type Connection = {
   smtp_host?: string | null;
   smtp_port?: number | null;
   auth_user?: string | null;
+  smtp_user?: string | null;
+  smtp_auth?: SmtpAuthMode;
+  has_smtp_credentials?: boolean;
   owner_user_id?: string | null;
   is_default?: boolean;
   created_at?: string | null;
@@ -157,8 +175,11 @@ export type Attachment = {
 export type TestResult = {
   ok: boolean;
   error?: string;
+  /** Which leg refused — "imap" (receiving) or "smtp" (sending). */
   stage?: string;
   code?: string;
+  /** Which sending credential was offered, so a client can mark the right field. */
+  smtp_auth?: SmtpAuthMode;
 };
 
 export type Autoconfig = {
@@ -188,6 +209,10 @@ export const connectImap = (body: {
   smtp_secure?: boolean;
   auth_user?: string;
   password: string;
+  /** Omit for "same as IMAP"; "separate" requires both fields below. */
+  smtp_auth?: SmtpAuthMode;
+  smtp_user?: string | null;
+  smtp_password?: string;
 }) =>
   tenant<Connection & { test?: TestResult }>("/mail/connections", {
     method: "POST",
@@ -270,6 +295,15 @@ export const updateImapConnection = (
     smtp_secure?: boolean;
     auth_user?: string;
     password?: string;
+    /**
+     * Absent leaves the mailbox's current sending sign-in ALONE — which is what
+     * a patch that only moves the SMTP host must do. `"same"` deletes the stored
+     * SMTP secret; `"separate"` with a blank `smtp_password` keeps it, the same
+     * convention `password` above has.
+     */
+    smtp_auth?: SmtpAuthMode;
+    smtp_user?: string | null;
+    smtp_password?: string;
   },
 ) =>
   tenant<Connection & { test?: TestResult }>(`/mail/connections/${id}`, {

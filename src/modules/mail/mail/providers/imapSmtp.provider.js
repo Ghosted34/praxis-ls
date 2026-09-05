@@ -12,7 +12,13 @@
  *     imap_host, imap_port, imap_secure,
  *     smtp_host, smtp_port, smtp_secure,
  *     auth_user, password,
+ *     smtp_user, smtp_password,     // optional — see _smtpTransport
  *   })
+ *
+ * `smtp_user` / `smtp_password` are the SENDING leg's own sign-in, for a mailbox
+ * that receives on one server and relays through another. They are optional and
+ * absent for every mailbox that shares one credential; when they are absent this
+ * adapter behaves exactly as it did before they existed.
  *
  * Heavy deps (imapflow, mailparser, nodemailer) are lazy-required so the web
  * process doesn't load an IMAP stack it never uses — matches email.service.
@@ -66,15 +72,44 @@ class ImapSmtpProvider {
     });
   }
 
+  /**
+   * Does the SENDING leg sign in as somebody other than the mailbox?
+   *
+   * The SECRET decides, never the username. `smtp_user` is an ordinary transport
+   * setting and can be left behind on a row whose separate credential has since
+   * been cleared; a username with no password of its own is not a second
+   * sign-in, and pairing it with the IMAP password would send one leg's user
+   * with the other leg's secret — a credential combination nobody configured.
+   */
+  _hasSeparateSmtpAuth() {
+    return Boolean(this.conn.smtp_password);
+  }
+
+  /**
+   * The SMTP sign-in, as one unit.
+   *
+   * User and password are chosen TOGETHER and never mixed across the two legs.
+   * With a separate credential the username falls back through `smtp_user` →
+   * `auth_user` → the mailbox address, because a relay that takes an API key as
+   * the password often still wants a username and some accept the address.
+   */
+  _smtpAuth() {
+    const c = this.conn;
+    if (this._hasSeparateSmtpAuth()) {
+      return { user: c.smtp_user || c.auth_user || c.email_address, pass: c.smtp_password };
+    }
+    return c.auth_user || c.email_address ? { user: c.auth_user || c.email_address, pass: c.password } : undefined;
+  }
+
   _smtpTransport() {
-     
+
     const nodemailer = require("nodemailer");
     const c = this.conn;
     return nodemailer.createTransport({
       host: c.smtp_host,
       port: c.smtp_port || 587,
       secure: c.smtp_secure === true || c.smtp_port === 465,
-      auth: c.auth_user || c.email_address ? { user: c.auth_user || c.email_address, pass: c.password } : undefined,
+      auth: this._smtpAuth(),
       // Same HELO rule as the system mailer — see config/env MAIL_HELO_NAME. A
       // user's mail leaves through this transport, so a loopback greeting here
       // costs the TENANT's reputation, not ours.
@@ -91,14 +126,25 @@ class ImapSmtpProvider {
     return info.message; // Buffer
   }
 
-  /** Live IMAP + SMTP connectivity/auth check. Never throws. */
+  /**
+   * Live IMAP + SMTP connectivity/auth check. Never throws.
+   *
+   * BOTH failures name their leg, because the one thing the operator cannot see
+   * is which of the two rejected them. `stage` has always been on this result
+   * and no surface renders it — the test line shows `error` and nothing else —
+   * so a mailbox with two different sign-ins produced "the mail server rejected
+   * the credentials" with no way to tell WHICH password was wrong. The sentence
+   * has to carry it.
+   */
   async verify() {
     try {
       const imap = this._imapClient();
       await imap.connect();
       await imap.logout();
     } catch (err) {
-      return { ok: false, stage: "imap", error: err.message };
+      const { describeImapFailure } = require("../smtp-error.map");
+      const described = describeImapFailure(err);
+      return { ok: false, stage: "imap", error: described.message, code: described.code };
     }
     try {
       await this._smtpTransport().verify();
@@ -106,7 +152,7 @@ class ImapSmtpProvider {
       // Classify the SMTP verdict (550 sender verify, 535 auth, …) so callers
       // can hand the UI a machine code for its fix guide.
       const { mapSmtpError } = require("../smtp-error.map");
-      const mapped = mapSmtpError(err);
+      const mapped = mapSmtpError(err, { separateSmtpCredentials: this._hasSeparateSmtpAuth() });
       return { ok: false, stage: "smtp", error: mapped.message, code: mapped.code };
     }
     return { ok: true };
@@ -159,6 +205,12 @@ class ImapSmtpProvider {
     // MAIL FROM: the account we authenticated as is the address the relay can
     // actually vouch for during sender verification. Prefer it, fall back to the
     // mailbox/header address, and always strip to a bare address (see bareAddress).
+    //
+    // DELIBERATELY NOT `smtp_user`. A relay username is frequently not an address
+    // at all — SMTP2GO issues one per SMTP user, SES issues an access-key id —
+    // and putting a non-address in MAIL FROM is the exact thing bareAddress was
+    // written to prevent ("550 Sender verify failed"). The envelope names the
+    // MAILBOX; the separate credential only says how we were let in.
     const envelopeFrom = bareAddress(c.auth_user || c.email_address || mail.from);
     const envelope = { from: envelopeFrom, to: [].concat(msg.to || [], msg.cc || []) };
     await smtp.sendMail({ envelope, raw });

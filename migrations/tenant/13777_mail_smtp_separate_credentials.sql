@@ -1,0 +1,72 @@
+-- ============================================================================
+-- TENANT — 13777 A mailbox may sign in to its SENDING server as somebody else.
+--
+-- ── THE FAILURE THIS ENDS ──────────────────────────────────────────────────
+--
+-- `email_connection` already lets the two legs of a mailbox point at different
+-- servers — `imap_host`/`imap_port` and `smtp_host`/`smtp_port` are separate
+-- columns and always have been. What it has never had is a second SIGN-IN. One
+-- pair, `auth_user` + the vault secret at `mail_conn:<id>`, is handed to both
+-- transports by imapSmtp.provider.js, so the credential that opens the IMAP
+-- mailbox is also the credential offered to the SMTP relay.
+--
+-- That is fine while both legs are the same host. It is wrong the moment they
+-- are not, and the configuration it breaks is an ordinary one:
+--
+--     IMAP  mail.jbspraxis.com : 993   cPanel mailbox password
+--     SMTP  mail.smtp2go.com   : 465   SMTP2GO username + API password
+--
+-- The relay is handed the cPanel password, refuses it, and the operator is told
+-- "The mail server rejected the SMTP credentials for this mailbox" — a true
+-- sentence about a password they never typed into an SMTP field, because there
+-- was no SMTP field. Every fix available to them (retype the password, try an
+-- app password, check the host) is a fix to the wrong credential.
+--
+-- ── WHY ONLY A USERNAME COLUMN ─────────────────────────────────────────────
+--
+-- The password is a secret and secrets are NEVER stored on this table — the
+-- rule 0483 set out and every column here has kept. The SMTP password goes in
+-- the same AES-256-GCM vault as the existing one, under its own key
+-- `mail_conn_smtp:<connectionId>` in section `integration_secret`. So the
+-- schema change is one nullable text column and nothing else.
+--
+-- ── AND WHY THERE IS NO `smtp_auth_mode` COLUMN ────────────────────────────
+--
+-- A mailbox is in "different credentials" mode iff a separate SMTP secret
+-- exists. That is one fact with one home. A mode column would be a second copy
+-- of it, and the two would disagree the first time a secret was cleared without
+-- the column following — leaving a mailbox that claims separate credentials and
+-- has none, which is the shape of the bug this migration exists to remove.
+-- `smtp_user` is a transport SETTING, like `auth_user` beside it; the vault is
+-- the authority on whether a separate sign-in is configured.
+--
+-- NULL for every existing row, and the provider falls back to the shared pair
+-- when the secret is absent — so nothing about a mailbox connected before this
+-- changes, and there is no backfill.
+-- ============================================================================
+
+ALTER TABLE email_connection
+  ADD COLUMN IF NOT EXISTS smtp_user text;
+
+COMMENT ON COLUMN email_connection.smtp_user IS
+  'Username for the SENDING leg when it signs in separately from IMAP (e.g. an SMTP2GO/SES relay username). NULL = the shared auth_user is used for both legs. The matching password lives in the integration_secret vault at mail_conn_smtp:<email_connection_id>, never here; that secret''s presence — not this column — is what puts the mailbox in separate-credentials mode.';
+
+-- ============================================================================
+-- VERIFY
+--   SELECT email_connection_id, auth_user, smtp_user FROM email_connection;
+--     -- smtp_user NULL on every row until a mailbox is edited
+--   SELECT count(*) FROM information_schema.columns
+--    WHERE table_name = 'email_connection' AND column_name = 'smtp_user';
+--     -- expect: 1
+--
+-- DOWN
+--   -- Drop the SMTP vault entries FIRST. Removing the column alone would leave
+--   -- every `mail_conn_smtp:<id>` secret behind with nothing naming it, and the
+--   -- provider would then be reading a separate password with no username to
+--   -- pair it with.
+--   DELETE FROM setting
+--    WHERE section = 'integration_secret' AND key LIKE 'mail_conn_smtp:%';
+--   ALTER TABLE email_connection DROP COLUMN IF EXISTS smtp_user;
+--   -- Both legs go back to auth_user + mail_conn:<id>, which is the behaviour
+--   -- of every mailbox that never used this column.
+-- ============================================================================

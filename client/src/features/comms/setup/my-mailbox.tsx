@@ -46,6 +46,13 @@ import { dateFmt } from "@/lib/format";
 import { tr } from "@/lib/i18n";
 import { SmtpErrorGuide } from "@/components/mail/smtp-guide";
 import { DisconnectMailboxDialog } from "@/components/mail/disconnect-mailbox-dialog";
+import { SmtpSignInFields } from "@/components/mail/smtp-sign-in-fields";
+import {
+  BLANK_SMTP_SIGN_IN,
+  smtpSignInBody,
+  smtpSignInReady,
+  type SmtpSignInValue,
+} from "@/lib/smtp-sign-in";
 import * as api from "@/lib/mail-api";
 import { HealthPill } from "./health-pill";
 
@@ -63,6 +70,7 @@ function ConnectWizard({ onClose, onDone }: { onClose: () => void; onDone: () =>
     smtp_host: "", smtp_port: 465, smtp_secure: true,
     auth_user: "", password: "",
   });
+  const [smtpAuth, setSmtpAuth] = React.useState<SmtpSignInValue>(BLANK_SMTP_SIGN_IN);
   const [result, setResult] = React.useState<api.Mailbox | null>(null);
 
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
@@ -115,6 +123,7 @@ function ConnectWizard({ onClose, onDone }: { onClose: () => void; onDone: () =>
         imap_host: f.imap_host, imap_port: Number(f.imap_port), imap_secure: String(f.imap_secure) !== "false",
         smtp_host: f.smtp_host, smtp_port: Number(f.smtp_port), smtp_secure: String(f.smtp_secure) !== "false",
         auth_user: f.auth_user || email, password: f.password,
+        ...smtpSignInBody(smtpAuth),
       });
       setResult(conn as unknown as api.Mailbox);
       setStep(3);
@@ -190,6 +199,11 @@ function ConnectWizard({ onClose, onDone }: { onClose: () => void; onDone: () =>
               <Input value={f.display_name} onChange={set("display_name")} placeholder="Ada Lovelace" />
             </Field>
           </div>
+          {/* Step 2 is "server settings", and which login the outgoing server
+              takes is one of them. Offered here rather than on a fourth step,
+              because a person who needs it needs it BEFORE the test in step 3
+              refuses them. */}
+          <SmtpSignInFields value={smtpAuth} onChange={setSmtpAuth} disabled={busy} />
           {error != null && (
             <>
               <ErrorState message={errMsg(error)} />
@@ -198,7 +212,7 @@ function ConnectWizard({ onClose, onDone }: { onClose: () => void; onDone: () =>
           )}
           <div className="flex items-center justify-between pt-1">
             <Button type="button" variant="outline" onClick={() => setStep(1)} disabled={busy}>{tr("Back")}</Button>
-            <Button type="submit" loading={busy} disabled={busy}>{tr("Connect and test")}</Button>
+            <Button type="submit" loading={busy} disabled={busy || !smtpSignInReady(smtpAuth)}>{tr("Connect and test")}</Button>
           </div>
         </form>
       )}

@@ -8,8 +8,10 @@
  * generator then refuses it — or worse, prints « Né le  à  » — the number on the
  * screen is not just wrong, it is actively misleading the person who trusted it.
  *
- * The fixture is the employee from the real CDI this work was specified against
- * (see migration 12763), so "ready" here means ready for THAT document.
+ * The fixture has the shape of the CDI this work was specified against (see
+ * migration 12763) with every name and number INVENTED, so "ready" here means
+ * ready for THAT document without a real person's identity papers sitting in a
+ * test file.
  */
 "use strict";
 
@@ -24,21 +26,21 @@ const {
 
 /** Everything the contract's identification clause names, and the terms it states. */
 const COMPLETE = {
-  full_name: "FORMUM Florence Ngwenjang",
+  full_name: "SPECIMEN Marie Claire",
   civility: "MRS",
   gender: "FEMALE",
-  maiden_name: "FORGHAB",
-  date_of_birth: "1970-02-28",
-  place_of_birth: "NTAMBU MUNDUM",
-  father_name: "FORMUM Isaac",
-  mother_name: "NJENG Onika",
+  maiden_name: "EXEMPLE",
+  date_of_birth: "1985-03-12",
+  place_of_birth: "BAFIA",
+  father_name: "SPECIMEN Jean",
+  mother_name: "EXEMPLE Rose",
   nationality: "CM",
   marital_status: "MARRIED",
   dependent_children: 3,
-  id_document_number: "101510674",
+  id_document_number: "000000000",
   id_document_issued_on: "2021-02-03",
-  id_document_issued_at: "CE54",
-  residence_address: "Ndogbong Douala",
+  id_document_issued_at: "CE00",
+  residence_address: "Bonapriso Douala",
   entity_id: "11111111-1111-1111-1111-111111111111",
   job_title: "RESPONSABLE COMMERCIAL",
   employment_type: "CDI",

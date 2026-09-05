@@ -11,7 +11,8 @@ const repo = require("./employees.repo");
 const events = require("./employees.events");
 const {
   suggestRiskClass, normaliseBankBlock, blankToNull, contractReadiness, omit,
-  withAllowanceDefaults, CONTRACT_REQUIREMENTS, REQUIRED_DOCUMENT_CODES,
+  withAllowanceDefaults, withDerivedWorkingHours,
+  CONTRACT_REQUIREMENTS, REQUIRED_DOCUMENT_CODES,
 } = require("./employees.rules");
 const vault = require("../../vault/document_vault/document_vault.service");
 const { emitEvent, audit, resolveActorId } = require("../../../shared/events/emit");
@@ -90,7 +91,12 @@ async function create(client, { data, slug, actor = {} }) {
     // clerk would see a failure whose cause was three fields further up.
     if (fields.reports_to) await assertNoReportingCycle(client, null, fields.reports_to);
     const row = await repo.insert(client, {
-      ...blankToNull(fields), bank_block, risk_class_rate, staff_no,
+      // `withDerivedWorkingHours` re-renders the printed hours line from the
+      // grid, so the contract's sentence cannot disagree with the days HR
+      // ticked. AFTER blankToNull: an empty string for `work_schedule` is "not
+      // filled in", and normalising it before it has become null would read it
+      // as a schedule that could not be parsed.
+      ...withDerivedWorkingHours(blankToNull(fields)), bank_block, risk_class_rate, staff_no,
     });
     for (const d of documents) await addDocumentRow(client, { employeeId: row.employee_id, body: d, slug, actor });
     for (const a of allowances) await addAllowanceRow(client, { employeeId: row.employee_id, body: a, actor });
@@ -108,7 +114,7 @@ async function update(client, { id, patch, actor = {} }) {
   // done through their own endpoints, where one row can be changed without
   // resubmitting the rest. Dropping them here rather than letting the update
   // builder reject an unknown column keeps the error the caller sees honest.
-  const fields = blankToNull(omit(patch, ["documents", "allowances"]));
+  const fields = withDerivedWorkingHours(blankToNull(omit(patch, ["documents", "allowances"])));
   if (fields.bank_block !== undefined) fields.bank_block = normaliseBankBlock(fields.bank_block);
   // Only when the line actually changes — a no-op save shouldn't pay for a walk.
   if (fields.reports_to !== undefined && fields.reports_to !== before.reports_to) {

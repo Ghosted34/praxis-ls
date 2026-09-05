@@ -406,8 +406,9 @@ function NewVacancyForm({
         <Field
           label={tr("Department")}
           hint={tr("From your organigramme — Security › Scopes.")}
+          htmlFor="vacancy-filter-department"
         >
-          <DepartmentSelect value={dept} onChange={setDept} />
+          <DepartmentSelect id="vacancy-filter-department" value={dept} onChange={setDept} />
         </Field>
         <Field label={tr("Description")}>
           <Input

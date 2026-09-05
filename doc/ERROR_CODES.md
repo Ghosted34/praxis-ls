@@ -20,7 +20,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 |---|---|---|
 | `BAD_AMOUNT` | `INVALID_AMOUNT` | 14× |
 | `BAD_STATE` | `BAD_STATUS` | 38× |
-| `EMPLOYEE_NOT_FOUND` | `NOT_FOUND` | 2× |
+| `EMPLOYEE_NOT_FOUND` | `NOT_FOUND` | 3× |
 | `FORBIDDEN` | `PERMISSION_DENIED` | 6× |
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
@@ -171,7 +171,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `EMAIL_SEND_FAILED` | 502 | 1× | — |
 | `EMAIL_TAKEN` | 409 | 2× | — |
 | `EMPLOYEE_INACTIVE` | 422 | 1× | — |
-| `EMPLOYEE_NOT_FOUND` | 404, 422 | 2× | `NOT_FOUND` |
+| `EMPLOYEE_NOT_FOUND` | 404, 422 | 3× | `NOT_FOUND` |
 | `EMPLOYEE_REQUIRED` | 422 | 1× | — |
 | `EMPTY_ARTICLE` | 422 | 1× | — |
 | `EMPTY_AUDIO` | 422 | 4× | — |

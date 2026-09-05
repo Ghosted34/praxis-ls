@@ -14,20 +14,22 @@ against a real signed CDI.
 | `client/src/features/security/users.tsx` | `UserForm` — provisioning, and which way the link ran |
 | `doc/reference/legacy_codebase/administration/api/employees/save.php` | the payload the legacy system enforced |
 | `…/api/employees/{pending_users,provision_pending_update}.php` | the legacy provisioning queue and its activation-token email |
-| A signed *CONTRAT DE TRAVAIL* (SLAS/DAF/RH/254230) | the document this record has to be able to produce |
+| A signed *CONTRAT DE TRAVAIL* (SLAS/DAF/RH/000000) | the document this record has to be able to produce |
 
 ---
 
 ## 1. The defect all of it points at
 
 A work contract is generated **from** the employee record. Article by article, the
-one I read states:
+one I read states the following — reproduced here with every name, number and
+address INVENTED, because the shape of the paragraph is the finding and a real
+employee's identity document is not something this document needs to carry:
 
 ```
-SLAS/DAF/RH/254230
-Mme FORMUM Epse FORGHAB Florence Ngwenjang, Née le 28 Février 1970 à NTAMBU
-MUNDUM, Fille de FORMUM Isaac et de NJENG Onika, Titulaire de la CNI N° 101510674
-délivrée le 03 février 2021 à CE54. Demeurant à Ndogbong Douala, et De
+SLAS/DAF/RH/000000
+Mme SPECIMEN Epse EXEMPLE Marie Claire, Née le 12 Mars 1985 à BAFIA,
+Fille de SPECIMEN Jean et de EXEMPLE Rose, Titulaire de la CNI N° 000000000
+délivrée le 03 février 2021 à CE00. Demeurant à Bonapriso Douala, et De
 nationalité Camerounaise
 …
 Le matricule SLAS-137 lui est attribué.        Une période d'essai de 4 mois.

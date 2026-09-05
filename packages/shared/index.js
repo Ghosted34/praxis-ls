@@ -14,6 +14,7 @@ const partyConfig = require("./schemas/party-config");
 const entityCommon = require("./schemas/entity-common");
 const ledger = require("./rules/ledger");
 const marks = require("./rules/marks");
+const workSchedule = require("./rules/work-schedule");
 const pwaDesign = require("./pwa-design");
 const countries = require("./data/countries");
 const currencies = require("./data/currencies");
@@ -77,3 +78,7 @@ exports.marks = marks;
 // pwa-design.js). It crosses the same boundary for the same reason: the API
 // renders the home-screen PNG from it and the client renders the preview.
 exports.pwaDesign = pwaDesign;
+// The working week per day (worked / hours / on-site or remote). The employee
+// form draws it, the API validates it, and both print the contract's line
+// through summarise() — so `employee.working_hours` cannot drift from the grid.
+exports.workSchedule = workSchedule;

@@ -361,8 +361,9 @@ export function VacancyEditor({
           <Field
             label={tr("Department")}
             hint={tr("From your organigramme — Security › Scopes.")}
+            htmlFor="vacancy-department"
           >
-            <DepartmentSelect value={dept} onChange={setDept} />
+            <DepartmentSelect id="vacancy-department" value={dept} onChange={setDept} />
           </Field>
           <Field label={tr("Employment type")}>
             <Input

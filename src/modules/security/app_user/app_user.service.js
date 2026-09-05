@@ -946,6 +946,25 @@ async function createUser(client, { data, actor = {}, tenantId = null, origin = 
     });
   }
 
+  /*
+   * The employee link, checked before the insert rather than left to the FK.
+   *
+   * `update` has validated this since it was written; `create` never did, so
+   * the failure came back as a raw 23503 that names a constraint and not a
+   * cause. The way people actually hit it is specific and worth naming: the
+   * "Provision account" button on an employee dossier reads the record through
+   * `req.tenantDb`, so in TEST mode it hands over a SANDBOX employee id — and
+   * app_user lives in the live schema, where that row does not exist. The
+   * message says which of the two mistakes it was.
+   */
+  if (data.employee_id && !(await repo.employeeExists(client, data.employee_id))) {
+    throw new AppError(
+      "EMPLOYEE_NOT_FOUND",
+      "That employee record isn't in your live staff list — logins are always live, so a sandbox (Test mode) employee can't be linked to one. Switch to Live and try again, or create the login without a linked employee.",
+      422,
+    );
+  }
+
   await client.query("BEGIN");
   try {
     const secret = invite ? crypto.randomBytes(48).toString("hex") : String(data.password);

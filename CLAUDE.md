@@ -52,7 +52,8 @@ reason next to it, and nothing in the tree needs one today.
 component that does not exist, so it can be trusted. §3.5 lists the primitives
 you must not hand-roll; §6 is the pre-PR checklist.
 
-Other gates that fail the build, all run from `client/`:
+Other gates that fail the build, all run from `client/` — `npm run ci` runs the
+lot, so this list is for when you want one of them on its own:
 
 ```
 npm run lint            # includes the dialog ban and the a11y rules
@@ -60,6 +61,10 @@ npm run check:palette   # no raw palette colours — they break white-labelling
 npm run check:contrast  # every text-on-surface token pair clears WCAG AA
 npm run check:docs      # the frontend guide is not lying
 npm run check:motion    # motion budget
+npm run check:shared    # the bundler can consume @praxis/shared, on one Zod
+npm run check:schemas   # a shared schema is used by BOTH sides, and migrated
+                        # validators have not grown their own rules back
+npm run check:bundle    # chunk graph is acyclic — needs `npm run build` first
 npm test
 ```
 
@@ -84,22 +89,45 @@ Node 20 (`.nvmrc`), npm. Backend lint and tests run from the repo root; each
 frontend app has its own toolchain and is linted, tested and built separately in
 CI.
 
-## Before you push: run the whole suite, not the tests you think you touched
+## Before you push: `npm run ci`
 
-CI's `build-test` job runs `npx jest` across the **entire** backend, so a green
-build needs the entire backend green. Before every push, from the repo root:
+**Not `npm run lint && npx jest`.** That is two of the thirty-odd gates CI runs,
+and passing them is not evidence about the other twenty-eight.
 
 ```
-npm run lint
-npx jest tests/unit        # the full unit suite — not `jest <one-file>`
+npm run ci               # every gate that needs no infrastructure, full report
+npm run ci --fast        # stop at the first failure
+npm run ci --backend     # or --frontend, when you only touched one side
+node scripts/ci-local.js --list      # what it runs, and each gate's own command
 ```
 
-plus the `client/` gates above (`npm run lint`, `check:*`, `npm test`) for any
-frontend change. This is the single most common way `build-test` goes red: a
-change to a **shared** function — a service like `foldDetails`, a repo helper, a
-validator — breaks a suite you did not name in a targeted `jest <file>` run, so
-a subset pass reads as green while CI is not. When you touch shared code, the
-whole unit suite is the check, and running one file is not a substitute for it.
+It runs the gates in CI's own order and reports **all** the failures rather than
+the first, so five unrelated breakages cost one run instead of five pushes. Read
+`scripts/ci-local.js` — its header states exactly what it SKIPS (a live
+Postgres, PgBouncer, the Docker build, the Playwright layout gate), so a green
+run here is "the gates that need no infrastructure pass" and not a promise.
+
+Two classes of gate are the ones people actually get caught by, because neither
+is a test and neither fails while you are working on the thing that breaks it:
+
+- **Generated artefacts drift.** `doc/API_REFERENCE.md` and `doc/ERROR_CODES.md`
+  are generated from the code, and `generate-api-docs.js --check` fails when
+  they are stale. Adding one `throw new AppError(...)` changes a count in a
+  table and reddens `build-test`. The fix is never to edit the file — run
+  `node scripts/generate-api-docs.js` and commit what it writes.
+- **Cross-cutting gates fire from a file you did not open.** `check:schemas`
+  treats any `*.validator.js` that imports `@praxis/shared` as a migrated
+  adapter, so ADDING that import to a validator that still declares its own
+  shape turns a green file red — the failure is in a file you only added one
+  line to. Put the rule in `packages/shared`, or add an `ALLOW_LOCAL_SCHEMA`
+  entry in `client/scripts/check-schemas.mjs` with the reason (partly-migrated
+  validators are what the hatch is for).
+
+And the older trap, which `npm run ci` also covers: CI's `build-test` runs
+`npx jest` across the **entire** backend. A change to a **shared** function — a
+service like `foldDetails`, a repo helper, a validator — breaks a suite you did
+not name in a targeted `jest <file>` run, so a subset pass reads as green while
+CI is not. Running one file is never a substitute for the suite.
 
 ## Conventions worth knowing
 

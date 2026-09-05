@@ -12,9 +12,20 @@
  * the API stores alongside it so documents that print a department keep working
  * and existing rows stay readable.
  *
- * Falls back to a free-text input when the tenant has no scopes yet. That is
- * deliberate: an ERP that refuses to accept a purchase request because nobody
- * has drawn the org chart yet is worse than one that takes a string.
+ * ── WHEN THE TENANT HAS NO ORG CHART YET ──────────────────────────────────
+ *
+ * This used to render a bare `<Input>` in that case, which is how "Department"
+ * came to be reported as a free-text field: a tenant who has not opened
+ * Security › Scopes never saw the dropdown at all, only a box — and typed
+ * "Operations", then "operations", then " Operations " into three records the
+ * roster filter then treated as three departments.
+ *
+ * The picker is now the control in every case. Empty means an empty dropdown
+ * that says where departments come from. Typing one is still possible and still
+ * necessary — an ERP that refuses a purchase request because nobody has drawn
+ * the org chart is worse than one that takes a string — but it is now a
+ * deliberate second choice behind a link, rather than the default everybody
+ * lands in and never leaves.
  */
 import * as React from "react";
 import { Input } from "@/components/ui/input";
@@ -35,14 +46,27 @@ export function DepartmentSelect({
   value,
   onChange,
   placeholder = "— none —",
+  id,
 }: {
   value: DepartmentValue;
   onChange: (v: DepartmentValue) => void;
   placeholder?: string;
+  /** The control's id, so a `Field` can point its label at it — this renders a
+   *  control AND a line of guidance, which `Field` cannot label by cloning. */
+  id?: string;
 }) {
   // Options, not the admin tree — this control appears on forms ordinary staff
   // fill in, and the tree endpoint requires the IAM grant.
   const scopeQ = useResource(() => fetchScopeOptions(), []);
+
+  /* Typing one instead of picking one. Opens by itself for a record that
+     already holds text with no scope behind it (imported before 0490, or typed
+     while this control fell back to an input) — otherwise the field would render
+     as "— none —" over a value the record does hold, and the next save would
+     quietly clear it. */
+  const [typing, setTyping] = React.useState(
+    Boolean(value.department && !value.scope_id),
+  );
 
   // Flattened depth-first so the dropdown reads as a tree.
   const nodes = React.useMemo(() => {
@@ -56,52 +80,92 @@ export function DepartmentSelect({
     return out;
   }, [scopeQ.data]);
 
-  // "Empty" and "the request failed" are different problems and must not read
-  // the same. Both still fall back to free text so the form stays usable.
-  if (!scopeQ.loading && !nodes.length) {
+  // The escape hatch, entered on purpose. Whatever is typed carries no
+  // scope_id, so the roster's case-insensitive text matching still finds it.
+  if (typing) {
     return (
       <>
         <Input
+          id={id}
           value={value.department || ""}
+          aria-label="Department"
           onChange={(e) =>
             onChange({ scope_id: null, department: e.target.value })
           }
         />
-        {scopeQ.error ? (
-          <p className="micro mt-1 text-[rgb(var(--bad))]">
-            Couldn&rsquo;t load departments: {scopeQ.error}
-          </p>
-        ) : (
-          <p className="micro mt-1">
-            No departments defined yet — add them under Security &rsaquo; Scopes
-            and they&rsquo;ll appear here.
-          </p>
-        )}
+        <p className="micro mt-1">
+          A typed department is a label, not a node in the organigramme —
+          approvals cannot route to it.{" "}
+          <button
+            type="button"
+            onClick={() => {
+              setTyping(false);
+              onChange({ scope_id: null, department: null });
+            }}
+            className="text-primary-ink underline underline-offset-2"
+          >
+            Pick from the list instead
+          </button>
+        </p>
       </>
     );
   }
 
   return (
-    <Select
-      value={value.scope_id || ""}
-      onChange={(e) => {
-        const id = e.target.value;
-        const node = nodes.find((n) => n.scope_id === id);
-        // Send the snapshot with the id. The API re-derives it from the scope
-        // anyway, so the two can't disagree even if this list is stale.
-        onChange(
-          id
-            ? { scope_id: id, department: node ? node.name : null }
-            : { scope_id: null, department: null },
-        );
-      }}
-    >
-      <option value="">{placeholder}</option>
-      {nodes.map((n) => (
-        <option key={n.scope_id} value={n.scope_id}>
-          {`${"  ".repeat(n.depth)}${n.name}`}
+    <>
+      <Select
+        id={id}
+        value={value.scope_id || ""}
+        aria-label="Department"
+        onChange={(e) => {
+          const id = e.target.value;
+          const node = nodes.find((n) => n.scope_id === id);
+          // Send the snapshot with the id. The API re-derives it from the scope
+          // anyway, so the two can't disagree even if this list is stale.
+          onChange(
+            id
+              ? { scope_id: id, department: node ? node.name : null }
+              : { scope_id: null, department: null },
+          );
+        }}
+      >
+        <option value="">
+          {scopeQ.loading
+            ? "Loading departments…"
+            : nodes.length
+              ? placeholder
+              : "— no departments defined —"}
         </option>
-      ))}
-    </Select>
+        {nodes.map((n) => (
+          <option key={n.scope_id} value={n.scope_id}>
+            {`${"  ".repeat(n.depth)}${n.name}`}
+          </option>
+        ))}
+      </Select>
+      {/* "Empty" and "the request failed" are different problems and must not
+          read the same — one is a setup step, the other is a fault. */}
+      {scopeQ.error ? (
+        <p className="micro mt-1 text-[rgb(var(--bad))]">
+          Couldn&rsquo;t load departments: {scopeQ.error}
+        </p>
+      ) : (
+        !scopeQ.loading &&
+        !nodes.length && (
+          <p className="micro mt-1">
+            Departments are your scopes — add them under Security &rsaquo;
+            Scopes and they appear here on every form that asks.
+          </p>
+        )
+      )}
+      <p className="micro mt-1">
+        <button
+          type="button"
+          onClick={() => setTyping(true)}
+          className="text-primary-ink underline underline-offset-2"
+        >
+          Type one instead
+        </button>
+      </p>
+    </>
   );
 }

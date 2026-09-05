@@ -38,7 +38,13 @@ const schemas = {
   create: z.object({
     email: z.string().trim().email(),
     full_name: z.string().min(1),
-    password: z.string().min(8).optional(),
+    // min(1), not min(8). The length that matters is the POLICY's twelve, and
+    // it is applied in the service (assertStrongPassword) — a second, shorter
+    // minimum here only decides which of two errors a weak password gets: a
+    // seven-character one used to come back as a bare VALIDATION_ERROR while an
+    // eight-character one came back naming the five rules it missed. One rule,
+    // one message, whatever the length.
+    password: z.string().min(1).optional(),
     invite: z.boolean().optional(),
     username: z.string().optional().nullable(),
     employee_id: z.string().uuid().optional().nullable(),
@@ -53,7 +59,8 @@ const schemas = {
     whatsapp_number: z.string().min(6).max(20).optional().nullable(),
     role_ids: z.array(z.string().uuid()).optional(),
   }),
-  password: z.object({ new_password: z.string().min(8) }),
+  // Same reasoning as `create.password`: the policy owns the length.
+  password: z.object({ new_password: z.string().min(1) }),
   status: z.object({ status: z.enum(["ACTIVE", "SUSPENDED", "LOCKED"]) }),
   // AI-facing: user_id in the payload → list_users picker.
   aiUpdate: z.object({ user_id: z.string().uuid(), full_name: z.string().optional(), username: z.string().optional().nullable(), email: z.string().trim().email().optional(), employee_id: z.string().uuid().optional().nullable(), whatsapp_number: z.string().min(6).max(20).optional().nullable(), role_ids: z.array(z.string().uuid()).optional() }),

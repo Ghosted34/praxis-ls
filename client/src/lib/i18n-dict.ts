@@ -2597,6 +2597,22 @@ export const en = {
     "Delete for ever": "Delete for ever",
     "Empty the bin": "Empty the bin",
     "Empty spam": "Empty spam",
+
+    /* Comms → the mailbox forms: which sign-in the SENDING leg uses. Kept
+       together rather than filed alphabetically, for the reason the delivery
+       vocabulary above is: these ten strings are one question and its answers,
+       and a radio label translated away from the hint that explains it is how a
+       French operator ends up choosing the mode they did not mean. */
+    "Sending (SMTP) sign-in": "Sending (SMTP) sign-in",
+    "Most mailboxes send with the same login they receive with.": "Most mailboxes send with the same login they receive with.",
+    "Same as IMAP": "Same as IMAP",
+    "One username and password for receiving and sending.": "One username and password for receiving and sending.",
+    "Use different credentials": "Use different credentials",
+    "The outgoing server has its own login — a relay such as SMTP2GO, SES or SendGrid.": "The outgoing server has its own login — a relay such as SMTP2GO, SES or SendGrid.",
+    "SMTP username": "SMTP username",
+    "SMTP password": "SMTP password",
+    "The relay's own username — often not an email address.": "The relay's own username — often not an email address.",
+    "Leave blank to keep the current SMTP password.": "Leave blank to keep the current SMTP password.",
   },
   dataRoom: {
     staffDesc: "Document requests from external auditors — share vault documents in answer.",
@@ -5251,6 +5267,22 @@ export const fr: Dict = {
     "Delete for ever": "Supprimer définitivement",
     "Empty the bin": "Vider la corbeille",
     "Empty spam": "Vider les indésirables",
+
+    /* Comms → the mailbox forms: which sign-in the SENDING leg uses. Kept
+       together rather than filed alphabetically, for the reason the delivery
+       vocabulary above is: these ten strings are one question and its answers,
+       and a radio label translated away from the hint that explains it is how a
+       French operator ends up choosing the mode they did not mean. */
+    "Sending (SMTP) sign-in": "Connexion pour l'envoi (SMTP)",
+    "Most mailboxes send with the same login they receive with.": "La plupart des boîtes envoient avec le même identifiant que celui de la réception.",
+    "Same as IMAP": "Identique à IMAP",
+    "One username and password for receiving and sending.": "Un seul identifiant et mot de passe pour la réception et l'envoi.",
+    "Use different credentials": "Utiliser des identifiants différents",
+    "The outgoing server has its own login — a relay such as SMTP2GO, SES or SendGrid.": "Le serveur sortant a son propre identifiant — un relais comme SMTP2GO, SES ou SendGrid.",
+    "SMTP username": "Nom d'utilisateur SMTP",
+    "SMTP password": "Mot de passe SMTP",
+    "The relay's own username — often not an email address.": "L'identifiant propre au relais — souvent pas une adresse e-mail.",
+    "Leave blank to keep the current SMTP password.": "Laissez vide pour conserver le mot de passe SMTP actuel.",
   },
   dataRoom: {
     staffDesc: "Demandes de documents des auditeurs externes — partagez les documents du coffre en réponse.",

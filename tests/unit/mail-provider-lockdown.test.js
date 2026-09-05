@@ -68,6 +68,9 @@ jest.mock("../../src/modules/mail/mail/mail.repo", () => ({
   updateConnection: jest.fn(async () => ({})),
   setError: jest.fn(async () => {}),
   ensureDefaultConnection: jest.fn(async () => {}),
+  // No separate SMTP credential on these fixtures — the mailboxes here are
+  // about the provider gate, not about which leg signs in as whom.
+  hasSmtpCredentials: jest.fn(async () => false),
 }));
 // The connection mock is STATEFUL: classify() writes the kind and then grant()
 // reads it back, which in a transaction sees the write. A static mock would test

@@ -93,18 +93,35 @@ const archiveIdentity = (client, id) => repo.archiveIdentity(client, id);
 // ── Engine helpers ──
 const secretKeyFor = (id) => `mail_conn:${id}`;
 
+/**
+ * The SENDING leg's own secret, when it has one.
+ *
+ * A SECOND vault entry beside `mail_conn:<id>`, not a second field inside it.
+ * The existing entry is read by three code paths and holds an OAuth token
+ * bundle for two of the three providers; widening its value shape would make
+ * every one of those readers care about a key that means nothing to them. A
+ * separate key means the absent case needs no migration and no parsing — the
+ * row is simply not there, which is exactly the question the mode asks.
+ */
+const smtpSecretKeyFor = (id) => `mail_conn_smtp:${id}`;
+
 const fmtFrom = (conn) => (conn.display_name ? `"${conn.display_name}" <${conn.email_address}>` : conn.email_address);
 
 /** Build the right provider adapter for a connection, with its decrypted secret. */
 async function resolveAdapter(client, conn) {
   if (conn.provider === "imap_smtp") {
     const password = conn.secret_key ? await settings.readSecret(client, conn.secret_key) : null;
+    // Absent for every mailbox that shares one credential, which is every
+    // mailbox connected before 13777. `readSecret` answers null for a key with
+    // no row, so this needs no guard and no column to tell it whether to look.
+    const smtpPassword = await settings.readSecret(client, smtpSecretKeyFor(conn.email_connection_id));
     return new ImapSmtpProvider({
       email_address: conn.email_address,
       from: fmtFrom(conn),
       imap_host: conn.imap_host, imap_port: conn.imap_port, imap_secure: conn.imap_secure,
       smtp_host: conn.smtp_host, smtp_port: conn.smtp_port, smtp_secure: conn.smtp_secure,
       auth_user: conn.auth_user, password,
+      smtp_user: conn.smtp_user, smtp_password: smtpPassword,
     });
   }
   if (conn.provider === "microsoft_graph") {
@@ -281,6 +298,88 @@ async function assertPasswordAuthPossible({ email_address, provider }) {
   );
 }
 
+/**
+ * Put a connection into "same as IMAP" or "different credentials" mode.
+ *
+ * ── WHY ONE FUNCTION FOR BOTH CREATE AND EDIT ───────────────────────────────
+ *
+ * The rules are identical on both paths and every one of them is a rule about
+ * pairs: a stored SMTP password with no username, or a username left behind on a
+ * row whose password has been cleared, are both configurations nobody chose and
+ * both send one leg's user with the other leg's secret. Written twice they would
+ * drift on the first change to either.
+ *
+ * ── THE THREE INPUTS, AND WHY `undefined` IS NOT `"same"` ───────────────────
+ *
+ *   smtp_auth "separate" — store the password when one was typed; write the
+ *                          username. A BLANK password keeps the stored one, the
+ *                          same convention `password` has always had, so an edit
+ *                          that only moves the SMTP host does not demand a
+ *                          credential the operator cannot re-read.
+ *   smtp_auth "same"     — DELETE the vault entry and null `smtp_user`. Leaving
+ *                          the secret would orphan it: unreachable through the
+ *                          UI, still decryptable on disk, and read again the
+ *                          moment somebody switched back.
+ *   smtp_auth absent     — TOUCH NOTHING. A PATCH that carries only
+ *                          `display_name` must not silently destroy a working
+ *                          relay credential, and every client that predates this
+ *                          field sends exactly that.
+ */
+async function applySmtpCredentialMode(client, connectionId, input = {}, actor = {}) {
+  const mode = input.smtp_auth;
+  if (mode === undefined) return;
+  const key = smtpSecretKeyFor(connectionId);
+
+  if (mode === "same") {
+    try {
+      await settings.remove(client, { section: settings.SECRET_SECTION, key, actor });
+    } catch (err) {
+      // A secret that is already absent IS the state being asked for. Anything
+      // else is a real storage failure and must not be swallowed.
+      if (err && err.code !== "NOT_FOUND") throw err;
+    }
+    await repo.updateConnection(client, connectionId, { smtp_user: null });
+    return;
+  }
+
+  if (input.smtp_password) {
+    await settings.put(client, {
+      section: settings.SECRET_SECTION,
+      key,
+      value: { provider: "imap_smtp", key_name: "MAIL_CONN_SMTP", secret: input.smtp_password },
+      actor,
+    });
+  }
+  if (input.smtp_user !== undefined) {
+    await repo.updateConnection(client, connectionId, { smtp_user: input.smtp_user || null });
+  }
+}
+
+/**
+ * A separate sending credential needs BOTH halves before it can be stored.
+ *
+ * Checked here rather than only in the validator because the validator cannot
+ * see the vault: on an edit a blank password is legitimate when one is already
+ * stored and a refusal when none is, and only the server knows which. The
+ * message names the field, since "Invalid body" on a form with two new inputs
+ * is a guess.
+ */
+async function assertSmtpCredentialsComplete(client, connectionId, input = {}) {
+  if (input.smtp_auth !== "separate") return;
+  if (!input.smtp_user) {
+    throw new AppError("VALIDATION_ERROR", "smtp_user: a separate sending sign-in needs its username", 422, {
+      smtp_user: ["Required when sending uses different credentials"],
+    });
+  }
+  if (input.smtp_password) return;
+  const stored = connectionId ? await repo.hasSmtpCredentials(client, connectionId) : false;
+  if (!stored) {
+    throw new AppError("VALIDATION_ERROR", "smtp_password: a separate sending sign-in needs its password", 422, {
+      smtp_password: ["Required when sending uses different credentials"],
+    });
+  }
+}
+
 async function connect(client, input = {}) {
   const { email_address, provider = "imap_smtp", display_name, password, actor = {} } = input;
   if (!email_address) throw new AppError("VALIDATION_ERROR", "email_address is required", 422);
@@ -293,6 +392,11 @@ async function connect(client, input = {}) {
   // they already have and what to do instead.
   const kind = input.kind === "SHARED" ? "SHARED" : "PERSONAL";
   if (kind === "PERSONAL" && actor.user_id) await mailbox.assertNoPersonalMailbox(client, actor.user_id);
+  // Before the row exists: on CREATE there is no stored secret to fall back on,
+  // so an incomplete separate sign-in is refused here rather than producing a
+  // mailbox that is in "different credentials" mode with no credential. First
+  // because it is the only one of the two that needs no query.
+  await assertSmtpCredentialsComplete(client, null, input);
   // The other way this INSERT can hit a unique index, turned into a sentence for
   // the same reason `assertNoPersonalMailbox` is one: 23505 reaches the user as
   // "A record with these values already exists", which names neither the address
@@ -316,6 +420,10 @@ async function connect(client, input = {}) {
     smtp_host: input.smtp_host || null, smtp_port: input.smtp_port || null,
     smtp_secure: input.smtp_secure === true,
     auth_user: input.auth_user || null,
+    // NULL unless the sending leg signs in separately — applySmtpCredentialMode
+    // below writes it, and only in "separate" mode, so a username can never be
+    // stored without the password that makes it mean something.
+    smtp_user: null,
     owner_user_id: actor.user_id || null,
     // The row must be BORN with its kind. `classify` below stamps the rest of the
     // classification (catalogue slot, entity, department, visibility) and can do
@@ -344,6 +452,9 @@ async function connect(client, input = {}) {
     });
   }
   await repo.updateConnection(client, conn.email_connection_id, { secret_key });
+  // BEFORE the test: the test is what tells the operator whether the credentials
+  // work, so it has to run against the ones they just typed.
+  await applySmtpCredentialMode(client, conn.email_connection_id, input, actor);
   const test = await testConnection(client, conn.email_connection_id);
   // Stamp WHAT this mailbox is (personal vs a team address, which entity it
   // belongs to, who may work it). The transport row above knows how to reach the
@@ -357,7 +468,13 @@ async function connect(client, input = {}) {
   });
   if (kind === "PERSONAL") await repo.ensureDefaultConnection(client, actor.user_id);
   const created = await repo.getConnection(client, conn.email_connection_id);
-  return { ...created, secret_key, status: test.ok ? "CONNECTED" : "ERROR", test };
+  return {
+    ...created,
+    ...(await smtpAuthShape(client, conn.email_connection_id)),
+    secret_key,
+    status: test.ok ? "CONNECTED" : "ERROR",
+    test,
+  };
 }
 
 /** Edit an IMAP/SMTP connection's transport/credentials, then re-test. OAuth
@@ -369,7 +486,14 @@ async function updateImapConnection(client, id, input = {}) {
   if (input.ownerUserId && conn.owner_user_id && conn.owner_user_id !== input.ownerUserId) {
     throw new AppError("FORBIDDEN", "You can only edit your own mailboxes", 403);
   }
+  // Refused BEFORE anything is written, so a half-typed separate sign-in cannot
+  // leave the mailbox with a host change applied and a credential missing.
+  await assertSmtpCredentialsComplete(client, id, input);
   const patch = {};
+  // `smtp_user` is deliberately NOT in this list. It is written only by
+  // applySmtpCredentialMode, which is the one place that knows whether the row
+  // is supposed to have one at all — copying it here would let a username be
+  // saved onto a mailbox in "same as IMAP" mode.
   for (const k of ["email_address", "display_name", "imap_host", "imap_port", "imap_secure", "smtp_host", "smtp_port", "smtp_secure", "auth_user"]) {
     if (input[k] !== undefined) patch[k] = input[k];
   }
@@ -383,25 +507,52 @@ async function updateImapConnection(client, id, input = {}) {
     });
     if (!conn.secret_key) await repo.updateConnection(client, id, { secret_key });
   }
+  await applySmtpCredentialMode(client, id, input, input.actor || {});
   const test = await testConnection(client, id);
   const updated = await repo.getConnection(client, id);
-  return { ...updated, status: test.ok ? "CONNECTED" : "ERROR", test };
+  return { ...updated, ...(await smtpAuthShape(client, id)), status: test.ok ? "CONNECTED" : "ERROR", test };
 }
 
-/** Live connectivity/auth check; updates status. Never throws. */
+/**
+ * The two derived fields the form reopens on, and the secret is not one of them.
+ *
+ * A GET must be able to say "this mailbox sends with its own sign-in" without
+ * ever handing back what that sign-in is — the same rule the mailbox password
+ * has always followed. `smtp_user` is on the row and rides along with it; the
+ * password only ever appears as a boolean.
+ */
+async function smtpAuthShape(client, id) {
+  const present = await repo.hasSmtpCredentials(client, id);
+  return { has_smtp_credentials: present, smtp_auth: present ? "separate" : "same" };
+}
+
+/**
+ * Live connectivity/auth check; updates status. Never throws.
+ *
+ * The result carries `stage` ("imap" | "smtp") and, when the mailbox has one, the
+ * fact that the sending leg signs in separately — because the question the
+ * operator is actually asking is "which password is wrong", and a verdict that
+ * cannot answer it is the ambiguity that made the original failure unreadable.
+ * The adapter's own messages name the leg; `smtp_auth` here lets a client mark
+ * the right field without parsing prose.
+ */
 async function testConnection(client, id) {
   const conn = await repo.getConnection(client, id);
   if (!conn) throw new AppError("NOT_FOUND", "connection not found", 404);
+  const separateSmtpCredentials = conn.provider === "imap_smtp"
+    ? await repo.hasSmtpCredentials(client, id)
+    : false;
   let result;
   try {
     const adapter = await resolveAdapter(client, conn);
     result = await adapter.verify();
   } catch (err) {
     // Classify SMTP verdicts so the UI can render the matching fix guide.
-    const mapped = isSmtpError(err) ? mapSmtpError(err) : null;
+    const mapped = isSmtpError(err) ? mapSmtpError(err, { separateSmtpCredentials }) : null;
     result = { ok: false, error: mapped ? mapped.message : err.message };
     if (mapped) result.code = mapped.code;
   }
+  if (!result.ok) result.smtp_auth = separateSmtpCredentials ? "separate" : "same";
   if (result.ok) await repo.updateConnection(client, id, { status: "CONNECTED", last_error: null });
   else await repo.setError(client, id, result.error || result.stage || "verify failed");
   return result;

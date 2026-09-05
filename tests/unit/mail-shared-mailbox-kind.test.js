@@ -63,6 +63,10 @@ jest.mock("../../src/modules/mail/mail/mail.repo", () => ({
   updateConnection: jest.fn(async () => ({})),
   setError: jest.fn(async () => {}),
   ensureDefaultConnection: jest.fn(async () => {}),
+  // `testConnection` asks whether the SENDING leg has its own sign-in, so that a
+  // rejection can name which credential was offered (13777). These fixtures are
+  // about `kind` and the address index, so they share one credential.
+  hasSmtpCredentials: jest.fn(async () => false),
 }));
 // Stateful, because classify() writes the kind and grant() reads it back — a
 // static mock would test the mock rather than the code.

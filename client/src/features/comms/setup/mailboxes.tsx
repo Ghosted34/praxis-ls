@@ -37,6 +37,14 @@ import { tr } from "@/lib/i18n";
 import { reportActionError } from "@/lib/action-error";
 import { SmtpErrorGuide } from "@/components/mail/smtp-guide";
 import { DisconnectMailboxDialog } from "@/components/mail/disconnect-mailbox-dialog";
+import { SmtpSignInFields } from "@/components/mail/smtp-sign-in-fields";
+import {
+  BLANK_SMTP_SIGN_IN,
+  smtpSignInFrom,
+  smtpSignInBody,
+  smtpSignInReady,
+  type SmtpSignInValue,
+} from "@/lib/smtp-sign-in";
 import * as api from "@/lib/mail-api";
 import { HealthPill } from "./health-pill";
 
@@ -95,6 +103,7 @@ function CreateSharedModal({
     auth_user: seed?.auth_user || "", password: "",
     department: slot?.department || "",
   });
+  const [smtpAuth, setSmtpAuth] = React.useState<SmtpSignInValue>(BLANK_SMTP_SIGN_IN);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<unknown>(null);
   const [note, setNote] = React.useState<string | null>(null);
@@ -129,6 +138,7 @@ function CreateSharedModal({
         smtp_host: f.smtp_host, smtp_port: Number(f.smtp_port), smtp_secure: true,
         auth_user: f.auth_user || f.email_address,
         password: f.password,
+        ...smtpSignInBody(smtpAuth),
       });
       onDone(); onClose();
     } catch (err) { setError(err); reportActionError(err); }
@@ -172,10 +182,11 @@ function CreateSharedModal({
           <Field label={tr("Username")} required hint={tr("On cPanel, the full address.")}><Input value={f.auth_user} onChange={set("auth_user")} /></Field>
           <Field label={tr("Password")} required><Input value={f.password} onChange={set("password")} type="password" autoComplete="off" /></Field>
         </div>
+        <SmtpSignInFields value={smtpAuth} onChange={setSmtpAuth} disabled={busy} />
         {error != null && (<><ErrorState message={errMsg(error)} /><SmtpErrorGuide err={error} /></>)}
         <div className="flex justify-end gap-2 pt-1">
           <Button type="button" variant="outline" onClick={onClose} disabled={busy}>{tr("Cancel")}</Button>
-          <Button type="submit" loading={busy} disabled={busy}>{tr("Create and test")}</Button>
+          <Button type="submit" loading={busy} disabled={busy || !smtpSignInReady(smtpAuth)}>{tr("Create and test")}</Button>
         </div>
       </form>
     </Modal>
@@ -577,6 +588,10 @@ function ImapConnectForm({
     auth_user: existing?.auth_user || "",
     password: "",
   });
+  // Reopened in whatever mode the mailbox is actually in — derived server-side,
+  // so the form is right without the SMTP password ever reaching the browser.
+  const [smtpAuth, setSmtpAuth] = React.useState<SmtpSignInValue>(() => smtpSignInFrom(existing));
+  const storedSmtpPassword = smtpSignInFrom(existing).smtp_auth === "separate";
   const set = (k: string, v: string) => setF((s) => ({ ...s, [k]: v }));
   const [busy, setBusy] = React.useState(false);
   const [discovering, setDiscovering] = React.useState(false);
@@ -625,6 +640,7 @@ function ImapConnectForm({
         smtp_port: Number(f.smtp_port) || undefined,
         auth_user: f.auth_user || undefined,
         password: f.password || undefined,
+        ...smtpSignInBody(smtpAuth),
       };
       const r = existing
         ? await api.updateImapConnection(existing.email_connection_id, body)
@@ -711,6 +727,17 @@ function ImapConnectForm({
           />
         </Field>
       </div>
+      {/* Below the shared credential, because it is a decision ABOUT it: the
+          question "does sending use this same login?" only makes sense once the
+          login above has been read. */}
+      <div className="mt-3">
+        <SmtpSignInFields
+          value={smtpAuth}
+          onChange={setSmtpAuth}
+          hasStoredPassword={storedSmtpPassword}
+          disabled={busy}
+        />
+      </div>
       {hint && <p className="mt-2 micro">{hint}</p>}
       {error != null && (
         <div className="mt-2 space-y-2">
@@ -790,7 +817,8 @@ function ImapConnectForm({
             !f.email_address ||
             !f.imap_host ||
             !f.smtp_host ||
-            (!editing && !f.password)
+            (!editing && !f.password) ||
+            !smtpSignInReady(smtpAuth, storedSmtpPassword)
           }
         >
           {editing ? "Save & test" : "Connect & test"}

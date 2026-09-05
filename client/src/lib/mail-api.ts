@@ -242,11 +242,72 @@ export const disconnectMailbox = (id: string) =>
     { method: "POST" },
   );
 
+/**
+ * Query string from an object, skipping anything absent or empty.
+ *
+ * Lifted above its first caller when the OAuth start endpoints grew parameters:
+ * it is used by the thread list far below as well, and a second copy beside
+ * this one is the sort of helper that drifts into two slightly different
+ * escaping rules.
+ */
+const qs = (o: Record<string, unknown>) => {
+  const p = new URLSearchParams();
+  for (const [k, v] of Object.entries(o)) {
+    if (v !== undefined && v !== null && v !== "") p.set(k, String(v));
+  }
+  const s = p.toString();
+  return s ? `?${s}` : "";
+};
+
+/**
+ * Which ways of connecting a mailbox this tenant may actually use.
+ *
+ * The chooser needs this BEFORE anyone picks anything. Microsoft OAuth has two
+ * independent prerequisites — a per-tenant feature flag an administrator flips,
+ * and an Entra app registration on the deployment whose client secret expires —
+ * and they are reported separately because they are fixed by different people
+ * in different places. `reason` is `NOT_ENABLED` or `NOT_CONFIGURED`.
+ */
+export type ConnectMethod = {
+  available: boolean;
+  enabled: boolean;
+  configured: boolean;
+  reason: "NOT_ENABLED" | "NOT_CONFIGURED" | null;
+};
+export type ConnectMethods = {
+  imap_smtp: ConnectMethod;
+  microsoft_graph: ConnectMethod;
+  google_gmail: ConnectMethod;
+};
+export const connectMethods = () =>
+  tenant<ConnectMethods>("/mail/connect-methods");
+
 // OAuth — start returns the provider consent URL to redirect the browser to.
 export const microsoftStartUrl = () => "/api/tenant/mail/oauth/microsoft/start";
 export const googleStartUrl = () => "/api/tenant/mail/oauth/google/start";
-export const startMicrosoft = () =>
-  tenant<{ url: string }>("/mail/oauth/microsoft/start");
+
+/** Consent for the caller's OWN mailbox. MOD-72 `edit`. */
+export const startMicrosoft = (opts: { display_name?: string } = {}) =>
+  tenant<{ url: string }>(`/mail/oauth/microsoft/start${qs(opts)}`);
+
+/**
+ * Consent for a TEAM address. A separate endpoint, not a flag on the one above,
+ * because it is gated on MOD-72 `create` rather than `edit` — standing up an
+ * address the whole company sends from is a different right from connecting
+ * your own mailbox.
+ *
+ * The address itself is NOT sent: it is whichever mailbox the operator signs in
+ * as at Microsoft, and the server reads it back from Graph. What is sent is the
+ * classification to apply to whatever comes back — which catalogue slot it
+ * fills and which department owns it.
+ */
+export const startMicrosoftShared = (opts: {
+  catalogue_key?: string | null;
+  department?: string | null;
+  display_name?: string | null;
+} = {}) =>
+  tenant<{ url: string }>(`/mail/oauth/microsoft/start/shared${qs(opts)}`);
+
 export const startGoogle = () =>
   tenant<{ url: string }>("/mail/oauth/google/start");
 
@@ -784,15 +845,6 @@ const normaliseMessage = (m: Message): Message => ({
   to_address: toAddressList(m.to_address),
   cc_address: toAddressList(m.cc_address),
 });
-
-const qs = (o: Record<string, unknown>) => {
-  const p = new URLSearchParams();
-  for (const [k, v] of Object.entries(o)) {
-    if (v !== undefined && v !== null && v !== "") p.set(k, String(v));
-  }
-  const s = p.toString();
-  return s ? `?${s}` : "";
-};
 
 export const listThreads = (q: ThreadQuery = {}) =>
   tenant<Thread[]>(`/mail/threads${qs(q)}`).then((rows) => (rows || []).map(normaliseThread));

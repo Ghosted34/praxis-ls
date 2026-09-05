@@ -225,14 +225,75 @@ const PROVIDER_FLAGS = {
   google_gmail: "mail.provider.google",
 };
 
-async function assertProviderEnabled(client, provider) {
-  if (!OAUTH_PROVIDERS.has(provider)) return;
+/**
+ * Is this provider switched on for the tenant? The QUESTION behind
+ * `assertProviderEnabled`, split out so a screen can ASK it instead of finding
+ * out by being refused.
+ *
+ * The chooser modal ("how is this mailbox hosted?") has to render the Microsoft
+ * option before anybody clicks anything, and the only honest way to draw it is
+ * to know whether it would work. Offering a live button that answers 403, or
+ * hiding the option so a Microsoft 365 tenant sees only the password form that
+ * cannot ever work for them, are both worse than saying which switch is off.
+ */
+async function providerEnabled(client, provider) {
+  if (!OAUTH_PROVIDERS.has(provider)) return true;
   const keys = [PROVIDER_FLAGS[provider], "mail.provider.oauth"].filter(Boolean);
   const { rows } = await client.query(
     "SELECT state FROM feature_state WHERE feature_key = ANY($1)",
     [keys],
   );
-  if (!rows.some((r) => r && r.state === "on")) {
+  return rows.some((r) => r && r.state === "on");
+}
+
+/**
+ * What the connect chooser may offer, and — when it may not — WHICH of the two
+ * independent things is missing.
+ *
+ * They fail for different people. "Not switched on for this tenant" is a
+ * feature flag an administrator flips in the Platform Console; "not configured
+ * on this deployment" is an Entra app registration whoever runs the server has
+ * to create, and an Entra client SECRET EXPIRES, so a deployment that worked
+ * last quarter can be in the second state with nobody having changed anything.
+ * A single "unavailable" would send an administrator hunting for a switch that
+ * is already on.
+ *
+ * IMAP/SMTP is always offered: it is the path that needs no deploy-wide
+ * credential at all. Whether the ADDRESS can use it is a different question,
+ * answered per address by `assertPasswordAuthPossible` — a Microsoft-hosted
+ * domain is refused there, by name, rather than being hidden here.
+ */
+async function listConnectMethods(client) {
+  const oauth = async (provider, idp) => {
+    const [enabled, configured] = await Promise.all([
+      providerEnabled(client, provider),
+      idp.isConfigured().catch(() => false),
+    ]);
+    return {
+      available: enabled && configured,
+      enabled,
+      configured,
+      reason: enabled && configured
+        ? null
+        : !enabled
+          ? "NOT_ENABLED"
+          : "NOT_CONFIGURED",
+    };
+  };
+  const [microsoft_graph, google_gmail] = await Promise.all([
+    oauth("microsoft_graph", msOAuth),
+    oauth("google_gmail", googleOAuth),
+  ]);
+  return {
+    imap_smtp: { available: true, enabled: true, configured: true, reason: null },
+    microsoft_graph,
+    google_gmail,
+  };
+}
+
+async function assertProviderEnabled(client, provider) {
+  if (!OAUTH_PROVIDERS.has(provider)) return;
+  if (!(await providerEnabled(client, provider))) {
     throw new AppError(
       "PROVIDER_NOT_ENABLED",
       "Microsoft 365 and Google mailboxes are not switched on for this tenant yet — they connect over "
@@ -1247,9 +1308,24 @@ const OAUTH = {
   google_gmail: { idp: googleOAuth, purpose: "gg_oauth", probe: (tok) => new GmailProvider({ getAccessToken: async () => tok }) },
 };
 
-/** Step 1: return the provider consent URL. State is a signed JWT binding the
- *  provider + tenant slug + initiating user + redirect (CSRF + tenant pinning). */
-async function startOAuth(client, provider, { slug, redirectUri, display_name = null, actor = {} }) {
+/**
+ * Step 1: return the provider consent URL. State is a signed JWT binding the
+ * provider + tenant slug + initiating user + redirect (CSRF + tenant pinning).
+ *
+ * ── AND WHAT KIND OF MAILBOX IS BEING CONNECTED ─────────────────────────────
+ *
+ * `kind`, `catalogue_key` and `department` ride in the state for the same
+ * reason the tenant slug does: the callback arrives as a bare browser redirect
+ * from Microsoft, with no session, no body and no way to ask the operator
+ * anything. Whatever `completeOAuth` needs to classify the mailbox it has to
+ * have been TOLD before the redirect, and the state is the only channel that
+ * survives the round trip — signed, so a consent begun for `operations@` cannot
+ * be replayed into somebody's personal mailbox by editing a query string.
+ */
+async function startOAuth(client, provider, {
+  slug, redirectUri, display_name = null, actor = {},
+  kind: rawKind = null, catalogue_key = null, department = null,
+}) {
   const o = OAUTH[provider];
   if (!o) throw new AppError("PROVIDER_UNSUPPORTED", `Unknown OAuth provider '${provider}'`, 400);
   // P4: "kept and tested but gated off — SERVER-SIDE, not only in the UI." The
@@ -1266,11 +1342,46 @@ async function startOAuth(client, provider, { slug, redirectUri, display_name = 
   // shape keeps serving both.
   if (!(await o.idp.isConfigured())) throw new AppError("NOT_CONFIGURED", `${provider} OAuth is not configured`, 400);
   if (!slug || !redirectUri) throw new AppError("VALIDATION_ERROR", "slug and redirectUri are required", 422);
+  const kind = rawKind === "SHARED" ? "SHARED" : "PERSONAL";
+  // NOT the place to refuse a second personal mailbox, however tempting it is
+  // to fail before the redirect: which mailbox this is, is not known until
+  // Microsoft says so. Re-running consent is also the ONLY way to reconnect an
+  // OAuth mailbox whose tokens have gone stale — there is no password to
+  // re-enter — so a guard here would lock a person out of repairing the very
+  // mailbox they already own. `completeOAuth` asks once the address is known,
+  // where it can tell "a second mailbox" apart from "the same one again".
   const state = jwt.sign(
-    { purpose: o.purpose, provider, slug, user_id: actor.user_id || null, display_name, redirectUri },
+    {
+      purpose: o.purpose, provider, slug, user_id: actor.user_id || null,
+      display_name, redirectUri,
+      kind,
+      catalogue_key: kind === "SHARED" ? catalogue_key || null : null,
+      department: kind === "SHARED" ? department || null : null,
+    },
     config.JWT_ACCESS_SECRET, { expiresIn: OAUTH_STATE_TTL },
   );
   return { url: await o.idp.authorizeUrl({ state, redirectUri }) };
+}
+
+/**
+ * What kind of mailbox a consent flow was for, read back WITHOUT throwing.
+ *
+ * Only ever used to decide which tab the browser lands on after the redirect,
+ * including the failure path, where the whole point is that something already
+ * went wrong and a second exception would replace a useful error message with a
+ * useless one. It verifies the signature — an unverified `jwt.decode` would let
+ * a crafted state steer the redirect — and answers `null` for anything it
+ * cannot read. Nothing is authorised on the strength of it.
+ */
+function readOAuthStateKind(state) {
+  try {
+    const claims = jwt.verify(state, config.JWT_ACCESS_SECRET);
+    return claims && claims.kind === "SHARED" ? "SHARED" : "PERSONAL";
+  } catch {
+    /* @silent:parse an unreadable or expired state has a defined fallback —
+       no hint — and the caller only wants one to choose a tab with */
+    return null;
+  }
 }
 
 /** Step 2: exchange the code, resolve the mailbox, upsert the connection, store
@@ -1294,16 +1405,47 @@ async function completeOAuth(client, provider, { code, state, slug, webhookUrl }
   const who = await o.probe(tokens.access_token).verify();
   if (!who.ok || !who.email) throw new AppError("OAUTH_PROBE_FAILED", who.error || "could not read mailbox", 502);
 
+  // A SHARED mailbox is a team address, not the consenting person's own — so it
+  // is born SHARED, ownerless, and the operator gets it as a MANAGER grant
+  // rather than as `owner_user_id`.
+  const kind = claims.kind === "SHARED" ? "SHARED" : "PERSONAL";
+  const ownerUserId = kind === "SHARED" ? null : claims.user_id || null;
+
   let conn = await repo.findByAddress(client, who.email, provider);
+  const isNew = !conn;
+  // Now that the address is known, the one-personal-mailbox rule can be applied
+  // the way it is meant to be: a NEW second mailbox is refused with a sentence
+  // naming the one already held, while re-consenting to a mailbox the person
+  // already owns — the only way to refresh a stale OAuth token — goes through.
+  // Without this the 23505 from `ux_email_connection_one_personal` reaches the
+  // browser as the error handler's generic "A record with these values already
+  // exists", on the far side of a redirect, naming nothing.
+  if (isNew && kind === "PERSONAL" && claims.user_id) {
+    await mailbox.assertNoPersonalMailbox(client, claims.user_id);
+  }
   if (!conn) {
     conn = await repo.insertConnection(client, {
       email_address: who.email, provider, display_name: claims.display_name || null,
-      owner_user_id: claims.user_id || null,
+      owner_user_id: ownerUserId,
+      // Stamped on the INSERT, not by `classify` a statement later. 10723 gives
+      // `kind` a DEFAULT of 'PERSONAL' and a partial unique index over it —
+      // UNIQUE (owner_user_id) WHERE kind = 'PERSONAL' AND status <> 'ARCHIVED'
+      // — so a row that arrives without its kind is momentarily a SECOND
+      // personal mailbox for whoever created it, and the index refuses it with
+      // a 23505 the error handler renders as "A record with these values
+      // already exists". That is the exact defect 82d02ec fixed on the password
+      // path (tests/unit/mail-shared-mailbox-kind.test.js); this path inserts
+      // its own row and never went through `connect()`, so it still had it.
+      kind,
       status: "CONNECTED", token_expires_at: new Date(expires_at),
     });
   } else {
     await repo.updateConnection(client, conn.email_connection_id, { status: "CONNECTED", last_error: null, token_expires_at: new Date(expires_at) });
-    await repo.claimConnectionIfUnowned(client, conn.email_connection_id, claims.user_id);
+    // Never onto a team address: `owner_user_id` on a SHARED mailbox is what
+    // "this is one person's mailbox" means, and claiming operations@ for
+    // whoever happened to reconnect it is how a team address quietly becomes
+    // somebody's personal one.
+    if (kind !== "SHARED") await repo.claimConnectionIfUnowned(client, conn.email_connection_id, claims.user_id);
   }
 
   const secret_key = secretKeyFor(conn.email_connection_id);
@@ -1313,9 +1455,34 @@ async function completeOAuth(client, provider, { code, state, slug, webhookUrl }
     actor: { user_id: claims.user_id || null },
   });
   await repo.updateConnection(client, conn.email_connection_id, { secret_key });
-  await repo.ensureDefaultConnection(client, claims.user_id);
+  // Stamp WHAT this mailbox is — the team slot it fills, its department, its
+  // visibility, and (for a shared one) the MANAGER grant that lets the person
+  // who just set it up add anybody else to it. `connect()` does exactly this
+  // for the password path; the OAuth path wrote a transport row and stopped,
+  // which is why a mailbox connected here never appeared against its catalogue
+  // slot and had no members at all.
+  //
+  // ON THE INSERT ONLY. A mailbox that already exists has already been
+  // classified, and re-stamping it here would let a RECONNECT rewrite what the
+  // mailbox IS: a personal mailbox reconnected through the shared chooser would
+  // silently become a team address (exposing one person's correspondence to
+  // whoever holds the slot), and a team address reconnected through the
+  // personal one would lose its catalogue slot and department. Converting a
+  // personal mailbox into a shared one is a deliberate, audited action —
+  // `mailbox.handover` — and must not be reachable by picking the other button.
+  if (isNew) {
+    await mailbox.classify(client, conn.email_connection_id, {
+      kind,
+      catalogueKey: kind === "SHARED" ? claims.catalogue_key || null : null,
+      department: kind === "SHARED" ? claims.department || null : null,
+      actor: { user_id: claims.user_id || null },
+    });
+  }
+  // "Which mailbox do I send from by default" is a question about a person's
+  // own mailboxes. A team address is not one of them.
+  if (kind !== "SHARED") await repo.ensureDefaultConnection(client, claims.user_id);
   await setupPush(client, conn.email_connection_id, provider, { webhookUrl }).catch(() => { /* @silent:storage push optional; polling covers it */ });
-  return { email_connection_id: conn.email_connection_id, email_address: who.email, provider, status: "CONNECTED" };
+  return { email_connection_id: conn.email_connection_id, email_address: who.email, provider, status: "CONNECTED", kind };
 }
 
 /** Best-effort push registration after connect. Graph → change subscription to our
@@ -1479,6 +1646,7 @@ module.exports = {
   listIdentities, listSent, listInbox, updateIdentity, upsertIdentity, archiveIdentity,
   listConnections, setDefaultMailbox, connect, updateImapConnection, testConnection, syncConnection, send, reply, listThread, getMessage, markRead, listAttachments,
   clientTimeline, linkEntity, autodiscover, searchRecipients, allowedRecipientSources,
+  listConnectMethods, readOAuthStateKind,
   startMicrosoftOAuth, completeMicrosoftOAuth, handleGraphNotification,
   startGoogleOAuth, completeGoogleOAuth, handleGmailNotification, renewSubscriptions,
   // Exported for the send-queue flusher, which injects them rather than

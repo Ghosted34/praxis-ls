@@ -13,6 +13,16 @@
  * and several already have ERP modules waiting to be wired to them. Showing them
  * as slots turns configuration into a checklist rather than a blank form.
  *
+ * ── AND EVERY SLOT NOW ASKS HOW, BEFORE IT ASKS FOR A PASSWORD ──────────────
+ *
+ * Clicking a slot used to open the IMAP/SMTP form directly. For a company whose
+ * domain sits on Microsoft 365 that form cannot succeed — Exchange Online
+ * retired Basic auth for IMAP/POP in 2022 and for SMTP AUTH in April 2026 — so
+ * "Operations", "Customer Support" and "New shared mailbox" were all buttons
+ * that led to an authentication failure with no way round it. They now open
+ * `<ConnectMethodModal>`, the same chooser the personal screen uses, and the
+ * password form is what is behind ONE of its two answers.
+ *
  * ── MEMBERS ARE THE POINT OF A SHARED MAILBOX ───────────────────────────────
  *
  * Reading a team's mail and sending as it are different rights, so the member
@@ -38,6 +48,7 @@ import { reportActionError } from "@/lib/action-error";
 import { SmtpErrorGuide } from "@/components/mail/smtp-guide";
 import { DisconnectMailboxDialog } from "@/components/mail/disconnect-mailbox-dialog";
 import { SmtpSignInFields } from "@/components/mail/smtp-sign-in-fields";
+import { ConnectMethodModal } from "@/components/mail/connect-method-modal";
 import {
   BLANK_SMTP_SIGN_IN,
   smtpSignInFrom,
@@ -408,14 +419,29 @@ export function MailboxesTab({
   canCreate = true,
   seed,
   onSeedConsumed,
+  notice,
 }: {
   canCreate?: boolean;
   /** Transport details handed over from the Connections tab; opens the modal. */
   seed?: SharedMailboxSeed | null;
   onSeedConsumed?: () => void;
+  /** The outcome of a Microsoft consent round trip, read off the query string by the page. */
+  notice?: React.ReactNode;
 } = {}) {
   const boxes = useResource(() => api.allMailboxes(), []);
   const catalogue = useResource(() => api.listCatalogue(), []);
+  /**
+   * Two steps to set up a team address, and the ORDER is the fix.
+   *
+   * `choosing` is the how — Microsoft sign-in or the company's own server —
+   * and `creating` is the IMAP/SMTP form, which is now only one of the two
+   * answers rather than the whole flow. `undefined` means neither is open;
+   * `null` inside either means "no catalogue slot", i.e. a free-form address.
+   *
+   * A seed from the Connections tab skips the question: somebody who has
+   * already typed an IMAP host has answered it.
+   */
+  const [choosing, setChoosing] = React.useState<api.CatalogueEntry | null | undefined>(undefined);
   const [creating, setCreating] = React.useState<api.CatalogueEntry | null | undefined>(
     seed ? null : undefined,
   );
@@ -476,8 +502,10 @@ export function MailboxesTab({
       <PageHeader
         title={tr("Mailboxes")}
         description={tr("Every mailbox in the company — the personal ones people connect themselves, and the team addresses you set up for them.")}
-        action={canCreate ? <Button onClick={() => setCreating(null)}>{tr("New shared mailbox")}</Button> : undefined}
+        action={canCreate ? <Button onClick={() => setChoosing(null)}>{tr("New shared mailbox")}</Button> : undefined}
       />
+
+      {notice}
 
       {error != null && <ErrorState message={errMsg(error)} />}
 
@@ -492,7 +520,7 @@ export function MailboxesTab({
               <button
                 key={c.catalogue_key}
                 type="button"
-                onClick={() => setCreating(c)}
+                onClick={() => setChoosing(c)}
                 title={c.description_en || undefined}
                 className="rounded-lg border border-dashed border-border px-3 py-2 text-left text-sm transition-colors hover:border-primary hover:bg-accent"
               >
@@ -513,10 +541,25 @@ export function MailboxesTab({
         empty={{
           title: tr("No mailboxes yet"),
           hint: tr("People connect their own from the My mailbox tab. Team addresses are set up here."),
-          action: canCreate ? <Button onClick={() => setCreating(null)}>{tr("New shared mailbox")}</Button> : undefined,
+          action: canCreate ? <Button onClick={() => setChoosing(null)}>{tr("New shared mailbox")}</Button> : undefined,
         }}
       />
 
+      {choosing !== undefined && canCreate && (
+        <ConnectMethodModal
+          open
+          scope={{
+            kind: "shared",
+            catalogue_key: choosing?.catalogue_key ?? null,
+            department: choosing?.department ?? null,
+            label: choosing?.label_en ?? null,
+          }}
+          title={choosing ? `${tr("Set up")} ${choosing.label_en}` : tr("New shared mailbox")}
+          description={choosing?.description_en || tr("A team address several people work together. First: where does this company's email live?")}
+          onClose={() => setChoosing(undefined)}
+          onChooseSmtp={() => { setCreating(choosing ?? null); setChoosing(undefined); }}
+        />
+      )}
       {creating !== undefined && canCreate && (
         <CreateSharedModal
           slot={creating}
@@ -897,26 +940,19 @@ export function ConnectionsTab({
     message?: string;
   } | null>(null);
 
-  // Surface the OAuth callback result. The provider redirect lands back on
-  // /comms/mail?mail_connected=<provider> (or ?mail_error=<code>); show it,
-  // refresh the mailbox list, then strip the query so a reload doesn't replay it.
-  React.useEffect(() => {
-    const p = new URLSearchParams(window.location.search);
-    const ok = p.get("mail_connected");
-    const bad = p.get("mail_error");
-    if (!ok && !bad) return;
-    if (ok) {
-      const who = ok === "google" ? "Google" : "Microsoft";
-      const email = p.get("email");
-      setNote(`✓ Connected ${who}${email ? ` — ${email}` : ""}`);
-      conns.reload();
-    } else {
-      setNote(`✗ Connection failed (${bad})`);
-      setTestFail({ code: bad ?? undefined, message: undefined });
-    }
-    window.history.replaceState({}, "", window.location.pathname);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  /*
+   * The OAuth callback result used to be read HERE, and never was.
+   *
+   * The callback redirected to `/comms/mail`, which renders the inbox and does
+   * not mount this tab, so this effect ran on no page that a returning user
+   * ever saw: consent succeeded, the browser came back, and the person was
+   * shown an inbox with a stray `?mail_connected=microsoft` in the URL and no
+   * confirmation of any kind. The callback now lands on `/comms/setup`, and
+   * `CommsSetupPage` reads the query once, opens the tab the flow started from
+   * (personal → My mailbox, team address → Mailboxes) and renders the outcome
+   * there. Reading it in two places would race: whichever ran second would find
+   * the query already stripped.
+   */
 
   /* ── The OAuth kick-off ───────────────────────────────────────────────────
    *

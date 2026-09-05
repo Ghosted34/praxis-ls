@@ -43,8 +43,15 @@ jest.mock("../../src/modules/mail/mail/providers/microsoftOAuth", () => ({
   refresh: jest.fn(),
   credentials: jest.fn(async () => ({})),
 }));
+// SYNCHRONOUS `isConfigured`, because the real one is: Google reads its
+// credentials straight off `config` and returns a bare boolean, while
+// Microsoft's is `async` (it resolves them from the platform vault). Mocking
+// this one `async` too is what let a `.catch()` on the result reach production
+// — every test passed against two promises that the running system never both
+// supplied. A fixture that smooths over a difference the code has to handle is
+// not a cheaper fixture, it is a blind spot.
 jest.mock("../../src/modules/mail/mail/providers/googleOAuth", () => ({
-  isConfigured: jest.fn(async () => false),
+  isConfigured: jest.fn(() => false),
   authorizeUrl: jest.fn(),
   exchangeCode: jest.fn(),
   refresh: jest.fn(),
@@ -109,6 +116,7 @@ jest.mock("../../src/modules/mail/mail/mailbox.repo", () => ({
 const mailRepo = require("../../src/modules/mail/mail/mail.repo");
 const mailboxRepo = require("../../src/modules/mail/mail/mailbox.repo");
 const msOAuth = require("../../src/modules/mail/mail/providers/microsoftOAuth");
+const googleOAuth = require("../../src/modules/mail/mail/providers/googleOAuth");
 const service = require("../../src/modules/mail/mail/mail.service");
 const { config } = require("../../src/config/env");
 
@@ -340,6 +348,51 @@ describe("which connect methods a tenant may use", () => {
     expect(m.microsoft_graph).toMatchObject({
       available: false, enabled: true, configured: false, reason: "NOT_CONFIGURED",
     });
+  });
+
+  /*
+   * ── THE CRASH, PINNED ────────────────────────────────────────────────────
+   *
+   * `idp.isConfigured().catch(() => false)` took the entire endpoint down with
+   * "TypeError: idp.isConfigured(...).catch is not a function", so the chooser
+   * could not be drawn on any surface for any tenant. The two adapters
+   * genuinely differ — Microsoft's `isConfigured` is `async` because it reads
+   * the platform vault, Google's is a synchronous boolean off `.env` — and a
+   * boolean has no `.catch`. These four say the reader must survive every
+   * combination it can actually meet.
+   */
+  test("a synchronous isConfigured does not blow the endpoint up", async () => {
+    // Exactly the real Google adapter: a bare boolean, no promise in sight.
+    googleOAuth.isConfigured.mockReturnValueOnce(true);
+    const m = await service.listConnectMethods(onClient);
+    expect(m.google_gmail).toMatchObject({ configured: true });
+  });
+
+  test("both adapters are read in one call, whatever shape each answers in", async () => {
+    msOAuth.isConfigured.mockResolvedValueOnce(true);   // async
+    googleOAuth.isConfigured.mockReturnValueOnce(false); // sync
+    const m = await service.listConnectMethods(onClient);
+    expect(m.microsoft_graph.configured).toBe(true);
+    expect(m.google_gmail).toMatchObject({ configured: false, reason: "NOT_CONFIGURED" });
+  });
+
+  /* A synchronous THROW is the failure `.catch()` could never have caught
+   * either — it is raised before any promise exists. */
+  test("a provider that throws synchronously reads unavailable, not 500", async () => {
+    googleOAuth.isConfigured.mockImplementationOnce(() => { throw new Error("no config"); });
+    const m = await service.listConnectMethods(onClient);
+    expect(m.google_gmail).toMatchObject({ available: false, configured: false, reason: "NOT_CONFIGURED" });
+  });
+
+  /* And the one it WAS written for: the vault read rejecting. Failing to
+   * `false` is the honest answer — a provider whose configuration cannot be
+   * read is one this tenant cannot connect through — and the endpoint still
+   * answers, so the page that was meant to explain the problem can render. */
+  test("a vault read that rejects reads unavailable, and IMAP/SMTP still stands", async () => {
+    msOAuth.isConfigured.mockRejectedValueOnce(new Error("vault unreachable"));
+    const m = await service.listConnectMethods(onClient);
+    expect(m.microsoft_graph).toMatchObject({ available: false, configured: false, reason: "NOT_CONFIGURED" });
+    expect(m.imap_smtp.available).toBe(true);
   });
 });
 

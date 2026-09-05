@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (523)
+## All codes (524)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -259,6 +259,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `LOCKED` | 422 | 35× | — |
 | `LOGIN_THROTTLED` | 429 | 1× | — |
 | `LOW_MARGIN_JUSTIFICATION_REQUIRED` | 422 | 1× | — |
+| `MAILBOX_ADDRESS_IN_USE` | — | 1× | — |
 | `MAILBOX_ARCHIVED` | 422 | 1× | — |
 | `MAILBOX_AUTH_FAILED` | — | 1× | — |
 | `MAILBOX_FORBIDDEN` | 403 | 2× | — |

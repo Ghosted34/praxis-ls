@@ -293,6 +293,22 @@ async function connect(client, input = {}) {
   // they already have and what to do instead.
   const kind = input.kind === "SHARED" ? "SHARED" : "PERSONAL";
   if (kind === "PERSONAL" && actor.user_id) await mailbox.assertNoPersonalMailbox(client, actor.user_id);
+  // The other way this INSERT can hit a unique index, turned into a sentence for
+  // the same reason `assertNoPersonalMailbox` is one: 23505 reaches the user as
+  // "A record with these values already exists", which names neither the address
+  // nor what to do. `ux_email_connection_address_live` (13776) is the authority;
+  // this only says out loud what it is about to refuse. An ARCHIVED row does not
+  // count — retiring a mailbox releases its address, which is the whole point of
+  // that migration.
+  const taken = await repo.findByAddress(client, email_address, provider);
+  if (taken && taken.status !== "ARCHIVED") {
+    throw new AppError(
+      "MAILBOX_ADDRESS_IN_USE",
+      `${email_address} is already connected to this company. Open it from Comms → Setup to edit or disconnect it, or retire it first if you want to connect it afresh.`,
+      409,
+      { email_address, email_connection_id: taken.email_connection_id },
+    );
+  }
   const conn = await repo.insertConnection(client, {
     email_address, provider, display_name: display_name || null,
     imap_host: input.imap_host || null, imap_port: input.imap_port || null,
@@ -301,6 +317,21 @@ async function connect(client, input = {}) {
     smtp_secure: input.smtp_secure === true,
     auth_user: input.auth_user || null,
     owner_user_id: actor.user_id || null,
+    // The row must be BORN with its kind. `classify` below stamps the rest of the
+    // classification (catalogue slot, entity, department, visibility) and can do
+    // that a statement later — but `kind` cannot wait, because
+    // `ux_email_connection_one_personal` is a partial index ON THIS INSERT:
+    //
+    //   UNIQUE (owner_user_id) WHERE kind = 'PERSONAL' AND status <> 'ARCHIVED'
+    //
+    // and `email_connection.kind` DEFAULTS to 'PERSONAL' (10723). Omitting it
+    // therefore made every new row — a team address included — momentarily a
+    // second personal mailbox for its creator, which the index rejects. Anyone
+    // who already had a personal mailbox could not create a SHARED one at all:
+    // the INSERT raised 23505 and the error handler rendered it as "A record
+    // with these values already exists", naming neither the mailbox in the way
+    // nor the rule. The guard above deliberately skips SHARED; the index did not.
+    kind,
     status: "PENDING",
   });
   const secret_key = secretKeyFor(conn.email_connection_id);

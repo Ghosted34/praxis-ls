@@ -287,6 +287,11 @@ router.post("/send", composer, requirePermission(M, "create"), v.send, c.send);
 // Undo. Succeeds only while the row is still HELD — the database decides the
 // race against the flusher, so this is a 409 rather than a lie once it has gone.
 router.post("/send/:id/cancel", composer, requirePermission(M, "edit"), c.cancelSend);
+// Send it again after the cause was fixed. `create`, not `edit`: this puts a
+// message back on the wire, so it is the same authority as sending one — an
+// operator who may cancel a colleague's queued mail must not be able to release
+// mail they could not have written.
+router.post("/send/:id/retry", composer, requirePermission(M, "create"), c.retrySend);
 
 // Attachments live under their draft, because that is what owns them and what
 // authorises them: the service checks the draft is the caller's before it will

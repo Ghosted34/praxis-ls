@@ -89,6 +89,64 @@ describe("NewMessageDialog", () => {
     expect(composer).toHaveAttribute("data-connection-id", "c2");
   });
 
+  it("PREFERS THE MAILBOX THE CALLER IS ALREADY IN, over the tenant default", async () => {
+    // Reading admin@ and pressing Compose means writing from admin@. Taking the
+    // mailbox on the screen behind this dialog to be a fact about reading only
+    // is what made "it always sends from the default" true.
+    renderScreen(
+      <NewMessageDialog open onClose={() => {}} connectionId="c1" />,
+      {
+        routes: {
+          "/mail/connections": [
+            conn("c1", "ops@company.cm"),
+            conn("c2", "ada@company.cm", { is_default: true }),
+          ],
+        },
+      },
+    );
+    const composer = await screen.findByTestId("composer");
+    expect(composer).toHaveAttribute("data-connection-id", "c1");
+    expect((await screen.findByLabelText("From mailbox") as HTMLSelectElement).value).toBe("c1");
+  });
+
+  it("a preference that is not connected falls back rather than seeding a dead mailbox", async () => {
+    // The mailbox was disconnected while the screen was open. Seeding it would
+    // put a value in the picker that is not one of its options, and open a
+    // composer that cannot send.
+    renderScreen(
+      <NewMessageDialog open onClose={() => {}} connectionId="c-gone" />,
+      {
+        routes: {
+          "/mail/connections": [
+            conn("c1", "ops@company.cm"),
+            conn("c2", "ada@company.cm", { is_default: true }),
+          ],
+        },
+      },
+    );
+    expect(await screen.findByTestId("composer")).toHaveAttribute("data-connection-id", "c2");
+  });
+
+  it("a reopened draft keeps its own mailbox, whatever the caller is reading", async () => {
+    renderScreen(
+      <NewMessageDialog
+        open
+        onClose={() => {}}
+        connectionId="c1"
+        draft={{ email_draft_id: "d1", email_connection_id: "c2", kind: "NEW" } as never}
+      />,
+      {
+        routes: {
+          "/mail/connections": [
+            conn("c1", "ops@company.cm"),
+            conn("c2", "ada@company.cm"),
+          ],
+        },
+      },
+    );
+    expect(await screen.findByTestId("composer")).toHaveAttribute("data-connection-id", "c2");
+  });
+
   it("hands prefill through to the composer untouched", async () => {
     renderScreen(
       <NewMessageDialog

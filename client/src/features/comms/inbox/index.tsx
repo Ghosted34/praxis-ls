@@ -545,6 +545,11 @@ export function InboxPage() {
           <NewMessageDialog
             open
             draft={resuming}
+            // The mailbox this screen is showing. Pressing Compose while
+            // reading admin@ means writing from admin@ — the dialog used to
+            // open on the tenant default regardless, so a second mailbox could
+            // be read from but never, in practice, sent from.
+            connectionId={connectionId}
             onClose={() => { setComposeOpen(false); setResuming(null); }}
             onSent={() => {
               setResuming(null);

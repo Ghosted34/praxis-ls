@@ -6,7 +6,7 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 1532 |
+| Routes | 1533 |
 | Modules mounted | 139 |
 | API version | v1 |
 
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 1532 mounted routes, grouped by path prefix.
+All 1533 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -1171,6 +1171,7 @@ All 1532 mounted routes, grouped by path prefix.
 | DELETE | `/api/tenant/mail/send-points/:key` | — |
 | PUT | `/api/tenant/mail/send-points/:key` | — |
 | POST | `/api/tenant/mail/send/:id/cancel` | — |
+| POST | `/api/tenant/mail/send/:id/retry` | — |
 | GET | `/api/tenant/mail/senders` | — |
 | POST | `/api/tenant/mail/senders` | — |
 | PATCH | `/api/tenant/mail/senders/:id` | — |

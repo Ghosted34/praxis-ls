@@ -220,7 +220,12 @@ const STATUS: Record<api.OutboxEntry["status"], { tone: Tone; label: string; why
   FAILED: {
     tone: "bad",
     label: "Did not send",
-    why: "The mail server refused it. It will not be retried.",
+    // The queue has stopped on its own — that part has not changed, and saying
+    // so is what stops somebody waiting for a delivery that is never coming.
+    // What changed is that the sentence now ends somewhere: fix what the server
+    // named, press Send again, and the message goes with the words it was
+    // written with rather than retyped from memory.
+    why: "The mail server refused it and the queue has stopped trying. Fix what it says below, then send it again.",
   },
   SENT: { tone: "ok", label: "Sent", why: "" },
   CANCELLED: { tone: "mute", label: "Cancelled", why: "" },
@@ -248,6 +253,38 @@ export function OutboxList() {
     const t = setInterval(() => reload(), 15_000);
     return () => clearInterval(t);
   }, [reload]);
+
+  /**
+   * Send it again.
+   *
+   * No confirmation step, unlike Discard: this message was already written,
+   * read and approved once, and the row still holds exactly what was approved.
+   * Asking "are you sure" about repeating an action somebody already authorised
+   * — and whose failure they are looking at — is friction without a decision in
+   * it. The undo window is not offered either: it belongs to composing, and by
+   * now the sender is at the outbox precisely because they want it to go.
+   */
+  async function retry(e: api.OutboxEntry) {
+    setBusy(e.email_send_queue_id);
+    setNote(null);
+    try {
+      await api.retrySend(e.email_send_queue_id);
+      setNote(tr("Queued again — it goes out on the next pass."));
+      outbox.reload();
+    } catch (err) {
+      // 409: another tab pressed it first, or the flusher already has the row.
+      // Both mean the message is moving, which is what the button asked for.
+      const msg = (err as { message?: string })?.message;
+      if ((err as { status?: number })?.status === 409) {
+        setNote(msg || tr("That message is already on its way."));
+        outbox.reload();
+      } else {
+        reportActionError(err);
+      }
+    } finally {
+      setBusy(null);
+    }
+  }
 
   async function cancel(e: api.OutboxEntry) {
     setBusy(e.email_send_queue_id);
@@ -345,19 +382,36 @@ export function OutboxList() {
                 </>
               }
               actions={
-                // Only a HELD row can be cancelled — the server's UPDATE says
-                // `WHERE status = 'HELD'`, and offering the button on a row it
-                // will always refuse teaches people the button does not work.
-                e.status === "HELD" ? (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={busy === e.email_send_queue_id}
-                    onClick={() => cancel(e)}
-                  >
-                    {tr("Cancel")}
-                  </Button>
-                ) : null
+                <>
+                  {/* Only a HELD row can be cancelled — the server's UPDATE says
+                      `WHERE status = 'HELD'`, and offering the button on a row
+                      it will always refuse teaches people the button does not
+                      work. */}
+                  {e.status === "HELD" && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={busy === e.email_send_queue_id}
+                      onClick={() => cancel(e)}
+                    >
+                      {tr("Cancel")}
+                    </Button>
+                  )}
+                  {/* …and only a FAILED one can be sent again, by the same
+                      rule: the server's UPDATE says `WHERE status = 'FAILED'`.
+                      Offered even when the refusal was permanent — that is
+                      exactly the case a person has just fixed, and the button
+                      is the only way to act on the fix. */}
+                  {e.status === "FAILED" && (
+                    <Button
+                      size="sm"
+                      disabled={busy === e.email_send_queue_id}
+                      onClick={() => retry(e)}
+                    >
+                      {tr("Send again")}
+                    </Button>
+                  )}
+                </>
               }
             />
           );

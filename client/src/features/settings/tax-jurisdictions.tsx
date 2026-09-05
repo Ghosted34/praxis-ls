@@ -739,7 +739,7 @@ function JurisdictionDossier({ id }: { id: string }) {
         </Callout>
       )}
 
-      <KpiRow>
+      <KpiRow stack>
         <KpiTile label="Tax codes" value={num(groups.size)} />
         <KpiTile
           label="TVA standard"

@@ -327,6 +327,17 @@ export const StatusAndData = () => (
         </KpiRow>
       </div>
     </Row>
+    <Row label="KpiRow stack — the 360 headline band, where the figures are money">
+      <div className="w-full">
+        <KpiRow stack>
+          <KpiTile label="Outstanding" value="0.00 XAF" />
+          <KpiTile label="Overdue" value="0.00 XAF" hint="oldest 12/03/2026" />
+          <KpiTile label="Credit available" value="30,000,000.00 XAF" />
+          <KpiTile label="YTD revenue" value="0.00 XAF" />
+          <KpiTile label="Files in progress" value="0" />
+        </KpiRow>
+      </div>
+    </Row>
     <Row label="DataView — replaces the raw JSON.stringify fallbacks (A4)">
       <div className="w-full space-y-3">
         <DataView

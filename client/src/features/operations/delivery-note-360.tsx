@@ -603,7 +603,7 @@ export function DeliveryNote360({
           another note is needed. Absent entirely on a file that captures no
           containers, for the same reason the Progress panel is. */}
       {countable && p && (
-        <KpiRow>
+        <KpiRow stack>
           <KpiTile
             label={tr("Delivered")}
             value={`${num(p.delivered)} / ${num(p.total)}`}

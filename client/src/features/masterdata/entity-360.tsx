@@ -1348,7 +1348,7 @@ export function EntityDossier({
         </Callout>
       )}
 
-      <KpiRow>
+      <KpiRow stack>
         <KpiTile
           label={tr("Shareholders")}
           value={num(gov ? shareholders.length : cap.holder_count)}
@@ -1876,7 +1876,7 @@ export function EntityDossier({
           {datedRenewals.error && (
             <ErrorState message={errMsg(datedRenewals.error)} />
           )}
-          <KpiRow>
+          <KpiRow stack>
             <KpiTile label={tr("Expired")} value={num(renewalsView.counts.expired)} />
             <KpiTile label="Due now" value={num(renewalsView.counts.due)} />
             <KpiTile

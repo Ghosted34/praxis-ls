@@ -363,7 +363,7 @@ export function SpendTab({ id }: { id: string }) {
 
       {/* Headline = actual. The other two tiles are context for it, which is why
           the variance is stated on the committed tile rather than as a fourth. */}
-      <KpiRow>
+      <KpiRow stack>
         <KpiTile
           label={`Actual (${cur})`}
           value={money(d.totals.actual, cur)}

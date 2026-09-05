@@ -666,7 +666,7 @@ export function LeadDossier({
       {/* `fit="content"` and `moneyCompact` are the responsiveness fix: five
           tiles sharing one row, one of them carrying a money figure and a
           weighted hint, overflowed the card at every width — see KpiRow. */}
-      <KpiRow fit="content">
+      <KpiRow fit="content" stack>
         <KpiTile label={tr("Meetings")} value={num(k.meetings)} hint={`${k.discovery_sections_captured} discovery`} />
         <KpiTile label="Quote requests" value={num(k.quote_requests)} />
         <KpiTile label={tr("Proposals")} value={num(k.proposals)} hint={`${k.proposals_sent} sent · ${k.proposals_accepted} accepted`} />
@@ -1084,7 +1084,7 @@ export function IntakeDossier({
         ]}
       />
 
-      <KpiRow fit="content">
+      <KpiRow fit="content" stack>
         <KpiTile
           label={k.is_converted ? "Days to convert" : "Days open"}
           value={num(k.age_days)}

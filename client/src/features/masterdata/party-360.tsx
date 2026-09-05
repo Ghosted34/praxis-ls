@@ -1788,7 +1788,7 @@ export function PartyDossier({
           list of rows opens over the dossier and each row deep-links into the
           module that owns it. */}
       {isClient ? (
-        <KpiRow>
+        <KpiRow stack>
           <KpiTile
             label={tr("Outstanding")}
             value={money(d.kpis.outstanding)}
@@ -1825,7 +1825,7 @@ export function PartyDossier({
           />
         </KpiRow>
       ) : (
-        <KpiRow>
+        <KpiRow stack>
           <KpiTile
             label={tr("Payables")}
             value={money(d.kpis.payables)}

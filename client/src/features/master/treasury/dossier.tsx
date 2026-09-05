@@ -274,7 +274,7 @@ export function TreasuryDossier({
       />
 
       {/* ── KPIs ────────────────────────────────────────────────────────── */}
-      <KpiRow>
+      <KpiRow stack>
         <KpiTile
           label={tr("Balance")}
           value={amount(data.kpis.balance, data.kpis.currency)}

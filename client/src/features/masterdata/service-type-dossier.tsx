@@ -1258,7 +1258,7 @@ export function ServiceTypeDossier({
       />
 
       {/* KPI strip — same slim divided-row pattern as party-360. */}
-      <KpiRow>
+      <KpiRow stack>
         <KpiTile
           label="Files"
           value={num(d.stats.dossiers_total)}

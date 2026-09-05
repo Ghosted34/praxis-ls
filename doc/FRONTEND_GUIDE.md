@@ -567,7 +567,7 @@ around it — `<OperationFile360>`, `<OperationFile360Page>` and
 `<OperationFile360Modal>` are the naming — and neither shell adds content the
 other lacks.
 
-Three rules make it hold together:
+Four rules make it hold together:
 
 1. **Branch in JavaScript, with `useIsDesktop()` — not in CSS.** `hidden lg:block`
    is right when both branches are cheap markup and wrong here: it would mount
@@ -583,6 +583,14 @@ Three rules make it hold together:
 3. **Put the active tab in `useUrlTab()`.** The point of the route is that a
    colleague can be sent to one tab of one record. A `useState` tab passes every
    click-driven test and fails the only thing the route was for.
+4. **The headline KPI band is `<KpiRow stack>`.** Two lines per tile — the
+   figure, then what it is. A record's figures are money at full precision
+   ("30,000,000.00 XAF"), five or six to a row, and the one-line layout spends
+   the tile's width on the number and then truncates the word naming it: the
+   reader is left with "30,000,000.0… Credit ava…". Set `stack` on the ROW, not
+   on each tile, so a strip cannot end up half-stacked. List screens stay
+   inline — there the strip is chrome above a table and the values are short
+   counts.
 
 Both entry points must land: whatever already deep-links to the list with
 `?focus=<id>` keeps working, so exchange that parameter for the route on desktop

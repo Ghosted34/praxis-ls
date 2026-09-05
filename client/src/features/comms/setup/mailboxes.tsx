@@ -26,6 +26,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field, Modal, Select } from "@/components/ui/modal";
 import { ErrorState } from "@/components/ui/states";
+import { Callout } from "@/components/ui/callout";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { XIcon } from "@/components/ui/icons";
 import { DataList, PageHeader, type Column } from "@/components/data-list";
@@ -60,13 +61,39 @@ const statusTone = (s?: string | null): Tone => {
 
 /* ── Create a shared mailbox from a catalogue slot ───────────────────────── */
 
+/**
+ * Transport details already typed into the Connections drawer, carried across
+ * when somebody discovers there that what they actually wanted was a team
+ * address. Everything except the password: it crosses a tab boundary and would
+ * then sit in the hub's state after this modal closed, and one field to retype
+ * is a smaller cost than a credential kept alive longer than the form that
+ * collected it.
+ */
+export type SharedMailboxSeed = {
+  email_address?: string;
+  display_name?: string;
+  imap_host?: string;
+  imap_port?: number;
+  smtp_host?: string;
+  smtp_port?: number;
+  auth_user?: string;
+};
+
 function CreateSharedModal({
-  slot, onClose, onDone,
-}: { slot: api.CatalogueEntry | null; onClose: () => void; onDone: () => void }) {
+  slot, seed, onClose, onDone,
+}: {
+  slot: api.CatalogueEntry | null;
+  seed?: SharedMailboxSeed;
+  onClose: () => void;
+  onDone: () => void;
+}) {
   const [f, setF] = React.useState({
-    email_address: "", display_name: slot?.label_en || "",
-    imap_host: "", imap_port: 993, smtp_host: "", smtp_port: 465,
-    auth_user: "", password: "", department: slot?.department || "",
+    email_address: seed?.email_address || "",
+    display_name: seed?.display_name || slot?.label_en || "",
+    imap_host: seed?.imap_host || "", imap_port: seed?.imap_port || 993,
+    smtp_host: seed?.smtp_host || "", smtp_port: seed?.smtp_port || 465,
+    auth_user: seed?.auth_user || "", password: "",
+    department: slot?.department || "",
   });
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<unknown>(null);
@@ -355,10 +382,32 @@ function HandoverModal({
 
 /* ── The page ────────────────────────────────────────────────────────────── */
 
-export function MailboxesTab() {
+/**
+ * `canCreate` is MOD-72 **create**, not `can_administer`.
+ *
+ * The tab itself is offered on `can_administer`, which the server answers with
+ * `can_update` — but `POST /mail/mailboxes/shared` is gated on `can_create`
+ * (mail.routes.js), because standing up a team address mints an identity the
+ * company sends from. Those are two different rights, and a role holding edit
+ * without create saw a "New shared mailbox" button that could only 403. None of
+ * the seeded roles are shaped that way, but the permission matrix is data a
+ * tenant edits, so the button follows the right that actually gates the call.
+ */
+export function MailboxesTab({
+  canCreate = true,
+  seed,
+  onSeedConsumed,
+}: {
+  canCreate?: boolean;
+  /** Transport details handed over from the Connections tab; opens the modal. */
+  seed?: SharedMailboxSeed | null;
+  onSeedConsumed?: () => void;
+} = {}) {
   const boxes = useResource(() => api.allMailboxes(), []);
   const catalogue = useResource(() => api.listCatalogue(), []);
-  const [creating, setCreating] = React.useState<api.CatalogueEntry | null | undefined>(undefined);
+  const [creating, setCreating] = React.useState<api.CatalogueEntry | null | undefined>(
+    seed ? null : undefined,
+  );
   const [members, setMembers] = React.useState<api.Mailbox | null>(null);
   const [limits, setLimits] = React.useState<api.Mailbox | null>(null);
   const [handover, setHandover] = React.useState<api.Mailbox | null>(null);
@@ -416,12 +465,12 @@ export function MailboxesTab() {
       <PageHeader
         title={tr("Mailboxes")}
         description={tr("Every mailbox in the company — the personal ones people connect themselves, and the team addresses you set up for them.")}
-        action={<Button onClick={() => setCreating(null)}>{tr("New shared mailbox")}</Button>}
+        action={canCreate ? <Button onClick={() => setCreating(null)}>{tr("New shared mailbox")}</Button> : undefined}
       />
 
       {error != null && <ErrorState message={errMsg(error)} />}
 
-      {unfilled.length > 0 && (
+      {canCreate && unfilled.length > 0 && (
         <div className="rounded-xl border border-border p-4">
           <div className="text-sm font-medium">{tr("Team addresses not set up yet")}</div>
           <p className="micro mt-1 text-muted-foreground">
@@ -453,12 +502,17 @@ export function MailboxesTab() {
         empty={{
           title: tr("No mailboxes yet"),
           hint: tr("People connect their own from the My mailbox tab. Team addresses are set up here."),
-          action: <Button onClick={() => setCreating(null)}>{tr("New shared mailbox")}</Button>,
+          action: canCreate ? <Button onClick={() => setCreating(null)}>{tr("New shared mailbox")}</Button> : undefined,
         }}
       />
 
-      {creating !== undefined && (
-        <CreateSharedModal slot={creating} onClose={() => setCreating(undefined)} onDone={reload} />
+      {creating !== undefined && canCreate && (
+        <CreateSharedModal
+          slot={creating}
+          seed={seed || undefined}
+          onClose={() => { setCreating(undefined); onSeedConsumed?.(); }}
+          onDone={reload}
+        />
       )}
       {members && <MembersModal mailbox={members} onClose={() => { setMembers(null); reload(); }} />}
       {limits && <LimitsModal mailbox={limits} onClose={() => setLimits(null)} onDone={reload} />}
@@ -479,6 +533,13 @@ export function MailboxesTab() {
  * connecting a mailbox is still how a person gets into the product's mail.
  */
 
+/**
+ * The server's refusal of a second personal mailbox, by CODE rather than by
+ * matching its prose — the message is one `tr()` away from being French.
+ */
+const isPersonalMailboxConflict = (e: unknown): boolean =>
+  typeof e === "object" && e !== null && (e as { code?: string }).code === "PERSONAL_MAILBOX_EXISTS";
+
 const connTone = (s?: string | null): Tone => {
   const u = String(s || "").toUpperCase();
   if (u === "CONNECTED") return "ok";
@@ -494,9 +555,16 @@ const providerLabel: Record<api.Provider, string> = {
 function ImapConnectForm({
   existing,
   onDone,
+  onSharedInstead,
 }: {
   existing?: api.Connection;
   onDone: () => void;
+  /**
+   * Offered when the server refuses a SECOND personal mailbox. Undefined when
+   * the caller may not create shared mailboxes — pointing somebody at a screen
+   * that will 403 is worse than the dead end it replaces.
+   */
+  onSharedInstead?: (seed: SharedMailboxSeed) => void;
 }) {
   const editing = !!existing;
   const [f, setF] = React.useState({
@@ -645,8 +713,46 @@ function ImapConnectForm({
       </div>
       {hint && <p className="mt-2 micro">{hint}</p>}
       {error != null && (
-        <div className="mt-2">
+        <div className="mt-2 space-y-2">
           <ErrorState message={errMsg(error)} />
+          {/*
+           * PERSONAL_MAILBOX_EXISTS used to end here, and the sentence it ends
+           * with is "ask an administrator to set up a shared mailbox" — which
+           * an administrator reads while BEING the administrator, on the only
+           * screen in the product that says "Connect a mailbox". The mailbox
+           * they want is a team address, that is a different object created on
+           * a different tab, and nothing here said so. This is the missing
+           * half: name the rule, then hand over what they have already typed.
+           */}
+          {isPersonalMailboxConflict(error) && onSharedInstead && (
+            <Callout
+              tone="info"
+              title={tr("Setting up a team address?")}
+              action={
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() =>
+                    onSharedInstead({
+                      email_address: f.email_address,
+                      display_name: f.display_name,
+                      imap_host: f.imap_host,
+                      imap_port: Number(f.imap_port) || undefined,
+                      smtp_host: f.smtp_host,
+                      smtp_port: Number(f.smtp_port) || undefined,
+                      auth_user: f.auth_user,
+                    })
+                  }
+                >
+                  {tr("Set up a shared mailbox")}
+                </Button>
+              }
+            >
+              {tr(
+                "A personal mailbox is one per person. An address a team works together — invoicing@, operations@ — is a shared mailbox, set up on the Mailboxes tab. What you have typed carries over; you will re-enter the password.",
+              )}
+            </Callout>
+          )}
           <SmtpErrorGuide err={error} />
         </div>
       )}
@@ -742,7 +848,16 @@ function RightDrawer({
   );
 }
 
-export function ConnectionsTab() {
+export function ConnectionsTab({
+  onCreateShared,
+}: {
+  /**
+   * Present only when the caller holds MOD-72 create — see `MailboxesTab`. The
+   * hub switches to the Mailboxes tab and opens the shared-mailbox form seeded
+   * with what was already typed here.
+   */
+  onCreateShared?: (seed: SharedMailboxSeed) => void;
+} = {}) {
   const conns = useResource(() => api.listConnections(), []);
   const [busyId, setBusyId] = React.useState<string>("");
   const [note, setNote] = React.useState<string>("");
@@ -996,6 +1111,7 @@ export function ConnectionsTab() {
         <ImapConnectForm
           key={editConn?.email_connection_id ?? "new"}
           existing={editConn ?? undefined}
+          onSharedInstead={editConn ? undefined : onCreateShared}
           onDone={() => {
             conns.reload();
             setImapOpen(false);

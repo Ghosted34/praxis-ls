@@ -263,11 +263,47 @@ async function providerEnabled(client, provider) {
  * answered per address by `assertPasswordAuthPossible` — a Microsoft-hosted
  * domain is refused there, by name, rather than being hidden here.
  */
+/**
+ * `idp.isConfigured()`, for an `idp` that may answer either way.
+ *
+ * ── THE CRASH THIS FIXES ────────────────────────────────────────────────────
+ *
+ * This was `idp.isConfigured().catch(() => false)`, and it took the whole
+ * endpoint down with `TypeError: idp.isConfigured(...).catch is not a
+ * function` — so the chooser could not be drawn at all, on every surface, for
+ * every tenant.
+ *
+ * The two adapters do not agree on the shape. Microsoft's is `async` because
+ * it resolves its credentials from the platform vault (a DB read); Google's is
+ * a synchronous `Boolean(config.GOOGLE_CLIENT_ID && …)` off `.env`, and a
+ * boolean has no `.catch`. `startOAuth` already knew this and says so — "await
+ * on the still-synchronous Google adapter is a no-op, so one call shape keeps
+ * serving both" — and `await` is exactly the operator that does not care.
+ * `.catch()` is not: it is a Promise method, reached before any await.
+ *
+ * So: `await` inside `try`, which normalises both return shapes AND both
+ * failure shapes — a rejected promise from the vault read, and a synchronous
+ * throw, which `.catch()` could never have caught either. Failing to `false`
+ * is the honest answer: a provider whose configuration cannot be read is one
+ * this tenant cannot connect through, and the chooser says so and still offers
+ * the IMAP/SMTP route, rather than 500-ing the page that was supposed to
+ * explain the problem.
+ */
+async function isConfiguredSafely(idp) {
+  try {
+    return Boolean(await idp.isConfigured());
+  } catch {
+    /* @silent:storage the platform vault being unreachable makes the provider
+       unavailable, which is a state this endpoint reports rather than throws */
+    return false;
+  }
+}
+
 async function listConnectMethods(client) {
   const oauth = async (provider, idp) => {
     const [enabled, configured] = await Promise.all([
       providerEnabled(client, provider),
-      idp.isConfigured().catch(() => false),
+      isConfiguredSafely(idp),
     ]);
     return {
       available: enabled && configured,

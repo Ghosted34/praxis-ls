@@ -706,7 +706,7 @@ export function TransitOrder360({
       {/* Every tile drills into the tab that explains the figure. The fourth
           exists only on a foreign-currency order: an "In XAF" tile repeating
           the number beside it teaches operators to ignore tiles. */}
-      <KpiRow>
+      <KpiRow stack>
         <KpiTile
           label="Declared value"
           value={

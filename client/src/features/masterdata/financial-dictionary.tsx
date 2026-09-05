@@ -301,7 +301,7 @@ function DictDossier({
       </div>
 
       {/* Usage KPI strip — the money rollups (PR2) hang off these counts. */}
-      <KpiRow>
+      <KpiRow stack>
         <KpiTile label="Costings" value={num(u.costing_lines)} />
         <KpiTile label="Cash requests" value={num(u.cash_request_lines)} />
         <KpiTile label={tr("Invoices")} value={num(u.invoice_lines)} />

@@ -227,7 +227,7 @@ function LocationDetail({
         </p>
       </div>
 
-      <KpiRow>
+      <KpiRow stack>
         <KpiTile label="Items stored" value={num(items.length)} />
         <KpiTile label={tr("On hand")} value={num(Math.round(onHand))} />
         <KpiTile label={tr("Equipment")} value={num(equip.length)} />

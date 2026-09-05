@@ -809,7 +809,7 @@ export function OperationFile360({
 
       {/* Every tile is a drill-in: the figure names a tab that explains it, so
           "why is 95.7M outstanding" is one click rather than a hunt. */}
-      <KpiRow>
+      <KpiRow stack>
         <KpiTile
           label={tr("Planned cost")}
           value={money(d.costing.planned_cost)}

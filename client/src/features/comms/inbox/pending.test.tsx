@@ -20,7 +20,7 @@ import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { axe } from "jest-axe";
 import { DraftList, OutboxList } from "./pending";
-import { renderScreen } from "@/test/screen-harness";
+import { renderScreen, apiError } from "@/test/screen-harness";
 import type { Draft, OutboxEntry } from "@/lib/mail-api";
 
 vi.mock("@/lib/api-client", async () => {
@@ -218,6 +218,76 @@ describe("Outbox", () => {
     expect(
       await screen.findByText("Not sent yet. Cancel it and it never goes."),
     ).toBeInTheDocument();
+  });
+
+  /* ── Sending it again ──────────────────────────────────────────────────────
+   *
+   * The gap this closes: a FAILED row was a dead end. The screen showed the
+   * server's refusal and the steps that fix it, and then the only way to act on
+   * the fix was to write the message again from memory — the row is not a draft
+   * and cannot be opened. So a corrected SMTP password and an unsent invoice sat
+   * one click apart with no click between them.
+   */
+  it("SEND AGAIN IS OFFERED ON A FAILED ROW, and says what happened", async () => {
+    renderScreen(<OutboxList />, {
+      routes: {
+        "/mail/outbox": [queued({ status: "FAILED", last_error: "550 nope" })],
+      },
+    });
+    await screen.findByText("Did not send");
+    await userEvent.click(screen.getByRole("button", { name: "Send again" }));
+    expect(await screen.findByText(/Queued again/)).toBeInTheDocument();
+  });
+
+  it("offers it even for a PERMANENT refusal — that is the case somebody just fixed", async () => {
+    // `PERMANENT_CODES` stops the QUEUE retrying on its own, and should. Every
+    // code on it is a failure only a person can clear, so greying the button out
+    // for exactly those would refuse the only case it exists for.
+    renderScreen(<OutboxList />, {
+      routes: {
+        "/mail/outbox": [
+          queued({
+            status: "FAILED",
+            error_code: "SENDER_NOT_AUTHORIZED",
+            last_error: "550 Sender verify failed",
+          }),
+        ],
+      },
+    });
+    await screen.findByText("Did not send");
+    expect(screen.getByRole("button", { name: "Send again" })).toBeInTheDocument();
+  });
+
+  it("OFFERS IT ONLY ON A FAILED ROW — the only status the server accepts", async () => {
+    // `repo.retry` is `UPDATE … WHERE status = 'FAILED'`, the same rule that
+    // keeps Cancel off everything but HELD.
+    renderScreen(<OutboxList />, {
+      routes: {
+        "/mail/outbox": [
+          queued({ email_send_queue_id: "q1", status: "HELD" }),
+          queued({ email_send_queue_id: "q2", status: "QUEUED" }),
+          queued({ email_send_queue_id: "q3", status: "SENDING" }),
+        ],
+      },
+    });
+    await screen.findByText("Going out");
+    expect(screen.queryByRole("button", { name: "Send again" })).toBeNull();
+  });
+
+  it("a 409 is the honest answer, not an apology", async () => {
+    // Another tab pressed it first, or the flusher already has the row. Both
+    // mean the message is moving, which is what the button asked for. The
+    // fixture is keyed on the retry path, so this also proves the click reaches
+    // POST /mail/send/:id/retry rather than some other endpoint.
+    renderScreen(<OutboxList />, {
+      routes: {
+        "/mail/outbox": [queued({ status: "FAILED", last_error: "550 nope" })],
+        "/mail/send/q1/retry": apiError(409, "That message is already on its way.", "BAD_STATE"),
+      },
+    });
+    await screen.findByText("Did not send");
+    await userEvent.click(screen.getByRole("button", { name: "Send again" }));
+    expect(await screen.findByText("That message is already on its way.")).toBeInTheDocument();
   });
 
   it("the empty state says what would collect here", async () => {

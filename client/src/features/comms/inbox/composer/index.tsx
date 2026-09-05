@@ -45,6 +45,7 @@ import { SlashMenu } from "./slash-menu";
 import { AttachmentTray, AttachButton } from "./attachment-tray";
 import { RecipientField, type ExtraRecipient } from "./recipient-field";
 import { isAddress, parseAddresses } from "./addresses";
+import { useFromMailbox } from "./use-from-mailbox";
 import { UndoSendToast } from "./undo-toast";
 import { AssistToolbar } from "../work/assist";
 import { GuardrailBar } from "../work/guardrails";
@@ -155,7 +156,11 @@ export function Composer({
   onClose,
   slots = {},
 }: ComposerProps) {
-  const [from, setFrom] = React.useState(draft?.email_connection_id || connectionId);
+  /* Seeded from the caller's decision and then owned here — but re-seeded when
+   * the CALLER decides differently, which is the whole of `use-from-mailbox`.
+   * A reopened draft's own mailbox wins: a draft written from billing@ must not
+   * reopen on the default because that is what the dialog was showing. */
+  const [from, setFrom] = useFromMailbox(draft?.email_connection_id || connectionId);
   const [to, setTo] = React.useState((draft?.to_address || initialTo).join(", "));
   const [cc, setCc] = React.useState((draft?.cc_address || initialCc).join(", "));
   const [showCc, setShowCc] = React.useState((draft?.cc_address || initialCc).length > 0);
@@ -303,6 +308,24 @@ export function Composer({
     dirtyRef.current[key] = value;
     touch();
   };
+
+  /**
+   * The autosaved draft agrees with what the send will actually use.
+   *
+   * `flush` reads `from` on its next save anyway, but only if something else
+   * made the draft dirty — a mailbox changed and nothing typed after it would
+   * otherwise leave the row pointing at the old one, and a draft that reopens
+   * on a different sender than it was left on is the same wrong-sender bug one
+   * step removed. Marking it here covers both the parent's decision and the
+   * composer's own From row.
+   */
+  const savedFrom = React.useRef(from);
+  React.useEffect(() => {
+    if (savedFrom.current === from || !from) return;
+    savedFrom.current = from;
+    dirtyRef.current.email_connection_id = from;
+    touch();
+  }, [from, touch]);
 
   /* ── Attachments ────────────────────────────────────────────────────────── */
 

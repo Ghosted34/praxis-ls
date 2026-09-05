@@ -129,6 +129,8 @@ module.exports = {
     })),
   })),
   cancelSend: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => outbox.cancel(c, actor(req), req.params.id)) })),
+  // Requeues the row that failed, payload and all — see outbox.service.retry.
+  retrySend: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => outbox.retry(c, actor(req), req.params.id)) })),
   outbox: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => outbox.listQueued(c, actor(req), req.query)) })),
 
   // ── PR-1B: drafts ──

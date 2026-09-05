@@ -52,6 +52,7 @@ export function NewMessageDialog({
   entityRef = null,
   languageNote = null,
   draft = null,
+  connectionId = null,
 }: {
   open: boolean;
   onClose: () => void;
@@ -83,6 +84,19 @@ export function NewMessageDialog({
    * comes from without saying so.
    */
   draft?: api.Draft | null;
+  /**
+   * The mailbox the caller is already working in, if it knows one.
+   *
+   * The inbox does: a person reading admin@ and pressing Compose means to write
+   * from admin@, and it took the mailbox they had chosen on the screen behind
+   * this dialog to be a fact about reading only. So the dialog opened on the
+   * tenant default instead, silently, and "no matter which mailbox I use it
+   * always sends from the default" was an accurate description of the product.
+   *
+   * A preference, not an instruction: it must still be a CONNECTED mailbox, and
+   * the picker below stays offered so the choice can be changed.
+   */
+  connectionId?: string | null;
 }) {
   const conns = useResource(() => api.listConnections(), []);
   const connected = (conns.data || []).filter((c) => c.status === "CONNECTED");
@@ -90,14 +104,21 @@ export function NewMessageDialog({
 
   React.useEffect(() => {
     if (connId) return;
+    const usable = (id?: string | null) =>
+      (id && connected.some((c) => c.email_connection_id === id) ? id : "");
     const preferred =
       // A reopened draft's own mailbox first — see the `draft` prop.
-      draft?.email_connection_id
+      usable(draft?.email_connection_id)
+      // Then where the caller already is: the mailbox open on the screen behind
+      // this dialog. Checked against the connected list, because a mailbox that
+      // has since been disconnected would otherwise seed a composer that cannot
+      // send and a picker showing a value it does not have.
+      || usable(connectionId)
       || connected.find((c) => c.is_default)?.email_connection_id
       || connected[0]?.email_connection_id
       || "";
     if (preferred) setConnId(preferred);
-  }, [connected, connId, draft?.email_connection_id]);
+  }, [connected, connId, connectionId, draft?.email_connection_id]);
 
   if (!open) return null;
 

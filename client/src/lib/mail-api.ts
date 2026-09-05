@@ -1046,6 +1046,22 @@ export const sendMessage = (body: {
 
 export const cancelSend = (queueId: string) =>
   tenant<{ status: "CANCELLED" }>(`/mail/send/${queueId}/cancel`, { method: "POST" });
+
+/**
+ * Send a failed message again, after the operator fixed what refused it.
+ *
+ * The row is requeued with its frozen payload, so this is not a second message:
+ * same queue id, same Message-ID, same attachments. 409 when the row is not
+ * FAILED any more — another tab pressed it first, or the flusher picked it up.
+ */
+export const retrySend = (queueId: string) =>
+  tenant<{
+    email_send_queue_id: string;
+    status: OutboxEntry["status"];
+    release_at: string;
+    attempts: number;
+  }>(`/mail/send/${queueId}/retry`, { method: "POST" });
+
 export const listOutbox = () => tenant<OutboxEntry[]>("/mail/outbox");
 
 /* Slash commands */

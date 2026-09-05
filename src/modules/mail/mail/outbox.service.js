@@ -444,6 +444,98 @@ async function cancel(client, actor, id) {
 const listQueued = (client, actor, q = {}) => repo.listQueued(client, actor.user_id, q);
 
 /**
+ * SEND IT AGAIN — the verb the outbox was missing.
+ *
+ * ── WHY A FAILED ROW NEEDED A BUTTON ────────────────────────────────────────
+ *
+ * The queue's own retries are for the mail server's opinion: a greylisting, a
+ * momentary limit, a connection that dropped. They are exhausted automatically
+ * and then the row stops, which is correct — `retryPlan`'s header is right that
+ * hammering a refusal only delays telling somebody something they have to fix.
+ *
+ * But it is the FIXING that had nowhere to go. The operator reads the server's
+ * words in the outbox, corrects what they name — the wrong sending mailbox, a
+ * mistyped address on the mail host, an SMTP password that had expired, a
+ * message trimmed under the size limit — and then the only way to act on the
+ * correction was to write the message again from memory, because the failed row
+ * is not a draft and cannot be opened. So a fixed cause and an unsent invoice
+ * sat one click apart with no click between them.
+ *
+ * ── IT REQUEUES THE ROW; IT DOES NOT COMPOSE A NEW ONE ──────────────────────
+ *
+ * The payload was frozen at enqueue (see this file's header) and stays frozen:
+ * what leaves on the retry is exactly what the sender read and approved, down
+ * to the Message-ID, and the row keeps its identity so the outbox shows one
+ * message with a history rather than two that look like a double send. The
+ * attachments are still on the draft, which is only deleted on success.
+ *
+ * ── A PERMANENT FAILURE IS STILL OFFERED THE BUTTON, DELIBERATELY ───────────
+ *
+ * `PERMANENT_CODES` decides whether the QUEUE retries on its own, and it should
+ * keep deciding that. It must not decide whether a PERSON may. Every code on
+ * that list is precisely a failure only a person can clear — an unauthorised
+ * From address, a rejected login, a recipient the host does not have — so the
+ * moment retrying is worth anything at all is the moment after somebody fixed
+ * one of them. A button that greyed itself out for exactly those would refuse
+ * the only case it exists for. The mailbox is re-checked below instead, because
+ * that is a refusal we can make honestly and now: an archived mailbox cannot
+ * send, and saying so beats queueing something that cannot leave.
+ */
+async function retry(client, actor, id) {
+  const existing = await repo.getQueued(client, actor.user_id || null, id);
+  if (!existing) throw new AppError("NOT_FOUND", "no such queued message", 404);
+  if (existing.status !== "FAILED") {
+    throw new AppError(
+      "BAD_STATE",
+      existing.status === "SENT"
+        ? "That message did send — there is nothing to retry."
+        : "That message is already on its way. Only a message that did not send can be sent again.",
+      409,
+      { status: existing.status },
+    );
+  }
+
+  // Re-checked at the retry and not trusted from the enqueue: both answers can
+  // have changed in the time the row spent failed, and this is the one moment a
+  // person is watching and can be told.
+  const conn = await mailRepo.getConnection(client, existing.email_connection_id);
+  if (!conn) throw new AppError("NOT_FOUND", "the mailbox this was sent from no longer exists", 404);
+  if (conn.status === "ARCHIVED") {
+    throw new AppError("MAILBOX_ARCHIVED", `${conn.email_address} has been retired and cannot send.`, 422);
+  }
+  if (actor.user_id) await access.assertCanSend(client, conn.email_connection_id, actor.user_id);
+
+  const row = await repo.retry(client, actor.user_id || null, id);
+  // Lost the race with a second tab, or with the flusher picking the row up
+  // after a `requeueStalled`. The row is moving either way, which is what the
+  // button asked for, so this is a plain refusal rather than an error.
+  if (!row) {
+    throw new AppError("BAD_STATE", "That message is already on its way.", 409, { status: "QUEUED" });
+  }
+
+  await emitEvent(client, {
+    eventTypeKey: "email.send.retried", moduleKey: MODULE, entityRef: qRef(id),
+    actorUserId: actor.user_id || null,
+    payload: {
+      to: row.payload?.to, subject: row.payload?.subject,
+      mailbox: conn.email_address,
+      // What it failed with LAST time. The row's own columns are cleared by the
+      // retry, so without this the ledger could not say what was being fixed.
+      previous_error: existing.last_error || null,
+      previous_error_code: existing.error_code || null,
+      previous_attempts: existing.attempts,
+    },
+  }).catch(() => { /* @silent:storage the requeued row is the outcome, not its event */ });
+
+  return {
+    email_send_queue_id: id,
+    status: row.status,
+    release_at: row.release_at,
+    attempts: row.attempts,
+  };
+}
+
+/**
  * Codes that are never worth a second attempt.
  *
  * Every one of these is emitted by something — which is the property the list
@@ -622,6 +714,6 @@ async function attachSignature(client, actor, input, html, text) {
 module.exports = {
   MODULE, ATTACH_MAX_BYTES, SECURE_LINK_HINT_BYTES, UNDO_CHOICES, DEFAULT_UNDO_SECONDS, MAX_ATTEMPTS,
   undoSeconds, saveDraft, getDraft, listDrafts, discardDraft,
-  assertRoomFor, validateSend, send, cancel, listQueued,
+  assertRoomFor, validateSend, send, cancel, listQueued, retry,
   retryPlan, PERMANENT_CODES, flushOne, flush, stripStyleBlocks, stripTags,
 };

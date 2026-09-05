@@ -43,21 +43,49 @@ const { URLSearchParams } = require('url');
 // host the request already arrived on, so behaviour is unchanged there.)
 const msWebhook = (req) => `${req.protocol}://${req.tenant.slug}.${config.APP_BASE_DOMAIN}${req.baseUrl}/webhook/microsoft`;
 // After OAuth consent the browser lands on the callback. Send it back to the
-// tenant's Mail page — on the TENANT SUBDOMAIN, where the user's session lives
-// (the callback itself may have arrived on the apex canonical host, which has no
-// session) — carrying a success/error flag the SPA surfaces. Redirect on BOTH
-// paths so the user never sees a raw JSON body or an error envelope in the URL bar.
+// tenant's mail SETUP page — on the TENANT SUBDOMAIN, where the user's session
+// lives (the callback itself may have arrived on the apex canonical host, which
+// has no session) — carrying a success/error flag the SPA surfaces. Redirect on
+// BOTH paths so the user never sees a raw JSON body or an error envelope in the
+// URL bar.
+//
+// ── WHY /comms/setup AND NOT /comms/mail ────────────────────────────────────
+//
+// It used to be `/comms/mail`, and that route renders the INBOX. The only code
+// that reads `?mail_connected=` lives in the connect surfaces under
+// Comms → Setup, which that page does not mount — so the whole confirmation
+// was unreachable: a person consented at Microsoft, came back, and landed in an
+// inbox with a stray query string, no success message, no error message, and no
+// sign that anything had happened. Every connect surface that can start a
+// consent flow is under `/comms/setup`, so that is where the answer has to
+// land. `mail_tab` names which of its sub-tabs asked, so a team address returns
+// to Mailboxes and a personal one to My mailbox.
 const mailPageUrl = (req, params) => {
   const query = new URLSearchParams(params).toString();
-  return `${req.protocol}://${req.tenant.slug}.${config.APP_BASE_DOMAIN}/comms/mail?${query}`;
+  return `${req.protocol}://${req.tenant.slug}.${config.APP_BASE_DOMAIN}/comms/setup?${query}`;
 };
+
+/** Which setup sub-tab a consent flow was started from. */
+const tabForKind = (kind) => (kind === "SHARED" ? "mailboxes" : "mine");
 
 async function finishOAuth(req, res, provider, run) {
   try {
     const r = await req.identityDb((c) => run(c));
-    return res.redirect(302, mailPageUrl(req, { mail_connected: provider, email: (r && r.email_address) || "" }));
+    return res.redirect(302, mailPageUrl(req, {
+      mail_connected: provider,
+      email: (r && r.email_address) || "",
+      mail_tab: tabForKind(r && r.kind),
+    }));
   } catch (err) {
-    return res.redirect(302, mailPageUrl(req, { mail_error: (err && err.code) || "OAUTH_FAILED", provider }));
+    // Read back off the SIGNED state rather than guessing, so a failed shared
+    // connect returns the administrator to the tab they started on instead of
+    // stranding them on a personal-mailbox screen with an error about a team
+    // address. Unreadable state simply has no hint and falls back to "mine".
+    return res.redirect(302, mailPageUrl(req, {
+      mail_error: (err && err.code) || "OAUTH_FAILED",
+      provider,
+      mail_tab: tabForKind(service.readOAuthStateKind(req.query.state)),
+    }));
   }
 }
 
@@ -76,6 +104,13 @@ module.exports = {
   archiveSender: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.archiveIdentity(c, req.params.id)) })),
 
   // ── Engine: connections ──
+  /* Which ways of connecting a mailbox this tenant may actually use, so the
+   * chooser can draw the Microsoft option honestly instead of offering a button
+   * that answers 403 — or, worse, offering only the password form to a tenant
+   * whose domain is on Microsoft, where no password can ever work. */
+  connectMethods: asyncHandler(async (req, res) => res.json({
+    data: await req.identityDb((c) => service.listConnectMethods(c)),
+  })),
   autodiscover: asyncHandler(async (req, res) => res.json({ data: await service.autodiscover({ email: req.query.email }) })),
   listConnections: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.listConnections(c, { ...req.query, ownerUserId: actor(req).user_id })) })),
   connect: asyncHandler(async (req, res) => res.status(201).json({ data: await req.identityDb((c) => service.connect(c, { ...req.body, actor: actor(req) })) })),
@@ -308,6 +343,29 @@ module.exports = {
     return res.json({
       data: await req.identityDb((c) => service.startMicrosoftOAuth(c, {
         slug: slugOf(req), redirectUri, display_name: req.query.display_name, actor: actor(req),
+      })),
+    });
+  }),
+  /*
+   * Standing up a TEAM address over OAuth.
+   *
+   * Its own handler behind its own route because it needs its own right: the
+   * route above is gated on MOD-72 `edit` (connecting your own mailbox), while
+   * minting an identity the whole company sends from is `create` — which is
+   * exactly the distinction `POST /mail/mailboxes/shared` already draws. Sharing
+   * one route and reading `kind` off the query would have let anybody who may
+   * connect their own mailbox create a team address, so the two paths do not
+   * share a gate.
+   */
+  msOAuthStartShared: asyncHandler(async (req, res) => {
+    const redirectUri = await msRedirect(req);
+    return res.json({
+      data: await req.identityDb((c) => service.startMicrosoftOAuth(c, {
+        slug: slugOf(req), redirectUri, actor: actor(req),
+        kind: "SHARED",
+        display_name: req.query.display_name,
+        catalogue_key: req.query.catalogue_key,
+        department: req.query.department,
       })),
     });
   }),

@@ -30,6 +30,7 @@
  */
 import * as React from "react";
 import { cn } from "@/lib/cn";
+import { Callout } from "@/components/ui/callout";
 import { useResource } from "@/lib/use-resource";
 import { tr } from "@/lib/i18n";
 import * as api from "@/lib/mail-api";
@@ -97,6 +98,97 @@ export function CommsSetupPage() {
   }, [visible, tab]);
 
   /**
+   * ── WHERE A MICROSOFT CONSENT ROUND TRIP LANDS ──────────────────────────
+   *
+   * A person leaves this page for Microsoft, approves, and comes back to a
+   * bare redirect: no session state, no memory of which tab asked, and the
+   * result of the whole thing sitting in a query string. That result has to be
+   * SAID — a mailbox either connected or it did not — and it has to be said on
+   * the tab that asked, or an administrator who set up `operations@` reads a
+   * success message on a screen about their own mailbox.
+   *
+   * The callback used to redirect to `/comms/mail`, which renders the inbox and
+   * mounts none of this: the message was written and nothing displayed it. It
+   * now lands here, carrying `mail_tab` — which the server derives from the
+   * SIGNED OAuth state rather than from anything the browser sent. It is an
+   * ordinary query parameter by the time it arrives, so a hand-typed one is
+   * possible and harmless: it can only select a tab this user is already
+   * offered, since the guard effect above bounces any other back to "mine".
+   *
+   * Read once, then stripped from the URL, so a reload does not replay a
+   * success banner for a mailbox connected ten minutes ago.
+   */
+  const [oauthNote, setOauthNote] = React.useState<
+    { ok: boolean; text: string } | null
+  >(null);
+  React.useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    const ok = p.get("mail_connected");
+    const bad = p.get("mail_error");
+    if (!ok && !bad) return;
+    const who = (ok || p.get("provider")) === "google" ? "Google" : "Microsoft";
+    if (ok) {
+      const email = p.get("email");
+      setOauthNote({
+        ok: true,
+        text: `${tr("Connected to")} ${who}${email ? ` — ${email}` : ""}. ${tr("Mail starts arriving within a minute or two.")}`,
+      });
+    } else {
+      setOauthNote({
+        ok: false,
+        text: `${who} ${tr("did not connect the mailbox")} (${bad}). ${tr("Nothing was changed — try again, or connect it with its own server settings instead.")}`,
+      });
+    }
+    const wanted = p.get("mail_tab");
+    if (wanted === "mailboxes" || wanted === "mine") setPendingTab(wanted);
+    window.history.replaceState({}, "", window.location.pathname);
+  }, []);
+
+  /**
+   * HELD until the tab is actually offered, rather than selected on the spot.
+   *
+   * `visible` is derived from `GET /mail/me`, which has not answered on the
+   * frame this component mounts — so "Mailboxes" is not in it yet, and the
+   * guard effect above, whose whole job is to bounce an impossible tab back to
+   * "mine", would immediately undo the selection. Setting it a frame later,
+   * once the capability answer has arrived, is the difference between an
+   * administrator landing on the Mailboxes tab they started from and landing on
+   * their own mailbox with a message about a team address.
+   *
+   * Cleared once applied, so it is a one-shot and not a tab the user cannot
+   * navigate away from.
+   */
+  const [pendingTab, setPendingTab] = React.useState<TabKey | null>(null);
+  React.useEffect(() => {
+    if (!pendingTab) return;
+    if (!visible.some((t) => t.key === pendingTab)) return;
+    setTab(pendingTab);
+    setPendingTab(null);
+  }, [pendingTab, visible]);
+
+  /**
+   * Rendered by whichever tab the round trip came back to, rather than above
+   * the tab strip: the answer belongs beside the button that asked the
+   * question. Only one tab is mounted at a time, so only one can show it.
+   */
+  const notice = oauthNote ? (
+    <Callout
+      tone={oauthNote.ok ? "ok" : "bad"}
+      action={
+        <button
+          type="button"
+          className="underline underline-offset-2"
+          onClick={() => setOauthNote(null)}
+        >
+          {tr("Dismiss")}
+        </button>
+      }
+    >
+      {oauthNote.text}
+    </Callout>
+  ) : null;
+
+  /**
    * ── THE HAND-OFF FROM CONNECTIONS TO MAILBOXES ──────────────────────────
    *
    * "Connect a mailbox" creates a PERSONAL mailbox, of which everyone gets
@@ -143,7 +235,7 @@ export function CommsSetupPage() {
         </nav>
       )}
 
-      {tab === "mine" && <MyMailboxTab />}
+      {tab === "mine" && <MyMailboxTab notice={notice} />}
       {tab === "connections" && (
         <ConnectionsTab
           onCreateShared={isAdmin && canCreate ? startSharedMailbox : undefined}
@@ -156,6 +248,7 @@ export function CommsSetupPage() {
           canCreate={canCreate}
           seed={sharedSeed}
           onSeedConsumed={() => setSharedSeed(null)}
+          notice={notice}
         />
       )}
       {tab === "sla" && isAdmin && <SlaTab />}

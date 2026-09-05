@@ -87,7 +87,15 @@ router.use(authMiddleware);
 
 // OAuth connect (user-initiated from Settings). Starting a consent flow binds a
 // mailbox to the tenant, so it is a connection write, not a read.
+//
+// The `/shared` variant is gated on **create**, not edit, and that is the whole
+// reason it is a second route rather than a `kind` query parameter on the first.
+// Connecting your OWN mailbox and minting a TEAM address the company sends from
+// are different rights — `POST /mailboxes/shared` below already draws exactly
+// that line — and a single route reading the kind off the query would have let
+// anyone who may connect their own mailbox stand up `operations@` as well.
 router.get("/oauth/microsoft/start", requirePermission(M, "edit"), c.msOAuthStart);
+router.get("/oauth/microsoft/start/shared", requirePermission(M, "create"), c.msOAuthStartShared);
 router.get("/oauth/google/start", requirePermission(M, "edit"), c.ggOAuthStart);
 
 // Read-only view (original)
@@ -104,6 +112,10 @@ router.post("/senders", requirePermission(M, "create"), v.sender, c.upsertSender
 router.post("/senders/:id/archive", requirePermission(M, "edit"), c.archiveSender);
 
 // Engine: connections
+/* Which connect methods this tenant may use. A read about configuration, not
+ * about mail, so `view` — it discloses two booleans and a reason code, and the
+ * chooser needs it before anybody has picked anything. */
+router.get("/connect-methods", requirePermission(M, "view"), c.connectMethods);
 router.get("/autodiscover", requirePermission(M, "view"), c.autodiscover);
 router.get("/connections", requirePermission(M, "view"), c.listConnections);
 router.post("/connections", requirePermission(M, "create"), v.connect, c.connect);

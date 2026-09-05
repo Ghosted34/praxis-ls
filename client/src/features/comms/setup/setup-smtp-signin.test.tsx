@@ -153,11 +153,29 @@ describe("reopening a mailbox that already sends through a relay", () => {
 });
 
 describe("the personal connect wizard", () => {
-  /** Walk the wizard to step 2, where the server settings live. */
+  /**
+   * Walk the wizard to step 2, where the server settings live.
+   *
+   * "Connect my mailbox" now opens the hosting chooser first — Microsoft
+   * sign-in or the company's own server — because for a mailbox on Microsoft
+   * 365 no password can work and this wizard could only ever fail. The relay
+   * sign-in this file is about lives behind the SMTP answer, so the walk picks
+   * it explicitly rather than assuming the form opens straight away.
+   */
   async function openWizardStepTwo() {
     const user = userEvent.setup();
-    renderScreen(<MyMailboxTab />, { routes: { "/mail/mailboxes/mine": [] } });
+    renderScreen(<MyMailboxTab />, {
+      routes: {
+        "/mail/mailboxes/mine": [],
+        "/mail/connect-methods": {
+          imap_smtp: { available: true, enabled: true, configured: true, reason: null },
+          microsoft_graph: { available: true, enabled: true, configured: true, reason: null },
+          google_gmail: { available: false, enabled: false, configured: false, reason: "NOT_ENABLED" },
+        },
+      },
+    });
     await user.click(await screen.findByRole("button", { name: /Connect my mailbox/i }));
+    await user.click(await screen.findByRole("button", { name: /Use a custom domain \(SMTP\)/i }));
     await user.type(screen.getByPlaceholderText("you@yourcompany.cm"), "ops@jbspraxis.com");
     await user.click(screen.getByRole("button", { name: /I will type the settings/i }));
     return user;

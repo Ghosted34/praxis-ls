@@ -22,6 +22,19 @@
  * distrust the ones that work, so the page shows the mailbox they have and how
  * to change it instead.
  *
+ * ── AND WHY "CONNECT" NOW ASKS A QUESTION FIRST ─────────────────────────────
+ *
+ * The button used to open the cPanel wizard directly, which is the right first
+ * guess for the first tenant and a dead end for the next one: a company whose
+ * custom domain sits on Microsoft 365 has NO password that can work — Exchange
+ * Online retired Basic auth for IMAP/POP in 2022 and for SMTP AUTH in April
+ * 2026 — so every field in that wizard was answerable and the result could only
+ * ever be an authentication failure. Microsoft consent existed, but only on the
+ * Connections tab, which is not where a person is sent to connect their
+ * mailbox. `<ConnectMethodModal>` asks the one question that decides which of
+ * the two routes is even possible, and it is the same component the shared
+ * mailbox screens use.
+ *
  * ── THERE IS, HOWEVER, A WAY OUT ────────────────────────────────────────────
  *
  * There was not. A person could connect their mailbox here and then had no way
@@ -47,6 +60,7 @@ import { tr } from "@/lib/i18n";
 import { SmtpErrorGuide } from "@/components/mail/smtp-guide";
 import { DisconnectMailboxDialog } from "@/components/mail/disconnect-mailbox-dialog";
 import { SmtpSignInFields } from "@/components/mail/smtp-sign-in-fields";
+import { ConnectMethodModal } from "@/components/mail/connect-method-modal";
 import {
   BLANK_SMTP_SIGN_IN,
   smtpSignInBody,
@@ -247,8 +261,14 @@ function ConnectWizard({ onClose, onDone }: { onClose: () => void; onDone: () =>
 const tone = (s?: string | null): Tone =>
   String(s).toUpperCase() === "CONNECTED" ? "ok" : String(s).toUpperCase() === "PENDING" ? "warn" : "bad";
 
-export function MyMailboxTab() {
+export function MyMailboxTab({ notice }: { notice?: React.ReactNode } = {}) {
   const mine = useResource(() => api.myMailboxes(), []);
+  /**
+   * Two steps, not one. `chooser` asks how the mailbox is hosted; `wizard` is
+   * the IMAP/SMTP form, reached only when the answer was "our own server".
+   * Microsoft never opens the wizard at all — it leaves the page for consent.
+   */
+  const [chooser, setChooser] = React.useState(false);
   const [wizard, setWizard] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -299,6 +319,10 @@ export function MyMailboxTab() {
         description={tr("Your own professional address, and the team mailboxes you have been given access to.")}
       />
 
+      {/* The outcome of a Microsoft consent round trip, handed down by the page
+          that reads it off the query string. */}
+      {notice}
+
       {mine.error && <ErrorState message={mine.error} />}
       {error && <ErrorState message={error} />}
 
@@ -308,7 +332,7 @@ export function MyMailboxTab() {
           <p className="micro mx-auto mt-1 max-w-md text-muted-foreground">
             {tr("Connect your work address and you can read and answer it here, with every message attached to the client or shipment it belongs to.")}
           </p>
-          <Button className="mt-4" onClick={() => setWizard(true)}>{tr("Connect my mailbox")}</Button>
+          <Button className="mt-4" onClick={() => setChooser(true)}>{tr("Connect my mailbox")}</Button>
         </div>
       )}
 
@@ -375,6 +399,12 @@ export function MyMailboxTab() {
         </div>
       )}
 
+      <ConnectMethodModal
+        open={chooser}
+        scope={{ kind: "personal" }}
+        onClose={() => setChooser(false)}
+        onChooseSmtp={() => { setChooser(false); setWizard(true); }}
+      />
       {wizard && <ConnectWizard onClose={() => setWizard(false)} onDone={() => mine.reload()} />}
     </section>
   );

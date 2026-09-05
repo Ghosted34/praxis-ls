@@ -5,6 +5,7 @@ import {
   Routes,
   useParams,
   useLocation,
+  useNavigationType,
 } from "react-router-dom";
 import { NotFoundPage } from "@/features/not-found/not-found-page";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -181,9 +182,63 @@ function RouteFallback() {
   );
 }
 
+/**
+ * A new page starts at the top of itself.
+ *
+ * ── THE BUG ────────────────────────────────────────────────────────────────
+ *
+ * The browser resets scroll on a real navigation. A single-page app performs no
+ * navigation — it swaps a subtree and leaves the window exactly where it was —
+ * so somebody who read to the bottom of the services index and clicked
+ * "Careers" landed halfway down a page they had never seen, with the top of it
+ * above them. On the short pages that means below the content entirely: a blank
+ * screen, on a marketing site, from a nav link.
+ *
+ * ── THE THREE CASES, BECAUSE ONLY ONE OF THEM WANTS THE TOP ────────────────
+ *
+ *   · A LINK to a new path — scroll to the top. This is the case above and the
+ *     only one this component acts on.
+ *   · BACK or FORWARD (`POP`) — leave it alone. The browser is restoring a
+ *     position the reader had, and overriding that turns the Back button into a
+ *     way to lose your place, which is worse than the bug being fixed.
+ *   · A HASH (`/services#freight`, the home page's `#quote`) — leave it alone.
+ *     The whole point of the anchor is to arrive somewhere that is not the top,
+ *     and `scroll-mt-[var(--sticky-top)]` already positions it under the header.
+ *
+ * ── AND WHY `instant` IS SPELLED OUT ───────────────────────────────────────
+ *
+ * `index.css` sets `scroll-behavior: smooth` on `html`, which `behavior: "auto"`
+ * inherits — so the default would ANIMATE the jump, and a reader who clicked a
+ * nav link would watch three thousand pixels of a page they did not ask for
+ * slide past. `instant` is the one value that ignores the CSS. Under
+ * `prefers-reduced-motion` the umbrella in index.css turns the smooth scrolling
+ * off anyway; this stays correct either way.
+ */
+function ScrollToTop() {
+  const { pathname, hash } = useLocation();
+  const navigationType = useNavigationType();
+
+  React.useEffect(() => {
+    if (navigationType === "POP" || hash) return;
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+    // `hash` is a dependency so that leaving an anchored URL for a plain one
+    // still scrolls; `navigationType` so a PUSH to the path a POP just restored
+    // is not mistaken for the POP.
+  }, [pathname, hash, navigationType]);
+
+  return null;
+}
+
 export function AppRouter() {
   return (
-    <React.Suspense fallback={<RouteFallback />}>
+    /* ABOVE the Suspense boundary, not inside it. When a lazily-loaded route
+       suspends, everything inside the boundary is replaced by the fallback and
+       its effects are torn down — so a ScrollToTop in there would unmount on
+       the very navigations that need it and only fire once the chunk resolved.
+       Outside, it is never suspended and the scroll happens as the URL changes. */
+    <>
+      <ScrollToTop />
+      <React.Suspense fallback={<RouteFallback />}>
       <Routes>
         {/* At the root `p()` IS "/", and the marketing route below already
             claims it — a redirect here would point at itself. */}
@@ -282,7 +337,8 @@ export function AppRouter() {
             here would put a staff sign-in behind a marketing app. */}
 
         <Route path="*" element={<NotFoundPage />} />
-      </Routes>
-    </React.Suspense>
+        </Routes>
+      </React.Suspense>
+    </>
   );
 }

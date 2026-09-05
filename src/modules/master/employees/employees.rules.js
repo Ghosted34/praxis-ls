@@ -4,6 +4,7 @@
  * testable place (KB §9.1 work-injury categories).
  */
 "use strict";
+const { workSchedule } = require("@praxis/shared");
 
 /**
  * CNPS work-injury (risk) class rate by employee category (KB §9.1).
@@ -131,6 +132,30 @@ function withAllowanceDefaults(body = {}) {
   return out;
 }
 
+/**
+ * Keep the printed working-hours line in step with the grid it comes from.
+ *
+ * `work_schedule` (13775) is the week per day; `working_hours` is the sentence a
+ * contract prints. They are the same fact twice, and two fields holding one
+ * fact disagree by the second edit — so whenever a write carries a schedule,
+ * the sentence is RE-DERIVED from it and whatever the caller sent for
+ * `working_hours` is discarded. The form sends both (it renders the line as you
+ * tick the days); the server decides which one is true.
+ *
+ * A write that carries no schedule is left entirely alone: every record that
+ * predates 13775 has free text and no grid, and rewriting a term somebody
+ * agreed to because an unrelated field was patched is not a tidy-up.
+ *
+ * Clearing the schedule (`work_schedule: null`) clears the derived line too —
+ * otherwise the sentence outlives the grid it was rendered from and becomes a
+ * claim with nothing behind it.
+ */
+function withDerivedWorkingHours(fields = {}) {
+  if (!Object.prototype.hasOwnProperty.call(fields, "work_schedule")) return fields;
+  const schedule = workSchedule.normalise(fields.work_schedule);
+  return { ...fields, work_schedule: schedule, working_hours: schedule ? workSchedule.summarise(schedule) : null };
+}
+
 /** A copy of `obj` without `keys`. Named rather than done with a rest-destructure
  *  so the discarded keys do not become unused variables the linter has to be
  *  told to ignore — and so the call site says WHY they are being dropped. */
@@ -185,6 +210,10 @@ const CONTRACT_REQUIREMENTS = [
   { key: "scope_id", label: "Department", group: "employment", severity: "recommended" },
   { key: "reports_to", label: "Line manager", group: "employment", severity: "recommended" },
   { key: "cnps_number", label: "CNPS number", group: "employment", severity: "recommended" },
+  // Recommended, not required: a contract does not print the NIU, but the DIPE
+  // return and the payslip's IRPP line both quote it, so a record without one
+  // is a payroll problem waiting for the end of the month (13775).
+  { key: "niu", label: "NIU (tax number)", group: "employment", severity: "recommended" },
   { key: "email", label: "Work email", group: "employment", severity: "recommended" },
 ];
 
@@ -247,6 +276,6 @@ function contractReadiness(employee = {}, documents = []) {
 module.exports = {
   suggestRiskClass, normaliseBankBlock, redactSensitive, SENSITIVE_FIELDS,
   RISK_OFFICE, RISK_OPERATIONAL, blankToNull, isPresent, omit, withAllowanceDefaults,
-  UNSAFE_KEYS,
+  UNSAFE_KEYS, withDerivedWorkingHours,
   CONTRACT_REQUIREMENTS, REQUIRED_DOCUMENT_CODES, contractReadiness,
 };

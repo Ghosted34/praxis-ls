@@ -2,6 +2,7 @@
  * HR API helpers (typed) — attendance time-clock + worksite geofences.
  * Routes mirror src/modules/hr/attendance.
  */
+import type { WorkSchedule } from "@shared";
 import { tenant, tenantDownload } from "./api-client";
 import { tokenStore } from "./token-store";
 import { deviceId } from "./device-id";
@@ -951,13 +952,17 @@ export type Employee = {
   email?: string | null;
   employment_type?: string | null;
   cnps_number?: string | null;
+  /** Numéro d'Identifiant Unique — the DGI tax number (13775). Quoted on the
+   *  DIPE return, the payslip's IRPP line and the annual certificate of
+   *  earnings; distinct from `cnps_number`, which is social security. */
+  niu?: string | null;
   base_salary?: number | string | null;
   is_active?: boolean | null;
   is_driver?: boolean | null;
 
   /* ── Civil identity (12763). Everything a work contract names somebody by.
    * `maiden_name` is asked for only when gender is FEMALE and the marital
-   * status implies a name change — "Née FORMUM Epse FORGHAB" only exists in
+   * status implies a name change — "Née SPECIMEN Epse EXEMPLE" only exists in
    * that case. See employeeUsesMaidenName. */
   staff_no?: string | null; // the matricule; allocated, never typed
   civility?: string | null;
@@ -991,7 +996,12 @@ export type Employee = {
   hired_on?: string | null;
   probation_months?: number | null;
   place_of_work?: string | null;
+  /** The line a contract prints. DERIVED by the API from `work_schedule` on
+   *  every write that carries one — never edit it alongside the grid. */
   working_hours?: string | null;
+  /** The week per day (13775). Null on every record created before it existed,
+   *  which is "no schedule recorded", not "works no days". */
+  work_schedule?: WorkSchedule | null;
   payment_method?: string | null;
   salary_currency?: string | null;
   bank_block?: Record<string, string | number | boolean> | null;

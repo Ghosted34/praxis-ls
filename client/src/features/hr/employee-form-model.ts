@@ -12,6 +12,7 @@
  * `<input>` holds a string. The number/date/null conversions happen once, in
  * `draftToPayload`, rather than at fifty call sites.
  */
+import { workSchedule, type WorkSchedule } from "@shared";
 import type {
   Employee,
   EmployeeInput,
@@ -153,8 +154,19 @@ export type EmployeeDraft = {
   hired_on: string;
   probation_months: string;
   place_of_work: string;
+  /**
+   * The week per day (13775). NOT a string like everything else here, because
+   * it is not typed into an `<input>` — it is a grid of ticks and times, and
+   * flattening it to text is precisely the thing that made a remote Friday
+   * unrecordable. `null` means no grid: either a record that predates it, or
+   * one whose pattern is still the free text in `working_hours`.
+   */
+  work_schedule: WorkSchedule | null;
+  /** What the record says today. DERIVED from `work_schedule` by the API on any
+   *  write that carries one — never edited beside the grid, only read. */
   working_hours: string;
   cnps_number: string;
+  niu: string;
   is_driver: boolean;
   status: string;
   /* pay */
@@ -201,8 +213,14 @@ export const emptyDraft = (): EmployeeDraft => ({
   hired_on: "",
   probation_months: "",
   place_of_work: "",
+  // A new hire opens with the ordinary week — Mon–Fri, 09:00–17:00, on site —
+  // because that is the answer for most of them and the ones it is wrong for
+  // are exactly the ones somebody is paying attention to. An empty grid would
+  // be typed out five times a day for no gain.
+  work_schedule: workSchedule.defaultSchedule(),
   working_hours: "",
   cnps_number: "",
+  niu: "",
   is_driver: false,
   // A record typed before someone starts is PENDING, and the 360 offers "Mark
   // active" on their first day. Defaulting to ACTIVE would put an unstarted
@@ -257,8 +275,13 @@ export function draftFrom(e: Employee): EmployeeDraft {
     hired_on: s(e.hired_on).slice(0, 10),
     probation_months: s(e.probation_months),
     place_of_work: s(e.place_of_work),
+    // Only what the record actually holds. A saved employee with no grid keeps
+    // null so the field offers to replace their sentence rather than silently
+    // rewriting it with a default they never agreed to.
+    work_schedule: workSchedule.normalise(e.work_schedule),
     working_hours: s(e.working_hours),
     cnps_number: s(e.cnps_number),
+    niu: s(e.niu),
     is_driver: e.is_driver === true,
     status: s(e.status) || "ACTIVE",
     base_salary: s(e.base_salary),
@@ -308,6 +331,7 @@ export function draftToPayload(
     email: t(f.email),
     employment_type: t(f.employment_type),
     cnps_number: t(f.cnps_number),
+    niu: t(f.niu),
     is_driver: f.is_driver,
     status: (t(f.status) as EmployeeInput["status"]) || undefined,
 
@@ -340,7 +364,16 @@ export function draftToPayload(
     hired_on: t(f.hired_on),
     probation_months: n(f.probation_months),
     place_of_work: t(f.place_of_work),
-    working_hours: t(f.working_hours),
+    // The grid is what is sent, and the API re-derives the printed line from it
+    // (employees.rules.withDerivedWorkingHours) — so the sentence and the days
+    // cannot drift apart. The line is rendered here too, through the SAME
+    // `summarise`, because the readiness meter scores this payload before it is
+    // saved and would otherwise report a working pattern as missing while the
+    // grid it is derived from sits filled in on screen.
+    work_schedule: f.work_schedule,
+    working_hours: f.work_schedule
+      ? workSchedule.summarise(f.work_schedule) || undefined
+      : t(f.working_hours),
     payment_method: t(f.payment_method),
     base_salary: n(f.base_salary),
     salary_currency: t(f.salary_currency),
@@ -440,7 +473,8 @@ export const FIELD_STEP: Record<string, number> = {
 
   entity_id: 1, scope_id: 1, department: 1, reports_to: 1, job_title: 1,
   employment_type: 1, email: 1, hired_on: 1, probation_months: 1,
-  place_of_work: 1, working_hours: 1, cnps_number: 1, is_driver: 1, status: 1,
+  place_of_work: 1, working_hours: 1, work_schedule: 1, cnps_number: 1,
+  niu: 1, is_driver: 1, status: 1,
   base_salary: 1, salary_currency: 1, payment_method: 1, bank_block: 1,
   allowances: 1,
 

@@ -34,7 +34,7 @@ import { useResource } from "@/lib/use-resource";
 import { tr } from "@/lib/i18n";
 import * as api from "@/lib/mail-api";
 import { MyMailboxTab } from "./my-mailbox";
-import { MailboxesTab, ConnectionsTab } from "./mailboxes";
+import { MailboxesTab, ConnectionsTab, type SharedMailboxSeed } from "./mailboxes";
 import { SendPointsTab } from "./send-points";
 import { SetupPage as SendersAndChannelsTab } from "../setup";
 import { SecureLinksTab } from "./secure-links";
@@ -84,10 +84,37 @@ export function CommsSetupPage() {
   const isAdmin = caps.data?.can_administer === true;
   const visible = TABS.filter((t) => !t.adminOnly || isAdmin);
 
+  /**
+   * Creating a shared mailbox is MOD-72 **create**, which is a different right
+   * from the `can_administer` (= edit) that decides whether the tab is offered
+   * at all. Resolved once here and handed down, so both tabs agree on it.
+   */
+  const canCreate = caps.data?.can_create === true;
+
   const [tab, setTab] = React.useState<TabKey>("mine");
   React.useEffect(() => {
     if (!visible.some((t) => t.key === tab)) setTab("mine");
   }, [visible, tab]);
+
+  /**
+   * ── THE HAND-OFF FROM CONNECTIONS TO MAILBOXES ──────────────────────────
+   *
+   * "Connect a mailbox" creates a PERSONAL mailbox, of which everyone gets
+   * exactly one. Somebody setting up `invoicing@` goes there anyway — it is the
+   * only button in Comms that says "connect a mailbox" — types the whole form,
+   * and is told they already have one and should ask an administrator, which
+   * they frequently ARE. The team address they wanted is a different object on
+   * a different tab, and the refusal named neither.
+   *
+   * So the refusal now offers the crossing, and this carries it: switch tabs
+   * and open the shared-mailbox form with the transport details already filled
+   * in. Cleared once the modal closes so a later visit to the tab starts blank.
+   */
+  const [sharedSeed, setSharedSeed] = React.useState<SharedMailboxSeed | null>(null);
+  const startSharedMailbox = React.useCallback((seed: SharedMailboxSeed) => {
+    setSharedSeed(seed);
+    setTab("mailboxes");
+  }, []);
 
   return (
     <div className="space-y-4">
@@ -117,10 +144,20 @@ export function CommsSetupPage() {
       )}
 
       {tab === "mine" && <MyMailboxTab />}
-      {tab === "connections" && <ConnectionsTab />}
+      {tab === "connections" && (
+        <ConnectionsTab
+          onCreateShared={isAdmin && canCreate ? startSharedMailbox : undefined}
+        />
+      )}
       {tab === "followups" && <FollowupsTab />}
       {tab === "secure-links" && <SecureLinksTab />}
-      {tab === "mailboxes" && isAdmin && <MailboxesTab />}
+      {tab === "mailboxes" && isAdmin && (
+        <MailboxesTab
+          canCreate={canCreate}
+          seed={sharedSeed}
+          onSeedConsumed={() => setSharedSeed(null)}
+        />
+      )}
       {tab === "sla" && isAdmin && <SlaTab />}
       {tab === "trust" && isAdmin && <TrustTab />}
       {tab === "send-points" && isAdmin && <SendPointsTab />}

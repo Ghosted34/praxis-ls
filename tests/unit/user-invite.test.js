@@ -60,7 +60,7 @@ const svc = require("../../src/modules/security/app_user/app_user.service");
 const NEW_USER = {
   user_id: "u-9",
   email: "florence@smartls.cm",
-  full_name: "FORMUM Florence Ngwenjang",
+  full_name: "SPECIMEN Marie Claire",
   status: "ACTIVE",
 };
 
@@ -81,6 +81,9 @@ beforeEach(() => {
   repo.setRoles.mockResolvedValue();
   repo.invalidateUserResets.mockResolvedValue();
   repo.createResetToken.mockResolvedValue("t-1");
+  // The employee link is checked before the insert (see the guard test below);
+  // the default here is "the record is there", which is the ordinary case.
+  repo.employeeExists.mockResolvedValue(true);
 });
 
 describe("creating a login by invitation", () => {
@@ -88,7 +91,7 @@ describe("creating a login by invitation", () => {
     const out = await svc.createUser(fakeClient(), {
       data: {
         email: "florence@smartls.cm",
-        full_name: "FORMUM Florence Ngwenjang",
+        full_name: "SPECIMEN Marie Claire",
         invite: true,
         employee_id: "emp-1",
       },
@@ -120,6 +123,32 @@ describe("creating a login by invitation", () => {
       data: { email: "a@b.cm", full_name: "A B", invite: true, employee_id: "emp-7" },
     });
     expect(repo.insertUser.mock.calls[0][1].employee_id).toBe("emp-7");
+  });
+
+  test("an employee who is not in the LIVE schema is refused, by name", async () => {
+    /*
+     * The failure this prevents is specific and it was reachable from a button.
+     * "Provision account" on an employee dossier reads that record through
+     * `req.tenantDb`, so in TEST mode it hands over a SANDBOX employee id —
+     * and `app_user` lives in the live schema, where the row does not exist.
+     * `update` has validated this since it was written; `create` never did, so
+     * the answer was a raw 23503 naming a constraint instead of a cause.
+     */
+    repo.employeeExists.mockResolvedValue(false);
+    await expect(
+      svc.createUser(fakeClient(), {
+        data: { email: "a@b.cm", full_name: "A B", invite: true, employee_id: "sandbox-emp" },
+      }),
+    ).rejects.toMatchObject({ code: "EMPLOYEE_NOT_FOUND", status: 422 });
+    // Refused BEFORE the transaction: no half-created login to clean up.
+    expect(repo.insertUser).not.toHaveBeenCalled();
+  });
+
+  test("a login with no employee link never asks whether the employee exists", async () => {
+    await svc.createUser(fakeClient(), {
+      data: { email: "a@b.cm", full_name: "A B", invite: true },
+    });
+    expect(repo.employeeExists).not.toHaveBeenCalled();
   });
 
   test("the activation link points back at the requesting workspace", async () => {

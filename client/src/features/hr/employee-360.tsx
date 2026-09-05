@@ -24,6 +24,12 @@ import { EmptyState, ErrorState } from "@/components/ui/states";
 import { PageHeader } from "@/components/data-list";
 import { ScreenAi } from "@/components/screen-ai";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
+import { workSchedule } from "@shared";
+import { tokenStore } from "@/lib/token-store";
+import { CurrencySelect } from "@/components/currency-select";
+import { EmployeeSelect } from "@/components/employee-select";
+import { useEmployeeSearch } from "@/lib/employee-search";
+import { WorkScheduleField } from "@/components/work-schedule-field";
 import {
   DepartmentSelect,
   type DepartmentValue,
@@ -326,7 +332,15 @@ function ProfilePanel({ e }: { e: api.Employee }) {
           <Fact label="Probation" value={e.probation_months && `${e.probation_months} months`} />
           <Fact label="Place of work" value={e.place_of_work} />
           <Fact label="Working hours" value={e.working_hours} />
+          {/* The arrangement, not just the hours: a Friday worked from home is
+              invisible in the printed line unless it says so, and "who is on
+              site on Friday" is a question dispatch actually asks. */}
+          <Fact
+            label="Work mode"
+            value={workSchedule.workMode(e.work_schedule)}
+          />
           <Fact label="CNPS number" value={e.cnps_number} />
+          <Fact label="NIU (tax number)" value={e.niu} />
           <Fact
             label="Paid by"
             value={e.payment_method && enumLabel(e.payment_method)}
@@ -762,7 +776,9 @@ function EditEmployeeForm({
     entity_id: string;
     legal_name?: string;
   }>("/entities");
-  const { rows: staff } = useList<api.Employee>("/employees");
+  // Server-side search, not `useList("/employees")` — that clamps to 50 rows,
+  // so the line-manager list used to end at the fiftieth name in the company.
+  const staff = useEmployeeSearch();
   const [f, setF] = React.useState<EmployeeDraft>(() => draftFrom(employee));
   const set = React.useCallback(
     <K extends keyof EmployeeDraft>(k: K, v: EmployeeDraft[K]) =>
@@ -1049,8 +1065,16 @@ function EditEmployeeForm({
                 ))}
               </Select>
             </Field>
-            <Field label={tr("Department")} hint="From your organigramme.">
-              <DepartmentSelect value={dept} onChange={setDept} />
+            <Field
+              label={tr("Department")}
+              hint="From your organigramme."
+              htmlFor="edit-department"
+            >
+              <DepartmentSelect
+            id="edit-department"
+            value={dept}
+            onChange={setDept}
+          />
             </Field>
             <Field label={tr("Job title")} data-field="job_title">
               <Input
@@ -1073,20 +1097,28 @@ function EditEmployeeForm({
             <Field
               label={tr("Reports to")}
               hint="Their line manager. Leave blank for the top of the tree."
+              htmlFor="edit-reports-to"
             >
-              <Select
+              {/* Excluding this employee is the shallow half of the rule: a
+                  longer loop (A→B→A) is refused by the API with REPORTING_CYCLE,
+                  which names the person, because catching it needs the tree. */}
+              <EmployeeSelect
+                id="edit-reports-to"
                 value={reportsTo}
-                onChange={(e) => setReportsTo(e.target.value)}
-              >
-                <option value="">{tr("— nobody —")}</option>
-                {(staff || [])
-                  .filter((p) => p.employee_id !== employee.employee_id)
-                  .map((p) => (
-                    <option key={p.employee_id} value={p.employee_id}>
-                      {p.full_name}
-                    </option>
-                  ))}
-              </Select>
+                label={tr("Line manager")}
+                employees={staff.employees}
+                loading={staff.loading}
+                error={staff.error}
+                onSearch={staff.setTerm}
+                exclude={[employee.employee_id]}
+                selectedLabel={employee.manager_name || null}
+                note={
+                  staff.truncated
+                    ? tr("Showing the first matches — type a name to narrow.")
+                    : null
+                }
+                onChange={(emp) => setReportsTo(emp ? emp.employee_id : "")}
+              />
             </Field>
             <Field label={tr("Work email")} hint="Used to send payslips & contracts" data-field="email">
               <Input
@@ -1116,19 +1148,35 @@ function EditEmployeeForm({
                 onChange={(e) => set("place_of_work", e.target.value)}
               />
             </Field>
-            <Field label={tr("Working hours")}>
-              <Input
-                value={f.working_hours}
-                onChange={(e) => set("working_hours", e.target.value)}
-              />
-            </Field>
-            <Field label={tr("CNPS number")}>
+            <Field label={tr("CNPS number")} hint="Social security.">
               <Input
                 value={f.cnps_number}
                 onChange={(e) => set("cnps_number", e.target.value)}
               />
             </Field>
+            <Field
+              label={tr("NIU")}
+              hint="Tax number — the DIPE return and the payslip both quote it."
+            >
+              <Input
+                value={f.niu}
+                onChange={(e) => set("niu", e.target.value.toUpperCase())}
+              />
+            </Field>
           </div>
+          {/* Full width: seven days of times do not fit in half a modal. The
+              record's existing sentence is passed through so a pattern typed
+              before the grid existed is replaced deliberately, not silently. */}
+          <Field
+            label={tr("Working hours")}
+            hint="Tick the days, set the hours, and say which are worked from home."
+          >
+            <WorkScheduleField
+              value={f.work_schedule}
+              onChange={(v) => set("work_schedule", v)}
+              legacyText={f.working_hours}
+            />
+          </Field>
           <Checkbox
             checked={f.is_driver}
             onCheckedChange={(v) => set("is_driver", v)}
@@ -1147,13 +1195,11 @@ function EditEmployeeForm({
                 onChange={(e) => set("base_salary", e.target.value)}
               />
             </Field>
-            <Field label={tr("Currency")}>
-              <Input
+            <Field label={tr("Currency")} hint="From Settings › Currencies.">
+              <CurrencySelect
                 value={f.salary_currency}
-                maxLength={3}
-                onChange={(e) =>
-                  set("salary_currency", e.target.value.toUpperCase())
-                }
+                onChange={(v) => set("salary_currency", v)}
+                aria-label={tr("Salary currency")}
               />
             </Field>
             <Field label={tr("Paid by")}>
@@ -1287,6 +1333,9 @@ function EmployeeDetail({
    */
   const readiness = useResource(() => api.employeeReadiness(eid), [eid]);
   const account = useResource(() => api.employeeAccount(eid), [eid]);
+  // Identity is pinned to LIVE whatever the LIVE/TEST toggle says, so a
+  // sandbox employee has nothing in the live schema to hang a login on.
+  const inSandbox = tokenStore.getEnv() !== "live";
   const [opened, setOpened] = React.useState<Record<string, boolean>>({});
   React.useEffect(() => setOpened({}), [eid]);
   const documents = useResource(
@@ -1472,13 +1521,25 @@ function EmployeeDetail({
                   Open their account
                 </Button>
               ) : (
+                /* Not offered in Test mode, and that is not a limitation of
+                   this screen. Identity is pinned to the LIVE schema whatever
+                   the toggle says, so THIS record — a sandbox row — has no
+                   counterpart there to attach a login to; the create used to
+                   get as far as a foreign-key violation. Saying so on the
+                   button beats saying it in a 422 four fields later. */
                 <Button
                   size="sm"
+                  disabled={inSandbox}
+                  title={
+                    inSandbox
+                      ? "Logins are always live — switch out of Test mode to provision one."
+                      : undefined
+                  }
                   onClick={() =>
                     navigate(`/security/users?provision=${eid}`)
                   }
                 >
-                  Provision account
+                  {inSandbox ? "Provision account (live only)" : "Provision account"}
                 </Button>
               ))}
           </div>

@@ -152,9 +152,23 @@ for (const f of clientFiles)
 
 /* ── rule 3: a migrated validator must not re-declare rules ───────────────── */
 
-/** Validators allowed to keep a local `z.object`, each with the reason. */
+/**
+ * Validators allowed to keep a local `z.object`, each with the reason.
+ *
+ * Rule 3 decides "migrated" by the presence of an `@praxis/shared` import,
+ * which is the right proxy for a validator that was moved over wholesale and
+ * the wrong one for a file that is PARTLY migrated — it consumes one shared
+ * schema while the rest of its shape is still local. An entry here says which
+ * of the two a file is, and what would earn its removal.
+ */
 const ALLOW_LOCAL_SCHEMA = {
-  // (none yet — add `"src/modules/x/x.validator.js": "why"` when one earns it)
+  "src/modules/master/employees/employees.validator.js":
+    "Partly migrated (13775). `work_schedule` is `@praxis/shared`'s "
+    + "workSchedule.schema — the day vocabulary the form draws its checkboxes "
+    + "from is the same list the API accepts. The other ~55 employee columns "
+    + "have never been shared and are still declared here. Remove this entry "
+    + "when the employee shape itself moves into packages/shared; until then "
+    + "the file is a normal validator that happens to import one shared rule.",
 };
 
 const migratedValidators = apiFiles.filter(

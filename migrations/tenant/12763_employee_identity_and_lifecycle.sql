@@ -12,10 +12,10 @@
 -- A Cameroonian CDI opens by identifying the two parties, and the employee half
 -- of that paragraph reads, in full:
 --
---   « Mme FORMUM Epse FORGHAB Florence Ngwenjang, Née le 28 Février 1970 à
---     NTAMBU MUNDUM, Fille de FORMUM Isaac et de NJENG Onika, Titulaire de la
---     CNI N° 101510674 délivrée le 03 février 2021 à CE54. Demeurant à
---     Ndogbong Douala, et De nationalité Camerounaise »
+--   « Mme SPECIMEN Epse EXEMPLE Marie Claire, Née le 12 Mars 1985 à
+--     BAFIA, Fille de SPECIMEN Jean et de EXEMPLE Rose, Titulaire de la
+--     CNI N° 000000000 délivrée le 03 février 2021 à CE00. Demeurant à
+--     Bonapriso Douala, et De nationalité Camerounaise »
 --
 -- Every fact in it — civility, married name, birth date, birth PLACE, both
 -- parents' names, the ID document's number AND its issue date AND its issue
@@ -40,7 +40,7 @@
 --
 -- ── GENDER, AND WHY maiden_name IS NOT JUST ANOTHER NAME ──────────────────
 --
--- "Née FORMUM Epse FORGHAB" is a birth name and a married name in one breath,
+-- "Née SPECIMEN Epse EXEMPLE" is a birth name and a married name in one breath,
 -- and it appears in that form only for a married woman. `gender` is therefore
 -- recorded in its own right — the contract's own prose is gendered throughout
 -- ("L'Employée est recrutée", "Fille de") and cannot be generated without it —
@@ -221,7 +221,7 @@ COMMENT ON COLUMN employee.staff_no IS
 COMMENT ON COLUMN employee.status IS
   'Lifecycle: PENDING (record created, not yet in service) / ACTIVE / SUSPENDED / TERMINATED. is_active is derived from it by trg_employee_sync_active.';
 COMMENT ON COLUMN employee.maiden_name IS
-  'Birth name where it differs from the name in use ("Née FORMUM Epse FORGHAB"). Asked for when gender = FEMALE and the marital status implies a name change; not constrained here, because an imported record must still be storable.';
+  'Birth name where it differs from the name in use ("Née SPECIMEN Epse EXEMPLE"). Asked for when gender = FEMALE and the marital status implies a name change; not constrained here, because an imported record must still be storable.';
 COMMENT ON COLUMN employee.probation_months IS
   'Standing probation term, the value a NEW contract is drafted with. hr_contract.probation_months records what a SIGNED contract actually said.';
 

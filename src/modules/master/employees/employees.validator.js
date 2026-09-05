@@ -1,6 +1,7 @@
 /** Employee master (MOD-02) Zod validators — full column coverage. */
 "use strict";
 const { z } = require("zod");
+const { workSchedule } = require("@praxis/shared");
 const { AppError } = require("../../../utils/errors");
 
 // Cameroon/OHADA employment categories (soft enum: unknown strings still allowed
@@ -39,6 +40,11 @@ const base = {
   email: z.string().email().optional().or(z.literal("")),
   employment_type: z.union([z.enum(EMPLOYMENT_TYPES), z.string().max(40)]).optional(),
   cnps_number: z.string().max(40).optional(),
+  // Numéro d'Identifiant Unique (13775) — the DGI identifier the DIPE return,
+  // the payslip IRPP line and the annual certificate of earnings are filed
+  // against. Uppercased because the card prints it that way and a lowercase
+  // copy would not match a search for the one on the card.
+  niu: z.string().trim().toUpperCase().max(40).optional().nullable().or(z.literal("")),
   // Added in 12759. HR owns these; user_signature_profile overrides them on
   // signatures only. Nullable so HR can clear a number, not just replace it.
   phone_desk: z.string().trim().max(40).optional().nullable(),
@@ -92,6 +98,12 @@ const base = {
   probation_months: z.number().int().min(0).max(24).optional().nullable(),
   place_of_work: text(200),
   working_hours: text(200),
+  // The week per day (13775). The SHAPE comes from @praxis/shared, so the day
+  // vocabulary the form draws its checkboxes from and the one this accepts are
+  // the same list. `working_hours` is DERIVED from it on write
+  // (employees.rules.withDerivedWorkingHours), so a caller sending both does
+  // not get to have the printed sentence disagree with the grid.
+  work_schedule: workSchedule.schema,
   payment_method: z.enum(PAYMENT_METHODS).optional().nullable(),
   salary_currency: z.string().trim().toUpperCase().length(3).optional().nullable().or(z.literal("")),
 

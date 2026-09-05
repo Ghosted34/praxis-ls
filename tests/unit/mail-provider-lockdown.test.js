@@ -54,6 +54,11 @@ jest.mock("../../src/modules/mail/mail/mail.repo", () => ({
     email_connection_id: "new-1",
     ...d,
   })),
+  // `connect()` asks whether the address is already on a LIVE connection before
+  // it inserts, so that a second one is refused by name rather than by the
+  // 23505 from `ux_email_connection_address_live` (13776). Nothing here is
+  // about a duplicate address, so it is always free.
+  findByAddress: jest.fn(async () => null),
   getConnection: jest.fn(async () => ({
     email_connection_id: "new-1",
     provider: "imap_smtp",

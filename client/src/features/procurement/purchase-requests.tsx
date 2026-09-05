@@ -100,8 +100,9 @@ function PrForm({
         <Field
           label={tr("Department")}
           hint={tr("From your organigramme — Security › Scopes.")}
+          htmlFor="pr-department"
         >
-          <DepartmentSelect value={dept} onChange={setDept} />
+          <DepartmentSelect id="pr-department" value={dept} onChange={setDept} />
         </Field>
         <Field label="Justification">
           <Input

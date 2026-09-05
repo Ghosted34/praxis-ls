@@ -8,7 +8,7 @@
  *   - Only the name blocks. Every other field can be left, because a wizard that
  *     refuses to let you past step two gets an invented CNI number — and an
  *     invented one is worse than a blank, which is at least countable.
- *   - The maiden name appears only where one exists. « Née FORMUM Epse FORGHAB »
+ *   - The maiden name appears only where one exists. « Née SPECIMEN Epse EXEMPLE »
  *     is a married woman's two names; asking everybody gets the field filled
  *     with the surname they already typed.
  *   - The payload carries the whole contract: the civil identity, the terms, the
@@ -18,6 +18,9 @@
  *     saving. Article 3 of a contract is a table that has to add up.
  *   - "Provision" is handed to the caller, not navigated to from inside — it
  *     leaves the HR area, and the screen that owns the route decides that.
+ *   - The working week is a GRID, and the sentence the contract prints is
+ *     derived from it. A remote Friday was unrecordable while that was one free
+ *     text field, and a line typed separately from the days drifts from them.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { screen } from "@testing-library/react";
@@ -72,13 +75,18 @@ const render = () =>
       "/employees": [
         { employee_id: "m1", full_name: "Timothée MASSOMBA", job_title: "Directeur Général" },
       ],
+      "/currencies": [
+        { code: "XAF", name: "CFA franc BEAC", is_base: true },
+        { code: "EUR", name: "Euro" },
+      ],
+      "/scopes/options": [],
     },
   });
 
 beforeEach(() => {
   vi.clearAllMocks();
   employeeReadinessRequirements.mockResolvedValue(REQUIREMENTS);
-  createEmployee.mockResolvedValue({ employee_id: "emp-9", full_name: "FORMUM Florence" });
+  createEmployee.mockResolvedValue({ employee_id: "emp-9", full_name: "SPECIMEN Marie" });
 });
 
 const nameBox = () => screen.getByLabelText(/^Full name/i);
@@ -106,8 +114,8 @@ describe("the progress bar", () => {
     const u = setup();
     render();
     await screen.findByText(/0\/4 contract fields filled/i);
-    await u.type(nameBox(), "FORMUM Florence Ngwenjang");
-    await u.type(screen.getByLabelText(/Place of birth/i), "NTAMBU MUNDUM");
+    await u.type(nameBox(), "SPECIMEN Marie Claire");
+    await u.type(screen.getByLabelText(/Place of birth/i), "BAFIA");
     expect(await screen.findByText(/2\/4 contract fields filled/i)).toBeInTheDocument();
   });
 });
@@ -125,13 +133,13 @@ describe("what blocks and what does not", () => {
   it("a name alone is enough to reach a saved record", async () => {
     const u = setup();
     render();
-    await u.type(await nameBox(), "FORMUM Florence Ngwenjang");
+    await u.type(await nameBox(), "SPECIMEN Marie Claire");
     await u.click(screen.getByRole("button", { name: /Continue/i }));
     await u.click(screen.getByRole("button", { name: /Continue/i }));
     await u.click(screen.getByRole("button", { name: /Save/i }));
     expect(createEmployee).toHaveBeenCalledTimes(1);
     expect(createEmployee.mock.calls[0][0]).toMatchObject({
-      full_name: "FORMUM Florence Ngwenjang",
+      full_name: "SPECIMEN Marie Claire",
     });
   });
 
@@ -183,22 +191,22 @@ describe("the payload", () => {
   it("carries the civil identity the contract's clause names", async () => {
     const u = setup();
     render();
-    await u.type(await nameBox(), "FORMUM Florence Ngwenjang");
-    await u.type(screen.getByLabelText(/Place of birth/i), "NTAMBU MUNDUM");
-    await u.type(screen.getByLabelText(/Father's name/i), "FORMUM Isaac");
-    await u.type(screen.getByLabelText(/Mother's name/i), "NJENG Onika");
-    await u.type(screen.getByLabelText(/^Number/i), "101510674");
-    await u.type(screen.getByLabelText(/Issued at/i), "CE54");
+    await u.type(await nameBox(), "SPECIMEN Marie Claire");
+    await u.type(screen.getByLabelText(/Place of birth/i), "BAFIA");
+    await u.type(screen.getByLabelText(/Father's name/i), "SPECIMEN Jean");
+    await u.type(screen.getByLabelText(/Mother's name/i), "EXEMPLE Rose");
+    await u.type(screen.getByLabelText(/^Number/i), "000000000");
+    await u.type(screen.getByLabelText(/Issued at/i), "CE00");
     await u.click(screen.getByRole("button", { name: /Continue/i }));
     await u.click(screen.getByRole("button", { name: /Continue/i }));
     await u.click(screen.getByRole("button", { name: /Save/i }));
     expect(createEmployee.mock.calls[0][0]).toMatchObject({
-      full_name: "FORMUM Florence Ngwenjang",
-      place_of_birth: "NTAMBU MUNDUM",
-      father_name: "FORMUM Isaac",
-      mother_name: "NJENG Onika",
-      id_document_number: "101510674",
-      id_document_issued_at: "CE54",
+      full_name: "SPECIMEN Marie Claire",
+      place_of_birth: "BAFIA",
+      father_name: "SPECIMEN Jean",
+      mother_name: "EXEMPLE Rose",
+      id_document_number: "000000000",
+      id_document_issued_at: "CE00",
     });
   });
 
@@ -364,5 +372,65 @@ describe("when the save fails", () => {
     expect(
       screen.getByLabelText(/Provision a login for this person/i),
     ).toBeInTheDocument();
+  });
+});
+
+describe("the working week", () => {
+  /** Step 2 is where the grid lives. */
+  const toEmployment = async (u: ReturnType<typeof setup>) => {
+    await u.type(await nameBox(), "SPECIMEN Marie Claire");
+    await u.click(screen.getByRole("button", { name: /Continue/i }));
+  };
+
+  it("opens on a nine-to-five, Monday to Friday, and says what will be printed", async () => {
+    const u = setup();
+    render();
+    await toEmployment(u);
+    // The default is the answer for most hires; the ones it is wrong for are
+    // the ones somebody is paying attention to anyway.
+    expect(screen.getByText("Mon–Fri, 09:00–17:00")).toBeInTheDocument();
+    expect(screen.getByText(/40 hours a week/)).toBeInTheDocument();
+    for (const day of ["Mon", "Tue", "Wed", "Thu", "Fri"]) {
+      expect(screen.getByRole("button", { name: day })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+    }
+    expect(screen.getByRole("button", { name: "Sat" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+  });
+
+  it("records a day worked from home, and says so in the printed line", async () => {
+    const u = setup();
+    render();
+    await toEmployment(u);
+    await u.selectOptions(
+      screen.getByLabelText(/Friday — worked from/i),
+      "REMOTE",
+    );
+    expect(
+      screen.getByText("Mon–Thu 09:00–17:00; Fri 09:00–17:00 (remote)"),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/· Hybrid/)).toBeInTheDocument();
+  });
+
+  it("sends the grid, and the line derived from it, on the hire", async () => {
+    const u = setup();
+    render();
+    await toEmployment(u);
+    await u.click(screen.getByRole("button", { name: "Sat" }));
+    await u.click(screen.getByRole("button", { name: /Continue/i }));
+    await u.click(screen.getByRole("button", { name: /Save/i }));
+
+    const body = createEmployee.mock.calls[0][0];
+    expect(body.work_schedule.days).toHaveLength(7);
+    expect(
+      body.work_schedule.days.filter((d: { worked: boolean }) => d.worked),
+    ).toHaveLength(6);
+    // The API re-derives this from the grid on write; sending it keeps the
+    // readiness meter honest about a field that IS filled in.
+    expect(body.working_hours).toBe("Mon–Sat, 09:00–17:00");
   });
 });

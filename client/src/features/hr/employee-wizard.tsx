@@ -8,12 +8,15 @@
  * `employee` table has fifty-seven — and, more to the point, of which a work
  * contract needs none of the ones it did not ask for.
  *
- * A real Cameroonian CDI opens by identifying the employee as:
+ * A Cameroonian CDI opens by identifying the employee. The shape of that
+ * paragraph, with every name here INVENTED — the columns below exist because a
+ * real one needs each of these facts, not because anybody's identity document
+ * belongs in a source file:
  *
- *   « Mme FORMUM Epse FORGHAB Florence Ngwenjang, Née le 28 Février 1970 à
- *     NTAMBU MUNDUM, Fille de FORMUM Isaac et de NJENG Onika, Titulaire de la
- *     CNI N° 101510674 délivrée le 03 février 2021 à CE54. Demeurant à
- *     Ndogbong Douala, et De nationalité Camerounaise »
+ *   « Mme SPECIMEN Epse EXEMPLE Marie Claire, Née le 12 Mars 1985 à BAFIA,
+ *     Fille de SPECIMEN Jean et de EXEMPLE Rose, Titulaire de la CNI
+ *     N° 000000000 délivrée le 03 février 2021 à CE00. Demeurant à Bonapriso
+ *     Douala, et De nationalité Camerounaise »
  *
  * — and then assigns a matricule, states a probation term, a place of work, an
  * hours pattern, and a salary DECOMPOSED into base plus allowances. None of
@@ -58,6 +61,11 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { DateField } from "@/components/ui/date-field";
 import { FileDrop } from "@/components/ui/file-drop";
 import { CountrySelect } from "@/components/country-select";
+import { CurrencySelect } from "@/components/currency-select";
+import { tokenStore } from "@/lib/token-store";
+import { EmployeeSelect } from "@/components/employee-select";
+import { useEmployeeSearch } from "@/lib/employee-search";
+import { WorkScheduleField } from "@/components/work-schedule-field";
 import { Callout } from "@/components/ui/callout";
 import { ErrorState } from "@/components/ui/states";
 import { Pill } from "@/components/ui/pill";
@@ -177,7 +185,7 @@ function IdentityStep({
   f: EmployeeDraft;
   set: <K extends keyof EmployeeDraft>(k: K, v: EmployeeDraft[K]) => void;
 }) {
-  // "Née FORMUM Epse FORGHAB" is a birth name beside a married one, and it
+  // "Née SPECIMEN Epse EXEMPLE" is a birth name beside a married one, and it
   // exists only for a woman whose name changed. Asking everybody for a maiden
   // name gets it filled with the surname they already gave.
   const showsMaiden = api.employeeUsesMaidenName(f.gender, f.marital_status);
@@ -206,7 +214,7 @@ function IdentityStep({
           <Input
             value={f.full_name}
             onChange={(e) => set("full_name", e.target.value)}
-            placeholder="FORMUM Florence Ngwenjang"
+            placeholder="DOE John"
           />
         </Field>
       </div>
@@ -261,7 +269,7 @@ function IdentityStep({
           <Input
             value={f.maiden_name}
             onChange={(e) => set("maiden_name", e.target.value)}
-            placeholder="FORGHAB"
+            placeholder="DOE"
           />
         </Field>
       )}
@@ -277,7 +285,7 @@ function IdentityStep({
           <Input
             value={f.place_of_birth}
             onChange={(e) => set("place_of_birth", e.target.value)}
-            placeholder="NTAMBU MUNDUM"
+            placeholder="Bafia"
           />
         </Field>
         <Field
@@ -325,7 +333,7 @@ function IdentityStep({
             <Input
               value={f.id_document_number}
               onChange={(e) => set("id_document_number", e.target.value)}
-              placeholder="101510674"
+              placeholder="000000000"
             />
           </Field>
           <Field label={tr("Issued on")}>
@@ -338,7 +346,7 @@ function IdentityStep({
             <Input
               value={f.id_document_issued_at}
               onChange={(e) => set("id_document_issued_at", e.target.value)}
-              placeholder="CE54"
+              placeholder="CE00"
             />
           </Field>
           <Field
@@ -362,7 +370,7 @@ function IdentityStep({
             <Input
               value={f.residence_address}
               onChange={(e) => set("residence_address", e.target.value)}
-              placeholder="Ndogbong"
+              placeholder="Bonapriso"
             />
           </Field>
           <Field label={tr("City")}>
@@ -376,7 +384,7 @@ function IdentityStep({
             <Input
               value={f.phone_mobile}
               onChange={(e) => set("phone_mobile", e.target.value)}
-              placeholder="+237 6 96 12 25 11"
+              placeholder="+237 6 00 00 00 00"
             />
           </Field>
           <Field
@@ -460,7 +468,8 @@ function EmploymentStep({
   reportsTo: string;
   setReportsTo: (v: string) => void;
   entities: { entity_id: string; legal_name?: string; code?: string }[];
-  staff: api.Employee[];
+  /** The line-manager search (useEmployeeSearch), not a fixed page of staff. */
+  staff: ReturnType<typeof useEmployeeSearch>;
   allowances: DraftAllowance[];
   setAllowances: (rows: DraftAllowance[]) => void;
 }) {
@@ -497,8 +506,16 @@ function EmploymentStep({
             ))}
           </Select>
         </Field>
-        <Field label={tr("Department")} hint={tr("From your organigramme.")}>
-          <DepartmentSelect value={dept} onChange={setDept} />
+        <Field
+          label={tr("Department")}
+          hint={tr("From your organigramme.")}
+          htmlFor="wizard-department"
+        >
+          <DepartmentSelect
+            id="wizard-department"
+            value={dept}
+            onChange={setDept}
+          />
         </Field>
         <Field label={tr("Job title")}>
           <Input
@@ -522,19 +539,27 @@ function EmploymentStep({
         <Field
           label={tr("Reports to")}
           hint={tr("Their line manager — who approves their leave and appraisals.")}
+          htmlFor="wizard-reports-to"
         >
-          <Select
+          {/* Searched on the server, not a `<select>` over the first fifty
+              staff — which is what this was, and which meant that on any tenant
+              past fifty people most of the company could not be chosen as a
+              manager and nothing said why. */}
+          <EmployeeSelect
+            id="wizard-reports-to"
             value={reportsTo}
-            onChange={(e) => setReportsTo(e.target.value)}
-          >
-            <option value="">{tr("— nobody —")}</option>
-            {staff.map((p) => (
-              <option key={p.employee_id} value={p.employee_id}>
-                {p.full_name}
-                {p.job_title ? ` — ${p.job_title}` : ""}
-              </option>
-            ))}
-          </Select>
+            label={tr("Line manager")}
+            employees={staff.employees}
+            loading={staff.loading}
+            error={staff.error}
+            onSearch={staff.setTerm}
+            note={
+              staff.truncated
+                ? tr("Showing the first matches — type a name to narrow.")
+                : null
+            }
+            onChange={(emp) => setReportsTo(emp ? emp.employee_id : "")}
+          />
         </Field>
         <Field
           label={tr("Work email")}
@@ -572,17 +597,21 @@ function EmploymentStep({
             placeholder={tr("Head office, Douala")}
           />
         </Field>
-        <Field label={tr("Working hours")}>
-          <Input
-            value={f.working_hours}
-            onChange={(e) => set("working_hours", e.target.value)}
-            placeholder={tr("Mon–Fri, 08:00–17:00")}
-          />
-        </Field>
-        <Field label={tr("CNPS number")}>
+        <Field label={tr("CNPS number")} hint={tr("Social security.")}>
           <Input
             value={f.cnps_number}
             onChange={(e) => set("cnps_number", e.target.value)}
+            placeholder="CN-000000"
+          />
+        </Field>
+        <Field
+          label={tr("NIU")}
+          hint={tr("Tax number — the DIPE return and the payslip both quote it.")}
+        >
+          <Input
+            value={f.niu}
+            onChange={(e) => set("niu", e.target.value.toUpperCase())}
+            placeholder="P000000000000A"
           />
         </Field>
         <Field
@@ -603,6 +632,18 @@ function EmploymentStep({
           </Select>
         </Field>
       </div>
+
+      {/* Full width, outside the two-column grid: seven days of times do not
+          fit in half a modal, and the contract's line is worth reading. */}
+      <Field
+        label={tr("Working hours")}
+        hint={tr("Tick the days, set the hours, and say which are worked from home.")}
+      >
+        <WorkScheduleField
+          value={f.work_schedule}
+          onChange={(v) => set("work_schedule", v)}
+        />
+      </Field>
 
       <Checkbox
         checked={f.is_driver}
@@ -627,14 +668,17 @@ function EmploymentStep({
               placeholder="600000"
             />
           </Field>
-          <Field label={tr("Currency")}>
-            <Input
+          {/* The column is char(3) REFERENCES currency(code): a typed "FCFA" or
+              "CFA" is a foreign-key violation wearing a save failure's clothes.
+              The list is the tenant's own, base first. */}
+          <Field
+            label={tr("Currency")}
+            hint={tr("From Settings › Currencies.")}
+          >
+            <CurrencySelect
               value={f.salary_currency}
-              onChange={(e) =>
-                set("salary_currency", e.target.value.toUpperCase())
-              }
-              placeholder="XAF"
-              maxLength={3}
+              onChange={(v) => set("salary_currency", v)}
+              aria-label={tr("Salary currency")}
             />
           </Field>
           <Field label={tr("Paid by")}>
@@ -817,6 +861,7 @@ function DocumentsStep({
   docs,
   setDocs,
   provision,
+  inSandbox,
   setProvision,
   hasEmail,
   missing,
@@ -824,6 +869,8 @@ function DocumentsStep({
   docs: DraftDoc[];
   setDocs: (rows: DraftDoc[]) => void;
   provision: boolean;
+  /** Test mode: logins are live-only, so provisioning is not offered. */
+  inSandbox: boolean;
   setProvision: (v: boolean) => void;
   hasEmail: boolean;
   missing: { label: string; group: string }[];
@@ -899,19 +946,28 @@ function DocumentsStep({
         <legend className="px-1 text-sm font-medium text-foreground">
           {tr("System access")}
         </legend>
+        {/* Not offered in Test mode, and that is not this screen being cautious:
+            identity is pinned to the LIVE schema whatever the toggle says, so
+            the sandbox employee about to be created has no counterpart there to
+            attach a login to. The create used to get as far as a foreign-key
+            violation on a screen away from this one. */}
         <Checkbox
-          checked={provision && hasEmail}
+          checked={provision && hasEmail && !inSandbox}
           onCheckedChange={setProvision}
-          disabled={!hasEmail}
+          disabled={!hasEmail || inSandbox}
           label={tr("Provision a login for this person after saving")}
           hint={
-            hasEmail
+            inSandbox
               ? tr(
-                  "Takes you straight to Users with their details filled in. They choose their own password from an emailed invitation — you never handle it.",
+                  "Logins are always live — this is a Test-mode record, so there is nothing to attach one to. Switch to Live to provision.",
                 )
-              : tr(
-                  "Add a work email on the previous step to invite them. You can also provision from their record at any time.",
-                )
+              : hasEmail
+                ? tr(
+                    "Takes you straight to Users with their details filled in. They choose their own password from an emailed invitation — you never handle it.",
+                  )
+                : tr(
+                    "Add a work email on the previous step to invite them. You can also provision from their record at any time.",
+                  )
           }
         />
       </fieldset>
@@ -970,6 +1026,9 @@ export function EmployeeWizard({
     })),
   );
   const [provision, setProvision] = React.useState(true);
+  // Identity is pinned to LIVE whatever the LIVE/TEST toggle says, so a sandbox
+  // employee has nothing in the live schema to hang a login on.
+  const inSandbox = tokenStore.getEnv() !== "live";
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -977,7 +1036,9 @@ export function EmployeeWizard({
     entity_id: string;
     legal_name?: string;
   }>("/entities");
-  const { rows: staff } = useList<api.Employee>("/employees");
+  // Server-side search, not `useList("/employees")` — that clamps to 50 rows,
+  // so the line-manager list used to end at the fiftieth name in the company.
+  const staff = useEmployeeSearch();
   // The server's definition of contract-ready, fetched once. See the header.
   const reqs = useResource(() => api.employeeReadinessRequirements(), []);
 
@@ -1014,7 +1075,7 @@ export function EmployeeWizard({
         documents: await draftDocsToPayload(docs),
         allowances: draftAllowancesToPayload(allowances),
       });
-      onSaved(created, provision && Boolean(payload.email));
+      onSaved(created, provision && Boolean(payload.email) && !inSandbox);
       onClose();
     } catch (err) {
       setError(errMsg(err));
@@ -1060,7 +1121,7 @@ export function EmployeeWizard({
                 loading={busy}
                 disabled={!canSave || busy}
               >
-                {provision && payload.email
+                {provision && payload.email && !inSandbox
                   ? tr("Save and provision")
                   : tr("Save employee")}
               </Button>
@@ -1089,7 +1150,7 @@ export function EmployeeWizard({
             reportsTo={reportsTo}
             setReportsTo={setReportsTo}
             entities={entities || []}
-            staff={staff || []}
+            staff={staff}
             allowances={allowances}
             setAllowances={setAllowances}
           />
@@ -1100,6 +1161,7 @@ export function EmployeeWizard({
             setDocs={setDocs}
             provision={provision}
             setProvision={setProvision}
+            inSandbox={inSandbox}
             hasEmail={Boolean(payload.email)}
             missing={ready.missing}
           />

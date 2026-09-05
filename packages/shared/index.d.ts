@@ -709,3 +709,50 @@ export declare namespace marks {
       Map<string, MarksContainerType> | Record<string, MarksContainerType>,
   ): string;
 }
+
+/**
+ * The working week, per day: worked or not, from when to when, on site or
+ * remote. `employee.work_schedule` stores it and `employee.working_hours` — the
+ * line a contract prints — is DERIVED from it by `summarise()` on every write,
+ * so the sentence and the grid cannot disagree. See rules/work-schedule.js.
+ */
+export type WorkDayCode = "MON" | "TUE" | "WED" | "THU" | "FRI" | "SAT" | "SUN";
+export type WorkDayMode = "ON_SITE" | "REMOTE";
+export type WorkDay = {
+  day: WorkDayCode;
+  worked: boolean;
+  /** `HH:MM`, 24-hour. */
+  start: string;
+  end: string;
+  mode: WorkDayMode;
+};
+export type WorkSchedule = { days: WorkDay[] };
+
+export declare namespace workSchedule {
+  /** One day, as the API accepts it. */
+  const daySchema: z.ZodType<WorkDay, z.ZodTypeDef, unknown>;
+  /** The week — `employee.work_schedule`'s wire shape. Nullable: clearing the
+   *  grid is a real edit, and it takes the derived line with it. */
+  const schema: z.ZodType<WorkSchedule | null | undefined, z.ZodTypeDef, unknown>;
+  const DAYS: ReadonlyArray<{
+    code: WorkDayCode;
+    label: string;
+    short: string;
+  }>;
+  const DAY_CODES: ReadonlyArray<WorkDayCode>;
+  const MODES: ReadonlyArray<WorkDayMode>;
+  const DEFAULT_START: string;
+  const DEFAULT_END: string;
+  /** Mon–Fri, 09:00–17:00, on site — what the new-employee form opens with. */
+  function defaultSchedule(): WorkSchedule;
+  /** Canonical shape, or null when nothing schedule-shaped arrived. */
+  function normalise(input: unknown): WorkSchedule | null;
+  /** `"9:5"` → `"09:05"`; not a time of day → null. */
+  function normaliseTime(value: unknown): string | null;
+  /** The line a contract prints ("Mon–Fri, 09:00–17:00"). */
+  function summarise(schedule: unknown): string;
+  function weeklyHours(schedule: unknown): number;
+  /** "On-site" | "Remote" | "Hybrid" — vacancy.work_mode's three words. */
+  function workMode(schedule: unknown): string | null;
+  function workedDays(schedule: WorkSchedule | null): WorkDay[];
+}

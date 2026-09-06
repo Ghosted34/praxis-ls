@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (525)
+## All codes (526)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -375,6 +375,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NO_WORKING_DAYS` | 422 | 1× | — |
 | `NUDGE_QUOTA_EXHAUSTED` | 429 | 1× | — |
 | `OAUTH_PROBE_FAILED` | 502 | 1× | — |
+| `OAUTH_REDIRECT_MISCONFIGURED` | — | 1× | — |
 | `ODOMETER_BACKWARDS` | 422 | 1× | — |
 | `OPS_CODE_TAKEN` | 422 | 1× | — |
 | `OPS_CONTEXT_REQUIRED` | 422 | 1× | — |

@@ -52,6 +52,8 @@ import {
   EMPLOYMENT_TYPES,
   ALLOWANCE_KINDS,
   WIZARD_DOC_SLOTS,
+  DRIVER_LICENCE_CODE,
+  driverLicenceGap,
   draftFrom,
   draftToPayload,
   fileToDataUrl,
@@ -763,7 +765,147 @@ function PayPanel({
   );
 }
 
-function EditEmployeeForm({
+/**
+ * The driving licence, as the edit form collects it.
+ *
+ * ── WHY IT IS HERE AND NOT ONLY IN THE DOCUMENTS TAB ───────────────────────
+ *
+ * The licence is an `employee_document` like any other, and the Documents tab
+ * can already add one. But "This person drives" is ticked HERE, and the API now
+ * refuses that tick without a licence on file (DRIVER_LICENCE_REQUIRED). A form
+ * whose save is refused because of a record on a different tab is a form nobody
+ * can finish — so the fields come to the checkbox rather than sending the
+ * operator away to find them.
+ *
+ * `documents` is the state the same block would write from the wizard, kept in
+ * the shape `readinessOf` and `driverLicenceGap` already score.
+ */
+function DriverLicenceFields({
+  value,
+  onChange,
+  existing,
+}: {
+  value: LicenceDraft;
+  onChange: (patch: Partial<LicenceDraft>) => void;
+  /** The row already on file, when there is one — so the block can say it is
+   *  amending a record rather than silently creating a second one. */
+  existing: api.EmployeeDocument | null;
+}) {
+  return (
+    <fieldset className="space-y-4 rounded-lg border border-warn/40 p-4">
+      <legend className="flex items-center gap-2 px-1 text-sm font-medium text-foreground">
+        {tr("Driving licence")}
+        {existing?.has_file ? (
+          <Pill tone="ok">{tr("Scan on file")}</Pill>
+        ) : (
+          <Pill tone="warn">{tr("Required")}</Pill>
+        )}
+      </legend>
+      <div className="grid gap-4 sm:grid-cols-3">
+        <Field label={tr("Licence number")} required data-field="licence_number">
+          <Input
+            value={value.document_number}
+            onChange={(e) => onChange({ document_number: e.target.value })}
+          />
+        </Field>
+        <Field label={tr("Valid from")} required>
+          <DateField
+            value={value.issued_on}
+            onChange={(v) => onChange({ issued_on: v })}
+          />
+        </Field>
+        <Field label={tr("Valid until")} required>
+          <DateField
+            value={value.expires_on}
+            onChange={(v) => onChange({ expires_on: v })}
+          />
+        </Field>
+      </div>
+      {/* Never blocking. 12764's rule is that a scan is a verification gate and
+          not a creation gate; what this form refuses to save without is the
+          number and the dates, which the operator is reading off the card in
+          their hand. */}
+      <Field
+        label={tr("Scan of the licence")}
+        hint={tr("Optional here — it can be attached later from Documents.")}
+      >
+        <FileDrop
+          file={value.file}
+          onPick={(file) => onChange({ file })}
+          accept="image/png,image/jpeg,image/webp,application/pdf"
+          hint={tr("PNG, JPG, WebP or PDF — up to 6 MB.")}
+          error={fileTooLarge(value.file)}
+        />
+      </Field>
+    </fieldset>
+  );
+}
+
+/** Column name → what the operator sees it called. The API answers in column
+ *  names; a person reading "issued_on" has to work out which box that is. */
+const LICENCE_FIELD_LABEL: Record<string, string> = {
+  document_number: "licence number",
+  issued_on: "valid from",
+  expires_on: "valid until",
+};
+
+/** The licence as this form holds it — all strings, like `EmployeeDraft`. */
+type LicenceDraft = {
+  document_number: string;
+  issued_on: string;
+  expires_on: string;
+  file: File | null;
+};
+
+const emptyLicence = (): LicenceDraft => ({
+  document_number: "",
+  issued_on: "",
+  expires_on: "",
+  file: null,
+});
+
+/* ── The form's section wrapper ─────────────────────────────────────────────
+ * MODULE SCOPE, AND IT HAS TO STAY THERE.
+ *
+ * This used to be a `const Section = …` inside EditEmployeeForm, and that one
+ * line of nesting made every field in the form unusable: you typed a single
+ * character and the caret left the input.
+ *
+ * A component declared in a render body is a NEW FUNCTION on every render.
+ * React reconciles by element TYPE, so when a keystroke calls `set(...)` and
+ * re-renders the form, the `<Section>` it finds in the new tree has a
+ * different type from the one in the old tree. That is not an update — it is
+ * an unmount and a remount. The whole fieldset, the real <input> DOM node the
+ * caret was in included, is destroyed and rebuilt from scratch, and focus
+ * falls back to <body>. Five <Section>s wrap the entire form, so "every field"
+ * was exactly right: there was no field this did not affect.
+ *
+ * It is not only focus. The remount discards everything the browser keeps on
+ * the live node rather than in React state — selection range, IME composition
+ * (so an accented character typed dead-key-first was being dropped), and the
+ * native scroll position of the modal body.
+ *
+ * Nothing here closes over the form, so module scope costs nothing: `title`
+ * and `children` are props, and `tr` is a module import.
+ */
+function Section({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <fieldset className="space-y-4 rounded-lg border p-4">
+      <legend className="px-1 text-sm font-medium text-foreground">
+        {tr(title)}
+      </legend>
+      {children}
+    </fieldset>
+  );
+}
+
+export function EditEmployeeForm({
   employee,
   onClose,
   onSaved,
@@ -799,11 +941,78 @@ function EditEmployeeForm({
   const [error, setError] = React.useState<string | null>(null);
   const showsMaiden = api.employeeUsesMaidenName(f.gender, f.marital_status);
 
+  /*
+   * ── THE DRIVING LICENCE ────────────────────────────────────────────────
+   *
+   * The staff file is fetched here rather than handed down, because the 360
+   * loads Documents lazily — it waits for its tab, and most visits never open
+   * it. This form cannot wait: it owns the "This person drives" checkbox, and
+   * the API refuses that tick without a licence, so it has to know whether one
+   * is already on file before it can say anything true about the save.
+   *
+   * `reqs` is the server's definition of what a licence has to carry, the same
+   * list the wizard's meter scores against.
+   */
+  const docs = useResource(
+    () => api.employeeDocuments(employee.employee_id),
+    [employee.employee_id],
+  );
+  const reqs = useResource(() => api.employeeReadinessRequirements(), []);
+  const existingLicence = React.useMemo(
+    () =>
+      (docs.data || []).find(
+        (d) => d.document_type_code === DRIVER_LICENCE_CODE,
+      ) || null,
+    [docs.data],
+  );
+  const [licence, setLicence] = React.useState<LicenceDraft>(emptyLicence);
+  /*
+   * Seeded ONCE, when the staff file arrives — `useState` cannot, because the
+   * fetch settles after the first render. Guarded on the row's id so a reload
+   * of the list does not overwrite what the operator has since typed; without
+   * the guard the first keystroke after a refetch is thrown away, which is a
+   * quieter version of the focus bug this component already had.
+   */
+  const seeded = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    if (!existingLicence || seeded.current === existingLicence.document_id) return;
+    seeded.current = existingLicence.document_id;
+    setLicence({
+      document_number: existingLicence.document_number || "",
+      issued_on: (existingLicence.issued_on || "").slice(0, 10),
+      expires_on: (existingLicence.expires_on || "").slice(0, 10),
+      file: null,
+    });
+  }, [existingLicence]);
+
+  const licenceGap = driverLicenceGap(
+    { is_driver: f.is_driver },
+    [{ code: DRIVER_LICENCE_CODE, ...licence }],
+    reqs.data,
+  );
+  const licenceTooLarge = fileTooLarge(licence.file);
+  const canSave =
+    Boolean(f.full_name) && !busy && !licenceGap && !licenceTooLarge;
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
     try {
+      /*
+       * THE LICENCE FIRST, THEN THE FLAG — and that order is the whole point.
+       *
+       * These are two calls because `PATCH /employees/:id` deliberately does not
+       * write documents (one row at a time is what the documents endpoints are
+       * for). Two calls means one can fail, so the order decides which
+       * half-state a failure leaves behind. Licence-then-flag leaves a licence
+       * recorded against somebody not yet marked as a driver: true, harmless,
+       * and re-saving finishes the job. The other order leaves a driver in the
+       * dispatch pool with no licence — the exact state this feature exists to
+       * prevent — so it is not an order, it is a defect waiting for a dropped
+       * connection.
+       */
+      if (f.is_driver) await saveLicence();
       onSaved(
         await api.updateEmployee(
           employee.employee_id,
@@ -818,20 +1027,28 @@ function EditEmployeeForm({
     }
   }
 
-  const Section = ({
-    title,
-    children,
-  }: {
-    title: string;
-    children: React.ReactNode;
-  }) => (
-    <fieldset className="space-y-4 rounded-lg border p-4">
-      <legend className="px-1 text-sm font-medium text-foreground">
-        {tr(title)}
-      </legend>
-      {children}
-    </fieldset>
-  );
+  /** Amend the licence on file, or open one. Amend, so ticking the box on
+   *  somebody who already has a licence does not leave two rows for one card. */
+  async function saveLicence() {
+    const body: api.EmployeeDocumentInput = {
+      document_type_code: DRIVER_LICENCE_CODE,
+      document_number: licence.document_number.trim() || null,
+      issued_on: licence.issued_on || null,
+      expires_on: licence.expires_on || null,
+      file_data_url: licence.file ? await fileToDataUrl(licence.file) : null,
+      file_name: licence.file ? licence.file.name : null,
+    };
+    if (existingLicence) {
+      await api.updateEmployeeDocument(
+        employee.employee_id,
+        existingLicence.document_id,
+        body,
+      );
+    } else {
+      await api.addEmployeeDocument(employee.employee_id, body);
+    }
+    docs.reload();
+  }
 
   return (
     <Modal
@@ -1181,8 +1398,20 @@ function EditEmployeeForm({
             checked={f.is_driver}
             onCheckedChange={(v) => set("is_driver", v)}
             label={tr("This person drives")}
-            hint={tr("Puts them in the fleet dispatch pool.")}
+            hint={tr(
+              "Puts them in the fleet dispatch pool. Their driving licence is required once this is ticked.",
+            )}
           />
+          {/* Revealed by the box, not sitting there greyed out: for everyone who
+              does not drive these are three permanently empty fields in the
+              middle of the engagement. */}
+          {f.is_driver && (
+            <DriverLicenceFields
+              value={licence}
+              onChange={(patch) => setLicence((l) => ({ ...l, ...patch }))}
+              existing={existingLicence}
+            />
+          )}
         </Section>
 
         <Section title="Remuneration">
@@ -1254,6 +1483,18 @@ function EditEmployeeForm({
         </Section>
 
         {error && <ErrorState message={error} />}
+        {/* Why Save is refusing, next to Save. The API answers the same refusal
+            with DRIVER_LICENCE_REQUIRED; saying it here means the operator sees
+            it with the fields on screen instead of after a round trip. */}
+        {licenceGap && (
+          <Callout
+            tone="bad"
+            title={tr("This person drives — their licence is required.")}
+          >
+            {tr("Still needed:")}{" "}
+            {licenceGap.map((k) => tr(LICENCE_FIELD_LABEL[k] ?? k)).join(", ")}.
+          </Callout>
+        )}
         <div className="flex justify-end gap-2 pt-2">
           <Button
             type="button"
@@ -1263,7 +1504,7 @@ function EditEmployeeForm({
           >
             Cancel
           </Button>
-          <Button type="submit" loading={busy} disabled={!f.full_name || busy}>
+          <Button type="submit" loading={busy} disabled={!canSave}>
             Save changes
           </Button>
         </div>

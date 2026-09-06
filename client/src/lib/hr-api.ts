@@ -1200,6 +1200,18 @@ export const addEmployeeDocument = (id: string, body: EmployeeDocumentInput) =>
     method: "POST",
     body,
   });
+/** Amend a row already in the staff file — used when a document the record
+ *  already holds is re-stated (a renewed driving licence, a corrected number)
+ *  rather than a second row being opened for the same card. */
+export const updateEmployeeDocument = (
+  id: string,
+  documentId: string,
+  body: EmployeeDocumentInput,
+) =>
+  tenant<EmployeeDocument>(`/employees/${id}/documents/${documentId}`, {
+    method: "PATCH",
+    body,
+  });
 export const removeEmployeeDocument = (id: string, documentId: string) =>
   tenant<EmployeeDocument>(`/employees/${id}/documents/${documentId}`, {
     method: "DELETE",

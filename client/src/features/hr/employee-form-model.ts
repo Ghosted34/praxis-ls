@@ -86,11 +86,37 @@ export const EMPLOYEE_STATUSES = [
   { value: "TERMINATED", label: "Terminated" },
 ];
 
+/** The staff document a driver must hold — `employees.rules.DRIVER_LICENCE_CODE`
+ *  on the server, and 12764's registry seed before that. */
+export const DRIVER_LICENCE_CODE = "EMP_DRIVING_LICENCE";
+
+/** The columns that make a licence row a licence: the number, and the window it
+ *  is valid for. Mirrors `DRIVER_LICENCE_FIELDS`; the SERVED requirement list
+ *  carries the authoritative copy in `needs`, which is what `readinessOf` and
+ *  `driverLicenceGap` actually score against — this is the fallback for the
+ *  moment before that list has arrived. */
+export const DRIVER_LICENCE_FIELDS = [
+  "document_number",
+  "issued_on",
+  "expires_on",
+] as const;
+
 /** The document slots step 3 lays out by default. Everything else is added by
- *  hand; these are the four a staff file is expected to open with. Codes are
- *  from 12764's registry seed. */
+ *  hand; these are the ones a staff file is expected to open with. Codes are
+ *  from 12764's registry seed.
+ *
+ *  `requiredWhen` names a draft field that turns the slot on: the driving
+ *  licence is neither optional nor universal, it is required OF DRIVERS, and a
+ *  slot that sat there greyed out for the whole payroll would be four more
+ *  empty boxes on a form people already scroll past. */
 export const WIZARD_DOC_SLOTS = [
   { code: "EMP_ID_CARD", label: "ID card / passport", required: true },
+  {
+    code: DRIVER_LICENCE_CODE,
+    label: "Driving licence",
+    required: true,
+    requiredWhen: "is_driver" as const,
+  },
   { code: "EMP_CV", label: "Curriculum vitae", required: false },
   { code: "EMP_PHOTO", label: "Passport photograph", required: false },
   { code: "EMP_BANK_RIB", label: "Bank RIB", required: false },
@@ -102,6 +128,8 @@ export type DraftDoc = {
   code: string;
   label: string;
   required: boolean;
+  /** Set on a slot that only applies to some people — see WIZARD_DOC_SLOTS. */
+  requiredWhen?: "is_driver";
   file: File | null;
   document_number: string;
   issued_on: string;
@@ -493,11 +521,96 @@ export function stepForRejection(err: unknown): number | null {
 /** Fields the API fills in itself — not gaps a person can close in a form. */
 const SERVER_ALLOCATED = new Set(["staff_no"]);
 
-/** The shape `GET /employees/readiness-requirements` returns. */
+/** The shape `GET /employees/readiness-requirements` returns.
+ *
+ *  `when` and `needs` come from `employees.rules.REQUIRED_DOCUMENT_CODES` and
+ *  are the reason the list is SERVED rather than copied into this bundle: the
+ *  driving licence is required only of drivers and only once it carries its
+ *  number and dates, and a second copy of that rule here would disagree with
+ *  the generator's the first time either was edited. */
 export type ReadinessRequirements = {
   fields: { key: string; label: string; group: string; severity: string }[];
-  documents: { code: string; label: string; severity: string }[];
+  documents: {
+    code: string;
+    label: string;
+    severity: string;
+    /** A payload field that must be truthy for this document to apply at all. */
+    when?: string;
+    /** Columns the document row itself has to carry to count. */
+    needs?: string[];
+  }[];
 };
+
+/** A document as the draft holds it, reduced to what scoring needs. Both the
+ *  wizard's slots and a saved `EmployeeDocument` fit this. */
+export type ScorableDoc = {
+  code: string;
+  document_number?: string | null;
+  issued_on?: string | null;
+  expires_on?: string | null;
+  physical_ref?: string | null;
+  file?: File | null;
+  has_file?: boolean | null;
+};
+
+const filled = (v: unknown) =>
+  v !== null && v !== undefined && !(typeof v === "string" && v.trim() === "");
+
+/** A slot the operator has actually put something in. An untouched one is not
+ *  a document — the same test `draftDocsToPayload` uses to decide what to send. */
+const touched = (d: ScorableDoc) =>
+  Boolean(d.file) ||
+  d.has_file === true ||
+  filled(d.document_number) ||
+  filled(d.physical_ref) ||
+  filled(d.issued_on);
+
+/** Does this document carry everything the requirement asked for? Mirrors
+ *  `employees.rules.documentSatisfies`; with no `needs` it reduces to "there is
+ *  one", which is what every entry but the licence means. */
+function docSatisfies(
+  doc: ScorableDoc | undefined,
+  req: { needs?: string[] },
+): boolean {
+  if (!doc || !touched(doc)) return false;
+  return (req.needs ?? []).every((f) =>
+    filled((doc as Record<string, unknown>)[f]),
+  );
+}
+
+/** The document requirements that apply to THIS draft — the licence drops out
+ *  for everyone who does not drive. */
+function applicableDocs(
+  payload: Record<string, unknown>,
+  reqs: ReadinessRequirements | null,
+) {
+  return (reqs?.documents ?? []).filter((d) => !d.when || !!payload[d.when]);
+}
+
+/**
+ * Why this draft cannot be saved as a driver yet, or null.
+ *
+ * The server refuses the same thing with a 422 (`DRIVER_LICENCE_REQUIRED`); this
+ * is here so the form can say so BEFORE the round trip, with the fields in front
+ * of the operator rather than in a red banner after a failed save. It scores
+ * against the SERVED `needs`, so it cannot drift from what the API will accept —
+ * and falls back to the local copy only while the list is still in flight.
+ */
+export function driverLicenceGap(
+  payload: Record<string, unknown>,
+  docs: ScorableDoc[],
+  reqs: ReadinessRequirements | null,
+): string[] | null {
+  if (!payload.is_driver) return null;
+  const req = reqs?.documents.find((d) => d.code === DRIVER_LICENCE_CODE) ?? {
+    needs: [...DRIVER_LICENCE_FIELDS],
+  };
+  const doc = docs.find((d) => d.code === DRIVER_LICENCE_CODE);
+  if (docSatisfies(doc, req)) return null;
+  return (req.needs ?? [...DRIVER_LICENCE_FIELDS]).filter(
+    (f) => !filled((doc as Record<string, unknown> | undefined)?.[f]),
+  );
+}
 
 /**
  * Score an UNSAVED draft against the server's requirement list.
@@ -508,7 +621,7 @@ export type ReadinessRequirements = {
  */
 export function readinessOf(
   payload: Record<string, unknown>,
-  docCodes: string[],
+  docs: ScorableDoc[],
   reqs: ReadinessRequirements | null,
 ): { filled: number; total: number; missing: ReadinessGap[] } {
   if (!reqs) return { filled: 0, total: 0, missing: [] };
@@ -518,8 +631,10 @@ export function readinessOf(
     // whole wizard and teach people the number never reaches the end.
     (r) => r.severity === "required" && !SERVER_ALLOCATED.has(r.key),
   );
-  const requiredDocs = reqs.documents.filter((d) => d.severity === "required");
-  const have = new Set(docCodes);
+  const requiredDocs = applicableDocs(payload, reqs).filter(
+    (d) => d.severity === "required",
+  );
+  const byCode = new Map(docs.map((d) => [d.code, d]));
   const missing: ReadinessGap[] = [];
   for (const r of required) {
     const v = payload[r.key];
@@ -535,7 +650,7 @@ export function readinessOf(
       });
   }
   for (const d of requiredDocs) {
-    if (!have.has(d.code))
+    if (!docSatisfies(byCode.get(d.code), d))
       missing.push({
         key: d.code,
         label: d.label,

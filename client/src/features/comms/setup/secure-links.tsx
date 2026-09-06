@@ -32,6 +32,7 @@ import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field, Modal, Select } from "@/components/ui/modal";
+import { SearchSelect, type Row as PickerRow } from "@/components/ui/search-select";
 import { Callout } from "@/components/ui/callout";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
@@ -52,8 +53,31 @@ function state(l: Row): { label: string; tone: Tone } {
 
 /* ── Minting ──────────────────────────────────────────────────────────────── */
 
+/**
+ * What one vault document is called, for somebody choosing between them.
+ *
+ * The vault stores an uploaded file's own name in `original_name` and a
+ * classification in `doc_type`; neither is guaranteed. A row that has lost both
+ * still has to be distinguishable from the next one, so it falls back to the
+ * first segment of its id — ugly, and better than eight identical rows reading
+ * "Document".
+ */
+function docLabel(r: PickerRow): string {
+  const name = typeof r.original_name === "string" ? r.original_name.trim() : "";
+  if (name) return name;
+  const type = typeof r.doc_type === "string" ? r.doc_type.replace(/_/g, " ").trim() : "";
+  const id = String(r.doc_id || "");
+  if (type) return `${type}${id ? ` · ${id.slice(0, 8)}` : ""}`;
+  return id ? `${tr("Document")} ${id.slice(0, 8)}` : tr("Document");
+}
+
+
 function MintDialog({ onClose, onMinted }: { onClose: () => void; onMinted: () => void }) {
   const [targetRef, setTargetRef] = React.useState("");
+  // What the chosen document is CALLED. The control shows a name; the request
+  // carries the id. Keeping both means the closed picker can say "Proposal
+  // 235.pdf" while `target_ref` stays the uuid the API requires.
+  const [targetName, setTargetName] = React.useState("");
   const [label, setLabel] = React.useState("");
   const [days, setDays] = React.useState(7);
   const [busy, setBusy] = React.useState(false);
@@ -121,8 +145,29 @@ function MintDialog({ onClose, onMinted }: { onClose: () => void; onMinted: () =
         </div>
       ) : (
         <div className="space-y-3">
-          <Field label={tr("Document")} hint={tr("The vault document id this link should serve.")}>
-            <Input value={targetRef} onChange={(e) => setTargetRef(e.target.value)} placeholder={tr("doc id")} />
+          {/* Was a text box captioned "The vault document id this link should
+              serve". Nobody knows a document's uuid, so the field was filled in
+              with the document's NAME and the request died in Postgres as
+              22P02 — "One of the values is in the wrong format" — which named
+              neither the field nor the format. A link points at a document, so
+              the control picks a document. */}
+          <Field label={tr("Document")} hint={tr("The document this link serves. Search by name.")}>
+            <SearchSelect
+              path="/documents"
+              label={tr("Document")}
+              value={targetName}
+              placeholder={tr("Search documents…")}
+              getKey={(r) => String(r.doc_id)}
+              getLabel={docLabel}
+              // An archived document is evidence, not something to hand to an
+              // outsider — and the link would serve bytes the vault considers
+              // withdrawn.
+              filter={(r) => r.status !== "ARCHIVED"}
+              onSelect={(r) => {
+                setTargetRef(String(r.doc_id));
+                setTargetName(docLabel(r));
+              }}
+            />
           </Field>
           <Field label={tr("Label")} hint={tr("What this is, for the list. The recipient never sees it.")}>
             <Input value={label} onChange={(e) => setLabel(e.target.value)} placeholder={tr("Invoice INV-2026-0311")} />

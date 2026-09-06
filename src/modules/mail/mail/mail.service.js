@@ -1338,11 +1338,79 @@ async function recordOutbound(client, conn, m) {
 
 // ── OAuth providers (Microsoft 365 + Google Gmail) ──
 // One flow, parameterised by provider. Each entry supplies its IdP helper, a
-// state `purpose` tag, and a probe adapter to resolve the mailbox address.
+// state `purpose` tag, the path its consent redirect MUST come back to, and a
+// probe adapter to resolve the mailbox address.
 const OAUTH = {
-  microsoft_graph: { idp: msOAuth, purpose: "ms_oauth", probe: (tok) => new MicrosoftGraphProvider({ getAccessToken: async () => tok }) },
-  google_gmail: { idp: googleOAuth, purpose: "gg_oauth", probe: (tok) => new GmailProvider({ getAccessToken: async () => tok }) },
+  microsoft_graph: {
+    idp: msOAuth, purpose: "ms_oauth", callbackPath: "/oauth/microsoft/callback",
+    probe: (tok) => new MicrosoftGraphProvider({ getAccessToken: async () => tok }),
+  },
+  google_gmail: {
+    idp: googleOAuth, purpose: "gg_oauth", callbackPath: "/oauth/google/callback",
+    probe: (tok) => new GmailProvider({ getAccessToken: async () => tok }),
+  },
 };
+
+/**
+ * Refuse a redirect URI that does not point at the callback — BEFORE anybody is
+ * sent to the provider.
+ *
+ * ── THE FAILURE THIS REPLACES ───────────────────────────────────────────────
+ *
+ * A deployment had its Microsoft redirect URI configured as the `/start`
+ * endpoint rather than `/callback`. Everything about that looks fine right up
+ * until it is far too late: consent is requested normally, the provider's
+ * sign-in page renders, the operator types their password and approves — and
+ * only THEN does the provider redirect the browser to the address it was
+ * given. `/start` sits behind `authMiddleware` (a consent flow is a write, so
+ * it must), and a provider redirect is a bare browser GET carrying no session,
+ * so what the operator got for their password was a raw JSON body:
+ *
+ *   {"error":{"code":"AUTH_REQUIRED","message":"Authorization header missing"}}
+ *
+ * That names nothing they can act on. It does not say which URL was wrong, or
+ * that a URL was wrong at all, and it arrives on a screen belonging to neither
+ * this product nor Microsoft. `/callback` is mounted ABOVE `authMiddleware`
+ * precisely so it can receive that redirect — the misconfiguration was simply
+ * pointing at the one endpoint that structurally cannot serve it.
+ *
+ * ── WHY IT IS CHECKED HERE ──────────────────────────────────────────────────
+ *
+ * This is the last moment we hold the value and the first moment we know which
+ * provider it is for, and it is before the redirect — so the operator is told
+ * in the connect dialog, having typed nothing and consented to nothing, rather
+ * than after handing their credentials to a flow that could never complete.
+ * The check cannot fix the OTHER half (the provider's own app registration has
+ * to carry the same URI), but a deployment whose stored value is right and
+ * whose registration is wrong fails at the provider with its own named error
+ * — AADSTS50011 — which at least says what it is.
+ *
+ * A DERIVED redirect URI always ends in the callback path, so this only ever
+ * fires on a value somebody configured by hand.
+ */
+function assertRedirectUriIsCallback(provider, redirectUri, callbackPath) {
+  let pathname;
+  try {
+    ({ pathname } = new URL(String(redirectUri)));
+  } catch {
+    /* @silent:parse an unparseable URI is reported below as the
+       misconfiguration it is, with the offending value named */
+    pathname = null;
+  }
+  if (pathname && pathname.replace(/\/+$/, "").endsWith(callbackPath)) return;
+  throw new AppError(
+    "OAUTH_REDIRECT_MISCONFIGURED",
+    `The sign-in return address configured for ${provider} is "${redirectUri}", which does not end in `
+      + `"${callbackPath}". A provider sends people back to that address AFTER they have signed in, and `
+      + "only the callback endpoint can receive them — every other route requires a session the return "
+      + "visit does not carry, so the sign-in would fail at the last step with an authorisation error. "
+      + "Correct it in Platform Console → Integrations (or the deployment's redirect-URI environment "
+      + "variable, which is used when that field is blank), and register the SAME address with the "
+      + "provider. Leaving both blank is also valid — the address is then derived correctly on its own.",
+    500,
+    { provider, redirect_uri: String(redirectUri), expected_suffix: callbackPath },
+  );
+}
 
 /**
  * Step 1: return the provider consent URL. State is a signed JWT binding the
@@ -1378,6 +1446,10 @@ async function startOAuth(client, provider, {
   // shape keeps serving both.
   if (!(await o.idp.isConfigured())) throw new AppError("NOT_CONFIGURED", `${provider} OAuth is not configured`, 400);
   if (!slug || !redirectUri) throw new AppError("VALIDATION_ERROR", "slug and redirectUri are required", 422);
+  // Before the consent URL is built, so a misconfigured return address is a
+  // sentence in the connect dialog rather than a raw 401 the operator meets
+  // after they have already typed their password at the provider.
+  assertRedirectUriIsCallback(provider, redirectUri, o.callbackPath);
   const kind = rawKind === "SHARED" ? "SHARED" : "PERSONAL";
   // NOT the place to refuse a second personal mailbox, however tempting it is
   // to fail before the redirect: which mailbox this is, is not known until

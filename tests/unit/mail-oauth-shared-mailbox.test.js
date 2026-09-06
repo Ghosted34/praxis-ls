@@ -124,7 +124,19 @@ const { config } = require("../../src/config/env");
 const onClient = { query: jest.fn(async () => ({ rows: [{ state: "on" }] })) };
 const offClient = { query: jest.fn(async () => ({ rows: [{ state: "off" }] })) };
 
-const START = { slug: "smartls", redirectUri: "https://app.example/cb", actor: { user_id: "u1" } };
+/*
+ * A REAL redirect URI, not a stand-in. `startOAuth` now refuses one that does
+ * not end in the provider's callback path — the misconfiguration that let an
+ * operator sign in at Microsoft and receive a raw 401 for it — so "https://
+ * app.example/cb" is no longer a harmless placeholder: it is exactly the shape
+ * the guard exists to reject. The same trap as the `isConfigured` mock that
+ * answered `async` when the real adapter does not.
+ */
+const START = {
+  slug: "smartls",
+  redirectUri: "https://praxisls.com/api/tenant/mail/oauth/microsoft/callback",
+  actor: { user_id: "u1" },
+};
 const stateFrom = (url) => new URL(url).searchParams.get("state");
 const inserted = () => mailRepo.insertConnection.mock.calls[0][1];
 
@@ -143,6 +155,82 @@ beforeEach(() => {
   Object.assign(mockConn, {
     email_connection_id: "new-1", kind: "SHARED", status: "CONNECTED",
     email_address: "operations@smartls.cm",
+  });
+});
+
+/**
+ * ── THE MISCONFIGURATION THAT COST A PASSWORD ───────────────────────────────
+ *
+ * A deployment had its Microsoft redirect URI set to the `/start` endpoint
+ * instead of `/callback`. Nothing looks wrong until the very end: consent is
+ * requested, the provider's sign-in page renders, the operator approves — and
+ * the provider then redirects the browser to the address it was handed.
+ * `/start` is behind `authMiddleware` (a consent flow is a write), and a
+ * provider redirect is a bare browser GET with no session, so the reward for
+ * signing in was a raw `{"code":"AUTH_REQUIRED"}` JSON body naming nothing
+ * actionable. `/callback` is mounted above `authMiddleware` precisely so it
+ * CAN receive that redirect.
+ *
+ * Refused before the redirect, so it is a sentence in the connect dialog
+ * rather than a 401 met after handing credentials to a flow that could never
+ * complete.
+ */
+describe("a redirect URI that is not the callback", () => {
+  const startWith = (redirectUri, opts = {}) =>
+    service.startMicrosoftOAuth(onClient, { ...START, redirectUri, ...opts });
+
+  test("is refused before anybody is sent to the provider", async () => {
+    await expect(startWith("https://praxisls.com/api/tenant/mail/oauth/microsoft/start"))
+      .rejects.toMatchObject({ code: "OAUTH_REDIRECT_MISCONFIGURED" });
+    // The whole point: no consent URL is built, so nobody types a password
+    // into a flow whose last step cannot work.
+    expect(msOAuth.authorizeUrl).not.toHaveBeenCalled();
+  });
+
+  test("names the offending value and what it should end in", async () => {
+    const err = await startWith("https://praxisls.com/api/tenant/mail/oauth/microsoft/start").catch((e) => e);
+    expect(err.message).toContain("/api/tenant/mail/oauth/microsoft/start");
+    expect(err.message).toContain("/oauth/microsoft/callback");
+    expect(err.details).toMatchObject({
+      provider: "microsoft_graph",
+      expected_suffix: "/oauth/microsoft/callback",
+    });
+  });
+
+  test("the shared-mailbox flow is guarded too", async () => {
+    await expect(startWith("https://praxisls.com/api/tenant/mail/oauth/microsoft/start", {
+      kind: "SHARED", catalogue_key: "OPERATIONS",
+    })).rejects.toMatchObject({ code: "OAUTH_REDIRECT_MISCONFIGURED" });
+  });
+
+  test("an unparseable URI is reported as the misconfiguration it is, not a crash", async () => {
+    await expect(startWith("not a url")).rejects.toMatchObject({ code: "OAUTH_REDIRECT_MISCONFIGURED" });
+  });
+
+  /* The correct address — and the one DERIVED when nothing is configured —
+   * must sail through, or the guard has replaced one outage with another. */
+  test("the real callback URI passes", async () => {
+    await expect(startWith("https://praxisls.com/api/tenant/mail/oauth/microsoft/callback"))
+      .resolves.toMatchObject({ url: expect.any(String) });
+  });
+
+  test("a trailing slash is not a misconfiguration", async () => {
+    await expect(startWith("https://praxisls.com/api/tenant/mail/oauth/microsoft/callback/"))
+      .resolves.toBeTruthy();
+  });
+
+  /* A query string on the registered URI is legal and does not change which
+   * endpoint receives the redirect. */
+  test("a query string does not trip it", async () => {
+    await expect(startWith("https://praxisls.com/api/tenant/mail/oauth/microsoft/callback?env=live"))
+      .resolves.toBeTruthy();
+  });
+
+  /* Each provider has its OWN callback path, so Google's address is wrong for
+   * Microsoft even though it is a perfectly good callback URL. */
+  test("the other provider's callback is still the wrong address", async () => {
+    await expect(startWith("https://praxisls.com/api/tenant/mail/oauth/google/callback"))
+      .rejects.toMatchObject({ code: "OAUTH_REDIRECT_MISCONFIGURED" });
   });
 });
 

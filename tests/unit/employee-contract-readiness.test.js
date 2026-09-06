@@ -154,14 +154,119 @@ describe("the percentage is over the REQUIRED set only", () => {
     );
   });
 
-  test("an empty record scores 0 and names everything", () => {
+  test("an empty record scores 0 and names everything that applies to it", () => {
     const r = contractReadiness({}, []);
     expect(r.complete).toBe(0);
     expect(r.percent).toBe(0);
+    // `when`-gated documents are excluded: an empty record is not a driver, and
+    // the licence is not one of its gaps. See the driving-licence block below
+    // for what happens when it is.
     const requiredCount =
       CONTRACT_REQUIREMENTS.filter((r2) => r2.severity === "required").length +
-      REQUIRED_DOCUMENT_CODES.filter((d) => d.severity === "required").length;
+      REQUIRED_DOCUMENT_CODES.filter((d) => d.severity === "required" && !d.when).length;
     expect(r.total).toBe(requiredCount);
+  });
+});
+
+/**
+ * THE DRIVING LICENCE — required of drivers, and of nobody else.
+ *
+ * Two rules meet here and both are load-bearing. It must not be demanded of the
+ * accountant (a permanent red mark on a complete file is how a readiness meter
+ * stops being read), and a row against the code must not satisfy it on its own
+ * (a licence with no number and no dates is not a licence — it is a checkbox).
+ */
+describe("the driving licence", () => {
+  const {
+    driverLicenceGap,
+    findDriverLicence,
+    DRIVER_LICENCE_CODE,
+  } = require("../../src/modules/master/employees/employees.rules");
+
+  const LICENCE = {
+    document_type_code: DRIVER_LICENCE_CODE,
+    is_active: true,
+    document_number: "CM-000-000",
+    issued_on: "2021-05-14",
+    expires_on: "2031-05-14",
+  };
+  const DRIVER = { ...COMPLETE, is_driver: true };
+
+  test("it is not asked of somebody who does not drive", () => {
+    const r = contractReadiness(COMPLETE, ID_CARD);
+    expect(r.ready).toBe(true);
+    expect(r.missing.map((m) => m.key)).not.toContain(DRIVER_LICENCE_CODE);
+  });
+
+  test("a driver without one is not contract-ready", () => {
+    const r = contractReadiness(DRIVER, ID_CARD);
+    expect(r.ready).toBe(false);
+    expect(r.missing_required.map((m) => m.key)).toEqual([DRIVER_LICENCE_CODE]);
+    expect(r.missing_required[0].kind).toBe("document");
+  });
+
+  test("a driver with a complete one is", () => {
+    const r = contractReadiness(DRIVER, [...ID_CARD, LICENCE]);
+    expect(r.ready).toBe(true);
+    expect(r.percent).toBe(100);
+  });
+
+  test("the licence raises the denominator only for drivers", () => {
+    const office = contractReadiness(COMPLETE, ID_CARD);
+    const driver = contractReadiness(DRIVER, [...ID_CARD, LICENCE]);
+    expect(driver.total).toBe(office.total + 1);
+  });
+
+  test.each(["document_number", "issued_on", "expires_on"])(
+    "a row missing %s does not count as a licence",
+    (field) => {
+      const partial = { ...LICENCE, [field]: null };
+      const r = contractReadiness(DRIVER, [...ID_CARD, partial]);
+      expect(r.missing_required.map((m) => m.key)).toEqual([DRIVER_LICENCE_CODE]);
+      expect(findDriverLicence([partial])).toBeNull();
+    },
+  );
+
+  test("a soft-deleted licence does not count", () => {
+    const r = contractReadiness(DRIVER, [
+      ...ID_CARD,
+      { ...LICENCE, is_active: false },
+    ]);
+    expect(r.missing_required.map((m) => m.key)).toEqual([DRIVER_LICENCE_CODE]);
+  });
+
+  describe("driverLicenceGap — what the API refuses on", () => {
+    test("no gap when the flag is off, whatever the file holds", () => {
+      expect(driverLicenceGap({ is_driver: false }, [])).toBeNull();
+      expect(driverLicenceGap({}, [])).toBeNull();
+    });
+
+    test("a gap when the flag is on and there is no licence", () => {
+      const gap = driverLicenceGap({ is_driver: true }, ID_CARD);
+      expect(gap).not.toBeNull();
+      expect(gap.code).toBe(DRIVER_LICENCE_CODE);
+      expect(gap.fields).toEqual([
+        "document_number",
+        "issued_on",
+        "expires_on",
+      ]);
+    });
+
+    test("no gap once a complete licence is on file", () => {
+      expect(driverLicenceGap({ is_driver: true }, [LICENCE])).toBeNull();
+    });
+
+    test("it reads a create payload's rows, which carry `code` not `document_type_code`", () => {
+      // The wizard posts the whole hire in one call, so the licence it is
+      // checked against does not exist as a row yet.
+      const inbound = {
+        code: DRIVER_LICENCE_CODE,
+        document_number: "CM-1",
+        issued_on: "2020-01-01",
+        expires_on: "2030-01-01",
+      };
+      expect(driverLicenceGap({ is_driver: true }, [inbound])).toBeNull();
+    });
   });
 });
 

@@ -12,7 +12,7 @@ const events = require("./employees.events");
 const {
   suggestRiskClass, normaliseBankBlock, blankToNull, contractReadiness, omit,
   withAllowanceDefaults, withDerivedWorkingHours,
-  CONTRACT_REQUIREMENTS, REQUIRED_DOCUMENT_CODES,
+  CONTRACT_REQUIREMENTS, REQUIRED_DOCUMENT_CODES, driverLicenceGap,
 } = require("./employees.rules");
 const vault = require("../../vault/document_vault/document_vault.service");
 const { emitEvent, audit, resolveActorId } = require("../../../shared/events/emit");
@@ -53,6 +53,23 @@ async function assertNoReportingCycle(client, employeeId, managerId) {
 }
 
 /**
+ * Refuse to put somebody in the dispatch pool without a licence on file.
+ *
+ * The reasoning is in `driverLicenceGap`; this is the throw. The 422 names
+ * `is_driver` in `fields` because that is the control the operator ticked, and
+ * a rejection that names a field the form does not show is a rejection nobody
+ * can act on — the wizard's `stepForRejection` reads exactly this to land them
+ * back on the step that holds the checkbox.
+ */
+function assertDriverLicence(employee, documents) {
+  const gap = driverLicenceGap(employee, documents);
+  if (!gap) return;
+  throw new AppError("DRIVER_LICENCE_REQUIRED", gap.message, 422, {
+    is_driver: [gap.message],
+  });
+}
+
+/**
  * Hire somebody.
  *
  * ── ONE TRANSACTION, THREE TABLES ──────────────────────────────────────────
@@ -90,6 +107,11 @@ async function create(client, { data, slug, actor = {} }) {
     // afterwards would mean rolling back a hire that was otherwise fine, and the
     // clerk would see a failure whose cause was three fields further up.
     if (fields.reports_to) await assertNoReportingCycle(client, null, fields.reports_to);
+    // Before the insert, for the same reason the cycle check is: a hire refused
+    // afterwards is a rollback the clerk sees as a failure whose cause is on
+    // another step. The licence rides in on `documents[]`, which the wizard
+    // already sends in this one call.
+    assertDriverLicence(fields, documents);
     const row = await repo.insert(client, {
       // `withDerivedWorkingHours` re-renders the printed hours line from the
       // grid, so the contract's sentence cannot disagree with the days HR
@@ -116,6 +138,16 @@ async function update(client, { id, patch, actor = {} }) {
   // builder reject an unknown column keeps the error the caller sees honest.
   const fields = withDerivedWorkingHours(blankToNull(omit(patch, ["documents", "allowances"])));
   if (fields.bank_block !== undefined) fields.bank_block = normaliseBankBlock(fields.bank_block);
+  // Asked only when this patch SAYS `is_driver: true`. A patch that does not
+  // mention the flag leaves a legacy driver editable — their phone number must
+  // not fail with a message about a licence — while the edit form, which
+  // resubmits the whole draft, is checked on every save. The licence itself is
+  // written through the documents endpoint before this call (a licence with no
+  // flag is harmless; a flag with no licence is the thing being prevented), so
+  // by now it is on file if the operator supplied one.
+  if (fields.is_driver === true) {
+    assertDriverLicence(fields, await repo.listDocuments(client, id));
+  }
   // Only when the line actually changes — a no-op save shouldn't pay for a walk.
   if (fields.reports_to !== undefined && fields.reports_to !== before.reports_to) {
     await assertNoReportingCycle(client, id, fields.reports_to);

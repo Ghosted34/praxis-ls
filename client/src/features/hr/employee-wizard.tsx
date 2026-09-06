@@ -91,6 +91,8 @@ import {
   draftDocsToPayload,
   draftAllowancesToPayload,
   stepForRejection,
+  driverLicenceGap,
+  DRIVER_LICENCE_CODE,
   fileTooLarge,
   type EmployeeDraft,
   type DraftDoc,
@@ -650,7 +652,7 @@ function EmploymentStep({
         onCheckedChange={(v) => set("is_driver", v)}
         label={tr("This person drives")}
         hint={tr(
-          "Puts them in the fleet dispatch pool and raises the default CNPS risk class.",
+          "Puts them in the fleet dispatch pool and raises the default CNPS risk class. Their driving licence is required once this is ticked.",
         )}
       />
 
@@ -856,6 +858,15 @@ function EmploymentStep({
   );
 }
 
+/** Column name → what the operator sees it called, for the licence callout.
+ *  The API answers in column names; a person reading "issued_on" has to work
+ *  out which box that is. */
+const LICENCE_FIELD_LABEL: Record<string, string> = {
+  document_number: "licence number",
+  issued_on: "valid from",
+  expires_on: "valid until",
+};
+
 /* ── Step 3 — the papers, and what happens next ─────────────────────────────*/
 function DocumentsStep({
   docs,
@@ -865,6 +876,8 @@ function DocumentsStep({
   setProvision,
   hasEmail,
   missing,
+  isDriver,
+  licenceGap,
 }: {
   docs: DraftDoc[];
   setDocs: (rows: DraftDoc[]) => void;
@@ -874,26 +887,75 @@ function DocumentsStep({
   setProvision: (v: boolean) => void;
   hasEmail: boolean;
   missing: { label: string; group: string }[];
+  /** Step 2's "This person drives". Reveals the licence slot and makes it
+   *  block, which is the one thing on this step that does. */
+  isDriver: boolean;
+  /** The licence columns still blank, or null. Blocks Save — see `canSave`. */
+  licenceGap: string[] | null;
 }) {
   const setRow = (i: number, patch: Partial<DraftDoc>) =>
     setDocs(docs.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+
+  /*
+   * Indexes stay against the FULL list, so `setRow` keeps addressing the right
+   * slot when the licence is hidden. Filtering the array the setter also reads
+   * is how a form starts writing the CV into the photograph.
+   *
+   * The row itself is kept in state either way: an operator who fills a licence
+   * in, then unticks the box to check something, then ticks it again should
+   * find their typing where they left it rather than be made to type it twice.
+   */
+  const shown = docs
+    .map((d, i) => ({ d, i }))
+    .filter(({ d }) => d.code !== DRIVER_LICENCE_CODE || isDriver);
 
   return (
     <div className="space-y-5">
       <Callout tone="info" title={tr("Upload what you have.")}>
         {tr(
-          "A document can be recorded from paper — give it a number or an archive reference and attach the scan later. Nothing here blocks saving; contract generation is what needs the file.",
+          "A document can be recorded from paper — give it a number or an archive reference and attach the scan later. The scan never blocks saving; contract generation is what needs the file.",
         )}
       </Callout>
 
+      {/* The one blocking gap on this step, said plainly and at the top. A
+          disabled Save with no sentence next to it is a dead end: the operator
+          can see the button will not work and has nothing telling them which
+          of forty fields to go and fill. */}
+      {licenceGap && (
+        <Callout
+          tone="bad"
+          title={tr("This person drives — their licence is required.")}
+        >
+          <p className="mb-1">
+            {tr("Still needed:")}{" "}
+            {licenceGap.map((f) => tr(LICENCE_FIELD_LABEL[f] ?? f)).join(", ")}.
+          </p>
+          <p>
+            {tr(
+              "The scan can follow later. Untick “This person drives” on the previous step if they are not being put in the dispatch pool.",
+            )}
+          </p>
+        </Callout>
+      )}
+
       <div className="space-y-3">
-        {docs.map((d, i) => (
+        {shown.map(({ d, i }) => {
+          const licence = d.code === DRIVER_LICENCE_CODE;
+          return (
           <div key={d.code} className="space-y-3 rounded-lg border p-4">
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium text-foreground">
                 {tr(d.label)}
               </span>
-              {d.required && <Pill tone="warn">{tr("Needed for a contract")}</Pill>}
+              {/* The licence is the one slot that is not advisory: the number
+                  and the dates are refused at the API, so the pill says the
+                  stronger thing rather than letting the operator read "needed
+                  for a contract" and reach a blocked Save. */}
+              {licence ? (
+                <Pill tone="warn">{tr("Required — this person drives")}</Pill>
+              ) : (
+                d.required && <Pill tone="warn">{tr("Needed for a contract")}</Pill>
+              )}
               {d.file && <Pill tone="ok">{tr("Scan attached")}</Pill>}
             </div>
             <FileDrop
@@ -904,7 +966,14 @@ function DocumentsStep({
               error={fileTooLarge(d.file)}
             />
             <div className="grid gap-3 sm:grid-cols-4">
-              <Field label={tr("Number")}>
+              {/* A licence names its own dates. "Issued on / Expires on" is
+                  right for a CNI; for a licence the operator is reading a
+                  validity period off the card, and the labels should be the
+                  words printed next to it. */}
+              <Field
+                label={tr(licence ? "Licence number" : "Number")}
+                required={licence}
+              >
                 <Input
                   value={d.document_number}
                   onChange={(e) =>
@@ -912,13 +981,19 @@ function DocumentsStep({
                   }
                 />
               </Field>
-              <Field label={tr("Issued on")}>
+              <Field
+                label={tr(licence ? "Valid from" : "Issued on")}
+                required={licence}
+              >
                 <DateField
                   value={d.issued_on}
                   onChange={(v) => setRow(i, { issued_on: v })}
                 />
               </Field>
-              <Field label={tr("Expires on")}>
+              <Field
+                label={tr(licence ? "Valid until" : "Expires on")}
+                required={licence}
+              >
                 <DateField
                   value={d.expires_on}
                   onChange={(v) => setRow(i, { expires_on: v })}
@@ -935,7 +1010,8 @@ function DocumentsStep({
               </Field>
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* The deep link out. Checked by default when there is an address to
@@ -983,7 +1059,9 @@ function DocumentsStep({
           </p>
           <p>
             {tr(
-              "Saving is fine — the gaps show on their record and can be filled at any time.",
+              licenceGap
+                ? "Everything here except the driving licence can be filled in later; the licence is needed to save."
+                : "Saving is fine — the gaps show on their record and can be filled at any time.",
             )}
           </p>
         </Callout>
@@ -1046,16 +1124,17 @@ export function EmployeeWizard({
     () => draftToPayload(f, dept, reportsTo),
     [f, dept, reportsTo],
   );
-  const docCodes = React.useMemo(
-    () =>
-      docs
-        .filter((d) => d.file || d.document_number.trim() || d.physical_ref.trim())
-        .map((d) => d.code),
-    [docs],
-  );
   const ready = React.useMemo(
-    () => readinessOf(payload as Record<string, unknown>, docCodes, reqs.data),
-    [payload, docCodes, reqs.data],
+    // The rows themselves, not just their codes: a requirement can name the
+    // columns the row has to carry (the licence names three), and a list of
+    // codes cannot answer that.
+    () => readinessOf(payload as Record<string, unknown>, docs, reqs.data),
+    [payload, docs, reqs.data],
+  );
+  /** Null, or the licence columns still blank. See `driverLicenceGap`. */
+  const licenceGap = React.useMemo(
+    () => driverLicenceGap(payload as Record<string, unknown>, docs, reqs.data),
+    [payload, docs, reqs.data],
   );
 
   const last = step === STEPS.length - 1;
@@ -1063,7 +1142,28 @@ export function EmployeeWizard({
   // file or re-take it, and letting the request go anyway would spend a minute
   // uploading it to be told the same thing by a 422.
   const oversized = docs.map((d) => fileTooLarge(d.file)).filter(Boolean);
-  const canSave = f.full_name.trim().length >= 2 && oversized.length === 0;
+  /*
+   * THE SECOND THING THAT BLOCKS, AND THE ONLY ONE ADDED SINCE.
+   *
+   * The header above says nothing blocks except the name, and the reasoning
+   * holds for every field it was written about: a wizard that refuses to let
+   * you past step two gets an invented CNI number, and an invented number is
+   * worse than a blank one because a blank is countable.
+   *
+   * `is_driver` is not one of those fields. It is not a description of somebody,
+   * it is an assignment — it puts them in the fleet dispatch pool, and the next
+   * thing that happens to a person in that pool is a vehicle being dispatched to
+   * them. There is no half-answer to invent here either: the operator is either
+   * holding the licence or they are not, and if they are not, the honest record
+   * is one without the box ticked. The API refuses it too
+   * (DRIVER_LICENCE_REQUIRED); this only means they find out with the fields in
+   * front of them instead of after a round trip.
+   *
+   * The SCAN is still never required — that is 12764's rule about bytes and it
+   * is untouched. What is required is the number and the two dates.
+   */
+  const canSave =
+    f.full_name.trim().length >= 2 && oversized.length === 0 && !licenceGap;
 
   async function save() {
     setBusy(true);
@@ -1164,6 +1264,8 @@ export function EmployeeWizard({
             inSandbox={inSandbox}
             hasEmail={Boolean(payload.email)}
             missing={ready.missing}
+            isDriver={f.is_driver}
+            licenceGap={licenceGap}
           />
         )}
         {error && <ErrorState message={error} />}

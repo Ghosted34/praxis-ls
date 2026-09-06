@@ -217,13 +217,106 @@ const CONTRACT_REQUIREMENTS = [
   { key: "email", label: "Work email", group: "employment", severity: "recommended" },
 ];
 
-/** Documents a complete staff file holds. Codes from 12764's registry seed. */
+/** The staff document a driver must hold. Code from 12764's registry seed,
+ *  where it is already `requires_expiry` — a licence is the archetype of a
+ *  paper that lapses. */
+const DRIVER_LICENCE_CODE = "EMP_DRIVING_LICENCE";
+
+/**
+ * The columns a licence row has to carry before it counts as one.
+ *
+ * A driving licence is not satisfied by a row that merely exists. What makes it
+ * a licence is the number on it and the window it is valid for — that is what a
+ * gendarme asks for at a checkpoint and what the insurer asks for after an
+ * incident. `issued_on` is the "from", `expires_on` the "till".
+ */
+const DRIVER_LICENCE_FIELDS = ["document_number", "issued_on", "expires_on"];
+
+/**
+ * Documents a complete staff file holds. Codes from 12764's registry seed.
+ *
+ * `when` names an employee column that has to be truthy for the entry to apply
+ * at all, and `needs` the columns the document row itself must carry. Both
+ * exist for the driving licence, and the licence is why they exist: it is
+ * required OF DRIVERS ONLY — demanding one from an accountant would be a
+ * permanent red mark on a complete file, which is how a readiness meter stops
+ * being read — and a blank row against the code would otherwise satisfy it.
+ */
 const REQUIRED_DOCUMENT_CODES = [
   { code: "EMP_ID_CARD", label: "ID card / passport", severity: "required" },
+  {
+    code: DRIVER_LICENCE_CODE,
+    label: "Driving licence (number and validity)",
+    severity: "required",
+    when: "is_driver",
+    needs: DRIVER_LICENCE_FIELDS,
+  },
   { code: "EMP_CV", label: "Curriculum vitae", severity: "recommended" },
   { code: "EMP_PHOTO", label: "Passport photograph", severity: "recommended" },
   { code: "EMP_BANK_RIB", label: "Bank RIB", severity: "recommended" },
 ];
+
+/** Does this document row carry everything its requirement asked for? */
+function documentSatisfies(doc, req) {
+  if (!doc) return false;
+  return (req.needs || []).every((f) => isPresent(doc[f]));
+}
+
+/**
+ * The licence on file for this person, if there is a usable one.
+ *
+ * "Usable" is the same test the readiness meter applies, so the API's refusal
+ * and the meter's red row can never disagree about what a licence is. Takes
+ * anything document-shaped — rows read back from `employee_document`, or the
+ * `documents[]` a create request is carrying, which do not exist yet.
+ */
+function findDriverLicence(documents = []) {
+  const req = REQUIRED_DOCUMENT_CODES.find((d) => d.code === DRIVER_LICENCE_CODE);
+  return (
+    (documents || []).find(
+      (d) =>
+        d &&
+        d.is_active !== false &&
+        (d.document_type_code || d.code) === DRIVER_LICENCE_CODE &&
+        documentSatisfies(d, req),
+    ) || null
+  );
+}
+
+/**
+ * Why this person cannot be marked as a driver, or null when they can.
+ *
+ * ── WHY THIS ONE BLOCKS THE SAVE WHEN THE ID CARD DOES NOT ─────────────────
+ *
+ * 12764's rule is that a scan is a verification gate and not a creation gate:
+ * refusing to record a CNI you are physically holding because the scanner is
+ * down produces an incomplete register, which is worse than one with unscanned
+ * rows. That rule is about BYTES, and it still stands here — the scan of the
+ * licence is never required to save.
+ *
+ * The number and the validity window are a different thing. `is_driver` is not
+ * a description, it is an assignment: it puts this person in the fleet dispatch
+ * pool, where the next thing that happens is a vehicle being dispatched to
+ * them. A dispatch to an unlicensed driver is not a paperwork gap, it is an
+ * uninsured vehicle on the road with the company's name on it — so this is
+ * refused at the point the box is ticked rather than counted as a gap somebody
+ * may close later.
+ *
+ * It fires only where the flag is being SET. A record that already has the flag
+ * and no licence predates the rule; editing that person's phone number must not
+ * fail with a message about a licence, so `update` asks only when the patch
+ * turns the flag on or resubmits it as on.
+ */
+function driverLicenceGap(employee = {}, documents = []) {
+  if (!employee.is_driver) return null;
+  if (findDriverLicence(documents)) return null;
+  return {
+    code: DRIVER_LICENCE_CODE,
+    fields: DRIVER_LICENCE_FIELDS,
+    message:
+      "A driver needs a driving licence on file: its number, and the dates it is valid from and until.",
+  };
+}
 
 /** A field counts as present when it holds something a contract could print. */
 function isPresent(value) {
@@ -245,23 +338,32 @@ function isPresent(value) {
  * `dependent_children` counts as present at zero: "no children" is an answer.
  */
 function contractReadiness(employee = {}, documents = []) {
-  const have = new Set(
-    (documents || [])
-      .filter((d) => d && d.is_active !== false)
-      .map((d) => d.document_type_code)
-      .filter(Boolean),
-  );
+  const held = (documents || []).filter((d) => d && d.is_active !== false);
+  // First row per code wins; `listDocuments` orders newest first within a type.
+  const byCode = new Map();
+  for (const d of held) {
+    const code = d.document_type_code || d.code;
+    if (code && !byCode.has(code)) byCode.set(code, d);
+  }
+  // A requirement gated on a column the record does not have is not a gap.
+  // `is_driver` is false for most of the payroll, and a licence counted against
+  // all of them would put every complete file permanently short of 100%.
+  const docReqs = REQUIRED_DOCUMENT_CODES.filter((d) => !d.when || !!employee[d.when]);
   const missing = [];
   for (const req of CONTRACT_REQUIREMENTS) {
     const raw = employee[req.key];
     const present = req.key === "dependent_children" ? raw !== null && raw !== undefined : isPresent(raw);
     if (!present) missing.push({ ...req, kind: "field" });
   }
-  for (const doc of REQUIRED_DOCUMENT_CODES) {
-    if (!have.has(doc.code)) missing.push({ key: doc.code, label: doc.label, group: "documents", severity: doc.severity, kind: "document" });
+  for (const doc of docReqs) {
+    // With no `needs`, `documentSatisfies` reduces to "a row for this code
+    // exists", which is what every other entry has always meant.
+    if (!documentSatisfies(byCode.get(doc.code) || null, doc)) {
+      missing.push({ key: doc.code, label: doc.label, group: "documents", severity: doc.severity, kind: "document" });
+    }
   }
   const total = CONTRACT_REQUIREMENTS.filter((r) => r.severity === "required").length
-    + REQUIRED_DOCUMENT_CODES.filter((d) => d.severity === "required").length;
+    + docReqs.filter((d) => d.severity === "required").length;
   const missingRequired = missing.filter((m) => m.severity === "required");
   return {
     ready: missingRequired.length === 0,
@@ -278,4 +380,6 @@ module.exports = {
   RISK_OFFICE, RISK_OPERATIONAL, blankToNull, isPresent, omit, withAllowanceDefaults,
   UNSAFE_KEYS, withDerivedWorkingHours,
   CONTRACT_REQUIREMENTS, REQUIRED_DOCUMENT_CODES, contractReadiness,
+  DRIVER_LICENCE_CODE, DRIVER_LICENCE_FIELDS, documentSatisfies,
+  findDriverLicence, driverLicenceGap,
 };

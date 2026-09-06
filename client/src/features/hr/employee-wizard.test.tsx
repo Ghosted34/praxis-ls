@@ -61,7 +61,19 @@ const REQUIREMENTS = {
     { key: "staff_no", label: "Matricule", group: "employment", severity: "required" },
     { key: "cnps_number", label: "CNPS number", group: "employment", severity: "recommended" },
   ],
-  documents: [{ code: "EMP_ID_CARD", label: "ID card / passport", severity: "required" }],
+  documents: [
+    { code: "EMP_ID_CARD", label: "ID card / passport", severity: "required" },
+    // `when` and `needs` are the driving-licence rule, and they ride on the
+    // SERVED list rather than being copied into the bundle — see the block at
+    // the bottom of this file for what they buy.
+    {
+      code: "EMP_DRIVING_LICENCE",
+      label: "Driving licence (number and validity)",
+      severity: "required",
+      when: "is_driver",
+      needs: ["document_number", "issued_on", "expires_on"],
+    },
+  ],
 };
 
 const setup = () => userEvent.setup({ delay: null });
@@ -432,5 +444,117 @@ describe("the working week", () => {
     // The API re-derives this from the grid on write; sending it keeps the
     // readiness meter honest about a field that IS filled in.
     expect(body.working_hours).toBe("Mon–Sat, 09:00–17:00");
+  });
+});
+
+/**
+ * THE DRIVING LICENCE — the second thing that blocks this wizard.
+ *
+ * The header of employee-wizard.tsx says nothing blocks except the name, and
+ * the reasoning holds for every field it was written about: refusing to let
+ * somebody past step two produces an invented CNI number, and an invented one
+ * is worse than a blank because a blank is countable.
+ *
+ * `is_driver` is not one of those fields. It is an assignment — it puts this
+ * person in the fleet dispatch pool — and there is no half-answer to invent:
+ * the operator is either holding the licence or they are not, and if they are
+ * not, the honest record is one with the box unticked. These tests pin BOTH
+ * halves: that it blocks, and that the exception did not leak into anything
+ * else on the step.
+ */
+describe("the driving licence", () => {
+  const drives = () => screen.getByRole("checkbox", { name: /This person drives/ });
+
+  /** Name typed, on step 3, with the drives box ticked on the way through. */
+  async function toDocuments(u: ReturnType<typeof setup>, { driver = true } = {}) {
+    render();
+    await u.type(await nameBox(), "SPECIMEN Marie Claire");
+    await u.click(screen.getByRole("button", { name: /Continue/i }));
+    if (driver) await u.click(drives());
+    await u.click(screen.getByRole("button", { name: /Continue/i }));
+  }
+
+  it("is not one of the slots until somebody drives", async () => {
+    const u = setup();
+    await toDocuments(u, { driver: false });
+    // The exact string: the slot's own heading. A regex would also match the
+    // "still missing" list, which is a different assertion.
+    expect(screen.queryByText("Driving licence")).toBeNull();
+    expect(screen.queryByRole("textbox", { name: /Licence number/i })).toBeNull();
+    expect(screen.getByRole("button", { name: /Save/i })).toBeEnabled();
+  });
+
+  it("appears the moment the box is ticked, and blocks the save", async () => {
+    const u = setup();
+    await toDocuments(u);
+    expect(screen.getByText("Driving licence")).toBeInTheDocument();
+    expect(
+      screen.getByText(/Required — this person drives/i),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Save/i })).toBeDisabled();
+    // A disabled Save with no sentence beside it is a dead end.
+    expect(screen.getByText(/Still needed:/i).textContent).toMatch(
+      /licence number.*valid from.*valid until/,
+    );
+  });
+
+  it("counts against the meter only for a driver", async () => {
+    const u = setup();
+    render();
+    await u.type(await nameBox(), "SPECIMEN Marie Claire");
+    // Three required fields (the matricule is server-allocated, so excluded)
+    // plus the ID card = 4 before the box; the licence makes it 5.
+    await screen.findByText(/1\/4 contract fields filled/i);
+    await u.click(screen.getByRole("button", { name: /Continue/i }));
+    await u.click(drives());
+    expect(await screen.findByText(/1\/5 contract fields filled/i)).toBeInTheDocument();
+  });
+
+  it("saves once the number and both dates are given — with no scan", async () => {
+    const u = setup();
+    await toDocuments(u);
+
+    await u.type(screen.getByRole("textbox", { name: /Licence number/i }), "CM-000-123");
+    // Day-first and masked as you type: eight digits, not an ISO string.
+    await u.type(screen.getByRole("textbox", { name: /Valid from/i }), "14052021");
+    await u.type(screen.getByRole("textbox", { name: /Valid until/i }), "14052031");
+
+    const save = screen.getByRole("button", { name: /Save/i });
+    expect(save).toBeEnabled();
+    await u.click(save);
+
+    expect(createEmployee).toHaveBeenCalledTimes(1);
+    const body = createEmployee.mock.calls[0][0];
+    expect(body.is_driver).toBe(true);
+    expect(body.documents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          document_type_code: "EMP_DRIVING_LICENCE",
+          document_number: "CM-000-123",
+          issued_on: "2021-05-14",
+          expires_on: "2031-05-14",
+          // 12764's rule, unchanged: a scan is a verification gate, not a
+          // creation gate. The bytes are never what blocks.
+          file_data_url: null,
+        }),
+      ]),
+    );
+  });
+
+  it("keeps what was typed when the box is unticked and ticked again", async () => {
+    const u = setup();
+    await toDocuments(u);
+    await u.type(screen.getByRole("textbox", { name: /Licence number/i }), "CM-000-123");
+
+    // Back to step 2, untick, forward again. Re-typing a licence because you
+    // went to check something is the kind of small cruelty forms get away with.
+    await u.click(screen.getByRole("button", { name: /Back/i }));
+    await u.click(drives());
+    await u.click(drives());
+    await u.click(screen.getByRole("button", { name: /Continue/i }));
+
+    expect(screen.getByRole("textbox", { name: /Licence number/i })).toHaveValue(
+      "CM-000-123",
+    );
   });
 });

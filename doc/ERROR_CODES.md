@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (524)
+## All codes (525)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -160,6 +160,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `DOC_TYPE_NOT_SIGNABLE` | 422 | 1× | — |
 | `DOSSIERS_REQUIRED` | 422 | 1× | — |
 | `DOSSIER_REQUIRED` | 422 | 2× | — |
+| `DRIVER_LICENCE_REQUIRED` | 422 | 1× | — |
 | `DUPLICATE` | 409 | 3× | — |
 | `DUPLICATE_CODE` | 409 | 2× | — |
 | `DUPLICATE_CONTAINER` | 422 | 2× | — |

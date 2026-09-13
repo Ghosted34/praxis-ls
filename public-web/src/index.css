@@ -2008,6 +2008,63 @@
     inset-inline: 0;
     top: 100%;
     z-index: 3;
+    /* ── TRANSPARENT TO THE POINTER, ALWAYS. THE PANEL DECIDES, NOT THIS. ───
+     *
+     * THE BUG. This wrapper is a positioning box and nothing else, and it was
+     * swallowing every click and every cursor across a full-width band at the
+     * top of EVERY page — the header is in `PageShell`, so there is no page
+     * without it. Three things had to be true at once, and all three were:
+     *
+     *   1. The panel is never unmounted. That is deliberate and stays: it
+     *      animates CLOSED as well as open, and an unmounted element has
+     *      nothing to animate.
+     *   2. Closed, it is `visibility: hidden` — which hides it and KEEPS its
+     *      layout box. `.nav-panel` is `position: relative`, so that box is in
+     *      flow and this wrapper is sized by it.
+     *   3. This rule had no `pointer-events`, so the wrapper was `auto`: a
+     *      visible, hit-testable element the exact size of the open menu,
+     *      painted by nothing, sitting at z-index 3 inside the header's
+     *      z-index-40 stacking context — therefore above all page content.
+     *
+     * Measured in Chromium against the running page, 4 groups of 9 services:
+     * an invisible band spanning y=108..448, full width, on the home, contact
+     * and track pages alike. `elementFromPoint` inside it returned
+     * `div.nav-panel-host`; an input scrolled into it could not be focused and
+     * typing went nowhere; text under it got the default arrow instead of an
+     * I-beam, because a bare div resolves `cursor: auto`.
+     *
+     * ITS HEIGHT IS THE TENANT'S SERVICE LIST, which is why it reads as "the
+     * top half of the screen" rather than as a fixed strip: 194px at 4
+     * services, 306px at 15, 340px at 36. At 340px on a 870px viewport the
+     * band ends within ~13px of the exact vertical midpoint — a coincidence of
+     * one tenant's catalogue, not a rule, and the reason the report described a
+     * clean half.
+     *
+     * THE FIX IS ONE DECLARATION, and it is here rather than on the panel
+     * because the panel is already correct: `.nav-panel` is
+     * `pointer-events: none` closed and `auto` at `[data-open="true"]`. With
+     * the wrapper permanently transparent, interaction is governed by that one
+     * open-state toggle and nothing else — open, the menu behaves entirely
+     * normally; closed, the whole band is invisible to the pointer. A
+     * `pointer-events: none` parent does not disable an `auto` descendant,
+     * which is what makes one line enough.
+     *
+     * THE HOVER BRIDGE SURVIVES. `onPointerEnter`/`onPointerLeave` on this
+     * element keep the menu open while the pointer travels from the nav item
+     * down into the panel. They still fire, because React synthesises
+     * enter/leave along the event path and the open panel is `auto`, so it is
+     * the target. Verified on the running page: hover-opens, stays open moving
+     * into the panel, links clickable, closes on leave — identical before and
+     * after.
+     *
+     * THIS IS THE SECOND TIME THIS WRAPPER HAS BROKEN THE TOP OF EVERY PAGE.
+     * The note above the sheen list records the first: it took a
+     * `position: relative` from a rule it was never meant to match, put the
+     * closed panel back in flow and cost 440px of dead space. Same element,
+     * same root cause — a closed panel that still occupies space — reached
+     * through a different property. `site-header.test.tsx` pins this
+     * declaration so there is no third time. */
+    pointer-events: none;
   }
 
   /* OPAQUE, and the bar above it is not — the difference is deliberate.

@@ -23,6 +23,11 @@
 
 const { atomically } = require("../../../shared/db/tx");
 const { audit } = require("../../../shared/events/emit");
+// The careers switches live in the HR module's own repo because that is what
+// reads them on the public path; this module owns the AUTHENTICATED side of the
+// same two rows. A plain top-level require, because there is no cycle to break:
+// careers.repo imports nothing but its own SQL.
+const careersRepo = require("../../hr/careers/careers.repo");
 const { AppError } = require("../../../utils/errors");
 const events = require("./site_settings.events");
 const repo = require("./site_settings.repo");
@@ -263,6 +268,41 @@ const leaders = crud({
   create: repo.createLeader, update: repo.updateLeader, remove: repo.deleteLeader,
   created: events.LEADER_CREATED, updated: events.LEADER_UPDATED, deleted: events.LEADER_DELETED,
 });
+
+/* ── careers (13792) ────────────────────────────────────────────────────────*/
+
+/**
+ * The two switches on the careers page, read and written from the WEBSITE
+ * permission rather than the HR one.
+ *
+ * That split is the same judgement the entity-story routes below record: the
+ * rows live next to recruitment, but what they decide is what a page on the
+ * tenant's public site offers a stranger. A marketing administrator who may
+ * write the homepage should be able to turn open applications on without also
+ * holding MOD-11, which carries every candidate's salary expectation and score.
+ *
+ * Reading is separate from `careers.service.publicSettings`, which serves the
+ * same rows to the public: this one returns the ROW, stamps and all, because
+ * the person reading it is signed in and the settings screen wants to show who
+ * changed it last.
+ */
+const getCareers = (client) => careersRepo.getSettings(client);
+
+async function updateCareers(client, { patch, actor = {} }) {
+  return atomically(client, async () => {
+    const before = await careersRepo.getSettings(client);
+    const row = await careersRepo.updateSettings(client, patch, actor.user_id);
+    await audit(client, {
+      actorUserId: actor.user_id || null,
+      action: events.CAREERS_UPDATED,
+      moduleKey: events.MODULE,
+      entityRef: "site_careers:singleton",
+      before,
+      after: row,
+    });
+    return row;
+  });
+}
 
 /* ── about ──────────────────────────────────────────────────────────────────*/
 
@@ -514,6 +554,7 @@ module.exports = {
   listSocial, saveSocial,
   partners, credentials, leaders,
   getAbout, updateAbout,
+  getCareers, updateCareers,
   getEntityStory, updateEntityStory,
   publicPartners, publicSocial, publicAbout, publicEntities,
 };

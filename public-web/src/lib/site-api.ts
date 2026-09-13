@@ -69,6 +69,18 @@ export type SitePage = {
 export const HOME_PAGE_KEY = "home";
 
 /**
+ * The page key the careers screen reads its "why work here" blocks from (13792).
+ *
+ * A key and not a new table, because `site_page.key` is already free-form
+ * (`^[a-z0-9][a-z0-9-]*[a-z0-9]$` in the settings screen) and every tenant can
+ * already create one. It is here rather than invented at the call site so that
+ * the careers page and any future reader are looking at the same string — the
+ * failure mode otherwise is a tenant authoring `careers` and a component asking
+ * for `career`, which reads as "the editor does not work".
+ */
+export const CAREERS_PAGE_KEY = "careers";
+
+/**
  * One published page, or `null`.
  *
  * Every failure is the same answer on purpose. An unknown key, an unpublished

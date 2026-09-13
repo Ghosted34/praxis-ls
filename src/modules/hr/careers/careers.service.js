@@ -30,10 +30,14 @@
  */
 "use strict";
 
+const crypto = require("crypto");
 const { AppError } = require("../../../utils/errors");
 const vacancyRepo = require("../vacancy/vacancy.repo");
 const vacancyService = require("../vacancy/vacancy.service");
+const vacancyEvents = require("../vacancy/vacancy.events");
+const repo = require("./careers.repo");
 const vault = require("../../vault/document_vault/document_vault.service");
+const { emitEvent, audit } = require("../../../shared/events/emit");
 const { logger } = require("../../../config/logger");
 
 /** A CV is a document, not a media library. */
@@ -245,4 +249,197 @@ async function apply(client, { vacancy, data, slug }) {
   };
 }
 
-module.exports = { list, get, applyToToken, findByToken, CV_MAX_BYTES, CV_TYPES };
+/* ── The page when nothing is open (13792) ─────────────────────────────────*/
+
+/**
+ * What the careers page is allowed to offer, as the public may see it.
+ *
+ * Two booleans and a tag — never the row. `updated_by` is a `app_user` id and
+ * `updated_at` is when a member of staff last touched the settings; neither is
+ * any of a visitor's business, and this surface's whole discipline is that a
+ * response is an allow-list rather than a row (see the header).
+ *
+ * Live-only, and it never throws. This is read on the FIRST paint of a public
+ * page, so a tenant restored from a partial backup, or one whose `website`
+ * package is off, must get "nothing on offer" rather than an error — the page
+ * then renders the not-hiring band with a contact link, which is exactly the
+ * state the defaults describe.
+ */
+async function publicSettings(req) {
+  const row = await req
+    .tenantDbIn("live", (c) => repo.getSettings(c))
+    .catch((err) => {
+      logger.warn({ err }, "[careers] settings read failed — falling back to closed");
+      return null;
+    });
+  return {
+    open_applications: !!(row && row.open_applications),
+    alerts_enabled: !!(row && row.alerts_enabled),
+    culture_tag: (row && row.culture_tag) || null,
+  };
+}
+
+/**
+ * Receive an application with no role attached.
+ *
+ * ── WHERE IT LANDS, AND WHY THAT IS NOT A NEW PLACE ───────────────────────
+ *
+ * `job_applicant`, with `vacancy_id` NULL and `status` TALENT_POOL. Both were
+ * already legal in 0360, and 0525's `searchPool` — the Past applicants panel —
+ * is a LEFT JOIN over `status IN ('TALENT_POOL','REJECTED')`, so this candidate
+ * appears in a screen a recruiter already opens, and 0703's `considerForVacancy`
+ * can already put them in front of a real role with the provenance stamped.
+ *
+ * NOT the `talent_pool` table, which is the HAND-ENTERED bench (0703's words).
+ * A public endpoint writing into a curated shortlist is the "can it be used to
+ * fill the database?" question this module's routes file opens with, answered
+ * the wrong way.
+ *
+ * ── WHY THERE IS NO SCORE ─────────────────────────────────────────────────
+ *
+ * `scoring.estimate` reads a vacancy's criteria, and there is no vacancy. A
+ * number derived from nothing, sitting in the same column as one derived from a
+ * role's requirements, would make `ai_score` mean two different things
+ * depending on how the candidate happened to arrive — which is the exact defect
+ * `addApplicant`'s own comment says the CV path was written to avoid. It stays
+ * NULL until somebody is considered for a real role, which scores them properly.
+ *
+ * ── WHY LIVE-ONLY ─────────────────────────────────────────────────────────
+ *
+ * `applyToToken` can choose a schema because the token tells it which one the
+ * role lives in. There is no token here, so there is nothing to choose with —
+ * the same reason the index is live-only. A rehearsal workspace does not
+ * receive real people's CVs.
+ */
+async function applyOpen(req, { data, slug }) {
+  const settings = await publicSettings(req);
+  // The same 404 a closed role gets. A tenant who has not opened this door has
+  // not published one, and saying "this exists but is switched off" is the kind
+  // of detail this surface refuses everywhere else.
+  if (!settings.open_applications)
+    throw new AppError("NOT_FOUND", "This page is not accepting open applications", 404);
+  return req.tenantDbIn("live", (c) => insertOpenApplication(c, { data, slug }));
+}
+
+async function insertOpenApplication(client, { data, slug }) {
+  let cvVaultId = null;
+  if (data.cv_data_url) {
+    try {
+      const doc = await vault.createDocument(client, {
+        dataUrl: data.cv_data_url,
+        docType: "CV",
+        // A constant, because there is no vacancy to name and the applicant row
+        // does not exist yet — it cannot, since a file the CANDIDATE can fix
+        // must throw before anything is written rather than leave an orphan.
+        entityRef: "careers:open-application",
+        originalName: data.cv_filename || null,
+        maxBytes: CV_MAX_BYTES,
+        allowedTypes: CV_TYPES,
+        sniff: true,
+        slug,
+        actor: {},
+      });
+      cvVaultId = doc.doc_id;
+    } catch (err) {
+      // Identical asymmetry to `apply` above, for the identical reason: what the
+      // candidate can fix reaches them, what we broke never costs them the
+      // application.
+      if (err instanceof AppError && err.status < 500) throw err;
+      logger.error({ err }, "[careers] open-application CV upload failed — recording without it");
+    }
+  }
+
+  const row = await vacancyRepo.insertApplicant(client, {
+    vacancy_id: null,
+    status: "TALENT_POOL",
+    full_name: data.full_name,
+    email: data.email,
+    phone: data.phone,
+    address: data.address,
+    skills: data.skills || [],
+    experience_years: data.experience_years,
+    expected_salary: data.expected_salary,
+    portfolio_url: data.portfolio_url,
+    cover_note: data.cover_note,
+    cv_vault_id: cvVaultId,
+    // Distinct from the token path's "careers", so a recruiter can tell a CV
+    // sent for a role from one sent for the company, and so the two can be
+    // counted apart later.
+    source: "careers_open",
+    applied_at: new Date(),
+  });
+
+  // `job_applicant:` rather than `vacancy:` — there is no vacancy, and an
+  // entityRef naming one that does not exist is worse than none.
+  const entityRef = `job_applicant:${row.applicant_id}`;
+  await emitEvent(client, {
+    eventTypeKey: vacancyEvents.APPLICANT_ADDED,
+    moduleKey: vacancyEvents.MODULE,
+    entityRef,
+    actorUserId: null,
+  });
+  await audit(client, {
+    actorUserId: null,
+    action: vacancyEvents.APPLICANT_ADDED,
+    moduleKey: vacancyEvents.MODULE,
+    entityRef,
+    after: row,
+  });
+
+  // The same receipt the token path returns, and for the same reason: a
+  // reference the candidate can quote, and nothing they could read themselves
+  // back out of.
+  return {
+    received: true,
+    reference: String(row.applicant_id).slice(0, 8).toUpperCase(),
+    cv_attached: !!cvVaultId,
+  };
+}
+
+/**
+ * Put an address on the job-alert list.
+ *
+ * ── WHY THE ANSWER IS THE SAME WHETHER OR NOT THEY WERE ALREADY ON IT ─────
+ *
+ * `subscribeAlert` upserts, and the receipt says only "received". Reporting
+ * "you were already subscribed" would turn this into an oracle: anybody could
+ * test whether a given person is on a given company's list, one address at a
+ * time, from a form with no login.
+ */
+async function subscribeAlert(req, { data }) {
+  const settings = await publicSettings(req);
+  if (!settings.alerts_enabled)
+    throw new AppError("NOT_FOUND", "This page is not offering job alerts", 404);
+  // 32 bytes of CSPRNG, the same strength as a vacancy's public token, because
+  // it is the same kind of thing: the only credential on an unauthenticated
+  // action. Minted here so the repo's ON CONFLICT can decline to overwrite one
+  // that is already in somebody's inbox.
+  const token = crypto.randomBytes(32).toString("base64url");
+  await req.tenantDbIn("live", (c) =>
+    repo.subscribeAlert(c, {
+      email: data.email,
+      name: data.name || null,
+      locale: data.locale === "en" ? "en" : "fr",
+      token,
+    }));
+  return { received: true };
+}
+
+/**
+ * Take an address off it.
+ *
+ * Answers `{ unsubscribed: true }` whether or not the token matched, for the
+ * reason above turned around: a token that 404s is a token that can be probed.
+ * The only caller is a link in an email, which has nothing to do with a miss
+ * anyway.
+ */
+async function unsubscribeAlert(req, token) {
+  await req.tenantDbIn("live", (c) => repo.unsubscribeAlert(c, token));
+  return { unsubscribed: true };
+}
+
+module.exports = {
+  list, get, applyToToken, findByToken,
+  publicSettings, applyOpen, subscribeAlert, unsubscribeAlert,
+  CV_MAX_BYTES, CV_TYPES,
+};

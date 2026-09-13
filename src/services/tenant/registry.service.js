@@ -570,6 +570,48 @@ async function closeAll() {
   }
 }
 
+/**
+ * Where a tenant's PUBLIC site lives, as an absolute origin + base (13792).
+ *
+ * ── WHY THIS EXISTS AT ALL ────────────────────────────────────────────────
+ *
+ * Every other absolute public URL in this product is built from the REQUEST —
+ * `req.protocol + "://" + req.headers.host`, as the sitemap does. A background
+ * job has no request, and a job-alert email full of relative links is a digest
+ * of dead links: it spends the one piece of attention the recipient was going
+ * to give it, and they do not open the next one.
+ *
+ * ── WHICH HOST, WHEN A TENANT HAS SEVERAL ─────────────────────────────────
+ *
+ * The public-surface host first, and among those the primary — a tenant who
+ * brought their own domain wants mail pointing at it, not at the workspace
+ * subdomain. `surface = 'public'` hosts serve the site at the ROOT and
+ * `public_base` applies to workspace hosts only, which is the rule
+ * `public-web-paths.js` states and `joinBase` implements; this reads it from
+ * the same two columns rather than restating it.
+ *
+ * `https` unconditionally, and not because the column says so — it does not.
+ * A link in an email is followed on a network nobody here chose, and there is
+ * no version of this where an unencrypted one is the right answer.
+ *
+ * Returns `null` when the tenant has no host on file. The caller must treat
+ * that as "cannot send", never as a relative fallback.
+ */
+async function publicSiteBaseUrl(tenantId) {
+  const { rows } = await platform().query(
+    `SELECT host, surface, public_base
+       FROM platform.subdomain
+      WHERE tenant_id = $1
+      ORDER BY (surface = 'public') DESC, is_primary DESC, created_at
+      LIMIT 1`,
+    [tenantId],
+  );
+  const row = rows[0];
+  if (!row || !row.host) return null;
+  const base = row.surface === "public" ? "" : String(row.public_base || "/public");
+  return "https://" + row.host + (base === "/" ? "" : base);
+}
+
 module.exports = {
   resolveByHost,
   resolveBySlug,
@@ -579,6 +621,7 @@ module.exports = {
   acquire,
   withTenantConnection,
   listActiveTenants,
+  publicSiteBaseUrl,
   poolStats,
   hostCacheStats,
   closeAll,

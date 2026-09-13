@@ -43,6 +43,11 @@ const validator = require("./careers.validator");
  */
 const readLimiter = makeLimiter({ name: "careers-read", max: 120, windowMs: 15 * 60 * 1000 });
 const applyLimiter = makeLimiter({ name: "careers-apply", max: 5, windowMs: 60 * 60 * 1000 });
+// An address and a name, no file. Cheaper than an application and more
+// plausibly repeated — a household behind one NAT address, somebody signing up
+// from a phone and then a laptop — so the ceiling is higher than applying and
+// far below anything worth a flood.
+const alertLimiter = makeLimiter({ name: "careers-alert", max: 20, windowMs: 60 * 60 * 1000 });
 
 const router = express.Router();
 
@@ -65,6 +70,45 @@ router.post("/:token/apply", applyLimiter, validator.apply, asyncHandler(async (
   res.status(201).json({
     data: await service.applyToToken(req, { token: req.params.token, data: req.body, slug: req.tenant.slug }),
   })));
+
+/* ── The page when nothing is open (13792) ──────────────────────────────────
+ *
+ * Every route below is declared AFTER `/:token`, and none of them collides with
+ * it: `/:token` is a GET on one segment and `/:token/apply` a POST on two, so
+ * `POST /settings` and `POST /alerts` share a shape with neither. It is worth
+ * stating rather than trusting, because the day somebody adds `GET /alerts` it
+ * WOULD be shadowed by `GET /:token` above and would 404 for a reason nothing
+ * in this file explains.
+ */
+
+/** What the page may offer. Two booleans and a tag — see publicSettings. */
+router.get("/settings/public", readLimiter, asyncHandler(async (req, res) =>
+  res.json({ data: await service.publicSettings(req) })));
+
+/**
+ * A CV with no role attached. 201 and a reference, like applying to a role —
+ * the candidate did the same amount of work and is owed the same receipt.
+ */
+router.post("/open-application", applyLimiter, validator.openApplication, asyncHandler(async (req, res) =>
+  res.status(201).json({
+    data: await service.applyOpen(req, { data: req.body, slug: req.tenant.slug }),
+  })));
+
+/** Tell me when something opens. */
+router.post("/alerts", alertLimiter, validator.alert, asyncHandler(async (req, res) =>
+  res.status(201).json({ data: await service.subscribeAlert(req, { data: req.body }) })));
+
+/**
+ * Stop telling me.
+ *
+ * A POST and not a GET, though it arrives from a link in an email: a mail
+ * client that prefetches links would unsubscribe somebody who never clicked.
+ * The link opens a page on the site, which posts this — and the page is
+ * reachable with the token in the URL, which is why the token is 32 CSPRNG
+ * bytes and not the address.
+ */
+router.post("/alerts/unsubscribe/:token", alertLimiter, validator.unsubscribe, asyncHandler(async (req, res) =>
+  res.json({ data: await service.unsubscribeAlert(req, req.params.token) })));
 
 // `idParam: "text"` — :token is a base64url string, not a uuid or a number, so
 // the loader's id guard would reject every real request.

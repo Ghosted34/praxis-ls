@@ -2,25 +2,16 @@ import * as React from "react";
 import { Link, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import * as api from "@/lib/careers-api";
+import * as insights from "@/lib/insights-api";
 import { PublicApiError, messageFor } from "@/lib/api";
 import { currentLocale, tStatic } from "@/lib/i18n";
-import { dateAgo, enumText, withScheme } from "@/lib/format";
-import { useIntake } from "@/lib/use-intake";
+import { dateAgo, enumText } from "@/lib/format";
 import { PageContainer, PageShell } from "@/components/site/page-shell";
-import { Section } from "@/components/site/section";
+import { MediaCard, Section } from "@/components/site/section";
 import { Card } from "@/components/ui/card";
 import { Panel } from "@/components/ui/panel";
-import { FilePicker } from "@/components/ui/file-input";
-import {
-  compressImage,
-  isPreviewableImage,
-  isSafeBlobUrl,
-  previewUrlFor,
-} from "@/lib/image-compress";
-import { Button } from "@/components/ui/button";
 import { ButtonLink } from "@/components/ui/button";
-import { Input, Textarea } from "@/components/ui/field";
-import { EmptyState, ErrorState, SuccessState } from "@/components/state";
+import { ErrorState, SuccessState } from "@/components/state";
 import { PageSkeleton } from "@/components/ui/skeleton";
 import { Chip } from "@/components/ui/pill";
 import { Markdown } from "@/components/ui/markdown";
@@ -43,7 +34,14 @@ import { StagedLines } from "@/components/ui/type";
 import { BadgePill } from "@/components/ui/badge-pill";
 import { Reveal } from "@/components/ui/reveal";
 import { useDocumentMeta } from "@/lib/use-document-meta";
+import { useSitePage } from "@/lib/use-site-page";
+import { CAREERS_PAGE_KEY, featureList, pickBilingual } from "@/lib/site-api";
+import { LazyCandidateForm } from "./candidate-form-lazy";
+import { NotHiring, UnsubscribePage } from "./careers-empty";
 import { p } from "@/lib/base-path";
+// Registers `site.careers.*`, which lives in this chunk rather than in the
+// entry dictionary. Imported for the side effect; see careers-i18n.ts.
+import "./careers-i18n";
 
 /**
  * `/public/careers` and `/public/careers/:token` — the one screen in this product
@@ -60,10 +58,12 @@ import { p } from "@/lib/base-path";
  *      reference than a candidate with nothing"). Rendering only "Thank you"
  *      would tell a person their CV is in a pile when it may not be — so the
  *      confirmation is a different sentence for each case.
- *   2. THE FILE IS SIZE-CHECKED BEFORE IT IS READ. `fileToDataUrl` refuses over
- *      8 MB, matching `CV_MAX_BYTES` in `careers.service`, so an oversized scan
- *      is a message at selection time and not a lost form after a minute on a
- *      metered connection.
+ *   2. THE FILE IS CHECKED BEFORE IT IS SENT. `FileInput` refuses a wrong type
+ *      outright and refuses an oversized one AFTER compressing, against
+ *      `ATTACHMENT_MAX_BYTES` — the same 8 MB `CV_MAX_BYTES` enforces in
+ *      `careers.service`. So an unusable file is a message at selection time and
+ *      not a lost form after a minute on a metered connection, and a CV
+ *      photographed on a phone is resized rather than refused.
  *   3. WHAT THE ROLE INSISTS ON IS SAID FIRST. `apply_config` carries
  *      `require_cover_letter` / `require_portfolio`; the server enforces them and
  *      returns named field errors, so the form marks them required up front
@@ -77,15 +77,12 @@ import { p } from "@/lib/base-path";
  * English-only string. A test advert that only warns the English-reading half of
  * the applicants is a warning that did not happen.
  */
-/** Kept out of the JSX so the suppression comment stays on the line directly
- *  above `src` — Prettier re-wraps a long <img> and would separate them. */
-const CV_PREVIEW_CLASS =
-  "h-12 w-12 shrink-0 rounded border bg-background object-cover";
-
 export function CareersPage() {
   const { t } = useTranslation();
+  const lang = currentLocale().startsWith("fr") ? "fr" : "en";
   const [rows, setRows] = React.useState<api.PublicVacancy[] | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  const [settings, setSettings] = React.useState<api.CareersSettings | null>(null);
 
   React.useEffect(() => {
     let alive = true;
@@ -104,6 +101,26 @@ export function CareersPage() {
       alive = false;
     };
   }, []);
+
+  /* Separate from the list, and never chained behind it. The two answer
+     different questions — "what is open" and "what may this page offer" — and a
+     tenant with no vacancies still has switches. Chaining would also make the
+     not-hiring band wait for a request it does not depend on, which is the
+     slowest path on the page in the state the page is usually in. `getSettings`
+     never rejects, so there is no error branch to write. */
+  React.useEffect(() => {
+    let alive = true;
+    api.getSettings().then((v) => alive && setSettings(v));
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  /* The tenant's own "why work here", if they have written one. `null` for
+     every tenant who has not, which is every tenant on day one — and the bands
+     below simply do not render, rather than showing a heading over nothing. */
+  const { page: careersPage } = useSitePage(CAREERS_PAGE_KEY);
+  const features = featureList(careersPage);
 
   useDocumentMeta({
     title: t("site.careers.title"),
@@ -136,16 +153,26 @@ export function CareersPage() {
         </PageContainer>
       </section>
 
+      {/* ── the roles, or the answer that there are none ──────────────────
+          The list is a SLOT in a page rather than the whole page (13792). What
+          used to be here was the list and, in its absence, a dashed box: so the
+          commonest state of this route was also its emptiest, and everything a
+          tenant might say about working for them had nowhere to go. */}
       <Section>
         {error ? (
           <ErrorState message={error} />
         ) : rows === null ? (
           <PageSkeleton rows={4} cols={2} />
         ) : rows.length === 0 ? (
-          <EmptyState
-            title={t("site.careers.empty")}
-            hint={t("site.careers.emptyHint")}
-          />
+          /* Held until the switches land. They decide whether this band has one
+             button, two or none, and painting the contact-only version first
+             and swapping it for an application form a beat later is the flicker
+             `site-copy.ts` holds first paint to avoid on the heading above. */
+          settings === null ? (
+            <PageSkeleton rows={2} cols={1} />
+          ) : (
+            <NotHiring settings={settings} />
+          )
         ) : (
           <ul className="divide-y divide-[var(--border)] border-y border-[var(--border)]">
             {rows.map((v, i) => (
@@ -172,6 +199,145 @@ export function CareersPage() {
             ))}
           </ul>
         )}
+      </Section>
+
+      {/* ── why work here, in the tenant's own words ──────────────────────
+          Rendered whether or not roles are open, which is the point: a candidate
+          who DID find a role wants this too, and building it as an empty-state
+          decoration would mean the effort only ever reached the people who found
+          nothing. Absent for a tenant who has authored no `careers` page, and
+          absent is the correct empty state — a heading over three blank cards
+          reads as a company that did not finish writing its own values. */}
+      {features && features.items.length > 0 && (
+        <Section
+          variant="muted"
+          divided
+          title={pickBilingual(features.title, lang) || t("site.careers.lookingFor")}
+        >
+          <ul className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            {features.items.map((item, i) => (
+              <Reveal as="li" key={pickBilingual(item.title, lang) || i} delay={(i % 3) as 0 | 1 | 2}>
+                <h3 className="text-base font-semibold leading-snug tracking-tight">
+                  {pickBilingual(item.title, lang)}
+                </h3>
+                {item.text && (
+                  <p className="mt-1.5 max-w-measure text-sm text-muted-foreground">
+                    {pickBilingual(item.text, lang)}
+                  </p>
+                )}
+              </Reveal>
+            ))}
+          </ul>
+        </Section>
+      )}
+
+      {/* ── life here, from the tenant's own posts ────────────────────────
+          A tag rather than a second content store, for the reason 13792 gives:
+          `insight` already has an editor, a publish flag and tags, and a
+          careers-only copy of all three would be three chances to disagree with
+          the originals. No tag configured means no band. */}
+      {settings?.culture_tag ? <CultureStrip tag={settings.culture_tag} /> : null}
+    </PageShell>
+  );
+}
+
+/**
+ * The tenant's own posts about working there, filtered to one tag (13792).
+ *
+ * Fetched here rather than in the page, because it is the one band that is
+ * conditional on a setting the page has already fetched — hoisting the request
+ * would mean every visitor pays for it including the tenants who configured no
+ * tag, which is most of them.
+ *
+ * Renders NOTHING on an empty answer or a failure. A tenant who set a tag that
+ * matches no published post has a band with no content, and a heading with an
+ * empty grid under it is worse on a careers page than no band: it reads as a
+ * company whose website is broken, to the audience least willing to overlook it.
+ */
+function CultureStrip({ tag }: { tag: string }) {
+  const { t } = useTranslation();
+  const lang = currentLocale().startsWith("fr") ? "fr" : "en";
+  const [rows, setRows] = React.useState<insights.InsightCard[]>([]);
+
+  React.useEffect(() => {
+    let alive = true;
+    const ac = new AbortController();
+    insights
+      .listInsights({ tag, signal: ac.signal })
+      .then((r) => alive && setRows((r?.articles || []).slice(0, 3)))
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+      ac.abort();
+    };
+  }, [tag]);
+
+  if (!rows.length) return null;
+  return (
+    <Section
+      divided
+      title={t("site.careers.cultureTitle")}
+    >
+      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        {rows.map((a, i) => {
+          const slug = insights.insightSlug(a, lang);
+          return (
+            <MediaCard
+              /* The slug, not an id: `InsightCard` is the PUBLIC shape and
+                 carries no `insight_id` — the index is addressed by slug all
+                 the way through. The positional fallback covers a post with no
+                 slug in either language, which cannot be linked either. */
+              key={slug || `card-${i}`}
+              image={insights.coverUrl(a.cover_id)}
+              icon={BoxIcon}
+              title={insights.insightTitle(a, lang)}
+              to={slug ? p(`/insights/${encodeURIComponent(slug)}`) : undefined}
+              linkLabel={slug ? t("site.careers.cultureMore") : undefined}
+            >
+              {insights.insightExcerpt(a, lang)}
+            </MediaCard>
+          );
+        })}
+      </div>
+    </Section>
+  );
+}
+
+/**
+ * `/careers/alerts/unsubscribe/:token` — where every job-alert digest's footer
+ * points (13792).
+ *
+ * It gets the same entrance as every other route in this app rather than a bare
+ * confirmation card. That is not only the acceptance criterion in
+ * `route-entrances.test.tsx`: somebody arriving here has just decided they want
+ * less from this company, and the last page they see should still look like the
+ * company's, not like a 1990s form handler.
+ *
+ * Four path segments, so it cannot be shadowed by `/careers/:token` — react-router
+ * ranks a static segment above a dynamic one and these do not even have the same
+ * length.
+ */
+export function CareersUnsubscribePage() {
+  const { t } = useTranslation();
+  const { token = "" } = useParams();
+  useDocumentMeta({ title: t("site.careers.unsubTitle") });
+  return (
+    <PageShell label={t("site.careers.unsubTitle")} footer>
+      <section className="band-hero relative overflow-hidden">
+        <BgMap />
+        <PageContainer className="relative">
+          <BadgePill onDark>{t("site.careers.list")}</BadgePill>
+          <SectionHead
+            className="mt-4"
+            as="h1"
+            titleClass="hero-title"
+            onDark
+            title={<StagedLines paintImmediately text={t("site.careers.unsubTitle")} />}
+          />
+        </PageContainer>
+      </section>
+      <Section>
+        <UnsubscribePage token={decodeURIComponent(token)} />
       </Section>
     </PageShell>
   );
@@ -437,293 +603,47 @@ export function VacancyPage() {
 }
 
 /** The application itself. */
+/**
+ * Applying to a ROLE.
+ *
+ * Everything that used to live here — the picker, the compression, the preview,
+ * the honeypot, the field-error wiring — moved into `CandidateForm` when 13792
+ * added a second form asking the same questions. What stays is what is actually
+ * specific to a vacancy: the two things `apply_config` can insist on, where the
+ * body is posted, and a confirmation that can promise a pipeline because there
+ * is one.
+ */
 function ApplyForm({ vacancy: v }: { vacancy: api.PublicVacancy }) {
   const { t } = useTranslation();
-  const [file, setFile] = React.useState<File | null>(null);
-  const [preview, setPreview] = React.useState<string | null>(null);
-
-  // An object URL pins the whole file in memory until it is revoked.
-  React.useEffect(
-    () => () => {
-      if (preview) URL.revokeObjectURL(preview);
-    },
-    [preview],
-  );
-  const [fileError, setFileError] = React.useState<string | null>(null);
-  const [cvDataUrl, setCvDataUrl] = React.useState<string | null>(null);
-  const [f, setF] = React.useState({
-    full_name: "",
-    email: "",
-    phone: "",
-    address: "",
-    experience_years: "",
-    expected_salary: "",
-    portfolio_url: "",
-    cover_note: "",
-  });
-  const set = (k: keyof typeof f, val: string) =>
-    setF((s) => ({ ...s, [k]: val }));
-
-  const requireCover = !!v.apply_config?.require_cover_letter;
-  const requirePortfolio = !!v.apply_config?.require_portfolio;
-
-  const intake = useIntake<api.ApplyResult>({
-    send: (body) => api.apply(v.token, body as api.ApplyInput),
-    onRateLimited: t("site.careers.limited"),
-    onFailed: t("site.careers.err"),
-  });
-
-  const canSend =
-    f.full_name.trim().length > 1 &&
-    /.+@.+\..+/.test(f.email.trim()) &&
-    (!requireCover || f.cover_note.trim().length > 0) &&
-    (!requirePortfolio || f.portfolio_url.trim().length > 0) &&
-    !intake.busy;
-
-  async function pick(files: FileList | null) {
-    const picked = files?.[0] || null;
-    setFileError(null);
-    setCvDataUrl(null);
-    setPreview((old) => {
-      if (old) URL.revokeObjectURL(old);
-      return null;
-    });
-    setFile(picked);
-    if (!picked) return;
-    try {
-      // Compressed before it is ever encoded. A CV photographed on a phone is
-      // routinely 8–12 MB, and this is a stranger on a corridor connection with
-      // no account and no second attempt: the resize is the difference between
-      // an application that lands and one that times out. "document" keeps the
-      // source format, so the company receives the kind of file it can open.
-      const { file: prepared } = await compressImage(picked, "document");
-      setFile(prepared);
-      if (isPreviewableImage(prepared)) {
-        // The preview this form never had. Attaching the wrong scan is
-        // otherwise invisible — and a candidate has no account to check it from
-        // afterwards. previewUrlFor proves the blob: contract at the sink.
-        setPreview(previewUrlFor(prepared));
-      }
-      setCvDataUrl(await api.fileToDataUrl(prepared));
-    } catch (e) {
-      setFileError(e instanceof Error ? e.message : String(e));
-    }
-  }
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!canSend) return;
-    await intake.submit({
-      full_name: f.full_name.trim(),
-      email: f.email.trim(),
-      phone: f.phone.trim() || undefined,
-      address: f.address.trim() || undefined,
-      // NO `skills`. The schema accepts them and the record stores them, but the
-      // form does not ask the candidate for a skill list, and copying
-      // `skills_required` in would write the job's own requirements into the
-      // applicant's profile — where this product's CV scorer will read them back
-      // as a match the person never claimed. A scaffold that inflates a score to
-      // fill a column is worse than a null column.
-      experience_years: f.experience_years
-        ? Number(f.experience_years)
-        : undefined,
-      expected_salary: f.expected_salary
-        ? Number(f.expected_salary)
-        : undefined,
-      portfolio_url: f.portfolio_url
-        ? withScheme(f.portfolio_url.trim())
-        : undefined,
-      cover_note: f.cover_note.trim() || undefined,
-      cv_data_url: cvDataUrl || undefined,
-      cv_filename: file?.name,
-    });
-  }
-
-  if (intake.result) {
-    const r = intake.result;
-    return (
-      <div className="mt-4">
-        <SuccessState
-          title={t("site.careers.sentTitle")}
-          hint={
-            <>
-              {r.cv_attached
-                ? t("site.careers.sentCv", { reference: r.reference })
-                : t("site.careers.sentNoCv", { reference: r.reference })}
-              <span className="mt-2 block">{t("site.careers.sentNote")}</span>
-            </>
-          }
-        />
-        <Link
-          to={p("/careers")}
-          className="mt-4 inline-flex text-sm text-primary-ink underline underline-offset-4"
-        >
-          {t("site.careers.anotherRole")}
-        </Link>
-      </div>
-    );
-  }
-
   return (
-    <form onSubmit={submit} className="relative mt-4 space-y-3.5">
-      {intake.error && (
-        <p
-          role="alert"
-          className="rounded-[calc(var(--radius)-2px)] border border-bad/35 bg-bad-fill/5 p-3 text-sm"
-        >
-          {intake.error}
-        </p>
-      )}
-      <Input
-        label={t("site.careers.fullName")}
-        required
-        autoComplete="name"
-        value={f.full_name}
-        error={intake.fields.full_name}
-        onChange={(e) => set("full_name", e.target.value)}
-      />
-      <Input
-        label={t("site.careers.email")}
-        type="email"
-        required
-        autoComplete="email"
-        value={f.email}
-        error={intake.fields.email}
-        onChange={(e) => set("email", e.target.value)}
-      />
-      <div className="grid gap-3.5 sm:grid-cols-2">
-        <Input
-          label={`${t("site.careers.phone")} (${t("site.careers.optional")})`}
-          type="tel"
-          autoComplete="tel"
-          value={f.phone}
-          error={intake.fields.phone}
-          onChange={(e) => set("phone", e.target.value)}
-        />
-        <Input
-          label={`${t("site.careers.address")} (${t("site.careers.optional")})`}
-          autoComplete="street-address"
-          value={f.address}
-          error={intake.fields.address}
-          onChange={(e) => set("address", e.target.value)}
-        />
-        <Input
-          label={`${t("site.careers.experience")} (${t("site.careers.optional")})`}
-          type="number"
-          min={0}
-          max={70}
-          inputMode="numeric"
-          value={f.experience_years}
-          error={intake.fields.experience_years}
-          onChange={(e) => set("experience_years", e.target.value)}
-        />
-        <Input
-          label={`${t("site.careers.expectedSalary")} (${t("site.careers.optional")})`}
-          type="number"
-          min={0}
-          step="1000"
-          inputMode="numeric"
-          value={f.expected_salary}
-          error={intake.fields.expected_salary}
-          onChange={(e) => set("expected_salary", e.target.value)}
-        />
-      </div>
-      <Input
-        label={
-          requirePortfolio
-            ? t("site.careers.portfolio")
-            : `${t("site.careers.portfolio")} (${t("site.careers.optional")})`
-        }
-        required={requirePortfolio}
-        inputMode="url"
-        placeholder="https://"
-        value={f.portfolio_url}
-        error={intake.fields.portfolio_url}
-        onChange={(e) => set("portfolio_url", e.target.value)}
-      />
-      <Textarea
-        label={
-          requireCover
-            ? t("site.careers.coverNote")
-            : `${t("site.careers.coverNote")} (${t("site.careers.optional")})`
-        }
-        required={requireCover}
-        hint={t("site.careers.coverHint")}
-        rows={5}
-        maxLength={5000}
-        value={f.cover_note}
-        error={intake.fields.cover_note}
-        onChange={(e) => set("cover_note", e.target.value)}
-      />
-
-      <div>
-        <p className="field-label">{t("site.careers.cv")}</p>
-        <div className="mt-1.5 flex flex-wrap items-center gap-3">
-          <FilePicker
-            accept={api.CV_ACCEPT}
-            label={t("site.careers.cv")}
-            disabled={intake.busy}
-            trigger={
-              <span className="btn-surface inline-flex h-10 items-center rounded-[calc(var(--radius)-2px)] px-4 text-sm font-medium no-underline">
-                {t("site.careers.cvPick")}
-              </span>
+    <LazyCandidateForm
+      send={(body) => api.apply(v.token, body)}
+      requireCover={!!v.apply_config?.require_cover_letter}
+      requirePortfolio={!!v.apply_config?.require_portfolio}
+      coverLabel={t("site.careers.coverNote")}
+      coverHint={t("site.careers.coverHint")}
+      submitLabel={t("site.careers.submit")}
+      renderSent={(r) => (
+        <div className="mt-4">
+          <SuccessState
+            title={t("site.careers.sentTitle")}
+            hint={
+              <>
+                {r.cv_attached
+                  ? t("site.careers.sentCv", { reference: r.reference })
+                  : t("site.careers.sentNoCv", { reference: r.reference })}
+                <span className="mt-2 block">{t("site.careers.sentNote")}</span>
+              </>
             }
-            onPick={(files) => void pick(files)}
           />
-          {/* CodeQL reports js/xss-through-dom (high) on the `src` below, and
-              it is a FALSE POSITIVE dismissed in the Security tab — not
-              suppressed here. GitHub's CodeQL Action ignores source-code
-              suppression comments (`// codeql[…]` / `// lgtm[…]` were an LGTM
-              feature); alerts are dismissed through code scanning itself. A
-              directive here would look like it was handling the alert while
-              doing nothing, which is worse than no comment at all.
-
-              The flow it traces is real: a file the visitor chose reaches a URL
-              sink. What it cannot see is that `preview` can only ever be a `blob:`
-              URL — `URL.createObjectURL` has no other possible return — and a
-              blob: URL can neither execute nor be reinterpreted as markup. The
-              schemes that would make this sink live, `data:text/html` and
-              `javascript:`, are unreachable.
-
-              What was tried, so nobody repeats it: asserting the prefix inside
-              `previewUrlFor` (not followed across a module boundary); an inline
-              `startsWith` on this conditional (not recognised as a barrier);
-              and the named guard below (still reported).
-
-              The guard STAYS regardless of the dismissal. It is not decoration
-              — it is what catches the day someone swaps object URLs for a
-              FileReader `data:` URL, where this sink genuinely would be live.
-              image-compress.test.ts covers that rejection path.
-
-              Revisit if this component ever takes its src from anywhere other
-              than `previewUrlFor`. */}
-          {isSafeBlobUrl(preview) ? (
-            <img src={preview} alt="" className={CV_PREVIEW_CLASS} />
-          ) : null}
-          <span className="min-w-0 truncate text-xs text-muted-foreground">
-            {file ? file.name : t("site.careers.cvNone")}
-          </span>
+          <Link
+            to={p("/careers")}
+            className="mt-4 inline-flex text-sm text-primary-ink underline underline-offset-4"
+          >
+            {t("site.careers.anotherRole")}
+          </Link>
         </div>
-
-        <p className="mt-1.5 text-xs text-muted-foreground">
-          {t("site.careers.cvHint")}
-        </p>
-        {(fileError || intake.fields.cv_data_url) && (
-          <p role="alert" className="mt-1.5 text-xs text-bad">
-            {fileError || intake.fields.cv_data_url}
-          </p>
-        )}
-      </div>
-
-      <Button
-        type="submit"
-        size="lg"
-        className="w-full justify-center"
-        loading={intake.busy}
-        disabled={!canSend}
-      >
-        {intake.busy ? t("site.careers.sending") : t("site.careers.submit")}
-      </Button>
-    </form>
+      )}
+    />
   );
 }

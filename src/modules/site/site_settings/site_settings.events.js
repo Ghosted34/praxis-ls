@@ -25,6 +25,7 @@ module.exports = {
   CREDENTIAL_UPDATED: "site.credential_updated",
   CREDENTIAL_DELETED: "site.credential_deleted",
   ABOUT_UPDATED: "site.about_updated",
+  CAREERS_UPDATED: "site.careers_updated",
   LEADER_CREATED: "site.leader_created",
   LEADER_UPDATED: "site.leader_updated",
   LEADER_DELETED: "site.leader_deleted",

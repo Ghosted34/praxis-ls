@@ -11,7 +11,10 @@ import {
   tList,
   currentLocale,
 } from "./i18n";
-import { en, fr } from "./i18n-dict";
+// The RUNTIME tree, not just the entry dictionary: `site.careers.*` lives in the
+// careers chunk since 13792, and both assertions below are about what i18next
+// actually resolves rather than about which file a string was written in.
+import { en, fr } from "./i18n-tree.test-helper";
 
 /**
  * The dictionary's own tests — the three failures a bilingual app grows on its

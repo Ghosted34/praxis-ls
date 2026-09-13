@@ -49,6 +49,34 @@ const path = require("path");
 const ROOT = path.join(__dirname, "..", "..");
 const WEB_SRC = path.join(ROOT, "public-web", "src");
 const DICT = path.join(WEB_SRC, "lib", "i18n-dict.ts");
+
+/**
+ * Dictionaries that live in a FEATURE rather than in `i18n-dict.ts` (13792).
+ *
+ * `i18n-dict.ts` is in the entry graph, so every string in it is downloaded by
+ * every visitor to every page. A subtree only one route can ever render does
+ * not belong there — `check-bundle.mjs` names that split as the lever to reach
+ * for before raising the first-paint budget, and `site.careers.*` (~80 keys,
+ * read by three modules all inside the careers chunk) was the first to take it.
+ *
+ * They are read here for one reason: being outside `i18n-dict.ts` must NOT
+ * quietly remove a sentence from this catalogue. A key that is not in the
+ * catalogue cannot be overridden by a tenant, and on a white-label product the
+ * careers page's empty state — which is what a stranger reads when the company
+ * is not hiring — is the last thing that should be un-rewritable.
+ *
+ * Each entry states where its object literals hang in the `site.*` tree, since
+ * a feature file exports the subtree itself rather than a whole `{ site: … }`.
+ * Same rules as the main dictionary: no imports, no type annotations, nothing
+ * but object literals and `as const` (see `readObjectLiterals`).
+ */
+const FEATURE_DICTS = [
+  {
+    file: path.join(WEB_SRC, "features", "careers", "careers-copy.ts"),
+    /** Where `en` / `fr` from that file sit under `site.` */
+    mount: "careers",
+  },
+];
 const ROUTER = path.join(WEB_SRC, "app", "router.tsx");
 const OUT = path.join(ROOT, "packages", "shared", "data", "site-copy.generated.js");
 
@@ -62,15 +90,18 @@ const OUT = path.join(ROOT, "packages", "shared", "data", "site-copy.generated.j
  * would be wrong in ways nobody would notice until a French quotation mark
  * ended up as a key.
  */
-function readDictionary() {
-  const src = fs.readFileSync(DICT, "utf8");
-  // If the dictionary ever grows an import or a type annotation, the eval below
+/** Evaluate one dictionary module and hand back whatever it exported. Shared by
+ *  the main dictionary and the feature ones, so the "no imports" rule and the
+ *  eval are stated once rather than drifting between two readers. */
+function readObjectLiterals(file) {
+  const src = fs.readFileSync(file, "utf8");
+  // If a dictionary ever grows an import or a type annotation, the eval below
   // stops being safe to reason about. Fail loudly here rather than silently
   // emitting a catalogue built from a half-evaluated file.
   if (/^\s*import\s/m.test(src)) {
     throw new Error(
-      "i18n-dict.ts has grown an import — this generator evaluates it as a plain " +
-        "object literal and can no longer do so. Teach it to strip the import, or " +
+      `${path.basename(file)} has grown an import — this generator evaluates it as a ` +
+        "plain object literal and can no longer do so. Teach it to strip the import, or " +
         "move the dictionary data out of the module that needs one.",
     );
   }
@@ -79,9 +110,34 @@ function readDictionary() {
   // eslint-disable-next-line no-new-func -- see the note above; the input is a
   // repo file, not user data, and the alternative is a bespoke TS parser.
   new Function("module", "exports", body)(module, module.exports);
-  const { en, fr } = module.exports;
+  return module.exports;
+}
+
+function readDictionary() {
+  const { en, fr } = readObjectLiterals(DICT);
   if (!en || !fr || !en.site || !fr.site) {
     throw new Error("i18n-dict.ts did not evaluate to { en.site, fr.site }");
+  }
+  // Feature dictionaries are merged back in at their mount point, so the
+  // catalogue this generator emits is keyed exactly as the RUNTIME tree is —
+  // `site.careers.empty` whichever file the string happens to be written in.
+  // Anything else would make a key's overridability depend on a bundling
+  // decision, which is not a thing a tenant can see or reason about.
+  for (const { file, mount } of FEATURE_DICTS) {
+    const feature = readObjectLiterals(file);
+    if (!feature.en || !feature.fr) {
+      throw new Error(`${path.basename(file)} did not evaluate to { en, fr }`);
+    }
+    if (en.site[mount] || fr.site[mount]) {
+      // Two sources for one subtree means one of them silently loses, and which
+      // one would depend on the order of this loop.
+      throw new Error(
+        `site.${mount} is declared in BOTH i18n-dict.ts and ${path.basename(file)} — ` +
+          "it must live in exactly one of them.",
+      );
+    }
+    en.site[mount] = feature.en;
+    fr.site[mount] = feature.fr;
   }
   return { en, fr };
 }

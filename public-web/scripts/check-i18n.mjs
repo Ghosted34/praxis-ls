@@ -44,6 +44,34 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SRC = path.join(ROOT, "src");
 const DICT = path.join(SRC, "lib/i18n-dict.ts");
 
+/**
+ * Dictionaries that live in a FEATURE chunk rather than in `i18n-dict.ts` (13792).
+ *
+ * `i18n-dict.ts` is in the entry graph, so every string in it is downloaded by
+ * every visitor to every page — right for `site.nav.*`, wrong for a subtree only
+ * one route can render. `check-bundle.mjs` names this split as the lever to
+ * reach for before raising the first-paint budget, and `site.careers.*` took it.
+ *
+ * These files are checked EXACTLY as the main dictionary is — parity, tokens,
+ * braces, French typography — because the failure they guard against does not
+ * care which module a string was written in. `mount` is where the file's `en`
+ * and `fr` hang in the runtime tree, so a key reported here reads
+ * `site.careers.empty`, the same name the app and the site-copy catalogue use.
+ */
+const FEATURE_DICTS = [
+  {
+    file: path.join(SRC, "features/careers/careers-copy.ts"),
+    mount: "site.careers",
+  },
+];
+
+/** True for any file that IS copy rather than a component that contains copy.
+ *  Both prose checks below consult it, so they cannot drift apart about what a
+ *  dictionary is — the way they once did over test files. */
+const isDictionaryFile = (file) =>
+  /i18n-dict\.ts$/.test(file) || FEATURE_DICTS.some((d) => d.file === file);
+
+
 const NBSP = "\u202f";
 const failures = [];
 const fail = (file, line, rule, detail) =>
@@ -69,12 +97,12 @@ function walk(dir, acc = []) {
  * indentation — and a formatting change that breaks this parse breaks loudly,
  * with "could not read", not silently with a clean report.
  */
-function readDict() {
-  if (!existsSync(DICT)) {
-    console.error("✗ check:i18n — src/lib/i18n-dict.ts not found.");
+function readDict(file = DICT, prefix = "") {
+  if (!existsSync(file)) {
+    console.error(`✗ check:i18n — ${path.relative(ROOT, file)} not found.`);
     process.exit(1);
   }
-  const src = readFileSync(DICT, "utf8");
+  const src = readFileSync(file, "utf8");
   const out = {};
   for (const lang of ["en", "fr"]) {
     const start = src.indexOf(`export const ${lang} = {`);
@@ -109,7 +137,10 @@ function readDict() {
       while (stack.length && stack[stack.length - 1].indent >= indent)
         stack.pop();
       const dotted = [...stack.map((s) => s.key), key].join(".");
-      keys.add(dotted);
+      // A feature dictionary exports the SUBTREE, not a whole `{ site: … }`, so
+      // its keys are mounted here — a failure then names `site.careers.empty`,
+      // which is what the app, the catalogue and a reader all call it.
+      keys.add(prefix ? `${prefix}.${dotted}` : dotted);
       if (rest.trim() === "{" || rest.trim().startsWith("{")) {
         stack.push({ indent, key });
       } else if (/[{[]/.test(rest)) {
@@ -127,9 +158,9 @@ function readDict() {
  * regex-mangled, because this file's `as const` and inline object types are the
  * parts a hand parser gets wrong — and a wrong parse here reports "clean".
  */
-function readValues() {
+function readValues(file = DICT) {
   const esbuild = nodeRequire("esbuild");
-  const src = readFileSync(DICT, "utf8");
+  const src = readFileSync(file, "utf8");
   const { code } = esbuild.transformSync(src, {
     loader: "ts",
     format: "cjs",
@@ -143,7 +174,7 @@ function readValues() {
   );
   const { en, fr } = mod.exports;
   if (!en || !fr) {
-    console.error("✗ check:i18n — the dictionary did not export en and fr.");
+    console.error(`✗ check:i18n — ${path.relative(ROOT, file)} did not export en and fr.`);
     process.exit(1);
   }
   return { en, fr };
@@ -153,8 +184,29 @@ function readValues() {
  * CJS require because this file is ESM and esbuild ships no "exports" entry for a
  * bare ESM import of its sync API. */
 const nodeRequire = createRequire(import.meta.url);
-const dict = readDict();
-const values = readValues();
+
+/** Each dictionary source, with the file to blame in a failure. The main one,
+ *  then any feature subtrees. */
+const SOURCES = [
+  { file: DICT, mount: "", rel: path.relative(ROOT, DICT) },
+  ...FEATURE_DICTS.map((d) => ({ ...d, rel: path.relative(ROOT, d.file) })),
+];
+
+/* Key sets are merged across sources, because checks 1 and 2 — parity and
+   dangling calls — are about the RUNTIME tree a `t()` call resolves against, and
+   that tree is the union whatever file each branch was written in. */
+const dict = { en: new Set(), fr: new Set() };
+for (const { file, mount } of SOURCES) {
+  const part = readDict(file, mount);
+  for (const k of part.en) dict.en.add(k);
+  for (const k of part.fr) dict.fr.add(k);
+}
+
+/* Values are NOT merged: checks 3, 3b and 4 report a file and a key, and a
+   careers typography error blamed on `i18n-dict.ts` sends the next reader to a
+   file that does not contain the string. So each source is walked on its own and
+   reports itself. */
+const valueSets = SOURCES.map((src) => ({ ...src, values: readValues(src.file) }));
 
 /* ── 1. parity ──────────────────────────────────────────────────────────── */
 for (const key of dict.en)
@@ -213,14 +265,14 @@ const tokens = (s) =>
   typeof s === "string"
     ? (s.match(/\{\{\s*[\w.]+\s*\}\}/g) || []).sort().join(",")
     : "";
-const walkBoth = (a, b, prefix) => {
+const walkBoth = (a, b, prefix, rel) => {
   for (const [k, v] of Object.entries(a ?? {})) {
     const key = prefix ? `${prefix}.${k}` : k;
     const other = b?.[k];
     if (typeof v === "string" || typeof other === "string") {
       if (tokens(v) !== tokens(other))
         fail(
-          "src/lib/i18n-dict.ts",
+          rel,
           0,
           "tokens",
           `${key}: en "${tokens(v)}" vs fr "${tokens(other)}"`,
@@ -231,7 +283,7 @@ const walkBoth = (a, b, prefix) => {
           for (const [ik, iv] of Object.entries(item)) {
             if (tokens(iv) !== tokens(other[idx][ik]))
               fail(
-                "src/lib/i18n-dict.ts",
+                rel,
                 0,
                 "tokens",
                 `${key}[${idx}].${ik}: token sets differ`,
@@ -245,11 +297,11 @@ const walkBoth = (a, b, prefix) => {
       other &&
       typeof other === "object"
     ) {
-      walkBoth(v, other, key);
+      walkBoth(v, other, key, rel);
     }
   }
 };
-walkBoth(values.en, values.fr, "");
+for (const { values: v, mount, rel } of valueSets) walkBoth(v.en, v.fr, mount, rel);
 
 /* ── 3b. a lone brace pair is not an interpolation ───────────────────────── */
 // `{reference}` renders as the literal text `{reference}`: i18next only reads
@@ -258,7 +310,7 @@ walkBoth(values.en, values.fr, "");
 // shape itself is rejected here, in either language, anywhere in a value.
 const LONE_BRACE = /(?<!\{)\{\s?[A-Za-z_][\w.]*\s?\}(?!\})/;
 {
-  const scanBraces = (node, prefix) => {
+  const scanBraces = (node, prefix, rel) => {
     for (const [k, v] of Object.entries(node ?? {})) {
       const key = prefix ? `${prefix}.${k}` : k;
       const items = Array.isArray(v) ? v : [v];
@@ -267,17 +319,19 @@ const LONE_BRACE = /(?<!\{)\{\s?[A-Za-z_][\w.]*\s?\}(?!\})/;
           const stripped = item.replace(/\{\{[^}]*\}\}/g, "");
           if (LONE_BRACE.test(stripped))
             fail(
-              "src/lib/i18n-dict.ts",
+              rel,
               0,
               "brace",
               `${key}: "{${stripped.match(LONE_BRACE)[0].slice(1, -1)}}" is not an i18next token — use double braces`,
             );
-        } else if (item && typeof item === "object") scanBraces(item, key);
+        } else if (item && typeof item === "object") scanBraces(item, key, rel);
       }
     }
   };
-  scanBraces(values.en, "");
-  scanBraces(values.fr, "");
+  for (const { values: v, mount, rel } of valueSets) {
+    scanBraces(v.en, mount, rel);
+    scanBraces(v.fr, mount, rel);
+  }
 }
 
 /* ── 4. French typography (§5) ──────────────────────────────────────────── */
@@ -294,7 +348,6 @@ const TYPO = [
   [/,/g, null],
 ];
 {
-  const fr = values.fr;
   const seen = new Set();
   const scan = (node, prefix) => {
     for (const [k, v] of Object.entries(node ?? {})) {
@@ -334,8 +387,11 @@ const TYPO = [
       }
     }
   };
-  scan(fr, "");
-  for (const d of seen) fail("src/lib/i18n-dict.ts", 0, "typography", d);
+  for (const { values: v, mount, rel } of valueSets) {
+    seen.clear();
+    scan(v.fr, mount);
+    for (const d of seen) fail(rel, 0, "typography", d);
+  }
 }
 
 /* ── 5. no hardcoded prose in a component ───────────────────────────────── */
@@ -428,7 +484,7 @@ const SENTENCE = /(["'`])((?:\\.|(?!\1)[^\\])*)\1/g;
 
 for (const file of allFiles) {
   if (!/\.tsx?$/.test(file)) continue;
-  if (/i18n-dict\.ts$/.test(file)) continue; // the dictionary IS the copy
+  if (isDictionaryFile(file)) continue; // a dictionary IS the copy
   if (/\.test\.tsx?$/.test(file)) continue;
   const src = stripComments(readFileSync(file, "utf8"));
   const rel = path.relative(ROOT, file);

@@ -298,7 +298,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_EDITABLE` | 400 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 3× | — |
-| `NOT_FOUND` | 404, 422 | 620× | — |
+| `NOT_FOUND` | 404, 422 | 622× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_OPEN` | 409, 422 | 3× | — |
 | `NOT_OPERATIONAL` | 422 | 1× | — |
@@ -490,7 +490,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `SMTP_SEND_REJECTED` | 502 | 2× | — |
 | `SOP_HAS_NO_TEXT` | — | 1× | — |
 | `SOURCE_DOC_REQUIRED` | 422 | 1× | — |
-| `SPAM_REJECTED` | 422 | 1× | — |
+| `SPAM_REJECTED` | 422 | 2× | — |
 | `STATEMENT_DOES_NOT_FOOT` | 409 | 1× | — |
 | `STEPUP_REQUIRED` | 403 | 1× | — |
 | `STORAGE_LIMIT` | 413 | 1× | — |

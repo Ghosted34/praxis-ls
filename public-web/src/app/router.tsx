@@ -119,6 +119,10 @@ const Vacancy = lazy(
   () => import("@/features/careers/careers-page"),
   "VacancyPage",
 );
+const CareersUnsubscribe = lazy(
+  () => import("@/features/careers/careers-page"),
+  "CareersUnsubscribePage",
+);
 const PortalApp = lazy(
   () => import("@/features/portal/portal-app"),
   "PortalApp",
@@ -261,6 +265,13 @@ export function AppRouter() {
         <Route path={p("/insights")} element={<Insights />} />
         <Route path={p("/insights/:slug")} element={<Insight />} />
         <Route path={p("/careers")} element={<Careers />} />
+        {/* Before `:token` for readability only — react-router ranks a static
+            segment above a dynamic one, and these are four segments against
+            two, so the order does not decide it. */}
+        <Route
+          path={p("/careers/alerts/unsubscribe/:token")}
+          element={<CareersUnsubscribe />}
+        />
         <Route path={p("/careers/:token")} element={<Vacancy />} />
         {/*
           The quote form has its own route again, and the redirect it replaces

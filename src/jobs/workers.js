@@ -134,6 +134,11 @@ const PROCESSORS = [
   // is told once.
   { name: "contract-lapse", concurrency: 1, handler: require("./handlers/contract-lapse") },
   { name: "contract-lapse-scheduler", concurrency: 1, handler: require("./handlers/contract-lapse-scheduler") },
+  // Careers job alerts (13792). concurrency 1: two passes over one tenant would
+  // each read the same watermark before the other moved it, and every
+  // subscriber would receive the digest twice.
+  { name: "careers-alerts", concurrency: 1, handler: require("./handlers/careers-alerts") },
+  { name: "careers-alerts-scheduler", concurrency: 1, handler: require("./handlers/careers-alerts-scheduler") },
   // Sandbox auto-wipe (G3, PRD §5.5): daily fan-out honouring each tenant's
   // sandbox_wipe_days + the rebuild worker. concurrency 1 — two concurrent
   // wipes of one tenant would DROP/CREATE the same schema against each other.
@@ -470,6 +475,22 @@ async function scheduleRecurring() {
       removeOnFail: 50,
     });
     logger.info({ pattern: lapseCron, tz: config.FX_SYNC_TZ || "UTC" }, "contract lapse scheduler registered");
+  }
+
+  // Careers job alerts (13792). Daily, and a digest rather than one mail per
+  // vacancy: a tenant publishing four roles in an afternoon must not send four
+  // emails to the same person, which is the difference between an alert people
+  // keep and one they mark as spam.
+  const careersCron = config.CAREERS_ALERTS_CRON;
+  if (!careersCron) {
+    logger.info("careers alert scheduler disabled (CAREERS_ALERTS_CRON empty)");
+  } else {
+    await enqueue("careers-alerts-scheduler", "tick", {}, {
+      repeat: { pattern: careersCron, tz: config.FX_SYNC_TZ || "UTC" },
+      removeOnComplete: true,
+      removeOnFail: 50,
+    });
+    logger.info({ pattern: careersCron, tz: config.FX_SYNC_TZ || "UTC" }, "careers alert scheduler registered");
   }
 
   // Régie d'avance aging (MOD-49, KB §6.8 step 4). The `regie-aging` WORKER has

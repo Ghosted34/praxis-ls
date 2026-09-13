@@ -29,6 +29,7 @@ const ITEMS = [
   { to: "/settings/website/about", label: () => tr("About"), end: false },
   { to: "/settings/website/partners", label: () => tr("Partners"), end: false },
   { to: "/settings/website/social", label: () => tr("Social"), end: false },
+  { to: "/settings/website/careers", label: () => tr("Careers"), end: false },
 ];
 
 export function WebsiteNav() {

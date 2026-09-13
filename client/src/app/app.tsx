@@ -298,6 +298,10 @@ const WebsiteSocialPage = lazyNamed(
   () => import("@/features/settings/website-social"),
   "WebsiteSocialPage",
 );
+const WebsiteCareersPage = lazyNamed(
+  () => import("@/features/settings/website-careers"),
+  "WebsiteCareersPage",
+);
 const WebsiteInsightEditorPage = lazyNamed(
   () => import("@/features/settings/website-insight-editor"),
   "WebsiteInsightEditorPage",
@@ -703,6 +707,7 @@ export function App() {
               <Route path="settings/website/about" element={<WebsiteAboutPage />} />
               <Route path="settings/website/partners" element={<WebsitePartnersPage />} />
               <Route path="settings/website/social" element={<WebsiteSocialPage />} />
+              <Route path="settings/website/careers" element={<WebsiteCareersPage />} />
               <Route
                 path="settings/website/articles"
                 element={<WebsiteInsightsPage />}

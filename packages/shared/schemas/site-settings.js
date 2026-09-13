@@ -366,6 +366,38 @@ const siteMediaUpload = z
   })
   .strict();
 
+/* ── careers (13792) ────────────────────────────────────────────────────────*/
+
+/**
+ * What the careers page may offer when nothing is open.
+ *
+ * Two switches and a tag, and no copy: every SENTENCE on that page is already
+ * the tenant's to rewrite through the `copy_overrides` block (13790), so a
+ * headline field here would be a second place to say the same thing and a
+ * second place for the two to disagree.
+ *
+ * `culture_tag` is trimmed to `null` rather than kept as a blank. An empty
+ * string filters the insight list to nothing, which renders as a configured
+ * strip with nothing in it — a tenant reading that sees a broken feature, where
+ * the truth is that they have not chosen a tag. The same transform is why the
+ * column carries a CHECK: the rule holds whether the write came through here or
+ * not.
+ */
+const careers = z
+  .object({
+    open_applications: z.boolean(),
+    alerts_enabled: z.boolean(),
+    culture_tag: z
+      .string()
+      .trim()
+      .max(60)
+      .transform((v) => v || null)
+      .nullable()
+      .optional(),
+  })
+  .strict();
+
+exports.careers = careers;
 exports.socialSet = socialSet;
 exports.theme = theme;
 exports.socialLink = socialLink;

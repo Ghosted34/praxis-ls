@@ -170,6 +170,28 @@ export const getAbout = () => tenant<SiteAbout>("/site-settings/about");
 export const saveAbout = (body: Partial<SiteAbout>) =>
   tenant<SiteAbout>("/site-settings/about", { method: "PUT", body });
 
+/* ── careers (13792) ────────────────────────────────────────────────────────*/
+
+/**
+ * The two switches on the public careers page, and the tag that feeds its
+ * culture strip.
+ *
+ * No COPY here on purpose: every sentence on that page is already rewritable
+ * through Settings › Website › Wording (13790's `copy_overrides`), so a
+ * headline field on this screen would be a second place to say the same thing
+ * and the first opportunity for the two to disagree.
+ */
+export type SiteCareers = {
+  open_applications: boolean;
+  alerts_enabled: boolean;
+  culture_tag: string | null;
+  updated_at?: string | null;
+};
+
+export const getCareers = () => tenant<SiteCareers>("/site-settings/careers");
+export const saveCareers = (body: Partial<SiteCareers>) =>
+  tenant<SiteCareers>("/site-settings/careers", { method: "PUT", body });
+
 export const listLeaders = () => tenant<Leader[]>("/site-settings/leaders");
 export const createLeader = (body: Partial<Leader>) =>
   tenant<Leader>("/site-settings/leaders", { method: "POST", body });

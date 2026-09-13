@@ -4,7 +4,8 @@ import { MemoryRouter, useLocation } from "react-router-dom";
 import { BrandingProvider } from "@/app/branding";
 import { AppErrorBoundary } from "@/app/error-boundary";
 import { AppRouter } from "@/app/router";
-import { en } from "@/lib/i18n-dict";
+// The runtime tree — see i18n-tree.test-helper.ts.
+import { en } from "@/lib/i18n-tree.test-helper";
 
 /**
  * The render gate for the whole app: every route mounts, shows the copy it is

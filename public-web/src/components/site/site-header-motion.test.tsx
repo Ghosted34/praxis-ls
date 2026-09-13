@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it, vi, beforeAll, beforeEach, afterEach } from "vitest";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
@@ -490,6 +492,59 @@ describe("the services panel", () => {
     expect(
       document.querySelectorAll('.nav-panel-link[data-toned="true"]'),
     ).toHaveLength(0);
+  });
+
+  it("does not block the page it hangs over while it is closed", () => {
+    /* THE REGRESSION, AND WHY IT IS ASSERTED AGAINST THE STYLESHEET.
+ 
+       `.nav-panel-host` is a positioning box with no paint of its own, and it
+       is sized by the panel inside it — which is never unmounted (it animates
+       closed as well as open) and is `visibility: hidden` when closed, a state
+       that hides an element and KEEPS its layout box. Without
+       `pointer-events: none` the wrapper is therefore a full-width,
+       menu-height, completely invisible hit target sitting at z-index 3 inside
+       the header's z-index-40 stacking context — above every page's content,
+       on every page, because the header is in `PageShell`.
+ 
+       Measured in Chromium before the fix, 4 groups of 9 services: a dead band
+       at y=108..448 on the home, contact and track pages; `elementFromPoint`
+       inside it returned `div.nav-panel-host`; an input scrolled into it could
+       not be focused; text under it showed the default arrow instead of an
+       I-beam. Its height is the tenant's service list — 194px at 4 services,
+       340px at 36 — so the taller the catalogue, the more of the page it eats.
+ 
+       jsdom has no compositor and no hit-testing, so the failure cannot be
+       reproduced here: `fireEvent.click` dispatches straight at a node and
+       passes either way. The stylesheet is what can be protected, and it is
+       the right thing to protect — the fix IS one declaration, and the way it
+       comes back is somebody deleting a line that looks like it does nothing.
+ 
+       BOTH HALVES MATTER, so both are asserted. The wrapper must be
+       transparent; the panel must go interactive when open, or the menu itself
+       would be dead and the "fix" would have traded one bug for a worse one.
+       This wrapper has already broken the top of every page once before, by a
+       different property — see the note on `.nav-panel-host` in index.css. */
+    /* COMMENTS STRIPPED FIRST, and that is not tidiness.
+ 
+       The note beside the real declaration discusses `pointer-events: none` in
+       prose several times over. Matching the raw file therefore passes with the
+       declaration DELETED — which is precisely the state this test exists to
+       catch, and it is how the first draft of this test passed against a
+       stylesheet it was supposed to fail. Verified both ways after the fix:
+       green with the line, red without it. */
+    const css = readFileSync(
+      join(__dirname, "..", "..", "index.css"),
+      "utf8",
+    ).replace(/\/\*[\s\S]*?\*\//g, "");
+
+    const host = css.match(/\.nav-panel-host\s*\{[\s\S]*?\}/);
+    expect(host).not.toBeNull();
+    expect(host![0]).toMatch(/pointer-events:\s*none/);
+
+    // …and the open panel is what turns interaction back on.
+    const open = css.match(/\.nav-panel\[data-open="true"\]\s*\{[\s\S]*?\}/);
+    expect(open).not.toBeNull();
+    expect(open![0]).toMatch(/pointer-events:\s*auto/);
   });
 });
 

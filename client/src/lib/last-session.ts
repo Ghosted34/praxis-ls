@@ -29,7 +29,7 @@ function read(): LastSession | null {
       display_name: j.display_name || null,
       avatar_url: j.avatar_url || null,
     };
-  } catch {
+  } catch { /* @silent:storage */
     return null;
   }
 }
@@ -46,8 +46,7 @@ function write(v: LastSession | null) {
           avatar_url: v.avatar_url || null,
         }),
       );
-  } catch {
-    /* @silent:storage */
+  } catch { /* @silent:storage */
   }
 }
 
@@ -59,13 +58,13 @@ export const lastSessionStore = {
     try {
       localStorage.removeItem(KEY);
     } catch {
-      /* @silent */
+      /* @silent:storage */
     }
   },
   snapshot: (): string | null => {
     try {
       return localStorage.getItem(KEY);
-    } catch {
+    } catch { /* @silent:storage */
       return null;
     }
   },
@@ -73,7 +72,7 @@ export const lastSessionStore = {
     try {
       if (s) localStorage.setItem(KEY, s);
     } catch {
-      /* @silent */
+      /* @silent:storage */
     }
   },
   /** Upsert from a User-like shape returned by login endpoints. */

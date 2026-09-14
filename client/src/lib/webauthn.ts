@@ -59,7 +59,7 @@ function fromCredential(cred: PublicKeyCredential): any {
   if ((cred as any).getClientExtensionResults) {
     try {
       out.clientExtensionResults = (cred as any).getClientExtensionResults();
-    } catch {}
+    } catch { /* @silent:storage */ }
   }
   return out;
 }
@@ -81,17 +81,11 @@ export async function authenticateWithPasskey(email?: string): Promise<void> {
   if (!window.PublicKeyCredential) throw Object.assign(new Error("Passkeys aren't supported in this browser."), { code: "WEBAUTHN_NOT_SUPPORTED" });
 
   // 1) Ask server for assertion options
-  let options: any;
-  try {
-    options = await tenant<any>("/auth/passkey/login/options", {
-      method: "POST",
-      auth: false,
-      body: email ? { email: email.trim().toLowerCase() } : {},
-    });
-  } catch (e: any) {
-    // Map known server codes
-    throw e;
-  }
+  const options: any = await tenant<any>("/auth/passkey/login/options", {
+    method: "POST",
+    auth: false,
+    body: email ? { email: email.trim().toLowerCase() } : {},
+  });
 
   const publicKey = toPublicKeyOptions(options) as PublicKeyCredentialRequestOptions;
 
@@ -131,16 +125,16 @@ export async function authenticateWithPasskey(email?: string): Promise<void> {
     ts.setRefresh(r.refresh_token);
     try {
       localStorage.setItem("praxis.user", JSON.stringify(r.user));
-    } catch {}
+    } catch { /* @silent:storage */ }
     lastSessionStore.fromUser(r.user);
     // Also hit /auth/me to hydrate full profile (best-effort)
     try {
       const fresh = await tenant<any>("/auth/me");
       try {
         localStorage.setItem("praxis.user", JSON.stringify(fresh));
-      } catch {}
+      } catch { /* @silent:storage */ }
       lastSessionStore.fromUser(fresh);
-    } catch {}
+    } catch { /* @silent:storage */ }
   }
 }
 

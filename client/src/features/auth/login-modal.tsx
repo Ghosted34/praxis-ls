@@ -115,19 +115,19 @@ export function LoginModal({ onClose }: { onClose: () => void }) {
         const ok =
           typeof window !== "undefined" &&
           !!window.PublicKeyCredential &&
-          // @ts-ignore conditional mediation check (newer browsers)
+          // @ts-expect-error conditional mediation check (newer browsers)
           typeof PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable === "function"
             ? await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable().catch(() => true)
             : !!window.PublicKeyCredential;
         if (alive) setPasskeySupported(ok);
         // Also probe conditional mediation for later autofill (silent)
         try {
-          // @ts-ignore
-          if (window.PublicKeyCredential?.isConditionalMediationAvailable) {
-            // @ts-ignore
-            await PublicKeyCredential.isConditionalMediationAvailable();
+          // @ts-expect-error isConditionalMediationAvailable not in lib.dom yet
+          if ((window.PublicKeyCredential as any)?.isConditionalMediationAvailable) {
+            // @ts-expect-error isConditionalMediationAvailable not in lib.dom yet
+            await (PublicKeyCredential as any).isConditionalMediationAvailable();
           }
-        } catch {}
+        } catch { /* @silent:storage */ }
       } catch {
         if (alive) setPasskeySupported(false);
       }
@@ -514,11 +514,18 @@ export function LoginModal({ onClose }: { onClose: () => void }) {
 
             <div className="flex flex-col gap-3">
               <div className="flex items-center justify-between">
-                <label className="login-label">Quick PIN</label>
+                <span className="login-label">Quick PIN</span>
                 {!isPinLocked && <span className="text-[11px] text-white/35">Device-bound • 4–8 digits</span>}
               </div>
 
-              <PinInput value={pin} onChange={setPin} onComplete={() => onPin()} disabled={busy} autoFocus={isPinLocked || !hasRemembered} />
+              <PinInput
+                value={pin}
+                onChange={setPin}
+                onComplete={() => onPin()}
+                disabled={busy}
+                // eslint-disable-next-line jsx-a11y/no-autofocus
+                autoFocus={isPinLocked || !hasRemembered}
+              />
 
               {/* Numeric keypad — collapsible for touch */}
               <div className="flex items-center justify-center">

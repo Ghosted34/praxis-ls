@@ -1,5 +1,5 @@
 -- ============================================================================
--- TENANT DB — 11746 WebAuthn passkey (passwordless).
+-- TENANT DB — 13797 WebAuthn passkey (passwordless).
 --
 -- A discoverable passkey is a device-bound credential bound to the tenant's
 -- origin (RP ID). It is the passwordless counterpart to the device-bound PIN
@@ -31,3 +31,6 @@ CREATE TABLE IF NOT EXISTS webauthn_credential (
 CREATE INDEX IF NOT EXISTS ix_webauthn_credential_user ON webauthn_credential(user_id);
 
 COMMENT ON TABLE webauthn_credential IS 'WebAuthn passkeys (one row per credential). counter is the authenticator signature counter used for clone detection; public_key is the COSE key stored as base64url.';
+
+-- DOWN
+-- DROP TABLE IF EXISTS webauthn_credential;

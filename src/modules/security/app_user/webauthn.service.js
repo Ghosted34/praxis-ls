@@ -63,7 +63,7 @@ function getRpInfo(req) {
       origin = u.origin;
       rpID = u.hostname;
     }
-  } catch { /* ignore parse */ }
+  } catch { /* @silent:parse */ }
   if (!origin) {
     const host = req.get("host") || req.headers.host || "";
     const proto = req.protocol || "https";
@@ -301,7 +301,7 @@ async function verifyAuthentication(client, { email, assertion, challengeToken, 
         // handleStr may be a UUID string
         const { rows } = await client.query(`SELECT * FROM webauthn_credential WHERE user_id = $1 AND credential_id = $2`, [handleStr, credId]);
         if (rows && rows[0]) stored = rows[0];
-      } catch { /* ignore parse */ }
+      } catch { /* @silent:parse */ }
     }
   }
   if (!stored) throw new AppError("INVALID_CREDENTIAL", "Passkey not found", 400);

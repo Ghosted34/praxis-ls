@@ -1,6 +1,6 @@
 "use strict";
 
-const { asyncHandler } = require("../../../shared/http/async-handler");
+const { asyncHandler } = require("../../../utils/errors");
 const service = require("./webauthn.service");
 
 // POST /auth/passkey/register/options — requires auth (device must be trusted)

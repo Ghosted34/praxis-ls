@@ -140,22 +140,17 @@ async function registrationOptions(client, { userId, label, req }) {
 async function verifyRegistration(client, { userId, attestation, challengeToken, label, req }) {
   if (!attestation) throw new AppError("BAD_REQUEST", "Missing attestation", 400);
 
-  // Resolve challenge: prefer the JWT we issued; fallback to raw challenge echo for old clients
+  // Challenge must be the JWT we issued — no raw fallback (user-controlled bypass)
   let expectedChallenge = null;
-  if (challengeToken) {
-    try {
-      const p = verifyChallenge(challengeToken);
-      if (String(p.sub) !== String(userId) || p.kind !== "registration") throw new Error("mismatch");
-      expectedChallenge = p.challenge;
-    } catch (e) {
-      if (e instanceof AppError) throw e;
-      throw new AppError("INVALID_CHALLENGE", "Passkey challenge invalid", 400);
-    }
-  } else if (attestation._challenge || attestation.challenge) {
-    // Should not happen in new flow, but allow raw challenge passthrough if client echoed it
-    expectedChallenge = attestation._challenge || attestation.challenge;
+  if (!challengeToken) throw new AppError("INVALID_CHALLENGE", "Missing passkey challenge", 400);
+  try {
+    const p = verifyChallenge(challengeToken);
+    if (String(p.sub) !== String(userId) || p.kind !== "registration") throw new Error("mismatch");
+    expectedChallenge = p.challenge;
+  } catch (e) {
+    if (e instanceof AppError) throw e;
+    throw new AppError("INVALID_CHALLENGE", "Passkey challenge invalid", 400);
   }
-  if (!expectedChallenge) throw new AppError("INVALID_CHALLENGE", "Missing passkey challenge", 400);
 
   const { rpID, origin } = getRpInfo(req);
   const { verifyRegistrationResponse } = sw();
@@ -267,21 +262,17 @@ async function verifyAuthentication(client, { email, assertion, challengeToken, 
   let expectedChallenge = null;
   let challengeSub = null;
   let challengeEmail = null;
-  if (challengeToken) {
-    try {
-      const p = verifyChallenge(challengeToken);
-      if (p.kind !== "authentication") throw new Error("bad kind");
-      expectedChallenge = p.challenge;
-      challengeSub = p.sub;
-      challengeEmail = p.email || null;
-    } catch (e) {
-      if (e instanceof AppError) throw e;
-      throw new AppError("INVALID_CHALLENGE", "Passkey challenge invalid", 400);
-    }
-  } else if (assertion._challenge) {
-    expectedChallenge = assertion._challenge;
+  if (!challengeToken) throw new AppError("INVALID_CHALLENGE", "Missing passkey challenge", 400);
+  try {
+    const p = verifyChallenge(challengeToken);
+    if (p.kind !== "authentication") throw new Error("bad kind");
+    expectedChallenge = p.challenge;
+    challengeSub = p.sub;
+    challengeEmail = p.email || null;
+  } catch (e) {
+    if (e instanceof AppError) throw e;
+    throw new AppError("INVALID_CHALLENGE", "Passkey challenge invalid", 400);
   }
-  if (!expectedChallenge) throw new AppError("INVALID_CHALLENGE", "Missing passkey challenge", 400);
 
   // Determine which credential is being asserted
   const rawId = assertion.rawId || assertion.id;

@@ -132,6 +132,34 @@ const SECTION = {
   email_connection: "/comms/setup",
 };
 
+/**
+ * Lookup tables, as Maps.
+ *
+ * ── WHY NOT JUST INDEX THE OBJECT LITERALS ─────────────────────────────────
+ *
+ * `DETAIL[type]` walks the prototype chain, and `type` is the first half of an
+ * `entity_ref` — a string from the database, not a key anyone checked. Three
+ * real results, found by CodeQL on the commit that introduced them:
+ *
+ *   constructor:x → DETAIL.constructor is Object, so `detail(id)` called
+ *                   Object("x") and returned "x" as the URL
+ *   toString:x    → returned the string "[object Undefined]" as the URL
+ *   valueOf:y     → THREW a TypeError
+ *
+ * The last one is the one that matters: `linkFor` runs while a notification row
+ * renders, so a single stored ref beginning `valueOf:` takes down the bell and
+ * the inbox with it — a crash, in the component whose whole job is to be
+ * clicked. Turning a dead click into a broken screen is not a trade worth
+ * making.
+ *
+ * `Object.entries` reads own enumerable properties only, so nothing inherited
+ * ever enters these Maps, and `Map.get` has no prototype to walk in the first
+ * place. The literals above stay as the readable source and the exported shape;
+ * these are what the lookups actually use.
+ */
+const DETAIL_BY_TYPE = new Map(Object.entries(DETAIL));
+const SECTION_BY_TYPE = new Map(Object.entries(SECTION));
+
 /** Split "email_thread:39cb…" into its two halves. A ref with no colon is a
  *  type on its own (a few producers emit one); a ref with extra colons keeps
  *  them in the id, since only the FIRST separates type from id. */
@@ -163,12 +191,19 @@ function linkFor(entityRef) {
   const parsed = parseRef(entityRef);
   if (!parsed) return null;
   const { type, id } = parsed;
-  const detail = DETAIL[type];
+  // The `typeof` checks are not ceremony around the Maps: they are what makes
+  // the dispatch below safe to read as well as safe to run, and they cost one
+  // comparison on a path that runs once per rendered row.
+  const detail = DETAIL_BY_TYPE.get(type);
   // A detail route without an id cannot be built. Fall through to the section
   // when the type also has one, rather than returning nothing.
-  if (detail && id) return { url: detail(id), precision: "record" };
-  const section = SECTION[type];
-  if (section) return { url: section, precision: "section" };
+  if (typeof detail === "function" && id) {
+    return { url: detail(id), precision: "record" };
+  }
+  const section = SECTION_BY_TYPE.get(type);
+  if (typeof section === "string" && section) {
+    return { url: section, precision: "section" };
+  }
   return null;
 }
 
@@ -181,8 +216,8 @@ function urlFor(entityRef) {
 /** Every path this module can emit — what the router test asserts against. */
 function allRoutes() {
   return [
-    ...Object.keys(DETAIL).map((t) => DETAIL[t]("ID")),
-    ...Object.values(SECTION),
+    ...[...DETAIL_BY_TYPE.values()].map((build) => build("ID")),
+    ...SECTION_BY_TYPE.values(),
   ];
 }
 

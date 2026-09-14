@@ -107,6 +107,26 @@ describe("notificationLink", () => {
     expect(notificationLink(null)).toBeNull();
   });
 
+  /**
+   * Found by CodeQL on the commit that introduced this module, and a crash
+   * rather than a curiosity: `DETAIL[type]` walked the prototype chain, so
+   * `valueOf:y` THREW a TypeError out of `linkFor` — which runs while a
+   * notification row renders. One stored ref would have taken down the bell and
+   * the inbox. `constructor:x` and `toString:x` did not throw; they returned
+   * "x" and "[object Undefined]" as URLs, which is the quieter half of the same
+   * bug.
+   */
+  it.each([
+    "constructor:x",
+    "toString:x",
+    "valueOf:y",
+    "hasOwnProperty:z",
+    "__proto__:q",
+  ])("does not dispatch to the prototype chain for %s", (ref) => {
+    expect(() => notificationLink({ entity_ref: ref })).not.toThrow();
+    expect(notificationLink({ entity_ref: ref })).toBeNull();
+  });
+
   it("refuses a stored value that would leave the app", () => {
     // `//evil.example` is protocol-relative: a router treats it as external.
     expect(

@@ -23,6 +23,7 @@ const {
   forgotLimiter,
   resetLimiter,
   changePasswordLimiter,
+  webauthnLimiter,
 } = require("../../../shared/http/rate-limit");
 
 // Generic user CRUD (list/get/create/update/soft-delete) — NOW GATED (was the
@@ -92,6 +93,17 @@ authRouter.post("/pin/login", pinLimiter, validator.pinLogin, controller.pinLogi
 authRouter.post("/pin/register", authMiddleware, validator.pinRegister, controller.pinRegister);
 authRouter.get("/pin/devices", authMiddleware, controller.pinDevices);
 authRouter.delete("/pin/devices/:deviceId", authMiddleware, controller.pinRevoke);
+
+// WebAuthn passkey — passwordless platform authenticator (Face ID / Touch ID / security key).
+// Registration requires a live session (like PIN — the device is trusted because the user already proved who they are);
+// authentication is public (it's how you obtain a token). Shares the same idle/rotation semantics as PIN once verified.
+const webauthnController = require("./webauthn.controller");
+authRouter.post("/passkey/register/options", authMiddleware, webauthnLimiter, validator.passkeyRegisterOptions, webauthnController.registerOptions);
+authRouter.post("/passkey/register/verify", authMiddleware, webauthnLimiter, validator.passkeyRegisterVerify, webauthnController.registerVerify);
+authRouter.get("/passkey/credentials", authMiddleware, webauthnController.list);
+authRouter.delete("/passkey/credentials/:credentialId", authMiddleware, webauthnController.remove);
+authRouter.post("/passkey/login/options", webauthnLimiter, validator.passkeyLoginOptions, webauthnController.loginOptions);
+authRouter.post("/passkey/login/verify", webauthnLimiter, validator.passkeyLoginVerify, webauthnController.loginVerify);
 
 const router = express.Router();
 router.use("/users", usersRouter);

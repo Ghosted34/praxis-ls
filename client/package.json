@@ -3,8 +3,8 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Praxis LS frontend — React 18 + Vite + TypeScript (PWA). Tenant white-label app + (proposed) platform console.",
-  "//engines": "Mirrors the root package.json and .nvmrc. The client is linted, tested and built on Node 20 in CI and in the Docker image, so a dev tree on a newer Node can silently accept a dependency that CI cannot run — exactly how jsdom@30 (which needs undici@8 / Node >=22.19) got in and broke the frontend job. Declaring it here makes npm emit EBADENGINE locally instead.",
+  "description": "Praxis LS frontend \u2014 React 18 + Vite + TypeScript (PWA). Tenant white-label app + (proposed) platform console.",
+  "//engines": "Mirrors the root package.json and .nvmrc. The client is linted, tested and built on Node 20 in CI and in the Docker image, so a dev tree on a newer Node can silently accept a dependency that CI cannot run \u2014 exactly how jsdom@30 (which needs undici@8 / Node >=22.19) got in and broke the frontend job. Declaring it here makes npm emit EBADENGINE locally instead.",
   "packageManager": "npm@10.8.2",
   "engines": {
     "node": ">=20 <21"
@@ -90,7 +90,8 @@
     "tailwind-merge": "^2.5.4",
     "topojson-client": "^3.1.0",
     "world-atlas": "^2.0.2",
-    "zod": "^3.25.76"
+    "zod": "^3.25.76",
+    "@simplewebauthn/browser": "^9.0.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.12.0",

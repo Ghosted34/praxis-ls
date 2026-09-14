@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 5× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (532)
+## All codes (539)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -101,6 +101,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `BAD_PWA_VALUE` | 422 | 2× | — |
 | `BAD_RATE` | 422 | 3× | — |
 | `BAD_REPLACEMENT` | 422 | 1× | — |
+| `BAD_REQUEST` | 400 | 3× | — |
 | `BAD_ROLE` | 422 | 1× | — |
 | `BAD_SAVEPOINT` | 500 | 1× | — |
 | `BAD_SCHEME` | 422 | 2× | — |
@@ -149,6 +150,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `COST_CENTER_REQUIRED` | 422 | 1× | — |
 | `COUNT_NOT_ATTESTED` | 409 | 1× | — |
 | `COUNT_SHEET_DISAGREES` | 422 | 1× | — |
+| `CREDENTIAL_TAKEN` | 409 | 1× | — |
 | `CURRENCY_IN_USE` | 409 | 1× | — |
 | `CYCLIC_PARENT` | 422 | 2× | — |
 | `DATE_REQUIRED` | 422 | 1× | — |
@@ -221,6 +223,8 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `INSUFFICIENT_LEAVE` | — | 1× | — |
 | `INVALID_2FA_CODE` | 401 | 3× | — |
 | `INVALID_AMOUNT` | 422 | 7× | — |
+| `INVALID_CHALLENGE` | 400 | 5× | — |
+| `INVALID_CREDENTIAL` | 400 | 1× | — |
 | `INVALID_CREDENTIALS` | 401 | 2× | — |
 | `INVALID_CURRENT_PASSWORD` | 403 | 1× | — |
 | `INVALID_DATE` | 422 | 1× | — |
@@ -298,7 +302,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_EDITABLE` | 400 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 3× | — |
-| `NOT_FOUND` | 404, 422 | 631× | — |
+| `NOT_FOUND` | 404, 422 | 633× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_OPEN` | 409, 422 | 3× | — |
 | `NOT_OPERATIONAL` | 422 | 1× | — |
@@ -404,6 +408,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `OVER_PAID` | 422 | 2× | — |
 | `OVER_RETIRED` | 422 | 2× | — |
 | `PARENT_POSTABLE` | 422 | 2× | — |
+| `PASSKEY_NOT_FOUND` | 404 | 1× | — |
 | `PASSWORD_REQUIRED` | — | 1× | — |
 | `PERIOD_NOT_OPEN` | 422 | 1× | — |
 | `PERMISSION_DENIED` | 403 | 7× | — |
@@ -545,7 +550,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `UNSUPPORTED_IMAGE` | 400, 415 | 6× | — |
 | `UNVERIFIED` | 401 | 2× | — |
 | `UNVERIFIED_PLACE` | — | 1× | — |
-| `USER_INACTIVE` | 401 | 3× | — |
+| `USER_INACTIVE` | 401 | 5× | — |
 | `USER_NOT_ACTIVE` | 422 | 1× | — |
 | `USE_APPROVE` | 422 | 1× | — |
 | `VACANCY_CLOSED` | — | 1× | — |
@@ -556,6 +561,8 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `VEHICLE_UNAVAILABLE` | 422 | 1× | — |
 | `VOICE_TOO_LONG` | 422 | 1× | — |
 | `WEAK_PASSWORD` | 422 | 2× | — |
+| `WEBAUTHN_UNAVAILABLE` | 500 | 1× | — |
+| `WEBAUTHN_VERIFICATION_FAILED` | 400 | 4× | — |
 | `WRONG_ACTION_FOR_STEP` | 422 | 1× | — |
 | `WRONG_AUDIENCE` | 401 | 1× | — |
 | `WRONG_HOST` | — | 1× | — |

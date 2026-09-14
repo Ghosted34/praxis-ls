@@ -126,10 +126,32 @@ for (const width of [320, 390, 1440]) {
       ),
     ).toBe(false);
     if (width < 768) {
-      await expect(
-        page.getByRole("button", { name: /Quick actions/ }),
-      ).toBeVisible();
-      await expect(page.locator(".fixed.bottom-24.right-5")).toHaveCount(0);
+      /*
+       * THE FLOATING CLUSTER IS HERE, AND IT IS ABOVE THE COMPOSER.
+       *
+       * This used to assert the opposite — a quick-actions menu in the title
+       * bar and NO cluster — because the cluster's `bottom-24` anchor lands on
+       * the composer's Send button, which is the mic when nothing is typed,
+       * which is the control that sends a voice note. Suppressing it was the
+       * old answer; the title-bar menu that stood in for it is gone at every
+       * width, so a phone in Smart Comms would have had no quick actions and no
+       * clock-in at all.
+       *
+       * The cluster clears the composer instead: `--fab-floor` is published by
+       * the composer and the anchor is `max(6rem, var(--fab-floor))`. Asserted
+       * as REAL GEOMETRY rather than as a class, because a class cannot tell
+       * you whether `max()` resolved, whether the variable reached the
+       * portalled node, or whether the composer grew after it was measured —
+       * and jsdom lays nothing out, so this is the only place the arithmetic
+       * can be checked against a browser that actually performed it.
+       */
+      const fab = page.getByRole("button", { name: /Quick actions/ });
+      await expect(fab).toBeVisible();
+      const fabBox = (await fab.boundingBox())!;
+      const composerBox = (await page
+        .locator("[data-composer]")
+        .boundingBox())!;
+      expect(fabBox.y + fabBox.height).toBeLessThanOrEqual(composerBox.y);
     }
     expect(
       await page

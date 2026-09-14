@@ -2006,6 +2006,7 @@
   /* Density now lives on `--rail-w` (see the density block above), because the
      title bar's app mark centres itself on this width too. */
   .rail-btn {
+    position: relative;
     display: grid;
     place-items: center;
     width: 36px;
@@ -2016,6 +2017,36 @@
     transition:
       background-color var(--dur) var(--ease),
       color var(--dur) var(--ease);
+  }
+  /**
+   * The unread count on a rail cell (Messages).
+   *
+   * OUT OF FLOW, because `.rail-btn` is a centring grid and an in-flow sibling
+   * would stack under the glyph and push it off centre. The ring is the rail's
+   * own `--card`, not a hard white: on the rail the badge overlaps the icon,
+   * and a ring painted in the surface behind it is what keeps the digits
+   * legible against a stroke rather than smeared into one.
+   *
+   * `--primary` / `--primary-foreground` is the same pair the bell's badge
+   * uses, which is deliberate — two counts in the same chrome that disagree
+   * about their colour read as two different kinds of thing.
+   */
+  .rail-badge {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    display: grid;
+    place-items: center;
+    min-width: 15px;
+    height: 15px;
+    padding: 0 3px;
+    border-radius: 999px;
+    background: var(--primary);
+    color: var(--primary-foreground);
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 1;
+    box-shadow: 0 0 0 2px var(--card);
   }
   .rail-btn:hover {
     background: var(--accent);

@@ -248,7 +248,22 @@ export function NotificationBell({
             aria-label={
               count > 0 ? `Notifications (${count} unread)` : "Notifications"
             }
-            className="relative hidden h-9 w-9 place-items-center rounded-md border text-muted-foreground transition-colors hover:text-foreground sm:grid"
+            /*
+             * AT EVERY WIDTH, including a phone. It used to be `hidden … sm:grid`,
+             * and below 640px nothing replaced it: `BottomNav` carries the
+             * navigation families and nothing else, the touch cluster carries
+             * Praxis AI / Messages / Help, and the account menu carries the
+             * display preferences. So a phone had the unread count on the tab
+             * title and the installed app's icon — two places it cannot be
+             * ACTED on — and no route to the notifications themselves short of
+             * typing /notifications.
+             *
+             * An alert a user cannot open is worse than no alert: the badge on
+             * the home screen says something needs them and the app declines to
+             * say what. The strip has the room now that the quick-actions
+             * trigger has left it (app-shell.tsx).
+             */
+            className="relative grid h-9 w-9 place-items-center rounded-md border text-muted-foreground transition-colors hover:text-foreground"
           >
             <BellGlyph />
             {count > 0 && (

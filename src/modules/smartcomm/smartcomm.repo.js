@@ -4,7 +4,7 @@
  * WhatsApp-style; no external social routing (PRD §11.5).
  */
 "use strict";
-const { insertOne, getById, page, updateOne } = require("../../shared/db/query-helpers");
+const { insertOne, getById, page, updateOne, jsonbFields } = require("../../shared/db/query-helpers");
 
 // ── Channels (comms_group) ──
 const insertChannel = (client, data) => insertOne(client, "comms_group", data);
@@ -249,7 +249,28 @@ async function listStarsForMessages(client, messageIds, userId) {
 // ── Chat media (comms_media) ──
 // The store for images, video and voice notes. NOT document_vault — see the
 // header of smartcomm.media.service.js and migration 13794.
-const insertMedia = (client, data) => insertOne(client, "comms_media", data);
+
+/**
+ * `comms_media.waveform` is jsonb, and the peaks arrive as a JS ARRAY.
+ *
+ * node-postgres serialises a JS object to JSON but a JS ARRAY to a POSTGRES
+ * ARRAY LITERAL — `{12,34,56}` — which is not JSON. Bound to a jsonb column
+ * that raises 22P02, which the error handler turns into 400 INVALID_VALUE,
+ * "One of the values is in the wrong format": no column named, no field named.
+ *
+ * That made EVERY voice note fail to send, and fail invisibly: the recorder
+ * captured the clip, the analyser produced the peaks, the upload ran, and the
+ * only thing the sender saw was a sentence about a format they never typed.
+ * An image or a video went through untouched, because neither carries a
+ * waveform — so the one attachment kind with a jsonb column was the one
+ * attachment kind that was broken.
+ *
+ * `jsonbFields` is the shared encoder for exactly this; see its header in
+ * `shared/db/query-helpers.js` for the two earlier times this shipped.
+ */
+const MEDIA_JSONB = ["waveform"];
+const insertMedia = (client, data) =>
+  insertOne(client, "comms_media", jsonbFields(data, MEDIA_JSONB));
 const getMedia = (client, id) => getById(client, "comms_media", "media_id", id);
 
 async function setMediaTranscript(client, mediaId, { transcript, status }) {

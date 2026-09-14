@@ -1084,9 +1084,17 @@ Opt-in on `<DataList>` / `<ListPage>`, because each costs something:
   `activeKind` on the `<SplitPane>`, together — see §3.14. One without the other is half a
   signal: a marked row beside an anonymous pane, or a labelled pane beside a list where every
   row looks the same.
-- **The FAB is touch-only.** `<FloatingActions>` is `md:hidden`; desktop uses
-  `<QuickActionsMenu>` in the top bar. A fixed bottom-right cluster covers the last rows and
+- **The FAB is touch-only.** `<FloatingActions>` is `md:hidden`; on desktop the same list
+  renders in `<IconRail>`'s tail. A fixed bottom-right cluster covers the last rows and
   the pager of every list screen, and making it draggable was the workaround, not the fix.
+  Both surfaces read `useQuickActions()` so they cannot drift.
+- **Nothing quick-action-shaped goes in the title bar.** It held a burst-icon menu once; the
+  glyph named nothing in a strip where every other control says what it is, and it put
+  Messages in the header while the rail already carried Messages — one destination with two
+  chrome homes and an unread count duplicated between them. The count lives on the rail's
+  Messages cell now (`badge` on its rail button). The title bar is search, clock,
+  environment, language, theme, **`<NotificationBell>`** and account — and the bell renders
+  at **every** width, phone included, because below `sm` nothing else reaches notifications.
 
 ### 7.4 Motion budget
 

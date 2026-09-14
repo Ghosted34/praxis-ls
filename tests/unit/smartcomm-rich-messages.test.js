@@ -21,6 +21,7 @@
 
 const media = require("../../src/modules/smartcomm/smartcomm.media.service");
 const erp = require("../../src/modules/smartcomm/smartcomm.erp.service");
+const repo = require("../../src/modules/smartcomm/smartcomm.repo");
 
 describe("attachment routing — which store a file belongs in", () => {
   it("sends images, audio and video to chat media", () => {
@@ -72,6 +73,92 @@ describe("waveform sanitising — peaks arrive from anyone who can POST", () => 
 
   it("survives non-numeric junk instead of storing NaN", () => {
     expect(media.cleanWaveform(["x", undefined, null, 20])).toEqual([0, 0, 0, 20]);
+  });
+});
+
+/**
+ * ── THE PEAKS REACH A jsonb COLUMN AS JSON, NOT AS A POSTGRES ARRAY ────────
+ *
+ * `cleanWaveform` hands back a JS ARRAY, and `comms_media.waveform` is jsonb.
+ * node-postgres serialises a JS object to JSON but an ARRAY to a POSTGRES ARRAY
+ * LITERAL — `{12,34}` — which is not JSON. Bound to jsonb that raises 22P02,
+ * which the error handler turns into 400 INVALID_VALUE, "One of the values is
+ * in the wrong format": a sentence naming no column and no field.
+ *
+ * It made EVERY voice note fail to send while the recording, the peaks and the
+ * upload all worked, and it was invisible to the rest of this suite because an
+ * image and a video carry no waveform — the one attachment kind with a jsonb
+ * column was the one attachment kind that was broken.
+ *
+ * Asserted at the repo seam rather than through the service, because that is
+ * where the encoding decision is made and where a later refactor would drop it.
+ */
+describe("waveform is encoded for jsonb before it is bound", () => {
+  /** A client that records the parameters rather than reaching a database. */
+  const spyClient = () => {
+    const calls = [];
+    return {
+      calls,
+      query: async (text, params) => {
+        calls.push({ text, params });
+        return { rows: [{ media_id: "m-1" }] };
+      },
+    };
+  };
+
+  it("binds the peaks as a JSON string, not as a JS array", async () => {
+    const client = spyClient();
+    await repo.insertMedia(client, {
+      group_id: "g-1",
+      kind: "AUDIO",
+      storage_path: "k",
+      content_type: "audio/webm",
+      waveform: [12, 34, 56],
+      is_voice_note: true,
+    });
+    const { text, params } = client.calls[0];
+    const columns = text
+      .slice(text.indexOf("(") + 1, text.indexOf(")"))
+      .split(",")
+      .map((c) => c.trim().replace(/"/g, ""));
+    const waveform = params[columns.indexOf("waveform")];
+    expect(typeof waveform).toBe("string");
+    expect(JSON.parse(waveform)).toEqual([12, 34, 56]);
+  });
+
+  it("passes a null waveform through as SQL NULL", async () => {
+    // An image has no peaks. `JSON.stringify(null)` would bind the four
+    // characters "null", which is the JSON document `null` rather than an
+    // absent value — and a column read back as the string "null" is a
+    // different bug wearing the same clothes.
+    const client = spyClient();
+    await repo.insertMedia(client, {
+      group_id: "g-1",
+      kind: "IMAGE",
+      storage_path: "k",
+      content_type: "image/jpeg",
+      waveform: null,
+    });
+    const { text, params } = client.calls[0];
+    const columns = text
+      .slice(text.indexOf("(") + 1, text.indexOf(")"))
+      .split(",")
+      .map((c) => c.trim().replace(/"/g, ""));
+    expect(params[columns.indexOf("waveform")]).toBeNull();
+  });
+
+  it("leaves a row that never mentions waveform alone", async () => {
+    // `jsonbFields` must not invent the column: adding `waveform: null` to
+    // every media insert would be harmless here and wrong the moment the
+    // column gains a default.
+    const client = spyClient();
+    await repo.insertMedia(client, {
+      group_id: "g-1",
+      kind: "VIDEO",
+      storage_path: "k",
+      content_type: "video/mp4",
+    });
+    expect(client.calls[0].text).not.toContain("waveform");
   });
 });
 

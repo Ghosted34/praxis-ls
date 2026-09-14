@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { FilePicker, UploadList } from "@/components/ui/image-upload";
 import { useToast } from "@/components/ui/toast";
 import { useUpload } from "@/lib/use-upload";
+import { useFabFloor } from "@/lib/fab-floor";
 import { tr } from "@/lib/i18n";
 import { errMsg } from "@/lib/use-resource";
 import * as api from "@/lib/smartcomm-api";
@@ -291,8 +292,27 @@ export function Composer({
   const cancelEdit = () => {
     if (!busyRef.current) onCancelEdit?.();
   };
+
+  /*
+   * The floating cluster is `fixed bottom-24 right-5` on touch, which is this
+   * row's Send button — or the mic, when nothing is typed. It used to be hidden
+   * on `/comms` for exactly that reason; it is not any more, so this element
+   * publishes the height it needs kept clear and the cluster anchors above it.
+   * See `lib/fab-floor.ts` for why it is a CSS variable and not a prop.
+   */
+  const rootRef = React.useRef<HTMLDivElement>(null);
+  useFabFloor(rootRef);
+
   return (
-    <div className="relative max-h-[50%] shrink-0 overflow-y-auto border-t border-border bg-card">
+    <div
+      ref={rootRef}
+      // A stable hook for the layout gate, which checks in a real browser that
+      // the floating cluster ends above this element's top edge. A class-based
+      // selector would go stale the first time this row is restyled, and the
+      // assertion would then silently stop testing anything.
+      data-composer
+      className="relative max-h-[50%] shrink-0 overflow-y-auto border-t border-border bg-card"
+    >
       {(editingMessage || replyTo) && (
         <div className="flex items-center gap-2 border-b border-border bg-muted/50 px-3 py-2">
           <span className="min-w-0 flex-1 text-xs">

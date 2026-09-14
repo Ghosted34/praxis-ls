@@ -76,7 +76,6 @@ import { NotificationBell } from "@/components/notification-bell";
 import { CommandPalette } from "@/components/command-palette";
 import { PraxisDrawer } from "@/components/praxis-drawer";
 import { FloatingActions } from "@/components/floating-actions";
-import { QuickActionsMenu } from "@/components/quick-actions";
 import {
   DropdownMenu,
   DropdownItem,
@@ -704,8 +703,22 @@ function AppMark({ cfg }: { cfg: EffectivePwa }) {
       <AppIcon cfg={cfg} size={APP_MARK_SIZE} />
       {/* `truncate` because the name is tenant-supplied and the bar is shared
           with the window controls — a long one must give way rather than push
-          the search field off the row. */}
-      <span className="truncate text-[13px] font-semibold tracking-tight text-foreground">
+          the search field off the row.
+
+          `sm:` — IT STANDS DOWN ON A PHONE, and it is the right thing to give.
+          The name is here because this strip REPLACES the OS title bar in an
+          installed desktop window, where naming the window is the bar's whole
+          job. There is no WCO on a phone: `env(titlebar-area-*)` is undefined in
+          every mobile browser, so below `sm` this is an ordinary app bar, and
+          the name is the one element in it that carries no function — the icon
+          beside it says the same thing, and the user reached this app by
+          tapping that icon under that name.
+
+          It was paid for by the notification bell, which now renders at every
+          width. The layout gate measures the drag handle for exactly this
+          reason ("it is the first thing a seventh control in this strip would
+          consume") and caught the bell taking it to zero at 320px. */}
+      <span className="hidden truncate text-[13px] font-semibold tracking-tight text-foreground sm:inline">
         {cfg.name}
       </span>
     </div>
@@ -987,9 +1000,22 @@ export function AppShell() {
               <span className="hidden sm:inline-flex">
                 <ThemeToggle />
               </span>
-              <span className={chatWorkstation ? "inline-flex" : "hidden md:inline-flex"}>
-                <QuickActionsMenu badge={chatWorkstation ? unread.messages + unread.notifications : unread.messages} />
-              </span>
+              {/*
+              NO QUICK-ACTIONS TRIGGER HERE, AT ANY WIDTH.
+
+              A burst icon in the title bar is a menu whose contents you cannot
+              guess from its glyph, sitting in the one strip where every other
+              control says exactly what it is: search, clock, environment,
+              language, theme, alerts, account. It also put Messages in the top
+              bar while the rail already carries Messages, so the same
+              destination had two chrome homes and the unread count had to be
+              duplicated between them to stay honest.
+
+              The two surfaces that remain are the ones that fit their input:
+              `<IconRail>` on desktop (where the count now rides the Messages
+              cell it belongs to) and `<FloatingActions>` on touch. Neither is
+              in the header.
+              */}
               <NotificationBell
                 count={unread.notifications}
                 onChange={unread.reload}
@@ -1067,7 +1093,7 @@ export function AppShell() {
         family" a spatial fact rather than a caption.
       */}
           <div className="flex min-h-0 flex-1">
-            <IconRail />
+            <IconRail messageBadge={unread.messages} />
 
             <div className="flex min-w-0 flex-1 flex-col">
               <Ribbon pathname={location.pathname} />
@@ -1155,9 +1181,18 @@ export function AppShell() {
             onClose={() => setPaletteOpen(false)}
           />
           <PraxisDrawer />
-          {/* On chat, global actions live in the title bar even on phones:
-              the floating button otherwise covers the composer send control. */}
-          {!chatWorkstation && <FloatingActions badge={unread.messages + unread.notifications} />}
+          {/* ON EVERY TOUCH SCREEN, Smart Comms included.
+
+              It used to be `!chatWorkstation &&`, because the cluster sits in
+              the same corner as the composer's send and mic buttons, and the
+              title bar's quick-actions menu stood in for it there. That menu is
+              gone at every width, so the exception would now leave a phone on
+              `/comms` with no quick actions at all — and no clock-in, which is
+              the surface `<ClockPunch>` lives on below `sm`.
+
+              The overlap is solved where it is caused: the composer publishes
+              `--fab-floor` and the cluster anchors above it (floating-actions.tsx). */}
+          <FloatingActions badge={unread.messages + unread.notifications} />
           {/* Env-switch interstitial. Shown while `switchingFrom` is set — i.e. for
           the brief window between the toggle and the newly-mounted screen's
           first paint. `to` is the destination env, mapped back from the

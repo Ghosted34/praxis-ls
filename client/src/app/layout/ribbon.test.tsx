@@ -691,9 +691,56 @@ describe("the icon rail", () => {
     );
   });
 
+  /**
+   * ── THE UNREAD COUNT ON THE MESSAGES CELL ────────────────────────────────
+   *
+   * This is the assertion that migrated here when the title bar's quick-actions
+   * trigger was removed, and it is the one that would have caught the original
+   * defect: Smart Comms held unread chats and unread mail while the rail — the
+   * only Messages affordance on a desktop screen — drew a bare speech bubble.
+   * The count existed the whole time, on a burst icon that gave no hint it was
+   * about messages.
+   *
+   * It is asserted through the ACCESSIBLE NAME rather than the digits, because
+   * a badge is a picture: a rail of unlabelled icons is already the surface
+   * where a screen reader user has the least to go on, and a count drawn but
+   * not spoken is a count half of the users do not get.
+   */
+  it("badges the Messages cell with the unread count", async () => {
+    access.current = SIX_TABS;
+    renderChrome(<IconRail messageBadge={5} />, "/");
+    const rail = await screen.findByRole("navigation", { name: "Shortcuts" });
+    const msg = await within(rail).findByRole("button", {
+      name: "Messages, 5 unread",
+    });
+    expect(msg.textContent).toContain("5");
+  });
+
+  it("caps the badge rather than widening the cell", async () => {
+    // The rail is a fixed 36px column. Four digits would either overflow it or
+    // reflow every table beside it, which is the one thing the rail promises
+    // never to do.
+    access.current = SIX_TABS;
+    renderChrome(<IconRail messageBadge={1203} />, "/");
+    const rail = await screen.findByRole("navigation", { name: "Shortcuts" });
+    expect(
+      within(rail).getByRole("button", { name: "Messages, 1203 unread" })
+        .textContent,
+    ).toContain("99+");
+  });
+
+  it("draws no badge at zero, and says nothing about it either", async () => {
+    // A "0" badge is a notification that nothing happened.
+    access.current = SIX_TABS;
+    renderChrome(<IconRail />, "/");
+    const rail = await screen.findByRole("navigation", { name: "Shortcuts" });
+    const msg = await within(rail).findByRole("button", { name: "Messages" });
+    expect(msg.querySelector(".rail-badge")).toBeNull();
+  });
+
   it("is axe-clean", async () => {
     access.current = SIX_TABS;
-    const { container } = renderChrome(<IconRail />, "/");
+    const { container } = renderChrome(<IconRail messageBadge={3} />, "/");
     await screen.findByRole("navigation", { name: "Shortcuts" });
     expect(await axe(container)).toHaveNoViolations();
   });

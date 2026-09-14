@@ -612,9 +612,66 @@ async function publicSiteBaseUrl(tenantId) {
   return "https://" + row.host + (base === "/" ? "" : base);
 }
 
+/**
+ * The tenant's own slug and the origin its assets are fetched from by something
+ * OUTSIDE the app — today, an email-signature card sitting in a recipient's
+ * mail client.
+ *
+ * ── WHY NOT THE APEX ──────────────────────────────────────────────────────
+ *
+ * `https://<APP_BASE_DOMAIN>/…` is what the signature renderer used to build,
+ * and the apex is in `PLATFORM_HOSTS` (see middleware/host-tenent-resolver.js):
+ * it is the marketing/platform host, not anybody's workspace. A tenant's asset
+ * addressed there is a link out of their own product into ours, and on any
+ * deployment where the apex is not this Node process it is simply a broken
+ * image in every signature that went out.
+ *
+ * ── WHICH HOST, WHEN A TENANT HAS SEVERAL ─────────────────────────────────
+ *
+ * The WORKSPACE host first — the opposite preference from `publicSiteBaseUrl`
+ * next door, and deliberately so. That one is building links a person is meant
+ * to follow to the tenant's marketing site, so a domain the client brought is
+ * the better answer. This one is building a `src` a mail client fetches with no
+ * session: it wants the host the platform provisions and holds a certificate
+ * for, which is the `surface = 'erp'` row. Among equals, the primary, then the
+ * oldest — the same tie-break, so the two functions cannot disagree about which
+ * of a tenant's hosts is "theirs".
+ *
+ * The slug rides along because the caller needs both and they come from one
+ * row: the host addresses the asset and the slug namespaces it in storage.
+ *
+ * A LEFT JOIN, so a tenant with no subdomain row still yields its slug — the
+ * caller can still build a conventional `<slug>.<base>` from that, which is
+ * strictly better than the apex. Returns null only for an unknown tenant.
+ */
+async function workspaceOrigin(tenantId) {
+  if (!tenantId) return null;
+  const { rows } = await platform().query(
+    // `(s.surface = 'public') ASC` puts the workspace rows first; a tenant with
+    // no subdomain at all joins to one all-NULL row, which sorts last under
+    // Postgres's NULLS LAST default and is the only row there is anyway.
+    `SELECT t.slug, s.host
+       FROM platform.tenant t
+       LEFT JOIN platform.subdomain s ON s.tenant_id = t.tenant_id
+      WHERE t.tenant_id = $1
+      ORDER BY (s.surface = 'public') ASC, s.is_primary DESC, s.created_at
+      LIMIT 1`,
+    [tenantId],
+  );
+  const row = rows[0];
+  if (!row) return null;
+  // `https` unconditionally, for the reason publicSiteBaseUrl gives: this is
+  // followed on a network nobody here chose.
+  return {
+    slug: row.slug || null,
+    origin: row.host ? `https://${row.host}` : null,
+  };
+}
+
 module.exports = {
   resolveByHost,
   resolveBySlug,
+  workspaceOrigin,
   invalidateHost,
   invalidatePool,
   poolFor,

@@ -21,6 +21,9 @@ const { AppError } = require("../../../utils/errors");
 const { emitEvent, audit } = require("../../../shared/events/emit");
 const brandLogo = require("../../../services/brand-logo.service");
 const storage = require("../../../services/storage.service");
+// For the tenant stamped on the connection — see `tenantMeta`. The notification
+// service reaches for the registry from a module the same way.
+const registry = require("../../../services/tenant/registry.service");
 const { config } = require("../../../config/env");
 const { logger } = require("../../../config/logger");
 const metrics = require("../../../shared/observability/metrics");
@@ -68,8 +71,16 @@ function employeeOf(person) {
  *   1 — card + text fallback (#288)
  *   2 — servable storage key, branded fallback (#289)
  *   3 — chromium resolved by probe, screenshot coerced to Buffer
+ *   4 — the card is addressed at the TENANT's host and namespaced by the
+ *       tenant's own slug, instead of the platform apex and whichever tenant
+ *       happened to render first. Both live in the cached HTML, and neither is
+ *       an input to `source_hash`, so without this bump every signature already
+ *       in `signature_render` would keep the broken `<img>` until something
+ *       unrelated moved — which is the exact "shipping a fix did nothing"
+ *       failure this constant was introduced for. It costs one re-render per
+ *       person on their next send.
  */
-const RENDERER_VERSION = 3;
+const RENDERER_VERSION = 4;
 
 function inputsFor(person, entity, profile, template, mailbox, language, identity, system, branding) {
   return {
@@ -231,7 +242,9 @@ async function resolveFor(client, {
     // The template that produced this render — the motto is authored on it, so
     // a missing-motto gap needs its id to link anywhere at all.
     model.template_id = template.signature_template_id || null;
-    model.card_png_url = cached.storage_path ? mediaUrl(cached.storage_path) : null;
+    model.card_png_url = cached.storage_path
+      ? mediaUrl(await tenantMediaOrigin(client), cached.storage_path)
+      : null;
     return {
       html: format === "HTML" ? cached.content : htmlMod.render(model),
       text: resolveMod.textContent(model),
@@ -281,12 +294,28 @@ async function resolveFor(client, {
  * and useless in an email, where there is no page origin to resolve against. The
  * tenant's own host is the right base: a signature on mail from
  * smartls.praxisls.com should load from smartls.praxisls.com.
+ *
+ * IT DID NOT. This built `https://${config.APP_BASE_DOMAIN}/media/…` — the
+ * APEX — which the comment above has always said was the wrong host and which
+ * `middleware/host-tenent-resolver.js` lists in `PLATFORM_HOSTS`: it is the
+ * platform's own domain, not any tenant's workspace. Every card that has gone
+ * out points a recipient's mail client at a host that belongs to us, serves the
+ * marketing site on most deployments, and is not where that tenant's media
+ * lives. The symptom is the one this whole module is built to avoid — a broken
+ * image in the signature, with the text fallback beneath it and nothing
+ * anywhere saying why.
+ *
+ * So the origin is now passed IN, resolved once per render from the tenant on
+ * the connection (`tenantMediaOrigin`), and this function only joins it to a
+ * key.
  */
-function mediaUrl(key) {
+function mediaUrl(origin, key) {
   const k = String(key || "").replace(/^\/media\//, "").replace(/^\/+/, "");
   if (!k) return null;
   if (/^https?:/i.test(k)) return k;
-  return `https://${config.APP_BASE_DOMAIN}/media/${k}`;
+  const base = String(origin || "").replace(/\/+$/, "");
+  if (!base) return null;
+  return `${base}/media/${k}`;
 }
 
 const storagePathOf = (url) => String(url || "").replace(/^https?:\/\/[^/]+\/media\//i, "") || null;
@@ -304,36 +333,112 @@ const storagePathOf = (url) => String(url || "").replace(/^https?:\/\/[^/]+\/med
  * itself publishes to that recipient — and nothing else.
  */
 /**
- * The tenant namespace for a storage key.
+ * WHO THIS CONNECTION BELONGS TO — slug and asset origin, memoised.
  *
- * Every other storage caller takes the slug from `req.tenant.slug`, because
- * every other one is reached from a request. This is not: it runs on the SEND
- * path, three frames below `email.service.send`, and the two functions in
- * between (`attachSystemSignature`, `outbox.attachSignature`) do not carry a
- * slug. Threading one through both — and through every future send path — to
- * name a file is a lot of surface for a small job, and a path that forgets it
- * produces a key that does not serve, which is the bug this whole function
- * exists to stop happening twice.
+ * THE BUG THIS REPLACES, because it is worth being exact about. The previous
+ * version derived the namespace from `current_database()` and memoised it in
+ * ONE module-level variable:
  *
- * So it is derived instead: the caller may pass a slug, and otherwise the
- * database names itself. Tenants are separate databases, so that is stable,
- * always available, and unique per tenant — which is all a namespace has to be.
- * Memoised per connection-pool lifetime because it cannot change under us.
+ *     let namespaceCache = null;
+ *
+ * One Node process serves every tenant — `registry.acquire` hands out a
+ * connection per tenant from pools keyed by database name — so that variable is
+ * shared by all of them. The first tenant to render a signature card filled it
+ * in, and every tenant after that wrote its cards under THE FIRST TENANT'S
+ * prefix: `tenant_<someone else>/signatures/…`. The slug parameter that would
+ * have avoided it is never passed — neither `outbox.attachSignature` nor
+ * `email.attachSystemSignature` carries one, which is precisely what the old
+ * comment here said and then worked around instead of fixing.
+ *
+ * THE ANSWER WAS ALREADY ON THE CLIENT. `registry.acquire` stamps the tenant id
+ * on every connection it hands out, for exactly this: *"anything holding a
+ * tenant client can resolve its tenant, and 'the caller forgot to pass it' stops
+ * being reachable."* So nothing has to be threaded through the send path after
+ * all — the connection knows.
+ *
+ * Memoised per TENANT with a short TTL rather than forever: a tenant's host can
+ * change (a custom domain is verified, a subdomain is re-pointed), and a
+ * process that has been up for a week should not still be addressing the old
+ * one. Sixty seconds matches the registry's own host cache.
  */
-let namespaceCache = null;
+const TENANT_META_TTL_MS = 60_000;
+const tenantMetaCache = new Map(); // tenant_id -> { expires, slug, origin }
+
+const cleanSegment = (v) => String(v || "").toLowerCase().replace(/[^\w-]/g, "");
+
+async function tenantMeta(client) {
+  const tenantId = registry.tenantIdOf(client);
+  if (!tenantId) return { slug: null, origin: null };
+
+  const hit = tenantMetaCache.get(tenantId);
+  if (hit && hit.expires > Date.now()) return hit;
+
+  let meta = { slug: null, origin: null };
+  try {
+    meta = (await registry.workspaceOrigin(tenantId)) || meta;
+  } catch (err) {
+    // NOT silent: an unreadable registry means every card this process renders
+    // is addressed at a guess, and the whole point of this file's history is
+    // that a signature failing quietly costs weeks.
+    logger.warn({ err: err.message, tenant_id: tenantId }, "signature: tenant host lookup failed");
+  }
+  const row = { ...meta, expires: Date.now() + TENANT_META_TTL_MS };
+  tenantMetaCache.set(tenantId, row);
+  return row;
+}
+
+/**
+ * The tenant namespace for a storage key — `tenant_<this>/signatures/…`.
+ *
+ * The slug, now that the connection can supply it, because that is what every
+ * OTHER storage caller uses (`req.tenant.slug`) and a second shape for the same
+ * namespace is a key that reads as another tenant's. The database name is kept
+ * as the last resort for a connection with no tenant stamped on it — a test
+ * double, or a script holding a raw pool — where a wrong-but-stable namespace
+ * still beats an empty one.
+ */
 async function tenantNamespace(client, tenantSlug) {
-  const clean = (v) => String(v || "").toLowerCase().replace(/[^\w-]/g, "");
-  if (tenantSlug) return clean(tenantSlug) || "unknown";
-  if (namespaceCache) return namespaceCache;
+  if (tenantSlug) return cleanSegment(tenantSlug) || "unknown";
+
+  const { slug } = await tenantMeta(client);
+  if (slug) return cleanSegment(slug) || "unknown";
+
   try {
     const { rows } = await client.query("SELECT current_database() AS db");
-    namespaceCache = clean(rows[0] && rows[0].db) || "unknown";
+    return cleanSegment(rows[0] && rows[0].db) || "unknown";
   } catch {
     /* @silent:storage a namespace we cannot read is not a reason to skip the
        render — "unknown" still produces a servable, correctly-shaped key. */
-    namespaceCache = "unknown";
+    return "unknown";
   }
-  return namespaceCache;
+}
+
+/**
+ * The origin a recipient's mail client fetches this tenant's card from.
+ *
+ * Three steps down, and each one is a worse answer than the last:
+ *
+ *   1. the tenant's registered workspace host — the right answer, and the one
+ *      the platform provisions a certificate for;
+ *   2. `<slug>.<APP_BASE_DOMAIN>` — the conventional shape, for a tenant whose
+ *      registry row has no subdomain yet;
+ *   3. the apex, which is what this always did and is very likely wrong.
+ *
+ * Step 3 is kept rather than returning null so that no deployment is made worse
+ * by this change: a single-host install where the apex IS the app keeps working
+ * exactly as before (and in fact reaches step 1, because its subdomain row says
+ * so). It carries a warning, because reaching it means we are about to put a
+ * platform host in a tenant's outbound mail and nobody would otherwise know.
+ */
+async function tenantMediaOrigin(client) {
+  const { slug, origin } = await tenantMeta(client);
+  if (origin) return origin;
+  if (slug) return `https://${cleanSegment(slug)}.${config.APP_BASE_DOMAIN}`;
+  logger.warn(
+    { base: config.APP_BASE_DOMAIN },
+    "signature: no tenant host resolved — the card will be addressed at the platform apex",
+  );
+  return `https://${config.APP_BASE_DOMAIN}`;
 }
 
 async function ensureCardPng(client, { model, userId, identityKey, language, hash, tenantSlug }) {
@@ -351,7 +456,7 @@ async function ensureCardPng(client, { model, userId, identityKey, language, has
   try {
     const png = await pngMod.render(model, 2);
     const stored = await storage.put(png.buffer, { key, contentType: "image/png" });
-    const url = mediaUrl(stored.key || key);
+    const url = mediaUrl(await tenantMediaOrigin(client), stored.key || key);
     logger.debug({ user_id: userId, key: stored.key || key, bytes: png.buffer.length }, "signature card rendered");
     return url;
   } catch (err) {
@@ -719,7 +824,7 @@ function bake(html, text, resolved) {
 
 module.exports = {
   RENDERER_VERSION,
-  tenantNamespace,
+  tenantNamespace, tenantMediaOrigin,
   resolveFor, renderPng, renderBatch, listStaff, cardPreview, getOwnProfile, saveOwnProfile,
   listTemplates, updateTemplate, getMotto, saveMotto, getPalette, savePalette,
   invalidateForUser, invalidateForEntity, bake,

@@ -69,9 +69,15 @@
 --
 -- ── IDEMPOTENCY / PARITY ──────────────────────────────────────────────────
 --
--- Everything here is IF NOT EXISTS, and the CHECK constraints ride on their own
--- ADD COLUMN rather than a separate ADD CONSTRAINT, so there is no `conname`
--- guard to get wrong across live/sandbox (see 13791 and check-constraint-guards).
+-- Everything here is IF NOT EXISTS. `comms_media` is a NEW table, so it carries
+-- its CHECKs and foreign keys inline and there is no separate ADD CONSTRAINT to
+-- guard wrongly on `conname` (see 13791 and check-constraint-guards).
+--
+-- `comms_attachment` already exists, and for that reason gains PLAIN columns
+-- only — no CHECK, no foreign key. That is not a style choice; a constraint on
+-- a pre-existing table added above 13791 aborts provisioning a new tenant. The
+-- full reasoning sits directly above those ALTERs, where somebody about to add
+-- one will read it.
 -- ============================================================================
 
 -- ── The chat-media store ───────────────────────────────────────────────────
@@ -107,11 +113,55 @@ CREATE TABLE IF NOT EXISTS comms_media (
 CREATE INDEX IF NOT EXISTS ix_comms_media_group ON comms_media(group_id, created_at);
 
 -- ── comms_attachment learns what it is pointing at ─────────────────────────
--- DEFAULT 'VAULT' is the honest default: every row that exists today got there
--- through a vault_id, so the backfill is the default value doing its job.
-ALTER TABLE comms_attachment ADD COLUMN IF NOT EXISTS attachment_kind text NOT NULL DEFAULT 'VAULT'
-  CHECK (attachment_kind IN ('VAULT','MEDIA','ERP'));
-ALTER TABLE comms_attachment ADD COLUMN IF NOT EXISTS media_id uuid REFERENCES comms_media(media_id) ON DELETE CASCADE;
+--
+-- ── WHY THERE IS NO CHECK AND NO FOREIGN KEY ON THESE FIVE COLUMNS ────────
+--
+-- Because a constraint added to a PRE-EXISTING table by any migration numbered
+-- above 13791 breaks provisioning a brand-new tenant, and this is the first
+-- migration since 13791 to try. It cost a red `migrations` job to find, so the
+-- reasoning is recorded here rather than left to be rediscovered:
+--
+--   `provisioning.service.js` migrates `for (const schema of ["live",
+--   "sandbox"])` — every file against live, THEN every file against sandbox.
+--   13791 repairs sandbox by mirroring the constraints it finds in live. By the
+--   time it runs in the SANDBOX pass, live is already at the head of the
+--   migration list, so it sees this file's constraints; but sandbox is only at
+--   13791, so `comms_attachment` has none of the columns below yet. 13791
+--   guards that the TABLE exists in the target and not that the COLUMN does,
+--   and its exception handler catches check_violation and
+--   foreign_key_violation — not undefined_column. So it aborts:
+--
+--     Failed applying tenant/13791_sandbox_constraint_repair.sql [sandbox]:
+--       column "attachment_kind" does not exist
+--
+-- 13791 cannot be edited to fix this, and that is deliberate rather than an
+-- oversight — its own header explains why: `contentDrift` compares each applied
+-- file's sha256 against the ledger, so editing a file that has already run
+-- reports every tenant in the fleet as content-drifted and turns a real alarm
+-- into permanent noise. A later migration cannot help either, since 13791 fails
+-- before one could run.
+--
+-- So the rule is: above 13791, a NEW table may carry any constraint it likes
+-- (13791 skips a table absent from the target, which is why everything on
+-- `comms_media` above is fully constrained), and an EXISTING table may only
+-- gain plain columns. That is what these five are.
+--
+-- WHAT ENFORCES THEM INSTEAD. Both rules live on the only write path there is.
+-- `attachment_kind` is written solely by `attachmentRow` in
+-- smartcomm.service.js, which maps every descriptor onto exactly one of the
+-- three literals and cannot emit a fourth, and the request is enum-checked by
+-- `attachment` in smartcomm.validator.js before it gets there. `media_id` is
+-- only ever a `media_id` this module just handed the client from
+-- `POST /channels/:id/media`. What is genuinely lost is ON DELETE CASCADE, and
+-- nothing deletes a `comms_media` row today — when something does, it must
+-- clear the attachments pointing at it.
+--
+-- DEFAULT 'VAULT' is the honest default and is safe here: a column default is
+-- not a constraint, and 13791 copies only contype 'c' and 'f'. Every row that
+-- exists today got there through a vault_id, so the backfill is the default
+-- doing its job.
+ALTER TABLE comms_attachment ADD COLUMN IF NOT EXISTS attachment_kind text NOT NULL DEFAULT 'VAULT';
+ALTER TABLE comms_attachment ADD COLUMN IF NOT EXISTS media_id uuid;
 ALTER TABLE comms_attachment ADD COLUMN IF NOT EXISTS erp_kind text;
 ALTER TABLE comms_attachment ADD COLUMN IF NOT EXISTS erp_id uuid;
 -- Cached ONLY as the fallback caption for a reader without rights on the
@@ -135,10 +185,16 @@ CREATE INDEX IF NOT EXISTS ix_comms_reaction_message ON comms_reaction(message_i
 --     -- expect two rows (live + sandbox)
 --
 --   SELECT attachment_kind FROM comms_attachment LIMIT 1;   -- expect 'VAULT'
---   INSERT INTO comms_attachment (message_id, attachment_kind)
---        VALUES ('<a real message_id>', 'PHOTO');           -- expect: check violation
 --   INSERT INTO comms_media (group_id, kind, storage_path, content_type)
 --        VALUES ('<a real group_id>', 'GIF', 'k', 'image/gif');  -- expect: check violation
+--
+--   -- comms_attachment deliberately has NO check on attachment_kind — see the
+--   -- note above the ALTERs. The database accepts a fourth value; the service
+--   -- and the validator are what refuse it:
+--   SELECT conname FROM pg_constraint c
+--     JOIN pg_class t ON t.oid = c.conrelid
+--    WHERE t.relname = 'comms_attachment' AND c.contype IN ('c','f');
+--     -- expect only the constraints 0430 created, none naming attachment_kind
 --
 -- DOWN
 --   -- Additive. Dropping these loses every chat image, every voice note and
@@ -153,6 +209,7 @@ CREATE INDEX IF NOT EXISTS ix_comms_reaction_message ON comms_reaction(message_i
 --   ALTER TABLE comms_attachment DROP COLUMN IF EXISTS erp_kind;
 --   ALTER TABLE comms_attachment DROP COLUMN IF EXISTS media_id;
 --   ALTER TABLE comms_attachment DROP COLUMN IF EXISTS attachment_kind;
+--   -- (no constraints to drop on comms_attachment — see the note above the ALTERs)
 --   DROP INDEX IF EXISTS ix_comms_media_group;
 --   DROP TABLE IF EXISTS comms_media;
 -- ============================================================================

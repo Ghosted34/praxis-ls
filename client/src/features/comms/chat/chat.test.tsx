@@ -9,6 +9,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { ErpCardView } from "./erp-card";
 import { VoiceNote } from "./voice-note";
@@ -103,6 +104,49 @@ describe("VoiceNote — four transcript states, four sentences", () => {
     // forty bars — the bars are already in the row.
     render(<VoiceNote attachment={{ ...base, transcript_status: "NONE" }} />);
     expect(document.querySelector("audio")).toBeNull();
+  });
+
+  /**
+   * ── THE BAR IS A PLAY CONTROL, AND IT SAYS SO ────────────────────────────
+   *
+   * The waveform is four times the area of the play button and is drawn as a
+   * progress bar, so it is what a hand goes for. Its handler used to open with
+   * `if (!el) return` against an <audio> that does not exist until the first
+   * play — a silent, permanent no-op on the biggest target in the bubble, and
+   * the whole of "voice notes not playing".
+   *
+   * jsdom cannot play audio, so what is pinned HERE is the accessible name —
+   * the promise the control makes. That it actually starts the clip is pinned
+   * in a real browser by `e2e/voice-note.spec.ts`, which is the only place a
+   * media element does anything at all.
+   */
+  it("names the bar as a play control, not only as a scrubber", () => {
+    render(<VoiceNote attachment={{ ...base, transcript_status: "NONE" }} />);
+    expect(
+      screen.getByRole("button", { name: /play from a point in the voice note/i }),
+    ).toBeInTheDocument();
+  });
+
+  /**
+   * ── AN ATTACHMENT WITH NO CLIP SAYS SO ───────────────────────────────────
+   *
+   * `voice-recorder.tsx` sets the rule for this feature: "A mic button that
+   * does nothing is the worst outcome — people press it again, and again, and
+   * conclude the product is broken." The player broke it. With no `media_id`
+   * there is nothing to fetch, and both controls used to return in silence.
+   */
+  it("says something when there is no clip behind the bubble", async () => {
+    render(<VoiceNote attachment={{ ...base, media_id: undefined, transcript_status: "NONE" }} />);
+    await userEvent.click(screen.getByRole("button", { name: /play voice note/i }));
+    expect(screen.getByText(/no longer attached to the message/i)).toBeInTheDocument();
+  });
+
+  it("keeps a missing clip apart from a failed download", () => {
+    // Two different problems needing two different responses: one is worth
+    // retrying, the other never will be. Collapsing them into "couldn't load"
+    // sends somebody hunting a network fault that is not there.
+    render(<VoiceNote attachment={{ ...base, media_id: undefined, transcript_status: "NONE" }} />);
+    expect(screen.queryByText(/Couldn't load that recording/i)).toBeNull();
   });
 });
 

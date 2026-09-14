@@ -100,3 +100,18 @@ CREATE INDEX IF NOT EXISTS ix_stattach_ticket ON platform.support_attachment(tic
 CREATE INDEX IF NOT EXISTS ix_stattach_reply ON platform.support_attachment(reply_id);
 CREATE INDEX IF NOT EXISTS ix_stattach_orphan ON platform.support_attachment(created_at)
   WHERE ticket_id IS NULL;
+
+-- DOWN
+-- Additive and cleanly reversible: two new tables plus a widened CHECK. The
+-- table drops cascade the child rows; the storage objects they pointed at
+-- become orphans and are picked up by the next object-store sweep. Restoring
+-- the CHECK to its original three kinds is safe only while no ticket has been
+-- filed in a new kind — if any have, the honest answer is the pre-deploy dump.
+--
+-- DROP TABLE IF EXISTS platform.support_attachment;
+-- DROP TABLE IF EXISTS platform.support_ticket_reply;
+-- ALTER TABLE platform.support_ticket
+--   DROP CONSTRAINT IF EXISTS platform_support_ticket_kind_check;
+-- ALTER TABLE platform.support_ticket
+--   ADD CONSTRAINT platform_support_ticket_kind_check
+--   CHECK (kind IN ('SUPPORT','BUG','FEATURE'));

@@ -1248,6 +1248,7 @@ module.exports = {
   listUsers, getUser, listLinkableEmployees, createUser, updateUser, setPassword, setStatus,
   getSignature, setSignature,
   registerPinDevice, pinLogin, listPinDevices, revokePinDevice,
+  issueSessionTokens,
   login,
   // Exported for tests: the throttle curve is the security-relevant decision
   // here, and it should be assertable without standing up a database.

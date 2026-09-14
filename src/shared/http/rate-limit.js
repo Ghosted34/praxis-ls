@@ -222,6 +222,9 @@ const changePasswordLimiter = makeLimiter({
   keyGenerator: (req) => (req.user && req.user.user_id ? `user:${req.user.user_id}` : `ip:${req.ip}`),
 });
 
+/** WebAuthn passkey — credential guessing / attestation spam */
+const webauthnLimiter = makeLimiter({ name: "webauthn", max: 20 });
+
 module.exports = {
   initRateLimitStore,
   rateLimitStoreKind,
@@ -235,5 +238,6 @@ module.exports = {
   forgotLimiter,
   resetLimiter,
   changePasswordLimiter,
+  webauthnLimiter,
   TOO_MANY,
 };

@@ -2,7 +2,7 @@
   "name": "praxis-ls",
   "version": "0.1.0",
   "private": true,
-  "description": "Praxis LS — white-label, multi-tenant logistics & OHADA-accounting ERP (API + workers).",
+  "description": "Praxis LS \u2014 white-label, multi-tenant logistics & OHADA-accounting ERP (API + workers).",
   "license": "UNLICENSED",
   "packageManager": "npm@10.8.2",
   "engines": {
@@ -118,7 +118,8 @@
     "uuid": "^11.0.3",
     "web-push": "^3.6.7",
     "zod": "^3.23.8",
-    "zxing-wasm": "^2.2.4"
+    "zxing-wasm": "^2.2.4",
+    "@simplewebauthn/server": "^9.0.3"
   },
   "devDependencies": {
     "eslint": "^9.15.0",
@@ -130,7 +131,7 @@
     "prettier": "^3.4.1",
     "supertest": "^7.0.0"
   },
-  "//workbook-vendor": "html2canvas and jspdf are NOT imported by the API. They are devDependencies so Dependabot and `npm audit` can see them: doc/workbook/tools/make-vendor.mjs inlines them into the offline workbook HTML and reads the pinned versions from devDependencies. Exact pins, no caret — the inlined copy in doc/workbook/src/vendor.mjs is a build output, so a floating range would let the committed artefact and the declared version drift apart silently. `npm run check:workbook` fails if they do.",
+  "//workbook-vendor": "html2canvas and jspdf are NOT imported by the API. They are devDependencies so Dependabot and `npm audit` can see them: doc/workbook/tools/make-vendor.mjs inlines them into the offline workbook HTML and reads the pinned versions from devDependencies. Exact pins, no caret \u2014 the inlined copy in doc/workbook/src/vendor.mjs is a build output, so a floating range would let the committed artefact and the declared version drift apart silently. `npm run check:workbook` fails if they do.",
   "//puppeteer": "Chromium is installed by the Docker image (apt) and located via PUPPETEER_EXECUTABLE_PATH; set PUPPETEER_SKIP_DOWNLOAD=1 in CI to avoid the bundled download.",
-  "//deepseek": "DeepSeek is OpenAI-API-compatible — the 'openai' SDK is pointed at DEEPSEEK_BASE_URL. Gemini uses @google/generative-ai; Groq uses groq-sdk (voice-to-text)."
+  "//deepseek": "DeepSeek is OpenAI-API-compatible \u2014 the 'openai' SDK is pointed at DEEPSEEK_BASE_URL. Gemini uses @google/generative-ai; Groq uses groq-sdk (voice-to-text)."
 }

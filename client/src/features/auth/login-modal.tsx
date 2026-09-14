@@ -115,16 +115,13 @@ export function LoginModal({ onClose }: { onClose: () => void }) {
         const ok =
           typeof window !== "undefined" &&
           !!window.PublicKeyCredential &&
-          // @ts-expect-error conditional mediation check (newer browsers)
-          typeof PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable === "function"
-            ? await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable().catch(() => true)
+          typeof (PublicKeyCredential as any).isUserVerifyingPlatformAuthenticatorAvailable === "function"
+            ? await (PublicKeyCredential as any).isUserVerifyingPlatformAuthenticatorAvailable().catch(() => true)
             : !!window.PublicKeyCredential;
         if (alive) setPasskeySupported(ok);
         // Also probe conditional mediation for later autofill (silent)
         try {
-          // @ts-expect-error isConditionalMediationAvailable not in lib.dom yet
           if ((window.PublicKeyCredential as any)?.isConditionalMediationAvailable) {
-            // @ts-expect-error isConditionalMediationAvailable not in lib.dom yet
             await (PublicKeyCredential as any).isConditionalMediationAvailable();
           }
         } catch { /* @silent:storage */ }
@@ -471,7 +468,7 @@ export function LoginModal({ onClose }: { onClose: () => void }) {
                       <div className="truncate text-xs text-white/60">{displayEmail}</div>
                     </div>
                     {pinHasDevice && (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2.5 py-1 text-[11px] font-semibold text-emerald-300 ring-1 ring-emerald-500/20">
+                      <span className="status st-ok !gap-1 !py-1 !text-[11px]">
                         <CheckIcon width={12} height={12} /> This device
                       </span>
                     )}

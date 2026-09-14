@@ -111,23 +111,20 @@ export function LoginModal({ onClose }: { onClose: () => void }) {
   React.useEffect(() => {
     let alive = true;
     (async () => {
-      try {
-        const ok =
-          typeof window !== "undefined" &&
-          !!window.PublicKeyCredential &&
-          typeof (window.PublicKeyCredential as any).isUserVerifyingPlatformAuthenticatorAvailable === "function"
-            ? await (window.PublicKeyCredential as any).isUserVerifyingPlatformAuthenticatorAvailable().catch(() => true)
-            : !!window.PublicKeyCredential;
-        if (alive) setPasskeySupported(ok);
-        // Also probe conditional mediation for later autofill (silent)
-        try {
-          if ((window.PublicKeyCredential as any)?.isConditionalMediationAvailable) {
-            await (window.PublicKeyCredential as any).isConditionalMediationAvailable();
-          }
-        } catch { /* @silent:storage */ }
-      } catch {
+      const PKC = typeof window !== "undefined" ? (window.PublicKeyCredential as any) : undefined;
+      if (!PKC) {
         if (alive) setPasskeySupported(false);
+        return;
       }
+      // A probe that REFUSES to answer is not a "no". Settle it explicitly rather
+      // than catching: only a resolved `false` — this device has no platform
+      // authenticator — takes the passkey route away.
+      let ok = true;
+      if (typeof PKC.isUserVerifyingPlatformAuthenticatorAvailable === "function") {
+        const [probe] = await Promise.allSettled([PKC.isUserVerifyingPlatformAuthenticatorAvailable()]);
+        ok = probe.status === "fulfilled" ? !!probe.value : true;
+      }
+      if (alive) setPasskeySupported(ok);
     })();
     return () => {
       alive = false;

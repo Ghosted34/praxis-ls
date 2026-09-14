@@ -14,7 +14,6 @@
  * the Host header fallback; RP ID is the origin's hostname without port.
  */
 
-const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
 const { config } = require("../../../config/env");
 const { AppError } = require("../../../utils/errors");
@@ -29,7 +28,7 @@ function sw() {
   if (!simpleWebAuthn) {
     try {
       simpleWebAuthn = require("@simplewebauthn/server");
-    } catch (e) {
+    } catch {
       throw new AppError("WEBAUTHN_UNAVAILABLE", "Passkey support is not installed on this server", 500);
     }
   }
@@ -86,7 +85,7 @@ function toBase64URL(buf) {
   return Buffer.from(buf).toString("base64url");
 }
 
-async function registrationOptions(client, { userId, label, req }) {
+async function registrationOptions(client, { userId, req }) {
   const user = await userRepo.getUserSafe(client, userId);
   if (!user) throw new AppError("NOT_FOUND", "User not found", 404);
 
@@ -256,7 +255,7 @@ async function authenticationOptions(client, { email, req }) {
   };
 }
 
-async function verifyAuthentication(client, { email, assertion, challengeToken, req, ip, userAgent, environment }) {
+async function verifyAuthentication(client, { assertion, challengeToken, req, ip, userAgent, environment }) {
   if (!assertion) throw new AppError("BAD_REQUEST", "Missing assertion", 400);
 
   let expectedChallenge = null;
@@ -300,6 +299,23 @@ async function verifyAuthentication(client, { email, assertion, challengeToken, 
   // Verify the user still active
   const user = await userRepo.getUserSafe(client, stored.user_id);
   if (!user || user.status !== "ACTIVE") throw new AppError("USER_INACTIVE", "Account is suspended or locked", 401);
+
+  // The challenge is bound to the identity it was issued for. `authenticationOptions`
+  // signs sub = user_id when the email resolved, the lowercased email when it did not,
+  // and "anonymous" for a discoverable login that names nobody — only the last of those
+  // has no identity to check, so it is the only one that skips the comparison.
+  //
+  // Without this, a challenge minted for one account verifies an assertion from any
+  // other: the signature still checks out, because it is checked against whichever
+  // credential the assertion names rather than the one the ceremony asked for.
+  if (challengeSub && challengeSub !== "anonymous") {
+    const boundToUser = String(stored.user_id) === String(challengeSub);
+    const boundToEmail = !!challengeEmail && String(user.email).toLowerCase() === String(challengeEmail).toLowerCase();
+    if (!boundToUser && !boundToEmail) {
+      logger.warn({ user_id: stored.user_id, challenge_sub: challengeSub }, "[webauthn] assertion did not match the challenge subject");
+      throw new AppError("INVALID_CHALLENGE", "Passkey challenge was issued for a different account", 400);
+    }
+  }
 
   const { rpID, origin } = getRpInfo(req);
   const { verifyAuthenticationResponse } = sw();

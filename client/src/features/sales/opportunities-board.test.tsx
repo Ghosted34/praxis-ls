@@ -47,9 +47,7 @@ describe("Sales · pipeline board", () => {
       },
     });
     await waitFor(() => expect(screen.queryByText(/No pipeline stages/i)).toBeNull(), { timeout: 3000 });
-    // eslint-disable-next-line no-console
     const body = document.body.textContent || "";
-    // eslint-disable-next-line no-console
     console.log("VISIBLE >>>", ["Oslo reefer","Tema lane","Ghost deal","Stageless deal","No stage"]
       .map((t) => `${t}=${body.includes(t)}`).join("  "));
     expect(body).toContain("Ghost deal");

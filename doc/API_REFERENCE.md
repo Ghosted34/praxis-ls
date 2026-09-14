@@ -6,7 +6,7 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 1587 |
+| Routes | 1593 |
 | Modules mounted | 140 |
 | API version | v1 |
 
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 1587 mounted routes, grouped by path prefix.
+All 1593 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -189,9 +189,12 @@ All 1587 mounted routes, grouped by path prefix.
 
 | Method | Path | Body validated |
 |---|---|---|
+| GET | `/api/platform/support/attachments/:id` | — |
 | GET | `/api/platform/support/tickets` | — |
 | GET | `/api/platform/support/tickets/:id` | — |
 | PATCH | `/api/platform/support/tickets/:id` | — |
+| POST | `/api/platform/support/tickets/:id/attachments` | — |
+| POST | `/api/platform/support/tickets/:id/replies` | — |
 
 ### `platform/tenants`
 
@@ -2099,10 +2102,13 @@ All 1587 mounted routes, grouped by path prefix.
 
 | Method | Path | Body validated |
 |---|---|---|
+| POST | `/api/tenant/support/attachments` | — |
+| GET | `/api/tenant/support/attachments/:id` | — |
 | GET | `/api/tenant/support/tickets` | — |
 | POST | `/api/tenant/support/tickets` | — |
 | GET | `/api/tenant/support/tickets/:id` | — |
 | POST | `/api/tenant/support/tickets/:id/csat` | — |
+| POST | `/api/tenant/support/tickets/:id/replies` | — |
 
 ### `tenant/talent-pool`
 

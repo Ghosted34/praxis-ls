@@ -1,198 +1,41 @@
 /**
- * Support & Feedback (tenant side, PRD §11.2) — the tenant→Praxis channel. Users
- * raise support / bug / feature tickets and watch their lifecycle
- * (NEW → TRIAGED → IN_PROGRESS → SHIPPED/DECLINED); Praxis triages them on the
- * Platform Console. CSAT can be given once a ticket is resolved. Backed by the
- * ungated tenant API `/support/tickets` (writes the central platform ticket
+ * Support & Feedback (tenant side, PRD §11.2) — the tenant→Praxis channel.
+ * Users raise support/bug/feature (and more) tickets with screenshots, watch
+ * their lifecycle (NEW → TRIAGED → IN_PROGRESS → SHIPPED/DECLINED), and now
+ * carry the THREAD with Praxis: replies land here and in the notification
+ * bell, and the console side is the mirror. CSAT once a ticket is resolved.
+ * Backed by the ungated tenant API `/support/tickets` (central platform ticket
  * store, scoped to this tenant).
+ *
+ * THE PAGE IS A CALLER, NOT THE OWNER, of the raise form — GlobalRaiseTicket
+ * mounts it once at the shell so the icon rail can open it from any screen.
+ * `?ticket=<id>` (from a notification's deep link) opens that ticket's thread
+ * and is then stripped, the same shape the mail inbox uses for `?thread=`.
  */
 import { pageShell } from "@/lib/layout";
 import { tr } from "@/lib/i18n";
 import * as React from "react";
-import { Textarea } from "@/components/ui/textarea";
+import { useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Modal, Field, Select } from "@/components/ui/modal";
+import { Modal, Field } from "@/components/ui/modal";
 import { ErrorState } from "@/components/ui/states";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
-import { Pill, type Tone } from "@/components/ui/pill";
+import { Pill } from "@/components/ui/pill";
 import { RowActions } from "@/components/ui/row-actions";
 import { useList, errMsg } from "@/lib/use-resource";
 import { num, dateFmt } from "@/lib/format";
-import { tenant } from "@/lib/api-client";
-
-type Kind = "SUPPORT" | "BUG" | "FEATURE";
-type Status = "NEW" | "TRIAGED" | "IN_PROGRESS" | "SHIPPED" | "DECLINED";
-
-type Ticket = {
-  ticket_id: string;
-  kind: Kind;
-  title: string;
-  body?: string | null;
-  status: Status;
-  csat?: number | null;
-  created_at?: string | null;
-};
-
-const KIND_LABEL: Record<Kind, string> = {
-  SUPPORT: "Support",
-  BUG: "Bug",
-  FEATURE: "Feature",
-};
-
-/**
- * G8 — snapshot the current app context onto a support ticket. Every part is
- * independently guarded and never throws: triage gets what is available and
- * a missing piece must not sink the ticket. Includes the last client error
- * the global error-reporting captured (route + message + stack), the page the
- * user was on, and static browser facts.
- */
-function buildTicketContext(): Record<string, unknown> {
-  const ctx: Record<string, unknown> = {
-    captured_at: new Date().toISOString(),
-    route: typeof window !== "undefined" ? window.location.pathname : null,
-    user_agent: typeof navigator !== "undefined" ? navigator.userAgent : null,
-  };
-  try {
-    const last = (window as unknown as { __praxisLastClientError?: { message: string; route?: string; stack?: string; kind?: string; at?: string } }).__praxisLastClientError;
-    if (last) {
-      ctx.last_error = {
-        message: String(last.message || "").slice(0, 500),
-        route: last.route || null,
-        kind: last.kind || "render",
-        at: last.at || null,
-        stack: last.stack ? String(last.stack).slice(0, 2000) : null,
-      };
-    }
-  } catch {
-    /* context capture is best-effort */
-  }
-  return ctx;
-}
-const KIND_TONE: Record<Kind, Tone> = {
-  SUPPORT: "blue",
-  BUG: "bad",
-  FEATURE: "orange",
-};
-const STATUS_LABEL: Record<Status, string> = {
-  NEW: "New",
-  TRIAGED: "Triaged",
-  IN_PROGRESS: "In progress",
-  SHIPPED: "Shipped",
-  DECLINED: "Declined",
-};
-const STATUS_TONE: Record<Status, Tone> = {
-  NEW: "warn",
-  TRIAGED: "blue",
-  IN_PROGRESS: "blue",
-  SHIPPED: "ok",
-  DECLINED: "bad",
-};
-const isResolved = (s: Status) => s === "SHIPPED" || s === "DECLINED";
-
-function NewTicketModal({
-  onClose,
-  onCreated,
-}: {
-  onClose: () => void;
-  onCreated: () => void;
-}) {
-  const [kind, setKind] = React.useState<Kind>("SUPPORT");
-  const [title, setTitle] = React.useState("");
-  const [body, setBody] = React.useState("");
-  const [busy, setBusy] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    setError(null);
-    try {
-      await tenant("/support/tickets", {
-        method: "POST",
-        body: {
-          kind,
-          title: title.trim(),
-          body: body.trim(),
-          // G8 — the Pixie Girl model (meeting §11.16): "Need help? Send this
-          // to your system admin" capturing full context. The route + last
-          // client error (ErrorBoundary/window.onerror/unhandledrejection)
-          // are already collected by lib/error-reporting; snapshot them onto
-          // the ticket so triage starts with what the user saw, not a bare
-          // "it's broken". Best-effort: each part is independently guarded.
-          context: buildTicketContext(),
-        },
-      });
-      onCreated();
-      onClose();
-    } catch (err) {
-      setError(errMsg(err));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <Modal
-      open
-      onClose={onClose}
-      title="Raise a ticket"
-      description="Reach the Praxis team directly — ask for help, report a bug, or request a feature."
-    >
-      <form className="space-y-4" onSubmit={submit}>
-        <Field label={tr("Type")} required>
-          <Select
-            value={kind}
-            onChange={(e) => setKind(e.target.value as Kind)}
-          >
-            <option value="SUPPORT">Support — I need help</option>
-            <option value="BUG">Bug — something’s broken</option>
-            <option value="FEATURE">Feature — I’d like an improvement</option>
-          </Select>
-        </Field>
-        <Field label={tr("Summary")} required>
-          <Input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="One line describing it"
-            maxLength={200}
-          />
-        </Field>
-        <Field
-          label={tr("Details")}
-          hint="What happened, what you expected, where in the app (optional)."
-        >
-          <Textarea
-            className="min-h-[110px]"
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            placeholder="Add any detail that would help us…"
-            maxLength={5000}
-          />
-        </Field>
-        {error && <ErrorState message={error} />}
-        <div className="flex justify-end gap-2 pt-2">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={onClose}
-            disabled={busy}
-          >
-            Cancel
-          </Button>
-          <Button
-            type="submit"
-            loading={busy}
-            disabled={title.trim().length < 3 || busy}
-          >
-            Send to Praxis
-          </Button>
-        </div>
-      </form>
-    </Modal>
-  );
-}
+import {
+  postCsat,
+  KIND_LABEL,
+  KIND_TONE,
+  STATUS_LABEL,
+  STATUS_TONE,
+  isResolved,
+  type Ticket,
+} from "./support-api";
+import { TicketThreadModal } from "./ticket-thread";
+import { openRaiseTicket, SUPPORT_CHANGED_EVENT } from "./raise-ticket-bus";
 
 function CsatModal({
   ticket,
@@ -212,10 +55,7 @@ function CsatModal({
     setBusy(true);
     setError(null);
     try {
-      await tenant(`/support/tickets/${ticket.ticket_id}/csat`, {
-        method: "POST",
-        body: { csat: score },
-      });
+      await postCsat(ticket.ticket_id, score);
       onRated();
       onClose();
     } catch (err) {
@@ -269,26 +109,58 @@ function CsatModal({
 
 export function SupportPage() {
   const { rows, error, loading, reload } = useList<Ticket>("/support/tickets");
-  const [creating, setCreating] = React.useState(false);
   const [rating, setRating] = React.useState<Ticket | null>(null);
+  const [thread, setThread] = React.useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
   const list = rows || [];
 
   const open = list.filter((t) => !isResolved(t.status)).length;
   const resolved = list.filter((t) => isResolved(t.status)).length;
+
+  // A notification's deep link: /support?ticket=<id>. Consume it once, then
+  // strip it so a refresh does not re-open the thread (the mail inbox does
+  // exactly this for ?thread=).
+  React.useEffect(() => {
+    const id = searchParams.get("ticket");
+    if (!id) return;
+    setThread(id);
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("ticket");
+        return next;
+      },
+      { replace: true },
+    );
+  }, [searchParams, setSearchParams]);
+
+  // The raise modal and the thread live outside this page now — when either
+  // creates or changes anything, the list re-reads from wherever it happened.
+  React.useEffect(() => {
+    const h = () => reload();
+    window.addEventListener(SUPPORT_CHANGED_EVENT, h);
+    return () => window.removeEventListener(SUPPORT_CHANGED_EVENT, h);
+  }, [reload]);
 
   const columns: Column<Ticket>[] = [
     {
       key: "title",
       label: "Ticket",
       render: (r) => (
-        <div>
-          <div className="font-medium text-foreground">{r.title}</div>
+        <button
+          type="button"
+          onClick={() => setThread(r.ticket_id)}
+          className="text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+        >
+          <div className="font-medium text-foreground hover:underline">
+            {r.title}
+          </div>
           {r.body ? (
             <div className="micro line-clamp-1 max-w-md text-muted-foreground">
               {r.body}
             </div>
           ) : null}
-        </div>
+        </button>
       ),
     },
     {
@@ -344,9 +216,9 @@ export function SupportPage() {
     <section className={pageShell.wide}>
       <PageHeader
         title="Support & feedback"
-        description="Reach the Praxis team directly. Raise a ticket and track it from New through to Shipped."
+        description="Reach the Praxis team directly. Raise a ticket with a screenshot, and carry the conversation to the end."
         action={
-          <Button onClick={() => setCreating(true)}>Raise a ticket</Button>
+          <Button onClick={() => openRaiseTicket()}>Raise a ticket</Button>
         }
       />
       <KpiRow>
@@ -360,13 +232,18 @@ export function SupportPage() {
         error={error}
         loading={loading}
         rowKey={(r) => r.ticket_id}
+        onRowClick={(r) => setThread(r.ticket_id)}
         empty={{
           title: "No tickets yet",
-          hint: "Raise a ticket to reach the Praxis team — support, a bug, or a feature request.",
+          hint: "Raise a ticket to reach the Praxis team — support, a bug, a feature request, or anything in between.",
         }}
       />
-      {creating && (
-        <NewTicketModal onClose={() => setCreating(false)} onCreated={reload} />
+      {thread && (
+        <TicketThreadModal
+          ticketId={thread}
+          onClose={() => setThread(null)}
+          onChanged={reload}
+        />
       )}
       {rating && (
         <CsatModal

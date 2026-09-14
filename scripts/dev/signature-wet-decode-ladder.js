@@ -46,7 +46,6 @@ async function degrade(base, step) {
   console.log("| Step | Result | Code |");
   console.log("| --- | --- | --- |");
   for (const step of steps) {
-    // eslint-disable-next-line no-await-in-loop -- deterministic report ordering.
     const out = await barcode.decode(await degrade(base, step));
     console.log(`| ${step.name} | ${out.status} | ${out.code || "—"} |`);
   }

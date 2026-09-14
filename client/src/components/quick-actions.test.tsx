@@ -40,7 +40,11 @@ describe("useQuickActions", () => {
       );
     }
     wrap(<Probe />);
+    // Feedback leads by design (0105 revamp): the rail renders this list
+    // top-to-bottom, so it sits above the Praxis AI icon — the one entry that
+    // must never be two taps deep, ungated like Help.
     expect(screen.getAllByRole("listitem").map((n) => n.textContent)).toEqual([
+      "Feedback",
       "Praxis AI",
       "Messages",
       "Help",
@@ -56,7 +60,7 @@ describe("useQuickActions", () => {
       return <span data-testid="keys">{actions.map((a) => a.key).join(",")}</span>;
     }
     wrap(<Probe />);
-    expect(screen.getByTestId("keys").textContent).toBe("ai,msg,help");
+    expect(screen.getByTestId("keys").textContent).toBe("feedback,ai,msg,help");
   });
 
   it("calls back so the caller can close itself", async () => {

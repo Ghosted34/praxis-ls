@@ -107,8 +107,8 @@ function readObjectLiterals(file) {
   }
   const body = src.replace(/\bas const\b/g, "").replace(/export const /g, "module.exports.");
   const module = { exports: {} };
-  // eslint-disable-next-line no-new-func -- see the note above; the input is a
-  // repo file, not user data, and the alternative is a bespoke TS parser.
+  // The input is a repo file, not user data, and the alternative is a
+  // bespoke TS parser.
   new Function("module", "exports", body)(module, module.exports);
   return module.exports;
 }

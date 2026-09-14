@@ -76,6 +76,7 @@ import { NotificationBell } from "@/components/notification-bell";
 import { CommandPalette } from "@/components/command-palette";
 import { PraxisDrawer } from "@/components/praxis-drawer";
 import { FloatingActions } from "@/components/floating-actions";
+import { GlobalRaiseTicket } from "@/features/support/global-raise-ticket";
 import {
   DropdownMenu,
   DropdownItem,
@@ -1181,6 +1182,10 @@ export function AppShell() {
             onClose={() => setPaletteOpen(false)}
           />
           <PraxisDrawer />
+          {/* The one raise-a-ticket modal: the rail, the touch cluster and the
+              Support page all open it through the same event, so it lives
+              here with the other shell-level surfaces, not on the page. */}
+          <GlobalRaiseTicket />
           {/* ON EVERY TOUCH SCREEN, Smart Comms included.
 
               It used to be `!chatWorkstation &&`, because the cluster sits in

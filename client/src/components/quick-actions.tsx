@@ -36,6 +36,7 @@ import * as React from "react";
 import { useNavigate } from "react-router-dom";
 import { useAiEnabled } from "@/components/ai-actions";
 import { useCanOpenRoute } from "@/lib/route-access";
+import { openRaiseTicket } from "@/features/support/raise-ticket-bus";
 
 type IP = React.SVGProps<SVGSVGElement>;
 const s = (p: IP) => ({
@@ -68,6 +69,12 @@ const HelpIcon = (p: IP) => (
     <circle cx="12" cy="17" r="0.6" fill="currentColor" />
   </svg>
 );
+const FeedbackIcon = (p: IP) => (
+  <svg {...s(p)}>
+    <path d="M22 2L11 13" />
+    <path d="M22 2l-7 20-4-9-9-4 20-7z" />
+  </svg>
+);
 
 export type QuickAction = {
   key: string;
@@ -97,6 +104,22 @@ export function useQuickActions(onDone?: () => void): QuickAction[] {
   return React.useMemo(() => {
     const done = () => onDone?.();
     const list: QuickAction[] = [];
+    // Feedback first, deliberately: the rail renders this list top-to-bottom,
+    // so this sits ABOVE the Praxis AI icon — the position chosen for the
+    // revamp, because reaching the vendor is the one action that must never
+    // be two taps deep. Ungated like Help (not Messages, not AI): AI is a
+    // tenant feature flag and Messages needs a /comms grant, but reaching
+    // Praxis for help is ungated server-side too (feature:null), so an
+    // ungated entry here is the honest shape.
+    list.push({
+      key: "feedback",
+      label: "Feedback",
+      Icon: FeedbackIcon,
+      onSelect: () => {
+        openRaiseTicket();
+        done();
+      },
+    });
     if (aiEnabled) {
       list.push({
         key: "ai",

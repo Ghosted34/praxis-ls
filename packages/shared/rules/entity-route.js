@@ -56,6 +56,10 @@ const DETAIL = {
   // (features/comms/inbox/index.tsx) and strips it afterwards, so a refresh
   // does not reopen it. This is the shape mail-notify has always sent.
   email_thread: (id) => `/comms/mail?thread=${encodeURIComponent(id)}`,
+  // Same shape: the Support & Feedback list (features/support/support-page.tsx)
+  // reads `?ticket=` as its initial selection. The ticket row has no path of
+  // its own — the thread is a modal on the list, like the mail inbox.
+  support_ticket: (id) => `/support?ticket=${encodeURIComponent(id)}`,
 };
 
 /**

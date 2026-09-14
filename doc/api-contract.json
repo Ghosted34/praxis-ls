@@ -2,11 +2,11 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 140,
-  "route_count": 1587,
+  "route_count": 1593,
   "tiers": {
     "public": 65,
-    "self-scoped": 93,
-    "gated": 1429
+    "self-scoped": 96,
+    "gated": 1432
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -952,6 +952,12 @@
       "tier": "gated"
     },
     "GET /api/platform/settings/:section/:key": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/platform/support/attachments/:id": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -4347,6 +4353,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/support/attachments/:id": {
+      "auth": true,
+      "rbac": false,
+      "validated": false,
+      "tier": "self-scoped"
+    },
     "GET /api/tenant/support/tickets": {
       "auth": true,
       "rbac": false,
@@ -5734,6 +5746,18 @@
       "tier": "gated"
     },
     "POST /api/platform/settings/push/vapid/generate": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/platform/support/tickets/:id/attachments": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/platform/support/tickets/:id/replies": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -8889,6 +8913,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/support/attachments": {
+      "auth": true,
+      "rbac": false,
+      "validated": false,
+      "tier": "self-scoped"
+    },
     "POST /api/tenant/support/tickets": {
       "auth": true,
       "rbac": false,
@@ -8896,6 +8926,12 @@
       "tier": "self-scoped"
     },
     "POST /api/tenant/support/tickets/:id/csat": {
+      "auth": true,
+      "rbac": false,
+      "validated": false,
+      "tier": "self-scoped"
+    },
+    "POST /api/tenant/support/tickets/:id/replies": {
       "auth": true,
       "rbac": false,
       "validated": false,

@@ -4,7 +4,7 @@
 // access token (POST /auth/refresh) and retries; only if THAT fails does it
 // clear the session and bounce to login. Keeps an admin signed in past the short
 // access TTL instead of getting kicked out on the next request.
-import type { DomainDnsRow, LoginResult, PlatformUser } from "./types";
+import type { DomainDnsRow, LoginResult, PlatformUser, SupportAttachment, SupportTicket } from "./types";
 
 const LS = { base: "praxis_pc_apibase", token: "praxis_pc_token", refresh: "praxis_pc_refresh", user: "praxis_pc_user" };
 
@@ -142,6 +142,52 @@ export async function api<T = unknown>(path: string, opts: ReqOpts = {}): Promis
   return (json ? (json.data as T) : (null as T));
 }
 
+/**
+ * Multipart upload with the same auth + one-shot refresh as api(). FormData
+ * sets its own Content-Type (boundary included), so no JSON header — the same
+ * rule the client's apiWithProgress follows. Used by the support-ticket
+ * screenshot path (0105); this console had no uploads before it.
+ */
+export async function apiUpload<T = unknown>(path: string, file: File, field = "file"): Promise<T> {
+  const form = new FormData();
+  form.append(field, file, file.name);
+  const headers: Record<string, string> = { Accept: "application/json" };
+  if (session.token) headers["Authorization"] = "Bearer " + session.token;
+
+  const res = await fetch(session.base + path, { method: "POST", headers, body: form });
+
+  if (res.status === 401 && session.token) {
+    const ok = await tryRefresh();
+    if (ok) return apiUpload<T>(path, file, field);
+  }
+
+  const txt = await res.text();
+  const json = txt ? safeParse<{ data?: T; error?: { code?: string; message?: string } }>(txt) : null;
+  if (!res.ok) {
+    const err = (json && json.error) || {};
+    const e = new ApiError(err.message || `Upload failed (${res.status})`);
+    e.code = err.code;
+    e.status = res.status;
+    throw e;
+  }
+  return (json ? (json.data as T) : (null as T));
+}
+
+/**
+ * Bytes of one support attachment, as an object URL for an <img>.
+ *
+ * An attachment read is capability-gated (support.read), so it carries the
+ * Bearer token — which an `src` attribute cannot. Fetch to a blob the way the
+ * client's fetchObjectUrl does; the caller revokes.
+ */
+export async function fetchSupportAttachmentUrl(id: string, signal?: AbortSignal): Promise<string> {
+  const headers: Record<string, string> = { Accept: "image/*" };
+  if (session.token) headers["Authorization"] = "Bearer " + session.token;
+  const res = await fetch(session.base + `/support/attachments/${encodeURIComponent(id)}`, { headers, signal });
+  if (!res.ok) throw new ApiError(`Could not load that image (${res.status})`);
+  return URL.createObjectURL(await res.blob());
+}
+
 // Endpoint helpers ----------------------------------------------------------
 export const platform = {
   login: (email: string, password: string) =>
@@ -239,6 +285,19 @@ export const platform = {
   },
   setTicketStatus: (id: string, status: string) =>
     api(`/support/tickets/${encodeURIComponent(id)}`, { method: "PATCH", body: { status } }),
+
+  // The conversation (0105): the detail fetch carries the thread + images;
+  // a reply answers (or, with internal, keeps it between the team), and a
+  // screenshot goes up on its own request for the reply to link.
+  supportTicket: (id: string) =>
+    api<SupportTicket>(`/support/tickets/${encodeURIComponent(id)}`),
+  supportReply: (
+    id: string,
+    body: { body: string; internal?: boolean; attachment_ids?: string[] },
+  ) =>
+    api(`/support/tickets/${encodeURIComponent(id)}/replies`, { method: "POST", body }),
+  uploadSupportAttachment: (id: string, file: File) =>
+    apiUpload<SupportAttachment>(`/support/tickets/${encodeURIComponent(id)}/attachments`, file),
 
   // Deploy-wide integrations (S3 / Geoapify / VAPID). Secrets are write-only:
   // reads return presence + last4, writes send { value?, secret? }.

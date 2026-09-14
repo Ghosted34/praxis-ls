@@ -711,6 +711,34 @@ export declare namespace marks {
 }
 
 /**
+ * Which notifications may INTERRUPT — sound, hold the banner until dealt with,
+ * vibrate a phone. Shared because the API stamps it onto the push payload, the
+ * socket listener decides whether to make a noise with it, and the Preferences
+ * matrix draws its default from it. See rules/notification-interrupt.js.
+ */
+export declare namespace notificationInterrupt {
+  /** Categories that interrupt regardless of priority. */
+  const INTERRUPT_CATEGORIES: ReadonlySet<string>;
+  /** The pseudo-channel these preferences are stored under (migration 13795). */
+  const INTERRUPT_CHANNEL: "INTERRUPT";
+  /** The answer absent any preference: anything HIGH, plus approvals and comms. */
+  function defaultInterrupt(input: {
+    priority?: string | null;
+    category?: string | null;
+  }): boolean;
+  /**
+   * The answer for one notification and one user. An explicit `false`
+   * preference silences a category even for HIGH; only security notifications
+   * ignore preferences, and that is enforced in the service, not here.
+   */
+  function interruptFor(input: {
+    priority?: string | null;
+    category?: string | null;
+    preference?: boolean | null;
+  }): boolean;
+}
+
+/**
  * Where a notification about an `entity_ref` should take the reader.
  *
  * Shared because the API stamps `notification.link_url` from it when the row is

@@ -4,7 +4,12 @@
 const { z } = require("zod");
 const { AppError } = require("../../utils/errors");
 
-const CHANNELS = ["IN_APP", "EMAIL", "SMS", "WHATSAPP"];
+// INTERRUPT is a pseudo-channel: not somewhere a notification is SENT, but
+// whether one the user already receives may sound, persist and vibrate. It
+// shares this table and this endpoint (migration 13795) so it needs no separate
+// write path — but it does have to be accepted here, or saving the Preferences
+// grid 422s on the column the user most wants to change.
+const CHANNELS = ["IN_APP", "EMAIL", "SMS", "WHATSAPP", "INTERRUPT"];
 
 const schemas = {
   preferences: z.object({

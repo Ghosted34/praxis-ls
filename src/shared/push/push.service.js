@@ -169,6 +169,7 @@ function buildPayload({
   actions = null,
   data = null,
   timestamp = null,
+  vibrate = null,
 }) {
   return JSON.stringify({
     title,
@@ -177,6 +178,10 @@ function buildPayload({
     tag,
     renotify: Boolean(renotify),
     requireInteraction: Boolean(requireInteraction),
+    // Only present for an INTERRUPT notification. Ignored outright on desktop
+    // and on iOS; where it works it is the half of "do not miss this" that
+    // survives a phone being face-down in a pocket.
+    vibrate: Array.isArray(vibrate) && vibrate.length ? vibrate : null,
     badgeCount: Number.isFinite(badgeCount) ? badgeCount : null,
     actions: Array.isArray(actions) && actions.length ? actions.slice(0, 2) : null,
     data: data || null,
@@ -211,7 +216,7 @@ async function sendToUser(a, b) {
   const opts = hasClient ? b : a;
   const {
     user_id, title, body, url, tag,
-    renotify, requireInteraction, badgeCount, actions, data, timestamp,
+    renotify, requireInteraction, badgeCount, actions, data, timestamp, vibrate,
     urgency = "normal", ttl = DEFAULT_TTL_S,
   } = opts || {};
   // A tenant client exposes .query(sql, params); the legacy platform `query` is
@@ -303,7 +308,7 @@ async function sendToUser(a, b) {
   }
 
   const payload = buildPayload({
-    title, body, url, tag, renotify, requireInteraction, badgeCount, actions, data, timestamp,
+    title, body, url, tag, renotify, requireInteraction, badgeCount, actions, data, timestamp, vibrate,
   });
   const sendOptions = {
     TTL: Number.isFinite(ttl) ? ttl : DEFAULT_TTL_S,

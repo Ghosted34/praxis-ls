@@ -198,8 +198,14 @@ describe("delivery moves onto the queue when it can", () => {
     expect(data.env).toBe("live");
     // The plan is resolved, not re-derived on the worker — a retry three
     // minutes later must not disagree with the in-app row already written.
+    //
+    // `interrupt` is part of that plan for the same reason the rest of it is:
+    // it depends on the recipient's stored preference, and re-deriving it on a
+    // worker that may run after they changed it would make the phone buzz for
+    // something the screen had already decided to keep quiet about. `true` here
+    // is the computed default for `comms` — see rules/notification-interrupt.
     expect(data.recipients).toEqual([
-      { userId: "u-1", email: true, push: true, badgeCount: 4 },
+      { userId: "u-1", email: true, push: true, badgeCount: 4, interrupt: true },
     ]);
     expect(data.notification).toMatchObject({
       title: "Mail", tag: "mail:t-1", url: "/comms/mail?thread=t-1",

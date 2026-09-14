@@ -31,6 +31,18 @@ let io = null;
 
 const room = (slug, groupId) => `t:${slug}:c:${groupId}`;
 const mailRoom = (slug) => `t:${slug}:mail`;
+/**
+ * One room per USER, for their own notifications.
+ *
+ * Notifications are the one payload here that is addressed to a person rather
+ * than to a channel or a tenant, so they cannot ride `mailRoom` — that reaches
+ * every authenticated socket in the tenant, and "your cash request was
+ * rejected" is not everyone's business. The room is derived from the socket's
+ * AUTHENTICATED user id, never from anything the client sends, so a client
+ * cannot join someone else's by asking: there is no `notification:join` event
+ * to ask with.
+ */
+const userRoom = (slug, uid) => `t:${slug}:u:${uid}`;
 
 /** Same origin policy as the HTTP CORS: base domain + its subdomains, explicit
  *  extras, and localhost in development. */
@@ -170,6 +182,14 @@ function initSocket(httpServer) {
     // per-record access when the client re-fetches.
     socket.join(mailRoom(tenantSlug));
 
+    // …and their own notification room. Joined here rather than on request for
+    // two reasons: there is no client-supplied id to get wrong, and a user who
+    // has the app open should be told the moment something lands, not whenever
+    // the next 60-second badge poll happens to come round. That poll is what
+    // this replaces as the live path; it stays as the reconciler for a socket
+    // that was down when the notification was written.
+    if (userId) socket.join(userRoom(tenantSlug, userId));
+
     socket.on("channel:join", async (groupId, ack) => {
       try {
          
@@ -234,7 +254,9 @@ function attachMailBridge(attempt = 0) {
       const { slug, payload } = JSON.parse(message);
       if (slug) io.to(mailRoom(slug)).emit("mail:new", payload || {});
     } catch {
-      /* ignore malformed bus messages */
+      /* @silent:parse — a malformed message on the bus is not something this
+         subscriber can act on, and throwing would detach it from every LATER
+         message. */
     }
   });
   logger.info("[mail-bus] realtime bridge attached");
@@ -246,4 +268,18 @@ function publish(tenantSlug, groupId, event, payload) {
   io.to(room(tenantSlug, groupId)).emit(event, payload);
 }
 
-module.exports = { initSocket, publish, isReady: () => io !== null };
+/**
+ * Emit to ONE user's notification room, on every app instance.
+ *
+ * Best-effort by design and silent when the socket server is not up (workers,
+ * tests, a cold boot): the notification row is already committed and the badge
+ * poll still reconciles, so a missed live event costs latency, never the
+ * notification. That is the same contract `publish` has, and it is why neither
+ * is ever awaited inside a transaction.
+ */
+function publishToUser(tenantSlug, userId, event, payload) {
+  if (!io || !tenantSlug || !userId) return;
+  io.to(userRoom(tenantSlug, userId)).emit(event, payload);
+}
+
+module.exports = { initSocket, publish, publishToUser, isReady: () => io !== null };

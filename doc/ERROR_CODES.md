@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (530)
+## All codes (532)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -104,7 +104,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `BAD_ROLE` | 422 | 1× | — |
 | `BAD_SAVEPOINT` | 500 | 1× | — |
 | `BAD_SCHEME` | 422 | 2× | — |
-| `BAD_SEARCH` | 422 | 1× | — |
+| `BAD_SEARCH` | 422 | 2× | — |
 | `BAD_SECRET` | 422 | 2× | — |
 | `BAD_SECTION` | — | 1× | — |
 | `BAD_SENDER` | 422 | 1× | — |
@@ -177,7 +177,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `EMPTY_ARTICLE` | 422 | 1× | — |
 | `EMPTY_AUDIO` | 422 | 4× | — |
 | `EMPTY_DRAFT` | 422 | 2× | — |
-| `EMPTY_FILE` | 422 | 2× | — |
+| `EMPTY_FILE` | 422 | 3× | — |
 | `EMPTY_IMAGE` | 422 | 1× | — |
 | `EMPTY_MESSAGE` | 422 | 1× | — |
 | `EMPTY_PAGE` | 422 | 1× | — |
@@ -195,7 +195,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `EXISTS` | 409 | 3× | — |
 | `FEATURE_DISABLED` | 403 | 3× | — |
 | `FIELD_NOT_WRITABLE` | — | 2× | — |
-| `FILE_TOO_LARGE` | 413 | 2× | — |
+| `FILE_TOO_LARGE` | 413 | 3× | — |
 | `FORBIDDEN` | 403 | 6× | `PERMISSION_DENIED` |
 | `FULLY_DISBURSED` | 422 | 1× | — |
 | `FULLY_PAID` | 422 | 2× | — |
@@ -298,7 +298,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_EDITABLE` | 400 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 3× | — |
-| `NOT_FOUND` | 404, 422 | 624× | — |
+| `NOT_FOUND` | 404, 422 | 626× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_OPEN` | 409, 422 | 3× | — |
 | `NOT_OPERATIONAL` | 422 | 1× | — |
@@ -345,6 +345,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NO_ENVELOPE` | 409 | 4× | — |
 | `NO_EXPENSE_ACCOUNT` | 422 | 3× | — |
 | `NO_FIELD_SET` | 422 | 1× | — |
+| `NO_FILE` | 400 | 1× | — |
 | `NO_FINGERPRINT` | 422 | 1× | — |
 | `NO_FX_RATE` | 422 | 1× | — |
 | `NO_ITEMS` | 422 | 2× | — |
@@ -553,6 +554,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `VEHICLE_COMMITTED` | — | 1× | — |
 | `VEHICLE_NOT_FOUND` | 404 | 1× | — |
 | `VEHICLE_UNAVAILABLE` | 422 | 1× | — |
+| `VOICE_TOO_LONG` | 422 | 1× | — |
 | `WEAK_PASSWORD` | 422 | 2× | — |
 | `WRONG_ACTION_FOR_STEP` | 422 | 1× | — |
 | `WRONG_AUDIENCE` | 401 | 1× | — |

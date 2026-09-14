@@ -6,6 +6,7 @@ const { authMiddleware } = require("../../middleware/auth");
 const { requirePermission } = require("../../middleware/rbac");
 const c = require("./smartcomm.controller");
 const v = require("./smartcomm.validator");
+const { singleFile } = require("../../shared/http/upload.middleware");
 
 const M = "MOD-64";
 const view = requirePermission(M, "view");
@@ -78,6 +79,32 @@ router.get("/channels/:id/draft", view, c.getDraft);
 router.put("/channels/:id/draft", view, v.draft, c.saveDraft);
 router.delete("/channels/:id/draft", view, c.clearDraft);
 router.post("/channels/:id/certify", requirePermission(M, "approve"), c.certify);
+
+/**
+ * Attachments, chat media and ERP references.
+ *
+ * `create`, not `view`: an upload writes bytes into tenant storage and a row
+ * into the database, and the gate must say so. Membership is still the real
+ * authorisation — `assertMember` in the service — for the same reason it is
+ * everywhere else in this module.
+ *
+ * `singleFile` must run BEFORE the validator: a multipart body is parsed by
+ * multer, so without it `req.body` is empty and every field 422s.
+ */
+router.post("/channels/:id/media", create, singleFile("file"), v.mediaUpload, c.uploadMedia);
+// Reading one attachment is a read of the conversation it belongs to. NOT the
+// unauthenticated /media/<key> static mount — see the controller.
+router.get("/media/:mediaId", view, c.mediaBytes);
+// "Save to vault" files a chat image as a real document, which is a write other
+// people see: it appears in the document register for everyone with vault
+// rights, and it is meant to.
+router.post("/media/:mediaId/promote", edit, v.promote, c.promoteMedia);
+// Both reads, and both resolve against the CALLER's permissions rather than the
+// sender's — a member without MOD-51 gets the reference and no figure. MOD-64
+// `view` is the gate to reach them at all; the per-record rights are applied
+// inside. See smartcomm.erp.service.js.
+router.get("/erp/search", view, c.erpSearch);
+router.get("/erp/:kind/:id", view, c.erpCard);
 
 // messages
 router.get("/channels/:id/messages", view, c.thread);

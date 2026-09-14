@@ -6,7 +6,7 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 1578 |
+| Routes | 1583 |
 | Modules mounted | 140 |
 | API version | v1 |
 
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 1578 mounted routes, grouped by path prefix.
+All 1583 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -1932,6 +1932,7 @@ All 1578 mounted routes, grouped by path prefix.
 | DELETE | `/api/tenant/smartcomm/channels/:id/draft` | — |
 | GET | `/api/tenant/smartcomm/channels/:id/draft` | — |
 | PUT | `/api/tenant/smartcomm/channels/:id/draft` | — |
+| POST | `/api/tenant/smartcomm/channels/:id/media` | — |
 | GET | `/api/tenant/smartcomm/channels/:id/members` | — |
 | POST | `/api/tenant/smartcomm/channels/:id/members` | — |
 | DELETE | `/api/tenant/smartcomm/channels/:id/members/:userId` | — |
@@ -1948,6 +1949,10 @@ All 1578 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/smartcomm/config/email/test-send` | — |
 | PUT | `/api/tenant/smartcomm/config/whatsapp` | — |
 | POST | `/api/tenant/smartcomm/config/whatsapp/test` | — |
+| GET | `/api/tenant/smartcomm/erp/:kind/:id` | — |
+| GET | `/api/tenant/smartcomm/erp/search` | — |
+| GET | `/api/tenant/smartcomm/media/:mediaId` | — |
+| POST | `/api/tenant/smartcomm/media/:mediaId/promote` | — |
 | DELETE | `/api/tenant/smartcomm/messages/:messageId` | — |
 | PATCH | `/api/tenant/smartcomm/messages/:messageId` | — |
 | POST | `/api/tenant/smartcomm/messages/:messageId/acknowledge` | — |

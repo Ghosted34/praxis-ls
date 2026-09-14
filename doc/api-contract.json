@@ -2,11 +2,11 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 140,
-  "route_count": 1578,
+  "route_count": 1583,
   "tiers": {
     "public": 65,
     "self-scoped": 93,
-    "gated": 1420
+    "gated": 1425
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -4108,6 +4108,24 @@
       "tier": "gated"
     },
     "GET /api/tenant/smartcomm/config": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/smartcomm/erp/:kind/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/smartcomm/erp/search": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/smartcomm/media/:mediaId": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -8535,6 +8553,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/smartcomm/channels/:id/media": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/smartcomm/channels/:id/members": {
       "auth": true,
       "rbac": true,
@@ -8584,6 +8608,12 @@
       "tier": "gated"
     },
     "POST /api/tenant/smartcomm/config/whatsapp/test": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/smartcomm/media/:mediaId/promote": {
       "auth": true,
       "rbac": true,
       "validated": false,

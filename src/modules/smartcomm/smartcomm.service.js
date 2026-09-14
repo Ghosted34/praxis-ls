@@ -11,6 +11,8 @@
 
 const crypto = require("crypto");
 const repo = require("./smartcomm.repo");
+const media = require("./smartcomm.media.service");
+const erp = require("./smartcomm.erp.service");
 const events = require("./smartcomm.events");
 const documents = require("../../services/documents/document.service");
 const { emitEvent, audit, resolveActorId } = require("../../shared/events/emit");
@@ -89,6 +91,56 @@ async function setMuted(client, { groupId, actor, muted }) { await assertMember(
 
 // ── Messages ──
 /**
+ * One posted attachment → one `comms_attachment` row.
+ *
+ * Three kinds now share the table, and the kind decides which column carries
+ * the pointer. It is normalised HERE rather than trusted from the request
+ * because the client sends back exactly what `store()` handed it, and a body
+ * that claimed `attachment_kind: "ERP"` while carrying a `vault_id` would
+ * otherwise produce a row that renders as a record card pointing at a file.
+ *
+ * A descriptor whose kind is unrecognised falls back to VAULT, which is what
+ * every row written before migration 13794 is.
+ */
+function attachmentRow(messageId, a) {
+  const kind = a && a.attachment_kind;
+  const base = {
+    message_id: messageId,
+    filename: (a && a.filename) || null,
+    content_type: (a && a.content_type) || null,
+    size_bytes: (a && a.size_bytes) || null,
+  };
+  if (kind === "MEDIA") {
+    return { ...base, attachment_kind: "MEDIA", media_id: a.media_id || null };
+  }
+  if (kind === "ERP") {
+    return {
+      ...base,
+      attachment_kind: "ERP",
+      erp_kind: a.erp_kind || null,
+      erp_id: a.erp_id || null,
+      // The sender's view of the reference, cached ONLY as the fallback
+      // caption for a reader without rights on the record. Never a figure —
+      // see smartcomm.erp.service.js.
+      erp_label: a.erp_label ? String(a.erp_label).slice(0, 120) : null,
+    };
+  }
+  return { ...base, attachment_kind: "VAULT", vault_id: (a && a.vault_id) || null };
+}
+
+/** What the notification says when the message is attachments and no words. */
+function attachmentSummary(attachments) {
+  const list = attachments || [];
+  if (!list.length) return "Sent an attachment";
+  if (list.some((a) => a && a.is_voice_note)) return "Sent a voice note";
+  if (list.some((a) => a && a.attachment_kind === "ERP")) return "Shared a record";
+  const first = list[0] || {};
+  if (first.kind === "IMAGE") return list.length > 1 ? `Sent ${list.length} photos` : "Sent a photo";
+  if (first.kind === "VIDEO") return "Sent a video";
+  return list.length > 1 ? `Sent ${list.length} files` : "Sent a file";
+}
+
+/**
  * `notifyMembers: false` posts the message without raising its own notification.
  *
  * For callers that have ALREADY notified the same people about the same logical
@@ -106,7 +158,7 @@ async function postMessage(client, { groupId, body = null, mediaVaultId = null, 
     const m = await repo.insertMessage(client, { group_id: groupId, sender_user_id: actor.user_id || null, body, media_vault_id: mediaVaultId, reply_to_message_id: replyTo });
     for (const a of attachments || []) {
       /// eslint-disable-next-line no-await-in-loop
-      await repo.addAttachment(client, { message_id: m.message_id, vault_id: a.vault_id || null, filename: a.filename || null, content_type: a.content_type || null, size_bytes: a.size_bytes || null });
+      await repo.addAttachment(client, attachmentRow(m.message_id, a));
     }
     await repo.updateChannel(client, groupId, {}); // bump updated_at
     await emitEvent(client, { eventTypeKey: events.MESSAGE_POSTED, moduleKey: events.MODULE, entityRef: "comms_message:" + m.message_id, actorUserId: actor.user_id || null });
@@ -148,7 +200,11 @@ async function postMessage(client, { groupId, body = null, mediaVaultId = null, 
             || body
             || "New message in Smart Comms",
           ).slice(0, 90),
-          body: body ? String(body).slice(0, 500) : "Sent an attachment",
+          // A lock screen that says "Sent an attachment" for a voice note tells
+          // the reader nothing about whether to pick up the phone. Naming the
+          // format costs nothing and is the difference between acting now and
+          // opening the app to find out.
+          body: body ? String(body).slice(0, 500) : attachmentSummary(attachments),
           entityRef: "comms_message:" + m.message_id,
           category: "comms",
           // Straight into the channel the message was posted in. `?channel=`
@@ -228,11 +284,73 @@ async function deleteMessage(client, { messageId, actor }) {
   if (deleted) rtPublish(m.group_id, "comms:message_deleted", { group_id: m.group_id, message_id: messageId });
   return { deleted };
 }
-async function thread(client, { groupId, actor, limit, before }) {
+/**
+ * A page of messages, with everything the bubble needs to render attached.
+ *
+ * `erpAllow` is the set of module keys THIS READER holds `view` on, resolved
+ * per-request by the controller. It is threaded down here rather than looked up
+ * in the service because permissions live on the request, and because passing
+ * it explicitly makes it impossible to forget: an ERP card resolved without it
+ * is a card with `redacted: true`, which fails safe.
+ *
+ * Three fan-out queries for the whole page, not three per message. Fifty
+ * bubbles used to be one query because a bubble was a line of text; the cost of
+ * making them rich is paid once per page, not once per bubble.
+ */
+async function thread(client, { groupId, actor, limit, before, erpAllow = new Set() }) {
   await assertMember(client, groupId, actor.user_id);
   await repo.touchPresence(client, groupId, actor.user_id);
-  const messages = await repo.listMessages(client, groupId, { limit: Number(limit) || 50, before });
-  return { group_id: groupId, messages };
+  // `before` is a query-string value and can arrive as an array (`?before=x&
+  // before=y`), which node-postgres would serialise as a Postgres array literal
+  // against a timestamptz comparison — a 500 rather than a page of messages.
+  // The first value is the right reading here: a cursor has one position.
+  const cursor = Array.isArray(before) ? before[0] : before;
+  const messages = await repo.listMessages(client, groupId, { limit: Number(limit) || 50, before: cursor || null });
+  const ids = messages.map((m) => m.message_id);
+
+  const [attachments, reactions, starred] = await Promise.all([
+    repo.listAttachmentsForMessages(client, ids),
+    repo.listReactionsForMessages(client, ids),
+    repo.listStarsForMessages(client, ids, actor.user_id),
+  ]);
+
+  // Resolve every ERP reference on the page against the reader, once per
+  // distinct record rather than once per bubble — the same invoice quoted
+  // three times in a conversation is one lookup.
+  const erpRefs = attachments.filter((a) => a.attachment_kind === "ERP" && a.erp_id);
+  const seen = new Map();
+  for (const r of erpRefs) {
+    const key = `${r.erp_kind}:${r.erp_id}`;
+    if (!seen.has(key)) seen.set(key, r);
+  }
+  const cards = await erp.resolveMany(client, [...seen.values()], erpAllow);
+  const cardByKey = new Map([...seen.keys()].map((k, i) => [k, cards[i]]));
+
+  const starSet = new Set(starred);
+  const byMessage = new Map(ids.map((id) => [id, { attachments: [], reactions: [] }]));
+  for (const a of attachments) {
+    const bucket = byMessage.get(a.message_id);
+    if (!bucket) continue;
+    bucket.attachments.push(
+      a.attachment_kind === "ERP"
+        ? { ...a, erp_card: cardByKey.get(`${a.erp_kind}:${a.erp_id}`) || null }
+        : a,
+    );
+  }
+  for (const r of reactions) {
+    const bucket = byMessage.get(r.message_id);
+    if (bucket) bucket.reactions.push({ emoji: r.emoji, count: r.count, users: r.users });
+  }
+
+  return {
+    group_id: groupId,
+    messages: messages.map((m) => ({
+      ...m,
+      attachments: byMessage.get(m.message_id)?.attachments || [],
+      reactions: byMessage.get(m.message_id)?.reactions || [],
+      starred_by_me: starSet.has(m.message_id),
+    })),
+  };
 }
 
 // ── Reactions / stars / search ──
@@ -274,7 +392,25 @@ async function star(client, { messageId, actor }) {
   return repo.toggleStar(client, { messageId, userId: actor.user_id });
 }
 const starred = (client, actor) => repo.listStarredForUser(client, actor.user_id);
-async function search(client, { actor, term }) { if (!term || term.length < 2) throw new AppError("BAD_SEARCH", "search term too short", 422); return repo.searchMessages(client, actor.user_id, term); }
+/**
+ * Cross-channel message search.
+ *
+ * `term` is coerced to a string before anything reads its length, because
+ * `?q=a&q=b` hands Express an ARRAY. `["a","b"].length` is 2, which sails past
+ * a `< 2` guard meant to reject one-character searches, and the value then
+ * string-concatenates into the ILIKE pattern as "a,b" — so the guard measured
+ * the number of parameters while the query searched for something the user
+ * never typed. CodeQL calls this type confusion through parameter tampering.
+ *
+ * Joining rather than taking the first is deliberate: somebody who sent two
+ * values meant both, and a search for "a,b" finding nothing is a truthful
+ * answer where silently searching for "a" is not.
+ */
+async function search(client, { actor, term }) {
+  const q = (Array.isArray(term) ? term.join(",") : String(term ?? "")).trim();
+  if (q.length < 2) throw new AppError("BAD_SEARCH", "search term too short", 422);
+  return repo.searchMessages(client, actor.user_id, q);
+}
 
 // ── Reads / presence ──
 async function markRead(client, { groupId, actor }) { await assertMember(client, groupId, actor.user_id); await repo.markChannelRead(client, groupId, actor.user_id); rtPublish(groupId, "comms:read", { group_id: groupId, user_id: actor.user_id }); return { ok: true }; }
@@ -291,12 +427,73 @@ const createQuickReply = (client, { data, actor }) => repo.createQuickReply(clie
 const updateQuickReply = (client, { id, patch }) => repo.updateQuickReply(client, id, { ...(patch.label !== undefined ? { label: patch.label } : {}), ...(patch.body !== undefined ? { body: patch.body } : {}) });
 async function deleteQuickReply(client, { id }) { await repo.deleteQuickReply(client, id); return { deleted: true }; }
 
+// ── Media + ERP references ──
+/**
+ * Upload one file into a channel and hand back an attachment descriptor.
+ *
+ * Membership is asserted HERE and not in the media service, so the media
+ * service stays a store rather than a second place authorisation is decided —
+ * `assertMember` is passed down to the reads that need it for the same reason.
+ *
+ * The message is NOT posted by this call. The composer uploads while the person
+ * is still typing and posts one message carrying the descriptors afterwards,
+ * which is what lets a picture appear in the bubble the instant it is sent
+ * rather than a beat later.
+ */
+async function uploadMedia(client, { groupId, file, isVoiceNote, durationMs, waveform, width, height, slug, actor }) {
+  await assertMember(client, groupId, actor.user_id);
+  return media.store(client, { groupId, file, isVoiceNote, durationMs, waveform, width, height, slug, actor });
+}
+
+/**
+ * Transcribe a voice note and tell the channel when the words land.
+ *
+ * Called AFTER the response has gone out, never awaited by the upload: a
+ * provider that is slow, rate-limited or unconfigured must not be the reason a
+ * voice note fails to send. The realtime publish is what makes the transcript
+ * appear under a bubble somebody is already looking at, instead of on their
+ * next reload.
+ */
+async function transcribeVoiceNote(client, { mediaId, groupId }) {
+  const row = await media.transcribeVoiceNote(client, mediaId);
+  if (row) {
+    rtPublish(groupId, "comms:transcript", {
+      group_id: groupId,
+      media_id: mediaId,
+      transcript: row.transcript,
+      transcript_status: row.transcript_status,
+    });
+  }
+  return row;
+}
+
+const mediaBytes = (client, { mediaId, actor }) => media.bytes(client, { mediaId, assertMember, actor });
+const promoteMedia = (client, { mediaId, actor, slug, docType, entityRef }) =>
+  media.promote(client, { mediaId, assertMember, actor, slug, docType, entityRef });
+
+const erpSearch = (client, { term, allow, kinds, limit }) => erp.search(client, { term, allow, kinds, limit });
+const erpCard = (client, { kind, id, allow }) => erp.resolve(client, { kind, id, allow });
+
 // ── Directory + certified export ──
 const colleagues = (client, q) => repo.listColleagues(client, q);
 async function certifiedExport(client, { groupId, actor = {} }) {
   await assertMember(client, groupId, actor.user_id);
   const messages = await repo.listMessages(client, groupId, { limit: 200 });
-  const transcript = messages.map((m) => `[${m.created_at}] ${m.sender_user_id || "system"}: ${m.deleted_at ? "(deleted)" : (m.body || "(media)")}`).join("\n");
+  // A voice note used to render as "(media)" here — so the one format people
+  // reach for when an instruction is urgent was the one format that vanished
+  // from the certified record of the channel. Where a transcript exists it IS
+  // the line, marked as spoken so nobody later mistakes it for something that
+  // was typed.
+  const spoken = new Map(
+    (await repo.voiceTranscriptsForGroup(client, groupId)).map((r) => [r.message_id, r.transcript]),
+  );
+  const lineFor = (m) => {
+    if (m.deleted_at) return "(deleted)";
+    if (m.body) return m.body;
+    const said = spoken.get(m.message_id);
+    return said ? `(voice note) ${said}` : "(media)";
+  };
+  const transcript = messages.map((m) => `[${m.created_at}] ${m.sender_user_id || "system"}: ${lineFor(m)}`).join("\n");
   const contentHash = crypto.createHash("sha256").update(transcript).digest("hex");
   const doc = await documents.capture(client, { entityRef: gref(groupId), docType: "COMMS_CERTIFIED_EXPORT", contentHash, status: "VERIFIED" });
   await emitEvent(client, { eventTypeKey: events.EXPORTED, moduleKey: events.MODULE, entityRef: gref(groupId), actorUserId: actor.user_id || null });
@@ -312,4 +509,6 @@ module.exports = {
   getDraft, saveDraft, clearDraft,
   listQuickReplies, createQuickReply, updateQuickReply, deleteQuickReply,
   colleagues, certifiedExport, acknowledge,
+  uploadMedia, mediaBytes, promoteMedia, transcribeVoiceNote,
+  erpSearch, erpCard,
 };

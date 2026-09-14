@@ -106,6 +106,12 @@ router.post("/media/:mediaId/promote", edit, v.promote, c.promoteMedia);
 router.get("/erp/search", view, c.erpSearch);
 router.get("/erp/:kind/:id", view, c.erpCard);
 
+// Durable scheduled messages (personal management, never other senders' rows).
+router.get("/channels/:id/scheduled", view, c.scheduled);
+router.post("/channels/:id/scheduled", create, v.scheduled, c.schedule);
+router.patch("/scheduled/:id", create, v.reschedule, c.reschedule);
+router.delete("/scheduled/:id", view, c.cancelScheduled);
+
 // messages
 router.get("/channels/:id/messages", view, c.thread);
 router.post("/channels/:id/messages", create, v.message, c.post);

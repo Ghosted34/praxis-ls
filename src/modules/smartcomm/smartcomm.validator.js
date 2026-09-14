@@ -52,6 +52,8 @@ const schemas = {
   channel: z.object({ name: z.string().min(1), kind: z.enum(["DEPARTMENT", "PROJECT", "DOSSIER", "DIRECT", "CLIENT"]).optional(), dossier_id: z.string().uuid().optional().nullable(), client_id: z.string().uuid().optional().nullable(), topic: z.string().optional(), member_ids: z.array(z.string().uuid()).optional() }),
   member: z.object({ user_id: z.string().uuid(), member_role: z.enum(["OWNER", "ADMIN", "MEMBER"]).optional() }),
   message: z.object({ body: z.string().optional(), media_vault_id: z.string().uuid().optional().nullable(), reply_to: z.string().uuid().optional().nullable(), attachments: z.array(attachment).optional() }),
+  scheduled: z.object({ request_id: z.string().uuid(), body: z.string().max(10000).default(""), attachments: z.array(attachment.strip()).max(20).default([]), reply_to: z.string().uuid().nullable().optional(), send_at: z.string().datetime({ offset: true }), timezone: z.string().min(1).max(100) }).strict(),
+  reschedule: z.object({ send_at: z.string().datetime({ offset: true }), timezone: z.string().min(1).max(100) }).strict(),
   editMessage: z.object({ body: z.string().min(1) }),
   react: z.object({ emoji: z.string().min(1).max(16) }),
   draft: z.object({ body: z.string() }),
@@ -89,14 +91,14 @@ const schemas = {
     doc_type: z.string().min(1).max(64).optional(),
     entity_ref: z.string().min(1).max(128).optional(),
   }).strict(),
-  quickReply: z.object({ label: z.string().min(1), body: z.string().min(1), shared: z.boolean().optional() }),
+  quickReply: z.object({ label: z.string().trim().min(1).max(120), body: z.string().trim().min(1).max(10000) }).strict(),
   // API F-15: PATCH /quick-replies/:id reused the CREATE guard, which requires
   // both label and body — so a caller editing only the label had to resend the
   // body, and the route as mounted (`create`) was the RBAC gate, not a
   // validator, so the patch body was never checked at all.
-  quickReplyPatch: z.object({ label: z.string().min(1).optional(), body: z.string().min(1).optional(), shared: z.boolean().optional() }).strict(),
+  quickReplyPatch: z.object({ label: z.string().trim().min(1).max(120).optional(), body: z.string().trim().min(1).max(10000).optional() }).strict(),
   whatsappConfig: z.object({ phone_id: z.string().min(1).optional(), api_version: z.string().min(1).optional(), token: z.string().min(1).max(4000).optional() }),
   emailConfig: z.object({ smtp_host: z.string().min(1).optional(), smtp_port: z.coerce.number().int().positive().optional(), smtp_user: z.string().optional(), smtp_pass: z.string().min(1).max(4000).optional(), from: z.string().optional(), reply_to: z.string().optional() }),
 };
 const mw = (k) => (req, _res, next) => { const p = schemas[k].safeParse(req.body); if (!p.success) return next(new AppError("VALIDATION_ERROR", "Invalid body", 422, p.error.flatten().fieldErrors)); req.body = p.data; return next(); };
-module.exports = { mediaUpload: mw("mediaUpload"), promote: mw("promote"), channel: mw("channel"), member: mw("member"), message: mw("message"), editMessage: mw("editMessage"), react: mw("react"), draft: mw("draft"), quickReply: mw("quickReply"), flag: mw("flag"), emailTest: mw("emailTest"), emailDnsCheck: mw("emailDnsCheck"), emailTestSend: mw("emailTestSend"), quickReplyPatch: mw("quickReplyPatch"), whatsappConfig: mw("whatsappConfig"), emailConfig: mw("emailConfig"), schemas };
+module.exports = { scheduled: mw("scheduled"), reschedule: mw("reschedule"), mediaUpload: mw("mediaUpload"), promote: mw("promote"), channel: mw("channel"), member: mw("member"), message: mw("message"), editMessage: mw("editMessage"), react: mw("react"), draft: mw("draft"), quickReply: mw("quickReply"), flag: mw("flag"), emailTest: mw("emailTest"), emailDnsCheck: mw("emailDnsCheck"), emailTestSend: mw("emailTestSend"), quickReplyPatch: mw("quickReplyPatch"), whatsappConfig: mw("whatsappConfig"), emailConfig: mw("emailConfig"), schemas };

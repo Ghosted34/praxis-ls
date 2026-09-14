@@ -175,6 +175,7 @@ export function UploadList<T>({
  */
 export function FilePicker({
   onPick,
+  openRef,
   accept = "image/*",
   label,
   hint,
@@ -185,6 +186,8 @@ export function FilePicker({
   className,
 }: {
   onPick: (files: FileList | null) => void;
+  /** Lets an action menu open the engine picker without unmounting its input. */
+  openRef?: React.Ref<() => void>;
   accept?: string;
   label?: string;
   hint?: string;
@@ -211,6 +214,8 @@ export function FilePicker({
   const open = () => {
     if (!disabled) inputRef.current?.click();
   };
+
+  React.useImperativeHandle(openRef, () => open);
 
   const input = (
     <input

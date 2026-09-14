@@ -24,37 +24,18 @@
  * a conversation where a reply survives and the thing it replied to silently
  * disappears reads as the product having lost it.
  */
-import * as React from "react";
 import { cn } from "@/lib/cn";
 import { tr } from "@/lib/i18n";
 import { DropdownMenu, DropdownItem, DropdownSeparator } from "@/components/ui/dropdown-menu";
 import { ReactionBar, ReactionChips } from "@/components/ui/emoji-picker";
 import { useConfirm } from "@/components/ui/use-confirm";
 import { useToast } from "@/components/ui/toast";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import { errMsg } from "@/lib/use-resource";
 import * as api from "@/lib/smartcomm-api";
 import type { CommMessage, CommAttachment } from "@/lib/smartcomm-api";
 import { Attachments } from "./attachments";
+import { MessageText } from "./message-text";
 
-
-/**
- * Focus this element once, on mount.
- *
- * Not the `autoFocus` attribute: that is banned by `jsx-a11y/no-autofocus`
- * because on a PAGE it yanks focus from wherever the reader was. Inside a panel
- * the reader has just opened by pressing a button, moving focus in is the
- * correct behaviour — and doing it in an effect makes that distinction explicit
- * rather than hiding it behind an attribute that means both things.
- */
-function useFocusOnMount<T extends HTMLElement>() {
-  const ref = React.useRef<T>(null);
-  React.useEffect(() => {
-    ref.current?.focus();
-  }, []);
-  return ref;
-}
 
 function timeShort(iso?: string | null) {
   if (!iso) return "";
@@ -88,6 +69,7 @@ export function MessageBubble({
   onReply,
   onForward,
   onChanged,
+  onEdit,
 }: {
   message: CommMessage;
   mine: boolean;
@@ -98,12 +80,10 @@ export function MessageBubble({
   onReply: (m: CommMessage) => void;
   onForward: (m: CommMessage) => void;
   onChanged: () => void;
+  onEdit?: (message: CommMessage) => void;
 }) {
   const toast = useToast();
   const [confirm, confirmElement] = useConfirm();
-  const [editing, setEditing] = React.useState(false);
-  const [draft, setDraft] = React.useState(message.body || "");
-  const editRef = useFocusOnMount<HTMLInputElement>();
 
   const attachments = message.attachments || [];
   const deleted = !!message.deleted_at;
@@ -114,18 +94,6 @@ export function MessageBubble({
       onChanged();
     } catch (e) {
       toast.error(errMsg(e) || tr("Couldn't add that reaction."));
-    }
-  }
-
-  async function saveEdit() {
-    const body = draft.trim();
-    if (!body || body === message.body) { setEditing(false); return; }
-    try {
-      await api.editMessage(message.message_id, body);
-      setEditing(false);
-      onChanged();
-    } catch (e) {
-      toast.error(errMsg(e) || tr("Couldn't save that edit."));
     }
   }
 
@@ -187,7 +155,7 @@ export function MessageBubble({
             className={cn(
               "mb-1 flex items-center gap-1 opacity-0 transition-opacity",
               "pointer-events-none group-hover:pointer-events-auto group-focus-within:pointer-events-auto",
-              "group-hover:opacity-100 group-focus-within:opacity-100",
+              "group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 [@media(hover:none)]:pointer-events-auto",
               mine ? "flex-row-reverse" : "flex-row",
             )}
           >
@@ -220,10 +188,10 @@ export function MessageBubble({
               <DropdownItem onSelect={toggleStar}>
                 {message.starred_by_me ? tr("Remove star") : tr("Star")}
               </DropdownItem>
-              {mine && message.body && (
+              {mine && message.body && onEdit && (
                 <>
                   <DropdownSeparator />
-                  <DropdownItem onSelect={() => { setDraft(message.body || ""); setEditing(true); }}>
+                  <DropdownItem onSelect={() => onEdit?.(message)}>
                     {tr("Edit")}
                   </DropdownItem>
                 </>
@@ -266,28 +234,6 @@ export function MessageBubble({
 
           {deleted ? (
             <span className="italic">{tr("This message was deleted")}</span>
-          ) : editing ? (
-            <div className="space-y-1.5">
-              <Input
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.nativeEvent.isComposing) { e.preventDefault(); void saveEdit(); }
-                  if (e.key === "Escape") setEditing(false);
-                }}
-                aria-label={tr("Edit message")}
-                // Keyed on `editing` so the field is remounted — and refocused
-                // — each time editing starts, not only the first time.
-                key="edit"
-                ref={editRef}
-              />
-              <div className="flex justify-end gap-1">
-                <Button size="sm" variant="ghost" icon={null} onClick={() => setEditing(false)}>
-                  {tr("Cancel")}
-                </Button>
-                <Button size="sm" icon={null} onClick={saveEdit}>{tr("Save")}</Button>
-              </div>
-            </div>
           ) : (
             <>
               {attachments.length > 0 && (
@@ -295,7 +241,7 @@ export function MessageBubble({
                   <Attachments attachments={attachments} onPromote={promote} />
                 </div>
               )}
-              {message.body && <div className="whitespace-pre-wrap break-words">{message.body}</div>}
+              {message.body && <MessageText body={message.body} />}
             </>
           )}
 
@@ -307,7 +253,7 @@ export function MessageBubble({
               )}
             >
               {message.starred_by_me && <span aria-label={tr("Starred")} title={tr("Starred")}>★</span>}
-              {message.edited_at && <span>{tr("edited")}</span>}
+              {message.edited_at && <span>{tr("(edited)")}</span>}
               <span>{timeShort(message.created_at)}</span>
               {mine && <DeliveryTicks delivery={message.delivery} />}
             </div>

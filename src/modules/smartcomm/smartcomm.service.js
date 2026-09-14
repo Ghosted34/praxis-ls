@@ -11,6 +11,7 @@
 
 const crypto = require("crypto");
 const repo = require("./smartcomm.repo");
+const scheduled = require("./smartcomm.schedule.repo");
 const media = require("./smartcomm.media.service");
 const erp = require("./smartcomm.erp.service");
 const events = require("./smartcomm.events");
@@ -150,11 +151,20 @@ function attachmentSummary(attachments) {
  * "new message in Smart Comms". The chat card is still posted and still shows
  * up in the channel; only the duplicate notification is skipped.
  */
-async function postMessage(client, { groupId, body = null, mediaVaultId = null, replyTo = null, attachments = [], actor = {}, notifyMembers = true }) {
-  await assertMember(client, groupId, actor.user_id);
-  if (!body && !mediaVaultId && (!attachments || !attachments.length)) throw new AppError("EMPTY_MESSAGE", "a message needs a body or media", 422);
+async function postMessage(client, { groupId, body = null, mediaVaultId = null, replyTo = null, attachments = [], actor = {}, notifyMembers = true, scheduleId = null }) {
   await client.query("BEGIN");
   try {
+    if (scheduleId) {
+      const queued = await scheduled.claim(client, scheduleId);
+      if (!queued) { await client.query("COMMIT"); return null; }
+      groupId = queued.group_id;
+      actor = await scheduled.sender(client, queued.sender_user_id, groupId);
+      if (!actor) throw new AppError("NOT_A_MEMBER", "Sender no longer has permission to send", 403);
+      body = queued.body; attachments = queued.attachments; replyTo = queued.reply_to;
+      await require("./smartcomm.schedule.service").validateAttachments(client, groupId, attachments, replyTo);
+    }
+    await assertMember(client, groupId, actor.user_id);
+    if (!body && !mediaVaultId && (!attachments || !attachments.length)) throw new AppError("EMPTY_MESSAGE", "a message needs a body or media", 422);
     const m = await repo.insertMessage(client, { group_id: groupId, sender_user_id: actor.user_id || null, body, media_vault_id: mediaVaultId, reply_to_message_id: replyTo });
     for (const a of attachments || []) {
       /// eslint-disable-next-line no-await-in-loop
@@ -162,6 +172,7 @@ async function postMessage(client, { groupId, body = null, mediaVaultId = null, 
     }
     await repo.updateChannel(client, groupId, {}); // bump updated_at
     await emitEvent(client, { eventTypeKey: events.MESSAGE_POSTED, moduleKey: events.MODULE, entityRef: "comms_message:" + m.message_id, actorUserId: actor.user_id || null });
+    if (scheduleId) await scheduled.sent(client, scheduleId, m.message_id);
     await client.query("COMMIT");
     rtPublish(groupId, "comms:message", { group_id: groupId, message: m });
     // G22 — a posted message notifies the OTHER members through the same
@@ -272,7 +283,10 @@ async function editMessage(client, { messageId, body, actor }) {
   const m = await repo.getMessage(client, messageId);
   if (!m) throw new AppError("NOT_FOUND", "Message not found", 404);
   if (m.sender_user_id !== actor.user_id) throw new AppError("NOT_YOURS", "You can only edit your own message", 403);
+  await assertMember(client, m.group_id, actor.user_id);
+  if (m.deleted_at) throw new AppError("NOT_FOUND", "Message was deleted", 404);
   const updated = await repo.editMessage(client, messageId, body);
+  if (!updated) throw new AppError("NOT_FOUND", "Message was deleted", 404);
   rtPublish(m.group_id, "comms:message_edited", { group_id: m.group_id, message: updated });
   return updated;
 }
@@ -423,9 +437,17 @@ async function clearDraft(client, { groupId, actor }) { await repo.deleteDraft(c
 
 // ── Quick replies ──
 const listQuickReplies = (client, actor) => repo.listQuickReplies(client, actor.user_id);
-const createQuickReply = (client, { data, actor }) => repo.createQuickReply(client, { owner_user_id: data.shared ? null : actor.user_id, label: data.label, body: data.body });
-const updateQuickReply = (client, { id, patch }) => repo.updateQuickReply(client, id, { ...(patch.label !== undefined ? { label: patch.label } : {}), ...(patch.body !== undefined ? { body: patch.body } : {}) });
-async function deleteQuickReply(client, { id }) { await repo.deleteQuickReply(client, id); return { deleted: true }; }
+const createQuickReply = (client, { data, actor }) => repo.createQuickReply(client, { owner_user_id: actor.user_id, label: data.label, body: data.body });
+async function updateQuickReply(client, { id, patch, actor }) {
+  const row = await repo.updateQuickReply(client, id, patch, actor.user_id);
+  if (!row) throw new AppError("NOT_FOUND", "Quick phrase not found", 404);
+  return row;
+}
+async function deleteQuickReply(client, { id, actor }) {
+  const row = await repo.deleteQuickReply(client, id, actor.user_id);
+  if (!row) throw new AppError("NOT_FOUND", "Quick phrase not found", 404);
+  return { deleted: true };
+}
 
 // ── Media + ERP references ──
 /**

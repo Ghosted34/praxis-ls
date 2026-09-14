@@ -8,7 +8,7 @@ import { tenant, uploadFile, tenantObjectUrl } from "./api-client";
 export type ChannelKind =
   "DEPARTMENT" | "PROJECT" | "DOSSIER" | "DIRECT" | "CLIENT";
 
-/** What a chat attachment points at. See migration 13793. */
+/** What a chat attachment points at. See migration 13794. */
 export type AttachmentKind = "VAULT" | "MEDIA" | "ERP";
 export type MediaKind = "IMAGE" | "AUDIO" | "VIDEO";
 export type TranscriptStatus = "NONE" | "PENDING" | "DONE" | "FAILED" | "UNAVAILABLE";

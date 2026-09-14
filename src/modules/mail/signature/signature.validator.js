@@ -24,6 +24,26 @@ const schemas = {
   }).refine((v) => v.en !== undefined || v.fr !== undefined, {
     message: "Provide a motto for at least one language",
   }),
+  /**
+   * WHICH BRAND COLOUR PAINTS WHICH PART OF THE CARD.
+   *
+   * An ENUM of brand-colour NAMES, never a colour. That is the whole control:
+   * a hex here would be a second place to set the brand, and the first place
+   * for the brand and the signature to disagree. `null` hands the role back to
+   * its default mapping.
+   *
+   * The keys are repeated rather than imported from signature.palette so this
+   * file stays a plain schema module — and `mail-signature-card.test.js` asserts
+   * the two lists are the same, which is the guard that matters.
+   */
+  palette: z.object({
+    ink: z.enum(["primary", "secondary", "accent", "accentDeep", "accentGlow"]).nullable().optional(),
+    glow: z.enum(["primary", "secondary", "accent", "accentDeep", "accentGlow"]).nullable().optional(),
+    warm: z.enum(["primary", "secondary", "accent", "accentDeep", "accentGlow"]).nullable().optional(),
+  }).strict().refine(
+    (v) => v.ink !== undefined || v.glow !== undefined || v.warm !== undefined,
+    { message: "Name at least one role to change" },
+  ),
   templatePatch: z.object({
     name: z.string().trim().min(1).max(200).optional(),
     description: z.string().trim().max(2000).nullable().optional(),
@@ -58,5 +78,5 @@ const mw = (k) => (req, _res, next) => {
 
 module.exports = {
   profile: mw("profile"), templatePatch: mw("templatePatch"), motto: mw("motto"),
-  png: mw("png"), batch: mw("batch"), schemas,
+  palette: mw("palette"), png: mw("png"), batch: mw("batch"), schemas,
 };

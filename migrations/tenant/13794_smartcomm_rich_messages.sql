@@ -1,5 +1,5 @@
 -- ============================================================================
--- TENANT — 13793 Smart Comms grows the four things a chat needs.
+-- TENANT — 13794 Smart Comms grows the four things a chat needs.
 --
 -- ── WHAT WAS MISSING, AND WHY THE SCHEMA IS ONLY HALF THE ANSWER ───────────
 --

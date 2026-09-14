@@ -14,7 +14,7 @@
  * declaration pasted into an ops channel belongs there. A photo of a whiteboard
  * does not, and sending it there anyway is how the answer to "what documents do
  * we hold about this client" becomes unusable within a month. See the header of
- * migration 13793.
+ * migration 13794.
  *
  * The split is reversible in the direction that matters: `promote()` moves a
  * chat image into the vault the moment somebody decides it was a record after

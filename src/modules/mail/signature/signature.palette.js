@@ -46,6 +46,96 @@ const PRAXIS_FALLBACK = {
   warm: "#F5821F",
 };
 
+/**
+ * THE BRAND COLOURS A CARD ROLE MAY BE POINTED AT.
+ *
+ * These are exactly the five colour fields Appearance stores and
+ * `signature.repo.loadBranding` reads — no more. A role may be RE-POINTED at
+ * another one of them; it may never be given a colour of its own. That is the
+ * difference between "choose which of your brand colours paints the name" and
+ * "type a hex here", and it is the whole reason this list is a closed set: the
+ * second is a second place to set the brand, and a first place for the brand and
+ * the signature to disagree.
+ *
+ * The fallbacks mirror client/src/features/settings/appearance-page.tsx's
+ * `COLORS`, for the same reason PRAXIS_FALLBACK above does — the API cannot
+ * import the client bundle — and are what a tenant who has set no appearance
+ * rows actually renders. `mail-signature-card.test.js` pins the three that
+ * overlap PRAXIS_FALLBACK against each other so the two cannot drift apart.
+ */
+const BRAND_FALLBACK = {
+  primary: "#F5821F",
+  secondary: "#1C9BD7",
+  accent: "#1C9BD7",
+  accentDeep: "#0C4A7A",
+  accentGlow: "#34AAE2",
+};
+
+const BRAND_KEYS = Object.keys(BRAND_FALLBACK);
+
+/**
+ * The three roles the card paints with, and the brand colour each takes when
+ * nobody has said otherwise. The mapping is the one in this file's header —
+ * `ink` is deliberately NOT `primary`.
+ *
+ * `paints` is the sentence the editor shows under each swatch row. It lives
+ * here, next to the CSS those parts are actually drawn by (signature.card.js),
+ * because a description of what a colour touches that is written somewhere else
+ * is a description that stops being true on the first layout change.
+ */
+const CARD_ROLES = [
+  { role: "ink", source: "accentDeep", paints: "name, website, motto, divider" },
+  { role: "glow", source: "accentGlow", paints: "card edge, background tint, accent bar" },
+  { role: "warm", source: "primary", paints: "title dash, phone and website icons" },
+];
+
+const DEFAULT_SOURCE = Object.fromEntries(CARD_ROLES.map((r) => [r.role, r.source]));
+
+/** The layout key carrying a role's re-point. `ink` → `ink_from`. */
+const sourceKey = (role) => `${role}_from`;
+
+/**
+ * Which brand colour a role is pointed at, or null for the default mapping.
+ *
+ * Anything that is not one of the five keys reads as "not set" rather than as an
+ * error: `layout` is a JSON blob an administrator can PATCH, and a typo there
+ * must degrade to the tenant's own default palette, never to an empty colour
+ * reaching the CSS.
+ */
+function sourceOf(layout, role) {
+  const v = String(((layout || {})[sourceKey(role)]) || "").trim();
+  return BRAND_KEYS.includes(v) ? v : null;
+}
+
+/**
+ * The hex a brand key resolves to, with the same fallback the app itself
+ * renders when the tenant has set nothing.
+ *
+ * Falling back HERE rather than letting an unset key fall through to the role's
+ * default source is what keeps the editor honest: the swatch a person picks and
+ * the colour the card paints are read from one function, so a tenant who has
+ * never opened Appearance can still re-point a role and get the colour they
+ * were shown.
+ */
+function brandHex(branding, key) {
+  if (!BRAND_KEYS.includes(key)) return null;
+  return hex((branding || {})[key]) || BRAND_FALLBACK[key];
+}
+
+/**
+ * Every brand colour, resolved, in the order Appearance lists them — what the
+ * editor draws its swatches from.
+ */
+function swatches(branding = {}) {
+  return BRAND_KEYS.map((key) => ({
+    key,
+    hex: brandHex(branding, key),
+    // Whether the tenant actually set it, or is rendering the Praxis default.
+    // The editor says so rather than presenting a borrowed colour as theirs.
+    is_set: Boolean(hex((branding || {})[key])),
+  }));
+}
+
 /** Text colours. Not brand-derived: they are the card's neutral ramp. */
 const NEUTRAL = {
   title: "#334155",
@@ -104,11 +194,22 @@ function alpha(hexColor, a) {
 /**
  * Resolve the card's palette.
  *
- * Precedence is layout override → tenant branding → Praxis fallback. The layout
- * override exists so a template can pin a colour that must not move (a
- * department running a deliberately different look), NOT as the normal path:
- * the seeded card template sets none of them, so the ordinary tenant gets their
- * own branding with no configuration at all.
+ * Precedence is RE-POINT → layout pin → tenant branding → Praxis fallback.
+ *
+ * The layout pin (`ink_color` and friends) exists so a template can hold a
+ * colour that must not move — a department running a deliberately different
+ * look — NOT as the normal path: the seeded card template sets none of the
+ * three, so the ordinary tenant gets their own branding with no configuration
+ * at all.
+ *
+ * THE RE-POINT (`ink_from` and friends) SITS ABOVE THE PIN, and that order is
+ * deliberate. A re-point is a choice somebody made on a screen, in front of a
+ * live preview, out of their own brand colours; a pin is a hex in a JSON blob
+ * with no surface showing it. If the pin won, picking a swatch would do nothing
+ * at all and nothing would say why — the silent no-op this file's header exists
+ * to keep out of the card. The pin is left in place rather than deleted, so
+ * clearing the re-point is a true undo: the template renders exactly the hex it
+ * carried before anybody touched a swatch.
  *
  * @param {object} [branding]  shape of branding.service.getBranding()
  * @param {object} [layout]    signature_template.layout
@@ -117,9 +218,27 @@ function resolve(branding = {}, layout = {}) {
   const b = branding || {};
   const l = layout || {};
 
-  const ink = hex(l.ink_color) || hex(b.accentDeep) || PRAXIS_FALLBACK.ink;
-  const glow = hex(l.glow_color) || hex(b.accentGlow) || PRAXIS_FALLBACK.glow;
-  const warm = hex(l.warm_color) || hex(b.primary) || PRAXIS_FALLBACK.warm;
+  const inkFrom = sourceOf(l, "ink");
+  const glowFrom = sourceOf(l, "glow");
+  const warmFrom = sourceOf(l, "warm");
+
+  const ink = brandHex(b, inkFrom) || hex(l.ink_color) || hex(b.accentDeep) || PRAXIS_FALLBACK.ink;
+  const glow = brandHex(b, glowFrom) || hex(l.glow_color) || hex(b.accentGlow) || PRAXIS_FALLBACK.glow;
+  const warm = brandHex(b, warmFrom) || hex(l.warm_color) || hex(b.primary) || PRAXIS_FALLBACK.warm;
+
+  /**
+   * A pinned value that was hand-picked TO MATCH a role stands down when that
+   * role is re-pointed.
+   *
+   * The seeded card pins #f97316 beside an orange warm and two cyan tints beside
+   * a cyan glow (migration 12758). Those three numbers are not colours in their
+   * own right — they are the second half of a pair. Keep them after someone
+   * moves `warm` to a blue and the title dash renders blue fading into orange,
+   * which is not a card anybody chose; derive instead and the pair moves
+   * together. Re-pointing is the only thing that drops a pin, so a template that
+   * was never re-pointed still renders the exact hexes it was seeded with.
+   */
+  const pinned = (value, repointed) => (repointed ? null : hex(value));
 
   return {
     ink,
@@ -130,7 +249,7 @@ function resolve(branding = {}, layout = {}) {
     // pairs #FF8C00 with #F97316, which is a hand-picked deeper orange rather
     // than a shade of the first. `shade` is a good default for a tenant who set
     // only one warm colour, and a poor substitute when the exact pair is known.
-    warmDeep: hex(l.warm_deep_color) || shade(warm, 0.1),
+    warmDeep: pinned(l.warm_deep_color, warmFrom) || shade(warm, 0.1),
 
     // Text.
     title: hex(l.title_color) || NEUTRAL.title,
@@ -143,8 +262,8 @@ function resolve(branding = {}, layout = {}) {
     // function of the cyan. That delta is invisible, but a tenant reproducing an
     // existing signature exactly should not have to accept "invisible" on faith,
     // so the seeded template pins both and everyone else derives.
-    surface: hex(l.surface_color) || tint(glow, 0.065),
-    surfaceDeep: hex(l.surface_deep_color) || tint(glow, 0.135),
+    surface: pinned(l.surface_color, glowFrom) || tint(glow, 0.065),
+    surfaceDeep: pinned(l.surface_deep_color, glowFrom) || tint(glow, 0.135),
 
     // Edges and shadows. Alpha rather than a solid tint because they sit over
     // the card's own gradient, which is not a flat colour.
@@ -186,7 +305,30 @@ function fonts(layout = {}) {
   };
 }
 
+/**
+ * How each role currently resolves, for the editor: the brand colour it is
+ * pointed at, whether that is a deliberate re-point or the default mapping, and
+ * the hex that produces. Everything the screen needs to draw a row, computed by
+ * the same functions the card is painted with rather than re-derived client-side.
+ */
+function roles(branding = {}, layout = {}) {
+  const p = resolve(branding, layout);
+  return CARD_ROLES.map(({ role, source, paints }) => {
+    const from = sourceOf(layout, role);
+    return {
+      role,
+      paints,
+      source: from || source,
+      default_source: source,
+      is_repointed: Boolean(from),
+      hex: p[role],
+    };
+  });
+}
+
 module.exports = {
   resolve, fonts, hex, tint, shade, alpha, rgb,
-  PRAXIS_FALLBACK, NEUTRAL, DEFAULT_FONTS,
+  roles, swatches, sourceOf, sourceKey, brandHex,
+  PRAXIS_FALLBACK, BRAND_FALLBACK, BRAND_KEYS, CARD_ROLES, DEFAULT_SOURCE,
+  NEUTRAL, DEFAULT_FONTS,
 };

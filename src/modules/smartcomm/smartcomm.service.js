@@ -100,7 +100,7 @@ async function setMuted(client, { groupId, actor, muted }) { await assertMember(
  * otherwise produce a row that renders as a record card pointing at a file.
  *
  * A descriptor whose kind is unrecognised falls back to VAULT, which is what
- * every row written before migration 13793 is.
+ * every row written before migration 13794 is.
  */
 function attachmentRow(messageId, a) {
   const kind = a && a.attachment_kind;

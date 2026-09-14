@@ -324,6 +324,23 @@ type ScreenCase = {
 
 type Area = { area: string; screens: ScreenCase[] };
 
+/**
+ * The axe run every state assertion uses.
+ *
+ * `iframes: false` because jsdom cannot do the cross-frame messaging axe uses to
+ * reach into a frame — axe throws "Respondable target must be a frame in the
+ * current window" and the assertion never gets to run at all. It is not a
+ * finding being suppressed: the only iframe on a registered screen is
+ * `<CardPreview>`, whose document is the server-rendered signature card, has no
+ * controls, and is `sandbox=""` precisely so it cannot behave like a surface.
+ * Its markup is pinned by `tests/unit/mail-signature-card.test.js` instead.
+ *
+ * If a screen ever embeds a frame a person actually USES, this exclusion stops
+ * being honest — scan that frame's own content in its own test rather than
+ * turning this back on here, which would only reintroduce the jsdom throw.
+ */
+const scan = (container: Element) => axe(container, { iframes: false });
+
 /* ── the register ─────────────────────────────────────────────────────────── */
 
 const AREAS: Area[] = [
@@ -1483,6 +1500,70 @@ const AREAS: Area[] = [
               is_active: true,
             },
           ],
+          /* The card document the preview iframe renders — the same thing the
+             PNG buttons download, which is why the screen shows it rather than
+             the email body. A minimal document: what is being scanned here is
+             the page around the iframe, not the card's own markup. */
+          "/mail/signature/card": {
+            kind: "card",
+            document: "<!doctype html><html><body><p>Amina Ndoumbe</p></body></html>",
+            width: 650,
+            height: 325,
+            gaps: [],
+          },
+          /* `can_administer` gates the colour-role editor below the preview.
+             True here so the axe scan actually covers those controls. */
+          "/mail/me": {
+            can_view: true,
+            can_create: true,
+            can_edit: true,
+            can_administer: true,
+            is_ceo: false,
+          },
+          "/mail/signature/palette": {
+            template: {
+              signature_template_id: "st1",
+              name: "Signature card",
+              kind: "card",
+              is_system: true,
+              is_default: true,
+              scope_kind: "TENANT",
+              scope_value: null,
+            },
+            brand: [
+              { key: "primary", hex: "#f5821f", is_set: true },
+              { key: "secondary", hex: "#1c9bd7", is_set: true },
+              { key: "accent", hex: "#1C9BD7", is_set: false },
+              { key: "accentDeep", hex: "#0c4a7a", is_set: true },
+              { key: "accentGlow", hex: "#34aae2", is_set: true },
+            ],
+            roles: [
+              {
+                role: "ink",
+                paints: "name, website, motto, divider",
+                source: "accentDeep",
+                default_source: "accentDeep",
+                is_repointed: false,
+                hex: "#0c4a7a",
+              },
+              {
+                role: "glow",
+                paints: "card edge, background tint, accent bar",
+                source: "accentGlow",
+                default_source: "accentGlow",
+                is_repointed: false,
+                hex: "#34aae2",
+              },
+              {
+                role: "warm",
+                paints: "title dash, phone and website icons",
+                source: "primary",
+                default_source: "primary",
+                is_repointed: false,
+                hex: "#f5821f",
+              },
+            ],
+          },
         },
         populatedProof: /Amina Ndoumbe/,
       },
@@ -1879,7 +1960,7 @@ describe.each(CASES)(
         expect(
           container.querySelector('[role="status"], [aria-busy="true"]'),
         ).toBeTruthy();
-        expect(await axe(container)).toHaveNoViolations();
+        expect(await scan(container)).toHaveNoViolations();
       },
     );
 
@@ -1902,7 +1983,7 @@ describe.each(CASES)(
         );
         // Addendum 6 defect 4: a 403 must NOT resolve into a reassuring empty state.
         expect(container.textContent).not.toMatch(/all clear/i);
-        expect(await axe(container)).toHaveNoViolations();
+        expect(await scan(container)).toHaveNoViolations();
       },
     );
 
@@ -1918,7 +1999,7 @@ describe.each(CASES)(
       );
       // F11: "No records returned." is the fallback nobody should be shipping.
       expect(container.textContent).not.toMatch(/No records returned\./);
-      expect(await axe(container)).toHaveNoViolations();
+      expect(await scan(container)).toHaveNoViolations();
     });
 
     it("populated state is clean, with exactly one h1", async () => {
@@ -1958,7 +2039,7 @@ describe.each(CASES)(
       // F13: 116 of 117 pages had no h1 at all. Two competing h1s is the other
       // failure mode, and just as wrong.
       expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
-      expect(await axe(container)).toHaveNoViolations();
+      expect(await scan(container)).toHaveNoViolations();
     });
   },
 );

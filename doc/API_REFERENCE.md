@@ -6,7 +6,7 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 1581 |
+| Routes | 1583 |
 | Modules mounted | 140 |
 | API version | v1 |
 
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 1581 mounted routes, grouped by path prefix.
+All 1583 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -1189,6 +1189,7 @@ All 1581 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/mail/signature/batch` | — |
 | GET | `/api/tenant/mail/signature/card` | — |
 | GET | `/api/tenant/mail/signature/diagnose` | — |
+| GET | `/api/tenant/mail/signature/palette` | — |
 | GET | `/api/tenant/mail/signature/png` | — |
 | POST | `/api/tenant/mail/signature/png` | — |
 | GET | `/api/tenant/mail/signature/preview` | — |
@@ -1197,6 +1198,7 @@ All 1581 mounted routes, grouped by path prefix.
 | PATCH | `/api/tenant/mail/signature/templates/:id` | — |
 | GET | `/api/tenant/mail/signature/templates/:id/motto` | — |
 | POST | `/api/tenant/mail/signature/templates/:id/motto` | — |
+| PUT | `/api/tenant/mail/signature/templates/:id/palette` | — |
 | GET | `/api/tenant/mail/sla-policies` | — |
 | POST | `/api/tenant/mail/sla-policies` | — |
 | PATCH | `/api/tenant/mail/sla-policies/:id` | — |

@@ -248,7 +248,7 @@ async function listStarsForMessages(client, messageIds, userId) {
 
 // ── Chat media (comms_media) ──
 // The store for images, video and voice notes. NOT document_vault — see the
-// header of smartcomm.media.service.js and migration 13793.
+// header of smartcomm.media.service.js and migration 13794.
 const insertMedia = (client, data) => insertOne(client, "comms_media", data);
 const getMedia = (client, id) => getById(client, "comms_media", "media_id", id);
 

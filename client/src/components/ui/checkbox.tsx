@@ -102,6 +102,19 @@ export type RadioOption = {
   label: React.ReactNode;
   hint?: string;
   disabled?: boolean;
+  /**
+   * A CSS colour to render the control itself in, instead of the dot — for
+   * choosing between colours rather than between words.
+   *
+   * SELECTION IS A RING, NOT A TICK, and that is deliberate: a tick drawn on top
+   * of an arbitrary tenant colour has no contrast anybody has measured, and this
+   * control exists precisely to be pointed at colours nobody has seen yet. The
+   * ring is drawn in `ring` over `ring-offset-background`, a pair `check:contrast`
+   * already covers, and it is a shape cue rather than a colour one. The label
+   * beside it still says which colour is chosen in words, so the state never
+   * rests on the ring alone.
+   */
+  swatch?: string;
 };
 
 /**
@@ -119,6 +132,15 @@ export type RadioOption = {
  *   />
  * </Field>
  *
+ * @example  // choosing between colours: the control IS the colour
+ * <RadioGroup
+ *   layout="inline"
+ *   aria-label="Colour for the name"
+ *   value={source}
+ *   onValueChange={setSource}
+ *   options={brand.map((b) => ({ value: b.key, label: b.name, swatch: b.hex }))}
+ * />
+ *
  * BEST PRACTICE. Radios below about six options; past that a `Select` costs
  * less vertical space and scans faster. There is no way to clear a radio group,
  * so either default to a sensible option or include an explicit "None".
@@ -128,6 +150,7 @@ export function RadioGroup({
   onValueChange,
   options,
   disabled,
+  layout = "stack",
   id,
   className,
   ...aria
@@ -136,10 +159,14 @@ export function RadioGroup({
   onValueChange: (v: string) => void;
   options: RadioOption[];
   disabled?: boolean;
+  /** `inline` wraps the options across a row. For short labels only — a hint
+   *  under an inline option is what makes a row unreadable. */
+  layout?: "stack" | "inline";
   id?: string;
   className?: string;
 } & React.AriaAttributes) {
   const uid = React.useId();
+  const inline = layout === "inline";
 
   return (
     <RadixRadio.Root
@@ -148,25 +175,38 @@ export function RadioGroup({
       onValueChange={onValueChange}
       disabled={disabled}
       {...aria}
-      className={cn("space-y-2", className)}
+      className={cn(inline ? "flex flex-wrap gap-x-4 gap-y-2" : "space-y-2", className)}
     >
       {options.map((o) => {
         const itemId = `${uid}-${o.value}`;
         const hintId = o.hint ? `${itemId}-hint` : undefined;
         return (
-          <div key={o.value} className="flex items-start gap-2.5">
+          <div key={o.value} className={cn("flex gap-2.5", inline ? "items-center" : "items-start")}>
             <RadixRadio.Item
               id={itemId}
               value={o.value}
               disabled={o.disabled}
               aria-describedby={hintId}
+              style={o.swatch ? { background: o.swatch } : undefined}
               className={cn(
-                "mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full border border-input bg-background transition-colors",
-                "data-[state=checked]:border-primary",
+                "grid shrink-0 place-items-center rounded-full border transition-colors",
+                inline ? "" : "mt-0.5",
+                o.swatch
+                  ? [
+                      "h-6 w-6 border-border",
+                      "ring-offset-2 ring-offset-background",
+                      "data-[state=checked]:ring-2 data-[state=checked]:ring-ring",
+                    ]
+                  : [
+                      "h-4 w-4 border-input bg-background",
+                      "data-[state=checked]:border-primary",
+                    ],
                 "disabled:cursor-not-allowed disabled:opacity-50",
               )}
             >
-              <RadixRadio.Indicator className="block h-2 w-2 rounded-full bg-primary" />
+              {!o.swatch && (
+                <RadixRadio.Indicator className="block h-2 w-2 rounded-full bg-primary" />
+              )}
             </RadixRadio.Item>
             <div className="min-w-0">
               <label

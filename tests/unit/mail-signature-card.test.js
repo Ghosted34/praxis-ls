@@ -104,6 +104,139 @@ describe("palette — the parametric brand", () => {
   });
 });
 
+/**
+ * RE-POINTING A ROLE — the tenant whose deep accent IS their orange.
+ *
+ * The default mapping is right for a brand whose `accentDeep` is its dark
+ * colour. Smart LS's is; a tenant whose is an orange gets an orange name and,
+ * before `<role>_from`, no way to change it that did not also move that orange
+ * through the whole product. These tests pin the two halves that make the
+ * re-point safe: it beats a pin nobody can see, and it drops the pins that were
+ * hand-picked to pair with the colour it replaced.
+ */
+describe("palette — pointing a role at another brand colour", () => {
+  /** A brand whose deep accent is the orange and whose blue is `secondary`. */
+  const TRANSPOSED = {
+    primary: "#F5821F",
+    secondary: "#0C4A7A",
+    accentDeep: "#F5821F",
+    accentGlow: "#34AAE2",
+  };
+
+  test("the name follows the brand colour it is pointed at", () => {
+    const before = palette.resolve(TRANSPOSED, SEEDED_LAYOUT);
+    expect(before.ink).toBe("#f5821f"); // the orange nobody chose for a name
+
+    const after = palette.resolve(TRANSPOSED, { ...SEEDED_LAYOUT, ink_from: "secondary" });
+    expect(after.ink).toBe("#0c4a7a");
+    // Only `ink` moves — a re-point is one role, not a new palette.
+    expect(after.warm).toBe(before.warm);
+    expect(after.glow).toBe(before.glow);
+  });
+
+  /**
+   * The re-point sits ABOVE the pin. If it did not, picking a swatch on a
+   * template that happens to carry `ink_color` would do nothing and nothing
+   * would say why.
+   */
+  test("a re-point beats a pinned hex, and clearing it gives the pin back", () => {
+    const pinned = { ...SEEDED_LAYOUT, ink_color: "#123456" };
+    expect(palette.resolve(TRANSPOSED, pinned).ink).toBe("#123456");
+    expect(palette.resolve(TRANSPOSED, { ...pinned, ink_from: "secondary" }).ink).toBe("#0c4a7a");
+    // Clearing is removing the key — the pin was never destroyed.
+    expect(palette.resolve(TRANSPOSED, pinned).ink).toBe("#123456");
+  });
+
+  /**
+   * The seeded card pins #f97316 beside an ORANGE warm and two cyan tints beside
+   * a CYAN glow. Those are the second half of a pair, not colours in their own
+   * right: keep them after the first half moves and the title dash renders blue
+   * fading into orange.
+   */
+  test("re-pointing warm drops the deep orange that was picked to pair with it", () => {
+    const p = palette.resolve(TRANSPOSED, { ...SEEDED_LAYOUT, warm_from: "secondary" });
+    expect(p.warm).toBe("#0c4a7a");
+    expect(p.warmDeep).not.toBe("#f97316");
+    expect(p.warmDeep).toBe(palette.shade("#0c4a7a", 0.1));
+  });
+
+  test("re-pointing glow re-derives the surfaces it tints", () => {
+    const p = palette.resolve(TRANSPOSED, { ...SEEDED_LAYOUT, glow_from: "primary" });
+    expect(p.surface).not.toBe("#f0f8fd");
+    expect(p.surface).toBe(palette.tint("#f5821f", 0.065));
+    expect(p.surfaceDeep).toBe(palette.tint("#f5821f", 0.135));
+  });
+
+  /** A role nobody touched keeps its pins exactly. This is what lets the seeded
+   *  card go on reproducing the original hex for hex. */
+  test("an untouched template still renders its seeded hexes", () => {
+    const p = palette.resolve(SMART_LS, { ...SEEDED_LAYOUT, ink_from: "secondary" });
+    expect(p.surface).toBe("#f0f8fd");
+    expect(p.surfaceDeep).toBe("#e0f2fe");
+    expect(p.warmDeep).toBe("#f97316");
+  });
+
+  /** `layout` is a JSON blob an administrator can PATCH. A typo in it has to
+   *  degrade to the default mapping, never to an empty colour in the CSS. */
+  test("a name that is not a brand colour is ignored", () => {
+    for (const junk of ["chartreuse", "#0c4a7a", "", null, "Primary"]) {
+      expect(palette.resolve(TRANSPOSED, { ink_from: junk }).ink).toBe("#f5821f");
+    }
+  });
+
+  test("roles() reports what the editor draws", () => {
+    const rows = palette.roles(TRANSPOSED, { ...SEEDED_LAYOUT, ink_from: "secondary" });
+    expect(rows.map((r) => r.role)).toEqual(["ink", "glow", "warm"]);
+
+    const ink = rows.find((r) => r.role === "ink");
+    expect(ink).toMatchObject({
+      source: "secondary",
+      default_source: "accentDeep",
+      is_repointed: true,
+      hex: "#0c4a7a",
+    });
+    // An untouched role reports the default as its live source, not as a change.
+    expect(rows.find((r) => r.role === "warm")).toMatchObject({
+      source: "primary",
+      is_repointed: false,
+    });
+  });
+
+  /**
+   * The swatch a person picks and the colour the card paints come from ONE
+   * function, so a tenant who has never opened Appearance can still re-point.
+   */
+  test("swatches and the card agree, set or unset", () => {
+    const all = palette.swatches({ primary: "#FF8C00" });
+    expect(all.find((s) => s.key === "primary")).toMatchObject({ hex: "#ff8c00", is_set: true });
+
+    const unset = all.find((s) => s.key === "secondary");
+    expect(unset.is_set).toBe(false);
+    expect(palette.resolve({ primary: "#FF8C00" }, { ink_from: "secondary" }).ink).toBe(unset.hex);
+  });
+
+  /**
+   * The validator repeats the key list rather than importing this module, so
+   * that it stays a plain schema file. This is the guard that keeps the two
+   * lists the same — an enum that drifts is an endpoint that refuses a colour
+   * the editor is offering.
+   */
+  test("the wire schema accepts exactly the brand colours the palette knows", () => {
+    const { schemas } = require("../../src/modules/mail/signature/signature.validator");
+    const accepted = schemas.palette.innerType().shape.ink.unwrap().unwrap().options;
+    expect([...accepted].sort()).toEqual([...palette.BRAND_KEYS].sort());
+  });
+
+  /** PRAXIS_FALLBACK is the role-shaped view of BRAND_FALLBACK. Two literals
+   *  that must agree, so they are asserted against each other rather than both
+   *  against a third copy. */
+  test("the two fallback tables are one palette", () => {
+    expect(palette.PRAXIS_FALLBACK.ink).toBe(palette.BRAND_FALLBACK.accentDeep);
+    expect(palette.PRAXIS_FALLBACK.glow).toBe(palette.BRAND_FALLBACK.accentGlow);
+    expect(palette.PRAXIS_FALLBACK.warm).toBe(palette.BRAND_FALLBACK.primary);
+  });
+});
+
 describe("card geometry — the original's numbers", () => {
   const p = palette.resolve(SMART_LS, SEEDED_LAYOUT);
 

@@ -11,6 +11,7 @@ const emailService = require("../../services/email.service");
 const { logger } = require("../../config/logger");
 const { CATEGORIES, categoryFor, isSecurityCategory } = require("../../shared/notifications/categories");
 const events = require("./notification.events");
+const { entityRoute } = require("@praxis/shared");
 const { AppError } = require("../../utils/errors");
 
 const mine = (client, actor, q) => repo.mine(client, actor.user_id, q);
@@ -383,9 +384,35 @@ async function enqueueDelivery(ctx, { recipients, notification }) {
  * already exists (BullMQ) and is the right home for them; this change removes
  * the ~246 unnecessary DATABASE round-trips without touching that question.
  */
+/**
+ * The destination a notification carries, resolved once for both surfaces.
+ *
+ * ── WHY THE TWO ANSWERS DIFFER ─────────────────────────────────────────────
+ *
+ * `linkUrl` is what the in-app row navigates to, and it is NULL when there is
+ * nowhere meaningful to go. That null is the point: a row with no destination
+ * renders as text, so the user is never handed something that looks clickable
+ * and isn't. Defaulting it to `/notifications` would have been the dead click
+ * again, one indirection along — click a notification, arrive at the list of
+ * notifications you clicked it from.
+ *
+ * `pushUrl` always has a value, because tapping a phone banner must open the
+ * app; with nothing better, the inbox IS the right landing.
+ *
+ * An explicit `url` from the producer always wins over the map. Mail knows to
+ * send `/comms/mail?thread=…` — the query the inbox reads as its initial
+ * selection — and no type-and-id mapping can derive that.
+ */
+function resolveDestination({ url, entityRef }) {
+  const explicit = typeof url === "string" && url.trim() ? url.trim() : null;
+  const derived = explicit ? null : entityRoute.urlFor(entityRef);
+  const linkUrl = explicit || derived || null;
+  return { linkUrl, pushUrl: linkUrl || "/notifications" };
+}
+
 async function notifyMany(client, userIds, {
   eventTypeKey = null, title, body = null, entityRef = null, priority = "NORMAL", category = null,
-  url = "/notifications", pushTag = undefined, renotify = false, requireInteraction = false,
+  url = null, pushTag = undefined, renotify = false, requireInteraction = false,
   urgency = "normal", pushData = null, actions = null, emailFallback = false, ctx = {},
 } = {}) {
   const ids = [...new Set((userIds || []).filter(Boolean))];
@@ -403,8 +430,9 @@ async function notifyMany(client, userIds, {
 
   // 2. one INSERT for all in-app rows.
   const inAppUsers = ids.filter(wantsInApp);
+  const { linkUrl, pushUrl } = resolveDestination({ url, entityRef });
   const inserted = await repo.insertForUsers(client, inAppUsers, {
-    eventTypeKey, title, body, entityRef, priority, category: cat,
+    eventTypeKey, title, body, entityRef, priority, category: cat, linkUrl,
   });
 
   // 3. the badge number each recipient's phone should show, one query. Read
@@ -424,7 +452,7 @@ async function notifyMany(client, userIds, {
 
   const notification = {
     title, body, category: cat, isSecurity,
-    url, tag: pushTag, renotify, requireInteraction, urgency,
+    url: pushUrl, tag: pushTag, renotify, requireInteraction, urgency,
     data: pushData, actions, emailFallback,
   };
 
@@ -489,7 +517,7 @@ async function claimDedupe(key) {
 async function notify(client, {
   userId, eventTypeKey = null, title, body = null, entityRef = null, priority = "NORMAL",
   category = null, dedupeKey = null,
-  url = "/notifications", pushTag = undefined, renotify = false, requireInteraction = false,
+  url = null, pushTag = undefined, renotify = false, requireInteraction = false,
   urgency = "normal", pushData = null, actions = null, emailFallback = false, ctx = {},
 } = {}) {
   if (!userId || !title) return null;
@@ -499,9 +527,11 @@ async function notify(client, {
     return null;
   }
 
+  const { linkUrl, pushUrl } = resolveDestination({ url, entityRef });
+
   let inApp = null;
   if (isSecurity || (await repo.isChannelEnabled(client, userId, "IN_APP", cat))) {
-    inApp = await repo.insertForUser(client, { userId, eventTypeKey, title, body, entityRef, priority, category: cat });
+    inApp = await repo.insertForUser(client, { userId, eventTypeKey, title, body, entityRef, priority, category: cat, linkUrl });
   }
 
   // The recipient's badge number, read after the insert so it counts this one.
@@ -520,7 +550,7 @@ async function notify(client, {
   const recipients = [{ userId, email: wantsEmail, push: Boolean(inApp) || isSecurity, badgeCount }];
   const notification = {
     title, body, category: cat, isSecurity,
-    url, tag: pushTag, renotify, requireInteraction, urgency,
+    url: pushUrl, tag: pushTag, renotify, requireInteraction, urgency,
     data: pushData, actions, emailFallback,
   };
 
@@ -743,7 +773,11 @@ async function sendPushTest(client, actor) {
     user_id: actor.user_id,
     title: "Push notifications are working",
     body: "This is a test from Praxis LS. If you can read it on your phone, alerts will reach you here.",
-    url: "/settings/notifications",
+    // `/notifications`. There is no `settings/:section` route and no
+    // `settings/notifications` one either, so this landed on `path="*"` and
+    // redirected to the Control Tower — a "test notification" that proved the
+    // push worked by taking you somewhere else.
+    url: "/notifications",
     urgency: "high",
   });
   return {

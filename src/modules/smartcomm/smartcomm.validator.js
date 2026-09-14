@@ -11,7 +11,7 @@ const { AppError } = require("../../utils/errors");
  * response" describes the honest path and not the only one.
  *
  * `attachment_kind` is optional and defaults to VAULT in the service: every row
- * written before migration 13793 is a vault row, and an older client that has
+ * written before migration 13794 is a vault row, and an older client that has
  * not learned the field must keep working.
  */
 const attachment = z.object({

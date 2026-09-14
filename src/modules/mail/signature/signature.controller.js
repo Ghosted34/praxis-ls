@@ -65,6 +65,16 @@ module.exports = {
   saveMotto: asyncHandler(async (req, res) => res.json({
     data: await req.identityDb((c) => service.saveMotto(c, req.params.id, req.body, actor(req))),
   })),
+  // Which brand colour paints which part of the card. Read and write are a pair
+  // for the same reason the motto's are: the mapping lives inside the template's
+  // `layout` blob, and a client that merges that blob itself is a client that
+  // erases a font family or a `show_logo` the day someone adds one.
+  palette: asyncHandler(async (req, res) => res.json({
+    data: await req.identityDb((c) => service.getPalette(c, { userId: actor(req).user_id })),
+  })),
+  savePalette: asyncHandler(async (req, res) => res.json({
+    data: await req.identityDb((c) => service.savePalette(c, req.params.id, req.body || {}, actor(req))),
+  })),
   staff: asyncHandler(async (req, res) => res.json({
     data: await req.identityDb((c) => service.listStaff(c, {
       search: req.query.q || null,

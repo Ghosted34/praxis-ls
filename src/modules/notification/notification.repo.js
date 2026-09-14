@@ -20,12 +20,12 @@ async function mine(client, userId, q = {}) {
  * shared/events/emit.js. Runs on the caller's connection so it can join the
  * triggering transaction.
  */
-async function insertForUser(client, { userId, eventTypeKey = null, title, body = null, entityRef = null, priority = "NORMAL", category = null }) {
+async function insertForUser(client, { userId, eventTypeKey = null, title, body = null, entityRef = null, priority = "NORMAL", category = null, linkUrl = null }) {
   const { rows } = await client.query(
-    `INSERT INTO notification (user_id, channel, event_type_key, title, body, entity_ref, priority, category)
-     VALUES ($1, 'IN_APP', $2, $3, $4, $5, $6, $7)
+    `INSERT INTO notification (user_id, channel, event_type_key, title, body, entity_ref, priority, category, link_url)
+     VALUES ($1, 'IN_APP', $2, $3, $4, $5, $6, $7, $8)
      RETURNING notification_id, created_at`,
-    [userId, eventTypeKey, title, body, entityRef, priority === "HIGH" ? "HIGH" : "NORMAL", category],
+    [userId, eventTypeKey, title, body, entityRef, priority === "HIGH" ? "HIGH" : "NORMAL", category, linkUrl],
   );
   return rows[0];
 }
@@ -300,13 +300,13 @@ async function preferencesFor(client, userIds, channels, category) {
  * building a VALUES list, means N placeholders and a statement whose text
  * changes with the recipient count, which defeats the plan cache.
  */
-async function insertForUsers(client, userIds, { eventTypeKey = null, title, body = null, entityRef = null, priority = "NORMAL", category = null }) {
+async function insertForUsers(client, userIds, { eventTypeKey = null, title, body = null, entityRef = null, priority = "NORMAL", category = null, linkUrl = null }) {
   if (!userIds || userIds.length === 0) return [];
   const { rows } = await client.query(
-    `INSERT INTO notification (user_id, channel, event_type_key, title, body, entity_ref, priority, category)
-     SELECT u, 'IN_APP', $2, $3, $4, $5, $6, $7 FROM unnest($1::uuid[]) AS u
+    `INSERT INTO notification (user_id, channel, event_type_key, title, body, entity_ref, priority, category, link_url)
+     SELECT u, 'IN_APP', $2, $3, $4, $5, $6, $7, $8 FROM unnest($1::uuid[]) AS u
      RETURNING notification_id, user_id, created_at`,
-    [userIds, eventTypeKey, title, body, entityRef, priority === "HIGH" ? "HIGH" : "NORMAL", category],
+    [userIds, eventTypeKey, title, body, entityRef, priority === "HIGH" ? "HIGH" : "NORMAL", category, linkUrl],
   );
   return rows;
 }

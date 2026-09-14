@@ -2,14 +2,21 @@
  * Signatures → Templates. Which layout each part of the company gets.
  *
  * READ-MOSTLY, DELIBERATELY. What an admin can do here is choose the tenant-wide
- * default and turn a template off. What they cannot do is retype the card's
- * colours, because the card takes them from Appearance — one brand, set once,
- * used by the app, the documents and the signature alike. A colour picker here
- * would be a second place to set the brand and a first place for the two to
- * disagree.
+ * default, turn a template off, write its motto, and say which brand colour
+ * paints which part of the card. What they still cannot do is RETYPE a colour,
+ * because the card takes them from Appearance — one brand, set once, used by
+ * the app, the documents and the signature alike. A colour picker here would be
+ * a second place to set the brand and a first place for the two to disagree.
  *
- * The link to Appearance is the whole answer to "how do I change the blue?",
- * so it is on the screen rather than in a document nobody opens.
+ * `<AccentRoles>` is not that picker, and the difference is worth being exact
+ * about: it moves a ROLE between brand colours the tenant has already chosen
+ * and stores the colour's NAME, so Appearance stays the only place a hex is
+ * ever typed and the card keeps following it. What it fixes is a tenant whose
+ * deep accent is their orange, who until now could not get a blue name on the
+ * card without changing that orange everywhere else in the product.
+ *
+ * The link to Appearance is still the whole answer to "how do I change the
+ * blue?", so it is on the screen rather than in a document nobody opens.
  */
 import * as React from "react";
 import { Link } from "react-router-dom";
@@ -27,6 +34,7 @@ import { tr } from "@/lib/i18n";
 import * as api from "@/lib/mail-api";
 import { errMsg, useResource } from "@/lib/use-resource";
 import { reportActionError } from "@/lib/action-error";
+import { AccentRoles } from "./accent-roles";
 
 /**
  * THE MOTTO / SLOGAN EDITOR.
@@ -189,6 +197,8 @@ export function TemplatesTab() {
           {tr("Open Appearance")}
         </Link>
       </Callout>
+
+      <AccentRoles />
 
       {templates.length === 0 ? (
         <EmptyState title={tr("No templates")} hint={tr("Nothing is configured yet.")} />

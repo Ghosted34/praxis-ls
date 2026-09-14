@@ -18,6 +18,8 @@ import { tenant } from "@/lib/api-client";
 import { num, dateFmt, enumLabel } from "@/lib/format";
 import { PushOptIn } from "@/components/pwa/push-opt-in";
 import { RowActions } from "@/components/ui/row-actions";
+import { Link } from "react-router-dom";
+import { notificationLink } from "@/lib/notification-link";
 import { shell } from "./shared";
 
 type Notification = {
@@ -28,6 +30,9 @@ type Notification = {
   title: string;
   body?: string | null;
   entity_ref?: string | null;
+  /** Stamped at write time (migration 13793); null on rows older than it, which
+   *  `notificationLink` resolves from `entity_ref` instead. */
+  link_url?: string | null;
   priority?: string | null;
   read_at?: string | null;
   created_at?: string | null;
@@ -268,10 +273,26 @@ export function NotificationsPage() {
   const columns: Column<Notification>[] = [
     {
       key: "title",
+      /**
+       * The title is a LINK when the notification has somewhere to go, and
+       * plain text when it does not.
+       *
+       * Not `onRowClick`, which `DataList` supports and which every other list
+       * screen here uses — that is all-or-nothing per table, and these rows are
+       * not all alike. Some notifications have no page at all (a God Mode PIN
+       * is the entire message), so a uniformly clickable row would hand a third
+       * of this table the same dead click the rest of this change removes,
+       * cursor and hover highlight included.
+       *
+       * Per-row it is honest, and it keeps what a link gives for free:
+       * ⌘-click for a new tab, the target in the status bar, and Tab reaching
+       * exactly the rows that lead somewhere.
+       */
       label: "Notification",
-      render: (r) => (
-        <div className="min-w-0">
-          <div
+      render: (r) => {
+        const target = notificationLink(r);
+        const heading = (
+          <span
             className={
               r.read_at
                 ? "text-muted-foreground"
@@ -279,14 +300,40 @@ export function NotificationsPage() {
             }
           >
             {r.title}
-          </div>
-          {r.body && (
-            <div className="truncate text-xs text-muted-foreground">
-              {r.body}
+          </span>
+        );
+        return (
+          <div className="min-w-0">
+            <div>
+              {target ? (
+                <Link
+                  to={target.url}
+                  onClick={() => {
+                    if (!r.read_at) markRead(r.notification_id);
+                  }}
+                  className="rounded-sm underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  {heading}
+                </Link>
+              ) : (
+                heading
+              )}
             </div>
-          )}
-        </div>
-      ),
+            {r.body && (
+              <div className="truncate text-xs text-muted-foreground">
+                {r.body}
+              </div>
+            )}
+            {/* Naming the weaker promise rather than letting the row imply the
+                stronger one — see the same note in notification-bell.tsx. */}
+            {target?.precision === "section" && (
+              <div className="text-micro text-muted-foreground">
+                Opens the list
+              </div>
+            )}
+          </div>
+        );
+      },
     },
     {
       key: "priority",

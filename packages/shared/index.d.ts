@@ -711,6 +711,38 @@ export declare namespace marks {
 }
 
 /**
+ * Where a notification about an `entity_ref` should take the reader.
+ *
+ * Shared because the API stamps `notification.link_url` from it when the row is
+ * written and the client resolves it again when the row is drawn — every
+ * notification predating that column has a null `link_url` and a good
+ * `entity_ref`. See rules/entity-route.js for why one copy rather than two.
+ */
+export type EntityLinkPrecision = "record" | "section";
+export type EntityLink = { url: string; precision: EntityLinkPrecision };
+
+export declare namespace entityRoute {
+  /** Types with a detail route; the id opens the record itself. */
+  const DETAIL: Readonly<Record<string, (id: string) => string>>;
+  /** Types with no detail route; the link opens the list that holds them. */
+  const SECTION: Readonly<Record<string, string>>;
+  /** "email_thread:39cb…" → { type, id }. Null for an empty ref. */
+  function parseRef(
+    entityRef?: string | null,
+  ): { type: string; id: string } | null;
+  /**
+   * The link, or null when the ref maps nowhere — a `domain:` alert, or a
+   * notification with no entity at all (a God Mode PIN has no page, and
+   * inventing one would send the reader back where they clicked from).
+   */
+  function linkFor(entityRef?: string | null): EntityLink | null;
+  /** Just the path, for callers indifferent to how precise it is. */
+  function urlFor(entityRef?: string | null): string | null;
+  /** Every path this module can emit — what the router test asserts against. */
+  function allRoutes(): string[];
+}
+
+/**
  * The working week, per day: worked or not, from when to when, on site or
  * remote. `employee.work_schedule` stores it and `employee.working_hours` — the
  * line a contract prints — is DERIVED from it by `summarise()` on every write,

@@ -32,6 +32,13 @@ router.get("/signature/diagnose", requireFeature("mail.signatures"), requirePerm
 router.get("/signature/staff", requireFeature("mail.signatures"), requirePermission("MOD-70", "view"), c.staff);
 router.post("/signature/batch", requireFeature("mail.signatures"), requirePermission("MOD-70", "edit"), v.batch, c.batch);
 
+// The card's colour ROLES — which brand colour paints the name, the edges and
+// the accent marks. MOD-70 like the rest of template administration: the mapping
+// is on the template, so it moves everyone rendering with it. It is deliberately
+// NOT a colour picker — see the header on service.getPalette.
+router.get("/signature/palette", requireFeature("mail.signatures"), requirePermission("MOD-70", "view"), c.palette);
+router.put("/signature/templates/:id/palette", requireFeature("mail.signatures"), requirePermission("MOD-70", "edit"), v.palette, c.savePalette);
+
 router.get("/signature/templates", requireFeature("mail.signatures"), requirePermission("MOD-70", "view"), c.templates);
 router.patch("/signature/templates/:id", requireFeature("mail.signatures"), requirePermission("MOD-70", "edit"), v.templatePatch, c.updateTemplate);
 

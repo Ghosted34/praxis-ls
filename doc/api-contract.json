@@ -2,11 +2,11 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 140,
-  "route_count": 1581,
+  "route_count": 1583,
   "tiers": {
     "public": 65,
     "self-scoped": 93,
-    "gated": 1423
+    "gated": 1425
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -2644,6 +2644,12 @@
       "tier": "self-scoped"
     },
     "GET /api/tenant/mail/signature/diagnose": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/mail/signature/palette": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -9338,6 +9344,12 @@
       "rbac": false,
       "validated": false,
       "tier": "self-scoped"
+    },
+    "PUT /api/tenant/mail/signature/templates/:id/palette": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "PUT /api/tenant/master-config/:appliesTo": {
       "auth": true,

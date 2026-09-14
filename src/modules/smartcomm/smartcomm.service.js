@@ -263,7 +263,12 @@ async function deleteMessage(client, { messageId, actor }) {
 async function thread(client, { groupId, actor, limit, before, erpAllow = new Set() }) {
   await assertMember(client, groupId, actor.user_id);
   await repo.touchPresence(client, groupId, actor.user_id);
-  const messages = await repo.listMessages(client, groupId, { limit: Number(limit) || 50, before });
+  // `before` is a query-string value and can arrive as an array (`?before=x&
+  // before=y`), which node-postgres would serialise as a Postgres array literal
+  // against a timestamptz comparison — a 500 rather than a page of messages.
+  // The first value is the right reading here: a cursor has one position.
+  const cursor = Array.isArray(before) ? before[0] : before;
+  const messages = await repo.listMessages(client, groupId, { limit: Number(limit) || 50, before: cursor || null });
   const ids = messages.map((m) => m.message_id);
 
   const [attachments, reactions, starred] = await Promise.all([
@@ -350,7 +355,25 @@ async function star(client, { messageId, actor }) {
   return repo.toggleStar(client, { messageId, userId: actor.user_id });
 }
 const starred = (client, actor) => repo.listStarredForUser(client, actor.user_id);
-async function search(client, { actor, term }) { if (!term || term.length < 2) throw new AppError("BAD_SEARCH", "search term too short", 422); return repo.searchMessages(client, actor.user_id, term); }
+/**
+ * Cross-channel message search.
+ *
+ * `term` is coerced to a string before anything reads its length, because
+ * `?q=a&q=b` hands Express an ARRAY. `["a","b"].length` is 2, which sails past
+ * a `< 2` guard meant to reject one-character searches, and the value then
+ * string-concatenates into the ILIKE pattern as "a,b" — so the guard measured
+ * the number of parameters while the query searched for something the user
+ * never typed. CodeQL calls this type confusion through parameter tampering.
+ *
+ * Joining rather than taking the first is deliberate: somebody who sent two
+ * values meant both, and a search for "a,b" finding nothing is a truthful
+ * answer where silently searching for "a" is not.
+ */
+async function search(client, { actor, term }) {
+  const q = (Array.isArray(term) ? term.join(",") : String(term ?? "")).trim();
+  if (q.length < 2) throw new AppError("BAD_SEARCH", "search term too short", 422);
+  return repo.searchMessages(client, actor.user_id, q);
+}
 
 // ── Reads / presence ──
 async function markRead(client, { groupId, actor }) { await assertMember(client, groupId, actor.user_id); await repo.markChannelRead(client, groupId, actor.user_id); rtPublish(groupId, "comms:read", { group_id: groupId, user_id: actor.user_id }); return { ok: true }; }

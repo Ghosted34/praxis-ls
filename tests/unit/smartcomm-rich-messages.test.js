@@ -302,3 +302,70 @@ describe("certified export — a voice note is its words, not '(media)'", () => 
     expect(a.content_hash).not.toBe(b.content_hash);
   });
 });
+
+describe("CodeQL findings — a URL is not a trusted lookup key", () => {
+  /**
+   * Three alerts, one root cause each, all reachable from a query string.
+   *
+   *   `REGISTRY[kind]` / `MODULE_FOR[kind]` — a plain object carries
+   *   Object.prototype, so a kind of "constructor" or "toString" resolves to a
+   *   real function and calling it is an unvalidated dynamic dispatch. Both are
+   *   Maps now: an unknown key is `undefined`, with no prototype to fall back
+   *   through.
+   *
+   *   `term.length` in `search` — `?q=a&q=b` is an ARRAY. Its `.length` is the
+   *   number of parameters, not the number of characters, so a two-parameter
+   *   search of one letter each passed a guard meant to reject it.
+   */
+
+  it("does not dispatch through the prototype for a made-up kind", async () => {
+    const client = { query: async () => ({ rows: [] }) };
+    for (const kind of ["constructor", "toString", "__proto__", "hasOwnProperty", "valueOf"]) {
+      // eslint-disable-next-line no-await-in-loop -- five cheap assertions, order irrelevant
+      const card = await erp.resolve(client, { kind, id: "x", label: "L", allow: new Set(["MOD-51"]) });
+      expect(card.redacted).toBe(true);
+      expect(card.ref).toBe("L");
+    }
+  });
+
+  it("resolves a module only for a kind it actually knows", () => {
+    expect(erp.moduleFor("INVOICE", { type: "FINAL" })).toBe("MOD-51");
+    expect(erp.moduleFor("INVOICE", { type: "PROFORMA" })).toBe("MOD-50");
+    expect(erp.moduleFor("constructor", null)).toBeNull();
+    expect(erp.moduleFor("toString", null)).toBeNull();
+    expect(erp.moduleFor(undefined, null)).toBeNull();
+  });
+
+  it("ignores a prototype key in the kinds filter rather than calling it", async () => {
+    const client = { query: async () => ({ rows: [] }) };
+    await expect(
+      erp.search(client, { term: "INV", kinds: ["constructor", "toString"], allow: new Set(["MOD-51"]) }),
+    ).resolves.toEqual([]);
+  });
+
+  it("measures the CHARACTERS of a search term, not the number of parameters", async () => {
+    const service = require("../../src/modules/smartcomm/smartcomm.service");
+    const repo = require("../../src/modules/smartcomm/smartcomm.repo");
+    const searchMessages = jest.spyOn(repo, "searchMessages").mockResolvedValue([]);
+    try {
+      // `?q=a&q=b` — two one-character values. Before the fix `.length` read 2
+      // and this was accepted, then searched for the string "a,b".
+      await expect(
+        service.search({}, { actor: { user_id: "u-1" }, term: ["a", "b"] }),
+      ).resolves.toEqual([]);
+      expect(searchMessages).toHaveBeenCalledWith({}, "u-1", "a,b");
+
+      searchMessages.mockClear();
+      await expect(
+        service.search({}, { actor: { user_id: "u-1" }, term: ["a"] }),
+      ).rejects.toMatchObject({ code: "BAD_SEARCH" });
+      expect(searchMessages).not.toHaveBeenCalled();
+
+      // And a plain string still behaves exactly as it did.
+      await service.search({}, { actor: { user_id: "u-1" }, term: "  invoice  " });
+      expect(searchMessages).toHaveBeenCalledWith({}, "u-1", "invoice");
+    } finally {
+      searchMessages.mockRestore();
+    }
+  });
+});

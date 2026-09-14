@@ -55,19 +55,38 @@ const { AppError } = require("../../utils/errors");
  * Resolving it from the row rather than the kind is what keeps a sales user who
  * can see proformas from reading final invoices through a chat bubble.
  */
-const MODULE_FOR = {
-  INVOICE: (row) => (row && row.type === "PROFORMA" ? "MOD-50" : "MOD-51"),
-  DOSSIER: () => "MOD-29",
-  CLIENT: () => "MOD-03",
-  PURCHASE_ORDER: () => "MOD-60",
-  SUPPLIER_INVOICE: () => "MOD-61",
+/**
+ * A Map, not an object literal, and that is a security property rather than a
+ * style preference.
+ *
+ * `kind` arrives in a URL. A plain object carries `Object.prototype`, so
+ * `MODULE_FOR[kind]` with `kind = "constructor"` or `"toString"` resolves to a
+ * real function and `MODULE_FOR[kind](row)` calls it — CodeQL's "unvalidated
+ * dynamic method call", and it flagged exactly this. The `KINDS.includes(kind)`
+ * guard below does prevent it, but a guard that has to be remembered at every
+ * call site is one somebody eventually forgets, and a static analyser cannot
+ * see it at all. `Map.get` has no prototype chain for string keys: an unknown
+ * kind is `undefined`, full stop.
+ */
+const MODULE_FOR = new Map([
+  ["INVOICE", (row) => (row && row.type === "PROFORMA" ? "MOD-50" : "MOD-51")],
+  ["DOSSIER", () => "MOD-29"],
+  ["CLIENT", () => "MOD-03"],
+  ["PURCHASE_ORDER", () => "MOD-60"],
+  ["SUPPLIER_INVOICE", () => "MOD-61"],
+]);
+
+/** The module a kind answers to, or null when the kind is not one of ours. */
+const moduleFor = (kind, row) => {
+  const resolver = MODULE_FOR.get(kind);
+  return resolver ? resolver(row) : null;
 };
 
 /** Every module key a search may need, so the controller resolves them in one
  *  pass instead of one round-trip per kind. */
 const ALL_MODULES = ["MOD-29", "MOD-03", "MOD-50", "MOD-51", "MOD-60", "MOD-61"];
 
-const KINDS = Object.keys(MODULE_FOR);
+const KINDS = [...MODULE_FOR.keys()];
 
 /** A card, in the one shape the bubble renders. Money is left as a number and a
  *  currency code: formatting is the client's job, and it is the client that
@@ -92,7 +111,12 @@ const card = ({ kind, id, ref, title, subtitle, status, amount, currency, date, 
  * picker opens from a chat composer and closes in two seconds, and the thing
  * being looked for was named in the message above it.
  */
-const REGISTRY = {
+/**
+ * One entry per attachable record. A Map for the same reason as `MODULE_FOR`
+ * above — `REGISTRY[kind].search(...)` with a URL-supplied `kind` is a dynamic
+ * method call on a prototype-bearing object.
+ */
+const REGISTRY = new Map(Object.entries({
   INVOICE: {
     async search(client, term, limit) {
       const { rows } = await client.query(
@@ -329,7 +353,7 @@ const REGISTRY = {
       };
     },
   },
-};
+}));
 
 /** What the reader is left with when they may not see the record: the reference
  *  the sender saw, and nothing that has a number in it. */
@@ -355,15 +379,20 @@ async function search(client, { term, allow = new Set(), kinds = null, limit = 8
 
   const results = [];
   for (const kind of wanted) {
+    const entry = REGISTRY.get(kind);
+    // `wanted` is already filtered to KINDS, so this cannot miss — but reading
+    // it from the Map and checking is what makes that true by construction
+    // rather than by the caller remembering.
+    if (!entry) continue;
     // A kind whose permission depends on the ROW (invoice) cannot be excluded
     // up front, so it is filtered after the query instead.
-    const constant = MODULE_FOR[kind](null);
+    const constant = moduleFor(kind, null);
     const rowDependent = kind === "INVOICE";
     if (!rowDependent && !allow.has(constant)) continue;
      
-    const found = await REGISTRY[kind].search(client, pattern, per);
+    const found = await entry.search(client, pattern, per);
     for (const f of found) {
-      if (!allow.has(MODULE_FOR[kind](f.row))) continue;
+      if (!allow.has(moduleFor(kind, f.row))) continue;
       results.push(f.card);
     }
   }
@@ -379,10 +408,11 @@ async function search(client, { term, allow = new Set(), kinds = null, limit = 8
  * true thing to show.
  */
 async function resolve(client, { kind, id, label = null, allow = new Set() }) {
-  if (!KINDS.includes(kind)) return redactedCard(kind, id, label);
-  const found = await REGISTRY[kind].get(client, id);
+  const entry = REGISTRY.get(kind);
+  if (!entry) return redactedCard(kind, id, label);
+  const found = await entry.get(client, id);
   if (!found) return redactedCard(kind, id, label);
-  if (!allow.has(MODULE_FOR[kind](found.row))) return redactedCard(kind, id, label);
+  if (!allow.has(moduleFor(kind, found.row))) return redactedCard(kind, id, label);
   return found.card;
 }
 
@@ -397,4 +427,4 @@ async function resolveMany(client, refs, allow) {
   return out;
 }
 
-module.exports = { search, resolve, resolveMany, KINDS, ALL_MODULES, MODULE_FOR };
+module.exports = { search, resolve, resolveMany, KINDS, ALL_MODULES, moduleFor };

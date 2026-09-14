@@ -34,6 +34,7 @@ const TABS = [
 
 export function CommsHub() {
   const { section } = useParams();
+  const isChat = !section || !["setup", "signatures", "mail"].includes(section);
   const page =
     section === "setup" ? (
       <CommsSetupPage />
@@ -51,9 +52,9 @@ export function CommsHub() {
       <TeamChatPage />
     );
   return (
-    <section className="animate-fade-in">
+    <section className={cn("animate-fade-in", isChat && "flex h-full min-h-0 flex-col")}>
       <nav
-        className="mb-4 flex items-end gap-1 border-b border-border"
+        className="mb-4 flex shrink-0 items-end gap-1 border-b border-border"
         aria-label="Comms sections"
       >
         {TABS.map((t) => (

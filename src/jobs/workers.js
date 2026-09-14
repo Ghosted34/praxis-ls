@@ -24,6 +24,8 @@ const { initRedis, createConnection, closeRedis } = require("../config/redis");
 
 // name: BullMQ queue name; handler: async (job) => result; concurrency optional.
 const PROCESSORS = [
+  { name: "comms-send-flush", concurrency: 1, handler: require("./handlers/comms-send-flush") },
+  { name: "comms-send-scheduler", concurrency: 1, handler: require("./handlers/comms-send-scheduler") },
   { name: "regie-aging", concurrency: 1, handler: require("./handlers/regie-aging") },
   { name: "regie-aging-scheduler", concurrency: 1, handler: require("./handlers/regie-aging-scheduler") },
   { name: "pdf", concurrency: 2, handler: require("./handlers/pdf-render") },
@@ -279,6 +281,12 @@ function startWorkers() {
  * when the interval is 0.
  */
 async function scheduleRecurring() {
+  // Independent of orchestration: chat scheduling must not stop when an
+  // unrelated automation interval is disabled. Durable database rows are the
+  // source of truth; the tick also catches up after worker/Redis downtime.
+  await require("./queue-producer").enqueue("comms-send-scheduler", "tick", {}, {
+    repeat: { every: 30000 }, removeOnComplete: true, removeOnFail: 50,
+  });
   const every = config.ORCHESTRATION_DISPATCH_INTERVAL_MS;
   if (!every || every <= 0) {
     logger.info("orchestration scheduler disabled (ORCHESTRATION_DISPATCH_INTERVAL_MS=0)");

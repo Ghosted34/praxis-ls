@@ -112,7 +112,7 @@ function EmojiGrid({
   );
 }
 
-function PickerPanel({ onPick }: { onPick: (glyph: string) => void }) {
+export function PickerPanel({ onPick }: { onPick: (glyph: string) => void }) {
   const searchRef = useFocusOnMount<HTMLInputElement>();
   const [mod, setMod] = React.useState<EmojiModule | null>(null);
   const [failed, setFailed] = React.useState(false);

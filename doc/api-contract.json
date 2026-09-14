@@ -2,11 +2,11 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 140,
-  "route_count": 1583,
+  "route_count": 1587,
   "tiers": {
     "public": 65,
     "self-scoped": 93,
-    "gated": 1425
+    "gated": 1429
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -574,6 +574,12 @@
       "tier": "gated"
     },
     "DELETE /api/tenant/smartcomm/quick-replies/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "DELETE /api/tenant/smartcomm/scheduled/:id": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -4101,6 +4107,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/smartcomm/channels/:id/scheduled": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/smartcomm/colleagues": {
       "auth": true,
       "rbac": true,
@@ -5392,6 +5404,12 @@
       "tier": "gated"
     },
     "PATCH /api/tenant/smartcomm/quick-replies/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PATCH /api/tenant/smartcomm/scheduled/:id": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -8584,6 +8602,12 @@
       "tier": "gated"
     },
     "POST /api/tenant/smartcomm/channels/:id/read": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/smartcomm/channels/:id/scheduled": {
       "auth": true,
       "rbac": true,
       "validated": false,

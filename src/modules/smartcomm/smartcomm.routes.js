@@ -99,6 +99,22 @@ router.get("/media/:mediaId", view, c.mediaBytes);
 // people see: it appears in the document register for everyone with vault
 // rights, and it is meant to.
 router.post("/media/:mediaId/promote", edit, v.promote, c.promoteMedia);
+/**
+ * "Transcribe this voice note" — `view`, deliberately, and here is why.
+ *
+ * It writes a row other people see, which by the rule stated above reads like
+ * `edit`. It is gated on `view` anyway, because what it produces is not new
+ * content: it is the words that are ALREADY in a message the caller is allowed
+ * to play, in a form they can read. Requiring a write grant would mean a
+ * warehouse role with read access can hear every voice note in its channel and
+ * is the one kind of member who can never read one — which is the accessibility
+ * hole the transcript exists to close, reinstated by the permission matrix.
+ *
+ * Membership is the real authorisation, asserted in the media service, and it
+ * matters more here than on most reads: this endpoint spends money on the
+ * tenant's provider account.
+ */
+router.post("/media/:mediaId/transcribe", view, v.transcribe, c.transcribeMedia);
 // Both reads, and both resolve against the CALLER's permissions rather than the
 // sender's — a member without MOD-51 gets the reference and no figure. MOD-64
 // `view` is the gate to reach them at all; the per-record rights are applied

@@ -26,7 +26,7 @@ import * as api from "@/lib/smartcomm-api";
 import { downloadVaultDoc } from "@/lib/vault-file";
 import type { CommAttachment } from "@/lib/smartcomm-api";
 import { useObjectUrl, useNearViewport } from "./use-object-url";
-import { VoiceNote } from "./voice-note";
+import { VoiceNote, type BubbleTone } from "./voice-note";
 import { ErpCardView } from "./erp-card";
 
 /**
@@ -202,9 +202,20 @@ function DocumentAttachment({ attachment }: { attachment: CommAttachment }) {
 export function Attachments({
   attachments,
   onPromote,
+  tone = "surface",
 }: {
   attachments: CommAttachment[];
   onPromote?: (attachment: CommAttachment) => void;
+  /**
+   * The ground the BUBBLE painted, passed down rather than guessed.
+   *
+   * The sender's own messages are drawn on `bg-primary`, and a child that
+   * reaches for `--muted-foreground` there is drawing secondary text on the
+   * brand fill: 2.39:1 in light, 1.01:1 in dark. Nothing inside a component
+   * can see the ground its parent painted, which is exactly how that shipped —
+   * so the parent says. See `BubbleTone` in voice-note.tsx.
+   */
+  tone?: BubbleTone;
 }) {
   const [lightbox, setLightbox] = React.useState<string | null>(null);
   if (!attachments.length) return null;
@@ -217,7 +228,7 @@ export function Attachments({
           return <ErpCardView key={key} card={a.erp_card || null} label={a.erp_label} />;
         }
         if (a.attachment_kind === "MEDIA" && a.is_voice_note) {
-          return <VoiceNote key={key} attachment={a} />;
+          return <VoiceNote key={key} attachment={a} tone={tone} />;
         }
         if (a.attachment_kind === "MEDIA" && a.media_kind === "IMAGE") {
           return (
@@ -227,13 +238,25 @@ export function Attachments({
                 <button
                   type="button"
                   onClick={() => onPromote(a)}
-                  className="text-micro text-primary-ink underline-offset-2 hover:underline"
+                  className={
+                    tone === "primary"
+                      ? "text-micro text-primary-foreground underline-offset-2 hover:underline"
+                      : "text-micro text-primary-ink underline-offset-2 hover:underline"
+                  }
                 >
                   {tr("Save to vault")}
                 </button>
               )}
               {a.promoted_vault_id && (
-                <span className="block text-micro text-muted-foreground">{tr("Saved to the vault")}</span>
+                <span
+                  className={
+                    tone === "primary"
+                      ? "block text-micro text-primary-foreground/80"
+                      : "block text-micro text-muted-foreground"
+                  }
+                >
+                  {tr("Saved to the vault")}
+                </span>
               )}
             </div>
           );

@@ -468,25 +468,36 @@ async function uploadMedia(client, { groupId, file, isVoiceNote, durationMs, wav
 }
 
 /**
- * Transcribe a voice note and tell the channel when the words land.
+ * Transcribe a voice note because a member asked, and tell the channel.
  *
- * Called AFTER the response has gone out, never awaited by the upload: a
- * provider that is slow, rate-limited or unconfigured must not be the reason a
- * voice note fails to send. The realtime publish is what makes the transcript
- * appear under a bubble somebody is already looking at, instead of on their
- * next reload.
+ * Reader-initiated, not upload-initiated — see the long note in
+ * `smartcomm.media.service.js` for why the provider is no longer called for
+ * every clip anybody records.
+ *
+ * The realtime publish stays, and now earns more than it did: one person
+ * pressing Transcribe puts the words under the bubble for everyone else who
+ * has the thread open, so the second and third member of a channel do not each
+ * pay for the same clip to learn the same sentence.
+ *
+ * `groupId` comes off the media row rather than the URL: the caller addresses a
+ * media id, and taking the channel from anywhere but the row it belongs to
+ * would let a member of channel A publish into channel B.
  */
-async function transcribeVoiceNote(client, { mediaId, groupId }) {
-  const row = await media.transcribeVoiceNote(client, mediaId);
+async function transcribeVoiceNote(client, { mediaId, language, actor }) {
+  const row = await media.transcribeVoiceNote(client, { mediaId, language, assertMember, actor });
   if (row) {
-    rtPublish(groupId, "comms:transcript", {
-      group_id: groupId,
+    rtPublish(row.group_id, "comms:transcript", {
+      group_id: row.group_id,
       media_id: mediaId,
       transcript: row.transcript,
       transcript_status: row.transcript_status,
     });
   }
-  return row;
+  return {
+    media_id: mediaId,
+    transcript: (row && row.transcript) || null,
+    transcript_status: (row && row.transcript_status) || "FAILED",
+  };
 }
 
 const mediaBytes = (client, { mediaId, actor }) => media.bytes(client, { mediaId, assertMember, actor });

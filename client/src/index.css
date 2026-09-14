@@ -227,7 +227,15 @@
   --primary-ink: var(--primary-ink-dark);
   --ring: rgb(245 130 31);
   --destructive: rgb(232 104 96);
-  --destructive-foreground: rgb(255 255 255);
+  /*
+   * Carbon, not white — and for the same reason `--primary-foreground` is
+   * carbon (F-20). `--destructive` is LIGHTENED under .dark so that
+   * `text-destructive` reads on a dark card, which leaves the fill too
+   * luminous to carry white type: white on it is 3.19:1, a live AA failure on
+   * every Delete button in dark mode. Carbon on the same fill is 6.21:1. The
+   * light theme keeps white, where the deeper red measures 4.54:1.
+   */
+  --destructive-foreground: rgb(10 10 10);
   --sidebar: rgb(18 22 30);
   --sidebar-foreground: rgb(228 233 240);
   --sidebar-border: rgb(228 233 240 / 0.11);

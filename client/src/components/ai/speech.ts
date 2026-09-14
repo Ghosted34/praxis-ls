@@ -93,7 +93,7 @@ export function useSpeech() {
 
 /* ────────────────────────── dictating ────────────────────────── */
 
-type RecognitionLike = {
+export type RecognitionLike = {
   lang: string;
   continuous: boolean;
   interimResults: boolean;
@@ -109,10 +109,19 @@ type RecognitionLike = {
       }) => void)
     | null;
   onend: (() => void) | null;
-  onerror: (() => void) | null;
+  onerror: ((e: { error?: string }) => void) | null;
 };
 
-function recognitionCtor(): (new () => RecognitionLike) | null {
+/**
+ * The constructor, under either of its two names, or null.
+ *
+ * Exported because the chat's voice notes need the SAME lookup: the browser's
+ * recogniser is what transcribes a clip when the workspace has no provider
+ * (`features/comms/chat/browser-transcribe.ts`). A second copy of this would
+ * be a second place to remember `webkitSpeechRecognition` — and the one that
+ * forgot it would report "your browser can't" on the browser that can.
+ */
+export function recognitionCtor(): (new () => RecognitionLike) | null {
   if (typeof window === "undefined") return null;
   const w = window as unknown as Record<string, unknown>;
   return (w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null) as

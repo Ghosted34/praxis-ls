@@ -286,6 +286,24 @@ export const uploadMedia = (
 export const mediaObjectUrl = (mediaId: string, signal?: AbortSignal) =>
   tenantObjectUrl(`/smartcomm/media/${mediaId}`, signal);
 
+/**
+ * Ask the workspace's provider to transcribe one voice note.
+ *
+ * ON DEMAND, and that is the point: a clip is no longer sent to a vendor the
+ * moment it is recorded, on the guess that someone will read it. This runs for
+ * the one clip whose Transcribe button was pressed, the result is stored, and
+ * the channel is told over realtime so nobody else pays for the same sentence.
+ *
+ * `UNAVAILABLE` comes back when the workspace configured no provider. That is
+ * not an error and must not be rendered as one — it is the cue to offer the
+ * reader's own browser instead (`features/comms/chat/browser-transcribe.ts`).
+ */
+export const transcribeMedia = (mediaId: string, language?: "en" | "fr") =>
+  tenant<{ media_id: string; transcript: string | null; transcript_status: TranscriptStatus }>(
+    `/smartcomm/media/${mediaId}/transcribe`,
+    { method: "POST", body: language ? { language } : {} },
+  );
+
 export const promoteMedia = (mediaId: string, body: { doc_type?: string; entity_ref?: string } = {}) =>
   tenant<{ media_id: string; vault_id: string; already: boolean }>(
     `/smartcomm/media/${mediaId}/promote`,

@@ -6,7 +6,6 @@ const erp = require("./smartcomm.erp.service");
 const { asyncHandler, AppError } = require("../../utils/errors");
 const { readUpload } = require("../../shared/http/upload.middleware");
 const { readPermissions } = require("../../middleware/rbac");
-const { logger } = require("../../config/logger");
 const actor = (req) => req.user || { user_id: null };
 
 /**
@@ -82,10 +81,10 @@ module.exports = {
    * data URL (what the voice recorder's fallback sends) — through `readUpload`,
    * which is the seam that lets both exist without the route caring.
    *
-   * A voice note's transcription is fired AFTER the response, deliberately
-   * unawaited: the clip is the message and the words are an improvement on it,
-   * so a provider that is slow or unconfigured must never be the reason a voice
-   * note fails to send.
+   * NOTHING is transcribed here. A voice note used to fire a provider call the
+   * moment it landed, for every clip in every channel, on the guess that
+   * somebody would want the words. Most are listened to once by two people. The
+   * words are now asked for — see `transcribeMedia` below.
    */
   uploadMedia: asyncHandler(async (req, res) => {
     const file = readUpload(req);
@@ -106,10 +105,26 @@ module.exports = {
       actor: actor(req),
     }));
     res.status(201).json({ data });
-    if (isVoiceNote && data.media_id) {
-      req.tenantDb((c) => service.transcribeVoiceNote(c, { mediaId: data.media_id, groupId: req.params.id }))
-        .catch((err) => logger.warn({ err, media_id: data.media_id }, "voice note transcription did not complete"));
-    }
+  }),
+
+  /**
+   * Transcribe one voice note, because a member pressed Transcribe.
+   *
+   * Awaited, unlike the fire-and-forget this replaces: somebody is looking at a
+   * spinner, and a request whose whole purpose is to produce a sentence should
+   * answer with the sentence. The channel is told over realtime as well, so the
+   * words land under the bubble for everyone else with the thread open.
+   *
+   * `language` is a hint, not a promise — see `transcription.service.js` for
+   * what Whisper does with the wrong one.
+   */
+  transcribeMedia: asyncHandler(async (req, res) => {
+    const data = await req.tenantDb((c) => service.transcribeVoiceNote(c, {
+      mediaId: req.params.mediaId,
+      language: (req.body && req.body.language) || null,
+      actor: actor(req),
+    }));
+    res.json({ data });
   }),
 
   /**

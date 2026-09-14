@@ -255,7 +255,7 @@ export function FloatingActions({ badge = 0 }: { badge?: number }) {
       >
         <BurstIcon />
         {badge > 0 && !open && (
-          <span className="absolute -right-1 -top-1 grid h-5 min-w-[20px] place-items-center rounded-full bg-brand-blue px-1 text-[10px] font-bold text-white ring-2 ring-background">
+          <span className="absolute -right-1 -top-1 grid h-5 min-w-[20px] place-items-center rounded-full bg-brand-blue-deep px-1 text-[10px] font-bold text-white ring-2 ring-background">
             {badge > 99 ? "99+" : badge}
           </span>
         )}

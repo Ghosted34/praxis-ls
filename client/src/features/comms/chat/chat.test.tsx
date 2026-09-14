@@ -7,7 +7,7 @@
  * samples instead of averaging, and the forward path copying bytes it must not
  * copy.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
@@ -16,7 +16,23 @@ import { VoiceNote } from "./voice-note";
 import { downsample, clock } from "./audio-utils";
 import { forwardableAttachments } from "./forward-attachments";
 import { searchEmoji, withSkinTone, EMOJI_COUNT, CATEGORY_ORDER, EMOJI } from "@/lib/emoji-data";
-import type { CommAttachment, CommMessage, ErpCard } from "@/lib/smartcomm-api";
+import * as commsApi from "@/lib/smartcomm-api";
+import type { CommAttachment, CommMessage, ErpCard, TranscriptStatus } from "@/lib/smartcomm-api";
+
+/**
+ * Only the one call is faked, and everything else in the module stays real.
+ *
+ * `transcribeMedia` is the whole of the change under test: transcription used
+ * to happen to every clip on upload and is now a request one reader makes.
+ * What the four states MEAN is therefore what the server answered to a press,
+ * not what the thread row happened to carry — so the press is what the tests
+ * drive, and the answer is what they set.
+ */
+vi.mock("@/lib/smartcomm-api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/smartcomm-api")>()),
+  transcribeMedia: vi.fn(),
+}));
+const transcribeMedia = vi.mocked(commsApi.transcribeMedia);
 
 const inRouter = (ui: React.ReactNode) => render(<MemoryRouter>{ui}</MemoryRouter>);
 
@@ -66,32 +82,141 @@ describe("ErpCardView — the restricted state is a render, not an error", () =>
   });
 });
 
-describe("VoiceNote — four transcript states, four sentences", () => {
+describe("VoiceNote — the words are asked for, and every state is a sentence", () => {
   const base: CommAttachment = {
     attachment_kind: "MEDIA", media_id: "m-1", media_kind: "AUDIO",
     is_voice_note: true, duration_ms: 8200, waveform: [10, 40, 80, 30],
   };
 
-  it("shows the words when they are there", () => {
+  /**
+   * A BLOCK body, and it matters: `beforeEach(() => spy.mockClear())` returns
+   * the spy, vitest treats a function returned from a hook as that hook's
+   * teardown, and so it CALLS THE SPY after every test. With a throwing
+   * implementation still installed that is an unhandled rejection with no
+   * stack of its own — it lands on whichever test is running when the tick
+   * comes, which is how one deliberate failure case reported as five unrelated
+   * red tests whose own assertions had all passed.
+   */
+  beforeEach(() => {
+    transcribeMedia.mockReset();
+  });
+
+  /** Press Transcribe — the only way any of these states reach the screen. */
+  const reveal = () =>
+    userEvent.click(screen.getByRole("button", { name: /transcribe|show transcript/i }));
+
+  /**
+   * ── NOT AUTOMATIC, WHICH IS THE WHOLE POINT ──────────────────────────────
+   *
+   * Every clip used to go to the provider the moment it landed: a bill per
+   * clip, and a copy of a private conversation leaving the tenant, paid on the
+   * guess that somebody would read it. Nothing is sent and nothing is shown
+   * until a reader presses the button — including words another reader has
+   * already paid for, which are revealed rather than re-fetched.
+   */
+  it("shows no transcript at all until somebody asks for one", () => {
     render(<VoiceNote attachment={{ ...base, transcript_status: "DONE", transcript: "Clear it through customs today" }} />);
+    expect(screen.queryByText("Clear it through customs today")).toBeNull();
+    expect(screen.getByRole("button", { name: /show transcript/i })).toBeInTheDocument();
+  });
+
+  it("shows the words when they are there and the reader asks", async () => {
+    render(<VoiceNote attachment={{ ...base, transcript_status: "DONE", transcript: "Clear it through customs today" }} />);
+    await reveal();
     expect(screen.getByText("Clear it through customs today")).toBeInTheDocument();
   });
 
-  it("says it is still working while PENDING", () => {
-    render(<VoiceNote attachment={{ ...base, transcript_status: "PENDING" }} />);
+  it("sends nothing to the provider until the button is pressed", async () => {
+    render(<VoiceNote attachment={{ ...base, transcript_status: "NONE" }} />);
+    expect(transcribeMedia).not.toHaveBeenCalled();
+    transcribeMedia.mockResolvedValue({ media_id: "m-1", transcript: "Deux conteneurs", transcript_status: "DONE" });
+    await reveal();
+    expect(transcribeMedia).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText("Deux conteneurs")).toBeInTheDocument();
+  });
+
+  /**
+   * The language is SENT, not guessed. Whisper detects on its own and is good
+   * at it on a clean thirty-second clip; on a five-second one with a forklift
+   * behind it, its failure mode is a fluent translation into the language it
+   * picked — which reads as a confident instruction that nobody gave.
+   */
+  it("tells the provider which language to expect", async () => {
+    transcribeMedia.mockResolvedValue({ media_id: "m-1", transcript: "", transcript_status: "DONE" });
+    render(<VoiceNote attachment={{ ...base, transcript_status: "NONE" }} />);
+    await userEvent.click(screen.getByRole("button", { name: /language of this recording/i }));
+    await reveal();
+    expect(transcribeMedia).toHaveBeenCalledWith("m-1", "fr");
+  });
+
+  it("says it is still working while the provider is answering", async () => {
+    let answer: (r: { media_id: string; transcript: string | null; transcript_status: TranscriptStatus }) => void = () => {};
+    transcribeMedia.mockReturnValue(new Promise((resolve) => { answer = resolve; }));
+    render(<VoiceNote attachment={{ ...base, transcript_status: "NONE" }} />);
+    await reveal();
     expect(screen.getByText(/transcribing/i)).toBeInTheDocument();
+    // Settled before the test ends: a promise left hanging keeps the component
+    // mid-update and the teardown waits on it.
+    answer({ media_id: "m-1", transcript: "later", transcript_status: "DONE" });
+    expect(await screen.findByText("later")).toBeInTheDocument();
   });
 
-  it("blames the workspace, not the clip, when no provider is configured", () => {
-    render(<VoiceNote attachment={{ ...base, transcript_status: "UNAVAILABLE" }} />);
-    expect(screen.getByText(/isn't set up on this workspace/i)).toBeInTheDocument();
+  it("blames the workspace, not the clip, when no provider is configured", async () => {
+    transcribeMedia.mockResolvedValue({ media_id: "m-1", transcript: null, transcript_status: "UNAVAILABLE" });
+    render(<VoiceNote attachment={{ ...base, transcript_status: "NONE" }} />);
+    await reveal();
+    expect(await screen.findByText(/isn't set up on this workspace/i)).toBeInTheDocument();
   });
 
-  it("distinguishes a failure from silence", () => {
-    const { rerender } = render(<VoiceNote attachment={{ ...base, transcript_status: "FAILED" }} />);
-    expect(screen.getByText(/couldn't be transcribed/i)).toBeInTheDocument();
-    rerender(<VoiceNote attachment={{ ...base, transcript_status: "DONE", transcript: null }} />);
-    expect(screen.getByText(/no speech was found/i)).toBeInTheDocument();
+  /**
+   * ── AND THEN OFFERS THE ONE ENGINE THAT NEEDS NO KEY ─────────────────────
+   *
+   * "Nobody configured a provider" was the end of the road. The reader's own
+   * browser ships a recogniser, so it is offered — and the offer says what
+   * pressing it will do, because what it does is audible in the room.
+   * jsdom has no `SpeechRecognition`, which is the branch pinned here: an
+   * absent API must produce a sentence, never a dead button.
+   */
+  it("says which browsers can stand in when this one cannot", async () => {
+    transcribeMedia.mockResolvedValue({ media_id: "m-1", transcript: null, transcript_status: "UNAVAILABLE" });
+    render(<VoiceNote attachment={{ ...base, transcript_status: "NONE" }} />);
+    await reveal();
+    expect(await screen.findByText(/no speech recognition/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /let this browser listen/i })).toBeNull();
+  });
+
+  it("offers a language for the clip, because guessing it produces fluent nonsense", () => {
+    render(<VoiceNote attachment={{ ...base, transcript_status: "NONE" }} />);
+    expect(screen.getByRole("button", { name: /language of this recording/i })).toBeInTheDocument();
+  });
+
+  it("distinguishes a failure from silence", async () => {
+    transcribeMedia.mockResolvedValue({ media_id: "m-1", transcript: null, transcript_status: "FAILED" });
+    const { unmount } = render(<VoiceNote attachment={{ ...base, transcript_status: "NONE" }} />);
+    await reveal();
+    expect(await screen.findByText(/couldn't be transcribed/i)).toBeInTheDocument();
+    unmount();
+
+    transcribeMedia.mockResolvedValue({ media_id: "m-1", transcript: null, transcript_status: "DONE" });
+    render(<VoiceNote attachment={{ ...base, transcript_status: "NONE" }} />);
+    await reveal();
+    expect(await screen.findByText(/no speech was found/i)).toBeInTheDocument();
+  });
+
+  /** A network drop is not a provider that answered badly, but the reader's
+   *  next move is the same one — so it gets the same sentence rather than an
+   *  unhandled rejection and a button that stays on "Transcribing…". */
+  it("does not sit on a spinner when the request itself never lands", async () => {
+    // Thrown SYNCHRONOUSLY rather than returned as a rejected promise, which
+    // `await` inside the component's `try` catches just the same. A vi.fn()
+    // that returns a rejection leaves vitest's own result bookkeeping holding
+    // a derived promise nobody handles, and the unhandled-rejection it reports
+    // lands on whichever test happens to be running when the tick comes — the
+    // component's catch had run correctly all along.
+    transcribeMedia.mockImplementation(() => { throw new Error("offline"); });
+    render(<VoiceNote attachment={{ ...base, transcript_status: "NONE" }} />);
+    await reveal();
+    expect(await screen.findByText(/couldn't be transcribed/i)).toBeInTheDocument();
   });
 
   it("shows the duration before anything has been played", () => {
@@ -99,11 +224,40 @@ describe("VoiceNote — four transcript states, four sentences", () => {
     expect(screen.getByText("0:08")).toBeInTheDocument();
   });
 
-  it("does not fetch the clip until it is asked to play", () => {
-    // A channel with forty voice notes must not pull forty clips down to draw
-    // forty bars — the bars are already in the row.
+  /**
+   * ── THE ELEMENT EXISTS FROM THE FIRST RENDER; THE BYTES DO NOT ───────────
+   *
+   * Two claims that used to be one, and conflating them is what broke iOS. The
+   * <audio> was rendered only once the clip had been fetched, so the first
+   * press had nothing to act on and the `play()` that followed the fetch was
+   * outside the gesture WebKit requires. The element is mounted up front with
+   * no `src` — so the press has something to `load()`, and a channel with
+   * forty voice notes still pulls down none of them.
+   */
+  it("mounts the player before the clip, and fetches nothing to draw the bar", () => {
     render(<VoiceNote attachment={{ ...base, transcript_status: "NONE" }} />);
-    expect(document.querySelector("audio")).toBeNull();
+    const el = document.querySelector("audio");
+    expect(el).not.toBeNull();
+    expect(el?.getAttribute("src")).toBeNull();
+  });
+
+  /**
+   * ── WHAT IS DRAWN ON THE SENDER'S OWN BUBBLE ─────────────────────────────
+   *
+   * `message-bubble.tsx` paints those `bg-primary`. `--muted-foreground` is
+   * the token for secondary text on a SURFACE, and on the brand fill it is
+   * 2.39:1 in light and 1.01:1 in dark — invisible, which is what shipped.
+   * Nothing inside a component can see the ground its parent painted, so the
+   * parent passes it, and this pins that the child actually uses it.
+   */
+  it("does not draw surface-ink text on the brand fill", () => {
+    const { container } = render(
+      <VoiceNote attachment={{ ...base, transcript_status: "NONE" }} tone="primary" />,
+    );
+    const onFill = container.querySelectorAll(".text-muted-foreground, .text-ink-3");
+    // The player row draws its own `bg-card` ground and is measured there; only
+    // what sits DIRECTLY on the bubble is the bubble's problem.
+    for (const el of onFill) expect(el.closest(".bg-card")).not.toBeNull();
   });
 
   /**

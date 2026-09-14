@@ -193,6 +193,83 @@ test("the waveform starts the clip — it is the target a hand reaches for", asy
   expect((await audioState(page)).error).toBeNull();
 });
 
+/**
+ * ── THE BAR MOVES WITHIN THE CLIP, NOT ONLY STARTS IT ───────────────────────
+ *
+ * The seek handler used to refuse to act unless `el.duration` was finite, and
+ * `MediaRecorder` writes a WebM with no duration in its header. Chromium
+ * recovers one by scanning the fully-buffered blob — which is why this test
+ * does NOT assert `Infinity`, an earlier draft did and was wrong — but WebKit
+ * does not, so on iOS that check swallowed every press of the biggest control
+ * in the bubble. The length now falls back to the `duration_ms` the recorder
+ * measured at capture time.
+ *
+ * SEEKING BACKWARDS is what is asserted, because it is the only movement
+ * playback cannot produce on its own: a clip that is merely still running can
+ * make `currentTime` go up at any moment, and never down.
+ */
+test("the bar seeks within the clip, not only into it", async ({ page }) => {
+  await chatWithRecording(page);
+  await recordAndSend(page);
+
+  const bar = page.getByRole("button", { name: /Play from a point in the voice note/ });
+  const box = (await bar.boundingBox())!;
+
+  // From the very start, so there is somewhere to come back to.
+  await page.mouse.click(box.x + 2, box.y + box.height / 2);
+  await expect
+    .poll(async () => (await audioState(page)).currentTime > 0.5, { timeout: 15_000 })
+    .toBe(true);
+
+  // Back to the beginning. Only a seek can do this.
+  await page.mouse.click(box.x + 2, box.y + box.height / 2);
+  await expect
+    .poll(async () => (await audioState(page)).currentTime < 0.4, { timeout: 15_000 })
+    .toBe(true);
+  expect((await audioState(page)).error).toBeNull();
+});
+
+/**
+ * ── THE PLAYER HAS A SIZE OF ITS OWN ────────────────────────────────────────
+ *
+ * The waveform is `flex-1` over bars that are themselves `flex-1`, so its
+ * intrinsic width is five 2px gaps. A bubble shrink-wraps to its widest child,
+ * and while the transcript sentence was always rendered THAT was the widest
+ * child — the bar was the right size by accident. Moving the transcript behind
+ * a button collapsed the player to a 10px stub, and only a browser has a
+ * layout to notice.
+ */
+test("the bar is the big target even when nothing else is in the bubble", async ({ page }) => {
+  await chatWithRecording(page);
+  await recordAndSend(page);
+
+  const bar = page.getByRole("button", { name: /Play from a point in the voice note/ });
+  const play = page.getByRole("button", { name: /Play voice note/ });
+  const barBox = (await bar.boundingBox())!;
+  const playBox = (await play.boundingBox())!;
+
+  expect(barBox.width).toBeGreaterThan(120);
+  expect(barBox.width * barBox.height).toBeGreaterThan(playBox.width * playBox.height);
+});
+
+/**
+ * The element is there before the bytes are, which is what lets the press that
+ * asks for them also `load()` inside the gesture. WebKit refuses a `play()`
+ * that is one network round trip removed from a tap, which is why voice notes
+ * never played on iOS — Safari or the installed PWA.
+ */
+test("the player element exists before anything has been fetched", async ({ page }) => {
+  await chatWithRecording(page);
+  await recordAndSend(page);
+
+  const before = await page.evaluate(() => {
+    const el = document.querySelector("audio");
+    return { present: !!el, src: el?.getAttribute("src") ?? null };
+  });
+  expect(before.present).toBe(true);
+  expect(before.src).toBeNull();
+});
+
 test("the play button plays the clip through to the end", async ({ page }) => {
   await chatWithRecording(page);
   await recordAndSend(page);

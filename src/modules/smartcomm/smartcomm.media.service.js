@@ -202,10 +202,12 @@ async function store(client, { groupId, file, isVoiceNote = false, durationMs = 
     duration_ms: Number.isFinite(Number(durationMs)) ? Math.round(Number(durationMs)) : null,
     waveform: cleanWaveform(waveform),
     is_voice_note: isVoiceNote === true,
-    // A voice note is queued for transcription the moment it lands; everything
-    // else has no text to find and says so rather than sitting on "pending"
-    // forever.
-    transcript_status: isVoiceNote === true ? "PENDING" : "NONE",
+    // NOTHING is queued. A voice note lands with no transcript and says so,
+    // because transcription is now something a READER asks for — see
+    // `transcribeVoiceNote`. "PENDING" here used to mean "a provider call is
+    // already in flight for this clip", and a row that says that when no call
+    // was ever made is a spinner nobody will ever come back to clear.
+    transcript_status: "NONE",
   });
 
   return {
@@ -225,21 +227,48 @@ async function store(client, { groupId, file, isVoiceNote = false, durationMs = 
 }
 
 /**
- * Transcribe a voice note, best-effort, after the message is already posted.
+ * Transcribe a voice note, WHEN SOMEBODY ASKS FOR IT.
  *
- * Deliberately NOT awaited by the upload: a provider that is slow, rate-limited
- * or unconfigured must never be the reason a voice note fails to send. The
- * clip is the message; the transcript is an improvement on it.
+ * ── WHY IT IS NOT DONE ON UPLOAD ANY MORE ─────────────────────────────────
+ *
+ * It used to fire, unawaited, the moment a clip landed: every voice note in
+ * every channel went to the provider whether anyone ever wanted the words or
+ * not. That is a per-clip bill and a per-clip copy of a private conversation
+ * leaving the tenant, paid on the guess that someone will read it. Most voice
+ * notes are listened to, once, by the two people in the thread.
+ *
+ * So the READER asks. `transcript_status` on a fresh clip is NONE, the bubble
+ * offers a Transcribe button, and this runs for the one clip that was pressed.
+ *
+ * The result IS stored, and that is deliberate rather than an oversight about
+ * caching: the second person to press the button in the same channel must get
+ * the same words as the first, and `certifiedExport` folds transcripts into the
+ * SHA-256'd record of the channel — a transcript that lived only in one
+ * reader's tab would be absent from the legal record of exactly the message
+ * format that has no text of its own.
  *
  * The three failure shapes stay distinguishable, because they need three
  * different sentences on screen:
- *   UNAVAILABLE — nobody has configured a provider. The operator's problem.
+ *   UNAVAILABLE — nobody has configured a provider. The operator's problem,
+ *                 and the client's cue to offer the browser's own recogniser.
  *   FAILED      — a provider answered badly, or the clip had no speech in it.
  *   DONE + ""   — it transcribed, and there were no words. Also DONE.
  */
-async function transcribeVoiceNote(client, mediaId) {
+async function transcribeVoiceNote(client, { mediaId, language = null, assertMember, actor = {} }) {
   const media = await repo.getMedia(client, mediaId);
-  if (!media || !media.is_voice_note) return null;
+  if (!media) throw new AppError("NOT_FOUND", "Attachment not found", 404);
+  // Membership, re-checked here for the same reason `bytes` re-checks it: an id
+  // that reaches a non-member must answer the same way as an id that does not
+  // exist. This one also SPENDS MONEY on the tenant's provider account, so a
+  // stranger being able to drive it is a bill as well as a disclosure.
+  if (assertMember) await assertMember(client, media.group_id, actor.user_id);
+  if (!media.is_voice_note) {
+    throw new AppError("NOT_A_VOICE_NOTE", "That attachment is not a voice note", 422);
+  }
+  // Already transcribed: hand back what the first reader's press produced
+  // rather than paying for the same clip again.
+  if (media.transcript_status === "DONE") return media;
+
   let audio;
   try {
     audio = await storage.get(media.storage_path);
@@ -248,7 +277,11 @@ async function transcribeVoiceNote(client, mediaId) {
     return repo.setMediaTranscript(client, mediaId, { transcript: null, status: "FAILED" });
   }
   try {
-    const { text } = await transcription.transcribe({ audio, mimeType: media.content_type });
+    const { text } = await transcription.transcribe({
+      audio,
+      mimeType: media.content_type,
+      language,
+    });
     return await repo.setMediaTranscript(client, mediaId, {
       transcript: String(text || "").trim() || null,
       status: "DONE",

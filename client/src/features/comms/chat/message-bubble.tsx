@@ -238,7 +238,14 @@ export function MessageBubble({
             <>
               {attachments.length > 0 && (
                 <div className={cn(message.body && "mb-1.5")}>
-                  <Attachments attachments={attachments} onPromote={promote} />
+                  <Attachments
+                    attachments={attachments}
+                    onPromote={promote}
+                    // The ground this bubble just painted. A child cannot see
+                    // it, and `--muted-foreground` on `bg-primary` is 1.01:1 in
+                    // dark mode — see `BubbleTone`.
+                    tone={mine ? "primary" : "surface"}
+                  />
                 </div>
               )}
               {message.body && <MessageText body={message.body} />}

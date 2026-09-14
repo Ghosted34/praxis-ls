@@ -91,6 +91,16 @@ const schemas = {
     doc_type: z.string().min(1).max(64).optional(),
     entity_ref: z.string().min(1).max(128).optional(),
   }).strict(),
+  /**
+   * "Transcribe this one" — the language hint, and nothing else.
+   *
+   * An enum rather than a free string: it is forwarded to the tenant's
+   * transcription vendor, and `.strict()` with two values is the difference
+   * between a hint and an open field going out of the building. Optional
+   * because a reader who has not chosen leaves the provider to detect it,
+   * which is the honest default when nobody said.
+   */
+  transcribe: z.object({ language: z.enum(["en", "fr"]).optional() }).strict(),
   quickReply: z.object({ label: z.string().trim().min(1).max(120), body: z.string().trim().min(1).max(10000) }).strict(),
   // API F-15: PATCH /quick-replies/:id reused the CREATE guard, which requires
   // both label and body — so a caller editing only the label had to resend the
@@ -101,4 +111,4 @@ const schemas = {
   emailConfig: z.object({ smtp_host: z.string().min(1).optional(), smtp_port: z.coerce.number().int().positive().optional(), smtp_user: z.string().optional(), smtp_pass: z.string().min(1).max(4000).optional(), from: z.string().optional(), reply_to: z.string().optional() }),
 };
 const mw = (k) => (req, _res, next) => { const p = schemas[k].safeParse(req.body); if (!p.success) return next(new AppError("VALIDATION_ERROR", "Invalid body", 422, p.error.flatten().fieldErrors)); req.body = p.data; return next(); };
-module.exports = { scheduled: mw("scheduled"), reschedule: mw("reschedule"), mediaUpload: mw("mediaUpload"), promote: mw("promote"), channel: mw("channel"), member: mw("member"), message: mw("message"), editMessage: mw("editMessage"), react: mw("react"), draft: mw("draft"), quickReply: mw("quickReply"), flag: mw("flag"), emailTest: mw("emailTest"), emailDnsCheck: mw("emailDnsCheck"), emailTestSend: mw("emailTestSend"), quickReplyPatch: mw("quickReplyPatch"), whatsappConfig: mw("whatsappConfig"), emailConfig: mw("emailConfig"), schemas };
+module.exports = { transcribe: mw("transcribe"), scheduled: mw("scheduled"), reschedule: mw("reschedule"), mediaUpload: mw("mediaUpload"), promote: mw("promote"), channel: mw("channel"), member: mw("member"), message: mw("message"), editMessage: mw("editMessage"), react: mw("react"), draft: mw("draft"), quickReply: mw("quickReply"), flag: mw("flag"), emailTest: mw("emailTest"), emailDnsCheck: mw("emailDnsCheck"), emailTestSend: mw("emailTestSend"), quickReplyPatch: mw("quickReplyPatch"), whatsappConfig: mw("whatsappConfig"), emailConfig: mw("emailConfig"), schemas };

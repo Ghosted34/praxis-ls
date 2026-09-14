@@ -389,7 +389,8 @@ function pillRules() {
 
 /* ── the matrix ───────────────────────────────────────────────────────────── */
 
-/** Plain text-on-opaque-surface pairs. [label, fg token, bg token, theme, min] */
+/** Plain text-on-opaque-surface pairs.
+ *  [label, fg token, bg token, theme, min, optional fg opacity] */
 const TEXT_PAIRS = [
   // The .micro caption — the audit's worst offender at 3.01:1 / 2.78:1.
   [".micro on --card (light)", "ink-3", "card", lightBody, AA_NORMAL],
@@ -529,6 +530,32 @@ const TEXT_PAIRS = [
  * three separate places in the tree already saying it should be carbon.
  */
 const APP_PAIRS = {
+  client: [
+    /*
+     * ── THE CHAT BUBBLE, WHICH IS A GROUND ONE COMPONENT PAINTS AND ANOTHER
+     *    WRITES ON ────────────────────────────────────────────────────────────
+     *
+     * `message-bubble.tsx` draws the sender's own messages `bg-primary`, and
+     * everything rendered inside inherits that ground: the timestamp and
+     * delivery ticks it draws itself, and — through `<Attachments>` — a voice
+     * note's status lines, its transcript controls and "Saved to the vault".
+     *
+     * Those were `--muted-foreground`, the token for secondary text on a
+     * SURFACE. On the brand fill it is 2.39:1 in light and **1.01:1 in dark**:
+     * not low contrast, invisible, and it shipped past a green run of this file
+     * because the ground came from one component and the ink from another and
+     * nothing paired them. Section 4 below derives pairs from class lists and
+     * still cannot see this one, because the two halves are in two files. So it
+     * is written down, which is what the hand-listed matrix is for.
+     *
+     * The two steps are the two the bubble actually uses: /80 for a status
+     * sentence, /70 for the timestamp row.
+     */
+    ["bubble status: --primary-foreground/80 on --primary (light)", "primary-foreground", "primary", lightBody, AA_NORMAL, 0.8],
+    ["bubble status: --primary-foreground/80 on --primary (dark)", "primary-foreground", "primary", darkBody, AA_NORMAL, 0.8],
+    ["bubble meta: --primary-foreground/70 on --primary (light)", "primary-foreground", "primary", lightBody, AA_NORMAL, 0.7],
+    ["bubble meta: --primary-foreground/70 on --primary (dark)", "primary-foreground", "primary", darkBody, AA_NORMAL, 0.7],
+  ],
   "public-web": [
     // The hero plate. `--hero` is its own ground token, not `--card`.
     ["--hero-foreground on --hero (light)", "hero-foreground", "hero", lightBody, AA_NORMAL],
@@ -592,16 +619,21 @@ console.warn(
 
 /* 1. plain text on opaque surfaces */
 console.warn("  Text on surface");
-for (const [label, fgName, bgName, body, min] of TEXT_PAIRS) {
-  const fg = token(body, fgName);
+for (const [label, fgName, bgName, body, min, fgOpacity] of TEXT_PAIRS) {
+  const declared = token(body, fgName);
   const bg = token(body, bgName);
-  if (!fg || !bg) {
+  if (!declared || !bg) {
     console.warn(
-      `    SKIP  ${label} — token not found (${!fg ? fgName : bgName})`,
+      `    SKIP  ${label} — token not found (${!declared ? fgName : bgName})`,
     );
     skipped++;
     continue;
   }
+  // The opacity a CALL SITE applies (`text-primary-foreground/80`) multiplies
+  // the token's own alpha. Measuring the pair without it measures a colour the
+  // screen never shows — and the /80 and /70 steps are where a pair that
+  // passes at full strength stops passing.
+  const fg = fgOpacity == null ? declared : { rgb: declared.rgb, a: declared.a * fgOpacity };
   // A translucent foreground (e.g. rgb(var(--ink) / 0.72)) is what the eye sees
   // composited, not what the declaration says.
   const ratio = contrast(over(fg, bg.rgb), bg.rgb);
@@ -824,6 +856,208 @@ if (inkViolations.length) {
   );
 } else {
   console.warn("    none — every foreground uses an ink token.");
+}
+
+/*
+ * 4. THE PAIRS THE JSX ACTUALLY DRAWS — derived, not listed.
+ *
+ * ── THE HOLE THIS CLOSES, AND THE HALF IT CANNOT ──────────────────────────
+ *
+ * A voice note drawn on the sender's own bubble printed its status lines in
+ * `--muted-foreground`. That bubble is `bg-primary`. The pair measures 2.39:1
+ * in light and **1.01:1 in dark** — not "low contrast", invisible — and it
+ * shipped past a green run of this file, because every pair above is a pair
+ * somebody thought to write down, and nobody writes down a combination they do
+ * not know exists.
+ *
+ * That is the third time in this file's history (F13's pills, Addendum 6's
+ * badge, now this): "a contrast pair nobody had measured because neither half
+ * was chosen against the other." Section 2 answered it for the status pills by
+ * PARSING them out of the stylesheet instead of enumerating them. This is the
+ * same answer for the class lists: every string literal in the app that looks
+ * like a Tailwind class list and names both a ground and an ink is measured as
+ * the pair it paints, in both themes, whether or not anyone remembered it.
+ *
+ * WHAT IT CANNOT SEE, stated plainly rather than implied by silence: the
+ * defect above was CROSS-COMPONENT. `message-bubble.tsx` painted the ground
+ * and `voice-note.tsx` chose the ink, and no regex over one file can pair
+ * them. The structural fix for that is the `tone` prop those two now pass, and
+ * it is pinned where a rendered tree can be inspected — see "does not draw
+ * surface-ink text on the brand fill" in `features/comms/chat/chat.test.tsx`.
+ * This section catches the same mistake made in ONE class list, which is the
+ * form it takes the rest of the time.
+ *
+ * ── WHY ONLY QUOTED, SINGLE-LINE LITERALS ─────────────────────────────────
+ *
+ * A class list is a quoted string on one line: `cn("rounded bg-primary …")`,
+ * and each branch of a `cond ? "…" : "…"` is its own literal, which is exactly
+ * the granularity wanted — the false branch's `bg-muted text-muted-foreground`
+ * must not be measured against the true branch's `bg-primary`. Template
+ * literals are deliberately skipped: their static segments carry no `bg-`
+ * worth pairing in this tree, and their interpolations ARE the quoted branches,
+ * already measured. The `CLASS_LIST` shape test is what keeps prose out — a
+ * sentence in a comment or a user-facing string can contain "bg-" and means
+ * nothing.
+ */
+const CLASS_LIST = /^[\w\s:/[\]().,%#+&>-]*$/;
+
+/**
+ * ── THE ONE EXEMPTION, AND WHY IT IS A WRITTEN MARKER ─────────────────────
+ *
+ * WCAG 2.1 §1.4.3 exempts "text that is part of an inactive user interface
+ * component" outright — a disabled control is SUPPOSED to be quieter than a
+ * live one, and holding its label to 4.5:1 would force the disabled state to
+ * look enabled, which is a worse outcome for the same user.
+ *
+ * It is a marker on the line rather than an allow-list of files, for the
+ * reason `ON_DARK_MARKER` above states at length: an exception a reviewer can
+ * see beats one a heuristic infers, and a file-level allowance cannot say
+ * WHICH branch of a ternary it excuses when the enabled branch is the line
+ * above. The reason is required and an empty one does not count.
+ *
+ *     : "bg-muted text-muted-foreground/60", // contrast-exempt: disabled control
+ */
+const CONTRAST_EXEMPT = /contrast-exempt:\s*\S[^\n]{5,}/;
+/**
+ * Unprefixed only. `hover:bg-x` changes the ground for a state whose ink is a
+ * separate question, and pairing the two is how a gate starts reporting
+ * combinations nobody paints.
+ *
+ * BOTH opacity notations are captured — `/70` and the arbitrary `/[0.06]` —
+ * and missing the second is not a detail: a regex that reads
+ * `bg-white/[0.04] … text-white` as OPAQUE white under white reports 1.00:1
+ * on a glass panel that is perfectly legible. Six of this section's first
+ * fourteen "failures" were that, which is how a gate loses its reader.
+ */
+const OPACITY = String.raw`(?:\/(?:(\d{1,3})|\[([\d.]+)\]))?`;
+const GROUND_RE = new RegExp(String.raw`(?<![\w:/-])bg-([a-z][a-z0-9-]*)${OPACITY}(?![\w-])`, "g");
+const INK_TEXT_RE = new RegExp(String.raw`(?<![\w:/-])text-([a-z][a-z0-9-]*)${OPACITY}(?![\w-])`, "g");
+
+/** `/70` → 0.7, `/[0.06]` → 0.06, absent → null (leave the token's own alpha). */
+function modifier(percent, fraction) {
+  if (percent != null) return Number(percent) / 100;
+  if (fraction != null) return Number(fraction);
+  return null;
+}
+
+/** The two raw colours Tailwind ships that are not tokens and are still real
+ *  ink. Everything else must resolve to a token or it is not a colour at all
+ *  (`text-sm`, `text-right`, `bg-transparent`). */
+const RAW = { white: [255, 255, 255], black: [0, 0, 0] };
+
+/** A class's colour in this theme, with its opacity modifier applied. */
+function classColour(name, opacity, body) {
+  const base = RAW[name] ? { rgb: RAW[name], a: 1 } : token(body, name);
+  if (!base) return null;
+  return { rgb: base.rgb, a: opacity == null ? base.a : base.a * opacity };
+}
+
+/** Every (ground, ink) pair a class-list literal paints, with where it is. */
+function drawnPairs() {
+  const out = [];
+  for (const file of sources()) {
+    if (!/\.tsx?$/.test(file)) continue;
+    const source = readFileSync(join(repoRoot, file), "utf8");
+    const rawLines = source.split("\n");
+    for (const m of source.matchAll(/"([^"\n]*)"|'([^'\n]*)'/g)) {
+      const lit = m[1] ?? m[2] ?? "";
+      if (!lit.includes("bg-") || !CLASS_LIST.test(lit)) continue;
+      const grounds = [...lit.matchAll(GROUND_RE)];
+      const inks = [...lit.matchAll(INK_TEXT_RE)];
+      if (!grounds.length || !inks.length) continue;
+      const line = source.slice(0, m.index).split("\n").length;
+      /*
+       * Read from the RAW text — the marker IS a comment, so stripping first
+       * would erase the very thing being looked for — and matched against the
+       * class list's line AND the four above it, because a reason worth giving
+       * rarely fits after a string in a `cn()` call. Four is the same window
+       * `ON_DARK_MARKER` uses, and keeping it small is what stops a marker
+       * drifting onto an unrelated line further down.
+       */
+      const window = rawLines.slice(Math.max(0, line - 5), line).join("\n");
+      if (CONTRAST_EXEMPT.test(window)) continue;
+      for (const g of grounds) {
+        for (const i of inks) {
+          out.push({
+            file: relative(APP, file).replace(/\\/g, "/"),
+            line,
+            ground: g[1],
+            groundAlpha: modifier(g[2], g[3]),
+            ink: i[1],
+            inkAlpha: modifier(i[2], i[3]),
+          });
+        }
+      }
+    }
+  }
+  return out;
+}
+
+const drawn = drawnPairs();
+/** Deduplicated by what is painted, so one pair used in ninety files is one
+ *  measurement and one line of output. The sites are kept for the report. */
+const drawnByPair = new Map();
+for (const d of drawn) {
+  const key = `bg-${d.ground}${d.groundAlpha == null ? "" : `/${d.groundAlpha}`} + text-${d.ink}${d.inkAlpha == null ? "" : `/${d.inkAlpha}`}`;
+  if (!drawnByPair.has(key)) drawnByPair.set(key, { ...d, sites: [] });
+  drawnByPair.get(key).sites.push(`${d.file}:${d.line}`);
+}
+
+let drawnMeasured = 0;
+const drawnFailures = [];
+for (const [key, d] of drawnByPair) {
+  for (const [themeName, body] of THEMES) {
+    const ink = classColour(d.ink, d.inkAlpha, body);
+    const groundColour = classColour(d.ground, d.groundAlpha, body);
+    // Not a colour pair at all (`text-sm`, `bg-transparent`, an arbitrary
+    // value). Silently skipped and NOT counted as a skip: unlike the hand-
+    // listed matrix, where an unresolvable token means the list is stale, here
+    // it means the regex matched a utility that was never a colour.
+    if (!ink || !groundColour) continue;
+    /*
+     * ── ONLY AN OPAQUE GROUND IS MEASURED, AND THAT IS NOT LAZINESS ────────
+     *
+     * A translucent ground is a tint over a surface this line does not name.
+     * `pin-input.tsx` paints `bg-white/[0.04]` — over `--card` that is white on
+     * white and over the auth screen's photographic plate, where it actually
+     * lives, it is a glass chip that reads perfectly. Assuming `--card` would
+     * report a failure nobody can reproduce, which costs a gate its credibility
+     * faster than a miss does (this file's own words, about the deliberately
+     * unmerged `prefers-color-scheme` block).
+     *
+     * The tinted case is not unmeasured everywhere: section 2 composites every
+     * `.st-*` pill over BOTH surfaces, because a pill's ground IS declared in
+     * the stylesheet. What cannot be read off a class list is left alone.
+     */
+    if (groundColour.a < 1) continue;
+    const ground = groundColour.rgb;
+    const ratio = contrast(over(ink, ground), ground);
+    drawnMeasured++;
+    if (ratio < AA_NORMAL) {
+      drawnFailures.push({ key, themeName, ratio, sites: d.sites });
+    }
+  }
+}
+
+console.warn(
+  `\n  Pairs the JSX draws — ${drawnByPair.size} distinct class pairing(s), ${drawnMeasured} measurement(s)`,
+);
+if (drawnFailures.length) {
+  failed += drawnFailures.length;
+  console.error("");
+  for (const f of drawnFailures) {
+    console.error(`    FAIL  ${f.ratio.toFixed(2).padStart(5)}:1  (min ${AA_NORMAL})  ${f.key} (${f.themeName})`);
+    for (const site of f.sites.slice(0, 6)) console.error(`      ${site}`);
+    if (f.sites.length > 6) console.error(`      …and ${f.sites.length - 6} more`);
+  }
+  console.error(
+    "\n    An ink token chosen for one ground and painted on another. The ground\n" +
+      "    is in the same class list as the ink, so this is readable from the\n" +
+      "    line itself — pick the ink that belongs to the ground, or move the\n" +
+      "    text off the fill.\n",
+  );
+} else {
+  console.warn("    none — every ground/ink pairing in a class list clears AA.");
 }
 
 /* ── report ───────────────────────────────────────────────────────────────── */

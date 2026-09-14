@@ -238,9 +238,14 @@ describe("ERP references resolve against the READER, not the sender", () => {
   });
 });
 
-describe("voice note transcription — three failures that need three sentences", () => {
+describe("voice note transcription — asked for, and three failures that need three sentences", () => {
   const mediaId = "m-1";
-  const row = { media_id: mediaId, is_voice_note: true, content_type: "audio/webm", storage_path: "k" };
+  const row = {
+    media_id: mediaId, group_id: "g-1", is_voice_note: true,
+    content_type: "audio/webm", storage_path: "k", transcript_status: "NONE",
+  };
+  /** Every call goes through the same argument shape the route uses. */
+  const ask = (svc, extra = {}) => svc.transcribeVoiceNote({}, { mediaId, ...extra });
 
   function withMocks({ storageGet, transcribe }) {
     jest.resetModules();
@@ -261,7 +266,7 @@ describe("voice note transcription — three failures that need three sentences"
       storageGet: async () => Buffer.from("clip"),
       transcribe: async () => ({ text: "  Ship it tomorrow  " }),
     });
-    await svc.transcribeVoiceNote({}, mediaId);
+    await ask(svc);
     expect(setTranscript).toHaveBeenCalledWith({}, mediaId, {
       transcript: "Ship it tomorrow",
       status: "DONE",
@@ -273,7 +278,7 @@ describe("voice note transcription — three failures that need three sentences"
       storageGet: async () => Buffer.from("clip"),
       transcribe: async () => ({ text: "   " }),
     });
-    await svc.transcribeVoiceNote({}, mediaId);
+    await ask(svc);
     expect(setTranscript).toHaveBeenCalledWith({}, mediaId, { transcript: null, status: "DONE" });
   });
 
@@ -284,7 +289,7 @@ describe("voice note transcription — three failures that need three sentences"
       storageGet: async () => Buffer.from("clip"),
       transcribe: async () => { throw new Error("voice transcription provider not configured (Groq/Whisper key missing)"); },
     });
-    await svc.transcribeVoiceNote({}, mediaId);
+    await ask(svc);
     expect(setTranscript).toHaveBeenCalledWith({}, mediaId, { transcript: null, status: "UNAVAILABLE" });
   });
 
@@ -293,7 +298,7 @@ describe("voice note transcription — three failures that need three sentences"
       storageGet: async () => Buffer.from("clip"),
       transcribe: async () => { throw new Error("502 upstream"); },
     });
-    await svc.transcribeVoiceNote({}, mediaId);
+    await ask(svc);
     expect(setTranscript).toHaveBeenCalledWith({}, mediaId, { transcript: null, status: "FAILED" });
   });
 
@@ -302,7 +307,96 @@ describe("voice note transcription — three failures that need three sentences"
       storageGet: async () => { throw new Error("storage down"); },
       transcribe: async () => ({ text: "unused" }),
     });
-    await expect(svc.transcribeVoiceNote({}, mediaId)).resolves.not.toThrow();
+    await expect(ask(svc)).resolves.not.toThrow();
+  });
+
+  /**
+   * ── THE READER'S LANGUAGE REACHES THE PROVIDER ───────────────────────────
+   *
+   * Whisper detects the language itself and is good at it on a clean
+   * thirty-second clip. On a five-second one with a forklift behind it its
+   * failure mode is not an error but a fluent TRANSLATION into whatever it
+   * guessed — a confident English instruction nobody gave. The hint is the
+   * cheapest defence there is, so it must not be dropped on the way down.
+   */
+  it("passes the reader's language down to the provider", async () => {
+    const calls = [];
+    const { svc } = withMocks({
+      storageGet: async () => Buffer.from("clip"),
+      transcribe: async (args) => { calls.push(args); return { text: "deux conteneurs" }; },
+    });
+    await ask(svc, { language: "fr" });
+    expect(calls[0]).toMatchObject({ language: "fr", mimeType: "audio/webm" });
+  });
+
+  /**
+   * ── MEMBERSHIP, AND WHY IT IS STRICTER HERE THAN ON A READ ───────────────
+   *
+   * An id that reaches a non-member must answer the same way as an id that
+   * does not exist. This endpoint also SPENDS MONEY on the tenant's provider
+   * account, so a stranger driving it is a bill as well as a disclosure.
+   */
+  it("refuses a caller who is not in the channel, before spending anything", async () => {
+    let transcribed = false;
+    const { svc } = withMocks({
+      storageGet: async () => Buffer.from("clip"),
+      transcribe: async () => { transcribed = true; return { text: "secret" }; },
+    });
+    const assertMember = async () => { throw new Error("not a member"); };
+    await expect(ask(svc, { assertMember, actor: { user_id: "u-9" } })).rejects.toThrow("not a member");
+    expect(transcribed).toBe(false);
+  });
+
+  /**
+   * ── THE SECOND READER PAYS NOTHING ───────────────────────────────────────
+   *
+   * The words are stored and published to the channel precisely so that the
+   * next person to press the button reads the same sentence without a second
+   * provider call. A cache that re-fetches is not a cache.
+   */
+  it("hands back what the first press produced rather than paying twice", async () => {
+    const done = { ...row, transcript_status: "DONE", transcript: "Ship it tomorrow" };
+    let calls = 0;
+    jest.resetModules();
+    jest.doMock("../../src/services/storage.service", () => ({ get: jest.fn(), put: jest.fn() }));
+    jest.doMock("../../src/services/ai/transcription.service", () => ({
+      transcribe: async () => { calls++; return { text: "again" }; },
+    }));
+    const repo = require("../../src/modules/smartcomm/smartcomm.repo");
+    jest.spyOn(repo, "getMedia").mockResolvedValue(done);
+    const svc = require("../../src/modules/smartcomm/smartcomm.media.service");
+    await expect(ask(svc)).resolves.toMatchObject({ transcript: "Ship it tomorrow" });
+    expect(calls).toBe(0);
+  });
+
+  /**
+   * ── AND NOTHING IS TRANSCRIBED ON THE WAY IN ─────────────────────────────
+   *
+   * Every clip used to go to the provider the moment it landed, unasked: a
+   * bill per clip and a copy of a private conversation leaving the tenant, paid
+   * on the guess that somebody would read it. A fresh row says NONE, which is
+   * what makes the reader's button the only door.
+   */
+  it("stores a new voice note with no transcript and no pending call", async () => {
+    jest.resetModules();
+    jest.doMock("../../src/services/storage.service", () => ({
+      get: jest.fn(), put: jest.fn(async () => ({})),
+    }));
+    jest.doMock("../../src/services/ai/transcription.service", () => ({
+      transcribe: async () => { throw new Error("must not be called on upload"); },
+    }));
+    const repo = require("../../src/modules/smartcomm/smartcomm.repo");
+    const insert = jest.spyOn(repo, "insertMedia").mockImplementation(async (_c, r) => ({ ...r, media_id: "new" }));
+    const svc = require("../../src/modules/smartcomm/smartcomm.media.service");
+    await svc.store({}, {
+      groupId: "g-1",
+      file: { buffer: Buffer.from("clip"), mimetype: "audio/webm", originalname: "voice-note.webm" },
+      isVoiceNote: true,
+      durationMs: 3000,
+      slug: "acme",
+      actor: { user_id: null },
+    });
+    expect(insert.mock.calls[0][1]).toMatchObject({ is_voice_note: true, transcript_status: "NONE" });
   });
 });
 

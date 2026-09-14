@@ -28,7 +28,16 @@ jest.mock("../../src/services/platform/db", () => {
   const tenants = new Map();
   const auditLog = [];
   let seq = 0;
-  const uid = (p) => `${p}_${(seq += 1)}`;
+  // UUID-SHAPED, NOT `t_1`. Every id column here is `uuid DEFAULT
+  // gen_random_uuid()`, and the API validators reject anything that is not a
+  // UUID — so an id this mock hands back has to survive `z.string().uuid()`
+  // for a test to be able to send it through a real validated route. The
+  // prefix letter is kept in the first block so a failure is still readable.
+  const uid = (p) => {
+    seq += 1;
+    const tag = p.charCodeAt(0).toString(16).padStart(2, "0");
+    return `000000${tag}-0000-4000-8000-${String(seq).padStart(12, "0")}`;
+  };
 
   const query = jest.fn(async (sql, params = []) => {
     /* ── platform.support_ticket ── */
@@ -230,6 +239,14 @@ const registry = require("../../src/services/tenant/registry.service");
 const notifications = require("../../src/modules/notification/notification.service");
 const tenantSvc = require("../../src/modules/dashboard/support/support.service");
 const platformSvc = require("../../src/services/platform/support.service");
+// The WIRE seam: the real Zod validators and the real controllers, so a test
+// exercises the same key spellings an HTTP request does. Every other test in
+// this file calls the services directly, which is exactly why the
+// validator→service key mismatch below survived a green suite.
+const tenantValidator = require("../../src/modules/dashboard/support/support.validator");
+const tenantCtrl = require("../../src/modules/dashboard/support/support.controller");
+const platformValidator = require("../../src/modules/platform/platform.validator");
+const platformCtrl = require("../../src/modules/platform/platform.controller");
 
 const TENANT_A = "tenant_a";
 const TENANT_B = "tenant_b";
@@ -412,5 +429,155 @@ describe("platform side — the answer, the note, the notification", () => {
     const detail = await platformSvc.get(t.ticket_id);
     expect(detail.replies).toHaveLength(1);
     expect(detail.replies[0].is_internal).toBe(true);
+  });
+});
+
+/**
+ * THE WIRE SEAM — validator → controller → service.
+ *
+ * Everything above calls the services directly, in the services' own spelling
+ * (`attachmentIds`, `isInternal`). An HTTP request does not: it arrives in the
+ * wire spelling (`attachment_ids`, `internal`), goes through a Zod schema that
+ * STRIPS UNKNOWN KEYS, and only then reaches the service. If the two spellings
+ * disagree and nothing translates, the service silently reads `undefined` and
+ * falls back to its default — with every unit test above still green.
+ *
+ * That is not a hypothetical. Both of these shipped broken:
+ *   · `attachment_ids` never became `attachmentIds`, so `linkAttachments`
+ *     returned at its first line and every screenshot a tenant attached was
+ *     uploaded, shown at 100%, linked to nothing, and reaped six hours later;
+ *   · `internal` never became `isInternal`, so a Praxis operator's internal
+ *     note was written as a PUBLIC reply and then pushed to the tenant by
+ *     in-app, email and push — while the console said "Internal note added".
+ *
+ * These tests drive the real validator and the real controller so the seam
+ * itself is covered. If someone re-spreads `req.body` into a service call,
+ * they fail here.
+ */
+describe("the wire seam — validator and controller key mapping", () => {
+  /** Run the real validator middleware; throw whatever it passes to next(). */
+  function validate(mod, key, body) {
+    const req = { body };
+    let failure = null;
+    mod.validate(key)(req, null, (e) => { if (e) failure = e; });
+    if (failure) throw failure;
+    return req;
+  }
+
+  /** Minimal express `res` — enough for the handlers under test. */
+  function fakeRes() {
+    const res = {
+      statusCode: 200,
+      body: null,
+      status(c) { this.statusCode = c; return this; },
+      json(p) { this.body = p; return this; },
+    };
+    return res;
+  }
+
+  async function callTenant(handler, req) {
+    const res = fakeRes();
+    await handler(req, res, (e) => { if (e) throw e; });
+    return res;
+  }
+
+  test("tenant create: `attachment_ids` off the wire actually links the screenshot", async () => {
+    const up = await tenantSvc.upload(TENANT_A, "ops@alpha.com", IMG);
+    expect(db.__attachments.get(up.attachment_id).ticket_id).toBeNull();
+
+    const req = validate(tenantValidator, "create", {
+      kind: "BUG",
+      title: "Export is broken",
+      body: "see the screenshot",
+      attachment_ids: [up.attachment_id],
+    });
+    req.tenant = { tenant_id: TENANT_A };
+    req.user = { email: "ops@alpha.com" };
+
+    const res = await callTenant(tenantCtrl.create, req);
+    expect(res.statusCode).toBe(201);
+    const ticketId = res.body.data.ticket_id;
+    expect(db.__attachments.get(up.attachment_id).ticket_id).toBe(ticketId);
+  });
+
+  test("tenant reply: `attachment_ids` off the wire links to the reply", async () => {
+    const t = seedTicket({ status: "IN_PROGRESS" });
+    const up = await tenantSvc.upload(TENANT_A, "ops@alpha.com", IMG);
+
+    const req = validate(tenantValidator, "reply", {
+      body: "here is what it looks like now",
+      attachment_ids: [up.attachment_id],
+    });
+    req.tenant = { tenant_id: TENANT_A };
+    req.user = { email: "ops@alpha.com" };
+    req.params = { id: t.ticket_id };
+
+    const res = await callTenant(tenantCtrl.reply, req);
+    const replyId = res.body.data.reply_id;
+    const linked = db.__attachments.get(up.attachment_id);
+    expect(linked.reply_id).toBe(replyId);
+    expect(linked.ticket_id).toBe(t.ticket_id);
+  });
+
+  test("console reply: `internal: true` off the wire stays internal and notifies nobody", async () => {
+    const t = seedTicket({ email: "ops@alpha.com" });
+    registry.resolveBySlug.mockResolvedValue({ tenant_id: TENANT_A, slug: "alpha" });
+
+    const req = validate(platformValidator, "ticketReply", {
+      body: "broker says red channel, do not tell the tenant yet",
+      internal: true,
+    });
+    req.params = { id: t.ticket_id };
+    req.platformUser = { platform_user_id: "pu_1", full_name: "Triager", email: "triage@praxis.local" };
+
+    const res = await callTenant(platformCtrl.supportReply, req);
+    expect(res.statusCode).toBe(201);
+    expect(res.body.data.is_internal).toBe(true);
+    expect([...db.__replies.values()][0].is_internal).toBe(true);
+    // The whole point: no in-app row, no email, no push.
+    expect(notifications.notify).not.toHaveBeenCalled();
+    expect(db.__audit[0][4]).toEqual({ internal: true });
+  });
+
+  test("console reply: a public reply off the wire still notifies the raiser", async () => {
+    const t = seedTicket({ email: "ops@alpha.com" });
+    registry.resolveBySlug.mockResolvedValue({ tenant_id: TENANT_A, slug: "alpha" });
+    registry.withTenantConnection.mockImplementation(async (_meta, _env, fn) =>
+      fn({
+        query: jest.fn(async (sql) =>
+          sql.includes("FROM app_user")
+            ? { rows: [{ user_id: "u1", full_name: "Ops Person" }] }
+            : { rows: [] },
+        ),
+      }),
+    );
+
+    const req = validate(platformValidator, "ticketReply", {
+      body: "Clear your cache, then export again.",
+      internal: false,
+    });
+    req.params = { id: t.ticket_id };
+    req.platformUser = { platform_user_id: "pu_1", full_name: "Triager", email: "triage@praxis.local" };
+
+    const res = await callTenant(platformCtrl.supportReply, req);
+    expect(res.body.data.is_internal).toBe(false);
+    expect(res.body.data.author_label).toBe("Triager");
+    expect(notifications.notify).toHaveBeenCalledTimes(1);
+  });
+
+  test("console reply: `attachment_ids` off the wire links to the reply", async () => {
+    const t = seedTicket({ email: null }); // no raiser → no notification path
+    const up = await platformSvc.uploadAttachment(t.ticket_id, IMG, "triage@praxis.local");
+    expect(db.__attachments.get(up.attachment_id).reply_id).toBeNull();
+
+    const req = validate(platformValidator, "ticketReply", {
+      body: "Here is the setting to change.",
+      attachment_ids: [up.attachment_id],
+    });
+    req.params = { id: t.ticket_id };
+    req.platformUser = { platform_user_id: "pu_1", full_name: "Triager", email: "triage@praxis.local" };
+
+    const res = await callTenant(platformCtrl.supportReply, req);
+    expect(db.__attachments.get(up.attachment_id).reply_id).toBe(res.body.data.reply_id);
   });
 });

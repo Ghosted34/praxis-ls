@@ -241,11 +241,25 @@ const supportSetStatus = asyncHandler(async (req, res) =>
 // The console ANSWERS (0105): a reply in the thread, an internal-only note, or
 // a screenshot attached to the ticket for the tenant to see. A public reply
 // also notifies the raiser — in-app, email, push — from the service.
+//
+// THE FLAG IS RENAMED HERE, DELIBERATELY AND EXPLICITLY. The wire (and the Zod
+// schema) says `internal` and `attachment_ids`; the service reads `isInternal`
+// and `attachmentIds`. Spreading `req.body` looks like it carries them and does
+// not: Zod strips unknown keys, so the service fell back to its
+// `isInternal = false` default on EVERY reply. An operator ticking "internal
+// note" — "broker says red channel, don't tell the tenant yet" — wrote a PUBLIC
+// row and then notified the tenant by in-app, email and push, while the console
+// said "Internal note added". Never re-spread `req.body` into this call.
 const supportReply = asyncHandler(async (req, res) =>
   res.status(201).json({
     data: await support.reply(
       req.params.id,
-      { ...req.body, authorLabel: req.platformUser ? req.platformUser.full_name || req.platformUser.email : null },
+      {
+        body: req.body.body,
+        isInternal: req.body.internal === true,
+        attachmentIds: req.body.attachment_ids || [],
+        authorLabel: req.platformUser ? req.platformUser.full_name || req.platformUser.email : null,
+      },
       actor(req),
     ),
   }),

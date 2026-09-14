@@ -8,9 +8,33 @@ const { asyncHandler } = require("../../../utils/errors");
 const tenantId = (req) => req.tenant.tenant_id;
 const email = (req) => (req.user ? req.user.email : null);
 
+/**
+ * The wire says `attachment_ids`; the service reads `attachmentIds`. This
+ * controller is the one seam that translates between the two, and it has to do
+ * it EXPLICITLY rather than by handing `req.body` straight through.
+ *
+ * Zod strips unknown keys, so a service that destructures a spelling the
+ * validator does not emit gets `undefined` and silently does nothing. That is
+ * not hypothetical: passing `req.body` through meant `attachmentIds` was always
+ * undefined, `linkAttachments` returned at its first line, and every screenshot
+ * a tenant attached to a ticket or a reply uploaded fine, showed 100%, was
+ * never linked to anything, and was deleted six hours later by the orphan
+ * sweep. Green tests throughout — they called the service directly, in its own
+ * spelling, so nothing ever crossed this seam.
+ */
+const attachmentIds = (req) => req.body.attachment_ids || [];
+
 module.exports = {
   create: asyncHandler(async (req, res) =>
-    res.status(201).json({ data: await service.create(tenantId(req), email(req), req.body) }),
+    res.status(201).json({
+      data: await service.create(tenantId(req), email(req), {
+        kind: req.body.kind,
+        title: req.body.title,
+        body: req.body.body,
+        context: req.body.context,
+        attachmentIds: attachmentIds(req),
+      }),
+    }),
   ),
   list: asyncHandler(async (req, res) =>
     res.json({ data: await service.list(tenantId(req), { status: req.query.status }) }),
@@ -20,7 +44,10 @@ module.exports = {
   ),
   reply: asyncHandler(async (req, res) =>
     res.status(201).json({
-      data: await service.reply(tenantId(req), email(req), req.params.id, req.body),
+      data: await service.reply(tenantId(req), email(req), req.params.id, {
+        body: req.body.body,
+        attachmentIds: attachmentIds(req),
+      }),
     }),
   ),
   csat: asyncHandler(async (req, res) =>

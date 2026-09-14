@@ -558,6 +558,16 @@ jobs:
       - name: Migrate the platform database
         run: node scripts/db/migrate-platform.js
 
+      - name: Every ticket kind the API accepts, the database accepts
+        # 0105 widened support_ticket.kind to nine kinds by dropping the old
+        # CHECK under a name Postgres had never given it, so the DROP skipped
+        # and the table kept BOTH constraints. Two CHECKs are ANDed, the
+        # effective set stayed three, and raising an URGENT ticket 23514'd in
+        # production with every gate green. Reading pg_constraint would not
+        # have caught it — there WAS a correct nine-kind constraint; a stale
+        # one sat beside it. Only writing a row tests what the column enforces.
+        run: node scripts/db/probe-support-kinds.js
+
       - name: Provision a tenant from nothing
         # Exercises create-database + live/sandbox migrate + seed + register.
         # This is the path a new customer takes, and it has never run in CI.

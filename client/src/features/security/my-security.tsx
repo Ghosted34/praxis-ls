@@ -15,6 +15,7 @@ import { FilePicker } from "@/components/ui/image-upload";
 import { UploadProgress } from "@/components/ui/upload-progress";
 import { useUpload } from "@/lib/use-upload";
 import { fileToDataUrl } from "@/lib/image-compress";
+import { PIN_LENGTH } from "@/components/ui/pin-input";
 import { pinStore } from "@/lib/pin-store";
 import {
   changePassword,
@@ -208,8 +209,8 @@ export function MySecurityPage() {
 
   async function onRegister(e: React.FormEvent) {
     e.preventDefault();
-    if (!/^\d{4,8}$/.test(pin)) {
-      setPinMsg({ kind: "err", text: "PIN must be 4–8 digits." });
+    if (!new RegExp(`^\\d{${PIN_LENGTH}}$`).test(pin)) {
+      setPinMsg({ kind: "err", text: `PIN must be ${PIN_LENGTH} digits.` });
       return;
     }
     setPinBusy(true);
@@ -526,14 +527,14 @@ export function MySecurityPage() {
           >
             <form onSubmit={onRegister} className="flex flex-col gap-3">
               <div className="grid gap-3 sm:grid-cols-2">
-                <Field label="New PIN (4–8 digits)">
+                <Field label={`New PIN (${PIN_LENGTH} digits)`}>
                   <Input
                     type="password"
                     inputMode="numeric"
                     autoComplete="off"
                     value={pin}
                     onChange={(e) =>
-                      setPin(e.target.value.replace(/\D/g, "").slice(0, 8))
+                      setPin(e.target.value.replace(/\D/g, "").slice(0, PIN_LENGTH))
                     }
                     placeholder="••••"
                   />

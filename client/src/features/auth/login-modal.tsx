@@ -22,9 +22,11 @@ import { useAuth } from "@/app/auth/auth-context";
 import { useBranding } from "@/app/branding/branding-context";
 import { ApiError, tenant } from "@/lib/api-client";
 import { OtpInput } from "@/components/ui/otp-input";
-import { PinInput, PinKeypad } from "@/components/ui/pin-input";
+import { PIN_LENGTH, PinInput, PinKeypad } from "@/components/ui/pin-input";
 import { lastSessionStore } from "@/lib/last-session";
+import { passkeyOfferStore } from "@/lib/passkey-offer";
 import { pinStore } from "@/lib/pin-store";
+import { listPasskeys, registerPasskey } from "@/lib/webauthn";
 import {
   MailIcon,
   LockIcon,
@@ -38,7 +40,7 @@ import {
 } from "@/components/ui/icons";
 
 type Tab = "password" | "pin";
-type Stage = "credentials" | "twofa" | "forgot" | "forgot-sent";
+type Stage = "credentials" | "twofa" | "forgot" | "forgot-sent" | "offer-passkey";
 
 function FingerprintIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
@@ -60,11 +62,19 @@ export function LoginModal({ onClose }: { onClose: () => void }) {
   const location = useLocation();
   const from = (location.state as { from?: string } | null)?.from || "/";
 
-  const [tab, setTab] = React.useState<Tab>("password");
-  const [stage, setStage] = React.useState<Stage>("credentials");
-
   // Last-session: single remembered identity, prefill both tabs.
   const [lastSession, setLastSession] = React.useState(() => lastSessionStore.get());
+
+  // Open on the fastest route this DEVICE can actually complete. A PIN is
+  // device-bound, so a remembered email is not on its own enough — pinStore
+  // says whether this browser is one the PIN was enrolled on. Without that
+  // second half the modal would open on a tab whose only outcome is
+  // "PIN works only on a device where you enabled it".
+  const [tab, setTab] = React.useState<Tab>(() => {
+    const remembered = lastSessionStore.get()?.email;
+    return remembered && pinStore.get(remembered) ? "pin" : "password";
+  });
+  const [stage, setStage] = React.useState<Stage>("credentials");
   const initialEmail = lastSession?.email ?? "";
   const [email, setEmail] = React.useState(initialEmail);
   // Quick PIN read-only mode: when we have a remembered email, lock the field
@@ -85,6 +95,14 @@ export function LoginModal({ onClose }: { onClose: () => void }) {
   const [passkeyError, setPasskeyError] = React.useState<string | null>(null);
   const [passkeySupported, setPasskeySupported] = React.useState<boolean | null>(null);
 
+  const [offerBusy, setOfferBusy] = React.useState(false);
+  const [offerError, setOfferError] = React.useState<string | null>(null);
+
+  // The Escape listener is bound once, so it reads `dismiss` through a ref
+  // rather than capturing the first render's copy — which would still be the
+  // one that ignores the passkey-offer stage.
+  const dismissRef = React.useRef<() => void>(() => onClose());
+
   const emailRef = React.useRef<HTMLInputElement>(null);
   const pinEmailRef = React.useRef<HTMLInputElement>(null);
 
@@ -97,7 +115,7 @@ export function LoginModal({ onClose }: { onClose: () => void }) {
   }, [tab, pinEditingEmail, stage]);
 
   React.useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && dismissRef.current();
     document.addEventListener("keydown", onKey);
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -170,7 +188,7 @@ export function LoginModal({ onClose }: { onClose: () => void }) {
       else {
         // Persist last-session immediately (auth-context also does, but this covers pending_2fa skip)
         setLastSession(lastSessionStore.get());
-        navigate(from, { replace: true });
+        await finishSignIn(email.trim().toLowerCase());
       }
     } catch (err) {
       setError(friendly(err));
@@ -185,7 +203,7 @@ export function LoginModal({ onClose }: { onClose: () => void }) {
     try {
       await verify2fa(value.trim());
       setLastSession(lastSessionStore.get());
-      navigate(from, { replace: true });
+      await finishSignIn((lastSessionStore.get()?.email || email.trim()).toLowerCase());
     } catch (err) {
       setError(friendly(err));
       setCode("");
@@ -220,8 +238,8 @@ export function LoginModal({ onClose }: { onClose: () => void }) {
       setError("Enter your email first.");
       return;
     }
-    if (pin.length < 4) {
-      setError("PIN must be 4–8 digits.");
+    if (pin.length !== PIN_LENGTH) {
+      setError(`PIN must be ${PIN_LENGTH} digits.`);
       return;
     }
     setBusy(true);
@@ -230,13 +248,74 @@ export function LoginModal({ onClose }: { onClose: () => void }) {
     try {
       await pinLogin(targetEmail, pin);
       setLastSession(lastSessionStore.get());
-      navigate(from, { replace: true });
+      await finishSignIn(targetEmail.toLowerCase());
     } catch (err) {
       setError(friendly(err));
       setPin("");
     } finally {
       setBusy(false);
     }
+  }
+
+  /**
+   * Last step of every password/PIN sign-in. A passkey is the one credential
+   * that cannot be phished or reused, and the moment just after someone proves
+   * who they are is the only moment they are both authenticated (the register
+   * routes need it) and still thinking about signing in.
+   *
+   * It asks once per identity per device and never blocks the way in: no
+   * support, already enrolled, previously declined, or an unreachable list all
+   * fall through to the app. `listPasskeys` is settled rather than caught so a
+   * failed lookup is an explicit outcome instead of a swallowed one.
+   */
+  async function finishSignIn(signedInEmail: string) {
+    const go = () => navigate(from, { replace: true });
+    if (!passkeySupported || !signedInEmail || passkeyOfferStore.declined(signedInEmail)) return go();
+    const [existing] = await Promise.allSettled([listPasskeys()]);
+    if (existing.status === "fulfilled" && existing.value.length === 0) {
+      setStage("offer-passkey");
+      return;
+    }
+    go();
+  }
+
+  async function onAddPasskeyNow() {
+    setOfferBusy(true);
+    setOfferError(null);
+    try {
+      await registerPasskey(null);
+      navigate(from, { replace: true });
+    } catch (err: any) {
+      // A cancelled Face ID / Touch ID prompt is an answer, not a fault.
+      if (err && (err.name === "NotAllowedError" || err.code === "NOT_ALLOWED")) {
+        setOfferError("Passkey setup was cancelled. You can add one any time in My security.");
+      } else {
+        setOfferError(friendly(err));
+      }
+    } finally {
+      setOfferBusy(false);
+    }
+  }
+
+  /**
+   * Closing at the passkey offer is not closing a sign-in — that already
+   * succeeded — so it means "not now" and has to land them in the app. Wiring
+   * the X, the backdrop and Escape to a bare onClose there would drop an
+   * authenticated user back onto the signed-out page.
+   */
+  function dismiss() {
+    if (stage === "offer-passkey") onSkipPasskey();
+    else onClose();
+  }
+
+  React.useEffect(() => {
+    dismissRef.current = dismiss;
+  });
+
+  function onSkipPasskey() {
+    const e = (lastSessionStore.get()?.email || email.trim()).toLowerCase();
+    if (e) passkeyOfferStore.decline(e);
+    navigate(from, { replace: true });
   }
 
   async function onPasskey() {
@@ -283,14 +362,14 @@ export function LoginModal({ onClose }: { onClose: () => void }) {
       role="dialog"
       aria-modal="true"
       aria-label="Sign in"
-      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+      onMouseDown={(e) => e.target === e.currentTarget && dismiss()}
     >
       <div className="login-card">
         <button
           type="button"
           className="login-close"
           aria-label={tr("Close")}
-          onClick={onClose}
+          onClick={dismiss}
         >
           <XIcon />
         </button>
@@ -304,7 +383,9 @@ export function LoginModal({ onClose }: { onClose: () => void }) {
               ? "Reset your password"
               : stage === "forgot-sent"
                 ? "Check your inbox"
-                : "Sign in to your command center."}
+                : stage === "offer-passkey"
+                  ? "One last thing"
+                  : "Sign in to your command center."}
         </p>
 
         {stage === "credentials" && (
@@ -509,7 +590,7 @@ export function LoginModal({ onClose }: { onClose: () => void }) {
             <div className="flex flex-col gap-3">
               <div className="flex items-center justify-between">
                 <span className="login-label">Quick PIN</span>
-                {!isPinLocked && <span className="text-[11px] text-white/35">Device-bound • 4–8 digits</span>}
+                {!isPinLocked && <span className="text-[11px] text-white/35">Device-bound • {PIN_LENGTH} digits</span>}
               </div>
 
               <PinInput
@@ -543,7 +624,7 @@ export function LoginModal({ onClose }: { onClose: () => void }) {
             {error && <p className="login-error">{error}</p>}
             {passkeyError && <p className="login-error text-center">{passkeyError}</p>}
 
-            <button type="submit" className="login-submit" disabled={busy || pin.length < 4}>
+            <button type="submit" className="login-submit" disabled={busy || pin.length !== PIN_LENGTH}>
               {busy ? "Signing in…" : "Sign in with PIN"}
               {!busy && <ArrowRightIcon width={16} height={16} />}
             </button>
@@ -632,6 +713,38 @@ export function LoginModal({ onClose }: { onClose: () => void }) {
               }}
             >
               Back to sign in
+            </button>
+          </div>
+        )}
+
+        {/* --- Post-sign-in passkey offer --- */}
+        {stage === "offer-passkey" && (
+          <div className="mt-6 flex flex-col gap-5">
+            <div className="flex flex-col items-center gap-3 text-center">
+              <span className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/12 bg-white/[0.06]">
+                <FingerprintIcon width={22} height={22} />
+              </span>
+              <p className="login-note">
+                You're signed in. Add a passkey and next time this device signs you in with
+                {" "}<strong>Face ID, Touch ID, Windows Hello or your security key</strong> — no password, no PIN.
+              </p>
+              <p className="text-[11px] leading-relaxed text-white/40">
+                The key stays on this device and your fingerprint never leaves it. Nothing to type, so nothing to phish.
+              </p>
+            </div>
+
+            {offerError && <p className="login-error text-center">{offerError}</p>}
+
+            <button type="button" className="login-submit" onClick={onAddPasskeyNow} disabled={offerBusy}>
+              {offerBusy ? "Waiting for your device…" : "Add a passkey"}
+            </button>
+            <button
+              type="button"
+              onClick={onSkipPasskey}
+              disabled={offerBusy}
+              className="text-[12px] text-white/45 underline-offset-4 transition hover:text-white/70 hover:underline disabled:opacity-50"
+            >
+              Not now — you can add one later in My security
             </button>
           </div>
         )}

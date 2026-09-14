@@ -1,12 +1,22 @@
 /**
  * Quick PIN boxes — premium segmented PIN input for the dark login modal.
- * 4–8 digits, large boxes, auto-advance, paste, backspace/arrow handling,
- * masked dots with peek toggle. Reuses the interaction model of OtpInput but
- * with a distinct visual (login-card tokens) and flexible 4–8 support.
+ * Large boxes, auto-advance, paste, backspace/arrow handling, masked dots with
+ * peek toggle. Reuses the interaction model of OtpInput but with a distinct
+ * visual (login-card tokens).
+ *
+ * PIN_LENGTH is FIXED at 4 and is the only length the product accepts — the
+ * backend validator spells the same 4. It used to render 8 boxes for a
+ * 4-to-8-digit PIN, which cost two things: the boxes stopped describing the
+ * secret (a 4-digit PIN sat in an 8-box row reading "4 / 8"), and `onComplete`
+ * only fires at `length`, so a 4-digit PIN never auto-submitted and the button
+ * was the only way in. Both are the same off-by-four.
  */
 import * as React from "react";
 import { EyeIcon, EyeOffIcon } from "@/components/ui/icons";
 import { cn } from "@/lib/cn";
+
+/** The one PIN length the product accepts. Backend: /^\d{4}$/. */
+export const PIN_LENGTH = 4;
 
 export function PinInput({
   value,
@@ -14,17 +24,14 @@ export function PinInput({
   onComplete,
   disabled,
   autoFocus,
-  length = 8,
-  minLength = 4,
 }: {
   value: string;
   onChange: (v: string) => void;
   onComplete?: (v: string) => void;
   disabled?: boolean;
   autoFocus?: boolean;
-  length?: number;
-  minLength?: number;
 }) {
+  const length = PIN_LENGTH;
   const [show, setShow] = React.useState(false);
   const refs = React.useRef<(HTMLInputElement | null)[]>([]);
   // Pad value to length for rendering; actual stored value is trimmed.
@@ -77,10 +84,7 @@ export function PinInput({
     const pasted = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, length);
     if (!pasted) return;
     onChange(pasted);
-    if (pasted.length === length || pasted.length >= minLength) {
-      // If pasted meets min, consider complete if pasted length >= min (allows 4 pasted)
-      if (pasted.length >= minLength) onComplete?.(pasted);
-    }
+    if (pasted.length === length) onComplete?.(pasted);
     refs.current[Math.min(pasted.length, length - 1)]?.focus();
   }
 
@@ -137,8 +141,8 @@ export function PinInput({
       <div className="flex items-center justify-between px-1">
         <span className="text-[11px] tracking-wide text-white/45">
           {value.length === 0
-            ? "4–8 digits"
-            : `${value.length} / ${length} • ${value.length < minLength ? `need ${minLength - value.length} more` : "ready"}`}
+            ? `${length} digits`
+            : `${value.length} / ${length}`}
         </span>
         <button
           type="button"

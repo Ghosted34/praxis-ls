@@ -85,6 +85,15 @@ function toBase64URL(buf) {
   return Buffer.from(buf).toString("base64url");
 }
 
+/**
+ * Credential ids are stored base64url. v9's descriptor and authenticator types
+ * want the raw BYTES — handed a string, it yields an empty id rather than
+ * failing, so an exclude/allow list quietly stops naming anything.
+ */
+function credentialIdToBytes(credentialId) {
+  return Buffer.from(String(credentialId), "base64url");
+}
+
 async function registrationOptions(client, { userId, req }) {
   const user = await userRepo.getUserSafe(client, userId);
   if (!user) throw new AppError("NOT_FOUND", "User not found", 404);
@@ -94,19 +103,19 @@ async function registrationOptions(client, { userId, req }) {
 
   const { generateRegistrationOptions } = sw();
 
-  // userID: stable opaque identifier — use user_id UUID bytes
-  // SimpleWebAuthn accepts string or Uint8Array; we pass the UUID string's utf8 as base64url via buffer
-  const userIdBytes = Buffer.from(String(userId), "utf8");
-
   const opts = await generateRegistrationOptions({
     rpName,
     rpID,
-    userID: userIdBytes,
+    // v9 takes userID as a STRING and encodes it itself. Passing bytes here
+    // serialises `user.id` as {"type":"Buffer","data":[…]}, which the browser
+    // cannot decode — the ceremony then dies before the authenticator is ever
+    // asked, surfacing as a bare "Something went wrong".
+    userID: String(userId),
     userName: user.email,
     userDisplayName: user.full_name || user.email,
     attestationType: "none",
     excludeCredentials: existing.map((c) => ({
-      id: c.credential_id,
+      id: credentialIdToBytes(c.credential_id),
       type: "public-key",
       transports: c.transports || undefined,
     })),
@@ -226,7 +235,7 @@ async function authenticationOptions(client, { email, req }) {
     } else {
       const creds = await repo.listForUserWithKeys(client, user.user_id);
       allowCredentials = creds.map((c) => ({
-        id: c.credential_id,
+        id: credentialIdToBytes(c.credential_id),
         type: "public-key",
         transports: c.transports || undefined,
       }));
@@ -330,9 +339,12 @@ async function verifyAuthentication(client, { assertion, challengeToken, req, ip
       expectedChallenge,
       expectedOrigin: origin,
       expectedRPID: rpID,
-      credential: {
-        id: stored.credential_id,
-        publicKey: new Uint8Array(pubKeyBuf),
+      // v9 spells this `authenticator` with credentialID/credentialPublicKey.
+      // v10 renamed it to `credential` with id/publicKey; passing that shape to
+      // v9 leaves it with no key to check the signature against.
+      authenticator: {
+        credentialID: credentialIdToBytes(stored.credential_id),
+        credentialPublicKey: new Uint8Array(pubKeyBuf),
         counter: Number(stored.counter) || 0,
         transports: stored.transports || undefined,
       },

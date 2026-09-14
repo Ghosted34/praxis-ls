@@ -6,7 +6,7 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 1569 |
+| Routes | 1578 |
 | Modules mounted | 140 |
 | API version | v1 |
 
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 1569 mounted routes, grouped by path prefix.
+All 1578 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -427,6 +427,10 @@ All 1569 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/careers/` | — |
 | GET | `/api/tenant/careers/:token` | — |
 | POST | `/api/tenant/careers/:token/apply` | — |
+| POST | `/api/tenant/careers/alerts` | — |
+| POST | `/api/tenant/careers/alerts/unsubscribe/:token` | — |
+| POST | `/api/tenant/careers/open-application` | — |
+| GET | `/api/tenant/careers/settings/public` | — |
 
 ### `tenant/cash-requests`
 
@@ -1185,6 +1189,7 @@ All 1569 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/mail/signature/batch` | — |
 | GET | `/api/tenant/mail/signature/card` | — |
 | GET | `/api/tenant/mail/signature/diagnose` | — |
+| GET | `/api/tenant/mail/signature/palette` | — |
 | GET | `/api/tenant/mail/signature/png` | — |
 | POST | `/api/tenant/mail/signature/png` | — |
 | GET | `/api/tenant/mail/signature/preview` | — |
@@ -1193,6 +1198,7 @@ All 1569 mounted routes, grouped by path prefix.
 | PATCH | `/api/tenant/mail/signature/templates/:id` | — |
 | GET | `/api/tenant/mail/signature/templates/:id/motto` | — |
 | POST | `/api/tenant/mail/signature/templates/:id/motto` | — |
+| PUT | `/api/tenant/mail/signature/templates/:id/palette` | — |
 | GET | `/api/tenant/mail/sla-policies` | — |
 | POST | `/api/tenant/mail/sla-policies` | — |
 | PATCH | `/api/tenant/mail/sla-policies/:id` | — |
@@ -1793,6 +1799,7 @@ All 1569 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/service-types/:id/field-sets/:setId/publish` | — |
 | GET | `/api/tenant/service-types/:id/web` | — |
 | PUT | `/api/tenant/service-types/:id/web` | — |
+| POST | `/api/tenant/service-types/:id/web/ai-copy` | yes |
 | PUT | `/api/tenant/service-types/:id/web/faq` | — |
 | POST | `/api/tenant/service-types/:id/web/media` | — |
 | DELETE | `/api/tenant/service-types/:id/web/media/:docId` | — |
@@ -1889,6 +1896,8 @@ All 1569 mounted routes, grouped by path prefix.
 |---|---|---|
 | GET | `/api/tenant/site-settings/about` | — |
 | PUT | `/api/tenant/site-settings/about` | — |
+| GET | `/api/tenant/site-settings/careers` | — |
+| PUT | `/api/tenant/site-settings/careers` | — |
 | GET | `/api/tenant/site-settings/credentials` | — |
 | POST | `/api/tenant/site-settings/credentials` | — |
 | DELETE | `/api/tenant/site-settings/credentials/:id` | — |

@@ -466,6 +466,112 @@ async function cardPreview(client, { userId, language = "en", can = {} } = {}) {
 }
 
 /**
+ * THE CARD'S COLOUR ROLES — which of the tenant's brand colours paints what.
+ *
+ * WHY THIS EXISTS, given that the templates screen says in so many words that
+ * the card's colours are not editable there. It still says it, and it is still
+ * true: nothing here sets a colour. What this pair of endpoints moves is a
+ * ROLE — "the name is painted with Accent deep" becomes "the name is painted
+ * with Secondary" — and the only values it accepts are the five brand colours
+ * Appearance already stores. A tenant whose deep accent is their orange and
+ * whose secondary is their blue could not previously get a blue name without
+ * editing the brand itself, which would have moved that colour everywhere else
+ * in the product too. That is the gap: not a missing colour picker, a missing
+ * mapping.
+ *
+ * So the brand stays set in one place, and the card says which parts of itself
+ * each brand colour paints. Change the blue in Appearance and the name follows,
+ * because what is stored here is the NAME of the colour and never its hex.
+ *
+ * ON THE TEMPLATE, NOT THE PERSON. The mapping lives in `signature_template.
+ * layout`, so it is MOD-70 and it moves everyone on that template at once. A
+ * per-person override would let a company's outbound mail arrive in as many
+ * colourways as it has staff, which is the opposite of what a white-label
+ * product is for.
+ */
+function paletteFor(template, branding) {
+  const layout = (template && template.layout) || {};
+  return {
+    template: {
+      signature_template_id: template.signature_template_id,
+      name: template.name,
+      kind: layout.kind || "classic",
+      is_system: Boolean(template.is_system),
+      is_default: Boolean(template.is_default),
+      scope_kind: template.scope_kind,
+      scope_value: template.scope_value,
+    },
+    // Only the card paints with these. A tenant still on `smartls_classic` gets
+    // the roles and an honest `kind`, so the screen can say the mapping will not
+    // show up until they switch rather than offering controls that do nothing.
+    brand: paletteMod.swatches(branding),
+    roles: paletteMod.roles(branding, layout),
+  };
+}
+
+/**
+ * The mapping as it applies to the CALLER — their own template, not the tenant
+ * default, because a person on a department template needs to see the colours
+ * their own card is painted with.
+ *
+ * Deliberately lighter than `resolveFor`: picking the template is the same two
+ * reads, and the rest of that function (the entity, the logo bytes, the render
+ * cache) exists to draw a card nobody is asking for here.
+ */
+async function getPalette(client, { userId } = {}) {
+  const branding = await repo.loadBranding(client);
+  const person = await repo.loadPerson(client, userId);
+  const profile = await repo.getProfile(client, userId);
+  const template = await pickTemplate(client, {
+    profile, person, templateId: profile && profile.signature_template_id,
+  });
+  if (!template) throw new AppError("NOT_FOUND", "No signature template to colour", 404);
+  return paletteFor(template, branding);
+}
+
+/**
+ * Point one or more roles at a brand colour. `null` clears the re-point and
+ * hands the role back to the default mapping — there is no separate reset,
+ * because "the default" is a value like any other.
+ *
+ * The write goes through `updateTemplate` rather than straight to the repo so it
+ * picks up the audit row, the template-changed event and — the one that matters
+ * — `deleteAllCached`. A recoloured card that nobody sees until their next
+ * unrelated edit is the staleness bug `source_hash` was built for, and the cache
+ * is keyed on inputs that include `template_updated`, so this is belt and braces
+ * rather than either on its own.
+ */
+async function savePalette(client, templateId, roles = {}, actor = {}) {
+  const template = await repo.getTemplate(client, templateId);
+  if (!template) throw new AppError("NOT_FOUND", "template not found", 404);
+
+  const layout = { ...(template.layout || {}) };
+  let changed = false;
+  for (const { role } of paletteMod.CARD_ROLES) {
+    const next = roles[role];
+    if (next === undefined) continue;
+    const key = paletteMod.sourceKey(role);
+    // A pinned `<role>_color` is deliberately LEFT ALONE — see the precedence
+    // note in signature.palette.js. The re-point already outranks it, and
+    // keeping it is what makes clearing one a true undo.
+    if (next === null) {
+      if (layout[key] === undefined) continue;
+      delete layout[key];
+    } else {
+      if (layout[key] === next) continue;
+      layout[key] = next;
+    }
+    changed = true;
+  }
+
+  const branding = await repo.loadBranding(client);
+  if (!changed) return paletteFor(template, branding);
+
+  const row = await updateTemplate(client, templateId, { layout }, actor);
+  return paletteFor(row, branding);
+}
+
+/**
  * THE MOTTO / SLOGAN — the line in the script face across the bottom of the card.
  *
  * WHY IT HAS ITS OWN PAIR OF ENDPOINTS rather than riding on the template PATCH
@@ -615,6 +721,6 @@ module.exports = {
   RENDERER_VERSION,
   tenantNamespace,
   resolveFor, renderPng, renderBatch, listStaff, cardPreview, getOwnProfile, saveOwnProfile,
-  listTemplates, updateTemplate, getMotto, saveMotto,
+  listTemplates, updateTemplate, getMotto, saveMotto, getPalette, savePalette,
   invalidateForUser, invalidateForEntity, bake,
 };

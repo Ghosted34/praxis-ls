@@ -2,11 +2,11 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 140,
-  "route_count": 1569,
+  "route_count": 1578,
   "tiers": {
-    "public": 61,
+    "public": 65,
     "self-scoped": 93,
-    "gated": 1415
+    "gated": 1420
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -1341,6 +1341,12 @@
       "validated": false,
       "tier": "public"
     },
+    "GET /api/tenant/careers/settings/public": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
+    },
     "GET /api/tenant/cash-requests/": {
       "auth": true,
       "rbac": true,
@@ -2638,6 +2644,12 @@
       "tier": "self-scoped"
     },
     "GET /api/tenant/mail/signature/diagnose": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/mail/signature/palette": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -3982,6 +3994,12 @@
       "tier": "gated"
     },
     "GET /api/tenant/site-settings/about": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/site-settings/careers": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -6136,6 +6154,24 @@
       "tier": "gated"
     },
     "POST /api/tenant/careers/:token/apply": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
+    },
+    "POST /api/tenant/careers/alerts": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
+    },
+    "POST /api/tenant/careers/alerts/unsubscribe/:token": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
+    },
+    "POST /api/tenant/careers/open-application": {
       "auth": false,
       "rbac": false,
       "validated": false,
@@ -8301,6 +8337,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/service-types/:id/web/ai-copy": {
+      "auth": true,
+      "rbac": true,
+      "validated": true,
+      "tier": "gated"
+    },
     "POST /api/tenant/service-types/:id/web/media": {
       "auth": true,
       "rbac": true,
@@ -9273,6 +9315,12 @@
       "validated": false,
       "tier": "self-scoped"
     },
+    "PUT /api/tenant/mail/signature/templates/:id/palette": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "PUT /api/tenant/master-config/:appliesTo": {
       "auth": true,
       "rbac": false,
@@ -9376,6 +9424,12 @@
       "tier": "gated"
     },
     "PUT /api/tenant/site-settings/about": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PUT /api/tenant/site-settings/careers": {
       "auth": true,
       "rbac": true,
       "validated": false,

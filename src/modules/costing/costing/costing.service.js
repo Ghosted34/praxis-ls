@@ -908,7 +908,13 @@ async function nudge(client, { id, actor = {} }) {
         : "A cash request for this file cannot be funded until it is approved.",
       entityRef: ref,
       priority: "HIGH",
-      url: "/costing/costings/" + id,
+      // `/costing/costing/`, singular. The route is `costing/costing/:costingId`
+      // (client/src/app/app.tsx); `/costing/costings/<id>` matched no route at
+      // all and fell through to `path="*"`, which redirects to the Control
+      // Tower — so this nudge opened the dashboard, silently, with no 404 to
+      // notice. Derived from the ref by rules/entity-route.js now, and kept
+      // explicit here only because the tag and the body are.
+      url: "/costing/costing/" + id,
       // One tag per sheet and per stage, so a second reminder REPLACES the
       // first on the recipient's lock screen instead of stacking three
       // identical banners — which is the pressure the quota exists to avoid.

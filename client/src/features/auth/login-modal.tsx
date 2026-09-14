@@ -115,14 +115,14 @@ export function LoginModal({ onClose }: { onClose: () => void }) {
         const ok =
           typeof window !== "undefined" &&
           !!window.PublicKeyCredential &&
-          typeof (PublicKeyCredential as any).isUserVerifyingPlatformAuthenticatorAvailable === "function"
-            ? await (PublicKeyCredential as any).isUserVerifyingPlatformAuthenticatorAvailable().catch(() => true)
+          typeof (window.PublicKeyCredential as any).isUserVerifyingPlatformAuthenticatorAvailable === "function"
+            ? await (window.PublicKeyCredential as any).isUserVerifyingPlatformAuthenticatorAvailable().catch(() => true)
             : !!window.PublicKeyCredential;
         if (alive) setPasskeySupported(ok);
         // Also probe conditional mediation for later autofill (silent)
         try {
           if ((window.PublicKeyCredential as any)?.isConditionalMediationAvailable) {
-            await (PublicKeyCredential as any).isConditionalMediationAvailable();
+            await (window.PublicKeyCredential as any).isConditionalMediationAvailable();
           }
         } catch { /* @silent:storage */ }
       } catch {

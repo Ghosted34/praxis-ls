@@ -56,31 +56,45 @@ const { AppError } = require("../../utils/errors");
  * can see proformas from reading final invoices through a chat bubble.
  */
 /**
- * A Map, not an object literal, and that is a security property rather than a
- * style preference.
+ * DATA, in a Map — not functions, and not an object literal. Both halves of
+ * that are a security property rather than a style preference.
  *
- * `kind` arrives in a URL. A plain object carries `Object.prototype`, so
- * `MODULE_FOR[kind]` with `kind = "constructor"` or `"toString"` resolves to a
- * real function and `MODULE_FOR[kind](row)` calls it — CodeQL's "unvalidated
- * dynamic method call", and it flagged exactly this. The `KINDS.includes(kind)`
- * guard below does prevent it, but a guard that has to be remembered at every
- * call site is one somebody eventually forgets, and a static analyser cannot
- * see it at all. `Map.get` has no prototype chain for string keys: an unknown
- * kind is `undefined`, full stop.
+ * `kind` arrives in a URL, so this table is indexed by untrusted input, and the
+ * two obvious shapes are both wrong:
+ *
+ *   An OBJECT LITERAL carries `Object.prototype`, so `MODULE_FOR[kind]` with
+ *   `kind = "constructor"` or `"toString"` resolves to a real function.
+ *
+ *   A Map of FUNCTIONS fixes the lookup but not the call: `MODULE_FOR.get(kind)`
+ *   is safely `undefined` for an unknown key, but `resolver(row)` is still
+ *   "invoke a value obtained by indexing with user-controlled input", which is
+ *   what CodeQL's unvalidated-dynamic-method-call query is actually about — and
+ *   it flagged the Map version too.
+ *
+ * So there is nothing here to invoke. Each entry is a plain record, `moduleFor`
+ * branches over it explicitly, and the only dynamic step left is a Map lookup
+ * that either finds a record or does not.
+ *
+ * `proforma` exists because `invoice` holds proformas and final invoices in one
+ * table and they are DIFFERENT modules (MOD-50 vs MOD-51) — quoting a price and
+ * billing for it are different rights. It is the only row-dependent kind, which
+ * is why one optional field beats five closures.
  */
 const MODULE_FOR = new Map([
-  ["INVOICE", (row) => (row && row.type === "PROFORMA" ? "MOD-50" : "MOD-51")],
-  ["DOSSIER", () => "MOD-29"],
-  ["CLIENT", () => "MOD-03"],
-  ["PURCHASE_ORDER", () => "MOD-60"],
-  ["SUPPLIER_INVOICE", () => "MOD-61"],
+  ["INVOICE", { module: "MOD-51", proforma: "MOD-50" }],
+  ["DOSSIER", { module: "MOD-29" }],
+  ["CLIENT", { module: "MOD-03" }],
+  ["PURCHASE_ORDER", { module: "MOD-60" }],
+  ["SUPPLIER_INVOICE", { module: "MOD-61" }],
 ]);
 
 /** The module a kind answers to, or null when the kind is not one of ours. */
-const moduleFor = (kind, row) => {
-  const resolver = MODULE_FOR.get(kind);
-  return resolver ? resolver(row) : null;
-};
+function moduleFor(kind, row) {
+  const entry = MODULE_FOR.get(kind);
+  if (!entry) return null;
+  if (entry.proforma && row && row.type === "PROFORMA") return entry.proforma;
+  return entry.module;
+}
 
 /** Every module key a search may need, so the controller resolves them in one
  *  pass instead of one round-trip per kind. */

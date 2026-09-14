@@ -328,6 +328,21 @@ describe("CodeQL findings — a URL is not a trusted lookup key", () => {
     }
   });
 
+  it("holds no callable to invoke, so there is no dynamic dispatch left", () => {
+    // The Map fixed the LOOKUP; this is what fixes the CALL. A Map of closures
+    // still reads as "invoke a value obtained by indexing with user input",
+    // which is what the query is actually about — it flagged that version too.
+    // Reading the source is crude, and it is the only way to catch a tidy-up
+    // that turns the records back into functions.
+    const src = require("fs").readFileSync(
+      require("path").join(__dirname, "..", "..", "src", "modules", "smartcomm", "smartcomm.erp.service.js"),
+      "utf8",
+    );
+    const table = src.slice(src.indexOf("const MODULE_FOR"), src.indexOf("function moduleFor"));
+    expect(table).not.toMatch(/=>/);
+    expect(table).toMatch(/\{ module: "MOD-51", proforma: "MOD-50" \}/);
+  });
+
   it("resolves a module only for a kind it actually knows", () => {
     expect(erp.moduleFor("INVOICE", { type: "FINAL" })).toBe("MOD-51");
     expect(erp.moduleFor("INVOICE", { type: "PROFORMA" })).toBe("MOD-50");

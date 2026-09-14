@@ -14,7 +14,6 @@
  * the Host header fallback; RP ID is the origin's hostname without port.
  */
 
-const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
 const { config } = require("../../../config/env");
 const { AppError } = require("../../../utils/errors");
@@ -29,7 +28,7 @@ function sw() {
   if (!simpleWebAuthn) {
     try {
       simpleWebAuthn = require("@simplewebauthn/server");
-    } catch (e) {
+    } catch {
       throw new AppError("WEBAUTHN_UNAVAILABLE", "Passkey support is not installed on this server", 500);
     }
   }
@@ -86,7 +85,16 @@ function toBase64URL(buf) {
   return Buffer.from(buf).toString("base64url");
 }
 
-async function registrationOptions(client, { userId, label, req }) {
+/**
+ * Credential ids are stored base64url. v9's descriptor and authenticator types
+ * want the raw BYTES — handed a string, it yields an empty id rather than
+ * failing, so an exclude/allow list quietly stops naming anything.
+ */
+function credentialIdToBytes(credentialId) {
+  return Buffer.from(String(credentialId), "base64url");
+}
+
+async function registrationOptions(client, { userId, req }) {
   const user = await userRepo.getUserSafe(client, userId);
   if (!user) throw new AppError("NOT_FOUND", "User not found", 404);
 
@@ -95,19 +103,19 @@ async function registrationOptions(client, { userId, label, req }) {
 
   const { generateRegistrationOptions } = sw();
 
-  // userID: stable opaque identifier — use user_id UUID bytes
-  // SimpleWebAuthn accepts string or Uint8Array; we pass the UUID string's utf8 as base64url via buffer
-  const userIdBytes = Buffer.from(String(userId), "utf8");
-
   const opts = await generateRegistrationOptions({
     rpName,
     rpID,
-    userID: userIdBytes,
+    // v9 takes userID as a STRING and encodes it itself. Passing bytes here
+    // serialises `user.id` as {"type":"Buffer","data":[…]}, which the browser
+    // cannot decode — the ceremony then dies before the authenticator is ever
+    // asked, surfacing as a bare "Something went wrong".
+    userID: String(userId),
     userName: user.email,
     userDisplayName: user.full_name || user.email,
     attestationType: "none",
     excludeCredentials: existing.map((c) => ({
-      id: c.credential_id,
+      id: credentialIdToBytes(c.credential_id),
       type: "public-key",
       transports: c.transports || undefined,
     })),
@@ -227,7 +235,7 @@ async function authenticationOptions(client, { email, req }) {
     } else {
       const creds = await repo.listForUserWithKeys(client, user.user_id);
       allowCredentials = creds.map((c) => ({
-        id: c.credential_id,
+        id: credentialIdToBytes(c.credential_id),
         type: "public-key",
         transports: c.transports || undefined,
       }));
@@ -256,7 +264,7 @@ async function authenticationOptions(client, { email, req }) {
   };
 }
 
-async function verifyAuthentication(client, { email, assertion, challengeToken, req, ip, userAgent, environment }) {
+async function verifyAuthentication(client, { assertion, challengeToken, req, ip, userAgent, environment }) {
   if (!assertion) throw new AppError("BAD_REQUEST", "Missing assertion", 400);
 
   let expectedChallenge = null;
@@ -301,6 +309,23 @@ async function verifyAuthentication(client, { email, assertion, challengeToken, 
   const user = await userRepo.getUserSafe(client, stored.user_id);
   if (!user || user.status !== "ACTIVE") throw new AppError("USER_INACTIVE", "Account is suspended or locked", 401);
 
+  // The challenge is bound to the identity it was issued for. `authenticationOptions`
+  // signs sub = user_id when the email resolved, the lowercased email when it did not,
+  // and "anonymous" for a discoverable login that names nobody — only the last of those
+  // has no identity to check, so it is the only one that skips the comparison.
+  //
+  // Without this, a challenge minted for one account verifies an assertion from any
+  // other: the signature still checks out, because it is checked against whichever
+  // credential the assertion names rather than the one the ceremony asked for.
+  if (challengeSub && challengeSub !== "anonymous") {
+    const boundToUser = String(stored.user_id) === String(challengeSub);
+    const boundToEmail = !!challengeEmail && String(user.email).toLowerCase() === String(challengeEmail).toLowerCase();
+    if (!boundToUser && !boundToEmail) {
+      logger.warn({ user_id: stored.user_id, challenge_sub: challengeSub }, "[webauthn] assertion did not match the challenge subject");
+      throw new AppError("INVALID_CHALLENGE", "Passkey challenge was issued for a different account", 400);
+    }
+  }
+
   const { rpID, origin } = getRpInfo(req);
   const { verifyAuthenticationResponse } = sw();
 
@@ -314,9 +339,12 @@ async function verifyAuthentication(client, { email, assertion, challengeToken, 
       expectedChallenge,
       expectedOrigin: origin,
       expectedRPID: rpID,
-      credential: {
-        id: stored.credential_id,
-        publicKey: new Uint8Array(pubKeyBuf),
+      // v9 spells this `authenticator` with credentialID/credentialPublicKey.
+      // v10 renamed it to `credential` with id/publicKey; passing that shape to
+      // v9 leaves it with no key to check the signature against.
+      authenticator: {
+        credentialID: credentialIdToBytes(stored.credential_id),
+        credentialPublicKey: new Uint8Array(pubKeyBuf),
         counter: Number(stored.counter) || 0,
         transports: stored.transports || undefined,
       },

@@ -223,7 +223,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `INSUFFICIENT_LEAVE` | — | 1× | — |
 | `INVALID_2FA_CODE` | 401 | 3× | — |
 | `INVALID_AMOUNT` | 422 | 7× | — |
-| `INVALID_CHALLENGE` | 400 | 5× | — |
+| `INVALID_CHALLENGE` | 400 | 6× | — |
 | `INVALID_CREDENTIAL` | 400 | 1× | — |
 | `INVALID_CREDENTIALS` | 401 | 2× | — |
 | `INVALID_CURRENT_PASSWORD` | 403 | 1× | — |

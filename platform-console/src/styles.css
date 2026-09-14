@@ -129,10 +129,35 @@ nav.tabs a.active { background: var(--panel-2); color: var(--ink); box-shadow: i
 
 /* Modal */
 .scrim { position: fixed; inset: 0; background: rgba(4,7,12,.66); backdrop-filter: blur(3px); display: grid; place-items: center; z-index: 60; padding: 20px; }
-.modal { width: 100%; max-width: 460px; animation: pop .14s ease-out; }
+/*
+ * A MODAL IS CAPPED AT THE VIEWPORT AND SCROLLS ITS BODY.
+ *
+ * `.scrim` centres its child in a fixed, full-screen grid. A modal taller than
+ * the screen therefore overflows it in BOTH directions at once — half above the
+ * top edge, half below the bottom — and because the scrim is `position: fixed`
+ * with no overflow, neither half can be reached. Not "hard to scroll": there is
+ * nothing to scroll, and the footer holding the primary action is simply gone.
+ *
+ * It went unnoticed because every modal this console had was short — a confirm,
+ * a small form — and none of them could outgrow the screen. The support ticket
+ * modal (0105) is the first with a conversation in it, and it outgrows the
+ * screen on the second reply.
+ *
+ * The shape below mirrors client/'s <Dialog>: cap the height, pin the header
+ * and footer, give the body the leftover space and let it scroll.
+ * `min-height: 0` is load-bearing — a flex child defaults to `min-height: auto`,
+ * which refuses to shrink below its content, so the body would grow past the
+ * cap and take the footer off-screen again with `overflow-y: auto` set.
+ */
+.modal {
+  width: 100%; max-width: 460px; animation: pop .14s ease-out;
+  max-height: calc(100vh - 40px); /* the scrim's own 20px padding, top and bottom */
+  display: flex; flex-direction: column; overflow: hidden;
+}
 @keyframes pop { from { transform: translateY(6px) scale(.99); opacity: 0; } to { transform: none; opacity: 1; } }
 .modal .hd h3 { font-size: 16px; }
-.modal .bd { padding: 18px; }
+.modal > .hd, .modal > .ft { flex: none; }
+.modal .bd { padding: 18px; flex: 1 1 auto; min-height: 0; overflow-y: auto; }
 .modal .ft { padding: 14px 18px; border-top: 1px solid var(--line); display: flex; justify-content: flex-end; gap: 8px; }
 
 /* Toast */

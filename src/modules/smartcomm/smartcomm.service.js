@@ -120,7 +120,19 @@ async function postMessage(client, { groupId, body = null, mediaVaultId = null, 
     try {
       const others = notifyMembers ? await repo.memberUserIds(client, groupId, actor.user_id || null) : [];
       if (others.length) {
-        await require("../../notification/notification.service").notifyMany(client, others, {
+        // `../notification/…`, NOT `../../`. This file sits at
+        // src/modules/smartcomm/ — one level shallower than every OTHER
+        // notification caller (src/modules/<area>/<sub>/), which is where the
+        // `../../` was copied from. From here it resolved to
+        // src/notification/notification.service, a directory that has never
+        // existed, so this line threw MODULE_NOT_FOUND into the best-effort
+        // catch below and Smart Comms notified NOBODY — no in-app row, no
+        // push, no email — silently, for every message ever posted.
+        //
+        // The catch is right to be there (a notify failure must not fail the
+        // message) and is exactly what hid this: a require error and a push
+        // service being briefly unreachable are indistinguishable to it.
+        await require("../notification/notification.service").notifyMany(client, others, {
           eventTypeKey: "comms.message_posted",
           // The SENDER is the headline and the message is the body — the shape
           // every messaging app uses, and the one that reads correctly on a
@@ -151,6 +163,31 @@ async function postMessage(client, { groupId, body = null, mediaVaultId = null, 
           renotify: true,
           // Somebody in the company is talking to this person right now.
           urgency: "high",
+          // Same reliability promise mail has made since it was written: a
+          // notification that reaches NO device must reach the person some
+          // other way. Chat was the one conversational channel without it, so
+          // a colleague messaging someone with no registered device produced
+          // an in-app row they would see whenever they next happened to open
+          // the app — which, for the channel people use when they need an
+          // answer now, is indistinguishable from not being told.
+          //
+          // It is not an email per message. `deliverOutbound` sends it only
+          // when push reached ZERO devices, and two carve-outs there already
+          // hold: nothing is sent to someone who SILENCED this category (that
+          // would route around an opt-out they made on purpose), and nothing
+          // is sent when the deploy has no VAPID keypair at all (an operations
+          // problem an email per notification would bury while flooding every
+          // inbox).
+          //
+          // What it does not bound is VOLUME for a recipient who has push
+          // available and has simply never opted a device in: `pushTag`
+          // collapses a fast exchange into one BANNER, but the email leg has
+          // no equivalent, so twenty messages in one channel are twenty
+          // emails. Mail lives with the same shape and its volume is bounded
+          // by real mail arriving; chat's is not. If that bites, the fix is a
+          // per-(user, channel) cooldown on the fallback leg rather than
+          // removing it — see the note on this in doc/PUSH_NOTIFICATIONS.md.
+          emailFallback: true,
           pushData: { kind: "comms", group_id: groupId, message_id: m.message_id },
         });
       }

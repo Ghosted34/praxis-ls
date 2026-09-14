@@ -304,15 +304,15 @@ async function deleteDraft(client, groupId, userId) {
 
 // ── Quick replies ──
 async function listQuickReplies(client, userId) {
-  return (await client.query("SELECT * FROM comms_quick_reply WHERE owner_user_id = $1 OR owner_user_id IS NULL ORDER BY label", [userId])).rows;
+  return (await client.query("SELECT * FROM comms_quick_reply WHERE owner_user_id = $1 ORDER BY label", [userId])).rows;
 }
 const createQuickReply = (client, data) => insertOne(client, "comms_quick_reply", data);
-async function updateQuickReply(client, id, fields) {
-  // PERF S19/S20: was a hand-rolled SET builder, which bypassed the
-  // identifier validation and writable allow-list in query-helpers.
-  return updateOne(client, "comms_quick_reply", "quick_reply_id", id, fields, "*", null, { touch: "updated_at" });
+async function updateQuickReply(client, id, fields, userId) {
+  return (await client.query("UPDATE comms_quick_reply SET label = COALESCE($3, label), body = COALESCE($4, body), updated_at = now() WHERE quick_reply_id = $1 AND owner_user_id = $2 RETURNING *", [id, userId, fields.label ?? null, fields.body ?? null])).rows[0] || null;
 }
-async function deleteQuickReply(client, id) { await client.query("DELETE FROM comms_quick_reply WHERE quick_reply_id = $1", [id]); }
+async function deleteQuickReply(client, id, userId) {
+  return (await client.query("DELETE FROM comms_quick_reply WHERE quick_reply_id = $1 AND owner_user_id = $2 RETURNING quick_reply_id", [id, userId])).rows[0] || null;
+}
 
 // ── Colleague directory ──
 async function listColleagues(client, q = {}) {

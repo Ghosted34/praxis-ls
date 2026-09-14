@@ -55,7 +55,9 @@ export function ErpPicker({
   open,
   onClose,
   onPick,
+  embedded = false,
 }: {
+  embedded?: boolean;
   open: boolean;
   onClose: () => void;
   onPick: (card: ErpCard) => void;
@@ -108,8 +110,8 @@ export function ErpPicker({
   const toggleKind = (k: ErpKind) =>
     setKinds((prev) => (prev.includes(k) ? prev.filter((x) => x !== k) : [...prev, k]));
 
-  return (
-    <Dialog open={open} onClose={onClose} title={tr("Attach a record")} size="md">
+  const content = (
+    <>
       <div className="space-y-3">
         <Input
           value={term}
@@ -197,6 +199,7 @@ export function ErpPicker({
       <div className="mt-4 flex justify-end">
         <Button variant="ghost" onClick={onClose}>{tr("Cancel")}</Button>
       </div>
-    </Dialog>
+    </>
   );
+  return embedded ? content : <Dialog open={open} onClose={onClose} title={tr("Attach a record")} size="md">{content}</Dialog>;
 }

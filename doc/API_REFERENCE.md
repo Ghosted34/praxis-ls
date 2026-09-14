@@ -6,7 +6,7 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 1583 |
+| Routes | 1587 |
 | Modules mounted | 140 |
 | API version | v1 |
 
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 1583 mounted routes, grouped by path prefix.
+All 1587 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -1941,6 +1941,8 @@ All 1583 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/smartcomm/channels/:id/mute` | — |
 | POST | `/api/tenant/smartcomm/channels/:id/pin` | — |
 | POST | `/api/tenant/smartcomm/channels/:id/read` | — |
+| GET | `/api/tenant/smartcomm/channels/:id/scheduled` | — |
+| POST | `/api/tenant/smartcomm/channels/:id/scheduled` | — |
 | GET | `/api/tenant/smartcomm/colleagues` | — |
 | GET | `/api/tenant/smartcomm/config` | — |
 | PUT | `/api/tenant/smartcomm/config/email` | — |
@@ -1962,6 +1964,8 @@ All 1583 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/smartcomm/quick-replies` | — |
 | DELETE | `/api/tenant/smartcomm/quick-replies/:id` | — |
 | PATCH | `/api/tenant/smartcomm/quick-replies/:id` | — |
+| DELETE | `/api/tenant/smartcomm/scheduled/:id` | — |
+| PATCH | `/api/tenant/smartcomm/scheduled/:id` | — |
 | GET | `/api/tenant/smartcomm/search` | — |
 | GET | `/api/tenant/smartcomm/starred` | — |
 | GET | `/api/tenant/smartcomm/unread` | — |

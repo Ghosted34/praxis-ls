@@ -8,6 +8,7 @@ import * as React from "react";
 import { dateDmy } from "@/lib/format";
 import { tr } from "@/lib/i18n";
 import { Link, useSearchParams } from "react-router-dom";
+import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
@@ -409,7 +410,7 @@ function InfoPane({ channel }: { channel: api.Channel | null }) {
       </div>
     );
   return (
-    <div className="flex-1 overflow-y-auto p-4">
+    <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4">
       <div className="flex flex-col items-center gap-2 border-b border-border pb-4 text-center">
         <Avatar
           name={channel.name}
@@ -448,6 +449,23 @@ function InfoPane({ channel }: { channel: api.Channel | null }) {
 }
 
 export function TeamChatPage() {
+  const [infoOpen, setInfoOpen] = React.useState(() => {
+    try { return localStorage.getItem("comms:info-open") !== "false"; }
+    catch { return true; /* @silent:storage — use the first-visit default */ }
+  });
+  const [mobileInfoOpen, setMobileInfoOpen] = React.useState(false);
+  const toggleInfo = () => {
+    const next = !infoOpen;
+    setInfoOpen(next);
+    try { localStorage.setItem("comms:info-open", String(next)); }
+    catch { /* @silent:storage — the toggle still works for this visit */ }
+  };
+  React.useEffect(() => {
+    const desktop = window.matchMedia("(min-width: 1024px)");
+    const closeDrawer = () => { if (desktop.matches) setMobileInfoOpen(false); };
+    desktop.addEventListener("change", closeDrawer);
+    return () => desktop.removeEventListener("change", closeDrawer);
+  }, []);
   const { user } = useAuth();
   const meId =
     (user as { user_id?: string; id?: string } | null)?.user_id ||
@@ -491,12 +509,16 @@ export function TeamChatPage() {
   };
 
   return (
-    <section className="animate-fade-in">
-      <div className="grid h-[calc(100vh-8rem)] grid-cols-1 overflow-hidden rounded-2xl border border-border bg-card shadow-sm md:grid-cols-[320px_1fr] lg:grid-cols-[320px_1fr_300px]">
+    <section className="animate-fade-in flex min-h-0 flex-1 flex-col">
+      {/* Size from the shell's remaining space, never from a guessed viewport offset. */}
+      <div className={cn(
+        "grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)] grid-cols-1 overflow-hidden rounded-2xl border border-border bg-card shadow-sm md:grid-cols-[320px_minmax(0,1fr)]",
+        infoOpen && "lg:grid-cols-[320px_minmax(0,1fr)_300px]",
+      )}>
         {/* conversation list */}
         <div
           className={cn(
-            "flex flex-col border-border md:border-r",
+            "flex min-h-0 flex-col overflow-hidden border-border md:border-r",
             activeId ? "hidden md:flex" : "flex",
           )}
         >
@@ -545,7 +567,7 @@ export function TeamChatPage() {
               </button>
             ))}
           </div>
-          <div className="flex-1 overflow-y-auto px-2 pb-3">
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-3">
             {channels.loading ? (
               <div className="space-y-1 p-2">
                 {Array.from({ length: 6 }).map((_, i) => (
@@ -596,7 +618,7 @@ export function TeamChatPage() {
         {/* thread */}
         <div
           className={cn(
-            "flex min-w-0 flex-col",
+            "flex min-h-0 min-w-0 flex-col overflow-hidden",
             activeId ? "flex" : "hidden md:flex",
           )}
         >
@@ -612,6 +634,9 @@ export function TeamChatPage() {
                 n.delete("channel");
                 setParams(n);
               }}
+              infoOpen={infoOpen}
+              onToggleInfo={toggleInfo}
+              onOpenMobileInfo={() => setMobileInfoOpen(true)}
               onSent={() => channels.reload()}
             />
           ) : (
@@ -622,12 +647,21 @@ export function TeamChatPage() {
         </div>
 
         {/* customer / channel 360 — third pane on wide screens */}
-        <div className="hidden flex-col border-l border-border lg:flex">
+        <div id="chat-info-panel" className={cn("hidden min-h-0 flex-col overflow-hidden border-l border-border", infoOpen && "lg:flex")}>
+          <div className="flex shrink-0 items-center justify-between border-b border-border p-3">
+            <span className="text-sm font-semibold">{tr("Conversation info")}</span>
+            <Button size="sm" variant="ghost" onClick={toggleInfo}>{tr("Hide")}</Button>
+          </div>
           <InfoPane
             channel={all.find((c) => c.group_id === activeId) || null}
           />
         </div>
       </div>
+
+      <Dialog open={mobileInfoOpen} onClose={() => setMobileInfoOpen(false)}
+        title={tr("Conversation info")} placement="right" bodyClassName="p-0">
+        <InfoPane channel={all.find((c) => c.group_id === activeId) || null} />
+      </Dialog>
 
       {newKind === "menu" && (
         <NewChoiceModal
@@ -664,7 +698,13 @@ function Thread({
   channels,
   onBack,
   onSent,
+  infoOpen,
+  onToggleInfo,
+  onOpenMobileInfo,
 }: {
+  infoOpen: boolean;
+  onToggleInfo: () => void;
+  onOpenMobileInfo: () => void;
   channelId: string;
   meId: string;
   nameOf: Record<string, string>;
@@ -675,12 +715,15 @@ function Thread({
 }) {
   const ch = useResource(() => api.getChannel(channelId), [channelId]);
   const thread = useResource(() => api.getThread(channelId), [channelId]);
-  const bottomRef = React.useRef<HTMLDivElement | null>(null);
+  const followedInitially = React.useRef(false);
+  const nearBottom = React.useRef(true);
   const scrollerRef = React.useRef<HTMLDivElement | null>(null);
   // Memoised because `thread.data?.messages || []` is a fresh array on every
   // render, which would make the reply-quote map below rebuild each time.
   const msgs = React.useMemo(() => thread.data?.messages || [], [thread.data]);
 
+  const composerBusy = React.useRef(false);
+  const [editingMessage, setEditingMessage] = React.useState<api.CommMessage | null>(null);
   const [replyTo, setReplyTo] = React.useState<api.CommMessage | null>(null);
   const [forwarding, setForwarding] = React.useState<api.CommMessage | null>(null);
 
@@ -727,8 +770,12 @@ function Thread({
   React.useEffect(() => {
     const el = scrollerRef.current;
     if (!el) return;
-    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    if (distanceFromBottom < 160) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (!msgs.length) return;
+    // Only move this pane. scrollIntoView also moves the shell/ancestors.
+    if (!followedInitially.current || nearBottom.current) {
+      el.scrollTop = el.scrollHeight;
+      followedInitially.current = true;
+    }
   }, [msgs.length]);
 
   React.useEffect(() => {
@@ -746,7 +793,7 @@ function Thread({
 
   return (
     <>
-      <div className="flex items-center gap-2 border-b border-border px-3 py-2.5">
+      <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2.5">
         <button
           className="text-muted-foreground hover:text-foreground md:hidden"
           onClick={onBack}
@@ -759,17 +806,27 @@ function Thread({
           src={ch.data?.kind === "DIRECT" ? ch.data?.partner_avatar_ref : null}
           size="sm"
         />
-        <span className="text-sm font-semibold">
+        <span className="min-w-0 flex-1 truncate text-sm font-semibold">
           {ch.data?.name || "Conversation"}
         </span>
         {ch.data?.kind && (
           <span className="micro">· {ch.data.kind.toLowerCase()}</span>
         )}
+        <Button size="sm" variant="ghost" className="hidden shrink-0 lg:inline-flex"
+          aria-expanded={infoOpen} aria-controls="chat-info-panel" onClick={onToggleInfo}>
+          {tr(infoOpen ? "Hide info" : "Show info")}
+        </Button>
+        <Button size="sm" variant="ghost" className="shrink-0 lg:hidden"
+          aria-haspopup="dialog" onClick={onOpenMobileInfo}>{tr("Info")}</Button>
       </div>
 
       <div
         ref={scrollerRef}
-        className="flex-1 space-y-2 overflow-y-auto bg-[rgb(var(--ink-3)/0.04)] px-4 py-3"
+        onScroll={(event) => {
+          const el = event.currentTarget;
+          nearBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 160;
+        }}
+        className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain bg-[rgb(var(--ink-3)/0.04)] px-4 py-3"
       >
         {thread.loading && msgs.length === 0 ? (
           <div className="micro">{tr("Loading…")}</div>
@@ -784,7 +841,8 @@ function Thread({
               meId={meId}
               senderName={m.sender_user_id ? nameOf[m.sender_user_id] || tr("Someone") : null}
               repliedTo={m.reply_to_message_id ? byId.get(m.reply_to_message_id) || null : null}
-              onReply={setReplyTo}
+              onEdit={(message) => { if (!composerBusy.current) setEditingMessage(message); }}
+              onReply={(message) => { if (!composerBusy.current) setReplyTo(message); }}
               onForward={setForwarding}
               onChanged={() => { thread.reload(); onSent(); }}
             />
@@ -794,7 +852,6 @@ function Thread({
             {tr("No messages yet — say hello.")}
           </div>
         )}
-        <div ref={bottomRef} />
       </div>
 
       {typingName && (
@@ -805,6 +862,13 @@ function Thread({
 
       <Composer
         channelId={channelId}
+        editingMessage={editingMessage}
+        onBusyChange={(busy) => { composerBusy.current = busy; }}
+        onCancelEdit={() => setEditingMessage(null)}
+        onEditLast={() => {
+          const last = [...msgs].reverse().find((m) => m.sender_user_id === meId && !!m.body && !m.deleted_at);
+          if (last) setEditingMessage(last);
+        }}
         replyTo={
           replyTo
             ? {

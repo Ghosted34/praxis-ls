@@ -1,5 +1,6 @@
 "use strict";
 const service = require("./smartcomm.service");
+const schedule = require("./smartcomm.schedule.service");
 const cfg = require("./smartcomm.config.service");
 const erp = require("./smartcomm.erp.service");
 const { asyncHandler, AppError } = require("../../utils/errors");
@@ -25,6 +26,10 @@ async function erpAllow(req) {
 const A = (fn) => asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => fn(c, req)) }));
 const C = (fn) => asyncHandler(async (req, res) => res.status(201).json({ data: await req.tenantDb((c) => fn(c, req)) }));
 module.exports = {
+  scheduled: A((c, req) => schedule.list(c, { groupId: req.params.id, actor: actor(req) })),
+  schedule: C((c, req) => schedule.create(c, { groupId: req.params.id, actor: actor(req), data: req.body, env: req.env })),
+  reschedule: A((c, req) => schedule.change(c, { id: req.params.id, actor: actor(req), data: req.body })),
+  cancelScheduled: A((c, req) => schedule.change(c, { id: req.params.id, actor: actor(req), data: { cancel: true } })),
   // ── Channel provider config (WhatsApp / email) ──
   getCommsConfig: A((c) => cfg.getConfig(c)),
   setWhatsapp: A((c, req) => cfg.setWhatsapp(c, { ...req.body, actor: actor(req) })),
@@ -65,8 +70,8 @@ module.exports = {
   clearDraft: A((c, req) => service.clearDraft(c, { groupId: req.params.id, actor: actor(req) })),
   listQuickReplies: A((c, req) => service.listQuickReplies(c, actor(req))),
   createQuickReply: C((c, req) => service.createQuickReply(c, { data: req.body, actor: actor(req) })),
-  updateQuickReply: A((c, req) => service.updateQuickReply(c, { id: req.params.id, patch: req.body })),
-  deleteQuickReply: A((c, req) => service.deleteQuickReply(c, { id: req.params.id })),
+  updateQuickReply: A((c, req) => service.updateQuickReply(c, { id: req.params.id, patch: req.body, actor: actor(req) })),
+  deleteQuickReply: A((c, req) => service.deleteQuickReply(c, { id: req.params.id, actor: actor(req) })),
   colleagues: A((c, req) => service.colleagues(c, req.query)),
 
   // ── Media ──

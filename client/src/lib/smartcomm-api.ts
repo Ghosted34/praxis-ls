@@ -327,3 +327,21 @@ export const markRead = (id: string) =>
   tenant<{ ok: boolean }>(`/smartcomm/channels/${id}/read`, { method: "POST" });
 export const listColleagues = () =>
   tenant<Colleague[]>("/smartcomm/colleagues");
+
+/* Personal, tenant-scoped snippets. */
+export type QuickPhrase = { quick_reply_id: string; label: string; body: string };
+export const listQuickPhrases = () => tenant<QuickPhrase[]>("/smartcomm/quick-replies");
+export const saveQuickPhrase = (data: { label: string; body: string }, id?: string) =>
+  tenant<QuickPhrase>(`/smartcomm/quick-replies${id ? `/${id}` : ""}`, { method: id ? "PATCH" : "POST", body: data });
+export const deleteQuickPhrase = (id: string) => tenant(`/smartcomm/quick-replies/${id}`, { method: "DELETE" });
+
+export type ScheduledMessage = {
+  schedule_id: string; group_id: string; body: string; attachments: PostedAttachment[];
+  send_at: string; timezone: string; status: "PENDING" | "SENT" | "CANCELLED" | "FAILED";
+  last_error?: string | null; message_id?: string | null;
+};
+export const listScheduledMessages = (channelId: string) => tenant<ScheduledMessage[]>(`/smartcomm/channels/${channelId}/scheduled`);
+export const scheduleMessage = (channelId: string, data: { body: string; attachments: PostedAttachment[]; reply_to?: string | null; send_at: string; timezone: string; request_id: string }) =>
+  tenant<ScheduledMessage>(`/smartcomm/channels/${channelId}/scheduled`, { method: "POST", body: data });
+export const rescheduleMessage = (id: string, send_at: string, timezone: string) => tenant<ScheduledMessage>(`/smartcomm/scheduled/${id}`, { method: "PATCH", body: { send_at, timezone } });
+export const cancelScheduledMessage = (id: string) => tenant(`/smartcomm/scheduled/${id}`, { method: "DELETE" });

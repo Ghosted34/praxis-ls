@@ -22,7 +22,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `BAD_STATE` | `BAD_STATUS` | 40× |
 | `EMPLOYEE_NOT_FOUND` | `NOT_FOUND` | 3× |
 | `FORBIDDEN` | `PERMISSION_DENIED` | 6× |
-| `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
+| `NOT_A_MEMBER` | `PERMISSION_DENIED` | 5× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
 ## All codes (532)
@@ -179,7 +179,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `EMPTY_DRAFT` | 422 | 2× | — |
 | `EMPTY_FILE` | 422 | 3× | — |
 | `EMPTY_IMAGE` | 422 | 1× | — |
-| `EMPTY_MESSAGE` | 422 | 1× | — |
+| `EMPTY_MESSAGE` | 422 | 2× | — |
 | `EMPTY_PAGE` | 422 | 1× | — |
 | `EMPTY_RECON` | 422 | 1× | — |
 | `EMPTY_SET` | 422 | 1× | — |
@@ -286,7 +286,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_AN_ANNOUNCEMENT` | 422 | 1× | — |
 | `NOT_APPROVABLE` | 400 | 1× | — |
 | `NOT_A_DRAFT` | 422 | 1× | — |
-| `NOT_A_MEMBER` | 403 | 2× | `PERMISSION_DENIED` |
+| `NOT_A_MEMBER` | 403 | 5× | `PERMISSION_DENIED` |
 | `NOT_BINDABLE` | 409 | 1× | — |
 | `NOT_CASH_ACCOUNT` | 422 | 1× | — |
 | `NOT_COMPLETED` | 409 | 1× | — |
@@ -298,7 +298,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_EDITABLE` | 400 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 3× | — |
-| `NOT_FOUND` | 404, 422 | 626× | — |
+| `NOT_FOUND` | 404, 422 | 631× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_OPEN` | 409, 422 | 3× | — |
 | `NOT_OPERATIONAL` | 422 | 1× | — |
@@ -549,7 +549,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `USER_NOT_ACTIVE` | 422 | 1× | — |
 | `USE_APPROVE` | 422 | 1× | — |
 | `VACANCY_CLOSED` | — | 1× | — |
-| `VALIDATION_ERROR` | 422 | 251× | — |
+| `VALIDATION_ERROR` | 422 | 260× | — |
 | `VARIANCE_UNEXPLAINED` | 422 | 1× | — |
 | `VEHICLE_COMMITTED` | — | 1× | — |
 | `VEHICLE_NOT_FOUND` | 404 | 1× | — |

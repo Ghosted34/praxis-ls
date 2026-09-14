@@ -16,6 +16,7 @@ const siteSettings = require("./schemas/site-settings");
 const ledger = require("./rules/ledger");
 const marks = require("./rules/marks");
 const entityRoute = require("./rules/entity-route");
+const notificationInterrupt = require("./rules/notification-interrupt");
 const workSchedule = require("./rules/work-schedule");
 const pwaDesign = require("./pwa-design");
 const countries = require("./data/countries");
@@ -56,6 +57,11 @@ exports.siteSettings = siteSettings;
 // `notification.link_url` from it at write time and the client resolves it
 // again at draw time for every row written before that column existed.
 exports.entityRoute = entityRoute;
+// Which notifications may interrupt — sound, hold the banner, vibrate.
+// Shared because the API stamps it onto the push payload, the socket
+// listener uses it to decide whether to make a noise, and the Preferences
+// matrix draws the default from it for a user who has set none.
+exports.notificationInterrupt = notificationInterrupt;
 // Canonical ISO country reference (code, name, phone, currency, per-jurisdiction
 // registration requirements) — the API, the seed and the client picker's source.
 /*

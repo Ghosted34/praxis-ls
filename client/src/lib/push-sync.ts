@@ -241,3 +241,52 @@ export function explainPushFailure(r: PushTestResult): string {
   }
   return "Nothing was sent. Turn notifications off and on again on this device.";
 }
+
+/**
+ * Turn push on for THIS device, end to end: confirm the deployment has a VAPID
+ * keypair, ask the browser for permission, then register the subscription.
+ *
+ * ── WHY THIS IS A FUNCTION AND NOT REPEATED AT EACH CALL SITE ──────────────
+ *
+ * `push-opt-in.tsx` already carries a comment explaining that its subscribe
+ * step must go through `syncPushSubscription` rather than calling
+ * `pushManager.subscribe` itself, because only that path knows how to replace a
+ * subscription minted under a superseded VAPID key — doing it directly throws
+ * InvalidStateError on exactly the deployments that had just rotated. A second
+ * caller (the enrolment banner) is a second chance to relearn that the hard
+ * way, so the whole sequence lives here once.
+ *
+ * The result is a discriminated union rather than a boolean because each
+ * outcome needs different words in front of a user, and collapsing them to
+ * "it didn't work" is how push acquires a reputation for being broken when the
+ * real answer is "your browser is blocking it" or "nobody has configured the
+ * keys yet".
+ */
+export type PushEnableResult =
+  | { ok: true; outcome: PushSyncOutcome }
+  | { ok: false; reason: "unconfigured" | "denied" | "dismissed" | "failed" };
+
+export async function enablePushOnThisDevice(): Promise<PushEnableResult> {
+  if (!pushSupported()) return { ok: false, reason: "unconfigured" };
+  try {
+    const { public_key } = await tenant<{ public_key: string | null }>(
+      "/notifications/push/public-key",
+    );
+    // No keypair on the deployment. Not the user's problem and not something
+    // they can fix, so callers must not show them a "try again".
+    if (!public_key) return { ok: false, reason: "unconfigured" };
+
+    const permission = await Notification.requestPermission();
+    if (permission === "denied") return { ok: false, reason: "denied" };
+    // "default" = the prompt was dismissed without choosing. Recoverable — we
+    // may ask again later — where "denied" is not, without the user going into
+    // browser settings themselves.
+    if (permission !== "granted") return { ok: false, reason: "dismissed" };
+
+    const outcome = await syncPushSubscription();
+    if (outcome === "skipped") return { ok: false, reason: "failed" };
+    return { ok: true, outcome };
+  } catch {
+    return { ok: false, reason: "failed" };
+  }
+}

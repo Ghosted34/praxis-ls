@@ -17,6 +17,7 @@ import { useList, useResource, errMsg } from "@/lib/use-resource";
 import { tenant } from "@/lib/api-client";
 import { num, dateFmt, enumLabel } from "@/lib/format";
 import { PushOptIn } from "@/components/pwa/push-opt-in";
+import { notificationInterrupt } from "@praxis/shared";
 import { RowActions } from "@/components/ui/row-actions";
 import { Link } from "react-router-dom";
 import { notificationLink } from "@/lib/notification-link";
@@ -40,6 +41,22 @@ type Notification = {
 type Preference = { channel: string; category: string; enabled: boolean };
 
 const CHANNELS = ["IN_APP", "EMAIL", "SMS"];
+/**
+ * INTERRUPT is not a delivery channel and nothing dispatches to it — it decides
+ * whether a notification the user ALREADY receives may play a tone, hold its
+ * banner until dismissed and vibrate a phone. It rides the same
+ * (user, channel, category) table as a pseudo-channel (migration 13795), so it
+ * needs no separate read, write or endpoint; it is kept out of `CHANNELS` so it
+ * is not treated as somewhere a notification gets sent.
+ */
+const INTERRUPT = "INTERRUPT";
+const COLUMNS = [...CHANNELS, INTERRUPT];
+const COLUMN_LABEL: Record<string, string> = {
+  IN_APP: "In-app",
+  EMAIL: "Email",
+  SMS: "SMS",
+  INTERRUPT: "Interrupt",
+};
 /**
  * The backend accepts any category string (it's free text), so this list is a UI
  * convention rather than a contract. Categories the user already has a stored
@@ -104,8 +121,19 @@ function PreferencesPanel() {
   const current = React.useMemo(() => {
     const m: Record<string, boolean> = {};
     categories.forEach((c) =>
-      CHANNELS.forEach((ch) => {
-        m[key(c, ch)] = ch === "IN_APP";
+      COLUMNS.forEach((ch) => {
+        m[key(c, ch)] =
+          ch === "IN_APP"
+            ? true
+            : ch === INTERRUPT
+              // Drawn from the same rule the server stamps notifications with,
+              // so the box shows what will actually happen rather than a
+              // hard-coded guess that drifts the first time the rule changes.
+              // NORMAL here because the default is a property of the CATEGORY;
+              // a HIGH notification interrupts regardless, which is why the
+              // rule takes priority separately.
+              ? notificationInterrupt.defaultInterrupt({ priority: "NORMAL", category: c })
+              : false;
       }),
     );
     stored.forEach((p) => {
@@ -129,7 +157,7 @@ function PreferencesPanel() {
     setError(null);
     const payload: Preference[] = [];
     categories.forEach((c) =>
-      CHANNELS.forEach((ch) => {
+      COLUMNS.forEach((ch) => {
         payload.push({ channel: ch, category: c, enabled: value[key(c, ch)] });
       }),
     );
@@ -158,6 +186,13 @@ function PreferencesPanel() {
         Choose how you're told about each kind of event. These are yours alone —
         no grant needed, and they don't affect anyone else.
       </p>
+      <p className="text-sm text-muted-foreground">
+        <span className="font-medium text-foreground">Interrupt</span> is the one
+        that makes sure you don't miss something: it plays a sound, keeps the
+        notification on screen until you deal with it, and vibrates your phone.
+        It's on by default for approvals, mail and messages, and for anything
+        marked high priority. Security alerts always interrupt.
+      </p>
       <div className="overflow-x-auto rounded-xl border">
         <table className="w-full text-sm">
           <thead className="bg-muted/60">
@@ -165,12 +200,17 @@ function PreferencesPanel() {
               <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">
                 Category
               </th>
-              {CHANNELS.map((ch) => (
+              {COLUMNS.map((ch) => (
                 <th
                   key={ch}
                   className="px-3 py-2 text-center text-xs font-medium text-muted-foreground"
+                  title={
+                    ch === INTERRUPT
+                      ? "Plays a sound, keeps the banner on screen until you deal with it, and vibrates a phone"
+                      : undefined
+                  }
                 >
-                  {ch.replace("_", "-")}
+                  {COLUMN_LABEL[ch] || ch}
                 </th>
               ))}
             </tr>
@@ -188,13 +228,14 @@ function PreferencesPanel() {
                       </span>
                     )}
                   </td>
-                  {CHANNELS.map((ch) => (
+                  {COLUMNS.map((ch) => (
                     <td key={ch} className="px-3 py-2 text-center">
                       <input
                         type="checkbox"
                         className="h-4 w-4 rounded border-input"
                         checked={locked ? true : !!value[key(c, ch)]}
                         disabled={locked}
+                        aria-label={`${COLUMN_LABEL[ch] || ch} — ${labelOf(c)}`}
                         title={
                           locked
                             ? "Security alerts can't be turned off"

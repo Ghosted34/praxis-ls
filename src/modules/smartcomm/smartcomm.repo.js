@@ -24,7 +24,10 @@ async function listChannelsForUser(client, userId, q = {}) {
     "SELECT g.*, m.is_pinned, m.is_muted, m.last_read_at, " +
       "  (SELECT COUNT(*)::int FROM comms_message x WHERE x.group_id = g.group_id AND x.deleted_at IS NULL " +
       "     AND (m.last_read_at IS NULL OR x.created_at > m.last_read_at) AND x.sender_user_id <> $1) AS unread, " +
-      "  " + PARTNER_AVATAR_SQL + " " +
+      "  " + PARTNER_AVATAR_SQL + ", " +
+      "  (SELECT row_to_json(lm) FROM (SELECT x.* FROM comms_message x " +
+      "     WHERE x.group_id = g.group_id AND x.deleted_at IS NULL " +
+      "     ORDER BY x.created_at DESC LIMIT 1) lm) AS last_message " +
       "FROM comms_group g JOIN comms_member m ON m.group_id = g.group_id AND m.user_id = $1 " +
       "WHERE g.status = 'ACTIVE' ORDER BY m.is_pinned DESC, g.updated_at DESC LIMIT $2 OFFSET $3",
     [userId, limit, offset],

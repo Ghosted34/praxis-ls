@@ -2,11 +2,11 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 140,
-  "route_count": 1569,
+  "route_count": 1581,
   "tiers": {
-    "public": 61,
+    "public": 65,
     "self-scoped": 93,
-    "gated": 1415
+    "gated": 1423
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -1336,6 +1336,12 @@
       "tier": "public"
     },
     "GET /api/tenant/careers/:token": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
+    },
+    "GET /api/tenant/careers/settings/public": {
       "auth": false,
       "rbac": false,
       "validated": false,
@@ -3987,6 +3993,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/site-settings/careers": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/site-settings/credentials": {
       "auth": true,
       "rbac": true,
@@ -4090,6 +4102,24 @@
       "tier": "gated"
     },
     "GET /api/tenant/smartcomm/config": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/smartcomm/erp/:kind/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/smartcomm/erp/search": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/smartcomm/media/:mediaId": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -6136,6 +6166,24 @@
       "tier": "gated"
     },
     "POST /api/tenant/careers/:token/apply": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
+    },
+    "POST /api/tenant/careers/alerts": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
+    },
+    "POST /api/tenant/careers/alerts/unsubscribe/:token": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
+    },
+    "POST /api/tenant/careers/open-application": {
       "auth": false,
       "rbac": false,
       "validated": false,
@@ -8301,6 +8349,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/service-types/:id/web/ai-copy": {
+      "auth": true,
+      "rbac": true,
+      "validated": true,
+      "tier": "gated"
+    },
     "POST /api/tenant/service-types/:id/web/media": {
       "auth": true,
       "rbac": true,
@@ -8493,6 +8547,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/smartcomm/channels/:id/media": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/smartcomm/channels/:id/members": {
       "auth": true,
       "rbac": true,
@@ -8542,6 +8602,12 @@
       "tier": "gated"
     },
     "POST /api/tenant/smartcomm/config/whatsapp/test": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/smartcomm/media/:mediaId/promote": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -9376,6 +9442,12 @@
       "tier": "gated"
     },
     "PUT /api/tenant/site-settings/about": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PUT /api/tenant/site-settings/careers": {
       "auth": true,
       "rbac": true,
       "validated": false,

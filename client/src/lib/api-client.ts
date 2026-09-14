@@ -587,6 +587,38 @@ export const tenantDownload = (p: string, filename: string) =>
   download(`/tenant${p}`, filename);
 
 /**
+ * Fetch a gated binary endpoint and return an object URL for it.
+ *
+ * WHY THIS EXISTS AND `<img src>` DOES NOT. Auth here is a Bearer token in a
+ * header, and a plain `src` attribute cannot carry one — the browser issues its
+ * own credential-free request and gets a 401. Public assets (a tenant logo, an
+ * avatar) are served unauthenticated under /media and need none of this; a
+ * private conversation's attachments are the opposite, so the bytes are
+ * fetched like any other API call and handed to the element as a blob.
+ *
+ * The caller MUST revoke the returned URL when it is done, or the whole blob
+ * stays pinned in memory for the life of the document — on a thread somebody
+ * scrolls through all day that is a leak with teeth. `useObjectUrl` in the chat
+ * feature is the hook that does it.
+ *
+ * Server-side `Cache-Control: private, max-age=…` still applies, so scrolling a
+ * photo back into view re-reads the HTTP cache rather than the network.
+ */
+export async function fetchObjectUrl(path: string, signal?: AbortSignal): Promise<string> {
+  const h = new Headers();
+  h.set("X-Praxis-Env", tokenStore.getEnv());
+  const t = tokenStore.getAccess();
+  if (t) h.set("Authorization", `Bearer ${t}`);
+  const res = await send(`/api${path}`, { headers: h, signal });
+  if (!res.ok) {
+    throw new ApiError("FETCH_FAILED", res.statusText || "Could not load that file", res.status);
+  }
+  return URL.createObjectURL(await res.blob());
+}
+export const tenantObjectUrl = (p: string, signal?: AbortSignal) =>
+  fetchObjectUrl(`/tenant${p}`, signal);
+
+/**
  * As `download`, but POSTs a JSON body first.
  *
  * `download` covers the usual export: a GET whose parameters fit in a query

@@ -19,6 +19,9 @@ import { PlusIcon } from "@/components/ui/icons";
 import * as api from "@/lib/smartcomm-api";
 import { useCommsChannel } from "@/lib/comms-socket";
 import { NewMessageDialog } from "./inbox/composer/new-message";
+import { Composer } from "./chat/composer";
+import { MessageBubble } from "./chat/message-bubble";
+import { ForwardDialog } from "./chat/forward-dialog";
 
 /* avatar colouring — a fixed per-person palette (pixie parity), not the brand accent */
 const AVATAR_COLOURS = [
@@ -80,13 +83,6 @@ function Avatar({
       {initials(name)}
     </span>
   );
-}
-function timeShort(iso?: string | null) {
-  if (!iso) return "";
-  return new Date(iso).toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
 }
 function fmtRelative(iso?: string | null) {
   if (!iso) return "";
@@ -610,6 +606,7 @@ export function TeamChatPage() {
               channelId={activeId}
               meId={meId}
               nameOf={nameOf}
+              channels={all}
               onBack={() => {
                 const n = new URLSearchParams(params);
                 n.delete("channel");
@@ -664,21 +661,28 @@ function Thread({
   channelId,
   meId,
   nameOf,
+  channels,
   onBack,
   onSent,
 }: {
   channelId: string;
   meId: string;
   nameOf: Record<string, string>;
+  /** Every channel the viewer is in — the forward picker's options. */
+  channels: api.Channel[];
   onBack: () => void;
   onSent: () => void;
 }) {
   const ch = useResource(() => api.getChannel(channelId), [channelId]);
   const thread = useResource(() => api.getThread(channelId), [channelId]);
-  const [text, setText] = React.useState("");
-  const [busy, setBusy] = React.useState(false);
   const bottomRef = React.useRef<HTMLDivElement | null>(null);
-  const msgs = thread.data?.messages || [];
+  const scrollerRef = React.useRef<HTMLDivElement | null>(null);
+  // Memoised because `thread.data?.messages || []` is a fresh array on every
+  // render, which would make the reply-quote map below rebuild each time.
+  const msgs = React.useMemo(() => thread.data?.messages || [], [thread.data]);
+
+  const [replyTo, setReplyTo] = React.useState<api.CommMessage | null>(null);
+  const [forwarding, setForwarding] = React.useState<api.CommMessage | null>(null);
 
   // Live updates (socket.io). Any channel event refreshes the thread; a peer's
   // typing shows a transient indicator. The 8s poll below stays as a fallback
@@ -693,6 +697,11 @@ function Thread({
     "comms:message_edited": () => thread.reload(),
     "comms:message_deleted": () => thread.reload(),
     "comms:reaction": () => thread.reload(),
+    // A voice note's transcript lands after the message it belongs to — the
+    // clip is posted immediately and transcribed afterwards, deliberately.
+    // This is what makes the words appear under a bubble somebody is already
+    // looking at rather than on their next reload.
+    "comms:transcript": () => thread.reload(),
     "channel:typing": (p: { user_id?: string }) => {
       if (!p?.user_id || p.user_id === meId) return;
       setTypingName(nameOf[p.user_id] || "Someone");
@@ -702,32 +711,38 @@ function Thread({
   });
 
   React.useEffect(() => {
-    api.markRead(channelId).catch(() => {});
+    api.markRead(channelId).catch(() => {
+      /* @silent:storage — an unsent read marker costs a stale unread badge until
+         the next open, never a message */
+    });
   }, [channelId, msgs.length]);
+
+  /**
+   * Follow the conversation, but only when the reader is already at the bottom.
+   *
+   * Scrolling unconditionally is the defect every chat has had at least once:
+   * somebody reading back through yesterday gets yanked to the end each time a
+   * colleague types, and there is no way to finish reading a paragraph.
+   */
   React.useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    const el = scrollerRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    if (distanceFromBottom < 160) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [msgs.length]);
+
   React.useEffect(() => {
     const t = window.setInterval(() => thread.reload(), 8000);
     return () => window.clearInterval(t);
   }, [thread]);
 
-  async function send(e: React.FormEvent) {
-    e.preventDefault();
-    const b = text.trim();
-    if (!b || busy) return;
-    setText("");
-    setBusy(true);
-    try {
-      await api.postMessage(channelId, b);
-      thread.reload();
-      onSent();
-    } catch {
-      setText(b);
-    } finally {
-      setBusy(false);
-    }
-  }
+  // Reply quotes resolve against the page the reader has. A reply to something
+  // older than the loaded window renders without its quote rather than
+  // fetching one message at a time while scrolling.
+  const byId = React.useMemo(
+    () => new Map(msgs.map((m) => [m.message_id, m])),
+    [msgs],
+  );
 
   return (
     <>
@@ -751,78 +766,66 @@ function Thread({
           <span className="micro">· {ch.data.kind.toLowerCase()}</span>
         )}
       </div>
-      <div className="flex-1 space-y-2 overflow-y-auto bg-[rgb(var(--ink-3)/0.04)] px-4 py-3">
+
+      <div
+        ref={scrollerRef}
+        className="flex-1 space-y-2 overflow-y-auto bg-[rgb(var(--ink-3)/0.04)] px-4 py-3"
+      >
         {thread.loading && msgs.length === 0 ? (
           <div className="micro">{tr("Loading…")}</div>
         ) : thread.error ? (
           <ErrorState message={thread.error} />
         ) : msgs.length ? (
-          msgs.map((m) => {
-            const mine = !!meId && m.sender_user_id === meId;
-            return (
-              <div
-                key={m.message_id}
-                className={mine ? "flex justify-end" : "flex justify-start"}
-              >
-                <div
-                  className={cn(
-                    "max-w-[78%] rounded-2xl px-3 py-2 text-sm",
-                    mine
-                      ? "bg-primary text-primary-foreground"
-                      : "border border-border bg-card",
-                  )}
-                >
-                  {!mine && m.sender_user_id && (
-                    <div className="mb-0.5 text-[11px] font-medium text-primary-ink">
-                      {nameOf[m.sender_user_id] || "Someone"}
-                    </div>
-                  )}
-                  <div className="whitespace-pre-wrap">
-                    {m.body || (m.media_vault_id ? "(attachment)" : "")}
-                  </div>
-                  <div
-                    className={cn(
-                      "mt-0.5 text-[10px]",
-                      mine
-                        ? "text-primary-foreground/70"
-                        : "text-muted-foreground",
-                    )}
-                  >
-                    {timeShort(m.created_at)}
-                  </div>
-                </div>
-              </div>
-            );
-          })
+          msgs.map((m) => (
+            <MessageBubble
+              key={m.message_id}
+              message={m}
+              mine={!!meId && m.sender_user_id === meId}
+              meId={meId}
+              senderName={m.sender_user_id ? nameOf[m.sender_user_id] || tr("Someone") : null}
+              repliedTo={m.reply_to_message_id ? byId.get(m.reply_to_message_id) || null : null}
+              onReply={setReplyTo}
+              onForward={setForwarding}
+              onChanged={() => { thread.reload(); onSent(); }}
+            />
+          ))
         ) : (
           <div className="flex h-full items-center justify-center micro">
-            No messages yet — say hello.
+            {tr("No messages yet — say hello.")}
           </div>
         )}
         <div ref={bottomRef} />
       </div>
+
       {typingName && (
         <div className="px-4 pb-1 text-[11px] italic text-muted-foreground">
-          {typingName} is typing…
+          {typingName} {tr("is typing…")}
         </div>
       )}
-      <form
-        className="flex items-center gap-2 border-t border-border px-3 py-2"
-        onSubmit={send}
-      >
-        <Input
-          value={text}
-          onChange={(e) => {
-            setText(e.target.value);
-            setTyping();
-          }}
-          placeholder="Write a message…"
-          className="flex-1"
-        />
-        <Button type="submit" loading={busy} disabled={!text.trim()}>
-          Send
-        </Button>
-      </form>
+
+      <Composer
+        channelId={channelId}
+        replyTo={
+          replyTo
+            ? {
+              message_id: replyTo.message_id,
+              body: replyTo.body,
+              sender: replyTo.sender_user_id ? nameOf[replyTo.sender_user_id] : null,
+            }
+            : null
+        }
+        onCancelReply={() => setReplyTo(null)}
+        onTyping={setTyping}
+        onSent={() => { thread.reload(); onSent(); }}
+      />
+
+      <ForwardDialog
+        message={forwarding}
+        channels={channels}
+        currentChannelId={channelId}
+        onClose={() => setForwarding(null)}
+        onForwarded={onSent}
+      />
     </>
   );
 }

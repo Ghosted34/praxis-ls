@@ -142,6 +142,25 @@ describe("trust and archive", () => {
     expect(screen.getByText(/A lookalike confirmed here\s+stops being flagged/)).toBeInTheDocument();
   });
 
+  it("selects a real party UUID instead of accepting a human reference", async () => {
+    renderScreen(<TrustTab />, {
+      routes: {
+        ...base,
+        "/clients": [{
+          client_id: "11111111-1111-4111-8111-111111111111",
+          name: "Camrail",
+          ref: "SBX-CL-0004",
+          is_active: true,
+        }],
+      },
+    });
+    await userEvent.click(await screen.findByRole("button", { name: "Confirm a domain" }));
+    const party = await screen.findByRole("combobox", { name: "Party" });
+    expect(party).toHaveTextContent("Camrail — SBX-CL-0004");
+    await userEvent.selectOptions(party, "11111111-1111-4111-8111-111111111111");
+    expect(party).toHaveValue("11111111-1111-4111-8111-111111111111");
+  });
+
   it("a broken archive chain is explained, not just coloured", async () => {
     renderScreen(<TrustTab />, {
       routes: { ...base, "/mail/archive/verify": { ok: false, checked: 812, broken_at: "email_message:m-9" } },

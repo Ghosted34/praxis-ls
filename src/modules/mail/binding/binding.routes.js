@@ -27,7 +27,10 @@ const {
 
 const M = "MOD-72";
 const router = express.Router();
-router.use(authMiddleware);
+// Shared /mail routers must not install catch-all middleware: doing so captures
+// the unauthenticated OAuth callbacks owned by mail/mail.routes.js before that
+// sibling router can see them.
+router.use(["/threads", "/suggestions", "/context", "/intake"], authMiddleware);
 
 const actor = (req) => req.user || { user_id: null };
 

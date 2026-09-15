@@ -69,7 +69,12 @@ const {
 } = require("../mail/visible");
 
 const router = express.Router();
-router.use(authMiddleware);
+// This router shares the /mail mount with the OAuth callback router. An
+// unqualified router.use(authMiddleware) intercepts every /mail/* request that
+// falls through to this module, including provider callbacks which correctly
+// arrive without a Praxis bearer token. Authenticate only namespaces owned by
+// this module; the individual permission/visibility gates remain on the routes.
+router.use(["/assist", "/messages"], authMiddleware);
 
 /**
  * The AI gate (note 3 in the header): per route, on every /assist/* route

@@ -148,6 +148,31 @@ function buildCorsOptions() {
   };
 }
 
+/**
+ * The Content-Security-Policy directives this server serves.
+ *
+ * A pure function, and exported, for the same reason `buildCorsOptions` is:
+ * the policy is a security decision with a history of silent failures, and a
+ * decision nothing can assert is a decision nobody is checking. Booting the
+ * app to read one header would need a database.
+ */
+function buildCspDirectives(defaults, scriptSrc) {
+  return {
+    ...defaults,
+    /*
+     * BOTH of these carry `blob:` for one reason: a chat attachment is
+     * membership-gated, so its bytes arrive through an authenticated fetch and
+     * reach the element as a blob — a plain `src` cannot carry a Bearer token.
+     * An attachment kind whose directive omits `blob:` does not degrade, it is
+     * blocked outright, and the element reports that as an ordinary media
+     * error. See the note above the `app.use(helmet(...))` call.
+     */
+    "img-src": ["'self'", "data:", "blob:", "https:"],
+    "media-src": ["'self'", "blob:"],
+    "script-src": scriptSrc,
+  };
+}
+
 function buildApp() {
   const app = express();
   app.disable("x-powered-by");
@@ -240,15 +265,37 @@ function buildApp() {
     ...(cspDefaults["script-src"] || ["'self'"]),
     ...shellHashes,
   ];
+  /**
+   * ── `media-src`, AND THE MONTHS IT COST TO NOT HAVE IT ────────────────────
+   *
+   * A chat attachment is membership-gated, so its bytes arrive through an
+   * authenticated `fetch` carrying a Bearer token and are handed to the element
+   * as a `blob:` URL — a plain `src` attribute cannot carry a header. That is
+   * true of every attachment kind, and `img-src` says `blob:` so IMAGES worked.
+   *
+   * `media-src` was never set. CSP falls back to `default-src` for a directive
+   * it has no value for, `default-src` is `'self'`, and `blob:` is not `'self'`
+   * — so the browser blocked EVERY <audio> and <video> in Smart Comms, on every
+   * platform, with the whole stack working perfectly:
+   *
+   *     Loading media from 'blob:https://…' violates the following Content
+   *     Security Policy directive: "default-src 'self'". Note that 'media-src'
+   *     was not explicitly set, so 'default-src' is used as a fallback.
+   *
+   * The element reports that refusal as an ordinary media error, which is
+   * indistinguishable from a codec it lacks — so "voice notes don't play" was
+   * chased through the recorder, the upload, the storage driver, the response
+   * headers, the blob technique, the service worker and the browser itself.
+   * All of them were fine. A header three hundred lines from any of them was
+   * not, and the one directive that was written down — `img-src` — is exactly
+   * why images kept working and hid it.
+   *
+   * `blob:` only. Not `https:` and not `data:`: the only media this product
+   * plays is media it fetched itself and holds in memory.
+   */
   app.use(
     helmet({
-      contentSecurityPolicy: {
-        directives: {
-          ...cspDefaults,
-          "img-src": ["'self'", "data:", "blob:", "https:"],
-          "script-src": scriptSrc,
-        },
-      },
+      contentSecurityPolicy: { directives: buildCspDirectives(cspDefaults, scriptSrc) },
     }),
   );
   /**
@@ -875,4 +922,4 @@ function start() {
 
 if (require.main === module) start();
 
-module.exports = { buildApp, start, buildCorsOptions };
+module.exports = { buildApp, start, buildCorsOptions, buildCspDirectives };

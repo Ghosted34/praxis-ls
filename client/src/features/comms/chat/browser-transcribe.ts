@@ -197,10 +197,17 @@ export function useClipListener() {
       // to skim a clip and a bad way to be understood.
       audio.playbackRate = 1;
       audio.muted = false;
-      void audio.play().catch(() => {
-        teardown();
-        setState({ listening: false, heard: "", problem: "failed" });
-      });
+      // Guarded for the same reason `voice-note.tsx` guards it: `play()` is
+      // only specified to return a promise, and older WebKit returns
+      // undefined. `.catch` on that throws out of a click handler and takes
+      // the bubble down with it.
+      const started = audio.play() as Promise<void> | undefined;
+      if (started && typeof started.catch === "function") {
+        started.catch(() => {
+          teardown();
+          setState({ listening: false, heard: "", problem: "failed" });
+        });
+      }
     },
     [teardown],
   );

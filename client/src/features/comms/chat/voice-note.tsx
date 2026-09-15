@@ -77,7 +77,7 @@ import { cn } from "@/lib/cn";
 import { tr } from "@/lib/i18n";
 import * as api from "@/lib/smartcomm-api";
 import type { CommAttachment, TranscriptStatus } from "@/lib/smartcomm-api";
-import { useObjectUrl } from "./use-object-url";
+import { useClip, describeClip, isAudioContainer } from "./clip-source";
 import { clock } from "./audio-utils";
 import {
   SPEECH_LANGS,
@@ -114,8 +114,18 @@ export type BubbleTone = "surface" | "primary";
  *   "gone"        there is no clip to fetch — the attachment carries no media
  *                 id. Collapsing this into "couldn't load" would send somebody
  *                 hunting a network fault that is not there.
+ *   "policy"      the page's Content-Security-Policy refused the blob. The
+ *                 bytes are fine, the codec is fine, and the browser was told
+ *                 not to load it. This is the fault that cost months: a
+ *                 `media-src` that was never written down, reported by the
+ *                 element as an ordinary media error.
+ *   "not-audio"   the request succeeded and what came back is not a recording
+ *                 at all — a web page, an error envelope, nothing. That is a
+ *                 DEPLOYMENT fault, not a device one, and it used to be
+ *                 reported as "this browser can't play this", which sends the
+ *                 reader to the one place the answer cannot be.
  */
-type Problem = null | "blocked" | "undecodable" | "gone";
+type Problem = null | "blocked" | "undecodable" | "gone" | "not-audio" | "policy";
 
 /** What `play()` rejected with, mapped to what the reader should do about it. */
 function problemFor(err: unknown): Problem | "ignore" {
@@ -168,11 +178,52 @@ export function VoiceNote({
   // The bytes are fetched on the FIRST PLAY, not on render. A channel with
   // forty voice notes in its history must not pull forty clips down to show
   // forty bars — the bars are already in the row.
-  const fetcher = React.useMemo(
-    () => (mediaId ? (signal: AbortSignal) => api.mediaObjectUrl(mediaId, signal) : null),
-    [mediaId],
-  );
-  const { url, loading, error } = useObjectUrl(fetcher, { enabled: wanted });
+  const clip = useClip(mediaId, wanted);
+  const { url, loading, error } = clip;
+  /**
+   * `el.error.code` from the last failure, kept so the sentence can say which
+   * of the four it was. 3 (DECODE) and 4 (SRC_NOT_SUPPORTED) are different
+   * faults — a truncated or corrupt file versus a container this device has no
+   * decoder for — and telling them apart is the difference between "re-send
+   * it" and "it will never play here".
+   */
+  const [mediaError, setMediaError] = React.useState<number | null>(null);
+  /** Which CSP directive did the refusing, when one did. */
+  const [policyDirective, setPolicyDirective] = React.useState("");
+
+  /*
+   * The bytes arrived and are not audio. Said before anything is asked to play
+   * them, because <audio> would report this as a decode failure and a decode
+   * failure points at the reader's browser — which is the one thing that is
+   * certainly not at fault when the body is a web page.
+   */
+  React.useEffect(() => {
+    if (clip.container && !isAudioContainer(clip.container)) setProblem("not-audio");
+  }, [clip.container]);
+
+  /*
+   * ── A REFUSAL BY POLICY IS NOT A MEDIA ERROR, AND THE ELEMENT CANNOT SAY SO
+   *
+   * When CSP blocks a source the element fires `error` with code 4 — the same
+   * code it gives a container the device has no decoder for. That ambiguity is
+   * what hid a missing `media-src` behind "this browser can't play this
+   * recording" while every other part of the stack was provably fine.
+   *
+   * The browser does say, once, on `securitypolicyviolation`. Listening costs
+   * nothing and turns the one failure mode nobody could see into a sentence
+   * naming the directive. Kept because the policy is not always ours — a proxy
+   * or CDN in front of a deployment can impose its own.
+   */
+  React.useEffect(() => {
+    if (!url) return undefined;
+    const onViolation = (e: SecurityPolicyViolationEvent) => {
+      if (!e.blockedURI || !e.blockedURI.startsWith("blob:")) return;
+      setPolicyDirective(e.violatedDirective || e.effectiveDirective || "");
+      setProblem("policy");
+    };
+    document.addEventListener("securitypolicyviolation", onViolation);
+    return () => document.removeEventListener("securitypolicyviolation", onViolation);
+  }, [url]);
 
   const durationMs = Number(attachment.duration_ms) || 0;
 
@@ -195,9 +246,21 @@ export function VoiceNote({
     [durationMs],
   );
 
+  /**
+   * Start playback and route a refusal to the right sentence.
+   *
+   * `play()` is only SPECIFIED to return a promise — it does not always do so.
+   * Older WebKit and several embedded webviews return undefined, and
+   * `el.play().catch(...)` on one of those throws a TypeError out of a React
+   * event handler, which unmounts the whole bubble. The player then does not
+   * merely fail to play: it disappears. (jsdom returns undefined too, which is
+   * how this surfaced — the same shape, on a browser nobody ships.)
+   */
   const start = React.useCallback((el: HTMLAudioElement, rate: number) => {
     el.playbackRate = rate;
-    el.play().catch((err: unknown) => {
+    const started = el.play() as Promise<void> | undefined;
+    if (!started || typeof started.catch !== "function") return;
+    started.catch((err: unknown) => {
       const next = problemFor(err);
       if (next !== "ignore") setProblem(next);
     });
@@ -208,6 +271,7 @@ export function VoiceNote({
   React.useEffect(() => {
     const el = audioRef.current;
     if (!url || !wanted || !el || !el.paused) return;
+    if (clip.container && !isAudioContainer(clip.container)) return;
     if (!autoplayOnLoad.current) {
       autoplayOnLoad.current = true;
       return;
@@ -420,7 +484,20 @@ export function VoiceNote({
           // nothing, which is the failure this whole file now exists to
           // refuse. Guarded on `url`, because an element with no source
           // fires `error` on some browsers merely for existing.
-          onError={() => { if (url) setProblem("undecodable"); }}
+          onError={(e) => {
+            setMediaError(e.currentTarget.error?.code ?? null);
+            // `not-audio` is the more specific finding and is already set from
+            // the bytes; it must not be overwritten by the element's opinion.
+            // `policy` and `not-audio` are both more specific than the
+            // element's own verdict and must not be overwritten by it.
+            setProblem((current) =>
+              current === "policy" || current === "not-audio"
+                ? current
+                : url && isAudioContainer(clip.container ?? "unknown")
+                  ? "undecodable"
+                  : current,
+            );
+          }}
           className="hidden"
         />
       </div>
@@ -431,6 +508,14 @@ export function VoiceNote({
       {error ? (
         <p className={cn("text-micro", meta)}>
           {tr("Couldn't load that recording. Check your connection and press play again.")}
+        </p>
+      ) : problem === "policy" ? (
+        <p className={cn("text-micro", meta)}>
+          {tr("This site's security policy blocked the recording. One for your administrator.")}
+        </p>
+      ) : problem === "not-audio" ? (
+        <p className={cn("text-micro", meta)}>
+          {tr("The server didn't send a recording. This one is for your administrator, not you.")}
         </p>
       ) : problem === "undecodable" ? (
         <p className={cn("text-micro", meta)}>{tr("This browser can't play this recording.")}</p>
@@ -443,6 +528,27 @@ export function VoiceNote({
           {tr("This recording is no longer attached to the message.")}
         </p>
       ) : null}
+
+      {/*
+       * WHAT ACTUALLY CAME BACK, whenever something went wrong.
+       *
+       * One line, only on a failure, and phrased so it can be read down a
+       * phone line or screenshotted straight into a ticket. Every earlier
+       * round of this bug was spent establishing facts that the failing
+       * install already had and could not say — "audio/webm · webm · 38 KB"
+       * and "audio/webm header, but the body is a web page" send whoever
+       * reads them to two completely different places.
+       */}
+      {(problem === "not-audio" || problem === "undecodable" || problem === "policy") && clip.container && (
+        // ONE text node, not `{a}{b}`: React renders the second form as two
+        // siblings, which is a line nobody can select in one go and a string no
+        // test can match whole.
+        <p className={cn("text-micro font-mono", meta)}>
+          {describeClip(clip) +
+            (policyDirective ? ` · blocked by ${policyDirective}` : "") +
+            (mediaError ? ` · media error ${mediaError}` : "")}
+        </p>
+      )}
 
       <Transcript
         attachment={attachment}

@@ -605,6 +605,24 @@ export const tenantDownload = (p: string, filename: string) =>
  * photo back into view re-reads the HTTP cache rather than the network.
  */
 export async function fetchObjectUrl(path: string, signal?: AbortSignal): Promise<string> {
+  return URL.createObjectURL(await fetchBlob(path, signal));
+}
+
+/**
+ * As `fetchObjectUrl`, but hands back the BLOB rather than a URL for it.
+ *
+ * Because a caller sometimes has to know what actually arrived. An object URL
+ * is opaque: hand one to an <audio> and a server that answered 200 with the
+ * SPA's index.html — an auth redirect, a proxy rule, a route that stopped
+ * matching — is indistinguishable from a codec this browser lacks. Both render
+ * as "can't play this", which is the sentence that has sent people hunting the
+ * wrong fault for weeks.
+ *
+ * `res.ok` does not cover it either: the failure being guarded against here is
+ * a 200 whose body is the wrong KIND of thing, and only the bytes can say so.
+ * See `features/comms/chat/clip-source.ts`, which sniffs the container.
+ */
+export async function fetchBlob(path: string, signal?: AbortSignal): Promise<Blob> {
   const h = new Headers();
   h.set("X-Praxis-Env", tokenStore.getEnv());
   const t = tokenStore.getAccess();
@@ -613,8 +631,9 @@ export async function fetchObjectUrl(path: string, signal?: AbortSignal): Promis
   if (!res.ok) {
     throw new ApiError("FETCH_FAILED", res.statusText || "Could not load that file", res.status);
   }
-  return URL.createObjectURL(await res.blob());
+  return res.blob();
 }
+export const tenantBlob = (p: string, signal?: AbortSignal) => fetchBlob(`/tenant${p}`, signal);
 export const tenantObjectUrl = (p: string, signal?: AbortSignal) =>
   fetchObjectUrl(`/tenant${p}`, signal);
 

@@ -8,12 +8,13 @@
  * copy.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { ErpCardView } from "./erp-card";
 import { VoiceNote } from "./voice-note";
 import { downsample, clock } from "./audio-utils";
+import { sniffContainer, describeClip, isAudioContainer } from "./clip-source";
 import { forwardableAttachments } from "./forward-attachments";
 import { searchEmoji, withSkinTone, EMOJI_COUNT, CATEGORY_ORDER, EMOJI } from "@/lib/emoji-data";
 import * as commsApi from "@/lib/smartcomm-api";
@@ -31,8 +32,10 @@ import type { CommAttachment, CommMessage, ErpCard, TranscriptStatus } from "@/l
 vi.mock("@/lib/smartcomm-api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/smartcomm-api")>()),
   transcribeMedia: vi.fn(),
+  mediaBlob: vi.fn(),
 }));
 const transcribeMedia = vi.mocked(commsApi.transcribeMedia);
+const mediaBlob = vi.mocked(commsApi.mediaBlob);
 
 const inRouter = (ui: React.ReactNode) => render(<MemoryRouter>{ui}</MemoryRouter>);
 
@@ -301,6 +304,143 @@ describe("VoiceNote — the words are asked for, and every state is a sentence",
     // sends somebody hunting a network fault that is not there.
     render(<VoiceNote attachment={{ ...base, media_id: undefined, transcript_status: "NONE" }} />);
     expect(screen.queryByText(/Couldn't load that recording/i)).toBeNull();
+  });
+});
+
+/**
+ * ── THE SNIFF, AND THE WEEKS IT WOULD HAVE SAVED ────────────────────────────
+ *
+ * "This browser can't play this recording" was reported over and over against
+ * a player that plays. The recorder, multer, the storage driver, the
+ * controller's headers, the blob: URL and the service worker were each proved
+ * sound end to end — and none of that could see WHICH BYTES the failing
+ * install received, because an object URL is opaque and `res.ok` is true for a
+ * 200 whose body is the SPA shell.
+ *
+ * These pin the identification itself, because it is what turns the next
+ * report from "it says it can't play" into a cause.
+ */
+describe("what actually came back", () => {
+  const head = (...bytes: number[]) => new Uint8Array(bytes);
+  const text = (s: string) => new Uint8Array([...s].map((c) => c.charCodeAt(0)));
+
+  it("knows the containers this product can produce", () => {
+    expect(sniffContainer(head(0x1a, 0x45, 0xdf, 0xa3))).toBe("webm");
+    expect(sniffContainer(text("OggS"))).toBe("ogg");
+    expect(sniffContainer(text("\0\0\0 ftypM4A "))).toBe("mp4");
+    expect(sniffContainer(text("RIFF....WAVE"))).toBe("wav");
+    expect(sniffContainer(text("ID3"))).toBe("mp3");
+    expect(sniffContainer(head(0xff, 0xfb, 0x90, 0x00))).toBe("mp3");
+  });
+
+  /**
+   * THE ONE THAT MATTERS. An auth redirect, a proxy rule or a route that
+   * stopped matching answers 200 with the app's own index.html under whatever
+   * Content-Type the database column claimed. Handed to <audio> that is a
+   * decode error, and a decode error accuses the reader's browser — the one
+   * place the answer cannot be.
+   */
+  it("tells a web page and an error envelope apart from audio", () => {
+    expect(sniffContainer(text("<!doctype html><html>"))).toBe("page");
+    expect(sniffContainer(text("   \n<!doctype html>"))).toBe("page");
+    expect(sniffContainer(text('{"error":{"code":"NOT_FOUND"}}'))).toBe("payload");
+    expect(sniffContainer(new Uint8Array())).toBe("empty");
+    expect(isAudioContainer("page")).toBe(false);
+    expect(isAudioContainer("webm")).toBe(true);
+  });
+
+  it("describes the response in terms somebody can act on", () => {
+    expect(
+      describeClip({ url: null, container: "page", declaredType: "audio/webm", bytes: 4096, loading: false, error: false }),
+    ).toMatch(/audio\/webm header, but the body is a web page/);
+    expect(
+      describeClip({ url: null, container: "webm", declaredType: "audio/webm", bytes: 38456, loading: false, error: false }),
+    ).toBe("audio/webm · webm · 38 KB");
+    expect(
+      describeClip({ url: null, container: "empty", declaredType: "audio/webm", bytes: 0, loading: false, error: false }),
+    ).toBe("audio/webm, empty response");
+  });
+});
+
+describe("VoiceNote blames the right party for a response that is not audio", () => {
+  const notAudioBase: CommAttachment = {
+    attachment_kind: "MEDIA", media_id: "m-1", media_kind: "AUDIO",
+    is_voice_note: true, duration_ms: 8200, waveform: [10, 40, 80, 30],
+  };
+
+  beforeEach(() => {
+    mediaBlob.mockReset();
+  });
+
+  it("says it is the deployment, not the browser, and prints what arrived", async () => {
+    // A 200 carrying the SPA shell under an audio Content-Type: exactly what a
+    // stale proxy rule or an auth redirect produces.
+    mediaBlob.mockResolvedValue(
+      new Blob(["<!doctype html><html><body>app shell</body></html>"], { type: "audio/webm" }),
+    );
+    render(<VoiceNote attachment={{ ...notAudioBase, transcript_status: "NONE" }} />);
+    await userEvent.click(screen.getByRole("button", { name: /play voice note/i }));
+
+    expect(await screen.findByText(/for your administrator, not you/i)).toBeInTheDocument();
+    expect(screen.getByText(/body is a web page/i)).toBeInTheDocument();
+    // The sentence that sent people hunting the wrong fault must NOT appear.
+    expect(screen.queryByText(/This browser can't play this recording/i)).toBeNull();
+  });
+
+  /**
+   * THE FAULT THAT COST MONTHS, now a sentence.
+   *
+   * `img-src` carried `blob:` and `media-src` was never written down, so CSP
+   * fell back to `default-src 'self'` and blocked every <audio> in the product
+   * while the recorder, the upload, the storage, the headers, the object URL
+   * and the service worker were each provably fine. A blocked element fires
+   * `error` with code 4 — the same code as a missing codec — so the bubble
+   * accused the reader's browser. The browser does say which directive
+   * refused, once, and this is that being heard.
+   */
+  it("names a policy refusal instead of accusing the browser", async () => {
+    mediaBlob.mockResolvedValue(
+      new Blob([new Uint8Array([0x1a, 0x45, 0xdf, 0xa3, 0, 0, 0, 0])], { type: "audio/webm" }),
+    );
+    render(<VoiceNote attachment={{ ...notAudioBase, transcript_status: "NONE" }} />);
+    await userEvent.click(screen.getByRole("button", { name: /^play voice note$/i }));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /^play voice note$/i })).not.toBeDisabled(),
+    );
+
+    // What Chrome dispatches when the policy blocks a blob: media source.
+    const violation = new Event("securitypolicyviolation") as Event & {
+      blockedURI: string;
+      violatedDirective: string;
+      effectiveDirective: string;
+    };
+    violation.blockedURI = "blob:https://smartls.praxisls.com/45a9e4da";
+    violation.violatedDirective = "media-src";
+    violation.effectiveDirective = "media-src";
+    document.dispatchEvent(violation);
+
+    expect(await screen.findByText(/security policy blocked the recording/i)).toBeInTheDocument();
+    expect(screen.getByText(/blocked by media-src/i)).toBeInTheDocument();
+    expect(screen.queryByText(/This browser can't play this recording/i)).toBeNull();
+  });
+
+  it("keeps a real audio container on the browser's side of the line", async () => {
+    mediaBlob.mockResolvedValue(
+      new Blob([new Uint8Array([0x1a, 0x45, 0xdf, 0xa3, 0, 0, 0, 0])], { type: "audio/webm" }),
+    );
+    render(<VoiceNote attachment={{ ...notAudioBase, transcript_status: "NONE" }} />);
+    await userEvent.click(screen.getByRole("button", { name: /play voice note/i }));
+
+    // The play button is disabled only while the bytes are in flight, so it
+    // coming back is the observable moment the verdict about them would have
+    // been rendered if one were going to be. jsdom implements no media stack,
+    // so waiting on the <audio> itself would wait forever.
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /^play voice note$/i })).not.toBeDisabled(),
+    );
+    // jsdom has no media stack, so nothing plays. What is pinned here is that
+    // valid audio is NOT accused of being a deployment fault.
+    expect(screen.queryByText(/for your administrator/i)).toBeNull();
   });
 });
 

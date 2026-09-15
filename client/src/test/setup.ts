@@ -31,6 +31,24 @@ if (!Element.prototype.hasPointerCapture) {
 if (!Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = () => {};
 }
+/**
+ * jsdom has no object-URL store.
+ *
+ * `URL.createObjectURL` is simply absent, so any component that fetches bytes
+ * and hands the browser a `blob:` URL — every chat attachment — throws inside
+ * its own fetch and renders as "couldn't load" in a test, whatever the server
+ * actually returned. That turns a component whose whole job is telling good
+ * responses from bad ones into one that cannot be tested at all.
+ *
+ * A counter, not a real store: nothing in jsdom will ever dereference the URL,
+ * and what the tests assert is which branch the component took.
+ */
+if (typeof URL.createObjectURL === "undefined") {
+  let n = 0;
+  URL.createObjectURL = () => `blob:praxis-test/${++n}`;
+  URL.revokeObjectURL = () => {};
+}
+
 if (typeof globalThis.ResizeObserver === "undefined") {
   globalThis.ResizeObserver = class {
     observe() {}

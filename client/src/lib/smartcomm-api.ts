@@ -3,7 +3,7 @@
  * `comms_group`s (DEPARTMENT / PROJECT / DOSSIER / DIRECT / CLIENT) with
  * messages, members, unread + pin.
  */
-import { tenant, uploadFile, tenantObjectUrl } from "./api-client";
+import { tenant, uploadFile, tenantObjectUrl, tenantBlob } from "./api-client";
 
 export type ChannelKind =
   "DEPARTMENT" | "PROJECT" | "DOSSIER" | "DIRECT" | "CLIENT";
@@ -285,6 +285,11 @@ export const uploadMedia = (
  */
 export const mediaObjectUrl = (mediaId: string, signal?: AbortSignal) =>
   tenantObjectUrl(`/smartcomm/media/${mediaId}`, signal);
+
+/** The same bytes, as a Blob, for a caller that has to inspect what arrived —
+ *  see `features/comms/chat/clip-source.ts`. */
+export const mediaBlob = (mediaId: string, signal?: AbortSignal) =>
+  tenantBlob(`/smartcomm/media/${mediaId}`, signal);
 
 /**
  * Ask the workspace's provider to transcribe one voice note.

@@ -152,9 +152,6 @@ ALTER TABLE dossier_reconciliation DROP CONSTRAINT IF EXISTS dossier_reconciliat
 UPDATE dossier_reconciliation SET status = 'OPEN'    WHERE status IN ('DRAFT','REJECTED');
 UPDATE dossier_reconciliation SET status = 'SETTLED' WHERE status = 'VALIDATED';
 
-UPDATE dossier_reconciliation SET status = 'OPEN'    WHERE status IN ('DRAFT','REJECTED');
-UPDATE dossier_reconciliation SET status = 'SETTLED' WHERE status = 'VALIDATED';
-
 ALTER TABLE dossier_reconciliation ALTER COLUMN status SET DEFAULT 'OPEN';
 
 -- ── 3. The line: keyed on the budget line, TTC, human fields only ───────────

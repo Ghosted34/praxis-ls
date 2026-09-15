@@ -110,9 +110,9 @@ const GodModePage = lazyNamed(
   () => import("@/features/godmode/godmode-page"),
   "GodModePage",
 );
-const WorkspacePage = lazyNamed(
-  () => import("@/features/workspace/workspace-page"),
-  "WorkspacePage",
+const WorkspaceHub = lazyNamed(
+  () => import("@/features/workspace/hub"),
+  "WorkspaceHub",
 );
 const Planned = lazyNamed(
   () => import("@/features/scaffold/screen-scaffold"),
@@ -559,7 +559,11 @@ export function App() {
 
               {/* --- IA-map screens not yet built → shared placeholder (see doc/FE_IA_HANDOFF.md) --- */}
               {/* Overview */}
-              <Route path="workspace" element={<WorkspacePage />} />
+              {/* My workspace — one hub, deep-linkable sections (Today / Tasks /
+                  Calendar). Mirrors the other hubs so the ribbon's second row and
+                  the tab strip are the same list. */}
+              <Route path="workspace" element={<WorkspaceHub />} />
+              <Route path="workspace/:section" element={<WorkspaceHub />} />
               <Route path="help" element={<HelpPage />} />
               <Route path="support" element={<SupportPage />} />
               <Route path="godmode" element={<GodModePage />} />

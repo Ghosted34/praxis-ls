@@ -119,14 +119,22 @@ COMMENT ON COLUMN dossier_reconciliation.returned_total IS
 -- living sheet rests in — a bounced sheet goes straight back to OPEN with the
 -- reason on it, which is 12771's Q15 answer for the cash request, here.
 --
--- 10715 declared the CHECK inline, so Postgres auto-named it.
-UPDATE dossier_reconciliation SET status = 'OPEN'    WHERE status IN ('DRAFT','REJECTED');
-UPDATE dossier_reconciliation SET status = 'SETTLED' WHERE status = 'VALIDATED';
-
--- The old CHECK has to go — it permits DRAFT/VALIDATED/REJECTED and forbids
--- everything this module now uses. It is NOT replaced with a new one, and that
--- is a deliberate trade rather than an oversight: a CHECK added to a
--- pre-existing table above 13791 aborts provisioning for every new tenant.
+-- The old CHECK goes FIRST — before a single row is rewritten.
+--
+-- ORDER IS THE WHOLE FIX HERE. 10715 declared the CHECK inline, so Postgres
+-- auto-named it `dossier_reconciliation_status_check`, and it permits exactly
+-- DRAFT/SUBMITTED/VALIDATED/REJECTED. The two UPDATEs below write OPEN and
+-- SETTLED, which that constraint forbids — so run in the original order they
+-- fail with "new row for relation \"dossier_reconciliation\" violates check
+-- constraint \"dossier_reconciliation_status_check\"", and every tenant in the
+-- fleet stops at this file. A migration that renames a column's vocabulary has
+-- to lift the old vocabulary before it writes the new one; the row is checked
+-- against the constraint as it stands at the moment of the write, not against
+-- the one further down the file.
+--
+-- It is NOT replaced with a new one, and that is a deliberate trade rather than
+-- an oversight: a CHECK added to a pre-existing table above 13791 aborts
+-- provisioning for every new tenant.
 --
 -- So the vocabulary is enforced in code instead, which is what
 -- migration-constraint-ordering's header prescribes. That is honest here
@@ -134,6 +142,9 @@ UPDATE dossier_reconciliation SET status = 'SETTLED' WHERE status = 'VALIDATED';
 -- SQL from the service's own transitions and never a caller's string. There is
 -- no path by which an arbitrary status reaches this column.
 ALTER TABLE dossier_reconciliation DROP CONSTRAINT IF EXISTS dossier_reconciliation_status_check;
+
+UPDATE dossier_reconciliation SET status = 'OPEN'    WHERE status IN ('DRAFT','REJECTED');
+UPDATE dossier_reconciliation SET status = 'SETTLED' WHERE status = 'VALIDATED';
 
 ALTER TABLE dossier_reconciliation ALTER COLUMN status SET DEFAULT 'OPEN';
 

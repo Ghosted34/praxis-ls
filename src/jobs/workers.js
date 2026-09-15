@@ -136,6 +136,12 @@ const PROCESSORS = [
   // is told once.
   { name: "contract-lapse", concurrency: 1, handler: require("./handlers/contract-lapse") },
   { name: "contract-lapse-scheduler", concurrency: 1, handler: require("./handlers/contract-lapse-scheduler") },
+  // Workspace reminders (MOD-00A, 13810). concurrency 1: the sweep disarms rows
+  // as it goes, so two passes over one tenant would mostly find nothing — but
+  // the rows they DO both see are the ones in flight, and a reminder is the one
+  // notification a user notices being sent twice.
+  { name: "workspace-reminder", concurrency: 1, handler: require("./handlers/workspace-reminder") },
+  { name: "workspace-reminder-scheduler", concurrency: 1, handler: require("./handlers/workspace-reminder-scheduler") },
   // Careers job alerts (13792). concurrency 1: two passes over one tenant would
   // each read the same watermark before the other moved it, and every
   // subscriber would receive the digest twice.
@@ -483,6 +489,23 @@ async function scheduleRecurring() {
       removeOnFail: 50,
     });
     logger.info({ pattern: lapseCron, tz: config.FX_SYNC_TZ || "UTC" }, "contract lapse scheduler registered");
+  }
+
+  // Workspace reminders (MOD-00A, 13810). Every 60s rather than a cron, because
+  // a reminder is promised to a minute — a wall-clock schedule would make
+  // "15 minutes before" mean "whenever the slot next comes round". The tick
+  // fans out per tenant and environment; each sweep is one indexed partial
+  // scan over rows that are armed AND due, which is empty almost always.
+  const reminderEvery = config.WORKSPACE_REMINDER_EVERY_MS;
+  if (!reminderEvery) {
+    logger.info("workspace reminder sweep disabled (WORKSPACE_REMINDER_EVERY_MS=0)");
+  } else {
+    await enqueue("workspace-reminder-scheduler", "tick", {}, {
+      repeat: { every: reminderEvery },
+      removeOnComplete: true,
+      removeOnFail: 50,
+    });
+    logger.info({ every: reminderEvery }, "workspace reminder scheduler registered");
   }
 
   // Careers job alerts (13792). Daily, and a digest rather than one mail per

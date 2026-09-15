@@ -135,6 +135,7 @@ export function AttachButton({
         ref={ref}
         type="file"
         multiple
+        accept="application/pdf,image/*,.doc,.docx,.xls,.xlsx,text/plain,text/csv"
         className="sr-only"
         aria-hidden="true"
         tabIndex={-1}

@@ -16,6 +16,8 @@ const { parseDataUrl } = require("../../../utils/data-url");
 const EXT = {
   "application/pdf": "pdf", "image/png": "png", "image/jpeg": "jpg", "image/jpg": "jpg",
   "image/webp": "webp", "text/plain": "txt", "text/csv": "csv",
+  "application/msword": "doc",
+  "application/vnd.ms-excel": "xls",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
 };
@@ -35,8 +37,8 @@ const MAX_BYTES = 25 * 1024 * 1024;
  * operations file accepts. Anything else returns null and is refused by the
  * caller that asked for sniffing, rather than being guessed at.
  */
-function sniffContentType(buffer) {
-  if (!buffer || buffer.length < 12) return null;
+function sniffContentType(buffer, declaredType = null) {
+  if (!buffer || buffer.length < 8) return null;
   // %PDF
   if (buffer[0] === 0x25 && buffer[1] === 0x50 && buffer[2] === 0x44 && buffer[3] === 0x46) return "application/pdf";
   // \x89PNG\r\n\x1a\n
@@ -44,7 +46,29 @@ function sniffContentType(buffer) {
   // JPEG SOI + marker
   if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return "image/jpeg";
   // RIFF....WEBP
-  if (buffer.slice(0, 4).toString("ascii") === "RIFF" && buffer.slice(8, 12).toString("ascii") === "WEBP") return "image/webp";
+  if (buffer.length >= 12 && buffer.slice(0, 4).toString("ascii") === "RIFF" && buffer.slice(8, 12).toString("ascii") === "WEBP") return "image/webp";
+
+  // Modern Office files are ZIP containers. Central-directory filenames remain
+  // plain text, which distinguishes Word from Excel without trusting a renamed
+  // extension.
+  if (buffer[0] === 0x50 && buffer[1] === 0x4b && [0x03, 0x05, 0x07].includes(buffer[2])) {
+    const directory = buffer.toString("latin1");
+    if (directory.includes("word/document.xml")) {
+      return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    }
+    if (directory.includes("xl/workbook.xml")) {
+      return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    }
+    return null;
+  }
+
+  // Legacy .doc and .xls share the OLE Compound File signature. The bytes prove
+  // the Office container; the declared Office MIME selects the format.
+  const ole = [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]
+    .every((v, i) => buffer[i] === v);
+  if (ole && ["application/msword", "application/vnd.ms-excel"].includes(declaredType)) {
+    return declaredType;
+  }
   return null;
 }
 
@@ -211,8 +235,8 @@ async function createDocument(client, opts) {
   // bytes are stored at all. A .exe renamed .pdf declares application/pdf and
   // sniffs as nothing.
   if (sniff) {
-    const actual = sniffContentType(buffer);
-    if (!actual) throw new AppError("BAD_FILE_TYPE", "This file is not a PDF or an image", 422);
+    const actual = sniffContentType(buffer, contentType);
+    if (!actual) throw new AppError("BAD_FILE_TYPE", "This file is not a supported PDF, image, Word, or Excel document", 422);
     if (allowedTypes && !allowedTypes.includes(actual)) {
       throw new AppError("BAD_FILE_TYPE", `Only ${allowedTypes.join(", ")} are accepted here`, 422);
     }

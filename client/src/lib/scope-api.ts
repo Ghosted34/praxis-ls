@@ -40,6 +40,12 @@ export type ScopeEntity = {
 };
 
 export const listScopes = () => tenant<Scope[]>("/scopes");
+export const createScope = (body: {
+  code: string;
+  name: string;
+  entity_id?: string | null;
+  parent_scope_id?: string | null;
+}) => tenant<Scope>("/scopes", { method: "POST", body });
 
 /** Admin view — includes member counts, so it needs the IAM (MOD-67) grant. */
 export const fetchScopeTree = () => tenant<ScopeNode[]>("/scopes/tree");

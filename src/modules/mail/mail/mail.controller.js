@@ -160,6 +160,9 @@ module.exports = {
   send: asyncHandler(async (req, res) => res.status(202).json({
     data: await req.identityDb((c) => outbox.send(c, actor(req), {
       ...req.body, slug: req.tenant && req.tenant.slug,
+      // The queue lives in identity storage, so freeze the request environment
+      // into its payload; a later worker cannot recover X-Praxis-Env.
+      environment: req.env || "live",
       idempotency_key: req.get("Idempotency-Key") || req.body.idempotency_key || null,
     })),
   })),

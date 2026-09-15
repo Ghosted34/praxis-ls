@@ -31,6 +31,9 @@ export type EmployeeHit = {
   full_name?: string | null;
   job_title?: string | null;
   department?: string | null;
+  /** Login linked to this employee. Assignment/collaboration targets users, not
+   * employee rows, so those pickers require this value. */
+  account_user_id?: string | null;
 };
 
 /** One page of matches. Enough to choose from, short enough to read. */
@@ -42,6 +45,7 @@ export function EmployeePicker({
   label = "Add employee",
   placeholder = "Search by name or job title…",
   disabled,
+  requireAccount = false,
   id = "employee-picker",
 }: {
   onPick: (employee: EmployeeHit) => void;
@@ -51,6 +55,8 @@ export function EmployeePicker({
   label?: string;
   placeholder?: string;
   disabled?: boolean;
+  /** Hide employees who do not yet have an app login. */
+  requireAccount?: boolean;
   id?: string;
 }) {
   const [term, setTerm] = React.useState("");
@@ -64,7 +70,9 @@ export function EmployeePicker({
 
   const path = `/employees?active=true&limit=${PAGE}${query ? `&q=${encodeURIComponent(query)}` : ""}`;
   const { rows, loading, error } = useList<EmployeeHit>(path);
-  const hits = (rows || []).filter((r) => !exclude?.has(r.employee_id));
+  const hits = (rows || []).filter((r) =>
+    !exclude?.has(r.employee_id) && (!requireAccount || Boolean(r.account_user_id)),
+  );
   // The page came back full, so there are almost certainly more behind it.
   const maybeMore = (rows || []).length >= PAGE;
 

@@ -166,9 +166,22 @@ async function threadMessages(client, threadId, limit = 12) {
   return rows.reverse();
 }
 
+/** Keep each turn's authored text; older quoted copies and signature blocks are
+ * already represented by their own turns and only waste context or induce the
+ * model to repeat them. The patterns are deliberately conservative. */
+function cleanConversationBody(value) {
+  return String(value || "")
+    .split(/\n(?:On .{0,240} wrote:|Le .{0,240} a écrit\s*:|From:\s|De\s*:|-----Original Message-----)/i)[0]
+    .split(/\n--\s*\n/)[0]
+    .split("\n")
+    .filter((line) => !/^\s*>/.test(line))
+    .join("\n")
+    .trim();
+}
+
 const transcriptOf = (msgs) => msgs
   .map((m) => `[${m.direction === "OUT" ? "us" : "them"}] ${m.from_address || ""}: ` +
-    `${String(m.body_text || "").slice(0, 2000)}`)
+    `${cleanConversationBody(m.body_text).slice(0, 2000)}`)
   .join("\n---\n");
 
 /* ── 3–5. Generate, fence, meter ───────────────────────────────────────────── */
@@ -410,32 +423,27 @@ async function draft(client, { threadId, tone, language, instruction } = {}, use
   const ground = await grounding.collect(client, ctx, user);
   const factStrings = grounding.factText(ground.facts);
 
-  if (!factStrings.length) {
-    return {
-      draft_text: "",
-      facts: [],
-      sources: [],
-      withheld: ground.withheld,
-      confidence: 0,
-      language: lang,
-      // The two cases are distinguished because they are different problems
-      // with different fixes: bind the thread, versus ask an administrator for
-      // a grant.
-      note: ctx.entity_ref
-        ? "This thread is bound, but no ERP source answered — every source was withheld or empty."
-        : "This thread is not bound to a record, so no ERP facts were used.",
-    };
-  }
-
-  const msgs = await threadMessages(client, threadId, 8);
+  // Conversation context is useful even when the thread is not bound to an ERP
+  // record. The old early return below made AI Draft produce an empty answer for
+  // every ordinary conversation with no client/file binding, despite the full
+  // thread being available. ERP grounding enriches a reply; it is not a
+  // prerequisite for understanding what the correspondent just wrote.
+  const msgs = await threadMessages(client, threadId, 12);
+  const conversationEvidence = msgs
+    .map((m) => cleanConversationBody(m.body_text).slice(0, 4000))
+    .filter(Boolean);
+  const evidence = [...factStrings, ...conversationEvidence];
   const out = await generate(client, {
     user,
     callType: "draft.reply",
     system: systemFor({
       lang,
-      facts: factStrings,
+      facts: evidence,
       styleInstruction: prompts.resolvePrompt(tone || "formal", lang),
-      extra: instruction ? `The operator asks specifically: ${instruction}` : "",
+      extra: [
+        "Use the conversation transcript as the primary context. Reply to the latest inbound request, while respecting commitments already made earlier in the thread.",
+        instruction ? `The operator asks specifically: ${instruction}` : "",
+      ].filter(Boolean).join("\n"),
     }),
     prompt: `Draft the next reply in this thread. Subject: ${ctx.subject || "(none)"}\n\n${transcriptOf(msgs)}`,
   });
@@ -443,7 +451,7 @@ async function draft(client, { threadId, tone, language, instruction } = {}, use
   // No `preserveFrom`: a reply is not a transformation of the incoming email.
   // Appending the client's Incoterms to OUR answer because we did not repeat
   // them would put words in our own mouth.
-  const done = finish(out.text || "", factStrings);
+  const done = finish(out.text || "", evidence);
 
   await emitEvent(client, {
     eventTypeKey: "mail.ai.drafted",

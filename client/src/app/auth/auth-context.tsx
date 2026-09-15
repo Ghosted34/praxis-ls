@@ -22,6 +22,7 @@ import { tokenStore } from "@/lib/token-store";
 import { pinStore } from "@/lib/pin-store";
 import { deviceIdStore } from "@/lib/device-id";
 import { onReconnect, probeNow, reportUnreachable } from "@/lib/connection";
+import { bindLanguageOwner } from "@/lib/i18n";
 
 export type User = {
   user_id: string;
@@ -87,6 +88,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = React.useState<User | null>(null);
   const [status, setStatus] = React.useState<AuthState["status"]>("loading");
   const [pendingToken, setPendingToken] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    bindLanguageOwner(status === "authed" ? user?.user_id : null);
+  }, [status, user?.user_id]);
 
   // Read the live status without re-subscribing the reconnect handler below.
   const statusRef = React.useRef(status);

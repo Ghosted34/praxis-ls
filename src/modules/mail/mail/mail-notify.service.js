@@ -441,7 +441,35 @@ async function flushRun(client, { conn, ctx = {} } = {}) {
   }
 }
 
+/** Notify the colleague a conversation was explicitly handed to. */
+async function onAssignment(client, { userId, threadId, subject, assignedBy = null }) {
+  if (!userId || !threadId) return { notified: 0 };
+  const notifications = require("../../notification/notification.service");
+  const title = assignedBy
+    ? `${assignedBy} assigned you an email`
+    : "An email was assigned to you";
+  const body = subject ? `Review and treat: ${clamp(subject, 140)}` : "Open the conversation to review and treat it.";
+  return {
+    notified: await notifications.notifyMany(client, [userId], {
+      eventTypeKey: "email.thread.assigned",
+      title,
+      body,
+      entityRef: `email_thread:${threadId}`,
+      category: "comms",
+      priority: "HIGH",
+      url: `/comms/mail?thread=${threadId}`,
+      pushTag: `mail-assignment:${threadId}`,
+      renotify: true,
+      urgency: "high",
+      // This is the requested fallback when the colleague has no active in-app
+      // push channel: send the same review instruction by email.
+      emailFallback: true,
+      pushData: { kind: "mail-assignment", thread_id: threadId },
+    }),
+  };
+}
+
 module.exports = {
-  onInboundMessage, flushRun, recipientsFor, compose, senderName, snippet,
+  onInboundMessage, onAssignment, flushRun, recipientsFor, compose, senderName, snippet,
   previewMode, isFresh, FRESH_WINDOW_MS, PER_RUN_CAP,
 };

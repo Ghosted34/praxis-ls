@@ -114,8 +114,11 @@ function cardHtml({ width, p, c, co, model }) {
   // that hard-coded blue — the one colour on the page belonging to nobody.
   const ink = pal.ink || model.brand_color || "#0f4c81";
   const warm = pal.warm || model.accent_color || "#c9a227";
-  const alt = [p.person_line || p.department, p.job_title, co.legal_name]
-    .filter(Boolean).join(" — ");
+  // The alt text is the fallback when a recipient blocks images. Do not render
+  // the live-text card underneath a successfully generated image as well: that
+  // showed every name, phone and address twice in both the generator and sent
+  // mail. If no image was generated, the full text block below is used instead.
+  const alt = textContent(model);
 
   const image = src
     ? `<tr><td style="padding:0 0 14px 0"><img src="${esc(src)}" alt="${esc(alt)}" width="${width}" style="display:block;width:${width}px;max-width:100%;height:auto;border:0;outline:none;text-decoration:none" /></td></tr>`
@@ -125,6 +128,10 @@ function cardHtml({ width, p, c, co, model }) {
   const phoneLine = phones
     .map((v) => link(`tel:${telHref(v)}`, v, "color:#334155"))
     .join('<span style="color:#cbd5e1"> &nbsp;|&nbsp; </span>');
+
+  if (src) {
+    return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="${width}" style="width:${width}px;border-collapse:collapse;max-width:${width}px">${image}</table>`;
+  }
 
   const rows = [
     p.person_line

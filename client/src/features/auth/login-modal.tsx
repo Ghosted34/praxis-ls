@@ -25,6 +25,7 @@ import { OtpInput } from "@/components/ui/otp-input";
 import { PIN_LENGTH, PinInput, PinKeypad } from "@/components/ui/pin-input";
 import { lastSessionStore } from "@/lib/last-session";
 import { passkeyOfferStore } from "@/lib/passkey-offer";
+import { PASSKEY_SETTING_PATH } from "@/features/security/passkey-nudge";
 import { pinStore } from "@/lib/pin-store";
 import { listPasskeys, registerPasskey } from "@/lib/webauthn";
 import {
@@ -288,7 +289,7 @@ export function LoginModal({ onClose }: { onClose: () => void }) {
     } catch (err: any) {
       // A cancelled Face ID / Touch ID prompt is an answer, not a fault.
       if (err && (err.name === "NotAllowedError" || err.code === "NOT_ALLOWED")) {
-        setOfferError("Passkey setup was cancelled. You can add one any time in My security.");
+        setOfferError(`Passkey setup was cancelled. You can add one any time under ${PASSKEY_SETTING_PATH}.`);
       } else {
         setOfferError(friendly(err));
       }
@@ -744,7 +745,7 @@ export function LoginModal({ onClose }: { onClose: () => void }) {
               disabled={offerBusy}
               className="text-[12px] text-white/45 underline-offset-4 transition hover:text-white/70 hover:underline disabled:opacity-50"
             >
-              Not now — you can add one later in My security
+              Not now — add one later under {PASSKEY_SETTING_PATH}
             </button>
           </div>
         )}

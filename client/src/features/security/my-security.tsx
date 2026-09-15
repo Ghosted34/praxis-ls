@@ -17,6 +17,8 @@ import { useUpload } from "@/lib/use-upload";
 import { fileToDataUrl } from "@/lib/image-compress";
 import { PIN_LENGTH } from "@/components/ui/pin-input";
 import { pinStore } from "@/lib/pin-store";
+import { cn } from "@/lib/cn";
+import { useSearchParams } from "react-router-dom";
 import {
   changePassword,
   setupTotp,
@@ -239,6 +241,32 @@ export function MySecurityPage() {
       setPinMsg({ kind: "err", text: errText(e) });
     }
   }
+
+  // --- Passkey deep link ---
+  // The dashboard nudge links here with ?highlight=passkey. Landing at the top
+  // of a long settings page and being told the card is "below" is the failure
+  // this avoids: scroll to it and ring it, so the location is SEEN.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const passkeyCardRef = React.useRef<HTMLDivElement>(null);
+  const [passkeyHighlit, setPasskeyHighlit] = React.useState(false);
+
+  React.useEffect(() => {
+    if (searchParams.get("highlight") !== "passkey") return;
+    const el = passkeyCardRef.current;
+    if (!el) return;
+    const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    el.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "center" });
+    setPasskeyHighlit(true);
+    // Drop the param so a refresh, a back-navigation or a copied URL does not
+    // re-trigger a highlight the user has already been shown.
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete("highlight");
+      return next;
+    }, { replace: true });
+    const timer = window.setTimeout(() => setPasskeyHighlit(false), 2600);
+    return () => window.clearTimeout(timer);
+  }, [searchParams, setSearchParams]);
 
   // --- Passkey ---
   const [passkeys, setPasskeys] = React.useState<PasskeyCredential[] | null>(null);
@@ -608,7 +636,16 @@ export function MySecurityPage() {
           </SettingsCard>
         </div>
 
-        {/* Passkey */}
+        {/* Passkey — `highlight=passkey` (the dashboard nudge's deep link)
+            scrolls here and rings the card, so arriving by link SHOWS the
+            location rather than just landing near it. */}
+        <div
+          ref={passkeyCardRef}
+          className={cn(
+            "rounded-2xl transition-shadow motion-reduce:transition-none",
+            passkeyHighlit && "ring-2 ring-primary ring-offset-2 ring-offset-background",
+          )}
+        >
         <SettingsCard
           title="Passkey (Face ID / Touch ID)"
           desc="Passwordless sign-in with your device's biometrics or security key. Works on this device and anywhere your passkey is synced."
@@ -661,6 +698,7 @@ export function MySecurityPage() {
 
           {pkMsg && <p className={`mt-4 ${pkMsg.kind === "ok" ? okCls : errCls}`}>{pkMsg.text}</p>}
         </SettingsCard>
+        </div>
       </div>
     </section>
   );

@@ -52,6 +52,7 @@ import { OperationalActivityPanel } from "./components/operational-activity-pane
 import { RecentActivity } from "./components/recent-activity";
 import { TowerHero } from "./components/tower-hero";
 import { TowerFilters } from "./components/tower-filters";
+import { PasskeyNudge } from "@/features/security/passkey-nudge";
 import type { ControlTowerFilters } from "./use-control-tower";
 import type { KpiId } from "./drilldowns";
 import { LANE_STROKE, ShipmentMap } from "./map/shipment-map";
@@ -147,6 +148,12 @@ export function DashboardPage() {
         approvals={data.approvals}
         isTest={isTest}
       />
+
+      {/* Standing passkey reminder. Renders nothing for an account that has one,
+          has dismissed it, or is on a browser that cannot hold one — see
+          features/security/passkey-nudge.tsx for why it lives in the flow here
+          rather than floating in the corner the FAB cluster owns. */}
+      <PasskeyNudge />
 
       {/*
         The tower grid. One column up to lg, then the mock's 1.62fr / 1fr split

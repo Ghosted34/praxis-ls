@@ -256,6 +256,7 @@ export function DashboardPage() {
       <KpiDrilldown
         id={openKpi}
         kpis={data.kpis}
+        band={data.band}
         onClose={() => setOpenKpi(null)}
       />
 

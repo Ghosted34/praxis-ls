@@ -31,6 +31,12 @@ import {
   buildProformasDrill,
   buildRevenueDrill,
   buildSlaDrill,
+  // PR-2 — Operations, Fleet & Warehouse
+  buildDwellDrill,
+  buildFleetDocsDrill,
+  buildLateVsEtaDrill,
+  buildWarehouseOccupancyDrill,
+  buildWorkOrdersDrill,
   type ClientNames,
   type Drill,
   type KpiId,
@@ -316,6 +322,11 @@ export function useKpiCatalog(enabled: boolean): {
 export function useKpiDrilldown(
   id: KpiId | null,
   kpis: ControlTowerKpis | null,
+  /** The painted band, for drills whose headline IS the tile's resolved
+   *  figure (an average, a ratio pair) rather than something a list scan can
+   *  recompute — the modal must not contradict the card. Optional so the
+   *  legacy call sites and tests keep compiling. */
+  band: KpiBand | null = null,
 ): { drill: Drill | null; loading: boolean; error: string | null } {
   // Legacy card keys stay live aliases of the catalog keys — a bookmark, a
   // test, or a half-refreshed client still holds the four old ids, and a
@@ -344,6 +355,24 @@ export function useKpiDrilldown(
   const flags = useList<Row>(is("compliance_open") ? "/compliance" : null);
   const proformas = useList<Row>(is("proformas_open") ? "/proformas" : null);
   const journals = useList<Row>(is("journals_unposted") ? "/journal-entries" : null);
+  // PR-2 — Operations, Fleet & Warehouse. Each through the module's own list
+  // (or its one aggregate read), each disabled unless its card is open. NOT
+  // `tolerant`: a 403 must surface as the permission message, per the fleet
+  // lesson above — an empty table here would read as "all clear".
+  const lateFiles = useListPaged<Row>(is("late_vs_eta") ? "/operations" : null, { pageSize: REVENUE_SCAN });
+  const attribution = useQuery({
+    queryKey: tenantKey("/milestones/attribution"),
+    queryFn: () => tenant<{ by_tier?: Row[]; by_stage?: Row[] }>("/milestones/attribution"),
+    enabled: is("dwell_days"),
+  });
+  const expiringDocs = useList<Row>(is("fleet_docs_expiring") ? "/vehicle-compliance/expiring?days=30" : null);
+  const workOrders = useListPaged<Row>(is("work_orders_open") ? "/work-orders" : null, { pageSize: REVENUE_SCAN });
+  const locations = useListPaged<Row>(is("warehouse_occupancy") ? "/locations" : null, { pageSize: REVENUE_SCAN });
+  const inventory = useListPaged<Row>(is("warehouse_occupancy") ? "/inventory" : null, { pageSize: REVENUE_SCAN });
+  const bandSlot = React.useCallback(
+    (slotId: string) => (band?.slots ?? []).find((s) => s.id === slotId) ?? null,
+    [band],
+  );
 
   const clientNames = React.useMemo<ClientNames>(() => {
     const m: ClientNames = {};
@@ -473,6 +502,44 @@ export function useKpiDrilldown(
           return { drill: null, loading: true, error: null };
         return { drill: buildJournalsDrill(journals.rows), loading: false, error: null };
       }
+      // ── PR-2 — Operations, Fleet & Warehouse ──────────────────────────────
+      case "late_vs_eta": {
+        if (lateFiles.error) return { drill: null, loading: false, error: lateFiles.error };
+        if (lateFiles.loading) return { drill: null, loading: true, error: null };
+        return { drill: buildLateVsEtaDrill(lateFiles.rows), loading: false, error: null };
+      }
+      case "dwell_days": {
+        if (attribution.isError) return { drill: null, loading: false, error: errMsg(attribution.error) };
+        if (attribution.isPending) return { drill: null, loading: true, error: null };
+        const slot = bandSlot("dwell_days");
+        return {
+          drill: buildDwellDrill(attribution.data ?? null, slot ? slot.value : null),
+          loading: false,
+          error: null,
+        };
+      }
+      case "fleet_docs_expiring": {
+        if (expiringDocs.error) return { drill: null, loading: false, error: expiringDocs.error };
+        if (expiringDocs.loading) return { drill: null, loading: true, error: null };
+        return { drill: buildFleetDocsDrill(expiringDocs.rows), loading: false, error: null };
+      }
+      case "work_orders_open": {
+        if (workOrders.error) return { drill: null, loading: false, error: workOrders.error };
+        if (workOrders.loading) return { drill: null, loading: true, error: null };
+        return { drill: buildWorkOrdersDrill(workOrders.rows), loading: false, error: null };
+      }
+      case "warehouse_occupancy": {
+        const error = locations.error || inventory.error;
+        if (error) return { drill: null, loading: false, error };
+        if (locations.loading || inventory.loading) return { drill: null, loading: true, error: null };
+        const slot = bandSlot("warehouse_occupancy");
+        const pair = slot ? { value: slot.value, denominator: slot.denominator ?? 0 } : null;
+        return {
+          drill: buildWarehouseOccupancyDrill(locations.rows, inventory.rows, pair),
+          loading: false,
+          error: null,
+        };
+      }
       default:
         return { drill: null, loading: false, error: null };
     }
@@ -510,5 +577,26 @@ export function useKpiDrilldown(
     journals.rows,
     journals.error,
     journals.loading,
+    // PR-2
+    bandSlot,
+    lateFiles.rows,
+    lateFiles.error,
+    lateFiles.loading,
+    attribution.data,
+    attribution.isPending,
+    attribution.isError,
+    attribution.error,
+    expiringDocs.rows,
+    expiringDocs.error,
+    expiringDocs.loading,
+    workOrders.rows,
+    workOrders.error,
+    workOrders.loading,
+    locations.rows,
+    locations.error,
+    locations.loading,
+    inventory.rows,
+    inventory.error,
+    inventory.loading,
   ]);
 }

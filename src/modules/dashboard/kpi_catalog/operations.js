@@ -97,7 +97,7 @@ const ENTRIES = [
     unit: "count",
     module: "MOD-29",
     sourceRelation: "dossier_visible",
-    status: "hidden",
+    status: "live",
     labelKey: "dash.lateVsEta",
     hintKey: "dash.lateVsEtaHint",
     badgeKey: "dash.lateVsEtaBadge",
@@ -112,7 +112,7 @@ const ENTRIES = [
     unit: "days",
     module: "MOD-31",
     sourceRelation: "milestone_instance",
-    status: "hidden",
+    status: "live",
     labelKey: "dash.dwellDays",
     hintKey: "dash.dwellDaysHint",
     badgeKey: null,
@@ -123,8 +123,33 @@ const ENTRIES = [
   },
 ];
 
-/** Live tile values. See `money.js` for the guard contract. */
-async function values(client, { count, ratio }) {
+/**
+ * Live tile values. See `money.js` for the guard contract.
+ *
+ * PR-2 additions (late_vs_eta, dwell_days) — the zero policy, per tile:
+ *
+ *   late_vs_eta   a COUNT: an installed tenant with nothing late answers 0,
+ *                 and 0 is the truth ("nothing is past its ETA"). ETA is a
+ *                 DATE column, so "late" is `eta < CURRENT_DATE` — a file due
+ *                 today is not late yet — and only while it is still moving
+ *                 (OPEN/IN_PROGRESS) with no ATA recorded.
+ *
+ *   dwell_days    an AVERAGE, and an average over nothing is not 0 days. It
+ *                 goes through `num()` so SQL NULL survives: no delivery in
+ *                 the window → null → the tile is unavailable and drops out
+ *                 of the band, rather than asserting "0 days" — which would be
+ *                 a claim about speed, not an absence of data (§6.3, D3).
+ *                 The pair is the chain's own milestones, not dossier.eta/ata:
+ *                 the first `is_anchor` stage DONE (vessel/flight arrived,
+ *                 gate-in — the event the schedule hangs on) to an
+ *                 `is_target_lock` stage DONE (the delivery commitment), per
+ *                 the 0650 engine's meaning of those flags. Window: deliveries
+ *                 completed in the last 90 days — "current period" read as a
+ *                 rolling window, because a calendar month resets the tile to
+ *                 unavailable on the 1st of every month for any tenant that
+ *                 delivers less than daily.
+ */
+async function values(client, { count, num, ratio }) {
   // Imported rather than restated: this expression pair IS the tower's
   // definition of "unplottable", and the banner and the tile must not drift.
   const { TOWER_FROM, NEEDS_LOCATION_EXPR } = require("../dashboard/dashboard.repo");
@@ -150,6 +175,25 @@ async function values(client, { count, ratio }) {
   out.needs_location = await count(
     client,
     `SELECT COUNT(*) n ${TOWER_FROM} WHERE d.status IN ('OPEN','IN_PROGRESS') AND ${NEEDS_LOCATION_EXPR}`,
+  );
+  out.late_vs_eta = await count(
+    client,
+    "SELECT count(*) n FROM dossier_visible " +
+      "WHERE status IN ('OPEN','IN_PROGRESS') AND eta IS NOT NULL AND eta < CURRENT_DATE AND ata IS NULL",
+  );
+  out.dwell_days = await num(
+    client,
+    "SELECT round(AVG(EXTRACT(EPOCH FROM (dl.completed_at - ar.completed_at)) / 86400.0)) AS n " +
+      "FROM milestone_instance dl " +
+      "JOIN dossier_visible d ON d.dossier_id = dl.dossier_id " +
+      "JOIN LATERAL (" +
+      "SELECT a.completed_at FROM milestone_instance a " +
+      "WHERE a.dossier_id = dl.dossier_id AND a.is_anchor AND a.status = 'DONE' AND a.completed_at IS NOT NULL " +
+      "ORDER BY a.stage_seq ASC LIMIT 1" +
+      ") ar ON true " +
+      "WHERE dl.is_target_lock AND dl.status = 'DONE' AND dl.completed_at IS NOT NULL " +
+      "AND dl.completed_at >= ar.completed_at " +
+      "AND dl.completed_at >= now() - interval '90 days'",
   );
   return out;
 }

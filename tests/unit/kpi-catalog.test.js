@@ -41,21 +41,24 @@ describe("catalog structure", () => {
     ]);
   });
 
-  it("ships exactly ten live tiles in PR-1 — the four cards plus six free counts", () => {
-    expect([...LIVE_IDS].sort()).toEqual(
-      [
-        "approvals_awaiting",
-        "compliance_open",
-        "files_active",
-        "fleet_utilisation",
-        "journals_unposted",
-        "needs_location",
-        "proformas_open",
-        "receivables_overdue",
-        "revenue",
-        "sla_on_time",
-      ].sort(),
-    );
+  it("live set = PR-1's ten + the domain PRs' flips (PR-2: five of six — stock_value waits for a cost column)", () => {
+    const PR1 = [
+      "approvals_awaiting",
+      "compliance_open",
+      "files_active",
+      "fleet_utilisation",
+      "journals_unposted",
+      "needs_location",
+      "proformas_open",
+      "receivables_overdue",
+      "revenue",
+      "sla_on_time",
+    ];
+    const PR2 = ["late_vs_eta", "dwell_days", "fleet_docs_expiring", "work_orders_open", "warehouse_occupancy"];
+    for (const id of [...PR1, ...PR2]) expect(LIVE_IDS).toContain(id);
+    expect(LIVE_IDS).not.toContain("stock_value");
+    // PR-3/PR-4 add their own ids; the ceiling is the catalog itself.
+    expect(LIVE_IDS.length).toBeGreaterThanOrEqual(PR1.length + PR2.length);
     expect(LIVE_IDS.length).toBeLessThanOrEqual(32);
   });
 

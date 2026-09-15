@@ -505,3 +505,272 @@ export function buildJournalsDrill(rows: Row[] | null): Drill {
     },
   };
 }
+
+/* ── PR-2: Operations, Fleet & Warehouse (guide §12) ─────────────────────────
+ *
+ * Same contract as everything above: data in, a `Drill` out, one page cap
+ * (200) per the existing pattern, and the count on the tile stays the SQL
+ * aggregate — these tables are the scan behind it. The 403 rule holds too: the
+ * builders never see an error, because `useKpiDrilldown` returns the source's
+ * error BEFORE calling them, so a user without the grant reads "you don't have
+ * permission", never an empty-state that sounds like "all clear".
+ *
+ * `stock_value` has no builder on purpose: it is still hidden (no cost column
+ * on `inventory_item` — see the catalog entry) and a drill for a tile that
+ * cannot paint would be the two-place lie the band exists to end.
+ */
+
+/** Which drill each new tile opens; appended rather than spliced into
+ *  KPI_ROUTE so the three domain PRs merge without touching each other's
+ *  lines. Read through `kpiRoute()` below so callers see one table. */
+export const KPI_ROUTE_PR2: Record<string, string> = {
+  late_vs_eta: "/operations/files",
+  dwell_days: "/operations/milestones",
+  fleet_docs_expiring: "/fleet/compliance",
+  work_orders_open: "/fleet/work-orders",
+  warehouse_occupancy: "/wms",
+};
+
+/** Route for a tile id across every domain block, or null. */
+export function kpiRoute(id: string): string | null {
+  return KPI_ROUTE[id] ?? KPI_ROUTE_PR2[id] ?? null;
+}
+
+const dayNoun = (n: number) => `${n} day${n === 1 ? "" : "s"}`;
+
+/** Start of today in the browser's clock, for a DATE-typed ETA comparison —
+ *  the server counts `eta < CURRENT_DATE`, so a file due today is not late. */
+const startOfToday = (now: Date) => new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+/**
+ * Past ETA · undelivered → open files whose ETA is behind us with no ATA.
+ * Same predicate as the tile's SQL (`status ∈ {OPEN, IN_PROGRESS} ∧ eta <
+ * today ∧ ata IS NULL`), most overdue first — the one a controller phones
+ * about before the others.
+ */
+export function buildLateVsEtaDrill(dossiers: Row[] | null, now: Date = new Date()): Drill {
+  const today = startOfToday(now);
+  const late = (dossiers || [])
+    .filter((d) => {
+      const s = str(d.status).toUpperCase();
+      if (s !== "OPEN" && s !== "IN_PROGRESS") return false;
+      if (!d.eta || d.ata) return false;
+      const eta = new Date(str(d.eta));
+      return !Number.isNaN(eta.getTime()) && eta < today;
+    })
+    .map((d) => ({ d, days: daysBetween(new Date(str(d.eta)), today) }))
+    .sort((a, b) => b.days - a.days);
+  const worst = late.length ? late[0].days : 0;
+  return {
+    title: "Past ETA · undelivered",
+    badge: { tone: late.length ? "bad" : "ok", text: `${late.length} late` },
+    meta: [
+      { label: "Past ETA", value: String(late.length) },
+      { label: "Over a week", value: String(late.filter((l) => l.days > 7).length) },
+      ...(late.length ? [{ label: "Worst", value: dayNoun(worst) }] : []),
+    ],
+    columns: [{ label: "File" }, { label: "Route" }, { label: "ETA" }, { label: "Overdue by", align: "right" }],
+    rows: late.slice(0, 8).map(({ d, days }) => ({
+      key: str(d.dossier_id) || str(d.ref),
+      cells: [
+        str(d.ref) || str(d.dossier_id).slice(0, 8),
+        [str(d.pol), str(d.pod)].filter(Boolean).join(" → ") || "—",
+        dateFmt(d.eta),
+        { text: dayNoun(days), tone: (days > 7 ? "bad" : "warn") as Tone },
+      ],
+    })),
+    cta: { label: "Open operations files", to: KPI_ROUTE_PR2.late_vs_eta },
+    empty: {
+      title: "Nothing past its ETA",
+      hint: "Every open file with an ETA is either not due yet or already has an arrival recorded.",
+    },
+  };
+}
+
+/**
+ * Dwell → the milestone engine's delay attribution (`/milestones/attribution`),
+ * which is the closest read the module exposes to "where does the time go":
+ * settled slips by owner tier. The headline days come from the tile (the
+ * anchor→target-lock average), so the caller passes it through; the table
+ * explains it, it does not recompute it.
+ */
+export function buildDwellDrill(
+  attribution: { by_tier?: Row[]; by_stage?: Row[] } | null,
+  dwellDays: number | null,
+): Drill {
+  const tiers = attribution?.by_tier || [];
+  const stages = attribution?.by_stage || [];
+  const totalHours = tiers.reduce((s, t) => s + (Number(t.total_hours) || 0), 0);
+  const tierName = (t: string) =>
+    ({ INTERNAL: "Internal", CARRIER: "Carrier", TERMINAL: "Terminal", AUTHORITY: "Authority", CLIENT: "Client" })[t] || t || "—";
+  return {
+    title: "Dwell · arrival to delivery",
+    badge: { tone: "mute", text: dwellDays === null ? "No delivery measured" : `${dayNoun(dwellDays)} average` },
+    meta: [
+      { label: "Average dwell", value: dwellDays === null ? "—" : dayNoun(dwellDays) },
+      { label: "Slips attributed", value: String(tiers.reduce((s, t) => s + (Number(t.slips) || 0), 0)) },
+      { label: "Hours lost", value: String(Math.round(totalHours)) },
+    ],
+    columns: [{ label: "Stage" }, { label: "Charged to" }, { label: "Slips", align: "right" }, { label: "Avg hours", align: "right" }],
+    rows: stages.slice(0, 8).map((r, i) => ({
+      key: `${str(r.code)}-${str(r.owner_tier)}-${i}`,
+      cells: [
+        str(r.label) || str(r.code) || "—",
+        tierName(str(r.owner_tier).toUpperCase()),
+        String(Number(r.slips) || 0),
+        String(Number(r.avg_hours) || 0),
+      ],
+    })),
+    note: stages.length ? "Slips are settled milestone variances; force-majeure stays counted, never netted away." : undefined,
+    cta: { label: "Open milestones", to: KPI_ROUTE_PR2.dwell_days },
+    empty: {
+      title: "No slips to attribute",
+      hint: "Attribution fills in as milestones complete late and are charged to a tier.",
+    },
+  };
+}
+
+/**
+ * Fleet docs → `/vehicle-compliance/expiring?days=30`, the same window and the
+ * same "lapsed counts too" rule as the tile's SQL. Lapsed first, then soonest.
+ */
+export function buildFleetDocsDrill(rows: Row[] | null): Drill {
+  const list = [...(rows || [])].sort((a, b) => (Number(a.days_left) || 0) - (Number(b.days_left) || 0));
+  const lapsed = list.filter((r) => (Number(r.days_left) || 0) < 0).length;
+  const kindName = (k: string) =>
+    ({ INSURANCE: "Insurance", VISITE_TECHNIQUE: "Technical inspection" })[k] || k || "—";
+  return {
+    title: "Fleet documents · expiring within 30 days",
+    badge: { tone: lapsed ? "bad" : list.length ? "warn" : "ok", text: `${list.length} to renew` },
+    meta: [
+      { label: "Expiring", value: String(list.length) },
+      { label: "Already lapsed", value: String(lapsed) },
+      { label: "Vehicles", value: String(new Set(list.map((r) => str(r.vehicle_id))).size) },
+    ],
+    columns: [{ label: "Vehicle" }, { label: "Document" }, { label: "Expires" }, { label: "Status" }],
+    rows: list.slice(0, 8).map((r) => {
+      const left = Number(r.days_left) || 0;
+      return {
+        key: str(r.compliance_id) || `${str(r.vehicle_id)}-${str(r.kind)}`,
+        cells: [
+          str(r.registration) || str(r.vehicle_id).slice(0, 8) || "—",
+          kindName(str(r.kind).toUpperCase()),
+          dateFmt(r.expires_on),
+          {
+            text: left < 0 ? `Lapsed ${dayNoun(-left)} ago` : left === 0 ? "Expires today" : `${dayNoun(left)} left`,
+            tone: (left < 0 ? "bad" : left <= 7 ? "warn" : "mute") as Tone,
+          },
+        ],
+      };
+    }),
+    cta: { label: "Open fleet compliance", to: KPI_ROUTE_PR2.fleet_docs_expiring },
+    empty: {
+      title: "Nothing expiring",
+      hint: "No insurance or inspection on the register falls due in the next 30 days.",
+    },
+  };
+}
+
+/** Work orders → `/work-orders`, open and in-progress only, oldest first —
+ *  the one that has waited longest is the one a workshop lead asks about. */
+export function buildWorkOrdersDrill(rows: Row[] | null, now: Date = new Date()): Drill {
+  const open = (rows || [])
+    .filter((r) => {
+      const s = str(r.status).toUpperCase();
+      return s === "OPEN" || s === "IN_PROGRESS";
+    })
+    .map((r) => ({ r, age: r.opened_on ? daysBetween(new Date(str(r.opened_on)), now) : 0 }))
+    .sort((a, b) => b.age - a.age);
+  const corrective = open.filter(({ r }) => str(r.kind).toUpperCase() === "CORRECTIVE").length;
+  return {
+    title: "Open work orders",
+    badge: { tone: "mute", text: `${open.length} open` },
+    meta: [
+      { label: "Open", value: String(open.length) },
+      { label: "Corrective", value: String(corrective) },
+      { label: "Preventive", value: String(open.length - corrective) },
+    ],
+    columns: [{ label: "Vehicle" }, { label: "Kind" }, { label: "Status" }, { label: "Open for", align: "right" }],
+    rows: open.slice(0, 8).map(({ r, age }) => ({
+      key: str(r.work_order_id),
+      cells: [
+        str(r.registration) || str(r.vehicle_id).slice(0, 8) || "Equipment",
+        str(r.kind).toUpperCase() === "CORRECTIVE" ? "Corrective" : "Preventive",
+        {
+          text: str(r.status).toUpperCase() === "IN_PROGRESS" ? "In progress" : "Open",
+          tone: (str(r.status).toUpperCase() === "IN_PROGRESS" ? "blue" : "mute") as Tone,
+        },
+        dayNoun(age),
+      ],
+    })),
+    cta: { label: "Open work orders", to: KPI_ROUTE_PR2.work_orders_open },
+    empty: {
+      title: "Workshop is clear",
+      hint: "No maintenance order is open or in progress.",
+    },
+  };
+}
+
+/**
+ * Warehouse occupancy → `/locations` joined client-side with `/inventory`
+ * (the location list has no on-hand column; the join is exactly what §9
+ * allows when a module endpoint lacks a foreign figure). Only locations with
+ * a recorded capacity count — the same basis as the tile — and the headline
+ * ratio is the TILE's pair, passed in, so the modal cannot contradict the card
+ * when either list is clipped at its page cap.
+ */
+export function buildWarehouseOccupancyDrill(
+  locations: Row[] | null,
+  items: Row[] | null,
+  pair: { value: number; denominator: number } | null,
+): Drill {
+  const onHand = new Map<string, number>();
+  (items || []).forEach((i) => {
+    if (str(i.state).toUpperCase() === "DISPATCHED" || !i.location_id) return;
+    const k = str(i.location_id);
+    onHand.set(k, (onHand.get(k) || 0) + (Number(i.qty_on_hand) || 0));
+  });
+  const withCap = (locations || [])
+    .filter((l) => Number(l.capacity_units) > 0)
+    .map((l) => {
+      const cap = Number(l.capacity_units);
+      const used = onHand.get(str(l.location_id)) || 0;
+      return { l, cap, used, pct: Math.round((used / cap) * 100) };
+    })
+    .sort((a, b) => b.pct - a.pct);
+  const measurable = !!pair && pair.denominator > 0;
+  const headline = measurable ? `${Math.round(pair.value)}%` : "—";
+  const label = (l: Row) =>
+    str(l.label) || [str(l.zone), str(l.aisle), str(l.rack), str(l.bin), str(l.yard)].filter(Boolean).join("-") || str(l.location_id).slice(0, 8);
+  return {
+    title: "Warehouse occupancy",
+    badge: {
+      tone: measurable ? (pair.value >= 90 ? "warn" : "orange") : "mute",
+      text: measurable ? `${headline} of recorded capacity` : "No capacity recorded",
+    },
+    meta: [
+      { label: "Occupancy", value: headline },
+      { label: "Capacity units", value: measurable ? grouped(pair.denominator) : "—" },
+      { label: "Locations with capacity", value: String(withCap.length) },
+      { label: "Full (≥ 90 %)", value: String(withCap.filter((x) => x.pct >= 90).length) },
+    ],
+    columns: [{ label: "Location" }, { label: "On hand", align: "right" }, { label: "Capacity", align: "right" }, { label: "Occupied", align: "right" }],
+    rows: withCap.slice(0, 8).map(({ l, cap, used, pct }) => ({
+      key: str(l.location_id),
+      cells: [
+        label(l),
+        grouped(used),
+        grouped(cap),
+        { text: `${pct}%`, tone: (pct >= 90 ? "warn" : pct === 0 ? "mute" : "orange") as Tone },
+      ],
+    })),
+    note: measurable
+      ? "Units are whatever each location records as capacity; a site mixing pallets and bags reads approximately."
+      : "Give locations a capacity (Warehouse → Locations) and this ratio becomes measurable.",
+    cta: { label: "Open warehouse", to: KPI_ROUTE_PR2.warehouse_occupancy },
+    empty: {
+      title: "No location has a recorded capacity",
+      hint: "Occupancy is units on hand against capacity — with no capacity recorded there is nothing to divide by.",
+    },
+  };
+}

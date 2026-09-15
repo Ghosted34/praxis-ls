@@ -232,7 +232,7 @@ describe("GET /dashboard/kpi-catalog", () => {
     const { data } = await call(controller.kpiCatalog, {
       user: USER,
       identity: identityFake({
-        grants: ["MOD-00A", "MOD-29", "MOD-65"], // eligible: files, needs_loc, approvals, compliance
+        grants: ["MOD-00A", "MOD-29", "MOD-65"], // eligible: files, sla, late_vs_eta (PR-2), needs_loc, approvals, compliance
         pins: ["files_active"],
         roleConfig: { scope_ids: ["files_active", "compliance_open"], default_ids: ["compliance_open"], locked_ids: [] },
       }),
@@ -242,7 +242,9 @@ describe("GET /dashboard/kpi-catalog", () => {
     // drops compliance — so the only tile listed is files_active, and what
     // fell out is counted, not enumerated (the withheld reason is not shown).
     expect(data.tiles.map((tile) => tile.id)).toEqual(["files_active"]);
-    expect(data.hiddenTileCount).toBe(4); // 5 eligible − 1 offered (approvals/needs_loc out of scope, compliance off-mode)
+    // 6 eligible − 1 offered: sla/late_vs_eta/approvals/needs_loc out of scope, compliance off-mode.
+    // (The count grows by one every time a domain PR flips a MOD-29/00A/65 tile live.)
+    expect(data.hiddenTileCount).toBe(5);
     expect(data.lockedIds).toEqual([]);
     expect(data.currentIds).toEqual(["files_active"]);
     expect(data.maxTiles).toBe(4);

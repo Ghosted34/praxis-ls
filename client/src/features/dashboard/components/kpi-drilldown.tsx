@@ -24,6 +24,7 @@ import { SkeletonTable } from "@/components/ui/skeleton";
 import { cn } from "@/lib/cn";
 import { useCanOpenRoute } from "@/lib/route-access";
 import type { Drill, KpiId } from "../drilldowns";
+import type { KpiBand } from "../kpi-model";
 import type { ControlTowerKpis } from "../use-control-tower";
 import { useKpiDrilldown } from "../use-control-tower";
 
@@ -79,15 +80,19 @@ function DrillTable({ drill }: { drill: Drill }) {
 export function KpiDrilldown({
   id,
   kpis,
+  band = null,
   onClose,
 }: {
   id: KpiId | null;
   kpis: ControlTowerKpis | null;
+  /** The painted band — drills whose headline is the tile's own resolved
+   *  figure read it from here (see `useKpiDrilldown`). */
+  band?: KpiBand | null;
   onClose: () => void;
 }) {
   const navigate = useNavigate();
   const canOpen = useCanOpenRoute();
-  const { drill, loading, error } = useKpiDrilldown(id, kpis);
+  const { drill, loading, error } = useKpiDrilldown(id, kpis, band);
 
   // Title has to exist before the data does — Dialog labels itself from it, and
   // an untitled dialog is an unnamed one for a screen reader.

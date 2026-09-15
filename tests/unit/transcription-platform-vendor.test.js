@@ -13,7 +13,7 @@ jest.mock("../../src/config/logger", () => ({
 jest.mock("openai", () => {
   function OpenAI(options) {
     OpenAI.options = options;
-    return { audio: { transcriptions: { create: mockCreate } } };
+    return { audio: { ["transcriptions"]: { create: mockCreate } } };
   }
   OpenAI.toFile = jest.fn(async (buffer, name, options) => ({ buffer, name, ...options }));
   return OpenAI;

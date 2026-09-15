@@ -52,6 +52,13 @@ export const KPI_ROUTE: Record<string, string> = {
   approvals_awaiting: "/approvals",
   compliance_open: "/vault/compliance-flags",
   needs_location: "/operations/files",
+  // Human Capital (PR-4) — the module hubs the tiles drill into.
+  headcount: "/hr/employees",
+  attendance_today: "/hr/attendance",
+  leave_pending: "/hr/leave",
+  vacancies_open: "/hr/vacancies",
+  payroll_run_state: "/hr/payroll",
+  attrition_90d: "/hr/employees",
 };
 
 /** Catalog tile ids are the drill ids; anything else opens no drill. */
@@ -587,6 +594,72 @@ export function buildLateVsEtaDrill(dossiers: Row[] | null, now: Date = new Date
   };
 }
 
+/* ── Human Capital (PR-4, guide §5.5/D12) — the six HR tiles ────────────────
+ *
+ * Same contract as everything above: data from a list the caller can already
+ * read (the `/employees`, `/attendance`, `/leave`, `/vacancies` and `/payroll`
+ * pages, one API page each), a `Drill` out, and an honest `note` whenever the
+ * table is a scan rather than the aggregate the tile counted.
+ */
+
+/** Payroll's terminal states — the client mirror of the tile's SQL predicate
+ *  (`status NOT IN ('DISBURSED','REJECTED')`), kept beside the builder so the
+ *  headline and the drill's "in flight" count cannot drift. */
+const PAYROLL_TERMINAL = new Set(["DISBURSED", "REJECTED"]);
+
+/** A payroll status pill — the state machine's stages, coloured the way the
+ *  payroll hub colours them. */
+function payrollStatusTone(status: string): Tone {
+  if (status === "DISBURSED" || status === "VALIDATED") return "ok";
+  if (status === "REJECTED") return "bad";
+  if (status === "SUBMITTED" || status === "APPROVED") return "warn";
+  return "blue";
+}
+
+/** Headcount → the active staff register (`/employees?active=true`).
+ *
+ *  The register's list endpoint carries no `meta.total` (it predates the
+ *  shared kit's paged shape), so this drill is an honest PAGE SCAN, like the
+ *  proformas one: the figures count the page, and the note names the basis
+ *  when the page sits at its cap — never a total the endpoint never sent.
+ */
+export function buildHeadcountDrill(employees: Row[] | null): Drill {
+  const list = employees || [];
+  const departments = new Set(
+    list.map((e) => str(e.department).trim()).filter(Boolean),
+  );
+  return {
+    title: "Active employees",
+    badge: { tone: "blue", text: `${list.length} active` },
+    meta: [
+      { label: "Active (page)", value: String(list.length) },
+      { label: "Departments", value: String(departments.size) },
+    ],
+    columns: [
+      { label: "Employee" },
+      { label: "Department" },
+      { label: "Job title" },
+    ],
+    rows: list.slice(0, 8).map((e) => ({
+      key: str(e.employee_id) || str(e.full_name),
+      cells: [
+        str(e.full_name) || str(e.employee_id).slice(0, 8) || "—",
+        str(e.department) || "—",
+        str(e.job_title) || "—",
+      ],
+    })),
+    note:
+      list.length >= 200
+        ? "The table lists the 200 most recent active employees; the tile's headcount covers the whole register."
+        : undefined,
+    cta: { label: "Open the staff register", to: KPI_ROUTE.headcount },
+    empty: {
+      title: "No active employees",
+      hint: "The staff register is empty — add employees and the headcount follows.",
+    },
+  };
+}
+
 /**
  * Dwell → the milestone engine's delay attribution (`/milestones/attribution`),
  * which is the closest read the module exposes to "where does the time go":
@@ -626,6 +699,62 @@ export function buildDwellDrill(
     empty: {
       title: "No slips to attribute",
       hint: "Attribution fills in as milestones complete late and are charged to a tier.",
+    },
+  };
+}
+
+/**
+ * Attendance · today → the day's punches (`/attendance?date=<today>`).
+ *
+ * The tile carries the pair the drill cannot re-derive from one page: how many
+ * people were EXPECTED (the roster's working days, minus leave and holidays)
+ * is a server-side fact. The table is the raw punch log — distinct employees,
+ * not punch rows, because a person who badges in and out is one present, not
+ * two.
+ */
+export function buildAttendanceDrill(punches: Row[] | null): Drill {
+  const list = punches || [];
+  const byEmployee = new Map<string, Row>();
+  list.forEach((p) => {
+    const key = str(p.employee_id) || str(p.employee_name) || String(p.attendance_id ?? "");
+    if (!key || !byEmployee.has(key)) byEmployee.set(key, p);
+  });
+  const present = [...byEmployee.values()];
+  const stillIn = present.filter((p) => !p.clock_out_at).length;
+  return {
+    title: "Attendance · today",
+    badge: {
+      tone: "ok",
+      text: `${present.length} clocked in`,
+    },
+    meta: [
+      { label: "Clocked in", value: String(present.length) },
+      { label: "Punches", value: String(list.length) },
+      { label: "Still clocked in", value: String(stillIn) },
+    ],
+    columns: [
+      { label: "Employee" },
+      { label: "Department" },
+      { label: "Clock in" },
+      { label: "Clock out" },
+    ],
+    rows: present.slice(0, 8).map((p) => ({
+      key: str(p.attendance_id) || str(p.employee_id),
+      cells: [
+        str(p.employee_name) || str(p.employee_id).slice(0, 8) || "—",
+        str(p.department) || "—",
+        p.clock_in_at ? dateFmt(p.clock_in_at) : "—",
+        p.clock_out_at ? dateFmt(p.clock_out_at) : { text: "In", tone: "ok" as Tone },
+      ],
+    })),
+    note:
+      list.length >= 200
+        ? "The table lists the 200 most recent punches of the day."
+        : undefined,
+    cta: { label: "Open attendance", to: KPI_ROUTE.attendance_today },
+    empty: {
+      title: "Nobody has clocked in yet",
+      hint: "Punches land here as the team badges in. The tile's expected count comes from the roster's working days.",
     },
   };
 }
@@ -671,6 +800,45 @@ export function buildFleetDocsDrill(rows: Row[] | null): Drill {
   };
 }
 
+/** Leave · pending → the queue the Leave screen decides — the same filter
+ *  (`status=REQUESTED`, salary advances excluded) so the tile, this table and
+ *  the hub all count one queue. */
+export function buildLeaveDrill(rows: Row[] | null): Drill {
+  const list = (rows || []).filter((r) => str(r.status).toUpperCase() === "REQUESTED");
+  const oldest = list.reduce<string | null>((acc, r) => {
+    const on = str(r.starts_on || r.created_at);
+    return on && (!acc || on < acc) ? on : acc;
+  }, null);
+  return {
+    title: "Leave requests · pending",
+    badge: { tone: "warn", text: `${list.length} awaiting a decision` },
+    meta: [
+      { label: "Pending", value: String(list.length) },
+      ...(oldest ? [{ label: "Earliest starts", value: dateFmt(oldest) }] : []),
+    ],
+    columns: [
+      { label: "Employee" },
+      { label: "Type" },
+      { label: "From" },
+      { label: "To" },
+    ],
+    rows: list.slice(0, 8).map((r) => ({
+      key: str(r.leave_request_id) || str(r.employee_id),
+      cells: [
+        str(r.employee_name) || str(r.employee_id).slice(0, 8) || "—",
+        str(r.leave_type_name) || "Leave",
+        dateFmt(r.starts_on),
+        dateFmt(r.ends_on),
+      ],
+    })),
+    cta: { label: "Open the leave queue", to: KPI_ROUTE.leave_pending },
+    empty: {
+      title: "Nothing awaiting a decision",
+      hint: "Every leave request has been approved or rejected.",
+    },
+  };
+}
+
 /** Work orders → `/work-orders`, open and in-progress only, oldest first —
  *  the one that has waited longest is the one a workshop lead asks about. */
 export function buildWorkOrdersDrill(rows: Row[] | null, now: Date = new Date()): Drill {
@@ -707,6 +875,44 @@ export function buildWorkOrdersDrill(rows: Row[] | null, now: Date = new Date())
     empty: {
       title: "Workshop is clear",
       hint: "No maintenance order is open or in progress.",
+    },
+  };
+}
+
+/** Vacancies · open → the open roles. The list endpoint has no status filter,
+ *  so the OPEN filter is client-side over one page — and the note says so,
+ *  because a page of recent closed roles can sit under a live count. */
+export function buildVacanciesDrill(rows: Row[] | null): Drill {
+  const list = (rows || []).filter((v) => str(v.status).toUpperCase() === "OPEN");
+  const posted = list.filter((v) => v.posted_to_website).length;
+  return {
+    title: "Open vacancies",
+    badge: { tone: "mute", text: `${list.length} open` },
+    meta: [
+      { label: "Open", value: String(list.length) },
+      { label: "On the website", value: String(posted) },
+    ],
+    columns: [
+      { label: "Role" },
+      { label: "Department" },
+      { label: "Posted", align: "right" },
+    ],
+    rows: list.slice(0, 8).map((v) => ({
+      key: str(v.vacancy_id) || str(v.title),
+      cells: [
+        str(v.title) || str(v.vacancy_id).slice(0, 8) || "—",
+        str(v.department) || "—",
+        dateFmt(v.created_at),
+      ],
+    })),
+    note:
+      (rows || []).length >= 200
+        ? "The table lists the 200 most recent vacancies; the count covers the open ones among them."
+        : undefined,
+    cta: { label: "Open recruitment", to: KPI_ROUTE.vacancies_open },
+    empty: {
+      title: "No open vacancies",
+      hint: "Nothing is being hired for right now — open a vacancy and it lands here.",
     },
   };
 }
@@ -771,6 +977,132 @@ export function buildWarehouseOccupancyDrill(
     empty: {
       title: "No location has a recorded capacity",
       hint: "Occupancy is units on hand against capacity — with no capacity recorded there is nothing to divide by.",
+    },
+  };
+}
+
+/**
+ * Payroll → the runs, in-flight first (`/payroll`, plus the latest in-flight
+ * run's payslips for the money figures).
+ *
+ * THE SALARY RULE (guide §9): figures a salary-masked reader cannot see arrive
+ * NULL from the API, and a null figure renders as "—" here — NEVER as 0,
+ * because "Net: 0 XAF" over a payroll that was simply withheld from the
+ * reader is the leak-shaped answer this drill exists not to give. (Today the
+ * tile itself is unavailable to a masked reader — §4.3 — so this is the
+ * defence in depth for the day `sensitive_scope: "drill"` makes the count
+ * visible while the figures stay masked.)
+ */
+export function buildPayrollDrill(
+  runs: Row[] | null,
+  detail: { items?: Row[] } | null,
+  currency: string,
+): Drill {
+  const all = runs || [];
+  const inFlight = all.filter((r) => !PAYROLL_TERMINAL.has(str(r.status).toUpperCase()));
+  const settled = all.filter((r) => PAYROLL_TERMINAL.has(str(r.status).toUpperCase()));
+  const items = detail?.items || [];
+  const net = items.reduce((s, it) => {
+    const v = Number(it.net_pay);
+    return Number.isFinite(v) ? s + v : s;
+  }, 0);
+  const figuresComplete = items.length > 0 && items.every((it) => it.net_pay !== null && it.net_pay !== undefined);
+  return {
+    title: "Payroll runs",
+    badge: {
+      tone: "orange",
+      text: inFlight.length
+        ? `${inFlight.length} in flight`
+        : "All runs settled",
+    },
+    meta: [
+      { label: "In flight", value: String(inFlight.length) },
+      { label: "Latest period", value: str(all[0]?.period_code) || "—" },
+      { label: "Payslips (in flight)", value: items.length ? String(items.length) : "—" },
+      {
+        label: `Net (in flight), ${currency}`,
+        value: figuresComplete ? `${grouped(net)} ${currency}` : "—",
+      },
+    ],
+    columns: [
+      { label: "Period" },
+      { label: "Status" },
+      { label: "Updated", align: "right" },
+    ],
+    rows: [...inFlight, ...settled].slice(0, 8).map((r) => {
+      const status = str(r.status).toUpperCase() || "—";
+      return {
+        key: str(r.payroll_run_id) || str(r.period_code),
+        cells: [
+          str(r.period_code) || str(r.payroll_run_id).slice(0, 8) || "—",
+          { text: status, tone: payrollStatusTone(status) },
+          dateFmt(r.updated_at ?? r.created_at),
+        ],
+      };
+    }),
+    note: all.length >= 200
+      ? "The table lists the 200 most recent runs; the in-flight count is the tile's figure over all periods."
+      : undefined,
+    cta: { label: "Open payroll", to: KPI_ROUTE.payroll_run_state },
+    empty: {
+      title: "No payroll runs yet",
+      hint: "A run appears here each payroll period is opened — the count stays 0 until then, truthfully.",
+    },
+  };
+}
+
+/** The attrition window, in days — the client half of the tile's rolling
+ *  `interval '90 days'`, used only to rank the register the drill lists. */
+const ATTRITION_WINDOW_DAYS = 90;
+
+/**
+ * Attrition · 90 days → the non-active register (`/employees?status=TERMINATED,SUSPENDED`).
+ *
+ * THE NOTE IS THE HONESTY (guide §9): the tile counts employee.deactivated
+ * EVENTS in the rolling window — an event log, append-only, immune to a
+ * reactivation rewriting history — while this table is the register's CURRENT
+ * state: who is off the active list now, terminations with their leaving
+ * date, suspensions without one. Two different truths, named side by side
+ * rather than blurred into one.
+ */
+export function buildAttritionDrill(rows: Row[] | null): Drill {
+  const list = rows || [];
+  const now = new Date();
+  const leftWithinWindow = list.filter((e) => {
+    const on = str(e.terminated_on);
+    if (!on) return false;
+    const days = daysBetween(new Date(on), now);
+    return Number.isFinite(days) && days <= ATTRITION_WINDOW_DAYS;
+  }).length;
+  return {
+    title: "Attrition · 90 days",
+    badge: { tone: "bad", text: `${leftWithinWindow} left within 90 days` },
+    meta: [
+      { label: "Left within 90 days", value: String(leftWithinWindow) },
+      { label: "Off the active register", value: String(list.length) },
+    ],
+    columns: [
+      { label: "Employee" },
+      { label: "Status" },
+      { label: "Left on", align: "right" },
+    ],
+    rows: list.slice(0, 8).map((e) => {
+      const status = str(e.status).toUpperCase();
+      return {
+        key: str(e.employee_id) || str(e.full_name),
+        cells: [
+          str(e.full_name) || str(e.employee_id).slice(0, 8) || "—",
+          { text: status || "—", tone: (status === "TERMINATED" ? "bad" : "warn") as Tone },
+          e.terminated_on ? dateFmt(e.terminated_on) : "—",
+        ],
+      };
+    }),
+    note:
+      "The headline counts employee.deactivated events over the last 90 days; the rows are the current non-active register (suspensions and terminations).",
+    cta: { label: "Open the staff register", to: KPI_ROUTE.attrition_90d },
+    empty: {
+      title: "Nobody has left",
+      hint: "No employee has been deactivated in the last 90 days, and the register holds no one off the active list.",
     },
   };
 }

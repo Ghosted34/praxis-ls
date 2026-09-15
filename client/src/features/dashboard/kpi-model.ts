@@ -101,6 +101,10 @@ export const BAND_DOMAINS: { key: BandDomain; labelKey: string }[] = [
  */
 const PAIR_NOUN: Partial<Record<string, string>> = {
   fleet_utilisation: "dash.unitVehicles",
+  // "18 / 25 expected" — the attendance pair's denominator is the expected
+  // headcount, and the noun is what keeps "0 / 0" reading as "nobody was
+  // expected" rather than a broken fraction (guide §6.4).
+  attendance_today: "dash.unitExpected",
 };
 
 export type FormattedBandValue = {

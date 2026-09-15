@@ -37,6 +37,13 @@ import {
   buildLateVsEtaDrill,
   buildWarehouseOccupancyDrill,
   buildWorkOrdersDrill,
+  // Human Capital (PR-4) — one builder per HR tile.
+  buildAttendanceDrill,
+  buildAttritionDrill,
+  buildHeadcountDrill,
+  buildLeaveDrill,
+  buildPayrollDrill,
+  buildVacanciesDrill,
   type ClientNames,
   type Drill,
   type KpiId,
@@ -285,6 +292,10 @@ export function useControlTower(filters: ControlTowerFilters = EMPTY_FILTERS): {
 /** Rows that back the revenue ranking. 200 is the API's hard cap on a page. */
 const REVENUE_SCAN = 200;
 
+/** Human Capital drills scan one page of their module list — the same cap the
+ *  revenue ranking lives under, and the note in each drill names the basis. */
+const HR_SCAN = 200;
+
 /**
  * The picker's catalog — fetched ONLY while the panel is open.
  *
@@ -373,6 +384,49 @@ export function useKpiDrilldown(
     (slotId: string) => (band?.slots ?? []).find((s) => s.id === slotId) ?? null,
     [band],
   );
+  // Human Capital (PR-4) — one list per tile, each the module page the role
+  // can already read. The payroll drill additionally opens the LATEST
+  // IN-FLIGHT run's payslips (the money figures); that read is tolerant, so a
+  // failure costs the figures ("—"), never the runs table. A 403 on the list
+  // itself still surfaces as the permission error — never "all clear".
+  const employees = useListPaged<Row>(
+    is("headcount") ? "/employees" : null,
+    { pageSize: HR_SCAN, active: "true" },
+  );
+  const departed = useListPaged<Row>(
+    is("attrition_90d") ? "/employees" : null,
+    { pageSize: HR_SCAN, status: "TERMINATED,SUSPENDED" },
+  );
+  const punches = useListPaged<Row>(
+    is("attendance_today") ? "/attendance" : null,
+    { pageSize: HR_SCAN, date: new Date().toISOString().slice(0, 10) },
+  );
+  const leaveRequests = useListPaged<Row>(
+    is("leave_pending") ? "/leave" : null,
+    { pageSize: HR_SCAN, status: "REQUESTED", exclude_kind: "salary_advance" },
+  );
+  const vacancies = useListPaged<Row>(
+    is("vacancies_open") ? "/vacancies" : null,
+    { pageSize: HR_SCAN },
+  );
+  const payrollRuns = useListPaged<Row>(
+    is("payroll_run_state") ? "/payroll" : null,
+    { pageSize: HR_SCAN },
+  );
+  const payrollInFlight = React.useMemo(() => {
+    const runs = payrollRuns.rows || [];
+    const terminal = (s: unknown) => {
+      const t = String(s ?? "").toUpperCase();
+      return t === "DISBURSED" || t === "REJECTED";
+    };
+    return runs.find((r) => !terminal(r.status)) || null;
+  }, [payrollRuns.rows]);
+  const payrollDetail = useQuery({
+    ...tolerant<Row>(
+      `/payroll/${payrollInFlight ? String(payrollInFlight.payroll_run_id) : ""}`,
+    ),
+    enabled: is("payroll_run_state") && !!payrollInFlight,
+  });
 
   const clientNames = React.useMemo<ClientNames>(() => {
     const m: ClientNames = {};
@@ -540,6 +594,59 @@ export function useKpiDrilldown(
           error: null,
         };
       }
+      // ── Human Capital (PR-4) ────────────────────────────────────────────
+      case "headcount": {
+        if (employees.error)
+          return { drill: null, loading: false, error: employees.error };
+        if (employees.loading)
+          return { drill: null, loading: true, error: null };
+        // An honest page scan: `/employees` predates the paged shape and
+        // sends no `meta.total`, so the builder counts the page and its note
+        // names the basis at the cap — the tile keeps the true count.
+        return { drill: buildHeadcountDrill(employees.rows), loading: false, error: null };
+      }
+      case "attendance_today": {
+        if (punches.error)
+          return { drill: null, loading: false, error: punches.error };
+        if (punches.loading)
+          return { drill: null, loading: true, error: null };
+        return { drill: buildAttendanceDrill(punches.rows), loading: false, error: null };
+      }
+      case "leave_pending": {
+        if (leaveRequests.error)
+          return { drill: null, loading: false, error: leaveRequests.error };
+        if (leaveRequests.loading)
+          return { drill: null, loading: true, error: null };
+        return { drill: buildLeaveDrill(leaveRequests.rows), loading: false, error: null };
+      }
+      case "vacancies_open": {
+        if (vacancies.error)
+          return { drill: null, loading: false, error: vacancies.error };
+        if (vacancies.loading)
+          return { drill: null, loading: true, error: null };
+        return { drill: buildVacanciesDrill(vacancies.rows), loading: false, error: null };
+      }
+      case "payroll_run_state": {
+        if (payrollRuns.error)
+          return { drill: null, loading: false, error: payrollRuns.error };
+        if (payrollRuns.loading)
+          return { drill: null, loading: true, error: null };
+        // The payslip figures are ADDITIVE: an unreadable or uncomputed
+        // detail degrades the money to "—" in the builder, and the runs
+        // table still paints.
+        return {
+          drill: buildPayrollDrill(payrollRuns.rows, (payrollDetail.data ?? null) as Row | null, currency),
+          loading: false,
+          error: null,
+        };
+      }
+      case "attrition_90d": {
+        if (departed.error)
+          return { drill: null, loading: false, error: departed.error };
+        if (departed.loading)
+          return { drill: null, loading: true, error: null };
+        return { drill: buildAttritionDrill(departed.rows), loading: false, error: null };
+      }
       default:
         return { drill: null, loading: false, error: null };
     }
@@ -598,5 +705,24 @@ export function useKpiDrilldown(
     inventory.rows,
     inventory.error,
     inventory.loading,
+    employees.rows,
+    employees.error,
+    employees.loading,
+    departed.rows,
+    departed.error,
+    departed.loading,
+    punches.rows,
+    punches.error,
+    punches.loading,
+    leaveRequests.rows,
+    leaveRequests.error,
+    leaveRequests.loading,
+    vacancies.rows,
+    vacancies.error,
+    vacancies.loading,
+    payrollRuns.rows,
+    payrollRuns.error,
+    payrollRuns.loading,
+    payrollDetail.data,
   ]);
 }

@@ -32,7 +32,10 @@ const val = (over = {}) => ({ ...Object.fromEntries(LIVE_IDS.map((id) => [id, 0]
 
 describe("keepEligible", () => {
   it("drops unknown, hidden, and ineligible ids, preserves order, dedupes", () => {
-    expect(keepEligible(["revenue", "revenue", "made_up", "headcount", "sla_on_time"], ALL)).toEqual([
+    // The hidden half of this assertion needs an id that is NOT live yet.
+    // `cash_collected` is PR-3's (Money) and stays hidden until that PR flips
+    // it; whoever lands PR-3 swaps in an id of their own here.
+    expect(keepEligible(["revenue", "revenue", "made_up", "cash_collected", "sla_on_time"], ALL)).toEqual([
       "revenue",
       "sla_on_time",
     ]);

@@ -287,11 +287,13 @@ describe("role KPI config writes", () => {
   });
 
   it("rejects a default naming a tile that is not live yet, naming the release gate (hidden entries are inert)", async () => {
+    // `cash_collected` is PR-3's, still hidden — and its module (MOD-52) IS in
+    // allGrants, so the failure is the live gate, not the read gate.
     const fake = identityFake({ grants: allGrants });
     await expect(
       roleKpiService.put(fake, {
         roleId: "r1",
-        config: { scopeIds: null, defaultIds: ["headcount"], lockedIds: [] },
+        config: { scopeIds: null, defaultIds: ["cash_collected"], lockedIds: [] },
         actor: {},
       }),
     ).rejects.toMatchObject({ code: "KPI_NOT_LIVE", status: 422 });

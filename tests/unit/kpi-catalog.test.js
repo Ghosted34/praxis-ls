@@ -41,7 +41,7 @@ describe("catalog structure", () => {
     ]);
   });
 
-  it("live set = PR-1's ten + the domain PRs' flips (PR-2: five of six — stock_value waits for a cost column)", () => {
+  it("live set = PR-1's ten + PR-2's five + PR-4's six (stock_value waits for a cost column)", () => {
     const PR1 = [
       "approvals_awaiting",
       "compliance_open",
@@ -55,10 +55,20 @@ describe("catalog structure", () => {
       "sla_on_time",
     ];
     const PR2 = ["late_vs_eta", "dwell_days", "fleet_docs_expiring", "work_orders_open", "warehouse_occupancy"];
-    for (const id of [...PR1, ...PR2]) expect(LIVE_IDS).toContain(id);
+    const PR4 = [
+      "headcount",
+      "attendance_today",
+      "leave_pending",
+      "vacancies_open",
+      "payroll_run_state",
+      "attrition_90d",
+    ];
+    // An EXACT set, not a containment: a tile going live is a product decision,
+    // and the assertion that catches an accidental flip is the one that fails
+    // when the set grows. PR-3 (Money/Sales) adds its nine ids here when it
+    // lands; until then, these 21 are the whole live catalog.
+    expect([...LIVE_IDS].sort()).toEqual([...PR1, ...PR2, ...PR4].sort());
     expect(LIVE_IDS).not.toContain("stock_value");
-    // PR-3/PR-4 add their own ids; the ceiling is the catalog itself.
-    expect(LIVE_IDS.length).toBeGreaterThanOrEqual(PR1.length + PR2.length);
     expect(LIVE_IDS.length).toBeLessThanOrEqual(32);
   });
 
@@ -156,7 +166,9 @@ describe("valuesFor guard contract", () => {
   });
 
   it("unknown and hidden ids are never answered, even when asked", async () => {
-    const out = await valuesFor(emptySchemaClient, ["revenue", "made_up_id", "headcount"]);
+    // `cash_collected` is PR-3's (Money), still hidden — the domain PR that
+    // flips it swaps in an id of its own here.
+    const out = await valuesFor(emptySchemaClient, ["revenue", "made_up_id", "cash_collected"]);
     expect(Object.keys(out)).toEqual(["revenue"]);
   });
 });

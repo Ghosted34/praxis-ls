@@ -7,10 +7,12 @@ const c = require("./deliverability.controller");
 const v = require("./deliverability.validator");
 
 const router = express.Router();
-router.use(authMiddleware);
+// Scope auth to this module's namespace. This router is mounted at /mail before
+// the core router, whose OAuth callbacks intentionally have no bearer header.
+router.use("/deliverability", authMiddleware);
 
-// Route-scoped feature gates — never router-level. A router.use here runs
-// for EVERY /mail/* request that falls through to this router (same base
+// Route-scoped feature gates — never router-level. An unscoped router.use here
+// runs for EVERY /mail/* request that falls through to this router (same base
 // path as every mail module), including paths it does not own: with
 // mail.deliverability off the whole inbox, folders and mailbox setup
 // answered 403 before they reached mail.routes.js. See

@@ -59,6 +59,24 @@ export const KPI_ROUTE: Record<string, string> = {
   vacancies_open: "/hr/vacancies",
   payroll_run_state: "/hr/payroll",
   attrition_90d: "/hr/employees",
+  // Operations, Fleet & Warehouse (PR-2) — folded in from the temporary
+  // KPI_ROUTE_PR2 table now that the three domain PRs have all landed and
+  // there is no longer a parallel branch whose lines this would collide with.
+  late_vs_eta: "/operations/files",
+  dwell_days: "/operations/milestones",
+  fleet_docs_expiring: "/fleet/compliance",
+  work_orders_open: "/fleet/work-orders",
+  warehouse_occupancy: "/wms",
+  // Money and Sales & Procurement (PR-3).
+  cash_collected: "/finance/receivables",
+  payables_overdue: "/finance/debt",
+  cash_requests_awaiting: "/costing/cash-requests",
+  margin_closed: "/commercial/margin-simulation",
+  dso: "/finance/receivables",
+  pipeline_won: "/sales/opportunities",
+  quote_requests_open: "/sales/quote-requests",
+  pos_in_flight: "/procurement/purchase-orders",
+  purchase_requests: "/procurement/purchase-requests",
 };
 
 /** Catalog tile ids are the drill ids; anything else opens no drill. */
@@ -527,20 +545,11 @@ export function buildJournalsDrill(rows: Row[] | null): Drill {
  * cannot paint would be the two-place lie the band exists to end.
  */
 
-/** Which drill each new tile opens; appended rather than spliced into
- *  KPI_ROUTE so the three domain PRs merge without touching each other's
- *  lines. Read through `kpiRoute()` below so callers see one table. */
-export const KPI_ROUTE_PR2: Record<string, string> = {
-  late_vs_eta: "/operations/files",
-  dwell_days: "/operations/milestones",
-  fleet_docs_expiring: "/fleet/compliance",
-  work_orders_open: "/fleet/work-orders",
-  warehouse_occupancy: "/wms",
-};
-
-/** Route for a tile id across every domain block, or null. */
+/** Route for a tile id, or null when the tile opens no hub. One table again:
+ *  `KPI_ROUTE_PR2` was a merge-ordering device, not a second vocabulary, and
+ *  two route tables are two places to look when a drill sends you nowhere. */
 export function kpiRoute(id: string): string | null {
-  return KPI_ROUTE[id] ?? KPI_ROUTE_PR2[id] ?? null;
+  return KPI_ROUTE[id] ?? null;
 }
 
 const dayNoun = (n: number) => `${n} day${n === 1 ? "" : "s"}`;
@@ -586,7 +595,7 @@ export function buildLateVsEtaDrill(dossiers: Row[] | null, now: Date = new Date
         { text: dayNoun(days), tone: (days > 7 ? "bad" : "warn") as Tone },
       ],
     })),
-    cta: { label: "Open operations files", to: KPI_ROUTE_PR2.late_vs_eta },
+    cta: { label: "Open operations files", to: KPI_ROUTE.late_vs_eta },
     empty: {
       title: "Nothing past its ETA",
       hint: "Every open file with an ETA is either not due yet or already has an arrival recorded.",
@@ -695,7 +704,7 @@ export function buildDwellDrill(
       ],
     })),
     note: stages.length ? "Slips are settled milestone variances; force-majeure stays counted, never netted away." : undefined,
-    cta: { label: "Open milestones", to: KPI_ROUTE_PR2.dwell_days },
+    cta: { label: "Open milestones", to: KPI_ROUTE.dwell_days },
     empty: {
       title: "No slips to attribute",
       hint: "Attribution fills in as milestones complete late and are charged to a tier.",
@@ -792,7 +801,7 @@ export function buildFleetDocsDrill(rows: Row[] | null): Drill {
         ],
       };
     }),
-    cta: { label: "Open fleet compliance", to: KPI_ROUTE_PR2.fleet_docs_expiring },
+    cta: { label: "Open fleet compliance", to: KPI_ROUTE.fleet_docs_expiring },
     empty: {
       title: "Nothing expiring",
       hint: "No insurance or inspection on the register falls due in the next 30 days.",
@@ -871,7 +880,7 @@ export function buildWorkOrdersDrill(rows: Row[] | null, now: Date = new Date())
         dayNoun(age),
       ],
     })),
-    cta: { label: "Open work orders", to: KPI_ROUTE_PR2.work_orders_open },
+    cta: { label: "Open work orders", to: KPI_ROUTE.work_orders_open },
     empty: {
       title: "Workshop is clear",
       hint: "No maintenance order is open or in progress.",
@@ -973,7 +982,7 @@ export function buildWarehouseOccupancyDrill(
     note: measurable
       ? "Units are whatever each location records as capacity; a site mixing pallets and bags reads approximately."
       : "Give locations a capacity (Warehouse → Locations) and this ratio becomes measurable.",
-    cta: { label: "Open warehouse", to: KPI_ROUTE_PR2.warehouse_occupancy },
+    cta: { label: "Open warehouse", to: KPI_ROUTE.warehouse_occupancy },
     empty: {
       title: "No location has a recorded capacity",
       hint: "Occupancy is units on hand against capacity — with no capacity recorded there is nothing to divide by.",
@@ -1103,6 +1112,345 @@ export function buildAttritionDrill(rows: Row[] | null): Drill {
     empty: {
       title: "Nobody has left",
       hint: "No employee has been deactivated in the last 90 days, and the register holds no one off the active list.",
+    },
+  };
+}
+
+/* ── Money + Sales & Procurement (PR-3, guide §5.1/§5.4) ────────────────────
+ *
+ * Same contract as everything above: data from a list the caller can already
+ * read, a `Drill` out, one 200-row page, and an honest `note` whenever the
+ * table is a scan rather than the aggregate the tile counted. The builders
+ * never see an error — `useKpiDrilldown` returns the source's error before
+ * calling them — so a reader without the grant gets the permission message,
+ * never an empty state that sounds like "all clear".
+ *
+ * Two of these take the tile's own resolved figure rather than recomputing it
+ * from the page: `margin_closed` is an average and `dso` a weighted average,
+ * and an average over a clipped page is a different number from the one on
+ * the card. The modal must not contradict the tile it opened from.
+ */
+
+/** Cash collected · MTD → posted receipts this month (`/payments`). */
+export function buildCashCollectedDrill(rows: Row[] | null, currency: string): Drill {
+  const list = rows || [];
+  const total = list.reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+  return {
+    title: "Cash collected this month",
+    badge: { tone: "ok", text: `${grouped(total)} ${currency}` },
+    meta: [
+      { label: "Receipts", value: String(list.length) },
+      { label: `Collected (${currency})`, value: grouped(total) },
+    ],
+    columns: [{ label: "Received" }, { label: "Method" }, { label: currency, align: "right" }],
+    rows: list.slice(0, 8).map((r) => ({
+      key: str(r.receipt_id),
+      cells: [dateFmt(r.received_on), str(r.method) || "—", grouped(Number(r.amount) || 0)],
+    })),
+    note: list.length >= 200 ? "The table lists the 200 most recent receipts; the tile totals the month." : undefined,
+    cta: { label: "Open receivables", to: KPI_ROUTE.cash_collected },
+    empty: {
+      title: "Nothing collected yet this month",
+      hint: "Posted receipts land here as payments are recorded. The month is young, not empty.",
+    },
+  };
+}
+
+/** Payables · past due → supplier invoices past their due date (`/supplier-invoices`). */
+export function buildPayablesDrill(rows: Row[] | null, currency: string): Drill {
+  const today = new Date();
+  const due = (rows || []).filter(
+    (r) =>
+      ["MATCHED", "POSTED_LOCKED"].includes(str(r.status)) &&
+      r.due_on &&
+      new Date(str(r.due_on)) < today &&
+      (Number(r.amount_ttc) || 0) > (Number(r.amount_paid) || 0),
+  );
+  const outstanding = (r: Row) => (Number(r.amount_ttc) || 0) - (Number(r.amount_paid) || 0);
+  const total = due.reduce((sum, r) => sum + outstanding(r), 0);
+  const ranked = [...due].sort((a, b) => outstanding(b) - outstanding(a));
+  return {
+    title: "Supplier invoices past due",
+    badge: { tone: "warn", text: `${grouped(total)} ${currency}` },
+    meta: [
+      { label: "Invoices", value: String(due.length) },
+      { label: `Outstanding (${currency})`, value: grouped(total) },
+    ],
+    columns: [{ label: "Document" }, { label: "Due" }, { label: "Days" , align: "right" }, { label: currency, align: "right" }],
+    rows: ranked.slice(0, 8).map((r) => ({
+      key: str(r.supplier_invoice_id) || str(r.doc_number),
+      cells: [
+        str(r.doc_number) || str(r.supplier_ref) || "—",
+        dateFmt(r.due_on),
+        String(daysBetween(new Date(str(r.due_on)), today)),
+        grouped(outstanding(r)),
+      ],
+    })),
+    note: (rows || []).length >= 200 ? "Ranked over the 200 most recent invoices; the tile totals them all." : undefined,
+    cta: { label: "Open supplier debt", to: KPI_ROUTE.payables_overdue },
+    empty: {
+      title: "Nothing past due",
+      hint: "Every supplier invoice is either settled or not yet at its due date.",
+    },
+  };
+}
+
+/** Cash requests · awaiting → submitted or validated (`/cash-requests`). */
+export function buildCashRequestsDrill(rows: Row[] | null, currency: string): Drill {
+  const waiting = (rows || []).filter((r) => ["SUBMITTED", "VALIDATED"].includes(str(r.status)));
+  const total = waiting.reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+  return {
+    title: "Cash requests awaiting a decision",
+    badge: { tone: "bad", text: `${waiting.length} waiting` },
+    meta: [
+      { label: "Requests", value: String(waiting.length) },
+      { label: `Requested (${currency})`, value: grouped(total) },
+    ],
+    columns: [{ label: "Document" }, { label: "Stage" }, { label: "Raised" }, { label: currency, align: "right" }],
+    rows: waiting.slice(0, 8).map((r) => ({
+      key: str(r.cash_request_id) || str(r.doc_number),
+      cells: [
+        str(r.doc_number) || str(r.cash_request_id).slice(0, 8),
+        // SUBMITTED waits on a validator, VALIDATED on an approver — naming
+        // which desk it sits at is the point of opening this modal.
+        str(r.status) === "SUBMITTED" ? "Awaiting validation" : "Awaiting approval",
+        dateFmt(r.created_at),
+        grouped(Number(r.amount) || 0),
+      ],
+    })),
+    cta: { label: "Open cash requests", to: KPI_ROUTE.cash_requests_awaiting },
+    empty: {
+      title: "No request is waiting",
+      hint: "Every raised cash request has been decided.",
+    },
+  };
+}
+
+/**
+ * Margin · closed files → approved simulations on completed files
+ * (`/margin-simulations`, the MOD-27 read the tile is gated on).
+ *
+ * `marginPct` and `closedCount` come from the TILE: the average is computed
+ * server-side over every closed file, and re-averaging a 200-row page would
+ * put a different number in the modal than on the card.
+ *
+ * Per-file margin renders "—" whenever the row carries no `margin_percent`.
+ * That is deliberately NOT a client-side permission test: masking is decided
+ * server-side by `field_visibility`, and a client that decided for itself
+ * which figures to blank would be a hint pretending to be a rule. If the
+ * server sends the number, the reader was allowed it; if it withholds it, the
+ * dash is already the honest rendering.
+ */
+export function buildMarginDrill(
+  rows: Row[] | null,
+  marginPct: number | null,
+  closedCount: number,
+): Drill {
+  const list = (rows || []).filter((r) => str(r.status) === "APPROVED");
+  const withheld = list.some(
+    (r) => r.margin_percent === null || r.margin_percent === undefined,
+  );
+  return {
+    title: "Margin on closed files",
+    badge: { tone: "orange", text: marginPct === null ? "Not measurable" : `${marginPct} %` },
+    meta: [
+      { label: "Closed files measured", value: String(closedCount) },
+      { label: "Average margin", value: marginPct === null ? "—" : `${marginPct} %` },
+    ],
+    columns: [{ label: "Simulation" }, { label: "Approved" }, { label: "Margin", align: "right" }],
+    rows: list.slice(0, 8).map((r) => ({
+      key: str(r.margin_simulation_id),
+      cells: [
+        str(r.margin_simulation_id).slice(0, 8),
+        dateFmt(r.approved_at),
+        r.margin_percent === null || r.margin_percent === undefined
+          ? "—"
+          : `${Number(r.margin_percent)} %`,
+      ],
+    })),
+    note: withheld
+      ? "Some per-file margins are not shown for your role; the average above is the aggregate you may read."
+      : undefined,
+    cta: { label: "Open margin simulations", to: KPI_ROUTE.margin_closed },
+    empty: {
+      title: "No closed file has an approved margin",
+      hint: "Margin is measured once a file completes with its simulation approved.",
+    },
+  };
+}
+
+/**
+ * DSO → the unpaid final invoices behind the figure (`/final-invoices`).
+ *
+ * `dsoDays` is the tile's weighted average over every open invoice; the table
+ * ranks the page by age so the reader sees what is pulling it up.
+ */
+export function buildDsoDrill(rows: Row[] | null, dsoDays: number | null, currency: string): Drill {
+  const today = new Date();
+  const open = (rows || []).filter(
+    (r) => isLockedFinal(r) && (Number(r.total_ttc) || 0) > (Number(r.amount_paid) || 0),
+  );
+  const age = (r: Row) => daysBetween(new Date(str(r.created_at)), today);
+  const ranked = [...open].sort((a, b) => age(b) - age(a));
+  const outstanding = open.reduce(
+    (sum, r) => sum + ((Number(r.total_ttc) || 0) - (Number(r.amount_paid) || 0)),
+    0,
+  );
+  return {
+    title: "Days sales outstanding",
+    badge: { tone: "blue", text: dsoDays === null ? "Not measurable" : `${dsoDays} days` },
+    meta: [
+      { label: "Open invoices", value: String(open.length) },
+      { label: `Outstanding (${currency})`, value: grouped(outstanding) },
+      { label: "Weighted age", value: dsoDays === null ? "—" : `${dsoDays} days` },
+    ],
+    columns: [{ label: "Invoice" }, { label: "Issued" }, { label: "Age", align: "right" }, { label: currency, align: "right" }],
+    rows: ranked.slice(0, 8).map((r) => ({
+      key: str(r.invoice_id) || str(r.doc_number),
+      cells: [
+        str(r.doc_number) || str(r.invoice_id).slice(0, 8),
+        dateFmt(r.created_at),
+        String(age(r)),
+        grouped((Number(r.total_ttc) || 0) - (Number(r.amount_paid) || 0)),
+      ],
+    })),
+    note: (rows || []).length >= 200 ? "Ranked over the 200 most recent invoices; the tile weights them all." : undefined,
+    cta: { label: "Open receivables", to: KPI_ROUTE.dso },
+    empty: {
+      title: "Nothing is outstanding",
+      hint: "Every locked final invoice has been settled — there is no age to weigh.",
+    },
+  };
+}
+
+/** Won · this month → opportunities settled won (`/opportunities`). */
+export function buildPipelineWonDrill(rows: Row[] | null, currency: string): Drill {
+  const monthStart = new Date();
+  monthStart.setDate(1);
+  monthStart.setHours(0, 0, 0, 0);
+  const won = (rows || []).filter(
+    (r) => str(r.status) === "WON" && r.settled_at && new Date(str(r.settled_at)) >= monthStart,
+  );
+  const total = won.reduce((sum, r) => sum + (Number(r.estimated_value) || 0), 0);
+  return {
+    title: "Won this month",
+    badge: { tone: "ok", text: `${grouped(total)} ${currency}` },
+    meta: [
+      { label: "Opportunities", value: String(won.length) },
+      { label: `Value (${currency})`, value: grouped(total) },
+    ],
+    columns: [{ label: "Opportunity" }, { label: "Settled" }, { label: currency, align: "right" }],
+    rows: won.slice(0, 8).map((r) => ({
+      key: str(r.opportunity_id) || str(r.name),
+      cells: [str(r.name) || "—", dateFmt(r.settled_at), grouped(Number(r.estimated_value) || 0)],
+    })),
+    cta: { label: "Open opportunities", to: KPI_ROUTE.pipeline_won },
+    empty: {
+      title: "Nothing won yet this month",
+      hint: "Opportunities appear here as they are settled won. The month is young, not empty.",
+    },
+  };
+}
+
+/** Quote requests · open → what a client is still waiting on (`/quote-requests`). */
+export function buildQuoteRequestsDrill(rows: Row[] | null): Drill {
+  const OPEN = ["RECEIVED", "UNDER_REVIEW", "CLARIFICATION_REQUIRED"];
+  const open = (rows || []).filter((r) => OPEN.includes(str(r.status)));
+  const today = new Date();
+  const waiting = (r: Row) => daysBetween(new Date(str(r.created_at)), today);
+  const ranked = [...open].sort((a, b) => waiting(b) - waiting(a));
+  return {
+    title: "Quote requests awaiting an answer",
+    badge: { tone: "blue", text: `${open.length} open` },
+    meta: [
+      { label: "Open requests", value: String(open.length) },
+      { label: "Longest waiting", value: ranked.length ? `${waiting(ranked[0])} days` : "—" },
+    ],
+    columns: [{ label: "Reference" }, { label: "Requester" }, { label: "Stage" }, { label: "Waiting", align: "right" }],
+    rows: ranked.slice(0, 8).map((r) => ({
+      key: str(r.quote_request_id) || str(r.public_ref),
+      cells: [
+        str(r.public_ref) || str(r.quote_request_id).slice(0, 8),
+        str(r.requester_company) || str(r.requester_name) || "—",
+        str(r.status) || "—",
+        `${waiting(r)} d`,
+      ],
+    })),
+    cta: { label: "Open quote requests", to: KPI_ROUTE.quote_requests_open },
+    empty: {
+      title: "Every request has been answered",
+      hint: "Nothing is waiting on a quote from us.",
+    },
+  };
+}
+
+/**
+ * POs · awaiting receipt → issued orders with no goods in (`/purchase-orders`).
+ *
+ * The tile measures the absence of a `grn_inbound` row, not the PO's status,
+ * so a PO whose goods arrived without anyone moving its status stops counting
+ * when the GRN lands. The page cannot see GRNs, so the table lists issued POs
+ * and the note says what the tile counted — an honest scan, not a second
+ * definition.
+ */
+export function buildPosInFlightDrill(rows: Row[] | null, inFlight: number, currency: string): Drill {
+  const ISSUED = ["ISSUED_LOCKED", "APPROVED_LOCKED", "PARTIAL"];
+  const issued = (rows || []).filter((r) => ISSUED.includes(str(r.status)));
+  const total = issued.reduce((sum, r) => sum + (Number(r.total_ttc) || 0), 0);
+  return {
+    title: "Purchase orders awaiting receipt",
+    badge: { tone: "warn", text: `${inFlight} in flight` },
+    meta: [
+      { label: "Awaiting receipt", value: String(inFlight) },
+      { label: `Issued value (${currency})`, value: grouped(total) },
+    ],
+    columns: [{ label: "Order" }, { label: "Supplier" }, { label: "Due" }, { label: currency, align: "right" }],
+    rows: issued.slice(0, 8).map((r) => ({
+      key: str(r.po_id) || str(r.doc_number),
+      cells: [
+        str(r.doc_number) || str(r.po_id).slice(0, 8),
+        str(r.supplier_name) || "—",
+        dateFmt(r.delivery_on ?? r.due_on),
+        grouped(Number(r.total_ttc) || 0),
+      ],
+    })),
+    note:
+      issued.length !== inFlight
+        ? "The table lists issued orders; the tile counts those with no goods received yet."
+        : undefined,
+    cta: { label: "Open purchase orders", to: KPI_ROUTE.pos_in_flight },
+    empty: {
+      title: "Nothing is awaiting receipt",
+      hint: "Every issued order has had its goods received.",
+    },
+  };
+}
+
+/** Requests · awaiting PO → raised, not yet ordered (`/purchase-requests`). */
+export function buildPurchaseRequestsDrill(rows: Row[] | null): Drill {
+  const PENDING = ["SUBMITTED", "APPROVED"];
+  const pending = (rows || []).filter((r) => PENDING.includes(str(r.status)));
+  return {
+    title: "Purchase requests awaiting an order",
+    badge: { tone: "mute", text: `${pending.length} waiting` },
+    meta: [
+      { label: "Awaiting a PO", value: String(pending.length) },
+      { label: "Approved", value: String(pending.filter((r) => str(r.status) === "APPROVED").length) },
+    ],
+    columns: [{ label: "Request" }, { label: "Department" }, { label: "Stage" }, { label: "Raised" }],
+    rows: pending.slice(0, 8).map((r) => ({
+      key: str(r.pr_id) || str(r.doc_number),
+      cells: [
+        str(r.doc_number) || str(r.pr_id).slice(0, 8),
+        str(r.department) || "—",
+        str(r.status) === "APPROVED" ? "Approved, awaiting PO" : "Awaiting approval",
+        dateFmt(r.created_at),
+      ],
+    })),
+    cta: { label: "Open purchase requests", to: KPI_ROUTE.purchase_requests },
+    empty: {
+      title: "Nothing is awaiting an order",
+      hint: "Every approved request has been turned into a purchase order.",
     },
   };
 }

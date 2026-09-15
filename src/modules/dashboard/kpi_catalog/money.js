@@ -87,7 +87,7 @@ const ENTRIES = [
     unit: "money",
     module: "MOD-52",
     sourceRelation: "payment_receipt",
-    status: "hidden",
+    status: "live",
     labelKey: "dash.cashCollected",
     hintKey: "dash.cashCollectedHint",
     badgeKey: null,
@@ -102,7 +102,7 @@ const ENTRIES = [
     unit: "money",
     module: "MOD-53",
     sourceRelation: "supplier_invoice",
-    status: "hidden",
+    status: "live",
     labelKey: "dash.payablesOverdue",
     hintKey: "dash.payablesOverdueHint",
     badgeKey: "dash.payablesOverdueBadge",
@@ -117,7 +117,7 @@ const ENTRIES = [
     unit: "count",
     module: "MOD-49",
     sourceRelation: "cash_request",
-    status: "hidden",
+    status: "live",
     labelKey: "dash.cashRequests",
     hintKey: "dash.cashRequestsHint",
     badgeKey: "dash.cashRequestsBadge",
@@ -130,9 +130,31 @@ const ENTRIES = [
     id: "margin_closed",
     domain: "money",
     unit: "pct",
-    module: "MOD-46",
-    sourceRelation: "costing_result",
-    status: "hidden",
+    // MOD-27 (Margin simulation), not the MOD-46 (Costing) PR-1 declared, and
+    // `margin_simulation`, not the "costing_result" it named. Three things had
+    // to agree here and none of them did:
+    //
+    //   the RELATION  "costing_result" does not exist in any schema, and
+    //                 `dashboard.service.kpiCatalogPayload` gates offerability
+    //                 on `availableRelations().has(sourceRelation)` — so the
+    //                 tile would have been live, eligible, and still absent
+    //                 from every picker, with nothing failing anywhere.
+    //   the COLUMN    `costing.margin_percent` is deprecated and never written
+    //                 (costing.service §2.2: "margin belongs to
+    //                 margin_simulation + quotation"), so a costing-based
+    //                 query answers NULL forever — a permanently unmeasurable
+    //                 tile that looks like a tenant with no closed files.
+    //   the GRANT     the margin figure is served by `/margin-simulations`,
+    //                 which is gated MOD-27. Reading it behind MOD-46 would
+    //                 show a margin to a costing reader the margin module
+    //                 never granted — the tile would be GRANTING, which is the
+    //                 one thing this catalog's §4 says a tile never does.
+    //
+    // `drillTo` already pointed at /commercial/margin-simulation, which is the
+    // MOD-27 screen: the entry's own drill knew where the number lived.
+    module: "MOD-27",
+    sourceRelation: "margin_simulation",
+    status: "live",
     labelKey: "dash.marginClosed",
     hintKey: "dash.marginClosedHint",
     badgeKey: null,
@@ -149,7 +171,7 @@ const ENTRIES = [
     unit: "days",
     module: "MOD-51",
     sourceRelation: "invoice",
-    status: "hidden",
+    status: "live",
     labelKey: "dash.dso",
     hintKey: "dash.dsoHint",
     badgeKey: null,
@@ -166,7 +188,7 @@ const ENTRIES = [
  * asserted zero). Never let an error past here: the band is additive, a
  * broken query costs one tile, not the tower.
  */
-async function values(client, { num, count }) {
+async function values(client, { num, count, ratio }) {
   const out = {};
   out.revenue = await num(
     client,
@@ -194,6 +216,77 @@ async function values(client, { num, count }) {
   out.journals_unposted = await count(
     client,
     "SELECT count(*) n FROM journal_entry WHERE status='draft'",
+  );
+
+  // ── PR-3 — Money (guide §5.1) ───────────────────────────────────────────
+  //
+  // The zero policy, per tile, because each of these had to be decided:
+  //
+  //   cash_collected    a SUM over a period: an installed tenant that has
+  //                     collected nothing this month has collected 0, and 0 is
+  //                     the truth. COALESCE to 0 is correct here exactly as it
+  //                     is for `revenue` above — the period is always defined,
+  //                     so there is always something to assert.
+  //
+  //   payables_overdue  same shape, over what is still owed: amount_ttc net of
+  //                     amount_paid, on invoices the tenant has actually
+  //                     committed to (MATCHED or POSTED_LOCKED — a DRAFT is not
+  //                     yet a debt, PAID and REVERSED are not debts any more).
+  //
+  //   dso               an AVERAGE, and an average over nothing is not 0 days.
+  //                     Through `num()` so SQL NULL survives: no outstanding
+  //                     invoice → null → the tile is unavailable and drops out,
+  //                     rather than asserting "0 days to collect", which is a
+  //                     claim about collection speed, not an absence of one.
+  //
+  //   margin_closed     a RATIO pair, so "0 % margin over 12 closed files" and
+  //                     "no file closed with an approved costing" stay
+  //                     different statements (§6.4). Its `sensitive_field` is
+  //                     honoured upstream by the eligibility resolver: a reader
+  //                     for whom `dossier.margin` is masked does not get a
+  //                     zeroed tile, they get no tile.
+  out.cash_collected = await num(
+    client,
+    "SELECT COALESCE(SUM(amount), 0) n FROM payment_receipt " +
+      "WHERE status = 'POSTED_LOCKED' AND received_on >= date_trunc('month', CURRENT_DATE)::date",
+  );
+  out.payables_overdue = await num(
+    client,
+    "SELECT COALESCE(SUM(amount_ttc - COALESCE(amount_paid, 0)), 0) n FROM supplier_invoice " +
+      "WHERE status IN ('MATCHED','POSTED_LOCKED') " +
+      "AND due_on IS NOT NULL AND due_on < CURRENT_DATE " +
+      "AND amount_ttc > COALESCE(amount_paid, 0)",
+  );
+  out.cash_requests_awaiting = await count(
+    client,
+    // Awaiting a HUMAN: SUBMITTED waits on a validator, VALIDATED waits on an
+    // approver. Everything after APPROVED is money in motion, not a queue.
+    "SELECT count(*) n FROM cash_request WHERE status IN ('SUBMITTED','VALIDATED')",
+  );
+  out.margin_closed = await ratio(
+    client,
+    // APPROVED simulations on COMPLETED files: the margin someone signed off,
+    // on work that is finished. A DRAFT simulation is a what-if and a file
+    // still running has not earned its margin yet.
+    "SELECT round(AVG(m.margin_percent)) AS value, count(*) AS denominator " +
+      "FROM margin_simulation m JOIN dossier_visible d ON d.dossier_id = m.dossier_id " +
+      "WHERE m.status = 'APPROVED' AND d.status = 'COMPLETED' " +
+      "AND m.margin_percent IS NOT NULL",
+  );
+  out.dso = await num(
+    client,
+    // Days Sales Outstanding: the age of what is still owed, weighted by how
+    // much of it is owed, so one large stale invoice moves the figure more
+    // than five small fresh ones. Age runs from the invoice date, which is the
+    // convention the ratio is named for. NULLIF guards the divisor; with no
+    // outstanding invoice the whole expression is NULL and the tile hides.
+    "SELECT round(SUM(o.outstanding * o.age) / NULLIF(SUM(o.outstanding), 0)) AS n FROM (" +
+      "SELECT i.total_ttc - COALESCE((SELECT SUM(pa.amount) FROM payment_allocation pa " +
+      "WHERE pa.invoice_id = i.invoice_id), 0) AS outstanding, " +
+      "(CURRENT_DATE - i.created_at::date) AS age " +
+      "FROM invoice i WHERE i.type = 'FINAL' " +
+      "AND i.status IN ('ISSUED_LOCKED','APPROVED_LOCKED','POSTED_LOCKED')" +
+      ") o WHERE o.outstanding > 0",
   );
   return out;
 }

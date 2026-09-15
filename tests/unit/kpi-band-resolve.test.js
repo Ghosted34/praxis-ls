@@ -32,10 +32,9 @@ const val = (over = {}) => ({ ...Object.fromEntries(LIVE_IDS.map((id) => [id, 0]
 
 describe("keepEligible", () => {
   it("drops unknown, hidden, and ineligible ids, preserves order, dedupes", () => {
-    // The hidden half of this assertion needs an id that is NOT live yet.
-    // `cash_collected` is PR-3's (Money) and stays hidden until that PR flips
-    // it; whoever lands PR-3 swaps in an id of their own here.
-    expect(keepEligible(["revenue", "revenue", "made_up", "cash_collected", "sla_on_time"], ALL)).toEqual([
+    // The hidden half of this assertion needs an id that is NOT live.
+    // `stock_value` is the only one left in the catalogue.
+    expect(keepEligible(["revenue", "revenue", "made_up", "stock_value", "sla_on_time"], ALL)).toEqual([
       "revenue",
       "sla_on_time",
     ]);
@@ -183,8 +182,14 @@ describe("pickerModel", () => {
 
 describe("eligibility — grants and masks (no DB: pure filter)", () => {
   it("a module grant admits exactly its tiles", () => {
-    expect(eligibleIds(new Set(["MOD-51"]), new Set())).toEqual(["revenue"]);
+    // One grant, every live tile that aggregates over it — MOD-51 now gates
+    // two (revenue and dso both read `invoice`), MOD-52 two more. A grant
+    // admitting MORE tiles as domains ship is the model working: the tile
+    // inherits the right, it never adds one.
+    expect(eligibleIds(new Set(["MOD-51"]), new Set()).sort()).toEqual(["dso", "revenue"]);
     expect(eligibleIds(new Set(["MOD-51", "MOD-52"]), new Set()).sort()).toEqual([
+      "cash_collected",
+      "dso",
       "receivables_overdue",
       "revenue",
     ]);

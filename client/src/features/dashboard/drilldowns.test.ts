@@ -210,18 +210,24 @@ import {
   buildWarehouseOccupancyDrill,
   buildWorkOrdersDrill,
   kpiRoute,
-  KPI_ROUTE_PR2,
+  KPI_ROUTE,
 } from "./drilldowns";
 
 const NOW = new Date(2026, 8, 15, 10, 0, 0); // 15 Sep 2026, local
 
-describe("kpiRoute — one lookup across the domain blocks", () => {
-  it("answers PR-1 and PR-2 ids, null for anything else", () => {
-    expect(kpiRoute("revenue")).toBe("/finance/invoices");
-    expect(kpiRoute("late_vs_eta")).toBe("/operations/files");
-    expect(kpiRoute("warehouse_occupancy")).toBe("/wms");
+describe("kpiRoute — one lookup across every domain", () => {
+  it("answers ids from all four PRs, null for anything else", () => {
+    expect(kpiRoute("revenue")).toBe("/finance/invoices");          // PR-1
+    expect(kpiRoute("late_vs_eta")).toBe("/operations/files");      // PR-2
+    expect(kpiRoute("warehouse_occupancy")).toBe("/wms");           // PR-2
+    expect(kpiRoute("dso")).toBe("/finance/receivables");           // PR-3
+    expect(kpiRoute("pos_in_flight")).toBe("/procurement/purchase-orders");
+    expect(kpiRoute("headcount")).toBe("/hr/employees");            // PR-4
+    expect(kpiRoute("made_up_id")).toBeNull();
+    // `stock_value` is still hidden — a route for it would promise a drill
+    // for a tile that cannot render.
     expect(kpiRoute("stock_value")).toBeNull();
-    expect(Object.keys(KPI_ROUTE_PR2)).not.toContain("stock_value");
+    expect(Object.keys(KPI_ROUTE)).not.toContain("stock_value");
   });
 });
 

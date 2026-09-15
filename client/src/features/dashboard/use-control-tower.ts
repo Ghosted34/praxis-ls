@@ -32,6 +32,16 @@ import {
   buildRevenueDrill,
   buildSlaDrill,
   // PR-2 — Operations, Fleet & Warehouse
+  // Money + Sales & Procurement (PR-3)
+  buildCashCollectedDrill,
+  buildCashRequestsDrill,
+  buildDsoDrill,
+  buildMarginDrill,
+  buildPayablesDrill,
+  buildPipelineWonDrill,
+  buildPosInFlightDrill,
+  buildPurchaseRequestsDrill,
+  buildQuoteRequestsDrill,
   buildDwellDrill,
   buildFleetDocsDrill,
   buildLateVsEtaDrill,
@@ -380,6 +390,18 @@ export function useKpiDrilldown(
   const workOrders = useListPaged<Row>(is("work_orders_open") ? "/work-orders" : null, { pageSize: REVENUE_SCAN });
   const locations = useListPaged<Row>(is("warehouse_occupancy") ? "/locations" : null, { pageSize: REVENUE_SCAN });
   const inventory = useListPaged<Row>(is("warehouse_occupancy") ? "/inventory" : null, { pageSize: REVENUE_SCAN });
+  // PR-3 — Money, Sales & Procurement. One module list each, disabled unless
+  // its card is open, and NOT `tolerant`: a 403 must reach the reader as the
+  // permission message rather than an empty table that reads as "all clear".
+  const receipts = useListPaged<Row>(is("cash_collected") ? "/payments" : null, { pageSize: REVENUE_SCAN });
+  const payables = useListPaged<Row>(is("payables_overdue") ? "/supplier-invoices" : null, { pageSize: REVENUE_SCAN });
+  const cashRequests = useListPaged<Row>(is("cash_requests_awaiting") ? "/cash-requests" : null, { pageSize: REVENUE_SCAN });
+  const marginSims = useListPaged<Row>(is("margin_closed") ? "/margin-simulations" : null, { pageSize: REVENUE_SCAN });
+  const dsoInvoices = useListPaged<Row>(is("dso") ? "/final-invoices" : null, { pageSize: REVENUE_SCAN });
+  const opportunities = useListPaged<Row>(is("pipeline_won") ? "/opportunities" : null, { pageSize: REVENUE_SCAN });
+  const quoteRequests = useListPaged<Row>(is("quote_requests_open") ? "/quote-requests" : null, { pageSize: REVENUE_SCAN });
+  const purchaseOrders = useListPaged<Row>(is("pos_in_flight") ? "/purchase-orders" : null, { pageSize: REVENUE_SCAN });
+  const purchaseRequests = useListPaged<Row>(is("purchase_requests") ? "/purchase-requests" : null, { pageSize: REVENUE_SCAN });
   const bandSlot = React.useCallback(
     (slotId: string) => (band?.slots ?? []).find((s) => s.id === slotId) ?? null,
     [band],
@@ -647,6 +669,75 @@ export function useKpiDrilldown(
           return { drill: null, loading: true, error: null };
         return { drill: buildAttritionDrill(departed.rows), loading: false, error: null };
       }
+      // ── PR-3 — Money, Sales & Procurement ────────────────────────────────
+      case "cash_collected": {
+        if (receipts.error) return { drill: null, loading: false, error: receipts.error };
+        if (receipts.loading) return { drill: null, loading: true, error: null };
+        return { drill: buildCashCollectedDrill(receipts.rows, currency), loading: false, error: null };
+      }
+      case "payables_overdue": {
+        if (payables.error) return { drill: null, loading: false, error: payables.error };
+        if (payables.loading) return { drill: null, loading: true, error: null };
+        return { drill: buildPayablesDrill(payables.rows, currency), loading: false, error: null };
+      }
+      case "cash_requests_awaiting": {
+        if (cashRequests.error) return { drill: null, loading: false, error: cashRequests.error };
+        if (cashRequests.loading) return { drill: null, loading: true, error: null };
+        return { drill: buildCashRequestsDrill(cashRequests.rows, currency), loading: false, error: null };
+      }
+      case "margin_closed": {
+        if (marginSims.error) return { drill: null, loading: false, error: marginSims.error };
+        if (marginSims.loading) return { drill: null, loading: true, error: null };
+        // The average and its denominator are the TILE's, computed over every
+        // closed file; the page only explains them.
+        const slot = bandSlot("margin_closed");
+        return {
+          drill: buildMarginDrill(
+            marginSims.rows,
+            slot && slot.measurable ? slot.value : null,
+            slot ? (slot.denominator ?? 0) : 0,
+          ),
+          loading: false,
+          error: null,
+        };
+      }
+      case "dso": {
+        if (dsoInvoices.error) return { drill: null, loading: false, error: dsoInvoices.error };
+        if (dsoInvoices.loading) return { drill: null, loading: true, error: null };
+        const slot = bandSlot("dso");
+        return {
+          drill: buildDsoDrill(dsoInvoices.rows, slot ? slot.value : null, currency),
+          loading: false,
+          error: null,
+        };
+      }
+      case "pipeline_won": {
+        if (opportunities.error) return { drill: null, loading: false, error: opportunities.error };
+        if (opportunities.loading) return { drill: null, loading: true, error: null };
+        return { drill: buildPipelineWonDrill(opportunities.rows, currency), loading: false, error: null };
+      }
+      case "quote_requests_open": {
+        if (quoteRequests.error) return { drill: null, loading: false, error: quoteRequests.error };
+        if (quoteRequests.loading) return { drill: null, loading: true, error: null };
+        return { drill: buildQuoteRequestsDrill(quoteRequests.rows), loading: false, error: null };
+      }
+      case "pos_in_flight": {
+        if (purchaseOrders.error) return { drill: null, loading: false, error: purchaseOrders.error };
+        if (purchaseOrders.loading) return { drill: null, loading: true, error: null };
+        // The in-flight COUNT is the tile's (it measures the absence of a GRN,
+        // which this page cannot see); the table lists the issued orders.
+        const slot = bandSlot("pos_in_flight");
+        return {
+          drill: buildPosInFlightDrill(purchaseOrders.rows, slot ? slot.value : 0, currency),
+          loading: false,
+          error: null,
+        };
+      }
+      case "purchase_requests": {
+        if (purchaseRequests.error) return { drill: null, loading: false, error: purchaseRequests.error };
+        if (purchaseRequests.loading) return { drill: null, loading: true, error: null };
+        return { drill: buildPurchaseRequestsDrill(purchaseRequests.rows), loading: false, error: null };
+      }
       default:
         return { drill: null, loading: false, error: null };
     }
@@ -705,6 +796,16 @@ export function useKpiDrilldown(
     inventory.rows,
     inventory.error,
     inventory.loading,
+    // PR-3
+    receipts.rows, receipts.error, receipts.loading,
+    payables.rows, payables.error, payables.loading,
+    cashRequests.rows, cashRequests.error, cashRequests.loading,
+    marginSims.rows, marginSims.error, marginSims.loading,
+    dsoInvoices.rows, dsoInvoices.error, dsoInvoices.loading,
+    opportunities.rows, opportunities.error, opportunities.loading,
+    quoteRequests.rows, quoteRequests.error, quoteRequests.loading,
+    purchaseOrders.rows, purchaseOrders.error, purchaseOrders.loading,
+    purchaseRequests.rows, purchaseRequests.error, purchaseRequests.loading,
     employees.rows,
     employees.error,
     employees.loading,

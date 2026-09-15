@@ -287,13 +287,15 @@ describe("role KPI config writes", () => {
   });
 
   it("rejects a default naming a tile that is not live yet, naming the release gate (hidden entries are inert)", async () => {
-    // `cash_collected` is PR-3's, still hidden — and its module (MOD-52) IS in
-    // allGrants, so the failure is the live gate, not the read gate.
+    // `stock_value` is the last hidden entry in the catalogue — and its module
+    // (MOD-35) IS in allGrants, so what fails here is the LIVE gate, not the
+    // read gate. That separation is the assertion: a hidden entry is inert
+    // even for a reader who holds every grant in the product.
     const fake = identityFake({ grants: allGrants });
     await expect(
       roleKpiService.put(fake, {
         roleId: "r1",
-        config: { scopeIds: null, defaultIds: ["cash_collected"], lockedIds: [] },
+        config: { scopeIds: null, defaultIds: ["stock_value"], lockedIds: [] },
         actor: {},
       }),
     ).rejects.toMatchObject({ code: "KPI_NOT_LIVE", status: 422 });

@@ -63,11 +63,23 @@ describe("catalog structure", () => {
       "payroll_run_state",
       "attrition_90d",
     ];
+    const PR3 = [
+      "cash_collected",
+      "payables_overdue",
+      "cash_requests_awaiting",
+      "margin_closed",
+      "dso",
+      "pipeline_won",
+      "quote_requests_open",
+      "pos_in_flight",
+      "purchase_requests",
+    ];
     // An EXACT set, not a containment: a tile going live is a product decision,
     // and the assertion that catches an accidental flip is the one that fails
-    // when the set grows. PR-3 (Money/Sales) adds its nine ids here when it
-    // lands; until then, these 21 are the whole live catalog.
-    expect([...LIVE_IDS].sort()).toEqual([...PR1, ...PR2, ...PR4].sort());
+    // when the set grows. With PR-2/3/4 all landed these 30 are the whole live
+    // catalog — 31 entries less `stock_value`, which has no cost column to sum.
+    expect([...LIVE_IDS].sort()).toEqual([...PR1, ...PR2, ...PR3, ...PR4].sort());
+    expect(LIVE_IDS).toHaveLength(30);
     expect(LIVE_IDS).not.toContain("stock_value");
     expect(LIVE_IDS.length).toBeLessThanOrEqual(32);
   });
@@ -166,9 +178,9 @@ describe("valuesFor guard contract", () => {
   });
 
   it("unknown and hidden ids are never answered, even when asked", async () => {
-    // `cash_collected` is PR-3's (Money), still hidden — the domain PR that
-    // flips it swaps in an id of its own here.
-    const out = await valuesFor(emptySchemaClient, ["revenue", "made_up_id", "cash_collected"]);
+    // `stock_value` is the one catalogue entry still hidden — it has no cost
+    // column to sum (see its note in fleet_warehouse.js).
+    const out = await valuesFor(emptySchemaClient, ["revenue", "made_up_id", "stock_value"]);
     expect(Object.keys(out)).toEqual(["revenue"]);
   });
 });

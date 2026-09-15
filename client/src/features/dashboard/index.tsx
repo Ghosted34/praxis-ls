@@ -45,6 +45,7 @@ import { AppLauncher } from "./components/app-launcher";
 import { Briefing } from "./components/briefing";
 import { ItineraryPanel } from "./components/itinerary-panel";
 import { KpiDrilldown } from "./components/kpi-drilldown";
+import { KpiPicker } from "./components/kpi-picker";
 import { KpiStrip } from "./components/kpi-strip";
 import { LiveShipments } from "./components/live-shipments";
 import { MeetingMode, type MeetingStat } from "./components/meeting-mode";
@@ -54,6 +55,8 @@ import { TowerHero } from "./components/tower-hero";
 import { TowerFilters } from "./components/tower-filters";
 import { PasskeyNudge } from "@/features/security/passkey-nudge";
 import type { ControlTowerFilters } from "./use-control-tower";
+import { useKpiCatalog } from "./use-control-tower";
+import { legacyBand } from "./kpi-model";
 import type { KpiId } from "./drilldowns";
 import { LANE_STROKE, ShipmentMap } from "./map/shipment-map";
 import type { Selection } from "./map/selection";
@@ -87,6 +90,10 @@ export function DashboardPage() {
   const [filters, setFilters] = React.useState<ControlTowerFilters>({});
   const { data, error, loading, refresh } = useControlTower(filters);
   const [openKpi, setOpenKpi] = React.useState<KpiId | null>(null);
+  /** The band picker (kpi guide §7.1): one door, on the band itself, and its
+   *  catalog query stays cold until the panel opens. */
+  const [editingBand, setEditingBand] = React.useState(false);
+  const bandCatalog = useKpiCatalog(editingBand);
   /** The file under discussion. Owned here so the map, the list, the activity
    *  panel and the itinerary panel cannot disagree about which one it is. */
   const [selected, setSelected] = React.useState<Selection>(null);
@@ -210,7 +217,23 @@ export function DashboardPage() {
         </div>
       )}
 
-      <KpiStrip kpis={data.kpis} onOpen={setOpenKpi} />
+      <KpiStrip
+        // A server that predates the band payload still answers the legacy
+        // flat keys; `legacyBand` keeps the tower painted through a split
+        // deploy. Once every server ships `band`, the fallback is dead code.
+        band={data.band ?? legacyBand(data.kpis)}
+        onOpen={setOpenKpi}
+        onEditTiles={() => setEditingBand(true)}
+      />
+
+      <KpiPicker
+        open={editingBand}
+        onClose={() => setEditingBand(false)}
+        catalog={bandCatalog.catalog}
+        bandSlotIds={(data.band?.slots ?? []).map((s) => s.id)}
+        loading={bandCatalog.loading}
+        error={bandCatalog.error}
+      />
 
       <Briefing
         activeFiles={data.activeFiles}

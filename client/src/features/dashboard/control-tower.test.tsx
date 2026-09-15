@@ -21,12 +21,12 @@ import {
 } from "@/app/layout/shell-context";
 import { AppLauncher } from "./components/app-launcher";
 import { Briefing } from "./components/briefing";
-import { KpiStrip, kpiCards } from "./components/kpi-strip";
+import { KpiStrip, bandCards } from "./components/kpi-strip";
 import { LiveShipments } from "./components/live-shipments";
 import { TowerHero } from "./components/tower-hero";
 import { ShipmentMap } from "./map/shipment-map";
 import type { Lane, LiveShipment } from "./model";
-import type { ControlTowerKpis } from "./use-control-tower";
+import type { BandSlot, KpiBand } from "./kpi-model";
 
 const wrap = (ui: React.ReactNode) => render(<MemoryRouter>{ui}</MemoryRouter>);
 
@@ -144,15 +144,6 @@ const wrapWithShell = (
       <ShellContext.Provider value={shell}>{ui}</ShellContext.Provider>
     </MemoryRouter>,
   );
-
-const KPIS: ControlTowerKpis = {
-  revenue: 84_600_000,
-  currency: "XAF",
-  sla: 96,
-  overdue: 18_200_000,
-  fleetActive: 14,
-  fleetTotal: 18,
-};
 
 const SHIPMENTS: LiveShipment[] = [
   {
@@ -277,44 +268,113 @@ describe("TowerHero", () => {
   });
 });
 
+const bandSlot = (over: Partial<BandSlot> = {}): BandSlot => ({
+  id: "revenue",
+  domain: "money",
+  unit: "money",
+  module: "MOD-51",
+  status: "live",
+  tone: "orange",
+  icon: "revenue",
+  labelKey: "dash.revenue",
+  hintKey: "dash.revenueHint",
+  badgeKey: "dash.locked",
+  drillTo: "/finance/invoices",
+  value: 226_000_000,
+  denominator: null,
+  measurable: true,
+  ...over,
+});
+const bandOf = (
+  slots: BandSlot[],
+  hidden: string[] = [],
+  source: KpiBand["source"] = "default",
+): KpiBand => ({ source, currency: "XAF", slots, hidden });
+
 describe("KpiStrip", () => {
-  it("renders every available metric as a real button", () => {
-    wrap(<KpiStrip kpis={KPIS} onOpen={vi.fn()} />);
+  it("renders every resolved tile as a real button (plus the one door)", () => {
     // In the iframe these were <div onclick> outside the parent's focus order,
     // so the drill-downs were unreachable by keyboard from the app at all.
-    expect(screen.getAllByRole("button")).toHaveLength(4);
-  });
-
-  it("hides a card whose metric is null rather than showing a false zero", () => {
     wrap(
       <KpiStrip
-        kpis={{ ...KPIS, fleetTotal: null, fleetActive: null }}
+        band={bandOf([
+          bandSlot(),
+          bandSlot({
+            id: "receivables_overdue",
+            labelKey: "dash.pastDue",
+            hintKey: "dash.pastDueHint",
+            badgeKey: "dash.pastDueBadge",
+            tone: "warn",
+            icon: "overdue",
+            value: 6_800_000,
+          }),
+        ])}
         onOpen={vi.fn()}
+        onEditTiles={vi.fn()}
       />,
     );
-    expect(screen.queryByText("Fleet utilisation")).not.toBeInTheDocument();
-    expect(screen.getAllByRole("button")).toHaveLength(3);
+    expect(screen.getAllByRole("button")).toHaveLength(3); // two tiles + Edit tiles
   });
 
-  it("hides the fleet card for a tenant with an empty register", () => {
-    expect(
-      kpiCards({ ...KPIS, fleetTotal: 0 }).some((c) => c.id === "fleet"),
-    ).toBe(false);
-  });
-
-  it("renders nothing at all when no metric is readable", () => {
-    const { container } = wrap(
+  it("RENDERS A ZERO — the assert-the-zero policy the old cards got wrong (D3)", () => {
+    wrap(
       <KpiStrip
-        kpis={{
-          revenue: null,
-          currency: "XAF",
-          sla: null,
-          overdue: null,
-          fleetActive: null,
-          fleetTotal: null,
-        }}
+        band={bandOf([bandSlot({ value: 0 })])}
         onOpen={vi.fn()}
+        onEditTiles={vi.fn()}
       />,
+    );
+    expect(screen.getByText("Revenue · turnover")).toBeInTheDocument();
+    expect(screen.getByText("0.0")).toBeInTheDocument();
+  });
+
+  it("the fleet pair asserts 0 / 0 vehicles once the relation exists (guide §6.3)", () => {
+    wrap(
+      <KpiStrip
+        band={bandOf([
+          bandSlot({
+            id: "fleet_utilisation",
+            domain: "fleet_warehouse",
+            unit: "pair",
+            tone: "blue",
+            icon: "fleet",
+            labelKey: "dash.fleetUtil",
+            hintKey: "dash.fleetUtilHint",
+            badgeKey: "dash.fleetBadge",
+            value: 0,
+            denominator: 0,
+            measurable: false,
+          }),
+        ])}
+        onOpen={vi.fn()}
+        onEditTiles={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("Fleet utilisation")).toBeInTheDocument();
+  });
+
+  it("a selected tile that is unavailable here shows as a counted gap, not a card", () => {
+    wrap(
+      <KpiStrip
+        band={bandOf([bandSlot()], ["needs_location"])}
+        onOpen={vi.fn()}
+        onEditTiles={vi.fn()}
+      />,
+    );
+    expect(screen.queryByText("Location queue")).not.toBeInTheDocument();
+    expect(screen.getByText("1 hidden")).toBeInTheDocument();
+  });
+
+  it("an empty, deliberate band still offers the door", () => {
+    wrap(
+      <KpiStrip band={bandOf([])} onOpen={vi.fn()} onEditTiles={vi.fn()} />,
+    );
+    expect(screen.getByRole("button", { name: /Edit tiles/i })).toBeInTheDocument();
+  });
+
+  it("renders nothing before the server has resolved a band", () => {
+    const { container } = wrap(
+      <KpiStrip band={null} onOpen={vi.fn()} onEditTiles={vi.fn()} />,
     );
     expect(container).toBeEmptyDOMElement();
   });
@@ -322,30 +382,50 @@ describe("KpiStrip", () => {
   it("labels revenue by what the query actually measures", () => {
     // The mock badged this card "MTD" and the injection script never rewrote the
     // badge, so an all-time SUM shipped labelled month-to-date.
-    const revenue = kpiCards(KPIS).find((c) => c.id === "revenue")!;
-    expect(revenue.badge).toBe("Locked");
-    expect(revenue.hint).toBe("Locked final invoices, all periods");
+    const cards = bandCards({ slots: [bandSlot()], currency: "XAF" });
+    expect(cards[0].badge).toBe("Locked");
+    expect(cards[0].hint).toBe("Locked final invoices, all periods");
+    expect(cards[0].value).toBe("226.0");
   });
 
-  it("opens the drill-down for the card that was activated", async () => {
+  it("opens the drill-down for the tile that was activated", async () => {
     const onOpen = vi.fn();
-    wrap(<KpiStrip kpis={KPIS} onOpen={onOpen} />);
-    await userEvent.click(
-      screen.getByRole("button", { name: /Receivables · past due/ }),
+    wrap(
+      <KpiStrip
+        band={bandOf([bandSlot(), bandSlot({ id: "receivables_overdue", labelKey: "dash.pastDue" })])}
+        onOpen={onOpen}
+        onEditTiles={vi.fn()}
+      />,
     );
-    expect(onOpen).toHaveBeenCalledWith("overdue");
+    await userEvent.click(
+      screen.getByRole("button", { name: /past due/i }),
+    );
+    expect(onOpen).toHaveBeenCalledWith("receivables_overdue");
+  });
+
+  it("the door opens the picker, not a route", async () => {
+    const onEditTiles = vi.fn();
+    wrap(<KpiStrip band={bandOf([bandSlot()])} onOpen={vi.fn()} onEditTiles={onEditTiles} />);
+    await userEvent.click(screen.getByRole("button", { name: /Edit tiles/i }));
+    expect(onEditTiles).toHaveBeenCalled();
   });
 
   it("is operable from the keyboard", async () => {
     const onOpen = vi.fn();
-    wrap(<KpiStrip kpis={KPIS} onOpen={onOpen} />);
+    wrap(<KpiStrip band={bandOf([bandSlot()])} onOpen={onOpen} onEditTiles={vi.fn()} />);
     await userEvent.tab();
     await userEvent.keyboard("{Enter}");
     expect(onOpen).toHaveBeenCalledWith("revenue");
   });
 
   it("has no axe violations", async () => {
-    const { container } = wrap(<KpiStrip kpis={KPIS} onOpen={vi.fn()} />);
+    const { container } = wrap(
+      <KpiStrip
+        band={bandOf([bandSlot(), bandSlot({ id: "sla_on_time", labelKey: "dash.onTime", unit: "pct", tone: "ok" })])}
+        onOpen={vi.fn()}
+        onEditTiles={vi.fn()}
+      />,
+    );
     expect(await axe(container)).toHaveNoViolations();
   });
 });

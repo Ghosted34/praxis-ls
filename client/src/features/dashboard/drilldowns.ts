@@ -34,15 +34,28 @@ export type Drill = {
   empty: { title: string; hint: string };
 };
 
-/** Where each card's CTA sends the user. */
-export const KPI_ROUTE = {
+/**
+ * Where each card's CTA sends the user — keyed by CATALOG id now that the band
+ * carries more than the original four. The old card keys (`sla`, `overdue`,
+ * `fleet`) are gone deliberately: one name for a tile, from the catalog to the
+ * drill to the route, because an alias table between the band's ids and the
+ * drill's ids is a second source of truth waiting for the first divergence.
+ */
+export const KPI_ROUTE: Record<string, string> = {
   revenue: "/finance/invoices",
-  sla: "/operations/files",
-  overdue: "/finance/receivables",
-  fleet: "/fleet",
-} as const;
+  receivables_overdue: "/finance/receivables",
+  sla_on_time: "/operations/files",
+  fleet_utilisation: "/fleet",
+  proformas_open: "/finance/proformas",
+  journals_unposted: "/finance/journals",
+  files_active: "/operations/files",
+  approvals_awaiting: "/approvals",
+  compliance_open: "/vault/compliance-flags",
+  needs_location: "/operations/files",
+};
 
-export type KpiId = keyof typeof KPI_ROUTE;
+/** Catalog tile ids are the drill ids; anything else opens no drill. */
+export type KpiId = string;
 
 export type ClientNames = Record<string, string>;
 
@@ -177,7 +190,7 @@ export function buildSlaDrill(dossiers: Row[] | null): Drill {
           },
         ],
       })),
-    cta: { label: "Open operations files", to: KPI_ROUTE.sla },
+    cta: { label: "Open operations files", to: KPI_ROUTE.sla_on_time },
     empty: {
       title: "No arrivals recorded yet",
       hint: "An on-time rate needs both an ETA and an ATA on an operations file.",
@@ -239,7 +252,7 @@ export function buildOverdueDrill(
         ],
       };
     }),
-    cta: { label: "Open receivables", to: KPI_ROUTE.overdue },
+    cta: { label: "Open receivables", to: KPI_ROUTE.receivables_overdue },
     empty: {
       title: "Nothing past due",
       hint: "Every locked invoice is within its payment terms.",
@@ -279,10 +292,216 @@ export function buildFleetDrill(vehicles: Row[] | null): Drill {
         },
       ],
     })),
-    cta: { label: "Open fleet", to: KPI_ROUTE.fleet },
+    cta: { label: "Open fleet", to: KPI_ROUTE.fleet_utilisation },
     empty: {
       title: "No vehicles visible",
       hint: "The fleet module may be switched off for this tenant, or you may not have the grant to read it.",
+    },
+  };
+}
+
+/* ── the band's second six (PR-1 tiles whose counts already existed) ─────────
+ *
+ * Same contract as the four originals — data in, a `Drill` out, React escapes
+ * it, no HTML strings — and the same honesty rule: a source that failed shows
+ * its failure in `empty`, and rows are a scan of the list the caller can
+ * already read (the count headline above them stays authoritative because it
+ * is the SQL aggregate, not this page).
+ */
+
+/** Operations · active → the open work, the one number that needs no source
+ *  beyond the dossier list the SLA card already pulls. */
+export function buildFilesActiveDrill(dossiers: Row[] | null): Drill {
+  const open = (dossiers || []).filter((d) => {
+    const s = str(d.status).toUpperCase();
+    return s === "OPEN" || s === "IN_PROGRESS";
+  });
+  const inProgress = open.filter((d) => str(d.status).toUpperCase() === "IN_PROGRESS").length;
+  return {
+    title: "Active operations files",
+    badge: { tone: "blue", text: `${open.length} active` },
+    meta: [
+      { label: "Active", value: String(open.length) },
+      { label: "In progress", value: String(inProgress) },
+      { label: "Not started", value: String(open.length - inProgress) },
+    ],
+    columns: [
+      { label: "File" },
+      { label: "Route" },
+      { label: "Status" },
+      { label: "Opened", align: "right" },
+    ],
+    rows: open.slice(0, 8).map((d) => ({
+      key: str(d.dossier_id) || str(d.ref),
+      cells: [
+        str(d.ref) || str(d.dossier_id).slice(0, 8),
+        [str(d.pol), str(d.pod)].filter(Boolean).join(" → ") || "—",
+        {
+          text: str(d.status).toUpperCase() === "IN_PROGRESS" ? "In progress" : "Open",
+          tone: (str(d.status).toUpperCase() === "IN_PROGRESS" ? "blue" : "mute") as Tone,
+        },
+        dateFmt(d.created_at),
+      ],
+    })),
+    cta: { label: "Open operations files", to: KPI_ROUTE.files_active },
+    empty: {
+      title: "Nothing moving",
+      hint: "No files are open or in progress right now.",
+    },
+  };
+}
+
+/** Location queue → files the map cannot honestly plot, straight from the
+ *  tower's own filtered read (`?verified=UNVERIFIED`), so the drill and the
+ *  map's badge agree by construction, not by a re-derived heuristic. */
+export function buildNeedsLocationDrill(shipments: Row[] | null): Drill {
+  const list = shipments || [];
+  return {
+    title: "Files that need a verified place",
+    badge: { tone: "warn", text: `${list.length} in the queue` },
+    meta: [{ label: "Needs a location", value: String(list.length) }],
+    columns: [{ label: "File" }, { label: "Origin named" }, { label: "Destination named" }, { label: "Status" }],
+    rows: list.slice(0, 8).map((d) => ({
+      key: str(d.dossier_id) || str(d.ref),
+      cells: [
+        str(d.ref) || str(d.dossier_id).slice(0, 8),
+        str(d.origin) || "—",
+        str(d.destination) || "—",
+        str(d.status) || "—",
+      ],
+    })),
+    cta: { label: "Open operations files", to: KPI_ROUTE.needs_location },
+    empty: {
+      title: "The map can plot everything",
+      hint: "Every file with named endpoints resolves to a verified place.",
+    },
+  };
+}
+
+/** Approvals · awaiting → the runtime queue (`/approvals` — the rows are
+ *  already narrowed to what the caller could act on; the count on the tile is
+ *  tenant-wide, so the note says which scan this is). */
+export function buildApprovalsDrill(rows: Row[] | null): Drill {
+  const list = rows || [];
+  return {
+    title: "Approvals awaiting",
+    badge: { tone: "orange", text: `${list.length} open task${list.length === 1 ? "" : "s"}` },
+    meta: [{ label: "Pending", value: String(list.length) }],
+    columns: [{ label: "Record" }, { label: "Module" }, { label: "Raised", align: "right" }],
+    rows: list.slice(0, 8).map((r) => ({
+      key: str(r.task_id) || str(r.entity_ref),
+      cells: [
+        str(r.entity_ref) || str(r.workflow_id).slice(0, 8) || "—",
+        str(r.module_key) || "—",
+        dateFmt(r.created_at),
+      ],
+    })),
+    cta: { label: "Open approvals", to: KPI_ROUTE.approvals_awaiting },
+    empty: {
+      title: "Nothing waiting",
+      hint: "No approval task is pending — or the approvals queue is not yours to open.",
+    },
+  };
+}
+
+/** Compliance · open flags → the vault's flag list (`/compliance`), severity
+ *  first because that is what the register is for. */
+export function buildComplianceDrill(rows: Row[] | null): Drill {
+  const list = rows || [];
+  const sevTone = (s: string): Tone =>
+    s === "HIGH" || s === "CRITICAL" ? "bad" : s === "MEDIUM" ? "warn" : "mute";
+  return {
+    title: "Open compliance flags",
+    badge: { tone: "bad", text: `${list.length} unresolved` },
+    meta: [
+      { label: "Open flags", value: String(list.length) },
+      {
+        label: "High",
+        value: String(list.filter((r) => sevTone(str(r.severity).toUpperCase()) === "bad").length),
+      },
+    ],
+    columns: [{ label: "Flag" }, { label: "Severity" }, { label: "Raised", align: "right" }],
+    rows: list.slice(0, 8).map((r) => ({
+      key: str(r.flag_id) || String(r.id ?? ""),
+      cells: [
+        str(r.title) || str(r.note).slice(0, 48) || str(r.flag_id).slice(0, 8) || "—",
+        { text: str(r.severity).toUpperCase() || "—", tone: sevTone(str(r.severity).toUpperCase()) },
+        dateFmt(r.created_at),
+      ],
+    })),
+    cta: { label: "Open the register", to: KPI_ROUTE.compliance_open },
+    empty: {
+      title: "No open flags",
+      hint: "Nothing is unresolved in the compliance register right now.",
+    },
+  };
+}
+
+/** Proformas · open → the advances/proforma list. `kpis().proformas` counts
+ *  ALL proformas, so the headline stays the aggregate and the table shows
+ *  the recent ones with their money. */
+export function buildProformasDrill(rows: Row[] | null, currency: string, authoritativeCount: number | null): Drill {
+  const list = rows || [];
+  const total = list.reduce((s, r) => s + (Number(r.total_ttc ?? r.amount) || 0), 0);
+  return {
+    title: "Proforma invoices",
+    badge: {
+      tone: "blue",
+      text: `${authoritativeCount ?? list.length} issued`,
+    },
+    meta: [
+      { label: "Proformas", value: String(authoritativeCount ?? list.length) },
+      { label: `Value (page)`, value: `${grouped(total)} ${currency}` },
+    ],
+    columns: [
+      { label: "Document" },
+      { label: "Status" },
+      { label: currency, align: "right" },
+    ],
+    rows: list.slice(0, 8).map((r) => ({
+      key: str(r.advance_id) || str(r.doc_number),
+      cells: [
+        str(r.doc_number) || str(r.advance_id).slice(0, 8),
+        str(r.status) || "—",
+        grouped(Number(r.total_ttc ?? r.amount) || 0),
+      ],
+    })),
+    note:
+      list.length && authoritativeCount !== null && authoritativeCount > list.length
+        ? `Ranked over the ${list.length} most recent of ${authoritativeCount}.`
+        : undefined,
+    cta: { label: "Open proformas", to: KPI_ROUTE.proformas_open },
+    empty: {
+      title: "No proformas issued",
+      hint: "Proforma invoices land here as commercial quotes are raised.",
+    },
+  };
+}
+
+/** Journals · unposted → draft journal entries, the accounting backlog the
+ *  briefing has long mentioned in passing. */
+export function buildJournalsDrill(rows: Row[] | null): Drill {
+  const drafts = (rows || []).filter((r) => str(r.status).toLowerCase() === "draft");
+  return {
+    title: "Unposted journal entries",
+    badge: { tone: "mute", text: `${drafts.length} draft${drafts.length === 1 ? "" : "s"}` },
+    meta: [
+      { label: "Drafts", value: String(drafts.length) },
+      { label: "Of which today", value: String(drafts.filter((r) => str(r.posted_date || r.created_at).startsWith(new Date().toISOString().slice(0, 10))).length) },
+    ],
+    columns: [{ label: "Entry" }, { label: "Date" }, { label: "Status" }],
+    rows: drafts.slice(0, 8).map((r) => ({
+      key: str(r.journal_entry_id) || str(r.entry_number) || String(r.id ?? ""),
+      cells: [
+        str(r.entry_number) || str(r.journal_entry_id).slice(0, 8) || "—",
+        dateFmt(r.posted_date ?? r.created_at),
+        str(r.status) || "—",
+      ],
+    })),
+    cta: { label: "Open journals", to: KPI_ROUTE.journals_unposted },
+    empty: {
+      title: "Ledger is current",
+      hint: "No draft journal entries — everything raised has been posted.",
     },
   };
 }

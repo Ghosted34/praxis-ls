@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 5× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (540)
+## All codes (548)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -154,6 +154,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `CURRENCY_IN_USE` | 409 | 1× | — |
 | `CYCLIC_PARENT` | 422 | 2× | — |
 | `DATE_REQUIRED` | 422 | 1× | — |
+| `DEFAULT_OUT_OF_SCOPE` | — | 1× | — |
 | `DEVICE_NOT_REGISTERED` | 422 | 1× | — |
 | `DEVICE_REVOKED` | 422 | 1× | — |
 | `DOCUMENT_AMENDED` | 409 | 3× | — |
@@ -170,6 +171,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `DUPLICATE_KEY` | 422 | 2× | — |
 | `DUPLICATE_ORDER` | — | 1× | — |
 | `DUPLICATE_STATEMENT` | — | 1× | — |
+| `DUP_TILE` | 422 | 1× | — |
 | `EMAIL_REQUIRED` | 422 | 2× | — |
 | `EMAIL_SEND_FAILED` | 502 | 1× | — |
 | `EMAIL_TAKEN` | 409 | 2× | — |
@@ -252,7 +254,9 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `KEY_IMMUTABLE` | 422 | 1× | — |
 | `KEY_RESERVED` | 422 | 2× | — |
 | `KEY_TAKEN` | 422 | 4× | — |
+| `KPI_NOT_LIVE` | — | 1× | — |
 | `KPI_NOT_PARTITIONED` | 500 | 4× | — |
+| `KPI_NOT_READABLE` | — | 1× | — |
 | `LAST_CEO` | 409 | 2× | — |
 | `LAST_ROOT_ADMIN` | 409 | 2× | — |
 | `LEAVE_OVERLAP` | 409 | 2× | — |
@@ -263,6 +267,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `LINE_REQUIRED` | 422 | 1× | — |
 | `LOCATION_REQUIRED` | — | 1× | — |
 | `LOCKED` | 422 | 35× | — |
+| `LOCKED_NOT_DEFAULT` | — | 1× | — |
 | `LOGIN_THROTTLED` | 429 | 1× | — |
 | `LOW_MARGIN_JUSTIFICATION_REQUIRED` | 422 | 1× | — |
 | `MAILBOX_ADDRESS_IN_USE` | — | 1× | — |
@@ -468,6 +473,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `REWARD_LOCKED` | 409 | 1× | — |
 | `ROLE_ESCALATION` | — | 1× | — |
 | `ROLE_IN_USE` | 409 | 1× | — |
+| `ROLE_NOT_FOUND` | 404 | 2× | — |
 | `ROOT_LOCKED` | 409 | 1× | — |
 | `ROTATION_REJECTED` | 404 | 1× | — |
 | `RUN_EXISTS` | 409 | 1× | — |
@@ -520,6 +526,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `TOO_MANY` | 422 | 1× | — |
 | `TOO_MANY_OVERRIDES` | 422 | 1× | — |
 | `TOO_MANY_STAGES` | 422 | 2× | — |
+| `TOO_MANY_TILES` | 422 | 1× | — |
 | `TOO_MANY_UNITS` | 422 | 1× | — |
 | `TRAINING_FULL` | 422 | 2× | — |
 | `TRAINING_NOT_JOINABLE` | 422 | 1× | — |
@@ -539,6 +546,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `UNKNOWN_FIELD` | — | 1× | — |
 | `UNKNOWN_FILTER` | — | 1× | — |
 | `UNKNOWN_JOURNAL` | 422 | 1× | — |
+| `UNKNOWN_KPI_ID` | — | 1× | — |
 | `UNKNOWN_LOAD_MODE` | 422 | 1× | — |
 | `UNKNOWN_METRIC` | 422 | 1× | — |
 | `UNKNOWN_PAYLOAD_VERSION` | 422 | 1× | — |

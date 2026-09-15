@@ -18,6 +18,8 @@ import { useList, errMsg } from "@/lib/use-resource";
 import { num } from "@/lib/format";
 import { tenant } from "@/lib/api-client";
 import { RowActions } from "@/components/ui/row-actions";
+import i18n from "@/lib/i18n";
+import { RoleKpiPanel } from "./role-kpi-panel";
 import { type Role, ConfirmDelete, shell } from "./shared";
 
 function RoleForm({
@@ -69,6 +71,7 @@ function RoleForm({
       title={editing ? "Edit role" : "New role"}
       description="A role is a job area. Grants are attached to it on the Permission matrix tab."
     >
+      <div className="space-y-4">
       <form className="space-y-4" onSubmit={submit}>
         <Field
           label={tr("Code")}
@@ -124,6 +127,18 @@ function RoleForm({
           </Button>
         </div>
       </form>
+      {/* The band step (KPI guide §7.2), after the identity fields because it
+          is after the GRANTS in meaning — which for a new role means after
+          this save. It saves on its own PUT: a band edit and a rename are
+          different acts with different audit lines. */}
+      {role ? (
+        <RoleKpiPanel roleId={role.role_id} />
+      ) : (
+        <p className="text-label text-muted-foreground">
+          {i18n.t("dash.roleKpiNeedsRole")}
+        </p>
+      )}
+      </div>
     </Modal>
   );
 }

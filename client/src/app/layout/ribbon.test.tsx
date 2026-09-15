@@ -41,6 +41,7 @@ const stored = {
     ribbonPinned: null,
     railPins: null,
     towerPins: null,
+    kpiPins: null,
     railHintSeen: true,
   } as ShellPrefs,
 };
@@ -244,6 +245,7 @@ beforeEach(() => {
     ribbonPinned: null,
     railPins: null,
     towerPins: null,
+    kpiPins: null,
     railHintSeen: true,
   };
   // THE SHELL NOW REMEMBERS. `lib/nav-access-cache` persists the last answer so
@@ -449,6 +451,7 @@ describe("pinned / collapsed round-trips through the preference API", () => {
       ribbonPinned: false,
       railPins: null,
       towerPins: null,
+      kpiPins: null,
       railHintSeen: true,
     };
     renderRibbon("/wms");
@@ -468,6 +471,7 @@ describe("pinned / collapsed round-trips through the preference API", () => {
       ribbonPinned: false,
       railPins: null,
       towerPins: null,
+      kpiPins: null,
       railHintSeen: true,
     };
     renderRibbon("/wms");
@@ -543,6 +547,7 @@ describe("the icon rail", () => {
       ribbonPinned: null,
       railPins: null,
       towerPins: null,
+      kpiPins: null,
       railHintSeen: null,
     };
     renderChrome(<IconRail />, "/");
@@ -568,6 +573,7 @@ describe("the icon rail", () => {
       ribbonPinned: null,
       railPins: null,
       towerPins: null,
+      kpiPins: null,
       railHintSeen: null,
     };
     renderChrome(<IconRail />, "/wms");
@@ -585,6 +591,7 @@ describe("the icon rail", () => {
       ribbonPinned: null,
       railPins: [],
       towerPins: null,
+      kpiPins: null,
       railHintSeen: true,
     };
     renderChrome(<IconRail />, "/");
@@ -607,6 +614,7 @@ describe("the icon rail", () => {
       ribbonPinned: null,
       railPins: ["wms", "finance"],
       towerPins: null,
+      kpiPins: null,
       railHintSeen: true,
     };
     renderChrome(<IconRail />, "/wms");
@@ -625,6 +633,7 @@ describe("the icon rail", () => {
       ribbonPinned: null,
       railPins: null,
       towerPins: null,
+      kpiPins: null,
       railHintSeen: null,
     };
     renderChrome(<IconRail />, "/");
@@ -645,6 +654,7 @@ describe("the icon rail", () => {
       ribbonPinned: null,
       railPins: null,
       towerPins: null,
+      kpiPins: null,
       railHintSeen: true,
     };
     renderChrome(<IconRail />, "/");

@@ -24,6 +24,8 @@ Dates are ISO-8601, UTC.
 
 ### Added
 
+- **The Control Tower KPI band: pick four tiles from a permission-bound catalog (PR-1).** Headline metrics were four hardcoded cards that disagreed with themselves — LIVE hid tiles TEST showed, revenue asserted "0.0" where nothing was measured, and nobody, any role, could choose what appeared. Now: a 31-entry catalog in `src/modules/dashboard/kpi_catalog/` (one file per domain, 10 live at PR-1), where every tile inherits the `can_read` grant of the module it aggregates and a masked `field_visibility` row retires its tile entirely; per-user selection (`kpiPins` on the shell preferences — one arrangement across LIVE and TEST, numbers differ, slots don't); per-role configuration (scope / default four / locks, `13800_role_kpi_config.sql`, seeded data-driven against each role's real grants in `migrations/seeds/9023_seed_role_kpi_defaults.sql`); an inline "Edit tiles" picker on the band; a Control Tower step in the role editor placed after the permission matrix because tiles can only follow grants; and a single zero policy — a resolved number (including 0) renders, an unavailable tile drops and is counted in the picker, never padded. `/dashboard/kpis` answers legacy keys + the resolved band. Spec: `doc/KPI_BAND_ENGINEERING_GUIDE.md`; PRs 2–4 (Ops/Fleet/WMS, Money/Sales/Procurement, Human Capital) flip the remaining 21 entries from hidden to live in parallel, each touching only its own domain file.
+
 - **The stranger-facing app (`public-web/`), behind `SERVE_PUBLIC_WEB`.** A third Vite app beside
   `client/` and `platform-console/`, carrying the tenant marketing site (`/public/*`) and the
   external portal (`/portal/*`) on the tenant's own origin — a client emailed a tracking link must

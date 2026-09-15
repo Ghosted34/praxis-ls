@@ -122,10 +122,33 @@ async function navAccess(client, user) {
 
 const { makeService } = require("../../../shared/crud/resource");
 const { emitEvent, audit } = require("../../../shared/events/emit");
+const { logger } = require("../../../config/logger");
 const identityCache = require("../../../shared/cache/identity-cache");
+const roleKpi = require("../role_kpi/role_kpi.service");
 const events = require("./permission.events");
 
 const base = makeService({ repo, moduleKey: events.MODULE, entity: "permission", events, deleteMode: "hard"});
+
+/**
+ * Grant-loss housekeeping for the Control Tower band (KPI guide §7.2): a
+ * module losing `can_read` retires its tiles from that role's scope/default/
+ * lock rows, so re-granting the module means a DEFAULT band, not a resurrected
+ * one. Deliberately not part of the grant transaction: the revocation is the
+ * security act and is already committed; a display-config tidy-up failing on
+ * top of it must never roll a revocation back. A logged skip is the whole
+ * failure mode — and the read-time eligibility filter (§4) makes even a
+ * skipped prune inert for what users see.
+ */
+async function pruneRoleKpiBestEffort(client, roleId, why) {
+  if (!roleId) return;
+  try {
+    await roleKpi.pruneUnreadable(client, roleId);
+  } catch (err) {
+    logger.warn({ err, roleId, why }, "[permissions] role KPI config prune skipped");
+  }
+}
+
+const isUnreadable = (row) => !row || row.can_read !== true;
 
 module.exports = {
   navAccess,
@@ -136,16 +159,24 @@ module.exports = {
   async create(client, args) {
     const row = await base.create(client, args);
     await identityCache.invalidateGrants();
+    if (isUnreadable(row)) await pruneRoleKpiBestEffort(client, row && row.role_id, "create");
     return row;
   },
   async update(client, args) {
     const row = await base.update(client, args);
     await identityCache.invalidateGrants();
+    if (isUnreadable(row)) await pruneRoleKpiBestEffort(client, row && row.role_id, "update");
     return row;
   },
   async archive(client, args) {
+    // Read the grant BEFORE the hard delete: the row is the only place that
+    // says which role's band this revocation touches, and `base.archive`
+    // answers without the payload. A `null` here just means the row was
+    // already gone — there is nothing to prune and nothing to report.
+    const before = await repo.findById(client, args.id);
     const row = await base.archive(client, args);
     await identityCache.invalidateGrants();
+    if (before) await pruneRoleKpiBestEffort(client, before.role_id, "archive");
     return row;
   },
 
@@ -155,6 +186,7 @@ module.exports = {
   async upsertGrant(client, { data, actor }) {
     const row = await repo.upsertGrant(client, data);
     await identityCache.invalidateGrants();
+    if (isUnreadable(row)) await pruneRoleKpiBestEffort(client, row && row.role_id, "upsertGrant");
     await emitEvent(client, {
       eventTypeKey: events.UPDATED, // "permission.changed"
       moduleKey: events.MODULE,

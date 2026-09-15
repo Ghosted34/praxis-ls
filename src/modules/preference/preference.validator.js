@@ -34,10 +34,22 @@ const appearance = z.object({
  * so the client's "absent = untouched, null = cleared" rule reads identically
  * on the two lists.
  */
+/**
+ * `kpiPins` — the four tiles this user chose for the headline band, in
+ * left-to-right order (doc/KPI_BAND_ENGINEERING_GUIDE.md, D2). Capped at FOUR
+ * at the edge, unlike its neighbours, because the bound here is the layout
+ * promise, not a sanity guard: `xl:grid-cols-4` never reflows, and a fifth id
+ * would not make a fifth tile — it would make a preference that silently
+ * loses part of itself at render. Rejecting at the edge says so at save time
+ * instead. Ids are checked for SHAPE only; the resolver drops anything that is
+ * not in the catalog, so a tile retired in a later release degrades to "less
+ * band" rather than to a rejected write.
+ */
 const shell = z.object({
   ribbonPinned: z.boolean().nullable().optional(),
   railPins: z.array(z.string().min(1).max(64)).max(16).nullable().optional(),
   towerPins: z.array(z.string().min(1).max(64)).max(16).nullable().optional(),
+  kpiPins: z.array(z.string().regex(/^[a-z0-9][a-z0-9_]{1,39}$/)).max(4).nullable().optional(),
   railHintSeen: z.boolean().nullable().optional(),
 });
 

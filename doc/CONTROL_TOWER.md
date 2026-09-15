@@ -4,7 +4,10 @@ How the home screen became a tool for running a Monday operations meeting rather
 than a picture of one.
 
 Companion to [VERIFIED_PLACES.md](VERIFIED_PLACES.md), which is where the
-coordinates come from. Nothing here can be honest without that.
+coordinates come from. Nothing here can be honest without that. The headline
+metric band below the map — its catalog, its per-role configuration, and the
+policy that says a zero is a truth and an unavailable tile is a counted gap —
+is specified in [KPI_BAND_ENGINEERING_GUIDE.md](KPI_BAND_ENGINEERING_GUIDE.md).
 
 ## What was wrong
 

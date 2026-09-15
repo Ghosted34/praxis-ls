@@ -49,6 +49,14 @@ const DOMAIN_TO_CATEGORY = {
   // approvals & disbursement
   approval: "approvals", workflow: "approvals", costing: "approvals", cash_request: "approvals",
   disbursal: "approvals", advance: "approvals",
+  /*
+   * 13801 — Budget Reconciliation is the last leg of the same chain the four
+   * above are: budget (costing) → cash (cash_request) → actual. Nothing here is
+   * literally an approval, but a person tuning "the money workflow" expects one
+   * switch for all of it, and without this row every reconciliation notice would
+   * file itself under System next to cache invalidations.
+   */
+  reconciliation: "approvals",
 
   // finance & accounting
   invoice: "finance", payment: "finance", journal: "finance", gl: "finance", account: "finance",

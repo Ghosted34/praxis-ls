@@ -1,259 +1,581 @@
 /**
- * Operational Cost Reconciliation (G19 + §2.1 merge) — the controlled document
- * the legacy `api/ocr/` produced, now also THE record behind the Pricing
- * Variance Index: DRAFT → SUBMITTED → VALIDATED | REJECTED, line-level budget
- * vs actual per costing item, quoted (header-level) from the accepted
- * quotation, a document reference per line, maker-checker (the submitter is
- * never the validator), and the validated amount + status stamped back onto
- * the dossier. Variance % and the R/Y/G flag are DERIVED from this record
- * (pricing_variance module reads it) — never independently stored.
+ * Budget Reconciliation (MOD-76) — what an operations file actually cost, per
+ * budget line, evidenced, and the cash returned to the vault.
  *
- * AI pre-fill: lines arrive pre-filled with what can be proven (cost entries
- * that name their dictionary item); untagged entries get PROPOSED mappings a
- * human confirms or rejects. The assistant proposes, never confirms.
+ * The third leg of budget → cash → actual. The costing is the budget
+ * (12766–12774), the cash request draws it down (12771), and this says what was
+ * really spent against each drawn line.
+ *
+ *   OPEN ──submit──> SUBMITTED ──settle──> SETTLED
+ *     ↑                   │                   │
+ *     └──── reject ───────┘                   │
+ *     └──── the costing was amended, or more cash went out (reopen) ──┘
+ *
+ * ONE ROW PER FILE, FOR EVER (owner decision Q6). It does not close; it settles,
+ * and re-opens when the facts move. Prepared by Operations, settled by Finance,
+ * and the MD is told rather than asked.
+ *
+ * ── READS NEVER WRITE ───────────────────────────────────────────────────────
+ *
+ * There is no "draft it" step and no create endpoint. `sheetFor` renders every
+ * budget line on the file's approved costing whether or not this module has ever
+ * stored anything, and the header row is created lazily by the first WRITE. So a
+ * person with only `view` never causes an insert, a GET stays idempotent, and
+ * the header is exactly as sparse as the lines are.
  */
 "use strict";
 
 const repo = require("./dossier_reconciliation.repo");
 const rules = require("./dossier_reconciliation.rules");
-const { audit } = require("../../../shared/events/emit");
+const events = require("./dossier_reconciliation.events");
+const { emitEvent, audit, resolveActorId } = require("../../../shared/events/emit");
 const { getSetting } = require("../../../shared/config/settings");
 const { AppError } = require("../../../utils/errors");
+const crypto = require("crypto");
 
-const MODULE = "MOD-47";
+const MODULE = events.MODULE;
 const ref = (id) => "dossier_reconciliation:" + id;
 
-/** The draft's line set, recomputed from the proven facts. Untagged actuals
- *  land in the UNMATCHED bucket (dictionary_item_id null); everything else is
- *  MATCHED because the cost entry itself named the item. */
-async function buildLines(client, dossierId) {
-  const compare = await repo.costCompare(client, dossierId);
-  const lines = [];
-  for (const row of compare) {
-    lines.push({
-      dictionary_item_id: row.dictionary_item_id,
-      item_code: row.item_code,
-      item_label: row.item_label,
-      budget_ht: Number(row.budget_ht) || 0,
-      actual_ht: Number(row.actual_ht) || 0,
-      // Lines are service costs only (débours are excluded by costCompare);
-      // keep the stored flag false so a reader never has to re-derive that.
-      is_disbursement: false,
-      doc_ref: null,
-      doc_required: await repo.itemRequiresDoc(client, row.dictionary_item_id),
-      // Provenance: an actual with no dictionary item cannot be proven onto a
-      // line — flag it, and let the matcher propose a mapping below.
-      match_status:
-        !row.dictionary_item_id && (Number(row.actual_ht) || 0) > 0 ? "UNMATCHED" : "MATCHED",
-    });
-  }
-  return lines;
-}
+/* ═══════════════════════════ Reading the sheet ═══════════════════════════ */
 
-/** Build a DRAFT from the dossier's current costings. One open reconciliation
- *  per dossier: a second draft while one is still SUBMITTED would fork the
- *  story of the file. */
-async function createDraft(client, { dossierId, actor = {} }) {
+/**
+ * The sheet for an operations file: header, grid, totals, grades, documents.
+ *
+ * The grid comes from `costing_line` (see the repo's header), so a costing
+ * amended five minutes ago is already reflected and a line nobody has touched
+ * still renders. Nothing here writes.
+ */
+async function sheetFor(client, { dossierId }) {
   if (!dossierId) throw new AppError("VALIDATION_ERROR", "dossier_id is required", 422);
-  const open = await repo.openForDossier(client, dossierId);
-  if (open) {
-    throw new AppError("RECON_OPEN", `A ${open.status} reconciliation already exists for this file — validate/reject it first`, 409);
-  }
-  // Quoted at header level only (§2.1): which quotation the file was won on,
-  // and its service revenue HT. May be null — the screen then answers the
-  // execution question (budget vs actual) only.
-  const quoted = await repo.quotedForDossier(client, dossierId);
-  const [lines, disbursement] = await Promise.all([
-    buildLines(client, dossierId),
-    repo.disbursementTotals(client, dossierId),
+
+  const [header, costing, setting] = await Promise.all([
+    repo.forDossier(client, dossierId),
+    repo.approvedCosting(client, dossierId),
+    getSetting(client, "finance", "reconciliation", null),
   ]);
-  // Multi-write: header + lines + suggestions must land together. (The
-  // original createDraft wrote header then lines with no transaction — a crash
-  // between the two left a lineless reconciliation.)
-  await client.query("BEGIN");
-  try {
-    const row = await repo.insert(client, {
-      dossierId,
-      actorUserId: actor.user_id || null,
-      quotationId: quoted ? quoted.quotation_id : null,
-      quotedHt: quoted ? quoted.quoted_ht : null,
-    });
-    await repo.insertLines(client, row.reconciliation_id, lines);
-    // AI pre-fill (§2.1, required): entries that name no item get a PROPOSED
-    // mapping the human can confirm. The assistant proposes, never confirms —
-    // same rule as MOD-09 bank reconciliation.
-    const proposed = await proposeSuggestions(client, row.reconciliation_id, dossierId, lines);
-    await audit(client, { actorUserId: actor.user_id || null, action: "dossier_reconciliation.drafted", moduleKey: MODULE, entityRef: ref(row.reconciliation_id), after: { dossier_id: dossierId, lines: lines.length, suggestions: proposed, disbursement_actual_ht: disbursement.actual_ht } });
-    await client.query("COMMIT");
-    return get(client, row.reconciliation_id);
-  } catch (err) { await client.query("ROLLBACK"); throw err; }
-}
+  const allowance = rules.allowanceFrom(setting || {});
 
-/** Score every untagged cost entry against the costed items and store the
- *  plausible mappings as PROPOSED suggestions. Returns how many were made. */
-async function proposeSuggestions(client, reconciliationId, dossierId, lines) {
-  const untagged = await repo.untaggedEntries(client, dossierId);
-  if (!untagged.length) return 0;
-  const candidates = lines.filter((l) => l.dictionary_item_id);
-  let made = 0;
-  for (const entry of untagged) {
-    const best = rules.proposeMapping(
-      { category: entry.category, amount: entry.amount },
-      candidates,
-    );
-    if (best) {
-      await repo.insertSuggestion(client, {
-        reconciliation_id: reconciliationId,
-        cost_entry_id: entry.cost_entry_id,
-        suggested_dictionary_item_id: best.dictionary_item_id,
-        confidence: best.confidence,
-        reason: best.reason,
-      });
-      made += 1;
-    }
+  // No approved costing means no budget, and owner decision Q11 is that no
+  // spend happens on an operations file without one. So the sheet does not
+  // improvise a grid — it says what is missing and points at the costing.
+  if (!costing || costing.status !== "APPROVED_LOCKED") {
+    return {
+      dossier_id: dossierId,
+      reconciliation_id: header ? header.reconciliation_id : null,
+      status: header ? header.status : "OPEN",
+      costing: costing || null,
+      can_reconcile: false,
+      blocked_reason: costing
+        ? `The file's costing (${costing.doc_number || costing.costing_id}) is ${costing.status} — a budget has to be approved before what was spent against it can be reconciled.`
+        : "This file has no costing yet. The costing is the budget, so there is nothing to reconcile against.",
+      lines: [],
+      documents: [],
+      allowance,
+      ...rules.summarise([]),
+    };
   }
-  return made;
-}
 
-/** Round to the column's scale (numeric(18,2)) so the stamped amount matches. */
-const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+  const rows = await repo.gridFor(client, {
+    dossierId,
+    reconciliationId: header ? header.reconciliation_id : null,
+  });
+  const lines = rows.map((r) => rules.lineView(r, allowance));
 
-async function get(client, id) {
-  const row = await repo.get(client, id);
-  if (!row) throw new AppError("NOT_FOUND", "Reconciliation not found", 404);
-  const [lines, suggestions, disbursement, thresholds] = await Promise.all([
-    repo.lines(client, id),
-    repo.suggestions(client, id),
-    repo.disbursementTotals(client, row.dossier_id),
-    getSetting(client, "commercial", "pricing_variance", null),
-  ]);
-  // Service-cost lines carry the variance; débours are a separate pass-through
-  // total (BUG-3). Both are HT (BUG-2).
-  const service_budget_ht = round2(lines.reduce((s, l) => s + (Number(l.budget_ht) || 0), 0));
-  const service_actual_ht = round2(lines.reduce((s, l) => s + (Number(l.actual_ht) || 0), 0));
-  // The three questions (§2.1): quoted−budget, budget−actual, quoted−actual —
-  // one variance block, derived here and NEVER stored independently.
-  const variance = rules.computeVarianceBlock(
-    { quoted_ht: row.quoted_ht === null || row.quoted_ht === undefined ? null : Number(row.quoted_ht), budget_ht: service_budget_ht, actual_ht: service_actual_ht },
-    thresholds || {},
-  );
+  const [documents, settlements] = header
+    ? await Promise.all([repo.documentsFor(client, header.reconciliation_id), repo.settlements(client, header.reconciliation_id)])
+    : [[], []];
+
+  // Group the documents onto their lines so the grid, the line modal and the
+  // file's 360 all read one shape.
+  const byLine = new Map();
+  for (const d of documents) {
+    if (!byLine.has(d.costing_line_id)) byLine.set(d.costing_line_id, []);
+    byLine.get(d.costing_line_id).push(d);
+  }
+  for (const l of lines) l.documents = byLine.get(l.costing_line_id) || [];
+
+  const summary = rules.summarise(lines, { quotedHt: header ? header.quoted_ht : null });
+
   return {
-    ...row,
+    dossier_id: dossierId,
+    reconciliation_id: header ? header.reconciliation_id : null,
+    status: header ? header.status : "OPEN",
+    revision: header ? header.revision : 1,
+    currency: header ? header.currency : costing.currency,
+    exchange_rate_to_xaf: header ? Number(header.exchange_rate_to_xaf) : Number(costing.exchange_rate_to_xaf),
+    submitted_by: header ? header.submitted_by : null,
+    submitted_at: header ? header.submitted_at : null,
+    settled_by: header ? header.settled_by : null,
+    settled_at: header ? header.settled_at : null,
+    returned_total: header ? Number(header.returned_total) : 0,
+    reject_reason: header ? header.reject_reason : null,
+    reopened_reason: header ? header.reopened_reason : null,
+    costing,
+    can_reconcile: true,
+    blocked_reason: null,
     lines,
-    suggestions,
-    variance,
-    service_budget_ht,
-    service_actual_ht,
-    disbursement_budget_ht: round2(disbursement.budget_ht),
-    disbursement_actual_ht: round2(disbursement.actual_ht),
-    // Total money the file actually cost, including pass-through débours.
-    total_actual_ht: round2(service_actual_ht + Number(disbursement.actual_ht || 0)),
+    documents,
+    settlements,
+    allowance,
+    blockers: rules.submissionBlockers(lines),
+    ...summary,
   };
 }
 
-const latest = (client, { dossierId }) => repo.latestForDossier(client, dossierId);
-
-/** DRAFT → SUBMITTED. The submitter attests the figures are ready for review. */
-async function submit(client, { id, actor = {} }) {
-  const row = await repo.get(client, id);
+const get = (client, id) => repo.get(client, id).then((row) => {
   if (!row) throw new AppError("NOT_FOUND", "Reconciliation not found", 404);
-  if (row.status !== "DRAFT") throw new AppError("BAD_STATE", `Cannot submit a ${row.status} reconciliation`, 422);
-  const lines = await repo.lines(client, id);
-  if (!lines.length) throw new AppError("EMPTY_RECON", "Nothing to submit — the file has no costing lines", 422);
-  const out = await repo.setStatus(client, id, {
-    sql: "status = 'SUBMITTED', submitted_by = $2, submitted_at = now()",
-    params: [actor.user_id || null],
-  });
-  await audit(client, { actorUserId: actor.user_id || null, action: "dossier_reconciliation.submitted", moduleKey: MODULE, entityRef: ref(id), before: { status: row.status }, after: { status: out.status } });
-  return out;
-}
+  return sheetFor(client, { dossierId: row.dossier_id });
+});
 
-/** SUBMITTED → VALIDATED. Writes the agreed amount back onto the dossier —
- *  the sign-off that closes the file financially, as in the legacy. The
- *  validator must not be the submitter (maker-checker). */
-async function validate(client, { id, actor = {} }) {
-  const row = await repo.get(client, id);
-  if (!row) throw new AppError("NOT_FOUND", "Reconciliation not found", 404);
-  if (row.status !== "SUBMITTED") throw new AppError("BAD_STATE", `Cannot validate a ${row.status} reconciliation`, 422);
-  if (row.submitted_by && actor.user_id && row.submitted_by === actor.user_id) {
-    throw new AppError("SELF_VALIDATE", "The person who submitted cannot validate — maker-checker", 422);
+/* ═════════════════════════ Writing a line ════════════════════════════════ */
+
+/**
+ * The header, created on demand by the first write. `open` upserts against
+ * `uq_reconciliation_one_per_dossier`, so two people typing at once get the
+ * same row rather than one of them getting a 23505.
+ */
+async function ensureOpen(client, { dossierId, actor = {} }) {
+  const existing = await repo.forDossier(client, dossierId);
+  if (existing) return existing;
+  const costing = await repo.approvedCosting(client, dossierId);
+  if (!costing || costing.status !== "APPROVED_LOCKED") {
+    throw new AppError(
+      "NO_APPROVED_COSTING",
+      "This file has no approved costing, so there is no budget to reconcile against. Approve the costing first — owner decision Q11: no spend on an operations file without one.",
+      422,
+      { dossier_id: dossierId, costing_id: costing ? costing.costing_id : null, costing_status: costing ? costing.status : null },
+    );
   }
-  // The amount that closes the file financially is total money paid out, so it
-  // includes pass-through débours alongside the service actuals (BUG-3). Both
-  // are HT (BUG-2) — ocr_amount is the validated actual cost, not a sell price.
-  const [lines, disbursement] = await Promise.all([
-    repo.lines(client, id),
-    repo.disbursementTotals(client, row.dossier_id),
-  ]);
-  const serviceActual = lines.reduce((s, l) => s + (Number(l.actual_ht) || 0), 0);
-  const amount = round2(serviceActual + Number(disbursement.actual_ht || 0));
-  const out = await repo.setStatus(client, id, {
-    sql: "status = 'VALIDATED', validated_by = $2, validated_at = now(), ocr_amount = $3",
-    params: [actor.user_id || null, amount],
+  const opened = await repo.open(client, {
+    dossierId,
+    actorUserId: actor.user_id || null,
+    currency: costing.currency,
+    rate: costing.exchange_rate_to_xaf,
   });
-  await repo.stampDossier(client, { dossierId: row.dossier_id, reconciliationId: id, amount: out.ocr_amount });
-  await audit(client, { actorUserId: actor.user_id || null, action: "dossier_reconciliation.validated", moduleKey: MODULE, entityRef: ref(id), before: { status: row.status }, after: { status: out.status, amount: out.ocr_amount } });
-  return out;
+  // Belt and braces. `open` inserts ON CONFLICT DO NOTHING and falls back to a
+  // SELECT, so the only way here is a row that was deleted between the two —
+  // and every caller downstream reads `.status` off this.
+  if (!opened) throw new AppError("CONFLICT", "The reconciliation could not be opened — try again", 409);
+  return opened;
 }
 
-/** SUBMITTED → REJECTED with a mandatory reason. The dossier keeps no stamp. */
-async function reject(client, { id, reason, actor = {} }) {
-  if (!reason || !String(reason).trim()) throw new AppError("REASON_REQUIRED", "A rejection needs a reason", 422);
-  const row = await repo.get(client, id);
-  if (!row) throw new AppError("NOT_FOUND", "Reconciliation not found", 404);
-  if (row.status !== "SUBMITTED") throw new AppError("BAD_STATE", `Cannot reject a ${row.status} reconciliation`, 422);
-  const out = await repo.setStatus(client, id, {
-    sql: "status = 'REJECTED', rejected_by = $2, rejected_at = now(), reject_reason = $3",
-    params: [actor.user_id || null, String(reason).trim().slice(0, 2000)],
-  });
-  await audit(client, { actorUserId: actor.user_id || null, action: "dossier_reconciliation.rejected", moduleKey: MODULE, entityRef: ref(id), before: { status: row.status }, after: { status: out.status, reason: out.reject_reason } });
-  return out;
+/** A sheet may only be edited while it is OPEN. SUBMITTED is on Finance's desk
+ *  and SETTLED is accounted for; in both cases the figures must not shift under
+ *  the person looking at them. */
+function assertEditable(header) {
+  if (header.status !== "OPEN") {
+    throw new AppError(
+      "BAD_STATE",
+      header.status === "SUBMITTED"
+        ? "This reconciliation is with Finance. Ask them to send it back before changing it."
+        : "This reconciliation has been settled. It re-opens on its own when the costing changes or more cash goes out.",
+      422,
+      { status: header.status },
+    );
+  }
 }
 
-/** Human confirms an assistant-proposed mapping (§2.1). DRAFT only — after
- *  submit the figures are attested and must not shift underneath the reviewer.
- *  Confirming stamps the item onto the cost_entry (the analytic tag it was
- *  missing) and rebuilds the draft's lines so the amount moves from the
- *  UNMATCHED bucket onto its item. The assistant can never call this: the
- *  whole meaning of the act is that a person took responsibility. */
-async function confirmSuggestion(client, { id, suggestionId, actor = {} }) {
-  const { row, suggestion } = await suggestionInState(client, { id, suggestionId });
+/**
+ * Record what was actually spent against one budget line (Q2, Q7).
+ *
+ * `fields` distinguishes ABSENT from NULL: a payload that omits `spent_on` is
+ * not a payload that clears it, and the repo's COALESCE upsert cannot express
+ * the difference on its own — so explicit nulls are collected and cleared in a
+ * second statement.
+ *
+ * `actual_source` is decided here rather than trusted from the caller. Typing
+ * the same number the grid already showed is CONFIRMED; typing a different one
+ * is OVERRIDDEN. Both are a real act, and neither is the same as DERIVED, which
+ * means nobody has looked yet.
+ */
+async function patchLine(client, { dossierId, costingLineId, fields = {}, actor = {}, ip = null }) {
+  const header = await ensureOpen(client, { dossierId, actor });
+  assertEditable(header);
+
+  const onFile = await repo.costingLineOnDossier(client, { dossierId, costingLineId });
+  if (!onFile) {
+    throw new AppError("NOT_FOUND", "That budget line is not on this file's approved costing", 404);
+  }
+
+  const write = {};
+  const clear = [];
+  for (const key of ["actual_ttc", "spent_on", "variance_reason", "returned_amount"]) {
+    if (!(key in fields)) continue;
+    if (fields[key] === null || fields[key] === "") clear.push(key);
+    else write[key] = fields[key];
+  }
+  if (!Object.keys(write).length && !clear.length) {
+    throw new AppError("VALIDATION_ERROR", "Nothing to change", 422);
+  }
+
+  if ("actual_ttc" in write) {
+    // What the grid was showing before this edit — the derived pre-fill, or
+    // whatever was stored. Comparing against it is what makes "I agree" and
+    // "no, it was this" different facts.
+    const rows = await repo.gridFor(client, { dossierId, reconciliationId: header.reconciliation_id });
+    const before = rows.find((r) => r.costing_line_id === costingLineId);
+    const shown = before ? rules.lineView(before).actual_ttc : 0;
+    write.actual_source = rules.round2(Number(write.actual_ttc)) === shown ? "CONFIRMED" : "OVERRIDDEN";
+  }
+
+  // A reason typed straight onto one line leaves any group it was part of: it
+  // is now this line's own sentence, not the shared one. This has to go through
+  // `clear` — the upsert COALESCEs, so passing null there means "keep", which
+  // is the opposite of what is meant.
+  if ("variance_reason" in write && !clear.includes("reason_group_id")) clear.push("reason_group_id");
+
   await client.query("BEGIN");
   try {
-    await repo.setCostEntryItem(client, suggestion.cost_entry_id, suggestion.suggested_dictionary_item_id);
-    await repo.decideSuggestion(client, suggestionId, { status: "CONFIRMED", decidedBy: actor.user_id || null });
-    // The aggregates changed — rebuild the draft lines from the proven facts.
-    // Safe in DRAFT: there is no line-edit API, so no human-entered field is lost.
-    await repo.deleteLines(client, id);
-    await repo.insertLines(client, id, await buildLines(client, row.dossier_id));
-    await audit(client, { actorUserId: actor.user_id || null, action: "dossier_reconciliation.match_confirmed", moduleKey: MODULE, entityRef: ref(id), after: { suggestion_id: suggestionId, cost_entry_id: suggestion.cost_entry_id, dictionary_item_id: suggestion.suggested_dictionary_item_id } });
+    if (Object.keys(write).length) {
+      await repo.upsertLine(client, {
+        reconciliationId: header.reconciliation_id,
+        costingLineId,
+        fields: {
+          actual_ttc: write.actual_ttc ?? null,
+          actual_source: write.actual_source ?? null,
+          spent_on: write.spent_on ?? null,
+          variance_reason: write.variance_reason ?? null,
+          reason_group_id: null,
+          returned_amount: write.returned_amount ?? null,
+        },
+        actorUserId: actor.user_id || null,
+      });
+    }
+    if (clear.length) {
+      await repo.clearLineFields(client, {
+        reconciliationId: header.reconciliation_id,
+        costingLineId,
+        fields: clear,
+      });
+    }
+    await audit(client, {
+      actorUserId: actor.user_id || null, action: events.LINE_RECORDED, moduleKey: MODULE,
+      entityRef: ref(header.reconciliation_id),
+      after: { costing_line_id: costingLineId, ...write, cleared: clear }, ip,
+    });
     await client.query("COMMIT");
   } catch (err) { await client.query("ROLLBACK"); throw err; }
-  return get(client, id);
+
+  return sheetFor(client, { dossierId });
 }
 
-/** Human rejects a proposed mapping — the entry stays in the UNMATCHED bucket. */
-async function rejectSuggestion(client, { id, suggestionId, actor = {} }) {
-  const { suggestion } = await suggestionInState(client, { id, suggestionId });
-  await repo.decideSuggestion(client, suggestionId, { status: "REJECTED", decidedBy: actor.user_id || null });
-  await audit(client, { actorUserId: actor.user_id || null, action: "dossier_reconciliation.match_rejected", moduleKey: MODULE, entityRef: ref(id), after: { suggestion_id: suggestionId, cost_entry_id: suggestion.cost_entry_id } });
-  return get(client, id);
-}
+/**
+ * One reason, several lines (Q12).
+ *
+ * "If there was a delay in customs due to network and the containers stayed in
+ * the port one more day we can have four lines affected — demurrage, port
+ * storage, probably yard occupancy and probably another line. So we pick these
+ * lines from a UI and it applies at once."
+ *
+ * The shared `reason_group_id` is what makes this honest: the statement and the
+ * audit can say "one reason, four lines" rather than printing four identical
+ * sentences and implying four independent judgements.
+ */
+async function applyReason(client, { dossierId, reason, costingLineIds = [], actor = {}, ip = null }) {
+  const text = String(reason || "").trim();
+  if (text.length < 3) throw new AppError("VALIDATION_ERROR", "A reason needs some words in it", 422);
+  if (!costingLineIds.length) throw new AppError("VALIDATION_ERROR", "Pick at least one line", 422);
 
-/** Shared guard: the reconciliation is a DRAFT and the suggestion is its own,
- *  still PROPOSED. */
-async function suggestionInState(client, { id, suggestionId }) {
-  const row = await repo.get(client, id);
-  if (!row) throw new AppError("NOT_FOUND", "Reconciliation not found", 404);
-  if (row.status !== "DRAFT") throw new AppError("BAD_STATE", `Cannot decide a match on a ${row.status} reconciliation — matches are settled in DRAFT`, 422);
-  const suggestion = await repo.getSuggestion(client, suggestionId);
-  if (!suggestion || suggestion.reconciliation_id !== row.reconciliation_id) {
-    throw new AppError("NOT_FOUND", "Suggestion not found on this reconciliation", 404);
+  const header = await ensureOpen(client, { dossierId, actor });
+  assertEditable(header);
+
+  for (const id of costingLineIds) {
+    if (!(await repo.costingLineOnDossier(client, { dossierId, costingLineId: id }))) {
+      throw new AppError("NOT_FOUND", "One of those budget lines is not on this file's approved costing", 404, { costing_line_id: id });
+    }
   }
-  if (suggestion.status !== "PROPOSED") {
-    throw new AppError("BAD_STATE", `This suggestion was already ${suggestion.status}`, 422);
-  }
-  return { row, suggestion };
+
+  const groupId = crypto.randomUUID();
+  await client.query("BEGIN");
+  try {
+    await repo.applyReasonToLines(client, {
+      reconciliationId: header.reconciliation_id,
+      costingLineIds, reason: text.slice(0, 2000), groupId,
+      actorUserId: actor.user_id || null,
+    });
+    await audit(client, {
+      actorUserId: actor.user_id || null, action: events.LINE_RECORDED, moduleKey: MODULE,
+      entityRef: ref(header.reconciliation_id),
+      after: { reason_group_id: groupId, lines: costingLineIds.length, reason: text.slice(0, 2000) }, ip,
+    });
+    await client.query("COMMIT");
+  } catch (err) { await client.query("ROLLBACK"); throw err; }
+
+  return sheetFor(client, { dossierId });
 }
 
-module.exports = { createDraft, get, latest, submit, validate, reject, confirmSuggestion, rejectSuggestion };
+/* ═══════════════════════════ Documents ═══════════════════════════════════ */
+
+/**
+ * Attach a vault document as proof for one budget line (Q8).
+ *
+ * MANY per line, deliberately: evidence arrives in rounds. The document itself
+ * is uploaded through the vault first (so it is hashed, typed and findable from
+ * the file's 360), and this records that it proves THIS line.
+ */
+async function attachDocument(client, { dossierId, costingLineId, docId, note = null, actor = {}, ip = null }) {
+  const header = await ensureOpen(client, { dossierId, actor });
+  assertEditable(header);
+  if (!(await repo.costingLineOnDossier(client, { dossierId, costingLineId }))) {
+    throw new AppError("NOT_FOUND", "That budget line is not on this file's approved costing", 404);
+  }
+
+  await client.query("BEGIN");
+  try {
+    // The line row may not exist yet — a person can attach the receipt before
+    // typing the amount, and that order is not wrong.
+    let line = await repo.lineFor(client, { reconciliationId: header.reconciliation_id, costingLineId });
+    if (!line) {
+      line = await repo.upsertLine(client, {
+        reconciliationId: header.reconciliation_id, costingLineId,
+        fields: { actual_ttc: null, actual_source: null, spent_on: null, variance_reason: null, reason_group_id: null, returned_amount: null },
+        actorUserId: actor.user_id || null,
+      });
+    }
+    await repo.attachDocument(client, { lineId: line.line_id, docId, note, actorUserId: actor.user_id || null });
+    await emitEvent(client, {
+      eventTypeKey: events.PROOF_ATTACHED, moduleKey: MODULE,
+      entityRef: ref(header.reconciliation_id), actorUserId: actor.user_id || null,
+    });
+    await audit(client, {
+      actorUserId: actor.user_id || null, action: events.PROOF_ATTACHED, moduleKey: MODULE,
+      entityRef: ref(header.reconciliation_id), after: { costing_line_id: costingLineId, doc_id: docId }, ip,
+    });
+    await client.query("COMMIT");
+  } catch (err) { await client.query("ROLLBACK"); throw err; }
+
+  return sheetFor(client, { dossierId });
+}
+
+/** Detach a document from a line. The vault row survives — evidence is not
+ *  destroyed because somebody filed it against the wrong line. */
+async function detachDocument(client, { dossierId, costingLineId, docId, actor = {}, ip = null }) {
+  const header = await repo.forDossier(client, dossierId);
+  if (!header) throw new AppError("NOT_FOUND", "Reconciliation not found", 404);
+  assertEditable(header);
+  const line = await repo.lineFor(client, { reconciliationId: header.reconciliation_id, costingLineId });
+  if (!line) throw new AppError("NOT_FOUND", "Nothing is attached to that line", 404);
+  const removed = await repo.detachDocument(client, { lineId: line.line_id, docId });
+  if (!removed) throw new AppError("NOT_FOUND", "That document is not attached to this line", 404);
+  await audit(client, {
+    actorUserId: actor.user_id || null, action: events.PROOF_ATTACHED, moduleKey: MODULE,
+    entityRef: ref(header.reconciliation_id), before: { costing_line_id: costingLineId, doc_id: docId }, ip,
+  });
+  return sheetFor(client, { dossierId });
+}
+
+/* ═══════════════════════════ The chain ═══════════════════════════════════ */
+
+/**
+ * Operations hands the sheet to Finance.
+ *
+ * BOTH gates fire here and report TOGETHER (Q10, Q12). A person missing three
+ * receipts and two reasons is told that once — handing them a 422 five times in
+ * a row is how a control becomes something people learn to click through.
+ */
+async function submit(client, { dossierId, note = null, actor = {}, ip = null }) {
+  const header = await repo.forDossier(client, dossierId);
+  if (!header) throw new AppError("NOT_FOUND", "Nothing has been recorded on this file yet", 404);
+  assertEditable(header);
+
+  const sheet = await sheetFor(client, { dossierId });
+  if (!sheet.lines.length) {
+    throw new AppError("EMPTY_RECONCILIATION", "This file's costing has no lines to reconcile", 422);
+  }
+  if (sheet.blockers.length) {
+    const reasons = sheet.blockers.filter((b) => b.kind === "REASON").length;
+    const proofs = sheet.blockers.filter((b) => b.kind === "PROOF").length;
+    const parts = [];
+    if (reasons) parts.push(`${reasons} line(s) are over budget and need a reason`);
+    if (proofs) parts.push(`${proofs} line(s) need a supporting document`);
+    throw new AppError("SUBMISSION_BLOCKED", parts.join("; "), 422, { blockers: sheet.blockers });
+  }
+
+  const out = await repo.setStatus(client, header.reconciliation_id, {
+    sql: "status = 'SUBMITTED', submitted_by = $2, submitted_at = now(), submitted_note = $3, reject_reason = NULL",
+    params: [actor.user_id || null, note ? String(note).slice(0, 2000) : null],
+  });
+  await emitEvent(client, {
+    eventTypeKey: events.SUBMITTED, moduleKey: MODULE,
+    entityRef: ref(header.reconciliation_id), actorUserId: actor.user_id || null,
+  });
+  await audit(client, {
+    actorUserId: actor.user_id || null, action: events.SUBMITTED, moduleKey: MODULE,
+    entityRef: ref(header.reconciliation_id),
+    before: { status: header.status }, after: { status: out.status, actual_ttc: sheet.totals.actual_ttc }, ip,
+  });
+  return sheetFor(client, { dossierId });
+}
+
+/** Finance sends it back. Straight to OPEN with the reason on it — a living
+ *  sheet has no REJECTED state to rest in, and 12771's Q15 made the same call
+ *  for the cash request. */
+async function reject(client, { dossierId, reason, actor = {}, ip = null }) {
+  const text = String(reason || "").trim();
+  if (text.length < 3) throw new AppError("REASON_REQUIRED", "Say what is wrong with the figures — the preparer gets this verbatim", 422);
+  const header = await repo.forDossier(client, dossierId);
+  if (!header) throw new AppError("NOT_FOUND", "Reconciliation not found", 404);
+  if (header.status !== "SUBMITTED") throw new AppError("BAD_STATE", `Cannot send back a ${header.status} reconciliation`, 422);
+
+  const out = await repo.setStatus(client, header.reconciliation_id, {
+    sql: "status = 'OPEN', rejected_by = $2, rejected_at = now(), reject_reason = $3",
+    params: [actor.user_id || null, text.slice(0, 2000)],
+  });
+  await emitEvent(client, {
+    eventTypeKey: events.REJECTED, moduleKey: MODULE,
+    entityRef: ref(header.reconciliation_id), actorUserId: actor.user_id || null,
+  });
+  await audit(client, {
+    actorUserId: actor.user_id || null, action: events.REJECTED, moduleKey: MODULE,
+    entityRef: ref(header.reconciliation_id), before: { status: header.status }, after: { status: out.status, reason: text }, ip,
+  });
+  return sheetFor(client, { dossierId });
+}
+
+/**
+ * Finance settles: records the cash handed back, stamps the file, and tells the
+ * MD. No second approval — the MD is informed (owner decision Q6, Q18).
+ *
+ * ── WHAT THIS DOES NOT DO YET ───────────────────────────────────────────────
+ *
+ * PR 2 adds the accounting legs inside this same transaction: one `cost_entry`
+ * per line for the DELTA between what the ledger already holds and the settled
+ * actual, dated `spent_on` (never `now()` — the owner's question under Q3); the
+ * régie `RECEIPT` retirement for what was spent and the `CASH_RETURN` for what
+ * came back; and flipping the funding cash requests to JUSTIFIED.
+ *
+ * Until then this is the management record only, which is exactly what the
+ * previous implementation's `validate` was — `dossier.ocr_amount` has always
+ * been the agreed actual rather than a posting, so nothing regresses. The
+ * boundary is here, in one function, so PR 2 is additive.
+ */
+async function settle(client, { dossierId, returned = {}, actor = {}, ip = null }) {
+  const header = await repo.forDossier(client, dossierId);
+  if (!header) throw new AppError("NOT_FOUND", "Reconciliation not found", 404);
+  if (header.status !== "SUBMITTED") throw new AppError("BAD_STATE", `Cannot settle a ${header.status} reconciliation`, 422);
+  // Maker-checker. The previous implementation refused self-validation and it
+  // was right to; the legacy allowed Operations to validate its own submission
+  // (`api/ocr/validate.php` granted OPERATIONS) and that is the hole.
+  if (header.submitted_by && actor.user_id && header.submitted_by === actor.user_id) {
+    throw new AppError("SELF_SETTLE", "The person who submitted cannot settle — maker-checker", 422);
+  }
+
+  const lineReturns = Object.entries(returned || {});
+
+  await client.query("BEGIN");
+  try {
+    for (const [costingLineId, amount] of lineReturns) {
+      if (!(await repo.costingLineOnDossier(client, { dossierId, costingLineId }))) {
+        throw new AppError("NOT_FOUND", "A returned amount names a budget line that is not on this file", 404, { costing_line_id: costingLineId });
+      }
+      await repo.upsertLine(client, {
+        reconciliationId: header.reconciliation_id, costingLineId,
+        fields: {
+          actual_ttc: null, actual_source: null, spent_on: null,
+          variance_reason: null, reason_group_id: null,
+          returned_amount: Number(amount) || 0,
+        },
+        actorUserId: actor.user_id || null,
+      });
+    }
+
+    const sheet = await sheetFor(client, { dossierId });
+    const out = await repo.setStatus(client, header.reconciliation_id, {
+      sql: "status = 'SETTLED', settled_by = $2, settled_at = now(), returned_total = $3, ocr_amount = $4",
+      params: [actor.user_id || null, sheet.totals.returned, sheet.totals.actual_ttc],
+    });
+    await repo.insertSettlement(client, {
+      reconciliation_id: header.reconciliation_id,
+      revision: header.revision,
+      budget_ttc: sheet.totals.budget_ttc,
+      disbursed_ttc: sheet.totals.disbursed,
+      actual_ttc: sheet.totals.actual_ttc,
+      returned_ttc: sheet.totals.returned,
+      // settled_by REFERENCES app_user(user_id), and identity lives in the LIVE
+      // schema. This row can land in SANDBOX, where that user does not exist —
+      // Postgres raises 23503 and the whole settlement rolls back (DATA 2.4).
+      settled_by: await resolveActorId(client, actor.user_id || null),
+    });
+    await repo.stampDossier(client, {
+      dossierId, reconciliationId: header.reconciliation_id,
+      amount: out.ocr_amount, status: "SETTLED",
+    });
+    await emitEvent(client, {
+      eventTypeKey: events.SETTLED, moduleKey: MODULE,
+      entityRef: ref(header.reconciliation_id), actorUserId: actor.user_id || null,
+    });
+    await audit(client, {
+      actorUserId: actor.user_id || null, action: events.SETTLED, moduleKey: MODULE,
+      entityRef: ref(header.reconciliation_id),
+      before: { status: header.status },
+      after: {
+        status: out.status, revision: header.revision,
+        actual_ttc: sheet.totals.actual_ttc, returned: sheet.totals.returned,
+        outstanding: sheet.totals.outstanding,
+      }, ip,
+    });
+    await client.query("COMMIT");
+  } catch (err) { await client.query("ROLLBACK"); throw err; }
+
+  return sheetFor(client, { dossierId });
+}
+
+/**
+ * Re-open a settled sheet because the facts moved (Q6) — the costing was
+ * amended, or more cash went out against it.
+ *
+ * The sheet itself needs no rebuilding: the grid is projected from
+ * `costing_line`, so a new budget line is already there and every typed value
+ * on the lines that did not change is untouched. All this does is bump the
+ * revision and put the sheet back on Operations' desk.
+ *
+ * PR 2 wires the callers — `costing.setStatus` on APPROVE, and disbursement.
+ * Exported now so the state machine is whole and testable rather than having a
+ * one-way door in it.
+ */
+async function reopen(client, { dossierId, reason, actor = {} }) {
+  const header = await repo.forDossier(client, dossierId);
+  if (!header || header.status !== "SETTLED") return null;
+  const out = await repo.setStatus(client, header.reconciliation_id, {
+    sql: "status = 'OPEN', revision = revision + 1, reopened_reason = $2, submitted_by = NULL, submitted_at = NULL",
+    params: [String(reason || "").slice(0, 500) || "The file's budget or its cash changed"],
+  });
+  await repo.stampDossier(client, {
+    dossierId, reconciliationId: header.reconciliation_id,
+    amount: header.ocr_amount, status: "OPEN",
+  });
+  await emitEvent(client, {
+    eventTypeKey: events.REOPENED, moduleKey: MODULE,
+    entityRef: ref(header.reconciliation_id), actorUserId: actor.user_id || null,
+  });
+  await audit(client, {
+    actorUserId: actor.user_id || null, action: events.REOPENED, moduleKey: MODULE,
+    entityRef: ref(header.reconciliation_id),
+    before: { status: header.status, revision: header.revision },
+    after: { status: out.status, revision: out.revision, reason: out.reopened_reason },
+  });
+  return out;
+}
+
+/* ══════════════════ What a person still owes (Q10) ═══════════════════════ */
+
+/**
+ * Receipts owed — "Cash to account for".
+ *
+ * Keyed on the person who physically took the tranche
+ * (`cash_request_payment.received_by`, 12771 §3), not on the dossier, because
+ * the obligation belongs to a person and follows them across every file they
+ * have drawn cash on.
+ */
+async function receiptsOwed(client, { userId = null } = {}) {
+  const rows = await repo.receiptsOwed(client, { userId });
+  const total = rows.reduce((s, r) => s + (Number(r.claimed_ttc) || 0), 0);
+  return { count: rows.length, total_ttc: rules.round2(total), items: rows };
+}
+
+module.exports = {
+  sheetFor, get,
+  patchLine, applyReason, attachDocument, detachDocument,
+  submit, reject, settle, reopen,
+  receiptsOwed,
+};

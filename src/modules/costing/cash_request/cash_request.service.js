@@ -1026,30 +1026,32 @@ async function justify(client, { id, lines = [], entityId = null, entryDate = nu
     if (lines.length) await checkProof(client, cr, written);
 
     /*
-     * Q17 — ADVISORY EVERYWHERE ELSE, BLOCKING HERE.
+     * ── THE PROOF GATE MOVED (13801, owner decision Q7) ────────────────────
      *
-     * `checkProof` above raises a compliance flag and notifies; it never
-     * throws, and that is right for submit / approve / disburse: a
-     * disbursement operations need today must not wait on paperwork that
-     * arrives this afternoon. But closing the request is the LAST moment the
-     * receipt can still be produced, and a request closed without one is a
-     * document owed that nothing will ever ask for again.
+     * This used to throw PROOF_REQUIRED while any line carried
+     * `justification_required` with no `proof_vault_id`. The intent was right —
+     * a request closed without its receipt is a document owed that nothing will
+     * ever ask for again — but the gate stood somewhere no receipt could reach
+     * it, and the result was a dead end rather than a control:
      *
-     * Read fresh from the database, not from `written`: a justification that
-     * carries some of the lines still has to answer for all of them, and the
-     * ticks come off the stored rows rather than off the payload — a caller
-     * cannot clear an obligation by omitting the line that carries it.
+     *   · `JustifyForm` has never sent `proof_vault_id`, and the field is not
+     *     even on the client's `CashLine` type;
+     *   · `PORT_CHARGES` is seeded ALWAYS_REQUIRED (9080:397), so a request
+     *     carrying it could be raised, approved, disbursed — and then closed by
+     *     nobody, ever.
+     *
+     * The owner moved the evidence to where it belongs: "Cash request just
+     * enters the justification mandatory box. That's all. The whole upload
+     * happens here in reconciliation." So the TICK stays authoritative here (Q9
+     * — the cash request is SSOT for whether a line owes a receipt), the
+     * DOCUMENT lands on the budget line in MOD-76, and the block fires at
+     * `POST /costing/reconciliations/:dossierId/submit`, which is a screen that
+     * can actually take the file.
+     *
+     * This is a relocation, not a relaxation. `checkProof` above still raises
+     * the compliance flag and still notifies the requester, so nothing stops
+     * being visible in the meantime.
      */
-    const stored = await repo.listLines(client, id);
-    const owed = stored.filter((l) => l.justification_required === true && !l.proof_vault_id);
-    if (owed.length) {
-      throw new AppError(
-        "PROOF_REQUIRED",
-        `${owed.length} line(s) on this request need a supporting document before it can be closed: ${owed.map((l) => l.label).join(", ")}`,
-        422,
-        { lines: owed.map((l) => ({ cash_request_line_id: l.cash_request_line_id, label: l.label })) },
-      );
-    }
 
     const spent = sumField(lines, "spent_amount");
     let retired = null;

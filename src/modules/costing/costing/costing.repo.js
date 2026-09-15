@@ -100,26 +100,32 @@ const LINE_VAT_SQL =
   "CASE WHEN cl.is_disbursement THEN COALESCE(cl.upstream_vat_amount, 0) " +
   "ELSE cl.qty * cl.unit_cost * COALESCE(tc.rate_percent, 0) / 100 END";
 
-async function budgetForCosting(client, costingId, { excludeCashRequestId = null } = {}) {
-  const { rows } = await client.query(
-    `SELECT cl.costing_line_id, cl.line_no, cl.label, cl.dictionary_item_id,
-            cl.is_disbursement, cl.container_type_ref_id, cl.qty, cl.unit_cost,
-            di.code  AS item_code,
-            dr.code  AS container_type_code,
-            ROUND(cl.qty * cl.unit_cost, 2)                       AS net,
-            ROUND(${LINE_VAT_SQL}, 2)                             AS vat,
-            ROUND(cl.qty * cl.unit_cost + ${LINE_VAT_SQL}, 2)     AS budget,
-            claims.committed, claims.pending, claims.disbursed
-       FROM costing_line cl
-       LEFT JOIN tax_code       tc ON tc.tax_code_id = cl.tax_code_id
-       LEFT JOIN dictionary_item di ON di.dictionary_item_id = cl.dictionary_item_id
-       LEFT JOIN dictionary_ref  dr ON dr.ref_id = cl.container_type_ref_id
-       LEFT JOIN LATERAL (
+/**
+ * The claim arithmetic against one costing line, as a LATERAL — committed,
+ * pending, and disbursed-apportioned.
+ *
+ * EXPORTED, and parameterised by placeholder number rather than copied, because
+ * MOD-76 Budget Reconciliation asks the same question of the same rows: what has
+ * been promised against this budget line, and what of it has actually been paid.
+ * Two copies of commitment arithmetic disagree within a quarter, and the halves
+ * that drift are exactly the ones nobody reconciles by hand.
+ *
+ * `committing` / `pending` are the `$n` placeholders holding the status arrays.
+ * `exclude` is the placeholder holding a cash request id to leave out (the
+ * worksheet's "how much was available to me" question), or null for callers that
+ * want the whole truth — the reconciliation is one of those, since it reports
+ * what happened rather than what a request may still claim.
+ *
+ * Correlates on `cl.costing_line_id`, so the calling query must expose the
+ * costing line as `cl`.
+ */
+function claimsLateral({ committing, pending, exclude = null }) {
+  return `LEFT JOIN LATERAL (
          SELECT
-           COALESCE(SUM(k.claim) FILTER (WHERE k.status = ANY($2::text[])), 0) AS committed,
-           COALESCE(SUM(k.claim) FILTER (WHERE k.status = ANY($3::text[])), 0) AS pending,
+           COALESCE(SUM(k.claim) FILTER (WHERE k.status = ANY(${committing}::text[])), 0) AS committed,
+           COALESCE(SUM(k.claim) FILTER (WHERE k.status = ANY(${pending}::text[])), 0) AS pending,
            COALESCE(SUM(ROUND(k.claim * k.paid_ratio, 2))
-                    FILTER (WHERE k.status = ANY($2::text[])), 0)              AS disbursed
+                    FILTER (WHERE k.status = ANY(${committing}::text[])), 0)             AS disbursed
            FROM (
              SELECT cr.status,
                     COALESCE(crl.settled_amount,
@@ -136,9 +142,26 @@ async function budgetForCosting(client, costingId, { excludeCashRequestId = null
                FROM cash_request_line crl
                JOIN cash_request cr ON cr.cash_request_id = crl.cash_request_id
               WHERE crl.costing_line_id = cl.costing_line_id
-                AND ($4::uuid IS NULL OR crl.cash_request_id <> $4::uuid)
+                ${exclude ? `AND (${exclude}::uuid IS NULL OR crl.cash_request_id <> ${exclude}::uuid)` : ""}
            ) k
-       ) claims ON TRUE
+       ) claims ON TRUE`;
+}
+
+async function budgetForCosting(client, costingId, { excludeCashRequestId = null } = {}) {
+  const { rows } = await client.query(
+    `SELECT cl.costing_line_id, cl.line_no, cl.label, cl.dictionary_item_id,
+            cl.is_disbursement, cl.container_type_ref_id, cl.qty, cl.unit_cost,
+            di.code  AS item_code,
+            dr.code  AS container_type_code,
+            ROUND(cl.qty * cl.unit_cost, 2)                       AS net,
+            ROUND(${LINE_VAT_SQL}, 2)                             AS vat,
+            ROUND(cl.qty * cl.unit_cost + ${LINE_VAT_SQL}, 2)     AS budget,
+            claims.committed, claims.pending, claims.disbursed
+       FROM costing_line cl
+       LEFT JOIN tax_code       tc ON tc.tax_code_id = cl.tax_code_id
+       LEFT JOIN dictionary_item di ON di.dictionary_item_id = cl.dictionary_item_id
+       LEFT JOIN dictionary_ref  dr ON dr.ref_id = cl.container_type_ref_id
+       ${claimsLateral({ committing: "$2", pending: "$3", exclude: "$4" })}
       WHERE cl.costing_id = $1
       ORDER BY cl.line_no, cl.costing_line_id`,
     [costingId, COMMITTING_STATUSES, PENDING_STATUSES, excludeCashRequestId],
@@ -558,6 +581,9 @@ async function defaultSalesTaxCode(client, { entityId, onDate }) {
 module.exports = {
   insert, get, update, deleteLinesExcept, insertLine, updateLine, listLines, list, kpis,
   claimsOnLines, budgetForCosting, lineIdentities, COMMITTING_STATUSES, PENDING_STATUSES,
+  // Shared with MOD-76 Budget Reconciliation so the budget and the actual are
+  // computed off one definition each (see claimsLateral's header).
+  LINE_VAT_SQL, claimsLateral,
   liveForDossier, gateForDossier, usersInRole, nudgesToday, insertNudge,
   insertSnapshot, latestSnapshot, snapshotCount,
   dossierForCosting, tieredItems, containerTypesOnFile, ratesForItems, defaultSalesTaxCode,

@@ -46,8 +46,31 @@ function sniffContentType(buffer) {
   if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return "image/jpeg";
   // RIFF....WEBP
   if (buffer.slice(0, 4).toString("ascii") === "RIFF" && buffer.slice(8, 12).toString("ascii") === "WEBP") return "image/webp";
+  /*
+   * PK\x03\x04 — a ZIP container, which is what .docx and .xlsx are.
+   *
+   * This is a WEAKER assertion than the four above and the caller has to know
+   * it: those magic numbers identify a format, this one identifies a family.
+   * A renamed .zip sniffs the same, so the guarantee here is "the bytes really
+   * are a ZIP archive", not "the bytes really are a Word document" — and it is
+   * the DECLARED type (checked against the caller's allowedTypes) that decides
+   * which of the two it is stored as.
+   *
+   * Returning "application/zip" rather than guessing between docx and xlsx
+   * keeps that honest: the sniff cannot tell them apart without unzipping, and
+   * pretending otherwise would put a fact in the record that nobody verified.
+   */
+  if (buffer[0] === 0x50 && buffer[1] === 0x4b && buffer[2] === 0x03 && buffer[3] === 0x04) return "application/zip";
   return null;
 }
+
+/** Declared types the ZIP sniff is allowed to satisfy — the OOXML formats,
+ *  which are ZIP containers. Anything else declaring itself docx/xlsx has bytes
+ *  that are not an archive at all and is refused. */
+const ZIP_BACKED = new Set([
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+]);
 
 // Mirrors the document_vault.status CHECK constraint (migration 0340). Guarding
 // here turns a wrong status into a clean 422 instead of a raw 23514 from Postgres
@@ -223,14 +246,24 @@ async function createDocument(client, opts) {
   // sniffs as nothing.
   if (sniff) {
     const actual = sniffContentType(buffer);
-    if (!actual) throw new AppError("BAD_FILE_TYPE", "This file is not a PDF or an image", 422);
-    if (allowedTypes && !allowedTypes.includes(actual)) {
+    if (!actual) throw new AppError("BAD_FILE_TYPE", "This file is not a PDF, an image, or an Office document", 422);
+    /*
+     * A ZIP container satisfies a declared OOXML type and nothing else.
+     *
+     * The sniff can say "these bytes are an archive" but not which Office
+     * format, so the DECLARED type resolves it — and only within whatever the
+     * caller allowed. A caller that did not allow docx/xlsx is unaffected: the
+     * allowedTypes check below still refuses them.
+     */
+    const zipAsDeclared = actual === "application/zip" && ZIP_BACKED.has(contentType);
+    const effective = zipAsDeclared ? contentType : actual;
+    if (allowedTypes && !allowedTypes.includes(effective)) {
       throw new AppError("BAD_FILE_TYPE", `Only ${allowedTypes.join(", ")} are accepted here`, 422);
     }
     // Declared JPEG, actually PNG is harmless mislabelling; declared PDF,
     // actually anything else is not. Refuse the mismatch either way and let the
     // person re-export rather than storing bytes under the wrong name.
-    if (actual !== contentType && !(actual === "image/jpeg" && contentType === "image/jpg")) {
+    if (effective !== contentType && !(effective === "image/jpeg" && contentType === "image/jpg")) {
       throw new AppError("BAD_FILE_TYPE", `This file says it is ${contentType} but its contents are ${actual}`, 422);
     }
   }

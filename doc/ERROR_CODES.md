@@ -19,13 +19,13 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | Alias | Prefer | Raised |
 |---|---|---|
 | `BAD_AMOUNT` | `INVALID_AMOUNT` | 14× |
-| `BAD_STATE` | `BAD_STATUS` | 40× |
+| `BAD_STATE` | `BAD_STATUS` | 38× |
 | `EMPLOYEE_NOT_FOUND` | `NOT_FOUND` | 3× |
 | `FORBIDDEN` | `PERMISSION_DENIED` | 6× |
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 5× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (548)
+## All codes (550)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -112,7 +112,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `BAD_SIGNATURE` | 422 | 1× | — |
 | `BAD_SNAPSHOT_TARGET` | 500 | 1× | — |
 | `BAD_STAGE` | 422 | 2× | — |
-| `BAD_STATE` | 400, 409, 422 | 40× | `BAD_STATUS` |
+| `BAD_STATE` | 400, 409, 422 | 38× | `BAD_STATUS` |
 | `BAD_STATUS` | 422 | 4× | — |
 | `BAD_STORAGE_BUFFER` | 400 | 2× | — |
 | `BAD_STORAGE_KEY` | 400 | 2× | — |
@@ -143,6 +143,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `COLUMN_TAKEN` | 422 | 1× | — |
 | `COMPLIANCE_BLOCKED` | 409 | 4× | — |
 | `CONFIG_MISSING` | 424 | 1× | — |
+| `CONFLICT` | 409 | 1× | — |
 | `CONTAINERS_DISABLED` | 422 | 1× | — |
 | `CONTRACT_TEXT_FROZEN` | 422 | 1× | — |
 | `COSTING_EXISTS` | — | 1× | — |
@@ -185,7 +186,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `EMPTY_IMAGE` | 422 | 1× | — |
 | `EMPTY_MESSAGE` | 422 | 2× | — |
 | `EMPTY_PAGE` | 422 | 1× | — |
-| `EMPTY_RECON` | 422 | 1× | — |
+| `EMPTY_RECONCILIATION` | 422 | 1× | — |
 | `EMPTY_SET` | 422 | 1× | — |
 | `EMPTY_SIGNATURE_MENU` | 422 | 2× | — |
 | `EMPTY_STATEMENT` | 422 | 2× | — |
@@ -308,7 +309,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_EDITABLE` | 400 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 3× | — |
-| `NOT_FOUND` | 404, 422 | 634× | — |
+| `NOT_FOUND` | 404, 422 | 639× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_OPEN` | 409, 422 | 3× | — |
 | `NOT_OPERATIONAL` | 422 | 1× | — |
@@ -333,6 +334,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NO_ACCOUNT` | 500 | 2× | — |
 | `NO_ACTOR` | 401 | 4× | — |
 | `NO_AGING_ENTRY` | 422 | 1× | — |
+| `NO_APPROVED_COSTING` | — | 1× | — |
 | `NO_CANONICAL_PAYLOAD` | 422 | 1× | — |
 | `NO_CATEGORY` | 422 | 2× | — |
 | `NO_CHANGES` | 400 | 1× | — |
@@ -437,7 +439,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `PRESET_NOT_ALLOWED` | 422 | 2× | — |
 | `PRINT_CODE_EXHAUSTED` | 500 | 1× | — |
 | `PRIVILEGED_TARGET` | 403 | 1× | — |
-| `PROOF_REQUIRED` | 422 | 2× | — |
+| `PROOF_REQUIRED` | 422 | 1× | — |
 | `PROTECTED` | 422 | 1× | — |
 | `PROTECTED_ROLE` | 409 | 1× | — |
 | `PROVIDER_NOT_ENABLED` | — | 1× | — |
@@ -453,7 +455,6 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `RECIPIENT_REJECTED` | 422 | 2× | — |
 | `RECONCILIATION_DOES_NOT_BALANCE` | — | 1× | — |
 | `RECONCILIATION_LOCKED` | 409 | 1× | — |
-| `RECON_OPEN` | 409 | 1× | — |
 | `REFERENCED` | 409 | 2× | — |
 | `REF_COLLISION_RETRY_EXHAUSTED` | 500 | 1× | — |
 | `REF_ENTITY_REQUIRED` | 422 | 2× | — |
@@ -490,7 +491,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `SELF_DELETE` | 409 | 1× | — |
 | `SELF_GRANT_FORBIDDEN` | 403 | 1× | — |
 | `SELF_ROLE_CHANGE` | 403 | 1× | — |
-| `SELF_VALIDATE` | 422 | 1× | — |
+| `SELF_SETTLE` | 422 | 1× | — |
 | `SENDER_NOT_AUTHORIZED` | 422 | 2× | — |
 | `SEND_RATE_LIMIT` | — | 2× | — |
 | `SESSION_EXPIRED` | 401 | 1× | — |
@@ -507,6 +508,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `STATEMENT_DOES_NOT_FOOT` | 409 | 1× | — |
 | `STEPUP_REQUIRED` | 403 | 1× | — |
 | `STORAGE_LIMIT` | 413 | 1× | — |
+| `SUBMISSION_BLOCKED` | 422 | 1× | — |
 | `SUPPLIER_NOT_VERIFIED` | — | 1× | — |
 | `SUPPLIER_REQUIRED` | 422 | 1× | — |
 | `SYSTEM_ACCOUNT` | 422 | 1× | — |
@@ -563,7 +565,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `USER_NOT_ACTIVE` | 422 | 1× | — |
 | `USE_APPROVE` | 422 | 1× | — |
 | `VACANCY_CLOSED` | — | 1× | — |
-| `VALIDATION_ERROR` | 422 | 260× | — |
+| `VALIDATION_ERROR` | 422 | 263× | — |
 | `VARIANCE_UNEXPLAINED` | 422 | 1× | — |
 | `VEHICLE_COMMITTED` | — | 1× | — |
 | `VEHICLE_NOT_FOUND` | 404 | 1× | — |

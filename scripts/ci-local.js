@@ -69,6 +69,8 @@ const GATES = [
   { group: "backend", name: "No hardcoded FX literals", cmd: node("scripts/check-currency-literals.js") },
   { group: "backend", name: "jest.mock hoisting", cmd: node("scripts/check-jest-mock-hoisting.js") },
   { group: "backend", name: "API docs in sync", cmd: node("scripts/generate-api-docs.js", "--check") },
+  { group: "backend", name: "Site copy catalogue in sync", cmd: node("scripts/gen/gen-site-copy-catalogue.js", "--check") },
+  { group: "backend", name: "Constraint guards are schema-qualified", cmd: node("scripts/db/check-constraint-guards.js") },
   { group: "backend", name: "Migration reversibility", cmd: node("scripts/db/check-migration-reversibility.js") },
   { group: "backend", name: "Migration idempotency", cmd: node("scripts/db/check-migration-idempotency.js") },
   { group: "backend", name: "Destructive migrations declared", cmd: node("scripts/db/check-destructive-migrations.js") },
@@ -79,6 +81,9 @@ const GATES = [
   { group: "backend", name: "Response-contract drift", cmd: node("scripts/check-response-contract.js") },
   { group: "backend", name: "No new silent catches", cmd: node("scripts/check-silent-catch.js") },
   { group: "backend", name: "citext[] reads are cast", cmd: node("scripts/check-citext-arrays.js") },
+  // Spans the backend AND all three frontends — a date is rendered on every one
+  // of them — so it sits in the backend group, which always runs.
+  { group: "backend", name: "Dates are day-first", cmd: node("scripts/check-date-format.js") },
 
   // ── Frontend job ────────────────────────────────────────────────────────
   { group: "frontend", name: "Lint (client)", cmd: npm("run", "lint", "--prefix", "client") },
@@ -111,11 +116,58 @@ const GATES = [
   { group: "frontend", name: "Lint (platform-console)", cmd: npm("run", "lint", "--prefix", "platform-console") },
   { group: "frontend", name: "Test (platform-console)", cmd: npm("run", "test", "--if-present", "--prefix", "platform-console") },
   { group: "frontend", name: "Build (platform-console)", cmd: npm("run", "build", "--prefix", "platform-console") },
+
+  /*
+   * ── public-web ──────────────────────────────────────────────────────────
+   *
+   * THIS APP WAS NOT IN THIS LIST AT ALL, and it has been in CI's matrix since
+   * it was created — `app: [client, platform-console, public-web]`, plus two
+   * steps of its own (check:i18n, check:bundle). So `npm run ci` reported a
+   * clean run on a branch that changed nothing but public-web and could still
+   * redden `frontend` five different ways.
+   *
+   * That is the exact failure the note above platform-console describes — "a
+   * green local run followed by a red CI on a second app nobody remembered was
+   * in the matrix" — and this file had it for a third app while warning about
+   * the second. Adding it here is what makes the warning true.
+   *
+   * Bundle graph runs AFTER build, deliberately: it reads dist/, and on a
+   * checkout that has never been built it fails with "dist not found", which
+   * looks like a broken gate rather than a missing prerequisite.
+   */
+  { group: "frontend", name: "Lint (public-web)", cmd: npm("run", "lint", "--prefix", "public-web") },
+  { group: "frontend", name: "Motion budget (public-web)", cmd: npm("run", "check:motion", "--prefix", "public-web") },
+  { group: "frontend", name: "i18n (public-web)", cmd: npm("run", "check:i18n", "--prefix", "public-web") },
+  // The asset register (§1.3 / §5.6). Needs no build — it reads the declaration
+  // in src/assets/manifest.ts, because this repository contains no images and
+  // must not (§4.1).
+  { group: "frontend", name: "Assets (public-web)", cmd: npm("run", "check:assets", "--prefix", "public-web") },
+  // The metric-matched fallback faces are DERIVED from the shipped .woff2
+  // files, so a @fontsource bump silently invalidates them — and a stale
+  // fallback is a reflow nobody sees in review. Guide O-12.
+  { group: "frontend", name: "Font fallbacks (public-web)", cmd: npm("run", "check:fonts-fallback", "--prefix", "public-web") },
+  // The raw-palette gate, run against public-web's tree by the ONE copy in
+  // client/scripts. Raw palette colours are what break white-labelling, and
+  // this app is the surface a tenant is judged by.
+  { group: "frontend", name: "Palette (public-web)", cmd: npm("run", "check:palette", "--prefix", "public-web") },
+  // The contrast gate, likewise the one copy. Ported in PR 4 (guide O-9): it is
+  // the gate that computes F-15's 3.13:1 CTA, and pointing it at this app found
+  // three more live AA failures — `.st-blue`/`.st-info` at 2.81:1 on dark
+  // (a dark `--brand-blue-ink` this app never got) and `.st-orange` at 4.14:1
+  // on light. Every one of them had shipped.
+  { group: "frontend", name: "Contrast (public-web)", cmd: npm("run", "check:contrast", "--prefix", "public-web") },
+  { group: "frontend", name: "Test (public-web)", cmd: npm("run", "test", "--if-present", "--prefix", "public-web") },
+  { group: "frontend", name: "Build (public-web)", cmd: npm("run", "build", "--prefix", "public-web") },
+  { group: "frontend", name: "Bundle graph (public-web)", cmd: npm("run", "check:bundle", "--prefix", "public-web") },
 ];
 
 /** Gates this cannot honestly run, and what each one needs. Printed, not hidden. */
 const SKIPPED = [
   ["Provisioning + migration replay", "a live Postgres", "node scripts/db/migrate-platform.js && node scripts/db/provision-tenant.js --slug=citenant"],
+  // Needs a PROVISIONED tenant, not just a server: the defect it catches is a
+  // property of live and sandbox being migrated in that order, so it has
+  // nothing to compare until both schemas exist.
+  ["live/sandbox schema parity", "a provisioned tenant", "node scripts/db/check-schema-parity.js --slug=citenant"],
   ["Integration suites", "a live Postgres + seeded tenant", "RUN_DB_TESTS=1 npx jest tests/integration"],
   ["PgBouncer pooling", "PgBouncer", "see .github/workflows/ci.yaml — 'Stand up PgBouncer'"],
   ["Desktop layout gate (e2e)", "a Chromium download", "npm run e2e:install --prefix client && npm run test:e2e --prefix client"],

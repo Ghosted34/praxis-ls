@@ -108,6 +108,19 @@ export function RecipientField({
   const [chips, setChips] = React.useState<string[]>(() => toChips(value));
   const [term, setTerm] = React.useState("");
   const inputRef = React.useRef<HTMLInputElement | null>(null);
+  // The deferred blur-close below outlives the element that scheduled it if
+  // nothing cancels it: 150ms later it calls setOpen on a tree that may be
+  // gone. In the app that is a stray state update on an unmounted component;
+  // under the test runner the environment can be torn down first, and the
+  // timer then lands in a world with no `window` at all — which is how it
+  // surfaced, as a suite failure blamed on whichever file happened to run last.
+  const blurCloseRef = React.useRef<number | null>(null);
+  React.useEffect(
+    () => () => {
+      if (blurCloseRef.current !== null) window.clearTimeout(blurCloseRef.current);
+    },
+    [],
+  );
 
   /* The row we last reported. A `value` that differs from it came from the
    * parent — a draft reopened into this field, a prefill — and re-seeds the
@@ -270,7 +283,11 @@ export function RecipientField({
           // is an address the next chip check never looked at.
           onBlur={() => {
             if (term.trim()) commit(term);
-            setTimeout(() => setOpen(false), 150);
+            if (blurCloseRef.current !== null) window.clearTimeout(blurCloseRef.current);
+            blurCloseRef.current = window.setTimeout(() => {
+              blurCloseRef.current = null;
+              setOpen(false);
+            }, 150);
           }}
           onKeyDown={(e) => {
             if (e.key === "Backspace" && !term && chips.length) {

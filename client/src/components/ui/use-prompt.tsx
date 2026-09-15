@@ -137,7 +137,7 @@ export function usePrompt(): [
             type="button"
             onClick={submit}
             disabled={!!error}
-            className="h-9 rounded-md bg-primary px-3 text-sm font-semibold text-white transition-opacity disabled:opacity-50"
+            className="h-9 rounded-md bg-primary px-3 text-sm font-semibold text-primary-foreground transition-opacity disabled:opacity-50"
           >
             {state.confirmLabel ?? "Save"}
           </button>

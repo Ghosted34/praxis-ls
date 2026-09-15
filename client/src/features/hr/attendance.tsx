@@ -8,6 +8,7 @@ import { pageShell } from "@/lib/layout";
 import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
+import { DateField } from "@/components/ui/date-field";
 import { Input } from "@/components/ui/input";
 import { Modal, Field } from "@/components/ui/modal";
 import { Pill } from "@/components/ui/pill";
@@ -838,10 +839,9 @@ export function AttendancePage() {
         <>
           <div className="mb-4 flex items-center gap-3">
             <span className="micro">{tr("Day")}</span>
-            <Input
-              type="date"
+            <DateField
               value={date}
-              onChange={(e) => setDate(e.target.value)}
+              onChange={setDate}
               className="w-auto"
             />
           </div>

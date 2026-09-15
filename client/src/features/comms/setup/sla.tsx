@@ -27,6 +27,7 @@
  */
 import * as React from "react";
 import { Button } from "@/components/ui/button";
+import { DateField } from "@/components/ui/date-field";
 import { Input } from "@/components/ui/input";
 import { Field, Modal, Select } from "@/components/ui/modal";
 import { Callout } from "@/components/ui/callout";
@@ -252,11 +253,10 @@ function Holidays({
         ))}
       </ul>
       <div className="flex flex-wrap items-end gap-2">
-        <Input
-          type="date"
+        <DateField
           value={date}
           aria-label={tr("Holiday date")}
-          onChange={(e) => setDate(e.target.value)}
+          onChange={setDate}
           className="h-8 w-40 text-xs"
         />
         <Input

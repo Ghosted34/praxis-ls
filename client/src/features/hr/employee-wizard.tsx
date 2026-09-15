@@ -879,9 +879,18 @@ function DocumentsStep({
   missing,
   isDriver,
   licenceGap,
+  scanProgress,
+  scanDone,
+  onScanChanged,
 }: {
   docs: DraftDoc[];
   setDocs: (rows: DraftDoc[]) => void;
+  /** Every scan in this step goes up inside ONE create-employee request, so
+   *  this is that request's percentage, shared by each row carrying a file. */
+  scanProgress: number | null;
+  scanDone: boolean;
+  /** Clears the shared percentage when a row's file changes. */
+  onScanChanged: () => void;
   provision: boolean;
   /** Test mode: logins are live-only, so provisioning is not offered. */
   inSandbox: boolean;
@@ -961,7 +970,16 @@ function DocumentsStep({
             </div>
             <FileDrop
               file={d.file}
-              onPick={(file) => setRow(i, { file })}
+              /* Every scan in this wizard travels inside ONE create-employee
+                 request, so each row that carries a file reports that request's
+                 percentage. Per-row numbers would be invented: there is no
+                 per-row upload to measure. */
+              uploadProgress={d.file ? scanProgress : null}
+              uploadSuccess={Boolean(d.file) && scanDone}
+              onPick={(file) => {
+                onScanChanged();
+                setRow(i, { file });
+              }}
               accept="image/png,image/jpeg,image/webp,application/pdf"
               hint={tr("PNG, JPG, WebP or PDF — up to 6 MB.")}
               error={fileTooLarge(d.file)}
@@ -1109,6 +1127,9 @@ export function EmployeeWizard({
   // employee has nothing in the live schema to hang a login on.
   const inSandbox = tokenStore.getEnv() !== "live";
   const [busy, setBusy] = React.useState(false);
+  /** Shared by every document row: the scans go up inside one request. */
+  const [scanProgress, setScanProgress] = React.useState<number | null>(null);
+  const [scanDone, setScanDone] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
   const { rows: entities } = useList<{
@@ -1170,12 +1191,22 @@ export function EmployeeWizard({
     setBusy(true);
     setError(null);
     try {
-      const created = await api.createEmployee({
-        ...payload,
-        full_name: f.full_name.trim(),
-        documents: await draftDocsToPayload(docs),
-        allowances: draftAllowancesToPayload(allowances),
-      });
+      const documents = await draftDocsToPayload(docs);
+      const carriesScan = documents.some((d) => d.file_data_url);
+      if (carriesScan) setScanProgress(0);
+      const created = await api.createEmployee(
+        {
+          ...payload,
+          full_name: f.full_name.trim(),
+          documents,
+          allowances: draftAllowancesToPayload(allowances),
+        },
+        carriesScan ? setScanProgress : undefined,
+      );
+      if (carriesScan) {
+        setScanProgress(100);
+        setScanDone(true);
+      }
       onSaved(created, provision && Boolean(payload.email) && !inSandbox);
       onClose();
     } catch (err) {
@@ -1267,6 +1298,12 @@ export function EmployeeWizard({
             missing={ready.missing}
             isDriver={f.is_driver}
             licenceGap={licenceGap}
+            scanProgress={scanProgress}
+            scanDone={scanDone}
+            onScanChanged={() => {
+              setScanProgress(null);
+              setScanDone(false);
+            }}
           />
         )}
         {error && <ErrorState message={error} />}

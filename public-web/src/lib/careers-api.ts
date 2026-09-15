@@ -11,7 +11,7 @@
  * careers link is this workspace's own domain and carries no slug.
  */
 import { publicApi, publicGet } from "./api";
-import { currentLocale, tStatic } from "./i18n";
+import { currentLocale } from "./i18n";
 
 /** What the server chooses to make public — an allow-list built in
  *  `careers.service`, never a database row. Anything absent here is absent on
@@ -81,36 +81,55 @@ export const apply = (token: string, body: ApplyInput) =>
     body,
   });
 
-/** Matches CV_MAX_BYTES in careers.service. Checked here too so an 8 MB scan is
- *  refused before it is base64-encoded and pushed over a phone connection. */
-export const CV_MAX_BYTES = 8 * 1024 * 1024;
-export const CV_ACCEPT = "application/pdf,image/png,image/jpeg";
+/* ── The page when nothing is open (13792) ──────────────────────────────────*/
 
-/** Read a picked file as a base64 data URL — the shape the vault upload path
- *  takes. Rejects with a sentence the applicant can act on. */
-export function fileToDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    if (file.size > CV_MAX_BYTES) {
-      return reject(
-        new Error(
-          tStatic("errors.fileTooLarge", {
-            size: (file.size / 1024 / 1024).toFixed(1),
-            limit: CV_MAX_BYTES / 1024 / 1024,
-          }),
-        ),
-      );
-    }
-    const reader = new FileReader();
-    reader.onerror = () =>
-      reject(
-        new Error(
-          tStatic("errors.fileUnreadable"),
-        ),
-      );
-    reader.onload = () => resolve(String(reader.result));
-    reader.readAsDataURL(file);
-  });
-}
+/**
+ * What this tenant's careers page is allowed to offer.
+ *
+ * Two booleans and a tag — the server narrows `site_careers` to exactly this on
+ * the way out, so there is no stamp and no `updated_by` here to leak.
+ */
+export type CareersSettings = {
+  open_applications: boolean;
+  alerts_enabled: boolean;
+  culture_tag: string | null;
+};
+
+/**
+ * Never rejects.
+ *
+ * A tenant without the `website` package, a tenant who has turned both switches
+ * off, and a network failure are three facts server-side and one fact on this
+ * page: there is nothing on offer, so the not-hiring band shows its contact
+ * link. Making the caller distinguish them would give a marketing band a
+ * decision it should not be making — the same rule `getSitePage` states.
+ */
+export const getSettings = (): Promise<CareersSettings> =>
+  publicGet<CareersSettings>("/careers/settings/public").catch(() => ({
+    open_applications: false,
+    alerts_enabled: false,
+    culture_tag: null,
+  }));
+
+/** An application with no role attached. Same body as `apply`, same receipt —
+ *  the candidate did the same work and is owed the same reference. */
+export const applyOpen = (body: ApplyInput) =>
+  publicApi<ApplyResult>("/careers/open-application", { method: "POST", body });
+
+export type AlertInput = { email: string; name?: string; locale?: "en" | "fr" };
+
+/** `{ received: true }` whether or not the address was already on the list —
+ *  see the service note on why saying otherwise would make this an oracle. */
+export const subscribeAlert = (body: AlertInput) =>
+  publicApi<{ received: boolean }>("/careers/alerts", { method: "POST", body });
+
+/** A POST and not a GET, though it is reached from a link in an email: a mail
+ *  client that prefetches links would unsubscribe somebody who never clicked. */
+export const unsubscribeAlert = (token: string) =>
+  publicApi<{ unsubscribed: boolean }>(
+    `/careers/alerts/unsubscribe/${encodeURIComponent(token)}`,
+    { method: "POST", body: {} },
+  );
 
 /**
  * Salary band as one human phrase, or null when the role does not publish one.

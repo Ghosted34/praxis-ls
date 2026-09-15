@@ -13,6 +13,7 @@ import { tr } from "@/lib/i18n";
 import { HubTabs, HubCrumb } from "@/components/tabbed-hub";
 import { ScreenAi } from "@/components/screen-ai";
 import { Button } from "@/components/ui/button";
+import { DateField } from "@/components/ui/date-field";
 import { FormButtons } from "@/components/ui/form-buttons";
 import { DocButton } from "@/components/doc-button";
 import { DictionaryItemSelect } from "@/components/catalogue-select";
@@ -205,7 +206,7 @@ function PoForm({
             </Select>
           </Field>
           <Field label={tr("Delivery date")}>
-            <Input type="date" value={f.delivery_on} onChange={(e) => set("delivery_on", e.target.value)} />
+            <DateField value={f.delivery_on} onChange={(iso) => set("delivery_on", iso)} />
           </Field>
           <Field label={tr("Delivery location")}>
             <Input value={f.delivery_location} onChange={(e) => set("delivery_location", e.target.value)} placeholder="Douala HQ" />
@@ -406,10 +407,9 @@ function PayForm({
             />
           </Field>
           <Field label={tr("Paid on")}>
-            <Input
-              type="date"
+            <DateField
               value={f.paid_on}
-              onChange={(e) => set("paid_on", e.target.value)}
+              onChange={(iso) => set("paid_on", iso)}
             />
           </Field>
           <Field label={tr("Note")} className="sm:col-span-2">

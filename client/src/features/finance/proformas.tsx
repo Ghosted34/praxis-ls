@@ -13,6 +13,7 @@ import { errMsg } from "@/lib/use-resource";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
 import { HubCrumb } from "@/components/tabbed-hub";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
+import { DateField } from "@/components/ui/date-field";
 import { ErrorState } from "@/components/ui/states";
 import { Button } from "@/components/ui/button";
 import { DocButton } from "@/components/doc-button";
@@ -163,10 +164,9 @@ function AdvancePaymentForm({
             </Select>
           </Field>
           <Field label={tr("Entry date")} required>
-            <Input
-              type="date"
+            <DateField
               value={entryDate}
-              onChange={(e) => setEntryDate(e.target.value)}
+              onChange={setEntryDate}
             />
           </Field>
           <Field label={tr("Source document ref")} required>

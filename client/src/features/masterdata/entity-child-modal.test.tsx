@@ -162,6 +162,40 @@ const routes = {
 const open = () =>
   renderScreen(<EntityDossier entityId="e1" onEdit={() => {}} />, { routes });
 
+/**
+ * Capture what the dossier writes, while letting its reads reach the fixtures.
+ *
+ * POST as well as PATCH: the create and the update paths build their body from
+ * the same helper and disagree deliberately about what an empty control means,
+ * so both have to be observable.
+ */
+function patchSpy() {
+  const bodies: Record<string, unknown>[] = [];
+  const readThrough = apiClient.tenant;
+  const spy = vi.spyOn(apiClient, "tenant").mockImplementation((async (
+    path: string,
+    init?: { method?: string; body?: Record<string, unknown> },
+  ) => {
+    const method = init?.method;
+    if (method !== "PATCH" && method !== "POST")
+      return readThrough(path, init as never);
+    if (init?.body) bodies.push(init.body);
+    return {};
+  }) as typeof apiClient.tenant);
+  return { bodies, restore: () => spy.mockRestore() };
+}
+
+/** Open the dossier on the one registration row and press its Edit button. */
+async function openRegistrationEdit(user: ReturnType<typeof userEvent.setup>) {
+  open();
+  await user.click(
+    await screen.findByRole("button", { name: /identity & registrations/i }),
+  );
+  await user.click(
+    (await screen.findAllByRole("button", { name: /^edit$/i }))[0],
+  );
+}
+
 describe("Master data · entity nested modals", () => {
   it("renders corporate statutory dates consistently as dd/mm/yyyy", async () => {
     open();
@@ -318,6 +352,81 @@ describe("Master data · entity nested modals", () => {
       expect(sent[0].expires_on).toBe("2026-08-14");
     } finally {
       spy.mockRestore();
+    }
+  });
+
+  /**
+   * The reported defect: an expiry entered by mistake could not be taken back.
+   *
+   * "I can't get to change the dates of RCCM. I made a mistake on expiry. Now I
+   * edit and save and nothing happens and we remain on expired." Clearing the
+   * box produced `""`, which the save filtered out before building the body —
+   * so the PATCH carried no `expires_on` key, the API had nothing to SET, and
+   * the request answered 200 with the row untouched. No error, no change, and
+   * an "Expired" banner that could not be cleared.
+   */
+  it("clearing a date sends null, so the column is actually emptied", async () => {
+    const user = userEvent.setup();
+    const sent = patchSpy();
+    try {
+      await openRegistrationEdit(user);
+      await user.clear(await screen.findByLabelText("Expires on"));
+      await user.click(await screen.findByRole("button", { name: /^save$/i }));
+
+      await waitFor(() => expect(sent.bodies.length).toBeGreaterThan(0));
+      // Not absent — `null`. An omitted key leaves the old value in place,
+      // which is precisely what the operator was fighting.
+      expect(sent.bodies[0]).toHaveProperty("expires_on", null);
+      // Nothing else on the row was disturbed on its way past.
+      expect(sent.bodies[0].number).toBe("RC/DLA/2021/B/206");
+      expect(sent.bodies[0].issued_on).toBe("2021-09-21");
+    } finally {
+      sent.restore();
+    }
+  });
+
+  it("correcting a date sends the corrected date", async () => {
+    const user = userEvent.setup();
+    const sent = patchSpy();
+    try {
+      await openRegistrationEdit(user);
+      const expires = await screen.findByLabelText("Expires on");
+      await user.clear(expires);
+      // Typed day-first, as the control reads; stored and sent as ISO.
+      await user.type(expires, "14082027");
+      await user.click(await screen.findByRole("button", { name: /^save$/i }));
+
+      await waitFor(() => expect(sent.bodies.length).toBeGreaterThan(0));
+      expect(sent.bodies[0].expires_on).toBe("2027-08-14");
+    } finally {
+      sent.restore();
+    }
+  });
+
+  it("a CREATE still omits the boxes nobody filled in", async () => {
+    // The other half of the contract. On a new row an empty control means "not
+    // filled in", and sending a null for it would write blanks over the column
+    // defaults and the 0515 triggers that derive them.
+    const user = userEvent.setup();
+    const sent = patchSpy();
+    try {
+      open();
+      await user.click(
+        await screen.findByRole("button", {
+          name: /identity & registrations/i,
+        }),
+      );
+      await user.click(
+        await screen.findByRole("button", { name: /add registration/i }),
+      );
+      // `/^Type/` rather than "Type": the field's hint sits inside the label.
+      await user.type(await screen.findByLabelText(/^Type/), "NIU");
+      await user.click(await screen.findByRole("button", { name: /^save$/i }));
+
+      await waitFor(() => expect(sent.bodies.length).toBeGreaterThan(0));
+      expect(sent.bodies[0]).toEqual({ kind: "NIU" });
+    } finally {
+      sent.restore();
     }
   });
 

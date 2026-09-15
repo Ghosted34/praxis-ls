@@ -26,6 +26,7 @@
  */
 import * as React from "react";
 import { Button } from "@/components/ui/button";
+import { DateField } from "@/components/ui/date-field";
 import { FormButtons } from "@/components/ui/form-buttons";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -303,10 +304,9 @@ function RetireForm({
             </Field>
           )}
           <Field label={tr("Date")} required>
-            <Input
-              type="date"
+            <DateField
               value={f.entry_date}
-              onChange={(e) => set("entry_date", e.target.value)}
+              onChange={(iso) => set("entry_date", iso)}
             />
           </Field>
           {f.kind === "RECEIPT" && (
@@ -473,10 +473,9 @@ function WriteOffForm({
             />
           </Field>
           <Field label={tr("Date")} required>
-            <Input
-              type="date"
+            <DateField
               value={f.entry_date}
-              onChange={(e) => set("entry_date", e.target.value)}
+              onChange={(iso) => set("entry_date", iso)}
             />
           </Field>
         </div>
@@ -549,10 +548,9 @@ function UnageForm({
       <form className="space-y-4" onSubmit={submit}>
         <div className="grid gap-4 lg:grid-cols-2">
           <Field label={tr("Date")} required>
-            <Input
-              type="date"
+            <DateField
               value={f.entry_date}
-              onChange={(e) => set("entry_date", e.target.value)}
+              onChange={(iso) => set("entry_date", iso)}
             />
           </Field>
         </div>

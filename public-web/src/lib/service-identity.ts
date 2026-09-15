@@ -38,6 +38,20 @@ import type { IconComponent } from "@/components/ui/icon-tile";
  * `--mode-air`), so the colours read as four distinct lines rather than as a
  * legend a reader is expected to decode.
  *
+ * ── WHERE THIS IS GOING, SO THE NEXT READER IS NOT SURPRISED ──────────────
+ *
+ * Position stays the fallback and stays correct. What changes in PR 4 of
+ * doc/PUBLIC_WEB_EXPERIENCE_GUIDE.md is that where a tenant TELLS us a
+ * service's freight mode, we use it, and the palette becomes semantic on that
+ * card — sea freight actually drawn in `--mode-sea`. The two paths coexist
+ * deliberately: a fact the tenant supplied is worth more than a position, and a
+ * position is worth more than a guess at what somebody else's words mean.
+ *
+ * Note also that the mode VALUES are no longer fixed per install: since the
+ * palette engine landed they are harmonised toward the tenant's own colours,
+ * hue held within ten degrees of its anchor. Sea is still green. See
+ * packages/shared/design/palette.js and the guide's §1.4.
+ *
  * ── AND THEREFORE ORANGE IS STILL THE ONLY THING THAT LOOKS CLICKABLE ─────
  *
  * Mode colours are used for the card's top bar, its icon tile and its panel —
@@ -93,6 +107,51 @@ export function serviceIdentity(index: number): ServiceIdentity {
  *  call site paints with this, so a tenant re-brand that redefines `--mode-sea`
  *  repaints the bar, the tile and the panel together. */
 export const modeColor = (mode: FreightMode): string => `rgb(var(--mode-${mode}))`;
+
+/**
+ * ── MODE AS SEMANTICS, AND MODE AS POSITION (§8.2) ────────────────────────
+ *
+ * There are two different things called "mode" in this file and the guide asks
+ * for the difference to be written down rather than inferred from a call site.
+ *
+ *   SEMANTIC. The tenant classified the file — `service_type.mode` is `SEA` on a
+ *   sea freight file because somebody at the desk said so. The colour then MEANS
+ *   the mode: green is sea, everywhere, and a visitor who learns that on the
+ *   track page reads it correctly on the services grid. This is the path below.
+ *
+ *   POSITIONAL. Nothing classified it, so `serviceIdentity(index)` deals a
+ *   colour, a glyph and a code off a fixed table by ORDER. The colour then means
+ *   nothing except "not the same as its neighbour" — which is a real job on a
+ *   grid of eleven services, and a dishonest one anywhere a reader might take it
+ *   for a fact. `services-page.tsx` indexes across the whole page for exactly
+ *   that reason: consistency within one view, no claim beyond it.
+ *
+ * The rule that keeps the two apart: a positional colour never appears where the
+ * page states a fact about a specific shipment. Which is why this function
+ * returns NULL rather than a fallback mode — an unclassified file is not
+ * secretly a sea file, and the caller paints with the tenant's own accent
+ * instead. `modeColor` cannot express that, because its parameter type has no
+ * "unknown".
+ *
+ * The return is a `var()` reference to a TRIPLET, not a colour, so a caller can
+ * compose it: `rgb(var(--mode) / 0.16)` for a wash, `rgb(var(--mode))` for a
+ * line. Assign it to `--mode` on a container and everything inside is lit by
+ * one declaration.
+ */
+const API_MODE_TOKEN: Record<string, string> = {
+  SEA: "var(--mode-sea)",
+  AIR: "var(--mode-air)",
+  ROAD: "var(--mode-road)",
+  RAIL: "var(--mode-rail)",
+  // WAREHOUSE, CUSTOMS and OTHER are deliberately absent. They are real modes
+  // and they have no lane colour: the four hues are the four ways cargo MOVES
+  // (§1.4's anchor constants), and a customs file does not move. Painting one
+  // of them road-orange would state a leg the file does not have.
+};
+
+export function modeToken(mode: string | null | undefined): string | null {
+  return API_MODE_TOKEN[String(mode || "").toUpperCase()] || null;
+}
 
 /**
  * The tenant's own choice, which outranks the positional palette above.

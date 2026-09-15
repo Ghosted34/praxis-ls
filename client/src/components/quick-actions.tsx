@@ -1,41 +1,42 @@
 /**
- * Quick actions — the DESKTOP home for what the floating cluster carries on
- * touch (Phase 5, audit F9).
+ * Quick actions — the ONE list of destinations the surfaces that offer them
+ * share: `<FloatingActions>` on touch and `<IconRail>`'s tail on desktop.
  *
- * WHAT WAS WRONG WITH THE FAB ON DESKTOP. F9 names it precisely: "a draggable
- * floating cluster is a touch idiom; on desktop it covers the bottom-right of
- * every table and duplicates the copilot entry point that already exists." All
- * three parts were true and the first is the expensive one — the cluster sits at
- * `fixed bottom-24 right-5`, which on a list screen is exactly where the last
- * rows and the pager are. It also persisted its dragged position to
- * localStorage, so a user who once moved it out of the way on one screen had
- * moved it INTO the way on another, permanently, with no way back short of
- * clearing site data.
+ * WHAT WAS WRONG WITH THE FAB ON DESKTOP. Phase 5 audit F9 names it precisely:
+ * "a draggable floating cluster is a touch idiom; on desktop it covers the
+ * bottom-right of every table and duplicates the copilot entry point that
+ * already exists." All three parts were true and the first is the expensive
+ * one — the cluster sits at `fixed bottom-24 right-5`, which on a list screen
+ * is exactly where the last rows and the pager are. It also persisted its
+ * dragged position to localStorage, so a user who once moved it out of the way
+ * on one screen had moved it INTO the way on another, permanently, with no way
+ * back short of clearing site data.
  *
  * Being draggable was the workaround for overlapping content. The fix is not to
  * make the overlap movable; it is to stop overlapping.
  *
- * WHAT REPLACES IT. A menu button in the top bar, next to the other global
- * controls. It occupies chrome the app already reserves, so it covers nothing.
- * It is a Radix `DropdownMenu`, so arrow keys, Home/End, type-ahead, Escape and
- * the focus cycle come from the library rather than from the nothing the old
- * cluster had.
+ * WHAT THIS FILE IS NOW. A hook, and nothing else. It used to also export a
+ * `QuickActionsMenu` — a burst-icon dropdown wedged into the title bar — and
+ * that is gone at every width, deliberately:
  *
- * THE BADGE IS NOT DECORATION. The FAB carried the unread-messages count, and
- * the top bar deliberately does NOT duplicate Messages ("Messages lives on the
- * Smart Comms floating pin" — app-shell.tsx). So removing the FAB from desktop
- * would have removed the only unread-messages indicator a desktop user has. The
- * trigger carries it instead; that is why this is a badge and not just an icon.
+ *   - Its glyph named nothing. Every other control in that strip says what it
+ *     is (search, clock, environment, language, theme, alerts, account); this
+ *     one was a menu you had to open to discover.
+ *   - It put Messages in the title bar while the icon rail already carried
+ *     Messages, so one destination had two chrome homes and the unread count
+ *     had to be duplicated between them to stay honest.
+ *   - The badge it carried is where it should have been all along: on the
+ *     rail's own Messages cell (`icon-rail.tsx`), which is the affordance a
+ *     desktop user actually presses to read them.
+ *
+ * So the list lives here and the two surfaces render it. Do not add a third in
+ * the header.
  */
 import * as React from "react";
 import { useNavigate } from "react-router-dom";
 import { useAiEnabled } from "@/components/ai-actions";
 import { useCanOpenRoute } from "@/lib/route-access";
-import {
-  DropdownMenu,
-  DropdownItem,
-  DropdownLabel,
-} from "@/components/ui/dropdown-menu";
+import { openRaiseTicket } from "@/features/support/raise-ticket-bus";
 
 type IP = React.SVGProps<SVGSVGElement>;
 const s = (p: IP) => ({
@@ -68,10 +69,10 @@ const HelpIcon = (p: IP) => (
     <circle cx="12" cy="17" r="0.6" fill="currentColor" />
   </svg>
 );
-const BurstIcon = (p: IP) => (
-  <svg {...s(p)} width={18} height={18}>
-    <path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5L18 18M18 6l-2.5 2.5M8.5 15.5L6 18" />
-    <circle cx="12" cy="12" r="2.5" />
+const FeedbackIcon = (p: IP) => (
+  <svg {...s(p)}>
+    <path d="M22 2L11 13" />
+    <path d="M22 2l-7 20-4-9-9-4 20-7z" />
   </svg>
 );
 
@@ -84,17 +85,16 @@ export type QuickAction = {
 
 /**
  * The destinations both surfaces offer. Shared so the touch cluster and the
- * desktop menu cannot drift into offering different things — which is how the
- * app ended up with three icon sets and four card recipes (F6).
+ * icon rail cannot drift into offering different things — which is how the app
+ * ended up with three icon sets and four card recipes (F6).
  *
  * TWO DIFFERENT GATES, and they are not interchangeable. `aiEnabled` is the
  * TENANT's feature flag — AI is provisioned or it is not — while `canOpen` is
  * this USER's grant. Messages is the case that needs the second one: Smart
- * Comms is a module like any other, and this menu appears in the title bar, in
- * the icon rail and in the touch cluster, so an ungated entry here is three
- * places offering a 403. Help is deliberately ungated in the registry and
- * survives every filter, which is right — the way out must not be behind a
- * grant.
+ * Comms is a module like any other, and this list renders in the icon rail and
+ * in the touch cluster, so an ungated entry here is two places offering a 403.
+ * Help is deliberately ungated in the registry and survives every filter,
+ * which is right — the way out must not be behind a grant.
  */
 export function useQuickActions(onDone?: () => void): QuickAction[] {
   const aiEnabled = useAiEnabled();
@@ -104,6 +104,22 @@ export function useQuickActions(onDone?: () => void): QuickAction[] {
   return React.useMemo(() => {
     const done = () => onDone?.();
     const list: QuickAction[] = [];
+    // Feedback first, deliberately: the rail renders this list top-to-bottom,
+    // so this sits ABOVE the Praxis AI icon — the position chosen for the
+    // revamp, because reaching the vendor is the one action that must never
+    // be two taps deep. Ungated like Help (not Messages, not AI): AI is a
+    // tenant feature flag and Messages needs a /comms grant, but reaching
+    // Praxis for help is ungated server-side too (feature:null), so an
+    // ungated entry here is the honest shape.
+    list.push({
+      key: "feedback",
+      label: "Feedback",
+      Icon: FeedbackIcon,
+      onSelect: () => {
+        openRaiseTicket();
+        done();
+      },
+    });
     if (aiEnabled) {
       list.push({
         key: "ai",
@@ -139,50 +155,4 @@ export function useQuickActions(onDone?: () => void): QuickAction[] {
     });
     return list;
   }, [aiEnabled, canOpen, navigate, onDone]);
-}
-
-/** The top-bar menu. Desktop only — `md:hidden` keeps the FAB below that. */
-export function QuickActionsMenu({ badge = 0 }: { badge?: number }) {
-  const actions = useQuickActions();
-
-  return (
-    <DropdownMenu
-      trigger={
-        <button
-          type="button"
-          // Named including the count, because a badge is a picture: a screen
-          // reader user should hear "Quick actions, 3 unread" from the button
-          // itself rather than have to open it to find out.
-          aria-label={
-            badge > 0 ? `Quick actions, ${badge} unread` : "Quick actions"
-          }
-          className="relative flex h-9 w-9 items-center justify-center rounded-md border border-input text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-        >
-          <BurstIcon />
-          {badge > 0 && (
-            <span
-              aria-hidden
-              className="absolute -right-1 -top-1 grid h-4 min-w-[16px] place-items-center rounded-full bg-brand-blue px-1 text-[10px] font-bold text-white ring-2 ring-background"
-            >
-              {badge > 99 ? "99+" : badge}
-            </span>
-          )}
-        </button>
-      }
-    >
-      <DropdownLabel>
-        <span className="micro">Quick actions</span>
-      </DropdownLabel>
-      {actions.map((a) => (
-        <DropdownItem key={a.key} onSelect={a.onSelect}>
-          <a.Icon /> {a.label}
-        </DropdownItem>
-      ))}
-      {/* The punch used to live here as a menu item. It now has its own chip in
-          the title bar, two controls to the left of this trigger — keeping both
-          would put two clocks side by side in the same strip, one of them
-          invisible until opened. Below `sm`, where the chip is hidden, the
-          touch cluster's <ClockPunch> is the surface. */}
-    </DropdownMenu>
-  );
 }

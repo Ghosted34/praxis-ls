@@ -3,7 +3,7 @@
  * Notifications/Support) and the outbound send log. Each section sends from its
  * own verified identity; this surfaces what went out and its delivery state.
  */
-import { tenant } from "./api-client";
+import { tenant, tenantWithProgress } from "./api-client";
 // The workflow/security half of the mail API. Imported for the types the core
 // thread and message shapes reference; re-exported wholesale at the foot.
 import type { AuthVerdict, Visibility, WorkStatus } from "./mail-api-work";
@@ -1059,15 +1059,23 @@ export const discardDraft = (id: string) =>
 /* Attachments */
 export const draftAttachments = (draftId: string) =>
   tenant<AttachmentTray>(`/mail/drafts/${draftId}/attachments`);
-export const uploadAttachment = (body: {
-  email_draft_id: string;
-  filename: string;
-  data_url: string;
-  disposition?: "attachment" | "inline";
-  content_id?: string;
-}) => tenant<MailAttachment & { total_bytes: number; offer_secure_link: boolean }>(
-  "/mail/attachments/upload", { method: "POST", body: body },
-);
+export const uploadAttachment = (
+  body: {
+    email_draft_id: string;
+    filename: string;
+    data_url: string;
+    disposition?: "attachment" | "inline";
+    content_id?: string;
+  },
+  onProgress?: (percent: number) => void,
+) =>
+  onProgress
+    ? tenantWithProgress<
+        MailAttachment & { total_bytes: number; offer_secure_link: boolean }
+      >("/mail/attachments/upload", body, onProgress)
+    : tenant<
+        MailAttachment & { total_bytes: number; offer_secure_link: boolean }
+      >("/mail/attachments/upload", { method: "POST", body });
 export const attachFromVault = (body: {
   email_draft_id: string;
   vault_id: string;
@@ -1257,6 +1265,68 @@ export type SignatureCard = {
 /** The card exactly as it will be rendered to PNG. See signature.service.cardPreview. */
 export const getSignatureCard = (lang?: string) =>
   tenant<SignatureCard>(`/mail/signature/card${lang ? `?lang=${lang}` : ""}`);
+
+/**
+ * A brand colour, by NAME. These are the five colour fields Appearance stores,
+ * and they are the only values the card's role mapping accepts — there is no
+ * hex on this wire in either direction that was not resolved from one of them.
+ */
+export type BrandColorKey =
+  | "primary"
+  | "secondary"
+  | "accent"
+  | "accentDeep"
+  | "accentGlow";
+
+/** One card role: what it paints, which brand colour it is pointed at, and the
+ *  hex that produces. `source` is the live answer, `default_source` what it
+ *  would be with no re-point — the two differ exactly when `is_repointed`. */
+export type SignatureRole = {
+  role: "ink" | "glow" | "warm";
+  paints: string;
+  source: BrandColorKey;
+  default_source: BrandColorKey;
+  is_repointed: boolean;
+  hex: string;
+};
+
+export type SignaturePalette = {
+  template: {
+    signature_template_id: string;
+    name: string;
+    /** "card" is the only layout these colours reach. */
+    kind: string;
+    is_system: boolean;
+    is_default: boolean;
+    scope_kind: "TENANT" | "DEPARTMENT" | "ENTITY";
+    scope_value?: string | null;
+  };
+  /** `is_set` false means the tenant has not chosen that colour and is
+   *  rendering the Praxis default — worth saying rather than presenting a
+   *  borrowed colour as theirs. */
+  brand: { key: BrandColorKey; hex: string; is_set: boolean }[];
+  roles: SignatureRole[];
+};
+
+/**
+ * Which of the tenant's brand colours paints which part of the card.
+ *
+ * MOD-70, and stored on the TEMPLATE, so it moves everyone rendering with it.
+ * Not a colour picker: the only values it takes are the names of brand colours
+ * already set in Appearance, so the brand keeps one definition and the card
+ * follows it. `null` for a role hands it back to the default mapping.
+ */
+export const getSignaturePalette = () =>
+  tenant<SignaturePalette>("/mail/signature/palette");
+
+export const saveSignaturePalette = (
+  templateId: string,
+  roles: Partial<Record<"ink" | "glow" | "warm", BrandColorKey | null>>,
+) =>
+  tenant<SignaturePalette>(`/mail/signature/templates/${templateId}/palette`, {
+    method: "PUT",
+    body: roles,
+  });
 
 /** The caller's own staff record. `/employees/mine` — no grant, no id. */
 export type MyEmployee = {

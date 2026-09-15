@@ -12,6 +12,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/modal";
+import { FilePicker } from "@/components/ui/image-upload";
+import { compressImage, fileToDataUrl } from "@/lib/image-compress";
 import { ErrorState } from "@/components/ui/states";
 import { Callout } from "@/components/ui/callout";
 import { PageHeader } from "@/components/data-list";
@@ -477,25 +479,31 @@ export function TemplateStudioPage() {
                       </Button>
                     </div>
                   ) : null}
-                  <input
-                    type="file"
+                  <FilePicker
                     accept="image/png,image/jpeg,image/webp,image/svg+xml"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
+                    hint="PNG with transparency reproduces best on a document."
+                    onPick={(files) => {
+                      const file = files?.[0];
                       if (!file) return;
-                      // Held as a data URI in the config, exactly like a small
-                      // inline logo: the renderer has no page origin, so a
-                      // relative URL would resolve in the preview iframe and
-                      // silently not in the PDF.
-                      const reader = new FileReader();
-                      reader.onload = () =>
-                        setNested("signature", {
-                          image_url: String(reader.result || ""),
-                        });
-                      reader.readAsDataURL(file);
-                      e.target.value = "";
+                      // NOT useUpload: this image is never uploaded. It is held
+                      // as a data URI in the config, exactly like a small inline
+                      // logo, because the renderer has no page origin — a
+                      // relative URL resolves in the preview iframe and silently
+                      // does not in the PDF. So there is no request to report a
+                      // percentage for, and showing one would be a lie.
+                      //
+                      // It still goes through the compressor, and that matters
+                      // more here than almost anywhere: this data URI is
+                      // embedded in the config and re-encoded into EVERY
+                      // rendered document, so an uncompressed 3 MB signature is
+                      // paid for on every invoice. "brand" keeps the mark's
+                      // colours and its transparency intact.
+                      void compressImage(file, "brand")
+                        .then((out) => fileToDataUrl(out.file))
+                        .then((dataUrl) =>
+                          setNested("signature", { image_url: dataUrl }),
+                        );
                     }}
-                    className="w-full rounded-lg border bg-background px-3 py-2 text-sm"
                   />
                   <p className="text-xs text-muted-foreground">
                     {tr(

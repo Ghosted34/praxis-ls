@@ -156,3 +156,62 @@ describe("cache invalidation", () => {
     expect(() => head.invalidateHost("smartls.cm")).not.toThrow();
   });
 });
+
+/**
+ * ── THE SITEMAP AND THE ROUTER MUST AGREE ─────────────────────────────────
+ *
+ * §9.1's `/about` shipped in the header nav, the footer and `router.tsx`, and
+ * NOT in the sitemap. Nothing failed: a crawler simply finds the page last, or
+ * by following a link, and the one page a procurement officer searches for by
+ * company name is the one that ranks worst.
+ *
+ * It was caught by the final pass (§9.6) reading the two files side by side —
+ * which is not a thing anybody should have to remember to do. So the router's
+ * own nav table is READ here and every entry in it must be in
+ * `SITEMAP_ROUTES`.
+ *
+ * ── THE DERIVATION IS WHERE THIS GOES WRONG, SO IT IS ASSERTED FIRST ──────
+ *
+ * F-24: a test of this shape reports on a set it derived, and three times in
+ * PR 4 the derivation was the bug rather than the assertion. The first case
+ * below fails if the parse finds nothing, so an empty set cannot read as a
+ * clean pass.
+ */
+describe("the sitemap covers every route the site's own nav offers", () => {
+  const { readFileSync } = require("node:fs");
+  const { join } = require("node:path");
+  const head = require("../../src/shared/http/public-head");
+  const paths = require("../../src/shared/http/public-web-paths");
+
+  const NAV_FILE = join(__dirname, "../../public-web/src/components/site/site-header.tsx");
+
+  /** `{ to: p("/services"), … }` — every entry of the header's NAV table. */
+  function navRoutes() {
+    const src = readFileSync(NAV_FILE, "utf8");
+    const table = src.slice(src.indexOf("const NAV = ["), src.indexOf("] as const;"));
+    return [...table.matchAll(/p\("([^"]+)"\)/g)].map((m) => m[1]);
+  }
+
+  test("finds the nav table, so this cannot pass by reading nothing", () => {
+    expect(navRoutes().length).toBeGreaterThanOrEqual(5);
+  });
+
+  test("every nav destination is in the sitemap", () => {
+    const missing = navRoutes().filter((r) => !head.SITEMAP_ROUTES.includes(r));
+    expect(missing).toEqual([]);
+  });
+
+  test("the sitemap lists the home page and no duplicates", () => {
+    expect(head.SITEMAP_ROUTES).toContain("");
+    expect(new Set(head.SITEMAP_ROUTES).size).toBe(head.SITEMAP_ROUTES.length);
+  });
+
+  test("every sitemap route joins its base without a protocol-relative path", () => {
+    // "//about" is read by a crawler as the HOST `about` — a different site.
+    for (const base of ["/public", "/site", "/"]) {
+      for (const route of head.SITEMAP_ROUTES) {
+        expect(paths.joinBase(base, route)).not.toMatch(/^\/\//);
+      }
+    }
+  });
+});

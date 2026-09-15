@@ -1,7 +1,15 @@
 "use strict";
+
+/** What a cost proof may be (13801, owner Q8) — whatever the supplier sent. */
+const COST_PROOF_TYPES = [
+  "application/pdf", "image/png", "image/jpeg", "image/jpg", "image/webp",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+];
 const path = require("path");
 const service = require("./document_vault.service");
 const { asyncHandler, AppError } = require("../../../utils/errors");
+const { readUpload } = require("../../../shared/http/upload.middleware");
 
 const MIME_BY_EXT = {
   pdf: "application/pdf",
@@ -98,16 +106,30 @@ module.exports = {
         if (!rows[0]) throw new AppError("UNKNOWN_DOC_TYPE", "That document type is not in the registry", 422);
         docType = rows[0].code;
       }
+      // One call for both transports: multipart lands on req.file, the legacy
+      // base64 body on req.body.data_url. See shared/http/upload.middleware.
+      const file = readUpload(req);
       return service.createDocument(c, {
-        entityRef: b.entity_ref, docType, dataUrl: b.data_url,
+        entityRef: b.entity_ref, docType, dataUrl: b.data_url, file,
         fileContext: b.file_context, folderRef: b.folder_ref, dossierId: b.dossier_id,
         docTypeRefId: b.doc_type_ref_id || null, clientId: b.client_id || null,
-        originalName: b.original_name || null,
+        originalName: b.original_name || (file && file.originalname) || null,
         // An upload attached to an operations file follows legacy's rules —
         // 5 MB, PDF/PNG/JPG, contents checked. Uploads elsewhere (HR files,
         // finance scans) keep the vault's wider defaults untouched.
+        //
+        // COST_PROOF is the one exception, and it is a deliberate one (13801,
+        // owner decision Q8). A cost proof is whatever the supplier actually
+        // sent: "pdf or image or word or excel". A carrier's demurrage
+        // statement arrives as .xlsx and a clearing agent's breakdown as .docx,
+        // and refusing those does not make the money unspent — it makes the
+        // evidence live in somebody's inbox instead of on the line it proves.
+        // The cap rises with the type list because a multi-page colour scan of
+        // a customs file clears 5 MB routinely; contents are still sniffed.
         ...(b.dossier_id
-          ? { maxBytes: 5 * 1024 * 1024, allowedTypes: ["application/pdf", "image/png", "image/jpeg", "image/jpg"], sniff: true }
+          ? docType === "COST_PROOF"
+            ? { maxBytes: 15 * 1024 * 1024, allowedTypes: COST_PROOF_TYPES, sniff: true }
+            : { maxBytes: 5 * 1024 * 1024, allowedTypes: ["application/pdf", "image/png", "image/jpeg", "image/jpg"], sniff: true }
           : {}),
         slug: req.tenant.slug, actor: req.user || { user_id: null },
       });

@@ -120,11 +120,8 @@ async function checkPuppeteer({
  * fails the preflight with a readable message instead of at module load.
  */
 async function checkSignatureCard() {
-  // eslint-disable-next-line global-require
   const png = require("../../src/modules/mail/signature/signature.png");
-  // eslint-disable-next-line global-require
   const palette = require("../../src/modules/mail/signature/signature.palette");
-  // eslint-disable-next-line global-require
   const fontsMod = require("../../src/modules/mail/signature/signature.fonts");
 
   const families = fontsMod.loadedFamilies();

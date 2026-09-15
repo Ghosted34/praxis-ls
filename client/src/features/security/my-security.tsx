@@ -6,11 +6,19 @@
  * disable flows are shown with guidance.
  */
 import { pageShell } from "@/lib/layout";
+import { dateDmy } from "@/lib/format";
 import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { useAuth } from "@/app/auth/auth-context";
-import { ApiError, tenant } from "@/lib/api-client";
+import { ApiError, tenantWithProgress } from "@/lib/api-client";
+import { FilePicker } from "@/components/ui/image-upload";
+import { UploadProgress } from "@/components/ui/upload-progress";
+import { useUpload } from "@/lib/use-upload";
+import { fileToDataUrl } from "@/lib/image-compress";
+import { PIN_LENGTH } from "@/components/ui/pin-input";
 import { pinStore } from "@/lib/pin-store";
+import { cn } from "@/lib/cn";
+import { useSearchParams } from "react-router-dom";
 import {
   changePassword,
   setupTotp,
@@ -21,6 +29,13 @@ import {
   type TotpSetup,
   type PinDeviceRow,
 } from "@/lib/security-api";
+import {
+  registerPasskey,
+  listPasskeys,
+  deletePasskey,
+  isPasskeySupported,
+  type PasskeyCredential,
+} from "@/lib/webauthn";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/data-list";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
@@ -43,38 +58,39 @@ export function MySecurityPage() {
   const { user, registerPin, patchUser } = useAuth();
 
   // --- Profile picture ---
-  const avatarInput = React.useRef<HTMLInputElement>(null);
-  const [avatarBusy, setAvatarBusy] = React.useState(false);
   const [avatarMsg, setAvatarMsg] = React.useState<Msg>(null);
-  async function onAvatarPick(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
-    if (file.size > 1024 * 1024) {
-      setAvatarMsg({ kind: "err", text: "Image must be 1 MB or smaller." });
-      return;
-    }
-    setAvatarBusy(true);
-    setAvatarMsg(null);
-    try {
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        const r = new FileReader();
-        r.onload = () => resolve(String(r.result));
-        r.onerror = () => reject(new Error("Couldn't read that image."));
-        r.readAsDataURL(file);
-      });
-      const res = await tenant<{ avatar_url: string }>("/auth/avatar", {
-        method: "POST",
-        body: { data_url: dataUrl },
-      });
+
+  /**
+   * Through the upload engine. The "avatar" profile squares the image with an
+   * attention crop — which lands on the face far more reliably than the centre
+   * crop the CSS was doing — and runs the enhancement chain, because profile
+   * photos are taken on phones in offices and are routinely under-exposed.
+   */
+  const avatar = useUpload<{ avatar_url: string }>({
+    profile: "avatar",
+    maxBytes: 1024 * 1024,
+    send: async (file, ctx) =>
+      tenantWithProgress<{ avatar_url: string }>(
+        "/auth/avatar",
+        { data_url: await fileToDataUrl(file) },
+        ctx.onProgress,
+      ),
+    onAllComplete: ([res]) => {
+      if (!res) return;
       patchUser({ avatar_url: res.avatar_url });
       setAvatarMsg({ kind: "ok", text: "Profile picture updated." });
-    } catch (err) {
-      setAvatarMsg({ kind: "err", text: errText(err) });
-    } finally {
-      setAvatarBusy(false);
+    },
+  });
+
+  const avatarItem = avatar.items[0] ?? null;
+  const avatarBusy =
+    avatarItem?.state === "uploading" || avatarItem?.state === "compressing";
+
+  React.useEffect(() => {
+    if (avatarItem?.state === "error" && avatarItem.error) {
+      setAvatarMsg({ kind: "err", text: avatarItem.error });
     }
-  }
+  }, [avatarItem?.state, avatarItem?.error]);
 
   // --- Password ---
   //
@@ -195,8 +211,8 @@ export function MySecurityPage() {
 
   async function onRegister(e: React.FormEvent) {
     e.preventDefault();
-    if (!/^\d{4,8}$/.test(pin)) {
-      setPinMsg({ kind: "err", text: "PIN must be 4–8 digits." });
+    if (!new RegExp(`^\\d{${PIN_LENGTH}}$`).test(pin)) {
+      setPinMsg({ kind: "err", text: `PIN must be ${PIN_LENGTH} digits.` });
       return;
     }
     setPinBusy(true);
@@ -226,6 +242,75 @@ export function MySecurityPage() {
     }
   }
 
+  // --- Passkey deep link ---
+  // The dashboard nudge links here with ?highlight=passkey. Landing at the top
+  // of a long settings page and being told the card is "below" is the failure
+  // this avoids: scroll to it and ring it, so the location is SEEN.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const passkeyCardRef = React.useRef<HTMLDivElement>(null);
+  const [passkeyHighlit, setPasskeyHighlit] = React.useState(false);
+
+  React.useEffect(() => {
+    if (searchParams.get("highlight") !== "passkey") return;
+    const el = passkeyCardRef.current;
+    if (!el) return;
+    const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    el.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "center" });
+    setPasskeyHighlit(true);
+    // Drop the param so a refresh, a back-navigation or a copied URL does not
+    // re-trigger a highlight the user has already been shown.
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete("highlight");
+      return next;
+    }, { replace: true });
+    const timer = window.setTimeout(() => setPasskeyHighlit(false), 2600);
+    return () => window.clearTimeout(timer);
+  }, [searchParams, setSearchParams]);
+
+  // --- Passkey ---
+  const [passkeys, setPasskeys] = React.useState<PasskeyCredential[] | null>(null);
+  const [pkLabel, setPkLabel] = React.useState("");
+  const [pkBusy, setPkBusy] = React.useState(false);
+  const [pkMsg, setPkMsg] = React.useState<Msg>(null);
+  const passkeySupported = typeof window !== "undefined" && isPasskeySupported();
+
+  const loadPasskeys = React.useCallback(() => {
+    listPasskeys()
+      .then(setPasskeys)
+      .catch(() => setPasskeys([]));
+  }, []);
+  React.useEffect(() => loadPasskeys(), [loadPasskeys]);
+
+  async function onRegisterPasskey(e: React.FormEvent) {
+    e.preventDefault();
+    setPkBusy(true);
+    setPkMsg(null);
+    try {
+      await registerPasskey(pkLabel.trim() || null);
+      setPkLabel("");
+      setPkMsg({ kind: "ok", text: "Passkey added. You can now use Face ID / Touch ID to sign in." });
+      loadPasskeys();
+    } catch (err: any) {
+      if (err && (err.name === "NotAllowedError" || err.code === "NOT_ALLOWED")) {
+        setPkMsg({ kind: "err", text: "Passkey creation was cancelled." });
+      } else {
+        setPkMsg({ kind: "err", text: errText(err) });
+      }
+    } finally {
+      setPkBusy(false);
+    }
+  }
+  async function onDeletePasskey(id: string) {
+    try {
+      await deletePasskey(id);
+      loadPasskeys();
+      setPkMsg({ kind: "ok", text: "Passkey removed." });
+    } catch (e) {
+      setPkMsg({ kind: "err", text: errText(e) });
+    }
+  }
+
   const okCls =
     "rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm";
   const errCls =
@@ -236,7 +321,7 @@ export function MySecurityPage() {
       <PageHeader
         eyebrow={<HubCrumb area="Security & access" to="/security" />}
         title="My security"
-        description="Your password, an authenticator app and a device-bound Quick PIN — all for your own account."
+        description="Your password, an authenticator app, a device-bound Quick PIN and passkeys (Face ID / Touch ID) — all for your own account."
       />
       <HubTabs />
 
@@ -247,9 +332,12 @@ export function MySecurityPage() {
           desc="Shown on your account menu across the app."
         >
           <div className="flex items-center gap-4">
-            {user?.avatar_url ? (
+            {/* The preview is the picked file the moment it is chosen, falling
+                back to the stored avatar. Before this the old picture stayed on
+                screen through the whole upload with nothing to say otherwise. */}
+            {avatarItem?.previewUrl || user?.avatar_url ? (
               <img
-                src={user.avatar_url}
+                src={avatarItem?.previewUrl || user?.avatar_url || ""}
                 alt="Your avatar"
                 className="h-16 w-16 rounded-xl object-cover"
               />
@@ -261,23 +349,31 @@ export function MySecurityPage() {
               </span>
             )}
             <div>
-              <input
-                ref={avatarInput}
-                type="file"
+              <FilePicker
+                variant="inline"
                 accept="image/png,image/jpeg,image/webp,image/gif"
-                className="hidden"
-                onChange={onAvatarPick}
+                disabled={avatarBusy}
+                trigger={
+                  <span className="inline-flex h-9 items-center rounded-lg border px-3 text-sm no-underline">
+                    {avatarBusy ? "Uploading…" : "Change picture"}
+                  </span>
+                }
+                onPick={(files) => {
+                  setAvatarMsg(null);
+                  void avatar.pick(files);
+                }}
               />
-              <Button
-                variant="outline"
-                onClick={() => avatarInput.current?.click()}
-                loading={avatarBusy}
-              >
-                Change picture
-              </Button>
               <p className="mt-1 text-xs text-muted-foreground">
                 PNG, JPG, WEBP or GIF, up to 1 MB.
               </p>
+              {avatarItem && avatarItem.state !== "idle" && (
+                <UploadProgress
+                  className="mt-1 max-w-[220px]"
+                  state={avatarItem.state}
+                  percent={avatarItem.percent}
+                  error={avatarItem.error}
+                />
+              )}
               {avatarMsg && (
                 <p
                   className={`mt-1 text-xs ${avatarMsg.kind === "ok" ? "text-[rgb(var(--ok))]" : "text-[rgb(var(--bad))]"}`}
@@ -459,14 +555,14 @@ export function MySecurityPage() {
           >
             <form onSubmit={onRegister} className="flex flex-col gap-3">
               <div className="grid gap-3 sm:grid-cols-2">
-                <Field label="New PIN (4–8 digits)">
+                <Field label={`New PIN (${PIN_LENGTH} digits)`}>
                   <Input
                     type="password"
                     inputMode="numeric"
                     autoComplete="off"
                     value={pin}
                     onChange={(e) =>
-                      setPin(e.target.value.replace(/\D/g, "").slice(0, 8))
+                      setPin(e.target.value.replace(/\D/g, "").slice(0, PIN_LENGTH))
                     }
                     placeholder="••••"
                   />
@@ -516,7 +612,7 @@ export function MySecurityPage() {
                           )}
                         </div>
                         <div className="text-xs text-muted-foreground">
-                          Added {new Date(d.created_at).toLocaleDateString()}
+                          Added {dateDmy(d.created_at)}
                         </div>
                       </div>
                       <Button
@@ -538,6 +634,70 @@ export function MySecurityPage() {
               </p>
             )}
           </SettingsCard>
+        </div>
+
+        {/* Passkey — `highlight=passkey` (the dashboard nudge's deep link)
+            scrolls here and rings the card, so arriving by link SHOWS the
+            location rather than just landing near it. */}
+        <div
+          ref={passkeyCardRef}
+          className={cn(
+            "rounded-2xl transition-shadow motion-reduce:transition-none",
+            passkeyHighlit && "ring-2 ring-primary ring-offset-2 ring-offset-background",
+          )}
+        >
+        <SettingsCard
+          title="Passkey (Face ID / Touch ID)"
+          desc="Passwordless sign-in with your device's biometrics or security key. Works on this device and anywhere your passkey is synced."
+        >
+          {!passkeySupported ? (
+            <p className="text-sm text-muted-foreground">
+              Passkeys need a secure browser with WebAuthn support (HTTPS + platform authenticator). Your current browser doesn't support them — use Quick PIN or password, and add a passkey from a supported device.
+            </p>
+          ) : (
+            <form onSubmit={onRegisterPasskey} className="flex flex-col gap-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                <div className="flex-1">
+                  <Field label="Label (optional)">
+                    <Input value={pkLabel} onChange={(e) => setPkLabel(e.target.value)} placeholder="My MacBook" />
+                  </Field>
+                </div>
+                <Button type="submit" loading={pkBusy}>
+                  Add passkey
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">You'll be asked by your device to confirm with Face ID, Touch ID, Windows Hello, or your security key.</p>
+            </form>
+          )}
+
+          <div className="mt-5 border-t pt-4">
+            <p className="micro mb-2">Registered passkeys</p>
+            {passkeys === null ? (
+              <p className="text-sm text-muted-foreground">{tr("Loading…")}</p>
+            ) : passkeys.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No passkeys yet. Add one above to enable passwordless sign-in.</p>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {passkeys.map((c) => (
+                  <div key={c.credential_id} className="flex items-center justify-between rounded-lg border p-3">
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium">{c.label || "Passkey"}</div>
+                      <div className="text-xs text-muted-foreground">
+                        Added {dateDmy(c.created_at)}
+                        {c.last_used_at ? ` • last used ${dateDmy(c.last_used_at)}` : ""}
+                      </div>
+                    </div>
+                    <Button variant="ghost" size="sm" onClick={() => onDeletePasskey(c.credential_id)}>
+                      Remove
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {pkMsg && <p className={`mt-4 ${pkMsg.kind === "ok" ? okCls : errCls}`}>{pkMsg.text}</p>}
+        </SettingsCard>
         </div>
       </div>
     </section>

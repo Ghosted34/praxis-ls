@@ -28,6 +28,7 @@
 
 import * as React from "react";
 import { tr } from "@/lib/i18n";
+import { IndexRow } from "@/components/ui/index-row";
 import { tenant, download } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -245,6 +246,8 @@ export function QuoteRequestsPage() {
           defaultSize={260}
           min={200}
           max={480}
+          activeKind={tr("Quote request")}
+          active={!!selected}
         >
           <div className="space-y-2">
             <Input
@@ -261,10 +264,11 @@ export function QuoteRequestsPage() {
                 rows.map((r: any) => {
                   const id = String(r.quote_request_id);
                   return (
-                    <button
+                    <IndexRow
                       key={id}
+                      selected={id === selId}
                       onClick={() => setSelId(id)}
-                      className={`flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors ${id === selId ? "bg-primary/10 text-foreground" : "hover:bg-muted"}`}
+                      className="items-center justify-between gap-2"
                     >
                       <span className="min-w-0">
                         <span className="block truncate font-mono font-medium">
@@ -275,7 +279,7 @@ export function QuoteRequestsPage() {
                         </span>
                       </span>
                       <StatusPill status={String(r.status || "RECEIVED")} />
-                    </button>
+                    </IndexRow>
                   );
                 })
               )}

@@ -32,6 +32,9 @@ const DEFAULT_TZ = "Africa/Douala";
 const FMT = new Map();
 function formatter(tz) {
   if (!FMT.has(tz)) {
+    /* @date-format:parts — only ever read through formatToParts() below, which
+       returns NAMED fields (year/month/day/hour). Nothing here is rendered, so
+       the locale cannot reach a reader and its date order is irrelevant. */
     FMT.set(tz, new Intl.DateTimeFormat("en-US", {
       timeZone: tz, hourCycle: "h23",
       year: "numeric", month: "2-digit", day: "2-digit",

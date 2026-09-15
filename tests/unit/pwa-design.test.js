@@ -961,10 +961,12 @@ describe("uploadAppIcon — where the bytes land", () => {
   afterEach(() => jest.resetModules());
 
   it("namespaces the key under the tenant, in a segment /media serves publicly", async () => {
-    let capturedKey;
+    // The upload writes the master AND its AVIF/WebP derivatives, so collect
+    // every key: the master is the first put, the derivatives follow it.
+    const keys = [];
     jest.doMock("../../src/services/storage.service", () => ({
       put: async (buf, opts) => {
-        capturedKey = opts.key;
+        keys.push(opts.key);
         return { public_url: `/media/${opts.key}` };
       },
     }));
@@ -975,6 +977,7 @@ describe("uploadAppIcon — where the bytes land", () => {
       dataUrl: PNG_1PX,
       slug: "acme",
     });
+    const capturedKey = keys[0];
     expect(capturedKey).toMatch(
       /^tenant_acme\/branding\/appicon_[0-9a-f]{12}\.png$/,
     );
@@ -982,6 +985,15 @@ describe("uploadAppIcon — where the bytes land", () => {
     // key has to be one the /media allow-list actually serves.
     expect(isPublicStorageKey(capturedKey)).toBe(true);
     expect(iconUrl).toBe(`/media/${capturedKey}`);
+
+    // Derivatives are siblings of the master, so they inherit its /media
+    // allow-list segment rather than needing one of their own.
+    for (const key of keys.slice(1)) {
+      expect(key).toMatch(
+        /^tenant_acme\/branding\/appicon_[0-9a-f]{12}\.(thumb|preview|full)\.(avif|webp)$/,
+      );
+      expect(isPublicStorageKey(key)).toBe(true);
+    }
   });
 
   it("refuses anything that is not an image data URL", async () => {

@@ -55,7 +55,9 @@ import * as api from "@/lib/operations-api";
 // not an operations concern — the signed scan is stored the same way every
 // other scan in the product is.
 import * as masterApi from "@/lib/masterdata-api";
-import { SCAN_ACCEPT, scanFileProblem, readFileAsDataUrl } from "@/lib/vault-file";
+import { SCAN_ACCEPT, scanFileProblem } from "@/lib/vault-file";
+import { FilePicker, UploadList } from "@/components/ui/image-upload";
+import { useUpload } from "@/lib/use-upload";
 import {
   SendForSignatureModal,
   SignatureChainOnRecord,
@@ -107,7 +109,30 @@ function OrderActions({
   const [ask, setAsk] = React.useState<null | "sign" | "lodge" | "cancel">(null);
   const [text, setText] = React.useState("");
   /** The client-signed copy, held until the transition that needs it. */
-  const [scan, setScan] = React.useState<File | null>(null);
+  /**
+   * Deferred (`autoStart: false`): the signature name is typed alongside the
+   * scan and the transition follows the upload, so the bytes wait for Confirm.
+   * The preview and the compression do not wait.
+   *
+   * `profile="document"` — this scan IS the authorisation to declare, so it is
+   * downscaled and re-encoded but never tonally corrected.
+   */
+  const scanUpload = useUpload<{ doc_id: string }>({
+    profile: "document",
+    autoStart: false,
+    send: (file, ctx) =>
+      masterApi.uploadVaultFile(
+        file,
+        {
+          doc_type: "TRANSIT_ORDER_SIGNED",
+          entity_ref: `transit_order:${row.transit_order_id}`,
+          ...(row.dossier_id ? { dossier_id: row.dossier_id } : {}),
+          original_name: file.name,
+        },
+        ctx,
+      ),
+  });
+  const scanItem = scanUpload.items[0] ?? null;
   const [scanError, setScanError] = React.useState<string | null>(null);
   /** The signatures engine (MOD-64), on this order's own screen. */
   const [signOpen, setSignOpen] = React.useState(false);
@@ -235,22 +260,23 @@ function OrderActions({
              * the alternative marks an order signed and then fails to store the
              * proof.
              */
-            const doc = await masterApi.uploadVaultDocument({
-              data_url: await readFileAsDataUrl(scan!),
-              doc_type: "TRANSIT_ORDER_SIGNED",
-              entity_ref: `transit_order:${row.transit_order_id}`,
-              ...(row.dossier_id ? { dossier_id: row.dossier_id } : {}),
-              original_name: scan!.name,
-            });
+            const { ok, results } = await scanUpload.start();
+            const doc = results[0];
+            if (!ok || !doc) {
+              // The item card already names the failure. Throwing keeps the
+              // order at ISSUED rather than recording a signature whose
+              // evidence never landed.
+              throw new Error("The signed copy did not upload.");
+            }
             await api.signTransitOrder(row.transit_order_id, {
               signed_by_name: text || undefined,
               signature_vault_id: doc.doc_id,
             });
-            setScan(null);
+            scanUpload.reset();
             setScanError(null);
           })
         }
-        confirmDisabled={!scan}
+        confirmDisabled={!scanItem || scanItem.state === "error"}
         body={
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">
@@ -264,20 +290,24 @@ function OrderActions({
               error={scanError || undefined}
               hint="PDF or a photo of the stamped page."
             >
-              <input
-                type="file"
+              <FilePicker
                 accept={SCAN_ACCEPT}
-                onChange={(e) => {
-                  const file = e.target.files?.[0] || null;
-                  // Refused against the vault's own limits BEFORE the file is
-                  // base64-inflated and pushed over the wire — a 25 MB scan on a
-                  // Douala connection is a long wait for a rejection.
+                hint="PDF or an image · up to 25 MB"
+                onPick={(files) => {
+                  const file = files?.[0] || null;
+                  // Refused against the vault's own limits BEFORE anything is
+                  // sent — a 25 MB scan on a Douala connection is a long wait
+                  // for a rejection.
                   const problem = file ? scanFileProblem(file) : null;
                   setScanError(problem);
-                  setScan(problem ? null : file);
-                  if (problem) e.target.value = "";
+                  if (!problem && file) void scanUpload.pick([file]);
                 }}
-                className="w-full rounded-lg border bg-background px-3 py-2 text-sm"
+              />
+              <UploadList
+                className="mt-2"
+                items={scanUpload.items}
+                onRemove={scanUpload.remove}
+                onRetry={scanUpload.retry}
               />
             </Field>
             <Field label={tr("Signed by")}>

@@ -439,3 +439,123 @@ describe("the receipt", () => {
     expect(screen.getByText(en.site.quote.err)).toBeInTheDocument();
   });
 });
+
+/**
+ * ── §8.3: STAGING THAT DOES NOT COST THE FORM ANYTHING ─────────────────────
+ *
+ * The section asks for staged step transitions and real progress depth, and
+ * then names the two things that must not happen: the entrance must not delay
+ * the form, and a field must never animate into place under a cursor. Both are
+ * invisible in a screenshot and both are one refactor from returning, so both
+ * are asserted here.
+ *
+ * The draft autosave has its own describe block above; this one adds the case
+ * that the staging specifically endangers, because the panel now REMOUNTS on
+ * every step change and a remount is exactly how a form loses state.
+ */
+describe("the step transition (§8.3)", () => {
+  it("does not animate on the first step — the form is there on arrival", async () => {
+    const { container } = await mount();
+    // §8.3: "an entrance that does not delay the form". The CTA of the whole
+    // site lands here, and an arrival animation on step one is the one place a
+    // delay would cost a real enquiry.
+    expect(container.querySelector(".step-panel")).toBeNull();
+    expect(container.querySelector(".step-head")).toBeNull();
+  });
+
+  it("animates once the visitor has moved", async () => {
+    const { container } = await mount();
+    await stepNeed();
+    expect(container.querySelector(".step-panel")).not.toBeNull();
+    expect(container.querySelector(".step-head")).not.toBeNull();
+  });
+
+  it("NEVER puts a field inside a transform — §8.3's hard rule", async () => {
+    /*
+     * "Never animate a field into place under a cursor."
+     *
+     * `.step-head` rises and fades; `.step-panel` fades only. A control still
+     * moving when the pointer arrives is a control that gets mis-clicked, and
+     * on this form that is a lost enquiry. So the assertion is structural: no
+     * form control may live inside the element that carries the transform.
+     */
+    const { container } = await mount();
+    await stepNeed();
+    const rising = container.querySelector(".step-head") as HTMLElement;
+    expect(rising).not.toBeNull();
+    expect(
+      rising.querySelectorAll("input, select, textarea, button"),
+    ).toHaveLength(0);
+
+    // …and the fields ARE inside the fading panel, so the test would still fail
+    // if somebody moved the controls out of both.
+    const panel = container.querySelector(".step-panel") as HTMLElement;
+    expect(
+      panel.querySelectorAll("input, select, textarea").length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("keeps the draft across the remount the transition introduces", async () => {
+    /*
+     * THE REGRESSION THIS SECTION WAS WARNED ABOUT.
+     *
+     * The panel is keyed by step so React replays the animation, which means it
+     * UNMOUNTS and REMOUNTS on every step change. `CLAUDE.md` names the quote
+     * wizard's autosave defect — a save landing after a discard — as the reason
+     * native dialogs are banned here, and a remount is precisely how a form's
+     * answers get written back in the wrong order or dropped.
+     *
+     * They survive because the answers live in the wizard's own state and not
+     * in the panel's, so this asserts the boundary rather than the animation.
+     */
+    await mount();
+    await stepNeed();
+    type(en.site.quote.originPort, "Shanghai");
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    // Back and forward across the animated boundary, twice.
+    press(en.common.back);
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    press(en.site.quote.next);
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(field(en.site.quote.originPort)).toHaveValue("Shanghai");
+    const draft = sessionStorage.getItem("praxis.quote.draft");
+    expect(draft).toContain("Shanghai");
+  });
+
+  it("still clears the draft on submit after crossing the transition", async () => {
+    // The other half of the same risk: a remount that re-armed the autosave
+    // effect could write the draft back AFTER `clear()` ran — which is the
+    // save-after-discard shape by name.
+    await mount();
+    await stepNeed();
+    await stepRoute();
+    press(en.site.quote.next);
+    await screen.findByLabelText(labelRe(en.site.quote.name));
+    type(en.site.quote.name, "Ada Mballa");
+    type(en.site.quote.email, "ada@example.cm");
+    press(en.site.quote.submit);
+    await waitFor(() =>
+      expect(screen.getByText(en.site.quote.sent)).toBeInTheDocument(),
+    );
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(sessionStorage.getItem("praxis.quote.draft")).toBeNull();
+  });
+
+  it("gives the step strip real depth, not colour alone", async () => {
+    const { container } = await mount();
+    await stepNeed();
+    // Greyscale-safe: the step you are on is lifted, the one behind rests.
+    expect(container.querySelectorAll(".stepper-dot-here")).toHaveLength(1);
+    expect(
+      container.querySelectorAll(".stepper-dot-done").length,
+    ).toBeGreaterThan(0);
+  });
+});

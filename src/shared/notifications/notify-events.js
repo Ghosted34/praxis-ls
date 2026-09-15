@@ -71,6 +71,17 @@ const NOTIFIABLE = {
   // now has to answer for.
   "cash_request.rejected": { action: "view", title: "Cash request rejected", priority: "HIGH" },
 
+  /**
+   * 13801 — Budget Reconciliation (MOD-76). Four keys, and no approval among
+   * them: Operations prepares, Finance settles, and the MD is TOLD rather than
+   * asked (owner decision Q6). `proof_owed` is the one that reaches the person
+   * who took the cash — it is the notification behind "Cash to account for".
+   */
+  "reconciliation.submitted": { action: "view", title: "Reconciliation submitted" },
+  "reconciliation.settled": { action: "view", title: "File reconciled" },
+  "reconciliation.rejected": { action: "view", title: "Reconciliation sent back", priority: "HIGH" },
+  "reconciliation.proof_owed": { action: "view", title: "Receipt owed", priority: "HIGH" },
+
   // ── Procurement ──
   "goods_received.created": { action: "view", title: "Goods received" },
   "supplier_invoice.posted": { action: "view", title: "Supplier invoice posted" },

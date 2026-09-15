@@ -8,14 +8,30 @@ what.
 
 ## The library
 
-`client/src/lib/fonts.ts` is the closed set of fifteen families the product
-ships. All fifteen are self-hosted through `@fontsource` under SIL OFL or
+`client/src/lib/fonts.ts` is the closed set of **seventeen** families the product
+ships. All but one are self-hosted through `@fontsource` under SIL OFL or
 Apache-2.0, which is the whole point: **what a tenant picks is what every user
-renders, on every device.**
+renders, on every device.** (The exception is Brittany Signature, a commercial
+script vendored under `client/src/fonts` for the email signature card — it is in
+`FONTS` but not in the table below, which is why this count and the table's
+never quite agreed.)
 
-| Sans                                                                                                                                     | Serif               | Mono                           |
-| ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------- | ------------------------------ |
-| Inter · Roboto · Noto Sans · Plus Jakarta Sans · IBM Plex Sans · Work Sans · Open Sans · Public Sans · Montserrat · Source Sans 3 · Lato | Lora · Merriweather | JetBrains Mono · Cascadia Code |
+| Sans                                                                                                                                                | Serif               | Mono                           |
+| --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------- | ------------------------------ |
+| Inter · Roboto · Noto Sans · Plus Jakarta Sans · Archivo · IBM Plex Sans · Work Sans · Open Sans · Public Sans · Montserrat · Source Sans 3 · Lato | Lora · Merriweather | JetBrains Mono · Cascadia Code |
+
+**Archivo** was added for the public web experience: an industrial grotesque with
+a 100–900 weight axis, cut for display sizes. The axis is what
+`public-web`'s `<WeightScrub>` animates — see
+`doc/PUBLIC_WEB_EXPERIENCE_GUIDE.md` §5.5. It is the public site's default
+display face; the ERP's default is unchanged.
+
+**Adding a family** means: an `@fontsource` dependency in `client/`, an entry in
+`FONTS`, the counts in `client/src/lib/fonts.test.ts` and
+`client/src/components/settings/font-picker.test.tsx` (they are pinned so that
+adding a face is a deliberate act, not a drive-by), and this table. The root
+`scripts/check-fonts.mjs` parses `fonts.ts` for its allow-list, so a family
+named anywhere in the tree that is not in that file fails the build.
 
 ### Why Segoe UI, SF Pro and Helvetica Neue are not in it
 
@@ -45,17 +61,17 @@ rewritten — opening a settings screen must not change a setting.
 ### Loading is lazy, and that is enforced in three places
 
 1. `loadFonts()` pulls only the families the active stacks name — at most three
-   of fifteen — and is called from the branding context on every paint.
+   of seventeen — and is called from the branding context on every paint.
 2. `vite.config.ts` excludes `@fontsource` from the `vendor` bucket, so Rollup
    attaches each family to the dynamic import that pulls it. Left in `vendor`
    they all landed in the eagerly-loaded stylesheet: 96 `@font-face` rules and
    57 kB of render-blocking CSS on every page load.
 3. The service worker does **not** precache `woff2`. It used to, which was right
-   for one bundled family and became wrong at fifteen — the SW would have
+   for one bundled family and became wrong at seventeen — the SW would have
    downloaded 2.8 MB on install for every user to serve the three actually in
    use. Fonts are cached `CacheFirst` at runtime instead, so the offline promise
    still holds for the fonts a user has in force; it is earned on first paint
-   rather than prepaid for all fifteen.
+   rather than prepaid for all seventeen.
 
 Only Inter is in the startup bundle (statically imported by `main.tsx`), because
 it is the default every unbranded tenant falls back to.
@@ -73,7 +89,7 @@ asserted in `font-picker.test.tsx` — if that test ever fails, the control has
 degraded into a styled version of the text box it replaced.
 
 Options are grouped Sans / Serif / Monospace via the shared `Select`'s optional
-`group` field. Every slot offers all fifteen; the group that suits the slot
+`group` field. Every slot offers all seventeen; the group that suits the slot
 leads. There is a collapsed escape hatch for a raw custom stack, for the tenant
 who eventually turns up with a licensed corporate typeface on their own CDN.
 
@@ -165,7 +181,7 @@ exclusively, which is the most those surfaces can honestly promise.
 ## Caching — what "works offline" actually means
 
 Fonts are **not** precached. The service worker glob used to include `woff2`,
-which was right for one bundled family and wrong at fifteen: it would have
+which was right for one bundled family and wrong at seventeen: it would have
 downloaded all 94 files (2.8 MB) on install, for every user, to serve the three
 in force. Precache is now 1539 KiB, down from 4197 KiB.
 

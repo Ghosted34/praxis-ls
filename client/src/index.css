@@ -34,7 +34,18 @@
 
   /* Accent = brand orange (tenant loader may override) */
   --primary: rgb(245 130 31);
-  --primary-foreground: rgb(255 255 255);
+  /* CARBON, NOT WHITE, AND THIS WAS A LIVE AA FAILURE (F-20).
+     White on this orange measures 2.59:1 — worse than the 3.13:1 the same
+     mistake cost `public-web` (F-15), and this is the PRE-THEME default, so it
+     is what every tenant who has never chosen a `primary_foreground` actually
+     renders on every primary button in the ERP. Carbon measures 7.63:1.
+     `@praxis/brand` (`--brand-on-orange: #0a0a0a`),
+     `packages/shared/design/palette.js` (which DERIVES this pair per tenant)
+     and CLAUDE.md all already said so; only this file disagreed.
+     A tenant whose primary is not orange gets a label DERIVED from their own
+     colour by `applyBrand` — see lib/theme.ts. This constant is the default
+     for the default orange, and nothing more. */
+  --primary-foreground: rgb(10 10 10);
   /* --primary is a FILL colour. As TEXT it measures 2.59:1 on --card and fails
      WCAG AA (F13). --primary-ink is the type-safe orange at 4.64:1. Brand
      identity is untouched: buttons/marks keep --primary, orange type uses this.
@@ -117,6 +128,25 @@
    * and the map read the same three. They keep the palette's own values (--ok's
    * green, --brand-blue's blue, the house orange) so the map still looks like the
    * rest of the product.
+   *
+   * ── AMENDED 2026-09: HARMONISATION, AND WHY IT STOPS AT THIS FILE ────────
+   *
+   * The public marketing site now HARMONISES these per tenant: same anchor
+   * hues, but chroma and lightness adapted so four modes do not sit like
+   * foreign objects on a desaturated tenant's page. The engine is
+   * packages/shared/design/palette.js; the reasoning is
+   * doc/PUBLIC_WEB_EXPERIENCE_GUIDE.md §1.4.
+   *
+   * THE ERP DOES NOT HARMONISE. It calls that same shared function with
+   * `harmoniseModes: false`, which returns the four literals below unchanged.
+   * The paragraphs above are why: an operator reading two hundred shipments a
+   * day learns these colours once, and they must not shift because a marketing
+   * page was repainted. "Never derived from --primary" is also unchanged —
+   * harmonisation adapts a fixed anchor, it does not compute a mode from the
+   * tenant's accent.
+   *
+   * tests/unit/palette-engine.test.js pins the four values below byte for byte.
+   * If it fails, the Control Tower has moved and the PR is wrong.
    */
   --mode-sea: 40 148 94;
   --mode-air: 28 155 215;
@@ -190,12 +220,22 @@
   --border: rgb(228 233 240 / 0.11);
   --input: rgb(228 233 240 / 0.16);
   --primary: rgb(245 130 31);
-  --primary-foreground: rgb(255 255 255);
+  /* Same fill, same label: `--primary` does not change between themes, so
+     neither does what is legible on it. See the light block for F-20. */
+  --primary-foreground: rgb(10 10 10);
   /* Orange goes LIGHTER on dark, not darker — 8.68:1 on --card. */
   --primary-ink: var(--primary-ink-dark);
   --ring: rgb(245 130 31);
   --destructive: rgb(232 104 96);
-  --destructive-foreground: rgb(255 255 255);
+  /*
+   * Carbon, not white — and for the same reason `--primary-foreground` is
+   * carbon (F-20). `--destructive` is LIGHTENED under .dark so that
+   * `text-destructive` reads on a dark card, which leaves the fill too
+   * luminous to carry white type: white on it is 3.19:1, a live AA failure on
+   * every Delete button in dark mode. Carbon on the same fill is 6.21:1. The
+   * light theme keeps white, where the deeper red measures 4.54:1.
+   */
+  --destructive-foreground: rgb(10 10 10);
   --sidebar: rgb(18 22 30);
   --sidebar-foreground: rgb(228 233 240);
   --sidebar-border: rgb(228 233 240 / 0.11);
@@ -441,6 +481,38 @@
   .num {
     font-variant-numeric: tabular-nums;
     letter-spacing: -0.015em;
+  }
+
+  /*
+   * The ground under the OPEN record in a master-detail index (`<IndexRow>`,
+   * guide §3.14). Two layers, and it has to be two.
+   *
+   * The sixteen 360 screens marked the open row with `bg-primary/10` and
+   * nothing else. Measured against the `--background` these lists actually sit
+   * on, that is 1.126:1 in the dark theme — a 0.68% luminance step, which is
+   * why the report said nothing showed which record was open.
+   *
+   * `--accent` alone does not fix it either, and fails in the opposite theme:
+   * it is the surface meant to sit on `--card`, and against `--background` it
+   * measures 1.281:1 dark but 1.021:1 LIGHT — flatter than the tint it
+   * replaces. No single token steps clearly from `--background` in both
+   * themes, because `--background` sits between `--card` and `--accent` in one
+   * of them.
+   *
+   * So: `--accent` as the surface step, and the tenant's own `--primary` at
+   * 15% over it as the tint. 1.619:1 dark and 1.161:1 light — a real step in
+   * both, and it tracks tenant re-branding the way `.st-orange` and the
+   * progress fills already do. background-image paints over background-color,
+   * which is what layers them without a stacking-order trick that a caller's
+   * own `z-index` could later break.
+   */
+  .index-row-open {
+    background-color: var(--accent);
+    background-image: linear-gradient(
+      0deg,
+      color-mix(in srgb, var(--primary) 15%, transparent),
+      color-mix(in srgb, var(--primary) 15%, transparent)
+    );
   }
   /* Was 10px / 0.19em / --ink-3 — 3.01:1, the app's most-used contrast failure
      across 198 call sites (F13). 11px with restrained tracking and the retuned
@@ -1313,6 +1385,50 @@
   outline: none;
 }
 
+/* --- Quick PIN premium — identity card, read-only chip, passkey divider ---- */
+.pin-identity {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.pin-identity-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.85rem 0.9rem;
+  border-radius: 0.85rem;
+  background: linear-gradient(135deg, rgb(255 255 255 / 0.07), rgb(255 255 255 / 0.03));
+  border: 1px solid rgb(255 255 255 / 0.09);
+  box-shadow:
+    0 8px 24px rgb(0 0 0 / 0.25),
+    inset 0 1px 0 rgb(255 255 255 / 0.06);
+}
+.pin-switch {
+  align-self: flex-start;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--primary) 72%, #d8b3bb);
+  text-decoration: underline;
+  text-decoration-color: rgb(255 255 255 / 0.18);
+  text-underline-offset: 3px;
+}
+.pin-switch:hover {
+  color: var(--primary);
+}
+.login-card .pin-identity-card + .pin-switch {
+  margin-left: 0.2rem;
+}
+/* Wider card to hold 8 boxes without overflow scrolling */
+.login-card {
+  max-width: 28rem;
+}
+@media (max-width: 420px) {
+  .login-card {
+    max-width: 22.5rem;
+    padding: 1.25rem;
+  }
+}
+
 @keyframes landing-kenburns {
   from {
     transform: scale(1) translate3d(0, 0, 0);
@@ -1942,6 +2058,7 @@
   /* Density now lives on `--rail-w` (see the density block above), because the
      title bar's app mark centres itself on this width too. */
   .rail-btn {
+    position: relative;
     display: grid;
     place-items: center;
     width: 36px;
@@ -1952,6 +2069,36 @@
     transition:
       background-color var(--dur) var(--ease),
       color var(--dur) var(--ease);
+  }
+  /**
+   * The unread count on a rail cell (Messages).
+   *
+   * OUT OF FLOW, because `.rail-btn` is a centring grid and an in-flow sibling
+   * would stack under the glyph and push it off centre. The ring is the rail's
+   * own `--card`, not a hard white: on the rail the badge overlaps the icon,
+   * and a ring painted in the surface behind it is what keeps the digits
+   * legible against a stroke rather than smeared into one.
+   *
+   * `--primary` / `--primary-foreground` is the same pair the bell's badge
+   * uses, which is deliberate — two counts in the same chrome that disagree
+   * about their colour read as two different kinds of thing.
+   */
+  .rail-badge {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    display: grid;
+    place-items: center;
+    min-width: 15px;
+    height: 15px;
+    padding: 0 3px;
+    border-radius: 999px;
+    background: var(--primary);
+    color: var(--primary-foreground);
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 1;
+    box-shadow: 0 0 0 2px var(--card);
   }
   .rail-btn:hover {
     background: var(--accent);

@@ -8,6 +8,7 @@ const { AppError } = require("../../../utils/errors");
 const controller = require("./document_vault.controller");
 const service = require("./document_vault.service");
 const validator = require("./document_vault.validator");
+const { singleFile } = require("../../../shared/http/upload.middleware");
 
 const MODULE = "MOD-64";
 const router = express.Router();
@@ -62,8 +63,12 @@ function requireDocumentPermission(action) {
 router.get("/", requirePermission(MODULE, "view"), controller.list);
 router.get("/:id", requirePermission(MODULE, "view"), requireDocumentPermission("view"), controller.get);
 router.get("/:id/download", requirePermission(MODULE, "view"), requireDocumentPermission("view"), controller.download);
-// Writes: upload a document (base64) and soft-delete (archive).
-router.post("/", requirePermission(MODULE, "create"), validator.create, controller.create);
+// Writes: upload a document and soft-delete (archive).
+//
+// `singleFile` must run BEFORE the validator: multipart bodies are parsed by
+// multer, and until it has run req.body is empty for those requests. It is a
+// no-op for a JSON request, so the legacy base64 transport is untouched.
+router.post("/", requirePermission(MODULE, "create"), singleFile("file"), validator.create, controller.create);
 router.delete("/:id", requirePermission(MODULE, "delete"), controller.archive);
 
 module.exports = { basePath: "/documents", feature: null, router };

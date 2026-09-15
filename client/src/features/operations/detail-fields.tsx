@@ -15,6 +15,7 @@
  */
 import * as React from "react";
 import { Field, Select } from "@/components/ui/modal";
+import { DateTimeField } from "@/components/ui/datetime-field";
 import { Input } from "@/components/ui/input";
 import { DateField } from "@/components/ui/date-field";
 import { Textarea } from "@/components/ui/textarea";
@@ -385,10 +386,9 @@ function Control({
       );
     case "DATETIME":
       return (
-        <Input
-          type="datetime-local"
+        <DateTimeField
           value={asString(value)}
-          onChange={(e) => onChange(e.target.value || null)}
+          onChange={(iso) => onChange(iso || null)}
           {...aria}
         />
       );

@@ -17,10 +17,10 @@ import {
 beforeEach(() => __resetFontCache());
 
 describe("the library", () => {
-  it("ships the agreed sixteen families, with unique ids and names", () => {
-    expect(FONTS).toHaveLength(16);
-    expect(new Set(FONTS.map((f) => f.id)).size).toBe(16);
-    expect(new Set(FONTS.map((f) => f.name)).size).toBe(16);
+  it("ships the agreed seventeen families, with unique ids and names", () => {
+    expect(FONTS).toHaveLength(17);
+    expect(new Set(FONTS.map((f) => f.id)).size).toBe(17);
+    expect(new Set(FONTS.map((f) => f.name)).size).toBe(17);
   });
 
   /**
@@ -97,7 +97,7 @@ describe("fontGroups", () => {
    */
   it("offers the full library in every slot", () => {
     for (const slot of ["display", "body", "mono"] as const) {
-      expect(fontGroups(slot).flatMap((g) => g.fonts)).toHaveLength(16);
+      expect(fontGroups(slot).flatMap((g) => g.fonts)).toHaveLength(17);
     }
   });
 });

@@ -251,6 +251,71 @@ END $$;
 The gate treats any `DO $$ … $$` block as the author's explicit guard and does
 not look inside it.
 
+### 8.2b `pg_constraint` is database-wide — qualify every constraint guard
+
+A tenant database has **two schemas**, `live` and `sandbox` (§1), and
+`provisioning.service.js` migrates them in that order:
+
+```js
+for (const schema of ["live", "sandbox"]) { … }
+```
+
+`pg_constraint` is **database-wide**, and `conname` is unique per *table*, not
+per database. So this guard —
+
+```sql
+IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_x') THEN
+  ALTER TABLE t ADD CONSTRAINT chk_x CHECK (…);
+END IF;
+```
+
+— matches the constraint on **any** schema's copy of `t`. `live` runs first and
+creates it; `sandbox` then finds live's row, takes the branch as false, and
+skips its own `ADD`. Nothing raises: a skipped `ADD` is not an error.
+
+**It cost 111 constraints.** Audited by provisioning a tenant with the real
+migrator and diffing the two schemas: `live` 1883, `sandbox` 1772 — 107 CHECK
+and 4 FOREIGN KEY missing across 48 tables, from 48 migrations, the oldest
+`0464_ledger_hardening`. Live was never affected; it always wins the race. The
+damage is that **sandbox accepts rows live would reject**, so a TEST-mode
+scenario can pass on data production would refuse.
+
+It stayed invisible for two years because most of these rules are *also*
+enforced by a Zod validator on the write path, so no request ever reached the
+missing CHECK. It surfaced only when `13790` put a `COMMENT ON CONSTRAINT` after
+such a guard — the first statement that **required** the constraint to exist in
+the schema the guard had just claimed to create it in.
+
+**Write it qualified:**
+
+```sql
+IF NOT EXISTS (
+  SELECT 1
+    FROM pg_constraint c
+    JOIN pg_class t      ON t.oid = c.conrelid
+    JOIN pg_namespace n  ON n.oid = t.relnamespace
+   WHERE c.conname = 'chk_x'
+     AND t.relname = 't'
+     AND n.nspname = current_schema()
+) THEN …
+```
+
+Two gates hold it now. `check-constraint-guards.js` (backend job) rejects the
+unqualified shape in any **new** migration and freezes the 72 historical files —
+frozen rather than fixed, because per §8.1 the ledger keys on filename, so
+editing them would repair no existing tenant while tripping `contentDrift`
+across the whole fleet. `check-schema-parity.js` (migrations job) asserts on a
+freshly provisioned tenant that `sandbox` enforces every CHECK and FK `live`
+does, and that no sandbox constraint **references the `live` schema** — a
+foreign key from test data to production rows, which is the mistake a careless
+repair makes.
+
+`13791_sandbox_constraint_repair.sql` is that repair: it mirrors live's missing
+constraints onto the schema being migrated, retargets `REFERENCES live.…` to
+that schema, and falls back to `NOT VALID` where existing sandbox rows already
+violate the rule — enforcing it going forward rather than failing a deploy over
+test data. Anything left unvalidated is listed by the VERIFY block in that file.
+
 ### 8.3 An applied migration is IMMUTABLE — idempotency must not hide drift
 
 The same gate freezes every migration that existed when it landed, by content

@@ -83,6 +83,13 @@ const schemas = {
   ticketStatus: z.object({
     status: z.enum(["NEW", "TRIAGED", "IN_PROGRESS", "SHIPPED", "DECLINED"]),
   }),
+  // A Praxis reply to a tenant ticket (0105). `internal` marks the
+  // never-shown-to-tenant note; the tenant API has no such flag at all.
+  ticketReply: z.object({
+    body: z.string().trim().min(1).max(5000),
+    internal: z.boolean().optional().default(false),
+    attachment_ids: z.array(z.string().uuid()).max(5).optional().default([]),
+  }),
   // Platform users
   userCreate: z.object({
     email: z.string().trim().email(),

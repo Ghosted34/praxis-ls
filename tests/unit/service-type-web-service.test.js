@@ -39,6 +39,8 @@ jest.mock("../../src/modules/vault/document_vault/document_vault.service", () =>
 }));
 jest.mock("../../src/services/storage.service", () => ({ get: jest.fn(), delete: jest.fn() }));
 
+const fs = require("fs");
+const path = require("path");
 const repo = require("../../src/modules/operations/service_type_web/service_type_web.repo");
 const events = require("../../src/modules/operations/service_type_web/service_type_web.events");
 const service = require("../../src/modules/operations/service_type_web/service_type_web.service");
@@ -276,6 +278,42 @@ describe("service_type_web.service — upsert is create-once-then-update", () =>
     })).rejects.toMatchObject({ code: "SLUG_TAKEN" });
   });
 
+  test("the slug-uniqueness guard runs on the FIRST save, not only on updates", async () => {
+    // It used to sit inside `if (before)`, so the ONE write most likely to
+    // collide — the first save, whose slug the tab suggested from the service
+    // name and which has never been checked against anything — went straight to
+    // the partial unique index. What came back was the generic constraint
+    // handler's "a record with these values already exists": no field, no slug,
+    // and no way to tell which of the two languages was the problem.
+    repo.getProfile.mockResolvedValue(null); // no row yet
+    const client = {
+      async query(text) {
+        if (/SELECT 1 FROM service_type_web_profile/.test(text)) {
+          return { rows: [{ 1: 1 }], rowCount: 1 }; // another service holds it
+        }
+        return { rows: [], rowCount: 0 };
+      },
+    };
+    await expect(service.upsertProfile(client, {
+      serviceTypeId: ST, patch: { slug_fr: "cargaison-speciale" }, actor: {},
+    })).rejects.toMatchObject({ code: "SLUG_TAKEN", status: 422 });
+    // And the 422 names the field, which is the whole point of catching it here.
+    await expect(service.upsertProfile(client, {
+      serviceTypeId: ST, patch: { slug_fr: "cargaison-speciale" }, actor: {},
+    })).rejects.toMatchObject({ details: { slug_fr: ["already in use"] } });
+  });
+
+  test("re-sending the slug a row already holds is not a collision with itself", async () => {
+    repo.getProfile.mockResolvedValue({ ...baseProfile, slug_fr: "fret" });
+    repo.upsertProfile.mockResolvedValue({ ...baseProfile });
+    const client = recordingClient();
+    await expect(service.upsertProfile(client, {
+      serviceTypeId: ST, patch: { slug_fr: "fret" }, actor: {},
+    })).resolves.toBeDefined();
+    // No probe was issued — the value is unchanged, so there is nothing to check.
+    expect(client.calls.some((c) => /SELECT 1 FROM service_type_web_profile/.test(c.text))).toBe(false);
+  });
+
   test("an explicit null on video_url is forwarded to the repo (clears the field, not a no-op)", async () => {
     // The audit (Fix 2) found that the previous COALESCE(EXCLUDED.col, current)
     // silently swallowed explicit nulls. The patch has the key (it IS in
@@ -343,6 +381,88 @@ describe("service_type_web.service — GET is total (guide §3.1, §4.5)", () =>
   test("on a nonexistent service type id, getTab throws NOT_FOUND", async () => {
     repo.serviceTypeExists.mockResolvedValue(false);
     await expect(service.getTab({}, "nope")).rejects.toMatchObject({ code: "NOT_FOUND", status: 404 });
+  });
+});
+
+describe("service_type_web.service — removing a document that is no longer bound to its slot", () => {
+  test("unbinding an orphaned COVER sends an EMPTY patch to the repo rather than throwing", async () => {
+    // The reachable state: upload a cover, then clear it with
+    // PUT {cover_vault_id: null} (legal while draft). The vault row keeps its
+    // SERVICE_TYPE scope and its COVER role, but the profile no longer points
+    // at it — so `removeMedia` finds a role, matches neither slot, and builds
+    // `fields = {}`. The repo's empty-patch branch then ran a bare
+    // `INSERT INTO service_type_web_profile (service_type_id)` against a row
+    // that exists: 23505, transaction aborted, 500 on a request that should
+    // have been a no-op. Guarded in the repo now; asserted here because this is
+    // the caller that gets there.
+    repo.lockProfile.mockResolvedValue({ ...baseProfile, cover_vault_id: null });
+    repo.upsertProfile.mockResolvedValue({ ...baseProfile });
+    const client = {
+      calls: [],
+      async query(text, params) {
+        this.calls.push({ text, params });
+        if (/SELECT public_media_role FROM document_vault/.test(text)) {
+          return { rows: [{ public_media_role: "COVER" }], rowCount: 1 };
+        }
+        return { rows: [], rowCount: 0 };
+      },
+    };
+    await expect(service.removeMedia(client, {
+      serviceTypeId: ST, documentId: OLD_COVER, actor: {},
+    })).resolves.toBeDefined();
+    expect(repo.upsertProfile).toHaveBeenCalledWith(client, ST, {});
+  });
+
+  test("the repo's empty-patch branch is an upsert, not a bare INSERT", () => {
+    // The real repo, not the module-level mock — the defect was in its SQL, so
+    // a test against the mock proves nothing. A bare INSERT here raises 23505
+    // against the row the caller above has just read and locked.
+    const realRepo = jest.requireActual(
+      "../../src/modules/operations/service_type_web/service_type_web.repo",
+    );
+    const issued = [];
+    const client = { query: async (text) => { issued.push(text); return { rows: [{}] }; } };
+    return realRepo.upsertProfile(client, ST, {}).then(() => {
+      expect(issued).toHaveLength(1);
+      expect(issued[0]).toMatch(/INSERT INTO service_type_web_profile/);
+      expect(issued[0]).toMatch(/ON CONFLICT \(service_type_id\)/);
+      // DO UPDATE rather than DO NOTHING: RETURNING * must still yield the row.
+      expect(issued[0]).toMatch(/DO UPDATE SET/);
+      expect(issued[0]).toMatch(/RETURNING \*/);
+    });
+  });
+});
+
+describe("service_type_web.service — the tab carries both names", () => {
+  test("service_type.name_fr reaches the payload (the FR slug suggestion is built from it)", async () => {
+    // `serviceTypeForPublish` did not SELECT name_fr while getTab read it, so
+    // the key was always undefined and JSON dropped it. The tab then fell back
+    // to the SCREAMING_SNAKE key for its FR slug suggestion — offering
+    // `project-cargo` for a service whose French name gives
+    // `cargaison-speciale` — and rendered the meta-title fallback hint blank.
+    repo.getProfile.mockResolvedValue(baseProfile);
+    repo.serviceTypeForPublish.mockResolvedValue({
+      service_type_id: ST, name_en: "Project & Break-bulk",
+      name_fr: "Cargaison Spéciale", is_active: true,
+    });
+    const out = await service.getTab(recordingClient(), ST);
+    expect(out.service_type).toEqual({
+      is_active: true, name_fr: "Cargaison Spéciale", name_en: "Project & Break-bulk",
+    });
+  });
+
+  test("the repo query that feeds it actually selects name_fr", () => {
+    // The service can only pass through what the SQL asked for, so the column
+    // list is the thing worth pinning — a behaviour test against the mocked
+    // repo would have passed throughout the bug.
+    const src = fs.readFileSync(
+      path.join(__dirname, "../../src/modules/operations/service_type_web/service_type_web.repo.js"),
+      "utf8",
+    );
+    const start = src.indexOf("async function serviceTypeForPublish");
+    const sql = src.slice(src.indexOf("`", start), src.indexOf("`", src.indexOf("`", start) + 1));
+    expect(sql).toMatch(/name_fr/);
+    expect(sql).toMatch(/name_en/);
   });
 });
 

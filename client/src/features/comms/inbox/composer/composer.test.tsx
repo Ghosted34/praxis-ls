@@ -251,11 +251,22 @@ describe("the attachment tray", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("the attach control is a real button driving a hidden input", async () => {
+  it("the attach control is a named, operable file input", async () => {
     const onFiles = vi.fn();
     render(<AttachButton onFiles={onFiles} />);
-    expect(screen.getByRole("button", { name: "Attach" })).toBeInTheDocument();
-    // The input is hidden from the accessibility tree; the button is the control.
+
+    // The control now comes from the shared upload engine (<FilePicker>), which
+    // uses the label-wrapped input pattern rather than a <Button> beside an
+    // `aria-hidden` input. That is a deliberate change, and it is the stronger
+    // of the two: the input itself is focusable, carries the accessible name,
+    // and is announced as a file control — where the old shape hid the real
+    // control from assistive tech and relied on a click being forwarded to it.
+    const input = screen.getByLabelText("Attach");
+    expect(input).toBeInTheDocument();
+    expect(input).toHaveAttribute("type", "file");
+    // Visually hidden, but NOT hidden from the accessibility tree.
+    expect(input).not.toHaveAttribute("aria-hidden");
+    expect(input.tabIndex).not.toBe(-1);
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
   });
 

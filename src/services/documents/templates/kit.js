@@ -40,10 +40,42 @@ const money = (n, ccy = "XAF", cfg = {}) => {
   return `${v.toLocaleString("fr-FR", { minimumFractionDigits: min, maximumFractionDigits: dec })} ${unit}`;
 };
 const xaf = (n, cfg) => money(n, "XAF", cfg);
+/**
+ * A date as it is printed on an OHADA commercial document: dd/mm/yyyy.
+ *
+ * This is THE date formatter for the whole document family — invoice, proforma,
+ * credit note, receipt, proposal, quotation, purchase order, supplier invoice,
+ * delivery note, goods-received note, cash voucher — through the ~40 `k.dateFmt`
+ * call sites in registry.js. It used to print ISO `2026-07-27`.
+ *
+ * ISO is not WRONG the way month-first is; it is unambiguous. But these are
+ * documents a Douala accountant, a customs broker and a supplier read on paper,
+ * and none of them writes a date that way. The invoice date, the due date and
+ * the validity date on a statutory document should read the way the people
+ * bound by them read dates.
+ *
+ * ── THE DAY MUST NOT MOVE ──────────────────────────────────────────────────
+ *
+ * UTC getters, deliberately, because `toISOString()` was UTC and this has to
+ * print the SAME day it printed before — only reordered. A `date` column is a
+ * calendar date with no zone, and `new Date("2026-07-27")` is midnight UTC; read
+ * back with LOCAL getters on a server behind UTC that is the 26th. Changing the
+ * format is a presentation change and it must not become a data change.
+ *
+ * The bare-string fast path never builds a Date at all, so a plain calendar date
+ * cannot be moved by anything.
+ */
+const CALENDAR_DATE = /^(\d{4})-(\d{2})-(\d{2})/;
 const dateFmt = (d) => {
   if (!d) return "";
-  const dt = new Date(d);
-  return Number.isNaN(dt.getTime()) ? String(d) : dt.toISOString().slice(0, 10);
+  if (typeof d === "string") {
+    const m = CALENDAR_DATE.exec(d);
+    if (m) return `${m[3]}/${m[2]}/${m[1]}`;
+  }
+  const dt = d instanceof Date ? d : new Date(d);
+  if (Number.isNaN(dt.getTime())) return String(d);
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${pad(dt.getUTCDate())}/${pad(dt.getUTCMonth() + 1)}/${dt.getUTCFullYear()}`;
 };
 
 /* ── amount in words (FR/EN) ────────────────────────────────────────────────

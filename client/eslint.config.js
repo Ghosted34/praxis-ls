@@ -193,6 +193,28 @@ export default tseslint.config(
        * asks them to destroy something.
        */
       "praxis/no-native-dialogs": "error",
+
+      /**
+       * The upload gate, at "error" for the same reason as the dialog one: the
+       * thing it prevents is user-visible, and a warning in a tree that already
+       * carries warnings is a rule nobody reads.
+       *
+       * Not-yet-migrated sites are listed in the override block below rather
+       * than being left to warn. That is the shape this repo already uses for a
+       * gate landing on existing code (see scripts/check-silent-catch.js's
+       * committed baseline, and ALLOW_LOCAL_SCHEMA in check-schemas.mjs): the
+       * rule is ON everywhere by default so nothing NEW can be written bare,
+       * and the exceptions are an explicit, shrinking list rather than an
+       * ambient permission.
+       */
+      "praxis/no-raw-upload": "error",
+
+      /**
+       * The companion to the rule above, and the one that would have caught
+       * what it missed: no-raw-upload governs how a file is PICKED, this one
+       * governs whether the user is told anything while it uploads.
+       */
+      "praxis/require-upload-progress": "error",
     },
   },
   // Test files run under Vitest globals and legitimately use non-null assertions.

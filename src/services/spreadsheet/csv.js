@@ -23,12 +23,22 @@ function csvCell(v) {
   return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
-/** Serial dates become ISO text — the fake-UTC Date built by serialDate
- *  carries the entity-timezone wall clock, so slicing it is tz-correct.
- *  A datetime column keeps its minutes; a date column stops at the day. */
+/** Serial dates become day-first text, matching the number format the xlsx
+ *  sibling puts on the same column — the two exports of one report must not
+ *  disagree about what a date looks like.
+ *
+ *  UTC getters: the fake-UTC Date built by serialDate carries the ENTITY
+ *  timezone's wall clock in its UTC fields, which is exactly why the old code
+ *  could slice `toISOString()` and be tz-correct. Reading it with local getters
+ *  would undo that and move the day. A datetime column keeps its minutes; a
+ *  date column stops at the day. */
 function csvText(v, fmt) {
   if (v instanceof Date) {
-    return v.toISOString().slice(0, fmt && fmt.includes("hh") ? 16 : 10).replace("T", " ");
+    const pad = (n) => String(n).padStart(2, "0");
+    const day = `${pad(v.getUTCDate())}/${pad(v.getUTCMonth() + 1)}/${v.getUTCFullYear()}`;
+    return fmt && fmt.includes("hh")
+      ? `${day} ${pad(v.getUTCHours())}:${pad(v.getUTCMinutes())}`
+      : day;
   }
   return v;
 }

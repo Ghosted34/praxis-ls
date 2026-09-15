@@ -110,9 +110,9 @@ const GodModePage = lazyNamed(
   () => import("@/features/godmode/godmode-page"),
   "GodModePage",
 );
-const WorkspacePage = lazyNamed(
-  () => import("@/features/workspace/workspace-page"),
-  "WorkspacePage",
+const WorkspaceHub = lazyNamed(
+  () => import("@/features/workspace/hub"),
+  "WorkspaceHub",
 );
 const Planned = lazyNamed(
   () => import("@/features/scaffold/screen-scaffold"),
@@ -274,9 +274,33 @@ const WebsitePageEditorPage = lazyNamed(
   () => import("@/features/settings/website-page-editor"),
   "WebsitePageEditorPage",
 );
+const WebsiteCopyPage = lazyNamed(
+  () => import("@/features/settings/website-copy"),
+  "WebsiteCopyPage",
+);
 const WebsiteInsightsPage = lazyNamed(
   () => import("@/features/settings/website-insights"),
   "WebsiteInsightsPage",
+);
+const WebsiteThemePage = lazyNamed(
+  () => import("@/features/settings/website-theme"),
+  "WebsiteThemePage",
+);
+const WebsiteAboutPage = lazyNamed(
+  () => import("@/features/settings/website-about"),
+  "WebsiteAboutPage",
+);
+const WebsitePartnersPage = lazyNamed(
+  () => import("@/features/settings/website-partners"),
+  "WebsitePartnersPage",
+);
+const WebsiteSocialPage = lazyNamed(
+  () => import("@/features/settings/website-social"),
+  "WebsiteSocialPage",
+);
+const WebsiteCareersPage = lazyNamed(
+  () => import("@/features/settings/website-careers"),
+  "WebsiteCareersPage",
 );
 const WebsiteInsightEditorPage = lazyNamed(
   () => import("@/features/settings/website-insight-editor"),
@@ -535,7 +559,11 @@ export function App() {
 
               {/* --- IA-map screens not yet built → shared placeholder (see doc/FE_IA_HANDOFF.md) --- */}
               {/* Overview */}
-              <Route path="workspace" element={<WorkspacePage />} />
+              {/* My workspace — one hub, deep-linkable sections (Today / Tasks /
+                  Calendar). Mirrors the other hubs so the ribbon's second row and
+                  the tab strip are the same list. */}
+              <Route path="workspace" element={<WorkspaceHub />} />
+              <Route path="workspace/:section" element={<WorkspaceHub />} />
               <Route path="help" element={<HelpPage />} />
               <Route path="support" element={<SupportPage />} />
               <Route path="godmode" element={<GodModePage />} />
@@ -678,6 +706,12 @@ export function App() {
                   literal "articles" — React Router ranks a static segment
                   higher, so these two win, but the ordering is written this way
                   so a reader sees why the collision is not one. */}
+              <Route path="settings/website/copy" element={<WebsiteCopyPage />} />
+              <Route path="settings/website/theme" element={<WebsiteThemePage />} />
+              <Route path="settings/website/about" element={<WebsiteAboutPage />} />
+              <Route path="settings/website/partners" element={<WebsitePartnersPage />} />
+              <Route path="settings/website/social" element={<WebsiteSocialPage />} />
+              <Route path="settings/website/careers" element={<WebsiteCareersPage />} />
               <Route
                 path="settings/website/articles"
                 element={<WebsiteInsightsPage />}

@@ -8,6 +8,7 @@ import { pageShell } from "@/lib/layout";
 import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
+import { DateField } from "@/components/ui/date-field";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { ErrorState } from "@/components/ui/states";
@@ -469,17 +470,15 @@ function BudgetForm({
       <form className="space-y-4" onSubmit={submit}>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Period start" required>
-            <Input
-              type="date"
+            <DateField
               value={f.period_start}
-              onChange={(e) => set("period_start", e.target.value)}
+              onChange={(iso) => set("period_start", iso)}
             />
           </Field>
           <Field label="Period end" required>
-            <Input
-              type="date"
+            <DateField
               value={f.period_end}
-              onChange={(e) => set("period_end", e.target.value)}
+              onChange={(iso) => set("period_end", iso)}
             />
           </Field>
           <Field label={`Soft cap (${ccy})`} required>

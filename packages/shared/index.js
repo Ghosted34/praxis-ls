@@ -12,8 +12,11 @@ const supplierMaster = require("./schemas/supplier-master");
 const partyCommon = require("./schemas/party-common");
 const partyConfig = require("./schemas/party-config");
 const entityCommon = require("./schemas/entity-common");
+const siteSettings = require("./schemas/site-settings");
 const ledger = require("./rules/ledger");
 const marks = require("./rules/marks");
+const entityRoute = require("./rules/entity-route");
+const notificationInterrupt = require("./rules/notification-interrupt");
 const workSchedule = require("./rules/work-schedule");
 const pwaDesign = require("./pwa-design");
 const countries = require("./data/countries");
@@ -45,8 +48,40 @@ exports.partyConfig = partyConfig;
 // addresses, registrations, establishments). Deliberately separate from
 // partyCommon — same mechanism, different meaning. See schemas/entity-common.js.
 exports.entityCommon = entityCommon;
+// Website settings — theme, social links, partners, credentials, the group
+// About, leadership and an entity's public story. Shared because every one of
+// them is a FORM: the settings screen must refuse exactly what the API refuses,
+// or a tenant learns their colour was invalid from a 422 after pressing Save.
+exports.siteSettings = siteSettings;
+// entity_ref → the screen that shows it. Shared because the API stamps
+// `notification.link_url` from it at write time and the client resolves it
+// again at draw time for every row written before that column existed.
+exports.entityRoute = entityRoute;
+// Which notifications may interrupt — sound, hold the banner, vibrate.
+// Shared because the API stamps it onto the push payload, the socket
+// listener uses it to decide whether to make a noise, and the Preferences
+// matrix draws the default from it for a user who has set none.
+exports.notificationInterrupt = notificationInterrupt;
 // Canonical ISO country reference (code, name, phone, currency, per-jurisdiction
 // registration requirements) — the API, the seed and the client picker's source.
+/*
+ * design/palette.js and design/color.js are DELIBERATELY NOT re-exported here,
+ * and will stay that way until PR 2 of doc/PUBLIC_WEB_EXPERIENCE_GUIDE.md wires
+ * both sides to them.
+ *
+ * Two reasons, and the second is the one that matters:
+ *
+ *   1. `check:schemas` requires every domain on this object to be imported by
+ *      BOTH the API and the client. The palette engine is imported by neither
+ *      yet — its consumers arrive with the theme endpoint and the appearance
+ *      preview — so listing it here would be claiming a contract that does not
+ *      exist, and the gate is right to fail it.
+ *   2. This entry point pulls Zod and the ISO country and currency tables.
+ *      public-web has ~11 kB of gzipped headroom in its first-paint budget and
+ *      must import `@praxis/shared/design/palette` by deep path, which needs
+ *      nothing from here. Re-exporting would advertise the expensive path as
+ *      the normal one.
+ */
 exports.countries = countries;
 // Canonical ISO 4217 currency reference (code, name, symbol, decimals, numeric,
 // and the countries that use each). The currency module enriches tenant rows

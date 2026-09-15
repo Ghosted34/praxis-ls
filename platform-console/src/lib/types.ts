@@ -130,7 +130,40 @@ export interface CatalogueFeature {
 }
 
 export type TicketStatus = "NEW" | "TRIAGED" | "IN_PROGRESS" | "SHIPPED" | "DECLINED";
-export type TicketKind = "SUPPORT" | "BUG" | "FEATURE";
+// Nine kinds (0105) — the CHECK in migrations/platform/0105 is the source of
+// truth; this union, the KINDS filter in features/Support.tsx and the tenant
+// dropdown are the three copies that must agree with it.
+export type TicketKind =
+  | "SUPPORT"
+  | "BUG"
+  | "FEATURE"
+  | "URGENT"
+  | "BILLING"
+  | "SECURITY"
+  | "DATA"
+  | "COMMS"
+  | "REQUEST";
+
+export interface SupportAttachment {
+  attachment_id: string;
+  ticket_id: string | null;
+  reply_id: string | null;
+  file_name: string;
+  mime_type: string;
+  byte_size: number;
+  created_at: string;
+}
+
+export interface SupportReply {
+  reply_id: string;
+  ticket_id?: string;
+  author_side: "TENANT" | "PRAXIS";
+  author_label: string | null;
+  body: string;
+  is_internal: boolean;
+  created_at: string;
+  attachments: SupportAttachment[];
+}
 
 export interface SupportTicket {
   ticket_id: string;
@@ -146,6 +179,9 @@ export interface SupportTicket {
   csat: number | null;
   created_at: string;
   updated_at: string;
+  // Detail fetches (GET /support/tickets/:id) carry the conversation.
+  attachments?: SupportAttachment[];
+  replies?: SupportReply[];
 }
 
 export interface AuditRow {

@@ -15,6 +15,7 @@ import { errMsg } from "@/lib/use-resource";
 import { cn } from "@/lib/cn";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
 import { Form, FormField, FormError } from "@/components/ui/form";
+import { DateField } from "@/components/ui/date-field";
 import { useZodForm } from "@/lib/use-zod-form";
 import { useFieldArray } from "react-hook-form";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -170,7 +171,7 @@ function JournalEntryForm({
           </FormField>
           <FormField form={form} name="entry_date" label={tr("Entry date")} required>
             {(field) => (
-              <Input type="date" {...field} value={String(field.value ?? "")} />
+              <DateField {...field} value={String(field.value ?? "")} />
             )}
           </FormField>
           <FormField
@@ -420,10 +421,9 @@ function JournalReverseForm({
             required
             hint="Date the contra entry posts on."
           >
-            <Input
-              type="date"
+            <DateField
               value={entryDate}
-              onChange={(e) => setEntryDate(e.target.value)}
+              onChange={setEntryDate}
             />
           </Field>
           <Field label={tr("Reason")}>

@@ -145,8 +145,14 @@ export function LoginEditor() {
                 onChange={setBackgroundUrl}
                 shape="wide"
                 hint="A dark scrim is applied automatically. Large landscape image recommended."
-                upload={(d) =>
-                  uploadLoginBackground(d).then((r) => r.backgroundUrl)
+                // A photograph, not a brand mark — so it gets the enhancement
+                // chain (auto-level, white balance, sharpen) that a logo must
+                // never get.
+                profile="photo"
+                upload={(d, onProgress) =>
+                  uploadLoginBackground(d, onProgress).then(
+                    (r) => r.backgroundUrl,
+                  )
                 }
               />
               <Toggle

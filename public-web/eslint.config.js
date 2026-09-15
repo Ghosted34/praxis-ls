@@ -48,12 +48,54 @@ export default tseslint.config(
        * `alert("Thanks!")`, rather than after a sweep has to remove it.
        */
       "praxis/no-native-dialogs": "error",
+      // Shares the client's rule implementation — see the index.cjs note on why
+      // a second copy of a gate is a gate that drifts.
+      "praxis/no-raw-upload": "error",
       "react-hooks/exhaustive-deps": "warn",
       "@typescript-eslint/no-unused-vars": [
         "error",
         { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
       ],
       "no-empty": ["error", { allowEmptyCatch: true }],
+
+      /**
+       * D-1, AS A GATE RATHER THAN A COMMENT.
+       *
+       * `public-web` does not depend on `@praxis/shared` and the whole app is
+       * built around not doing so: `site-theme.ts` derives nothing and reads a
+       * server-computed palette, `social-row.tsx` re-declares the platform list,
+       * and `site-theme.ts` hardcodes the four font stacks — each with a comment
+       * saying importing the package would pull Zod and the ISO country tables
+       * into a bundle budgeted to the kilobyte.
+       *
+       * Three files argued for the rule and none of them enforced it, so the
+       * first test to import `@praxis/shared/design/site-fonts` did it anyway
+       * and PASSED — the root workspace hoists the package into a
+       * `node_modules` this app can see. It failed only in CI, in two jobs, for
+       * the one reason that matters: the public-web job and the Dockerfile both
+       * run `npm ci --prefix public-web`, which installs what this app
+       * DECLARES. A local `npm run ci` cannot reproduce that, so this is the
+       * check that has to stand in for it.
+       *
+       * Tests are covered deliberately — the violation was in a test, and a
+       * test that resolves a package the app does not declare is green by
+       * accident. Where a cross-package assertion is genuinely wanted, it goes
+       * in `tests/unit/` at the repo root, which is where `@praxis/shared`
+       * actually resolves; `tests/unit/font-fallback-metrics.test.js` is the
+       * worked example.
+       */
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["@praxis/shared", "@praxis/shared/*"],
+              message:
+                "public-web does not depend on @praxis/shared (D-1) — it resolves locally via the root workspace and fails in CI, where this app installs only its own dependencies. Re-declare the value here, or put the cross-package assertion in tests/unit/ at the repo root.",
+            },
+          ],
+        },
+      ],
     },
   },
   {

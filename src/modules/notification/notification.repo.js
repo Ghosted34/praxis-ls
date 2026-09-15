@@ -20,12 +20,12 @@ async function mine(client, userId, q = {}) {
  * shared/events/emit.js. Runs on the caller's connection so it can join the
  * triggering transaction.
  */
-async function insertForUser(client, { userId, eventTypeKey = null, title, body = null, entityRef = null, priority = "NORMAL", category = null }) {
+async function insertForUser(client, { userId, eventTypeKey = null, title, body = null, entityRef = null, priority = "NORMAL", category = null, linkUrl = null }) {
   const { rows } = await client.query(
-    `INSERT INTO notification (user_id, channel, event_type_key, title, body, entity_ref, priority, category)
-     VALUES ($1, 'IN_APP', $2, $3, $4, $5, $6, $7)
+    `INSERT INTO notification (user_id, channel, event_type_key, title, body, entity_ref, priority, category, link_url)
+     VALUES ($1, 'IN_APP', $2, $3, $4, $5, $6, $7, $8)
      RETURNING notification_id, created_at`,
-    [userId, eventTypeKey, title, body, entityRef, priority === "HIGH" ? "HIGH" : "NORMAL", category],
+    [userId, eventTypeKey, title, body, entityRef, priority === "HIGH" ? "HIGH" : "NORMAL", category, linkUrl],
   );
   return rows[0];
 }
@@ -44,15 +44,42 @@ async function markAllRead(client, userId) {
 }
 
 // ── Preferences (1.2) — a user manages their own opt-outs. Missing row = enabled. ──
+/**
+ * INTERRUPT is a pseudo-channel. It reads and writes through this same endpoint
+ * so the API, the validator and the Preferences grid need no separate path, but
+ * it is backed by its own table — `notification_preference` is pre-existing and
+ * migrations above 13791 may not widen its channel CHECK without breaking
+ * fresh-tenant provisioning (see migration 13795).
+ */
+const INTERRUPT = "INTERRUPT";
+
 async function getPreferences(client, userId) {
-  const { rows } = await client.query(
-    "SELECT channel, category, enabled, updated_at FROM notification_preference WHERE user_id = $1 ORDER BY channel, category",
-    [userId]);
-  return rows;
+  const [base, interrupt] = await Promise.all([
+    client.query(
+      "SELECT channel, category, enabled, updated_at FROM notification_preference WHERE user_id = $1 ORDER BY channel, category",
+      [userId]),
+    client.query(
+      "SELECT category, enabled, updated_at FROM notification_interrupt_preference WHERE user_id = $1 ORDER BY category",
+      [userId]),
+  ]);
+  return [
+    ...base.rows,
+    ...interrupt.rows.map((r) => ({ channel: INTERRUPT, ...r })),
+  ];
 }
 async function putPreferences(client, userId, prefs) {
   const out = [];
   for (const p of prefs) {
+    if (p.channel === INTERRUPT) {
+       
+      const { rows } = await client.query(
+        "INSERT INTO notification_interrupt_preference (user_id, category, enabled) VALUES ($1,$2,$3) " +
+          "ON CONFLICT (user_id, category) DO UPDATE SET enabled = EXCLUDED.enabled, updated_at = now() " +
+          "RETURNING category, enabled, updated_at",
+        [userId, p.category, p.enabled]);
+      out.push({ channel: INTERRUPT, ...rows[0] });
+      continue;
+    }
      
     const { rows } = await client.query(
       "INSERT INTO notification_preference (user_id, channel, category, enabled) VALUES ($1,$2,$3,$4) " +
@@ -262,6 +289,12 @@ async function deletePushSubscription(client, userId, endpoint) {
  * (security-critical alerts are unconditional).
  */
 async function isChannelEnabled(client, userId, channel, category, defaultEnabled = true) {
+  if (channel === INTERRUPT) {
+    const { rows } = await client.query(
+      "SELECT enabled FROM notification_interrupt_preference WHERE user_id = $1 AND category = $2",
+      [userId, category]);
+    return rows[0] ? rows[0].enabled === true : defaultEnabled;
+  }
   const { rows } = await client.query(
     "SELECT enabled FROM notification_preference WHERE user_id = $1 AND channel = $2 AND category = $3",
     [userId, channel, category]);
@@ -281,11 +314,23 @@ async function isChannelEnabled(client, userId, channel, category, defaultEnable
  */
 async function preferencesFor(client, userIds, channels, category) {
   if (!userIds || userIds.length === 0) return new Map();
+  // One UNION rather than a second round-trip: the batch fan-out reads these
+  // once for every recipient of one event, and PERF S5 exists because this path
+  // used to issue a query per user per channel.
+  const wantsInterrupt = (channels || []).includes(INTERRUPT);
   const { rows } = await client.query(
     `SELECT user_id, channel, enabled
        FROM notification_preference
-      WHERE user_id = ANY($1::uuid[]) AND channel = ANY($2::text[]) AND category = $3`,
-    [userIds, channels, category],
+      WHERE user_id = ANY($1::uuid[]) AND channel = ANY($2::text[]) AND category = $3
+     UNION ALL
+     SELECT user_id, $5::text AS channel, enabled
+       FROM notification_interrupt_preference
+      WHERE $4::boolean AND user_id = ANY($1::uuid[]) AND category = $3`,
+    // Bound, not interpolated. It is a module constant today, but this file
+    // already carries a warning about a column name reaching SQL by
+    // concatenation, and the shape is what review and CodeQL read — not the
+    // provenance of this particular string.
+    [userIds, channels, category, wantsInterrupt, INTERRUPT],
   );
   const map = new Map();
   for (const r of rows) map.set(`${r.user_id}:${r.channel}`, r.enabled === true);
@@ -300,13 +345,13 @@ async function preferencesFor(client, userIds, channels, category) {
  * building a VALUES list, means N placeholders and a statement whose text
  * changes with the recipient count, which defeats the plan cache.
  */
-async function insertForUsers(client, userIds, { eventTypeKey = null, title, body = null, entityRef = null, priority = "NORMAL", category = null }) {
+async function insertForUsers(client, userIds, { eventTypeKey = null, title, body = null, entityRef = null, priority = "NORMAL", category = null, linkUrl = null }) {
   if (!userIds || userIds.length === 0) return [];
   const { rows } = await client.query(
-    `INSERT INTO notification (user_id, channel, event_type_key, title, body, entity_ref, priority, category)
-     SELECT u, 'IN_APP', $2, $3, $4, $5, $6, $7 FROM unnest($1::uuid[]) AS u
+    `INSERT INTO notification (user_id, channel, event_type_key, title, body, entity_ref, priority, category, link_url)
+     SELECT u, 'IN_APP', $2, $3, $4, $5, $6, $7, $8 FROM unnest($1::uuid[]) AS u
      RETURNING notification_id, user_id, created_at`,
-    [userIds, eventTypeKey, title, body, entityRef, priority === "HIGH" ? "HIGH" : "NORMAL", category],
+    [userIds, eventTypeKey, title, body, entityRef, priority === "HIGH" ? "HIGH" : "NORMAL", category, linkUrl],
   );
   return rows;
 }

@@ -6,6 +6,7 @@ import { Section } from "@/components/site/section";
 import { SectionHead } from "@/components/site/section-head";
 import { BadgePill } from "@/components/ui/badge-pill";
 import { BgMap } from "@/components/ui/bg-map";
+import { StagedLines } from "@/components/ui/type";
 import { Card } from "@/components/ui/card";
 import { QuoteWizard } from "@/components/site/quote-wizard";
 import { usePublishedServices } from "@/lib/use-services";
@@ -69,7 +70,10 @@ export function QuotePage() {
             as="h1"
             titleClass="hero-title"
             onDark
-            title={t("site.quote.titleMain")}
+            /* F-17, and this page has the strongest reason of the six: it is
+               where the site's primary CTA lands, so a headline that fades in
+               delays the LCP of the conversion page by its own entrance. */
+            title={<StagedLines paintImmediately text={t("site.quote.titleMain")} />}
             accent={t("site.quote.titleAccent")}
             lead={t("site.quote.sub")}
           />

@@ -7,6 +7,7 @@ import {
   tenant,
   tenantDownload,
   tenantWithProgress,
+  uploadFile,
   downloadPost,
 } from "./api-client";
 
@@ -439,6 +440,12 @@ export type EntityDocument = {
   type_renewal_lead_days?: number | null;
   notes?: string | null;
   is_active?: boolean;
+  /**
+   * Set when the caller lacks the MOD-01 update grant: the number, issuing
+   * authority, filing reference, notes and vault fields are absent from the
+   * row rather than null. See entity-360.service.redactDocument.
+   */
+  redacted?: boolean;
 };
 
 export type TaxKind =
@@ -819,6 +826,18 @@ export const entityRenewals = (id: string, asOf?: string | null) =>
 export const entityCapTable = (id: string, asOf?: string | null) =>
   tenant<CapTable>(`/entities/${id}/cap-table${asOfQuery(asOf)}`);
 
+/**
+ * The entity list as every picker needs it: all of them.
+ *
+ * `page()` on the API clamps a list with no `limit` to 50 rows, and the screens
+ * that read this one filter it in the BROWSER — so entity 51 was unfindable by
+ * search and unofferable as a parent or a corporate shareholder, with no error
+ * and no empty state to say the list had been cut. 200 is `page()`'s own
+ * maximum. Past that the fix is server-side search, which `LIST_SQL` already
+ * supports through its `q` parameter.
+ */
+export const ENTITY_LIST = "/entities?limit=200";
+
 /** Generic nested-collection helpers — one implementation for all seven. */
 export type EntityCollection =
   | "people"
@@ -879,6 +898,32 @@ export type VaultDocument = {
  * wider defaults. `doc_type_ref_id` is the registry reference — the server
  * derives the legacy `doc_type` text from it, so the two cannot drift.
  */
+/**
+ * Upload a file to the vault as multipart, through the upload engine.
+ *
+ * Multipart rather than the base64 body below: a 5 MB scan becomes a 6.7 MB
+ * JSON string otherwise, and that whole string is held in memory, parsed and
+ * sliced before a byte reaches storage. The bytes are the wait the progress bar
+ * is measuring.
+ */
+export const uploadVaultFile = (
+  file: File,
+  fields: {
+    doc_type?: string;
+    entity_ref?: string;
+    dossier_id?: string;
+    doc_type_ref_id?: string;
+    client_id?: string;
+    original_name?: string;
+  },
+  ctx?: { onProgress?: (percent: number) => void; signal?: AbortSignal },
+) =>
+  uploadFile<VaultDocument>("/tenant/documents", file, {
+    fields,
+    onProgress: ctx?.onProgress,
+    signal: ctx?.signal,
+  });
+
 export const uploadVaultDocument = (
   body: {
     data_url: string;
@@ -901,11 +946,18 @@ export const uploadEntityLogo = (
   id: string,
   dataUrl: string,
   variant: "light" | "dark" = "light",
+  onProgress?: (percent: number) => void,
 ) =>
-  tenant<Entity>(`/entities/${id}/logo`, {
-    method: "POST",
-    body: { data_url: dataUrl, variant },
-  });
+  onProgress
+    ? tenantWithProgress<Entity>(
+        `/entities/${id}/logo`,
+        { data_url: dataUrl, variant },
+        onProgress,
+      )
+    : tenant<Entity>(`/entities/${id}/logo`, {
+        method: "POST",
+        body: { data_url: dataUrl, variant },
+      });
 
 /* ── Treasury accounts(/treasury-accounts) ──────────────────────── */
 export type Treasury = {
@@ -1473,11 +1525,23 @@ export const downloadDictImportTemplate = () =>
   );
 /** `file` is a base64 data URL (FileReader.readAsDataURL) — the same upload
  *  shape the document vault uses, so there is one convention in the product. */
-export const validateDictImport = (file: string, filename?: string) =>
-  tenant<ImportValidateResult>("/financial-dictionary/import/validate", {
-    method: "POST",
-    body: { file, filename },
-  });
+export const validateDictImport = (
+  file: string,
+  filename?: string,
+  onProgress?: (percent: number) => void,
+) => {
+  const body = { file, filename };
+  return onProgress
+    ? tenantWithProgress<ImportValidateResult>(
+        "/financial-dictionary/import/validate",
+        body,
+        onProgress,
+      )
+    : tenant<ImportValidateResult>("/financial-dictionary/import/validate", {
+        method: "POST",
+        body,
+      });
+};
 export const commitDictImport = (rows: ImportStagingRow[]) =>
   tenant<ImportCommitResult>("/financial-dictionary/import/commit", {
     method: "POST",

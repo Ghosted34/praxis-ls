@@ -22,6 +22,7 @@
 import * as React from "react";
 import { tr } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
+import { DateField } from "@/components/ui/date-field";
 import { Input } from "@/components/ui/input";
 import { Modal, Field } from "@/components/ui/modal";
 import { Pill, type Tone } from "@/components/ui/pill";
@@ -181,19 +182,17 @@ export function AttendanceDaysView() {
         <div className="flex flex-wrap items-end gap-3">
           <label className="flex flex-col gap-1">
             <span className="micro">{tr("From")}</span>
-            <Input
-              type="date"
+            <DateField
               value={win.from}
-              onChange={(e) => setWin((w) => ({ ...w, from: e.target.value }))}
+              onChange={(iso) => setWin((w) => ({ ...w, from: iso }))}
               className="w-auto"
             />
           </label>
           <label className="flex flex-col gap-1">
             <span className="micro">{tr("To")}</span>
-            <Input
-              type="date"
+            <DateField
               value={win.to}
-              onChange={(e) => setWin((w) => ({ ...w, to: e.target.value }))}
+              onChange={(iso) => setWin((w) => ({ ...w, to: iso }))}
               className="w-auto"
             />
           </label>

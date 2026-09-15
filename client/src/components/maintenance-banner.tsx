@@ -92,7 +92,9 @@ function humanDuration(minutes: number): string {
 function endsAtLabel(iso: string): string {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return "";
-  return d.toLocaleString(undefined, {
+  // en-GB, not the workstation locale: a US-configured machine renders this
+  // "Sep 11, 14:00" and Praxis is read day-first.
+  return d.toLocaleString("en-GB", {
     month: "short",
     day: "numeric",
     hour: "2-digit",

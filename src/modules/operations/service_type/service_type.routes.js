@@ -233,6 +233,11 @@ const {
   createGroup: validateCreateGroup,
   updateGroup: validateUpdateGroup,
 } = require("../service_type_web/service_type_web.validator");
+// The assistant's request shape travels with the generator rather than with the
+// column validators — see the note above `validateAiCopy`.
+const {
+  validateAiCopy,
+} = require("../service_type_web/service_type_web.ai_copy");
 
 // ── Pillars (12755) ───────────────────────────────────────────────────────
 // The marketing grouping the public services page renders as named sections.
@@ -308,6 +313,24 @@ router.put(
   asyncHandler(async (req, res) => {
     const data = await req.tenantDb((c) => webService.upsertProfile(c, {
       serviceTypeId: req.params.id, patch: req.body, actor: req.user || {},
+    }));
+    res.json({ data });
+  }),
+);
+// Draft the copy with the assistant. WRITES NOTHING — the proposal goes back
+// to the tab and the author accepts it field by field. `edit` rather than
+// `view`: it spends the tenant's AI budget, and the governance gate inside
+// refuses on a missing grant or an exhausted one.
+router.post(
+  "/:id/web/ai-copy",
+  requirePermission(MODULE, "edit"),
+  validateAiCopy,
+  asyncHandler(async (req, res) => {
+    const data = await req.tenantDb((c) => webService.draftCopy(c, {
+      serviceTypeId: req.params.id,
+      input: req.body,
+      actor: req.user || {},
+      env: req.env || "live",
     }));
     res.json({ data });
   }),

@@ -44,4 +44,68 @@ describe("DateField", () => {
     expect(screen.getByLabelText("Issued")).toHaveValue("31/02/2026");
     expect(onChange).toHaveBeenLastCalledWith("");
   });
+
+  it("reports an incomplete required field rather than submitting empty", () => {
+    // Validation lives on the VISIBLE text box, not on the hidden native input
+    // that lends the calendar: a hidden control that fails constraint
+    // validation blocks submit with the browser's own "not focusable" error and
+    // no message the operator can act on — the form just stops.
+    render(<DateField value="" onChange={() => {}} required aria-label="Issued" />);
+    const input = screen.getByLabelText("Issued") as HTMLInputElement;
+    expect(input.checkValidity()).toBe(false);
+    expect(input.validationMessage).toBe("Enter a date.");
+  });
+
+  it("names the bound it broke, day-first, rather than just refusing", () => {
+    render(
+      <DateField value="2026-07-03" onChange={() => {}} min="2026-08-01" aria-label="Issued" />,
+    );
+    const input = screen.getByLabelText("Issued") as HTMLInputElement;
+    expect(input.checkValidity()).toBe(false);
+    // dd/mm/yyyy in the message too — a control that reads day-first and then
+    // explains itself month-first is the same defect wearing a different hat.
+    expect(input.validationMessage).toBe("Choose a date on or after 01/08/2026.");
+  });
+
+  it("accepts a date inside the bounds", () => {
+    render(
+      <DateField
+        value="2026-07-03"
+        onChange={() => {}}
+        min="2026-01-01"
+        max="2026-12-31"
+        aria-label="Issued"
+      />,
+    );
+    expect((screen.getByLabelText("Issued") as HTMLInputElement).checkValidity()).toBe(true);
+  });
+
+  it("rejects a date typed past the upper bound", async () => {
+    render(<DateField value="" onChange={() => {}} max="2026-07-31" aria-label="Issued" />);
+    const input = screen.getByLabelText("Issued") as HTMLInputElement;
+    await userEvent.type(input, "01082026");
+    expect(input.checkValidity()).toBe(false);
+    expect(input.validationMessage).toBe("Choose a date on or before 31/07/2026.");
+  });
+
+  it("carries a name and onBlur, so a react-hook-form field spread works on it", async () => {
+    // `<DateField {...field} />` is how every RHF-driven date field binds; that
+    // spread hands over name/onBlur/ref, and dropping any of them breaks
+    // validation-on-touch silently.
+    const onBlur = vi.fn();
+    render(
+      <DateField
+        value=""
+        onChange={() => {}}
+        name="entry_date"
+        onBlur={onBlur}
+        aria-label="Issued"
+      />,
+    );
+    const input = screen.getByLabelText("Issued");
+    expect(input).toHaveAttribute("name", "entry_date");
+    await userEvent.click(input);
+    await userEvent.tab();
+    expect(onBlur).toHaveBeenCalled();
+  });
 });

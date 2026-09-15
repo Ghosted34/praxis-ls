@@ -1,36 +1,24 @@
 import * as React from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { PublicApiError, messageFor, requestIdFor } from "@/lib/api";
 import { trackShipment, type TrackingResult } from "@/lib/tracking-api";
-import { getLang, tStatic } from "@/lib/i18n";
-import { dateFmt, dateTimeFmt } from "@/lib/format";
-import { cn } from "@/lib/cn";
+import { tStatic } from "@/lib/i18n";
 import { p } from "@/lib/base-path";
 import { PageContainer, PageShell } from "@/components/site/page-shell";
 import { Section } from "@/components/site/section";
 import { Card } from "@/components/ui/card";
 import { Button, ButtonLink } from "@/components/ui/button";
-import {
-  EmptyState,
-  ErrorState,
-  LoadingState,
-  NotFoundState,
-  MilestoneMarker,
-  MilestoneStatePill,
-  modeIconFor,
-  isClosed,
-  milestoneState,
-  motionIcon,
-} from "@/components/state";
+import { LoadingState } from "@/components/state";
 import { Skeleton } from "@/components/ui/skeleton";
-import { StatusPill } from "@/components/ui/pill";
 import { TrackWidget } from "@/components/site/track-widget";
 import { SectionHead } from "@/components/site/section-head";
+import { StagedLines } from "@/components/ui/type";
 import { BadgePill } from "@/components/ui/badge-pill";
 import { BgMap } from "@/components/ui/bg-map";
-import { Reveal } from "@/components/ui/reveal";
-import { IconTile } from "@/components/ui/icon-tile";
+import { SearchIcon, BoxIcon, ShieldIcon, DocumentIcon } from "@/components/ui/icons";
+import { useDocumentMeta } from "@/lib/use-document-meta";
+import { TrackingView } from "./track-result";
 
 /**
  * `/public/track` — the public lookup, and the page most visitors of this whole
@@ -71,6 +59,21 @@ import { IconTile } from "@/components/ui/icon-tile";
  * has vanished — so it is stated plainly, and it is the one failure that does
  * NOT offer a retry button, because retrying is exactly what it is asking the
  * visitor to stop doing.
+ *
+ * ── WHAT PR 4 CHANGED (guide §8.1) ────────────────────────────────────────
+ *
+ * The answer moved above the identity. It used to open with the reference as an
+ * `<h2>` and put the status in a pill in the top-right corner — which is the
+ * layout of an internal record, and it puts the thing the visitor already knows
+ * above the thing they came to find out. `track-result.tsx` now leads with the
+ * status at display size and demotes the reference to a definition list beneath
+ * it, and the timeline became a spatial object rather than a bulleted list.
+ *
+ * The other half of §8.1 is these outcome screens. "A wrong reference is the
+ * most common outcome on this page and it currently gets the least design": a
+ * centred sentence and a link. They are plates now, at the same weight as the
+ * answer, and each one states what happened, what it does NOT mean, and the
+ * next action that is actually available.
  */
 type State =
   | { kind: "idle" }
@@ -86,6 +89,11 @@ export function TrackPage() {
   const ref = (params.get("ref") || "").trim();
   const [nonce, setNonce] = React.useState(0);
   const [state, setState] = React.useState<State>({ kind: "idle" });
+
+  useDocumentMeta({
+    title: `${t("site.trackPage.title")} · ${t("site.hero.eyebrow")}`,
+    description: t("site.trackPage.sub"),
+  });
 
   React.useEffect(() => {
     if (!ref) {
@@ -130,7 +138,16 @@ export function TrackPage() {
             as="h1"
             titleClass="hero-title"
             onDark
-            title={t("site.trackPage.titleMain")}
+            title={
+              /* `paintImmediately`, per PR 3's F-17. Every page in §8 opens with
+                 a staged headline, and `.staged-word` starts at `opacity: 0` —
+                 so on each of them the LCP element would be invisible for the
+                 length of its own entrance. On THIS page that would be the
+                 worst trade on the site: it is the one opened on mobile data by
+                 somebody who wants one fact. The words still stagger; they are
+                 legible while they do it. */
+              <StagedLines paintImmediately text={t("site.trackPage.titleMain")} />
+            }
             accent={t("site.trackPage.titleAccent")}
             lead={t("site.trackPage.sub")}
           />
@@ -142,37 +159,18 @@ export function TrackPage() {
 
       <Section>
         {state.kind === "idle" ? (
-          <EmptyState title={t("site.track.empty")} hint={t("site.track.hint")} />
+          <TrackIdle />
         ) : state.kind === "loading" ? (
           <TrackingSkeleton />
         ) : state.kind === "notfound" ? (
-          <NotFoundState
-            className="mx-auto max-w-prose"
-            title={t("site.track.notFound")}
-            hint={t("site.track.notFoundHint")}
-            action={
-              <ButtonLink to={p("/quote")} variant="outline">
-                {t("site.trackPage.searchAgain")}
-              </ButtonLink>
-            }
-          />
+          <TrackNotFound reference={ref} />
         ) : state.kind === "limited" ? (
-          // No retry button, deliberately: the answer to a rate limit is to
-          // stop, and a button labelled "try again" invites the opposite.
-          <NotFoundState
-            className="mx-auto max-w-prose"
-            title={t("site.track.limited")}
-            hint={t("site.track.limitedHint")}
-          />
+          <TrackLimited />
         ) : state.kind === "error" ? (
-          <ErrorState
+          <TrackError
             message={state.message}
             requestId={state.requestId}
-            action={
-              <Button onClick={() => setNonce((n) => n + 1)}>
-                {t("common.retry")}
-              </Button>
-            }
+            onRetry={() => setNonce((n) => n + 1)}
           />
         ) : (
           <TrackingView view={state.view} reference={ref} />
@@ -183,30 +181,253 @@ export function TrackPage() {
 }
 
 /**
+ * ── THE OUTCOME PLATE ──────────────────────────────────────────────────────
+ *
+ * One shape for the four non-answers, because they are one KIND of thing: the
+ * page has something to say and it is not a shipment. What differs between them
+ * is the words and the actions, not the composition — and giving each its own
+ * layout was how the old version ended up with three of them as a centred
+ * sentence and one as a card.
+ *
+ * `--mode` is deliberately never set on these. The mode colour states a fact
+ * about a specific shipment, and none of these screens has one — see
+ * `service-identity.ts` on why a positional colour must not appear where the
+ * page states a fact.
+ */
+function Outcome({
+  icon: Icon,
+  eyebrow,
+  title,
+  children,
+  actions,
+  /**
+   * `alert` on the failure only.
+   *
+   * These four screens replace an element that has already rendered, so a
+   * visitor using a screen reader gets no navigation event to tell them the
+   * page changed. `ErrorState` carried `role="alert"` for that reason and the
+   * first draft of this plate dropped it — caught by the test that asserts it,
+   * which is the argument for the test.
+   *
+   * It is NOT on the other three. `alert` is assertive: it interrupts whatever
+   * is being read. A rate limit and a wrong reference are answers the visitor
+   * asked for and will reach by reading on; interrupting for them is the
+   * behaviour that makes people turn the screen reader's verbosity down.
+   */
+  announce = false,
+}: {
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  eyebrow: string;
+  title: string;
+  children: React.ReactNode;
+  actions?: React.ReactNode;
+  announce?: boolean;
+}) {
+  return (
+    <section
+      className="track-verdict max-w-2xl p-6 sm:p-8"
+      role={announce ? "alert" : undefined}
+    >
+      <div className="relative">
+        <span
+          aria-hidden
+          className="flex h-11 w-11 items-center justify-center rounded-full border border-border bg-muted text-muted-foreground"
+        >
+          <Icon size={20} />
+        </span>
+        <p className="micro mt-4">{eyebrow}</p>
+        {/* An h2 at display size: these are answers, and they get the same
+            weight the found answer gets. */}
+        <h2 className="track-headline mt-2">{title}</h2>
+        <div className="mt-4 space-y-3 text-muted-foreground">{children}</div>
+        {actions ? (
+          <div className="mt-6 flex flex-wrap gap-3">{actions}</div>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+/**
+ * No reference typed yet.
+ *
+ * Not an error, and not a blank page either — the widget is above, and this is
+ * the space between it and the footer. It says where the reference comes from,
+ * which is the actual obstacle for a first-time visitor, and it does NOT
+ * describe a reference FORMAT: the format is per tenant and per service, this
+ * app has no access to their numbering scheme, and a made-up example is exactly
+ * the kind of invented fact N12 forbids on the page a stranger trusts most.
+ */
+function TrackIdle() {
+  const { t } = useTranslation();
+  return (
+    <Outcome
+      icon={SearchIcon}
+      eyebrow={t("site.track.kicker")}
+      title={t("site.track.empty")}
+      actions={
+        <ButtonLink to={p("/portal/login")} variant="outline">
+          {t("site.trackPage.openPortal")}
+        </ButtonLink>
+      }
+    >
+      <p>{t("site.track.hint")}</p>
+      <p className="text-sm">{t("site.trackPage.whereRef")}</p>
+    </Outcome>
+  );
+}
+
+/**
+ * The most common outcome on this page, and the one §8.1 says gets the least
+ * design today.
+ *
+ * Three things it has to do at once, and the old one-line version did none of
+ * them: echo back the reference that was actually tried (so somebody reading
+ * over a shoulder can spot the transposed digit), say plainly that this is NOT
+ * a statement about the cargo, and offer the two next steps that exist.
+ *
+ * The reference is echoed as text inside a `<p>` — React escapes it, so a
+ * reference containing markup is displayed and never parsed. `break-words`
+ * because a pasted reference can be longer than a phone is wide.
+ */
+function TrackNotFound({ reference }: { reference: string }) {
+  const { t } = useTranslation();
+  return (
+    <Outcome
+      icon={BoxIcon}
+      eyebrow={t("site.trackPage.noMatch")}
+      title={t("site.track.notFound")}
+      actions={
+        <>
+          <ButtonLink to={p("/contact")}>{t("site.trackPage.askDesk")}</ButtonLink>
+          <ButtonLink to={p("/portal/login")} variant="outline">
+            {t("site.trackPage.openPortal")}
+          </ButtonLink>
+        </>
+      }
+    >
+      {reference ? (
+        <p className="num break-words rounded-[calc(var(--radius)-2px)] border border-border bg-muted px-3 py-2 text-sm text-foreground">
+          {reference}
+        </p>
+      ) : null}
+      <p>{t("site.track.notFoundHint")}</p>
+      {/* The sentence that stops a wrong reference reading as bad news about
+          the cargo. This is the whole reason not-found and empty are different
+          screens. */}
+      <p className="text-sm">{t("site.trackPage.notFoundNotLost")}</p>
+    </Outcome>
+  );
+}
+
+/** The rate limit. No retry button, deliberately: the answer to a rate limit is
+ *  to stop, and a button labelled "try again" invites the opposite. */
+function TrackLimited() {
+  const { t } = useTranslation();
+  return (
+    <Outcome
+      icon={ShieldIcon}
+      eyebrow={t("site.trackPage.tooMany")}
+      title={t("site.track.limited")}
+      actions={
+        <ButtonLink to={p("/portal/login")} variant="outline">
+          {t("site.trackPage.openPortal")}
+        </ButtonLink>
+      }
+    >
+      <p>{t("site.track.limitedHint")}</p>
+    </Outcome>
+  );
+}
+
+/** Something else went wrong. The support reference is the point of this
+ *  screen: it is what turns "it did not work" into something the desk can look
+ *  up, and it is why the message is not swallowed into a generic apology. */
+function TrackError({
+  message,
+  requestId,
+  onRetry,
+}: {
+  message: string;
+  requestId: string | null;
+  onRetry: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <Outcome
+      icon={DocumentIcon}
+      eyebrow={t("common.status")}
+      /* A SHORT title, and the server's sentence beneath it.
+         It was `errors.loadFailed` — a full sentence — at display size, with
+         `message` under it. `messageFor` falls back to that same string when
+         the server sends no specific one, so the plate read the identical
+         sentence twice at two different sizes. Caught in a screenshot, which is
+         the only place it is visible: both halves are correct on their own. */
+      title={t("site.trackPage.failedTitle")}
+      actions={<Button onClick={onRetry}>{t("common.retry")}</Button>}
+      announce
+    >
+      {/*
+        THE SENTENCE BENEATH THE TITLE, AND WHEN THERE IS ONE.
+
+        This plate used to render `messageFor(...)` under a title that was
+        itself `errors.loadFailed` — the same sentence twice at two sizes, which
+        is what a screenshot of the real page showed. The fix is not to delete
+        the body but to render it only when it ADDS something.
+
+        `PublicApiError.isPublicMessage` passes a server sentence through for
+        exactly three failures: offline, not-found and rate-limited. Two of
+        those have their own screen above, so the one that reaches this plate is
+        OFFLINE — and "you appear to be offline" is precisely the sentence worth
+        printing, because it tells the visitor the problem is not the reference
+        they typed. Everything else, a 500 included, becomes the dictionary's
+        generic sentence: `api.ts` says why, and the detail goes to the console
+        where it helps whoever is debugging and cannot leak a table name onto a
+        public page.
+
+        So the comparison is against the FALLBACK, not against the title. That
+        is what distinguishes "the server explained" from "we filled in a
+        default".
+      */}
+      {message && message !== tStatic("errors.loadFailed") ? (
+        <p>{message}</p>
+      ) : null}
+      {requestId ? (
+        <p className="text-sm">
+          <span className="micro mr-1.5">{t("states.requestRef")}</span>
+          <span className="num">{requestId}</span>
+        </p>
+      ) : null}
+    </Outcome>
+  );
+}
+
+/**
  * The loading state, in the shape of the answer.
  *
  * §3.3: "a skeleton of the real shape. Never a spinner on a blank page." The
- * blocks below are the summary card and four timeline rows, at the sizes the
+ * blocks below are the verdict plate and four timeline rows, at the sizes the
  * real ones occupy, so the result lands in place instead of pushing the page
- * down under somebody's thumb on a phone.
+ * down under somebody's thumb on a phone. Updated for §8.1's layout — the tall
+ * block at the top is the display-size status, which is what now dominates.
  */
 function TrackingSkeleton() {
   return (
-    <LoadingState label={tStatic("site.trackPage.loading")} className="space-y-6">
+    <LoadingState label={tStatic("site.trackPage.loading")} className="space-y-8">
       <Card padded>
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="min-w-0 flex-1">
-            <Skeleton className="h-3 w-24" />
-            <Skeleton className="mt-2 h-7 w-64 max-w-full" />
-            <Skeleton className="mt-3 h-4 w-48" />
-          </div>
-          <Skeleton className="h-6 w-24 rounded-full" />
+        <Skeleton className="h-3 w-24" />
+        <Skeleton className="mt-3 h-10 w-72 max-w-full" />
+        <Skeleton className="mt-4 h-5 w-56 max-w-full" />
+        <div className="mt-6 flex flex-wrap gap-8 border-t border-border pt-5">
+          <Skeleton className="h-9 w-40" />
+          <Skeleton className="h-9 w-32" />
+          <Skeleton className="h-9 w-28" />
         </div>
         <Skeleton className="mt-6 h-2 w-full rounded-full" />
       </Card>
-      <div className="space-y-5">
+      <div className="space-y-3">
         {[0, 1, 2, 3].map((i) => (
-          <div key={i} className="flex gap-4">
+          <div key={i} className="flex gap-4 rounded-[var(--radius)] p-3.5">
             <Skeleton className="h-6 w-6 shrink-0 rounded-full" />
             <div className="min-w-0 flex-1">
               <Skeleton className="h-4 w-52 max-w-full" />
@@ -216,235 +437,5 @@ function TrackingSkeleton() {
         ))}
       </div>
     </LoadingState>
-  );
-}
-
-/** The milestone ledger, rendered the way the operations desk reads it: what the
- *  file is, how far through it is, then what has happened to it. */
-function TrackingView({
-  view,
-  reference,
-}: {
-  view: TrackingResult;
-  reference: string;
-}) {
-  const { t } = useTranslation();
-  const lang = getLang();
-  const milestones = view.milestones || [];
-  const percent = Math.max(
-    0,
-    Math.min(100, Number(view.progress?.percent ?? 0)),
-  );
-  const total = view.progress?.total ?? milestones.length;
-  const done =
-    view.progress?.completed ?? milestones.filter((m) => m.is_complete).length;
-  const closed = isClosed(view.computed_status);
-  // name_en is nullable and name_fr is not (0310_operations.sql), so English
-  // falls back to French rather than to a blank chip.
-  const serviceName = view.service_type
-    ? (lang === "fr"
-        ? view.service_type.name_fr
-        : view.service_type.name_en || view.service_type.name_fr) || null
-    : null;
-
-  return (
-    <div className="space-y-6">
-      <Card padded>
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="flex min-w-0 items-start gap-4">
-            {/* The mode glyph in a tile rather than bare beside the service
-                name: §9 asks for a tile on every glyph that sits beside a
-                heading, and this one now leads the summary the way the
-                department tile leads a vacancy row. */}
-            {view.service_type ? (
-              <IconTile icon={modeIconFor(view.service_type.mode)} size="lg" />
-            ) : null}
-            <div className="min-w-0">
-            <p className="micro">{t("site.track.reference")}</p>
-            <h2 className="mt-1 break-words font-display text-h3 font-semibold tracking-tight">
-              {view.reference || reference}
-            </h2>
-            {view.service_type ? (
-              <p className="mt-2 text-sm text-muted-foreground">
-                <span className="min-w-0 truncate">
-                  {serviceName || view.service_type.key}
-                </span>
-              </p>
-            ) : null}
-            {view.origin || view.destination ? (
-              <p className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-                {view.origin ? (
-                  <span>
-                    <span className="micro mr-1.5">
-                      {t("site.trackPage.origin")}
-                    </span>
-                    {view.origin}
-                  </span>
-                ) : null}
-                {view.origin && view.destination ? (
-                  <span aria-hidden className="h-px w-6 bg-border" />
-                ) : null}
-                {view.destination ? (
-                  <span>
-                    <span className="micro mr-1.5">
-                      {t("site.trackPage.destination")}
-                    </span>
-                    {view.destination}
-                  </span>
-                ) : null}
-              </p>
-            ) : null}
-            </div>
-          </div>
-          <div className="flex shrink-0 flex-col items-end gap-2">
-            <StatusPill status={view.computed_status} />
-            {view.current_stage && !closed ? (
-              <p className="text-right text-xs text-muted-foreground">
-                {t("site.trackPage.current")}:{" "}
-                <span className="font-medium text-foreground">
-                  {view.current_stage.label || view.current_stage.code}
-                </span>
-              </p>
-            ) : null}
-            {closed ? (
-              <p className="text-right text-xs text-muted-foreground">
-                {t("site.trackPage.closed")}
-              </p>
-            ) : null}
-          </div>
-        </div>
-
-        <div className="mt-6">
-          <div className="flex items-baseline justify-between text-xs text-muted-foreground">
-            <span>{t("site.trackPage.progress")}</span>
-            <span className="num">
-              {done}/{total} {t("site.trackPage.ofStages")}
-            </span>
-          </div>
-          <div
-            className="mt-2 h-2 overflow-hidden rounded-full bg-muted"
-            role="progressbar"
-            aria-valuenow={percent}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-label={t("site.trackPage.progress")}
-          >
-            <div
-              className="h-full rounded-full bg-[rgb(var(--brand-orange))] transition-[width] duration-500 ease-[var(--ease)]"
-              style={{ width: `${percent}%` }}
-            />
-          </div>
-          {/* When it last MOVED, not when the record was last touched — the API
-              derives this from the latest completion for that reason. Absent
-              rather than faked while nothing has completed. */}
-          <p className="mt-3 text-xs text-muted-foreground">
-            <span className="micro mr-1.5">{t("site.trackPage.lastUpdate")}</span>
-            {view.last_update ? (
-              <time dateTime={view.last_update} className="num">
-                {dateTimeFmt(view.last_update)}
-              </time>
-            ) : (
-              t("site.trackPage.lastUpdateNone")
-            )}
-          </p>
-        </div>
-      </Card>
-
-      {milestones.length > 0 ? (
-        <Reveal>
-          <h2 className="text-title font-semibold tracking-tight">
-            {t("site.trackPage.timeline")}
-          </h2>
-          <ol className="mt-5" aria-label={tStatic("site.trackPage.timeline")}>
-            {milestones.map((m, i) => {
-              const state = milestoneState(m);
-              const at = m.completed_at || m.due_date;
-              return (
-                <li
-                  key={`${m.code}-${i}`}
-                  className="relative flex gap-4 pb-6 last:pb-0"
-                >
-                  {i < milestones.length - 1 ? (
-                    <span
-                      aria-hidden
-                      className={cn(
-                        "absolute left-3 top-7 -ml-px h-[calc(100%-1.75rem)] w-px",
-                        state === "COMPLETED"
-                          ? "bg-[rgb(var(--brand-orange))]"
-                          : "bg-border",
-                      )}
-                    />
-                  ) : null}
-                  <MilestoneMarker
-                    state={state}
-                    index={i}
-                    // The CURRENT stage of a sea file gets a ship, an air file
-                    // a plane, everything else the truck: a glyph that MOVES,
-                    // which is the fact this page exists to state (§7.4).
-                    icon={motionIcon(view.service_type?.mode)}
-                  />
-                  <div
-                    className={cn(
-                      "min-w-0 flex-1",
-                      state === "UPCOMING" && "text-muted-foreground",
-                    )}
-                  >
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h3
-                        className={cn(
-                          "leading-6",
-                          state === "CURRENT"
-                            ? "font-semibold text-foreground"
-                            : "font-medium",
-                        )}
-                      >
-                        {m.label || m.code}
-                      </h3>
-                      <MilestoneStatePill state={state} />
-                    </div>
-                    {m.location || at ? (
-                      <p className="mt-0.5 text-xs text-muted-foreground">
-                        {[m.location, at ? dateFmt(at) : null]
-                          .filter(Boolean)
-                          .join(" · ")}
-                      </p>
-                    ) : null}
-                    {m.progress_note ? (
-                      <p className="mt-1.5 text-sm text-muted-foreground">
-                        {m.progress_note}
-                      </p>
-                    ) : null}
-                  </div>
-                </li>
-              );
-            })}
-          </ol>
-        </Reveal>
-      ) : (
-        // Found the file, and it has no client-visible stages yet. This is the
-        // state §3.3 insists must not read as "no such reference".
-        <EmptyState
-          title={t("site.trackPage.noStages")}
-          hint={t("site.trackPage.noStagesHint")}
-          action={
-            <ButtonLink to={p("/portal/login")} variant="outline">
-              {t("site.trackPage.openPortal")}
-            </ButtonLink>
-          }
-        />
-      )}
-
-      <Card padded className="max-w-prose bg-muted">
-        <p className="text-sm text-muted-foreground">
-          {t("site.trackPage.needAccount")}
-        </p>
-        <Link
-          to={p("/portal/login")}
-          className="mt-2 inline-flex text-sm font-medium text-primary-ink underline-offset-4 hover:underline"
-        >
-          {t("site.trackPage.openPortal")}
-        </Link>
-      </Card>
-    </div>
   );
 }

@@ -31,6 +31,7 @@ import { pageShell } from "@/lib/layout";
 import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
+import { DateTimeField } from "@/components/ui/datetime-field";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { Pill, type Tone } from "@/components/ui/pill";
@@ -355,10 +356,10 @@ function ScheduleForm({
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label={tr("Starts")} hint="Local time.">
-            <Input type="datetime-local" value={f.starts_at} onChange={(e) => set("starts_at", e.target.value)} />
+            <DateTimeField value={f.starts_at} onChange={(iso) => set("starts_at", iso)} />
           </Field>
           <Field label={tr("Ends")}>
-            <Input type="datetime-local" value={f.ends_at} onChange={(e) => set("ends_at", e.target.value)} />
+            <DateTimeField value={f.ends_at} onChange={(iso) => set("ends_at", iso)} />
           </Field>
         </div>
         <div className="grid gap-4 sm:grid-cols-2">

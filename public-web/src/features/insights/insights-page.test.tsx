@@ -256,3 +256,92 @@ describe("pagination", () => {
     expect(await screen.findByRole("button", { name: en.site.insights.next })).toBeDisabled();
   });
 });
+
+/**
+ * ── §8.6: THE KIND FILTER ──────────────────────────────────────────────────
+ *
+ * The coarser of the two cuts — "articles or announcements" against "which
+ * subject" — and the one that had to reach the server, because the server is
+ * where the filtering happens.
+ *
+ * These assert on the REQUEST as well as on the markup. The reason is the
+ * defect this section uncovered: `insight.validator.js` has accepted `?kind=`
+ * since 13784, `service.listPublic` has taken it, and `repo.list` filters on
+ * it — but the public route destructured only `tag`, `page` and `per_page`, so
+ * the parameter was validated and then dropped. Nothing errored and the
+ * response was a plausible list of everything. A test that only checked the
+ * rendered cards would have passed against that all day.
+ */
+describe("the kind filter (§8.6)", () => {
+  it("sends the kind to the server, not just to the markup", async () => {
+    await mount("/public/insights?kind=announcement");
+    expect(asked().some((u) => u.includes("kind=announcement"))).toBe(true);
+  });
+
+  it("asks for everything when no kind is chosen", async () => {
+    await mount();
+    /* Absent, not `kind=`: an empty value is a value, and the endpoint's enum
+       would reject it with a 400.
+       IT IS GUARDED TWICE, which is worth knowing before somebody removes one
+       of them as dead code: `listInsights` maps "" to undefined, and
+       `api.ts`'s query builder independently skips "" alongside undefined and
+       null. Breaking either alone leaves this test green; breaking both
+       reddens it. That is the proof, and it is the reason neither guard should
+       be simplified away on the grounds that it changes nothing. */
+    expect(asked().some((u) => /[?&]kind=/.test(u))).toBe(false);
+  });
+
+  it("keeps the kind in the URL so a filtered view can be sent", async () => {
+    const { container } = await mount();
+    const button = screen.getByRole("button", {
+      name: en.site.insights.kindAnnouncement,
+    });
+    fireEvent.click(button);
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(asked().some((u) => u.includes("kind=announcement"))).toBe(true);
+    expect(container).toBeTruthy();
+  });
+
+  it("ignores a hand-edited kind rather than sending a 400 to the server", async () => {
+    // A URL somebody typed should degrade to the unfiltered page, not to an
+    // error screen — the endpoint's enum would refuse anything else.
+    await mount("/public/insights?kind=nonsense");
+    expect(asked().some((u) => /[?&]kind=/.test(u))).toBe(false);
+  });
+
+  it("renders the filter before the list has answered", async () => {
+    // Unlike the tag bar, the three options are known before any request, so
+    // the page has a control on the first frame and nothing jumps when the
+    // list lands.
+    render(
+      <BrandingProvider>
+        <MemoryRouter initialEntries={["/public/insights"]}>
+          <InsightsPage />
+        </MemoryRouter>
+      </BrandingProvider>,
+    );
+    expect(
+      screen.getByRole("button", { name: en.site.insights.kindArticle }),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps the kind when the TOPIC changes, and vice versa", async () => {
+    /*
+     * They are two questions — "what sort of post" and "about what" — and a bar
+     * that silently clears the other one on every click is a bar people stop
+     * trusting. Both `choose` and `chooseKind` rebuild the whole query for
+     * exactly this reason, which is easy to write and easy to lose.
+     */
+    await mount("/public/insights?kind=announcement");
+    const tagButton = await screen.findByRole("button", { name: /sustainability/i });
+    fireEvent.click(tagButton);
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    const last = asked()[asked().length - 1];
+    expect(last).toContain("kind=announcement");
+    expect(last).toContain("tag=");
+  });
+});

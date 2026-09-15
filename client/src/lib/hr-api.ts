@@ -3,7 +3,7 @@
  * Routes mirror src/modules/hr/attendance.
  */
 import type { WorkSchedule } from "@shared";
-import { tenant, tenantDownload } from "./api-client";
+import { tenant, tenantDownload, tenantWithProgress } from "./api-client";
 import { tokenStore } from "./token-store";
 import { deviceId } from "./device-id";
 
@@ -1171,7 +1171,11 @@ export const createEmployee = (
     documents?: EmployeeDocumentInput[];
     allowances?: EmployeeAllowanceInput[];
   },
-) => tenant<Employee>("/employees", { method: "POST", body });
+  onProgress?: (percent: number) => void,
+) =>
+  onProgress
+    ? tenantWithProgress<Employee>("/employees", body, onProgress)
+    : tenant<Employee>("/employees", { method: "POST", body });
 export const setEmployeeActive = (id: string, is_active: boolean) =>
   tenant<Employee>(`/employees/${id}/active`, {
     method: "POST",
@@ -1195,11 +1199,21 @@ export const employeeDocumentTypes = () =>
   tenant<EmployeeDocumentType[]>("/employees/document-types");
 export const employeeDocuments = (id: string) =>
   tenant<EmployeeDocument[]>(`/employees/${id}/documents`);
-export const addEmployeeDocument = (id: string, body: EmployeeDocumentInput) =>
-  tenant<EmployeeDocument>(`/employees/${id}/documents`, {
-    method: "POST",
-    body,
-  });
+export const addEmployeeDocument = (
+  id: string,
+  body: EmployeeDocumentInput,
+  onProgress?: (percent: number) => void,
+) =>
+  onProgress
+    ? tenantWithProgress<EmployeeDocument>(
+        `/employees/${id}/documents`,
+        body,
+        onProgress,
+      )
+    : tenant<EmployeeDocument>(`/employees/${id}/documents`, {
+        method: "POST",
+        body,
+      });
 /** Amend a row already in the staff file — used when a document the record
  *  already holds is re-stated (a renewed driving licence, a corrected number)
  *  rather than a second row being opened for the same card. */
@@ -1207,11 +1221,19 @@ export const updateEmployeeDocument = (
   id: string,
   documentId: string,
   body: EmployeeDocumentInput,
+  onProgress?: (percent: number) => void,
 ) =>
-  tenant<EmployeeDocument>(`/employees/${id}/documents/${documentId}`, {
-    method: "PATCH",
-    body,
-  });
+  onProgress
+    ? tenantWithProgress<EmployeeDocument>(
+        `/employees/${id}/documents/${documentId}`,
+        body,
+        onProgress,
+        "PATCH",
+      )
+    : tenant<EmployeeDocument>(`/employees/${id}/documents/${documentId}`, {
+        method: "PATCH",
+        body,
+      });
 export const removeEmployeeDocument = (id: string, documentId: string) =>
   tenant<EmployeeDocument>(`/employees/${id}/documents/${documentId}`, {
     method: "DELETE",
@@ -1363,18 +1385,28 @@ export const sendContract = (id: string, to: string) =>
   });
 /** Upload an already-signed contract PDF (base64 data URL): vault it and tie the
  *  vault doc to the contract row via pdf_vault_id. */
-export const uploadContractSigned = async (id: string, dataUrl: string) => {
-  const doc = await tenant<{ doc_id?: string; vault_id?: string }>(
-    "/documents",
-    {
-      method: "POST",
-      body: {
-        data_url: dataUrl,
-        doc_type: "EMPLOYMENT_CONTRACT",
-        entity_ref: `hr_contract:${id}`,
-      },
-    },
-  );
+export const uploadContractSigned = async (
+  id: string,
+  dataUrl: string,
+  onProgress?: (percent: number) => void,
+) => {
+  const body = {
+    data_url: dataUrl,
+    doc_type: "EMPLOYMENT_CONTRACT",
+    entity_ref: `hr_contract:${id}`,
+  };
+  // Progress covers the upload call only — the PATCH that follows it is a few
+  // hundred bytes, so reporting it would add a second bar for no information.
+  const doc = onProgress
+    ? await tenantWithProgress<{ doc_id?: string; vault_id?: string }>(
+        "/documents",
+        body,
+        onProgress,
+      )
+    : await tenant<{ doc_id?: string; vault_id?: string }>("/documents", {
+        method: "POST",
+        body,
+      });
   const vaultId = doc.doc_id || doc.vault_id;
   return tenant<Contract>(`/contracts/${id}`, {
     method: "PATCH",
@@ -1591,11 +1623,18 @@ export const addApplicant = (
     cv_data_url?: string;
     cv_filename?: string;
   },
+  onProgress?: (percent: number) => void,
 ) =>
-  tenant<Applicant>(`/vacancies/${vacancyId}/applicants`, {
-    method: "POST",
-    body,
-  });
+  onProgress
+    ? tenantWithProgress<Applicant>(
+        `/vacancies/${vacancyId}/applicants`,
+        body,
+        onProgress,
+      )
+    : tenant<Applicant>(`/vacancies/${vacancyId}/applicants`, {
+        method: "POST",
+        body,
+      });
 export const setApplicantStatus = (
   vacancyId: string,
   applicantId: string,

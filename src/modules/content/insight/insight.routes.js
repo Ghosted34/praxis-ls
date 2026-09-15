@@ -26,8 +26,9 @@ const router = express.Router();
 // without an account.
 router.use(authMiddleware);
 
-router.get("/", requirePermission(MODULE, "view"), asyncHandler(async (req, res) => {
-  res.json({ data: await req.tenantDb((c) => service.list(c, { tag: req.query.tag || null })) });
+router.get("/", requirePermission(MODULE, "view"), v.listQuery, asyncHandler(async (req, res) => {
+  const { tag, kind } = req.validatedQuery;
+  res.json({ data: await req.tenantDb((c) => service.list(c, { tag: tag || null, kind: kind || null })) });
 }));
 
 router.post("/", requirePermission(MODULE, "edit"), v.create, asyncHandler(async (req, res) => {
@@ -51,6 +52,26 @@ router.patch("/:id", requirePermission(MODULE, "edit"), v.update, asyncHandler(a
 router.post("/:id/publish", requirePermission(MODULE, "edit"), v.publish, asyncHandler(async (req, res) => {
   const data = await req.tenantDb((c) => service.setPublished(c, {
     id: req.params.id, published: req.body.published, actor: req.user || {},
+  }));
+  res.json({ data });
+}));
+
+/**
+ * The pin. Its own endpoint for the reason publishing has one.
+ *
+ * `pinned_until` is absent from the repo's WRITABLE list, so this is the ONLY
+ * way a piece reaches the homepage band — an ordinary PATCH cannot do it by
+ * accident, and the act is stamped in the audit trail with who and until when.
+ *
+ * Written out explicitly, like every other route in this file. F-8 in the
+ * guide's §3.3 records what a table-driven mount does to
+ * `check-write-route-validators`: a gate that cannot statically see a write
+ * route cannot vouch that it validates its body, and that gate exists because
+ * SEC H3 found request-body keys reaching `insertOne` as column identifiers.
+ */
+router.post("/:id/pin", requirePermission(MODULE, "edit"), v.pin, asyncHandler(async (req, res) => {
+  const data = await req.tenantDb((c) => service.setPinned(c, {
+    id: req.params.id, pinnedUntil: req.body.pinned_until, actor: req.user || {},
   }));
   res.json({ data });
 }));

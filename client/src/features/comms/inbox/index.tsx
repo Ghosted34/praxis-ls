@@ -488,6 +488,8 @@ export function InboxPage() {
           min={280}
           max={620}
           className="rounded-xl border border-border"
+          activeKind={tr("Conversation")}
+          active={!!openId}
         >
           <ThreadList
             threads={rows}

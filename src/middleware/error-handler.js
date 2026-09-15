@@ -147,9 +147,31 @@ function errorHandler(err, req, res, _next) {
       logger.error({ err, request_id, pg_code: err.code, constraint: err.constraint }, "pg schema error");
       report(err, { origin: "server", route: `${req.method} ${req.originalUrl || req.path}`, request_id });
     } else {
-      logger.warn({ request_id, pg_code: err.code, constraint: err.constraint }, "pg error");
+      // `column`, `table` and `detail` alongside the code, because without them
+      // this log line could not answer the only question anyone asks when a
+      // tenant reports one of these: WHICH value. A 22P02 on a page of website
+      // copy came back as "One of the values is in the wrong format" and the
+      // server knew no more than the user did. `detail` is logged and never
+      // returned — Postgres puts the offending row's data in it.
+      logger.warn({
+        request_id,
+        pg_code: err.code,
+        constraint: err.constraint,
+        column: err.column,
+        table: err.table,
+        detail: err.detail,
+      }, "pg error");
     }
-    return res.status(status).json({ error: { code, message }, request_id });
+    // Name the column when Postgres names one, in the same `fields` shape a
+    // validation error uses, so a form can mark the box instead of showing a
+    // sentence about an unidentified value. Column names are already the
+    // request body's own keys, so this discloses nothing the caller did not
+    // send. Postgres supplies it for 23502 and 23514; a 22P02 cast failure
+    // usually carries none, which is why the fix for those is to not generate
+    // them rather than to report them better.
+    const body = { error: { code, message }, request_id };
+    if (err.column) body.error.fields = { [err.column]: [message] };
+    return res.status(status).json(body);
   }
 
   // API F-1 (2026-08-04). `err.status` was read ONLY inside the AppError branch

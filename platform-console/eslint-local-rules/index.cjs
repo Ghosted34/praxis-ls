@@ -12,5 +12,6 @@
 module.exports = {
   rules: {
     "no-native-dialogs": require("../../client/eslint-local-rules/no-native-dialogs.cjs"),
+    "no-raw-upload": require("../../client/eslint-local-rules/no-raw-upload.cjs"),
   },
 };

@@ -8,6 +8,12 @@ import { BadgePill } from "@/components/ui/badge-pill";
 import { BgMap } from "@/components/ui/bg-map";
 import { Card } from "@/components/ui/card";
 import { ContactForm } from "@/components/site/contact-form";
+import { CoverageFigure } from "@/components/site/coverage-figure";
+import { StagedLines } from "@/components/ui/type";
+import { GlobeIcon } from "@/components/ui/icons";
+import { listPublicEntities, type PublicEntity } from "@/lib/site-api";
+import { afterPaint } from "@/lib/after-paint";
+import * as React from "react";
 import { p } from "@/lib/base-path";
 
 /**
@@ -43,8 +49,44 @@ import { p } from "@/lib/base-path";
  * thing the visitor probably wants — a shipment already moving belongs in
  * tracking or the portal, not in a general enquiry that waits behind a desk.
  */
+/**
+ * The tenant's public entities, read AFTER paint.
+ *
+ * Nobody on this page is waiting for it — the form is the page's job and it is
+ * above this — so the read goes behind `after-paint`, the deferral primitive
+ * PR 3 left for exactly this shape. Every failure is the empty answer: a
+ * network error, a disabled `website` package and a tenant with no
+ * public-enabled entity are one fact here, which is that there is no figure to
+ * draw.
+ */
+function usePublicEntities(): PublicEntity[] {
+  const [rows, setRows] = React.useState<PublicEntity[]>([]);
+  React.useEffect(() => {
+    const controller = new AbortController();
+    let alive = true;
+    const cancel = afterPaint(() => {
+      listPublicEntities({ signal: controller.signal })
+        .then((next) => {
+          if (alive) setRows(Array.isArray(next) ? next : []);
+        })
+        .catch(() => {
+          /* silent-catch: PRESENTATION. A marketing figure that cannot load is
+             a figure that is not drawn; there is no action for the visitor and
+             no state to recover. doc/ERROR_HANDLING.md */
+        });
+    });
+    return () => {
+      alive = false;
+      cancel();
+      controller.abort();
+    };
+  }, []);
+  return rows;
+}
+
 export function ContactPage() {
   const { t } = useTranslation();
+  const entities = usePublicEntities();
   const promise = tList<{ t: string; d: string }>("site.contact.promise");
 
   useDocumentMeta({
@@ -71,7 +113,7 @@ export function ContactPage() {
   ];
 
   return (
-    <PageShell label={t("site.contact.title")}>
+    <PageShell label={t("site.contact.title")} footer>
       <section className="band-hero relative overflow-hidden">
         <BgMap />
         {/* Positioned, so the copy sits above the map rather than under it —
@@ -83,7 +125,8 @@ export function ContactPage() {
             as="h1"
             titleClass="hero-title"
             onDark
-            title={t("site.contact.titleMain")}
+            /* F-17: the LCP element on this route, like every other §8 page. */
+            title={<StagedLines paintImmediately text={t("site.contact.titleMain")} />}
             accent={t("site.contact.titleAccent")}
             lead={t("site.contact.sub")}
           />
@@ -105,6 +148,24 @@ export function ContactPage() {
           </dl>
         </div>
       </Section>
+
+      {/* §8.5's office/coverage figure, fed by §6.9's entities.
+          "Where are you" is the second question a contact page is asked and
+          this one could not answer it — the endpoint has existed since PR 2 and
+          nothing read it. It draws nothing at all for a tenant with no
+          public-enabled entity, which is the default (13787). */}
+      {entities.length ? (
+        <Section
+          divided
+          eyebrow={t("site.contact.coverageKicker")}
+          eyebrowIcon={GlobeIcon}
+          title={t("site.contact.coverageTitle")}
+        >
+          <div className="mx-auto max-w-3xl">
+            <CoverageFigure entities={entities} />
+          </div>
+        </Section>
+      ) : null}
 
       {/* The faster doors. A page that offers only a form routes everything
           through one queue — including the two questions this product answers

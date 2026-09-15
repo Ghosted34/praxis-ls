@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { applyBrand, resetBrand } from "./theme";
+import { applyBrand, resetBrand, labelOn } from "./theme";
 
 /**
  * The accessible-ink derivation (audit F13).
@@ -139,5 +139,67 @@ describe("applyBrand — accessible accent text", () => {
     expect(
       document.documentElement.style.getPropertyValue("--primary-ink-dark"),
     ).toBe("");
+  });
+});
+
+/**
+ * ── THE LABEL ON THE PRIMARY FILL (F-20) ──────────────────────────────────
+ *
+ * `--primary-foreground` was `rgb(255 255 255)` over the brand orange —
+ * **2.59:1**, on every primary button in the ERP, for every tenant who never
+ * set the field. It shipped because nothing measured the pair in this app:
+ * `check-contrast.mjs` carried it in `public-web`'s own list only. The pair is
+ * in the SHARED list now, which is the part that lasts.
+ *
+ * The constant is only half of it. A tenant who picks a dark navy and never
+ * opens the foreground field would inherit carbon — the unreadable one for that
+ * fill — so `applyBrand` derives the label from the tenant's own colour.
+ */
+describe("labelOn — the label a fill can actually carry", () => {
+  it("puts carbon on the brand orange, not white", () => {
+    // 7.63:1 against white's 2.59:1. `@praxis/brand`, the palette engine and
+    // CLAUDE.md all already said carbon; only index.css disagreed.
+    expect(labelOn("#F5821F")).toBe("rgb(10 10 10)");
+  });
+
+  it("puts white on a dark fill, where carbon would be the unreadable one", () => {
+    // The case a hardcoded carbon default would have broken.
+    expect(labelOn("#0B1F3A")).toBe("rgb(255 255 255)");
+    expect(labelOn("#1D4ED8")).toBe("rgb(255 255 255)");
+  });
+
+  it("picks whichever side actually reads, across the range", () => {
+    for (const [fill, expected] of [
+      ["#FFFFFF", "rgb(10 10 10)"],
+      ["#000000", "rgb(255 255 255)"],
+      ["#FFD400", "rgb(10 10 10)"], // bright yellow — carbon
+      ["#7C3AED", "rgb(255 255 255)"], // violet — white
+    ] as const) {
+      expect(`${fill} → ${labelOn(fill)}`).toBe(`${fill} → ${expected}`);
+    }
+  });
+
+  it("answers null for a colour it cannot parse, so `set` skips it", () => {
+    // The constant in index.css then stands, which is the correct floor.
+    expect(labelOn(null)).toBeNull();
+    expect(labelOn("")).toBeNull();
+    expect(labelOn("not-a-colour")).toBeNull();
+  });
+
+  it("is applied when the tenant set a primary but no foreground", () => {
+    applyBrand({ primary: "#0B1F3A" } as Parameters<typeof applyBrand>[0]);
+    expect(
+      document.documentElement.style.getPropertyValue("--primary-foreground"),
+    ).toBe("rgb(255 255 255)");
+  });
+
+  it("never overrides a foreground the tenant did choose", () => {
+    applyBrand({
+      primary: "#0B1F3A",
+      primaryForeground: "rgb(255 214 0)",
+    } as Parameters<typeof applyBrand>[0]);
+    expect(
+      document.documentElement.style.getPropertyValue("--primary-foreground"),
+    ).toBe("rgb(255 214 0)");
   });
 });

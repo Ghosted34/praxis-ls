@@ -246,6 +246,10 @@ function exportFilename({ base, env, extension, date = new Date() }) {
     // in currency.service.js).
     .replace(/^[.-]+/, "")
     .replace(/[.-]+$/, "") || "export";
+  /* @date-format:filename — the one date in this product that stays ISO on
+     purpose. `/` is a path separator, so "export-11/09/2026.csv" is not a
+     filename at all; and ISO is what makes a folder of exports sort into
+     chronological order, which is the only reason the stamp is there. */
   const stamp = date instanceof Date ? date.toISOString().slice(0, 10) : String(date);
   return env === "sandbox" ? `${safe}-SANDBOX-${stamp}.${extension}` : `${safe}-${stamp}.${extension}`;
 }

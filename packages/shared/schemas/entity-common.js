@@ -21,6 +21,8 @@
 const { z } = require("zod");
 const {
   requiredText,
+  requiredString,
+  requiredEnum,
   optionalText,
   email,
   phone,
@@ -39,6 +41,43 @@ const optionalAmount = blankToUndefined(amount);
 
 /** A partial made optional field-by-field — the PATCH shape of any create schema. */
 const patchOf = (shape) => z.object(shape).partial();
+
+/**
+ * CLEARING A FIELD IS `null`.
+ *
+ * THE DEFECT THIS CLOSES. Every optional primitive here maps `""` to undefined,
+ * and the client's nested-collection save dropped an empty value before it ever
+ * reached the wire — so a PATCH for a field somebody had EMPTIED carried no key
+ * for it at all, `updateOne` built no SET clause, and the request answered 200
+ * having changed nothing. Reported against a corporate entity's RCCM row: the
+ * expiry date had been entered by mistake, and clearing it did nothing — the
+ * "Registrations needing attention · Expired" banner stayed exactly where it
+ * was, with no error to explain why.
+ *
+ * `masterShape` below had already been given `.nullable()` for this reason, and
+ * entity-form-fields.ts says so out loud ("a user who empties a field and saves
+ * would watch it come straight back"). The NESTED collections — people,
+ * contacts, addresses, registrations, establishments, documents, tax
+ * registrations — never were, so the entity's own columns could be emptied and
+ * none of its children's could.
+ *
+ * The rule: a column that is NULLABLE in the database gets one of these, and
+ * `null` means "clear it". A NOT NULL column deliberately does not, so trying
+ * to clear one is a 422 naming the field rather than a silent no-op or a 23502
+ * from Postgres.
+ */
+const nullableText = optionalText.nullable();
+const nullableDate = optionalDate.nullable();
+const nullableCountry = countryCode.nullable();
+const nullableCurrency = optionalCurrency.nullable();
+const nullableAmount = optionalAmount.nullable();
+const nullablePercent = optionalPercent.nullable();
+const nullableTimezone = optionalTimezone.nullable();
+const nullableEmail = email.nullable();
+const nullablePhone = phone.nullable();
+/** A foreign key that can be set, changed and unset. */
+const nullableId = (message) =>
+  blankToUndefined(z.string().uuid(message)).nullable();
 
 // ── Enumerations shared with the migration's CHECK constraints ──────────────
 // Kept in step with 0515 by hand. A value here that the database rejects is a
@@ -118,54 +157,48 @@ const CONTACT_ROLE_TAGS = [
 // a separate schema: a director who later acquires shares should be an edit, not
 // a delete-and-recreate under a different endpoint.
 const personShape = {
-  role: z.enum(PERSON_ROLES),
-  holder_type: z.enum(HOLDER_TYPES).optional(),
+  role: requiredEnum(PERSON_ROLES, "Role"),
+  holder_type: requiredEnum(HOLDER_TYPES, "Holder type").optional(),
   full_name: requiredText("Name"),
-  title: optionalText,
+  title: nullableText,
 
   // Natural-person identity (AML/KYC).
-  date_of_birth: optionalDate,
-  nationality: countryCode,
-  country_of_residence: countryCode,
-  id_type: optionalText,
-  id_number: optionalText,
+  date_of_birth: nullableDate,
+  nationality: nullableCountry,
+  country_of_residence: nullableCountry,
+  id_type: nullableText,
+  id_number: nullableText,
 
   // Corporate-holder identity.
-  company_registration_number: optionalText,
-  company_country: countryCode,
-  holder_entity_id: blankToUndefined(
-    z.string().uuid("Must be a valid entity id."),
-  ),
+  company_registration_number: nullableText,
+  company_country: nullableCountry,
+  holder_entity_id: nullableId("Must be a valid entity id."),
 
-  email,
-  phone,
+  email: nullableEmail,
+  phone: nullablePhone,
 
   // Shareholding. `share_count` is the substantive figure; `ownership_percent`
   // is carried too because it is what people read, and the service reconciles
   // the two rather than making the operator do arithmetic.
-  share_class: optionalText,
-  share_count: optionalAmount,
-  share_nominal_value: optionalAmount,
-  ownership_percent: optionalPercent,
-  voting_percent: optionalPercent,
+  share_class: nullableText,
+  share_count: nullableAmount,
+  share_nominal_value: nullableAmount,
+  ownership_percent: nullablePercent,
+  voting_percent: nullablePercent,
 
   is_pep: z.boolean().optional(),
   is_primary_contact: z.boolean().optional(),
-  signature_limit_amount: optionalAmount,
-  signature_limit_currency: optionalCurrency,
+  signature_limit_amount: nullableAmount,
+  signature_limit_currency: nullableCurrency,
 
-  effective_from: optionalDate,
-  effective_to: optionalDate,
+  effective_from: nullableDate,
+  effective_to: nullableDate,
 
-  employee_id: blankToUndefined(
-    z.string().uuid("Must be a valid employee id."),
-  ),
-  client_id: blankToUndefined(z.string().uuid("Must be a valid client id.")),
-  supplier_id: blankToUndefined(
-    z.string().uuid("Must be a valid supplier id."),
-  ),
+  employee_id: nullableId("Must be a valid employee id."),
+  client_id: nullableId("Must be a valid client id."),
+  supplier_id: nullableId("Must be a valid supplier id."),
 
-  notes: optionalText,
+  notes: nullableText,
   is_active: z.boolean().optional(),
 };
 
@@ -209,15 +242,15 @@ exports.personUpdate = withPersonRules(patchOf(personShape));
 // ── Contact ────────────────────────────────────────────────────────────────
 const contactShape = {
   name: requiredText("Contact name"),
-  title: optionalText,
-  email,
-  phone,
-  role_tags: z.array(z.enum(CONTACT_ROLE_TAGS)).optional(),
+  title: nullableText,
+  email: nullableEmail,
+  phone: nullablePhone,
+  role_tags: z.array(z.enum(CONTACT_ROLE_TAGS)).optional().nullable(),
   is_primary: z.boolean().optional(),
   language: blankToUndefined(
     z.string().trim().length(2, "Use a 2-letter language code.").toLowerCase(),
-  ),
-  timezone: optionalTimezone,
+  ).nullable(),
+  timezone: nullableTimezone,
   is_active: z.boolean().optional(),
 };
 exports.contactCreate = z.object(contactShape);
@@ -225,14 +258,14 @@ exports.contactUpdate = patchOf(contactShape);
 
 // ── Address ────────────────────────────────────────────────────────────────
 const addressShape = {
-  type: z.enum(ADDRESS_TYPES).optional(),
-  line1: optionalText,
-  line2: optionalText,
-  city: optionalText,
-  region: optionalText,
-  postal_code: optionalText,
-  country_code: countryCode,
-  po_box: optionalText,
+  type: requiredEnum(ADDRESS_TYPES, "Address type").optional(),
+  line1: nullableText,
+  line2: nullableText,
+  city: nullableText,
+  region: nullableText,
+  postal_code: nullableText,
+  country_code: nullableCountry,
+  po_box: nullableText,
   is_primary: z.boolean().optional(),
   is_active: z.boolean().optional(),
 };
@@ -244,14 +277,14 @@ exports.addressUpdate = patchOf(addressShape);
 // identifiers each jurisdiction expects, and a tenant expanding into a new
 // country must not need a code change to record the identifier it was issued.
 const registrationShape = {
-  country_code: countryCode,
+  country_code: nullableCountry,
   kind: requiredText("Registration type"),
-  number: optionalText,
-  issuing_authority: optionalText,
-  issued_on: optionalDate,
-  expires_on: optionalDate,
+  number: nullableText,
+  issuing_authority: nullableText,
+  issued_on: nullableDate,
+  expires_on: nullableDate,
   is_primary: z.boolean().optional(),
-  notes: optionalText,
+  notes: nullableText,
 };
 const withRegistrationRules = (schema) =>
   schema.refine(
@@ -266,20 +299,18 @@ exports.registrationUpdate = withRegistrationRules(patchOf(registrationShape));
 
 // ── Establishment (a site that is not a separate legal person) ─────────────
 const establishmentShape = {
-  code: optionalText,
+  code: nullableText,
   name: requiredText("Establishment name"),
-  kind: z.enum(ESTABLISHMENT_KINDS).optional(),
-  country_code: countryCode,
-  city: optionalText,
-  address_line: optionalText,
-  tax_office_ref: optionalText,
-  registration_ref: optionalText,
-  customs_office: optionalText,
-  manager_employee_id: blankToUndefined(
-    z.string().uuid("Must be a valid employee id."),
-  ),
-  opened_on: optionalDate,
-  closed_on: optionalDate,
+  kind: requiredEnum(ESTABLISHMENT_KINDS, "Kind").optional(),
+  country_code: nullableCountry,
+  city: nullableText,
+  address_line: nullableText,
+  tax_office_ref: nullableText,
+  registration_ref: nullableText,
+  customs_office: nullableText,
+  manager_employee_id: nullableId("Must be a valid employee id."),
+  opened_on: nullableDate,
+  closed_on: nullableDate,
   is_active: z.boolean().optional(),
 };
 const withEstablishmentRules = (schema) =>
@@ -304,9 +335,6 @@ exports.establishmentUpdate = withEstablishmentRules(
 // `create` and `update` are derived from ONE shape for the same reason: the
 // previous pair listed the same fields twice, and a column added to one was
 // silently unwritable through the other.
-const nullableText = optionalText.nullable();
-const nullableTimezone = optionalTimezone.nullable();
-const nullableCountry = countryCode.nullable();
 const nullableLegalFormCode = blankToUndefined(
   z
     .string()
@@ -319,12 +347,7 @@ const nullableLegalFormCode = blankToUndefined(
 const nullableLegalFormJurisdiction = blankToUndefined(
   z.string().trim().min(2).max(16),
 ).nullable();
-const nullableCurrency = optionalCurrency.nullable();
-const nullableAmount = optionalAmount.nullable();
-const nullableDate = optionalDate.nullable();
-const nullableUuid = blankToUndefined(
-  z.string().uuid("Must be a valid id."),
-).nullable();
+const nullableUuid = nullableId("Must be a valid id.");
 const logoRef = z.string().optional().nullable();
 
 const masterShape = {
@@ -378,7 +401,7 @@ const masterShape = {
 
   parent_entity_id: nullableUuid,
   relationship_type: z.enum(RELATIONSHIP_TYPES).optional().nullable(),
-  ownership_percent: optionalPercent.nullable(),
+  ownership_percent: nullablePercent,
   consolidates: z.boolean().optional(),
   is_group_parent: z.boolean().optional(),
 
@@ -453,18 +476,16 @@ exports.masterShapeKeys = Object.keys(masterShape);
 // asserted by the service after a scan actually arrives, never by the request
 // claiming them (0511's Hard Rule 9, carried over).
 const documentShape = {
-  document_type_id: blankToUndefined(z.string().uuid("Pick a document type.")),
-  title: optionalText,
-  document_number: optionalText,
-  issuing_authority: optionalText,
-  issued_on: optionalDate,
-  expires_on: optionalDate,
-  country_code: countryCode,
-  establishment_id: blankToUndefined(
-    z.string().uuid("Must be a valid establishment id."),
-  ),
-  vault_id: blankToUndefined(z.string().uuid("Must be a valid document id.")),
-  physical_ref: optionalText,
+  document_type_id: nullableId("Pick a document type."),
+  title: nullableText,
+  document_number: nullableText,
+  issuing_authority: nullableText,
+  issued_on: nullableDate,
+  expires_on: nullableDate,
+  country_code: nullableCountry,
+  establishment_id: nullableId("Must be a valid establishment id."),
+  vault_id: nullableId("Must be a valid document id."),
+  physical_ref: nullableText,
   // `scan_due_on` is intentionally not part of the writable document shape: the
   // Documents form no longer asks for it (a scan is uploaded inline now, so a
   // "scan due" date is clutter). The column still exists and compliance.rules.js
@@ -474,8 +495,8 @@ const documentShape = {
       (n) => Number.isInteger(n) && n >= 0 && n <= 365,
       "Enter 0-365 days.",
     ),
-  ),
-  notes: optionalText,
+  ).nullable(),
+  notes: nullableText,
   is_active: z.boolean().optional(),
 };
 const withDocumentRules = (schema) =>
@@ -508,36 +529,32 @@ const FILING_FREQUENCIES = [
 ];
 
 const taxRegistrationShape = {
-  jurisdiction_id: blankToUndefined(
-    z.string().uuid("Must be a valid jurisdiction id."),
-  ),
-  country_code: z
-    .string()
-    .trim()
+  jurisdiction_id: nullableId("Must be a valid jurisdiction id."),
+  // The one country column on these collections that is NOT NULL in the
+  // database (0516), so it is the one that must refuse to be cleared.
+  country_code: requiredString("Country")
     .length(2, "Use a 2-letter country code.")
     .toUpperCase(),
-  tax_kind: z.enum(TAX_KINDS).optional(),
-  tax_number: optionalText,
-  regime: optionalText,
-  filing_frequency: blankToUndefined(z.enum(FILING_FREQUENCIES)),
+  tax_kind: requiredEnum(TAX_KINDS, "Tax").optional(),
+  tax_number: nullableText,
+  regime: nullableText,
+  filing_frequency: blankToUndefined(z.enum(FILING_FREQUENCIES)).nullable(),
   filing_due_day: blankToUndefined(
     amount.refine(
       (n) => Number.isInteger(n) && n >= 1 && n <= 31,
       "Enter a day of the month, 1-31.",
     ),
-  ),
-  currency: optionalCurrency,
+  ).nullable(),
+  currency: nullableCurrency,
   is_withholding_agent: z.boolean().optional(),
   reverse_charge_applies: z.boolean().optional(),
-  registered_on: optionalDate,
-  deregistered_on: optionalDate,
+  registered_on: nullableDate,
+  deregistered_on: nullableDate,
   is_primary: z.boolean().optional(),
   is_active: z.boolean().optional(),
-  filing_portal_url: optionalText,
-  responsible_user_id: blankToUndefined(
-    z.string().uuid("Must be a valid user id."),
-  ),
-  notes: optionalText,
+  filing_portal_url: nullableText,
+  responsible_user_id: nullableId("Must be a valid user id."),
+  notes: nullableText,
 };
 const withTaxRules = (schema) =>
   schema
@@ -552,8 +569,10 @@ const withTaxRules = (schema) =>
     )
     .refine(
       // A filing day without a frequency has nothing to attach to, and the
-      // obligation generator would silently skip it.
-      (v) => v.filing_due_day === undefined || v.filing_frequency !== undefined,
+      // obligation generator would silently skip it. `== null` rather than
+      // `=== undefined`: clearing the frequency sends an explicit null, and a
+      // strict undefined check let that through with the due day still set.
+      (v) => v.filing_due_day == null || v.filing_frequency != null,
       {
         message: "Choose a filing frequency before setting a due day.",
         path: ["filing_due_day"],

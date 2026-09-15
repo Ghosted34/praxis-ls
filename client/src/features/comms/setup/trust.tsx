@@ -44,6 +44,7 @@ import { reportActionError } from "@/lib/action-error";
 import { dateTimeFmt } from "@/lib/format";
 import { tr } from "@/lib/i18n";
 import * as api from "@/lib/mail-api";
+import * as masterdata from "@/lib/masterdata-api";
 
 /* ── Verified domains ─────────────────────────────────────────────────────── */
 
@@ -52,6 +53,22 @@ function VerifyDialog({ onClose, onSaved }: { onClose: () => void; onSaved: () =
   const [partyId, setPartyId] = React.useState("");
   const [domain, setDomain] = React.useState("");
   const [busy, setBusy] = React.useState(false);
+  // The API stores a foreign-key UUID. A free-text field encouraged operators
+  // to enter the human reference shown elsewhere (for example SBX-SS-0004),
+  // which the route correctly rejected as `party_id: Invalid uuid`.
+  const parties = useResource(async () => {
+    if (kind === "CLIENT") {
+      return (await masterdata.listClients()).map((party) => ({
+        id: party.client_id, name: party.name,
+        ref: (party as masterdata.Client & { ref?: string | null }).ref,
+      }));
+    }
+    return (await masterdata.listSuppliers()).map((party) => ({
+      id: party.supplier_id, name: party.name,
+      ref: (party as masterdata.Supplier & { ref?: string | null }).ref,
+    }));
+  }, [kind]);
+  const partyOptions = parties.data || [];
 
   return (
     <Modal
@@ -62,13 +79,35 @@ function VerifyDialog({ onClose, onSaved }: { onClose: () => void; onSaved: () =
     >
       <div className="space-y-3">
         <Field label={tr("Party type")}>
-          <Select value={kind} onChange={(e) => setKind(e.target.value as "CLIENT" | "SUPPLIER")}>
+          <Select
+            value={kind}
+            onChange={(e) => {
+              setKind(e.target.value as "CLIENT" | "SUPPLIER");
+              setPartyId("");
+            }}
+          >
             <option value="CLIENT">{tr("Client")}</option>
             <option value="SUPPLIER">{tr("Supplier")}</option>
           </Select>
         </Field>
-        <Field label={tr("Party")}>
-          <Input value={partyId} onChange={(e) => setPartyId(e.target.value)} placeholder={tr("client id")} />
+        <Field
+          label={tr("Party")}
+          hint={parties.error ? tr("Could not load parties. Close this dialog and try again.") : undefined}
+        >
+          <Select
+            value={partyId}
+            onChange={(e) => setPartyId(e.target.value)}
+            disabled={parties.loading || Boolean(parties.error)}
+          >
+            <option value="">
+              {parties.loading ? tr("Loading…") : tr("Select a party")}
+            </option>
+            {partyOptions.map((party) => (
+              <option key={party.id} value={party.id}>
+                {party.name}{party.ref ? ` — ${party.ref}` : ""}
+              </option>
+            ))}
+          </Select>
         </Field>
         <Field label={tr("Domain")} hint={tr("Just the domain — camrail.cm, not an address.")}>
           <Input value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="camrail.cm" />

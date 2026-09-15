@@ -295,28 +295,3 @@ export function MoreLink({
   );
 }
 
-/** A numbered step band — the "how it works" strip. Numbers are `01`-style with
- *  tabular figures so a three-step row does not shift width between languages
- *  (French strings are 15-25 % longer; the numerals must not be another thing
- *  that moves). */
-export function StepList({
-  steps,
-}: {
-  steps: { title: string; body: string }[];
-}) {
-  return (
-    <ol className="grid gap-px overflow-hidden rounded-xl border bg-[var(--border)] md:grid-cols-3">
-      {steps.map((s, i) => (
-        <li key={i} className="bg-background p-6">
-          <span className="num text-micro font-semibold text-[var(--primary-ink)]">
-            {String(i + 1).padStart(2, "0")}
-          </span>
-          <h3 className="mt-3 text-title font-semibold leading-snug">
-            {s.title}
-          </h3>
-          <p className="mt-2 text-sm text-muted-foreground">{s.body}</p>
-        </li>
-      ))}
-    </ol>
-  );
-}

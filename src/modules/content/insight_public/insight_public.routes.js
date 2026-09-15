@@ -40,11 +40,25 @@ const mediaLimit = makeLimiter({ name: "insights-public-media", max: 600, window
 
 const notFound = (msg) => new AppError("NOT_FOUND", msg, 404);
 
+/**
+ * `?kind=article|announcement` — validated since 13784 and, until now, DROPPED.
+ *
+ * `insight.validator.js` has accepted the parameter from the day the kind
+ * column landed, `service.listPublic` has taken it, and `repo.list`/`repo.count`
+ * both filter on it — the announcements read (§6.4) has used exactly that path
+ * since PR 3. The only thing missing was this destructure, so a caller could
+ * send `?kind=announcement`, have it validated, and get every article back.
+ *
+ * That is the quietest kind of defect: nothing errors, nothing logs, and the
+ * response is a plausible list. Found while building §8.6's kind filter, which
+ * is the first UI to ask for it.
+ */
 router.get("/", limit, v.listQuery, asyncHandler(async (req, res) => {
-  const { tag, page, per_page: perPage } = req.validatedQuery;
+  const { tag, kind, page, per_page: perPage } = req.validatedQuery;
   res.json({
     data: await req.tenantDbIn("live", (c) => service.listPublic(c, {
       tag: tag || null,
+      kind: kind || null,
       page: page || 1,
       perPage: perPage || service.DEFAULT_PER_PAGE,
     })),

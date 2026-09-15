@@ -46,6 +46,25 @@ const PNG = Buffer.concat([
   Buffer.alloc(64, 0),
 ]);
 const EXE = Buffer.concat([Buffer.from("MZ"), Buffer.alloc(64, 0)]);
+/** PK\x03\x04 — a ZIP container, which is what .docx and .xlsx are (13801). */
+const ZIP = Buffer.concat([Buffer.from([0x50, 0x4b, 0x03, 0x04]), Buffer.alloc(64, 0)]);
+const DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+const XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+/** What a COST_PROOF may be — whatever the supplier actually sent (owner Q8). */
+const proofUpload = (overrides = {}) => ({
+  dataUrl: dataUrl("application/pdf", PDF),
+  dossierId: "d1",
+  docType: "COST_PROOF",
+  slug: "acme",
+  actor: { user_id: "u1" },
+  maxBytes: 15 * 1024 * 1024,
+  allowedTypes: [
+    "application/pdf", "image/png", "image/jpeg", "image/jpg", "image/webp", DOCX, XLSX,
+  ],
+  sniff: true,
+  ...overrides,
+});
 
 const opsUpload = (overrides = {}) => ({
   dataUrl: dataUrl("application/pdf", PDF),
@@ -79,7 +98,7 @@ describe("uploading to an operations file", () => {
         fakeClient(),
         opsUpload({ dataUrl: dataUrl("application/pdf", EXE) }),
       ),
-    ).rejects.toThrow(/not a PDF or an image/);
+    ).rejects.toThrow(/not a PDF, an image, or an Office document/);
   });
 
   it("refuses a file whose contents contradict what it says it is", async () => {
@@ -151,5 +170,66 @@ describe("uploading anywhere else is unchanged", () => {
       actor: {},
     });
     expect(row.doc_id).toBe("v1");
+  });
+});
+
+/**
+ * Cost proofs (13801, owner decision Q8).
+ *
+ * "pdf or image or word or excel". A carrier's demurrage statement arrives as
+ * .xlsx and a clearing agent's breakdown as .docx; refusing those does not make
+ * the money unspent, it makes the evidence live in somebody's inbox instead of
+ * on the budget line it proves.
+ *
+ * The ZIP sniff is a WEAKER assertion than the other four and these pin exactly
+ * how weak: it says "these bytes are an archive", and the DECLARED type — which
+ * still has to be on the caller's list — decides which Office format it is
+ * stored as.
+ */
+describe("cost proofs accept what the supplier actually sent", () => {
+  it("takes a .docx", async () => {
+    const row = await service.createDocument(
+      fakeClient(),
+      proofUpload({ dataUrl: dataUrl(DOCX, ZIP) }),
+    );
+    expect(row.doc_id).toBe("v1");
+  });
+
+  it("takes an .xlsx", async () => {
+    const row = await service.createDocument(
+      fakeClient(),
+      proofUpload({ dataUrl: dataUrl(XLSX, ZIP) }),
+    );
+    expect(row.doc_id).toBe("v1");
+  });
+
+  it("still takes a real PDF", async () => {
+    const row = await service.createDocument(fakeClient(), proofUpload());
+    expect(row.doc_id).toBe("v1");
+  });
+
+  it("refuses an executable declaring itself a Word document", async () => {
+    // The declared type is on the list; the bytes are not an archive at all.
+    await expect(
+      service.createDocument(fakeClient(), proofUpload({ dataUrl: dataUrl(DOCX, EXE) })),
+    ).rejects.toThrow(/not a PDF, an image, or an Office document/);
+  });
+
+  it("refuses an archive declaring itself a PDF", async () => {
+    // The ZIP sniff only ever satisfies a declared OOXML type, so here the
+    // sniffed type stays application/zip — which is not on any caller's list,
+    // and the allow-list is what refuses it. Same outcome, and a better message
+    // than the contents-contradict one: the user is told what IS accepted.
+    await expect(
+      service.createDocument(fakeClient(), proofUpload({ dataUrl: dataUrl("application/pdf", ZIP) })),
+    ).rejects.toThrow(/are accepted here/);
+  });
+
+  it("does not widen the ordinary operations upload — a .docx bill of lading is still refused", async () => {
+    // The widening is scoped to COST_PROOF by the controller; the vault itself
+    // only honours whatever allowedTypes it is handed.
+    await expect(
+      service.createDocument(fakeClient(), opsUpload({ dataUrl: dataUrl(DOCX, ZIP) })),
+    ).rejects.toThrow(/are accepted here/);
   });
 });

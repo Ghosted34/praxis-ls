@@ -18,6 +18,8 @@
  */
 import * as React from "react";
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
+import { IndexRow } from "@/components/ui/index-row";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Pill } from "@/components/ui/pill";
@@ -72,8 +74,15 @@ export function ServiceTypesPage() {
   React.useEffect(() => {
     // Auto-select the first row once the list arrives, so the split pane is
     // never empty on first paint (matches client-360's behaviour).
-    if (!selId && rows.length) setSelId(rows[0].service_type_id);
-  }, [rows, selId]);
+    //
+    // `!selected` rather than `!selId`, because the selected id can stop being
+    // in `rows` without being cleared: untick "Show archived" while an archived
+    // service is open and the list re-fetches without it. The pane then rendered
+    // "No service type selected" over a selId that was still set, and nothing
+    // re-selected — the only way out was to click another row.
+    if (!rows.length) return;
+    if (!selected) setSelId(rows[0].service_type_id);
+  }, [rows, selected]);
 
   return (
     <section className={shell}>
@@ -96,6 +105,8 @@ export function ServiceTypesPage() {
           defaultSize={280}
           min={220}
           max={480}
+          activeKind={tr("Service type")}
+          active={!!selected}
         >
           <div className="space-y-2">
             <Input
@@ -118,14 +129,11 @@ export function ServiceTypesPage() {
                 <div className="px-3 py-4 micro">No service types.</div>
               ) : (
                 filtered.map((r) => (
-                  <button
+                  <IndexRow
                     key={r.service_type_id}
+                    selected={r.service_type_id === selId}
                     onClick={() => setSelId(r.service_type_id)}
-                    className={`flex w-full flex-col gap-0.5 rounded-md px-3 py-2 text-left text-sm transition-colors ${
-                      r.service_type_id === selId
-                        ? "bg-primary/10 text-foreground"
-                        : "hover:bg-muted"
-                    }`}
+                    className="flex-col gap-0.5"
                   >
                     <div className="flex items-center justify-between gap-2">
                       <span className="truncate font-medium">
@@ -150,7 +158,7 @@ export function ServiceTypesPage() {
                           file?" is a question the list should answer. */}
                       {r.ops_reference_code ? <span className="ml-1.5 font-mono opacity-70">·&nbsp;{r.ops_reference_code}</span> : null}
                     </span>
-                  </button>
+                  </IndexRow>
                 ))
               )}
             </div>

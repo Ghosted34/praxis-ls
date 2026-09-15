@@ -13,6 +13,7 @@ import { tr } from "@/lib/i18n";
 import { HubTabs, HubCrumb } from "@/components/tabbed-hub";
 import { ScreenAi } from "@/components/screen-ai";
 import { Button } from "@/components/ui/button";
+import { DateField } from "@/components/ui/date-field";
 import { FormButtons } from "@/components/ui/form-buttons";
 import { DocButton } from "@/components/doc-button";
 import { Input } from "@/components/ui/input";
@@ -160,10 +161,9 @@ function GrnForm({
             />
           </Field>
           <Field label={tr("Date")}>
-            <Input
-              type="date"
+            <DateField
               value={f.date}
-              onChange={(e) => set("date", e.target.value)}
+              onChange={(iso) => set("date", iso)}
             />
           </Field>
         </div>

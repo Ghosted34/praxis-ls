@@ -8,6 +8,7 @@ import { pageShell } from "@/lib/layout";
 import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { Textarea } from "@/components/ui/textarea";
+import { DateTimeField } from "@/components/ui/datetime-field";
 import { tenant } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/data-list";
@@ -19,7 +20,7 @@ import { SkeletonTable } from "@/components/ui/skeleton";
 import { AiActions } from "@/components/ai-actions";
 import type { AiAction } from "@/features/scaffold/screen-specs";
 import { errMsg, useList, useRefresh, type Row } from "@/lib/use-resource";
-import { cell, dateFmt } from "@/lib/format";
+import { cell, dateFmt, dateTimeFmt } from "@/lib/format";
 import { StatusPill } from "@/components/ui/pill";
 import { SearchSelect } from "@/components/ui/search-select";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -176,10 +177,9 @@ function MeetingForm({
             </Field>
           )}
           <Field label="Scheduled at">
-            <Input
-              type="datetime-local"
+            <DateTimeField
               value={scheduledAt}
-              onChange={(e) => setScheduledAt(e.target.value)}
+              onChange={setScheduledAt}
             />
           </Field>
           {/* The discovery wizard asks for it and the old schema had nowhere
@@ -484,7 +484,7 @@ export function MeetingsPage() {
               </div>
               <span className="hidden text-xs text-muted-foreground sm:block">
                 {r.scheduled_at
-                  ? new Date(String(r.scheduled_at)).toLocaleString()
+                  ? dateTimeFmt(String(r.scheduled_at))
                   : "Unscheduled"}
               </span>
             </button>

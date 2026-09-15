@@ -245,11 +245,41 @@ describe("no mail-programme table is created and then never read", () => {
 
   const RANGES = /^(107[2-9]\d|1076\d|1077\d)_/;
 
+  /**
+   * Live DDL only.
+   *
+   * Every migration ends in a `-- DOWN` block, and a good one spells out the
+   * statements that would reverse it — including `CREATE TABLE IF NOT EXISTS`
+   * for anything it dropped. Scanning the raw file counted those as creations,
+   * so a well-documented rollback path registered a table the database does not
+   * have, and the gate then demanded application code for it. Strip line
+   * comments first and the gate reads what the migration DOES rather than what
+   * it describes.
+   */
+  const liveSql = (sql) => sql.replace(/--[^\n]*/g, "");
+
   const created = new Set();
+  const dropped = new Set();
   for (const f of fs.readdirSync(MIGRATIONS).filter((n) => RANGES.test(n))) {
-    const sql = fs.readFileSync(path.join(MIGRATIONS, f), "utf8");
+    const sql = liveSql(fs.readFileSync(path.join(MIGRATIONS, f), "utf8"));
     for (const m of sql.matchAll(/CREATE TABLE IF NOT EXISTS ([a-z_]+)/g)) created.add(m[1]);
   }
+
+  /**
+   * A table a LATER migration drops is not an orphan — it is gone.
+   *
+   * Scanned across every tenant migration rather than the range above, because
+   * the thing that retires a table is rarely numbered next to the thing that
+   * created it. Without this, retiring a feature correctly (drop the table,
+   * delete the code) fails this gate, and the only ways to green are to leave a
+   * dead table in the schema or to write "not built yet" about something that
+   * was built — both worse than the state they would be hiding.
+   */
+  for (const f of fs.readdirSync(MIGRATIONS).filter((n) => n.endsWith(".sql"))) {
+    const sql = liveSql(fs.readFileSync(path.join(MIGRATIONS, f), "utf8"));
+    for (const m of sql.matchAll(/DROP TABLE IF EXISTS ([a-z_]+)/g)) dropped.add(m[1]);
+  }
+  for (const t of dropped) created.delete(t);
 
   const allSrc = (function walk(dir, acc = []) {
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {

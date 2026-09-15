@@ -61,6 +61,41 @@ function currentRequestId() {
 }
 
 /**
+ * Serialise a value bound for a `jsonb` column.
+ *
+ * ── WHY THIS IS NOT `pg`'S JOB ─────────────────────────────────────────────
+ *
+ * node-postgres has ONE rule for a JS object and a DIFFERENT one for a JS
+ * ARRAY, and only the first is what a jsonb column wants:
+ *
+ *   { platform: "x" }    → JSON.stringify  → '{"platform":"x"}'   ✅ jsonb
+ *   [{ platform: "x" }]  → array literal   → '{"{\"platform\":\"x\"}"}'  ❌
+ *
+ * The second is a Postgres ARRAY literal, not JSON, and the column then fails
+ * to parse it: SQLSTATE 22P02 `invalid input syntax for type json`, which the
+ * error handler surfaces as "One of the values is in the wrong format".
+ *
+ * That is a real defect this fixed, not a hypothetical. `before`/`after` is a
+ * ROW for most callers — hence objects, hence green — but the callers that
+ * audit a SET rather than a record hand over a list:
+ *
+ *   - site settings `saveSocial` — before/after is `listSocial()`, so saving
+ *     ANY footer social link 400'd with that message and the whole
+ *     transaction rolled back. Nothing about the URL was wrong; every value
+ *     the screen could send failed identically, which is why it read as "one
+ *     of the values is in the wrong format" about a value nobody could find.
+ *   - corporate entity `saveLetterheadLine` — after is `letterheadLines()`.
+ *
+ * An EMPTY array is the reason this went unnoticed: `[]` serialises to `{}`,
+ * which is valid JSON, so the first save on an empty screen passed and only
+ * the second — the one with data — failed.
+ *
+ * Stringifying here rather than at each call site keeps the next caller that
+ * audits a list from re-discovering this by shipping it.
+ */
+const jsonParam = (v) => (v === null || v === undefined ? null : JSON.stringify(v));
+
+/**
  * PERF S6. In-process cache for the `event_type` catalogue.
  *
  * `emitEvent` runs on every create, update and archive across all 93 modules,
@@ -117,6 +152,34 @@ function clearEventTypeCache() {
 async function emitEvent(client, e) {
   const key = e.eventTypeKey;
 
+  /**
+   * A missing key is a CALLER bug, and it must say so here.
+   *
+   * `event_log.event_type_key` is `citext NOT NULL` (migration 0120), so an
+   * undefined key does not emit an event without a name — it raises SQLSTATE
+   * 23502, which `error-handler.js` maps to a 400 `MISSING_VALUE`, "A required
+   * value was missing". That message is about the caller's OWN body, so the
+   * screen blames the field the user was filling in and the user re-tries the
+   * upload that was never the problem.
+   *
+   * That is not hypothetical. `insight.setCover` passed `event:` instead of
+   * `eventTypeKey:`, and the symptom was an article cover upload that failed
+   * with "A required value was missing" under a file-drop that had a file in
+   * it — while the gallery upload beside it, byte-for-byte the same call
+   * without an `emitEvent`, worked. The transaction rolled back after the
+   * document had been written to the vault, so every attempt also left the
+   * bytes behind.
+   *
+   * Throwing here costs nothing a working call site can notice (a key-less
+   * call could only ever have hit the constraint) and turns a misleading 400
+   * into a named 500 with the module in the message.
+   */
+  if (!key) {
+    throw new Error(
+      `emitEvent: eventTypeKey is required (module ${e.moduleKey || "?"}, entity ${e.entityRef || "?"})`,
+    );
+  }
+
   // Is this event type flagged security-critical? Cached — see lookupEventType.
   // Resolving it in JS (rather than an in-SQL subquery on the same INSERT)
   // keeps every statement below using each parameter in exactly one place —
@@ -138,8 +201,8 @@ async function emitEvent(client, e) {
   await client.query(
     `INSERT INTO event_log (event_type_key, module_key, entity_ref, actor_user_id, priority, payload, request_id)
      SELECT $1,$2,$3,(SELECT user_id FROM app_user WHERE user_id = $4),$5,$6,$7`,
-    [key, e.moduleKey || null, e.entityRef || null, e.actorUserId || null, priority, e.payload || {},
-     e.requestId || currentRequestId()],
+    [key, e.moduleKey || null, e.entityRef || null, e.actorUserId || null, priority,
+     jsonParam(e.payload || {}), e.requestId || currentRequestId()],
   );
 
   // Universal approval retrofit: if this event type is approvable, open the first
@@ -266,15 +329,15 @@ async function audit(client, a) {
       a.action,
       a.moduleKey || null,
       a.entityRef || null,
-      a.before || null,
-      a.after || null,
+      jsonParam(a.before ?? null),
+      jsonParam(a.after ?? null),
       a.ip || null,
       // OBS T1: which request wrote this row. An explicit value wins so a
       // background job that DOES know its originating request (a queued job
       // carrying the id in its payload) can say so.
       a.requestId || currentRequestId(),
       a.isSensitive === true ? true : null,
-      a.metadata || null,
+      jsonParam(a.metadata ?? null),
     ],
   );
 }

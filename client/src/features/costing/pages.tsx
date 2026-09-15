@@ -8,6 +8,7 @@ import * as React from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { HubTabs, HubCrumb } from "@/components/tabbed-hub";
 import { Button } from "@/components/ui/button";
+import { DateField } from "@/components/ui/date-field";
 import { FormButtons } from "@/components/ui/form-buttons";
 import { DocButton } from "@/components/doc-button";
 import { Input } from "@/components/ui/input";
@@ -813,10 +814,9 @@ function BulkCostSheet({
             </Select>
           </Field>
           <Field label={tr("Date")} required>
-            <Input
-              type="date"
+            <DateField
               value={entryDate}
-              onChange={(e) => setEntryDate(e.target.value)}
+              onChange={setEntryDate}
             />
           </Field>
           <Field label={tr("Source doc ref")} required>
@@ -1961,10 +1961,9 @@ function RegieForm({
             />
           </Field>
           <Field label={tr("Date")} required>
-            <Input
-              type="date"
+            <DateField
               value={f.entry_date}
-              onChange={(e) => set("entry_date", e.target.value)}
+              onChange={(iso) => set("entry_date", iso)}
             />
           </Field>
         </div>

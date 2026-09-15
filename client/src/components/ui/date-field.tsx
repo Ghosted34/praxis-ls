@@ -14,45 +14,38 @@
  * downstream changes. The calendar button opens the platform date picker for
  * anyone who would rather click than type; whichever they use, the two stay in
  * sync.
+ *
+ * ── IT IS THE ONLY DATE CONTROL ────────────────────────────────────────────
+ *
+ * `scripts/check-date-format.js` fails the build on a native `type="date"`
+ * anywhere outside this file, so this is not a component you may choose: it is
+ * the one implementation. That means it has to cover what the native control
+ * covered, or a call site has a reason to reach past it. Hence `min`/`max`,
+ * `required`, `name`/`onBlur` and a forwarded ref — the react-hook-form
+ * `{...field}` spread works on it unchanged.
+ *
+ * ── HOW THE CONSTRAINTS ARE ENFORCED, AND WHY NOT ON THE NATIVE INPUT ──────
+ *
+ * The obvious place for `required`/`min`/`max` is the hidden native input that
+ * lends its calendar. It is the wrong place: a hidden control that fails
+ * constraint validation blocks submit with the browser's own
+ * "An invalid form control is not focusable" and no visible message — the form
+ * simply stops, pointing at nothing. So the constraints live on the visible
+ * text box via `setCustomValidity`, which is focusable, carries a sentence the
+ * operator can act on, and reports through the same `:invalid` path the rest of
+ * the form uses.
  */
 import * as React from "react";
 import { cn } from "@/lib/cn";
 import { Input } from "@/components/ui/input";
 import { CalendarIcon } from "@/components/ui/icons";
-
-/** ISO `YYYY-MM-DD` → display `dd/mm/yyyy` (empty for anything else). */
-function isoToDisplay(iso: string): string {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
-  return m ? `${m[3]}/${m[2]}/${m[1]}` : "";
-}
-
-/** Display `dd/mm/yyyy` → ISO `YYYY-MM-DD`, or "" when incomplete/impossible.
- *  The round-trip check rejects a real-looking-but-invalid date like 31/02. */
-function displayToIso(display: string): string {
-  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(display);
-  if (!m) return "";
-  const day = Number(m[1]);
-  const month = Number(m[2]);
-  const year = Number(m[3]);
-  if (month < 1 || month > 12 || day < 1 || day > 31 || year < 1) return "";
-  const dt = new Date(year, month - 1, day);
-  if (
-    dt.getFullYear() !== year ||
-    dt.getMonth() !== month - 1 ||
-    dt.getDate() !== day
-  )
-    return "";
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${year}-${pad(month)}-${pad(day)}`;
-}
-
-/** Keep only digits and re-insert the slashes as the operator types. */
-function maskInput(raw: string): string {
-  const digits = raw.replace(/\D/g, "").slice(0, 8);
-  if (digits.length <= 2) return digits;
-  if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
-  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
-}
+import { tr } from "@/lib/i18n";
+import {
+  isoToDisplay,
+  displayToIso,
+  maskInput,
+  validityMessage,
+} from "@/lib/day-first-date";
 
 type DateFieldProps = {
   /** The stored value: ISO `YYYY-MM-DD`, or "" when unset. */
@@ -60,97 +53,149 @@ type DateFieldProps = {
   /** Called with a valid ISO date, or "" while the field is incomplete/cleared. */
   onChange: (iso: string) => void;
   id?: string;
+  name?: string;
+  onBlur?: React.FocusEventHandler<HTMLInputElement>;
   disabled?: boolean;
+  required?: boolean;
+  /** Earliest / latest date accepted, ISO `YYYY-MM-DD`. */
+  min?: string;
+  max?: string;
   placeholder?: string;
   className?: string;
 } & React.AriaAttributes;
 
-export function DateField({
-  value,
-  onChange,
-  id,
-  disabled,
-  placeholder = "dd/mm/yyyy",
-  className,
-  ...aria
-}: DateFieldProps) {
-  const [text, setText] = React.useState(() => isoToDisplay(value));
-  const nativeRef = React.useRef<HTMLInputElement>(null);
+export const DateField = React.forwardRef<HTMLInputElement, DateFieldProps>(
+  function DateField(
+    {
+      value,
+      onChange,
+      id,
+      name,
+      onBlur,
+      disabled,
+      required,
+      min,
+      max,
+      // Translated so the box and the validation message name the SAME format —
+  // a French operator reads "jj/mm/aaaa" in both, not one of each.
+  placeholder = tr("dd/mm/yyyy"),
+      className,
+      ...aria
+    },
+    forwardedRef,
+  ) {
+    const [text, setText] = React.useState(() => isoToDisplay(value));
+    const nativeRef = React.useRef<HTMLInputElement>(null);
+    const textRef = React.useRef<HTMLInputElement | null>(null);
 
-  // Re-sync the visible text when the stored value changes from the outside
-  // (a form reset, an edit seeded from the API) — but never mid-type: while the
-  // operator is part-way through a date, `value` is still "" and clobbering the
-  // box would delete their keystrokes.
-  React.useEffect(() => {
-    setText((prev) =>
-      displayToIso(prev) === value ? prev : isoToDisplay(value),
-    );
-  }, [value]);
+    // Re-sync the visible text when the stored value changes from the outside
+    // (a form reset, an edit seeded from the API) — but never mid-type: while the
+    // operator is part-way through a date, `value` is still "" and clobbering the
+    // box would delete their keystrokes.
+    React.useEffect(() => {
+      setText((prev) =>
+        displayToIso(prev) === value ? prev : isoToDisplay(value),
+      );
+    }, [value]);
 
-  function onText(raw: string) {
-    const next = maskInput(raw);
-    setText(next);
-    onChange(displayToIso(next));
-  }
+    // Constraint validation, re-applied whenever the text or a bound changes.
+    // `setCustomValidity` is a DOM call rather than a render output, so it has
+    // to run in an effect — and it must run on the MOUNT too, or a required
+    // field that was never touched submits empty.
+    React.useEffect(() => {
+      const el = textRef.current;
+      if (!el) return;
+      el.setCustomValidity(
+        validityMessage(text, displayToIso(text), { required, min, max, t: tr }),
+      );
+    }, [text, required, min, max]);
 
-  function openPicker() {
-    const el = nativeRef.current as
-      (HTMLInputElement & { showPicker?: () => void }) | null;
-    if (!el) return;
-    // showPicker() is the only way to surface the native calendar for a control
-    // the operator drives by text; where it is unavailable, focusing the hidden
-    // native input still lets the platform offer its own affordance.
-    if (typeof el.showPicker === "function") {
+    function onText(raw: string) {
+      const next = maskInput(raw);
+      setText(next);
+      onChange(displayToIso(next));
+    }
+
+    function openPicker() {
+      const el = nativeRef.current as
+        | (HTMLInputElement & { showPicker?: () => void })
+        | null;
+      if (!el) return;
+      // showPicker() is the only way to surface the native calendar for a control
+      // the operator drives by text; where it is unavailable, focusing the hidden
+      // native input still lets the platform offer its own affordance.
+      // The fallback lives INSIDE the catch rather than after it. Not a style
+      // choice: a catch whose body is only a comment is a SILENT catch, and R1
+      // (doc/ERROR_HANDLING.md) wants either a taxonomy marker or real handling.
+      // None of storage/parse/teardown describes "the engine refused to open a
+      // picker without a user gesture", and picking one to quiet the rule would
+      // put a lie in a comment. There IS real handling here — it was just written
+      // one line too low.
+      if (typeof el.showPicker !== "function") {
+        el.focus();
+        return;
+      }
       try {
         el.showPicker();
-        return;
       } catch {
-        /* showPicker throws without a user gesture in some engines — fall through. */
+        el.focus();
       }
     }
-    el.focus();
-  }
 
-  return (
-    <div className={cn("relative", className)}>
-      <Input
-        id={id}
-        type="text"
-        inputMode="numeric"
-        autoComplete="off"
-        placeholder={placeholder}
-        value={text}
-        disabled={disabled}
-        onChange={(e) => onText(e.target.value)}
-        className="pr-10"
-        {...aria}
-      />
-      <button
-        type="button"
-        tabIndex={-1}
-        aria-label="Open calendar"
-        disabled={disabled}
-        onClick={openPicker}
-        className="absolute inset-y-0 right-0 grid w-10 place-items-center text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
-      >
-        <CalendarIcon width={16} height={16} />
-      </button>
-      {/* The native date input is present only to lend its calendar popup; it is
-          layered, invisible, over the button so `showPicker()` anchors there.
-          It carries no id/label of its own — the text box above is the field. */}
-      <input
-        ref={nativeRef}
-        type="date"
-        aria-hidden
-        tabIndex={-1}
-        value={value}
-        disabled={disabled}
-        onChange={(e) => {
-          setText(isoToDisplay(e.target.value));
-          onChange(e.target.value);
-        }}
-        className="pointer-events-none absolute bottom-0 right-0 h-0 w-10 opacity-0"
-      />
-    </div>
-  );
-}
+    return (
+      <div className={cn("relative", className)}>
+        <Input
+          id={id}
+          name={name}
+          ref={(node: HTMLInputElement | null) => {
+            textRef.current = node;
+            if (typeof forwardedRef === "function") forwardedRef(node);
+            else if (forwardedRef) forwardedRef.current = node;
+          }}
+          type="text"
+          inputMode="numeric"
+          autoComplete="off"
+          placeholder={placeholder}
+          value={text}
+          disabled={disabled}
+          required={required}
+          onBlur={onBlur}
+          onChange={(e) => onText(e.target.value)}
+          className="pr-10"
+          {...aria}
+        />
+        <button
+          type="button"
+          tabIndex={-1}
+          aria-label="Open calendar"
+          disabled={disabled}
+          onClick={openPicker}
+          className="absolute inset-y-0 right-0 grid w-10 place-items-center text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+        >
+          <CalendarIcon width={16} height={16} />
+        </button>
+        {/* The native date input is present only to lend its calendar popup; it is
+            layered, invisible, over the button so `showPicker()` anchors there.
+            It carries no id/label of its own — the text box above is the field,
+            and no `required` either (see the header: a hidden invalid control
+            blocks submit with a message nobody can see). `min`/`max` DO belong
+            here, where they grey out the days the picker must not offer. */}
+        <input
+          ref={nativeRef}
+          type="date"
+          aria-hidden
+          tabIndex={-1}
+          value={value}
+          min={min}
+          max={max}
+          disabled={disabled}
+          onChange={(e) => {
+            setText(isoToDisplay(e.target.value));
+            onChange(e.target.value);
+          }}
+          className="pointer-events-none absolute bottom-0 right-0 h-0 w-10 opacity-0"
+        />
+      </div>
+    );
+  },
+);

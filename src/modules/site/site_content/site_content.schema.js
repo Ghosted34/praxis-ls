@@ -26,6 +26,14 @@
 
 const { z } = require("zod");
 const { isMetricKey, metricKeys } = require("./site_content.metrics");
+/* Deep path, not the package index: `packages/shared/index.js` pulls Zod and
+   the ISO country and currency tables, and `check:schemas` requires every
+   domain exported from it to be imported by BOTH sides. The catalogue is read
+   by the API and served to the editor over HTTP rather than bundled into it —
+   465 strings in two languages is not a payload the ERP shell should carry —
+   so it is deliberately not on that index, for the reason palette and color
+   are not either. */
+const { isSiteCopyKey } = require("../../../../packages/shared/data/site-copy.generated");
 
 /* ── shared field shapes ─────────────────────────────────────────────────── */
 
@@ -208,6 +216,57 @@ const BLOCKS = {
     title: bi(TITLE_MAX),
     text: biOpt(TEXT_MAX),
     cta: link,
+  }).strict(),
+
+  /**
+   * The words the APP puts on the tenant's pages — overridden, one key at a
+   * time.
+   *
+   * Every other block in this library adds content to a page. This one REPLACES
+   * content that is already there: `site.portfolioPage.titleMain` is
+   * "Success stories" until a tenant writes something else, at which point
+   * theirs is what a visitor reads. On a white-label product that is not a nice
+   * extra — the shipped sentence is a claim about the tenant's business in
+   * words they never chose, and until now could not reach.
+   *
+   * ── WHY THE KEY IS CHECKED AGAINST A GENERATED LIST ───────────────────────
+   *
+   * Same argument as `metric_key` above, and the same failure mode. An
+   * unchecked key is an override that silently never renders: the tenant types
+   * their heading, presses Save, gets a 200, and the public page keeps saying
+   * "Success stories" with nothing anywhere explaining why. So a typo, a stale
+   * key from a previous deploy, and a key invented by a script are all a 422 at
+   * save time, naming the key.
+   *
+   * The list comes from `scripts/gen/gen-site-copy-catalogue.js`, which derives
+   * it from the dictionary that ships the defaults, and CI fails when the two
+   * drift. A hand-maintained allow-list would have meant every new string being
+   * un-editable until somebody remembered — which is the original defect, in
+   * instalments.
+   *
+   * ── WHY `value` IS THE SAME `bi()` AS EVERYTHING ELSE ─────────────────────
+   *
+   * FR required, EN optional, no markup, capped. A dictionary string is read by
+   * the same renderer as a hero headline and reaches the same public HTML;
+   * there is no reason it should be allowed to be anything a hero headline
+   * cannot be. RICH_MAX rather than TITLE_MAX because the catalogue covers
+   * paragraphs as well as labels — the careers intro and the legal footer line
+   * are both in it.
+   */
+  copy_overrides: z.object({
+    items: z.array(z.object({
+      key: z.string().trim().min(1).max(120).refine(isSiteCopyKey, {
+        message: "unknown copy key — not in the site copy catalogue",
+      }),
+      value: bi(RICH_MAX),
+    }).strict())
+      // NOT capped at ITEMS_MAX. Twenty-four is the right ceiling for cards in
+      // a grid, where the limit is what a page can show without becoming a
+      // list; this block shows nothing and a tenant rewriting their site in
+      // both languages legitimately touches hundreds of keys. The cap that
+      // matters here is the catalogue itself — every key must be in it, so the
+      // array cannot exceed the number of strings that exist.
+      .max(2000),
   }).strict(),
 
   policies: z.object({

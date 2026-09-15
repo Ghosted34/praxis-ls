@@ -5,6 +5,7 @@ import { Honeypot, Input, Select, Textarea } from "@/components/ui/field";
 import { PlaceInput } from "@/components/ui/place-input";
 import { FileInput, type Attachment } from "@/components/ui/file-input";
 import { Stepper, type Step } from "@/components/ui/stepper";
+import { cn } from "@/lib/cn";
 import { ErrorState, SuccessState } from "@/components/state";
 import { ArrowRightIcon } from "@/components/ui/icons";
 import { SelectCard } from "@/components/ui/select-card";
@@ -168,6 +169,8 @@ export function QuoteWizard({
   const modes = hasServices ? modesOf(services) : FALLBACK_MODES;
   const [f, setF, clearDraft] = useWizardDraft<Draft>(DRAFT_KEY, EMPTY);
   const [step, setStep] = React.useState(0);
+  /** Whether the visitor has changed step yet — see `goTo`. */
+  const [moved, setMoved] = React.useState(false);
   const [furthest, setFurthest] = React.useState(0);
   // Shown only after an attempt to advance: pointing at a field somebody has
   // not reached yet is nagging, not validating.
@@ -375,6 +378,16 @@ export function QuoteWizard({
   function goTo(index: number) {
     setStep(index);
     setShowErrors(false);
+    /*
+     * §8.3's step transition arms itself only once the visitor has MOVED.
+     *
+     * "An entrance that does not delay the form" — so the first step paints at
+     * full opacity with no animation at all. Arming here rather than deriving
+     * it from `step > 0` also covers the visitor who jumps backwards to step
+     * one from the dots, who has moved and should see the same response as
+     * anybody else.
+     */
+    setMoved(true);
     // Focus the new step's heading rather than its first input: a screen reader
     // should hear which question it is now on before being dropped into a field.
     window.requestAnimationFrame(() => headingRef.current?.focus());
@@ -494,7 +507,12 @@ export function QuoteWizard({
       {/* Centred, like every step on their portal. On a form this wide a
           left-aligned question sits under the step dots and reads as a caption
           for them; centred, it reads as the thing being asked. */}
-      <div className="text-center">
+      {/* THE HEADING MOVES; THE FIELDS DO NOT. §8.3's rule is "never animate a
+          field into place under a cursor", so the rise is confined to the two
+          elements here — neither of them clickable — and the panel below fades
+          without a transform. `key` is the step, so React replays the animation
+          on each change rather than only on mount. */}
+      <div key={`head-${stepKey}`} className={cn("text-center", moved && "step-head")}>
         <h3
           ref={headingRef}
           tabIndex={-1}
@@ -506,6 +524,8 @@ export function QuoteWizard({
           {t(`site.quote.stepHint_${stepKey}`)}
         </p>
       </div>
+
+      <div key={`panel-${stepKey}`} className={cn(moved && "step-panel")}>
 
       {stepKey === "need" && (
         <div className="space-y-4">
@@ -795,6 +815,12 @@ export function QuoteWizard({
         </div>
       )}
 
+      </div>
+
+      {/* OUTSIDE the animated panel, deliberately. The honeypot must be present
+          and inert for a scraper on every step; wrapping it in an element that
+          animates would be a behavioural change to spam handling made for a
+          visual reason. */}
       {/* The honeypot: present for a scraper, invisible for a person. */}
       <Honeypot value={intake.honeypot} onChange={intake.setHoneypot} />
 

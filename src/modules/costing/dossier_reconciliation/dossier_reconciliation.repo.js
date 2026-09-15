@@ -1,5 +1,28 @@
-/** OCR repository (G19) — dossier_reconciliation + lines + write-back. */
+/**
+ * Budget Reconciliation repository (MOD-76).
+ *
+ * ── THE ONE IDEA ────────────────────────────────────────────────────────────
+ *
+ * `gridFor` reads from `costing_line`, not from `dossier_reconciliation_line`.
+ *
+ * That is the whole module. The legacy copied the costing's lines into
+ * `ocr_line` at draft time and so did this module's previous `buildLines`; a
+ * copy is a decision to go stale, and rebuilding it destroys whatever a human
+ * typed (which is why the old `deleteLines` could only be called on a DRAFT).
+ * Projecting instead means an amended costing IS an amended reconciliation:
+ * a new budget line appears here on the next read, on a sheet settled last
+ * month, with every other line's typed values untouched. Owner decision Q6.
+ *
+ * So this table is SPARSE. A costing line nobody has touched has no row and
+ * still renders. A row appears the moment someone types into it, and holds only
+ * what they typed: the actual, the date it was spent, the reason for an
+ * overrun, the cash returned.
+ */
 "use strict";
+
+const costingRepo = require("../costing/costing.repo");
+
+/* ═══════════════════════════ The header ══════════════════════════════════ */
 
 async function get(client, id) {
   const { rows } = await client.query(
@@ -9,256 +32,353 @@ async function get(client, id) {
   return rows[0] || null;
 }
 
-async function openForDossier(client, dossierId) {
+async function forDossier(client, dossierId) {
   const { rows } = await client.query(
-    `SELECT * FROM dossier_reconciliation
-      WHERE dossier_id = $1 AND status IN ('DRAFT','SUBMITTED')
-      ORDER BY created_at DESC LIMIT 1`,
+    "SELECT * FROM dossier_reconciliation WHERE dossier_id = $1",
     [dossierId],
   );
   return rows[0] || null;
 }
 
-async function latestForDossier(client, dossierId) {
+/**
+ * Open the file's reconciliation, or return the one that is already there.
+ *
+ * ON CONFLICT DO NOTHING against `uq_reconciliation_one_per_dossier` (13801),
+ * so two people opening the same file at the same moment get the same row
+ * rather than one of them getting a 23505. One per file, for ever (Q6) — this
+ * is the only place a reconciliation is ever created.
+ */
+async function open(client, { dossierId, actorUserId, currency, rate }) {
   const { rows } = await client.query(
-    `SELECT * FROM dossier_reconciliation
-      WHERE dossier_id = $1 ORDER BY created_at DESC LIMIT 1`,
-    [dossierId],
+    `INSERT INTO dossier_reconciliation (dossier_id, created_by, currency, exchange_rate_to_xaf, status)
+     VALUES ($1, $2, COALESCE($3, 'XAF'), COALESCE($4, 1), 'OPEN')
+     ON CONFLICT (dossier_id) DO NOTHING
+     RETURNING *`,
+    [dossierId, actorUserId, currency, rate],
+  );
+  // DO NOTHING returns no row when somebody else won the race, so the SELECT is
+  // the answer in exactly that case — and is never skipped on the strength of
+  // an INSERT that may legitimately have written nothing.
+  return rows[0] || forDossier(client, dossierId);
+}
+
+async function setStatus(client, id, { sql, params = [] }) {
+  const { rows } = await client.query(
+    `UPDATE dossier_reconciliation SET ${sql} WHERE reconciliation_id = $1 RETURNING *`,
+    [id, ...params],
   );
   return rows[0] || null;
 }
 
-async function insert(client, { dossierId, actorUserId, quotationId = null, quotedHt = null }) {
+/* ═══════════════════════════ The grid ════════════════════════════════════ */
+
+/**
+ * Every budget line on the file's approved costing, with what has been claimed
+ * against it, what has been paid, and whatever a human has entered.
+ *
+ * `LINE_VAT_SQL` and `claimsLateral` come from `costing.repo` rather than being
+ * written again here: the budget bar the cash request draws against and the
+ * budget column on this sheet have to be the same number, and the only way to
+ * guarantee that is one definition. See `claimsLateral`'s header.
+ *
+ * `justification_required` is its own small LATERAL because the CASH REQUEST is
+ * SSOT for the tick (Q9): the catalogue seeds the default, a validator may tick
+ * it upward, and re-deriving it from `dictionary_item` here would silently throw
+ * that decision away. `bool_or` because if ANY live claim against this budget
+ * line was ticked, the line owes a receipt.
+ *
+ * NOTE ON `cost_entry`. Nothing joins it yet. Nothing writes
+ * `cost_entry.costing_line_id` until settlement posts (PR 2), so a join would
+ * return zero for every row and invite a reader to believe it meant something.
+ * The pre-fill is `disbursed`, which is exactly the question the owner posed:
+ * "119 250 was disbursed — is that what you spent?"
+ */
+async function gridFor(client, { dossierId, reconciliationId }) {
+  const claims = costingRepo.claimsLateral({ committing: "$3", pending: "$4" });
+  const vat = costingRepo.LINE_VAT_SQL;
   const { rows } = await client.query(
-    `INSERT INTO dossier_reconciliation (dossier_id, created_by, quotation_id, quoted_ht)
-     VALUES ($1, $2, $3, $4) RETURNING *`,
-    [dossierId, actorUserId, quotationId, quotedHt],
-  );
-  return rows[0];
-}
-
-async function insertLines(client, reconciliationId, lines) {
-  for (const l of lines) {
-    await client.query(
-      `INSERT INTO dossier_reconciliation_line
-         (reconciliation_id, dictionary_item_id, item_code, item_label, budget_ht, actual_ht, is_disbursement, doc_ref, doc_required, match_status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-      [reconciliationId, l.dictionary_item_id || null, l.item_code || null, l.item_label || null,
-        l.budget_ht || 0, l.actual_ht || 0, l.is_disbursement === true, l.doc_ref || null, l.doc_required === true,
-        l.match_status === "UNMATCHED" ? "UNMATCHED" : "MATCHED"],
-    );
-  }
-}
-
-/** Draft rebuild after a confirmed mapping: the aggregates changed, so the
- *  lines are recomputed wholesale. DRAFT only — there is no line-edit API, so
- *  no human-entered field is lost. */
-async function deleteLines(client, reconciliationId) {
-  await client.query(
-    "DELETE FROM dossier_reconciliation_line WHERE reconciliation_id = $1",
-    [reconciliationId],
-  );
-}
-
-async function lines(client, reconciliationId) {
-  const { rows } = await client.query(
-    "SELECT * FROM dossier_reconciliation_line WHERE reconciliation_id = $1 ORDER BY item_code, line_id",
-    [reconciliationId],
+    `SELECT cl.costing_line_id, cl.line_no, cl.label, cl.dictionary_item_id,
+            cl.is_disbursement, cl.qty, cl.unit_cost,
+            di.code                              AS item_code,
+            COALESCE(di.label_en, di.label_fr)   AS item_label,
+            dr.code                              AS container_type_code,
+            ROUND(cl.qty * cl.unit_cost, 2)               AS net,
+            ROUND(${vat}, 2)                              AS vat,
+            ROUND(cl.qty * cl.unit_cost + ${vat}, 2)      AS budget_ttc,
+            claims.committed, claims.pending, claims.disbursed,
+            COALESCE(just.justification_required, false)  AS justification_required,
+            rl.line_id, rl.actual_ttc, rl.actual_source, rl.spent_on,
+            rl.variance_reason, rl.reason_group_id, rl.returned_amount,
+            rl.updated_at, rl.updated_by,
+            COALESCE(docs.document_count, 0)              AS document_count
+       FROM costing_line cl
+       JOIN costing c            ON c.costing_id = cl.costing_id
+       LEFT JOIN tax_code tc     ON tc.tax_code_id = cl.tax_code_id
+       LEFT JOIN dictionary_item di ON di.dictionary_item_id = cl.dictionary_item_id
+       LEFT JOIN dictionary_ref dr  ON dr.ref_id = cl.container_type_ref_id
+       ${claims}
+       LEFT JOIN LATERAL (
+         SELECT bool_or(crl.justification_required) AS justification_required
+           FROM cash_request_line crl
+           JOIN cash_request cr ON cr.cash_request_id = crl.cash_request_id
+          WHERE crl.costing_line_id = cl.costing_line_id
+            AND cr.status <> 'REJECTED'
+       ) just ON TRUE
+       LEFT JOIN dossier_reconciliation_line rl
+              ON rl.reconciliation_id = $2 AND rl.costing_line_id = cl.costing_line_id
+       LEFT JOIN LATERAL (
+         SELECT count(*)::int AS document_count
+           FROM dossier_reconciliation_document d
+          WHERE d.line_id = rl.line_id
+       ) docs ON TRUE
+      WHERE c.dossier_id = $1 AND c.status = 'APPROVED_LOCKED'
+      ORDER BY cl.line_no, cl.costing_line_id`,
+    [dossierId, reconciliationId, costingRepo.COMMITTING_STATUSES, costingRepo.PENDING_STATUSES],
   );
   return rows;
 }
 
-async function setStatus(client, id, fields) {
+/** The file's approved costing, for the header and for the "no costing yet"
+ *  empty state. One live costing per dossier (uq_costing_one_live_per_dossier). */
+async function approvedCosting(client, dossierId) {
   const { rows } = await client.query(
-    `UPDATE dossier_reconciliation SET ${fields.sql} WHERE reconciliation_id = $1 RETURNING *`,
-    [id, ...fields.params],
-  );
-  return rows[0] || null;
-}
-
-/** The per-item budget (approved costing lines) and actual (cost entries),
- *  SERVICE COSTS ONLY. HT throughout (BUG-2).
- *
- *  Débours (pass-through) are excluded from both sides (BUG-3, OHADA_KB
- *  §6.7/§450): they are neither revenue nor cost to the forwarder, so a file
- *  heavy in customs/port débours must not move the service-cost variance. The
- *  budget uses costing_line.is_disbursement directly (the flag set at costing
- *  time); actuals join dictionary_item, because cost_entry carries no flag of
- *  its own and the ledger's assert_line_valid() enforces the same item flag. A
- *  cost entry with no dictionary item is an own-cost, never a débours.
- *
- *  Débours are reported separately by disbursementTotals(). */
-async function costCompare(client, dossierId) {
-  const { rows } = await client.query(
-    `SELECT
-       COALESCE(b.dictionary_item_id, a.dictionary_item_id) AS dictionary_item_id,
-       COALESCE(di.code, 'OTHER') AS item_code,
-       -- label_en/label_fr: dictionary_item has never had a name_* pair (0200),
-       -- and every other read of the billing dictionary uses the label_ names.
-       COALESCE(di.label_en, di.label_fr, 'Other') AS item_label,
-       COALESCE(b.budget_ht, 0) AS budget_ht,
-       COALESCE(a.actual_ht, 0) AS actual_ht
-     FROM
-       (SELECT cl.dictionary_item_id, SUM(cl.qty * cl.unit_cost) AS budget_ht
-          FROM costing_line cl
-          JOIN costing c ON c.costing_id = cl.costing_id
-         -- costing_status_check (10718:74) permits DRAFT, SUBMITTED_FOR_*,
-         -- APPROVED_LOCKED, UNLOCK_REQUESTED, REJECTED. There is no 'APPROVED'
-         -- or 'LOCKED' status — the old IN (...) matched nothing, so every
-         -- reconciliation silently reported a zero budget. Match the single
-         -- locked/approved state; this agrees with cost_tracking.repo.js.
-         WHERE c.dossier_id = $1 AND c.status = 'APPROVED_LOCKED'
-           AND COALESCE(cl.is_disbursement, false) = false
-         GROUP BY cl.dictionary_item_id) b
-       FULL OUTER JOIN
-       (SELECT ce.dictionary_item_id, SUM(ce.amount) AS actual_ht
-          FROM cost_entry ce
-          LEFT JOIN dictionary_item d2 ON d2.dictionary_item_id = ce.dictionary_item_id
-         WHERE ce.dossier_id = $1 AND COALESCE(d2.is_disbursement, false) = false
-         GROUP BY ce.dictionary_item_id) a
-         ON a.dictionary_item_id = b.dictionary_item_id
-       LEFT JOIN dictionary_item di ON di.dictionary_item_id = COALESCE(b.dictionary_item_id, a.dictionary_item_id)
-     ORDER BY item_code`,
-    [dossierId],
-  );
-  return rows;
-}
-
-/** Débours for a dossier: what was budgeted on the approved costing vs what was
- *  actually posted. Pass-through — excluded from the service-cost variance and
- *  margin above, but a real operational total the reconciler accounts for
- *  separately (BUG-3). The budget uses the costing line flag; actuals join
- *  dictionary_item because cost_entry has no flag of its own. */
-async function disbursementTotals(client, dossierId) {
-  const { rows } = await client.query(
-    `SELECT
-       COALESCE((SELECT SUM(cl.qty * cl.unit_cost)
-                   FROM costing_line cl JOIN costing c ON c.costing_id = cl.costing_id
-                  WHERE c.dossier_id = $1 AND c.status = 'APPROVED_LOCKED'
-                    AND COALESCE(cl.is_disbursement, false) = true), 0) AS budget_ht,
-       COALESCE((SELECT SUM(ce.amount)
-                   FROM cost_entry ce JOIN dictionary_item di ON di.dictionary_item_id = ce.dictionary_item_id
-                  WHERE ce.dossier_id = $1 AND di.is_disbursement = true), 0) AS actual_ht`,
-    [dossierId],
-  );
-  return { budget_ht: Number(rows[0].budget_ht), actual_ht: Number(rows[0].actual_ht) };
-}
-
-/** Whether a proof document is required for an item (dictionary rule). */
-async function itemRequiresDoc(client, dictionaryItemId) {
-  if (!dictionaryItemId) return false;
-  const { rows } = await client.query(
-    "SELECT receipt_requirement FROM dictionary_item WHERE dictionary_item_id = $1",
-    [dictionaryItemId],
-  );
-  return rows[0] ? rows[0].receipt_requirement === "ALWAYS_REQUIRED" : false;
-}
-
-/** Write the validated amount + status back onto the ops file (legacy ocr_*). */
-async function stampDossier(client, { dossierId, reconciliationId, amount }) {
-  await client.query(
-    `UPDATE dossier
-        SET ocr_reconciliation_id = $2, ocr_amount = $3, ocr_status = 'VALIDATED'
-      WHERE dossier_id = $1`,
-    [dossierId, reconciliationId, amount],
-  );
-}
-
-/** The quotation the file was won on, and its SERVICE revenue HT (§2.1).
- *
- *  Header-level only: quotation lines are priced for the client and do not map
- *  1:1 onto cost items, so no per-line quoted figure exists or is invented.
- *  Débours lines are excluded (pass-through, OHADA_KB §450) and the base is HT
- *  (quotation carries total_ht AND total_ttc — 0345:18-19; costs are HT end to
- *  end, so HT compares to HT). ACCEPTED is the deal price; CONVERTED means it
- *  became the engagement; SENT/DRAFT are unanswered offers and REJECTED/EXPIRED
- *  are dead — neither is what the client agreed to pay. */
-async function quotedForDossier(client, dossierId) {
-  const { rows } = await client.query(
-    `SELECT q.quotation_id,
-            COALESCE(SUM(ql.qty * ql.unit_price)
-              FILTER (WHERE COALESCE(ql.is_disbursement, false) = false), 0) AS quoted_ht
-       FROM quotation q
-       LEFT JOIN quotation_line ql ON ql.quotation_id = q.quotation_id
-      WHERE q.dossier_id = $1 AND q.status IN ('ACCEPTED','CONVERTED')
-      GROUP BY q.quotation_id, q.status, q.updated_at
-      ORDER BY CASE q.status WHEN 'ACCEPTED' THEN 0 ELSE 1 END, q.updated_at DESC
+    `SELECT costing_id, doc_number, status, currency, exchange_rate_to_xaf
+       FROM costing
+      WHERE dossier_id = $1
+      ORDER BY CASE WHEN status = 'APPROVED_LOCKED' THEN 0 ELSE 1 END, created_at DESC
       LIMIT 1`,
     [dossierId],
   );
-  return rows[0] ? { quotation_id: rows[0].quotation_id, quoted_ht: Number(rows[0].quoted_ht) } : null;
+  return rows[0] || null;
 }
 
-/** Cost entries that name no dictionary item — the actuals that cannot be
- *  proven onto a line. These feed the matcher; everything else arrived
- *  pre-matched via its own dictionary_item_id. */
-async function untaggedEntries(client, dossierId) {
-  const { rows } = await client.query(
-    `SELECT cost_entry_id, category, amount, created_at
-       FROM cost_entry
-      WHERE dossier_id = $1 AND dictionary_item_id IS NULL
-      ORDER BY created_at`,
-    [dossierId],
-  );
-  return rows;
-}
+/* ═══════════════════════ The sparse line ═════════════════════════════════ */
 
-async function insertSuggestion(client, s) {
+/**
+ * Write what a person entered against one budget line.
+ *
+ * UPSERT on `uq_recon_line_costing_line`, which is what makes the sparse model
+ * work: the first edit creates the row, every later edit updates it, and the
+ * caller never has to know which it was.
+ *
+ * `COALESCE(EXCLUDED.x, rl.x)` on every field so a PATCH carrying one key does
+ * not blank the others — a payload that omits a field is not a payload that
+ * clears it. Passing an explicit null is how you clear one (see the service,
+ * which distinguishes "absent" from "null" before it gets here).
+ */
+async function upsertLine(client, { reconciliationId, costingLineId, fields, actorUserId }) {
   const { rows } = await client.query(
-    `INSERT INTO dossier_reconciliation_suggestion
-       (reconciliation_id, cost_entry_id, suggested_dictionary_item_id, confidence, reason)
-     VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-    [s.reconciliation_id, s.cost_entry_id, s.suggested_dictionary_item_id, s.confidence, s.reason],
+    `INSERT INTO dossier_reconciliation_line
+       (reconciliation_id, costing_line_id, actual_ttc, actual_source, spent_on,
+        variance_reason, reason_group_id, returned_amount, updated_by, updated_at)
+     VALUES ($1, $2, COALESCE($3, 0), COALESCE($4, 'DERIVED'), $5, $6, $7, COALESCE($8, 0), $9, now())
+     ON CONFLICT (reconciliation_id, costing_line_id) DO UPDATE SET
+       actual_ttc      = COALESCE($3, dossier_reconciliation_line.actual_ttc),
+       actual_source   = COALESCE($4, dossier_reconciliation_line.actual_source),
+       spent_on        = COALESCE($5, dossier_reconciliation_line.spent_on),
+       variance_reason = COALESCE($6, dossier_reconciliation_line.variance_reason),
+       reason_group_id = COALESCE($7, dossier_reconciliation_line.reason_group_id),
+       returned_amount = COALESCE($8, dossier_reconciliation_line.returned_amount),
+       updated_by      = $9,
+       updated_at      = now()
+     RETURNING *`,
+    [
+      reconciliationId, costingLineId,
+      fields.actual_ttc, fields.actual_source, fields.spent_on,
+      fields.variance_reason, fields.reason_group_id, fields.returned_amount,
+      actorUserId,
+    ],
   );
   return rows[0];
 }
 
-async function suggestions(client, reconciliationId) {
+/** Clear a field the caller explicitly nulled. Separate from `upsertLine`
+ *  because COALESCE cannot express "set this to null" — the two operations look
+ *  the same to SQL and mean opposite things to a user. */
+async function clearLineFields(client, { reconciliationId, costingLineId, fields = [] }) {
+  if (!fields.length) return null;
+  const sets = fields.map((f) => `${f} = NULL`).join(", ");
   const { rows } = await client.query(
-    `SELECT s.*, ce.category AS entry_category, ce.amount AS entry_amount,
-            di.code AS suggested_item_code,
-            COALESCE(di.label_en, di.label_fr) AS suggested_item_label
-       FROM dossier_reconciliation_suggestion s
-       JOIN cost_entry ce ON ce.cost_entry_id = s.cost_entry_id
-       LEFT JOIN dictionary_item di ON di.dictionary_item_id = s.suggested_dictionary_item_id
-      WHERE s.reconciliation_id = $1
-      ORDER BY s.created_at`,
+    `UPDATE dossier_reconciliation_line SET ${sets}, updated_at = now()
+      WHERE reconciliation_id = $1 AND costing_line_id = $2 RETURNING *`,
+    [reconciliationId, costingLineId],
+  );
+  return rows[0] || null;
+}
+
+async function lineFor(client, { reconciliationId, costingLineId }) {
+  const { rows } = await client.query(
+    `SELECT * FROM dossier_reconciliation_line
+      WHERE reconciliation_id = $1 AND costing_line_id = $2`,
+    [reconciliationId, costingLineId],
+  );
+  return rows[0] || null;
+}
+
+/** Does this budget line belong to this file's approved costing? The API takes
+ *  a `costing_line_id` from the caller, so this is the authorisation check that
+ *  stops one file's sheet writing onto another file's budget line. */
+async function costingLineOnDossier(client, { dossierId, costingLineId }) {
+  const { rows } = await client.query(
+    `SELECT cl.costing_line_id
+       FROM costing_line cl
+       JOIN costing c ON c.costing_id = cl.costing_id
+      WHERE cl.costing_line_id = $2 AND c.dossier_id = $1 AND c.status = 'APPROVED_LOCKED'`,
+    [dossierId, costingLineId],
+  );
+  return !!rows[0];
+}
+
+/** Apply one reason to several budget lines at once (Q12). Upserts each, so a
+ *  line with no row yet gets one. */
+async function applyReasonToLines(client, { reconciliationId, costingLineIds, reason, groupId, actorUserId }) {
+  const { rows } = await client.query(
+    `INSERT INTO dossier_reconciliation_line
+       (reconciliation_id, costing_line_id, variance_reason, reason_group_id, updated_by, updated_at)
+     SELECT $1, id, $3, $4, $5, now() FROM unnest($2::uuid[]) AS id
+     ON CONFLICT (reconciliation_id, costing_line_id) DO UPDATE SET
+       variance_reason = $3, reason_group_id = $4, updated_by = $5, updated_at = now()
+     RETURNING *`,
+    [reconciliationId, costingLineIds, reason, groupId, actorUserId],
+  );
+  return rows;
+}
+
+/* ═════════════════════════ Documents ═════════════════════════════════════ */
+
+/**
+ * Many per line, deliberately (Q8) — the first Maersk demurrage invoice covers
+ * one day, the second covers two, and both belong. ON CONFLICT DO NOTHING so
+ * attaching the same document twice is a no-op rather than a 23505.
+ */
+async function attachDocument(client, { lineId, docId, note, actorUserId }) {
+  const { rows } = await client.query(
+    `INSERT INTO dossier_reconciliation_document (line_id, doc_id, note, uploaded_by)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (line_id, doc_id) DO NOTHING
+     RETURNING *`,
+    [lineId, docId, note || null, actorUserId],
+  );
+  return rows[0] || null;
+}
+
+/** Detach only. The vault row is left alone: a document is evidence, and
+ *  removing it from one line is not a decision to destroy it. */
+async function detachDocument(client, { lineId, docId }) {
+  const { rowCount } = await client.query(
+    "DELETE FROM dossier_reconciliation_document WHERE line_id = $1 AND doc_id = $2",
+    [lineId, docId],
+  );
+  return rowCount > 0;
+}
+
+async function documentsFor(client, reconciliationId) {
+  const { rows } = await client.query(
+    `SELECT d.recon_document_id, d.line_id, d.doc_id, d.note, d.uploaded_by, d.uploaded_at,
+            rl.costing_line_id,
+            v.doc_type, v.storage_path, v.status AS doc_status, v.content_hash,
+            u.full_name AS uploaded_by_name
+       FROM dossier_reconciliation_document d
+       JOIN dossier_reconciliation_line rl ON rl.line_id = d.line_id
+       JOIN document_vault v ON v.doc_id = d.doc_id
+       LEFT JOIN app_user u ON u.user_id = d.uploaded_by
+      WHERE rl.reconciliation_id = $1
+      ORDER BY d.uploaded_at`,
     [reconciliationId],
   );
   return rows;
 }
 
-async function getSuggestion(client, suggestionId) {
+/* ═════════════════════ Settlement history ════════════════════════════════ */
+
+async function insertSettlement(client, s) {
   const { rows } = await client.query(
-    "SELECT * FROM dossier_reconciliation_suggestion WHERE suggestion_id = $1",
-    [suggestionId],
+    `INSERT INTO dossier_reconciliation_settlement
+       (reconciliation_id, revision, budget_ttc, disbursed_ttc, actual_ttc, returned_ttc, settled_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     ON CONFLICT (reconciliation_id, revision) DO NOTHING
+     RETURNING *`,
+    [s.reconciliation_id, s.revision, s.budget_ttc, s.disbursed_ttc, s.actual_ttc, s.returned_ttc, s.settled_by],
   );
   return rows[0] || null;
 }
 
-async function decideSuggestion(client, suggestionId, { status, decidedBy }) {
+async function settlements(client, reconciliationId) {
   const { rows } = await client.query(
-    `UPDATE dossier_reconciliation_suggestion
-        SET status = $2, decided_by = $3, decided_at = now()
-      WHERE suggestion_id = $1 RETURNING *`,
-    [suggestionId, status, decidedBy],
+    `SELECT * FROM dossier_reconciliation_settlement
+      WHERE reconciliation_id = $1 ORDER BY revision DESC`,
+    [reconciliationId],
   );
-  return rows[0] || null;
+  return rows;
 }
 
-/** Confirming a mapping stamps the item onto the cost entry itself — the
- *  analytic tag the entry was missing. The amounts and the journal link are
- *  untouched; only the classification a human just attested to changes. */
-async function setCostEntryItem(client, costEntryId, dictionaryItemId) {
+/** Write the agreed actual back onto the ops file — the stamp that says this
+ *  file has been accounted for. Same columns the legacy's `ocr_*` write-back
+ *  used and the previous implementation wrote. */
+async function stampDossier(client, { dossierId, reconciliationId, amount, status }) {
   await client.query(
-    "UPDATE cost_entry SET dictionary_item_id = $2 WHERE cost_entry_id = $1",
-    [costEntryId, dictionaryItemId],
+    `UPDATE dossier
+        SET ocr_reconciliation_id = $2, ocr_amount = $3, ocr_status = $4
+      WHERE dossier_id = $1`,
+    [dossierId, reconciliationId, amount, status],
   );
+}
+
+/* ═══════════════════ What a person still owes (Q10) ══════════════════════ */
+
+/**
+ * Receipts owed, by the person who took the cash.
+ *
+ * The receiver is `cash_request_payment.received_by` — the régie holder who
+ * physically took the tranche (12771 §3), which is who the obligation belongs
+ * to. A line owes a receipt when a live claim against it was ticked
+ * `justification_required`, cash actually moved, and no document has been
+ * attached to its reconciliation line yet.
+ *
+ * `userId` null means everyone, for Finance's view.
+ */
+async function receiptsOwed(client, { userId = null } = {}) {
+  const { rows } = await client.query(
+    `SELECT DISTINCT
+            d.dossier_id, d.ref AS dossier_ref,
+            cl.costing_line_id, cl.label AS line_label,
+            p.received_by AS owed_by,
+            u.full_name    AS owed_by_name,
+            r.reconciliation_id,
+            ROUND(crl.budget_amount * (1 + COALESCE(crl.vat_percent, 0) / 100), 2) AS claimed_ttc
+       FROM cash_request_line crl
+       JOIN cash_request cr        ON cr.cash_request_id = crl.cash_request_id
+       JOIN cash_request_payment p ON p.cash_request_id = cr.cash_request_id
+       JOIN costing_line cl        ON cl.costing_line_id = crl.costing_line_id
+       JOIN costing c              ON c.costing_id = cl.costing_id
+       -- dossier_visible, not dossier: this ENUMERATES across files, and a DRAFT
+       -- is half-finished wizard state rather than a file somebody owes a
+       -- receipt on (0671). Backtick-free on purpose: this is inside a JS
+       -- template literal.
+       JOIN dossier_visible d      ON d.dossier_id = c.dossier_id
+       LEFT JOIN app_user u        ON u.user_id = p.received_by
+       LEFT JOIN dossier_reconciliation r ON r.dossier_id = c.dossier_id
+       LEFT JOIN dossier_reconciliation_line rl
+              ON rl.reconciliation_id = r.reconciliation_id
+             AND rl.costing_line_id = cl.costing_line_id
+      WHERE crl.justification_required = true
+        AND cr.status <> 'REJECTED'
+        AND p.received_by IS NOT NULL
+        AND ($1::uuid IS NULL OR p.received_by = $1::uuid)
+        AND NOT EXISTS (
+          SELECT 1 FROM dossier_reconciliation_document dd WHERE dd.line_id = rl.line_id
+        )
+      ORDER BY d.ref, cl.label`,
+    [userId],
+  );
+  return rows;
 }
 
 module.exports = {
-  get, openForDossier, latestForDossier, insert, insertLines, deleteLines, lines, setStatus,
-  costCompare, disbursementTotals, itemRequiresDoc, stampDossier,
-  quotedForDossier, untaggedEntries,
-  insertSuggestion, suggestions, getSuggestion, decideSuggestion, setCostEntryItem,
+  get, forDossier, open, setStatus,
+  gridFor, approvedCosting,
+  upsertLine, clearLineFields, lineFor, costingLineOnDossier, applyReasonToLines,
+  attachDocument, detachDocument, documentsFor,
+  insertSettlement, settlements, stampDossier,
+  receiptsOwed,
 };

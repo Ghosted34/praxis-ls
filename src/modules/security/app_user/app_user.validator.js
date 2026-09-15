@@ -79,12 +79,18 @@ const resetPassword = zValidate(z.object({ token: z.string().min(16), new_passwo
 const changePassword = zValidate(z.object({ current_password: z.string().min(1), new_password: z.string().min(1) }));
 
 const signature = zValidate(z.object({ html: z.string().max(20000) }));
-const pinRegister = zValidate(z.object({ pin: z.string().regex(/^\d{4,8}$/), label: z.string().max(80).optional().nullable() }));
-const pinLogin = zValidate(z.object({ email: z.string().trim().email(), device_id: z.string().uuid(), pin: z.string().regex(/^\d{4,8}$/), keep_signed_in: z.boolean().optional() }));
+const pinRegister = zValidate(z.object({ pin: z.string().regex(/^\d{4}$/), label: z.string().max(80).optional().nullable() }));
+const pinLogin = zValidate(z.object({ email: z.string().trim().email(), device_id: z.string().uuid(), pin: z.string().regex(/^\d{4}$/), keep_signed_in: z.boolean().optional() }));
+// WebAuthn passkey — attestation/assertion are intricate client-generated objects; validate as pass-through
+const passkeyRegisterOptions = zValidate(z.object({ label: z.string().max(80).optional().nullable() }).passthrough());
+const passkeyRegisterVerify = (req, _res, next) => next(); // complex nested, allow any — verification is cryptographic
+const passkeyLoginOptions = zValidate(z.object({ email: z.string().trim().email().optional().nullable() }).passthrough());
+const passkeyLoginVerify = (req, _res, next) => next();
 
 module.exports = {
   ...passthrough,
   login, refresh, verifyTotp, totpCode, signature, pinRegister, pinLogin,
+  passkeyRegisterOptions, passkeyRegisterVerify, passkeyLoginOptions, passkeyLoginVerify,
   avatar, forgotPassword, resetPassword, changePassword,
   create: zValidate(schemas.create),
   update: zValidate(schemas.update),

@@ -61,6 +61,16 @@ data/
 !packages/shared/data/
 !packages/shared/data/**
 
+# Same distinction, and it had already bitten once: scripts/tenant/data holds the
+# SEED PROFILES that scripts/tenant/seed-site-experience.js reads by name
+# (`--profile=smartls` → smartls-site.json). The blanket `data/` above swallowed
+# them, so the script shipped documenting a directory that could not exist in the
+# repository — every profile lived on whichever laptop last ran it, and a
+# tenant's website content was reproducible by nobody else. These are source: a
+# reviewer must be able to read the copy that is about to be published.
+!scripts/tenant/data/
+!scripts/tenant/data/**
+
 # Database dumps
 *.dump
 *.sql.gz

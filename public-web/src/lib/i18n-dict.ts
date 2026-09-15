@@ -242,18 +242,138 @@ export const en = {
       home: "Home",
     },
     nav: {
+      about: "About",
       services: "Services",
       track: "Track",
       portfolio: "Our work",
       insights: "Insights",
       careers: "Careers",
       contact: "Contact",
+      /* The services panel. Its own keys rather than reused ones: "All
+         services" is a destination and `nav.services` is a section, and a
+         dictionary that conflates them is a dictionary that breaks the day
+         somebody renames one of them. */
+      servicesToggle: "Show services",
+      servicesAll: "All services",
+      servicesMore: "+{{count}} more",
+      servicesPitch:
+        "Not sure which one you need? Describe the shipment and the right desk answers.",
     },
     /**
      * Insights — the renamed Kaizen Hub (WS5). "Insights" everywhere: module,
      * route and the label a reader sees. The old name was ambiguous in two
      * directions, and a hub nobody can place is a hub nobody opens.
      */
+    corridor: {
+      eyebrow: "The network",
+      title: "The corridors we run",
+      /* Two subtitles, because the scene has two honest states. The second one
+         is shown when the ledger has nothing to publish, and it says so rather
+         than letting an ornament be read as a route map. */
+      sub: "Every lane here is one we have completed files on. Move through it.",
+      subAbstract: "A picture of how a network fits together. Ours fills in as files complete.",
+      figureLabel: "Corridor network — use the arrow keys to move between places",
+      figureLabelAbstract: "An illustration of a network",
+      /* Shown only where a public entity of the tenant's covers that country —
+         "we are here", which is a stronger claim than "we deliver here". */
+      present: "We are here",
+      files: "files",
+      tilt: "Move the scene by tilting your phone",
+    },
+    /**
+     * The About page (§9.1) and everything on it — the entity network (§9.2),
+     * the leadership renderer (§9.3) and the three proof treatments (§9.4).
+     *
+     * ── ALMOST NOTHING HERE IS CONTENT ────────────────────────────────────
+     *
+     * Every fact on that page is the tenant's: their mission, their timeline,
+     * their people, their partners. What lives in this dictionary is the
+     * FURNITURE — the heading over the tenant's own list, the word "Founded"
+     * before their year, the sentence that wraps a person's name into an alt
+     * attribute. That split is why `site.about.sub` is the only sentence with
+     * any prose in it, and why it only ever renders for a tenant who has
+     * written no summary of their own.
+     *
+     * ── THE `{{name}}` STRINGS ARE ALT TEXT, AND THAT IS DELIBERATE ───────
+     *
+     * `portraitAlt`, `entityCoverAlt`, `markAlt` and `linkedinOf` interpolate a
+     * proper noun the tenant typed. The NAME is not translated — a company's
+     * trademark and a person's name are theirs in both languages — and the
+     * sentence around it is. That is the whole reason the asset upload control
+     * has no alt-text field: a second copy of a name, typed into a form, is
+     * the copy a screen-reader user hears after somebody fixes a spelling in
+     * the first.
+     */
+    about: {
+      title: "About us",
+      kicker: "Who we are",
+      titleMain: "The people behind",
+      titleAccent: "the freight",
+      sub: "A logistics group, its companies, and the people who run them.",
+      founded: "Founded",
+      hq: "Head office",
+
+      storyKicker: "Our story",
+      storyTitle: "What we are for",
+      mission: "Our mission",
+      vision: "Where we are going",
+      principles: "How we work",
+
+      messageKicker: "From the desk",
+      messageTitle: "A word from our chief executive",
+
+      timelineKicker: "Our history",
+      timelineTitle: "How we got here",
+      timelineYear: "Year",
+
+      peopleKicker: "Leadership",
+      peopleTitle: "The people accountable",
+      readBio: "Read biography",
+      linkedin: "LinkedIn",
+      linkedinOf: "{{name}} on LinkedIn",
+      portraitAlt: "Portrait of {{name}}",
+
+      networkKicker: "The group",
+      networkTitle: "Our companies",
+      networkLead:
+        "Each one is a registered company with its own licences, its own people and its own ground. Where two of them cover the same country, the ring joins them.",
+      networkLabel:
+        "Our companies as a network — use the arrow keys to move between them",
+      /* A LABEL AND A NUMBER, not a pluralised sentence.
+         i18next resolves `key_one` / `key_other` at runtime, but
+         `check:i18n` reads the dictionary statically and sees only a `t()`
+         call for a key that does not exist — so a plural pair is a dangling
+         call to the gate and a working string to the browser, which is the
+         worst of the two. Recorded as a finding. A label avoids the
+         agreement problem in both languages at every count. */
+      networkPlaces: "Coverage: {{count}}",
+      entityFocus: "What it handles",
+      entityCoverage: "Where it operates",
+      entityPeople: "Who runs it",
+      entityCoverAlt: "{{name}}",
+
+      proofKicker: "Proof",
+      proofTitle: "Accredited, and accountable",
+      credentialsTitle: "Certifications and licences",
+      credentialRef: "Reference",
+      credentialIssued: "Issued",
+      credentialValid: "Valid until",
+      membershipsTitle: "Memberships",
+      /* NOT "Trusted by" (N11). The heading states the relationship; whether
+         it is impressive is the reader's call, and telling them is the
+         sentence a procurement officer discounts. */
+      clientsTitle: "Organisations we work with",
+      carriersTitle: "The lines we move on",
+      carriersLead:
+        "Carriers and networks we book capacity with. Their marks are theirs; we show them with permission.",
+      markAlt: "{{name}}",
+    },
+    announce: {
+      /* The band under the hero. Two strings, and that is the whole surface:
+         everything else in it is the tenant's own announcement. */
+      eyebrow: "Latest",
+      more: "All announcements",
+    },
     insights: {
       kicker: "Insights",
       title: "What we are learning",
@@ -261,6 +381,13 @@ export const en = {
       titleAccent: "learning",
       sub: "Notes from the desk on customs, freight and the corridors we work — written by the people doing the work.",
       filterLabel: "Filter by topic",
+      /* §8.6's kind filter. The COARSER cut, above the topics: "articles or
+         announcements" is a different question from "which subject", and a
+         reader who wants the notices should not hunt for them among essays. */
+      kindLabel: "Filter by kind",
+      kindAll: "Everything",
+      kindArticle: "Articles",
+      kindAnnouncement: "Announcements",
       all: "All",
       loading: "Loading the articles…",
       loadingArticle: "Loading the article…",
@@ -380,6 +507,23 @@ export const en = {
       cta: "Open the client portal",
       invited: "Have an invitation link? Set your password there.",
     },
+    /* ── The ESG interactive (§8.4) ────────────────────────────────────────
+       THE PILLAR NAMES ARE OURS; EVERYTHING INSIDE A PILLAR IS THE TENANT'S.
+       Environment / Social / Governance is the standard triad — naming the
+       three columns is a layout decision, not a claim about this company — and
+       `packages/shared/schemas/site-settings.js` fixes them to exactly three
+       for that reason. The prose and every bullet come from `site_about.esg`,
+       which is why there is no fallback copy here: a tenant who has written no
+       ESG gets no band, not our words under their logo (N12). */
+    esg: {
+      kicker: "Responsibility",
+      title: "How we",
+      titleAccent: "operate",
+      environment: "Environment",
+      social: "Social",
+      governance: "Governance",
+      figureAlt: "{{pillar}} — the commitments listed beside this drawing, drawn",
+    },
     quote: {
       title: "Get a quote",
       sub: "Tell us about your shipment and we'll come back with a price.",
@@ -392,6 +536,9 @@ export const en = {
       bandLead:
         "Four short steps — what you need, the route, the cargo, and where to send the answer. Most take under two minutes.",
       bandCta: "Start a quote",
+      /* The second door, and it is a LINK not a button — §7.6's hierarchy.
+         Tracking is the service; the quote is the conversion. */
+      bandTrack: "Track a shipment",
       name: "Your name",
       company: "Company",
       email: "Email",
@@ -523,6 +670,15 @@ export const en = {
       otherTitle: "Faster than a message",
       otherTrack:
         "A reference is enough. The same milestones the desk would read back to you, without waiting for a reply.",
+      /* §8.5's coverage figure. "Where are you" is the second question a
+         contact page is asked, and this one could not answer it. */
+      coverageKicker: "Presence",
+      coverageTitle: "Where we are, and where we deliver",
+      coverageAlt:
+        "A diagram linking each office to the places it covers. The same offices and places are listed as text below.",
+      offices: "Offices",
+      covers: "Delivers to",
+      coverageNone: "Coverage areas are not published for these offices yet.",
       otherPortal:
         "Already a client. Your files, documents and invoices, with nothing to look up.",
       otherQuote:
@@ -555,56 +711,6 @@ export const en = {
           d: "If you are already a client, the portal is quicker for anything about a shipment you have with us.",
         },
       ],
-    },
-    careers: {
-      title: "Careers",
-      sub: "Everything we are hiring for right now.",
-      list: "Open roles",
-      empty: "No open roles right now",
-      emptyHint: "Please check back — this page is kept up to date.",
-      apply: "Apply for this role",
-      seeOther: "See our other open roles",
-      closeNote: "Applications close",
-      lookingFor: "What we are looking for",
-      back: "All roles",
-      closed: "This role is no longer accepting applications.",
-      closedHint:
-        "The advert has been taken down, which usually means it is filled. The open list is the only thing we can show you, and it is up to date.",
-      testPosting:
-        "this is a test posting. Anything you send here goes to the test workspace, not to a real hiring team.",
-      salaryFrom: "From",
-      salaryUpTo: "Up to",
-      years: "years’ experience",
-      published: "Posted",
-      applyTitle: "Apply for this role",
-      fullName: "Full name",
-      email: "Email",
-      phone: "Phone",
-      address: "Address",
-      experience: "Years of experience",
-      expectedSalary: "Expected salary",
-      portfolio: "Portfolio or LinkedIn URL",
-      coverNote: "Why you are writing",
-      coverHint:
-        "Two paragraphs is plenty. Say what you have run, not what you have read.",
-      cv: "Your CV",
-      cvHint: "PDF, PNG or JPG, up to 8 MB.",
-      cvPick: "Choose a file",
-      cvNone: "No file selected",
-      cvRequired: "This role asks for a CV.",
-      optional: "optional",
-      submit: "Send application",
-      sending: "Sending…",
-      sentTitle: "Your application is in.",
-      sentCv: "Reference {{reference}} — CV received.",
-      sentNoCv:
-        "Reference {{reference}} — no CV was attached, so the team only has what you typed.",
-      sentNote:
-        "Keep the reference: it is how you ask whether anything landed.",
-      anotherRole: "Apply to another role",
-      err: "We could not send that. Nothing was lost — check the fields marked below and try again.",
-      limited:
-        "Too many attempts from this connection. Please try again in an hour.",
     },
     proposals: {
       title: "Proposal",
@@ -644,6 +750,13 @@ export const en = {
       newsletterLimited:
         "Too many sign-ups from this connection. Please try again in an hour.",
       newsletterErr: "That address did not work. Please try again.",
+      /* §9.5. `social` names the nav landmark; `socialOn` is the accessible
+         name of one link, because a row of seven links all called "Social" is
+         a row a screen-reader user cannot navigate. */
+      social: "Social",
+      socialOn: "{{platform}}, in a new tab",
+      credentials: "Accredited:",
+      legalEntity: "Legal entity:",
     },
     preview: {
       reference: "SBL-OPS-2026-0142",
@@ -657,6 +770,11 @@ export const en = {
     },
     servicesPage: {
       title: "Services",
+      /* Split for §8.2's entrance, the way every other hero title is: the
+         accent word is the one the eye lands on, and `SectionHead` colours it
+         per ground (`--brand-orange` on the plate, `--primary-ink` on white). */
+      titleMain: "What we",
+      titleAccent: "handle",
       sub: "What we handle, end to end.",
       empty:
         "Service pages are being written. Ask for a quote in the meantime.",
@@ -671,6 +789,9 @@ export const en = {
       back: "All services",
       noLong: "The full description for this service is being written.",
       video: "Watch",
+      onThisPage: "On this page",
+      readMore: "Read the full detail",
+      readLess: "Show less",
     },
     portfolioPage: {
       title: "Success stories",
@@ -708,8 +829,32 @@ export const en = {
         "The desk publishes each stage as it is confirmed. Come back once the first one is marked, or open the portal for the documents already on file.",
       loading: "Looking up that reference…",
       searchAgain: "Try another reference",
+      /* ── §8.1's verdict line ────────────────────────────────────────────
+         Three statuses, written as an ANSWER rather than as a record's state.
+         "IN_PROGRESS" is what the column says; "On the move" is what somebody
+         who asked where their cargo is wants to read. */
+      theAnswer: "Where this shipment is",
+      verdictOpened: "Opened, not yet moving",
+      verdictMoving: "On the move",
+      verdictDone: "Delivered",
+      /* Deliberately NOT "estimated arrival". There is no ETA in this API and no
+         feed behind this page — this is the date the desk scheduled for the last
+         outstanding stage, and it is labelled as exactly that. */
+      scheduled: "Scheduled",
+      noSchedule: "No stage has been scheduled on this file yet.",
+      whereRef:
+        "The reference is on the documents your account manager sent you — the booking confirmation, the transport order or the invoice.",
+      noMatch: "No match",
+      notFoundNotLost:
+        "This says nothing about your cargo. It means no file on this site carries that exact reference — most often a digit read across from a photograph, or a reference from a different provider.",
+      askDesk: "Ask the desk",
+      tooMany: "Too many lookups",
+      /* SHORT, because it sits at display size. `errors.loadFailed` is a full
+         sentence and belongs under a title, not as one. */
+      failedTitle: "The lookup did not go through",
     },
     notFound: {
+      kicker: "Wrong turn",
       title: "That page does not exist",
       hint: "The link may be old, or mistyped. Start from the homepage, or track a shipment by reference.",
       home: "Back to the homepage",
@@ -1039,12 +1184,89 @@ export const fr = {
       home: "Accueil",
     },
     nav: {
+      about: "À propos",
       services: "Services",
       track: "Suivi",
       portfolio: "Nos réalisations",
       insights: "Analyses",
       careers: "Carrières",
       contact: "Contact",
+      servicesToggle: "Afficher les services",
+      servicesAll: "Tous les services",
+      servicesMore: "+{{count}} de plus",
+      servicesPitch:
+        "Vous ne savez pas lequel choisir ? Décrivez l’expédition et le bon service vous répond.",
+    },
+    corridor: {
+      eyebrow: "Le réseau",
+      title: "Les corridors que nous opérons",
+      sub: "Chaque ligne ici est une ligne sur laquelle nous avons des dossiers clos. Parcourez-la.",
+      subAbstract: "Une image de la façon dont un réseau s’assemble. Le nôtre se remplit à mesure que les dossiers se clôturent.",
+      figureLabel: "Réseau de corridors — utilisez les flèches pour passer d’un lieu à l’autre",
+      figureLabelAbstract: "Une illustration de réseau",
+      present: "Nous y sommes implantés",
+      files: "dossiers",
+      tilt: "Inclinez votre téléphone pour parcourir la scène",
+    },
+    /** Voir la version anglaise pour la raison d’être de chaque clé : tout ce
+     *  qui est ici est du mobilier, jamais un fait sur le client. */
+    about: {
+      title: "À propos",
+      kicker: "Qui nous sommes",
+      titleMain: "Les femmes et les hommes",
+      titleAccent: "derrière le fret",
+      sub: "Un groupe logistique, ses sociétés, et celles et ceux qui les dirigent.",
+      founded: "Création",
+      hq: "Siège social",
+
+      storyKicker: "Notre histoire",
+      storyTitle: "Notre raison d’être",
+      mission: "Notre mission",
+      vision: "Notre cap",
+      principles: "Nos principes",
+
+      messageKicker: "Le mot du dirigeant",
+      messageTitle: "Message du directeur général",
+
+      timelineKicker: "Notre parcours",
+      timelineTitle: "Les étapes",
+      timelineYear: "Année",
+
+      peopleKicker: "Direction",
+      peopleTitle: "Les responsables",
+      readBio: "Lire la biographie",
+      linkedin: "LinkedIn",
+      linkedinOf: "{{name}} sur LinkedIn",
+      portraitAlt: "Portrait de {{name}}",
+
+      networkKicker: "Le groupe",
+      networkTitle: "Nos sociétés",
+      networkLead:
+        "Chacune est une société immatriculée, avec ses licences, ses équipes et son terrain. Lorsque deux d’entre elles couvrent le même pays, l’anneau les relie.",
+      networkLabel:
+        "Nos sociétés en réseau — utilisez les flèches pour passer de l’une à l’autre",
+      networkPlaces: "Couverture : {{count}}",
+      entityFocus: "Ce qu’elle traite",
+      entityCoverage: "Où elle opère",
+      entityPeople: "Qui la dirige",
+      entityCoverAlt: "{{name}}",
+
+      proofKicker: "Nos garanties",
+      proofTitle: "Agréés, et responsables",
+      credentialsTitle: "Certifications et licences",
+      credentialRef: "Référence",
+      credentialIssued: "Délivrée le",
+      credentialValid: "Valable jusqu’au",
+      membershipsTitle: "Adhésions",
+      clientsTitle: "Les organisations avec lesquelles nous travaillons",
+      carriersTitle: "Les lignes que nous empruntons",
+      carriersLead:
+        "Les transporteurs et réseaux auprès desquels nous réservons de la capacité. Leurs marques leur appartiennent ; nous les affichons avec leur accord.",
+      markAlt: "{{name}}",
+    },
+    announce: {
+      eyebrow: "À la une",
+      more: "Toutes les annonces",
     },
     insights: {
       kicker: "Analyses",
@@ -1053,6 +1275,10 @@ export const fr = {
       titleAccent: "apprenons",
       sub: "Les notes du bureau sur la douane, le fret et les corridors où nous opérons — écrites par ceux qui font le travail.",
       filterLabel: "Filtrer par thème",
+      kindLabel: "Filtrer par type",
+      kindAll: "Tout",
+      kindArticle: "Articles",
+      kindAnnouncement: "Annonces",
       all: "Tout",
       loading: "Chargement des articles…",
       loadingArticle: "Chargement de l’article…",
@@ -1168,6 +1394,15 @@ export const fr = {
       invited:
         "Vous avez un lien d’invitation ? Choisissez votre mot de passe depuis ce lien.",
     },
+    esg: {
+      kicker: "Responsabilité",
+      title: "Notre façon",
+      titleAccent: "d’opérer",
+      environment: "Environnement",
+      social: "Social",
+      governance: "Gouvernance",
+      figureAlt: "{{pillar}} — les engagements listés à côté de ce dessin, dessinés",
+    },
     quote: {
       title: "Demander un devis",
       sub: "Décrivez votre expédition et nous revenons vers vous avec un prix.",
@@ -1178,6 +1413,7 @@ export const fr = {
       bandLead:
         "Quatre étapes courtes — votre besoin, le trajet, la marchandise, et où envoyer la réponse. Comptez moins de deux minutes.",
       bandCta: "Demander un devis",
+      bandTrack: "Suivre un envoi",
       name: "Votre nom",
       company: "Société",
       email: "Courriel",
@@ -1296,6 +1532,14 @@ export const fr = {
       otherTitle: "Plus rapide qu’un message",
       otherTrack:
         "Une référence suffit. Les mêmes jalons que le bureau vous lirait, sans attendre de réponse.",
+      coverageKicker: "Présence",
+      coverageTitle: "Où nous sommes, et où nous livrons",
+      coverageAlt:
+        "Un schéma reliant chaque bureau aux zones qu’il dessert. Les mêmes bureaux et zones sont listés en texte ci-dessous.",
+      offices: "Bureaux",
+      covers: "Dessert",
+      coverageNone:
+        "Les zones desservies ne sont pas encore publiées pour ces bureaux.",
       otherPortal:
         "Déjà client. Vos dossiers, documents et factures, sans rien à rechercher.",
       otherQuote:
@@ -1328,56 +1572,6 @@ export const fr = {
           d: "Si vous êtes déjà client, le portail est plus rapide pour tout ce qui concerne un envoi en cours.",
         },
       ],
-    },
-    careers: {
-      title: "Carrières",
-      sub: "Tous les postes ouverts en ce moment.",
-      list: "Postes ouverts",
-      empty: "Aucun poste ouvert pour l’instant",
-      emptyHint: "Revenez bientôt — cette page est tenue à jour.",
-      apply: "Postuler à ce poste",
-      seeOther: "Voir nos autres postes ouverts",
-      closeNote: "Candidatures possibles jusqu’au",
-      lookingFor: "Ce que nous cherchons",
-      back: "Tous les postes",
-      closed: "Ce poste n’accepte plus de candidatures.",
-      closedHint:
-        "L’annonce a été retirée, ce qui veut dire en général qu’il est pourvu. Nous ne pouvons vous montrer que la liste des postes ouverts, et elle est à jour.",
-      testPosting:
-        "il s’agit d’une annonce de test. Ce que vous envoyez ici va dans l’espace de test, pas vers une équipe de recrutement réelle.",
-      salaryFrom: "À partir de",
-      salaryUpTo: "Jusqu’à",
-      years: "ans d’expérience",
-      published: "Publiée",
-      applyTitle: "Postuler à ce poste",
-      fullName: "Nom complet",
-      email: "Courriel",
-      phone: "Téléphone",
-      address: "Adresse",
-      experience: "Années d’expérience",
-      expectedSalary: "Prétention salariale",
-      portfolio: "Portfolio ou lien LinkedIn",
-      coverNote: "Pourquoi vous écrivez",
-      coverHint:
-        "Deux paragraphes suffisent. Dites ce que vous avez piloté, pas ce que vous avez lu.",
-      cv: "Votre CV",
-      cvHint: "PDF, PNG ou JPG, 8 Mo maximum.",
-      cvPick: "Choisir un fichier",
-      cvNone: "Aucun fichier sélectionné",
-      cvRequired: "Ce poste exige un CV.",
-      optional: "facultatif",
-      submit: "Envoyer la candidature",
-      sending: "Envoi…",
-      sentTitle: "Votre candidature est arrivée.",
-      sentCv: "Référence {{reference}} — CV bien reçu.",
-      sentNoCv:
-        "Référence {{reference}} — aucun CV n’était joint, l’équipe n’a que ce que vous avez écrit.",
-      sentNote:
-        "Gardez la référence : c’est elle qui permet de demander si le dossier est bien arrivé.",
-      anotherRole: "Postuler à un autre poste",
-      err: "Nous n’avons pas pu envoyer. Rien n’est perdu — vérifiez les champs signalés ci-dessous et réessayez.",
-      limited:
-        "Trop de tentatives depuis cette connexion. Réessayez dans une heure.",
     },
     proposals: {
       title: "Proposition",
@@ -1417,6 +1611,10 @@ export const fr = {
       newsletterLimited:
         "Trop d’inscriptions depuis cette connexion. Réessayez dans une heure.",
       newsletterErr: "Cette adresse n’a pas fonctionné. Veuillez réessayer.",
+      social: "Réseaux sociaux",
+      socialOn: "{{platform}}, dans un nouvel onglet",
+      credentials: "Agréments :",
+      legalEntity: "Entité juridique :",
     },
     preview: {
       reference: "SBL-OPS-2026-0142",
@@ -1430,6 +1628,8 @@ export const fr = {
     },
     servicesPage: {
       title: "Services",
+      titleMain: "Ce que nous",
+      titleAccent: "prenons en charge",
       sub: "Ce que nous prenons en charge, de bout en bout.",
       empty:
         "Les pages de services sont en cours de rédaction. Demandez un devis en attendant.",
@@ -1445,6 +1645,9 @@ export const fr = {
       noLong:
         "La description complète de ce service est en cours de rédaction.",
       video: "Vidéo",
+      onThisPage: "Sur cette page",
+      readMore: "Lire le détail complet",
+      readLess: "Réduire",
     },
     portfolioPage: {
       title: "Nos réalisations",
@@ -1482,8 +1685,23 @@ export const fr = {
         "Le bureau publie chaque étape à mesure qu’elle est confirmée. Revenez une fois la première validée, ou ouvrez le portail pour les documents déjà au dossier.",
       loading: "Recherche de cette référence…",
       searchAgain: "Essayer une autre référence",
+      theAnswer: "Où se trouve cet envoi",
+      verdictOpened: "Ouvert, pas encore en mouvement",
+      verdictMoving: "En mouvement",
+      verdictDone: "Livré",
+      scheduled: "Prévu",
+      noSchedule: "Aucune étape n’est encore planifiée sur ce dossier.",
+      whereRef:
+        "La référence figure sur les documents transmis par votre gestionnaire de compte : la confirmation de réservation, l’ordre de transport ou la facture.",
+      noMatch: "Aucune correspondance",
+      notFoundNotLost:
+        "Cela ne dit rien de votre marchandise. Aucun dossier de ce site ne porte cette référence exacte — le plus souvent un chiffre relevé sur une photo, ou une référence provenant d’un autre prestataire.",
+      askDesk: "Contacter le bureau",
+      tooMany: "Trop de recherches",
+      failedTitle: "La recherche n’a pas abouti",
     },
     notFound: {
+      kicker: "Mauvaise adresse",
       title: "Cette page n’existe pas",
       hint: "Le lien est peut-être ancien ou mal recopié. Repartez de l’accueil, ou suivez un envoi par sa référence.",
       home: "Retour à l’accueil",

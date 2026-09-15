@@ -52,6 +52,7 @@ export function Dialog({
   footer,
   headerRight,
   size = "md",
+  placement = "center",
   bodyClassName,
   titleIcon,
   accent,
@@ -67,6 +68,8 @@ export function Dialog({
   /** Actions/status shown in the header, left of the close button. */
   headerRight?: React.ReactNode;
   size?: "md" | "lg" | "xl" | "wide";
+  /** Right-edge slide-over, retaining the same focus and dismissal behavior. */
+  placement?: "center" | "right";
   bodyClassName?: string;
   /** Glyph shown left of the title — e.g. the warning mark on a destructive confirm. */
   titleIcon?: React.ReactNode;
@@ -137,11 +140,11 @@ export function Dialog({
           // attribute, so it is stated explicitly.
           aria-modal="true"
           className={cn(
-            "fixed left-1/2 z-50 flex w-full -translate-x-1/2 flex-col overflow-hidden border bg-background shadow-[var(--shadow-l)]",
-            // Bottom sheet on phones, centred dialog from sm up — unchanged.
-            "bottom-0 max-h-[92vh] rounded-t-2xl",
-            "sm:bottom-auto sm:top-1/2 sm:max-h-[calc(100vh-4rem)] sm:-translate-y-1/2 sm:rounded-lg",
-            width,
+            "fixed z-50 flex w-full flex-col overflow-hidden border bg-background shadow-[var(--shadow-l)]",
+            placement === "right"
+              ? "right-0 top-0 h-dvh max-w-sm"
+              : "left-1/2 -translate-x-1/2 bottom-0 max-h-[92vh] rounded-t-2xl sm:bottom-auto sm:top-1/2 sm:max-h-[calc(100vh-4rem)] sm:-translate-y-1/2 sm:rounded-lg",
+            placement === "center" && width,
           )}
         >
           {accent && (

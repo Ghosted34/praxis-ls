@@ -33,7 +33,7 @@ function whenLabel(ts: number): string {
     minute: "2-digit",
   });
   if (age < 12 * 60 * 60 * 1000) return `at ${time}`;
-  return `${d.toLocaleDateString(undefined, { weekday: "long" })} at ${time}`;
+  return `${d.toLocaleDateString("en-GB", { weekday: "long" })} at ${time}`;
 }
 
 export function DraftBanner({

@@ -67,7 +67,7 @@ export function ClientForm({
   onSaved: () => void;
 }) {
   const isNew = row === null;
-  const { rows: entities } = useList<api.Entity>("/entities");
+  const { rows: entities } = useList<api.Entity>(api.ENTITY_LIST);
   const toast = useToast();
 
   // `update` rather than `create` when editing: it is the schema that allows a

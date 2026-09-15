@@ -42,6 +42,7 @@ const sessionStore = require("../../../shared/cache/session-store");
 const encryption = require("../../../services/encryption.service");
 const emailService = require("../../../services/email.service");
 const storage = require("../../../services/storage.service");
+const imagePipeline = require("../../../services/image-pipeline.service");
 const passwordPolicy = require("../../../shared/security/password-policy");
 const notificationRepo = require("../../notification/notification.repo");
 const repo = require("./app_user.repo");
@@ -524,7 +525,13 @@ async function setAvatar(client, { userId, dataUrl, slug }) {
   if (buffer.length > MAX_AVATAR_BYTES) throw new AppError("IMAGE_TOO_LARGE", "Avatar must be 1 MB or smaller", 413);
 
   const key = `tenant_${slug || "t"}/avatars/${userId}_${crypto.randomBytes(5).toString("hex")}.${ext}`;
-  const stored = await storage.put(buffer, { key, contentType });
+  // 'avatar': square attention crop (which lands on the face far more reliably
+  // than a centre crop), plus the enhancement chain — profile photos are taken
+  // on phones in offices and are routinely under-exposed.
+  const stored = await imagePipeline.storeImage(
+    { buffer, mimetype: contentType, originalname: `avatar.${ext}` },
+    { key, profile: "avatar" },
+  );
   const row = await repo.setAvatar(client, userId, stored.public_url);
   await identityCache.invalidateUser(userId); // so the new avatar shows on next request
   await audit(client, { actorUserId: userId, action: "app_user.avatar_set", moduleKey: events.MODULE, entityRef: "app_user:" + userId });
@@ -1241,6 +1248,7 @@ module.exports = {
   listUsers, getUser, listLinkableEmployees, createUser, updateUser, setPassword, setStatus,
   getSignature, setSignature,
   registerPinDevice, pinLogin, listPinDevices, revokePinDevice,
+  issueSessionTokens,
   login,
   // Exported for tests: the throttle curve is the security-relevant decision
   // here, and it should be assertable without standing up a database.

@@ -4,12 +4,35 @@
  * platform.support_ticket across ALL tenants (joined to platform.tenant for
  * human names) and drives the NEW→TRIAGED→IN_PROGRESS→SHIPPED/DECLINED
  * lifecycle. Every status change lands in platform.platform_audit.
+ *
+ * CONVERSATION (0105). This side answers: a reply thread, internal-only notes,
+ * screenshot attachments on the ticket and any reply. A public reply also
+ * notifies the tenant who raised it — in-app, email and push, each on the
+ * recipient's own preferences — because a reply the tenant never hears about
+ * is a status change wearing a kinder face.
+ *
+ * THE ONE END WITH NO tenant_id IN ITS WHERE CLAUSE. The tenant-side mirror
+ * (modules/dashboard/support/support.service.js) scopes every query to its own
+ * tenant; this one does not, by design — it is the console. The two files
+ * share tables, never code.
  */
+const crypto = require("node:crypto");
+const path = require("node:path");
 const platformDb = require("./db");
 const entitlement = require("./entitlement.service");
+const storage = require("../storage.service");
 const { logger } = require("../../config/logger");
 
 const STATUSES = ["NEW", "TRIAGED", "IN_PROGRESS", "SHIPPED", "DECLINED"];
+const KINDS = ["SUPPORT", "BUG", "FEATURE", "BILLING", "SECURITY", "DATA", "COMMS", "URGENT", "REQUEST"];
+
+const IMAGE_TYPES = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+  "image/gif": "gif",
+};
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 
 async function audit(actorId, tenantId, action, entityRef, payload) {
   await platformDb.query(
@@ -38,7 +61,28 @@ async function list({ status, kind, tenant, limit } = {}) {
 async function get(id) {
   const { rows } = await platformDb.query(SELECT + "WHERE st.ticket_id = $1", [id]);
   if (!rows[0]) { const e = new Error("ticket not found"); e.status = 404; throw e; }
-  return rows[0];
+  const ticket = rows[0];
+  const { rows: replyRows } = await platformDb.query(
+    "SELECT reply_id, ticket_id, author_side, author_label, body, is_internal, created_at " +
+      "FROM platform.support_ticket_reply WHERE ticket_id=$1 ORDER BY created_at",
+    [id],
+  );
+  const { rows: attachRows } = await platformDb.query(
+    "SELECT attachment_id, ticket_id, reply_id, file_name, mime_type, byte_size, created_at " +
+      "FROM platform.support_attachment WHERE ticket_id=$1 ORDER BY created_at",
+    [id],
+  );
+  const perReply = new Map();
+  for (const a of attachRows) {
+    if (!a.reply_id) continue;
+    if (!perReply.has(a.reply_id)) perReply.set(a.reply_id, []);
+    perReply.get(a.reply_id).push(a);
+  }
+  return {
+    ...ticket,
+    attachments: attachRows.filter((a) => !a.reply_id),
+    replies: replyRows.map((r) => ({ ...r, attachments: perReply.get(r.reply_id) || [] })),
+  };
 }
 
 async function setStatus(id, status, actorId) {
@@ -50,6 +94,125 @@ async function setStatus(id, status, actorId) {
   if (!rows[0]) { const e = new Error("ticket not found"); e.status = 404; throw e; }
   await audit(actorId, rows[0].tenant_id, "support.status_changed", id, { status });
   return rows[0];
+}
+
+/* ── Conversation (0105) ──────────────────────────────────────────────────── */
+
+/**
+ * Praxis answers. `is_internal` is the note the tenant must never see — the
+ * tenant-side API strips internal replies at read time, so the write side is
+ * where the flag is born. A public reply notifies the raiser; an internal one
+ * does not, because the tenant has no in-app row to mark read and an email
+ * saying "we are still looking" is the noise the thread already carries.
+ */
+async function reply(id, { body, isInternal = false, attachmentIds = null, authorLabel = null }, actorId) {
+  const ticket = await get(id);
+  const { rows } = await platformDb.query(
+    "INSERT INTO platform.support_ticket_reply (ticket_id, author_side, author_label, body, is_internal) " +
+      "VALUES ($1, 'PRAXIS', $2, $3, $4) RETURNING reply_id, author_side, author_label, body, is_internal, created_at",
+    [id, authorLabel || null, body, !!isInternal],
+  );
+  const row = rows[0];
+  if (attachmentIds && attachmentIds.length) {
+    const { rows: linked } = await platformDb.query(
+      "UPDATE platform.support_attachment SET reply_id=$2 " +
+        "WHERE attachment_id = ANY($3::uuid[]) AND ticket_id=$1 AND reply_id IS NULL RETURNING attachment_id",
+      [id, row.reply_id, attachmentIds],
+    );
+    if (linked.length !== attachmentIds.length) {
+      const e = new Error("one of those attachments is not available"); e.status = 422; throw e;
+    }
+  }
+  await audit(actorId, ticket.tenant_id, "support.reply", id, { internal: !!isInternal });
+
+  if (!isInternal) await notifyRaiser(ticket, body);
+  return row;
+}
+
+/**
+ * Tell the tenant who raised the ticket that Praxis answered.
+ *
+ * The notification rides the TENANT's own pipeline (modules/notification):
+ * the in-app row lands in their bell, email and push each follow that user's
+ * per-category preferences, and the deep link is derived from the
+ * `support_ticket:` entity_ref by the shared entity-route table. The lookup is
+ * by the email the ticket carries — a tenant may have changed staff since, in
+ * which case there is no row and there is nothing to do, which is the right
+ * answer for "the person who filed this is no longer here".
+ *
+ * NEVER THROWS through to the caller: a reply that fails because the tenant
+ * DB is unreachable or the SMTP relay is down would punish the person trying
+ * to help. The reply row and the audit are the record; the notification is the
+ * courtesy.
+ */
+async function notifyRaiser(ticket, body) {
+  if (!ticket.raised_by_email) return;
+  try {
+    const { rows } = await platformDb.query(
+      "SELECT tenant_id, slug FROM platform.tenant WHERE tenant_id = $1",
+      [ticket.tenant_id],
+    );
+    const tenant = rows[0];
+    if (!tenant) return;
+
+    const registry = require("../tenant/registry.service");
+    const notifications = require("../../modules/notification/notification.service");
+    const meta = await registry.resolveBySlug(tenant.slug);
+    if (!meta) return;
+
+    const excerpt = String(body || "").replace(/\s+/g, " ").trim().slice(0, 200);
+    await registry.withTenantConnection(meta, "live", async (client) => {
+      const { rows: users } = await client.query(
+        "SELECT user_id, full_name FROM app_user WHERE email = $1 LIMIT 1",
+        [ticket.raised_by_email],
+      );
+      const user = users[0];
+      if (!user) return;
+      await notifications.notify(client, {
+        userId: user.user_id,
+        title: "Praxis replied to your ticket",
+        body: excerpt,
+        entityRef: `support_ticket:${ticket.ticket_id}`,
+        category: "comms",
+        url: `/support?ticket=${encodeURIComponent(ticket.ticket_id)}`,
+        ctx: { tenantMeta: meta, env: "live" },
+      });
+    });
+  } catch (err) {
+    logger.warn({ err, ticket: ticket.ticket_id }, "support reply notification skipped");
+  }
+}
+
+/** Store one screenshot against an existing ticket (Praxis side). */
+async function uploadAttachment(ticketId, file, authorEmail = null) {
+  if (!file || !Buffer.isBuffer(file.buffer)) { const e = new Error("no file in this upload"); e.status = 400; throw e; }
+  const ext = IMAGE_TYPES[file.mimetype];
+  if (!ext) { const e = new Error("Only image attachments (JPEG, PNG, WebP or GIF)"); e.status = 415; throw e; }
+  if (file.buffer.length > MAX_IMAGE_BYTES) { const e = new Error("That image is larger than 10 MB"); e.status = 413; throw e; }
+
+  const ticket = await get(ticketId);
+  const key = `support/${ticket.tenant_id}/${crypto.randomUUID()}.${ext}`;
+  await storage.put(file.buffer, { key, contentType: file.mimetype });
+  const fileName = path.basename(file.originalname || "").slice(0, 200) || `screenshot.${ext}`;
+  const { rows } = await platformDb.query(
+    "INSERT INTO platform.support_attachment (ticket_id, tenant_id, storage_key, file_name, mime_type, byte_size, created_by_email) " +
+      "VALUES ($1,$2,$3,$4,$5,$6,$7) " +
+      "RETURNING attachment_id, ticket_id, reply_id, file_name, mime_type, byte_size, created_at",
+    [ticketId, ticket.tenant_id, key, fileName, file.mimetype, file.buffer.length, authorEmail || null],
+  );
+  return rows[0];
+}
+
+/** One image's bytes, for the console's own viewing. Support.read is the gate. */
+async function attachmentBytes(attachmentId) {
+  const { rows } = await platformDb.query(
+    "SELECT * FROM platform.support_attachment WHERE attachment_id=$1",
+    [attachmentId],
+  );
+  const row = rows[0];
+  if (!row) { const e = new Error("attachment not found"); e.status = 404; throw e; }
+  const buffer = await storage.get(row.storage_key);
+  return { buffer, mime: row.mime_type, name: row.file_name };
 }
 
 /* ── WS-M2 — support ↔ telemetry linking ─────────────────────────────────── */
@@ -274,4 +437,4 @@ function summarise({ current, history, backups, usage, maintenance }) {
   return "Tenant healthy, within plan, backups current — no platform-side explanation.";
 }
 
-module.exports = { list, get, setStatus, context, summarise, STATUSES };
+module.exports = { list, get, setStatus, reply, uploadAttachment, attachmentBytes, context, summarise, STATUSES, KINDS };

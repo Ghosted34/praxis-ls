@@ -338,6 +338,8 @@ return `{ rows | data, error, loading, reload }`.
 | Confirm                          | `<ConfirmDialog>`                                                                         | Name the object and the action, not "Yes/No".                                                                                                                   |
 | Form field                       | `<Field>`                                                                                 | Supplies the label association and `aria-required` / `aria-invalid`.                                                                                            |
 | Text input                       | `<Input>` / `<Textarea>`                                                                  |                                                                                                                                                                 |
+| Date input                       | `<DateField>`                                                                             | **Never `<Input type="date">`.** Reads and writes dd/mm/yyyy whatever the OS locale is; stores ISO. Takes `min`/`max`/`required` and an RHF `{...field}` spread (§3.12). |
+| Date **and time** input           | `<DateTimeField>`                                                                         | **Never `<Input type="datetime-local">`** — it renders its date part in the OS locale too. dd/mm/yyyy HH:mm, 24-hour; stores `YYYY-MM-DDTHH:mm` (§3.12). |
 | Choose one                       | `<NativeSelect>` (default) · `<Select>` (rich options) · `<SearchSelect>` (server-backed) |                                                                                                                                                                 |
 | Toggle                           | `<Checkbox>` / `<RadioGroup>`                                                             |                                                                                                                                                                 |
 | View switch                      | `<Segmented>` (2–5 fixed) · `<Chips>` (wrapping filters)                                  |                                                                                                                                                                 |
@@ -355,6 +357,7 @@ return `{ rows | data, error, loading, reload }`.
 | Unknown payload                  | `<DataView>`                                                                              | Never `<pre>{JSON.stringify(…)}</pre>` in the UI.                                                                                                               |
 | Edit one field                   | `<InlineEdit>`                                                                            | Descriptive master data only — **never** a field on a posted document (§7.3).                                                                                   |
 | Master-detail                    | `<SplitPane>`                                                                             | Keyboard-resizable. Replaces `lg:grid-cols-[260px_1fr]`.                                                                                                        |
+| Row in a master-detail index     | `<IndexRow>`                                                                              | The open record's ground + accent rail + `aria-current`. Pair with `<SplitPane activeKind>` (§3.14).                                                            |
 | Bulk actions                     | `<BulkBar>` + `useRowSelection`                                                           | Announces the count; scoped to visible rows (§7.2).                                                                                                             |
 | Column control                   | `<ColumnsMenu>` + `useColumnVisibility`                                                   | Persists the HIDDEN set, per screen (§7.2).                                                                                                                     |
 | Row actions                      | `<RowActions>`                                                                            | Also what bounds the row-action button to the row height (§7.1).                                                                                                |
@@ -541,6 +544,84 @@ exception, `eslint-disable-next-line praxis/no-native-dialogs` still works and
 in these configs uses. Nothing in the tree needs it today. `window.print()` and
 `beforeunload` are not matched by the rule and need no disable.
 
+### 3.12 Dates — day-first, always
+
+**Never `<input type="date">`. Use `<DateField>`.**
+
+This is enforced by `scripts/check-date-format.js`, which runs in CI and in
+`npm run ci`, so a native date input does not merge.
+
+```tsx
+import { DateField } from "@/components/ui/date-field";
+
+<Field label={tr("Expires on")} required>
+  <DateField value={expiresOn} onChange={setExpiresOn} min={todayISO()} required />
+</Field>
+
+// Inside a <Form>, the react-hook-form spread works unchanged:
+<FormField form={form} name="entry_date" label={tr("Entry date")} required>
+  {(field) => <DateField {...field} value={String(field.value ?? "")} />}
+</FormField>
+```
+
+For a date **and** a time, `<DateTimeField>` is the same thing with `HH:mm` on
+the end (24-hour, storing `YYYY-MM-DDTHH:mm`). `<input type="datetime-local">`
+is banned for exactly the same reason and was missed on the first pass only
+because it carries a different `type`. `type="month"` is fine — it has no day in
+it, so there is no order to get wrong.
+
+`value` and `onChange` speak ISO `YYYY-MM-DD` — the same string the API wants —
+so nothing downstream changes. What the operator sees and types is dd/mm/yyyy.
+`onChange` fires with `""` while the date is incomplete or impossible, so a
+half-typed `31/02` never reaches your state as a rolled-over 3rd of March.
+
+**Why it is a hard rule and not a preference.** A native `<input type="date">`
+renders in the OPERATING SYSTEM's locale, and no HTML attribute overrides it —
+`lang` is ignored for the value display. On a US-configured workstation it shows
+and accepts mm/dd/yyyy. Praxis serves a corridor that reads dates day-first, so
+the operator types 03/07 meaning the 3rd of July and the control stores the 7th
+of March.
+
+Nothing catches that. Both readings are real dates, so the value validates, the
+API accepts it, the round-trip is clean and every test stays green. It surfaces
+months later — a licence that expired in a month nobody expected, a customs
+deadline missed by a quarter, a payroll run dated to the wrong period.
+
+The same applies to **displaying** a date. `toLocaleDateString()` with no locale
+means "whatever this machine is set to", which is month-first on a US
+workstation and in a container with no `LANG`. Use the formatters in
+`lib/format.ts` (§5) — `dateFmt` for "21 Jul 2026", `dateDmy` for a strict
+numeric dd/mm/yyyy — or pin `en-GB`. Never pass `undefined`, `[]`, `"en"` or
+`"en-US"` to a format that renders a day number.
+
+### What a person reads vs. what the wire carries
+
+**ISO `YYYY-MM-DD` is not the bug** — it is unambiguous, and it is the format
+the API contract, the `@shared` validators and every `date` column are built on.
+Keep it everywhere it is a *value*: request bodies, query params, `DateField`'s
+own `value`, state you post back.
+
+Change it only where a **person** reads it. Those surfaces are:
+
+| Surface | Prints |
+| --- | --- |
+| Document / PDF templates (`services/documents/templates`) | `27/07/2026` via `k.dateFmt` |
+| xlsx and CSV exports (`services/spreadsheet`) | `dd/mm/yyyy` number format |
+| Screens | `dateFmt` / `dateDmy` / `dateTimeFmt` (§5) |
+
+`check:dates` enforces exactly that split: it flags ISO in the first two paths
+and nowhere else. The one exception inside them is a **filename** — `/` is not
+legal in one, and ISO is what makes a folder of exports sort — which carries an
+`@date-format:filename` marker.
+
+The gate has three escape hatches, each costing a written reason:
+`@date-format:foreign` for an incoming third-party format (a bank statement
+genuinely arrives month-first, and refusing to parse it does not make it
+day-first), `@date-format:parts` for an `Intl.DateTimeFormat` built only to
+call `formatToParts()`, which renders nothing, and `@date-format:filename` for
+an ISO day in a filename. Whole files are listed per-rule
+in the script's `ALLOW_FILES`. Nothing else in the tree needs one today.
+
 ### 3.11 A record's detail view — a page on desktop, a sheet on a phone
 
 A 360 is one body with two shells. Write the body as an ordinary component that
@@ -604,6 +685,235 @@ another both ways is a cycle. The operations screens are `<list>.tsx`,
 
 ---
 
+### 3.13 Uploads — the engine, never a bare input
+
+**Never write `<input type="file">`.** Use the upload engine. This is enforced by
+the `praxis/no-raw-upload` ESLint rule as an **error** in all three frontend
+apps, so a bare file input does not merge.
+
+Reach for these:
+
+| Situation | Use |
+| --- | --- |
+| Upload starts as soon as a file is picked | `<ImageUpload profile="…" send={…}>` |
+| Upload waits for Save (metadata typed after picking) | `<FilePicker>` + `<UploadList>` + `useUpload({ autoStart: false })` |
+| An inline trigger — a table row, a "Replace" beside a file | `<FilePicker variant="inline" trigger={…}>` |
+| A `<FileDrop>` in a form | `{...fileDropProps(upload.items[0])}` from one `useUpload()` item |
+| Rendering a stored image | `<ResponsiveImage src={…} variant="thumb">` |
+| Just the status line | `<UploadProgress>` |
+| No upload at all — the image is embedded, not sent | `compressImage()` from `lib/image-compress` |
+
+`public-web/` has its own copy (`components/ui/file-input.tsx`, `lib/image-compress.ts`)
+because that app installs only its own dependencies in CI and cannot import from
+`client/`. Keep the two in step; `src/services/image-pipeline.service.js` is the
+authority for the profile table and the quality numbers.
+
+Every one of these gives the user the same three things, and none of them is a
+prop you can turn off:
+
+1. **A preview**, from the moment the picker closes — before compression, before
+   the request. You should never upload a scan and be shown only a filename.
+2. **A percentage**, 0→100, with the phase named: *Optimising…*, *Uploading…*,
+   then **Upload complete** — and that last state appears only once the server
+   has answered, not when the last byte was sent.
+3. **Compression**, before anything leaves the device.
+
+```tsx
+const upload = useUpload<{ doc_id: string }>({
+  profile: "document",
+  autoStart: false,               // the form's Save button calls upload.start()
+  maxBytes: 25 * 1024 * 1024,
+  send: (file, ctx) =>
+    uploadFile("/tenant/documents", file, {
+      fields: { doc_type: docType, original_name: file.name },
+      onProgress: ctx.onProgress,
+      signal: ctx.signal,
+    }),
+});
+
+<FilePicker accept=".pdf,.png,.jpg" onPick={(f) => void upload.pick(f)} />
+<UploadList items={upload.items} onRemove={upload.remove} onRetry={upload.retry} />
+```
+
+#### `profile` is required, and it is not cosmetic
+
+It decides whether the image is tonally corrected, and the wrong choice is the
+kind of bug nobody reports:
+
+| Profile | Enhancement | Use for |
+| --- | --- | --- |
+| `document` | **None.** Downscale + high-quality re-encode only | Vault scans, KYC, customs declarations, invoices |
+| `brand` | **None.** Colours come back byte-faithful | Tenant logos, app icons, letterhead marks |
+| `photo` | Auto-level, grey-world white balance, post-resize sharpen | Site heroes, success stories, marketing imagery |
+| `avatar` | As `photo`, plus a square attention crop | Profile pictures |
+
+`document` and `brand` never touch tone, and that is a requirement rather than a
+default. Auto-levelling a faint carbon-copy customs stamp pushes it to white,
+and a scan that no longer matches the paper is discovered during an audit, not
+in review. Stretching a logo's histogram gives a tenant back a slightly
+different green on every screen — the white-label promise, broken by a
+"quality" improvement.
+
+#### Why it is a hard rule and not a preference
+
+`FileDrop` has accepted `uploadProgress` and `uploadSuccess` props since the day
+it was written. Of roughly thirty upload sites in `client/`, **two** passed
+them. Nobody decided those screens should have no progress bar; the raw input
+was simply closer to hand than four pieces of state and a cleanup effect. That
+asymmetry is what a lint rule removes.
+
+What the user pays when it is skipped: no preview, so picking the wrong scan is
+invisible until someone downloads it months later; no percentage, so a 6 MB
+photo on a corridor connection is indistinguishable from a frozen screen and
+people re-click and double-upload; no compression, so the original sits in
+storage and is served back at full size into a 96px table cell on every page
+load, forever.
+
+#### Delivery
+
+The backend writes AVIF and WebP derivatives beside every master at `thumb`
+(256px), `preview` (1024px) and `full` (2400px). `<ResponsiveImage>` is what
+collects on that — a list of forty documents pointed at `variant="thumb"` pulls
+forty files of a few KB instead of forty full-size images. The `<img>` inside
+keeps the **master** as its `src`, so "Save image as" still yields the portable
+JPEG/PNG rather than an AVIF the recipient's software may not open.
+
+A derivative that does not exist yet is generated by `/media` on first request,
+so this is safe to point at images uploaded long before the engine existed.
+That matters because `<picture>` does **not** fall back: a `<source>` that 404s
+renders a broken image rather than dropping to the `<img>`.
+
+#### `<FileDrop>` must report progress too
+
+`praxis/require-upload-progress` fails a `<FileDrop>` that passes neither
+`fileDropProps(…)` nor an explicit `uploadProgress`. The short form is:
+
+```tsx
+const upload = useUpload({ profile: "photo", send });
+
+<FileDrop
+  {...fileDropProps(upload.items[0])}
+  onPick={(f) => (f ? void upload.pick([f]) : upload.reset())}
+  accept={IMAGE_ACCEPT}
+  label="Cover image"
+/>
+```
+
+That one spread supplies the file, the percentage, the completion state and the
+error, and the site gets compression with them.
+
+**Why this is a second rule and not part of the first.** `no-raw-upload` governs
+how a file is *picked*; this one governs whether the user is told anything while
+it *uploads*. The first rule passed the whole tree while fourteen `<FileDrop>`s
+still showed a filename, a spinner and then a tick — `FileDrop` **is** the
+sanctioned primitive, so nothing failed when a site left its progress props out.
+That is exactly how the props came to be passed by 2 of 10 call sites in the
+first place.
+
+A file that rides inside a **larger request** — a CV in the applicant payload, a
+scan in the create-employee call — passes `uploadProgress` explicitly from that
+request's progress. That is the honest number: the file is most of the request's
+weight, and there is no separate upload to measure.
+
+#### Progress without changing transport
+
+`tenantWithProgress()` and `publicApi`'s XHR path report real upload progress for
+a **JSON body**, not just multipart. So a site that posts a base64 data URL still
+drives a genuine 0→100% bar — converting an endpoint to multipart is a byte
+saving, not a prerequisite for the percentage.
+
+The escape hatch is `eslint-disable-next-line praxis/no-raw-upload` with a
+written reason beside it. The engine's own primitives are exempt by path;
+nothing else in the tree needs one, and there is no baseline allow-list — every
+upload site in all three apps is on the engine.
+
+---
+
+### 3.14 Master-detail — the open record has to be visible
+
+**Rows are `<IndexRow>`; the `<SplitPane>` takes `activeKind` and `active`. Both,
+on every list-with-360 screen.**
+
+```tsx
+<SplitPane
+  storageKey="master.service-types"
+  label="Service type list width"
+  activeKind={tr("Service type")}   // the KIND, already translated
+  active={!!selected}
+>
+  <div className="space-y-2">
+    {rows.map((r) => (
+      <IndexRow
+        key={r.service_type_id}
+        selected={r.service_type_id === selId}
+        onClick={() => setSelId(r.service_type_id)}
+        className="flex-col gap-0.5"   // LAYOUT only
+      >
+        <span className="truncate font-medium">{r.name_en}</span>
+        <span className="micro">{r.key}</span>
+      </IndexRow>
+    ))}
+  </div>
+  {selected ? <ServiceTypeDossier … /> : <EmptyState … />}
+</SplitPane>
+```
+
+**Why it is a rule and not a preference.** Sixteen screens marked the open record with
+one hand-copied string — `bg-primary/10 text-foreground` — and nothing else. **That string
+compiles to no CSS at all.** `primary` is declared `DEFAULT: "var(--primary)"` in
+`tailwind.config.ts`, and `--primary` is a complete `rgb(245 130 31)` rather than the bare
+channels a slash-opacity utility needs, so Tailwind has nowhere to put the alpha and emits
+nothing — silently, with the class still in the markup looking like it works. Verified
+against the production bundle: `.bg-primary\/10` appears zero times, `.bg-primary` appears.
+
+So the open row and the closed row rendered the **same** ground, and "which record am I
+looking at?" — asked once per screen, pre-attentively, before any reading starts — had no
+answer on the screen. None of the sixteen carried `aria-current` either, so it was absent
+from the accessibility tree too, and a screen reader user had no way to hear which row was
+open.
+
+> **This is not local to these rows.** 334 slash-opacity utilities across the tree sit on
+> the same opaque tokens and are equally dead — `bg-muted/30` (38), `bg-muted/50` (32),
+> `bg-card/40` (27), `bg-accent/60` (16), `border-border/60` (15) and so on. Only the
+> status and brand tones (`ok`, `warn`, `bad`, `brand-blue`, `brand-orange`) declare
+> `<alpha-value>` and can take a `/NN`. **Do not reach for `/NN` on a core token** — use
+> the opacity-free utility, or `color-mix` in a real stylesheet the way `.index-row-open`
+> and `.st-orange` do. Repairing the config is its own change: it would alter rendering in
+> 334 places at once.
+
+**The treatment is a pair, and the pair is the point.** The row gets a solid `--accent`
+ground and a 3px `--primary` rail; the detail pane gets the same rail down its leading edge
+and an eyebrow naming the kind. Two rails of one colour and one width read as ONE object, so
+"this row opened that pane" is seen rather than deduced. A marked row next to an unmarked
+pane leaves the reader knowing which row is highlighted and still not knowing what the right
+half of the screen is.
+
+**Ground AND rail, and the rail is the half that carries it.** At 7.50:1 against the dark
+ground the rail is a 35% luminance step, where no ground colour subtle enough to still read
+as a *surface* can be more than a couple of percent. It is also a SHAPE, which is what the
+eye resolves at a glance rather than colour, and what keeps the state legible to a reader
+with a colour-vision deficiency. The ground is what makes the whole row feel selected rather
+than merely ticked in the margin.
+
+**The ground is two layers, and it has to be.** `.index-row-open` (index.css) is `--accent`
+with the tenant's `--primary` at 15% over it, via `color-mix`. No SINGLE token steps clearly
+from `--background` in both themes, because `--background` sits between `--card` and
+`--accent` in one of them: `--accent` alone measures 1.281:1 dark but **1.021:1 light**,
+flatter than the state it replaces. Layered, it is 1.619:1 dark and 1.161:1 light. It is
+hand-written CSS rather than a `bg-*` utility precisely because the utility form *cannot*
+express it — see the alpha note above — and `color-mix` in a stylesheet lets it track tenant
+re-branding the way `.st-orange` does.
+
+**Pass layout in `className`, nothing else.** `flex-col`, `items-center justify-between`,
+a tighter `py-1.5` for a dense slot list. Ground, rail, padding and state belong to the
+component; a call site that restates them is the sixteen-copy problem starting again.
+
+**A rail that cannot be an `<IndexRow>`** — the inbox thread row carries a checkbox, a star
+and an open button, so it is an `<li>` with three controls rather than one — imports
+`INDEX_ROW_OPEN` from the same module and positions the rail itself. The geometry is local
+(a flush bordered list wants a different rail from a rounded one); the meaning of "this is
+the open one" is shared.
+
 ## 4. Accessibility — the floor, not the aspiration
 
 WCAG 2.1 AA is the minimum. `eslint-plugin-jsx-a11y` runs on every build and the primitives
@@ -634,7 +944,10 @@ are axe-tested. What that leaves to you:
 
 Anything a person reads must be formatted for a person. Helpers live in `lib/format.ts`.
 
-- **Dates** — never raw ISO. `dateFmt` → "21 Jul 2026", `dateTimeFmt` → "21 Jul 2026, 23:00".
+- **Dates** — never raw ISO, and never month-first. `dateFmt` → "21 Jul 2026", `dateTimeFmt`
+  → "21 Jul 2026, 23:00", `dateDmy` → "21/07/2026" for a strict numeric date. Never call
+  `toLocaleDateString()` without a locale: it renders month-first on a US workstation, and
+  `check:dates` fails the build on it (§3.12).
 - **Money** — `money(v, ccy)` (suffixed) · `amount(v)` (2dp, no suffix, header carries the
   currency) · `money0(v)` (0dp) · `num(v)`. Always with the `.num` tabular class.
 - **Foreign-key IDs → names** — never a bare UUID in a column. Build an id→name map
@@ -692,9 +1005,10 @@ in English (`"The record": "Le dossier"`), not a dossier.
 - [ ] No raw UUIDs, ISO dates, dotted event keys or SCREAMING_ENUMs on screen (§5).
 - [ ] No raw `<table>` / `<input>` / `<textarea>` / `role="menu"` — use the primitives (§3.5).
 - [ ] No `window.confirm` / `alert` / `prompt` — `useConfirm()`, `usePrompt()`, `<Callout>` or `useToast()` (§3.10).
+- [ ] No `<Input type="date">` or `type="datetime-local"` — `<DateField>` / `<DateTimeField>`; no locale-less `toLocaleDateString()`; no ISO date on a document or export (§3.12).
 - [ ] New shared component? Add a story, a usage example, a best-practices note and a test.
 - [ ] Row actions go in `<RowActions>` — that is what keeps the row at its density height (§7.1).
-- [ ] `npm run lint`, `npm test`, `npm run check:contrast`, `npm run check:motion`, `npm run check:palette`, `npm run check:docs`, `npm run check:schemas`, `npm run build`, `npm run check:bundle`, `npm run check:shared` and `npm run test:e2e` all pass in `client/`.
+- [ ] `npm run lint`, `npm test`, `npm run check:contrast`, `npm run check:motion`, `npm run check:palette`, `npm run check:docs`, `npm run check:schemas`, `npm run build`, `npm run check:bundle`, `npm run check:shared` and `npm run test:e2e` all pass in `client/`, and `npm run check:dates` at the repo root.
 - [ ] Screen registered in `app.tsx` via `lazyNamed(...)`; **no** new `manualChunks` bucket (§3.7).
 - [ ] RBAC action is **`edit`**, not `update` (matches the backend).
 - [ ] Route added in `app.tsx`; **`screen-registry.json` updated in the same commit** — the ribbon
@@ -766,9 +1080,21 @@ Opt-in on `<DataList>` / `<ListPage>`, because each costs something:
 - **`<SplitPane>` for master-detail.** A real `role="separator"` with arrow keys, Home/End and
   Enter-to-collapse. Two drag handles in this app had to be retro-fitted for the keyboard after
   shipping; do not build a third that needs it.
-- **The FAB is touch-only.** `<FloatingActions>` is `md:hidden`; desktop uses
-  `<QuickActionsMenu>` in the top bar. A fixed bottom-right cluster covers the last rows and
+- **A master-detail screen must SAY what is open.** `<IndexRow>` on the rows and
+  `activeKind` on the `<SplitPane>`, together — see §3.14. One without the other is half a
+  signal: a marked row beside an anonymous pane, or a labelled pane beside a list where every
+  row looks the same.
+- **The FAB is touch-only.** `<FloatingActions>` is `md:hidden`; on desktop the same list
+  renders in `<IconRail>`'s tail. A fixed bottom-right cluster covers the last rows and
   the pager of every list screen, and making it draggable was the workaround, not the fix.
+  Both surfaces read `useQuickActions()` so they cannot drift.
+- **Nothing quick-action-shaped goes in the title bar.** It held a burst-icon menu once; the
+  glyph named nothing in a strip where every other control says what it is, and it put
+  Messages in the header while the rail already carried Messages — one destination with two
+  chrome homes and an unread count duplicated between them. The count lives on the rail's
+  Messages cell now (`badge` on its rail button). The title bar is search, clock,
+  environment, language, theme, **`<NotificationBell>`** and account — and the bell renders
+  at **every** width, phone included, because below `sm` nothing else reaches notifications.
 
 ### 7.4 Motion budget
 

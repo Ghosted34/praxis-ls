@@ -29,6 +29,20 @@
  *   <ClientDetail … />
  * </SplitPane>
  *
+ * IT SAYS WHAT IS OPEN. `activeKind` bonds the two panes: the detail side grows
+ * the same 3px accent rail that `<IndexRow>` draws on the selected row, plus an
+ * eyebrow naming the KIND of record it holds. Before this, a split screen gave
+ * the reader nothing — the open row was a 10% tint (invisible in the dark
+ * theme) and the pane looked like an ordinary page that happened to sit on the
+ * right. Two rails of one colour and one width read as ONE object, which is
+ * what makes "this row opened that pane" legible at a glance rather than by
+ * deduction.
+ *
+ * The eyebrow names the KIND and not the record. The record's own name is the
+ * `<h1>` immediately below it, and printing it twice, 8px apart, is the
+ * duplication `<Record360Header>` documents itself as avoiding. Pass
+ * `activeKind` already translated — `tr("Service type")`, not "Service type".
+ *
  * BEST PRACTICE. Give every instance its own `storageKey` — the right width for
  * a column of vehicle plates is not the right width for one of client names.
  * Set `min` at the point the index stops being READABLE, not merely visible.
@@ -55,6 +69,8 @@ export function SplitPane({
   defaultSize = 280,
   min = 200,
   max = 560,
+  activeKind,
+  active,
   className,
 }: {
   /** Exactly two: the index pane, then the detail pane. */
@@ -66,6 +82,15 @@ export function SplitPane({
   defaultSize?: number;
   min?: number;
   max?: number;
+  /**
+   * What KIND of record the detail pane holds, e.g. "Service type". Setting it
+   * turns on the bond — the accent rail and the eyebrow — and reserves the
+   * rail's gutter. Pass it statically; `active` is what toggles the marking, so
+   * the pane does not shift sideways the moment a record opens.
+   */
+  activeKind?: string;
+  /** Is a record actually open? Usually `!!selected`. */
+  active?: boolean;
   className?: string;
 }) {
   const [size, setSize] = React.useState(() => read(storageKey, defaultSize));
@@ -196,7 +221,49 @@ export function SplitPane({
         )}
       />
 
-      <div className="min-w-0">{children[1]}</div>
+      <div
+        className={cn(
+          "relative min-w-0",
+          // The gutter is reserved by `activeKind`, not by `active`: a pane that
+          // gained 16px of padding at the moment a record opened would shove its
+          // own content sideways on every selection.
+          activeKind && "lg:pl-4",
+          // The pane's half of the bond — the same 3px accent rail `<IndexRow>`
+          // draws on the open row. It fades downward rather than running the
+          // full height at full strength: the rail's job is to anchor the TOP of
+          // the pane to the row, and a 2000px stripe of the tenant's accent down
+          // a long dossier is livery, not a marker.
+          //
+          // Two stops, not three. A `via-primary/30` midpoint compiles to
+          // NOTHING: `primary` is declared `var(--primary)` in the Tailwind
+          // config, an opaque colour with no `<alpha-value>` slot, so every
+          // slash-opacity utility on it is silently dropped. That is the same
+          // mechanism that made the old selected row invisible — see
+          // index-row.tsx.
+          activeKind &&
+            active &&
+            "before:absolute before:inset-y-0 before:left-0 before:hidden before:w-[3px] before:rounded-full before:bg-gradient-to-b before:from-primary before:to-transparent before:content-[''] lg:before:block",
+        )}
+      >
+        {activeKind && active && (
+          <p className="micro mb-2 hidden items-center gap-1.5 text-primary-ink lg:flex">
+            {/*
+              A dot in the accent, and the KIND — not the word "open". `tr("Open")`
+              resolves to "Ouvrir" in French, the VERB, so the eyebrow would have
+              read "TYPE DE SERVICE · OUVRIR" — an instruction to open something
+              that is already open. The dot carries the state, the rail carries
+              the bond, and the caller passes `activeKind` already translated, so
+              this line needs no string of its own in either language.
+            */}
+            <span
+              aria-hidden="true"
+              className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary"
+            />
+            {activeKind}
+          </p>
+        )}
+        {children[1]}
+      </div>
     </div>
   );
 }

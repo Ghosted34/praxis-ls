@@ -139,9 +139,15 @@ router.get("/:slug", limit, asyncHandler(async (req, res) => {
   });
   if (!result) throw notFound("Service not found");
   const { row, mediaByRole, related, faq } = result;
-  const coverAllowed = mediaByRole.has(row.cover_vault_id);
-  const iconAllowed = mediaByRole.has(row.icon_vault_id);
-  const galleryAllowed = (row.gallery_vault_ids || []).filter((id) => mediaByRole.has(id));
+  // Role must match the SLOT, not merely be present in the allowlist. A doc
+  // bound as GALLERY that some earlier write also left in `cover_vault_id`
+  // would otherwise be served as this service's cover here while the list card
+  // (whose EXISTS asserts `public_media_role = 'COVER'`) correctly shows none —
+  // one page of the public site disagreeing with the other about the same row.
+  const roleIs = (id, role) => Boolean(id) && mediaByRole.get(id) === role;
+  const coverAllowed = roleIs(row.cover_vault_id, "COVER");
+  const iconAllowed = roleIs(row.icon_vault_id, "ICON");
+  const galleryAllowed = (row.gallery_vault_ids || []).filter((id) => roleIs(id, "GALLERY"));
   res.json({
     data: {
       service_type_id: row.service_type_id,

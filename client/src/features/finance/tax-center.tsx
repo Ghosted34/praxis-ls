@@ -9,6 +9,7 @@ import { ApiError } from "@/lib/api-client";
 import { dateFmt, money as moneyFmt } from "@/lib/format";
 import { errMsg } from "@/lib/use-resource";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
+import { DateField } from "@/components/ui/date-field";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import { SkeletonTable } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -141,24 +142,21 @@ function FileDeclarationForm({
             />
           </Field>
           <Field label={tr("Due on")}>
-            <Input
-              type="date"
+            <DateField
               value={dueOn}
-              onChange={(e) => setDueOn(e.target.value)}
+              onChange={setDueOn}
             />
           </Field>
           <Field label={tr("From")}>
-            <Input
-              type="date"
+            <DateField
               value={from}
-              onChange={(e) => setFrom(e.target.value)}
+              onChange={setFrom}
             />
           </Field>
           <Field label={tr("To")}>
-            <Input
-              type="date"
+            <DateField
               value={to}
-              onChange={(e) => setTo(e.target.value)}
+              onChange={setTo}
             />
           </Field>
         </div>

@@ -21,7 +21,11 @@
 
 import * as React from "react";
 import { tr } from "@/lib/i18n";
-import { tenant } from "@/lib/api-client";
+import { tenant, tenantWithProgress } from "@/lib/api-client";
+import { FilePicker } from "@/components/ui/image-upload";
+import { UploadProgress } from "@/components/ui/upload-progress";
+import { useUpload } from "@/lib/use-upload";
+import { fileToDataUrl } from "@/lib/image-compress";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -270,21 +274,11 @@ export function QuoteRequestForm({
 const ATTACH_MAX_BYTES = 10 * 1024 * 1024;
 const ATTACH_ACCEPT = "application/pdf,image/png,image/jpeg,image/webp";
 
-function readAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onerror = () => reject(new Error("That file could not be read"));
-    r.onload = () => resolve(String(r.result));
-    r.readAsDataURL(file);
-  });
-}
-
 export function AttachmentsPanel({ requestId }: { requestId: string }) {
   const [rows, setRows] = React.useState<Row[] | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
   const [pendingRemove, setPendingRemove] = React.useState<Row | null>(null);
-  const inputRef = React.useRef<HTMLInputElement | null>(null);
 
   const load = React.useCallback(async () => {
     try {
@@ -299,29 +293,41 @@ export function AttachmentsPanel({ requestId }: { requestId: string }) {
     void load();
   }, [load]);
 
-  async function upload(file: File, kind: "PRIMARY" | "ADDITIONAL") {
-    setError(null);
-    if (file.size > ATTACH_MAX_BYTES) {
-      setError(`${file.name} is larger than 10 MB.`);
-      return;
-    }
-    setBusy(true);
-    try {
-      await tenant(`/quote-requests/${requestId}/attachments`, {
-        method: "POST",
-        body: { file: await readAsDataUrl(file), filename: file.name, kind },
-      });
-      await load();
-    } catch (e) {
-      // The server's own message is what the operator needs — "this file says
-      // it is a PDF but its contents are image/png" is actionable; "Something
-      // went wrong" is not.
-      setError(errMsg(e));
-    } finally {
-      setBusy(false);
-      if (inputRef.current) inputRef.current.value = "";
-    }
-  }
+  /**
+   * Through the upload engine. `kind` is read at send time rather than captured
+   * at pick time: the engine re-reads `send` on each attempt, so a retry after
+   * another attachment landed still classifies this one correctly.
+   */
+  const upload = useUpload({
+    profile: "document",
+    maxBytes: ATTACH_MAX_BYTES,
+    send: async (file, ctx) =>
+      tenantWithProgress(
+        `/quote-requests/${requestId}/attachments`,
+        {
+          file: await fileToDataUrl(file),
+          filename: file.name,
+          kind: (rows || []).some((r) => String(r.kind) === "PRIMARY")
+            ? "ADDITIONAL"
+            : "PRIMARY",
+        },
+        ctx.onProgress,
+      ),
+    onAllComplete: () => {
+      void load();
+    },
+  });
+
+  const item = upload.items[0] ?? null;
+  const uploading =
+    item?.state === "uploading" || item?.state === "compressing";
+
+  React.useEffect(() => {
+    // The server's own message is what the operator needs — "this file says it
+    // is a PDF but its contents are image/png" is actionable; "Something went
+    // wrong" is not.
+    if (item?.state === "error" && item.error) setError(item.error);
+  }, [item?.state, item?.error]);
 
   async function remove(row: Row) {
     setBusy(true);
@@ -342,27 +348,40 @@ export function AttachmentsPanel({ requestId }: { requestId: string }) {
       <div className="flex items-center justify-between">
         <p className="micro">{tr("Attachments")}</p>
         <div className="flex items-center gap-2">
-          <input
-            ref={inputRef}
-            type="file"
+          <FilePicker
+            variant="inline"
             accept={ATTACH_ACCEPT}
-            className="sr-only"
-            id={`qr-attach-${requestId}`}
-            onChange={(e) => {
-              const f = e.target.files && e.target.files[0];
-              if (f) void upload(f, (rows || []).some((r) => String(r.kind) === "PRIMARY") ? "ADDITIONAL" : "PRIMARY");
+            disabled={busy || uploading}
+            trigger={
+              <span className="inline-flex h-9 items-center rounded-lg border px-3 text-sm no-underline">
+                {uploading ? "Uploading…" : "Attach a document"}
+              </span>
+            }
+            onPick={(files) => {
+              setError(null);
+              void upload.pick(files);
             }}
           />
-          <Button
-            variant="outline"
-            loading={busy}
-            onClick={() => inputRef.current?.click()}
-          >
-            Attach a document
-          </Button>
         </div>
       </div>
 
+      {item && item.state !== "idle" && (
+        <div className="mt-2 flex items-start gap-3">
+          {item.previewUrl && (
+            <img
+              src={item.previewUrl}
+              alt=""
+              className="h-12 w-12 rounded border object-cover"
+            />
+          )}
+          <UploadProgress
+            className="flex-1"
+            state={item.state}
+            percent={item.percent}
+            error={item.error}
+          />
+        </div>
+      )}
       {error && <ErrorState message={error} />}
 
       {rows === null ? (

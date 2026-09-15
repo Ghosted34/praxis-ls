@@ -49,6 +49,9 @@ export default tseslint.config(
        * and reaching for `window.confirm` was still easier.
        */
       "praxis/no-native-dialogs": "error",
+      // Shares the client's rule implementation — see the index.cjs note on why
+      // a second copy of a gate is a gate that drifts.
+      "praxis/no-raw-upload": "error",
     },
   },
   // THE BAN IS NOT TYPESCRIPT-ONLY.

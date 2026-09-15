@@ -15,6 +15,19 @@ const validator = require("./corporate_entity.validator");
  * `get_entity_360` here is the RAW aggregation: unlike the HTTP route it has no
  * `req` to resolve governance from, so it is registered with an edit permission
  * and returns the unredacted dossier. The permission is the gate.
+ *
+ * IT WAS NOT. Both governance reads were declared `action: "view"` while asking
+ * for `governance: true`, so the sentence above described a gate that did not
+ * exist: MOD-01 `view` — the grant a Sales user holds to see that an entity
+ * exists — answered "who are the shareholders of SLAS and what are their ID
+ * numbers" through the assistant, and returned the cap table that
+ * `GET /:id/cap-table` refuses at `view` for exactly this reason. `edit` maps to
+ * `can_update`, which is the column `canSeeGovernance` tests and the one the
+ * HTTP routes require, so the three surfaces now agree.
+ *
+ * A view-only caller keeps `list_entities`, `get_entity`, `get_entity_renewals`
+ * and `get_entity_letterhead`; none of those carries governance data, and the
+ * letterhead read masks account identifiers by default.
  */
 module.exports = {
   entity: "corporate_entity", module_key: "MOD-01", screens: [],
@@ -23,12 +36,12 @@ module.exports = {
     { key: "get_entity", service: service.get, permission: { module: "MOD-01", action: "view" }, describe: "Get a corporate entity by id." },
     {
       key: "get_entity_360",
-      service: (c, p) => dossierService.dossier(c, p.entity_id || p, { governance: true }), permission: { module: "MOD-01", action: "view" },
+      service: (c, p) => dossierService.dossier(c, p.entity_id || p, { governance: true }), permission: { module: "MOD-01", action: "edit" },
       describe: "Full 360 for one entity: identity, group structure, people and shareholding, contacts, addresses, registrations, establishments, treasury accounts (read-only) and the readiness checklist.",
     },
     {
       key: "get_entity_cap_table",
-      service: (c, p) => service.capTable(c, p.entity_id || p, (p && p.as_of) || null), permission: { module: "MOD-01", action: "view" },
+      service: (c, p) => service.capTable(c, p.entity_id || p, (p && p.as_of) || null), permission: { module: "MOD-01", action: "edit" },
       describe: "Shareholding reconciliation for one entity: holders, totals and any mismatch findings, optionally as of a past date.",
     },
     {

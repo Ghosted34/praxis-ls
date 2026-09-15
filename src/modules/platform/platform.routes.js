@@ -11,6 +11,7 @@ const express = require("express");
 const c = require("./platform.controller");
 const { validate, validateParams } = require("./platform.validator");
 const { platformAuth, requireCap } = require("../../middleware/platform-auth");
+const { singleFile } = require("../../shared/http/upload.middleware");
 // SEC-C3, 2026-08-04. The platform tier is the highest-privilege login in the
 // product — it reaches tenant provisioning, the credential store and God Mode —
 // and it had no rate limiting at all. It also has no session store, no
@@ -98,6 +99,11 @@ router.delete("/tenants/:slug/features/:featureKey", requireCap("features.write"
 router.get("/support/tickets", requireCap("support.read"), c.supportList);
 router.get("/support/tickets/:id", requireCap("support.read"), c.supportGet);
 router.patch("/support/tickets/:id", requireCap("support.write"), validate("ticketStatus"), c.supportSetStatus);
+// The conversation (0105): answers, internal notes, screenshots — all writes,
+// all support.write, since every one of them changes what a tenant sees.
+router.post("/support/tickets/:id/replies", requireCap("support.write"), validate("ticketReply"), c.supportReply);
+router.post("/support/tickets/:id/attachments", requireCap("support.write"), singleFile("file"), c.supportUploadAttachment);
+router.get("/support/attachments/:id", requireCap("support.read"), c.supportAttachmentBytes);
 
 // Deploy-wide integrations (S3 / Geoapify / VAPID) — set + live test. Secrets
 // are encrypted at rest; reads return presence + last4 only.

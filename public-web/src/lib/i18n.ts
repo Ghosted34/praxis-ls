@@ -7,8 +7,8 @@
  *
  * `client` resolves language from `localStorage["praxis.lang"]` and nothing
  * else. Inside the ERP that is right: the user is known, they chose once, and the
- * whole app follows. On a public page, three more things should be consulted, in
- * this order:
+ * whole app follows. On a public page, one more thing is consulted ahead of it,
+ * and the resolution order is:
  *
  *   1. `?lang=fr` — an explicit link. A forwarded job advert and a French-language
  *      email campaign must land in French even in a browser that has never seen
@@ -19,10 +19,32 @@
  *      the staff app writes. Not a coincidence: sign out of the ERP into the
  *      portal, or open a client's marketing page after using their workspace, and
  *      the language follows rather than resetting.
- *   3. `navigator.language` — for the visitor who has never been here and never
- *      touches a toggle. A Cameroonian client opening a tracking link on a phone
- *      set to French should not have to find the switch.
- *   4. English.
+ *   3. English.
+ *
+ * ── WHY `navigator.language` IS NOT STEP 3 ─────────────────────────────────
+ *
+ * It used to be, on the argument that a client opening a tracking link on a
+ * French-set phone should not have to find the switch. It is off deliberately:
+ * English is now the default for everyone who has not asked for otherwise.
+ *
+ * The reason is that the browser signal is the one input in the cascade that is
+ * NOT a statement about this site. The other two are — a `?lang=fr` link was
+ * written by someone who chose it, and the stored key was written by a visitor
+ * pressing FR — whereas `navigator.languages` is an OS setting, carries the
+ * handset's region as often as its reader's preference, and on a shared or
+ * factory-set phone in this corridor is routinely French for someone who works
+ * in English. It made the site's language unpredictable from the tenant's side:
+ * two people opening the same link saw two different sites, and neither had
+ * asked for anything.
+ *
+ * Nothing about reaching French changes. `?lang=fr` still wins over everything,
+ * the FR control in the header still writes the choice, and the choice still
+ * persists under the same key the staff app uses — so signing out of the ERP in
+ * French still lands here in French. What is gone is only the guess.
+ *
+ * To restore it: put `fromBrowser()` back into `detectLang()`'s chain. The
+ * function is kept below for exactly that, and `i18n.test.ts` pins the current
+ * behaviour so putting it back cannot happen silently.
  *
  * ── WHAT IS DELIBERATELY NOT DONE (doc/WEB_BUILD_BRIEF.md N7) ───────────────
  *
@@ -46,6 +68,9 @@ export type Lang = "en" | "fr";
 
 export const LANG_KEY = "praxis.lang";
 
+/** What a visitor who has asked for nothing gets. */
+export const DEFAULT_LANG: Lang = "en";
+
 const asLang = (v: unknown): Lang | null =>
   v === "fr" || v === "en" ? v : null;
 
@@ -66,7 +91,16 @@ function fromStorage(): Lang | null {
   }
 }
 
-function fromBrowser(): Lang | null {
+/**
+ * The visitor's OS language. NOT in the cascade — see the header.
+ *
+ * Exported, and unused in this module by design: it is kept so that restoring
+ * the browser guess is one term added back to `detectLang()`, and exporting it
+ * is what lets `i18n.test.ts` hold it to its contract meanwhile. A dead private
+ * function would have been deleted by the next person through here, and then
+ * "put it back" would not be a one-line change.
+ */
+export function fromBrowser(): Lang | null {
   try {
     const tags = navigator.languages?.length
       ? navigator.languages
@@ -82,9 +116,12 @@ function fromBrowser(): Lang | null {
 }
 
 /** The whole cascade, in priority order. Exported for the test and for the
- *  mount path in main.tsx, which has to run it BEFORE the first render. */
+ *  mount path in main.tsx, which has to run it BEFORE the first render.
+ *
+ *  An explicit link, then an explicit choice, then English. `fromBrowser()` is
+ *  deliberately absent from this chain — the header says why. */
 export function detectLang(): Lang {
-  return fromQuery() || fromStorage() || fromBrowser() || "en";
+  return fromQuery() || fromStorage() || DEFAULT_LANG;
 }
 
 i18n.use(initReactI18next).init({
@@ -105,8 +142,8 @@ export type LangChoice = Lang | "auto";
  *
  * That distinction is the difference between "this visitor prefers English" and
  * "this visitor poked the toggle": the first is a preference to keep, the second
- * is a mistake to be able to undo. Undoing it hands the decision back to the
- * browser, which is what `detectLang`'s cascade is for.
+ * is a mistake to be able to undo. Undoing it hands the decision back to
+ * `detectLang()` — today that means English unless the URL says otherwise.
  */
 export function setLang(lang: LangChoice): void {
   try {

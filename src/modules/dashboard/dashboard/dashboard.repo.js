@@ -265,4 +265,8 @@ async function controlTower(client, options = {}) {
   };
 }
 
-module.exports = { kpis, controlTower };
+// TOWER_FROM / NEEDS_LOCATION_EXPR ship with the export: `kpi_catalog`'s
+// `needs_location` tile counts over the SAME expressions the map's banner and
+// queue use — one definition of "unplottable", because two copies is how the
+// tile and the banner start disagreeing about the same dossier.
+module.exports = { kpis, controlTower, TOWER_FROM, NEEDS_LOCATION_EXPR, IS_MOVEMENT_EXPR };

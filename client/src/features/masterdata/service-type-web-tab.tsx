@@ -13,29 +13,43 @@ import { tr } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Field } from "@/components/ui/modal";
+import { Field, Select } from "@/components/ui/modal";
 import { Pill } from "@/components/ui/pill";
 import { Callout } from "@/components/ui/callout";
-import { FileDrop } from "@/components/ui/file-drop";
+import { FileDrop, fileDropProps } from "@/components/ui/file-drop";
+import { useUpload } from "@/lib/use-upload";
+import { fileToDataUrl } from "@/lib/image-compress";
 import { Segmented } from "@/components/ui/segmented";
 import { EmptyState, ErrorState, LoadingRow } from "@/components/ui/states";
 import { cn } from "@/lib/cn";
 import { errMsg, useResource } from "@/lib/use-resource";
 import { ApiError } from "@/lib/api-client";
-import { readFileAsDataUrl } from "@/lib/vault-file";
 import { slug as suggestSlug, isValidSlug } from "@/lib/slug";
 import * as api from "@/lib/operations-api";
+import { useToast } from "@/components/ui/toast";
+import { useFormDraft } from "@/lib/form-draft";
+import { DraftBanner } from "@/components/ui/draft-banner";
+import { ServiceTypeWebPillars } from "./service-type-web-pillars";
+import { ServiceTypeWebAiDialog } from "./service-type-web-ai-dialog";
 
 const IMAGE_ACCEPT = "image/png,image/jpeg,image/webp";
 const IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 const L = api.SERVICE_TYPE_WEB_LIMITS;
 
 type Lang = "fr" | "en";
+type MediaRole = "COVER" | "ICON" | "GALLERY";
 
 function imageProblem(file: File): string | null {
   if (!file.size) return "That image is empty.";
   if (file.size > IMAGE_MAX_BYTES) return "Images must be no larger than 10 MB.";
-  if (!IMAGE_ACCEPT.split(",").includes(file.type.toLowerCase())) {
+  // A browser reports an EMPTY type for a file whose extension the operating
+  // system has no registry entry for, and `.webp` is the one that still hits
+  // that on Windows — so treating "" as "not an image" refused genuine WebP
+  // files with a message telling the person to pick a WebP. The vault sniffs the
+  // magic bytes and is the authority (`document_vault.service.sniffContentType`);
+  // only an outright mismatch is worth refusing here. Same rule as
+  // `vault-file.scanFileProblem`.
+  if (file.type && !IMAGE_ACCEPT.split(",").includes(file.type.toLowerCase())) {
     return "Choose a PNG, JPEG or WebP image.";
   }
   return null;
@@ -240,7 +254,228 @@ function HighlightsEditor({
   );
 }
 
+/* ── Accent picker ───────────────────────────────────────────────────────── */
+
+/**
+ * Which brand token tints this service's card.
+ *
+ * The swatches paint with `rgb(var(--brand-orange))` and friends rather than a
+ * palette class, because that is the whole point of storing a token NAME: the
+ * three chips restyle themselves to the tenant's own brand, so what the person
+ * picks here is what they will see on their site. A `bg-orange-500` swatch would
+ * show them a colour their site never renders.
+ *
+ * The mapping mirrors `public-web/src/lib/service-identity.ts` — PRIMARY is the
+ * brand fill, ACCENT the secondary brand colour, SUCCESS the semantic green.
+ * They are deliberately the same three tokens, resolved on this side too, so the
+ * preview cannot drift from the page.
+ */
+const ACCENT_SWATCH: Record<api.ServiceTypeWebAccent, string> = {
+  PRIMARY: "rgb(var(--brand-orange))",
+  ACCENT: "rgb(var(--brand-blue))",
+  SUCCESS: "rgb(var(--ok))",
+};
+
+const ACCENT_LABEL: Record<api.ServiceTypeWebAccent, string> = {
+  PRIMARY: "Brand",
+  ACCENT: "Secondary",
+  SUCCESS: "Success",
+};
+
+function AccentPicker({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: api.ServiceTypeWebAccent;
+  onChange: (next: api.ServiceTypeWebAccent) => void;
+  disabled?: boolean;
+}) {
+  const options = Object.keys(ACCENT_SWATCH) as api.ServiceTypeWebAccent[];
+  return (
+    <div
+      role="radiogroup"
+      aria-label={tr("Card accent")}
+      className="flex flex-wrap gap-2"
+      data-testid="web-accent-picker"
+    >
+      {options.map((key) => {
+        const on = value === key;
+        return (
+          <button
+            key={key}
+            type="button"
+            role="radio"
+            aria-checked={on}
+            disabled={disabled}
+            onClick={() => onChange(key)}
+            className={cn(
+              "flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs transition-colors",
+              "disabled:cursor-not-allowed disabled:opacity-50",
+              on
+                ? "border-primary bg-primary/10 text-foreground"
+                : "border-input text-muted-foreground hover:bg-muted",
+            )}
+          >
+            <span
+              aria-hidden
+              className="h-3.5 w-3.5 shrink-0 rounded-full border border-black/10"
+              style={{ background: ACCENT_SWATCH[key] }}
+            />
+            {tr(ACCENT_LABEL[key])}
+            {/* Never colour alone (WCAG §1.4.1) — the selected chip is also the
+                only one carrying the tick and the ring. */}
+            {on && <span aria-hidden>✓</span>}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 /* ── Root tab ────────────────────────────────────────────────────────────── */
+
+/**
+ * The editor's field set, derived from a profile row.
+ *
+ * Lifted out of `applyTab` because "a new server payload arrived" and "re-seed
+ * the boxes the user is typing into" are two different events, and treating
+ * them as one is what destroyed authored copy. EVERY mutation on this tab
+ * answers with the whole tab, and `applyTab` pushed all of it straight back
+ * into `draft` — so Publish, Save FAQ, Save related, Remove media and a
+ * gallery reorder each replaced a screenful of unsaved text with whatever the
+ * server still held. No error, no prompt, nothing in the console. The reported
+ * case: eleven thousand characters of page copy pasted in, Publish pressed,
+ * and the seeded placeholder back in the boxes. None of those writes touch a
+ * text column, so re-seeding from them was pure loss with no upside.
+ *
+ * `reseedFor` below is the policy that replaced it.
+ */
+function draftFromProfile(
+  p: api.ServiceTypeWebTab["profile"],
+): api.ServiceTypeWebProfilePatch {
+  return {
+      short_description_fr: p?.short_description_fr ?? "",
+      short_description_en: p?.short_description_en ?? "",
+      long_description_fr: p?.long_description_fr ?? "",
+      long_description_en: p?.long_description_en ?? "",
+      highlights_fr: [...(p?.highlights_fr || [])],
+      highlights_en: [...(p?.highlights_en || [])],
+      coverage_fr: p?.coverage_fr ?? "",
+      coverage_en: p?.coverage_en ?? "",
+      slug_fr: p?.slug_fr ?? "",
+      slug_en: p?.slug_en ?? "",
+      meta_title_fr: p?.meta_title_fr ?? "",
+      meta_title_en: p?.meta_title_en ?? "",
+      meta_description_fr: p?.meta_description_fr ?? "",
+      meta_description_en: p?.meta_description_en ?? "",
+      video_url: p?.video_url ?? "",
+      sort_order: p?.sort_order ?? 100,
+      // The card (12755). Seeded into BOTH draft and baseline like every other
+      // field: `dirtyPatch` compares the two, so a key absent from here can
+      // never be sent — which is exactly how these four stayed unreachable
+      // while the API accepted them all along.
+      //
+      // `group_id` keeps null rather than collapsing to "": null IS the value
+      // that puts the service in the trailing unnamed group, and the server
+      // reads an explicit null as that instruction.
+      group_id: p?.group_id ?? null,
+      claim_fr: p?.claim_fr ?? "",
+      claim_en: p?.claim_en ?? "",
+      accent: p?.accent ?? "PRIMARY",
+  };
+}
+
+/**
+ * Which parts of the editor a given response is allowed to overwrite.
+ *
+ * The rule is "only a write that actually touched a section may re-seed it".
+ * Anything omitted keeps what the user has on screen, unsaved and still dirty.
+ */
+type Reseed = { draft?: boolean; faq?: boolean; related?: boolean };
+
+/** The first GET, and a restore — the editor is empty, so everything seeds. */
+const RESEED_ALL: Reseed = { draft: true, faq: true, related: true };
+/** Publish, unpublish, media, gallery order: no text column moved. Touch nothing. */
+const RESEED_NONE: Reseed = {};
+
+/**
+ * Build the omitted-keys-unchanged patch — only dirty keys.
+ *
+ * Pure and module-level so the component can memoise it, which gives the tab a
+ * reliable `isDirty` for the unsaved-changes guard and the Save button. It was
+ * a closure over `draft`/`baseline` called only at save time, so nothing else
+ * could ask "is there unsaved work here?" — and nothing did.
+ */
+function buildDirtyPatch(
+  draft: api.ServiceTypeWebProfilePatch,
+  baseline: api.ServiceTypeWebProfilePatch,
+): api.ServiceTypeWebProfilePatch {
+  const out: api.ServiceTypeWebProfilePatch = {};
+  const keys = Object.keys(draft) as (keyof api.ServiceTypeWebProfilePatch)[];
+  for (const k of keys) {
+    let a = draft[k];
+    const b = baseline[k];
+    // Highlights: drop blank rows on the wire so the validator's min(1) passes.
+    if (k === "highlights_fr" || k === "highlights_en") {
+      a = (Array.isArray(a) ? a : [])
+        .map((s) => String(s).trim())
+        .filter(Boolean)
+        .slice(0, L.HIGHLIGHTS_MAX);
+    }
+    if (Array.isArray(a) && Array.isArray(b)) {
+      const bNorm =
+        k === "highlights_fr" || k === "highlights_en"
+          ? (b as string[]).map((s) => String(s).trim()).filter(Boolean)
+          : b;
+      if (JSON.stringify(a) !== JSON.stringify(bNorm)) {
+        (out as Record<string, unknown>)[k] = a;
+      }
+    } else if (a !== b) {
+      // Empty string for text clears as "" (readiness treats "" as missing);
+      // video_url empty → null so the server clears the column.
+      if (k === "video_url" && a === "") {
+        out.video_url = null;
+      } else if ((k === "claim_fr" || k === "claim_en") && a === "") {
+        // A cleared claim is an absent claim. Sending "" would store a blank
+        // string that every "is this set?" test in the tree has to special-case
+        // — including the backfill seed's, which reads blank as empty and would
+        // re-fill a claim the tenant had deliberately removed.
+        (out as Record<string, unknown>)[k] = null;
+      } else {
+        (out as Record<string, unknown>)[k] = a;
+      }
+    }
+  }
+  // Empty slug box while draft → explicit null (server `col = EXCLUDED.col`
+  // clears). The regex rejects "", so we never send "". Slug inputs are locked
+  // while published, so this path only runs on a draft clear.
+  if (out.slug_fr === "") out.slug_fr = null;
+  if (out.slug_en === "") out.slug_en = null;
+  return out;
+}
+
+/**
+ * Merge a save response back into the boxes WITHOUT discarding keystrokes that
+ * landed while the request was in flight.
+ *
+ * A field the user has not touched since `sent` takes the server's value; one
+ * they have kept typing into keeps theirs and stays dirty for the next save.
+ * On a page this size a save is not instant, and "it threw away the sentence I
+ * typed while it was saving" is the same defect in miniature.
+ */
+function mergeAfterSave(
+  current: api.ServiceTypeWebProfilePatch,
+  sent: api.ServiceTypeWebProfilePatch,
+  fromServer: api.ServiceTypeWebProfilePatch,
+): api.ServiceTypeWebProfilePatch {
+  const out = { ...fromServer };
+  for (const k of Object.keys(fromServer) as (keyof api.ServiceTypeWebProfilePatch)[]) {
+    const same = JSON.stringify(current[k]) === JSON.stringify(sent[k]);
+    if (!same) (out as Record<string, unknown>)[k] = current[k];
+  }
+  return out;
+}
 
 export function ServiceTypeWebTab({
   serviceTypeId,
@@ -267,6 +502,7 @@ export function ServiceTypeWebTab({
     () => api.getServiceTypeWeb(serviceTypeId),
     [serviceTypeId, serviceTypeNameEn],
   );
+  const toast = useToast();
   const [lang, setLang] = React.useState<Lang>("fr");
   const [error, setError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
@@ -292,6 +528,13 @@ export function ServiceTypeWebTab({
     fr?: string;
     en?: string;
   }>({});
+  // Pillars are tenant-wide, so they are their own read rather than part of the
+  // tab payload. Only the ACTIVE ones are offered: assigning a service to a
+  // hidden pillar would drop its card into the unnamed group with nothing on
+  // this screen explaining why.
+  const pillars = useResource(() => api.listServiceTypeWebGroups(), []);
+  const [pillarsOpen, setPillarsOpen] = React.useState(false);
+  const [aiOpen, setAiOpen] = React.useState(false);
   const nameEnPollRef = React.useRef<number | null>(null);
   React.useEffect(
     () => () => {
@@ -302,42 +545,34 @@ export function ServiceTypeWebTab({
     [],
   );
 
-  const applyTab = React.useCallback((payload: api.ServiceTypeWebTab) => {
-    setLocalTab(payload);
-    const p = payload.profile;
-    const next: api.ServiceTypeWebProfilePatch = {
-      short_description_fr: p?.short_description_fr ?? "",
-      short_description_en: p?.short_description_en ?? "",
-      long_description_fr: p?.long_description_fr ?? "",
-      long_description_en: p?.long_description_en ?? "",
-      highlights_fr: [...(p?.highlights_fr || [])],
-      highlights_en: [...(p?.highlights_en || [])],
-      coverage_fr: p?.coverage_fr ?? "",
-      coverage_en: p?.coverage_en ?? "",
-      slug_fr: p?.slug_fr ?? "",
-      slug_en: p?.slug_en ?? "",
-      meta_title_fr: p?.meta_title_fr ?? "",
-      meta_title_en: p?.meta_title_en ?? "",
-      meta_description_fr: p?.meta_description_fr ?? "",
-      meta_description_en: p?.meta_description_en ?? "",
-      video_url: p?.video_url ?? "",
-      sort_order: p?.sort_order ?? 100,
-    };
-    setDraft(next);
-    setBaseline(next);
-    setFaqRows(
-      (payload.faq || []).map((r) => ({
-        question_fr: r.question_fr,
-        question_en: r.question_en,
-        answer_fr: r.answer_fr,
-        answer_en: r.answer_en,
-        sort_order: r.sort_order,
-      })),
-    );
-    setPickedRelated(relatedIds(payload.related));
-    setSlugHint({});
-    setError(null);
-  }, []);
+  const applyTab = React.useCallback(
+    (payload: api.ServiceTypeWebTab, reseed: Reseed = RESEED_ALL) => {
+      // The row itself is always current — readiness, published state, media
+      // ids and slugs all come from here, and holding a stale one is what made
+      // an uploaded cover fail to tick its checklist row.
+      setLocalTab(payload);
+      if (reseed.draft) {
+        const next = draftFromProfile(payload.profile);
+        setDraft(next);
+        setBaseline(next);
+      }
+      if (reseed.faq) {
+        setFaqRows(
+          (payload.faq || []).map((r) => ({
+            question_fr: r.question_fr,
+            question_en: r.question_en,
+            answer_fr: r.answer_fr,
+            answer_en: r.answer_en,
+            sort_order: r.sort_order,
+          })),
+        );
+      }
+      if (reseed.related) setPickedRelated(relatedIds(payload.related));
+      setSlugHint({});
+      setError(null);
+    },
+    [],
+  );
 
   // Seed from GET; clear the local override when the service type (or its
   // name_en) changes so a jump-modal save re-applies the fresh readiness.
@@ -346,7 +581,14 @@ export function ServiceTypeWebTab({
   }, [serviceTypeId, serviceTypeNameEn]);
 
   React.useEffect(() => {
-    if (tab.data && !localTab) applyTab(tab.data);
+    if (!tab.data || localTab) return;
+    // `localTab` is cleared by the name_en poll and by void mutations, which
+    // re-opens this path while the user may be mid-sentence. Seed the boxes
+    // only when there is nothing in them to lose.
+    applyTab(
+      tab.data,
+      isDirtyRef.current ? { faq: true, related: true } : RESEED_ALL,
+    );
   }, [tab.data, localTab, applyTab]);
 
   // Prefer the mutation response; fall back to the GET.
@@ -362,6 +604,53 @@ export function ServiceTypeWebTab({
   const nameFr = data?.service_type?.name_fr || "";
   const nameEn = data?.service_type?.name_en || "";
 
+  /** Only the keys that differ from the last server payload. */
+  const dirty = React.useMemo(
+    () => buildDirtyPatch(draft, baseline),
+    [draft, baseline],
+  );
+  const isDirty = Object.keys(dirty).length > 0;
+  // Read by the reload effect, which must not re-seed over unsaved work but
+  // must not re-run every keystroke either.
+  const isDirtyRef = React.useRef(false);
+  isDirtyRef.current = isDirty;
+
+  /**
+   * The local rescue copy.
+   *
+   * A service page is the longest thing anyone writes in this product — the
+   * case that prompted this was eleven thousand characters per language,
+   * composed elsewhere and pasted in. Losing that to a stray click, a reload
+   * or a closed laptop is not a small annoyance, so what is in the boxes is
+   * mirrored to this browser and offered back on return.
+   *
+   * `maxBytes` is raised well above the shared 64 KB default: that ceiling is
+   * sized for ordinary forms, and the comment on it names a document editor as
+   * the exception. This is that exception, and a silently dropped rescue copy
+   * is worse than none — the banner would simply never appear on the one
+   * screen most able to lose an hour of work.
+   */
+  const formDraft = useFormDraft<api.ServiceTypeWebProfilePatch>({
+    key: `service-type-web:${serviceTypeId}`,
+    values: draft,
+    label: "Website copy",
+    maxBytes: 512 * 1024,
+    enabled: !readOnly,
+  });
+
+  // Last line of defence for a full-page navigation or a closed tab. The draft
+  // hook already flushes on `visibilitychange`; this is the prompt, not the
+  // save, and browsers show their own wording for it.
+  React.useEffect(() => {
+    if (!isDirty || readOnly) return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [isDirty, readOnly]);
+
   function setField<K extends keyof api.ServiceTypeWebProfilePatch>(
     key: K,
     value: api.ServiceTypeWebProfilePatch[K],
@@ -369,58 +658,26 @@ export function ServiceTypeWebTab({
     setDraft((d) => ({ ...d, [key]: value }));
   }
 
-  /** Build the omitted-keys-unchanged patch — only dirty keys. */
-  function dirtyPatch(): api.ServiceTypeWebProfilePatch {
-    const out: api.ServiceTypeWebProfilePatch = {};
-    const keys = Object.keys(draft) as (keyof api.ServiceTypeWebProfilePatch)[];
-    for (const k of keys) {
-      let a = draft[k];
-      const b = baseline[k];
-      // Highlights: drop blank rows on the wire so the validator's min(1) passes.
-      if (k === "highlights_fr" || k === "highlights_en") {
-        a = (Array.isArray(a) ? a : [])
-          .map((s) => String(s).trim())
-          .filter(Boolean)
-          .slice(0, L.HIGHLIGHTS_MAX);
-      }
-      if (Array.isArray(a) && Array.isArray(b)) {
-        const bNorm =
-          k === "highlights_fr" || k === "highlights_en"
-            ? (b as string[]).map((s) => String(s).trim()).filter(Boolean)
-            : b;
-        if (JSON.stringify(a) !== JSON.stringify(bNorm)) {
-          (out as Record<string, unknown>)[k] = a;
-        }
-      } else if (a !== b) {
-        // Empty string for text clears as "" (readiness treats "" as missing);
-        // video_url empty → null so the server clears the column.
-        if (k === "video_url" && a === "") {
-          out.video_url = null;
-        } else {
-          (out as Record<string, unknown>)[k] = a;
-        }
-      }
-    }
-    // Empty slug box while draft → explicit null (server `col = EXCLUDED.col`
-    // clears). The regex rejects "", so we never send "". Slug inputs are locked
-    // while published, so this path only runs on a draft clear.
-    if (out.slug_fr === "") out.slug_fr = null;
-    if (out.slug_en === "") out.slug_en = null;
-    return out;
-  }
 
-  async function run(fn: () => Promise<api.ServiceTypeWebTab | void>) {
+  async function run(
+    fn: () => Promise<api.ServiceTypeWebTab | void>,
+    reseed: Reseed = RESEED_ALL,
+    /** Re-seed this response by hand, when `reseed` is too blunt. */
+    after?: (payload: api.ServiceTypeWebTab) => void,
+  ): Promise<boolean> {
     setBusy(true);
     setError(null);
     try {
       const result = await fn();
       if (result) {
         // Re-render from the response body only (guide: do not branch on 201 vs 200).
-        applyTab(result);
+        applyTab(result, reseed);
+        after?.(result);
       } else {
         setLocalTab(null);
         tab.reload();
       }
+      return true;
     } catch (e) {
       // Surface server messages verbatim (LOCKED, BAD_FILE_TYPE, SLUG_TAKEN,
       // CONFLICT, validation). Never re-phrase.
@@ -442,19 +699,44 @@ export function ServiceTypeWebTab({
       } else {
         setError(errMsg(e));
       }
+      return false;
     } finally {
       setBusy(false);
     }
   }
 
   async function saveProfile(extra?: api.ServiceTypeWebProfilePatch) {
-    const patch = { ...dirtyPatch(), ...extra };
-    if (Object.keys(patch).length === 0 && !extra) {
-      setError(null);
+    const patch = { ...dirty, ...extra };
+    if (Object.keys(patch).length === 0) {
+      // Say so out loud. This returned silently, so "Save with nothing to do"
+      // and "Save succeeded" looked identical from the outside — and after the
+      // boxes had been reset by some other write, the silent one was what the
+      // user got while believing their copy was safely stored.
+      toast.info(tr("No changes to save."));
       return;
     }
     // What the user accepted in the box is what gets sent — never rewrite.
-    await run(() => api.upsertServiceTypeWeb(serviceTypeId, patch));
+    //
+    // `sent` is the draft as it stood at the moment of sending. A page this
+    // size takes a visible moment to save, and the response must not roll back
+    // a sentence typed while it was in flight — so we re-seed by hand here
+    // rather than letting `applyTab` overwrite the boxes wholesale.
+    const sent = draft;
+    const ok = await run(
+      () => api.upsertServiceTypeWeb(serviceTypeId, patch),
+      RESEED_NONE,
+      (payload) => {
+        const fromServer = draftFromProfile(payload.profile);
+        setDraft((current) => mergeAfterSave(current, sent, fromServer));
+        setBaseline(fromServer);
+      },
+    );
+    if (ok) {
+      // The local rescue copy has done its job; keeping it would offer to
+      // restore what is now simply the saved state.
+      formDraft.clear();
+      toast.success(tr("Website copy saved."));
+    }
   }
 
   async function createPage() {
@@ -469,26 +751,101 @@ export function ServiceTypeWebTab({
     await run(() => api.upsertServiceTypeWeb(serviceTypeId, seed));
   }
 
-  async function onUpload(role: "COVER" | "ICON" | "GALLERY", file: File | null) {
+  /**
+   * THE PICKED FILE IS THE PREVIEW, and it is why this state exists.
+   *
+   * Every dropzone on this screen used to be handed `file={null}`, hard-coded.
+   * `<FileDrop>` already renders a thumbnail, the filename, the size and an
+   * upload state from the file it is given — all of it was dead code here, so
+   * choosing a cover produced no thumbnail, no filename, and no sign that
+   * anything had happened. What replaced it, once the round trip finished, was
+   * the first eight characters of a document UUID: `91ff95bb…`. Nobody can
+   * confirm they uploaded the right photograph from that, which is exactly the
+   * report this fixes — "I don't know if it uploaded, there is no preview".
+   *
+   * Held per slot rather than as one value because COVER and ICON are distinct
+   * pictures that can each be mid-upload, and a single field would show one
+   * slot's thumbnail under the other's dropzone.
+   *
+   * It is the LOCAL file, never a fetched one: the bytes are already in the
+   * browser, so the preview costs nothing and — unlike reading the stored
+   * document back — needs no permission the person editing a service type may
+   * not have. A cover uploaded in an EARLIER session therefore still has no
+   * thumbnail; see the note on the vault download in the media block below.
+   */
+  /**
+   * One upload engine per media slot.
+   *
+   * Three explicit calls rather than a loop, because hooks must run in a fixed
+   * order — and one shared uploader would mean a gallery upload driving the
+   * cover slot's progress bar.
+   *
+   * `profile: "photo"` for all three: these are the pictures on the public
+   * services page, so the enhancement chain is wanted. They are also the exact
+   * screen this whole feature was reported against — it showed a filename and
+   * then a tick, with nothing in between.
+   */
+  // Set below, once the gallery uploader exists — onAllComplete closes over
+  // the uploader it belongs to, which cannot reference itself at creation.
+  const galleryReset = React.useRef<(() => void) | null>(null);
+
+  function useMediaUpload(role: MediaRole) {
+    return useUpload<api.ServiceTypeWebTab>({
+      profile: "photo",
+      send: async (file, ctx) =>
+        api.uploadServiceTypeWebMedia(
+          serviceTypeId,
+          {
+            role,
+            data_url: await fileToDataUrl(file),
+            original_name: file.name,
+          },
+          ctx.onProgress,
+        ),
+      onAllComplete: () => {
+        tab.reload();
+        // A gallery frame clears its box — the list below is where the image
+        // lives now, and the box has to be free for the next one.
+        if (role === "GALLERY") galleryReset.current?.();
+      },
+    });
+  }
+
+  const coverUpload = useMediaUpload("COVER");
+  const iconUpload = useMediaUpload("ICON");
+  const galleryUpload = useMediaUpload("GALLERY");
+
+  galleryReset.current = galleryUpload.reset;
+
+  const uploaders: Record<MediaRole, ReturnType<typeof useMediaUpload>> = {
+    COVER: coverUpload,
+    ICON: iconUpload,
+    GALLERY: galleryUpload,
+  };
+
+  function onUpload(role: MediaRole, file: File | null) {
     setMediaError(null);
-    if (!file) return;
+    const uploader = uploaders[role];
+    // Clearing the box — FileDrop's own "Remove file" — drops the preview
+    // without touching what is stored. Removing the stored document is the
+    // separate Remove button, which is destructive and says so.
+    if (!file) {
+      uploader.reset();
+      return;
+    }
     const problem = imageProblem(file);
     if (problem) {
       setMediaError(problem);
       return;
     }
-    await run(async () => {
-      const data_url = await readFileAsDataUrl(file);
-      return api.uploadServiceTypeWebMedia(serviceTypeId, {
-        role,
-        data_url,
-        original_name: file.name,
-      });
-    });
+    void uploader.pick([file]);
   }
 
   async function onRemoveMedia(docId: string) {
-    await run(() => api.removeServiceTypeWebMedia(serviceTypeId, docId));
+    await run(
+      () => api.removeServiceTypeWebMedia(serviceTypeId, docId),
+      RESEED_NONE,
+    );
   }
 
   async function saveFaq() {
@@ -516,7 +873,7 @@ export function ServiceTypeWebTab({
     await run(async () => {
       const out = await api.replaceServiceTypeWebFaq(serviceTypeId, cleaned);
       return out.tab;
-    });
+    }, { faq: true });
   }
 
   async function saveRelated() {
@@ -526,7 +883,7 @@ export function ServiceTypeWebTab({
         pickedRelated,
       );
       return out.tab;
-    });
+    }, { related: true });
   }
 
   // Related-service search over the service-type list.
@@ -550,6 +907,27 @@ export function ServiceTypeWebTab({
       })
       .slice(0, 8);
   }, [types.data, relatedQ, pickedRelated, serviceTypeId]);
+
+  /**
+   * Active pillars — plus the one this service is ALREADY under, even if it has
+   * since been hidden.
+   *
+   * Without that second half the select would find no option matching
+   * `group_id` and fall back to rendering its first one, which is the unnamed
+   * group: the box would state, wrongly and silently, that a service under a
+   * hidden pillar belongs to no pillar at all. Nothing is lost on save (the
+   * value is unchanged, so it is never in the patch) but the screen would be
+   * lying about where the card sits, and the fix for a hidden pillar is to
+   * un-hide it — which nobody does if they cannot see it is the one in use.
+   */
+  const pillarOptions = React.useMemo(() => {
+    const all = pillars.data || [];
+    const active = all.filter((g) => g.is_active !== false);
+    const current = draft.group_id
+      ? all.find((g) => g.group_id === draft.group_id)
+      : undefined;
+    return current && current.is_active === false ? [...active, current] : active;
+  }, [pillars.data, draft.group_id]);
 
   if (tab.loading) return <LoadingRow label={tr("Loading website profile…")} />;
   if (tab.error) return <ErrorState message={tab.error} />;
@@ -603,6 +981,7 @@ export function ServiceTypeWebTab({
   const metaDescKey = `meta_description_${lang}` as const;
   const slugKey = `slug_${lang}` as const;
   const highlightsKey = `highlights_${lang}` as const;
+  const claimKey = `claim_${lang}` as const;
 
   const slugSuggestion = suggestSlug(
     lang === "fr" ? nameFr || serviceTypeKey : nameEn || nameFr || serviceTypeKey,
@@ -612,6 +991,44 @@ export function ServiceTypeWebTab({
 
   return (
     <div className="space-y-6" data-testid="web-profile-editor">
+      <ServiceTypeWebAiDialog
+        open={aiOpen}
+        onClose={() => setAiOpen(false)}
+        serviceTypeId={serviceTypeId}
+        hasExistingCopy={Boolean(
+          String(draft.long_description_en ?? "").trim() ||
+            String(draft.long_description_fr ?? "").trim(),
+        )}
+        current={draft}
+        onApply={(patch, faq) => {
+          // Into the DRAFT, never to the server. The author still presses Save,
+          // which is also what makes this undoable — the rescue copy and the
+          // baseline both still hold what was there before.
+          setDraft((d) => ({ ...d, ...patch }));
+          // The FAQ is a separate table behind its own Save, so it lands in the
+          // FAQ editor's rows rather than in the profile draft.
+          if (faq && faq.length) setFaqRows(faq);
+          toast.success(
+            faq && faq.length
+              ? tr("Draft applied — review it, then Save and Save FAQ.")
+              : tr("Draft applied — review it, then Save."),
+          );
+        }}
+      />
+      {formDraft.pending && (
+        <DraftBanner
+          savedAt={formDraft.pending.savedAt}
+          what="website copy"
+          onRestore={() => {
+            const restored = formDraft.restore();
+            // Merged over the current field set rather than replacing it, so a
+            // draft written by an older build — one field short — cannot blank
+            // a box it has never heard of.
+            if (restored) setDraft((current) => ({ ...current, ...restored }));
+          }}
+          onDiscard={formDraft.discard}
+        />
+      )}
       {/* Status + publish strip */}
       <div className="flex flex-wrap items-start justify-between gap-3 rounded-xl border bg-card p-4">
         <div className="space-y-2">
@@ -665,13 +1082,28 @@ export function ServiceTypeWebTab({
               >
                 {tr("Save")}
               </Button>
+              {/* Beside Save rather than inside the Content block: it drafts the
+                  whole page — both languages, the highlights, the meta fields —
+                  not the one box it would otherwise sit under. */}
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={busy}
+                onClick={() => setAiOpen(true)}
+                data-testid="web-ai-open"
+              >
+                {tr("Draft with AI")}
+              </Button>
               {isPublished ? (
                 <Button
                   size="sm"
                   variant="outline"
                   loading={busy}
                   onClick={() =>
-                    void run(() => api.unpublishServiceTypeWeb(serviceTypeId))
+                    void run(
+                      () => api.unpublishServiceTypeWeb(serviceTypeId),
+                      RESEED_NONE,
+                    )
                   }
                   data-testid="web-unpublish"
                 >
@@ -683,7 +1115,10 @@ export function ServiceTypeWebTab({
                   loading={busy}
                   disabled={!readiness.publishable}
                   onClick={() =>
-                    void run(() => api.publishServiceTypeWeb(serviceTypeId))
+                    void run(
+                      () => api.publishServiceTypeWeb(serviceTypeId),
+                      RESEED_NONE,
+                    )
                   }
                   data-testid="web-publish"
                 >
@@ -761,6 +1196,106 @@ export function ServiceTypeWebTab({
           }
         />      </section>
 
+      {/* ── Card ────────────────────────────────────────────────────────── */}
+      {/* What the service looks like on the public services page: which pillar
+          it sits under, the line its card closes on, and the brand token that
+          tints it. All three are copy-level rather than slug/media, so they stay
+          editable while published — the server locks only slugs and media. */}
+      <section className="space-y-4 rounded-xl border bg-card p-4">
+        <h3 className="text-sm font-semibold text-foreground">
+          {tr("Card on the services page")}
+        </h3>
+        <Field
+          label={`${tr("Closing line")} (${lang.toUpperCase()})`}
+          hint={tr("One sentence the card ends on. Not a slogan — say what the service does for them.")}
+        >
+          <Input
+            value={String(draft[claimKey] ?? "")}
+            disabled={readOnly}
+            maxLength={L.CLAIM_MAX}
+            onChange={(e) => setField(claimKey, e.target.value)}
+            data-testid={`web-claim-${lang}`}
+          />
+          <CharCount
+            value={String(draft[claimKey] ?? "")}
+            max={L.CLAIM_MAX}
+          />
+        </Field>
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Field
+            label={tr("Pillar")}
+            hint={tr("The section of the services page this card sits under.")}
+          >
+            <div className="flex gap-2">
+              <Select
+                value={String(draft.group_id ?? "")}
+                disabled={readOnly}
+                aria-label={tr("Pillar")}
+                data-testid="web-pillar"
+                onChange={(e) => setField("group_id", e.target.value || null)}
+              >
+                {/* Empty is a real choice, not a placeholder: it puts the card in
+                    the unnamed group at the foot of the page, which still renders. */}
+                <option value="">{tr("Unnamed group (foot of the page)")}</option>
+                {pillarOptions.map((g) => (
+                  <option key={g.group_id} value={g.group_id}>
+                    {g.name_fr}
+                    {g.name_en ? ` · ${g.name_en}` : ""}
+                    {g.is_active === false ? ` — ${tr("hidden")}` : ""}
+                  </option>
+                ))}
+              </Select>
+              {canWrite && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  type="button"
+                  onClick={() => setPillarsOpen(true)}
+                  data-testid="web-manage-pillars"
+                >
+                  {tr("Manage")}
+                </Button>
+              )}
+            </div>
+            {pillars.error && (
+              <p className="micro text-destructive mt-1">{pillars.error}</p>
+            )}
+            {!pillars.loading && !pillars.error && (pillars.data || []).length === 0 && (
+              <p className="micro text-muted-foreground mt-1">
+                {tr("No pillars yet — every published service collects into one unnamed group.")}
+              </p>
+            )}
+          </Field>
+          <Field
+            label={tr("Accent")}
+            hint={tr("Which of your brand colours tints this card. Shown in your own palette.")}
+          >
+            <AccentPicker
+              value={(draft.accent as api.ServiceTypeWebAccent) || "PRIMARY"}
+              disabled={readOnly}
+              onChange={(next) => setField("accent", next)}
+            />
+          </Field>
+        </div>
+        <p className="micro text-muted-foreground">
+          {tr("The pillar and the accent are the same in both languages — only the closing line is per-language.")}
+        </p>
+      </section>
+
+      <ServiceTypeWebPillars
+        open={pillarsOpen}
+        onClose={() => setPillarsOpen(false)}
+        canWrite={canWrite && !isArchived}
+        onChanged={() => {
+          pillars.reload();
+          // A deleted pillar is SET NULL on every profile under it, so this
+          // service's own group_id may have just changed underneath the draft.
+          // Re-read rather than leaving a stale id selected in the box.
+          setLocalTab(null);
+          tab.reload();
+        }}
+      />
+
       {/* ── Media ───────────────────────────────────────────────────────── */}
       <section className="space-y-4 rounded-xl border bg-card p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -774,18 +1309,26 @@ export function ServiceTypeWebTab({
         <div className="grid gap-4 md:grid-cols-2">
           <div>
             <FileDrop
-              file={null}
+              {...fileDropProps(coverUpload.items[0])}
               disabled={mediaLocked || busy}
               accept={IMAGE_ACCEPT}
               label={`${tr("Cover image")} · ${tr("required to publish")}`}
               hint="PNG, JPEG or WebP · 10 MB maximum"
-              error={mediaError}
-              onPick={(file) => void onUpload("COVER", file)}
+              error={mediaError ?? fileDropProps(coverUpload.items[0]).error}
+              onPick={(file) => onUpload("COVER", file)}
             />
             {profile.cover_vault_id && (
               <div className="mt-2 flex items-center justify-between text-xs">
-                <span className="font-mono text-muted-foreground">
-                  {profile.cover_vault_id.slice(0, 8)}…
+                <span className="text-muted-foreground">
+                  {/* The document id used to be the whole label, in monospace,
+                      truncated to eight characters. It answers no question a
+                      person editing a web page has — least of all "is my
+                      photograph on there?" — so it is now the title attribute
+                      (still there for a support conversation) behind a sentence
+                      that says what the state actually is. */}
+                  <span title={profile.cover_vault_id}>
+                    {tr("Cover image stored")}
+                  </span>
                   {readiness.cover.allowed ? (
                     <Pill tone="ok" className="ml-2">
                       {tr("Ready")}
@@ -811,17 +1354,20 @@ export function ServiceTypeWebTab({
           </div>
           <div>
             <FileDrop
-              file={null}
+              {...fileDropProps(iconUpload.items[0])}
               disabled={mediaLocked || busy}
               accept={IMAGE_ACCEPT}
               label={tr("Icon (optional)")}
               hint="PNG, JPEG or WebP · 10 MB maximum"
-              onPick={(file) => void onUpload("ICON", file)}
+              onPick={(file) => onUpload("ICON", file)}
             />
             {profile.icon_vault_id && (
               <div className="mt-2 flex items-center justify-between text-xs">
-                <span className="font-mono text-muted-foreground">
-                  {profile.icon_vault_id.slice(0, 8)}…
+                <span
+                  className="text-muted-foreground"
+                  title={profile.icon_vault_id}
+                >
+                  {tr("Icon stored")}
                 </span>
                 {!mediaLocked && (
                   <Button
@@ -839,7 +1385,7 @@ export function ServiceTypeWebTab({
         </div>
         <div>
           <FileDrop
-            file={null}
+            {...fileDropProps(galleryUpload.items[0])}
             disabled={
               mediaLocked ||
               busy ||
@@ -848,7 +1394,7 @@ export function ServiceTypeWebTab({
             accept={IMAGE_ACCEPT}
             label={tr("Add gallery image")}
             hint={`${tr("Up to")} ${L.GALLERY_MAX}`}
-            onPick={(file) => void onUpload("GALLERY", file)}
+            onPick={(file) => onUpload("GALLERY", file)}
           />
           {(profile.gallery_vault_ids || []).length > 0 && (
             <ul className="mt-2 space-y-1">
@@ -869,10 +1415,12 @@ export function ServiceTypeWebTab({
                         onClick={() => {
                           const g = [...(profile.gallery_vault_ids || [])];
                           [g[idx - 1], g[idx]] = [g[idx], g[idx - 1]];
-                          void run(() =>
-                            api.upsertServiceTypeWeb(serviceTypeId, {
-                              gallery_vault_ids: g,
-                            }),
+                          void run(
+                            () =>
+                              api.upsertServiceTypeWeb(serviceTypeId, {
+                                gallery_vault_ids: g,
+                              }),
+                            RESEED_NONE,
                           );
                         }}
                       >

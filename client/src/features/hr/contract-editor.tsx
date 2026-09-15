@@ -25,6 +25,7 @@
 import * as React from "react";
 import { tr } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
+import { DateField } from "@/components/ui/date-field";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { Pill } from "@/components/ui/pill";
@@ -171,10 +172,10 @@ export function ContractEditor({
             </Field>
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label={tr("Starts")}>
-                <Input type="date" value={f.effective_on} onChange={(e) => set("effective_on", e.target.value)} />
+                <DateField value={f.effective_on} onChange={(iso) => set("effective_on", iso)} />
               </Field>
               <Field label={tr("Ends")} hint="Leave blank for an indefinite term.">
-                <Input type="date" value={f.end_on} onChange={(e) => set("end_on", e.target.value)} />
+                <DateField value={f.end_on} onChange={(iso) => set("end_on", iso)} />
               </Field>
               <Field label="Gross monthly">
                 <Input

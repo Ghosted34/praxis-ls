@@ -15,6 +15,7 @@ import { dateFmt } from "@/lib/format";
 import { p } from "@/lib/base-path";
 import { useDocumentMeta } from "@/lib/use-document-meta";
 import { PageShell } from "@/components/site/page-shell";
+import { useScrollScrub } from "@/lib/motion";
 import { Section } from "@/components/site/section";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { Chip } from "@/components/ui/pill";
@@ -153,13 +154,66 @@ function Article({
 }) {
   const { t } = useTranslation();
   const [coverOk, setCoverOk] = React.useState(true);
+  /*
+   * The reading rail's scrub, over THIS ARTICLE's own travel rather than the
+   * viewport's default window. `start: 1, end: 0` would complete as the element
+   * left the top of the screen, which for a document taller than the viewport
+   * means the rail fills long before the reader reaches the end. Measuring 0→1
+   * across the article's own height is the only version of "how far through am
+   * I" that answers the question asked.
+   *
+   * Under reduced motion this writes 1 once and attaches no listener — the rail
+   * renders at full height, which reads as the LENGTH of the piece and makes no
+   * claim about position. See the markup below on why that is the right settled
+   * state and a top bar's would not be.
+   */
+  const progressRef = useScrollScrub<HTMLElement>({ start: 0, end: 1 });
   const body = insightBody(article, lang);
   const src = coverUrl(article.cover_id);
   const [broken, setBroken] = React.useState<string[]>([]);
   const gallery = (article.gallery_ids || []).filter((id) => !broken.includes(id));
 
   return (
-    <article className="mx-auto max-w-prose">
+    /*
+     * §8.6's editorial article.
+     *
+     * ── LONG-FORM IS EXEMPT FROM THE 90-WORD RULE, AND THAT IS THE POINT ────
+     *
+     * §1.5 carves this page out in as many words: "a reader who clicked an
+     * article wants an article". So nothing here breaks the prose up with
+     * diagrams or staged reveals — the treatment is the opposite of the ESG
+     * band's, and deliberately so. What an article page owes its reader is a
+     * comfortable measure, a clear type hierarchy and a sense of how much is
+     * left, which is what `.article-*` and the progress rail below provide.
+     *
+     * The headline is NOT staged either. `StagedLines` is on every other §8
+     * route because those are entrances a visitor arrives at; this is a
+     * document somebody has already chosen to read, and animating its title is
+     * the kind of flourish that makes a serious piece read as marketing.
+     */
+    <article ref={progressRef} className="article mx-auto max-w-prose">
+      {/*
+        THE READING-PROGRESS AFFORDANCE.
+
+        A rail down the side of the measure rather than a bar across the top of
+        the viewport. Two reasons, and the second is the binding one:
+
+          · A top bar is chrome. It sits over the header, competes with the
+            sticky nav this app already has, and on a phone it lands exactly
+            where the browser draws its own progress and URL affordances.
+          · It has to be able to say NOTHING. `useScrollScrub` writes 1 under
+            reduced motion — the settled state — and a top bar reading "100%"
+            on arrival is a lie about where the reader is. A rail at full height
+            is simply a rail: it reads as the length of the piece, which is
+            true, and carries no claim about position.
+
+        `aria-hidden` because it duplicates no information a screen reader
+        lacks — position in a document is something assistive technology
+        already reports, and a second, decorative announcement of it is noise.
+      */}
+      <div aria-hidden className="article-rail">
+        <span className="article-rail-fill" />
+      </div>
       <header>
         <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
           {article.published_at && (

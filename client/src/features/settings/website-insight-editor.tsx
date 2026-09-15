@@ -39,12 +39,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Pill } from "@/components/ui/pill";
+import { Segmented } from "@/components/ui/segmented";
+import { PinDialog } from "./website-insight-pin";
+import { fmtDay } from "./website-insight-dates";
 import { ErrorState, LoadingRow } from "@/components/ui/states";
-import { FileDrop } from "@/components/ui/file-drop";
+import { FileDrop, fileDropProps } from "@/components/ui/file-drop";
+import { useUpload } from "@/lib/use-upload";
+import { fileToDataUrl } from "@/lib/image-compress";
 import { Callout } from "@/components/ui/callout";
 import { useResource, errMsg } from "@/lib/use-resource";
 import { slug as suggestSlug, isValidSlug } from "@/lib/slug";
-import { readFileAsDataUrl } from "@/lib/vault-file";
 import { tr } from "@/lib/i18n";
 import * as api from "@/lib/insights-api";
 
@@ -66,6 +70,7 @@ type Draft = {
   meta_title_fr: string; meta_title_en: string;
   meta_description_fr: string; meta_description_en: string;
   tags: string;
+  kind: api.InsightKind;
 };
 
 const EMPTY: Draft = {
@@ -76,6 +81,7 @@ const EMPTY: Draft = {
   meta_title_fr: "", meta_title_en: "",
   meta_description_fr: "", meta_description_en: "",
   tags: "",
+  kind: "article",
 };
 
 const s = (v: string | null | undefined) => v ?? "";
@@ -91,6 +97,10 @@ function toDraft(row: api.InsightArticle): Draft {
     meta_description_fr: s(row.meta_description_fr),
     meta_description_en: s(row.meta_description_en),
     tags: (row.tags || []).join(", "),
+    /* A row written before 13784 can arrive without a `kind` — from a cache, or
+       from a deploy mid-roll. It is an article: that is what everything was
+       before the column existed, and it is the column's own default. */
+    kind: row.kind === "announcement" ? "announcement" : "article",
   };
 }
 
@@ -112,6 +122,8 @@ export function WebsiteInsightEditorPage() {
   const [coverBusy, setCoverBusy] = React.useState(false);
   const [coverError, setCoverError] = React.useState<string | null>(null);
   const [removingCover, setRemovingCover] = React.useState(false);
+  const [pinning, setPinning] = React.useState(false);
+  const [pinError, setPinError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     if (data) {
@@ -158,6 +170,7 @@ export function WebsiteInsightEditorPage() {
         meta_description_en: orNull(draft.meta_description_en),
         // Split, trimmed, blanks dropped — "logistique, douane," is two tags.
         tags: draft.tags.split(",").map((t) => t.trim()).filter(Boolean),
+        kind: draft.kind,
       });
       setDirty(false);
       reload();
@@ -173,54 +186,92 @@ export function WebsiteInsightEditorPage() {
   function imageProblem(file: File): string | null {
     if (!file.size) return tr("That image is empty.");
     if (file.size > IMAGE_MAX_BYTES) return tr("Images must be no larger than 10 MB.");
-    if (!IMAGE_ACCEPT.split(",").includes(file.type.toLowerCase())) {
+    // A browser reports an EMPTY type for a file whose extension the operating
+    // system has no registry entry for, and `.webp` is the one that still hits
+    // that on Windows — so treating "" as "not an image" refused genuine WebP
+    // files with a message telling the person to pick a WebP. The vault sniffs the
+    // magic bytes and is the authority (`document_vault.service.sniffContentType`);
+    // only an outright mismatch is worth refusing here. Same rule as
+    // `vault-file.scanFileProblem`.
+    if (file.type && !IMAGE_ACCEPT.split(",").includes(file.type.toLowerCase())) {
       return tr("Choose a PNG, JPEG or WebP image.");
     }
     return null;
   }
 
-  async function onPickCover(file: File | null) {
-    setCoverError(null);
-    if (!file) return;
-    const problem = imageProblem(file);
-    if (problem) {
-      setCoverError(problem);
-      return;
-    }
-    setCoverBusy(true);
+  /* Immediate, like the cover and unlike the text: a pin is its own endpoint
+     (13784 — it is an act with a stated expiry, not a field), so it has nothing
+     to wait for a Save button for. */
+  async function submitPin(pinnedUntil: string | null) {
+    setBusy(true);
+    setPinError(null);
     try {
-      await api.setInsightCover(articleId, {
-        data_url: await readFileAsDataUrl(file),
-        original_name: file.name,
-      });
+      await api.pinInsight(articleId, pinnedUntil);
+      setPinning(false);
       reload();
     } catch (err) {
-      setCoverError(errMsg(err));
+      setPinError(errMsg(err));
     } finally {
-      setCoverBusy(false);
+      setBusy(false);
     }
   }
 
-  async function onPickGalleryImage(file: File | null) {
-    setCoverError(null);
-    if (!file) return;
-    const problem = imageProblem(file);
-    if (problem) {
-      setCoverError(problem);
-      return;
-    }
-    setCoverBusy(true);
-    try {
-      await api.addInsightGalleryImage(articleId, {
-        data_url: await readFileAsDataUrl(file),
-        original_name: file.name,
-      });
+  /**
+   * Cover and gallery, each on its own engine instance.
+   *
+   * `profile: "photo"` — these are the images on a published article, so the
+   * enhancement chain is wanted, and the compression matters: a writer drops a
+   * 9 MB press photo in here and it becomes a few hundred KB before it leaves
+   * the browser.
+   */
+  const coverUpload = useUpload({
+    profile: "photo",
+    send: async (file, ctx) =>
+      api.setInsightCover(
+        articleId,
+        { data_url: await fileToDataUrl(file), original_name: file.name },
+        ctx.onProgress,
+      ),
+    onAllComplete: () => reload(),
+  });
+
+  const galleryUpload = useUpload({
+    profile: "photo",
+    send: async (file, ctx) =>
+      api.addInsightGalleryImage(
+        articleId,
+        { data_url: await fileToDataUrl(file), original_name: file.name },
+        ctx.onProgress,
+      ),
+    onAllComplete: () => {
       reload();
-    } catch (err) {
-      setCoverError(errMsg(err));
-    } finally {
-      setCoverBusy(false);
-    }
+      // The box clears — the gallery list below is where the image lives now.
+      galleryReset.current?.();
+    },
+  });
+  const galleryReset = React.useRef<(() => void) | null>(null);
+  galleryReset.current = galleryUpload.reset;
+
+  /** An upload in flight. Separate from `coverBusy`, which also covers the
+   *  reorder and remove calls that are not uploads. */
+  const uploadBusy = [coverUpload.items[0], galleryUpload.items[0]].some(
+    (i) => i?.state === "uploading" || i?.state === "compressing",
+  );
+
+  function onPickCover(file: File | null) {
+    setCoverError(null);
+    if (!file) return coverUpload.reset();
+    const problem = imageProblem(file);
+    if (problem) return setCoverError(problem);
+    void coverUpload.pick([file]);
+  }
+
+  function onPickGalleryImage(file: File | null) {
+    setCoverError(null);
+    if (!file) return galleryUpload.reset();
+    const problem = imageProblem(file);
+    if (problem) return setCoverError(problem);
+    void galleryUpload.pick([file]);
   }
 
   /** Reorder and remove are one call: the array is the display order, so both
@@ -299,6 +350,103 @@ export function WebsiteInsightEditorPage() {
         </Callout>
       )}
 
+      {/* ── WHAT THIS PIECE IS ────────────────────────────────────────────
+       *
+       * It lives here, above the headline, because it is the first decision a
+       * writer makes and it changes what the piece is FOR — not a setting they
+       * tune afterwards. `insight.repo`'s WRITABLE list says the same thing in
+       * its own words: kind is writable "because it is a property of the piece
+       * — a writer decides they are writing an announcement".
+       *
+       * ── AND WHY IT HAD TO BE BUILT ────────────────────────────────────────
+       *
+       * The API has accepted `kind` since 13784 and nothing in this app ever
+       * sent it. So every piece written here was an article, the list's
+       * Announcements filter could only ever be empty, and "Pin to home page"
+       * — which renders only for an announcement — could never appear on any
+       * row. The homepage band was reachable by seed script and by nothing a
+       * person could click.
+       *
+       * The pin is deliberately NOT here. It has its own endpoint and its own
+       * dialog on the list, for the reason 13784 gives: putting a piece on the
+       * tenant's front page is a deliberate act with a stated expiry, not a
+       * field somebody brushes past while fixing a typo. */}
+      <SettingsCard
+        title={tr("What this is")}
+        desc="An announcement is an article with a different job: a partnership, a certification, a corridor opening. Publish one and you can pin it to the band under your home page's hero, where it shows its headline until the pin expires."
+      >
+        <Segmented<api.InsightKind>
+          label={tr("Kind")}
+          value={draft.kind}
+          onChange={(k) => set("kind", k)}
+          options={[
+            { value: "article", label: tr("Article") },
+            { value: "announcement", label: tr("Announcement") },
+          ]}
+        />
+      </SettingsCard>
+
+      {/* ── THE HOME PAGE, THE MOMENT IT BECOMES REACHABLE ────────────────
+       *
+       * It appears as soon as the kind is Announcement, right under the control
+       * that made it one, because that is when a writer wants it. Before this,
+       * the only pin lived on the list — so deciding a piece was an announcement
+       * and putting it on the home page were two screens apart, and the second
+       * one was findable only by knowing it was there.
+       *
+       * The pin still needs the piece PUBLISHED, which is the server's rule and
+       * a sound one: the band links to a page, and pinning a draft would put a
+       * link to a 404 under the hero. So the control says so rather than 422-ing.
+       *
+       * The kind read here is `data.kind`, not `draft.kind` — the SAVED value.
+       * A writer who flips the control but has not saved has not made this an
+       * announcement yet, and offering to pin something the server still calls
+       * an article is offering a button that fails. */}
+      {data?.kind === "announcement" && (
+        <SettingsCard
+          title={tr("Home page")}
+          desc="Pinned announcements appear in the band under your hero, newest expiry first. At most five show at once — and the pin lapses on its own, so the band empties itself."
+        >
+          <div className="flex flex-wrap items-center gap-3">
+            {api.isPinned(data) ? (
+              <>
+                <Pill tone="ok">{tr("On the home page")}</Pill>
+                <span className="text-sm text-muted-foreground">
+                  {tr("until") + " " + fmtDay(data.pinned_until)}
+                </span>
+              </>
+            ) : data.pinned_until ? (
+              <>
+                <Pill tone="warn">{tr("Pin expired")}</Pill>
+                <span className="text-sm text-muted-foreground">
+                  {fmtDay(data.pinned_until)}
+                </span>
+              </>
+            ) : (
+              <span className="text-sm text-muted-foreground">
+                {tr("Not on the home page.")}
+              </span>
+            )}
+            <Button
+              className="ms-auto"
+              variant={api.isPinned(data) ? "outline" : "default"}
+              disabled={busy || (!published && !api.isPinned(data))}
+              onClick={() => {
+                setPinError(null);
+                setPinning(true);
+              }}
+            >
+              {api.isPinned(data) ? tr("Edit pin") : tr("Pin to home page")}
+            </Button>
+          </div>
+          {!published && !api.isPinned(data) && (
+            <p className="mt-3 text-sm text-muted-foreground">
+              {tr("Publish it first — the band links to its page.")}
+            </p>
+          )}
+        </SettingsCard>
+      )}
+
       <SettingsCard
         title={tr("Headline and address")}
         desc="French is required; English is optional and the public page falls back to French when it is missing."
@@ -334,10 +482,10 @@ export function WebsiteInsightEditorPage() {
         desc="Shown on the Insights index and across the top of the article. Optional — an article without one reads as text, not as broken."
       >
         <FileDrop
-          file={null}
-          onPick={(f) => void onPickCover(f)}
+          {...fileDropProps(coverUpload.items[0])}
+          onPick={onPickCover}
           accept={IMAGE_ACCEPT}
-          disabled={coverBusy}
+          disabled={coverBusy || uploadBusy}
           label={coverId ? tr("Replace the cover") : tr("Add a cover")}
           hint={tr("PNG, JPEG or WebP, up to 10 MB.")}
           error={coverError || undefined}
@@ -371,7 +519,7 @@ export function WebsiteInsightEditorPage() {
                 className="mt-2"
                 size="sm"
                 variant="outline"
-                disabled={coverBusy}
+                disabled={coverBusy || uploadBusy}
                 onClick={() => setRemovingCover(true)}
               >
                 {tr("Remove cover")}
@@ -386,10 +534,10 @@ export function WebsiteInsightEditorPage() {
         desc="Drawn as a grid below the text, in the order here. They cannot be placed between paragraphs — the article body is plain text on purpose, so images live in one strip underneath."
       >
         <FileDrop
-          file={null}
-          onPick={(f) => void onPickGalleryImage(f)}
+          {...fileDropProps(galleryUpload.items[0])}
+          onPick={onPickGalleryImage}
           accept={IMAGE_ACCEPT}
-          disabled={coverBusy || gallery.length >= GALLERY_MAX}
+          disabled={coverBusy || uploadBusy || gallery.length >= GALLERY_MAX}
           label={tr("Add an image")}
           hint={
             gallery.length >= GALLERY_MAX
@@ -419,7 +567,7 @@ export function WebsiteInsightEditorPage() {
                   {i + 1}. {id.slice(0, 8)}…
                 </span>
                 <div className="ms-auto flex items-center gap-1">
-                  <Button size="sm" variant="ghost" disabled={coverBusy || i === 0}
+                  <Button size="sm" variant="ghost" disabled={coverBusy || uploadBusy || i === 0}
                     onClick={() => {
                       const next = [...gallery];
                       [next[i - 1], next[i]] = [next[i], next[i - 1]];
@@ -429,7 +577,7 @@ export function WebsiteInsightEditorPage() {
                     {tr("Up")}
                   </Button>
                   <Button size="sm" variant="ghost"
-                    disabled={coverBusy || i === gallery.length - 1}
+                    disabled={coverBusy || uploadBusy || i === gallery.length - 1}
                     onClick={() => {
                       const next = [...gallery];
                       [next[i + 1], next[i]] = [next[i], next[i + 1]];
@@ -442,7 +590,7 @@ export function WebsiteInsightEditorPage() {
                       Removing one of twelve is cheap to undo — upload it again —
                       and a dialog on every thumbnail turns arranging a gallery
                       into twelve dialogs. The file is archived, not deleted. */}
-                  <Button size="sm" variant="ghost" disabled={coverBusy}
+                  <Button size="sm" variant="ghost" disabled={coverBusy || uploadBusy}
                     onClick={() => void saveGallery(gallery.filter((g) => g !== id))}
                   >
                     {tr("Remove")}
@@ -510,6 +658,19 @@ export function WebsiteInsightEditorPage() {
       </SettingsCard>
 
       {saveError && <ErrorState message={saveError} />}
+
+      {pinning && data && (
+        <PinDialog
+          row={data}
+          busy={busy}
+          error={pinError}
+          onClose={() => {
+            setPinning(false);
+            setPinError(null);
+          }}
+          onSubmit={(until) => void submitPin(until)}
+        />
+      )}
 
       <ConfirmDialog
         open={removingCover}

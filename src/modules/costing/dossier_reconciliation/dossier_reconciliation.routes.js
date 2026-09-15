@@ -1,7 +1,18 @@
 /**
- * OCR — Operational Cost Reconciliation (G19), MOD-47. The controlled
- * document: draft from the file's costings, submit for review, validate
- * (writes the agreed amount back onto the dossier) or reject with a reason.
+ * Budget Reconciliation (MOD-76) — what an operations file actually cost, per
+ * budget line, evidenced, and the cash returned to the vault.
+ *
+ * ── THE GRANTS, AND WHY THEY ARE NOT ALL `approve` ──────────────────────────
+ *
+ * Operations prepares and Finance settles (owner decision Q6, Q18), so the two
+ * acts hold different grants: `edit` records what was spent, `validate` is the
+ * finance visa that settles it. 12771 created `can_validate` precisely so that
+ * "may approve a spend" and "may sign off the accounting for that spend" could
+ * be held apart — the one pair maker-checker most wants separated.
+ *
+ * MOD-76 rather than MOD-47 for the same reason (Q21): MOD-47 is cost tracking,
+ * and sharing the key meant a grant to record costs was also a grant to settle
+ * a file's reconciliation.
  */
 "use strict";
 const express = require("express");
@@ -10,25 +21,36 @@ const { requirePermission } = require("../../../middleware/rbac");
 const c = require("./dossier_reconciliation.controller");
 const v = require("./dossier_reconciliation.validator");
 
-const M = "MOD-47";
+const M = "MOD-76";
 const router = express.Router();
 router.use(authMiddleware);
 
-// Read routes.
-router.get("/", requirePermission(M, "view"), c.latest);
-router.get("/:id", requirePermission(M, "view"), c.get);
+/**
+ * What the CALLER personally owes. Deliberately ungated — the same rule
+ * hr_query's `/mine` applies: a person may always see their own obligations,
+ * and requiring a module grant to be told "you owe three receipts" would hide
+ * the debt from exactly the person who can clear it.
+ *
+ * Declared before `/:dossierId` so the literal wins over the uuid pattern.
+ */
+router.get("/owed", c.owedMine);
+router.get("/owed/all", requirePermission(M, "view"), c.owedAll);
 
-// Lifecycle — create/submit are edit, validate/reject are approve (maker-
-// checker: the person who validates must hold a grant the submitter need not).
-router.post("/", requirePermission(M, "edit"), v.create, c.create);
-router.post("/:id/submit", requirePermission(M, "edit"), v.idParam, c.submit);
-router.post("/:id/validate", requirePermission(M, "approve"), v.idParam, c.validate);
-router.post("/:id/reject", requirePermission(M, "approve"), v.reject, c.reject);
+// The sheet. Keyed on the DOSSIER, not on a reconciliation id: there is exactly
+// one per file (Q6) and a caller that has the file should not have to look up
+// an id that is guaranteed to be derivable from it.
+router.get("/:dossierId", requirePermission(M, "view"), v.dossierParam, c.sheet);
 
-// AI match proposals (§2.1) — deciding a proposed mapping is a human edit on
-// the DRAFT. The assistant may create PROPOSED rows at draft time but has no
-// path to these routes: confirming is the act of taking responsibility.
-router.post("/:id/suggestions/:sid/confirm", requirePermission(M, "edit"), v.suggestionParam, c.confirmSuggestion);
-router.post("/:id/suggestions/:sid/reject", requirePermission(M, "edit"), v.suggestionParam, c.rejectSuggestion);
+// Recording what was spent — Operations' work.
+router.patch("/:dossierId/lines/:costingLineId", requirePermission(M, "edit"), v.lineParam, v.patchLine, c.patchLine);
+router.post("/:dossierId/reasons", requirePermission(M, "edit"), v.dossierParam, v.applyReason, c.applyReason);
+router.post("/:dossierId/lines/:costingLineId/documents", requirePermission(M, "edit"), v.lineParam, v.attachDocument, c.attachDocument);
+router.delete("/:dossierId/lines/:costingLineId/documents/:docId", requirePermission(M, "edit"), v.docParam, c.detachDocument);
+router.post("/:dossierId/submit", requirePermission(M, "edit"), v.dossierParam, v.submit, c.submit);
+
+// Finance's visa. `validate`, not `approve`: settling is not an approval, and
+// the MD is told rather than asked (Q6).
+router.post("/:dossierId/reject", requirePermission(M, "validate"), v.dossierParam, v.reject, c.reject);
+router.post("/:dossierId/settle", requirePermission(M, "validate"), v.dossierParam, v.settle, c.settle);
 
 module.exports = { basePath: "/costing/reconciliations", feature: null, router };

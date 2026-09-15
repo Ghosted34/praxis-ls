@@ -6,6 +6,7 @@
   "description": "Praxis LS public web — the stranger-facing React 18 + Vite + TS app: the tenant marketing site (/public/*) and the external portal (/portal/*). Standalone app, sibling to client/ and platform-console/.",
   "//why": "A third app rather than more routes in client/, because the audience is different and so is the payload: a visitor from a search engine must not download the ERP's shell, its Radix kit, its editor or its fifteen fonts. Same toolchain as client/ and platform-console/ on purpose — one way of building a Vite app in this repo, three surfaces.",
   "//engines": "Mirrors the root package.json and .nvmrc, for the reason stated in client/package.json: an undeclared engine range lets a dev tree on a newer Node accept a dependency CI cannot run.",
+  "//fontkit": "A devDependency used ONLY by scripts/font-metrics.cjs and never imported by the app — `check:fonts-fallback` opens the real .woff2 files to derive the metric-matched overrides. Declared HERE rather than leant on from the repo root, because the root is not there: the public-web CI job runs `npm ci --prefix public-web` and the root install step is gated on matrix.app == 'client'. fontkit reaches the root only transitively via pdfkit, which is not a thing to depend on in either place.",
   "packageManager": "npm@10.8.2",
   "engines": {
     "node": ">=20 <21"
@@ -20,9 +21,18 @@
     "test:watch": "vitest",
     "check:bundle": "node scripts/check-bundle.mjs",
     "check:i18n": "node scripts/check-i18n.mjs",
-    "format": "prettier --write ."
+    "check:motion": "node scripts/check-motion.mjs",
+    "check:assets": "node scripts/check-assets.mjs",
+    "//check:palette": "The ONE copy lives in client/scripts. A second copy of a gate is a gate that drifts — the same reason client/eslint-local-rules is re-exported rather than duplicated.",
+    "check:palette": "node ../client/scripts/check-palette.mjs --app public-web",
+    "//check:contrast": "Same single-copy rule as check:palette. Ported here in PR 4 (guide O-9/F-14) — it is the gate that computes F-15, and it found three more live AA failures the moment it was pointed at this app.",
+    "check:contrast": "node ../client/scripts/check-contrast.mjs --app public-web",
+    "format": "prettier --write .",
+    "//check:fonts-fallback": "Metric-matched fallbacks are derived from the real .woff2 files. A @fontsource bump moves them, and a stale file is a reflow nobody sees in review.",
+    "check:fonts-fallback": "node scripts/gen-font-fallbacks.mjs --check"
   },
   "dependencies": {
+    "@fontsource-variable/archivo": "^5.3.0",
     "@fontsource-variable/ibm-plex-sans": "^5.3.0",
     "@fontsource-variable/inter": "^5.3.0",
     "@fontsource-variable/jetbrains-mono": "^5.3.0",
@@ -36,6 +46,7 @@
     "tailwind-merge": "^2.5.4"
   },
   "devDependencies": {
+    "fontkit": "^1.9.0",
     "@eslint/js": "^9.12.0",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.3.2",

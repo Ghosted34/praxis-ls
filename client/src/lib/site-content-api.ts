@@ -155,6 +155,69 @@ export type PagePatch = Partial<
   >
 >;
 
+/* ── the copy catalogue ────────────────────────────────────────────────────
+ *
+ * Every `site.*` string the public site ships, with the English and French this
+ * build puts on the page for each. FETCHED, never bundled: 465 strings in two
+ * languages is ~60 kB of defaults that one screen in the whole ERP has any use
+ * for, and everybody downloads the shell.
+ *
+ * `default_en` / `default_fr` are what a tenant sees as the placeholder in the
+ * field — the sentence they are replacing, in front of them while they replace
+ * it, rather than a blank box and a guess about what it currently says.
+ */
+export type CopyCatalogueEntry = {
+  /** The dictionary path, e.g. `site.portfolioPage.titleMain`. The identity of
+   *  the override — never shown as a label, but shown on request, because it is
+   *  what support asks for. */
+  key: string;
+  section: string;
+  label: string;
+  default_en: string;
+  default_fr: string;
+};
+
+export type CopyCatalogueSection = {
+  key: string;
+  label: string;
+  /** Where this section is read, computed from the import graph by
+   *  `scripts/gen/gen-site-copy-catalogue.js`. A tenant looking for a heading
+   *  navigates by page, not by dictionary section. */
+  pages: string[];
+};
+
+export type CopyCatalogue = {
+  sections: CopyCatalogueSection[];
+  entries: CopyCatalogueEntry[];
+};
+
+export type CopyOverrideItem = { key: string; value: Bilingual };
+
+/** The block type that carries them. Not in `EDITABLE_BLOCK_TYPES`: the page
+ *  editor must not offer "Add a copy override block" beside Hero and Figures —
+ *  it is not a band on a page, it is the whole site's wording, and it has a
+ *  screen of its own. */
+export const COPY_BLOCK_TYPE = "copy_overrides";
+
+/**
+ * The page the copy block lives on.
+ *
+ * ── WHY A PAGE OF ITS OWN AND NOT `home` ──────────────────────────────────
+ *
+ * The overrides are global — the footer's legal line, the 404 heading and the
+ * careers intro have no page between them — so hanging them off `home` would
+ * mean a tenant's entire site wording going dark the day they unpublish their
+ * homepage to redo it. A row of its own keeps one publish switch for one thing.
+ *
+ * It is deliberately absent from the Pages list (`website-pages.tsx` filters
+ * it) because it is not a page a visitor can reach: it has no URL, no nav
+ * position and no blocks but this one. The Copy tab is its editor.
+ */
+export const COPY_PAGE_KEY = "site-copy";
+
+export const fetchCopyCatalogue = () =>
+  tenant<CopyCatalogue>("/site/copy/catalogue");
+
 export const fetchSiteMeta = () => tenant<SiteMeta>("/site/meta");
 
 export const listSitePages = () => tenant<SitePage[]>("/site/pages");
@@ -184,7 +247,14 @@ export const deleteSitePage = (pageId: string) =>
 
 export const createSiteBlock = (
   pageId: string,
-  body: { type: EditableBlockType; content?: unknown; sort_order?: number },
+  body: {
+    // `COPY_BLOCK_TYPE` as well as the band types: the copy screen creates its
+    // block through the same endpoint, and widening the parameter here is
+    // honest about that rather than casting at the one call site.
+    type: EditableBlockType | typeof COPY_BLOCK_TYPE;
+    content?: unknown;
+    sort_order?: number;
+  },
 ) =>
   tenant<SiteBlock>(`/site/pages/${encodeURIComponent(pageId)}/blocks`, {
     method: "POST",

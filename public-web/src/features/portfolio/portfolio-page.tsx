@@ -23,6 +23,8 @@ import { p } from "@/lib/base-path";
 import { ButtonLink } from "@/components/ui/button";
 import { BoltIcon, DocumentIcon } from "@/components/ui/icons";
 import { SectionHead } from "@/components/site/section-head";
+import { BgMap } from "@/components/ui/bg-map";
+import { StagedLines } from "@/components/ui/type";
 import { BadgePill } from "@/components/ui/badge-pill";
 import { Reveal } from "@/components/ui/reveal";
 
@@ -89,16 +91,35 @@ export function PortfolioIndexPage() {
   });
 
   return (
-    <PageShell label={t("site.portfolioPage.title")}>
-      <Section
-        eyebrow={t("site.proof.eyebrow")}
-        eyebrowIcon={DocumentIcon}
-        title={t("site.portfolioPage.titleMain")}
-        accent={t("site.portfolioPage.titleAccent")}
-        lead={t("site.portfolioPage.sub")}
-        // Index page with no hero band — this is the page h1.
-        titleAs="h1"
-      >
+    <PageShell label={t("site.portfolioPage.title")} footer>
+      {/* §8.7's first acceptance criterion is EVERY route in `router.tsx`, not
+          only the six §8 names. This one shipped as a bare `<h1>` on white and
+          is the page a buyer reaches when they want evidence rather than a
+          brochure — the same plate as the other index routes, so the site has
+          one entrance vocabulary. */}
+      <section className="band-hero relative overflow-hidden">
+        <BgMap />
+        <PageContainer className="relative">
+          <BadgePill onDark>{t("site.proof.eyebrow")}</BadgePill>
+          <SectionHead
+            className="mt-4"
+            as="h1"
+            titleClass="hero-title"
+            onDark
+            /* F-17: the LCP element on this route. */
+            title={
+              <StagedLines
+                paintImmediately
+                text={t("site.portfolioPage.titleMain")}
+              />
+            }
+            accent={t("site.portfolioPage.titleAccent")}
+            lead={t("site.portfolioPage.sub")}
+          />
+        </PageContainer>
+      </section>
+
+      <Section>
         {error ? (
           <ErrorState message={error} />
         ) : rows === null ? (

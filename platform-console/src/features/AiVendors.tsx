@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { fmtDateDmy } from "@/lib/format";
 import { platform, type AiVendor } from "@/lib/api";
 import { useAsync } from "@/lib/useAsync";
 import { useToast } from "@/components/Toast";
@@ -102,7 +103,7 @@ function VendorCard({ v, onSaved }: { v: AiVendor; onSaved: () => void }) {
       <div className="between" style={{ marginTop: 14 }}>
         <span className="row" style={{ gap: 8 }}>
           {v.has_key ? <Pill tone="ok">Key set</Pill> : <Pill tone="warn">No key</Pill>}
-          {v.last_rotated_at && <span className="muted" style={{ fontSize: 12 }}>rotated {new Date(v.last_rotated_at).toLocaleDateString()}</span>}
+          {v.last_rotated_at && <span className="muted" style={{ fontSize: 12 }}>rotated {fmtDateDmy(v.last_rotated_at)}</span>}
         </span>
         <Button variant="primary" onClick={save} loading={busy}>Save</Button>
       </div>

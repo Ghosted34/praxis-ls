@@ -14,6 +14,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
+import { FilePicker } from "@/components/ui/image-upload";
+import { UploadProgress } from "@/components/ui/upload-progress";
+import { useUpload } from "@/lib/use-upload";
+import { fileToDataUrl, type UploadProfile } from "@/lib/image-compress";
 
 /** "pending backend" badge. */
 export function Soon({ className }: { className?: string }) {
@@ -255,6 +259,7 @@ export function ImageField({
   hint,
   shape = "logo",
   upload,
+  profile = "brand",
 }: {
   label: string;
   value: string;
@@ -263,10 +268,25 @@ export function ImageField({
   maxBytes?: number;
   hint?: string;
   shape?: "logo" | "square" | "wide";
-  /** Custom uploader returning the stored URL; defaults to the branding logo upload. */
-  upload?: (dataUrl: string) => Promise<string>;
+  /**
+   * Custom uploader returning the stored URL; defaults to the branding logo
+   * upload. The second argument reports real upload progress — XHR gives it for
+   * a JSON body too, so an uploader that ignores it still works but drives a
+   * bar that only jumps.
+   */
+  upload?: (
+    dataUrl: string,
+    onProgress: (percent: number) => void,
+  ) => Promise<string>;
+  /**
+   * What this picture IS, which decides whether it is tonally corrected.
+   * Defaults to "brand" — the conservative choice for this control, because
+   * most of its call sites are a tenant's logo or app icon and auto-levelling
+   * one hands them back a slightly different colour on every screen. Pass
+   * "photo" for an actual photograph, like the site hero.
+   */
+  profile?: UploadProfile;
 }) {
-  const [uploading, setUploading] = React.useState(false);
   const [err, setErr] = React.useState<string | null>(null);
 
   const box =
@@ -276,60 +296,77 @@ export function ImageField({
         ? "h-12 w-20 object-cover"
         : "h-8 w-auto max-w-[80px]";
 
-  async function readAsDataUrl(file: File): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const r = new FileReader();
-      r.onload = () => resolve(String(r.result));
-      r.onerror = () => reject(new Error("Could not read the file"));
-      r.readAsDataURL(file);
-    });
-  }
+  /**
+   * Through the upload engine: compression before the bytes leave the device,
+   * a preview of the NEW file (not just the already-saved `value`), and a real
+   * percentage. Uploads on pick — there is no Save button on this control, the
+   * stored URL is the state.
+   */
+  const uploader = useUpload<string>({
+    profile,
+    maxBytes,
+    send: async (file, ctx) => {
+      const dataUrl = await fileToDataUrl(file);
+      return upload
+        ? await upload(dataUrl, ctx.onProgress)
+        : (await uploadImage(dataUrl, ctx.onProgress)).logoUrl;
+    },
+    onAllComplete: ([url]) => {
+      if (url) onChange(url);
+    },
+  });
 
-  async function onFile(file?: File | null) {
+  const item = uploader.items[0] ?? null;
+  const uploading =
+    item?.state === "uploading" || item?.state === "compressing";
+
+  React.useEffect(() => {
+    if (item?.state !== "error") return;
+    const cause = item.errorCause;
+    setErr(
+      cause instanceof ApiError && cause.status === 403
+        ? "You need Settings edit permission to upload."
+        : cause instanceof ApiError
+          ? cause.message
+          : item.error || "Upload failed. Try a smaller image, or paste a URL.",
+    );
+  }, [item?.state, item?.error, item?.errorCause]);
+
+  function onFile(file?: File | null) {
     if (!file) return;
     setErr(null);
-    if (!file.type.startsWith("image/"))
+    if (!file.type.startsWith("image/")) {
       return setErr("That's not an image file.");
-    if (file.size > maxBytes)
-      return setErr(
-        `Image must be ${Math.round(maxBytes / 1024)} KB or smaller.`,
-      );
-    setUploading(true);
-    try {
-      const dataUrl = await readAsDataUrl(file);
-      const url = upload
-        ? await upload(dataUrl)
-        : (await uploadImage(dataUrl)).logoUrl;
-      onChange(url);
-    } catch (e) {
-      setErr(
-        e instanceof ApiError && e.status === 403
-          ? "You need Settings edit permission to upload."
-          : e instanceof ApiError
-            ? e.message
-            : "Upload failed. Try a smaller image or paste a URL.",
-      );
-    } finally {
-      setUploading(false);
     }
+    void uploader.pick([file]);
   }
 
   return (
     <Field label={label} soon={soon}>
-      {/* Drag-and-drop layered over a real <label>+<input type="file">, which
-          is what keyboard and AT users activate. The drop target adds a pointer
-          shortcut; it does not replace the control. */}
-      {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
-      <label
+      {/* The drop target adds a POINTER-ONLY shortcut on top of FilePicker's
+          own control, which is what keyboard and AT users activate — so the
+          drag handlers below are an enhancement, not the control. That is the
+          same justification the <label> here carried before; only the rule name
+          changes, because this is a <div> now. */}
+      {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions */}
+      <div
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => {
           e.preventDefault();
           onFile(e.dataTransfer.files?.[0]);
         }}
-        className="flex cursor-pointer items-center gap-3 rounded-lg border border-dashed p-3 text-sm text-muted-foreground hover:bg-accent/40"
+        className="flex items-center gap-3 rounded-lg border border-dashed p-3 text-sm text-muted-foreground"
       >
-        {value ? (
-          <img src={value} alt="" className={cn("rounded", box)} />
+        {/* The preview shows the file being uploaded the moment it is picked,
+            and falls back to the already-stored image. Before this, a failed or
+            slow upload left the OLD logo on screen with no sign anything had
+            happened. */}
+        {item?.previewUrl || value ? (
+          <img
+            src={item?.previewUrl || value}
+            alt=""
+            className={cn("rounded", box)}
+          />
         ) : (
           <span
             className={cn(
@@ -340,20 +377,30 @@ export function ImageField({
             <span className="text-xs">IMG</span>
           </span>
         )}
-        <span>
-          {uploading
-            ? "Uploading…"
-            : value
-              ? "Replace"
-              : "Drop an image or click to upload"}
-        </span>
-        <input
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={(e) => onFile(e.target.files?.[0])}
-        />
-      </label>
+
+        <div className="min-w-0 flex-1 space-y-1">
+          <FilePicker
+            variant="inline"
+            accept="image/*"
+            disabled={uploading}
+            trigger={
+              uploading
+                ? "Uploading…"
+                : value
+                  ? "Replace"
+                  : "Drop an image or click to upload"
+            }
+            onPick={(files) => onFile(files?.[0])}
+          />
+          {item && item.state !== "idle" && (
+            <UploadProgress
+              state={item.state}
+              percent={item.percent}
+              error={item.error}
+            />
+          )}
+        </div>
+      </div>
       <div className="flex items-center gap-2">
         <Input
           value={value.startsWith("data:") ? "" : value}

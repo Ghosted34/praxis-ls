@@ -13,6 +13,7 @@
  * (the effective-dated rate history and its trend), and a bulk Excel import.
  */
 import { pageShell } from "@/lib/layout";
+import { IndexRow } from "@/components/ui/index-row";
 import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { ScreenAi } from "@/components/screen-ai";
@@ -122,6 +123,8 @@ export function FinancialDictionaryPage() {
           defaultSize={300}
           min={240}
           max={520}
+          activeKind={tr("Dictionary item")}
+          active={!!selId}
         >
           <div className="max-h-[70vh] space-y-1 overflow-auto rounded-lg border p-1">
             {list.loading ? (
@@ -130,10 +133,11 @@ export function FinancialDictionaryPage() {
               <div className="px-3 py-4 micro">No items.</div>
             ) : (
               rows.map((r) => (
-                <button
+                <IndexRow
                   key={r.dictionary_item_id}
+                  selected={r.dictionary_item_id === selId}
                   onClick={() => setSelId(r.dictionary_item_id)}
-                  className={`flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors ${r.dictionary_item_id === selId ? "bg-primary/10 text-foreground" : "hover:bg-muted"}`}
+                  className="items-center justify-between gap-2"
                 >
                   <span className="min-w-0">
                     <span className="num text-xs font-semibold text-foreground">
@@ -146,7 +150,7 @@ export function FinancialDictionaryPage() {
                   <Pill tone={DIR_TONE[r.direction] || "mute"}>
                     {dirLabel(r.direction)}
                   </Pill>
-                </button>
+                </IndexRow>
               ))
             )}
           </div>

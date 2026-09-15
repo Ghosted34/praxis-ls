@@ -7,7 +7,7 @@
 import { pageShell } from "@/lib/layout";
 import { tr } from "@/lib/i18n";
 import * as React from "react";
-import { tenant } from "@/lib/api-client";
+import { tenant, uploadFile } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
@@ -21,21 +21,14 @@ import { cell, dateFmt } from "@/lib/format";
 import { StatusPill } from "@/components/ui/pill";
 import { Chips } from "@/components/ui/chips";
 import { downloadVaultDoc } from "@/lib/vault-file";
+import { useUpload } from "@/lib/use-upload";
+import { FilePicker, UploadList } from "@/components/ui/image-upload";
 
 const FILE_CONTEXTS = [
   { value: "", label: "— none —" },
   { value: "OPS", label: "Operations" },
   { value: "OVH", label: "Overhead" },
 ];
-
-function readAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(new Error("Could not read the file."));
-    reader.readAsDataURL(file);
-  });
-}
 
 function UploadDocumentForm({
   open,
@@ -46,39 +39,65 @@ function UploadDocumentForm({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const [file, setFile] = React.useState<File | null>(null);
   const [docType, setDocType] = React.useState("");
   const [entityRef, setEntityRef] = React.useState("");
   const [fileContext, setFileContext] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
+  /**
+   * Deferred (`autoStart: false`): the type, reference and context below are
+   * typed AFTER the file is chosen and travel in the same request, so the
+   * upload waits for Save. The preview and the compression do not wait — both
+   * happen the moment the file is picked.
+   *
+   * `profile: "document"` is the conservative one: a vault scan is downscaled
+   * and re-encoded but never tonally corrected, because it has to keep matching
+   * the paper it came from. See lib/image-compress.ts.
+   */
+  const upload = useUpload<{ doc_id: string }>({
+    profile: "document",
+    autoStart: false,
+    maxBytes: 25 * 1024 * 1024,
+    send: (picked, ctx) =>
+      uploadFile("/tenant/documents", picked, {
+        fields: {
+          doc_type: docType.trim() || undefined,
+          entity_ref: entityRef.trim() || undefined,
+          file_context: fileContext || undefined,
+          original_name: picked.name,
+        },
+        onProgress: ctx.onProgress,
+        signal: ctx.signal,
+      }),
+  });
+
+  const item = upload.items[0] ?? null;
+  const resetForm = upload.reset;
+
   React.useEffect(() => {
     if (!open) return;
-    setFile(null);
+    resetForm();
     setDocType("");
     setEntityRef("");
     setFileContext("");
     setError(null);
-  }, [open]);
+  }, [open, resetForm]);
 
-  const canSubmit = !!file && !busy;
+  const canSubmit = !!item && item.state !== "error" && !busy;
 
   async function submit() {
-    if (!file) return;
+    if (!item) return;
     setBusy(true);
     setError(null);
     try {
-      const data_url = await readAsDataUrl(file);
-      await tenant("/documents", {
-        method: "POST",
-        body: {
-          data_url,
-          doc_type: docType.trim() || undefined,
-          entity_ref: entityRef.trim() || undefined,
-          file_context: fileContext || undefined,
-        },
-      });
+      const { ok } = await upload.start();
+      if (!ok) {
+        // The per-item card already names the failure; this keeps the form open
+        // rather than closing over a document that never landed.
+        setError("That upload did not go through. Try again.");
+        return;
+      }
       onSaved();
       onClose();
     } catch (e) {
@@ -98,13 +117,17 @@ function UploadDocumentForm({
     >
       <div className="space-y-4">
         <Field label={tr("File")} required>
-          <input
-            type="file"
+          <FilePicker
             accept=".pdf,.png,.jpg,.jpeg,.webp,.txt,.csv,.docx,.xlsx"
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-            className="block w-full text-sm text-muted-foreground file:mr-3 file:rounded-lg file:border-0 file:bg-primary file:px-3 file:py-2 file:text-sm file:font-medium file:text-primary-foreground hover:file:opacity-90"
+            hint="PDF, image, text or Office file · up to 25 MB"
+            onPick={(files) => void upload.pick(files)}
           />
         </Field>
+        <UploadList
+          items={upload.items}
+          onRemove={upload.remove}
+          onRetry={upload.retry}
+        />
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label={tr("Document type")} hint="e.g. invoice, bill_of_lading">
             <Input

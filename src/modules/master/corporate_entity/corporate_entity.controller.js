@@ -66,8 +66,16 @@ module.exports = {
       })),
     })),
 
-  renewals: asyncHandler(async (req, res) =>
-    res.json({ data: await req.tenantDb((c) => service.renewals(c, req.params.id, req.query.as_of || null)) })),
+  /*
+   * MOD-01 `view`, like the dossier — and redacted the same way. A renewal
+   * label falls back to the document's own reference, so the governance grant
+   * has to be resolved here too or this route hands out what /360 withholds.
+   */
+  renewals: asyncHandler(async (req, res) => {
+    const governance = await dossierService.canSeeGovernance(req);
+    const data = await req.tenantDb((c) => service.renewals(c, req.params.id, req.query.as_of || null, { governance }));
+    res.json({ data });
+  }),
 
   capTable: asyncHandler(async (req, res) => {
     const data = await req.tenantDb((c) => service.capTable(c, req.params.id, req.query.as_of || null));

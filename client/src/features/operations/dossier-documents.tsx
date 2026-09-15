@@ -24,7 +24,8 @@ import { tr } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Field, Select } from "@/components/ui/modal";
 import { Input } from "@/components/ui/input";
-import { FileDrop } from "@/components/ui/file-drop";
+import { FileDrop, fileDropProps } from "@/components/ui/file-drop";
+import { useUpload } from "@/lib/use-upload";
 import { Pill } from "@/components/ui/pill";
 import { ErrorState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
@@ -32,7 +33,7 @@ import { useResource, errMsg } from "@/lib/use-resource";
 import {
   listDictRefs,
   createDictRef,
-  uploadVaultDocument,
+  uploadVaultFile,
   type DictRef,
 } from "@/lib/masterdata-api";
 
@@ -48,14 +49,6 @@ const ACCEPTED_TYPES = [
 /** Attached in this session — the vault is the record, this is the receipt. */
 export type AttachedDoc = { doc_id: string; name: string; type: string };
 
-const readAsDataUrl = (file: File) =>
-  new Promise<string>((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = () => resolve(String(r.result));
-    r.onerror = () => reject(new Error("Could not read that file"));
-    r.readAsDataURL(file);
-  });
-
 export function DossierDocuments({
   dossierId,
   clientId,
@@ -70,7 +63,32 @@ export function DossierDocuments({
   const toast = useToast();
   const types = useResource<DictRef[]>(() => listDictRefs("DOCUMENT_TYPE"), []);
   const [typeId, setTypeId] = React.useState("");
-  const [file, setFile] = React.useState<File | null>(null);
+  /**
+   * Deferred: the document type is chosen after the file, and both travel in
+   * the same vault call, so the bytes wait for Attach. The preview and the
+   * compression do not wait.
+   *
+   * `profile: "document"` — a dossier attachment is evidence on an operations
+   * file, so it is downscaled and re-encoded but never tonally corrected.
+   */
+  const docUpload = useUpload<{ doc_id: string }>({
+    profile: "document",
+    autoStart: false,
+    send: (picked, ctx) =>
+      uploadVaultFile(
+        picked,
+        {
+          dossier_id: dossierId,
+          doc_type_ref_id: typeId || undefined,
+          client_id: clientId || undefined,
+          original_name: picked.name,
+          entity_ref: `dossier:${dossierId}`,
+        },
+        ctx,
+      ),
+  });
+  const item = docUpload.items[0] ?? null;
+  const file = item?.prepared ?? item?.file ?? null;
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   // Adding a type inline, without leaving a half-filled file for Settings.
@@ -119,21 +137,21 @@ export function DossierDocuments({
     setBusy(true);
     setError(null);
     try {
-      const doc = await uploadVaultDocument({
-        data_url: await readAsDataUrl(file),
-        dossier_id: dossierId,
-        doc_type_ref_id: typeId || undefined,
-        client_id: clientId || undefined,
-        original_name: file.name,
-        entity_ref: `dossier:${dossierId}`,
-      });
+      const { ok, results } = await docUpload.start();
+      const doc = results[0];
+      if (!ok || !doc) {
+        // The item card names the failure; keep the form open rather than
+        // reporting an attachment that never landed.
+        setError("That document did not upload. Try again.");
+        return;
+      }
       const t = active.find((x) => x.ref_id === typeId);
       onAttached({
         doc_id: doc.doc_id,
         name: file.name,
         type: t ? t.name_en || t.name_fr : "Untyped",
       });
-      setFile(null);
+      docUpload.reset();
       setTypeId("");
     } catch (e) {
       setError(errMsg(e));
@@ -173,8 +191,10 @@ export function DossierDocuments({
           </div>
         </Field>
         <FileDrop
-          file={file}
-          onPick={setFile}
+          {...fileDropProps(item)}
+          onPick={(picked) =>
+            picked ? void docUpload.pick([picked]) : docUpload.reset()
+          }
           accept={ACCEPT}
           label={tr("File")}
           hint="PDF, PNG or JPG — up to 5 MB."

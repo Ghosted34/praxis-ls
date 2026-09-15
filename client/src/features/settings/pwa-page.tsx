@@ -281,7 +281,12 @@ export function PwaPage() {
             onChange={(url) => set("iconUrl", url || null)}
             shape="square"
             maxBytes={2_000_000}
-            upload={async (dataUrl) => (await uploadAppIcon(dataUrl)).iconUrl}
+            // Profile defaults to "brand": the icon pipeline derives every
+            // PWA/apple-touch PNG from this master, so a colour shift here
+            // would propagate to every installed home-screen icon.
+            upload={async (dataUrl, onProgress) =>
+              (await uploadAppIcon(dataUrl, onProgress)).iconUrl
+            }
             hint={
               draft.iconUrl
                 ? undefined
@@ -902,6 +907,7 @@ export function PwaPage() {
             onChange={(url) => set("titlebarImageUrl", url || null)}
             shape="wide"
             maxBytes={2_000_000}
+            profile="photo"
             upload={uploadTitlebarImage}
             hint="Wide and low — the bar is roughly 1600×44 on a laptop, so a tall image will only ever show its middle band."
           />

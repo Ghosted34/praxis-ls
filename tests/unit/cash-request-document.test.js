@@ -484,7 +484,9 @@ describe("the payment receipt", () => {
     const html = receipt();
     expect(html).toContain("DF-2026-0007");
     expect(html).toContain("Approved on");
-    expect(html).toContain("2026-07-27");
+    // Documents print dd/mm/yyyy — the 27th of July, as a Douala accountant
+    // reads it. The stored value is still the ISO "2026-07-27" above.
+    expect(html).toContain("27/07/2026");
     expect(html).toContain("1 000 000 XAF");
     expect(html).toContain("Balance to disburse");
     expect(html).toContain("1 848 000 XAF");

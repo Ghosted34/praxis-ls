@@ -30,6 +30,22 @@ const isoDate = z
   }, "That date doesn't exist.");
 
 /**
+ * A string that must be present, with the SAME sentence for every way of
+ * missing it.
+ *
+ * Zod's defaults for a wrong type are "Required" and "Expected string, received
+ * null", neither of which names the field. That matters now that a cleared
+ * control sends an explicit `null` to empty a column: a person who clears a
+ * mandatory box should read "Registration type is required.", not a sentence
+ * about types.
+ */
+const requiredString = (label = "This field") =>
+  z.string({
+    required_error: `${label} is required.`,
+    invalid_type_error: `${label} is required.`,
+  });
+
+/**
  * A required piece of text.
  *
  * `.trim()` before `.min(1)` on purpose: a field holding only spaces is empty
@@ -37,7 +53,19 @@ const isoDate = z
  * boolean tested `value !== ""`.
  */
 const requiredText = (label = "This field") =>
-  z.string().trim().min(1, `${label} is required.`);
+  requiredString(label).trim().min(1, `${label} is required.`);
+
+/**
+ * A required enumeration — a `<select>` whose "—" option is not a real choice.
+ *
+ * Same reason as `requiredString`: clearing such a control sends `null`, and
+ * the bare Zod message for that is a list of every accepted literal.
+ */
+const requiredEnum = (values, label = "This field") =>
+  z.enum(values, {
+    required_error: `${label} is required.`,
+    invalid_type_error: `${label} is required.`,
+  });
 
 /**
  * A money amount.
@@ -147,7 +175,9 @@ const optionalPercent = blankToUndefined(
 // zodResolver was handed it. See client/config/shared-alias.ts.
 exports.uuid = uuid;
 exports.isoDate = isoDate;
+exports.requiredString = requiredString;
 exports.requiredText = requiredText;
+exports.requiredEnum = requiredEnum;
 exports.amount = amount;
 exports.positiveAmount = positiveAmount;
 exports.currency = currency;

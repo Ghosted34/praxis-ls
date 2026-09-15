@@ -9,6 +9,7 @@ const events = require("./document_vault.events");
 const { assertDocType, moduleKeyForDocType } = require("./document_vault.types");
 const identityCache = require("../../../shared/cache/identity-cache");
 const storage = require("../../../services/storage.service");
+const imagePipeline = require("../../../services/image-pipeline.service");
 const { emitEvent, audit, resolveActorId } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
 const { parseDataUrl } = require("../../../utils/data-url");
@@ -47,20 +48,13 @@ function sniffContentType(buffer, declaredType = null) {
   if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return "image/jpeg";
   // RIFF....WEBP
   if (buffer.length >= 12 && buffer.slice(0, 4).toString("ascii") === "RIFF" && buffer.slice(8, 12).toString("ascii") === "WEBP") return "image/webp";
-
-  // Modern Office files are ZIP containers. Central-directory filenames remain
-  // plain text, which distinguishes Word from Excel without trusting a renamed
-  // extension.
-  if (buffer[0] === 0x50 && buffer[1] === 0x4b && [0x03, 0x05, 0x07].includes(buffer[2])) {
-    const directory = buffer.toString("latin1");
-    if (directory.includes("word/document.xml")) {
-      return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-    }
-    if (directory.includes("xl/workbook.xml")) {
-      return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-    }
-    return null;
-  }
+  /*
+   * PK\x03\x04 — a ZIP container, which is what .docx and .xlsx are. The
+   * declared OOXML type is still checked against the caller's allowedTypes
+   * below; the signature proves the container family rather than guessing its
+   * member from an extension.
+   */
+  if (buffer[0] === 0x50 && buffer[1] === 0x4b && buffer[2] === 0x03 && buffer[3] === 0x04) return "application/zip";
 
   // Legacy .doc and .xls share the OLE Compound File signature. The bytes prove
   // the Office container; the declared Office MIME selects the format.
@@ -71,6 +65,14 @@ function sniffContentType(buffer, declaredType = null) {
   }
   return null;
 }
+
+/** Declared types the ZIP sniff is allowed to satisfy — the OOXML formats,
+ *  which are ZIP containers. Anything else declaring itself docx/xlsx has bytes
+ *  that are not an archive at all and is refused. */
+const ZIP_BACKED = new Set([
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+]);
 
 // Mirrors the document_vault.status CHECK constraint (migration 0340). Guarding
 // here turns a wrong status into a clean 422 instead of a raw 23514 from Postgres
@@ -205,7 +207,7 @@ const list = (client, q) => repo.list(client, q);
  */
 async function createDocument(client, opts) {
   const {
-    entityRef = null, docType = null, dataUrl, fileContext = null, folderRef = null,
+    entityRef = null, docType = null, dataUrl, file = null, fileContext = null, folderRef = null,
     dossierId = null, docTypeRefId = null, clientId = null, originalName = null,
     // Stricter rules for one caller, rather than tightened for all. An
     // operations file accepts what legacy accepted — 5 MB, PDF/PNG/JPG, content
@@ -220,10 +222,20 @@ async function createDocument(client, opts) {
   // Parameters are legal in a data URL's media type (`;codecs=`, `;charset=`)
   // and the pattern this replaced could not cross them — see utils/data-url.
   // `mimeType` is the bare type, which is what `allowedTypes` compares against.
-  const parsed = parseDataUrl(dataUrl);
-  if (!parsed) throw new AppError("BAD_FILE", "Expected a base64 data URL", 400);
-  const contentType = parsed.mimeType;
-  const buffer = parsed.buffer;
+  // Either transport. `file` is the multipart path (multer-shaped); `dataUrl`
+  // is the legacy JSON one, still used by callers that have not migrated and by
+  // internal callers that synthesise a document rather than receiving one.
+  let contentType;
+  let buffer;
+  if (file && Buffer.isBuffer(file.buffer)) {
+    contentType = String(file.mimetype || "").toLowerCase();
+    buffer = file.buffer;
+  } else {
+    const parsed = parseDataUrl(dataUrl);
+    if (!parsed) throw new AppError("BAD_FILE", "Expected a file upload or a base64 data URL", 400);
+    contentType = parsed.mimeType;
+    buffer = parsed.buffer;
+  }
   if (!buffer.length) throw new AppError("EMPTY_FILE", "File is empty", 422);
   if (buffer.length > maxBytes) {
     throw new AppError("FILE_TOO_LARGE", `File exceeds ${Math.round(maxBytes / (1024 * 1024))} MB`, 413);
@@ -236,21 +248,46 @@ async function createDocument(client, opts) {
   // sniffs as nothing.
   if (sniff) {
     const actual = sniffContentType(buffer, contentType);
-    if (!actual) throw new AppError("BAD_FILE_TYPE", "This file is not a supported PDF, image, Word, or Excel document", 422);
-    if (allowedTypes && !allowedTypes.includes(actual)) {
+    if (!actual) throw new AppError("BAD_FILE_TYPE", "This file is not a PDF, an image, or an Office document", 422);
+    /* A ZIP container satisfies a declared OOXML type and nothing else. */
+    const zipAsDeclared = actual === "application/zip" && ZIP_BACKED.has(contentType);
+    const effective = zipAsDeclared ? contentType : actual;
+    if (allowedTypes && !allowedTypes.includes(effective)) {
       throw new AppError("BAD_FILE_TYPE", `Only ${allowedTypes.join(", ")} are accepted here`, 422);
     }
     // Declared JPEG, actually PNG is harmless mislabelling; declared PDF,
     // actually anything else is not. Refuse the mismatch either way and let the
     // person re-export rather than storing bytes under the wrong name.
-    if (actual !== contentType && !(actual === "image/jpeg" && contentType === "image/jpg")) {
+    if (effective !== contentType && !(effective === "image/jpeg" && contentType === "image/jpg")) {
       throw new AppError("BAD_FILE_TYPE", `This file says it is ${contentType} but its contents are ${actual}`, 422);
     }
   }
-  const ext = EXT[contentType] || "bin";
-  const contentHash = crypto.createHash("sha256").update(buffer).digest("hex");
+  // Compress AFTER validation and sniffing — so the checks above judge what the
+  // user actually sent — and BEFORE hashing, which is the ordering that matters
+  // most in this function. document_signature records `artifact_hash` from this
+  // row's `content_hash`, and document_verification compares the two back
+  // against the stored file; a hash taken over the pre-compression bytes would
+  // fail verification on a document nobody had tampered with.
+  //
+  // The 'document' profile downscales an oversized scan and re-encodes at high
+  // quality but applies NO tonal correction: a vault document has to keep
+  // matching the paper it came from. PDFs and other non-rasters pass straight
+  // through. See image-pipeline.service.js.
+  const processed = await imagePipeline.processImage(
+    {
+      buffer,
+      mimetype: contentType,
+      originalname: originalName || `upload.${EXT[contentType] || "bin"}`,
+    },
+    { profile: "document" },
+  );
+  const storedBuffer = processed.master.buffer;
+  const storedType = processed.master.mime_type || contentType;
+  const ext = EXT[storedType] || EXT[contentType] || "bin";
+  const contentHash = crypto.createHash("sha256").update(storedBuffer).digest("hex");
   const key = `tenant_${slug}/vault/doc_${crypto.randomBytes(8).toString("hex")}.${ext}`;
-  await storage.put(buffer, { key, contentType });
+  await storage.put(storedBuffer, { key, contentType: storedType });
+  await imagePipeline.putDerivatives(key, processed.derivatives);
   const row = await repo.insert(client, {
     entity_ref: entityRef, doc_type: docType, storage_path: key, content_hash: contentHash,
     file_context: fileContext, folder_ref: folderRef, dossier_id: dossierId, status: "VERIFIED",

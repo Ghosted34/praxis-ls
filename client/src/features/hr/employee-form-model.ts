@@ -13,6 +13,7 @@
  * `draftToPayload`, rather than at fifty call sites.
  */
 import { workSchedule, type WorkSchedule } from "@shared";
+import { compressImage } from "@/lib/image-compress";
 import type {
   Employee,
   EmployeeInput,
@@ -427,6 +428,18 @@ export function fileTooLarge(file: File | null): string | null {
 }
 
 /** Read a picked File as the base64 data URL the API vaults. */
+/** A document row's scan, compressed and encoded — or nulls when there is none. */
+async function preparedScan(
+  file: File | null | undefined,
+): Promise<{ file_data_url: string | null; file_name: string | null }> {
+  if (!file) return { file_data_url: null, file_name: null };
+  const { file: prepared } = await compressImage(file, "document");
+  return {
+    file_data_url: await fileToDataUrl(prepared),
+    file_name: prepared.name,
+  };
+}
+
 export const fileToDataUrl = (file: File): Promise<string> =>
   new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -452,8 +465,10 @@ export async function draftDocsToPayload(
       issued_on: t(d.issued_on) ?? null,
       expires_on: t(d.expires_on) ?? null,
       physical_ref: t(d.physical_ref) ?? null,
-      file_data_url: d.file ? await fileToDataUrl(d.file) : null,
-      file_name: d.file ? d.file.name : null,
+      // Compressed as the payload is built, so a 9 MB phone photo of a CNI
+      // does not travel inside the create-employee request at full size.
+      // "document" keeps the source format: a staff scan is evidence.
+      ...(await preparedScan(d.file)),
     });
   }
   return out;

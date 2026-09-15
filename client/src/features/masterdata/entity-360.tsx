@@ -49,6 +49,7 @@ import {
   readFileAsDataUrl,
 } from "@/lib/vault-file";
 import { WorkingCalendarTab } from "./working-calendar-tab";
+import { EntityPublicStoryTab } from "./entity-public-story-tab";
 import { useResource, useList, errMsg } from "@/lib/use-resource";
 import { money, num, dateDmy, enumLabel, toDateInput } from "@/lib/format";
 import { reportActionError } from "@/lib/action-error";
@@ -87,6 +88,12 @@ const TABS = [
   "Letterhead",
   "Renewals",
   "Working calendar",
+  /* §6.8. Last in the strip on purpose: it is the only tab whose audience is
+     strangers rather than the finance and compliance staff the other ten serve,
+     and it is behind a different permission (MOD-29, the website's, not
+     MOD-01's). Somebody opening this dossier to check a tax jurisdiction should
+     not pass through the marketing copy to get there. */
+  "Public story",
 ] as const;
 type Tab = (typeof TABS)[number];
 
@@ -598,6 +605,47 @@ function ChildModal({
   );
 }
 
+/**
+ * The request body for a nested-collection save — the counterpart of the seed
+ * in `ChildModal` above.
+ *
+ * THE DEFECT THIS CLOSES. It used to drop every empty value before the request
+ * was built: `.filter(([, v]) => v !== "" && v !== undefined)`. That is right
+ * for a CREATE — an untouched box is "not filled in", and omitting it lets the
+ * column's default and the 0515 triggers do their work — and silently wrong for
+ * an EDIT, where an empty box is a field somebody just EMPTIED. The key never
+ * reached the wire, so the API built no SET clause for it and answered 200
+ * having changed nothing.
+ *
+ * That is the reported bug: an entity's RCCM registration had an expiry date
+ * entered by mistake, and clearing it did nothing at all — Save reported
+ * success and the "Registrations needing attention · Expired" banner stayed,
+ * with no error to explain why. The entity's OWN form had already learned this
+ * (`entity-form-fields.ts`: "a user who empties a field and saves would watch it
+ * come straight back"); its collections had not.
+ *
+ * So on an update `""` becomes an explicit `null`, which the shared schemas now
+ * accept as "clear this column". A field that cannot be null — a registration's
+ * type, a tax registration's country — answers 422 naming the field, which is
+ * the honest outcome and the one thing the old filter could never produce.
+ */
+function childBody(
+  values: Record<string, unknown>,
+  isUpdate: boolean,
+  omit: readonly string[] = [],
+): Record<string, unknown> {
+  const body: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(values)) {
+    if (omit.includes(key) || value === undefined) continue;
+    if (value === "") {
+      if (isUpdate) body[key] = null;
+      continue;
+    }
+    body[key] = value;
+  }
+  return body;
+}
+
 const opts = (xs: readonly string[]) =>
   xs.map((v) => ({ value: v, label: enumLabel(v) }));
 
@@ -1011,7 +1059,9 @@ function useChildFields(
 ) {
   const needs = (...segs: api.EntityCollection[]) => segs.includes(seg);
   const entities = useList<Lookups["entities"][number]>(
-    needs("people") ? "/entities" : null,
+    // A corporate shareholder this picker cannot offer is a cap table that
+    // cannot be recorded. See ENTITY_LIST.
+    needs("people") ? api.ENTITY_LIST : null,
   );
   const employees = useList<Lookups["employees"][number]>(
     needs("people", "establishments") ? "/employees" : null,
@@ -1176,11 +1226,7 @@ export function EntityDossier({
     values: Record<string, unknown>,
     childId?: string,
   ) {
-    // Empty strings mean "not filled in", not "set to empty" — the API's shared
-    // schemas normalise them away, and sending them would write blanks.
-    const body = Object.fromEntries(
-      Object.entries(values).filter(([, v]) => v !== "" && v !== undefined),
-    );
+    const body = childBody(values, Boolean(childId));
     if (childId) await api.updateEntityChild(entityId, seg, childId, body);
     else await api.addEntityChild(entityId, seg, body);
     toast.success("Saved.");
@@ -1632,13 +1678,30 @@ export function EntityDossier({
       )}
 
       {tab === "Documents" && (
-        <DocumentsTab
-          entityId={entityId}
-          documents={d.data.documents}
-          establishments={establishments}
-          onRemove={(id) => removeChild("documents", id)}
-          onSaved={reload}
-        />
+        <div className="space-y-4">
+          {/* Same server-side redaction the People tab explains, and the same
+              reason for saying so: a column reading "—" for a number that is
+              on file looks like missing data unless the page says otherwise. */}
+          {!gov && (
+            <div className="rounded-lg border p-3">
+              <p className="text-sm text-foreground">
+                Document references are hidden
+              </p>
+              <p className="micro text-muted-foreground">
+                Numbers, issuing authorities, filing references and the scans
+                themselves need the entity-admin permission. What each document
+                is and when it expires is shown, so renewals stay visible.
+              </p>
+            </div>
+          )}
+          <DocumentsTab
+            entityId={entityId}
+            documents={d.data.documents}
+            establishments={establishments}
+            onRemove={(id) => removeChild("documents", id)}
+            onSaved={reload}
+          />
+        </div>
       )}
 
       {tab === "Tax & jurisdiction" && (
@@ -1837,6 +1900,8 @@ export function EntityDossier({
       )}
 
       {tab === "Working calendar" && <WorkingCalendarTab entityId={entityId} />}
+
+      {tab === "Public story" && <EntityPublicStoryTab entity={e} onSaved={reload} />}
 
       {tab === "Renewals" && (
         <Section
@@ -2876,15 +2941,9 @@ function DocumentsTab({
     setUploadSuccess(false);
     setAttachError(null);
     try {
-      const body = Object.fromEntries(
-        Object.entries(values).filter(
-          ([key, value]) =>
-            key !== "scan_file" &&
-            key !== "document_number" &&
-            value !== "" &&
-            value !== undefined,
-        ),
-      );
+      // `document_number` is allocated by the server and immutable afterwards;
+      // `scan_file` is not a column at all.
+      const body = childBody(values, Boolean(id), ["scan_file", "document_number"]);
       let documentId = id;
       if (id) await api.updateEntityChild(entityId, "documents", id, body);
       else {
@@ -3434,7 +3493,9 @@ function StructureModal({
   onSaved: () => void;
 }) {
   const toast = useToast();
-  const { rows: entities } = useList<api.Entity>("/entities");
+  // The whole list, not the first 50 — a parent this picker cannot offer is a
+  // group structure that cannot be recorded. See ENTITY_LIST.
+  const { rows: entities } = useList<api.Entity>(api.ENTITY_LIST);
   const [parentId, setParentId] = React.useState(
     structure.parent_entity_id ?? "",
   );

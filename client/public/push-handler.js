@@ -68,6 +68,12 @@ self.addEventListener("push", (event) => {
     // auto-dismissing. Reserved for HIGH priority by the server; on a
     // notification nobody has to act on it is just something to swipe away.
     requireInteraction: Boolean(data.requireInteraction),
+    // Sent only for an INTERRUPT notification (server: notification.service
+    // deliverOutbound). A pattern rather than a boolean because the boolean
+    // form is deprecated, and `undefined` rather than `[]` because an empty
+    // array is a valid "vibrate for zero milliseconds" that some builds honour
+    // by cancelling an in-flight pattern.
+    vibrate: Array.isArray(data.vibrate) && data.vibrate.length ? data.vibrate : undefined,
     // The time the EVENT happened, not the time the phone woke up to hear
     // about it. A push delayed twenty minutes by doze otherwise timestamps
     // itself as "now" and misrepresents when the mail actually landed.

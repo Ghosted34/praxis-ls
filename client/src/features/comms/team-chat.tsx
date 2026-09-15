@@ -5,8 +5,10 @@
  * Conversation rides in the URL (?channel=…). On our Control-Tower skin.
  */
 import * as React from "react";
+import { dateDmy } from "@/lib/format";
 import { tr } from "@/lib/i18n";
 import { Link, useSearchParams } from "react-router-dom";
+import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
@@ -18,6 +20,9 @@ import { PlusIcon } from "@/components/ui/icons";
 import * as api from "@/lib/smartcomm-api";
 import { useCommsChannel } from "@/lib/comms-socket";
 import { NewMessageDialog } from "./inbox/composer/new-message";
+import { Composer } from "./chat/composer";
+import { MessageBubble } from "./chat/message-bubble";
+import { ForwardDialog } from "./chat/forward-dialog";
 
 /* avatar colouring — a fixed per-person palette (pixie parity), not the brand accent */
 const AVATAR_COLOURS = [
@@ -80,13 +85,6 @@ function Avatar({
     </span>
   );
 }
-function timeShort(iso?: string | null) {
-  if (!iso) return "";
-  return new Date(iso).toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
 function fmtRelative(iso?: string | null) {
   if (!iso) return "";
   const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
@@ -96,7 +94,8 @@ function fmtRelative(iso?: string | null) {
   if (h < 24) return `${h}h`;
   const d = Math.floor(h / 24);
   if (d < 7) return `${d}d`;
-  return new Date(iso).toLocaleDateString([], {
+  // en-GB, not the workstation locale — "11 Sep", never "Sep 11".
+  return new Date(iso).toLocaleDateString("en-GB", {
     month: "short",
     day: "numeric",
   });
@@ -411,7 +410,7 @@ function InfoPane({ channel }: { channel: api.Channel | null }) {
       </div>
     );
   return (
-    <div className="flex-1 overflow-y-auto p-4">
+    <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4">
       <div className="flex flex-col items-center gap-2 border-b border-border pb-4 text-center">
         <Avatar
           name={channel.name}
@@ -440,7 +439,7 @@ function InfoPane({ channel }: { channel: api.Channel | null }) {
           <span className="text-muted-foreground">{tr("Opened")}</span>
           <span className="num">
             {channel.created_at
-              ? new Date(channel.created_at).toLocaleDateString()
+              ? dateDmy(channel.created_at)
               : "—"}
           </span>
         </div>
@@ -450,6 +449,23 @@ function InfoPane({ channel }: { channel: api.Channel | null }) {
 }
 
 export function TeamChatPage() {
+  const [infoOpen, setInfoOpen] = React.useState(() => {
+    try { return localStorage.getItem("comms:info-open") !== "false"; }
+    catch { return true; /* @silent:storage — use the first-visit default */ }
+  });
+  const [mobileInfoOpen, setMobileInfoOpen] = React.useState(false);
+  const toggleInfo = () => {
+    const next = !infoOpen;
+    setInfoOpen(next);
+    try { localStorage.setItem("comms:info-open", String(next)); }
+    catch { /* @silent:storage — the toggle still works for this visit */ }
+  };
+  React.useEffect(() => {
+    const desktop = window.matchMedia("(min-width: 1024px)");
+    const closeDrawer = () => { if (desktop.matches) setMobileInfoOpen(false); };
+    desktop.addEventListener("change", closeDrawer);
+    return () => desktop.removeEventListener("change", closeDrawer);
+  }, []);
   const { user } = useAuth();
   const meId =
     (user as { user_id?: string; id?: string } | null)?.user_id ||
@@ -493,12 +509,16 @@ export function TeamChatPage() {
   };
 
   return (
-    <section className="animate-fade-in">
-      <div className="grid h-[calc(100vh-8rem)] grid-cols-1 overflow-hidden rounded-2xl border border-border bg-card shadow-sm md:grid-cols-[320px_1fr] lg:grid-cols-[320px_1fr_300px]">
+    <section className="animate-fade-in flex min-h-0 flex-1 flex-col">
+      {/* Size from the shell's remaining space, never from a guessed viewport offset. */}
+      <div className={cn(
+        "grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)] grid-cols-1 overflow-hidden rounded-2xl border border-border bg-card shadow-sm md:grid-cols-[320px_minmax(0,1fr)]",
+        infoOpen && "lg:grid-cols-[320px_minmax(0,1fr)_300px]",
+      )}>
         {/* conversation list */}
         <div
           className={cn(
-            "flex flex-col border-border md:border-r",
+            "flex min-h-0 flex-col overflow-hidden border-border md:border-r",
             activeId ? "hidden md:flex" : "flex",
           )}
         >
@@ -547,7 +567,7 @@ export function TeamChatPage() {
               </button>
             ))}
           </div>
-          <div className="flex-1 overflow-y-auto px-2 pb-3">
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-3">
             {channels.loading ? (
               <div className="space-y-1 p-2">
                 {Array.from({ length: 6 }).map((_, i) => (
@@ -598,7 +618,7 @@ export function TeamChatPage() {
         {/* thread */}
         <div
           className={cn(
-            "flex min-w-0 flex-col",
+            "flex min-h-0 min-w-0 flex-col overflow-hidden",
             activeId ? "flex" : "hidden md:flex",
           )}
         >
@@ -608,11 +628,15 @@ export function TeamChatPage() {
               channelId={activeId}
               meId={meId}
               nameOf={nameOf}
+              channels={all}
               onBack={() => {
                 const n = new URLSearchParams(params);
                 n.delete("channel");
                 setParams(n);
               }}
+              infoOpen={infoOpen}
+              onToggleInfo={toggleInfo}
+              onOpenMobileInfo={() => setMobileInfoOpen(true)}
               onSent={() => channels.reload()}
             />
           ) : (
@@ -623,12 +647,21 @@ export function TeamChatPage() {
         </div>
 
         {/* customer / channel 360 — third pane on wide screens */}
-        <div className="hidden flex-col border-l border-border lg:flex">
+        <div id="chat-info-panel" className={cn("hidden min-h-0 flex-col overflow-hidden border-l border-border", infoOpen && "lg:flex")}>
+          <div className="flex shrink-0 items-center justify-between border-b border-border p-3">
+            <span className="text-sm font-semibold">{tr("Conversation info")}</span>
+            <Button size="sm" variant="ghost" onClick={toggleInfo}>{tr("Hide")}</Button>
+          </div>
           <InfoPane
             channel={all.find((c) => c.group_id === activeId) || null}
           />
         </div>
       </div>
+
+      <Dialog open={mobileInfoOpen} onClose={() => setMobileInfoOpen(false)}
+        title={tr("Conversation info")} placement="right" bodyClassName="p-0">
+        <InfoPane channel={all.find((c) => c.group_id === activeId) || null} />
+      </Dialog>
 
       {newKind === "menu" && (
         <NewChoiceModal
@@ -662,21 +695,37 @@ function Thread({
   channelId,
   meId,
   nameOf,
+  channels,
   onBack,
   onSent,
+  infoOpen,
+  onToggleInfo,
+  onOpenMobileInfo,
 }: {
+  infoOpen: boolean;
+  onToggleInfo: () => void;
+  onOpenMobileInfo: () => void;
   channelId: string;
   meId: string;
   nameOf: Record<string, string>;
+  /** Every channel the viewer is in — the forward picker's options. */
+  channels: api.Channel[];
   onBack: () => void;
   onSent: () => void;
 }) {
   const ch = useResource(() => api.getChannel(channelId), [channelId]);
   const thread = useResource(() => api.getThread(channelId), [channelId]);
-  const [text, setText] = React.useState("");
-  const [busy, setBusy] = React.useState(false);
-  const bottomRef = React.useRef<HTMLDivElement | null>(null);
-  const msgs = thread.data?.messages || [];
+  const followedInitially = React.useRef(false);
+  const nearBottom = React.useRef(true);
+  const scrollerRef = React.useRef<HTMLDivElement | null>(null);
+  // Memoised because `thread.data?.messages || []` is a fresh array on every
+  // render, which would make the reply-quote map below rebuild each time.
+  const msgs = React.useMemo(() => thread.data?.messages || [], [thread.data]);
+
+  const composerBusy = React.useRef(false);
+  const [editingMessage, setEditingMessage] = React.useState<api.CommMessage | null>(null);
+  const [replyTo, setReplyTo] = React.useState<api.CommMessage | null>(null);
+  const [forwarding, setForwarding] = React.useState<api.CommMessage | null>(null);
 
   // Live updates (socket.io). Any channel event refreshes the thread; a peer's
   // typing shows a transient indicator. The 8s poll below stays as a fallback
@@ -691,6 +740,11 @@ function Thread({
     "comms:message_edited": () => thread.reload(),
     "comms:message_deleted": () => thread.reload(),
     "comms:reaction": () => thread.reload(),
+    // A voice note's transcript lands after the message it belongs to — the
+    // clip is posted immediately and transcribed afterwards, deliberately.
+    // This is what makes the words appear under a bubble somebody is already
+    // looking at rather than on their next reload.
+    "comms:transcript": () => thread.reload(),
     "channel:typing": (p: { user_id?: string }) => {
       if (!p?.user_id || p.user_id === meId) return;
       setTypingName(nameOf[p.user_id] || "Someone");
@@ -700,36 +754,46 @@ function Thread({
   });
 
   React.useEffect(() => {
-    api.markRead(channelId).catch(() => {});
+    api.markRead(channelId).catch(() => {
+      /* @silent:storage — an unsent read marker costs a stale unread badge until
+         the next open, never a message */
+    });
   }, [channelId, msgs.length]);
+
+  /**
+   * Follow the conversation, but only when the reader is already at the bottom.
+   *
+   * Scrolling unconditionally is the defect every chat has had at least once:
+   * somebody reading back through yesterday gets yanked to the end each time a
+   * colleague types, and there is no way to finish reading a paragraph.
+   */
   React.useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    const el = scrollerRef.current;
+    if (!el) return;
+    if (!msgs.length) return;
+    // Only move this pane. scrollIntoView also moves the shell/ancestors.
+    if (!followedInitially.current || nearBottom.current) {
+      el.scrollTop = el.scrollHeight;
+      followedInitially.current = true;
+    }
   }, [msgs.length]);
+
   React.useEffect(() => {
     const t = window.setInterval(() => thread.reload(), 8000);
     return () => window.clearInterval(t);
   }, [thread]);
 
-  async function send(e: React.FormEvent) {
-    e.preventDefault();
-    const b = text.trim();
-    if (!b || busy) return;
-    setText("");
-    setBusy(true);
-    try {
-      await api.postMessage(channelId, b);
-      thread.reload();
-      onSent();
-    } catch {
-      setText(b);
-    } finally {
-      setBusy(false);
-    }
-  }
+  // Reply quotes resolve against the page the reader has. A reply to something
+  // older than the loaded window renders without its quote rather than
+  // fetching one message at a time while scrolling.
+  const byId = React.useMemo(
+    () => new Map(msgs.map((m) => [m.message_id, m])),
+    [msgs],
+  );
 
   return (
     <>
-      <div className="flex items-center gap-2 border-b border-border px-3 py-2.5">
+      <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2.5">
         <button
           className="text-muted-foreground hover:text-foreground md:hidden"
           onClick={onBack}
@@ -742,85 +806,90 @@ function Thread({
           src={ch.data?.kind === "DIRECT" ? ch.data?.partner_avatar_ref : null}
           size="sm"
         />
-        <span className="text-sm font-semibold">
+        <span className="min-w-0 flex-1 truncate text-sm font-semibold">
           {ch.data?.name || "Conversation"}
         </span>
         {ch.data?.kind && (
           <span className="micro">· {ch.data.kind.toLowerCase()}</span>
         )}
+        <Button size="sm" variant="ghost" className="hidden shrink-0 lg:inline-flex"
+          aria-expanded={infoOpen} aria-controls="chat-info-panel" onClick={onToggleInfo}>
+          {tr(infoOpen ? "Hide info" : "Show info")}
+        </Button>
+        <Button size="sm" variant="ghost" className="shrink-0 lg:hidden"
+          aria-haspopup="dialog" onClick={onOpenMobileInfo}>{tr("Info")}</Button>
       </div>
-      <div className="flex-1 space-y-2 overflow-y-auto bg-[rgb(var(--ink-3)/0.04)] px-4 py-3">
+
+      <div
+        ref={scrollerRef}
+        onScroll={(event) => {
+          const el = event.currentTarget;
+          nearBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 160;
+        }}
+        className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain bg-[rgb(var(--ink-3)/0.04)] px-4 py-3"
+      >
         {thread.loading && msgs.length === 0 ? (
           <div className="micro">{tr("Loading…")}</div>
         ) : thread.error ? (
           <ErrorState message={thread.error} />
         ) : msgs.length ? (
-          msgs.map((m) => {
-            const mine = !!meId && m.sender_user_id === meId;
-            return (
-              <div
-                key={m.message_id}
-                className={mine ? "flex justify-end" : "flex justify-start"}
-              >
-                <div
-                  className={cn(
-                    "max-w-[78%] rounded-2xl px-3 py-2 text-sm",
-                    mine
-                      ? "bg-primary text-primary-foreground"
-                      : "border border-border bg-card",
-                  )}
-                >
-                  {!mine && m.sender_user_id && (
-                    <div className="mb-0.5 text-[11px] font-medium text-primary-ink">
-                      {nameOf[m.sender_user_id] || "Someone"}
-                    </div>
-                  )}
-                  <div className="whitespace-pre-wrap">
-                    {m.body || (m.media_vault_id ? "(attachment)" : "")}
-                  </div>
-                  <div
-                    className={cn(
-                      "mt-0.5 text-[10px]",
-                      mine
-                        ? "text-primary-foreground/70"
-                        : "text-muted-foreground",
-                    )}
-                  >
-                    {timeShort(m.created_at)}
-                  </div>
-                </div>
-              </div>
-            );
-          })
+          msgs.map((m) => (
+            <MessageBubble
+              key={m.message_id}
+              message={m}
+              mine={!!meId && m.sender_user_id === meId}
+              meId={meId}
+              senderName={m.sender_user_id ? nameOf[m.sender_user_id] || tr("Someone") : null}
+              repliedTo={m.reply_to_message_id ? byId.get(m.reply_to_message_id) || null : null}
+              onEdit={(message) => { if (!composerBusy.current) setEditingMessage(message); }}
+              onReply={(message) => { if (!composerBusy.current) setReplyTo(message); }}
+              onForward={setForwarding}
+              onChanged={() => { thread.reload(); onSent(); }}
+            />
+          ))
         ) : (
           <div className="flex h-full items-center justify-center micro">
-            No messages yet — say hello.
+            {tr("No messages yet — say hello.")}
           </div>
         )}
-        <div ref={bottomRef} />
       </div>
+
       {typingName && (
         <div className="px-4 pb-1 text-[11px] italic text-muted-foreground">
-          {typingName} is typing…
+          {typingName} {tr("is typing…")}
         </div>
       )}
-      <form
-        className="flex items-center gap-2 border-t border-border px-3 py-2"
-        onSubmit={send}
-      >
-        <Input
-          value={text}
-          onChange={(e) => {
-            setText(e.target.value);
-            setTyping();
-          }}
-          placeholder="Write a message…"
-          className="flex-1"
-        />
-        <Button type="submit" loading={busy} disabled={!text.trim()}>
-          Send
-        </Button>
-      </form>
+
+      <Composer
+        channelId={channelId}
+        editingMessage={editingMessage}
+        onBusyChange={(busy) => { composerBusy.current = busy; }}
+        onCancelEdit={() => setEditingMessage(null)}
+        onEditLast={() => {
+          const last = [...msgs].reverse().find((m) => m.sender_user_id === meId && !!m.body && !m.deleted_at);
+          if (last) setEditingMessage(last);
+        }}
+        replyTo={
+          replyTo
+            ? {
+              message_id: replyTo.message_id,
+              body: replyTo.body,
+              sender: replyTo.sender_user_id ? nameOf[replyTo.sender_user_id] : null,
+            }
+            : null
+        }
+        onCancelReply={() => setReplyTo(null)}
+        onTyping={setTyping}
+        onSent={() => { thread.reload(); onSent(); }}
+      />
+
+      <ForwardDialog
+        message={forwarding}
+        channels={channels}
+        currentChannelId={channelId}
+        onClose={() => setForwarding(null)}
+        onForwarded={onSent}
+      />
     </>
   );
 }

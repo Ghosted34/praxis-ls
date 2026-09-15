@@ -9,6 +9,7 @@ import { tr } from "@/lib/i18n";
 import { money as moneyFmt, enumLabel } from "@/lib/format";
 import { errMsg } from "@/lib/use-resource";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
+import { DateField } from "@/components/ui/date-field";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { Pill } from "@/components/ui/pill";
 import { LoadingRow, EmptyState, ErrorState } from "@/components/ui/states";
@@ -172,10 +173,9 @@ export function AssetCreateForm({
             />
           </Field>
           <Field label="Acquired on" required className="sm:col-span-2">
-            <Input
-              type="date"
+            <DateField
               value={acquiredOn}
-              onChange={(e) => setAcquiredOn(e.target.value)}
+              onChange={setAcquiredOn}
             />
           </Field>
         </div>
@@ -377,10 +377,9 @@ export function AssetDisposeForm({
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Disposed on" required>
-            <Input
-              type="date"
+            <DateField
               value={disposedOn}
-              onChange={(e) => setDisposedOn(e.target.value)}
+              onChange={setDisposedOn}
             />
           </Field>
           <Field label={`Proceeds (${ccy})`} hint="Sale proceeds; 0 if scrapped.">

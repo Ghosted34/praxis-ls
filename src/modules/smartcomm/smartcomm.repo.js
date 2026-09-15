@@ -4,7 +4,7 @@
  * WhatsApp-style; no external social routing (PRD §11.5).
  */
 "use strict";
-const { insertOne, getById, page, updateOne } = require("../../shared/db/query-helpers");
+const { insertOne, getById, page, updateOne, jsonbFields } = require("../../shared/db/query-helpers");
 
 // ── Channels (comms_group) ──
 const insertChannel = (client, data) => insertOne(client, "comms_group", data);
@@ -24,7 +24,10 @@ async function listChannelsForUser(client, userId, q = {}) {
     "SELECT g.*, m.is_pinned, m.is_muted, m.last_read_at, " +
       "  (SELECT COUNT(*)::int FROM comms_message x WHERE x.group_id = g.group_id AND x.deleted_at IS NULL " +
       "     AND (m.last_read_at IS NULL OR x.created_at > m.last_read_at) AND x.sender_user_id <> $1) AS unread, " +
-      "  " + PARTNER_AVATAR_SQL + " " +
+      "  " + PARTNER_AVATAR_SQL + ", " +
+      "  (SELECT row_to_json(lm) FROM (SELECT x.* FROM comms_message x " +
+      "     WHERE x.group_id = g.group_id AND x.deleted_at IS NULL " +
+      "     ORDER BY x.created_at DESC LIMIT 1) lm) AS last_message " +
       "FROM comms_group g JOIN comms_member m ON m.group_id = g.group_id AND m.user_id = $1 " +
       "WHERE g.status = 'ACTIVE' ORDER BY m.is_pinned DESC, g.updated_at DESC LIMIT $2 OFFSET $3",
     [userId, limit, offset],
@@ -189,6 +192,125 @@ async function listAttachments(client, messageId) {
   return (await client.query("SELECT * FROM comms_attachment WHERE message_id = $1 ORDER BY created_at", [messageId])).rows;
 }
 
+/**
+ * Every attachment on a PAGE of messages, in one query.
+ *
+ * The thread read used to be `SELECT * FROM comms_message` and nothing else.
+ * Now each bubble can carry images, a voice note with its transcript, a vault
+ * document and a live ERP reference — and doing that per message is fifty
+ * round-trips to draw one screen, on a connection where the round-trip is the
+ * expensive part.
+ *
+ * The LEFT JOIN on comms_media is what lets a voice note arrive with its
+ * duration, peaks and transcript already attached: the renderer needs all three
+ * before it can draw the bar, and a second fetch per clip is a bar that pops in
+ * after the bubble.
+ */
+async function listAttachmentsForMessages(client, messageIds) {
+  if (!messageIds || !messageIds.length) return [];
+  const { rows } = await client.query(
+    `SELECT a.attachment_id, a.message_id, a.attachment_kind, a.vault_id, a.media_id,
+            a.erp_kind, a.erp_id, a.erp_label, a.filename, a.content_type, a.size_bytes,
+            a.created_at,
+            m.kind AS media_kind, m.width, m.height, m.duration_ms, m.waveform,
+            m.is_voice_note, m.transcript, m.transcript_status, m.original_name,
+            m.promoted_vault_id
+       FROM comms_attachment a
+       LEFT JOIN comms_media m ON m.media_id = a.media_id
+      WHERE a.message_id = ANY($1::uuid[])
+      ORDER BY a.created_at`,
+    [messageIds],
+  );
+  return rows;
+}
+
+/** Reactions for a page of messages, grouped the same way listReactions groups
+ *  one — so the renderer takes the same shape from both paths. */
+async function listReactionsForMessages(client, messageIds) {
+  if (!messageIds || !messageIds.length) return [];
+  const { rows } = await client.query(
+    `SELECT message_id, emoji, COUNT(*)::int AS count, array_agg(user_id) AS users
+       FROM comms_reaction
+      WHERE message_id = ANY($1::uuid[])
+      GROUP BY message_id, emoji`,
+    [messageIds],
+  );
+  return rows;
+}
+
+/** Which of these messages the caller has starred. Per-user, so it cannot ride
+ *  on the grouped reaction query. */
+async function listStarsForMessages(client, messageIds, userId) {
+  if (!messageIds || !messageIds.length) return [];
+  const { rows } = await client.query(
+    "SELECT message_id FROM comms_star WHERE user_id = $1 AND message_id = ANY($2::uuid[])",
+    [userId, messageIds],
+  );
+  return rows.map((r) => r.message_id);
+}
+
+// ── Chat media (comms_media) ──
+// The store for images, video and voice notes. NOT document_vault — see the
+// header of smartcomm.media.service.js and migration 13794.
+
+/**
+ * `comms_media.waveform` is jsonb, and the peaks arrive as a JS ARRAY.
+ *
+ * node-postgres serialises a JS object to JSON but a JS ARRAY to a POSTGRES
+ * ARRAY LITERAL — `{12,34,56}` — which is not JSON. Bound to a jsonb column
+ * that raises 22P02, which the error handler turns into 400 INVALID_VALUE,
+ * "One of the values is in the wrong format": no column named, no field named.
+ *
+ * That made EVERY voice note fail to send, and fail invisibly: the recorder
+ * captured the clip, the analyser produced the peaks, the upload ran, and the
+ * only thing the sender saw was a sentence about a format they never typed.
+ * An image or a video went through untouched, because neither carries a
+ * waveform — so the one attachment kind with a jsonb column was the one
+ * attachment kind that was broken.
+ *
+ * `jsonbFields` is the shared encoder for exactly this; see its header in
+ * `shared/db/query-helpers.js` for the two earlier times this shipped.
+ */
+const MEDIA_JSONB = ["waveform"];
+const insertMedia = (client, data) =>
+  insertOne(client, "comms_media", jsonbFields(data, MEDIA_JSONB));
+const getMedia = (client, id) => getById(client, "comms_media", "media_id", id);
+
+async function setMediaTranscript(client, mediaId, { transcript, status }) {
+  const { rows } = await client.query(
+    "UPDATE comms_media SET transcript = $2, transcript_status = $3 WHERE media_id = $1 RETURNING *",
+    [mediaId, transcript || null, status],
+  );
+  return rows[0] || null;
+}
+
+async function setMediaPromoted(client, mediaId, vaultId) {
+  const { rows } = await client.query(
+    "UPDATE comms_media SET promoted_vault_id = $2 WHERE media_id = $1 RETURNING *",
+    [mediaId, vaultId],
+  );
+  return rows[0] || null;
+}
+
+/**
+ * The transcripts of every voice note in a channel, keyed by message.
+ *
+ * For the certified export. A voice note used to render as "(media)" in the
+ * SHA-256'd transcript, which meant the one format people reach for when an
+ * instruction is urgent was the one format that vanished from the legal record
+ * of the channel.
+ */
+async function voiceTranscriptsForGroup(client, groupId) {
+  const { rows } = await client.query(
+    `SELECT a.message_id, m.transcript
+       FROM comms_attachment a
+       JOIN comms_media m ON m.media_id = a.media_id
+      WHERE m.group_id = $1 AND m.is_voice_note = true AND m.transcript IS NOT NULL`,
+    [groupId],
+  );
+  return rows;
+}
+
 // ── Drafts ──
 async function getDraft(client, groupId, userId) {
   return (await client.query("SELECT * FROM comms_draft WHERE group_id = $1 AND user_id = $2", [groupId, userId])).rows[0] || null;
@@ -206,15 +328,15 @@ async function deleteDraft(client, groupId, userId) {
 
 // ── Quick replies ──
 async function listQuickReplies(client, userId) {
-  return (await client.query("SELECT * FROM comms_quick_reply WHERE owner_user_id = $1 OR owner_user_id IS NULL ORDER BY label", [userId])).rows;
+  return (await client.query("SELECT * FROM comms_quick_reply WHERE owner_user_id = $1 ORDER BY label", [userId])).rows;
 }
 const createQuickReply = (client, data) => insertOne(client, "comms_quick_reply", data);
-async function updateQuickReply(client, id, fields) {
-  // PERF S19/S20: was a hand-rolled SET builder, which bypassed the
-  // identifier validation and writable allow-list in query-helpers.
-  return updateOne(client, "comms_quick_reply", "quick_reply_id", id, fields, "*", null, { touch: "updated_at" });
+async function updateQuickReply(client, id, fields, userId) {
+  return (await client.query("UPDATE comms_quick_reply SET label = COALESCE($3, label), body = COALESCE($4, body), updated_at = now() WHERE quick_reply_id = $1 AND owner_user_id = $2 RETURNING *", [id, userId, fields.label ?? null, fields.body ?? null])).rows[0] || null;
 }
-async function deleteQuickReply(client, id) { await client.query("DELETE FROM comms_quick_reply WHERE quick_reply_id = $1", [id]); }
+async function deleteQuickReply(client, id, userId) {
+  return (await client.query("DELETE FROM comms_quick_reply WHERE quick_reply_id = $1 AND owner_user_id = $2 RETURNING quick_reply_id", [id, userId])).rows[0] || null;
+}
 
 // ── Colleague directory ──
 async function listColleagues(client, q = {}) {
@@ -228,7 +350,9 @@ module.exports = {
   insertMessage, getMessage, editMessage, softDeleteMessage, setDelivery, listMessages,
   toggleReaction, listReactions, toggleStar, listStarredForUser, searchMessages,
   markChannelRead, unreadCountForUser,
-  addAttachment, listAttachments,
+  addAttachment, listAttachments, listAttachmentsForMessages,
+  listReactionsForMessages, listStarsForMessages,
+  insertMedia, getMedia, setMediaTranscript, setMediaPromoted, voiceTranscriptsForGroup,
   getDraft, upsertDraft, deleteDraft,
   listQuickReplies, createQuickReply, updateQuickReply, deleteQuickReply,
   listColleagues,

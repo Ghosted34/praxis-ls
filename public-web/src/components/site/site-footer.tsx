@@ -1,3 +1,4 @@
+import * as React from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useBranding } from "@/app/branding";
@@ -8,6 +9,7 @@ import { BrandGlyph } from "@/components/ui/icons";
 import { LangToggle } from "./site-header";
 import { ThemeToggle } from "./theme-toggle";
 import { NewsletterForm } from "./newsletter-form";
+import { afterPaint } from "@/lib/after-paint";
 import { p } from "@/lib/base-path";
 
 /**
@@ -22,11 +24,29 @@ import { p } from "@/lib/base-path";
  * Every target below is a route this app actually mounts. A "Terms of service"
  * column that 404s is worse than no column — it tells a procurement officer the
  * site is not maintained, which is an inference they will extend to the freight.
- * Legal pages, an about page and the tenant's address/phone are OPEN items in
- * README.md: the API has no public field for any of them (`GET /branding` returns
- * colours, a name and logos), and inventing a registration number for a tenant we
- * do not know is forbidden by the same rule that keeps fake testimonials out
+ * Legal pages and the tenant's address/phone are still OPEN items in README.md:
+ * the API has no public field for any of them (`GET /branding` returns colours,
+ * a name and logos), and inventing a registration number for a tenant we do not
+ * know is forbidden by the same rule that keeps fake testimonials out
  * (`WEB_BUILD_BRIEF.md` N12).
+ *
+ * ── WHAT §9.5 ADDED, AND WHAT IT DID NOT ─────────────────────────────────
+ *
+ * "Footer gains About, the credentials line, and the legal entity line."
+ *
+ * About and the credentials line are here. Both are real: `/about` is a route
+ * this PR mounts, and the credentials line names certifications the tenant has
+ * entered and that have not expired — the read filters expiry, so a lapsed
+ * licence leaves the footer on its own.
+ *
+ * THE LEGAL ENTITY LINE IS THE TENANT'S NAME AND NOTHING MORE, and that is the
+ * honest version of it. A legal entity line normally carries a registration
+ * number, and `GET /public/site/entities` deliberately does not publish one
+ * (13787, §6.8): a trade-register number changes no visitor's decision and is
+ * most of what somebody needs to impersonate a company to its own suppliers.
+ * Printing "SARL au capital de …" for a tenant nobody asked would be inventing
+ * it. So the line states the company's own legal name where an entity is
+ * published, and the copyright line alone where none is.
  */
 export function SiteFooter() {
   const { t } = useTranslation();
@@ -61,6 +81,9 @@ export function SiteFooter() {
       { to: p("/track"), label: t("site.footer.track") },
     ],
     company: [
+      // §9.1: About was absent from the footer as well as from the nav, and
+      // `site.footer.about` has been in the dictionary unused since PR 1.
+      { to: p("/about"), label: t("site.footer.about") },
       { to: p("#how"), label: t("site.how.title") },
       { to: p("/portfolio"), label: t("site.footer.portfolio") },
       { to: p("/careers"), label: t("site.footer.careers") },
@@ -128,6 +151,8 @@ export function SiteFooter() {
           <NewsletterForm />
         </div>
 
+        <FooterExtras />
+
         <div className="mt-10 flex flex-wrap items-center justify-between gap-4 text-xs text-[var(--hero-muted)]">
           <p>
             © {year} {name}. {t("site.footer.rights")}
@@ -165,4 +190,57 @@ function PublishedServiceLinks() {
       ))}
     </ul>
   );
+}
+
+/**
+ * The social row and the small print — §9.5, loaded AFTER PAINT and OFF THE
+ * FIRST-PAINT PATH.
+ *
+ * ── WHY THIS IS A DYNAMIC IMPORT AND NOT AN ORDINARY COMPONENT ────────────
+ *
+ * The footer is in the entry chunk: every route renders it, so anything it
+ * statically imports is downloaded before the hero paints. What §9.5 adds is
+ * two network reads, seven social glyph paths and the readers behind them —
+ * and the first `check:bundle` run after writing them put first paint at
+ * 129.4 kB against a 128 kB budget. The budget is not a target to be raised
+ * (PR 4 left it at 96%); the content genuinely does not belong on the critical
+ * path.
+ *
+ * Nothing is lost by deferring it. Both reads were already behind
+ * `after-paint`, both blocks are below the fold on every route, and neither can
+ * render anything before its answer arrives. So the chunk is fetched at exactly
+ * the moment the data is, and a visitor who never scrolls has paid for
+ * neither.
+ *
+ * ── EVERY FAILURE IS SILENT, AND THAT IS WHY IT IS NOT `React.lazy` ───────
+ *
+ * `React.lazy` propagates a failed chunk fetch to the nearest error boundary.
+ * For a footer decoration that is the wrong trade by a wide margin: a flaky
+ * CDN response would blank the page a visitor is reading. This is the pattern
+ * `corridor-scene.tsx` already uses for its WebGL enhancement — import, set
+ * state, and on any failure simply never render. There is no error state,
+ * because there is no error: there is a footer, and it is the one above.
+ */
+function FooterExtras() {
+  const [Extras, setExtras] = React.useState<React.ComponentType | null>(null);
+
+  React.useEffect(() => {
+    let alive = true;
+    const cancel = afterPaint(() => {
+      import("./footer-extras")
+        .then((mod) => {
+          if (alive) setExtras(() => mod.FooterExtrasContent);
+        })
+        .catch(() => {
+          /* silent-catch: PRESENTATION. See the header — the footer above is
+             complete and this is an addition to it. doc/ERROR_HANDLING.md */
+        });
+    });
+    return () => {
+      alive = false;
+      cancel();
+    };
+  }, []);
+
+  return Extras ? <Extras /> : null;
 }

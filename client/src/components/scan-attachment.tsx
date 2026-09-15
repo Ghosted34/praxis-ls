@@ -26,10 +26,11 @@ import * as api from "@/lib/masterdata-api";
 import {
   SCAN_ACCEPT,
   openVaultDoc,
-  readFileAsDataUrl,
   scanFileProblem,
 } from "@/lib/vault-file";
 import { errMsg } from "@/lib/use-resource";
+import { FilePicker } from "@/components/ui/image-upload";
+import { useUpload } from "@/lib/use-upload";
 
 const linkCls =
   "text-sm text-primary-ink underline underline-offset-2 hover:opacity-80 disabled:opacity-50";
@@ -71,36 +72,43 @@ export function ScanAttachment({
   labelWhenEmpty?: string;
 }) {
   const [busy, setBusy] = React.useState<"upload" | "open" | null>(null);
-  const [progress, setProgress] = React.useState<number | null>(null);
-  const [uploadSuccess, setUploadSuccess] = React.useState(false);
 
-  async function attach(file: File | null) {
+  /**
+   * Through the engine, so this control compresses and previews like every
+   * other upload. It keeps its own inline shape — it lives in a table row, and
+   * a dropzone there would be absurd — which is what FilePicker's
+   * variant="inline" is for.
+   *
+   * `profile: "document"`: these are certificate and licence scans, so they are
+   * downscaled and re-encoded but never tonally corrected.
+   */
+  const upload = useUpload<{ doc_id: string }>({
+    profile: "document",
+    send: (file, ctx) =>
+      api.uploadVaultFile(
+        file,
+        { doc_type: docType, entity_ref: entityRef, original_name: file.name },
+        ctx,
+      ),
+    onAllComplete: async ([vaulted]) => {
+      if (vaulted) await onAttached(vaulted.doc_id);
+    },
+  });
+
+  const item = upload.items[0] ?? null;
+
+  // The engine reports failures per item; this control's contract is a single
+  // onError callback, so mirror it across rather than making callers read both.
+  React.useEffect(() => {
+    if (item?.state === "error" && item.error) onError?.(item.error);
+  }, [item?.state, item?.error, onError]);
+
+  function attach(file: File | null) {
     if (!file) return;
     const problem = scanFileProblem(file);
     if (problem) return onError?.(problem);
-    setBusy("upload");
-    setProgress(0);
-    setUploadSuccess(false);
     onError?.(null);
-    try {
-      const vaulted = await api.uploadVaultDocument(
-        {
-          data_url: await readFileAsDataUrl(file),
-          doc_type: docType,
-          entity_ref: entityRef,
-        },
-        setProgress,
-      );
-      await onAttached(vaulted.doc_id);
-      setProgress(100);
-      setUploadSuccess(true);
-    } catch (e) {
-      setProgress(null);
-      setUploadSuccess(false);
-      onError?.(errMsg(e));
-    } finally {
-      setBusy(null);
-    }
+    void upload.pick([file]);
   }
 
   async function open() {
@@ -127,40 +135,44 @@ export function ScanAttachment({
           {busy === "open" ? "Opening…" : "View"}
         </button>
       )}
-      <label
-        className={`cursor-pointer ${linkCls} ${busy || disabled ? "pointer-events-none opacity-50" : ""}`}
-      >
-        {busy === "upload"
-          ? "Uploading…"
-          : vaultId
-            ? "Replace"
-            : labelWhenEmpty}
-        <input
-          type="file"
-          className="sr-only"
-          accept={SCAN_ACCEPT}
-          disabled={busy !== null || disabled}
-          onChange={(ev) => {
-            const file = ev.target.files?.[0] ?? null;
-            // Clear the input so re-picking the same file fires onChange again.
-            ev.target.value = "";
-            void attach(file);
-          }}
+      <FilePicker
+        variant="inline"
+        accept={SCAN_ACCEPT}
+        disabled={busy !== null || disabled || item?.state === "uploading"}
+        trigger={
+          item?.state === "compressing"
+            ? "Optimising…"
+            : item?.state === "uploading"
+              ? "Uploading…"
+              : vaultId
+                ? "Replace"
+                : labelWhenEmpty
+        }
+        onPick={(files) => attach(files?.[0] ?? null)}
+      />
+      {/* The preview the control never had. Small, because this sits inline in
+          a table row — but present, so attaching the wrong scan is visible at
+          the moment it happens rather than months later. */}
+      {item?.previewUrl && (
+        <img
+          src={item.previewUrl}
+          alt=""
+          className="h-6 w-6 rounded border object-cover"
         />
-      </label>
-      {busy === "upload" && progress !== null && (
+      )}
+      {item && (item.state === "uploading" || item.state === "compressing") && (
         <span
           className="inline-flex items-center gap-1 text-xs text-muted-foreground"
           role="progressbar"
           aria-label="Upload progress"
           aria-valuemin={0}
           aria-valuemax={100}
-          aria-valuenow={progress}
+          aria-valuenow={item.percent}
         >
-          <span className="num">{progress}%</span>
+          <span className="num">{item.percent}%</span>
         </span>
       )}
-      {uploadSuccess && (
+      {item?.state === "success" && (
         <span className="text-xs text-ok" role="status">
           ✓
         </span>

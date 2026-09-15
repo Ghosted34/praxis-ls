@@ -30,6 +30,22 @@ router.get("/meta", requirePermission(MODULE, "view"), asyncHandler(async (req, 
   res.json({ data: await req.tenantDb((c) => service.editorMeta(c)) });
 }));
 
+/**
+ * The site copy catalogue — every `site.*` string a tenant may rewrite, with
+ * the English and French this build ships for each.
+ *
+ * No tenant data is read, so no `tenantDb`: this is a BUILD ARTEFACT
+ * (`packages/shared/data/site-copy.generated.js`), served rather than bundled
+ * because 465 strings in two languages is ~60 kB that only this one screen
+ * needs, and the ERP shell is downloaded by everybody. It still sits behind the
+ * module's view permission — not to protect the strings, which are on a public
+ * website, but because an endpoint that answers to anyone with a session is one
+ * more thing to reason about at audit time for no benefit.
+ */
+router.get("/copy/catalogue", requirePermission(MODULE, "view"), asyncHandler(async (_req, res) => {
+  res.json({ data: service.copyCatalogue() });
+}));
+
 router.get("/pages", requirePermission(MODULE, "view"), asyncHandler(async (req, res) => {
   res.json({ data: await req.tenantDb((c) => service.listPages(c)) });
 }));

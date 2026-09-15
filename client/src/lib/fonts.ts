@@ -32,7 +32,7 @@
  * fonts (see `loadFonts`). Each `load()` is a dynamic import of the family's
  * CSS, which Vite code-splits into its own chunk; the woff2 files it references
  * land in dist/assets, where the service worker's `**\/*.woff2` precache glob
- * picks them up. Eagerly bundling all sixteen would be ~3 MB on first paint for
+ * picks them up. Eagerly bundling all seventeen would be ~3 MB on first paint for
  * a set where a tenant uses at most three.
  */
 
@@ -121,6 +121,14 @@ export const FONTS: FontDef[] = [
     role: "sans",
     note: "Geometric with warm details. Modern product feel.",
     load: () => import("@fontsource-variable/plus-jakarta-sans"),
+  },
+  {
+    id: "archivo",
+    name: "Archivo",
+    stack: variableStack("Archivo", "sans"),
+    role: "sans",
+    note: "Industrial grotesque with a 100-900 axis. Cut for display sizes.",
+    load: () => import("@fontsource-variable/archivo"),
   },
   {
     id: "ibm-plex-sans",

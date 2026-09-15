@@ -2,6 +2,7 @@
 
 const { z } = require("zod");
 const { AppError } = require("../../../utils/errors");
+const { KINDS } = require("./insight.kinds");
 
 /**
  * A slug is lowercase ASCII with single hyphens, or absent.
@@ -49,6 +50,13 @@ const base = {
   tags,
   author_user_id: z.string().uuid().optional().nullable(),
   sort_order: z.coerce.number().int().min(0).max(100000).optional(),
+  /* 13784. An enum rather than free text, and the list comes from
+     `insight.kinds` rather than being retyped here — `ck_insight_kind` is the
+     real authority and a second copy of two strings is a second place to
+     forget. `pinned_until` is deliberately NOT here: pinning has its own
+     endpoint, so an ordinary field edit cannot put a piece on the tenant's
+     front page. */
+  kind: z.enum(KINDS).optional(),
 };
 
 /**
@@ -81,8 +89,19 @@ const schemas = {
   publish: z.object({ published: z.boolean() }).strict(),
   listQuery: z.object({
     tag: z.string().trim().max(40).optional(),
+    kind: z.enum(KINDS).optional(),
     page: z.coerce.number().int().min(1).max(1000).optional(),
     per_page: z.coerce.number().int().min(1).max(50).optional(),
+  }).strict(),
+  /**
+   * The pin. `pinned_until` is an ISO date-time or null, and null is how a pin
+   * is cleared — which is why the field is REQUIRED and nullable rather than
+   * optional: an empty body on this endpoint is a caller who has not decided,
+   * and silently reading that as "unpin" is how something falls off a homepage
+   * because a form serialised badly.
+   */
+  pin: z.object({
+    pinned_until: z.string().datetime({ offset: true }).nullable(),
   }).strict(),
 };
 
@@ -119,5 +138,6 @@ module.exports = {
   publish: mw("publish"),
   cover: mw("cover"),
   gallery: mw("gallery"),
+  pin: mw("pin"),
   listQuery: mw("listQuery", "query"),
 };

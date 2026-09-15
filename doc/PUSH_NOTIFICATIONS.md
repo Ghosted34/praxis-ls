@@ -103,6 +103,26 @@ push service have the final word.
   the notification producer held. Under LIVE that is the same schema and correct.
   A producer running under sandbox would read the sandbox tables and find no
   devices. Worth fixing when someone relies on notifications from Test.
+- **The chat email fallback is unbounded per channel.** Mail and Smart Comms both
+  set `emailFallback: true`, so a notification that reaches zero devices arrives
+  as an email instead — the difference between "we tried" and "they know".
+  `deliverOutbound` already withholds it from anyone who silenced the category
+  and from a deploy with no VAPID keypair, so the only people it reaches are
+  those who COULD have had push and have no device registered.
+
+  For mail that is self-limiting: one email in, at most one out. For chat it is
+  not. `pushTag: comms:<groupId>` collapses a fast exchange into one BANNER, but
+  the email leg has no equivalent, so twenty messages in one channel are twenty
+  emails to a recipient with no device.
+
+  If that becomes a complaint, the fix is a cooldown on the fallback leg keyed
+  by `(user_id, group_id)` — the shape `claimDeviceLapseNotice` already uses for
+  "at most once per cooldown", atomic via `ON CONFLICT … WHERE` — and NOT
+  removing the fallback, which would put chat back to notifying deviceless users
+  nowhere at all. It is deliberately not built yet: the throttle belongs in
+  `deliverOutbound`, which mail shares, so it cannot be added for chat alone
+  without deciding what it does to mail.
+
 - **The event fan-out excludes the actor** (`shared/notifications/notify-events.js`)
   — "do not tell me about my own action". A solo operator testing by creating
   something themselves gets no notification, in-app or push, and nothing is

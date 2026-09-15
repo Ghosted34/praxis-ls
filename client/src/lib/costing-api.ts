@@ -480,101 +480,237 @@ export const removeAdvanceAllocation = (allocationId: string) =>
     method: "DELETE",
   });
 
-/* ── Dossier reconciliation(/costing/reconciliations) — §2.1 merged record ── */
-/** One line per costing item: budget vs actual, both HT, débours excluded.
- *  `match_status` is provenance — UNMATCHED means untagged actuals were
- *  bucketed here and the assistant's mapping proposals await a human. */
+/* ── Budget Reconciliation (/costing/reconciliations) — MOD-76 ────────────
+ *
+ * ONE reconciliation per operations file, for ever (owner decision Q6). It does
+ * not close; it settles, and re-opens when the costing is amended or more cash
+ * goes out. Every amount is TTC (Q4) — the question is a CASH question: "we
+ * disbursed 119 250, is that what you spent?"
+ *
+ * The grid is PROJECTED from the file's approved costing lines, so a line the
+ * costing gained five minutes ago is already here and a line nobody has touched
+ * still renders. There is no draft-it step and no create call. */
+
+/** One budget line. `budget_ttc`, `committed` and `disbursed` are derived from
+ *  the costing and the cash requests; only `actual_ttc`, `spent_on`,
+ *  `variance_reason` and `returned_amount` are ever typed by a person. */
 export type ReconLine = {
-  line_id: string;
-  dictionary_item_id?: string | null;
+  costing_line_id: string;
+  /** Null until somebody has typed something against this line — the row is
+   *  created on first edit, so the grid is wider than the stored table. */
+  line_id: string | null;
+  line_no: number;
+  label: string;
   item_code?: string | null;
   item_label?: string | null;
-  budget_ht: number;
+  container_type_code?: string | null;
+  dictionary_item_id?: string | null;
+  is_disbursement: boolean;
+  qty: number;
+  unit_cost: number;
+  net: number;
+  vat: number;
+  budget_ttc: number;
+  committed: number;
+  pending: number;
+  disbursed: number;
+  actual_ttc: number;
+  /** DERIVED = nobody has looked; the grid is showing what was disbursed as a
+   *  hypothesis. CONFIRMED = a person agreed with it. OVERRIDDEN = replaced. */
+  actual_source: "DERIVED" | "CONFIRMED" | "OVERRIDDEN";
+  spent_on?: string | null;
+  /** Positive = under budget. Negative is the overspend needing a reason. */
+  variance: number;
+  variance_reason?: string | null;
+  /** Shared by every line one reason was applied to at once (Q12). */
+  reason_group_id?: string | null;
+  returned_amount: number;
+  /** Disbursed − actual − returned: what the holder still has to account for. */
+  outstanding: number;
+  justification_required: boolean;
+  document_count: number;
+  funded: boolean;
+  over_budget: boolean;
+  reason_required: boolean;
+  reason_missing: boolean;
+  proof_missing: boolean;
+  documents?: ReconDocument[];
+  updated_at?: string | null;
+  updated_by?: string | null;
+};
+
+/** Proof that a budget line was spent as claimed. MANY per line (Q8): the first
+ *  demurrage invoice covers one day, the second covers two, and both belong. */
+export type ReconDocument = {
+  recon_document_id: string;
+  line_id: string;
+  doc_id: string;
+  costing_line_id: string;
+  note?: string | null;
+  doc_type?: string | null;
+  doc_status?: string | null;
+  uploaded_by?: string | null;
+  uploaded_by_name?: string | null;
+  uploaded_at?: string;
+};
+
+export type ReconTotals = {
+  budget_ttc: number;
+  committed: number;
+  disbursed: number;
+  actual_ttc: number;
+  returned: number;
+  outstanding: number;
+  variance: number;
+  lines: number;
+  lines_over_budget: number;
+  reasons_missing: number;
+  proofs_missing: number;
+  /** The one HT figure in the module — service costs, débours excluded,
+   *  derived at read. A management indicator, not the number that settles. */
   actual_ht: number;
-  match_status: "MATCHED" | "UNMATCHED";
-  doc_ref?: string | null;
-  doc_required?: boolean;
+  margin_ht: number | null;
 };
-/** An assistant-proposed mapping of an untagged cost entry onto a dictionary
- *  item. PROPOSED until a person confirms or rejects — never auto-applied. */
-export type ReconSuggestion = {
-  suggestion_id: string;
-  cost_entry_id: string;
-  suggested_dictionary_item_id: string;
-  suggested_item_code?: string | null;
-  suggested_item_label?: string | null;
-  entry_category?: string | null;
-  entry_amount?: number;
-  confidence?: number | null;
-  reason?: string | null;
-  status: "PROPOSED" | "CONFIRMED" | "REJECTED";
+
+/** Three verdicts, because they come apart: a file executed well against a
+ *  budget that was quoted too cheap is within budget AND a loss. */
+export type ReconGrades = {
+  execution: { key: string; label: string; percent: number | null };
+  accountability: { key: string; label: string; amount: number };
+  commercial: { key: string; label: string; percent: number | null };
 };
-/** The three questions, derived server-side: quote right / execute to plan /
- *  make money. Null quote answers only the execution question. */
-export type ReconVariance = {
-  quoted_ht: number | null;
-  budget_ht: number;
-  actual_ht: number;
-  quote_vs_budget: number | null;
-  budget_vs_actual: number;
-  quote_vs_actual: number | null;
-  margin_percent: number | null;
-  flag: "GREEN" | "YELLOW" | "RED" | null;
+
+export type ReconBlocker = {
+  costing_line_id: string;
+  label: string;
+  kind: "REASON" | "PROOF";
+  detail: string;
 };
-export type Reconciliation = {
-  reconciliation_id: string;
+
+export type ReconStatus = "OPEN" | "SUBMITTED" | "SETTLED";
+
+export type ReconSheet = {
   dossier_id: string;
-  status: "DRAFT" | "SUBMITTED" | "VALIDATED" | "REJECTED";
-  quotation_id?: string | null;
-  quoted_ht?: number | null;
+  reconciliation_id: string | null;
+  status: ReconStatus;
+  revision?: number;
+  currency?: string;
+  exchange_rate_to_xaf?: number;
+  costing?: {
+    costing_id: string;
+    doc_number?: string | null;
+    status: string;
+    currency?: string;
+  } | null;
+  /** False when the file has no APPROVED_LOCKED costing — there is no budget to
+   *  reconcile against, and `blocked_reason` says so in words. */
+  can_reconcile: boolean;
+  blocked_reason: string | null;
+  lines: ReconLine[];
+  documents?: ReconDocument[];
+  settlements?: Array<{
+    settlement_id: string; revision: number;
+    budget_ttc: number; disbursed_ttc: number; actual_ttc: number; returned_ttc: number;
+    settled_at?: string; settled_by?: string | null;
+  }>;
+  allowance: { amount: number; percent: number };
+  blockers?: ReconBlocker[];
+  totals: ReconTotals;
+  grades: ReconGrades;
   submitted_by?: string | null;
   submitted_at?: string | null;
-  validated_by?: string | null;
-  validated_at?: string | null;
+  settled_by?: string | null;
+  settled_at?: string | null;
+  returned_total?: number;
   reject_reason?: string | null;
-  ocr_amount?: number | null;
-  created_at?: string;
-  lines?: ReconLine[];
-  suggestions?: ReconSuggestion[];
-  variance?: ReconVariance;
-  service_budget_ht?: number;
-  service_actual_ht?: number;
-  disbursement_budget_ht?: number;
-  disbursement_actual_ht?: number;
-  total_actual_ht?: number;
+  reopened_reason?: string | null;
 };
-export const latestReconciliation = (dossierId: string) =>
-  tenant<Reconciliation | null>(
-    `/costing/reconciliations?dossier_id=${encodeURIComponent(dossierId)}`,
-  );
-export const getReconciliation = (id: string) =>
-  tenant<Reconciliation>(`/costing/reconciliations/${id}`);
-export const draftReconciliation = (dossierId: string) =>
-  tenant<Reconciliation>("/costing/reconciliations", {
-    method: "POST",
-    body: { dossier_id: dossierId },
+
+/** Receipts a person owes — "Cash to account for". */
+export type ReceiptsOwed = {
+  count: number;
+  total_ttc: number;
+  items: Array<{
+    dossier_id: string;
+    dossier_ref: string;
+    costing_line_id: string;
+    line_label: string;
+    owed_by: string;
+    owed_by_name?: string | null;
+    reconciliation_id?: string | null;
+    claimed_ttc: number;
+  }>;
+};
+
+const RECON = "/costing/reconciliations";
+
+export const getReconciliation = (dossierId: string) =>
+  tenant<ReconSheet>(`${RECON}/${encodeURIComponent(dossierId)}`);
+
+/** Record what was actually spent against one budget line. An omitted field is
+ *  left alone; an explicit null clears it. */
+export const patchReconLine = (
+  dossierId: string,
+  costingLineId: string,
+  body: {
+    actual_ttc?: number;
+    spent_on?: string | null;
+    variance_reason?: string | null;
+    returned_amount?: number;
+  },
+) =>
+  tenant<ReconSheet>(`${RECON}/${dossierId}/lines/${costingLineId}`, {
+    method: "PATCH",
+    body,
   });
-export const submitReconciliation = (id: string) =>
-  tenant<Reconciliation>(`/costing/reconciliations/${id}/submit`, {
+
+/** One reason, several lines — a customs delay moves demurrage, port storage
+ *  and yard occupancy together, and that is one sentence typed once (Q12). */
+export const applyReconReason = (
+  dossierId: string,
+  reason: string,
+  costingLineIds: string[],
+) =>
+  tenant<ReconSheet>(`${RECON}/${dossierId}/reasons`, {
     method: "POST",
+    body: { reason, costing_line_ids: costingLineIds },
   });
-export const validateReconciliation = (id: string) =>
-  tenant<Reconciliation>(`/costing/reconciliations/${id}/validate`, {
+
+export const attachReconDocument = (
+  dossierId: string,
+  costingLineId: string,
+  docId: string,
+  note?: string,
+) =>
+  tenant<ReconSheet>(`${RECON}/${dossierId}/lines/${costingLineId}/documents`, {
     method: "POST",
+    body: { doc_id: docId, note },
   });
-export const rejectReconciliation = (id: string, reason: string) =>
-  tenant<Reconciliation>(`/costing/reconciliations/${id}/reject`, {
-    method: "POST",
-    body: { reason },
+
+export const detachReconDocument = (
+  dossierId: string,
+  costingLineId: string,
+  docId: string,
+) =>
+  tenant<ReconSheet>(`${RECON}/${dossierId}/lines/${costingLineId}/documents/${docId}`, {
+    method: "DELETE",
   });
-export const confirmReconSuggestion = (id: string, sid: string) =>
-  tenant<Reconciliation>(`/costing/reconciliations/${id}/suggestions/${sid}/confirm`, {
-    method: "POST",
-  });
-export const rejectReconSuggestion = (id: string, sid: string) =>
-  tenant<Reconciliation>(`/costing/reconciliations/${id}/suggestions/${sid}/reject`, {
-    method: "POST",
-  });
+
+export const submitReconciliation = (dossierId: string, note?: string) =>
+  tenant<ReconSheet>(`${RECON}/${dossierId}/submit`, { method: "POST", body: { note } });
+
+export const rejectReconciliation = (dossierId: string, reason: string) =>
+  tenant<ReconSheet>(`${RECON}/${dossierId}/reject`, { method: "POST", body: { reason } });
+
+/** Finance settles: records what came back to the vault and stamps the file. */
+export const settleReconciliation = (
+  dossierId: string,
+  returned?: Record<string, number>,
+) =>
+  tenant<ReconSheet>(`${RECON}/${dossierId}/settle`, { method: "POST", body: { returned } });
+
+export const myReceiptsOwed = () => tenant<ReceiptsOwed>(`${RECON}/owed`);
+export const allReceiptsOwed = () => tenant<ReceiptsOwed>(`${RECON}/owed/all`);
 
 /* ── The budget a costing authorises (/costings/:id/budget) ── */
 

@@ -116,7 +116,13 @@ async function diagnose(client, { userId, write = false } = {}) {
     const slug = await service.tenantNamespace(client, null);
     const key = `tenant_${slug}/signatures/diagnose-probe.png`;
     const servable = isPublicStorageKey(key);
-    const detail = { key, servable, driver: config.STORAGE_DRIVER, url: `https://${config.APP_BASE_DOMAIN}/media/${key}` };
+    // The ORIGIN the renderer would really use, not the apex this used to
+    // print. A probe that reports a different URL from the one going out is
+    // worse than no probe: it sends whoever is debugging to look at a host the
+    // card was never addressed at, which is how the wrong host survived this
+    // long in the first place.
+    const origin = await service.tenantMediaOrigin(client);
+    const detail = { key, servable, driver: config.STORAGE_DRIVER, url: `${origin}/media/${key}` };
 
     if (!servable) {
       steps.push(bad("storage_key", "this key is NOT in the public allow-list — /media will 404 it and every recipient sees a broken image", detail));

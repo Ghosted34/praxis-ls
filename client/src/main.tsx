@@ -6,6 +6,7 @@ import { BrandingProvider } from "@/app/branding/branding-context";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { initThemeMode } from "@/lib/theme-mode";
 import { installGlobalErrorReporting } from "@/lib/error-reporting";
+import { installStrayDropGuard } from "@/lib/stray-drop";
 import { initDensity } from "@/lib/density";
 // i18n bootstraps before the first render so the initial paint is already in
 // the right language (PRD §605 — full EN/FR UI).
@@ -29,6 +30,11 @@ import { pruneDrafts } from "@/lib/form-draft";
 // throw during module evaluation or boot is still captured; that is the case
 // that produces a white screen with nothing in any log.
 installGlobalErrorReporting();
+
+// A file dropped anywhere but on a dropzone would otherwise NAVIGATE the tab
+// to that file, replacing the app — and any open form — with the browser's own
+// viewer. See lib/stray-drop.
+installStrayDropGuard();
 
 // The .dark class and the cached --titlebar-bg / theme-color are already set
 // by the INLINE script in index.html's <head>, before first paint — main.tsx is

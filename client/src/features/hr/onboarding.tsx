@@ -31,6 +31,7 @@
  */
 import * as React from "react";
 import { Button } from "@/components/ui/button";
+import { DateField } from "@/components/ui/date-field";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { Pill, type Tone } from "@/components/ui/pill";
@@ -138,7 +139,7 @@ function NewChecklistForm({ onClose, onSaved }: { onClose: () => void; onSaved: 
             </Select>
           </Field>
           <Field label="Start date" hint="Every due date is an offset from this.">
-            <Input type="date" value={startsOn} onChange={(e) => setStartsOn(e.target.value)} />
+            <DateField value={startsOn} onChange={setStartsOn} />
           </Field>
         </div>
         {tpl && !startsOn && (

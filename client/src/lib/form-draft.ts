@@ -46,6 +46,15 @@ const TTL_MS = 7 * 24 * 60 * 60 * 1000;
  */
 const MAX_BYTES = 64 * 1024;
 
+/**
+ * Ceiling for a caller that passes its own `maxBytes`. A screen may argue for
+ * more than the default — the service-type website tab holds two languages of
+ * page copy and is a document editor by any honest reading — but not for an
+ * unbounded share of the origin's ~5 MB, because the outbox lives there too and
+ * it is the half of the pair that must never fail to write.
+ */
+const MAX_BYTES_CEILING = 1024 * 1024;
+
 /** How long the user must stop typing before a write. */
 const DEBOUNCE_MS = 700;
 
@@ -124,17 +133,17 @@ function isEmpty(values: unknown): boolean {
 export function saveDraft<T>(
   key: string,
   values: T,
-  meta?: { label?: string; path?: string },
-): void {
+  meta?: { label?: string; path?: string; maxBytes?: number },
+): boolean {
   const s = storage();
-  if (!s) return;
+  if (!s) return false;
   // An empty form is not a draft. Writing one would make every screen the user
   // merely OPENED offer to restore nothing, training them to dismiss the prompt
   // without reading it — at which point the prompt no longer works on the day
   // it matters.
   if (isEmpty(values)) {
     clearDraft(key);
-    return;
+    return true;
   }
   const payload: Draft<unknown> = {
     values: redact(values),
@@ -152,19 +161,26 @@ export function saveDraft<T>(
   } catch {
     /* @silent:parse — a cyclic or otherwise unserialisable value; throwing
        here would take down the form the user is still typing into */
-    return;
+    return false;
   }
-  if (json.length > MAX_BYTES) return;
+  // Reported rather than swallowed: a rescue copy that is silently too big
+  // to store means the restore banner never appears, on exactly the screens
+  // most able to lose an hour of work. The caller decides what to say.
+  const cap = Math.min(meta?.maxBytes ?? MAX_BYTES, MAX_BYTES_CEILING);
+  if (json.length > cap) return false;
   try {
     s.setItem(storageKey(key), json);
+    return true;
   } catch {
     // Quota. Free what we can — old drafts first — and try once more, so the
     // form in front of the user wins over one abandoned last Tuesday.
     pruneDrafts();
     try {
       s.setItem(storageKey(key), json);
+      return true;
     } catch {
       /* @silent:storage — still full after pruning; the draft is lost but the form is not */
+      return false;
     }
   }
 }
@@ -273,6 +289,12 @@ export type FormDraftApi<T> = {
   discard: () => void;
   /** Delete the stored draft. Call after a successful save. */
   clear: () => void;
+  /**
+   * The last autosave did not make it to disk — almost always because the
+   * values exceed `maxBytes`. Surface it; a rescue the user believes in but
+   * that does not exist is worse than none.
+   */
+  tooLarge: boolean;
 };
 
 /**
@@ -288,11 +310,14 @@ export function useFormDraft<T>({
   values,
   label,
   enabled = true,
+  maxBytes,
 }: {
   key: string;
   values: T;
   label?: string;
   enabled?: boolean;
+  /** Raise the per-draft cap for a screen that is genuinely document-sized. */
+  maxBytes?: number;
 }): FormDraftApi<T> {
   // Snapshotted on mount: the autosave below starts writing within the second,
   // and reading lazily would race it and offer the user their own empty form.
@@ -300,6 +325,7 @@ export function useFormDraft<T>({
     enabled ? readDraft<T>(key) : null,
   );
   const [savedAt, setSavedAt] = React.useState<number | null>(null);
+  const [tooLarge, setTooLarge] = React.useState(false);
   const first = React.useRef(true);
 
   React.useEffect(() => {
@@ -312,11 +338,12 @@ export function useFormDraft<T>({
       return;
     }
     const t = setTimeout(() => {
-      saveDraft(key, values, { label });
-      setSavedAt(Date.now());
+      const ok = saveDraft(key, values, { label, maxBytes });
+      setTooLarge(!ok);
+      if (ok) setSavedAt(Date.now());
     }, DEBOUNCE_MS);
     return () => clearTimeout(t);
-  }, [key, values, label, enabled]);
+  }, [key, values, label, enabled, maxBytes]);
 
   // A tab being closed or hidden is the last chance to write, and it can happen
   // inside the debounce window — which is exactly the crash case this exists
@@ -326,15 +353,16 @@ export function useFormDraft<T>({
     if (!enabled || typeof document === "undefined") return;
     const flush = () => {
       if (document.visibilityState === "hidden")
-        saveDraft(key, values, { label });
+        saveDraft(key, values, { label, maxBytes });
     };
     document.addEventListener("visibilitychange", flush);
     return () => document.removeEventListener("visibilitychange", flush);
-  }, [key, values, label, enabled]);
+  }, [key, values, label, enabled, maxBytes]);
 
   return {
     pending,
     savedAt,
+    tooLarge,
     restore: () => {
       const v = pending?.values ?? null;
       setPending(null);

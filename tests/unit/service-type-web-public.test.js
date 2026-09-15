@@ -128,6 +128,56 @@ describe("public detail", () => {
     expect(repoSrc).toMatch(/publicRelated[\s\S]*?p\.is_published = true/);
   });
 
+  test("the detail page only serves a document in the role that matches its slot", async () => {
+    // Presence in the allowlist is not the allowlist. Every other check on this
+    // table binds role to slot — publicList's EXISTS asserts
+    // `public_media_role = 'COVER'`, publicMediaForServe asserts role AND slot
+    // before streaming a byte, and the admin isCoverAllowed asserts
+    // `role === "COVER"`. Reading presence alone made the detail page the one
+    // surface that would advertise a GALLERY document as the cover, on a row
+    // whose card in the list correctly showed none — and then hand out a
+    // /media/<id> URL that the byte route refuses, i.e. a broken image.
+    const COVER = "11111111-1111-4111-8111-111111111111";
+    const GALLERY = "22222222-2222-4222-8222-222222222222";
+    const MISFILED = "33333333-3333-4333-8333-333333333333";
+    repo.publicDetail.mockResolvedValue({
+      row: {
+        service_type_id: "st-1", slug_fr: "cargaison-speciale", slug_en: "project-and-break-bulk",
+        name_fr: "Cargaison Spéciale", name_en: "Project & Break-bulk",
+        cover_vault_id: COVER,
+        // The misfiled one: sitting in the icon slot, but scoped as GALLERY.
+        icon_vault_id: MISFILED,
+        gallery_vault_ids: [GALLERY, MISFILED],
+        highlights_fr: [], highlights_en: [], published_at: null,
+      },
+      mediaByRole: new Map([
+        [COVER, "COVER"],
+        [GALLERY, "GALLERY"],
+        [MISFILED, "GALLERY"],
+      ]),
+    });
+    repo.publicRelated.mockResolvedValue([]);
+    repo.publicFaq.mockResolvedValue([]);
+    const { router } = require(routesFile);
+    const layer = router.stack.find((l) => l.route && l.route.path === "/:slug");
+    const handlers = layer.route.stack.map((st) => st.handle);
+    const fakeReq = {
+      params: { slug: "cargaison-speciale" },
+      ip: "127.0.0.1",
+      headers: {},
+      app: { get: () => undefined },
+      tenantDbIn: jest.fn(async (env, fn) => fn({})),
+    };
+    const fakeRes = { status: jest.fn().mockReturnThis(), json: jest.fn(), setHeader: jest.fn(), send: jest.fn() };
+    for (const h of handlers) await h(fakeReq, fakeRes, () => undefined);
+    const { data } = fakeRes.json.mock.calls[0][0];
+    expect(data.cover_url).toContain(COVER);
+    // Scoped GALLERY, parked in the icon slot: not an icon.
+    expect(data.icon_url).toBeNull();
+    // …and it is still a perfectly good gallery image, so it stays in there.
+    expect(data.gallery_urls).toHaveLength(2);
+  });
+
   test("media route re-checks VERIFIED + scope + role + image content type + ownership before streaming", async () => {
     const UUID = "11111111-1111-4111-8111-111111111111";
     repo.publicMediaForServe.mockResolvedValue(null);

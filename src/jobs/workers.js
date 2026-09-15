@@ -24,6 +24,8 @@ const { initRedis, createConnection, closeRedis } = require("../config/redis");
 
 // name: BullMQ queue name; handler: async (job) => result; concurrency optional.
 const PROCESSORS = [
+  { name: "comms-send-flush", concurrency: 1, handler: require("./handlers/comms-send-flush") },
+  { name: "comms-send-scheduler", concurrency: 1, handler: require("./handlers/comms-send-scheduler") },
   { name: "regie-aging", concurrency: 1, handler: require("./handlers/regie-aging") },
   { name: "regie-aging-scheduler", concurrency: 1, handler: require("./handlers/regie-aging-scheduler") },
   { name: "pdf", concurrency: 2, handler: require("./handlers/pdf-render") },
@@ -134,6 +136,17 @@ const PROCESSORS = [
   // is told once.
   { name: "contract-lapse", concurrency: 1, handler: require("./handlers/contract-lapse") },
   { name: "contract-lapse-scheduler", concurrency: 1, handler: require("./handlers/contract-lapse-scheduler") },
+  // Workspace reminders (MOD-00A, 13810). concurrency 1: the sweep disarms rows
+  // as it goes, so two passes over one tenant would mostly find nothing — but
+  // the rows they DO both see are the ones in flight, and a reminder is the one
+  // notification a user notices being sent twice.
+  { name: "workspace-reminder", concurrency: 1, handler: require("./handlers/workspace-reminder") },
+  { name: "workspace-reminder-scheduler", concurrency: 1, handler: require("./handlers/workspace-reminder-scheduler") },
+  // Careers job alerts (13792). concurrency 1: two passes over one tenant would
+  // each read the same watermark before the other moved it, and every
+  // subscriber would receive the digest twice.
+  { name: "careers-alerts", concurrency: 1, handler: require("./handlers/careers-alerts") },
+  { name: "careers-alerts-scheduler", concurrency: 1, handler: require("./handlers/careers-alerts-scheduler") },
   // Sandbox auto-wipe (G3, PRD §5.5): daily fan-out honouring each tenant's
   // sandbox_wipe_days + the rebuild worker. concurrency 1 — two concurrent
   // wipes of one tenant would DROP/CREATE the same schema against each other.
@@ -274,6 +287,12 @@ function startWorkers() {
  * when the interval is 0.
  */
 async function scheduleRecurring() {
+  // Independent of orchestration: chat scheduling must not stop when an
+  // unrelated automation interval is disabled. Durable database rows are the
+  // source of truth; the tick also catches up after worker/Redis downtime.
+  await require("./queue-producer").enqueue("comms-send-scheduler", "tick", {}, {
+    repeat: { every: 30000 }, removeOnComplete: true, removeOnFail: 50,
+  });
   const every = config.ORCHESTRATION_DISPATCH_INTERVAL_MS;
   if (!every || every <= 0) {
     logger.info("orchestration scheduler disabled (ORCHESTRATION_DISPATCH_INTERVAL_MS=0)");
@@ -470,6 +489,39 @@ async function scheduleRecurring() {
       removeOnFail: 50,
     });
     logger.info({ pattern: lapseCron, tz: config.FX_SYNC_TZ || "UTC" }, "contract lapse scheduler registered");
+  }
+
+  // Workspace reminders (MOD-00A, 13810). Every 60s rather than a cron, because
+  // a reminder is promised to a minute — a wall-clock schedule would make
+  // "15 minutes before" mean "whenever the slot next comes round". The tick
+  // fans out per tenant and environment; each sweep is one indexed partial
+  // scan over rows that are armed AND due, which is empty almost always.
+  const reminderEvery = config.WORKSPACE_REMINDER_EVERY_MS;
+  if (!reminderEvery) {
+    logger.info("workspace reminder sweep disabled (WORKSPACE_REMINDER_EVERY_MS=0)");
+  } else {
+    await enqueue("workspace-reminder-scheduler", "tick", {}, {
+      repeat: { every: reminderEvery },
+      removeOnComplete: true,
+      removeOnFail: 50,
+    });
+    logger.info({ every: reminderEvery }, "workspace reminder scheduler registered");
+  }
+
+  // Careers job alerts (13792). Daily, and a digest rather than one mail per
+  // vacancy: a tenant publishing four roles in an afternoon must not send four
+  // emails to the same person, which is the difference between an alert people
+  // keep and one they mark as spam.
+  const careersCron = config.CAREERS_ALERTS_CRON;
+  if (!careersCron) {
+    logger.info("careers alert scheduler disabled (CAREERS_ALERTS_CRON empty)");
+  } else {
+    await enqueue("careers-alerts-scheduler", "tick", {}, {
+      repeat: { pattern: careersCron, tz: config.FX_SYNC_TZ || "UTC" },
+      removeOnComplete: true,
+      removeOnFail: 50,
+    });
+    logger.info({ pattern: careersCron, tz: config.FX_SYNC_TZ || "UTC" }, "careers alert scheduler registered");
   }
 
   // Régie d'avance aging (MOD-49, KB §6.8 step 4). The `regie-aging` WORKER has

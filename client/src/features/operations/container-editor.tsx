@@ -28,6 +28,7 @@
 import * as React from "react";
 import { tr } from "@/lib/i18n";
 import { Dialog } from "@/components/ui/dialog";
+import { DateField } from "@/components/ui/date-field";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, Field } from "@/components/ui/modal";
@@ -455,12 +456,11 @@ export function ContainerEditor({
                               label={tr("Out of port")}
                               className="sm:col-span-4"
                             >
-                              <Input
-                                type="date"
+                              <DateField
                                 aria-label={`Out of port date, container ${ux + 1}`}
                                 value={u.out_of_port_on}
-                                onChange={(e) =>
-                                  setUnit(i, ux, { out_of_port_on: e.target.value })
+                                onChange={(iso) =>
+                                  setUnit(i, ux, { out_of_port_on: iso })
                                 }
                               />
                             </Field>
@@ -468,12 +468,11 @@ export function ContainerEditor({
                               label={tr("Discharged")}
                               className="sm:col-span-4"
                             >
-                              <Input
-                                type="date"
+                              <DateField
                                 aria-label={`Discharged date, container ${ux + 1}`}
                                 value={u.discharged_on}
-                                onChange={(e) =>
-                                  setUnit(i, ux, { discharged_on: e.target.value })
+                                onChange={(iso) =>
+                                  setUnit(i, ux, { discharged_on: iso })
                                 }
                               />
                             </Field>
@@ -481,12 +480,11 @@ export function ContainerEditor({
                               label={tr("Returned")}
                               className="sm:col-span-4"
                             >
-                              <Input
-                                type="date"
+                              <DateField
                                 aria-label={`Returned date, container ${ux + 1}`}
                                 value={u.returned_on}
-                                onChange={(e) =>
-                                  setUnit(i, ux, { returned_on: e.target.value })
+                                onChange={(iso) =>
+                                  setUnit(i, ux, { returned_on: iso })
                                 }
                               />
                             </Field>

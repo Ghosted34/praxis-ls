@@ -2,7 +2,7 @@
  * Operations API helpers (typed) — dossiers (operation files), transit orders,
  * delivery notes, milestones. Routes mirror src/modules/operations/*.
  */
-import { tenant } from "./api-client";
+import { tenant, tenantWithProgress } from "./api-client";
 
 /* ── Operation files / dossiers(/operations) ── */
 export type Dossier = {
@@ -1979,6 +1979,16 @@ export type ServiceTypeWebReadiness = {
   missing: string[];
 };
 
+/**
+ * Which brand token tints the service's card on the public site.
+ *
+ * A token NAME, never a hex — the palette is tenant configuration, and a stored
+ * `#EE7D04` would bake one tenant's brand into another tenant's data. Mirrors
+ * the CHECK on `service_type_web_profile.accent` (migration 12755) and the
+ * `ServiceAccent` union `public-web` renders it with.
+ */
+export type ServiceTypeWebAccent = "PRIMARY" | "ACCENT" | "SUCCESS";
+
 export type ServiceTypeWebProfile = {
   service_type_id: string;
   short_description_fr?: string | null;
@@ -2007,6 +2017,45 @@ export type ServiceTypeWebProfile = {
   updated_at?: string | null;
   /** Server-side allowlist check, recomputed on every GET. */
   cover_allowed?: boolean;
+  /* ── The card (migration 12755) ──────────────────────────────────────────
+     The three fields the public services page renders around the teaser: which
+     pillar the card sits under, the line it closes on, and the brand token that
+     tints it. Null pillar is legitimate — it puts the service in the trailing
+     unnamed group, which still renders. */
+  group_id?: string | null;
+  claim_fr?: string | null;
+  claim_en?: string | null;
+  accent?: ServiceTypeWebAccent;
+};
+
+/**
+ * A pillar — the named section a services page is built from (`/services#freight`).
+ *
+ * Global to the tenant rather than per-service: the same three or four sections
+ * group every published service, which is why they are managed from a dialog
+ * rather than edited on one service's tab.
+ */
+export type ServiceTypeWebGroup = {
+  group_id: string;
+  /** The URL anchor a shared link lands on. Slug-shaped, unique, stable across renames. */
+  key: string;
+  name_fr: string;
+  name_en?: string | null;
+  /** Icon NAME, resolved by the renderer against its own set — never markup. */
+  icon?: string | null;
+  sort_order: number;
+  is_active: boolean;
+  /** How many services sit under it. Present on the list read only. */
+  service_count?: number;
+};
+
+export type ServiceTypeWebGroupPatch = {
+  key?: string;
+  name_fr?: string;
+  name_en?: string | null;
+  icon?: string | null;
+  sort_order?: number;
+  is_active?: boolean;
 };
 
 export type ServiceTypeWebFaqRow = {
@@ -2051,6 +2100,9 @@ export const SERVICE_TYPE_WEB_LIMITS = {
   HIGHLIGHTS_GUIDED_MIN: 4,
   GALLERY_MAX: 12,
   FAQ_MAX: 12,
+  /** One sentence, not a paragraph — the card closes on it (12755). */
+  CLAIM_MAX: 200,
+  GROUP_NAME_MAX: 80,
 } as const;
 
 /**
@@ -2077,7 +2129,39 @@ export type ServiceTypeWebProfilePatch = {
   gallery_vault_ids?: string[];
   video_url?: string | null;
   sort_order?: number;
+  group_id?: string | null;
+  claim_fr?: string | null;
+  claim_en?: string | null;
+  accent?: ServiceTypeWebAccent;
 };
+
+/* ── Pillars (12755) ───────────────────────────────────────────────────────
+   Tenant-wide, not per-service, so they hang off the collection rather than off
+   a `:id`. The list read INCLUDES inactive pillars — the manager has to be able
+   to see and reactivate what it switched off. */
+export const listServiceTypeWebGroups = () =>
+  tenant<ServiceTypeWebGroup[]>(`/service-types/web/groups`);
+
+export const createServiceTypeWebGroup = (body: ServiceTypeWebGroupPatch) =>
+  tenant<ServiceTypeWebGroup>(`/service-types/web/groups`, { method: "POST", body });
+
+export const updateServiceTypeWebGroup = (
+  groupId: string,
+  body: ServiceTypeWebGroupPatch,
+) =>
+  tenant<ServiceTypeWebGroup>(`/service-types/web/groups/${groupId}`, {
+    method: "PATCH",
+    body,
+  });
+
+/** Deleting a pillar never deletes its services — the FK is ON DELETE SET NULL,
+ *  so they fall back to the trailing unnamed group and keep rendering. The count
+ *  comes back so the caller can say what moved. */
+export const deleteServiceTypeWebGroup = (groupId: string) =>
+  tenant<{ deleted: boolean; released_services: number }>(
+    `/service-types/web/groups/${groupId}`,
+    { method: "DELETE" },
+  );
 
 /** GET always 200 for an existing service type (`profile: null` when absent). */
 export const getServiceTypeWeb = (serviceTypeId: string) =>
@@ -2091,6 +2175,78 @@ export const upsertServiceTypeWeb = (
   tenant<ServiceTypeWebTab>(`/service-types/${serviceTypeId}/web`, {
     method: "PUT",
     body: patch,
+  });
+
+/* ── AI drafting ──────────────────────────────────────────────────────────
+   The assistant that turns pasted prose into a page. It WRITES NOTHING: the
+   proposal comes back as a profile-shaped patch and the author accepts it field
+   by field in the review step. */
+
+export type ServiceTypeWebToneLevel = "off" | "light" | "strong";
+
+/** The five axes, in the order the wizard shows them. */
+export const SERVICE_TYPE_WEB_TONE_AXES = [
+  "operational",
+  "commercial",
+  "seo",
+  "corridor",
+  "plain",
+] as const;
+export type ServiceTypeWebToneAxis =
+  (typeof SERVICE_TYPE_WEB_TONE_AXES)[number];
+export type ServiceTypeWebTone = Record<
+  ServiceTypeWebToneAxis,
+  ServiceTypeWebToneLevel
+>;
+
+export const SERVICE_TYPE_WEB_TONE_DEFAULT: ServiceTypeWebTone = {
+  operational: "strong",
+  commercial: "light",
+  seo: "strong",
+  corridor: "light",
+  plain: "strong",
+};
+
+export type ServiceTypeWebAiRequest = {
+  source: "existing" | "scratch";
+  /** Required for `existing`; meaningless for `scratch`. */
+  licence?: "structure" | "tighten" | "rewrite";
+  language_mode?: "each" | "extend";
+  primary?: "en" | "fr";
+  tone?: ServiceTypeWebTone;
+  instructions?: string;
+};
+
+export type ServiceTypeWebAiResult = {
+  manual_required: boolean;
+  /** Present when the assistant could not be used or its answer was unusable. */
+  reason?: string;
+  provider?: string | null;
+  languages?: { lang: "en" | "fr"; ok: boolean }[];
+  /**
+   * True only when every language went down the structure path, where the
+   * author's own paragraphs were copied rather than regenerated. The review
+   * step says so, because it is the difference between "we added headings" and
+   * "we rewrote your page".
+   */
+  prose_preserved?: boolean;
+  proposal?: ServiceTypeWebProfilePatch;
+  /**
+   * Bilingual FAQ rows, ready for `replaceServiceTypeWebFaq`. Empty when only
+   * one language was drafted — a row needs both, so there is nothing to offer.
+   */
+  faq?: ServiceTypeWebFaqRow[];
+  /** Why the FAQ is absent, when copy came back but no pair could be built. */
+  faq_unavailable?: "single_language";
+};
+
+export const draftServiceTypeWebCopy = (
+  serviceTypeId: string,
+  body: ServiceTypeWebAiRequest,
+) =>
+  tenant<ServiceTypeWebAiResult>(`/service-types/${serviceTypeId}/web/ai-copy`, {
+    method: "POST",
+    body,
   });
 
 export const publishServiceTypeWeb = (serviceTypeId: string) =>
@@ -2112,11 +2268,18 @@ export const uploadServiceTypeWebMedia = (
     data_url: string;
     original_name?: string;
   },
+  onProgress?: (percent: number) => void,
 ) =>
-  tenant<ServiceTypeWebTab>(`/service-types/${serviceTypeId}/web/media`, {
-    method: "POST",
-    body,
-  });
+  onProgress
+    ? tenantWithProgress<ServiceTypeWebTab>(
+        `/service-types/${serviceTypeId}/web/media`,
+        body,
+        onProgress,
+      )
+    : tenant<ServiceTypeWebTab>(`/service-types/${serviceTypeId}/web/media`, {
+        method: "POST",
+        body,
+      });
 
 export const removeServiceTypeWebMedia = (
   serviceTypeId: string,

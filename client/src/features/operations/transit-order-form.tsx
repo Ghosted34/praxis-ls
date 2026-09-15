@@ -23,6 +23,7 @@
 import * as React from "react";
 import { tr } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
+import { DateField } from "@/components/ui/date-field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog } from "@/components/ui/dialog";
@@ -440,11 +441,10 @@ export function TransitForm({
               label="Departure date"
               hint="Prints as “Date de départ”. May still change after issue."
             >
-              <Input
-                type="date"
+              <DateField
                 value={f.departure_date}
                 disabled={dead}
-                onChange={(e) => set("departure_date", e.target.value)}
+                onChange={(iso) => set("departure_date", iso)}
               />
             </Field>
           </div>

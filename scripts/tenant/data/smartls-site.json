@@ -1,0 +1,31 @@
+{
+  "//": "Smart Logistics Services Ltd — ONE tenant's website content. See scripts/tenant/seed-site-experience.js for why this is a per-tenant profile and never a migrations/seeds/*.sql: every fact below is a fact about this company, and a shared seed would publish it onto the About page of every tenant this product provisions.",
+
+  "//announcements": "Verify before running against a live tenant. The launch date and the legal form came from the business; the copy deliberately states NOTHING this repository was not told — no city, no Handelsregister number, no share capital, no managing director, no registered address. Those are matters of public record the moment they exist, and a marketing page that guesses one is a marketing page that has published a false statement about its own incorporation. Add them in Settings › Website › Insights once the registry has them.",
+
+  "announcements": [
+    {
+      "slug_fr": "smart-logistics-gmbh-operations-europeennes",
+      "slug_en": "smart-logistics-gmbh-european-operations",
+      "tags": ["Expansion", "Europe"],
+
+      "title_fr": "Une adresse européenne pour le corridor camerounais",
+      "title_en": "A European address for the Cameroon corridor",
+
+      "excerpt_fr": "Smart Logistics Services Ltd constitue une filiale en Allemagne — une GmbH — qui portera les opérations européennes du groupe. Ouverture le 20 octobre 2026.",
+      "excerpt_en": "Smart Logistics Services Ltd is incorporating a subsidiary in Germany — a GmbH — to hold the group's European operations. It opens for business on 20 October 2026.",
+
+      "meta_title_fr": "Smart Logistics ouvre une GmbH en Allemagne — opérations européennes",
+      "meta_title_en": "Smart Logistics opens a GmbH in Germany — European operations",
+      "meta_description_fr": "Smart Logistics Services Ltd constitue une filiale allemande pour porter ses opérations européennes. Ouverture officielle le 20 octobre 2026.",
+      "meta_description_en": "Smart Logistics Services Ltd is establishing a German subsidiary to hold its European operations, opening officially on 20 October 2026.",
+
+      "body_en": "## What is changing\n\nSmart Logistics Services Ltd is incorporating a wholly owned subsidiary in Germany — a *Gesellschaft mit beschränkter Haftung*, a GmbH. It will hold the group's European operations, and it opens for business on **20 October 2026**.\n\n## What it changes for the people who ship with us\n\nA European entity is not a letterhead with a new address on it. It is a counterparty.\n\n- **Contracts on European terms.** Shippers and consignees inside the EU can contract with a European company, in euros, on terms their own legal and procurement teams already recognise — without a cross-border counterparty check standing between a quotation and a booking.\n- **A desk inside the time zone.** Bookings, pre-alerts and questions on the European leg are answered from Europe, in European hours, instead of waiting for the next overlap with Douala.\n- **One file across two continents.** The corridor stops being two forwarders corresponding with each other. Origin and destination sit inside one group, on one file, under one reference — the same reference you track with today.\n\n## What is not changing\n\nEverything the group is. The Douala desk, the people who staff it, the operating standard and the corridors we run are unchanged. The Cameroonian company remains the operating centre of this group and its centre of gravity; what is being added is a European half, not a European head office.\n\n## The date\n\nThe German company opens for business on **20 October 2026**. Enquiries for European origins and destinations are welcome before then and are handled, as they are today, by the existing desk.",
+
+      "body_fr": "## Ce qui change\n\nSmart Logistics Services Ltd constitue en Allemagne une filiale détenue à 100 % — une *Gesellschaft mit beschränkter Haftung*, une GmbH. Elle portera les opérations européennes du groupe et ouvrira ses activités le **20 octobre 2026**.\n\n## Ce que cela change pour ceux qui expédient avec nous\n\nUne entité européenne n'est pas un en-tête avec une nouvelle adresse. C'est une contrepartie.\n\n- **Des contrats aux conditions européennes.** Les chargeurs et destinataires établis dans l'Union peuvent contracter avec une société européenne, en euros, selon des conditions que leurs propres services juridiques et achats reconnaissent déjà — sans qu'une vérification de contrepartie transfrontalière ne s'intercale entre une cotation et une réservation.\n- **Un interlocuteur dans le fuseau horaire.** Réservations, préavis et questions sur le segment européen trouvent réponse depuis l'Europe, aux heures européennes, plutôt qu'en attendant le prochain recouvrement horaire avec Douala.\n- **Un seul dossier sur deux continents.** Le corridor cesse d'être deux transitaires qui correspondent. Origine et destination relèvent d'un même groupe, d'un même dossier, sous une même référence — celle-là même que vous suivez aujourd'hui.\n\n## Ce qui ne change pas\n\nTout ce qu'est le groupe. L'équipe de Douala, les femmes et les hommes qui la composent, le standard d'exploitation et les corridors que nous opérons demeurent inchangés. La société camerounaise reste le centre opérationnel du groupe et son centre de gravité : ce qui s'ajoute est une moitié européenne, non un siège européen.\n\n## La date\n\nLa société allemande ouvrira ses activités le **20 octobre 2026**. Les demandes portant sur des origines et destinations européennes sont les bienvenues dès à présent et sont traitées, comme aujourd'hui, par l'équipe existante.",
+
+      "pinned_until": "2026-11-20T23:59:59Z",
+      "sort_order": 1
+    }
+  ]
+}

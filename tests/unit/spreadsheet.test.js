@@ -396,18 +396,23 @@ describe("dates — instants render in the entity timezone, never host-UTC-as-lo
     const v = wb.getWorksheet("T").getCell("A2").value;
     expect(v).toBeInstanceOf(Date);
     expect(v.toISOString()).toBe("2026-08-21T00:30:00.000Z");
-    expect(wb.getWorksheet("T").getCell("A2").numFmt).toBe("yyyy-mm-dd hh:mm");
+    // The number format is presentation only — the cell above still holds a real
+    // date serial, which is what sorting and formulas read. Day-first, like
+    // every other date this product prints.
+    expect(wb.getWorksheet("T").getCell("A2").numFmt).toBe("dd/mm/yyyy hh:mm");
   });
 
-  it("keeps a calendar date a calendar date (no tz shift, yyyy-mm-dd format)", async () => {
+  it("keeps a calendar date a calendar date (no tz shift, dd/mm/yyyy format)", async () => {
     const buf = await buildWorkbook({
       sheets: [{ name: "T", columns: [{ header: "Le", key: "on", format: "date" }], rows: [{ on: "2026-08-20" }] }],
       context: fixtureContext(),
     });
     const wb = await load(buf);
     const v = wb.getWorksheet("T").getCell("A2").value;
+    // The STORED value is still the right calendar day — that is the tz claim
+    // in the name, and it is unchanged. Only the number format is day-first.
     expect(v.toISOString().slice(0, 10)).toBe("2026-08-20");
-    expect(wb.getWorksheet("T").getCell("A2").numFmt).toBe("yyyy-mm-dd");
+    expect(wb.getWorksheet("T").getCell("A2").numFmt).toBe("dd/mm/yyyy");
   });
 });
 

@@ -57,6 +57,13 @@ function publicCard(row) {
     has_cover: !!row.cover_vault_id,
     cover_id: row.cover_vault_id || null,
     author: publicAuthor(row),
+    // 13784. `kind` travels on the card because the renderer differs — an
+    // announcement band and an article grid draw the same row two ways — and
+    // `pinned_until` travels with it because the band SHOWS the expiry. A pin
+    // whose date a visitor cannot see is a pin only the tenant knows is
+    // temporary.
+    kind: row.kind || "article",
+    pinned_until: row.pinned_until || null,
   };
 }
 
@@ -94,11 +101,11 @@ const DEFAULT_PER_PAGE = 9;
  * a visitor who has narrowed to "strategy" still needs the other tags in front
  * of them, or the only way back is the browser's Back button.
  */
-async function listPublic(client, { tag = null, page = 1, perPage = DEFAULT_PER_PAGE } = {}) {
+async function listPublic(client, { tag = null, kind = null, page = 1, perPage = DEFAULT_PER_PAGE } = {}) {
   const offset = (page - 1) * perPage;
   const [rows, total, tags] = await Promise.all([
-    repo.list(client, { publishedOnly: true, tag, limit: perPage, offset }),
-    repo.count(client, { publishedOnly: true, tag }),
+    repo.list(client, { publishedOnly: true, tag, kind, limit: perPage, offset }),
+    repo.count(client, { publishedOnly: true, tag, kind }),
     repo.tagsInUse(client, { publishedOnly: true }),
   ]);
   return {
@@ -112,6 +119,47 @@ async function listPublic(client, { tag = null, page = 1, perPage = DEFAULT_PER_
     // to an empty page.
     has_more: offset + rows.length < total,
   };
+}
+
+/* ── announcements (13784, guide §6.4) ────────────────────────────────────── */
+
+/** Re-exported, not re-declared — `insight.kinds` is the one copy, and its
+ *  header records why it is a file rather than a line in this one. */
+const { KINDS, ANNOUNCEMENT } = require("./insight.kinds");
+
+/**
+ * THE CAP, AND WHY IT IS HERE RATHER THAN IN THE CLIENT.
+ *
+ * Q7 asked for the homepage band to carry "only the very important
+ * announcements". A tenant who pins eleven things has not changed their mind
+ * about that — they have simply pinned eleven things, which is what people do
+ * with a flag that has no cost. The cap is what keeps the band a band.
+ *
+ * Five, server-side, applied as a `LIMIT` in `repo.listPinned`. A client-side
+ * `.slice(0, 5)` would still have sent eleven rows to a phone on a metered
+ * connection, and the next caller — the crawler head, an app, PR 4's list page
+ * — would not have had the rule at all.
+ */
+const PINNED_MAX = 5;
+
+/**
+ * The homepage's read: the live pins, and the announcements list behind them.
+ *
+ * ONE ENDPOINT, TWO COLLECTIONS, because the band and its "view more" are one
+ * screenful and two requests for them is a second round trip on the LCP path's
+ * heels. `pinned` is capped and complete; `articles` is paginated and ordinary.
+ *
+ * `pinned` is NOT subtracted from `articles`. A pinned announcement is still an
+ * announcement, and a visitor who follows "view more" looking for the thing
+ * they just saw in the band should find it in the list rather than discover
+ * that being important removed it.
+ */
+async function listPublicAnnouncements(client, { page = 1, perPage = DEFAULT_PER_PAGE } = {}) {
+  const [pinnedRows, list] = await Promise.all([
+    repo.listPinned(client, { limit: PINNED_MAX, kind: ANNOUNCEMENT }),
+    listPublic(client, { kind: ANNOUNCEMENT, page, perPage }),
+  ]);
+  return { pinned: pinnedRows.map(publicCard), ...list };
 }
 
 /**
@@ -253,6 +301,70 @@ async function setPublished(client, { id, published, actor = {} }) {
 }
 
 /**
+ * Pin an announcement to the homepage band until a date, or clear the pin.
+ *
+ * ── WHY IT REFUSES THREE THINGS ────────────────────────────────────────────
+ *
+ * All three refusals exist because the alternative is a control that appears to
+ * work and changes nothing — the worst kind, because the tenant only finds out
+ * by looking at their own homepage, which nobody does.
+ *
+ *   1. NOT AN ANNOUNCEMENT. The band reads `kind = 'announcement'`, so pinning
+ *      an ordinary article writes a timestamp no renderer will ever read.
+ *   2. NOT PUBLISHED. The band reads published rows, as every public read does.
+ *      Pinning a draft is a pin that silently does nothing until somebody
+ *      publishes, which may be never.
+ *   3. A DATE IN THE PAST. `pinned_until > now()` is the whole mechanism, so an
+ *      expiry already behind us is an unpin wearing a pin's clothes. Clearing a
+ *      pin is a real thing to want and it has its own spelling: null.
+ *
+ * Clearing is always allowed, on any row, in any state — you must be able to
+ * take something off the front page without first repairing it.
+ */
+async function setPinned(client, { id, pinnedUntil = null, actor = {} }) {
+  const before = await repo.get(client, id);
+  if (!before) throw new AppError("NOT_FOUND", "Article not found", 404);
+
+  if (pinnedUntil !== null) {
+    if ((before.kind || "article") !== ANNOUNCEMENT) {
+      throw new AppError("NOT_AN_ANNOUNCEMENT", "Only an announcement can be pinned to the home page", 422, {
+        kind: ["change the kind to announcement first"],
+      });
+    }
+    if (!before.is_published) {
+      throw new AppError("NOT_PUBLISHED", "Publish the announcement before pinning it", 422, {
+        pinned_until: ["the band only shows published announcements"],
+      });
+    }
+    if (new Date(pinnedUntil).getTime() <= Date.now()) {
+      throw new AppError("PIN_EXPIRED", "Pin it until a date in the future", 422, {
+        pinned_until: ["a date already past is not a pin"],
+      });
+    }
+  }
+
+  return atomically(client, async () => {
+    const row = await repo.setPinned(client, id, pinnedUntil);
+    const action = pinnedUntil ? events.PINNED : events.UNPINNED;
+    await emitEvent(client, {
+      eventTypeKey: action,
+      moduleKey: events.MODULE,
+      entityRef: ref(id),
+      actorUserId: actor.user_id || null,
+    });
+    await audit(client, {
+      actorUserId: actor.user_id || null,
+      action,
+      moduleKey: events.MODULE,
+      entityRef: ref(id),
+      before,
+      after: row,
+    });
+    return row;
+  });
+}
+
+/**
  * Deleting refuses a LIVE article, the same rule `site_content` applies to a
  * page: the URL is in search results and possibly linked from somewhere we do
  * not control. Unpublish first, deliberately, then delete.
@@ -349,9 +461,10 @@ async function setCover(client, { id, dataUrl, originalName, actor = {}, slug: t
       after: { cover_vault_id: created.doc_id },
     });
     await emitEvent(client, {
-      event: events.UPDATED,
+      eventTypeKey: events.UPDATED,
       moduleKey: events.MODULE,
       entityRef: ref(id),
+      actorUserId: actor.user_id || null,
       payload: { insight_article_id: id, cover_vault_id: created.doc_id },
     });
     return row;
@@ -503,6 +616,8 @@ async function setGallery(client, { id, ids, actor = {} }) {
 
 module.exports = {
   DEFAULT_PER_PAGE, GALLERY_MAX,
+  KINDS, ANNOUNCEMENT, PINNED_MAX,
+  listPublicAnnouncements, setPinned,
   publicAuthor, publicCard, publicArticle,
   listPublic, getPublic,
   list, get, create, update, setPublished, remove,

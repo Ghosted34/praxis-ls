@@ -120,6 +120,8 @@ const DEFAULT_CALENDAR = buildCalendar({
  * Derived from Intl so DST zones are handled at the transition, not assumed away.
  */
 function offsetMinutes(tz, date) {
+  /* @date-format:parts — formatToParts() on the very next line; this reads
+     NAMED fields to compute a UTC offset and never renders a date string. */
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: tz, hour12: false,
     year: "numeric", month: "2-digit", day: "2-digit",

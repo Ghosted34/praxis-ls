@@ -11,6 +11,7 @@ import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { tenant } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
+import { DateField } from "@/components/ui/date-field";
 import { PageHeader } from "@/components/data-list";
 import { HubCrumb } from "@/components/tabbed-hub";
 import { Input } from "@/components/ui/input";
@@ -170,10 +171,9 @@ function GrantModal({
             </Field>
           )}
           <Field label="Expires at" hint="Optional — recommended for auditors">
-            <Input
-              type="date"
+            <DateField
               value={expiresAt}
-              onChange={(e) => setExpiresAt(e.target.value)}
+              onChange={setExpiresAt}
             />
           </Field>
         </div>

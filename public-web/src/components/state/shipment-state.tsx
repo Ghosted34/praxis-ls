@@ -129,7 +129,7 @@ export function MilestoneMarker({
         "relative z-10 mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border bg-background transition-colors",
         done && "border-[rgb(var(--brand-orange))] bg-[rgb(var(--brand-orange))] text-[var(--primary-foreground)]",
         current &&
-          "border-[rgb(var(--brand-orange))] text-[rgb(var(--brand-orange))] ring-4 ring-[rgb(var(--accent-rgb,0_0_0)/0.10)]",
+          "border-[rgb(var(--brand-orange))] text-[rgb(var(--brand-orange))] ring-4 ring-[rgb(var(--accent-rgb,0_0_0)/0.10)]", // ink-on-dark: a 13px GLYPH, not type — WCAG 1.4.11 holds it to 3:1 and it measures 3.13:1
         !done && !current && "border-border text-muted-foreground",
       )}
     >

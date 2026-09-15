@@ -24,6 +24,7 @@
  */
 import * as React from "react";
 import { Button } from "@/components/ui/button";
+import { DateField } from "@/components/ui/date-field";
 import { FormButtons } from "@/components/ui/form-buttons";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
@@ -126,10 +127,9 @@ export function DisburseForm({
             </Select>
           </Field>
           <Field label={tr("Date")} required>
-            <Input
-              type="date"
+            <DateField
               value={f.entry_date}
-              onChange={(e) => set("entry_date", e.target.value)}
+              onChange={(iso) => set("entry_date", iso)}
             />
           </Field>
           <Field
@@ -319,10 +319,9 @@ export function JustifyForm({
         )}
         <div className="grid gap-4 lg:grid-cols-2">
           <Field label={tr("Date")} required>
-            <Input
-              type="date"
+            <DateField
               value={entryDate}
-              onChange={(e) => setEntryDate(e.target.value)}
+              onChange={setEntryDate}
             />
           </Field>
         </div>

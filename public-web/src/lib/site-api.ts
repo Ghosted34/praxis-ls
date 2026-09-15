@@ -69,6 +69,18 @@ export type SitePage = {
 export const HOME_PAGE_KEY = "home";
 
 /**
+ * The page key the careers screen reads its "why work here" blocks from (13792).
+ *
+ * A key and not a new table, because `site_page.key` is already free-form
+ * (`^[a-z0-9][a-z0-9-]*[a-z0-9]$` in the settings screen) and every tenant can
+ * already create one. It is here rather than invented at the call site so that
+ * the careers page and any future reader are looking at the same string — the
+ * failure mode otherwise is a tenant authoring `careers` and a component asking
+ * for `career`, which reads as "the editor does not work".
+ */
+export const CAREERS_PAGE_KEY = "careers";
+
+/**
  * One published page, or `null`.
  *
  * Every failure is the same answer on purpose. An unknown key, an unpublished
@@ -244,3 +256,447 @@ export const statChips = (page: SitePage | null): StatChip[] =>
   itemsOf(page, "stat_chips").filter(
     (i): i is StatChip => !!i && typeof i === "object",
   );
+
+/* ── the group story (§6.9's `/public/site/about`) ─────────────────────────
+ *
+ * PR 5 (§9.1) renders the whole of this as the About page. PR 4 needs one field
+ * from it: `esg`, which §8.4 turns into the programme's worked example of the
+ * 90-word rule.
+ *
+ * THREE FIXED PILLARS, NOT AN OPEN BAG. `packages/shared/schemas/site-settings.js`
+ * says why in as many words: the renderer builds a three-panel interactive and
+ * can only do that if it knows there are exactly three and what they are
+ * called. An open record would mean the renderer guessing at whatever an editor
+ * typed, and a fourth pillar silently breaking the layout.
+ *
+ * The pillar NAMES are ours and come from the dictionary — Environment, Social,
+ * Governance are the standard triad, not a claim about this tenant. Everything
+ * inside a pillar is theirs.
+ */
+export type EsgPillar = {
+  text: string;
+  points: string[];
+};
+
+export type EsgContent = {
+  environment: EsgPillar | null;
+  social: EsgPillar | null;
+  governance: EsgPillar | null;
+};
+
+type RawPillar = {
+  text_fr?: unknown;
+  text_en?: unknown;
+  points?: unknown;
+};
+
+/** One pillar, read in the visitor's language. Null when the tenant has not
+ *  written it — which is the default, and the band draws nothing rather than a
+ *  heading over an empty column. */
+function pillar(raw: unknown, lang: Lang): EsgPillar | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as RawPillar;
+  const text = pickBilingual(
+    { fr: String(r.text_fr ?? ""), en: r.text_en == null ? null : String(r.text_en) },
+    lang,
+  );
+  const points = (Array.isArray(r.points) ? r.points : [])
+    .map((pt) => pickBilingual(pt as Bilingual, lang))
+    .filter((t): t is string => !!t);
+  // A pillar with neither prose nor a single point is not a pillar. Rendering
+  // its heading anyway would put "Environment" over white space on a public
+  // page, which is worse than the section being one column shorter.
+  return text || points.length ? { text, points } : null;
+}
+
+export const getPublicEsg = (opts: { lang: Lang; signal?: AbortSignal }) =>
+  publicGet<{ esg?: unknown }>("/public/site/about", { signal: opts.signal })
+    .then(
+      (about): EsgContent => ({
+        environment: pillar((about?.esg as Record<string, unknown>)?.environment, opts.lang),
+        social: pillar((about?.esg as Record<string, unknown>)?.social, opts.lang),
+        governance: pillar((about?.esg as Record<string, unknown>)?.governance, opts.lang),
+      }),
+    )
+    /* Every failure is the same answer, for the reason `getSitePage` states: an
+       unpublished story, a tenant without the `website` package and a network
+       error are three facts server-side and one fact here — there is nothing to
+       draw. The band renders nothing in all three. */
+    .catch((): EsgContent => ({ environment: null, social: null, governance: null }));
+
+/** Whether any pillar has content. The band mounts nothing at all otherwise —
+ *  no heading, no empty columns, no "coming soon".
+ *
+ *  A TYPE GUARD rather than a boolean, so the null check and the render site
+ *  cannot drift. Guarding with a plain boolean would leave the call site
+ *  needing a non-null assertion — and an assertion is what survives the day
+ *  somebody makes this read optional, silently, with a crash behind it. */
+export const hasEsg = (esg: EsgContent | null): esg is EsgContent =>
+  !!esg && !!(esg.environment || esg.social || esg.governance);
+
+/* ── public-enabled entities (§6.9) ────────────────────────────────────────
+ *
+ * PR 5 (§9.2) renders these as a network in their own right. PR 3 needs one
+ * field from them: `coverage`, which is the list of countries each entity
+ * actually operates in.
+ *
+ * WHY THE SET PIECE READS IT. §7.5 says the scene's data comes from
+ * `listCorridors` AND this endpoint, and the two answer different questions: a
+ * corridor is a lane the tenant has RUN, an entity's coverage is ground the
+ * tenant STANDS ON. A network drawing that cannot tell "we deliver here" from
+ * "we are here" is missing the distinction a visitor most wants.
+ *
+ * The join is on `country_code` and nothing else — an exact code-to-code match,
+ * both sides of it authored by the tenant. Matching an entity's ADDRESS against
+ * a corridor's place NAME was the other option and it is inference: "Douala"
+ * against "Douala, Littoral, Cameroun" works until the first tenant who writes
+ * it differently, and a marketing page that quietly mislabels where a company
+ * is, is exactly what N12 exists to prevent.
+ */
+export type PublicEntity = {
+  id: string;
+  code: string | null;
+  legal_name: string;
+  trading_name: string | null;
+  country_code: string | null;
+  /** `[{country_code, label_fr, label_en}]` — migration 13787.
+   *
+   *  The LABELS are read now as well as the codes (§8.5's coverage figure).
+   *  They are the tenant's own words for the place, which is the only naming
+   *  this app is entitled to print: a two-letter code resolved against a
+   *  country table would be OUR name for their market, and the schema requires
+   *  both languages precisely so it does not have to be. */
+  coverage: Array<{
+    country_code?: string | null;
+    label_fr?: string | null;
+    label_en?: string | null;
+  }>;
+  /* ── the fields §9.2 reads, and PR 3/PR 4 did not ──────────────────────
+   *
+   * All of them were already in the payload (§6.9, PR 2). PR 3 needed
+   * `coverage` and PR 4 needed `coverage` with its labels, so the type stopped
+   * there rather than describing fields nothing consumed. §9.2 draws the
+   * entities as a network in their own right, which needs the rest.
+   *
+   * WHAT IS STILL NOT HERE IS THE POINT. No `rccm`, no `niu`, no legal form, no
+   * incorporation date, no cap table, no governance — because none of them is
+   * in the response. `tests/unit/site-public-redaction.test.js` asserts that on
+   * the SERIALISED body, and `about-page.test.tsx` asserts it again on the
+   * rendered DOM, which is the assertion §9.7 actually asks for. */
+  summary?: { fr?: string | null; en?: string | null } | null;
+  focus?: Array<{
+    label_fr?: string | null;
+    label_en?: string | null;
+    mode?: string | null;
+  }>;
+  cover_id?: string | null;
+  cover_variants?: MediaVariants;
+  leaders?: PublicLeader[];
+};
+
+/** One place a tenant says they cover, named as they named it. Rows without a
+ *  label in either language are dropped rather than falling back to the code —
+ *  "CM" on a public page is not a place name. */
+export function coverageLabels(
+  entity: PublicEntity,
+  lang: Lang,
+): string[] {
+  const seen = new Set<string>();
+  for (const c of entity.coverage || []) {
+    const label = pickBilingual(
+      {
+        fr: String(c.label_fr ?? ""),
+        en: c.label_en == null ? null : String(c.label_en),
+      },
+      lang,
+    );
+    if (label) seen.add(label);
+  }
+  return [...seen];
+}
+
+export const listPublicEntities = (opts: { signal?: AbortSignal } = {}) =>
+  publicGet<PublicEntity[]>("/public/site/entities", { signal: opts.signal });
+
+/**
+ * Every ISO country code the tenant's public entities sit in or cover, upper-cased.
+ *
+ * Empty for a tenant with no public entity — which is the default, since
+ * `public_enabled` is off until somebody turns it on deliberately (13787). The
+ * scene then marks nothing, which is correct: no claim is made from an absence.
+ */
+export function coveredCountries(entities: PublicEntity[] | null): Set<string> {
+  const out = new Set<string>();
+  for (const e of entities || []) {
+    if (e.country_code) out.add(e.country_code.toUpperCase());
+    for (const c of e.coverage || []) {
+      if (c && c.country_code) out.add(String(c.country_code).toUpperCase());
+    }
+  }
+  return out;
+}
+
+/* ── website media (§6.3, built in PR 5) ───────────────────────────────────
+ *
+ * ── WHY THE CLIENT BUILDS THE URL AND THE SERVER SENDS AN ID ──────────────
+ *
+ * The reads publish `logo_id` / `photo_id` / `cover_id` and a `*_variants`
+ * ladder, not a URL. That looks like extra work here and it is the right split:
+ * the id is a FACT about the document, the URL is a routing detail of this app,
+ * and the two other consumers of these endpoints (the settings preview and,
+ * later, a tenant's own domain) resolve the same id against a different base.
+ *
+ * ── THE LADDER IS WHAT WAS WRITTEN, NOT WHAT WAS ASKED FOR ────────────────
+ *
+ * `sharp` never upscales, so a 700 px mark has no 1600 rung. A `srcset` naming
+ * a width that does not exist is a 404 per visitor per image — the browser has
+ * already committed to the candidate it picked — which is why the widths come
+ * from the row rather than from a constant in this file.
+ */
+export type MediaVariants = { widths: number[]; formats: string[] } | null;
+
+/** The original bytes. Always valid for a document the read published, because
+ *  the serve route's own owner join is the same condition that put the id in
+ *  the payload. */
+export const mediaUrl = (id: string | null | undefined): string | null =>
+  id ? `/api/tenant/public/site/media/${encodeURIComponent(id)}` : null;
+
+/**
+ * One `<source>` line — every width the document has, in one format.
+ *
+ * Returns null when the format was never written, so a caller can omit the
+ * `<source>` entirely rather than emit an empty `srcset` (which Safari treats
+ * as a candidate and then fails to load).
+ */
+export function mediaSrcSet(
+  id: string | null | undefined,
+  variants: MediaVariants,
+  format: string,
+): string | null {
+  if (!id || !variants || !variants.formats.includes(format)) return null;
+  const widths = variants.widths.filter((w) => Number.isFinite(w) && w > 0);
+  if (!widths.length) return null;
+  return widths
+    .map((w) => `/api/tenant/public/site/media/${encodeURIComponent(id)}/${w}.${format} ${w}w`)
+    .join(", ");
+}
+
+/* ── the group story (§9.1) ────────────────────────────────────────────────
+ *
+ * PR 4 read one field from `/public/site/about` — `esg` — because §8.4 needed
+ * it and §9.1 owned the page. This is the rest of it.
+ */
+
+/** One person, group tier or entity tier. §6.7: one table with a nullable
+ *  `entity_id`, so one renderer draws both and they cannot disagree. */
+export type PublicLeader = {
+  id: string;
+  name: string;
+  role: Bilingual;
+  bio: Bilingual;
+  photo_id: string | null;
+  photo_variants: MediaVariants;
+  linkedin_url: string | null;
+};
+
+/** One dated moment in the company's story. `year` is required upstream; the
+ *  label is the tenant's own words. */
+export type TimelineEntry = {
+  year: number;
+  label: string;
+  text: string;
+};
+
+export type PublicAbout = {
+  headline: string;
+  summary: string;
+  mission: string;
+  vision: string;
+  principles: Array<{ label: string; text: string }>;
+  esg: EsgContent;
+  timeline: TimelineEntry[];
+  foundedYear: number | null;
+  headquarters: string | null;
+  leaders: PublicLeader[];
+};
+
+type RawBilingual = { fr?: unknown; en?: unknown };
+type RawItem = { label_fr?: unknown; label_en?: unknown; text_fr?: unknown; text_en?: unknown };
+
+const bi = (v: unknown): Bilingual => {
+  const r = (v || {}) as RawBilingual;
+  return { fr: String(r.fr ?? ""), en: r.en == null ? null : String(r.en) };
+};
+
+const read = (v: unknown, lang: Lang): string => pickBilingual(bi(v), lang);
+
+/** A `{label_fr, label_en, text_fr, text_en}` row, read in the visitor's
+ *  language. The shape `site_about.principles` and `.timeline` both store. */
+const readItem = (raw: RawItem, lang: Lang) => ({
+  label: pickBilingual(
+    { fr: String(raw.label_fr ?? ""), en: raw.label_en == null ? null : String(raw.label_en) },
+    lang,
+  ),
+  text: pickBilingual(
+    { fr: String(raw.text_fr ?? ""), en: raw.text_en == null ? null : String(raw.text_en) },
+    lang,
+  ),
+});
+
+const readLeader = (raw: unknown): PublicLeader => {
+  const l = (raw || {}) as Record<string, unknown>;
+  return {
+    id: String(l.id ?? ""),
+    name: String(l.name ?? ""),
+    role: bi(l.role),
+    bio: bi(l.bio),
+    photo_id: l.photo_id == null ? null : String(l.photo_id),
+    photo_variants: (l.photo_variants as MediaVariants) ?? null,
+    linkedin_url: l.linkedin_url == null ? null : String(l.linkedin_url),
+  };
+};
+
+/**
+ * The whole group story, read in the visitor's language.
+ *
+ * ── THE TIMELINE IS SORTED HERE AND NOT IN SQL ────────────────────────────
+ *
+ * `site_about.timeline` is a jsonb array in the order a tenant dragged the rows
+ * into, which is the order they want to EDIT in and not necessarily the order
+ * time happened in. §9.1 draws it as depth — 2021 above 2024 — so the drawing
+ * would be wrong for any tenant who added a founding year after writing three
+ * later entries. Sorted by year, stably, so two entries in the same year keep
+ * the tenant's own ordering between them.
+ *
+ * Entries with no usable year are DROPPED rather than placed at one end. A
+ * scroll-scrubbed timeline puts a position on every entry, and an entry with no
+ * date has no position that is not a guess.
+ */
+export function getPublicAbout(opts: { lang: Lang; signal?: AbortSignal }) {
+  return publicGet<Record<string, unknown>>("/public/site/about", { signal: opts.signal })
+    .then((raw): PublicAbout => {
+      const a = raw || {};
+      const lang = opts.lang;
+      const timeline = (Array.isArray(a.timeline) ? a.timeline : [])
+        .map((row) => {
+          const r = (row || {}) as RawItem & { year?: unknown };
+          const year = Number(r.year);
+          return Number.isFinite(year) && year > 0
+            ? { year, ...readItem(r, lang) }
+            : null;
+        })
+        .filter((r): r is TimelineEntry => r !== null)
+        .sort((x, y) => x.year - y.year);
+
+      return {
+        headline: read(a.headline, lang),
+        summary: read(a.summary, lang),
+        mission: read(a.mission, lang),
+        vision: read(a.vision, lang),
+        principles: (Array.isArray(a.principles) ? a.principles : [])
+          .map((row) => readItem((row || {}) as RawItem, lang))
+          .filter((r) => r.label || r.text),
+        esg: {
+          environment: pillar((a.esg as Record<string, unknown>)?.environment, lang),
+          social: pillar((a.esg as Record<string, unknown>)?.social, lang),
+          governance: pillar((a.esg as Record<string, unknown>)?.governance, lang),
+        },
+        timeline,
+        foundedYear: Number.isFinite(Number(a.founded_year)) ? Number(a.founded_year) : null,
+        headquarters: a.headquarters == null ? null : String(a.headquarters),
+        leaders: (Array.isArray(a.leaders) ? a.leaders : []).map(readLeader),
+      };
+    })
+    /* Every failure is the same answer, for the reason `getSitePage` states. An
+       unwritten story, a tenant without the `website` package and a network
+       error are three facts server-side and one fact here — there is nothing to
+       draw — and the About page renders its own empty state rather than an
+       error plate on a marketing surface. */
+    .catch((): PublicAbout => EMPTY_ABOUT);
+}
+
+export const EMPTY_ABOUT: PublicAbout = {
+  headline: "",
+  summary: "",
+  mission: "",
+  vision: "",
+  principles: [],
+  esg: { environment: null, social: null, governance: null },
+  timeline: [],
+  foundedYear: null,
+  headquarters: null,
+  leaders: [],
+};
+
+/* ── partners, clients and credentials (§9.4) ──────────────────────────────
+ *
+ * THREE CLAIMS, AND THE `kind` COLUMN IS WHAT KEEPS THEM APART. 13782's header
+ * carries the argument; the short version is that "we move cargo on these
+ * lines", "these organisations trust us" and "we are a member of this" are
+ * three different assertions, and one grid makes none of them. N11 forbids the
+ * undifferentiated wall.
+ *
+ * `permission_note` is never in this payload and cannot be: the read builds an
+ * explicit object and filters on the note as well as on `is_active`, and 13782
+ * makes an active row without one impossible in the first place.
+ */
+export type PartnerKind = "carrier" | "client" | "network";
+
+export type PublicPartner = {
+  id: string;
+  name: string;
+  kind: PartnerKind;
+  logo_id: string | null;
+  logo_variants: MediaVariants;
+  url: string | null;
+};
+
+export type PublicCredential = {
+  id: string;
+  name: string;
+  issuer: string | null;
+  identifier: string | null;
+  issued_on: string | null;
+  expires_on: string | null;
+  logo_id: string | null;
+  logo_variants: MediaVariants;
+  url: string | null;
+};
+
+export type PublicProof = {
+  partners: PublicPartner[];
+  credentials: PublicCredential[];
+};
+
+export const EMPTY_PROOF: PublicProof = { partners: [], credentials: [] };
+
+export const getPublicProof = (opts: { signal?: AbortSignal } = {}) =>
+  publicGet<PublicProof>("/public/site/partners", { signal: opts.signal })
+    .then((r) => ({
+      partners: Array.isArray(r?.partners) ? r.partners : [],
+      credentials: Array.isArray(r?.credentials) ? r.credentials : [],
+    }))
+    .catch(() => EMPTY_PROOF);
+
+/** Partners of one kind, in the order the server sent them (kind, sort_order,
+ *  name — 13782's index). */
+export const partnersOfKind = (proof: PublicProof, kind: PartnerKind) =>
+  proof.partners.filter((p) => p.kind === kind);
+
+/* ── social links (§9.5) ───────────────────────────────────────────────────
+ *
+ * Only platforms with a URL exist. 13781 DELETES a row rather than storing an
+ * empty string, precisely so that "registered" and "has a link" cannot come
+ * apart — a footer icon linking nowhere is worse than one icon fewer.
+ */
+export type SocialLink = { platform: string; url: string };
+
+export const listPublicSocial = (opts: { signal?: AbortSignal } = {}) =>
+  publicGet<SocialLink[]>("/public/site/social", { signal: opts.signal })
+    .then((rows) =>
+      (Array.isArray(rows) ? rows : []).filter(
+        (r): r is SocialLink =>
+          !!r && typeof r.platform === "string" && typeof r.url === "string" && !!r.url,
+      ),
+    )
+    .catch((): SocialLink[] => []);

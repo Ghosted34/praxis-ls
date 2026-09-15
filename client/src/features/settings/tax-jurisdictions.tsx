@@ -22,6 +22,7 @@
  */
 
 import { pageShell } from "@/lib/layout";
+import { IndexRow } from "@/components/ui/index-row";
 import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { errMsg, useList, useRefresh, useResource } from "@/lib/use-resource";
@@ -29,6 +30,7 @@ import { tenant } from "@/lib/api-client";
 import { loadPostableAccounts } from "@/lib/finance-api";
 import type { Option } from "@/lib/finance-api";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
+import { DateField } from "@/components/ui/date-field";
 import { LoadingRow, EmptyState, ErrorState } from "@/components/ui/states";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/data-list";
@@ -453,17 +455,15 @@ function CodeFormModal({
             accounts={accounts}
           />
           <Field label={tr("Effective from")} required>
-            <Input
-              type="date"
+            <DateField
               value={effectiveFrom}
-              onChange={(e) => setEffectiveFrom(e.target.value)}
+              onChange={setEffectiveFrom}
             />
           </Field>
           <Field label="Effective to" hint="Blank = open-ended">
-            <Input
-              type="date"
+            <DateField
               value={effectiveTo}
-              onChange={(e) => setEffectiveTo(e.target.value)}
+              onChange={setEffectiveTo}
             />
           </Field>
         </div>
@@ -905,6 +905,8 @@ export function TaxJurisdictionsPage() {
           defaultSize={260}
           min={200}
           max={480}
+          activeKind={tr("Tax jurisdiction")}
+          active={!!selected}
         >
           <div className="space-y-2">
             <Input
@@ -922,11 +924,11 @@ export function TaxJurisdictionsPage() {
                   const id = String(r.jurisdiction_id);
                   const active = r.is_active !== false;
                   return (
-                    <button
+                    <IndexRow
                       key={id}
-                      type="button"
+                      selected={id === selId}
                       onClick={() => setSelId(id)}
-                      className={`flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors ${id === selId ? "bg-primary/10 text-foreground" : "hover:bg-muted"}`}
+                      className="items-center justify-between gap-2"
                     >
                       <span className="min-w-0">
                         <span className="block truncate font-medium">
@@ -940,7 +942,7 @@ export function TaxJurisdictionsPage() {
                       <Pill tone={active ? "ok" : "mute"}>
                         {active ? "Active" : "Off"}
                       </Pill>
-                    </button>
+                    </IndexRow>
                   );
                 })
               )}

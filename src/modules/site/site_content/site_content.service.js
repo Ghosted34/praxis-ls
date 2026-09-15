@@ -11,6 +11,13 @@ const events = require("./site_content.events");
 const repo = require("./site_content.repo");
 const { validateBlock } = require("./site_content.schema");
 const { REGISTRY, resolveMetric } = require("./site_content.metrics");
+/* Deep path for the reason site_content.schema.js states: the catalogue is not
+   on the shared package's index, because only one side of the wire bundles it. */
+const {
+  isSiteCopyKey,
+  SITE_COPY_ENTRIES,
+  SITE_COPY_SECTIONS,
+} = require("../../../../packages/shared/data/site-copy.generated");
 
 const pageRef = (id) => `site_page:${id}`;
 const blockRef = (id) => `site_block:${id}`;
@@ -135,6 +142,144 @@ async function getPublicPage(client, key) {
   };
 }
 
+/* ── the copy overlay ──────────────────────────────────────────────────────
+ *
+ * ── WHAT THIS ANSWERS, AND WHY IT IS ITS OWN ENDPOINT ─────────────────────
+ *
+ * `GET /public/site/pages/:key` answers "what did the tenant put ON this
+ * page". This answers a different question: "which of the words PRAXIS puts on
+ * every page has this tenant rewritten". The two do not belong in one payload,
+ * because their consumers differ — the page read is per route and the overlay
+ * is global (a footer disclaimer and a 404 heading have no page of their own),
+ * and because the overlay has to be applied BEFORE the first paint of any
+ * route, which a per-route read cannot promise.
+ *
+ * ── THE SHAPE IS A NESTED TREE, NOT A FLAT MAP ────────────────────────────
+ *
+ * `{ en: { site: { portfolioPage: { titleMain: "…" } } } }`, because that is
+ * what i18next's `addResourceBundle` merges — and handing the renderer a flat
+ * `{"site.portfolioPage.titleMain": "…"}` would mean the client re-splitting
+ * every key on "." and building this tree itself, in a bundle whose whole
+ * design constraint is size. Building it here costs one pass over rows already
+ * in memory.
+ *
+ * ── LAST WRITER WINS, AND THAT IS DELIBERATE ──────────────────────────────
+ *
+ * Two published pages may both override `site.footer.legal` — nothing stops a
+ * tenant adding a copy block to each page and editing the footer from
+ * whichever one they had open. The repo orders by the page's own nav order, so
+ * the LAST page's value wins and the result is at least stable between
+ * requests. It is not arbitration: the editor writes one copy block on one page
+ * and there is no second place to put one. A merge that tried to be clever —
+ * first-writer, or per-section ownership — would make "why is my footer still
+ * the old text" depend on nav order, which is a worse thing to explain than
+ * "the most recent page you edited it on is the one that counts".
+ *
+ * ── KEYS ARE RE-CHECKED ON READ ───────────────────────────────────────────
+ *
+ * The write path already refuses a key the catalogue does not know. This checks
+ * again, because the catalogue is a build artefact and the row is data: a key
+ * RETIRED from the dictionary in a later deploy is a row that was valid when it
+ * was written and is meaningless now. Dropping it here means the shipped
+ * sentence comes back on its own, rather than a `site.oldThing.title` override
+ * sitting in a table for a page that no longer reads it.
+ */
+/** Segments that would reach the prototype chain instead of the tree. */
+const UNSAFE_SEGMENT = new Set(["__proto__", "constructor", "prototype"]);
+
+/**
+ * Write `value` at a dotted path, creating the objects on the way.
+ *
+ * ── WHY THIS GUARDS A KEY THE CATALOGUE ALREADY VETTED ────────────────────
+ *
+ * Every key reaching here has passed `isSiteCopyKey`, so by construction it is
+ * a dictionary path and cannot be `__proto__`. The guard is here anyway,
+ * because that argument is about the catalogue and this function is about
+ * assignment: it holds only as long as nobody ever calls `setPath` from
+ * somewhere else, and "safe because of what the only caller happens to do
+ * today" is exactly the property that stops being true without anyone
+ * noticing. The cost is a `Set` lookup per segment on a read that is cached
+ * for five minutes.
+ *
+ * Null-prototype objects for the same reason. They serialise identically —
+ * `JSON.stringify` ignores the prototype — so the wire format is unchanged,
+ * and there is no inherited property left for a key to collide with.
+ */
+function setPath(tree, dotted, value) {
+  const parts = dotted.split(".");
+  if (parts.some((part) => UNSAFE_SEGMENT.has(part))) return;
+  let node = tree;
+  for (let i = 0; i < parts.length - 1; i += 1) {
+    const part = parts[i];
+    // `hasOwnProperty`, not a truthiness test on `node[part]`: the latter reads
+    // through the prototype, so on a plain `{}` a segment named `toString`
+    // would find the inherited function, decide the level already existed, and
+    // then try to walk into it.
+    if (
+      !Object.prototype.hasOwnProperty.call(node, part) ||
+      !node[part] ||
+      typeof node[part] !== "object"
+    ) {
+      node[part] = Object.create(null);
+    }
+    node = node[part];
+  }
+  node[parts[parts.length - 1]] = value;
+}
+
+/**
+ * The tenant's rewritten strings, as an i18next resource tree per language.
+ *
+ * English falls back to French rather than to the shipped English, which looks
+ * backwards and is not: `bi()` makes FR required and EN optional across this
+ * whole schema, so a tenant who writes only French has said something
+ * deliberate about every language their site is read in. Half-overriding a
+ * heading — their words in French, ours in English — is the one outcome nobody
+ * would choose on purpose.
+ */
+async function getPublicCopy(client) {
+  const rows = await repo.listPublishedCopyOverrides(client);
+  // Null-prototype roots, matching what `setPath` creates below.
+  const en = Object.create(null);
+  const fr = Object.create(null);
+  for (const row of rows) {
+    const items = Array.isArray(row?.content?.items) ? row.content.items : [];
+    for (const item of items) {
+      const key = typeof item?.key === "string" ? item.key : "";
+      // The catalogue is the allow-list: every key in it starts `site.` and is
+      // a dictionary path. `setPath` guards the prototype chain a second time
+      // rather than trusting that — see the note on it.
+      if (!key || !isSiteCopyKey(key)) continue;
+      const frText = typeof item?.value?.fr === "string" ? item.value.fr : "";
+      if (!frText) continue;
+      const enText = typeof item?.value?.en === "string" && item.value.en ? item.value.en : frText;
+      setPath(fr, key, frText);
+      setPath(en, key, enText);
+    }
+  }
+  return { en, fr };
+}
+
+/** The catalogue itself — what the EDITOR needs to draw a form.
+ *
+ *  Served rather than bundled: 465 strings in two languages is ~60 kB of
+ *  defaults that only one screen in the ERP has any use for, and the shared
+ *  package it lives in is imported by the API for validation. Shipping it into
+ *  the client bundle would put it in front of every user of the product to
+ *  benefit the few who edit the website. */
+function copyCatalogue() {
+  return {
+    sections: SITE_COPY_SECTIONS,
+    entries: SITE_COPY_ENTRIES.map(([key, section, label, en, fr]) => ({
+      key,
+      section,
+      label,
+      default_en: en,
+      default_fr: fr,
+    })),
+  };
+}
+
 /** The nav — published pages only, in nav order. */
 async function listPublicPages(client) {
   const pages = await repo.listPages(client);
@@ -160,6 +305,25 @@ async function getPageTab(client, pageId) {
   const blocks = await repo.listBlocks(client, pageId, { visibleOnly: false });
   return { page, blocks };
 }
+
+/**
+ * Keys that identify a row the product itself depends on finding.
+ *
+ * `site-copy` carries the `copy_overrides` block — the tenant's wording for the
+ * sentences the app prints — and the public overlay read matches on the block
+ * type, not on this key, so a rename does not break the SITE. It breaks the
+ * EDITOR: `website-copy.tsx` finds its row by key, and a renamed one is a
+ * screen that silently opens empty and writes a second set of overrides
+ * alongside the first, which then both apply in nav order. Refusing the rename
+ * is cheaper to explain than that is to debug.
+ *
+ * Creation is deliberately NOT refused: the Wording screen creates this row
+ * through the same endpoint on its first save, and the service cannot tell that
+ * caller from any other. `pageKeyTaken` already makes a second one impossible.
+ */
+const RESERVED_PAGE_KEYS = new Set(["site-copy"]);
+
+const reserved = (key) => RESERVED_PAGE_KEYS.has(String(key || "").toLowerCase());
 
 async function createPage(client, { patch, actor = {} }) {
   if (await repo.pageKeyTaken(client, patch.key)) {
@@ -188,6 +352,15 @@ async function updatePage(client, { pageId, patch, actor = {} }) {
       && await repo.pageKeyTaken(client, patch.key, pageId)) {
     throw new AppError("KEY_TAKEN", `A page already uses the key "${patch.key}"`, 422, {
       key: ["already in use"],
+    });
+  }
+  // Both directions. Renaming the reserved row away orphans the Wording
+  // screen; renaming an ordinary page INTO the reserved key makes that page
+  // disappear from the editor's own list, which is the same defect wearing the
+  // other hat.
+  if (patch.key && patch.key !== before.key && (reserved(patch.key) || reserved(before.key))) {
+    throw new AppError("KEY_RESERVED", `The key "${reserved(patch.key) ? patch.key : before.key}" is reserved`, 422, {
+      key: ["reserved — this row is managed by Settings › Website › Wording"],
     });
   }
   return atomically(client, async () => {
@@ -241,6 +414,14 @@ async function deletePage(client, { pageId, actor = {} }) {
   // printed material. Unpublish first, deliberately, then delete.
   if (before.is_published) {
     throw new AppError("PUBLISHED", "Unpublish the page before deleting it", 422);
+  }
+  // The reserved row holds every override a tenant has written, across the
+  // whole site, in both languages. There is no undo and no export, and the
+  // failure is silent: the public site simply goes back to the shipped
+  // wording. Clearing the fields in the Wording screen is the gesture for
+  // "I no longer want my text" — it is reversible until they save.
+  if (reserved(before.key)) {
+    throw new AppError("KEY_RESERVED", `The page "${before.key}" is managed by the Wording screen and cannot be deleted`, 422);
   }
   return atomically(client, async () => {
     await repo.deletePage(client, pageId);
@@ -375,6 +556,8 @@ module.exports = {
   // public
   getPublicPage,
   listPublicPages,
+  getPublicCopy,
+  copyCatalogue,
   resolveMetricsFor,
   applyMetrics,
   // admin

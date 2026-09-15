@@ -81,20 +81,30 @@ async function mount(at: string, AppRouter: React.ComponentType) {
 const CRASH = /something went wrong|erreur inattendue|Something broke/i;
 
 /**
- * The home hero's heading, matched across the accent span.
+ * The home hero's heading, matched across the accent span AND the staged words.
  *
- * `site.hero.title` is ONE sentence in the dictionary and TWO nodes in the DOM:
- * `SectionHead` renders the accent word in its own `<span>`
- * (doc/UI_UPGRADE_PLAN.md §4 pattern 2). `findByText` on the sentence therefore
- * finds nothing — its default matcher reads a node's own text children, not its
- * subtree — even though the reader sees exactly that sentence. So match the
- * `h1` on its full `textContent`, which is what these cases are actually
- * asserting: the home page rendered rather than redirecting to itself.
+ * `site.hero.title` is ONE sentence in the dictionary and SEVERAL nodes in the
+ * DOM. `SectionHead` renders the accent word in its own `<span>`
+ * (doc/UI_UPGRADE_PLAN.md §4 pattern 2), and `StagedLines` splits the rest into
+ * one span per word plus a visually-hidden copy of the whole sentence — the
+ * copy being what gives the heading its accessible name, since every animated
+ * fragment is `aria-hidden` and ARIA forbids `aria-label` on a generic element.
+ *
+ * So `textContent` is now the sentence with its first half repeated, and
+ * matching on it was always the fragile choice. What these cases are actually
+ * asserting is "the home page rendered rather than redirecting to itself", and
+ * the robust way to say that is to normalise the whitespace and ask whether the
+ * heading CONTAINS the sentence — which survives any further splitting of the
+ * line.
  */
+const squash = (text: string) => text.replace(/\s+/g, " ").trim();
+
 const heroTitle =
   () =>
-  (_: string, el: Element | null): boolean =>
-    el?.tagName === "H1" && el.textContent === dict("site.hero.title");
+  (_: string, el: Element | null): boolean => {
+    if (el?.tagName !== "H1") return false;
+    return squash(el.textContent || "").includes(squash(dict("site.hero.title")));
+  };
 
 beforeEach(() => {
   vi.stubGlobal(

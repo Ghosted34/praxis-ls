@@ -10,6 +10,25 @@
  *
  * Loading / error / empty are real states — the axe gate scans all four, and
  * a form that paints before the profile arrives looks ready when it is not.
+ *
+ * THE PREVIEW SHOWS THE CARD, NOT THE EMAIL BODY, and that is a correction.
+ *
+ * This screen used to render `preview.html` — the thing that is pasted into an
+ * outbound message, which for the card template is an `<img>` of the rendered
+ * PNG with live text underneath it (signature.html.js explains why both). Two
+ * problems followed from that. The `<img>` points at an absolute
+ * `https://<tenant>/media/...` URL meant for a recipient's mail client, and when
+ * the app is not served from that host the browser cannot fetch it — so the
+ * screen showed a broken image icon above the fallback text and nothing said
+ * which of the two you were looking at. And even when the image did load, a
+ * 650px PNG plus a text block is not what the Download PNG buttons give you,
+ * so the preview and the download disagreed on a screen whose whole job is to
+ * show you what you are about to download.
+ *
+ * `/mail/signature/card` returns the exact document the PNG renderer
+ * screenshots, so `<CardPreview>` and the download are now the same picture by
+ * construction. The email body is still here, below, labelled as what it is —
+ * the version a recipient sees with images turned off.
  */
 import { pageShell } from "@/lib/layout";
 import * as React from "react";
@@ -22,9 +41,12 @@ import { HubCrumb } from "@/components/tabbed-hub";
 import { Field } from "@/components/ui/modal";
 import { Pill } from "@/components/ui/pill";
 import { useTranslation } from "react-i18next";
+import { tr } from "@/lib/i18n";
 import * as api from "@/lib/mail-api";
 import { errMsg, useResource } from "@/lib/use-resource";
 import { reportActionError } from "@/lib/action-error";
+import { CardPreview } from "@/features/comms/signatures/card-preview";
+import { AccentRoles } from "@/features/comms/signatures/accent-roles";
 
 export function EmailSignaturesPage() {
   const { t } = useTranslation();
@@ -41,6 +63,19 @@ export function EmailSignaturesPage() {
     [],
   );
   const [lang, setLang] = React.useState<"en" | "fr">("en");
+  const {
+    data: card,
+    error: cardError,
+    reload: reloadCard,
+  } = useResource(() => api.getSignatureCard(lang), [lang]);
+  /**
+   * Whether to offer the colour mapping at all. MOD-70, like the template list
+   * above it — and asked for rather than inferred from the template list being
+   * non-empty, because that list is fetched with a `.catch` and an empty array
+   * is indistinguishable from a tenant with no templates.
+   */
+  const { data: caps } = useResource(() => api.mailCapabilities(), []);
+  const canAdminister = caps && !Array.isArray(caps) && caps.can_administer === true;
   const [busy, setBusy] = React.useState(false);
   const [saveError, setSaveError] = React.useState<string | null>(null);
   const [saved, setSaved] = React.useState(false);
@@ -48,6 +83,10 @@ export function EmailSignaturesPage() {
   const profile = (me && !Array.isArray(me) ? me.profile : null) || {};
   const person = (me && !Array.isArray(me) ? me.person : null) || {};
   const preview = me && !Array.isArray(me) ? me.preview : null;
+  // A card we could not fetch is not an error on this screen: the email body
+  // below is a working preview of the same signature, so the fallback IS the
+  // handling. It only becomes an error when there is no fallback either.
+  const cardDoc = !cardError && card && !Array.isArray(card) ? card : null;
   const tplList = Array.isArray(templates) ? templates : [];
 
   async function save(patch: Record<string, unknown>) {
@@ -58,6 +97,9 @@ export function EmailSignaturesPage() {
       await api.saveSignatureProfile(patch);
       setSaved(true);
       reload();
+      // The card is drawn by the server, so a saved field only appears once it
+      // has been asked for again.
+      reloadCard();
     } catch (err) {
       reportActionError(err);
       setSaveError(errMsg(err));
@@ -175,15 +217,65 @@ export function EmailSignaturesPage() {
                 ))}
               </span>
             </div>
-            {preview?.html ? (
+
+            {cardDoc?.document ? (
+              <>
+                {/* Scaled to fit the reading column, which is narrower than the
+                    card. `CardPreview` transforms rather than resizing — the
+                    card's geometry is fixed, so laying it out narrower would
+                    clip it rather than shrink it. */}
+                <div className="overflow-x-auto">
+                  <CardPreview
+                    document={cardDoc.document}
+                    width={cardDoc.width}
+                    height={cardDoc.height}
+                    scale={0.9}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {tr("This is exactly what the PNG buttons download.")}
+                </p>
+              </>
+            ) : preview?.html ? (
+              /* Not the card — one of the table layouts, where the email body
+                 IS the signature and there is no separate document. */
               <div
                 className="overflow-x-auto rounded-md border border-border bg-background p-3"
                 dangerouslySetInnerHTML={{ __html: preview.html }}
               />
+            ) : cardError ? (
+              <ErrorState message={cardError} />
             ) : (
               <p className="text-sm text-muted-foreground">No preview yet.</p>
             )}
+
+            {cardDoc?.document && preview?.html && (
+              <details className="rounded-md border border-border">
+                <summary className="cursor-pointer px-3 py-2 text-sm font-medium">
+                  {tr("What a recipient sees with images turned off")}
+                </summary>
+                <div className="space-y-2 border-t border-border px-3 py-2">
+                  <p className="text-xs text-muted-foreground">
+                    {tr(
+                      "Outlook and Gmail block remote images from senders they do not know yet. Your mail carries the card as a picture AND as live text, so this is what arrives until the recipient allows images — and it is what a screen reader reads either way.",
+                    )}
+                  </p>
+                  {/* The broken image icon in here is the card PNG, which only
+                      a mail client can fetch — it is not a fault on this page. */}
+                  <div
+                    className="overflow-x-auto rounded-md bg-background p-3"
+                    dangerouslySetInnerHTML={{ __html: preview.html }}
+                  />
+                </div>
+              </details>
+            )}
           </div>
+
+          {canAdminister && (
+            <div className="mt-4">
+              <AccentRoles onSaved={reloadCard} />
+            </div>
+          )}
 
           {tplList.length > 0 && (
             <div className="lux-card mt-4 space-y-2 p-4">

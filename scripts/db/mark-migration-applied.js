@@ -41,6 +41,8 @@
  *   node scripts/db/mark-migration-applied.js --scope=sandbox --file=tenant/0530_x.sql --slug=smartls
  *   node scripts/db/mark-migration-applied.js ... --all-tenants
  *   node scripts/db/mark-migration-applied.js ... --force     # skip the catalog proof
+ *   node scripts/db/mark-migration-applied.js ... --rehash    # re-stamp sha256 after a
+ *                                                            # correction (see markOne)
  *   node scripts/db/mark-migration-applied.js ... --dry-run
  *
  * ── SCOPES: THERE IS NO "tenant" SCOPE ──────────────────────────────────────
@@ -75,7 +77,7 @@ const VALID_SCOPES = new Set([
 
 const fs = require("fs");
 const path = require("path");
-const { client, ensureLedger, MIGRATIONS, tenantDbName } = require("../../src/services/platform/migrator");
+const { client, ensureLedger, hashFile, MIGRATIONS, tenantDbName } = require("../../src/services/platform/migrator");
 
 const ROOT = path.join(__dirname, "..", "..");
 
@@ -150,7 +152,7 @@ async function inspect(cli, declared) {
   return { present, missing, total: checks.length };
 }
 
-async function markOne(dbName, { scope, file, force, dryRun }) {
+async function markOne(dbName, { scope, file, force, dryRun, rehash }) {
   const cli = client(dbName);
   await cli.connect();
   try {
@@ -160,9 +162,16 @@ async function markOne(dbName, { scope, file, force, dryRun }) {
       "SELECT applied_at FROM public.schema_migration WHERE scope=$1 AND filename=$2",
       [scope, file],
     );
-    if (already.length) {
+    if (already.length && !rehash) {
       console.warn(`  ${dbName}: already recorded (${already[0].applied_at.toISOString().slice(0, 10)}) — nothing to do`);
       return "skipped";
+    }
+    if (!already.length && rehash) {
+      console.error(
+        `  ${dbName}: REFUSED — --rehash updates the sha256 of a row that EXISTS, and there is`
+        + "\n           no ledger row for this file here. It has not run; use `migrate`.",
+      );
+      return "refused";
     }
 
     if (!force) {
@@ -194,13 +203,41 @@ async function markOne(dbName, { scope, file, force, dryRun }) {
     }
 
     if (dryRun) {
-      console.warn(`  ${dbName}: DRY RUN — would record ${scope} / ${file}`);
+      console.warn(`  ${dbName}: DRY RUN — would ${rehash ? "re-stamp" : "record"} ${scope} / ${file}`);
       return "dry";
     }
 
+    if (rehash) {
+      /*
+       * WHY A RE-STAMP EXISTS AT ALL, given "never edit an applied migration".
+       *
+       * Because the rule has one honest exception: a file that FAILED on one
+       * scope and succeeded on another. DDL and the ledger row commit together,
+       * so the failed scope has no row and will re-run — but it re-runs the
+       * file as it is NOW, which means the file has to be corrected, which
+       * leaves the scope that DID succeed holding the old hash.
+       *
+       * That is exactly 13801: `live` applied it, `sandbox` raised 23514 on the
+       * status rewrite and rolled back. The correction is a statement REORDER —
+       * identical effects, different bytes — so the two schemas agree and only
+       * the hash disagrees. Without this, `contentDrift` reports that tenant for
+       * ever, which is the "real alarm turned into permanent noise" this file's
+       * header is already about.
+       *
+       * It still carries the catalog proof above: a re-stamp of a file whose
+       * objects are absent is refused exactly as a fresh mark would be.
+       */
+      await cli.query(
+        "UPDATE public.schema_migration SET sha256=$3 WHERE scope=$1 AND filename=$2",
+        [scope, file, hashFile(path.join(MIGRATIONS, file))],
+      );
+      console.warn(`  ${dbName}: re-stamped ${scope} / ${file} ✓`);
+      return "rehashed";
+    }
+
     await cli.query(
-      "INSERT INTO public.schema_migration(scope, filename) VALUES ($1,$2) ON CONFLICT DO NOTHING",
-      [scope, file],
+      "INSERT INTO public.schema_migration(scope, filename, sha256) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING",
+      [scope, file, hashFile(path.join(MIGRATIONS, file))],
     );
     console.warn(`  ${dbName}: recorded ${scope} / ${file} ✓`);
     return "marked";
@@ -244,10 +281,11 @@ async function main() {
   const allTenants = arg("all-tenants") === true;
   const force = arg("force") === true;
   const dryRun = arg("dry-run") === true;
+  const rehash = arg("rehash") === true;
 
   if (!scope || !file) {
     console.error(
-      `Usage: node scripts/db/mark-migration-applied.js --scope=<${[...VALID_SCOPES].join("|")}> --file=<dir/name.sql> [--slug=x | --all-tenants] [--force] [--dry-run]`,
+      `Usage: node scripts/db/mark-migration-applied.js --scope=<${[...VALID_SCOPES].join("|")}> --file=<dir/name.sql> [--slug=x | --all-tenants] [--force] [--dry-run] [--rehash]`,
     );
     return 1;
   }
@@ -272,21 +310,24 @@ async function main() {
     return 1;
   }
 
-  console.warn(`\nMarking ${scope} / ${file} as applied${force ? " (FORCED — no catalog proof)" : ""}${dryRun ? " [dry run]" : ""}\n`);
+  console.warn(
+    `\n${rehash ? "Re-stamping the sha256 of" : "Marking"} ${scope} / ${file}`
+    + `${rehash ? "" : " as applied"}${force ? " (FORCED — no catalog proof)" : ""}${dryRun ? " [dry run]" : ""}\n`,
+  );
 
   const results = [];
   if (scope === "platform" || scope === "platform-seed") {
-    results.push(await markOne(require("../../src/config/env").config.DB_NAME, { scope, file, force, dryRun }));
+    results.push(await markOne(require("../../src/config/env").config.DB_NAME, { scope, file, force, dryRun, rehash }));
   } else if (allTenants) {
     const registry = require("../../src/services/tenant/registry.service");
     const tenants = await registry.listActiveTenants();
     if (!tenants.length) console.warn("  (no active tenants)");
     for (const t of tenants) {
 
-      results.push(await markOne(tenantDbName(t.slug), { scope, file, force, dryRun }));
+      results.push(await markOne(tenantDbName(t.slug), { scope, file, force, dryRun, rehash }));
     }
   } else if (slug) {
-    results.push(await markOne(tenantDbName(slug), { scope, file, force, dryRun }));
+    results.push(await markOne(tenantDbName(slug), { scope, file, force, dryRun, rehash }));
   } else {
     console.error("A tenant scope needs --slug=<slug> or --all-tenants.");
     return 1;
@@ -295,6 +336,7 @@ async function main() {
   const refused = results.filter((r) => r === "refused").length;
   console.warn(
     `\n${results.filter((r) => r === "marked").length} marked, `
+    + `${results.filter((r) => r === "rehashed").length} re-stamped, `
     + `${results.filter((r) => r === "skipped").length} already recorded, ${refused} refused.\n`,
   );
   // A refusal is the tool working. Exit non-zero so a script does not carry on

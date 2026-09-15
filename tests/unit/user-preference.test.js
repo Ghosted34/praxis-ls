@@ -231,6 +231,7 @@ describe("shell preferences", () => {
       ribbonPinned: null,
       railPins: null,
       towerPins: null,
+      kpiPins: null,
       railHintSeen: null,
     });
   });
@@ -300,6 +301,7 @@ describe("shell preferences", () => {
       ribbonPinned: false,
       railPins: ["finance", "fleet"],
       towerPins: null,
+      kpiPins: null,
       railHintSeen: true,
     });
   });
@@ -389,5 +391,73 @@ describe("shell validator", () => {
   it("422s a non-boolean pinned state", () => {
     const { res } = run({ ribbonPinned: "yes" });
     expect(res.status).toHaveBeenCalledWith(422);
+  });
+});
+
+describe('kpiPins — the band selection rides the shell envelope (KPI guide D1/D5)', () => {
+  /**
+   * THE THIRD PIN LIST, THE FOURTH LIE AVOIDED. kpiPins persists through the
+   * same partial-PUT contract as rail/tower pins — one rule, three surfaces —
+   * and inherits the doctrine that made the rail usable: null means "no choice
+   * made; follow the role default", [] means "I cleared my band on purpose".
+   * Collapse them and clearing becomes impossible; forget the cap and the
+   * fixed-four layout promise lives only in the client.
+   */
+  it("keeps 'never chosen' and 'deliberately empty' apart for the band too", async () => {
+    const c = fakeClient();
+    await service.setShell(c, { userId: USER, kpiPins: [] });
+    await expect(service.getShell(c, USER)).resolves.toMatchObject({ kpiPins: [] });
+    await service.setShell(c, { userId: USER, kpiPins: null });
+    await expect(service.getShell(c, USER)).resolves.toMatchObject({ kpiPins: null });
+  });
+
+  it("round-trips an ordered selection — order is the layout, so it is data", async () => {
+    const c = fakeClient();
+    await service.setShell(c, { userId: USER, kpiPins: ["compliance_open", "revenue"] });
+    await expect(service.getShell(c, USER)).resolves.toMatchObject({
+      kpiPins: ["compliance_open", "revenue"],
+    });
+    await service.setShell(c, { userId: USER, kpiPins: ["revenue", "compliance_open"] });
+    await expect(service.getShell(c, USER)).resolves.toMatchObject({
+      kpiPins: ["revenue", "compliance_open"],
+    });
+  });
+
+  it("is independent of the other pin lists", async () => {
+    const c = fakeClient();
+    await service.setShell(c, { userId: USER, towerPins: ["wms"], kpiPins: ["revenue"] });
+    await service.setShell(c, { userId: USER, kpiPins: null });
+    await expect(service.getShell(c, USER)).resolves.toMatchObject({
+      towerPins: ["wms"],
+      kpiPins: null,
+    });
+  });
+});
+
+describe('kpiPins validator', () => {
+  const run = (body) => {
+    const req = { body };
+    const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+    const next = jest.fn();
+    validateShell(req, res, next);
+    return { req, res, next };
+  };
+
+  it("caps at four — the layout promise is enforced at the edge, not the renderer", () => {
+    expect(run({ kpiPins: ["aa", "bb", "cc", "dd"] }).next).toHaveBeenCalled();
+    const over = run({ kpiPins: ["aa", "bb", "cc", "dd", "ee"] });
+    expect(over.next).not.toHaveBeenCalled();
+    expect(over.res.status).toHaveBeenCalledWith(422);
+  });
+
+  it("422s a malformed id shape", () => {
+    const { res, next } = run({ kpiPins: ["Not A Tile"] });
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(422);
+  });
+
+  it("accepts null and [] — the two different answers (and only IDs known to the catalog paint; unknown ids resolve to nothing)", () => {
+    expect(run({ kpiPins: null }).req.body).toEqual({ kpiPins: null });
+    expect(run({ kpiPins: [] }).req.body).toEqual({ kpiPins: [] });
   });
 });

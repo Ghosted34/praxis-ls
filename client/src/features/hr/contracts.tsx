@@ -7,9 +7,13 @@ import { pageShell } from "@/lib/layout";
 import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
+import { DateField } from "@/components/ui/date-field";
 import { DocButton } from "@/components/doc-button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
+import { FilePicker } from "@/components/ui/image-upload";
+import { useUpload } from "@/lib/use-upload";
+import { fileToDataUrl } from "@/lib/image-compress";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { ErrorState } from "@/components/ui/states";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
@@ -129,17 +133,15 @@ function NewContractForm({
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Effective on">
-            <Input
-              type="date"
+            <DateField
               value={f.effective_on}
-              onChange={(e) => set("effective_on", e.target.value)}
+              onChange={(iso) => set("effective_on", iso)}
             />
           </Field>
           <Field label="Ends on">
-            <Input
-              type="date"
+            <DateField
               value={f.end_on}
-              onChange={(e) => set("end_on", e.target.value)}
+              onChange={(iso) => set("end_on", iso)}
             />
           </Field>
         </div>
@@ -179,15 +181,6 @@ function NewContractForm({
   );
 }
 
-function readAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = () => resolve(String(r.result));
-    r.onerror = () => reject(new Error("Could not read file"));
-    r.readAsDataURL(file);
-  });
-}
-
 /** Upload an already-signed contract PDF and tie it to the contract row. */
 export function UploadSigned({
   contract,
@@ -196,46 +189,62 @@ export function UploadSigned({
   contract: api.Contract;
   onDone: () => void;
 }) {
-  const ref = React.useRef<HTMLInputElement>(null);
-  const [busy, setBusy] = React.useState(false);
-  async function pick(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
-    setBusy(true);
-    try {
-      await api.uploadContractSigned(
+  /**
+   * Through the upload engine. A signed contract is a PDF, so the pipeline
+   * passes the bytes through untouched — but the engine still supplies the
+   * percentage and the retry this control never had.
+   */
+  const upload = useUpload({
+    profile: "document",
+    send: async (file, ctx) =>
+      api.uploadContractSigned(
         contract.hr_contract_id,
-        await readAsDataUrl(file),
-      );
-      onDone();
-    } catch (err) {
-      // Was `window.alert(errMsg(err))` — an OS alert that blocked the event
-      // loop to report a failed upload. reportActionError is this codebase's
-      // route for exactly that: a toast, plus the taxonomy the error centre reads.
-      reportActionError(err);
-    } finally {
-      setBusy(false);
+        await fileToDataUrl(file),
+        ctx.onProgress,
+      ),
+    onAllComplete: () => onDone(),
+  });
+
+  const item = upload.items[0] ?? null;
+  const busy = item?.state === "uploading" || item?.state === "compressing";
+
+  React.useEffect(() => {
+    // reportActionError is this codebase's route for a failed action: a toast,
+    // plus the taxonomy the error centre reads. (It replaced a window.alert
+    // here, which blocked the event loop to report a failed upload.)
+    if (item?.state === "error" && item.errorCause) {
+      reportActionError(item.errorCause);
     }
-  }
+  }, [item?.state, item?.errorCause]);
+
   return (
-    <>
-      <input
-        ref={ref}
-        type="file"
+    <span className="inline-flex items-center gap-2">
+      <FilePicker
+        variant="inline"
         accept="application/pdf"
-        className="hidden"
-        onChange={pick}
+        disabled={busy}
+        trigger={
+          <span className="inline-flex h-8 items-center px-2 text-sm no-underline">
+            {busy
+              ? "Uploading…"
+              : contract.pdf_vault_id
+                ? "Replace signed"
+                : "Upload signed"}
+          </span>
+        }
+        onPick={(files) => void upload.pick(files)}
       />
-      <Button
-        size="sm"
-        variant="ghost"
-        loading={busy}
-        onClick={() => ref.current?.click()}
-      >
-        {contract.pdf_vault_id ? "Replace signed" : "Upload signed"}
-      </Button>
-    </>
+      {item && (item.state === "uploading" || item.state === "compressing") && (
+        <span className="num text-xs text-muted-foreground">
+          {item.percent}%
+        </span>
+      )}
+      {item?.state === "success" && (
+        <span className="text-xs text-ok" role="status">
+          ✓
+        </span>
+      )}
+    </span>
   );
 }
 

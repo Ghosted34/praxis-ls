@@ -22,7 +22,7 @@
  * off the patch is what stops an ordinary typo fix from flipping an article
  * live — the same rule the pages screen follows.
  */
-import { tenant } from "./api-client";
+import { tenant, tenantWithProgress } from "./api-client";
 
 /** FR is required upstream and EN is optional; the public page falls back
  *  FR↔EN rather than blanking a heading somebody half-translated. */
@@ -48,10 +48,21 @@ export type InsightArticle = {
   author_user_id: string | null;
   is_published: boolean;
   published_at: string | null;
+  /** `article` or `announcement` (13784). An announcement is an article with a
+   *  different renderer, not a second CMS — same editor, same publish verb,
+   *  same public detail route. */
+  kind: InsightKind;
+  /** While this is in the future, the piece may appear in the homepage band.
+   *  Null on almost everything. Set through `pinInsight`, never through a
+   *  PATCH: the server does not accept it as a field. */
+  pinned_until: string | null;
   sort_order: number;
   created_at: string;
   updated_at: string;
 };
+
+/** The two the `ck_insight_kind` CHECK admits. */
+export type InsightKind = "article" | "announcement";
 
 /** Every field the editor may write. `title_fr` is the only one the server
  *  insists on at creation, which is what lets a writer start an article from a
@@ -71,13 +82,17 @@ export type InsightPatch = Partial<{
   meta_description_en: string | null;
   cover_vault_id: string | null;
   tags: string[];
+  kind: InsightKind;
   sort_order: number;
 }>;
 
-export const listInsights = (tag?: string | null) =>
-  tenant<InsightArticle[]>(
-    tag ? `/insights?tag=${encodeURIComponent(tag)}` : "/insights",
-  );
+export const listInsights = (tag?: string | null, kind?: InsightKind | null) => {
+  const q = new URLSearchParams();
+  if (tag) q.set("tag", tag);
+  if (kind) q.set("kind", kind);
+  const qs = q.toString();
+  return tenant<InsightArticle[]>(qs ? `/insights?${qs}` : "/insights");
+};
 
 export const fetchInsight = (id: string) =>
   tenant<InsightArticle>(`/insights/${id}`);
@@ -96,6 +111,31 @@ export const publishInsight = (id: string, published: boolean) =>
   });
 
 /**
+ * The pin — `POST /insights/:id/pin`, and `null` is how it is cleared.
+ *
+ * Its own verb for the reason publishing has one, and one step further: the
+ * server does not list `pinned_until` among the columns a PATCH may write, so
+ * this is the ONLY way a piece reaches the tenant's front page. It is stamped
+ * in the audit trail with who pinned it and until when.
+ *
+ * The server refuses three things and each refusal is a message worth showing
+ * verbatim: an ordinary article cannot be pinned, a draft cannot be pinned, and
+ * an expiry already in the past is not a pin. All three would otherwise be a
+ * control that appears to work and changes nothing.
+ */
+export const pinInsight = (id: string, pinnedUntil: string | null) =>
+  tenant<InsightArticle>(`/insights/${id}/pin`, {
+    method: "POST",
+    body: { pinned_until: pinnedUntil },
+  });
+
+/** A pin only counts while its date is ahead of us — the same test the SQL
+ *  makes (`pinned_until > now()`). A row whose date has passed is not pinned,
+ *  and the list must not draw it as though it were. */
+export const isPinned = (r: Pick<InsightArticle, "pinned_until">): boolean =>
+  Boolean(r.pinned_until && new Date(r.pinned_until).getTime() > Date.now());
+
+/**
  * The cover — bytes, so its own endpoint rather than a field on the PATCH.
  *
  * A patch that accepted a data URL among the text fields would make every
@@ -105,7 +145,11 @@ export const publishInsight = (id: string, published: boolean) =>
 export const setInsightCover = (
   id: string,
   body: { data_url: string; original_name?: string },
-) => tenant<InsightArticle>(`/insights/${id}/cover`, { method: "POST", body });
+  onProgress?: (percent: number) => void,
+) =>
+  onProgress
+    ? tenantWithProgress<InsightArticle>(`/insights/${id}/cover`, body, onProgress)
+    : tenant<InsightArticle>(`/insights/${id}/cover`, { method: "POST", body });
 
 export const removeInsightCover = (id: string) =>
   tenant<InsightArticle>(`/insights/${id}/cover`, { method: "DELETE" });
@@ -126,7 +170,11 @@ export const insightCoverUrl = (id: string | null | undefined): string | null =>
 export const addInsightGalleryImage = (
   id: string,
   body: { data_url: string; original_name?: string },
-) => tenant<InsightArticle>(`/insights/${id}/gallery`, { method: "POST", body });
+  onProgress?: (percent: number) => void,
+) =>
+  onProgress
+    ? tenantWithProgress<InsightArticle>(`/insights/${id}/gallery`, body, onProgress)
+    : tenant<InsightArticle>(`/insights/${id}/gallery`, { method: "POST", body });
 
 /** Store the whole list: this is BOTH the reorder and the removal, because the
  *  array is the display order. The server ignores any id that was not already

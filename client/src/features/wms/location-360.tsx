@@ -4,6 +4,8 @@
  * there, cycle-count history, and capacity utilisation.
  */
 import { pageShell } from "@/lib/layout";
+import { SplitPane } from "@/components/ui/split-pane";
+import { IndexRow } from "@/components/ui/index-row";
 import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { useRecordParam, useTrailTitle } from "@/app/layout/nav-trail-context";
@@ -391,7 +393,15 @@ export function LocationsPage() {
       {locs.error ? (
         <ErrorState message={locs.error} />
       ) : (
-        <div className="grid gap-5 lg:grid-cols-[260px_1fr]">
+        <SplitPane
+          storageKey="wms.locations"
+          label="Location list width"
+          defaultSize={260}
+          min={200}
+          max={460}
+          activeKind={tr("Location")}
+          active={!!selected}
+        >
           <div className="space-y-2">
             <Input
               placeholder="Search slot…"
@@ -408,15 +418,16 @@ export function LocationsPage() {
                   <div key={zone}>
                     <div className="px-2 py-1 micro">Zone {zone}</div>
                     {items.map((l) => (
-                      <button
+                      <IndexRow
                         key={l.location_id}
+                        selected={l.location_id === selId}
                         onClick={() => select(l)}
-                        className={`block w-full truncate rounded-md px-3 py-1.5 text-left text-sm transition-colors ${l.location_id === selId ? "bg-primary/10 text-foreground" : "hover:bg-muted"}`}
+                        className="py-1.5"
                       >
-                        <span className="num font-medium">
+                        <span className="num min-w-0 truncate font-medium">
                           {api.locationLabel(l)}
                         </span>
-                      </button>
+                      </IndexRow>
                     ))}
                   </div>
                 ))
@@ -436,7 +447,7 @@ export function LocationsPage() {
               hint="Choose a slot from the list."
             />
           )}
-        </div>
+        </SplitPane>
       )}
       {creating && (
         <NewLocationForm

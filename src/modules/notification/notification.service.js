@@ -11,6 +11,9 @@ const emailService = require("../../services/email.service");
 const { logger } = require("../../config/logger");
 const { CATEGORIES, categoryFor, isSecurityCategory } = require("../../shared/notifications/categories");
 const events = require("./notification.events");
+const { entityRoute, notificationInterrupt } = require("@praxis/shared");
+const realtime = require("../../realtime");
+const requestContext = require("../../config/request-context");
 const { AppError } = require("../../utils/errors");
 
 const mine = (client, actor, q) => repo.mine(client, actor.user_id, q);
@@ -92,11 +95,11 @@ async function deliverEmail(client, { userId, person, isSecurity, title, body })
  * from "three devices, all failed" — the email fallback turns on that
  * distinction.
  */
-async function deliverPush(client, { userId, title, body, url = "/notifications", tag, renotify, requireInteraction, urgency, badgeCount, data, actions }) {
+async function deliverPush(client, { userId, title, body, url = "/notifications", tag, renotify, requireInteraction, urgency, badgeCount, data, actions, vibrate = null }) {
   try {
     return await pushService.sendToUser(client, {
       user_id: userId,
-      title, body, url,
+      title, body, url, vibrate,
       // The old code sent `tag: userId` here, which told the OS that every
       // notification for a user REPLACED the previous one — five urgent mails
       // arrived and the phone showed one. Undefined unless a caller asks for
@@ -216,7 +219,15 @@ async function deliverOutbound(client, { recipients, notification }) {
       ? { sent: 0, reason: "suppressed by preference" }
        
       : await deliverPush(client, {
-        userId, title, body, url, tag, renotify, requireInteraction, urgency,
+        userId, title, body, url, tag, renotify, urgency,
+        // The recipient's own answer wins over the notification's blanket one.
+        // `requireInteraction` used to be "HIGH priority" for everybody; it is
+        // now "this person asked to be interrupted by this category", which is
+        // the same thing by default and different for anyone who changed it.
+        requireInteraction: r.interrupt === true ? true : requireInteraction,
+        // Only for an interrupt. A phone that buzzes for a posted invoice is a
+        // phone whose owner turns the whole channel off.
+        vibrate: r.interrupt === true ? [200, 100, 200] : null,
         badgeCount: Number.isFinite(r.badgeCount) ? r.badgeCount : null,
         data, actions,
       });
@@ -383,9 +394,80 @@ async function enqueueDelivery(ctx, { recipients, notification }) {
  * already exists (BullMQ) and is the right home for them; this change removes
  * the ~246 unnecessary DATABASE round-trips without touching that question.
  */
+/**
+ * The destination a notification carries, resolved once for both surfaces.
+ *
+ * ── WHY THE TWO ANSWERS DIFFER ─────────────────────────────────────────────
+ *
+ * `linkUrl` is what the in-app row navigates to, and it is NULL when there is
+ * nowhere meaningful to go. That null is the point: a row with no destination
+ * renders as text, so the user is never handed something that looks clickable
+ * and isn't. Defaulting it to `/notifications` would have been the dead click
+ * again, one indirection along — click a notification, arrive at the list of
+ * notifications you clicked it from.
+ *
+ * `pushUrl` always has a value, because tapping a phone banner must open the
+ * app; with nothing better, the inbox IS the right landing.
+ *
+ * An explicit `url` from the producer always wins over the map. Mail knows to
+ * send `/comms/mail?thread=…` — the query the inbox reads as its initial
+ * selection — and no type-and-id mapping can derive that.
+ */
+function resolveDestination({ url, entityRef }) {
+  const explicit = typeof url === "string" && url.trim() ? url.trim() : null;
+  const derived = explicit ? null : entityRoute.urlFor(entityRef);
+  const linkUrl = explicit || derived || null;
+  return { linkUrl, pushUrl: linkUrl || "/notifications" };
+}
+
+/**
+ * Tell a user's open tabs, now, that something landed.
+ *
+ * ── WHY THIS EXISTS ALONGSIDE THE BADGE POLL ───────────────────────────────
+ *
+ * The badge is a 60-second TanStack poll that pauses while the tab is hidden
+ * (app-shell.tsx, PERF S15 — and pausing it was right, it was 33 req/s of
+ * nothing). But it means the in-app answer to "has anything happened" could be
+ * a minute stale on a screen somebody is actively looking at, and there was no
+ * sound or toast to cover the gap. For an approval that is a truck not loading.
+ *
+ * So the row is announced on the user's own socket room the moment it is
+ * written. The poll stays exactly as it is: it is now the RECONCILER for a tab
+ * that was asleep or a socket that was down, rather than the only path.
+ *
+ * Best-effort and never awaited into the caller's transaction — `publishToUser`
+ * no-ops when the socket server is not up (workers, tests). A missed live event
+ * costs latency; the notification itself is already committed.
+ */
+function announce(recipients, notification, inserted) {
+  try {
+    const slug = requestContext.getTenant();
+    if (!slug || !inserted || !inserted.length) return;
+    const byUser = new Map(recipients.map((r) => [r.userId, r]));
+    for (const row of inserted) {
+      const r = byUser.get(row.user_id);
+      realtime.publishToUser(slug, row.user_id, "notification:new", {
+        notification_id: row.notification_id,
+        title: notification.title,
+        body: notification.body ?? null,
+        priority: notification.priority ?? "NORMAL",
+        category: notification.category ?? null,
+        link_url: notification.linkUrl ?? null,
+        // Per RECIPIENT, not per notification: two people can hold opposite
+        // preferences about the same category, and the one who silenced it must
+        // not hear the other's tone.
+        interrupt: r ? r.interrupt === true : false,
+        created_at: new Date().toISOString(),
+      });
+    }
+  } catch {
+    /* @silent:teardown — the socket layer is an enrichment on a committed row. */
+  }
+}
+
 async function notifyMany(client, userIds, {
   eventTypeKey = null, title, body = null, entityRef = null, priority = "NORMAL", category = null,
-  url = "/notifications", pushTag = undefined, renotify = false, requireInteraction = false,
+  url = null, pushTag = undefined, renotify = false, requireInteraction = false,
   urgency = "normal", pushData = null, actions = null, emailFallback = false, ctx = {},
 } = {}) {
   const ids = [...new Set((userIds || []).filter(Boolean))];
@@ -395,16 +477,24 @@ async function notifyMany(client, userIds, {
   const isSecurity = isSecurityCategory(cat);
 
   // 1. every preference for every recipient, one query.
-  const prefs = isSecurity ? new Map() : await repo.preferencesFor(client, ids, ["IN_APP", "EMAIL"], cat);
+  // INTERRUPT rides the same table and the same round-trip. A security
+  // notification skips the preference read entirely (it ignores preferences by
+  // design), which also means it always takes the computed default — and that
+  // default is `true`, because the fan-out forces security events to HIGH.
+  const prefs = isSecurity ? new Map() : await repo.preferencesFor(client, ids, ["IN_APP", "EMAIL", "INTERRUPT"], cat);
   // Absence of a row means enabled for IN_APP and disabled for EMAIL — matching
   // the per-user defaults isChannelEnabled was called with.
   const wantsInApp = (u) => isSecurity || prefs.get(`${u}:IN_APP`) !== false;
   const wantsEmail = (u) => isSecurity || prefs.get(`${u}:EMAIL`) === true;
+  const wantsInterrupt = (u) => notificationInterrupt.interruptFor({
+    priority, category: cat, preference: prefs.get(`${u}:INTERRUPT`),
+  });
 
   // 2. one INSERT for all in-app rows.
   const inAppUsers = ids.filter(wantsInApp);
+  const { linkUrl, pushUrl } = resolveDestination({ url, entityRef });
   const inserted = await repo.insertForUsers(client, inAppUsers, {
-    eventTypeKey, title, body, entityRef, priority, category: cat,
+    eventTypeKey, title, body, entityRef, priority, category: cat, linkUrl,
   });
 
   // 3. the badge number each recipient's phone should show, one query. Read
@@ -420,13 +510,24 @@ async function notifyMany(client, userIds, {
     email: wantsEmail(userId),
     push: isSecurity || inAppSet.has(userId),
     badgeCount: badges.get(userId) ?? null,
+    interrupt: wantsInterrupt(userId),
   })).filter((r) => r.email || r.push);
 
   const notification = {
-    title, body, category: cat, isSecurity,
-    url, tag: pushTag, renotify, requireInteraction, urgency,
+    title, body, category: cat, isSecurity, priority, linkUrl,
+    url: pushUrl, tag: pushTag, renotify, requireInteraction, urgency,
     data: pushData, actions, emailFallback,
   };
+
+  // Live first: the people with the app open should learn about this before the
+  // push round-trip, not after it. Everyone who got an in-app row is told,
+  // including anyone filtered out of `recipients` for having no outbound
+  // channel — their screen is still a screen.
+  announce(
+    inAppUsers.map((u) => ({ userId: u, interrupt: wantsInterrupt(u) })),
+    notification,
+    inserted,
+  );
 
   // 5. delivery. Queued where we can tell which tenant this is — that takes the
   //    SMTP and web-push calls out of the caller's open transaction and buys
@@ -489,7 +590,7 @@ async function claimDedupe(key) {
 async function notify(client, {
   userId, eventTypeKey = null, title, body = null, entityRef = null, priority = "NORMAL",
   category = null, dedupeKey = null,
-  url = "/notifications", pushTag = undefined, renotify = false, requireInteraction = false,
+  url = null, pushTag = undefined, renotify = false, requireInteraction = false,
   urgency = "normal", pushData = null, actions = null, emailFallback = false, ctx = {},
 } = {}) {
   if (!userId || !title) return null;
@@ -499,9 +600,11 @@ async function notify(client, {
     return null;
   }
 
+  const { linkUrl, pushUrl } = resolveDestination({ url, entityRef });
+
   let inApp = null;
   if (isSecurity || (await repo.isChannelEnabled(client, userId, "IN_APP", cat))) {
-    inApp = await repo.insertForUser(client, { userId, eventTypeKey, title, body, entityRef, priority, category: cat });
+    inApp = await repo.insertForUser(client, { userId, eventTypeKey, title, body, entityRef, priority, category: cat, linkUrl });
   }
 
   // The recipient's badge number, read after the insert so it counts this one.
@@ -517,12 +620,23 @@ async function notify(client, {
   // via the `email` flag below); PUSH mirrors the in-app decision, since a user
   // who silenced a category in the product has not asked for it on a phone.
   const wantsEmail = isSecurity || (await repo.isChannelEnabled(client, userId, "EMAIL", cat, false));
-  const recipients = [{ userId, email: wantsEmail, push: Boolean(inApp) || isSecurity, badgeCount }];
+  // `null` as the default rather than a boolean: "no row" must reach
+  // `interruptFor` as absent so it computes the default, and a boolean default
+  // here would silently pin every user to it.
+  const storedInterrupt = isSecurity
+    ? null
+    : await repo.isChannelEnabled(client, userId, "INTERRUPT", cat, null);
+  const interrupt = notificationInterrupt.interruptFor({
+    priority, category: cat, preference: storedInterrupt,
+  });
+  const recipients = [{ userId, email: wantsEmail, push: Boolean(inApp) || isSecurity, badgeCount, interrupt }];
   const notification = {
-    title, body, category: cat, isSecurity,
-    url, tag: pushTag, renotify, requireInteraction, urgency,
+    title, body, category: cat, isSecurity, priority, linkUrl,
+    url: pushUrl, tag: pushTag, renotify, requireInteraction, urgency,
     data: pushData, actions, emailFallback,
   };
+
+  if (inApp) announce(recipients, notification, [{ notification_id: inApp.notification_id, user_id: userId }]);
 
   if (!(await enqueueDelivery(ctx, { recipients, notification }))) {
     await deliverOutbound(client, { recipients, notification });
@@ -743,7 +857,11 @@ async function sendPushTest(client, actor) {
     user_id: actor.user_id,
     title: "Push notifications are working",
     body: "This is a test from Praxis LS. If you can read it on your phone, alerts will reach you here.",
-    url: "/settings/notifications",
+    // `/notifications`. There is no `settings/:section` route and no
+    // `settings/notifications` one either, so this landed on `path="*"` and
+    // redirected to the Control Tower — a "test notification" that proved the
+    // push worked by taking you somewhere else.
+    url: "/notifications",
     urgency: "high",
   });
   return {

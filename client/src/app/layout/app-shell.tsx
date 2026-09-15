@@ -58,6 +58,10 @@ import { EnvChip, SwitchToLiveButton } from "@/app/layout/env-switcher";
 import { RibbonCommandsProvider } from "@/app/layout/shell-providers";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { TENANT_KEY } from "@/lib/query-client";
+import { useToast } from "@/components/ui/toast";
+import { useLiveNotifications } from "@/lib/use-live-notifications";
+import { playOnce, tierFor } from "@/lib/notif-sound";
+import { applyTabBadge } from "@/lib/tab-badge";
 import { tokenStore } from "@/lib/token-store";
 import { tenant } from "@/lib/api-client";
 import { disconnectCommsSocket } from "@/lib/comms-socket";
@@ -72,7 +76,7 @@ import { NotificationBell } from "@/components/notification-bell";
 import { CommandPalette } from "@/components/command-palette";
 import { PraxisDrawer } from "@/components/praxis-drawer";
 import { FloatingActions } from "@/components/floating-actions";
-import { QuickActionsMenu } from "@/components/quick-actions";
+import { GlobalRaiseTicket } from "@/features/support/global-raise-ticket";
 import {
   DropdownMenu,
   DropdownItem,
@@ -700,8 +704,22 @@ function AppMark({ cfg }: { cfg: EffectivePwa }) {
       <AppIcon cfg={cfg} size={APP_MARK_SIZE} />
       {/* `truncate` because the name is tenant-supplied and the bar is shared
           with the window controls — a long one must give way rather than push
-          the search field off the row. */}
-      <span className="truncate text-[13px] font-semibold tracking-tight text-foreground">
+          the search field off the row.
+
+          `sm:` — IT STANDS DOWN ON A PHONE, and it is the right thing to give.
+          The name is here because this strip REPLACES the OS title bar in an
+          installed desktop window, where naming the window is the bar's whole
+          job. There is no WCO on a phone: `env(titlebar-area-*)` is undefined in
+          every mobile browser, so below `sm` this is an ordinary app bar, and
+          the name is the one element in it that carries no function — the icon
+          beside it says the same thing, and the user reached this app by
+          tapping that icon under that name.
+
+          It was paid for by the notification bell, which now renders at every
+          width. The layout gate measures the drag handle for exactly this
+          reason ("it is the first thing a seventh control in this strip would
+          consume") and caught the bell taking it to zero at 320px. */}
+      <span className="hidden truncate text-[13px] font-semibold tracking-tight text-foreground sm:inline">
         {cfg.name}
       </span>
     </div>
@@ -718,6 +736,7 @@ export function AppShell() {
   const brandName = branding.name || "Praxis LS";
   const navigate = useNavigate();
   const location = useLocation();
+  const chatWorkstation = /^\/comms\/?$/.test(location.pathname);
   const qc = useQueryClient();
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
   const [paletteOpen, setPaletteOpen] = React.useState(false);
@@ -736,6 +755,48 @@ export function AppShell() {
     if (switchTimer.current !== null) window.clearTimeout(switchTimer.current);
   }, []);
   const unread = useUnreadCounts(env);
+  const toast = useToast();
+
+  /**
+   * Live arrival — the half of "do not miss this" that works while the person
+   * is looking at the screen.
+   *
+   * The badge poll (useUnreadCounts) is a 60-second interval that pauses on a
+   * hidden tab, so before this a notification could sit unannounced for a
+   * minute on an active screen with nothing to hear or see. It stays as the
+   * reconciler; this is the live path.
+   *
+   * Only an INTERRUPT toasts and sounds. That is the user's own per-category
+   * choice resolved on the server (rules/notification-interrupt.js), not a
+   * judgement made here — everything else still lands in the bell and moves the
+   * badge, which is what "quietly appear" is supposed to look like.
+   */
+  useLiveNotifications(
+    React.useCallback(
+      (n) => {
+        // Always: the badge is now correct within a socket round-trip rather
+        // than within a minute, for interrupts and quiet arrivals alike.
+        unread.reload();
+        const tier = tierFor(n);
+        if (tier === "silent") return;
+        playOnce(tier, n.notification_id);
+        // The body is a preview, not the whole message — the toast is a
+        // pointer to the bell, and a five-line toast covering the screen is
+        // its own kind of interruption.
+        const preview = n.body ? `${n.title} — ${n.body}` : n.title;
+        toast.info(preview.length > 140 ? `${preview.slice(0, 139)}…` : preview);
+      },
+      [unread, toast],
+    ),
+  );
+
+  // The tab title carries the unread count, so a Praxis tab in a row of twelve
+  // says so without being focused. Push covers the case where the browser is
+  // not even open; this covers the far commoner one where it is open behind
+  // something else.
+  React.useEffect(() => {
+    applyTabBadge(unread.notifications);
+  }, [unread.notifications]);
 
   // ⌘K / Ctrl-K toggles the command palette; Escape closes what is open.
   React.useEffect(() => {
@@ -940,9 +1001,22 @@ export function AppShell() {
               <span className="hidden sm:inline-flex">
                 <ThemeToggle />
               </span>
-              <span className="hidden md:inline-flex">
-                <QuickActionsMenu badge={unread.messages} />
-              </span>
+              {/*
+              NO QUICK-ACTIONS TRIGGER HERE, AT ANY WIDTH.
+
+              A burst icon in the title bar is a menu whose contents you cannot
+              guess from its glyph, sitting in the one strip where every other
+              control says exactly what it is: search, clock, environment,
+              language, theme, alerts, account. It also put Messages in the top
+              bar while the rail already carries Messages, so the same
+              destination had two chrome homes and the unread count had to be
+              duplicated between them to stay honest.
+
+              The two surfaces that remain are the ones that fit their input:
+              `<IconRail>` on desktop (where the count now rides the Messages
+              cell it belongs to) and `<FloatingActions>` on touch. Neither is
+              in the header.
+              */}
               <NotificationBell
                 count={unread.notifications}
                 onChange={unread.reload}
@@ -1020,7 +1094,7 @@ export function AppShell() {
         family" a spatial fact rather than a caption.
       */}
           <div className="flex min-h-0 flex-1">
-            <IconRail />
+            <IconRail messageBadge={unread.messages} />
 
             <div className="flex min-w-0 flex-1 flex-col">
               <Ribbon pathname={location.pathname} />
@@ -1033,11 +1107,37 @@ export function AppShell() {
             width via <PageContainer> / pageShell (audit F3), so the shell stays out
             of that decision and a full-bleed screen stays possible.
           */}
+              {/*
+               * `relative` IS A BUG FIX, not styling. It makes this element a
+               * containing block, so an absolutely-positioned descendant is
+               * laid out against THE APP'S SCROLL CONTAINER rather than
+               * against the document.
+               *
+               * Without it, any `position: absolute` descendant with no
+               * positioned ancestor — every `sr-only` control is one, and
+               * seven file inputs across the app are `sr-only` — resolves
+               * against the initial containing block and adds its offset to
+               * the DOCUMENT's scrollable overflow. Focusing it (which is what
+               * opening a file picker does) then makes the browser scroll the
+               * document to reveal it, carrying the entire shell out of the
+               * viewport. Because `html, body, #root` are `overflow: hidden`
+               * (index.css) there is no scrollbar to bring it back, so the app
+               * simply appears black until a reload. See the long note in
+               * `components/ui/file-drop.tsx`, which is where it was found.
+               *
+               * That component carries its own `relative` too, because it is
+               * also rendered inside dialogs and must not depend on being a
+               * descendant of this element. This is the floor for everything
+               * else, and for whatever gets written next.
+               */}
               <main
                 id="main-content"
                 tabIndex={-1}
                 key={env}
-                className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-4 pb-24 focus:outline-none md:p-6 md:pb-6 2xl:px-8"
+                className={cn(
+                  "relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-4 pb-24 focus:outline-none md:p-6 md:pb-6 2xl:px-8",
+                  chatWorkstation && "overflow-hidden",
+                )}
               >
                 {/* Per-route boundary, keyed on the path so navigating away from a
                 crashed screen clears the error rather than stranding the user on it.
@@ -1082,6 +1182,21 @@ export function AppShell() {
             onClose={() => setPaletteOpen(false)}
           />
           <PraxisDrawer />
+          {/* The one raise-a-ticket modal: the rail, the touch cluster and the
+              Support page all open it through the same event, so it lives
+              here with the other shell-level surfaces, not on the page. */}
+          <GlobalRaiseTicket />
+          {/* ON EVERY TOUCH SCREEN, Smart Comms included.
+
+              It used to be `!chatWorkstation &&`, because the cluster sits in
+              the same corner as the composer's send and mic buttons, and the
+              title bar's quick-actions menu stood in for it there. That menu is
+              gone at every width, so the exception would now leave a phone on
+              `/comms` with no quick actions at all — and no clock-in, which is
+              the surface `<ClockPunch>` lives on below `sm`.
+
+              The overlap is solved where it is caused: the composer publishes
+              `--fab-floor` and the cluster anchors above it (floating-actions.tsx). */}
           <FloatingActions badge={unread.messages + unread.notifications} />
           {/* Env-switch interstitial. Shown while `switchingFrom` is set — i.e. for
           the brief window between the toggle and the newly-mounted screen's

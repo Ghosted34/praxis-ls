@@ -326,6 +326,24 @@ jobs:
         # Fails if a route or an error code was added without regenerating.
         run: node scripts/generate-api-docs.js --check
 
+      - name: Site copy catalogue in sync
+        # packages/shared/data/site-copy.generated.js enumerates every `site.*`
+        # string a tenant may rewrite from Settings > Website > Copy, and is
+        # DERIVED from public-web/src/lib/i18n-dict.ts. A string added to the
+        # dictionary without regenerating is a sentence on the public site that
+        # no tenant can reach — the exact defect the catalogue exists to close,
+        # reintroduced one key at a time and invisible to every other gate.
+        run: node scripts/gen/gen-site-copy-catalogue.js --check
+
+      - name: Constraint guards are schema-qualified
+        # pg_constraint is DATABASE-wide, so a guard reading it by `conname`
+        # alone matches the OTHER schema's copy of the table. live migrates
+        # before sandbox, so sandbox silently skipped its own ADD — 111
+        # constraints lost across 48 migrations before anyone noticed (13791).
+        # check-schema-parity.js catches the symptom in the migrations job;
+        # this catches the cause, in the file, at authoring time.
+        run: node scripts/db/check-constraint-guards.js
+
       - name: Migration reversibility
         # Audit DATA 3.5 / TEST-D2: there is not one down-migration in this
         # repo, which is half of why a bad deploy was unrecoverable (the other
@@ -458,6 +476,25 @@ jobs:
         # actually returns, so the defect lived exactly in the gap between them.
         run: node scripts/check-citext-arrays.js
 
+      - name: Dates are day-first (dd/mm/yyyy)
+        # Praxis serves a corridor that reads dates day-first, and month-first is
+        # what you get by DEFAULT three different ways: `<input type="date">`
+        # renders in the OS locale with no attribute that overrides it,
+        # `toLocaleDateString()` with no locale means "whatever this machine is
+        # set to" (en-US in a container with no LANG — so SERVER-rendered dates
+        # were month-first too), and "en-US" copied out of a snippet.
+        #
+        # No other gate can catch it. 03/07/2026 is a real date under either
+        # reading, so nothing throws, no snapshot moves and no test goes red —
+        # the defect surfaces months later as a licence that expired in the
+        # wrong month or a customs deadline missed by a quarter.
+        #
+        # Covers the backend and all three frontends. Legitimate month-first
+        # handling — an incoming bank statement, or Intl used only for
+        # formatToParts — is marked @date-format:foreign / @date-format:parts
+        # with a reason, or listed per-rule in the script's ALLOW_FILES.
+        run: node scripts/check-date-format.js
+
   # ---------------------------------------------------------------------------
   # TC-CI6 — migrations are never executed in CI; the first run is production.
   #
@@ -521,6 +558,16 @@ jobs:
       - name: Migrate the platform database
         run: node scripts/db/migrate-platform.js
 
+      - name: Every ticket kind the API accepts, the database accepts
+        # 0105 widened support_ticket.kind to nine kinds by dropping the old
+        # CHECK under a name Postgres had never given it, so the DROP skipped
+        # and the table kept BOTH constraints. Two CHECKs are ANDed, the
+        # effective set stayed three, and raising an URGENT ticket 23514'd in
+        # production with every gate green. Reading pg_constraint would not
+        # have caught it — there WAS a correct nine-kind constraint; a stale
+        # one sat beside it. Only writing a row tests what the column enforces.
+        run: node scripts/db/probe-support-kinds.js
+
       - name: Provision a tenant from nothing
         # Exercises create-database + live/sandbox migrate + seed + register.
         # This is the path a new customer takes, and it has never run in CI.
@@ -539,6 +586,19 @@ jobs:
             echo "::error::Re-running migrations applied files that were already recorded — the ledger is not doing its job."
             exit 1
           fi
+
+      - name: live and sandbox enforce the same rules
+        # Nothing in this repo ever compared the two schemas, and that is how one
+        # mistake survived 48 migrations: `pg_constraint` is database-wide, so a
+        # guard reading it by `conname` alone matches the OTHER schema's copy of
+        # the table. live migrates first, so sandbox found live's row and skipped
+        # its own ADD — silently, 111 times. See 13791.
+        #
+        # This needs a real database: each of those 48 files is individually
+        # correct-looking and only the ORDER they run in produces the divergence,
+        # so no static gate can see it. It runs here because this job already
+        # provisions a tenant from nothing.
+        run: node scripts/db/check-schema-parity.js --slug=citenant
 
       - name: Probe the constraints that cannot be NOT VALID
         # 0498's unique doc_number indexes either build or fail the migration.
@@ -1182,6 +1242,52 @@ jobs:
       - name: i18n dictionary gate
         if: matrix.app == 'public-web'
         run: npm run check:i18n --prefix public-web
+
+      - name: Raw palette (public-web)
+        # The one copy of the gate lives in client/scripts and is pointed at
+        # this app's tree. A raw palette colour stays that hue when the tenant's
+        # brand is something else, which is the whole white-label promise.
+        if: matrix.app == 'public-web'
+        run: npm run check:palette --prefix public-web
+
+      - name: Design-token contrast (public-web)
+        # The one copy in client/scripts, pointed at this app. §1.2's second
+        # binding rule is WCAG AA in BOTH themes, "computed — never eyeballed",
+        # and this is what computes it. Ported in PR 4 per the guide's O-9; the
+        # port immediately found three live AA failures in this app's own
+        # stylesheet, which is the argument for the gate rather than against it.
+        if: matrix.app == 'public-web'
+        run: npm run check:contrast --prefix public-web
+
+      - name: Asset register (public-web)
+        # §1.3's placement rule, in a form that fails a build: a generated
+        # photoreal asset may not occupy a slot that sits beside a factual
+        # claim. Also the per-asset byte caps and bilingual alt (N10).
+        if: matrix.app == 'public-web'
+        run: npm run check:assets --prefix public-web
+
+      - name: Font fallbacks (public-web)
+        # The metric-matched fallback faces are DERIVED from the shipped .woff2
+        # files, so a @fontsource bump silently invalidates them. A stale
+        # fallback is a layout reflow on every page and nobody sees it in
+        # review — guide O-12 measured the last one at 8 Lighthouse points.
+        if: matrix.app == 'public-web'
+        run: npm run check:fonts-fallback --prefix public-web
+
+      - name: Motion budget (public-web)
+        # public-web runs its OWN budget, and a different one: 200ms for
+        # anything answering an input, 600ms for an entrance, unbounded only for
+        # scroll-linked set pieces named in the gate with a reason. The ERP's
+        # 250ms rule is about a dispatcher opening the same table forty times a
+        # day; this app is the front door, where impression is the job, and
+        # client/scripts/check-motion.mjs already carves that surface out in as
+        # many words. See doc/PUBLIC_WEB_EXPERIENCE_GUIDE.md §1.1.
+        #
+        # It also asserts the prefers-reduced-motion umbrella per block — this
+        # stylesheet has three, and the ERP's version of the check joins them all
+        # before searching, so a broken one is masked by an intact one.
+        if: matrix.app == 'public-web'
+        run: npm run check:motion --prefix public-web
 
       - name: Bundle graph
         if: matrix.app == 'public-web'

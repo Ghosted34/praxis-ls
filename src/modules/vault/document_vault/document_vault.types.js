@@ -68,6 +68,10 @@ const DOC_TYPES = {
    * raised against it.
    */
   CASH_PAYMENT_RECEIPT:  { label: "Cash payment receipt",     module: "costing/cash_request",          moduleKey: "MOD-49" },
+  // 13801 — the invoice or receipt proving what a BUDGET LINE was actually spent
+  // on. Read under MOD-76, because the person who needs to open it is the one
+  // reconciling the file, not whoever happens to hold a Settings grant.
+  COST_PROOF:            { label: "Cost proof",                module: "costing/dossier_reconciliation", moduleKey: "MOD-76" },
   /*
    * The costing worksheet (12766). It has had a TEMPLATE since documents
    * shipped and a `loadRecord` branch to build its payload — but it was never
@@ -137,6 +141,29 @@ const DOC_TYPES = {
    */
   PARTNERSHIP_PROFILE:   { label: "Partnership corporate profile", module: "sales/partnership_request", moduleKey: "MOD-25" },
   SUCCESS_STORY_MEDIA:   { label: "Success story public image", module: "sales/success_story", moduleKey: "MOD-26" },
+  /*
+   * The two public-site media types, and they were BOTH missing.
+   *
+   * `SUCCESS_STORY_MEDIA` above has been here since its upload shipped;
+   * `INSIGHT_MEDIA` (12757 / 13773) and `SERVICE_TYPE_MEDIA` (12755) never
+   * were, though all three are the same thing — bytes a tenant uploads to put
+   * on their own public page. `createDocument` does not call `assertDocType`
+   * (only `capture` did), so an unregistered type passed silently and
+   * `moduleKeyForDocType` fell back to MOD-70.
+   *
+   * That fallback is the harm, and it is the same one PARTNERSHIP_PROFILE and
+   * EMPLOYMENT_CONTRACT above were registered to end: reading a vault document
+   * is gated on the owning module's grant, so an article cover and a service
+   * photograph have been gated on SETTINGS. The marketing writer who just
+   * uploaded the cover could not open it back unless they also administered the
+   * workspace, and anyone holding Settings could read both.
+   *
+   * Both are MOD-29 — insight and the service web profile share that key with
+   * `service_type` itself, which `service_type_web.events` states and
+   * `insight.events` matches.
+   */
+  INSIGHT_MEDIA:         { label: "Insight article public image", module: "content/insight", moduleKey: "MOD-29" },
+  SERVICE_TYPE_MEDIA:    { label: "Service profile public image", module: "operations/service_type_web", moduleKey: "MOD-29" },
   /*
    * Master-data scans — the file behind a register entry, not a document this
    * system issues. There is no template for these three and there never will

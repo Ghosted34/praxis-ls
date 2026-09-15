@@ -559,15 +559,43 @@ function robots(origin, servesPublic, base, host) {
   ].join("\n");
 }
 
+/**
+ * The marketing routes that exist whatever a tenant has published.
+ *
+ * A NAMED CONSTANT because the failure mode is silence: a route added to
+ * `public-web`'s router, its nav and its footer, and not here, is a page every
+ * visitor can reach and a crawler finds last or by accident. §9.1's `/about`
+ * shipped in exactly that state and was caught by the final pass rather than by
+ * any gate — nothing anywhere compares the router's table to this list.
+ *
+ * Exported so `tests/unit/public-head.test.js` can assert against it without a
+ * database; `sitemap()` itself needs a tenant connection for the rows below.
+ */
+const SITEMAP_ROUTES = [
+  "",
+  // The page a procurement officer reads before deciding whether to ask for a
+  // price, and the one carrying the tenant's registered companies and their
+  // accreditations — which is what somebody searching the company BY NAME
+  // wants.
+  "/about",
+  "/track",
+  // Conversion pages with their own routes now, not hashes on the home page —
+  // a form somebody can be sent a link to is a form a crawler should know
+  // exists.
+  "/quote",
+  "/contact",
+  "/services",
+  "/portfolio",
+  "/careers",
+  "/insights",
+];
+
 async function sitemap(host, origin, base) {
   // `joinBase` and not `base + …`: on a host the site owns, the base is "/"
   // and naive concatenation emits "//track" — a URL a crawler treats as a
   // protocol-relative address, i.e. a different site.
   const at = (rest) => paths.joinBase(base, rest);
-  // `/quote` and `/contact` are in here because they are conversion pages with
-  // their own routes now, not hashes on the home page — a form somebody can be
-  // sent a link to is a form a crawler should know exists.
-  const fixed = [at(""), at("/track"), at("/quote"), at("/contact"), at("/services"), at("/portfolio"), at("/careers"), at("/insights")];
+  const fixed = SITEMAP_ROUTES.map(at);
   const rows = await withTenant(host, async (client) => {
     const services = require("../../modules/operations/service_type_web_public/service_type_web_public.service");
     const portfolio = require("../../modules/sales/portfolio_public/portfolio_public.service");
@@ -642,6 +670,7 @@ function makeHtmlSender(publicWebDir) {
 }
 
 module.exports = {
+  SITEMAP_ROUTES,
   makeHtmlSender,
   robots,
   sitemap,

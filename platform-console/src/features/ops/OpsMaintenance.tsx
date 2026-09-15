@@ -5,6 +5,7 @@ import type { TenantListRow } from "@/lib/types";
 import { useAsync } from "@/lib/useAsync";
 import { fmtDateTime } from "@/lib/format";
 import { Button, Card, ConfirmModal, Empty, Field, Loading, Modal, PageHeader, Pill } from "@/components/ui";
+import { DateTimeField } from "@/components/DateTimeField";
 import { useToast } from "@/components/Toast";
 import { OpsNav } from "./OpsNav";
 
@@ -18,7 +19,8 @@ import { OpsNav } from "./OpsNav";
  * spelled out in the form rather than being one innocuous item in a dropdown.
  */
 
-/** <input type="datetime-local"> wants "YYYY-MM-DDTHH:mm" in LOCAL time. */
+/** `DateTimeField` stores "YYYY-MM-DDTHH:mm" in LOCAL time, same as the
+ *  native control it replaced — only what the operator reads is day-first. */
 function toLocalInput(d: Date): string {
   const p = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
@@ -213,8 +215,8 @@ function ScheduleModal({ tenants, onClose, onDone }: { tenants: TenantListRow[];
         </Field>
 
         <div className="grid2">
-          <Field label="Starts"><input type="datetime-local" value={startsAt} onChange={(e) => setStartsAt(e.target.value)} /></Field>
-          <Field label="Ends"><input type="datetime-local" value={endsAt} onChange={(e) => setEndsAt(e.target.value)} /></Field>
+          <Field label="Starts"><DateTimeField value={startsAt} onChange={setStartsAt} aria-label="Starts" /></Field>
+          <Field label="Ends"><DateTimeField value={endsAt} onChange={setEndsAt} aria-label="Ends" /></Field>
         </div>
         {new Date(endsAt) <= new Date(startsAt) && (
           <div className="banner warn">The end time has to be after the start time.</div>

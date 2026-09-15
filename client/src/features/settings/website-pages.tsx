@@ -44,7 +44,29 @@ import { tr } from "@/lib/i18n";
 import * as api from "@/lib/site-content-api";
 
 export function WebsitePagesPage() {
-  const { rows, error, loading } = useList<api.SitePage>("/site/pages");
+  const { rows: allRows, error, loading } = useList<api.SitePage>("/site/pages");
+
+  /**
+   * The site-copy row is not a page and is not listed here.
+   *
+   * It carries the `copy_overrides` block — the tenant's wording for the
+   * sentences the app itself prints — and it has no URL, no slug, no nav
+   * position and no other blocks. Showing it in a table whose columns are
+   * "Title", "English" and "State", beside rows a visitor can actually open,
+   * invites exactly the two gestures that would break it: renaming its key
+   * (which is what the overlay read matches on) and deleting it to tidy up
+   * (which discards every override at once, silently, because the public site
+   * simply goes back to the shipped wording).
+   *
+   * Its editor is the Wording tab, which owns its publish state and says what
+   * it is. Filtering here rather than server-side on purpose: `GET /site/pages`
+   * is the editor's list of everything that exists, and a read that hid a row
+   * from its own admin API would be a worse surprise than this one comment.
+   */
+  const rows = React.useMemo(
+    () => (allRows ?? []).filter((p) => p.key !== api.COPY_PAGE_KEY),
+    [allRows],
+  );
   const refresh = useRefresh();
   const nav = useNavigate();
   const [creating, setCreating] = React.useState(false);
@@ -176,7 +198,7 @@ export function WebsitePagesPage() {
         ) : undefined
       }
       columns={columns}
-      rows={rows ?? []}
+      rows={rows}
       error={error}
       loading={loading}
       rowKey={(r) => r.page_id}

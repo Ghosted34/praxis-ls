@@ -16,14 +16,18 @@
 
 import * as React from "react";
 import { tr } from "@/lib/i18n";
-import { tenant } from "@/lib/api-client";
+import { tenant, tenantWithProgress } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { ErrorState } from "@/components/ui/states";
 import { StatusPill } from "@/components/ui/pill";
-import { openVaultDoc, readFileAsDataUrl, SCAN_ACCEPT } from "@/lib/vault-file";
+import { openVaultDoc, SCAN_ACCEPT } from "@/lib/vault-file";
+import { FilePicker } from "@/components/ui/image-upload";
+import { UploadProgress } from "@/components/ui/upload-progress";
+import { useUpload } from "@/lib/use-upload";
+import { fileToDataUrl } from "@/lib/image-compress";
 import { errMsg, type Row } from "@/lib/use-resource";
 import { cell, dateFmt } from "@/lib/format";
 
@@ -217,33 +221,35 @@ export function PartnershipForm({
 }
 
 export function ProfilePanel({ request, onChanged }: { request: Row; onChanged: () => void }) {
-  const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const inputRef = React.useRef<HTMLInputElement | null>(null);
   const vaultId = request.corporate_profile_vault_id ? String(request.corporate_profile_vault_id) : null;
 
-  async function upload(file: File) {
-    setError(null);
-    if (file.size > PROFILE_MAX_BYTES) {
-      setError(`${file.name} is larger than 10 MB.`);
-      return;
-    }
-    setBusy(true);
-    try {
-      await tenant(`/partnership-requests/${request.partnership_request_id}/profile`, {
-        method: "POST",
-        body: { file: await readFileAsDataUrl(file), filename: file.name },
-      });
-      onChanged();
-    } catch (e) {
-      // The server's own message is the actionable one — "this file says it is
-      // a PDF but its contents are image/png" beats "Something went wrong."
-      setError(errMsg(e));
-    } finally {
-      setBusy(false);
-      if (inputRef.current) inputRef.current.value = "";
-    }
-  }
+  /**
+   * Through the upload engine: compressed, previewed and with a real
+   * percentage. `profile="document"` — a corporate profile is evidence of what
+   * the applicant actually sent, so it is downscaled and re-encoded but never
+   * tonally corrected.
+   */
+  const upload = useUpload({
+    profile: "document",
+    maxBytes: PROFILE_MAX_BYTES,
+    send: async (file, ctx) =>
+      tenantWithProgress(
+        `/partnership-requests/${request.partnership_request_id}/profile`,
+        { file: await fileToDataUrl(file), filename: file.name },
+        ctx.onProgress,
+      ),
+    onAllComplete: () => onChanged(),
+  });
+
+  const item = upload.items[0] ?? null;
+  const busy = item?.state === "uploading" || item?.state === "compressing";
+
+  React.useEffect(() => {
+    // The server's own message is the actionable one — "this file says it is a
+    // PDF but its contents are image/png" beats "Something went wrong."
+    if (item?.state === "error" && item.error) setError(item.error);
+  }, [item?.state, item?.error]);
 
   return (
     <div className="mt-5 border-t pt-4">
@@ -253,22 +259,39 @@ export function ProfilePanel({ request, onChanged }: { request: Row; onChanged: 
           {vaultId ? (
             <Button variant="ghost" onClick={() => void openVaultDoc(vaultId)}>{tr("Open")}</Button>
           ) : null}
-          <input
-            ref={inputRef}
-            type="file"
+          <FilePicker
+            variant="inline"
             accept={SCAN_ACCEPT}
-            className="sr-only"
-            id={`pr-profile-${request.partnership_request_id}`}
-            onChange={(e) => {
-              const f = e.target.files && e.target.files[0];
-              if (f) void upload(f);
+            disabled={busy}
+            trigger={
+              <span className="inline-flex h-9 items-center rounded-lg border px-3 text-sm no-underline">
+                {busy ? "Uploading…" : vaultId ? "Replace" : "Attach profile"}
+              </span>
+            }
+            onPick={(files) => {
+              setError(null);
+              void upload.pick(files);
             }}
           />
-          <Button variant="outline" loading={busy} onClick={() => inputRef.current?.click()}>
-            {vaultId ? "Replace" : "Attach profile"}
-          </Button>
         </div>
       </div>
+      {item && item.state !== "idle" && (
+        <div className="mt-2 flex items-start gap-3">
+          {item.previewUrl && (
+            <img
+              src={item.previewUrl}
+              alt=""
+              className="h-12 w-12 rounded border object-cover"
+            />
+          )}
+          <UploadProgress
+            className="flex-1"
+            state={item.state}
+            percent={item.percent}
+            error={item.error}
+          />
+        </div>
+      )}
       {error && <ErrorState message={error} />}
       <p className="mt-2 text-sm text-muted-foreground">
         {vaultId

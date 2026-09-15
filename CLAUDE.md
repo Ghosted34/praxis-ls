@@ -46,6 +46,100 @@ If you believe you have found the exception, you almost certainly have not.
 `eslint-disable-next-line praxis/no-native-dialogs` exists, requires a written
 reason next to it, and nothing in the tree needs one today.
 
+## The second frontend rule: dates are day-first
+
+**Never `<input type="date">` or `<input type="datetime-local">`. Use
+`<DateField>` / `<DateTimeField>` from `@/components/ui/`.**
+
+This is enforced by `scripts/check-date-format.js` (`npm run check:dates`),
+which runs in CI and in `npm run ci`, so a native date input does not merge.
+
+A native date input renders in the **operating system's** locale, and no HTML
+attribute overrides it — `lang` is ignored for the value display. On a
+US-configured workstation it shows and accepts mm/dd/yyyy. Praxis serves a
+corridor that reads dates day-first, so the operator types 03/07 meaning the 3rd
+of July and the control stores the 7th of March.
+
+Nothing catches that, which is the entire reason it is a gate. Both readings are
+real dates: the value validates, the API accepts it, the round-trip is clean and
+every test stays green. It surfaces months later as a licence that expired in a
+month nobody expected or a customs deadline missed by a quarter.
+
+`DateField` reads and writes dd/mm/yyyy while storing the ISO `YYYY-MM-DD` the
+API already wants, so nothing downstream changes. It takes `min`, `max`,
+`required`, and a react-hook-form `{...field}` spread. `DateTimeField` is the
+same thing with `HH:mm` on the end. (`type="month"` is fine — no day in it.)
+
+The same rule covers **displaying** a date. `toLocaleDateString()` with no
+locale means "whatever this machine is set to" — month-first on a US
+workstation, and in a container with no `LANG`, which is how server-rendered
+dates were month-first too. Use the formatters in `lib/format.ts` (`dateFmt`,
+`dateDmy`, `dateTimeFmt`) or pin `en-GB`; never `undefined`, `[]`, `"en"` or
+`"en-US"` for a format that renders a day number.
+
+**ISO `YYYY-MM-DD` is not the bug** — it is the wire format the API contract,
+the `@shared` validators and every `date` column are built on, and it stays.
+What changes is where a PERSON reads a date: document and PDF templates
+(`services/documents/templates` — an invoice prints `27/07/2026`), xlsx/CSV
+exports (`services/spreadsheet`), and screens. The gate flags ISO in those two
+backend paths and nowhere else.
+
+Three escape hatches, each costing a written reason next to it:
+`@date-format:foreign` for an incoming third-party format (a bank statement
+genuinely arrives month-first, and refusing to parse it does not make it
+day-first), `@date-format:parts` for an `Intl.DateTimeFormat` built only to call
+`formatToParts()`, which renders nothing, and `@date-format:filename` for an ISO
+day in a filename (`/` is not legal in one, and ISO is what makes downloads
+sort). Full detail in
+**`doc/FRONTEND_GUIDE.md` §3.12**.
+
+## The third frontend rule: uploads go through the engine
+
+**Never `<input type="file">`. Use `<ImageUpload>` (upload on pick) or
+`<FilePicker>` + `<UploadList>` + `useUpload({ autoStart: false })` (upload on
+Save), from `@/components/ui/image-upload` and `@/lib/use-upload`.**
+
+Enforced by the `praxis/no-raw-upload` ESLint rule as an **error** in all three
+frontend apps, with **no baseline allow-list** — every upload site in the tree is
+on the engine. It catches the rewrites too: `<input type={"file"} />` and
+`el.type = "file"` after `createElement` are the same violation.
+
+`public-web/` carries its own copy of the engine (`components/ui/file-input.tsx`,
+`lib/image-compress.ts`) because that app installs only its own dependencies in
+CI and cannot import from `client/`. Keep the two in step.
+
+The engine gives every upload three things, none of them optional: a **preview**
+from the moment the picker closes, a **0→100% percentage** ending in an explicit
+*Upload complete* once the server has answered, and **compression** before the
+bytes leave the device.
+
+A `<FileDrop>` is also gated: `praxis/require-upload-progress` fails one that
+passes neither `{...fileDropProps(upload.items[0])}` nor an explicit
+`uploadProgress`. That rule exists because the first one did not cover it —
+`no-raw-upload` passed the whole tree while fourteen `<FileDrop>`s still showed
+a filename and then a tick with no percentage between them.
+
+`profile` is required and is not cosmetic — it decides whether the image is
+tonally corrected. `document` and `brand` never are: auto-levelling a customs
+scan makes it stop matching the paper, and stretching a logo's histogram hands
+the tenant back a different green. `photo` and `avatar` are. Full detail,
+including the delivery side (`<ResponsiveImage>`, AVIF/WebP derivatives), is in
+**`doc/FRONTEND_GUIDE.md` §3.13**.
+
+**Why it is a hard rule.** `FileDrop` has accepted `uploadProgress` and
+`uploadSuccess` props since it was written, and 2 of ~30 upload sites passed
+them. Nobody decided those screens should have no progress bar — the raw input
+was closer to hand than four pieces of state and a cleanup effect. A bare upload
+costs the user a preview (picking the wrong scan is invisible for months), a
+percentage (a slow upload is indistinguishable from a frozen screen, so people
+double-upload) and compression (the original is served back at full size into a
+96px cell, forever).
+
+Backend side: `src/services/image-pipeline.service.js` is the one engine every
+image write goes through, and callers must hash the master **it returns**, never
+the bytes they received — `document_signature` records `artifact_hash` from the
+vault row's `content_hash` and `document_verification` compares the two.
+
 ## Before you write frontend code
 
 `doc/FRONTEND_GUIDE.md` is **the** frontend document — CI fails if it names a
@@ -66,6 +160,13 @@ npm run check:schemas   # a shared schema is used by BOTH sides, and migrated
                         # validators have not grown their own rules back
 npm run check:bundle    # chunk graph is acyclic — needs `npm run build` first
 npm test
+```
+
+One more runs from the repo ROOT rather than `client/`, because it covers the
+backend and all three frontends at once:
+
+```
+npm run check:dates     # no month-first dates anywhere — see the rule above
 ```
 
 `platform-console/` and `public-web/` each have their own `npm run lint`. All

@@ -23,6 +23,7 @@ import { pageShell } from "@/lib/layout";
 import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
+import { DateField } from "@/components/ui/date-field";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Modal, Field, Select } from "@/components/ui/modal";
@@ -260,17 +261,15 @@ function NewRequestForm({
             </Field>
           )}
           <Field label={tr("From")}>
-            <Input
-              type="date"
+            <DateField
               value={f.starts_on}
-              onChange={(e) => set("starts_on", e.target.value)}
+              onChange={(iso) => set("starts_on", iso)}
             />
           </Field>
           <Field label={tr("To")}>
-            <Input
-              type="date"
+            <DateField
               value={f.ends_on}
-              onChange={(e) => set("ends_on", e.target.value)}
+              onChange={(iso) => set("ends_on", iso)}
             />
           </Field>
           {wantsLeave && (

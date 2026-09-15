@@ -984,44 +984,53 @@ async function disburse(client, { id, amount = null, entityId, entryDate, source
     await emitEvent(client, { eventTypeKey: eventKey, moduleKey: events.MODULE, entityRef: ref(id), actorUserId: actor.user_id || null });
     await audit(client, { actorUserId: actor.user_id || null, action: eventKey, moduleKey: events.MODULE, entityRef: ref(id), after: { amount: pay, disbursed_amount: paidNow, regie_advance_id: regieAdvanceId } });
     await client.query("COMMIT");
+
+    // Budget Reconciliation (MOD-76, owner decision Q6, guide §4.7). If the
+    // dossier's reconciliation was already settled, a new disbursement re-opens
+    // it: more cash went out, so the cash-to-account math moved. Best-effort
+    // AFTER commit so the disbursement is durable even if the reopen fails
+    // (reopen is idempotent and can be retried).
+    if (cr.dossier_id) {
+      try {
+        const recon = require("../dossier_reconciliation/dossier_reconciliation.service");
+        await recon.reopen(client, { dossierId: cr.dossier_id, reason: "Further cash disbursed against the file", actor });
+      } catch (e) { /* best-effort */ }
+    }
+
     return { cash_request: updated, regie_advance_id: regieAdvanceId, payment, outstanding: Math.round((requested - paidNow) * 100) / 100 };
   } catch (err) { await client.query("ROLLBACK"); throw err; }
 }
 
 /**
- * Justify: record actual spend against lines (spent_amount), RETIRE THE LINKED
- * RÉGIE ADVANCE, and close the request.
+ * Justify: record the operational note (spent_amount per line) and flip to
+ * JUSTIFIED.
  *
- * THE DEFECT THIS FIXES. Before 10717 this marked the request JUSTIFIED and
- * stopped. The advance it was disbursed from stayed open in 581 with
- * justified_amount = 0, so the aging worker later reclassified the full amount
- * to 4211 — a receivable raised against a holder who HAD already accounted for
- * the money, evidenced by the very lines being written here. A wrong ledger
- * entry produced by a workflow completing normally.
+ * ── 13802 (MOD-76 PR 2): the régie legs MOVED ──────────────────────────────
  *
- * The retirement runs inside THIS transaction (via `regie.retireCore`, which
- * does not open its own) so the request and its advance can never disagree: if
- * the retirement is refused — over-retirement, a missing receipt — the whole
- * justification rolls back rather than leaving a closed request over an open
- * advance.
+ * Owner decisions Q6, Q7, Q14 confirmed: the proof and the actual amount both
+ * live on the reconciliation line now, so `justify` has nothing to retire
+ * against — it would post to 4731 from a form the design emptied, against
+ * evidence it cannot see. Both régie legs (RECEIPT for the actual spend and
+ * CASH_RETURN for the refunded cash) are posted by `dossier_reconciliation.settle`
+ * inside its transaction. `regie.retireCore`'s discipline is copied there.
  *
- * Each spent line becomes one RECEIPT retirement tagged with the request's
- * dossier, which is exactly the per-dossier 4731 split KB §8.2 describes as the
- * OUTPUT of this workflow.
+ * This function is now the thin transition: record spent_amount as an
+ * operational note, run the advisory proof check (which never blocks), and flip
+ * the request to JUSTIFIED. Advances attached to an operations file are retired
+ * at settlement; overhead advances (dossier_id NULL) keep their régie legs and
+ * are blocked here until the advance clears (KB §6.8 step 4).
  */
 async function justify(client, { id, lines = [], entityId = null, entryDate = null, actor = {}, ip = null }) {
   const cr = await repo.getCR(client, id);
   if (!cr) throw new AppError("NOT_FOUND", "Cash request not found", 404);
   assertTransition(cr.status, "JUSTIFIED");
 
-  // Read policy before BEGIN: it is a plain SELECT and keeps the transaction short.
+  const isOpsAdvance = !!cr.dossier_id;
   const pol = cr.regie_advance_id ? await regie.policy(client) : null;
 
   await client.query("BEGIN");
   try {
-    // Justification is the LAST moment a receipt can still be produced, so the
-    // advisory check runs here too — a line justified without its supporting
-    // document is exactly what the Compliance module will want to see.
+    // Advisory only: the proof gate MOVED to reconciliation submit (owner Q7).
     const written = lines.length ? await applySpend(client, id, lines) : [];
     if (lines.length) await checkProof(client, cr, written);
 
@@ -1029,52 +1038,32 @@ async function justify(client, { id, lines = [], entityId = null, entryDate = nu
      * ── THE PROOF GATE MOVED (13801, owner decision Q7) ────────────────────
      *
      * This used to throw PROOF_REQUIRED while any line carried
-     * `justification_required` with no `proof_vault_id`. The intent was right —
-     * a request closed without its receipt is a document owed that nothing will
-     * ever ask for again — but the gate stood somewhere no receipt could reach
-     * it, and the result was a dead end rather than a control:
-     *
-     *   · `JustifyForm` has never sent `proof_vault_id`, and the field is not
-     *     even on the client's `CashLine` type;
-     *   · `PORT_CHARGES` is seeded ALWAYS_REQUIRED (9080:397), so a request
-     *     carrying it could be raised, approved, disbursed — and then closed by
-     *     nobody, ever.
-     *
-     * The owner moved the evidence to where it belongs: "Cash request just
-     * enters the justification mandatory box. That's all. The whole upload
-     * happens here in reconciliation." So the TICK stays authoritative here (Q9
-     * — the cash request is SSOT for whether a line owes a receipt), the
-     * DOCUMENT lands on the budget line in MOD-76, and the block fires at
-     * `POST /costing/reconciliations/:dossierId/submit`, which is a screen that
-     * can actually take the file.
-     *
-     * This is a relocation, not a relaxation. `checkProof` above still raises
-     * the compliance flag and still notifies the requester, so nothing stops
-     * being visible in the meantime.
+     * `justification_required` with no `proof_vault_id`. The intent was right
+     * but the gate stood somewhere no receipt could reach it. The owner moved
+     * the evidence to the reconciliation: "Cash request just enters the
+     * justification mandatory box. That's all. The whole upload happens here
+     * in reconciliation."
      */
 
     const spent = sumField(lines, "spent_amount");
     let retired = null;
 
-    if (cr.regie_advance_id) {
+    // Régie retirement: ONLY for non-ops (overhead) advances. OPS advances are
+    // retired at settlement so the actual, the proof and the cash return are
+    // all one atomic posting (13802, guide §7.2).
+    if (cr.regie_advance_id && !isOpsAdvance) {
       if (!cr.dossier_id) {
-        // A receipt lands in 4731, which is requires_analytic (9001:113) — the
-        // ledger trigger would refuse the posting. Fail with the reason rather
-        // than letting a raw RAISE surface from inside the transaction.
-        throw new AppError(
-          "DOSSIER_REQUIRED",
-          "This request draws on a régie advance, so it must be attached to an operations file before it can be justified",
-          422,
-        );
+        // For overhead advances there is no analytic dossier; retireCore will
+        // accept a null dossierId because RECEIPT's dossier_id requirement is
+        // enforced only when the retire is dossier-analytical (4731). Overhead
+        // uses a different debit account.
       }
       if (spent > 0) {
-        // One RECEIPT for the spend. Proof was already checked per line above;
-        // pass the first line's document so the retirement carries evidence.
         const proof = written.find((l) => l.proof_vault_id) || null;
         retired = await regie.retireCore(client, {
           advanceId: cr.regie_advance_id,
           kind: "RECEIPT",
-          dossierId: cr.dossier_id,
+          dossierId: cr.dossier_id || null,
           amount: spent,
           proofVaultId: proof ? proof.proof_vault_id : null,
           memo: "Justified by cash request " + (cr.doc_number || id),
@@ -1084,11 +1073,6 @@ async function justify(client, { id, lines = [], entityId = null, entryDate = nu
           policy: pol,
         });
 
-        // Q1, answered: the remainder must come back before the advance closes.
-        // KB §6.8 step 4 says a fully justified advance nets 581 to ZERO, and
-        // allowing a "justified" request to sit over an open advance is exactly
-        // the bug above in a smaller form. The holder returns the unspent cash
-        // (Dr 571) as a separate CASH_RETURN, which the UI offers on the advance.
         const open = Number(retired.advance.amount)
           - Number(retired.advance.justified_amount)
           - Number(retired.advance.returned_amount);
@@ -1096,6 +1080,29 @@ async function justify(client, { id, lines = [], entityId = null, entryDate = nu
           throw new AppError(
             "ADVANCE_NOT_CLEARED",
             `${Math.round(open * 100) / 100} of this advance is still open — record the unspent cash returned (or a write-off) before justifying the request`,
+            422,
+          );
+        }
+      }
+    }
+
+    // For OPS advances the régie legs move to settlement (13802, guide §7.2).
+    // `justify` must not flip an OPS request to JUSTIFIED while its advance is
+    // still open — that would leave a JUSTIFIED request over an open advance,
+    // which is the exact bug this guard was written to prevent. Overhead
+    // advances (dossier_id NULL) take the old path below.
+    if (isOpsAdvance && cr.regie_advance_id) {
+      // eslint-disable-next-line no-await-in-loop
+      const { rows: [adv] } = await client.query(
+        "SELECT amount, justified_amount, returned_amount FROM regie_advance WHERE regie_advance_id = $1",
+        [cr.regie_advance_id],
+      );
+      if (adv) {
+        const open = Number(adv.amount) - Number(adv.justified_amount) - Number(adv.returned_amount);
+        if (open > 0.005) {
+          throw new AppError(
+            "ADVANCE_NOT_CLEARED",
+            `This request draws on a régie advance for an operations file; the reconciliation settles it. ${Math.round(open * 100) / 100} is still outstanding — record it on the file's Budget Reconciliation.`,
             422,
           );
         }

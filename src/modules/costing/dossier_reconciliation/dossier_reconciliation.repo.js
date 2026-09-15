@@ -22,6 +22,91 @@
 
 const costingRepo = require("../costing/costing.repo");
 
+/**
+ * HT already posted to THIS budget line — Σ cost_entry.amount (which is HT)
+ * where costing_line_id matches. Used by settle() for the delta posting (guide
+ * §4.4 step 2): post (actual_ttc − already_posted_ttc converted to HT) rather
+ * than re-posting the gross, and read it back so a re-settle after re-open
+ * posts only the delta since last time (the re-open safeguard, PR 2).
+ */
+async function postedTotalsByLine(client, { reconciliationId, dossierId }) {
+  const { rows } = await client.query(
+    `SELECT ce.costing_line_id,
+            COALESCE(SUM(ce.amount), 0) AS posted_ht
+       FROM cost_entry ce
+      WHERE ce.dossier_id = $1 AND ce.costing_line_id IS NOT NULL
+      GROUP BY ce.costing_line_id`,
+    [dossierId],
+  );
+  const map = new Map();
+  for (const r of rows) map.set(r.costing_line_id, Number(r.posted_ht));
+  return map;
+}
+
+/**
+ * Funding régie advances against this dossier — the advances that settlement
+ * must retire (guide §4.4 step 3, §7.2). A DISBURSED funding request has
+ * regie_advance_id set; overhead advances (dossier_id NULL) are excluded so we
+ * never retire a holder's personal float against an operations file.
+ *
+ * Returned with their current justified_amount / returned_amount so settlement
+ * can post the DELTA only (owner safeguard 1): if a holder already handed cash
+ * back at the window we must not retire it a second time.
+ */
+async function fundingAdvancesForDossier(client, { dossierId }) {
+  const { rows } = await client.query(
+    `SELECT ra.regie_advance_id, ra.entity_id, ra.amount, ra.justified_amount, ra.returned_amount,
+            ra.state, ra.holder_user_id, ra.issued_on,
+            cr.cash_request_id, cr.doc_number AS cash_request_ref
+       FROM regie_advance ra
+       JOIN cash_request cr ON cr.regie_advance_id = ra.regie_advance_id
+      WHERE cr.dossier_id = $1
+        AND cr.status IN ('DISBURSED','PARTIALLY_DISBURSED')
+      ORDER BY ra.issued_on, ra.regie_advance_id`,
+    [dossierId],
+  );
+  return rows;
+}
+
+/**
+ * DISBURSED cash requests for this dossier. After the régie retirements in
+ * settle(), any whose open balance is now zero (all lines accounted for) flip
+ * to JUSTIFIED (guide §4.4 step 5).
+ */
+async function disbursedCashRequests(client, { dossierId }) {
+  const { rows } = await client.query(
+    `SELECT cr.cash_request_id, cr.regie_advance_id, cr.doc_number, cr.status
+       FROM cash_request cr
+      WHERE cr.dossier_id = $1
+        AND cr.status IN ('DISBURSED','PARTIALLY_DISBURSED')`,
+    [dossierId],
+  );
+  return rows;
+}
+
+/** Dossier's entity_id, required for journal entry posting (analytic). */
+async function dossierEntityId(client, { dossierId }) {
+  const { rows } = await client.query(
+    "SELECT entity_id FROM dossier WHERE dossier_id = $1",
+    [dossierId],
+  );
+  return rows[0] ? rows[0].entity_id : null;
+}
+
+/** Earliest line spent_on across the current grid — used to decide the
+ *  entryDate for régie RECEIPT retirements that cover the whole file (the
+ *  accounting date is the date the money left the holder's hands). */
+async function earliestSpentOn(client, { dossierId, reconciliationId }) {
+  const { rows } = await client.query(
+    `SELECT MIN(rl.spent_on) AS earliest
+       FROM dossier_reconciliation_line rl
+      WHERE rl.reconciliation_id = $2
+        AND rl.spent_on IS NOT NULL`,
+    [dossierId, reconciliationId],
+  );
+  return rows[0] && rows[0].earliest ? rows[0].earliest : null;
+}
+
 /* ═══════════════════════════ The header ══════════════════════════════════ */
 
 async function get(client, id) {
@@ -74,7 +159,8 @@ async function setStatus(client, id, { sql, params = [] }) {
 
 /**
  * Every budget line on the file's approved costing, with what has been claimed
- * against it, what has been paid, and whatever a human has entered.
+ * against it, what has been paid, whatever a human has entered, and what the
+ * ledger already knows.
  *
  * `LINE_VAT_SQL` and `claimsLateral` come from `costing.repo` rather than being
  * written again here: the budget bar the cash request draws against and the
@@ -87,11 +173,13 @@ async function setStatus(client, id, { sql, params = [] }) {
  * that decision away. `bool_or` because if ANY live claim against this budget
  * line was ticked, the line owes a receipt.
  *
- * NOTE ON `cost_entry`. Nothing joins it yet. Nothing writes
- * `cost_entry.costing_line_id` until settlement posts (PR 2), so a join would
- * return zero for every row and invite a reader to believe it meant something.
- * The pre-fill is `disbursed`, which is exactly the question the owner posed:
- * "119 250 was disbursed — is that what you spent?"
+ * `posted_ht` / `posted_ttc` (13802, PR 2). Now that settlement writes
+ * `cost_entry.costing_line_id`, a join is meaningful. Posted is HT on the
+ * ledger (cost_entry.amount is HT); we expose `posted_ttc` too, grossed up by
+ * the line's own VAT ratio, so the pre-fill rule (Q2 = C) can put the TTC
+ * number in front of a person without mixing the two bases in one column. The
+ * pre-fill is `COALESCE(posted_ttc, disbursed)` — once postings exist the
+ * ledger knows, not the cash request.
  */
 async function gridFor(client, { dossierId, reconciliationId }) {
   const claims = costingRepo.claimsLateral({ committing: "$3", pending: "$4" });
@@ -106,6 +194,8 @@ async function gridFor(client, { dossierId, reconciliationId }) {
             ROUND(${vat}, 2)                              AS vat,
             ROUND(cl.qty * cl.unit_cost + ${vat}, 2)      AS budget_ttc,
             claims.committed, claims.pending, claims.disbursed,
+            COALESCE(post.posted_ht, 0)                   AS posted_ht,
+            COALESCE(post.posted_ttc, 0)                  AS posted_ttc,
             COALESCE(just.justification_required, false)  AS justification_required,
             rl.line_id, rl.actual_ttc, rl.actual_source, rl.spent_on,
             rl.variance_reason, rl.reason_group_id, rl.returned_amount,
@@ -124,6 +214,21 @@ async function gridFor(client, { dossierId, reconciliationId }) {
           WHERE crl.costing_line_id = cl.costing_line_id
             AND cr.status <> 'REJECTED'
        ) just ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT COALESCE(SUM(ce.amount), 0) AS posted_ht,
+                -- Gross HT back to TTC at the line's own VAT ratio. débours carry
+                -- their upstream_vat_amount explicitly rather than a percent, so
+                -- the ratio uses net + vat (the budget denominator) which works
+                -- for both shapes. If net + vat is zero (a zero line) we read HT
+                -- as TTC — there is no cash to mis-state.
+                ROUND(COALESCE(SUM(ce.amount), 0)
+                      * CASE WHEN (cl.qty * cl.unit_cost + ${vat}) > 0
+                             THEN (cl.qty * cl.unit_cost + ${vat}) / NULLIF(cl.qty * cl.unit_cost, 0)
+                             ELSE 1 END, 2) AS posted_ttc
+           FROM cost_entry ce
+          WHERE ce.costing_line_id = cl.costing_line_id
+            AND ce.dossier_id = c.dossier_id
+       ) post ON TRUE
        LEFT JOIN dossier_reconciliation_line rl
               ON rl.reconciliation_id = $2 AND rl.costing_line_id = cl.costing_line_id
        LEFT JOIN LATERAL (
@@ -381,4 +486,6 @@ module.exports = {
   attachDocument, detachDocument, documentsFor,
   insertSettlement, settlements, stampDossier,
   receiptsOwed,
+  postedTotalsByLine, fundingAdvancesForDossier, disbursedCashRequests,
+  dossierEntityId, earliestSpentOn,
 };

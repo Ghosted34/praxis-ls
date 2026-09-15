@@ -1,6 +1,6 @@
 # Budget Reconciliation — engineering guide
 
-**Status:** PR 1 shipped; PRs 2 and 3 outstanding. Every decision here cites its question in
+**Status:** PRs 1 and 2 shipped; PR 3 outstanding. Every decision here cites its question in
 `doc/RECONCILIATION_PROGRAMME_QUESTIONNAIRE.md` §10 (answered 15/09/2026). Where this guide and the
 questionnaire disagree, this guide is newer and wins; where this guide is silent, the questionnaire's
 recommendation stands.
@@ -14,6 +14,18 @@ and the guide has been corrected rather than left describing a plan nobody follo
 | Module key `MOD-85`, registered in a tenant migration | **`MOD-76`, in a platform SEED** (`9132`) | `MOD-01`…`MOD-75` are taken, and `platform.module_catalogue` is seeded per platform, not migrated per tenant (`9130` is the pattern). |
 | `app_setting (scope, key, value)` | **`setting (section, key, value)`** | That is the table's real shape (`0130:28`). |
 | `dossier_reconciliation_suggestion` retired by comment | **Dropped** | It sits inside the orphan sweep's range, and that gate is right: a table no code touches is a hole, not a record. §8.4. |
+
+**What PR 2 changed about this guide.** Five things settled differently once the owner answered the
+blocking régie question and the code was written. Recorded here for the same reason PR 1's
+corrections were — so the next reader is not arguing with a plan nobody followed:
+
+| Guide said | Shipped | Why |
+| --- | --- | --- |
+| §7.2 "Flagged for confirmation" — régie legs *might* move | **Both legs move. Confirmed by owner.** | Owner decision Q6+Q7+Q14: proof and actual both live on the reconciliation line now; `cash_request.justify` has nothing to retire against. Both RECEIPT (actual) and CASH_RETURN (refund) post inside `settle()`. `justify` is a thin transition for OPS advances; overhead advances keep their régie legs (KB §6.8) because they have no costing. |
+| §4.4 step 2 — "one cost_entry per line" | **DELTA, never gross, with HT/TTC resolved explicitly** | Settling at the number the ledger already holds posts 0, not a double-post. Negative deltas post as reversing entries (Cr expense / Dr treasury) because `chk_cost_entry_amount_nonneg` (0497) forbids negatives. `cost_entry.amount` is HT while the grid is TTC — the join grosses HT back to TTC using the line's own net/(net+VAT) ratio, so the two bases never share a column (Q4). |
+| §4.4 step 3 implied one retirement per advance, one shot | **DELTA retirements, same discipline as cost_entry** | Two safeguards called out explicitly by the owner: (1) the advance UI still offers a standalone CASH_RETURN, so settlement reads current `justified_amount`/`returned_amount` and posts only the difference; (2) a second settlement after re-open must not double-retire (the 581=0 invariant). Pro-rata apportioned across multiple funding advances, with rounding absorbed by the last one (same shape as `cash_request.closeBalance`). |
+| §7.2 did not decide whether standalone CASH_RETURN stays | **Removed for OPS, kept for overhead** | One writer per path: settlement owns OPS cash returns; the régie module's standalone action continues to serve overhead advances. Both routes go through `regie.retireCore`, which does not open its own transaction — that discipline is what makes a refusal roll the caller. |
+| §4.3 did not name a concrete refusal shape | **`PERIOD_CLOSED` names the period, the line, and offers the earliest open date** | `spent_on` is typed reality and stays as typed even when the period is closed; the error carries `earliest_open_date` so the UI can offer a concrete alternative rather than a bare "no".
 
 
 **Module name:** **Budget Reconciliation** in the UI (Q21). Table and module names stay
@@ -655,25 +667,50 @@ carrying that item can be disbursed and then never closed by anybody.
 `cash_request_line.justification_required` **stays** and stays authoritative (Q9): the cash request
 is SSOT for the tick, the dictionary only seeds its default.
 
-### 7.2 Régie — the retirement moves to settlement
+### 7.2 Régie — both legs move to settlement (confirmed)
 
-Today `justify` retires the advance with a `RECEIPT` for `Σ spent_amount`, and refuses
-(`ADVANCE_NOT_CLEARED`) while any of it is open. Under Q6 and Q14, Finance records the returned cash
-**here**, at settlement — so settlement is where both legs belong:
+The owner confirmed this 15/09/2026. The reasoning holds: under Q6 + Q7 + Q14, Finance records the
+cash returned to the vault **here**, at settlement, and that *is* the advance's `CASH_RETURN` leg.
+`cash_request.justify` has nothing to retire against — it would post to 4731 from a form the design
+has emptied, against evidence it cannot see.
 
-- `RECEIPT` for `actual_ttc` (what was really spent, now evidenced)
-- `CASH_RETURN` for `returned_amount` (what came back to the vault)
+Inside the `settle()` transaction (§4.4), per **funding** advance (dossier-attached, DISBURSED):
 
-Both inside the settlement transaction (§4.4), so a refused retirement rolls the settlement back
-rather than leaving a settled sheet over an open advance — the same discipline `justify` uses today
-and for the same reason.
+- `RECEIPT` for the actual TTC the sheet accounts for (what was really spent, now evidenced) → Dr 4731 (per dossier) / Cr 581.
+- `CASH_RETURN` for the TTC returned (what came back to the vault) → Dr 571 / Cr 581.
+- Any `DISBURSED` funding cash request whose advance is now fully retired (open balance 0) flips to `JUSTIFIED`.
 
-`cash_request.justify` becomes a thin transition: record `spent_amount` as an operational note, flip
-to `JUSTIFIED`. It no longer gates on proof and no longer retires anything.
+Both legs go through `regie.retireCore`, which does **not** open its own transaction — that is the
+point. If a retirement is refused (over-retirement, missing proof, closed period), the whole
+settlement rolls back rather than leaving a settled sheet over an open advance. `cash_request.justify`
+uses exactly this discipline today; PR 2 copies it rather than reinventing it.
 
-> **Flagged for confirmation.** This is the one place the answers imply a change to a module that is
-> already shipped and working, and it is worth one word from the owner before it is built. Everything
-> else in this guide is additive to the cash request.
+**DELTA, NEVER GROSS — two safeguards (owner-explicit):**
+
+1. The advance UI still offers a manual CASH_RETURN, and a holder may have handed cash back at the
+   window already. Settlement reads the advance's *current* `justified_amount` / `returned_amount`
+   and posts only the difference, so a manual return is not double-counted.
+2. A second settlement after re-open (§4.7) posts only the delta since the last one. The re-open
+   safeguard: a naive re-post would double-retire and break the `581 = 0` invariant.
+
+When there are multiple funding advances against a file (cash went out in tranches), the actual
+spend and returned cash are apportioned pro-rata to each advance's share of the total issued; the
+last advance absorbs rounding so the sum of shares equals the sheet's totals exactly (same shape as
+`cash_request.closeBalance`'s `settled_amount` split).
+
+`cash_request.justify` is now a thin transition:
+
+- For **OPS** advances (dossier_id set) it records `spent_amount` as an operational note and flips to
+  `JUSTIFIED` ONLY when the régie balance is already zero (i.e. settlement already ran). If the
+  advance is still open, justification is refused — the place to close it is the file's
+  reconciliation sheet, not this form.
+- For **overhead** advances (dossier_id NULL, no costing) it keeps its existing behaviour: RECEIPT
+  retirements via `regie.retireCore`, proof checks, and the `ADVANCE_NOT_CLEARED` gate. Overhead is
+  explicitly out of scope for Budget Reconciliation (Q11) and is briefed separately.
+
+The standalone **manual CASH_RETURN** action on the régie advance stays available for overhead
+advances and is effectively superseded by settlement for OPS advances. One writer per path — that is
+what keeps the 581 = 0 invariant honest.
 
 ### 7.3 Costing — two small hooks
 

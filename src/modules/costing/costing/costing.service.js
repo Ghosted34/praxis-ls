@@ -566,6 +566,16 @@ async function setStatus(client, { id, to, actor = {}, viaChain = false }) {
     // after the carrier rolls the booking and ops updates the file. Never
     // throws — see shipment_details.snapshotOnto.
     await shipmentDetails.snapshotOnto(client, { table: "costing", id, dossierId: before.dossier_id });
+    // Budget Reconciliation (MOD-76, owner decision Q6). If the sheet was already
+    // settled, approving an amended costing re-opens it: the new line is
+    // automatically in the projected grid and any previously-typed values stay
+    // put, but the file is back on Operations' desk. guide §4.7.
+    if (before.dossier_id) {
+      try {
+        const recon = require("../dossier_reconciliation/dossier_reconciliation.service");
+        await recon.reopen(client, { dossierId: before.dossier_id, reason: "Costing amended and re-approved", actor });
+      } catch (_) { /* best-effort; reopen returns null when not SETTLED */ }
+    }
     // Freeze the LINES too (12766), so the next amendment after an unlock can
     // show the approver what moved instead of fourteen unchanged rows.
     await snapshotApproval(client, { costing: row, actor });

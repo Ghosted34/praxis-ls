@@ -55,12 +55,23 @@ async function recordCosts(client, { dossierId, entityId, entryDate, sourceDocRe
 }
 
 /** The posting itself, transaction-agnostic — recordCost/recordCosts own the
- *  BEGIN/COMMIT so a bulk sheet is atomic. */
+ *  BEGIN/COMMIT so a bulk sheet is atomic.
+ *
+ *  Amount is HT — TTC amounts must be stripped of the line's own VAT before
+ *  calling (guide §4.4 note on HT/TTC). cost_entry.amount is the ledger-side
+ *  number; it joins to journal_entry which also carries HT.
+ */
 async function recordCostInner(client, opts) {
   const {
     dossierId, dictionaryItemId = null, amount, category = null, isDisbursement = false,
     expenseCoa = null, treasuryCoa = null, disbursementAccount = null,
-    entityId, entryDate, sourceDocRef, proofVaultId = null, actor = {}, ip = null,
+    entityId, entryDate, sourceDocRef, proofVaultId = null,
+    // 13802 (MOD-76 PR 2) — budget-reconciliation settlement writes these so the
+    // projected grid can join cost_entry (guide §4.4). Without them a join would
+    // return zero for every row.
+    costingLineId = null,
+    spentOn = null,
+    actor = {}, ip = null,
   } = opts;
   if (!(Number(amount) > 0)) throw new AppError("BAD_AMOUNT", "amount must be > 0", 422);
   if (!dossierId) throw new AppError("NO_DOSSIER", "an operations file id is required (§6.7 analytical)", 422);
@@ -88,6 +99,10 @@ async function recordCostInner(client, opts) {
   });
   const costEntry = await repo.insertCostEntry(client, {
     dossier_id: dossierId, dictionary_item_id: dictionaryItemId, category, amount, entry_id: entry.entry_id, proof_vault_id: proofVaultId,
+    // 13802: write the columns 13801 added. Settlement is the first writer;
+    // other paths leave them NULL (see guide §8.1).
+    costing_line_id: costingLineId || null,
+    spent_on: spentOn || entryDate || null,
   });
   // Advisory proof check (MOD-05 §Q4) — a cost whose dictionary item always
   // requires a receipt, recorded without one, raises a WARN flag and tells the
@@ -267,4 +282,4 @@ async function removeAllocation(client, { allocationId, actor = {} }) {
   return row;
 }
 
-module.exports = { recordCost, recordCosts, reconcileDossier, portfolio, portfolioKpis, listByDossier, matrix, advances, allocateAdvance, removeAllocation };
+module.exports = { recordCost, recordCosts, recordCostInner, reconcileDossier, portfolio, portfolioKpis, listByDossier, matrix, advances, allocateAdvance, removeAllocation };

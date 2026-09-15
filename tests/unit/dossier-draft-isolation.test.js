@@ -74,6 +74,13 @@ const ALLOW_BASE_TABLE = {
     "By dossier_id, from the event payload.",
   "orchestration/handlers/dossier-created-instantiate-milestones.js":
     "By dossier_id. Runs AT promotion, which is the moment milestones are generated.",
+  "modules/costing/dossier_reconciliation/dossier_reconciliation.repo.js":
+    "`dossierEntityId` reads `dossier.entity_id` by a KNOWN dossier_id from " +
+    "settle/reopen (the caller has already loaded the reconciliation, whose " +
+    "dossier_id points at one file). `stampDossier` similarly updates one file " +
+    "by id, and that file must be APPROVED_LOCKED (Q11) when settlement runs " +
+    "— but reopen can fire on a file whose costing is in flight, and the stamp " +
+    "must still land. Neither enumerates.",
 };
 
 /** Every .js under src/, so a new module cannot be added outside the scan. */

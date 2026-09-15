@@ -25,13 +25,13 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 5× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (550)
+## All codes (552)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
 | `2FA_NOT_IMPLEMENTED` | 501 | 1× | — |
 | `ACTUALS_LOCKED` | — | 1× | — |
-| `ADVANCE_NOT_CLEARED` | 422 | 1× | — |
+| `ADVANCE_NOT_CLEARED` | 422 | 2× | — |
 | `AI_ACTION_FORBIDDEN` | 403 | 1× | — |
 | `AI_UNAVAILABLE` | 403, 503 | 7× | — |
 | `ALREADY_ACKNOWLEDGED` | 409 | 1× | — |
@@ -163,7 +163,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `DOC_NOT_VERIFIED` | 422 | 1× | — |
 | `DOC_TYPE_NOT_SIGNABLE` | 422 | 1× | — |
 | `DOSSIERS_REQUIRED` | 422 | 1× | — |
-| `DOSSIER_REQUIRED` | 422 | 2× | — |
+| `DOSSIER_REQUIRED` | 422 | 1× | — |
 | `DRIVER_LICENCE_REQUIRED` | 422 | 1× | — |
 | `DUPLICATE` | 409 | 3× | — |
 | `DUPLICATE_CODE` | 409 | 2× | — |
@@ -355,7 +355,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NO_ENTITY` | 422 | 1× | — |
 | `NO_ENTITY_REF` | 422 | 8× | — |
 | `NO_ENVELOPE` | 409 | 4× | — |
-| `NO_EXPENSE_ACCOUNT` | 422 | 3× | — |
+| `NO_EXPENSE_ACCOUNT` | 422, 500 | 4× | — |
 | `NO_FIELD_SET` | 422 | 1× | — |
 | `NO_FILE` | 400 | 1× | — |
 | `NO_FINGERPRINT` | 422 | 1× | — |
@@ -368,7 +368,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NO_ORIGIN` | 422 | 1× | — |
 | `NO_PARENT` | 422 | 1× | — |
 | `NO_PARTIES` | 422 | 2× | — |
-| `NO_PERIOD` | 404, 422 | 2× | — |
+| `NO_PERIOD` | 404, 422 | 3× | — |
 | `NO_POSTING_RULE` | 422 | 1× | — |
 | `NO_RATE` | 404, 422 | 2× | — |
 | `NO_RATE_MATCH` | 404 | 1× | — |
@@ -418,6 +418,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `PARENT_POSTABLE` | 422 | 2× | — |
 | `PASSKEY_NOT_FOUND` | 404 | 1× | — |
 | `PASSWORD_REQUIRED` | — | 1× | — |
+| `PERIOD_CLOSED` | 422 | 1× | — |
 | `PERIOD_NOT_OPEN` | 422 | 1× | — |
 | `PERMISSION_DENIED` | 403 | 7× | — |
 | `PERSONAL_MAILBOX` | — | 1× | — |
@@ -505,6 +506,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `SOP_HAS_NO_TEXT` | — | 1× | — |
 | `SOURCE_DOC_REQUIRED` | 422 | 1× | — |
 | `SPAM_REJECTED` | 422 | 2× | — |
+| `SPENT_ON_REQUIRED` | 422 | 1× | — |
 | `STATEMENT_DOES_NOT_FOOT` | 409 | 1× | — |
 | `STEPUP_REQUIRED` | 403 | 1× | — |
 | `STORAGE_LIMIT` | 413 | 1× | — |

@@ -1,5 +1,6 @@
 "use strict";
 const repo = require("./workspace.repo");
+const reconService = require("../../costing/dossier_reconciliation/dossier_reconciliation.service");
 
 /**
  * My Workspace.
@@ -17,15 +18,17 @@ async function mine(client, user, viewer = null) {
     moduleKeys: [],
     isCeo: !!(user && user.is_ceo),
   };
-  // `recent_activity` was here as `await repo.recentEvents(client)` — a
-  // tenant-wide read of `event_log` that the workspace page rendered as
-  // "Auth token refreshed · App user c2d39ee8". That surface moved to the
-  // Control Tower as `<RecentActivity>` on top of the self-scoped
-  // /audit/my-feed endpoint; this shape drops it so the Workspace stays a
-  // queue-of-work surface only. `recentEvents` in the repo went with it.
+  // Cash to account for (owner decision Q10, guide §6.5): receipts the signed-in
+  // user took and still owes paperwork on. Fed by GET /costing/reconciliations/owed
+  // which already keys on cash_request_payment.received_by. Best-effort: a
+  // missing module must not 500 the dashboard.
+  const owed = user && user.user_id
+    ? await reconService.receiptsOwed(client, { userId: user.user_id }).catch(() => ({ count: 0, total_ttc: 0, items: [] }))
+    : { count: 0, total_ttc: 0, items: [] };
   return {
     approvals_awaiting_me: await repo.approvals(client, v),
     unread_notifications: user && user.user_id ? await repo.unread(client, user.user_id) : [],
+    receipts_owed: owed,
   };
 }
 module.exports = { mine };

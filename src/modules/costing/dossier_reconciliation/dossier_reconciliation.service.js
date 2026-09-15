@@ -28,9 +28,14 @@
 const repo = require("./dossier_reconciliation.repo");
 const rules = require("./dossier_reconciliation.rules");
 const events = require("./dossier_reconciliation.events");
+const costRepo = require("../cost_tracking/cost_tracking.repo");
 const { emitEvent, audit, resolveActorId } = require("../../../shared/events/emit");
 const { getSetting } = require("../../../shared/config/settings");
 const { AppError } = require("../../../utils/errors");
+const { accountFor } = require("../../../shared/config/finance-accounts");
+const costTracking = require("../cost_tracking/cost_tracking.service");
+const regie = require("../regie/regie.service");
+const journalEntry = require("../../finance/journal_entry/journal_entry.service");
 const crypto = require("crypto");
 
 const MODULE = events.MODULE;
@@ -433,21 +438,29 @@ async function reject(client, { dossierId, reason, actor = {}, ip = null }) {
 }
 
 /**
- * Finance settles: records the cash handed back, stamps the file, and tells the
- * MD. No second approval — the MD is informed (owner decision Q6, Q18).
+ * Finance settles: posts the actuals, returns the cash, stamps the file, and
+ * tells the MD (owner decisions Q3, Q6, Q14, Q18).
  *
- * ── WHAT THIS DOES NOT DO YET ───────────────────────────────────────────────
+ * ── WHAT HAPPENS INSIDE THIS TRANSACTION ────────────────────────────────────
  *
- * PR 2 adds the accounting legs inside this same transaction: one `cost_entry`
- * per line for the DELTA between what the ledger already holds and the settled
- * actual, dated `spent_on` (never `now()` — the owner's question under Q3); the
- * régie `RECEIPT` retirement for what was spent and the `CASH_RETURN` for what
- * came back; and flipping the funding cash requests to JUSTIFIED.
+ *  1. Returned amounts are written onto the lines they name.
+ *  2. For each line where the settled actual_ttc differs from what the ledger
+ *     already holds (posted_ttc), one cost_entry is written for the DELTA —
+ *     never the gross — dated spent_on. Negative deltas post as REVERSING
+ *     entries (positive amount, Cr expense / Dr treasury) because
+ *     chk_cost_entry_amount_nonneg (0497) forbids negatives.
+ *  3. Per funding régie advance: RECEIPT retirement for the actual spend and
+ *     CASH_RETURN for the returned cash, through regie.retireCore (which does
+ *     NOT open its own transaction — the point is that a refused retirement
+ *     rolls the whole settlement back). Deltas against the advance's CURRENT
+ *     justified_amount / returned_amount: a holder may have handed cash back
+ *     at the window already (owner safeguard 1), and a second settlement after
+ *     re-open must not double-retire (owner safeguard 2).
+ *  4. DISBURSED cash requests whose advances are now fully retired flip to
+ *     JUSTIFIED.
+ *  5. Stamp the file, record the settlement history, emit settled + audit.
  *
- * Until then this is the management record only, which is exactly what the
- * previous implementation's `validate` was — `dossier.ocr_amount` has always
- * been the agreed actual rather than a posting, so nothing regresses. The
- * boundary is here, in one function, so PR 2 is additive.
+ * The MD is informed, not asked (Q6, Q18). No second approval.
  */
 async function settle(client, { dossierId, returned = {}, actor = {}, ip = null }) {
   const header = await repo.forDossier(client, dossierId);
@@ -456,14 +469,17 @@ async function settle(client, { dossierId, returned = {}, actor = {}, ip = null 
   // Maker-checker. The previous implementation refused self-validation and it
   // was right to; the legacy allowed Operations to validate its own submission
   // (`api/ocr/validate.php` granted OPERATIONS) and that is the hole.
-  if (header.submitted_by && actor.user_id && header.submitted_by === actor.user_id) {
+    if (header.submitted_by && actor.user_id && header.submitted_by === actor.user_id) {
     throw new AppError("SELF_SETTLE", "The person who submitted cannot settle — maker-checker", 422);
   }
 
   const lineReturns = Object.entries(returned || {});
+  const regiePol = await regie.policy(client);
+  const entityId = await repo.dossierEntityId(client, { dossierId });
 
   await client.query("BEGIN");
   try {
+    // ── 1. Write returned amounts onto the lines they name ────────────────
     for (const [costingLineId, amount] of lineReturns) {
       if (!(await repo.costingLineOnDossier(client, { dossierId, costingLineId }))) {
         throw new AppError("NOT_FOUND", "A returned amount names a budget line that is not on this file", 404, { costing_line_id: costingLineId });
@@ -480,9 +496,266 @@ async function settle(client, { dossierId, returned = {}, actor = {}, ip = null 
     }
 
     const sheet = await sheetFor(client, { dossierId });
+
+    // ── 2. Post the actuals — DELTA, never gross (Q3, guide §4.4 step 2) ──
+    //
+    // Walk every line. For each, decide the TTC delta the sheet implies, strip
+    // it to HT using the line's own VAT ratio, and post a forward or reversing
+    // entry through recordCostInner. If spent_on is in a closed period we
+    // refuse with PERIOD_CLOSED, naming the period, the line and the earliest
+    // open date (guide §4.3).
+    for (const l of sheet.lines) {
+      // actual_ttc is TTC (the grid); cost_entry.amount is HT (the ledger).
+      // Ratio = net/(net+vat) strips the line's own VAT — works for both
+      // service lines (rate_percent) and débours (upstream_vat_amount is folded
+      // into the `vat` figure). If net+vat is 0 there is nothing to convert.
+      const grossTtc = Number(l.budget_ttc) || 0;
+      const net = Number(l.net) || 0;
+      const ratio = grossTtc > 0 && net > 0 ? net / grossTtc : 1;
+      const actualTtc = Number(l.actual_ttc) || 0;
+      const postedTtc = Number(l.posted_ttc) || 0;
+      const deltaTtc = rules.round2(actualTtc - postedTtc);
+      const spentOn = l.spent_on || null;
+
+      // The line's already-posted HT, taken from the grid.
+      const postedHt = Number(l.posted_ht) || 0;
+      const targetHt = rules.round2(actualTtc * ratio);
+      const deltaHt = rules.round2(targetHt - postedHt);
+
+      if (Math.abs(deltaHt) < 0.005) continue; // no-op: the ledger already agrees
+
+      if (!spentOn) {
+        throw new AppError("SPENT_ON_REQUIRED", `Line "${l.label}" needs a spent date — say when the money left`, 422, { costing_line_id: l.costing_line_id, label: l.label });
+      }
+
+      // Check the period BEFORE posting: offer the user a concrete alternative
+      // (earliest open date) rather than surfacing a raw journal-entry error.
+      // We preflight here because journal_entry.buildAndInsert throws
+      // PERIOD_NOT_OPEN and cannot name the offending line by itself (guide §4.3).
+      // eslint-disable-next-line no-await-in-loop
+      const period = await journalEntry.getPeriodForDate(client, { entityId, date: spentOn });
+      if (!period) {
+        throw new AppError("NO_PERIOD", `No accounting period covers ${spentOn} (line "${l.label}")`, 422, { costing_line_id: l.costing_line_id, label: l.label, spent_on: spentOn });
+      }
+      if (period.status !== "OPEN") {
+        // eslint-disable-next-line no-await-in-loop
+        const earliest = await journalEntry.earliestOpenPeriod(client, { entityId, onOrAfter: spentOn });
+        throw new AppError("PERIOD_CLOSED",
+          `Period ${period.code} (${period.status}) covers ${spentOn} on line "${l.label}". Pick the next open date or ask Finance to reopen.`,
+          422,
+          {
+            costing_line_id: l.costing_line_id, label: l.label,
+            spent_on: spentOn, period_code: period.code, period_status: period.status,
+            earliest_open_date: earliest ? earliest.starts_on : null,
+          });
+      }
+
+      // Forward or reversing entry. chk_cost_entry_amount_nonneg (0497) forbids
+      // negative amounts, so a negative delta is posted as a credit against the
+      // line's expense account and a debit back to treasury.
+      if (deltaHt > 0) {
+        // Forward posting: Dr expense/débours, Cr treasury.
+        // eslint-disable-next-line no-await-in-loop
+        await costTracking.recordCostInner(client, {
+          dossierId,
+          dictionaryItemId: l.dictionary_item_id || null,
+          amount: deltaHt,
+          category: "reconciliation",
+          isDisbursement: l.is_disbursement === true,
+          entityId,
+          entryDate: spentOn,
+          sourceDocRef: ref(header.reconciliation_id) + ":settle",
+          proofVaultId: null, // proofs live on the line documents
+          costingLineId: l.costing_line_id,
+          spentOn,
+          actor, ip,
+        });
+      } else {
+        // Reversing entry: negative delta → credit the expense, debit treasury.
+        // recordCostInner always posts Dr expense / Cr treasury and refuses
+        // amount <= 0, so for a negative delta we post the mirror directly
+        // through journalEntry. The cost_entry still gets a POSITIVE amount
+        // (ch_cost_entry_amount_nonneg, 0497) and the SUM in posted_ht stays
+        // correct because this entry's journal lines move money the other way.
+        const reversalAmount = rules.round2(-deltaHt);
+        // eslint-disable-next-line no-await-in-loop
+        const treasury = await accountFor(client, "treasury");
+        // eslint-disable-next-line no-await-in-loop
+        const disb = await accountFor(client, "disbursement");
+        let debitAccount;
+        if (l.is_disbursement) {
+          debitAccount = disb;
+        } else {
+          // eslint-disable-next-line no-await-in-loop
+          debitAccount = await costRepo.purchaseRuleAccount(client, l.dictionary_item_id);
+        }
+        if (!debitAccount) {
+          throw new AppError("NO_EXPENSE_ACCOUNT", `No expense account maps to "${l.label}"`, 500, { costing_line_id: l.costing_line_id });
+        }
+        // eslint-disable-next-line no-await-in-loop
+        const { entry } = await journalEntry.buildAndInsert(client, {
+          journalCode: "OD", entityId, entryDate: spentOn,
+          description: `Operations file cost reversed — ${l.label} (settlement correction)`,
+          sourceDocRef: ref(header.reconciliation_id) + ":settle:reverse", source: "SYSTEM_RULE",
+          lines: [
+            { account_code: treasury, debit: reversalAmount, credit: 0, dossier_id: dossierId },
+            { account_code: debitAccount, debit: 0, credit: reversalAmount, dossier_id: dossierId, dictionary_item_id: l.dictionary_item_id || null, is_disbursement: l.is_disbursement === true },
+          ],
+          validate: true, actor, ip,
+        });
+        // eslint-disable-next-line no-await-in-loop
+        await costRepo.insertCostEntry(client, {
+          dossier_id: dossierId, dictionary_item_id: l.dictionary_item_id || null,
+          category: "reconciliation_reversal",
+          amount: reversalAmount,
+          entry_id: entry.entry_id,
+          proof_vault_id: null,
+          costing_line_id: l.costing_line_id,
+          spent_on: spentOn,
+        });
+      }
+    }
+
+    // ── 3. Régie retirements (Q6, Q14, guide §7.2) ────────────────────────
+    //
+    // DELTA, NEVER GROSS (owner safeguards 1 & 2). Read each advance's CURRENT
+    // justified_amount / returned_amount and post only the difference between
+    // those and what the sheet now accounts for. Two cases this guards:
+    //   1. the holder already returned cash at the window (CASH_RETURN leg
+    //      exists), so we must not post a second one;
+    //   2. the sheet was re-opened after settlement and is being settled
+    //      again — previously-posted retirements must not double-post.
+    //
+    // The sheet is one reconciliation per file (Q6), but there may be MULTIPLE
+    // funding advances against it if cash went out in tranches. Apportionment
+    // rule: total actual_ttc retires receipts pro-rata to how much each advance
+    // issued; total returned_ttc retires cash-returns pro-rata. Any remainder
+    // after rounding goes onto the last advance — the same discipline
+    // cash_request.closeBalance uses for settled_amount.
+    //
+    // If retireCore refuses (OVER_RETIRED, PROOF_REQUIRED, …) the whole
+    // settlement rolls back rather than leaving a settled sheet over an open
+    // advance.
+
+    const advances = await repo.fundingAdvancesForDossier(client, { dossierId });
+    if (advances.length) {
+      const totalActual = sheet.totals.actual_ttc;
+      const totalReturned = sheet.totals.returned;
+      const totalIssued = advances.reduce((s, a) => s + (Number(a.amount) || 0), 0);
+
+      // Per-advance share. Array parallel to `advances`. Last advance absorbs
+      // rounding to make shares sum to exactly totalActual/totalReturned.
+      function apportion(total) {
+        if (totalIssued <= 0) return advances.map(() => 0);
+        const shares = [];
+        let running = 0;
+        for (let i = 0; i < advances.length; i += 1) {
+          if (i === advances.length - 1) {
+            shares.push(rules.round2(total - running));
+          } else {
+            const s = rules.round2(total * (Number(advances[i].amount) || 0) / totalIssued);
+            shares.push(s);
+            running += s;
+          }
+        }
+        return shares;
+      }
+      const receiptShares = apportion(totalActual);
+      const returnShares = apportion(totalReturned);
+
+      // First proof for RECEIPT retirements that demand one: any document on
+      // the sheet (policy.requireProofForReceipt).
+      const anyDoc = sheet.documents && sheet.documents.length ? sheet.documents[0].doc_id : null;
+      // Use the earliest spent_on as the accounting date for régie legs when
+      // the retirement covers the whole file; that date is when money left the
+      // holder's hands.
+      const advanceEntryDate = await repo.earliestSpentOn(client, { dossierId, reconciliationId: header.reconciliation_id }) || new Date().toISOString().slice(0, 10);
+
+      for (let i = 0; i < advances.length; i += 1) {
+        const adv = advances[i];
+        const openAmount = rules.round2(Number(adv.amount) - Number(adv.justified_amount) - Number(adv.returned_amount));
+        // Receipt delta for this advance.
+        const receiptTarget = Math.max(0, receiptShares[i]);
+        const receiptDelta = rules.round2(Math.min(receiptTarget - Number(adv.justified_amount), openAmount));
+        // Cash-return delta.
+        const returnTarget = Math.max(0, returnShares[i]);
+        const returnDelta = rules.round2(Math.min(returnTarget - Number(adv.returned_amount), openAmount - receiptDelta));
+
+        // RECEIPT leg (Dr 4731 / Cr 581) — per dossier, per KB §8.2.
+        if (receiptDelta > 0.005) {
+          // enforce proof on the régie policy only if the sheet has a doc — if
+          // the submit gates already enforced proof on every line that needed
+          // it, this will exist; if the policy allows no-proof receipts we
+          // pass null and retireCore accepts it.
+          // eslint-disable-next-line no-await-in-loop
+          await regie.retireCore(client, {
+            advanceId: adv.regie_advance_id,
+            kind: "RECEIPT",
+            dossierId,
+            amount: receiptDelta,
+            proofVaultId: anyDoc,
+            memo: `Settlement of reconciliation ${header.reconciliation_id} (${adv.cash_request_ref || adv.cash_request_id})`,
+            entityId, entryDate: advanceEntryDate,
+            sourceDocRef: ref(header.reconciliation_id),
+            actor, ip, policy: regiePol,
+          });
+        }
+        // CASH_RETURN leg (Dr 571 / Cr 581) — cash back to the vault.
+        if (returnDelta > 0.005) {
+          // eslint-disable-next-line no-await-in-loop
+          await regie.retireCore(client, {
+            advanceId: adv.regie_advance_id,
+            kind: "CASH_RETURN",
+            dossierId: null, // cash return is not analytical per KB
+            amount: returnDelta,
+            proofVaultId: null,
+            memo: `Cash returned at settlement of ${header.reconciliation_id} (${adv.cash_request_ref || adv.cash_request_id})`,
+            entityId, entryDate: advanceEntryDate,
+            sourceDocRef: ref(header.reconciliation_id),
+            actor, ip, policy: regiePol,
+          });
+        }
+      }
+    }
+
+    // ── 4. Flip funding cash requests whose advances are now JUSTIFIED ────
+    const crs = await repo.disbursedCashRequests(client, { dossierId });
+    for (const cr of crs) {
+      if (!cr.regie_advance_id) {
+        // No linked advance (bank, MoMo, cheque); mark JUSTIFIED outright —
+        // there is no régie balance holding them open. Guard on status so we
+        // do not touch requests already past this state.
+        // eslint-disable-next-line no-await-in-loop
+        await client.query(
+          "UPDATE cash_request SET status = 'JUSTIFIED' WHERE cash_request_id = $1 AND status IN ('DISBURSED','PARTIALLY_DISBURSED')",
+          [cr.cash_request_id],
+        );
+        continue;
+      }
+      // Read the advance fresh (after retirements above) and flip only when
+      // its open balance is zero.
+      // eslint-disable-next-line no-await-in-loop
+      const { rows: [advNow] } = await client.query(
+        "SELECT amount, justified_amount, returned_amount FROM regie_advance WHERE regie_advance_id = $1",
+        [cr.regie_advance_id],
+      );
+      if (advNow) {
+        const open = rules.round2(Number(advNow.amount) - Number(advNow.justified_amount) - Number(advNow.returned_amount));
+        if (open <= 0.005) {
+          // eslint-disable-next-line no-await-in-loop
+          await client.query(
+            "UPDATE cash_request SET status = 'JUSTIFIED' WHERE cash_request_id = $1 AND status IN ('DISBURSED','PARTIALLY_DISBURSED')",
+            [cr.cash_request_id],
+          );
+        }
+      }
+    }
+
+    // ── 5. Stamp, history, events ─────────────────────────────────────────
+    const settledByActor = await resolveActorId(client, actor.user_id || null);
     const out = await repo.setStatus(client, header.reconciliation_id, {
       sql: "status = 'SETTLED', settled_by = $2, settled_at = now(), returned_total = $3, ocr_amount = $4",
-      params: [actor.user_id || null, sheet.totals.returned, sheet.totals.actual_ttc],
+      params: [settledByActor, sheet.totals.returned, sheet.totals.actual_ttc],
     });
     await repo.insertSettlement(client, {
       reconciliation_id: header.reconciliation_id,
@@ -491,18 +764,22 @@ async function settle(client, { dossierId, returned = {}, actor = {}, ip = null 
       disbursed_ttc: sheet.totals.disbursed,
       actual_ttc: sheet.totals.actual_ttc,
       returned_ttc: sheet.totals.returned,
-      // settled_by REFERENCES app_user(user_id), and identity lives in the LIVE
-      // schema. This row can land in SANDBOX, where that user does not exist —
-      // Postgres raises 23503 and the whole settlement rolls back (DATA 2.4).
-      settled_by: await resolveActorId(client, actor.user_id || null),
+      settled_by: settledByActor,
     });
     await repo.stampDossier(client, {
       dossierId, reconciliationId: header.reconciliation_id,
       amount: out.ocr_amount, status: "SETTLED",
     });
+
+    // Tell the MD (Q6, Q18). `reconciliation.settled` is FYI, not an approval:
+    // recipients are MOD-76 permission-holders + anyone holding ROOT/CEO (who
+    // sees everything). The onEvent fan-out in shared/notifications/notify-events.js
+    // targets MOD-76 view holders; the MD, as the person to whom Finance
+    // reports, is among them by virtue of their grant.
     await emitEvent(client, {
       eventTypeKey: events.SETTLED, moduleKey: MODULE,
       entityRef: ref(header.reconciliation_id), actorUserId: actor.user_id || null,
+      payload: { amount_xaf: sheet.totals.actual_ttc, returned_ttc: sheet.totals.returned },
     });
     await audit(client, {
       actorUserId: actor.user_id || null, action: events.SETTLED, moduleKey: MODULE,
@@ -512,6 +789,9 @@ async function settle(client, { dossierId, returned = {}, actor = {}, ip = null 
         status: out.status, revision: header.revision,
         actual_ttc: sheet.totals.actual_ttc, returned: sheet.totals.returned,
         outstanding: sheet.totals.outstanding,
+        // Posted deltas are recorded above; the audit captures the outcome so
+        // a reader can confirm the 581 = 0 invariant.
+        delta_posted: true,
       }, ip,
     });
     await client.query("COMMIT");

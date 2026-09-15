@@ -1,7 +1,9 @@
 /**
  * My workspace — the read-only personal overview (Overview area). Rolls up what's
- * on the signed-in user's desk from GET /workspace: approvals awaiting them and
- * unread notifications. Composes the locked kit; accents resolve to --primary.
+ * on the signed-in user's desk from GET /workspace: approvals awaiting them,
+ * unread notifications, and cash the caller took that still needs a receipt
+ * (owner Q10, guide §6.5: "Cash to account for"). Composes the locked kit;
+ * accents resolve to --primary.
  *
  * WHAT MOVED. "Recent activity" (panel) and "Recent events" (KPI tile) lived
  * here on top of `event_log` and rendered raw humanised keys — "Auth token
@@ -39,9 +41,19 @@ type Note = {
   event_type_key?: string | null;
   created_at?: string | null;
 };
+type ReceiptOwed = {
+  dossier_id?: string;
+  dossier_ref?: string;
+  costing_line_id?: string;
+  line_label?: string;
+  owed_by_name?: string;
+  reconciliation_id?: string;
+  claimed_ttc?: number | string | null;
+};
 type Mine = {
   approvals_awaiting_me?: Approval[];
   unread_notifications?: Note[];
+  receipts_owed?: { count?: number; total_ttc?: number; items?: ReceiptOwed[] };
 };
 
 const prioTone = (p?: string | null): Tone => {
@@ -51,17 +63,25 @@ const prioTone = (p?: string | null): Tone => {
   return "mute";
 };
 
+/** Deep link to the line modal on the reconciliation sheet. The sheet route
+ *  reads `?line=` and opens the modal if present (same convention every other
+ *  deep link in the app uses). */
+const reconLineLink = (r: ReceiptOwed) =>
+  `/costing/reconciliation/${r.dossier_id}?line=${r.costing_line_id}`;
+
 export function WorkspacePage() {
   const r = useResource(() => tenant<Mine>("/workspace"), []);
   const d = r.data;
   const approvals = d?.approvals_awaiting_me || [];
   const notes = d?.unread_notifications || [];
+  const owed = d?.receipts_owed || { count: 0, total_ttc: 0, items: [] };
+  const owedItems = owed.items || [];
 
   return (
     <section className={pageShell.wide}>
       <PageHeader
         title="My workspace"
-        description="What's on your desk right now — approvals awaiting you and alerts you haven't opened."
+        description="What's on your desk right now — approvals awaiting you, alerts you haven't opened, and cash you've received that still needs a receipt."
       />
       {r.loading ? (
         <div className="py-10 text-center micro">{tr("Loading…")}</div>
@@ -75,9 +95,14 @@ export function WorkspacePage() {
               value={num(approvals.length)}
             />
             <KpiTile label="Unread alerts" value={num(notes.length)} />
+            <KpiTile
+              label="Cash to account for"
+              value={num(owed.count || 0)}
+              hint={money(owed.total_ttc)}
+            />
           </KpiRow>
 
-          <div className="grid gap-4 lg:grid-cols-2">
+          <div className="grid gap-4 lg:grid-cols-3">
             <Panel
               title="Awaiting me"
               action={
@@ -149,13 +174,49 @@ export function WorkspacePage() {
                 <p className="micro">You're all caught up.</p>
               )}
             </Panel>
-          </div>
 
-          {/* Recent activity used to live below the two-column grid; it moved
-              to the Control Tower as `<RecentActivity>` on top of the new
-              `/audit/my-feed` endpoint. Workspace stays a queue-of-work
-              surface — the reflective "what happened" view belongs on the
-              home page where the user actually looks for it. */}
+            <Panel
+              title="Cash to account for"
+              subtitle="Money you've received that still needs a receipt."
+              action={
+                <Link
+                  to="/costing/reconciliation"
+                  className="text-sm text-muted-foreground transition-colors hover:text-primary-ink"
+                >
+                  Open sheets →
+                </Link>
+              }
+            >
+              {owedItems.length ? (
+                <ul className="space-y-2">
+                  {owedItems.slice(0, 8).map((it, i) => (
+                    <li
+                      key={it.costing_line_id + "-" + i}
+                      className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm"
+                    >
+                      <span className="truncate">
+                        <span className="font-medium">{it.dossier_ref || "—"}</span>
+                        <span className="text-muted-foreground"> · {it.line_label || "—"}</span>
+                      </span>
+                      <Link
+                        to={reconLineLink(it)}
+                        className="shrink-0 text-sm text-primary-ink transition-colors hover:underline"
+                      >
+                        Upload →
+                      </Link>
+                      <span className="num text-muted-foreground ml-3">
+                        {money(it.claimed_ttc)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="micro">
+                  No receipts owed. Any cash you take will show up here.
+                </p>
+              )}
+            </Panel>
+          </div>
         </>
       )}
     </section>

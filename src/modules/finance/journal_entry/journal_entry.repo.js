@@ -98,7 +98,21 @@ async function listEntries(client, q = {}) {
   return splitTotal(rows);
 }
 
+/** Earliest OPEN period on or after a date — the date the posting can move TO
+ *  when the real spent_on is closed. Used by Budget Reconciliation settlement
+ *  so the PERIOD_CLOSED error can offer the user a concrete alternative (guide
+ *  §4.3). NULL when no open period exists yet. */
+async function earliestOpenPeriod(client, { entityId, onOrAfter }) {
+  const { rows } = await client.query(
+    `SELECT * FROM accounting_period
+      WHERE entity_id = $1 AND status = 'OPEN' AND starts_on >= $2::date
+      ORDER BY starts_on ASC LIMIT 1`,
+    [entityId, onOrAfter],
+  );
+  return rows[0] || null;
+}
+
 module.exports = {
-  getJournal, getPeriodForDate, lockSequence, nextEntryNo,
+  getJournal, getPeriodForDate, earliestOpenPeriod, lockSequence, nextEntryNo,
   insertEntry, insertLine, setStatus, getEntry, listLines, listEntries,
 };

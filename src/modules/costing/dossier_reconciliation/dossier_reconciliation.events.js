@@ -12,4 +12,5 @@ module.exports = {
   REJECTED: "reconciliation.rejected",
   SETTLED: "reconciliation.settled",
   REOPENED: "reconciliation.reopened",
+  PROOF_OWED: "reconciliation.proof_owed",
 };

@@ -256,11 +256,23 @@ async function overview(client, dossierId) {
     "SELECT invoice_id, doc_number AS ref, status, total_ttc, type, created_at " +
       "FROM invoice WHERE dossier_id = $1 ORDER BY created_at DESC LIMIT 20",
   );
+  const costingRows = await q(
+    "SELECT costing_id, doc_number AS ref, status, currency, total_ht, total_vat, total_ttc, " +
+      "created_at, updated_at FROM costing WHERE dossier_id = $1 ORDER BY updated_at DESC LIMIT 50",
+  );
+  const cashRequestRows = await q(
+    "SELECT cash_request_id, costing_id, doc_number AS ref, status, currency, amount, " +
+      "disbursed_amount, created_at, updated_at FROM cash_request " +
+      "WHERE dossier_id = $1 ORDER BY created_at DESC LIMIT 50",
+  );
 
   return {
     costing, actual, invoices, outstanding, milestones, procurement, transit, delivery, vault, queries,
     people: { costing: costingPeople || null, invoice: invoicePeople || null },
-    documentRows: { invoices: invoiceRows, transit: transitRows, delivery: deliveryRows, vault: vaultRows },
+    documentRows: {
+      invoices: invoiceRows, transit: transitRows, delivery: deliveryRows, vault: vaultRows,
+      costings: costingRows, cashRequests: cashRequestRows,
+    },
   };
 }
 
@@ -308,7 +320,7 @@ async function headerJoins(client, dossierId) {
  */
 async function vaultDocuments(client, dossierId) {
   const { rows } = await client.query(
-    "SELECT doc_id, doc_type, status, entity_ref, version_no, created_at " +
+    "SELECT doc_id, doc_type, status, entity_ref, version_no, original_name, created_at " +
       "FROM document_vault WHERE dossier_id = $1 AND status <> 'ARCHIVED' ORDER BY created_at DESC LIMIT 50",
     [dossierId],
   );

@@ -166,9 +166,22 @@ async function threadMessages(client, threadId, limit = 12) {
   return rows.reverse();
 }
 
+/** Keep each turn's authored text; older quoted copies and signature blocks are
+ * already represented by their own turns and only waste context or induce the
+ * model to repeat them. The patterns are deliberately conservative. */
+function cleanConversationBody(value) {
+  return String(value || "")
+    .split(/\n(?:On .{0,240} wrote:|Le .{0,240} a écrit\s*:|From:\s|De\s*:|-----Original Message-----)/i)[0]
+    .split(/\n--\s*\n/)[0]
+    .split("\n")
+    .filter((line) => !/^\s*>/.test(line))
+    .join("\n")
+    .trim();
+}
+
 const transcriptOf = (msgs) => msgs
   .map((m) => `[${m.direction === "OUT" ? "us" : "them"}] ${m.from_address || ""}: ` +
-    `${String(m.body_text || "").slice(0, 2000)}`)
+    `${cleanConversationBody(m.body_text).slice(0, 2000)}`)
   .join("\n---\n");
 
 /* ── 3–5. Generate, fence, meter ───────────────────────────────────────────── */
@@ -407,35 +420,40 @@ async function draft(client, { threadId, tone, language, instruction } = {}, use
   const ctx = await threadContext(client, threadId);
   const lang = resolveLanguage({ explicit: language, partyLanguage: ctx.client_language });
 
-  const ground = await grounding.collect(client, ctx, user);
-  const factStrings = grounding.factText(ground.facts);
-
-  if (!factStrings.length) {
+  // The thread transcript is correspondence, not public prompt material. Route
+  // middleware normally guarantees an identity, but keep the service boundary
+  // closed as well for jobs/tests and future callers.
+  if (!user || !user.user_id) {
     return {
-      draft_text: "",
-      facts: [],
-      sources: [],
-      withheld: ground.withheld,
-      confidence: 0,
-      language: lang,
-      // The two cases are distinguished because they are different problems
-      // with different fixes: bind the thread, versus ask an administrator for
-      // a grant.
-      note: ctx.entity_ref
-        ? "This thread is bound, but no ERP source answered — every source was withheld or empty."
-        : "This thread is not bound to a record, so no ERP facts were used.",
+      draft_text: "", facts: [], sources: [], withheld: [], confidence: 0,
+      language: lang, note: "An authenticated user is required to draft from this conversation.",
     };
   }
 
-  const msgs = await threadMessages(client, threadId, 8);
+  const ground = await grounding.collect(client, ctx, user);
+  const factStrings = grounding.factText(ground.facts);
+
+  // Conversation context is useful even when the thread is not bound to an ERP
+  // record. The old early return below made AI Draft produce an empty answer for
+  // every ordinary conversation with no client/file binding, despite the full
+  // thread being available. ERP grounding enriches a reply; it is not a
+  // prerequisite for understanding what the correspondent just wrote.
+  const msgs = await threadMessages(client, threadId, 12);
+  const conversationEvidence = msgs
+    .map((m) => cleanConversationBody(m.body_text).slice(0, 4000))
+    .filter(Boolean);
+  const evidence = [...factStrings, ...conversationEvidence];
   const out = await generate(client, {
     user,
     callType: "draft.reply",
     system: systemFor({
       lang,
-      facts: factStrings,
+      facts: evidence,
       styleInstruction: prompts.resolvePrompt(tone || "formal", lang),
-      extra: instruction ? `The operator asks specifically: ${instruction}` : "",
+      extra: [
+        "Use the conversation transcript as the primary context. Reply to the latest inbound request, while respecting commitments already made earlier in the thread.",
+        instruction ? `The operator asks specifically: ${instruction}` : "",
+      ].filter(Boolean).join("\n"),
     }),
     prompt: `Draft the next reply in this thread. Subject: ${ctx.subject || "(none)"}\n\n${transcriptOf(msgs)}`,
   });
@@ -443,7 +461,7 @@ async function draft(client, { threadId, tone, language, instruction } = {}, use
   // No `preserveFrom`: a reply is not a transformation of the incoming email.
   // Appending the client's Incoterms to OUR answer because we did not repeat
   // them would put words in our own mouth.
-  const done = finish(out.text || "", factStrings);
+  const done = finish(out.text || "", evidence);
 
   await emitEvent(client, {
     eventTypeKey: "mail.ai.drafted",
@@ -463,6 +481,11 @@ async function draft(client, { threadId, tone, language, instruction } = {}, use
     protected_terms_restored: done.protected_terms_restored,
     needs_review: done.needs_review,
     provider: out.provider,
+    note: !ctx.entity_ref
+      ? "This thread is not bound to a record; the draft used conversation context only."
+      : (!factStrings.length && ground.withheld.length
+        ? "The thread is bound, but every ERP source was withheld; the draft used conversation context only."
+        : null),
     // Not a model-reported confidence — those are decorative. This says whether
     // every factual token in the draft is supported by the record.
     confidence: done.fence.ok ? 1 : 0.5,

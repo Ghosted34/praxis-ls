@@ -17,6 +17,8 @@ const { parseDataUrl } = require("../../../utils/data-url");
 const EXT = {
   "application/pdf": "pdf", "image/png": "png", "image/jpeg": "jpg", "image/jpg": "jpg",
   "image/webp": "webp", "text/plain": "txt", "text/csv": "csv",
+  "application/msword": "doc",
+  "application/vnd.ms-excel": "xls",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
 };
@@ -36,8 +38,8 @@ const MAX_BYTES = 25 * 1024 * 1024;
  * operations file accepts. Anything else returns null and is refused by the
  * caller that asked for sniffing, rather than being guessed at.
  */
-function sniffContentType(buffer) {
-  if (!buffer || buffer.length < 12) return null;
+function sniffContentType(buffer, declaredType = null) {
+  if (!buffer || buffer.length < 8) return null;
   // %PDF
   if (buffer[0] === 0x25 && buffer[1] === 0x50 && buffer[2] === 0x44 && buffer[3] === 0x46) return "application/pdf";
   // \x89PNG\r\n\x1a\n
@@ -45,22 +47,22 @@ function sniffContentType(buffer) {
   // JPEG SOI + marker
   if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return "image/jpeg";
   // RIFF....WEBP
-  if (buffer.slice(0, 4).toString("ascii") === "RIFF" && buffer.slice(8, 12).toString("ascii") === "WEBP") return "image/webp";
+  if (buffer.length >= 12 && buffer.slice(0, 4).toString("ascii") === "RIFF" && buffer.slice(8, 12).toString("ascii") === "WEBP") return "image/webp";
   /*
-   * PK\x03\x04 — a ZIP container, which is what .docx and .xlsx are.
-   *
-   * This is a WEAKER assertion than the four above and the caller has to know
-   * it: those magic numbers identify a format, this one identifies a family.
-   * A renamed .zip sniffs the same, so the guarantee here is "the bytes really
-   * are a ZIP archive", not "the bytes really are a Word document" — and it is
-   * the DECLARED type (checked against the caller's allowedTypes) that decides
-   * which of the two it is stored as.
-   *
-   * Returning "application/zip" rather than guessing between docx and xlsx
-   * keeps that honest: the sniff cannot tell them apart without unzipping, and
-   * pretending otherwise would put a fact in the record that nobody verified.
+   * PK\x03\x04 — a ZIP container, which is what .docx and .xlsx are. The
+   * declared OOXML type is still checked against the caller's allowedTypes
+   * below; the signature proves the container family rather than guessing its
+   * member from an extension.
    */
   if (buffer[0] === 0x50 && buffer[1] === 0x4b && buffer[2] === 0x03 && buffer[3] === 0x04) return "application/zip";
+
+  // Legacy .doc and .xls share the OLE Compound File signature. The bytes prove
+  // the Office container; the declared Office MIME selects the format.
+  const ole = [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]
+    .every((v, i) => buffer[i] === v);
+  if (ole && ["application/msword", "application/vnd.ms-excel"].includes(declaredType)) {
+    return declaredType;
+  }
   return null;
 }
 
@@ -245,16 +247,9 @@ async function createDocument(client, opts) {
   // bytes are stored at all. A .exe renamed .pdf declares application/pdf and
   // sniffs as nothing.
   if (sniff) {
-    const actual = sniffContentType(buffer);
+    const actual = sniffContentType(buffer, contentType);
     if (!actual) throw new AppError("BAD_FILE_TYPE", "This file is not a PDF, an image, or an Office document", 422);
-    /*
-     * A ZIP container satisfies a declared OOXML type and nothing else.
-     *
-     * The sniff can say "these bytes are an archive" but not which Office
-     * format, so the DECLARED type resolves it — and only within whatever the
-     * caller allowed. A caller that did not allow docx/xlsx is unaffected: the
-     * allowedTypes check below still refuses them.
-     */
+    /* A ZIP container satisfies a declared OOXML type and nothing else. */
     const zipAsDeclared = actual === "application/zip" && ZIP_BACKED.has(contentType);
     const effective = zipAsDeclared ? contentType : actual;
     if (allowedTypes && !allowedTypes.includes(effective)) {

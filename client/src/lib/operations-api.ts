@@ -1462,12 +1462,35 @@ export type DossierOverview = {
       city_zone?: string | null;
       created_at?: string;
     }[];
+    costings?: {
+      costing_id: string;
+      ref?: string | null;
+      status?: string | null;
+      currency?: string | null;
+      total_ht?: number | null;
+      total_vat?: number | null;
+      total_ttc?: number | null;
+      created_at?: string;
+      updated_at?: string;
+    }[];
+    cashRequests?: {
+      cash_request_id: string;
+      costing_id?: string | null;
+      ref?: string | null;
+      status?: string | null;
+      currency?: string | null;
+      amount?: number | null;
+      disbursed_amount?: number | null;
+      created_at?: string;
+      updated_at?: string;
+    }[];
     vault: {
       doc_id: string;
       doc_type?: string | null;
       status?: string | null;
       entity_ref?: string | null;
       version_no?: number | null;
+      original_name?: string | null;
       created_at?: string;
     }[];
   } | null;
@@ -1484,6 +1507,7 @@ export type DossierVaultDocument = {
   status?: string | null;
   entity_ref?: string | null;
   version_no?: number | null;
+  original_name?: string | null;
   created_at?: string | null;
 };
 export const listDossierDocuments = (id: string) =>

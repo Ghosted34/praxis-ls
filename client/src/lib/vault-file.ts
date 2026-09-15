@@ -108,7 +108,7 @@ export async function downloadVaultDoc(id: string, filename: string): Promise<vo
 }
 
 /** Shared auth-gated fetch of a vaulted document's bytes. */
-async function fetchVaultDoc(id: string): Promise<Blob> {
+export async function fetchVaultDoc(id: string): Promise<Blob> {
   const token = tokenStore.getAccess();
   const res = await fetch(`/api/tenant/documents/${id}/download`, {
     headers: {

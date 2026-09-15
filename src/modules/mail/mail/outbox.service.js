@@ -385,6 +385,9 @@ async function send(client, actor, input = {}) {
       sendPoint: input.sendPoint || "user.compose",
       attachmentIds: attachments.map((a) => a.email_attachment_id),
       cids,
+      // Sandbox uses a sink transport at flush time. This must be part of the
+      // frozen queue row because the worker has no browser request/header.
+      testMode: input.environment === "sandbox",
     },
   });
 
@@ -405,6 +408,10 @@ async function send(client, actor, input = {}) {
       ? { reason: scheduled.reason, timezone: scheduled.timezone || null, note: scheduled.note }
       : null,
     status: row.status,
+    test_mode: input.environment === "sandbox",
+    test_note: input.environment === "sandbox"
+      ? "TEST — this scheduled message will be recorded in Sent but delivered only to the sandbox sink, never to the listed recipients."
+      : null,
     warnings,
     // Surfaced so the composer can say "sent, and the ledger has your reason"
     // rather than leaving the operator unsure whether the override took.
@@ -604,31 +611,39 @@ async function flushOne(client, row, deps = {}) {
 
     // Re-checked here, not only at enqueue: a burst that was individually under
     // the cap can be collectively over it, and only the flusher can see that.
-    const allowance = await mailbox.checkSendAllowance(client, conn.email_connection_id, 1);
-    if (!allowance.allowed) {
-      const retryAt = allowance.retryAt ? new Date(allowance.retryAt) : new Date(Date.now() + 300000);
-      await repo.markAttemptFailed(client, row.email_send_queue_id, {
-        message: `Held by the mailbox's send limit; will try again at ${retryAt.toISOString()}.`,
-        code: "SEND_RATE_LIMIT",
-        retryAt,
-      });
-      return { id: row.email_send_queue_id, status: "QUEUED", throttled: true };
+    if (!p.testMode) {
+      const allowance = await mailbox.checkSendAllowance(client, conn.email_connection_id, 1);
+      if (!allowance.allowed) {
+        const retryAt = allowance.retryAt ? new Date(allowance.retryAt) : new Date(Date.now() + 300000);
+        await repo.markAttemptFailed(client, row.email_send_queue_id, {
+          message: `Held by the mailbox's send limit; will try again at ${retryAt.toISOString()}.`,
+          code: "SEND_RATE_LIMIT",
+          retryAt,
+        });
+        return { id: row.email_send_queue_id, status: "QUEUED", throttled: true };
+      }
     }
 
-    const adapter = await resolveAdapter(client, conn);
     let res;
-    try {
-      res = await adapter.sendEmail({
-        to: p.to, cc: p.cc, bcc: p.bcc, subject: p.subject,
-        bodyHtml: p.html, bodyText: p.text,
-        messageId: p.messageId, headers: p.headers,
-        inReplyTo: p.inReplyTo, references: p.references,
-      });
-    } catch (err) {
-      throw explainSendError ? explainSendError(err, conn) : err;
+    if (p.testMode) {
+      // Deliberately do not even resolve a provider adapter: SMTP/OAuth
+      // credentials cannot be touched by a sandbox queue row. The synthetic id
+      // lets recordOutbound create an auditable Sent item without a network hop.
+      res = { externalMessageId: `sandbox-sink:${row.email_send_queue_id}` };
+    } else {
+      const adapter = await resolveAdapter(client, conn);
+      try {
+        res = await adapter.sendEmail({
+          to: p.to, cc: p.cc, bcc: p.bcc, subject: p.subject,
+          bodyHtml: p.html, bodyText: p.text,
+          messageId: p.messageId, headers: p.headers,
+          inReplyTo: p.inReplyTo, references: p.references,
+        });
+      } catch (err) {
+        throw explainSendError ? explainSendError(err, conn) : err;
+      }
+      await mailbox.recordSent(client, conn.email_connection_id, 1);
     }
-
-    await mailbox.recordSent(client, conn.email_connection_id, 1);
     if (conn.kind === "SHARED" || conn.kind === "DELEGATED") {
       await access.recordSentAs(client, {
         connectionId: conn.email_connection_id,
@@ -638,7 +653,15 @@ async function flushOne(client, row, deps = {}) {
     }
 
     const message = await recordOutbound(client, conn, {
-      ...res, to: p.to, subject: p.subject, html: p.html, text: p.text,
+      ...res,
+      to: p.to,
+      subject: p.testMode ? `[TEST — NOT DELIVERED] ${p.subject || "(no subject)"}` : p.subject,
+      html: p.testMode
+        ? `<p><strong>TEST MODE:</strong> No message was delivered to these recipients. This is a sandbox sink record.</p>${p.html || ""}`
+        : p.html,
+      text: p.testMode
+        ? `TEST MODE: No message was delivered to these recipients. This is a sandbox sink record.\n\n${p.text || ""}`
+        : p.text,
       references: p.references, inReplyTo: p.inReplyTo,
       messageIdHeader: p.messageId, sentVia: origin.SENT_VIA.PRAXIS,
       originUserId: row.user_id || null, originSendPoint: p.sendPoint || "user.compose",
@@ -660,7 +683,12 @@ async function flushOne(client, row, deps = {}) {
       payload: { to: p.to, subject: p.subject, mailbox: conn.email_address },
     }).catch(() => { /* @silent:storage the message row is the record */ });
 
-    return { id: row.email_send_queue_id, status: "SENT", message_id: message && message.email_message_id };
+    return {
+      id: row.email_send_queue_id,
+      status: "SENT",
+      message_id: message && message.email_message_id,
+      test_mode: Boolean(p.testMode),
+    };
   } catch (err) {
     const { retryAt, code } = retryPlan(err, row.attempts);
     await repo.markAttemptFailed(client, row.email_send_queue_id, {

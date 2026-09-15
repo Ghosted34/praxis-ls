@@ -23,6 +23,8 @@ import { pinStore } from "@/lib/pin-store";
 import { deviceIdStore } from "@/lib/device-id";
 import { lastSessionStore } from "@/lib/last-session";
 import { onReconnect, probeNow, reportUnreachable } from "@/lib/connection";
+import { bindLanguageOwner } from "@/lib/i18n";
+
 function b64urlToBuf(b64url: string): ArrayBuffer {
   const pad = "=".repeat((4 - (b64url.length % 4)) % 4);
   const b64 = (b64url + pad).replace(/-/g, "+").replace(/_/g, "/");
@@ -55,7 +57,6 @@ function fromCredential(cred: PublicKeyCredential): any {
   if (resp.attestationObject) out.response.attestationObject = bufToB64url(resp.attestationObject);
   return out;
 }
-
 
 export type User = {
   user_id: string;
@@ -122,6 +123,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = React.useState<User | null>(null);
   const [status, setStatus] = React.useState<AuthState["status"]>("loading");
   const [pendingToken, setPendingToken] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    bindLanguageOwner(status === "authed" ? user?.user_id : null);
+  }, [status, user?.user_id]);
 
   // Read the live status without re-subscribing the reconnect handler below.
   const statusRef = React.useRef(status);

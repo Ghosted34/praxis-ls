@@ -162,7 +162,7 @@ export function CostingSheet360({
     user_id: string;
     full_name?: string | null;
     email?: string;
-  }>("/users");
+  }>("/costings/validators");
 
   const [confirm, confirmUi] = useConfirm();
   const toast = useToast();

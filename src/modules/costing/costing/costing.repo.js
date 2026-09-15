@@ -401,6 +401,32 @@ async function usersInRole(client, roleId) {
   return rows.map((r) => r.user_id);
 }
 
+/** Active users whose role explicitly grants line-manager authority. */
+async function validatorCandidates(client) {
+  const { rows } = await client.query(
+    `SELECT DISTINCT u.user_id, u.full_name, u.email
+       FROM app_user u
+       JOIN user_role ur ON ur.user_id = u.user_id
+       JOIN role r ON r.role_id = ur.role_id
+      WHERE u.status = 'ACTIVE' AND r.is_line_manager = true
+      ORDER BY u.full_name NULLS LAST, u.email`,
+  );
+  return rows;
+}
+
+async function isValidatorCandidate(client, userId) {
+  if (!userId) return false;
+  const { rows } = await client.query(
+    `SELECT 1 FROM app_user u
+       JOIN user_role ur ON ur.user_id = u.user_id
+       JOIN role r ON r.role_id = ur.role_id
+      WHERE u.user_id = $1 AND u.status = 'ACTIVE' AND r.is_line_manager = true
+      LIMIT 1`,
+    [userId],
+  );
+  return rows.length > 0;
+}
+
 /** Reminders sent about this sheet today. The quota's numerator (12774). */
 async function nudgesToday(client, costingId) {
   const { rows } = await client.query(
@@ -584,7 +610,8 @@ module.exports = {
   // Shared with MOD-76 Budget Reconciliation so the budget and the actual are
   // computed off one definition each (see claimsLateral's header).
   LINE_VAT_SQL, claimsLateral,
-  liveForDossier, gateForDossier, usersInRole, nudgesToday, insertNudge,
+  liveForDossier, gateForDossier, usersInRole, validatorCandidates, isValidatorCandidate,
+  nudgesToday, insertNudge,
   insertSnapshot, latestSnapshot, snapshotCount,
   dossierForCosting, tieredItems, containerTypesOnFile, ratesForItems, defaultSalesTaxCode,
 };

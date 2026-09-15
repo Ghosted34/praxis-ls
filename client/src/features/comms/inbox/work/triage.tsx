@@ -39,6 +39,7 @@ import { DateTimeField } from "@/components/ui/datetime-field";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { Select } from "@/components/ui/modal";
 import { Input } from "@/components/ui/input";
+import { EmployeePicker } from "@/components/employee-picker";
 import { useResource } from "@/lib/use-resource";
 import { reportActionError } from "@/lib/action-error";
 import { dateTimeFmt } from "@/lib/format";
@@ -87,6 +88,7 @@ export function TriageBar({
   const [customDue, setCustomDue] = React.useState("");
   const [handOverOpen, setHandOverOpen] = React.useState(false);
   const [assignee, setAssignee] = React.useState("");
+  const [assigneeName, setAssigneeName] = React.useState("");
 
   const id = thread.email_thread_id;
 
@@ -150,19 +152,31 @@ export function TriageBar({
             if (!uid) return;
             run("assign", () => api.assignThread(id, uid)).then(() => {
               setAssignee("");
+              setAssigneeName("");
               setHandOverOpen(false);
             });
           }}
         >
-          <Input
-            value={assignee}
-            onChange={(e) => setAssignee(e.target.value)}
-            placeholder={tr("Colleague")}
-            aria-label={tr("Hand this conversation to")}
-            className="h-8 text-xs"
-          />
+          <div className="min-w-72 flex-1">
+            <EmployeePicker
+              id="mail-thread-assignee"
+              label={tr("Hand this conversation to")}
+              placeholder={tr("Search active colleagues by name or job title…")}
+              requireAccount
+              disabled={busy !== null}
+              onPick={(employee) => {
+                setAssignee(employee.account_user_id || "");
+                setAssigneeName(employee.full_name || "");
+              }}
+            />
+            {assigneeName && (
+              <p className="micro mt-1 text-muted-foreground">
+                {tr("Selected")}: <span className="font-medium text-foreground">{assigneeName}</span>
+              </p>
+            )}
+          </div>
           <Button size="sm" type="submit" disabled={busy !== null || !assignee.trim()}>
-            {tr("Hand over")}
+            {tr("Assign")}
           </Button>
         </form>
       )}

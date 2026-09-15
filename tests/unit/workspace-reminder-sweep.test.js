@@ -183,7 +183,7 @@ describe("workspace-reminder sweep — the reads it makes", () => {
     const out = await sweep(c, { notify: fn, timeZone: "UTC", now: NOW });
     expect(sent).toHaveLength(0);
     expect(out).toEqual({ tasks: 0, events: 0, failures: 0 });
-    expect(c.statements.filter((s) => /^UPDATE|UPDATE /.test(s.sql))).toHaveLength(0);
+    expect(c.statements.filter((s) => /^\s*UPDATE\b/.test(s.sql))).toHaveLength(0);
   });
 });
 

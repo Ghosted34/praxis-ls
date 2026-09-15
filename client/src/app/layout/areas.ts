@@ -61,7 +61,15 @@ export const AREAS: Area[] = [
     key: "workspace",
     label: "My workspace",
     basePath: "/workspace",
-    sections: [],
+    // Three views of one queue. "Today" is the landing because it is the answer
+    // to the question the page exists for — what wants me, and when — and it is
+    // the only one that puts tasks and appointments in the SAME list, which is
+    // the point of them sharing a surface rather than being two screens.
+    sections: [
+      { key: "today", label: "Today" },
+      { key: "tasks", label: "Tasks" },
+      { key: "calendar", label: "Calendar" },
+    ],
   },
   /**
    * Praxis AI — the assistant's workspace.

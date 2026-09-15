@@ -399,6 +399,12 @@ const Schema = z.object({
   // candidates, not to staff, and a job advert that lands at seven in the
   // morning reads as a mass send. Empty disables the fan-out entirely.
   CAREERS_ALERTS_CRON: z.string().default("0 9 * * *"),
+  // Workspace reminders (MOD-00A, 13810). An INTERVAL, not a cron: a reminder
+  // is promised to a minute, so a wall-clock schedule would make "15 minutes
+  // before" mean "at the next scheduled slot". 60s is the resolution the
+  // picker implies. Set to 0 to disable the sweep — tasks and events still
+  // work, they simply never announce themselves.
+  WORKSPACE_REMINDER_EVERY_MS: z.coerce.number().int().min(0).default(60000),
   // Régie d'avance aging (KB §6.8 step 4): reclassify advances past their
   // policy window from 581 to a receivable on the holder (4211). 06:00 UTC —
   // it POSTS to the ledger, so it runs before the working day starts rather

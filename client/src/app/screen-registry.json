@@ -1491,6 +1491,43 @@
       "actions": []
     },
     {
+      "id": "workspace_today",
+      "title": "Today",
+      "route": "/workspace/today",
+      "area": "home",
+      "module_key": "MOD-00A",
+      "purpose": "The signed-in user's day as ONE list: tasks and appointments interleaved by when they are wanted, rather than a calendar beside a to-do list. Carries the counts of what is overdue, due and booked, and links out to the approvals queue instead of re-rendering it.",
+      "actions": []
+    },
+    {
+      "id": "workspace_tasks",
+      "title": "Tasks",
+      "route": "/workspace/tasks",
+      "area": "home",
+      "module_key": "MOD-00A",
+      "purpose": "The task board — one column per status, cards draggable between them with a keyboard-accessible Move menu, and a detail panel carrying the task's steps and a link to the record it is about. An audience switch appears only for callers whose grants let them see beyond their own work.",
+      "actions": [
+        "create task",
+        "move task",
+        "edit task",
+        "delete task"
+      ]
+    },
+    {
+      "id": "workspace_calendar",
+      "title": "Calendar",
+      "route": "/workspace/calendar",
+      "area": "home",
+      "module_key": "MOD-00A",
+      "purpose": "The month grid with the month's agenda beneath it. Booking two events in the same place at the same time warns with the conflicting rows and lets the user book anyway, rather than refusing.",
+      "actions": [
+        "create event",
+        "edit event",
+        "delete event",
+        "invite participant"
+      ]
+    },
+    {
       "id": "ai_workspace",
       "title": "Praxis AI",
       "route": "/ai",

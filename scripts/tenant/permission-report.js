@@ -12,7 +12,7 @@
  * (`/permissions/matrix`), but existing damage is invisible until you look.
  *
  * The baseline is what `9021_seed_default_permissions.sql`, `9022`, and the
- * universal SmartComms grant in `9133` would grant a fresh tenant. This reports:
+ * universal SmartComms grant in `9025` would grant a fresh tenant. This reports:
  *
  *   MISSING   a baseline grant the tenant no longer has  ← the suspicious ones
  *   REDUCED   the row exists but a baseline flag is now false
@@ -45,7 +45,7 @@ const FLAGS = ["can_create", "can_read", "can_update", "can_delete", "can_approv
 const SEEDS = [
   "9021_seed_default_permissions.sql",
   "9022_seed_grant_gaps.sql",
-  "9133_seed_universal_smartcomm_permissions.sql",
+  "9025_seed_universal_smartcomm_permissions.sql",
 ];
 
 /**

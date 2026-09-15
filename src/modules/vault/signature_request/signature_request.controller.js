@@ -92,7 +92,7 @@ module.exports = {
         // The plaintext token is NOT returned to the caller. It went into the
         // email and nowhere else — a sender who could read it back could sign as
         // the counterparty, which is the whole thing the peppered store prevents.
-        return { party: out.party, status: "SENT", error: null };
+        return { party: out.party };
       } catch (err) {
         await c.query("ROLLBACK");
         throw err;

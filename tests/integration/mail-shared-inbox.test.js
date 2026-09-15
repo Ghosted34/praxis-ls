@@ -43,6 +43,9 @@ jest.mock("../../src/shared/events/emit", () => ({
   audit: jest.fn(async () => ({})),
   emitEvent: jest.fn(async () => ({})),
 }));
+jest.mock("../../src/modules/mail/mail/mail-notify.service", () => ({
+  onAssignment: jest.fn(async () => ({ notified: 1 })),
+}));
 
 const { router } = require("../../src/modules/mail/triage/triage.routes");
 
@@ -85,6 +88,12 @@ function sharedClient({ visibleTo = new Set(["u-owner"]) } = {}) {
         };
       }
       if (/FROM email_message m/.test(sql)) return { rows: [] };
+      if (/SELECT user_id, full_name, email FROM app_user/.test(sql)) {
+        return { rows: [{ user_id: params[0], full_name: "Marie", email: "marie@example.test" }] };
+      }
+      if (/SELECT full_name FROM app_user/.test(sql)) {
+        return { rows: [{ full_name: "Owner" }] };
+      }
       if (/UPDATE email_thread t SET assigned_user_id/.test(sql)) {
         const threadId = params[0];
         if (!threads.has(threadId)) return { rows: [] };

@@ -316,21 +316,20 @@ describe("the grounding whitelist actually reads", () => {
     expect(out.draft_text).toBeTruthy();
   });
 
-  test("an unbound thread produces the honest note and spends nothing", async () => {
+  test("an unbound thread drafts from its conversation and says no ERP record was used", async () => {
     const c = fakeClient([ON, THREAD({ entity_ref: null, dossier_id: null, dossier_client_id: null, client_id: null })]);
     const out = await assist.draft(c, { threadId: "t-1" }, ME);
     expect(out.note).toMatch(/not bound to a record/);
-    expect(llm.chat).not.toHaveBeenCalled();
-    // This was the ONLY branch the old implementation could reach. It is still
-    // correct; it is now one of two.
+    expect(out.draft_text).toBeTruthy();
+    expect(llm.chat).toHaveBeenCalledTimes(1);
   });
 
-  test("bound-but-everything-withheld reads differently from unbound", async () => {
+  test("bound-but-everything-withheld uses only visible conversation context", async () => {
     identityCache.getGrants.mockResolvedValue([]);
     const out = await assist.draft(fakeClient(base()), { threadId: "t-1" }, ME);
-    expect(out.note).toMatch(/every source was withheld/i);
-    // Two different problems with two different fixes: bind the thread, versus
-    // ask an administrator for a grant.
+    expect(out.note).toMatch(/every ERP source was withheld/i);
+    expect(out.draft_text).toBeTruthy();
+    expect(llm.chat).toHaveBeenCalledTimes(1);
   });
 
   test("nothing on the deny list is reachable from the whitelist", () => {

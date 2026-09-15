@@ -420,6 +420,16 @@ async function draft(client, { threadId, tone, language, instruction } = {}, use
   const ctx = await threadContext(client, threadId);
   const lang = resolveLanguage({ explicit: language, partyLanguage: ctx.client_language });
 
+  // The thread transcript is correspondence, not public prompt material. Route
+  // middleware normally guarantees an identity, but keep the service boundary
+  // closed as well for jobs/tests and future callers.
+  if (!user || !user.user_id) {
+    return {
+      draft_text: "", facts: [], sources: [], withheld: [], confidence: 0,
+      language: lang, note: "An authenticated user is required to draft from this conversation.",
+    };
+  }
+
   const ground = await grounding.collect(client, ctx, user);
   const factStrings = grounding.factText(ground.facts);
 
@@ -471,6 +481,11 @@ async function draft(client, { threadId, tone, language, instruction } = {}, use
     protected_terms_restored: done.protected_terms_restored,
     needs_review: done.needs_review,
     provider: out.provider,
+    note: !ctx.entity_ref
+      ? "This thread is not bound to a record; the draft used conversation context only."
+      : (!factStrings.length && ground.withheld.length
+        ? "The thread is bound, but every ERP source was withheld; the draft used conversation context only."
+        : null),
     // Not a model-reported confidence — those are decorative. This says whether
     // every factual token in the draft is supported by the record.
     confidence: done.fence.ok ? 1 : 0.5,

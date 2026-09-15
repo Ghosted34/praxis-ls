@@ -664,8 +664,15 @@ ON CONFLICT (service_type_field_set_id, key) DO NOTHING;
 -- container yard IS warehousing, but the toggle is right there on the service
 -- type for a tenant who runs one, and defaulting it on would put a freight
 -- table on every storage file.
+--
+-- PER_BOX is the default (12772): a containerised file records the individual
+-- container numbers, not just counts, since those are what a delivery note is
+-- signed against. PER_BOX never blocks a save — the numbers arrive with the
+-- Bill of Lading, days later — so a file that only knows "3 × 40' HC" is still
+-- complete. A tenant can switch a service type back to GROUPED under Service
+-- types → Details.
 UPDATE service_type
-   SET captures_containers = true, container_detail_mode = 'GROUPED'
+   SET captures_containers = true, container_detail_mode = 'PER_BOX'
  WHERE key IN (
    'SEA_FREIGHT_IMPORT','SEA_FREIGHT_EXPORT','END_TO_END_SEA_FREIGHT',
    'HINTERLAND_TRANSIT','INLAND_TRANSPORTATION','CUSTOMS_BROKERAGE','PROJECT_CARGO',

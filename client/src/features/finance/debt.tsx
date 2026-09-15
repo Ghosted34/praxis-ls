@@ -7,6 +7,7 @@ import { pageShell } from "@/lib/layout";
 import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
+import { DateField } from "@/components/ui/date-field";
 import { RowActions } from "@/components/ui/row-actions";
 import { FormButtons } from "@/components/ui/form-buttons";
 import { Input } from "@/components/ui/input";
@@ -153,17 +154,15 @@ function DebtForm({
             />
           </Field>
           <Field label="Started on">
-            <Input
-              type="date"
+            <DateField
               value={f.started_on}
-              onChange={(e) => set("started_on", e.target.value)}
+              onChange={(iso) => set("started_on", iso)}
             />
           </Field>
           <Field label={tr("Due on")}>
-            <Input
-              type="date"
+            <DateField
               value={f.due_on}
-              onChange={(e) => set("due_on", e.target.value)}
+              onChange={(iso) => set("due_on", iso)}
             />
           </Field>
         </div>
@@ -231,10 +230,9 @@ function RepayForm({
       <form className="space-y-4" onSubmit={submit}>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label={tr("Entry date")} required>
-            <Input
-              type="date"
+            <DateField
               value={f.entry_date}
-              onChange={(e) => set("entry_date", e.target.value)}
+              onChange={(iso) => set("entry_date", iso)}
             />
           </Field>
           <Field label={tr("Source doc ref")}>

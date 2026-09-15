@@ -7,6 +7,7 @@ import {
   tenant,
   tenantDownload,
   tenantWithProgress,
+  uploadFile,
   downloadPost,
 } from "./api-client";
 
@@ -439,6 +440,12 @@ export type EntityDocument = {
   type_renewal_lead_days?: number | null;
   notes?: string | null;
   is_active?: boolean;
+  /**
+   * Set when the caller lacks the MOD-01 update grant: the number, issuing
+   * authority, filing reference, notes and vault fields are absent from the
+   * row rather than null. See entity-360.service.redactDocument.
+   */
+  redacted?: boolean;
 };
 
 export type TaxKind =
@@ -499,6 +506,89 @@ export type LetterheadConfig = {
   paper_size: "A4" | "LETTER";
   header_height_mm?: number | null;
   footer_height_mm?: number | null;
+  /** The mark's printed height, 4-60mm. Feeds the one-page fit model (12760). */
+  logo_height_mm?: number | null;
+  layout?: LetterheadLayout | null;
+};
+
+/** One block's placement on the twelve-column letterhead grid (12760). */
+export type LetterheadPlacement = {
+  id: string;
+  row?: number;
+  col?: number;
+  span?: number;
+  align?: "left" | "center" | "right";
+  size?: number;
+  weight?: "normal" | "bold";
+  tone?: "ink" | "muted" | "accent";
+  transform?: "none" | "upper";
+  visible?: boolean;
+};
+
+export type LetterheadLayout = {
+  version?: number;
+  header?: LetterheadPlacement[];
+  footer?: LetterheadPlacement[];
+};
+
+/**
+ * One composed block, as the renderer resolved it.
+ *
+ * This is the SAME object the document renderer prints from — the editor draws
+ * these rather than re-deriving the content, so what the canvas shows is what
+ * the sheet says. `source` is the deep link: which dossier tab and field fixes
+ * this block, so the editor never hardcodes a route.
+ */
+export type LetterheadBlock = Required<
+  Pick<LetterheadPlacement, "id" | "row" | "col" | "span" | "align" | "size">
+> & {
+  zone: "header" | "footer";
+  kind: "text" | "image" | "rule" | "wordmark";
+  weight: "normal" | "bold";
+  tone: "ink" | "muted" | "accent";
+  transform: "none" | "upper";
+  visible: boolean;
+  custom: boolean;
+  authored: boolean;
+  fixed: boolean;
+  empty: boolean;
+  label: { fr: string; en: string };
+  hint: { fr: string; en: string };
+  source: { tab: string; field: string };
+  /** The `show_*` column(s) governing this block, so one control writes one truth. */
+  toggle: string[] | null;
+  lines: { type: string; text?: string; src?: string }[];
+  height_mm?: number;
+};
+
+export type LetterheadComposition = {
+  language: string;
+  header: LetterheadBlock[];
+  footer: LetterheadBlock[];
+  empty_blocks: string[];
+  height: { header_mm: number; footer_mm: number };
+};
+
+export type LetterheadLine = {
+  line_id: string;
+  entity_id: string;
+  zone: "header" | "footer";
+  text_fr?: string | null;
+  text_en?: string | null;
+  sort_order: number;
+  is_active: boolean;
+};
+
+/** What the editor may add, and where each block's content comes from. */
+export type LetterheadCatalogueItem = {
+  id: string;
+  zone: "header" | "footer";
+  label: string;
+  hint: string;
+  source: { tab: string; field: string };
+  toggle: string[] | null;
+  authored: boolean;
+  fixed: boolean;
 };
 
 export type PaymentAccount = {
@@ -550,6 +640,11 @@ export type LetterheadBundle = {
   remittance_account_id: string | null;
   treasury_accounts: Treasury[];
   preview: { fr: LetterheadPreview; en: LetterheadPreview };
+  /** The composed blocks the editor drags — the renderer's own composition. */
+  blocks: { fr: LetterheadComposition; en: LetterheadComposition };
+  custom_lines: LetterheadLine[];
+  catalogue: LetterheadCatalogueItem[];
+  tokens: { token: string; label: string }[];
   language: string;
 };
 
@@ -687,6 +782,25 @@ export const setEntityOpsReferencePrefix = (id: string, prefix: string) =>
 
 export const entityLetterhead = (id: string) =>
   tenant<LetterheadBundle>(`/entities/${id}/letterhead`);
+/**
+ * Add, edit or remove one tenant-authored letterhead line (12760).
+ *
+ * Returns the whole bundle, not the row: a line that changed the composed
+ * height has just changed the page it sits on, and the canvas has to redraw
+ * against what was actually stored.
+ */
+export const saveEntityLetterheadLine = (
+  id: string,
+  lineId: string | null,
+  body: Record<string, unknown> | null,
+) =>
+  tenant<LetterheadBundle>(
+    `/entities/${id}/letterhead/lines${lineId ? `/${lineId}` : ""}`,
+    body === null
+      ? { method: "DELETE" }
+      : { method: lineId ? "PUT" : "POST", body },
+  );
+
 export const saveEntityLetterhead = (
   id: string,
   body: Record<string, unknown>,
@@ -711,6 +825,18 @@ export const entityRenewals = (id: string, asOf?: string | null) =>
   tenant<Renewals>(`/entities/${id}/renewals${asOfQuery(asOf)}`);
 export const entityCapTable = (id: string, asOf?: string | null) =>
   tenant<CapTable>(`/entities/${id}/cap-table${asOfQuery(asOf)}`);
+
+/**
+ * The entity list as every picker needs it: all of them.
+ *
+ * `page()` on the API clamps a list with no `limit` to 50 rows, and the screens
+ * that read this one filter it in the BROWSER — so entity 51 was unfindable by
+ * search and unofferable as a parent or a corporate shareholder, with no error
+ * and no empty state to say the list had been cut. 200 is `page()`'s own
+ * maximum. Past that the fix is server-side search, which `LIST_SQL` already
+ * supports through its `q` parameter.
+ */
+export const ENTITY_LIST = "/entities?limit=200";
 
 /** Generic nested-collection helpers — one implementation for all seven. */
 export type EntityCollection =
@@ -772,6 +898,32 @@ export type VaultDocument = {
  * wider defaults. `doc_type_ref_id` is the registry reference — the server
  * derives the legacy `doc_type` text from it, so the two cannot drift.
  */
+/**
+ * Upload a file to the vault as multipart, through the upload engine.
+ *
+ * Multipart rather than the base64 body below: a 5 MB scan becomes a 6.7 MB
+ * JSON string otherwise, and that whole string is held in memory, parsed and
+ * sliced before a byte reaches storage. The bytes are the wait the progress bar
+ * is measuring.
+ */
+export const uploadVaultFile = (
+  file: File,
+  fields: {
+    doc_type?: string;
+    entity_ref?: string;
+    dossier_id?: string;
+    doc_type_ref_id?: string;
+    client_id?: string;
+    original_name?: string;
+  },
+  ctx?: { onProgress?: (percent: number) => void; signal?: AbortSignal },
+) =>
+  uploadFile<VaultDocument>("/tenant/documents", file, {
+    fields,
+    onProgress: ctx?.onProgress,
+    signal: ctx?.signal,
+  });
+
 export const uploadVaultDocument = (
   body: {
     data_url: string;
@@ -794,11 +946,18 @@ export const uploadEntityLogo = (
   id: string,
   dataUrl: string,
   variant: "light" | "dark" = "light",
+  onProgress?: (percent: number) => void,
 ) =>
-  tenant<Entity>(`/entities/${id}/logo`, {
-    method: "POST",
-    body: { data_url: dataUrl, variant },
-  });
+  onProgress
+    ? tenantWithProgress<Entity>(
+        `/entities/${id}/logo`,
+        { data_url: dataUrl, variant },
+        onProgress,
+      )
+    : tenant<Entity>(`/entities/${id}/logo`, {
+        method: "POST",
+        body: { data_url: dataUrl, variant },
+      });
 
 /* ── Treasury accounts(/treasury-accounts) ──────────────────────── */
 export type Treasury = {
@@ -1366,11 +1525,23 @@ export const downloadDictImportTemplate = () =>
   );
 /** `file` is a base64 data URL (FileReader.readAsDataURL) — the same upload
  *  shape the document vault uses, so there is one convention in the product. */
-export const validateDictImport = (file: string, filename?: string) =>
-  tenant<ImportValidateResult>("/financial-dictionary/import/validate", {
-    method: "POST",
-    body: { file, filename },
-  });
+export const validateDictImport = (
+  file: string,
+  filename?: string,
+  onProgress?: (percent: number) => void,
+) => {
+  const body = { file, filename };
+  return onProgress
+    ? tenantWithProgress<ImportValidateResult>(
+        "/financial-dictionary/import/validate",
+        body,
+        onProgress,
+      )
+    : tenant<ImportValidateResult>("/financial-dictionary/import/validate", {
+        method: "POST",
+        body,
+      });
+};
 export const commitDictImport = (rows: ImportStagingRow[]) =>
   tenant<ImportCommitResult>("/financial-dictionary/import/commit", {
     method: "POST",

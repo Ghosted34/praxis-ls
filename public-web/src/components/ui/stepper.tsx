@@ -45,9 +45,15 @@ export function Stepper({
 }) {
   const percent = Math.round(((current + 1) / steps.length) * 100);
   return (
-    <nav aria-label={label} className={cn("min-w-0", className)}>
+    <nav aria-label={label} className={cn("stepper min-w-0", className)}>
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <ol className="flex min-w-0 flex-wrap items-center gap-x-1 gap-y-2">
+        {/* NOWRAP. Wrapping put step 4 on a line of its own inside the quote
+            card, which turns a progress strip into two rows of unequal weight
+            and pushes the question below the fold. The strip shrinks instead:
+            connectors narrow, labels truncate, and below `lg` only the step you
+            are ON keeps its label — the others are already numbers, and the
+            heading underneath says where you are. */}
+        <ol className="flex min-w-0 flex-nowrap items-center gap-x-0.5">
         {steps.map((step, i) => {
           const done = i < current;
           const here = i === current;
@@ -61,7 +67,7 @@ export function Stepper({
                   : { "aria-disabled": !here || undefined })}
                 aria-current={here ? "step" : undefined}
                 className={cn(
-                  "flex items-center gap-2 rounded-full px-2.5 py-1.5 text-sm transition-colors",
+                  "flex min-w-0 items-center gap-2 rounded-full px-2 py-1.5 text-sm transition-colors",
                   reachable && "hover:bg-[rgb(var(--ink)/0.06)]",
                   here ? "font-semibold text-foreground" : "text-muted-foreground",
                 )}
@@ -70,21 +76,44 @@ export function Stepper({
                   aria-hidden
                   className={cn(
                     "grid h-6 w-6 shrink-0 place-items-center rounded-full border text-[11px] font-semibold",
-                    done && "border-[var(--brand-orange)] bg-[var(--brand-orange)] text-[var(--primary-foreground)]",
-                    here && "border-[var(--brand-orange)] text-[var(--brand-orange)]",
+                    /* §8.3's "real progress depth". Colour alone stated where
+                       you were; these give the strip the same three-elevation
+                       encoding the track timeline uses — the step you are on is
+                       lifted, the ones behind rest, the ones ahead are flush —
+                       so both places in this app that answer "how far through
+                       am I" read the same way, and both survive greyscale. */
+                    done && "stepper-dot-done",
+                    here && "stepper-dot-here",
+                    done && "border-[rgb(var(--brand-orange))] bg-[rgb(var(--brand-orange))] text-[var(--primary-foreground)]",
+                    /* The NUMBER is 11px type, so it is held to 4.5:1 and the
+                       fill measured 3.13:1 on `--background` — a real AA
+                       failure on the step a visitor is actually looking at.
+                       `--primary-ink` is 4.88:1 light / 5.79:1 dark and is the
+                       same brand colour. The BORDER keeps the fill: a
+                       non-text affordance is held to 3:1 (WCAG 1.4.11), which
+                       3.13:1 clears, and the ring is what carries "you are
+                       here" at a glance. */
+                    here && "border-[rgb(var(--brand-orange))] text-[var(--primary-ink)]",
                     !done && !here && "border-border",
                   )}
                 >
                   {done ? <CheckIcon size={12} /> : <span className="num">{i + 1}</span>}
                 </span>
-                <span className="hidden truncate sm:inline">{step.label}</span>
+                {/* Shown or hidden by the strip's OWN width — see `.stepper`
+                    in index.css. No `truncate`: a label clipped to "Cargo
+                    deta…" has stopped being a label, and the viewport
+                    breakpoint this replaced could not see that the strip was
+                    inside an 800px card. */}
+                <span className={here ? "stepper-label-here" : "stepper-label"}>
+                  {step.label}
+                </span>
               </Tag>
               {i < steps.length - 1 && (
                 <span
                   aria-hidden
                   className={cn(
-                    "mx-1 h-px w-4 shrink-0 sm:w-6",
-                    done ? "bg-[var(--brand-orange)]" : "bg-border",
+                    "mx-0.5 h-px w-2.5 shrink-0 sm:w-4 lg:w-6",
+                    done ? "bg-[rgb(var(--brand-orange))]" : "bg-border",
                   )}
                 />
               )}
@@ -100,7 +129,13 @@ export function Stepper({
             the line below says which step this is. */}
         {counter && (
           <p className="hidden shrink-0 items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium text-muted-foreground md:inline-flex">
-            <BoltIcon size={14} className="text-[var(--brand-orange)]" />
+            {/* The glyph sits INSIDE a text run (gap-2, beside the counter),
+                so it reads as type and takes the ink token rather than the
+                fill — 4.91:1 instead of 3.13:1, and the same brand hue. The
+                standalone milestone marker in `shipment-state.tsx` keeps the
+                fill because it is a circular affordance, not text, and WCAG
+                1.4.11 holds that to 3:1. */}
+            <BoltIcon size={14} className="text-[var(--primary-ink)]" />
             {counter}
           </p>
         )}
@@ -121,7 +156,7 @@ export function Stepper({
         className="mt-4 h-1 overflow-hidden rounded-full bg-[rgb(var(--ink)/0.08)]"
       >
         <div
-          className="h-full rounded-full bg-[var(--brand-orange)] transition-[width] duration-500 ease-[var(--ease)]"
+          className="h-full rounded-full bg-[rgb(var(--brand-orange))] transition-[width] duration-500 ease-[var(--ease)]"
           style={{ width: `${percent}%` }}
         />
       </div>

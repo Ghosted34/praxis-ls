@@ -255,9 +255,21 @@ services:
     build:
       context: .
       target: runtime
+    # env_file, AND no explicit PUPPETEER_EXECUTABLE_PATH — both deliberate.
+    #
+    # This service used to set the path itself and load no .env, which made it
+    # the ONE container that never saw what api/worker see. Compose passes a
+    # `KEY=` line from .env into a container as an empty string, overriding the
+    # image's own ENV; api and worker got that empty value, the signature card
+    # renderer took it literally, and Chromium was never found. This gate went
+    # green on that exact image on every deploy, because it had hard-coded the
+    # right answer for itself.
+    #
+    # A gate that runs in a different environment from the thing it gates only
+    # proves the gate works. It now boots the way the app boots.
+    env_file: .env
     environment:
       NODE_ENV: production
-      PUPPETEER_EXECUTABLE_PATH: /usr/bin/chromium
     command: ["node", "scripts/ops/puppeteer-preflight.js"]
     restart: "no"
 

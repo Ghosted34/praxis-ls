@@ -187,15 +187,37 @@ describe("identity cache (TC-C4)", () => {
       mockCTX = { tenant: "acme" };
       await cache.getGrants(client, { role_ids: ["r1"], module: "MOD-35" });
       expect(client.count).toBe(2);
-      expect(keysMatching(":smartls:grants:")).toHaveLength(1);
-      expect(keysMatching(":acme:grants:")).toHaveLength(1);
+      expect(keysMatching(":smartls:grants")).toHaveLength(1);
+      expect(keysMatching(":acme:grants")).toHaveLength(1);
     });
 
     it("files work with no tenant context under a reserved namespace", async () => {
       mockCTX = null; // a background job
       const client = makeClient([{ can_read: true }]);
       await cache.getGrants(client, { role_ids: ["r1"], module: "MOD-35" });
-      expect(keysMatching("identity:_:grants:")).toHaveLength(1);
+      expect(keysMatching("identity:_:grants")).toHaveLength(1);
+    });
+  });
+
+  /*
+   * 12771 added three columns to the cached grant row and bumped the key's
+   * SHAPE VERSION so entries written by the previous release are ignored rather
+   * than served without them — a stale row would read `undefined` for every
+   * export/validate/disburse check and deny for the length of the TTL.
+   *
+   * The version is asserted as "present", not as "2": the whole point is that
+   * it moves. What must never happen is the invalidation pattern being pinned
+   * to one version while the key writer uses another — which would silently
+   * stop grant edits taking effect. The invalidation tests below match the same
+   * version-agnostic prefix as the writer, which is what keeps the two honest.
+   */
+  describe("grant cache shape version", () => {
+    it("writes under a versioned grants namespace", async () => {
+      mockCTX = { tenant: "smartls" };
+      const client = makeClient([{ can_read: true }]);
+      await cache.getGrants(client, { role_ids: ["r1"], module: "MOD-35" });
+      const [key] = keysMatching(":smartls:grants");
+      expect(key).toMatch(/:grants\d+:/);
     });
   });
 
@@ -208,8 +230,8 @@ describe("identity cache (TC-C4)", () => {
       }
       mockCTX = { tenant: "smartls" };
       await cache.invalidateGrants();
-      expect(keysMatching(":smartls:grants:")).toHaveLength(0);
-      expect(keysMatching(":acme:grants:")).toHaveLength(1);
+      expect(keysMatching(":smartls:grants")).toHaveLength(0);
+      expect(keysMatching(":acme:grants")).toHaveLength(1);
     });
 
     it("never issues the blocking KEYS command", async () => {
@@ -228,7 +250,7 @@ describe("identity cache (TC-C4)", () => {
         await cache.getGrants(client, { role_ids: ["r1"], module: "MOD-35" });
       }
       await cache.invalidateGrants({ allTenants: true });
-      expect(keysMatching(":grants:")).toHaveLength(0);
+      expect(keysMatching(":grants")).toHaveLength(0);
     });
 
     it("does not throw when Redis is down", async () => {

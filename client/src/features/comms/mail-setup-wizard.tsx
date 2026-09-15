@@ -337,7 +337,7 @@ export function MailSetupWizard({
                       done
                         ? "bg-[rgb(var(--ok))] text-white"
                         : current
-                          ? "bg-primary text-white"
+                          ? "bg-primary text-primary-foreground"
                           : "bg-muted text-muted-foreground",
                     )}
                   >

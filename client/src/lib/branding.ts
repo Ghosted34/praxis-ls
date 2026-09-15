@@ -1,4 +1,4 @@
-import { tenant } from "./api-client";
+import { tenant, tenantWithProgress } from "./api-client";
 
 /** A partner/brand chip shown on the legacy landing hero. */
 export type BrandPill = {
@@ -69,12 +69,28 @@ export const fetchBranding = () =>
 export const saveBranding = (patch: Partial<Branding>) =>
   tenant<Branding>("/branding", { method: "PUT", body: patch });
 
-/** Gated(edit). Uploads a base64 image data URL; returns its /media URL. */
-export const uploadImage = (dataUrl: string) =>
-  tenant<{ logoUrl: string }>("/branding/logo", {
-    method: "POST",
-    body: { dataUrl },
-  });
+/**
+ * Gated(edit). Uploads a base64 image data URL; returns its /media URL.
+ *
+ * Takes an optional progress callback: `tenantWithProgress` is XHR-backed, so a
+ * JSON body reports real upload progress just as multipart does. That is what
+ * lets these endpoints keep their transport and still drive a genuine 0→100%
+ * bar rather than a spinner that guesses.
+ */
+export const uploadImage = (
+  dataUrl: string,
+  onProgress?: (percent: number) => void,
+) =>
+  onProgress
+    ? tenantWithProgress<{ logoUrl: string }>(
+        "/branding/logo",
+        { dataUrl },
+        onProgress,
+      )
+    : tenant<{ logoUrl: string }>("/branding/logo", {
+        method: "POST",
+        body: { dataUrl },
+      });
 
 /** @deprecated alias kept for existing callers — use uploadImage. */
 export const uploadLogo = uploadImage;
@@ -89,8 +105,17 @@ export const saveLogin = (patch: Partial<LoginConfig>) =>
   tenant<LoginConfig>("/branding/login", { method: "PUT", body: patch });
 
 /** Gated(edit). Uploads a base64 login background; returns its /media URL. */
-export const uploadLoginBackground = (dataUrl: string) =>
-  tenant<{ backgroundUrl: string }>("/branding/login/background", {
-    method: "POST",
-    body: { dataUrl },
-  });
+export const uploadLoginBackground = (
+  dataUrl: string,
+  onProgress?: (percent: number) => void,
+) =>
+  onProgress
+    ? tenantWithProgress<{ backgroundUrl: string }>(
+        "/branding/login/background",
+        { dataUrl },
+        onProgress,
+      )
+    : tenant<{ backgroundUrl: string }>("/branding/login/background", {
+        method: "POST",
+        body: { dataUrl },
+      });

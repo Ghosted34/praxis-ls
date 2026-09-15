@@ -63,7 +63,7 @@ async function recordCostInner(client, opts) {
     entityId, entryDate, sourceDocRef, proofVaultId = null, actor = {}, ip = null,
   } = opts;
   if (!(Number(amount) > 0)) throw new AppError("BAD_AMOUNT", "amount must be > 0", 422);
-  if (!dossierId) throw new AppError("NO_DOSSIER", "dossierId is required (§6.7 analytical)", 422);
+  if (!dossierId) throw new AppError("NO_DOSSIER", "an operations file id is required (§6.7 analytical)", 422);
 
   // Resolved from ('finance','accounts'), NOT a JS literal. The old default was
   // "521", which is_postable=false (9000:77) — assert_line_valid (0640:150)
@@ -79,7 +79,7 @@ async function recordCostInner(client, opts) {
 
   const { entry } = await journalEntry.buildAndInsert(client, {
     journalCode: "OD", entityId, entryDate,
-    description: "Dossier cost" + (category ? " — " + category : ""), sourceDocRef, source: "SYSTEM_RULE",
+    description: "Operations file cost" + (category ? " — " + category : ""), sourceDocRef, source: "SYSTEM_RULE",
     lines: [
       { account_code: debitAccount, debit: amount, credit: 0, dossier_id: dossierId, dictionary_item_id: dictionaryItemId, is_disbursement: isDisbursement === true },
       { account_code: treasury, debit: 0, credit: amount, dossier_id: dossierId },

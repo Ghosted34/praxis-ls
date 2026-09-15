@@ -80,6 +80,32 @@ async function mount(at: string, AppRouter: React.ComponentType) {
 
 const CRASH = /something went wrong|erreur inattendue|Something broke/i;
 
+/**
+ * The home hero's heading, matched across the accent span AND the staged words.
+ *
+ * `site.hero.title` is ONE sentence in the dictionary and SEVERAL nodes in the
+ * DOM. `SectionHead` renders the accent word in its own `<span>`
+ * (doc/UI_UPGRADE_PLAN.md §4 pattern 2), and `StagedLines` splits the rest into
+ * one span per word plus a visually-hidden copy of the whole sentence — the
+ * copy being what gives the heading its accessible name, since every animated
+ * fragment is `aria-hidden` and ARIA forbids `aria-label` on a generic element.
+ *
+ * So `textContent` is now the sentence with its first half repeated, and
+ * matching on it was always the fragile choice. What these cases are actually
+ * asserting is "the home page rendered rather than redirecting to itself", and
+ * the robust way to say that is to normalise the whitespace and ask whether the
+ * heading CONTAINS the sentence — which survives any further splitting of the
+ * line.
+ */
+const squash = (text: string) => text.replace(/\s+/g, " ").trim();
+
+const heroTitle =
+  () =>
+  (_: string, el: Element | null): boolean => {
+    if (el?.tagName !== "H1") return false;
+    return squash(el.textContent || "").includes(squash(dict("site.hero.title")));
+  };
+
 beforeEach(() => {
   vi.stubGlobal(
     "fetch",
@@ -142,7 +168,7 @@ describe("routes on a host the site owns", () => {
     // The assertion that matters is the location: a redirect loop leaves the
     // path unchanged too, so the copy is checked as well.
     await waitFor(() => expect(getByTestId("loc").textContent).toBe("/"));
-    expect(await findByText(dict("site.hero.title"))).toBeTruthy();
+    expect(await findByText(heroTitle())).toBeTruthy();
     expect(queryByText(CRASH)).toBeNull();
   });
 
@@ -206,7 +232,7 @@ describe("routes on a renamed prefix", () => {
     const { AppRouter } = await routerAt("/site");
     const { getByTestId, findByText } = await mount("/site", AppRouter);
     await waitFor(() => expect(getByTestId("loc").textContent).toBe("/site"));
-    expect(await findByText(dict("site.hero.title"))).toBeTruthy();
+    expect(await findByText(heroTitle())).toBeTruthy();
 
     const second = await mount("/public/track?ref=Q", AppRouter);
     await waitFor(() =>

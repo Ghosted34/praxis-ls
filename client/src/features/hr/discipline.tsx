@@ -7,6 +7,7 @@ import { pageShell } from "@/lib/layout";
 import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { Textarea } from "@/components/ui/textarea";
+import { DateField } from "@/components/ui/date-field";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
@@ -319,10 +320,9 @@ function NewSanction({
             />
           </Field>
           <Field label="Effective date">
-            <Input
-              type="date"
+            <DateField
               value={f.effective_date}
-              onChange={(e) => set("effective_date", e.target.value)}
+              onChange={(iso) => set("effective_date", iso)}
             />
           </Field>
         </div>

@@ -5,16 +5,24 @@ import { Honeypot, Input, Select, Textarea } from "@/components/ui/field";
 import { PlaceInput } from "@/components/ui/place-input";
 import { FileInput, type Attachment } from "@/components/ui/file-input";
 import { Stepper, type Step } from "@/components/ui/stepper";
-import { ErrorState, ModeIcon, SuccessState } from "@/components/state";
+import { cn } from "@/lib/cn";
+import { ErrorState, SuccessState } from "@/components/state";
 import { ArrowRightIcon } from "@/components/ui/icons";
+import { SelectCard } from "@/components/ui/select-card";
 import { quoteRequests, type QuoteRequest } from "@/lib/intake-api";
 import type { PlacePick } from "@/lib/places-api";
 import { useIntake } from "@/lib/use-intake";
 import { useWizardDraft } from "@/lib/use-wizard-draft";
 import { getLang } from "@/lib/i18n";
-import { cn } from "@/lib/cn";
-import type { ServiceCard } from "@/lib/services-api";
+import type { EnquiryShape, ServiceCard, ServiceMode } from "@/lib/services-api";
 import { pickText, pickSlug } from "@/lib/services-api";
+import {
+  MODE_ICONS,
+  modesOf,
+  routeLabelKeys,
+  servicesIn,
+  shapeOfMode,
+} from "@/lib/service-modes";
 
 /**
  * The quote desk, as four questions instead of one wall of fields.
@@ -68,21 +76,39 @@ const WAREHOUSE_DURATIONS = [
 ] as const;
 
 /**
- * The four modes the route labels branch on.
+ * The modes offered when the tenant has published NO services.
  *
- * Deliberately the visitor's own words rather than a `service_type.key`: this
- * is asked BEFORE the service is chosen, and a tenant's taxonomy is theirs to
- * name. It never leaves the browser — it decides labels and which step is
- * shown, and the answer that reaches the desk is `service_category`.
+ * ── WHY THERE IS STILL A LITERAL HERE ──────────────────────────────────────
+ *
+ * These four were once the whole of the first question, hardcoded, on every
+ * tenant — which asked a stranger to classify their shipment with a taxonomy
+ * the tenant does not own, and then asked them to TYPE the service name that
+ * the tenant does. Both are gone: where services are published, `modesOf` reads
+ * the modes off them and the service is picked, never typed.
+ *
+ * What survives is the pre-launch state, and it survives deliberately. A tenant
+ * whose service profiles are still drafts has a live quote page and no way to
+ * describe anything on it, and a form that answers "we cannot ask you yet" is
+ * worse for them than four ordinary freight options and a free-text line. It is
+ * the fallback, not the design — all four disappear the moment a profile is
+ * published.
  */
-type Mode = "SEA" | "AIR" | "ROAD" | "WAREHOUSE";
-const MODES: Mode[] = ["SEA", "AIR", "ROAD", "WAREHOUSE"];
+const FALLBACK_MODES: ServiceMode[] = ["SEA", "AIR", "ROAD", "WAREHOUSE"];
+
+/** How many service names a mode card lists before it stops. Three is where the
+ *  card is naming what the mode covers rather than reprinting the services page
+ *  into a radio button. */
+const NAMES_ON_CARD = 3;
 
 const EMAIL_RE = /.+@.+\..+/;
 const DRAFT_KEY = "praxis.quote.draft";
 
 type Draft = {
-  mode: Mode | "";
+  mode: ServiceMode | "";
+  /** The published service the visitor picked, so a restored draft re-selects
+   *  the same row rather than matching on a name that may since have been
+   *  reworded. Empty on the no-services fallback, where there is no row. */
+  service_type_id: string;
   service_category: string;
   origin_location: string;
   destination_location: string;
@@ -101,6 +127,7 @@ type Draft = {
 
 const EMPTY: Draft = {
   mode: "",
+  service_type_id: "",
   service_category: "",
   origin_location: "",
   destination_location: "",
@@ -117,19 +144,33 @@ const EMPTY: Draft = {
   requester_phone: "",
 };
 
-/** Which of the four route labels a mode asks for. */
-const ROUTE_LABELS: Record<Mode, { origin: string; destination: string }> = {
-  SEA: { origin: "originPort", destination: "destinationPort" },
-  AIR: { origin: "originAirport", destination: "destinationAirport" },
-  ROAD: { origin: "originPlace", destination: "destinationPlace" },
-  WAREHOUSE: { origin: "originPlace", destination: "destinationPlace" },
-};
-
-export function QuoteWizard({ services = [] }: { services?: ServiceCard[] }) {
+export function QuoteWizard({
+  services = [],
+  /**
+   * The service this form was opened FROM — the profile page's own quote band.
+   *
+   * That page rendered the wizard with no services and no context at all, so a
+   * visitor who had just read a page about sea freight import was asked, on the
+   * same screen, how their cargo was moving and which service they wanted. The
+   * answer was two scrolls above them. Passing the row makes the first step
+   * arrive already answered, and it stays editable: somebody may open the sea
+   * page and decide they want the air service.
+   */
+  preselect = null,
+}: {
+  services?: ServiceCard[];
+  preselect?: ServiceCard | null;
+}) {
   const { t } = useTranslation();
   const lang = getLang();
+  const hasServices = services.length > 0;
+  /* The first question, built from the tenant's own published services — or the
+     pre-launch literal when there are none. */
+  const modes = hasServices ? modesOf(services) : FALLBACK_MODES;
   const [f, setF, clearDraft] = useWizardDraft<Draft>(DRAFT_KEY, EMPTY);
   const [step, setStep] = React.useState(0);
+  /** Whether the visitor has changed step yet — see `goTo`. */
+  const [moved, setMoved] = React.useState(false);
   const [furthest, setFurthest] = React.useState(0);
   // Shown only after an attempt to advance: pointing at a field somebody has
   // not reached yet is nagging, not validating.
@@ -148,14 +189,157 @@ export function QuoteWizard({ services = [] }: { services?: ServiceCard[] }) {
     onFailed: t("site.quote.err"),
   });
 
-  const warehousing = f.mode === "WAREHOUSE";
+  /**
+   * What this enquiry has to ask — the service's own answer where one is
+   * chosen, the mode's otherwise.
+   *
+   * This used to be `mode === "WAREHOUSE"`, which meant every service that was
+   * not warehousing got origin, destination and a required Incoterm. Business
+   * representation — somebody asking the tenant to act for them locally, with no
+   * cargo — was made to answer all three before the form would continue. The
+   * tenant now says which shape each service is (migration 12774) and the form
+   * reads it, so the sixteenth service they add is right too.
+   */
+  const chosen = services.find((x) => x.service_type_id === f.service_type_id);
+  const shape: EnquiryShape = chosen
+    ? chosen.enquiry_shape
+    : shapeOfMode(services, f.mode);
+  const warehousing = shape === "STORAGE";
+  /* No movement to describe, so no step to describe it in. The wizard is three
+     screens for these services, not four with one that cannot be answered. */
+  const noRoute = shape === "NONE";
+  /* What is on offer under the mode currently picked. One service is not a
+     question — it is the answer, and the effect below fills it in rather than
+     opening a select with a single option in it. */
+  const choices = servicesIn(services, f.mode);
 
+  const applyService = React.useCallback(
+    (row: ServiceCard) =>
+      setF((prev) => ({
+        ...prev,
+        mode: row.mode,
+        service_type_id: row.service_type_id,
+        // The NAME, in the visitor's language, because that is what lands on the
+        // desk: `quote_request.service_category` is free text, and the person
+        // reading the lead wants the service as their own site words it.
+        service_category: pickText(row, "name", lang) || pickSlug(row, lang),
+      })),
+    [setF, lang],
+  );
+
+  /* A mode with exactly one service under it answers its own second question.
+     An effect rather than a line in the click handler, so it also covers a draft
+     restored from a previous visit and a mode arriving via `preselect` — three
+     routes into the same state, one place that settles it. */
+  React.useEffect(() => {
+    if (!f.mode || f.service_category.trim()) return;
+    const only = servicesIn(services, f.mode);
+    if (only.length === 1) applyService(only[0]);
+  }, [f.mode, f.service_category, services, applyService]);
+
+  const preselectId = preselect?.service_type_id || "";
+  React.useEffect(() => {
+    if (!preselect || !preselectId) return;
+    // Never over a draft in progress: somebody who half-filled this form and
+    // came back through a different service page keeps what they typed.
+    setF((prev) =>
+      prev.service_category.trim()
+        ? prev
+        : {
+            ...prev,
+            mode: preselect.mode,
+            service_type_id: preselect.service_type_id,
+            service_category:
+              pickText(preselect, "name", lang) || pickSlug(preselect, lang),
+          },
+    );
+    // `preselectId` only — the row object is rebuilt on every parent render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preselectId]);
+
+  /**
+   * Changing the mode drops a service that does not belong to the new one.
+   *
+   * Without this the form can be submitted saying "By air" and "Sea freight
+   * import", which is a lead the desk has to telephone about before it can
+   * price anything. On the fallback path there is no row to validate against,
+   * so the free text the visitor typed is left alone.
+   */
+  /**
+   * The services under a mode, as the card's description.
+   *
+   * ONE PER LINE, not joined by "·". The joined version wrapped mid-list on
+   * every card wide enough to hold two names, which left a separator dangling
+   * at the end of a line looking like a typo — and made three services read as
+   * one long run-on the eye has to parse before it can count them. A short
+   * stacked list is countable at a glance, which is the only thing this text
+   * has to do.
+   *
+   * Cut at three with a remainder line rather than an ellipsis: "+2 more" says
+   * how much is behind the card, and "…" says only that something is.
+   */
+  function namesUnder(m: ServiceMode): React.ReactNode {
+    const rows = servicesIn(services, m);
+    const rest = rows.length - NAMES_ON_CARD;
+    return (
+      <span className="block space-y-0.5">
+        {rows.slice(0, NAMES_ON_CARD).map((sv) => (
+          <span key={sv.service_type_id} className="block truncate">
+            {pickText(sv, "name", lang) || pickSlug(sv, lang)}
+          </span>
+        ))}
+        {rest > 0 && (
+          <span className="block opacity-70">
+            {t("site.quote.modeMore", { count: rest })}
+          </span>
+        )}
+      </span>
+    );
+  }
+
+  function pickMode(m: ServiceMode) {
+    if (!hasServices) {
+      set("mode", m);
+      return;
+    }
+    setF((prev) => {
+      const keep = services.some(
+        (x) => x.service_type_id === prev.service_type_id && x.mode === m,
+      );
+      return keep
+        ? { ...prev, mode: m }
+        : { ...prev, mode: m, service_type_id: "", service_category: "" };
+    });
+  }
+
+  /**
+   * The steps this enquiry actually has.
+   *
+   * BUILT, not a constant. A `NONE` service drops the route step entirely, so
+   * the wizard is three screens — and everything downstream reads positions out
+   * of THIS array rather than assuming step 1 is the route. That is the whole
+   * reason `problems()` below switches on a step KEY instead of an index: with a
+   * variable list, an index means a different question depending on what was
+   * picked, and validation keyed on one is validation of the wrong field.
+   */
   const STEPS: Step[] = [
     { key: "need", label: t("site.quote.stepNeed") },
-    { key: "route", label: warehousing ? t("site.quote.stepStorage") : t("site.quote.stepRoute") },
+    ...(noRoute
+      ? []
+      : [
+          {
+            key: "route",
+            label: warehousing ? t("site.quote.stepStorage") : t("site.quote.stepRoute"),
+          },
+        ]),
     { key: "details", label: t("site.quote.stepDetails") },
     { key: "contact", label: t("site.quote.stepContact") },
   ];
+  /* Clamped, because the list can shorten under somebody standing on its last
+     step: pick a route service, reach "Your details" at index 3, go back and
+     switch to a NONE service, and index 3 no longer exists. */
+  const stepIndex = Math.min(step, STEPS.length - 1);
+  const stepKey = STEPS[stepIndex].key;
 
   /**
    * What each step will not let through.
@@ -164,13 +348,13 @@ export function QuoteWizard({ services = [] }: { services?: ServiceCard[] }) {
    * agree — three copies of this is how a wizard ends up letting somebody reach
    * the last screen and then refusing on a field two steps back.
    */
-  function problems(index: number): Record<string, string> {
+  function problems(key: string): Record<string, string> {
     const out: Record<string, string> = {};
-    if (index === 0) {
+    if (key === "need") {
       if (!f.mode) out.mode = t("site.quote.errMode");
       if (!f.service_category.trim()) out.service_category = t("site.quote.errService");
     }
-    if (index === 1) {
+    if (key === "route") {
       if (warehousing) {
         if (f.warehouse_location.trim().length < 2) out.warehouse_location = t("site.quote.errWarehouse");
       } else {
@@ -179,7 +363,7 @@ export function QuoteWizard({ services = [] }: { services?: ServiceCard[] }) {
         if (!f.incoterm) out.incoterm = t("site.quote.errIncoterm");
       }
     }
-    if (index === 3) {
+    if (key === "contact") {
       if (f.requester_name.trim().length < 2) out.requester_name = t("site.quote.errName");
       if (!EMAIL_RE.test(f.requester_email.trim())) out.requester_email = t("site.quote.errEmail");
     }
@@ -188,23 +372,33 @@ export function QuoteWizard({ services = [] }: { services?: ServiceCard[] }) {
 
   // Step 2 (details) asks nothing required — every field on it is a nicety that
   // makes a better quote, and gating on one would be inventing a requirement.
-  const localErrors = showErrors ? problems(step) : {};
+  const localErrors = showErrors ? problems(stepKey) : {};
   const err = (k: string) => localErrors[k] || intake.fields[k] || undefined;
 
   function goTo(index: number) {
     setStep(index);
     setShowErrors(false);
+    /*
+     * §8.3's step transition arms itself only once the visitor has MOVED.
+     *
+     * "An entrance that does not delay the form" — so the first step paints at
+     * full opacity with no animation at all. Arming here rather than deriving
+     * it from `step > 0` also covers the visitor who jumps backwards to step
+     * one from the dots, who has moved and should see the same response as
+     * anybody else.
+     */
+    setMoved(true);
     // Focus the new step's heading rather than its first input: a screen reader
     // should hear which question it is now on before being dropped into a field.
     window.requestAnimationFrame(() => headingRef.current?.focus());
   }
 
   function next() {
-    if (Object.keys(problems(step)).length > 0) {
+    if (Object.keys(problems(stepKey)).length > 0) {
       setShowErrors(true);
       return;
     }
-    const to = Math.min(step + 1, STEPS.length - 1);
+    const to = Math.min(stepIndex + 1, STEPS.length - 1);
     setFurthest((v) => Math.max(v, to));
     goTo(to);
   }
@@ -213,8 +407,11 @@ export function QuoteWizard({ services = [] }: { services?: ServiceCard[] }) {
     e.preventDefault();
     // Every step, not just this one — the dots let somebody jump back and leave
     // an earlier one incomplete.
+    // By key, over the steps this enquiry HAS. The old index loop checked
+    // positions 0..3 whether or not they existed, so a three-step enquiry
+    // validated its contact fields as though they were the route.
     for (let i = 0; i < STEPS.length; i += 1) {
-      if (Object.keys(problems(i)).length > 0) {
+      if (Object.keys(problems(STEPS[i].key)).length > 0) {
         setShowErrors(true);
         goTo(i);
         setShowErrors(true);
@@ -234,8 +431,12 @@ export function QuoteWizard({ services = [] }: { services?: ServiceCard[] }) {
       estimated_weight: Number.isFinite(weight) && weight > 0 ? weight : undefined,
       // `N/A` rather than a blank: the schema requires an incoterm, and a
       // warehousing enquiry genuinely has none. Saying so is an answer.
-      incoterm: warehousing ? "N/A" : f.incoterm,
-      ...(warehousing
+      // `N/A` rather than a blank wherever there is genuinely no delivery term:
+      // the intake schema requires the field, and saying "none" is an answer.
+      incoterm: warehousing || noRoute ? "N/A" : f.incoterm,
+      ...(noRoute
+        ? {}
+        : warehousing
         ? {
             warehouse_location: f.warehouse_location.trim(),
             warehouse_duration:
@@ -282,18 +483,21 @@ export function QuoteWizard({ services = [] }: { services?: ServiceCard[] }) {
     );
   }
 
-  const hasServices = services.length > 0;
-  const labels = ROUTE_LABELS[(f.mode || "ROAD") as Mode];
+  const labels = routeLabelKeys(f.mode);
 
   return (
     <form onSubmit={onSubmit} className="space-y-6" noValidate>
       <Stepper
         steps={STEPS}
-        current={step}
-        furthest={furthest}
+        current={stepIndex}
+        /* Clamped for the same reason `stepIndex` is: the furthest step
+           somebody reached on a four-step enquiry is not a step that exists
+           after they switch to a service with no route, and a dot that jumps to
+           nothing is worse than one that is not offered. */
+        furthest={Math.min(furthest, STEPS.length - 1)}
         onGoTo={goTo}
         label={t("site.quote.stepsLabel")}
-        counter={t("site.quote.stepCounter", { step: step + 1, total: STEPS.length })}
+        counter={t("site.quote.stepCounter", { step: stepIndex + 1, total: STEPS.length })}
       />
 
       {intake.error && (
@@ -303,20 +507,27 @@ export function QuoteWizard({ services = [] }: { services?: ServiceCard[] }) {
       {/* Centred, like every step on their portal. On a form this wide a
           left-aligned question sits under the step dots and reads as a caption
           for them; centred, it reads as the thing being asked. */}
-      <div className="text-center">
+      {/* THE HEADING MOVES; THE FIELDS DO NOT. §8.3's rule is "never animate a
+          field into place under a cursor", so the rise is confined to the two
+          elements here — neither of them clickable — and the panel below fades
+          without a transform. `key` is the step, so React replays the animation
+          on each change rather than only on mount. */}
+      <div key={`head-${stepKey}`} className={cn("text-center", moved && "step-head")}>
         <h3
           ref={headingRef}
           tabIndex={-1}
           className="font-display text-h3 font-semibold tracking-tight outline-none"
         >
-          {STEPS[step].label}
+          {STEPS[stepIndex].label}
         </h3>
         <p className="mx-auto mt-2 max-w-measure text-muted-foreground">
-          {t(`site.quote.stepHint${step}`)}
+          {t(`site.quote.stepHint_${stepKey}`)}
         </p>
       </div>
 
-      {step === 0 && (
+      <div key={`panel-${stepKey}`} className={cn(moved && "step-panel")}>
+
+      {stepKey === "need" && (
         <div className="space-y-4">
           <fieldset>
             <legend className="field-label">{t("site.quote.mode")}</legend>
@@ -334,62 +545,44 @@ export function QuoteWizard({ services = [] }: { services?: ServiceCard[] }) {
               focus ring is drawn on the card via `peer-focus-visible` and the
               real control keeps the keyboard behaviour.
             */}
-            <div className="mt-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {MODES.map((m) => (
-                <label key={m} className="group relative block cursor-pointer">
-                  <input
-                    type="radio"
-                    name="quote-mode"
-                    value={m}
-                    checked={f.mode === m}
-                    onChange={() => set("mode", m)}
-                    className="peer sr-only"
-                  />
-                  <span
-                    className={cn(
-                      "flex h-full flex-col rounded-[var(--radius)] border p-4 transition-all duration-200",
-                      "peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-[var(--brand-orange)]",
-                      f.mode === m
-                        ? // Three things change at once, deliberately. A
-                          // selected state carried by border colour alone is
-                          // invisible on a phone in sunlight and invisible to
-                          // anyone who does not see that hue — which is what our
-                          // first version did.
-                          "border-[var(--brand-orange)] bg-[rgb(var(--brand-orange)/0.06)] shadow-[0_0_0_1px_var(--brand-orange),0_8px_24px_-12px_var(--brand-orange)]"
-                        : "hover:border-[rgb(var(--ink)/0.25)] hover:bg-[rgb(var(--ink)/0.03)]",
-                    )}
-                  >
-                    {/* The icon TILE. Their cards fill it on selection, and the
-                        filled square is what reads as "chosen" from across a
-                        room — the glyph alone does not. */}
-                    <span
-                      aria-hidden
-                      className={cn(
-                        "mb-3 inline-flex h-11 w-11 items-center justify-center rounded-[calc(var(--radius)-2px)] transition-colors",
-                        f.mode === m
-                          ? "bg-[var(--brand-orange)] text-[var(--primary-foreground)]"
-                          : "bg-[rgb(var(--ink)/0.06)] text-muted-foreground",
-                      )}
-                    >
-                      <ModeIcon mode={m} size={22} />
-                    </span>
-                    <span
-                      className={cn(
-                        "font-medium leading-snug",
-                        f.mode === m && "font-semibold",
-                      )}
-                    >
-                      {t(`site.quote.mode${m}`)}
-                    </span>
-                    {/* The line ours was missing entirely. A prospect who does
-                        not know whether "By road or rail" covers a Douala →
-                        N'Djamena run picks nothing, and picking nothing is where
-                        this form loses them. */}
-                    <span className="mt-1 text-sm text-muted-foreground">
-                      {t(`site.quote.mode${m}Hint`)}
-                    </span>
-                  </span>
-                </label>
+            {/* The shared component, not a hand-rolled copy of it. This block
+                WAS the hand-roll the plan's acceptance list tells a reviewer to
+                catch: the card, the ring and the three-signal selected state
+                were written here, and `--pick-ring` — the token §5 added for
+                exactly this — sat unused while the same two shadow values were
+                spelled out inline. One implementation, one token. */}
+            {/* Three across, not four. The mode list is read off the tenant's
+                published services now, so its length is theirs — seven on a
+                full freight taxonomy — and a four-column grid turns that into a
+                filled row and a ragged one. At three the last row is short by
+                the same amount but the cards are wider, which is what the
+                service names underneath them needed anyway. */}
+            <div className="mt-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {modes.map((m) => (
+                <SelectCard
+                  key={m}
+                  name="quote-mode"
+                  value={m}
+                  checked={f.mode === m}
+                  onChange={(v) => pickMode(v as ServiceMode)}
+                  icon={MODE_ICONS[m]}
+                  title={t(`site.quote.mode${m}`)}
+                  /* The tenant's OWN service names, where there are any.
+ 
+                     "By sea — Sea freight import · Sea freight export ·
+                     End-to-end sea freight" answers the question the generic
+                     hint could only gesture at, and it answers it in the words
+                     the rest of the site uses. The dictionary hint is what is
+                     left when nothing is published: a prospect who does not know
+                     whether "By road or rail" covers a Douala → N'Djamena run
+                     picks nothing, and picking nothing is where this form loses
+                     them. */
+                  description={
+                    hasServices
+                      ? namesUnder(m)
+                      : t(`site.quote.mode${m}Hint`)
+                  }
+                />
               ))}
             </div>
             {err("mode") && (
@@ -399,22 +592,21 @@ export function QuoteWizard({ services = [] }: { services?: ServiceCard[] }) {
             )}
           </fieldset>
 
-          {hasServices ? (
-            <Select
-              label={t("site.quote.service")}
-              required
-              value={f.service_category}
-              error={err("service_category")}
-              onChange={(e) => set("service_category", e.target.value)}
-              options={[
-                { value: "", label: t("site.quote.servicePick") },
-                ...services.map((s) => ({
-                  value: pickText(s, "name", lang) || pickSlug(s, lang),
-                  label: pickText(s, "name", lang) || "",
-                })),
-              ]}
-            />
-          ) : (
+          {/*
+            THE SECOND HALF OF THE STEP, IN THREE STATES.
+
+            · Several services under the mode → a select of those services, and
+              only those. The old version listed every published service under
+              every mode, so "By air" could be submitted with "Sea freight
+              import" next to it.
+            · Exactly one → nothing to ask. It is set for them and shown as a
+              line of text, because a select with one option is a question with
+              one answer and reads as a form that has not finished loading.
+            · No published services at all → the free-text box, which is the
+              pre-launch fallback and the only path that still asks anybody to
+              type the name of a service the tenant sells.
+          */}
+          {!hasServices ? (
             <Input
               label={t("site.quote.service")}
               required
@@ -423,11 +615,38 @@ export function QuoteWizard({ services = [] }: { services?: ServiceCard[] }) {
               error={err("service_category")}
               onChange={(e) => set("service_category", e.target.value)}
             />
-          )}
+          ) : choices.length > 1 ? (
+            <Select
+              label={t("site.quote.service")}
+              required
+              value={f.service_type_id}
+              error={err("service_category")}
+              onChange={(e) => {
+                const row = services.find(
+                  (x) => x.service_type_id === e.target.value,
+                );
+                if (row) applyService(row);
+              }}
+              options={[
+                { value: "", label: t("site.quote.servicePick") },
+                ...choices.map((sv) => ({
+                  value: sv.service_type_id,
+                  label: pickText(sv, "name", lang) || pickSlug(sv, lang),
+                })),
+              ]}
+            />
+          ) : f.service_category ? (
+            <p className="rounded-[calc(var(--radius)-2px)] border bg-[var(--secondary)] px-3 py-2.5 text-sm">
+              <span className="text-muted-foreground">
+                {t("site.quote.service")}:{" "}
+              </span>
+              <span className="font-medium">{f.service_category}</span>
+            </p>
+          ) : null}
         </div>
       )}
 
-      {step === 1 && !warehousing && (
+      {stepKey === "route" && !warehousing && (
         <div className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <PlaceInput
@@ -467,7 +686,7 @@ export function QuoteWizard({ services = [] }: { services?: ServiceCard[] }) {
         </div>
       )}
 
-      {step === 1 && warehousing && (
+      {stepKey === "route" && warehousing && (
         <div className="grid gap-4 sm:grid-cols-2">
           <PlaceInput
             id="q-warehouse"
@@ -498,7 +717,7 @@ export function QuoteWizard({ services = [] }: { services?: ServiceCard[] }) {
         </div>
       )}
 
-      {step === 2 && (
+      {stepKey === "details" && (
         <div className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <Input
@@ -518,7 +737,7 @@ export function QuoteWizard({ services = [] }: { services?: ServiceCard[] }) {
                   type="checkbox"
                   checked={f.project_cargo_flag}
                   onChange={(e) => set("project_cargo_flag", e.target.checked)}
-                  className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--brand-orange)]"
+                  className="mt-0.5 h-4 w-4 shrink-0 accent-[rgb(var(--brand-orange))]"
                 />
                 <span className="min-w-0">
                   <span className="block font-medium">{t("site.quote.projectCargo")}</span>
@@ -548,7 +767,7 @@ export function QuoteWizard({ services = [] }: { services?: ServiceCard[] }) {
         </div>
       )}
 
-      {step === 3 && (
+      {stepKey === "contact" && (
         <div className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <Input
@@ -596,18 +815,24 @@ export function QuoteWizard({ services = [] }: { services?: ServiceCard[] }) {
         </div>
       )}
 
+      </div>
+
+      {/* OUTSIDE the animated panel, deliberately. The honeypot must be present
+          and inert for a scraper on every step; wrapping it in an element that
+          animates would be a behavioural change to spam handling made for a
+          visual reason. */}
       {/* The honeypot: present for a scraper, invisible for a person. */}
       <Honeypot value={intake.honeypot} onChange={intake.setHoneypot} />
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
         <p className="text-xs text-muted-foreground">{t("site.quote.privacy")}</p>
         <div className="flex items-center gap-2">
-          {step > 0 && (
-            <Button type="button" variant="outline" onClick={() => goTo(step - 1)}>
+          {stepIndex > 0 && (
+            <Button type="button" variant="outline" onClick={() => goTo(stepIndex - 1)}>
               {t("common.back")}
             </Button>
           )}
-          {step < STEPS.length - 1 ? (
+          {stepIndex < STEPS.length - 1 ? (
             <Button type="button" size="lg" onClick={next}>
               {t("site.quote.next")}
               <ArrowRightIcon size={16} className="ml-2" />

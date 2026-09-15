@@ -128,6 +128,12 @@ function renderShell() {
   return renderScreen(<AppShell />);
 }
 
+/** The shell at a given route — the chat workstation is the one that used to
+ *  suppress the floating cluster. */
+function renderShellAt(path: string) {
+  return renderScreen(<AppShell />, { path });
+}
+
 describe("title bar strip", () => {
   it("renders as the app's utility bar where there is no window to overlay", () => {
     // jsdom implements no WCO, which is the same situation as a browser tab and
@@ -243,13 +249,80 @@ describe("title bar strip", () => {
       strip.getByRole("button", { name: /data environment/i }),
     ).toBeInTheDocument();
     expect(
-      strip.getByRole("button", { name: /quick actions/i }),
-    ).toBeInTheDocument();
-    expect(
       strip.getByRole("button", { name: /notification/i }),
     ).toBeInTheDocument();
     // Nothing in the strip is a placeholder.
     expect(container.querySelector(".wco .animate-pulse")).toBeNull();
+  });
+
+  /**
+   * AND NO QUICK-ACTIONS TRIGGER, AT ANY WIDTH.
+   *
+   * It was a burst icon in a strip where every other control says what it is,
+   * and it put Messages in the title bar while the icon rail already carried
+   * Messages — one destination, two chrome homes, and an unread count that had
+   * to be duplicated between them to stay honest. The rail's own Messages cell
+   * carries the count now (`icon-rail.tsx`), and the touch cluster is the
+   * surface below `md`.
+   *
+   * Asserted as an ABSENCE because that is the whole requirement: a control
+   * removed on purpose comes back the next time someone needs somewhere to put
+   * a button, and a strip is where buttons go when nobody has said no.
+   */
+  it("has no quick-actions trigger in the strip", () => {
+    const { container } = renderShell();
+    const strip = within(container.querySelector<HTMLElement>(".wco")!);
+    expect(
+      strip.queryByRole("button", { name: /quick actions/i }),
+    ).toBeNull();
+  });
+
+  /**
+   * THE BELL IS IN THE STRIP ON A PHONE TOO.
+   *
+   * It was `hidden … sm:grid`, and below 640px nothing replaced it: the bottom
+   * nav carries the navigation families and nothing else, and the touch cluster
+   * carries Praxis AI / Messages / Help. So a phone had the unread count on the
+   * tab title and on the installed app's icon — two places it cannot be ACTED
+   * on — and no route to the notifications short of typing /notifications.
+   *
+   * jsdom has no viewport, so the class is what is asserted: the point is that
+   * no width-gated class hides it, not that a particular pixel width renders.
+   */
+  it("keeps the notification bell at every width, phone included", () => {
+    const { container } = renderShell();
+    const strip = within(container.querySelector<HTMLElement>(".wco")!);
+    const bell = strip.getByRole("button", { name: /notification/i });
+    expect(bell.className).not.toMatch(/(^|\s)hidden(\s|$)/);
+    expect(bell.className).toContain("grid");
+  });
+
+  /**
+   * THE FLOATING CLUSTER APPEARS ON SMART COMMS TOO.
+   *
+   * It was `!chatWorkstation &&`, because the cluster lands on the composer's
+   * Send button — the mic, when nothing is typed, which is the control that
+   * sends a voice note. The stand-in was the title bar's quick-actions menu,
+   * and that menu is gone at every width: keeping the exception would leave a
+   * phone in Smart Comms with no quick actions and no clock-in at all.
+   *
+   * The overlap is settled where it is caused — the composer publishes
+   * `--fab-floor` and the cluster anchors above it (`lib/fab-floor.ts`) — so
+   * what belongs here is only that the shell no longer makes an exception of
+   * the route. Portalled to <body>, hence `screen` and not `container`.
+   */
+  it("renders the floating cluster on the chat workstation, not only off it", () => {
+    renderShellAt("/comms");
+    expect(
+      screen.getByRole("button", { name: /Quick actions/ }),
+    ).toBeInTheDocument();
+  });
+
+  it("renders it on an ordinary screen too", () => {
+    renderShell();
+    expect(
+      screen.getByRole("button", { name: /Quick actions/ }),
+    ).toBeInTheDocument();
   });
 
   it("mounts the icon rail beside the content, not inside the strip", () => {
@@ -280,6 +353,30 @@ describe("title bar strip", () => {
     // `Brand` renders the logo INSTEAD of the name when a tenant has one, so a
     // revert leaves the bar with no readable name at all. This is that check.
     expect(within(strip).getByText("Acme Freight")).toBeInTheDocument();
+  });
+
+  /**
+   * AND THE NAME STANDS DOWN ON A PHONE.
+   *
+   * It is here because this strip REPLACES the OS title bar in an installed
+   * desktop window. There is no WCO on a phone, so below `sm` it is an ordinary
+   * app bar and the name is the one element in it carrying no function — the
+   * icon beside it says the same thing.
+   *
+   * That 60px is what pays for the notification bell rendering at every width.
+   * The class is asserted rather than the rendered width because jsdom lays
+   * nothing out; the CONSEQUENCE — that the drag handle survives at 320px — is
+   * measured in a real browser by `e2e/layout.spec.ts`, which is where the
+   * arithmetic actually happens.
+   */
+  it("hides the app name below sm, keeping the icon", () => {
+    const { container } = renderShell();
+    const strip = container.querySelector<HTMLElement>(".wco")!;
+    const name = within(strip).getByText("Acme Freight");
+    expect(name.className).toContain("hidden");
+    expect(name.className).toContain("sm:inline");
+    // The icon is not gated — the identity survives at every width.
+    expect(strip.querySelector(".wco-mark > :first-child")).not.toBeNull();
   });
 
   /**

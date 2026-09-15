@@ -101,6 +101,28 @@ Brand & go-to-market (added 2026-08):
 - `BRAND_GLOSSARY_FR_EN.md` — every customer-facing term in both languages, plus the French style rules
 - `WEB_BUILD_BRIEF.md` — the implementation brief for the marketing site, built in a separate repo
 
+## 6a. Frontend non-negotiables
+
+Before writing a line of frontend code, read `doc/FRONTEND_GUIDE.md` — it is the
+one frontend document, and CI fails if it describes components that do not
+exist. The rules below are enforced by gates rather than by review, so a PR that
+breaks one does not merge:
+
+| Rule | Enforced by |
+| ---- | ----------- |
+| **No native browser dialogs.** `window.confirm`, `window.alert` and `window.prompt` are banned in `client/`, `platform-console/` and `public-web/`. Use `useConfirm()`, `usePrompt()`, `<Callout>` or `useToast()` — see FRONTEND_GUIDE §3.10. | `praxis/no-native-dialogs` (ESLint, **error**) |
+| No raw palette colours — tokens only, or tenant white-labelling breaks | `npm run check:palette` |
+| Every text-on-surface token pair clears WCAG AA | `npm run check:contrast` |
+| The frontend guide may not name a component that does not exist | `npm run check:docs` |
+| Motion budget | `npm run check:motion` |
+
+The dialog ban is the one most likely to surprise you, so to say it plainly: a
+native dialog is drawn by the **browser**, not by us. It renders as
+"app.praxis-ls.com says", ignores the tenant's white-label branding entirely,
+cannot be translated, and blocks the event loop while it is open. There is no
+version of this product where that is acceptable, which is why it is a lint
+error rather than a convention.
+
 ## 7. Team & working agreement
 
 - Everyone is full-stack; David leans front-end, Victor leans back-end, Blake organises/cleans up/handles deep-linking; Elisha owns AI automation + the Universal Event Engine.

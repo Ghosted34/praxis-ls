@@ -25,4 +25,6 @@ export {
   MilestoneStatePill,
   MilestoneMarker,
   ModeIcon,
+  modeIconFor,
+  motionIcon,
 } from "./shipment-state";

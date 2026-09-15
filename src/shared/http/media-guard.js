@@ -40,6 +40,13 @@ const PUBLIC_SEGMENTS = new Set([
   // /public. Public by definition: it is the first thing a stranger sees, and
   // it has to render before anyone has a token or a session.
   "site",
+  // Rendered email-signature cards. Public by necessity, not by preference: the
+  // card is an <img> inside outbound mail, so it is fetched by a stranger's mail
+  // client with no session and no token. It carries a person's name, job title
+  // and work contact details — exactly what the signature publishes to that
+  // recipient anyway, and nothing else. The filename is hash-suffixed, so it is
+  // not enumerable.
+  "signatures",
 ]);
 
 /**

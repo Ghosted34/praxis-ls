@@ -240,7 +240,7 @@ export function TemplateForm({
       onClose={onClose}
       size="xl"
       title={`Milestone chain — ${svc.name_en || svc.name_fr}`}
-      description="The stages every new dossier of this service type starts with. Publishing creates a new active version; dossiers already open keep the stages they were given."
+      description="The stages every new file of this service type starts with. Publishing creates a new active version; files already open keep the stages they were given."
       headerRight={
         drift > 0 ? (
           <Pill tone="warn">

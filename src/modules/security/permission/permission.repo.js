@@ -7,7 +7,10 @@ const base = makeRepo({
   // SEC H3. The grant matrix. PUT /permissions/grant is validated properly now
   // (permission.validator), but the generic CRUD create/update on the same
   // table still went through passthrough — a second door to the same rows.
-  writable: ["role_id", "module_key", "can_create", "can_read", "can_update", "can_delete", "can_approve"],
+  writable: ["role_id", "module_key", "can_create", "can_read", "can_update", "can_delete", "can_approve",
+    // 12771 — export is a right over data; validate and disburse are the two
+    // decisions maker-checker most wants apart from "approve".
+    "can_export", "can_validate", "can_disburse"],
   table: "permission",
   pk: "permission_id",
   activeColumn: null,
@@ -79,19 +82,37 @@ async function visibleModuleKeys(client, roleIds) {
  * Upsert a grant by its natural key (role_id, module_key) — the grant-matrix
  * edits by role×module, not by permission_id. Relies on the table's
  * UNIQUE(role_id, module_key). Returns the resulting row.
+ *
+ * AN ABSENT FLAG IS LEFT ALONE, NOT REVOKED (12771). It used to write every
+ * column from EXCLUDED, so a caller that did not send `can_export` set it to
+ * false — and since 12771 backfilled the three new flags from what gated them
+ * before, the first edit of any cell from a client that predates them would
+ * have quietly revoked export, validate and disburse across that whole row.
+ * `undefined` now means "unchanged" and the flags are coalesced against the
+ * stored row. A client that means to revoke sends `false`, which is a value.
  */
 async function upsertGrant(client, g) {
+  const flag = (v) => (v === undefined || v === null ? null : !!v);
   const { rows } = await client.query(
-    `INSERT INTO permission (role_id, module_key, can_create, can_read, can_update, can_delete, can_approve)
-     VALUES ($1,$2,$3,$4,$5,$6,$7)
+    `INSERT INTO permission (role_id, module_key,
+       can_create, can_read, can_update, can_delete, can_approve,
+       can_export, can_validate, can_disburse)
+     VALUES ($1,$2,
+       COALESCE($3,false), COALESCE($4,false), COALESCE($5,false), COALESCE($6,false), COALESCE($7,false),
+       COALESCE($8,false), COALESCE($9,false), COALESCE($10,false))
      ON CONFLICT (role_id, module_key) DO UPDATE SET
-       can_create = EXCLUDED.can_create,
-       can_read   = EXCLUDED.can_read,
-       can_update = EXCLUDED.can_update,
-       can_delete = EXCLUDED.can_delete,
-       can_approve = EXCLUDED.can_approve
+       can_create   = COALESCE($3,  permission.can_create),
+       can_read     = COALESCE($4,  permission.can_read),
+       can_update   = COALESCE($5,  permission.can_update),
+       can_delete   = COALESCE($6,  permission.can_delete),
+       can_approve  = COALESCE($7,  permission.can_approve),
+       can_export   = COALESCE($8,  permission.can_export),
+       can_validate = COALESCE($9,  permission.can_validate),
+       can_disburse = COALESCE($10, permission.can_disburse)
      RETURNING *`,
-    [g.role_id, g.module_key, !!g.can_create, !!g.can_read, !!g.can_update, !!g.can_delete, !!g.can_approve],
+    [g.role_id, g.module_key,
+      flag(g.can_create), flag(g.can_read), flag(g.can_update), flag(g.can_delete), flag(g.can_approve),
+      flag(g.can_export), flag(g.can_validate), flag(g.can_disburse)],
   );
   return rows[0];
 }

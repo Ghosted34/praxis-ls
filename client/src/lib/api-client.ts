@@ -61,6 +61,18 @@ type Opts = Omit<RequestInit, "body"> & {
   retry?: boolean;
 };
 
+/**
+ * A request body that must travel as multipart rather than JSON.
+ *
+ * FormData is the ONLY body type here that must not be JSON-stringified and
+ * must not carry an explicit Content-Type: the browser has to set that header
+ * itself so it can append the multipart boundary, and a Content-Type we set by
+ * hand would omit the boundary and make the body unparseable server-side.
+ */
+function isMultipart(body: unknown): body is FormData {
+  return typeof FormData !== "undefined" && body instanceof FormData;
+}
+
 let refreshing: Promise<boolean> | null = null;
 
 /**
@@ -365,14 +377,16 @@ export async function apiWithProgress<T = unknown>(
   opts: Opts = {},
   onProgress?: (percent: number) => void,
 ): Promise<T> {
-  const { body, auth = true, retry = true, headers, ...rest } = opts;
+  const { body, auth = true, retry = true, headers, signal, ...rest } = opts;
   const method = String(rest.method || "GET");
+  const multipart = isMultipart(body);
 
   return new Promise<T>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open(method, `/api${path}`);
     const h = new Headers(headers);
-    if (body !== undefined) h.set("Content-Type", "application/json");
+    // Multipart sets its own Content-Type, boundary included — see isMultipart.
+    if (body !== undefined && !multipart) h.set("Content-Type", "application/json");
     h.set("X-Praxis-Env", tokenStore.getEnv());
     if (auth) {
       const t = tokenStore.getAccess();
@@ -461,8 +475,64 @@ export async function apiWithProgress<T = unknown>(
       );
     };
 
-    xhr.send(body === undefined ? undefined : JSON.stringify(body));
+    // Cancellation. An upload is the one request a user genuinely wants to be
+    // able to stop — they picked the wrong file, or it is taking too long on a
+    // bad connection — and without this the bytes keep going regardless of what
+    // the UI shows.
+    if (signal) {
+      if (signal.aborted) {
+        xhr.abort();
+        return;
+      }
+      signal.addEventListener("abort", () => xhr.abort(), { once: true });
+    }
+
+    xhr.send(
+      body === undefined
+        ? undefined
+        : multipart
+          ? (body as FormData)
+          : JSON.stringify(body),
+    );
   });
+}
+
+/**
+ * Upload one file as multipart/form-data, with real progress.
+ *
+ * `fields` are sent alongside the file as ordinary form fields; values are
+ * stringified, and an object or array is JSON-encoded so a route can carry
+ * structured metadata beside the bytes without a second request.
+ */
+export function uploadFile<T = unknown>(
+  path: string,
+  file: File,
+  {
+    field = "file",
+    fields = {},
+    onProgress,
+    signal,
+  }: {
+    field?: string;
+    fields?: Record<string, unknown>;
+    onProgress?: (percent: number) => void;
+    signal?: AbortSignal;
+  } = {},
+): Promise<T> {
+  const form = new FormData();
+  form.append(field, file, file.name);
+  for (const [key, value] of Object.entries(fields)) {
+    if (value === undefined || value === null) continue;
+    form.append(
+      key,
+      typeof value === "object" ? JSON.stringify(value) : String(value),
+    );
+  }
+  return apiWithProgress<T>(
+    path,
+    { method: "POST", body: form, signal },
+    onProgress,
+  );
 }
 
 export const tenant = <T = unknown>(p: string, o?: Opts) =>
@@ -471,7 +541,11 @@ export const tenantWithProgress = <T = unknown>(
   p: string,
   body: unknown,
   onProgress: (percent: number) => void,
-) => apiWithProgress<T>(`/tenant${p}`, { method: "POST", body }, onProgress);
+  /** POST unless told otherwise. An amend — a re-stated licence, a corrected
+   *  number — is a PATCH, and sending it as a POST would open a second row for
+   *  the same card rather than updating the one on file. */
+  method: "POST" | "PATCH" | "PUT" = "POST",
+) => apiWithProgress<T>(`/tenant${p}`, { method, body }, onProgress);
 export const tenantPaged = <T = unknown>(p: string, o?: Opts) =>
   apiPaged<T>(`/tenant${p}`, o);
 export const platform = <T = unknown>(p: string, o?: Opts) =>
@@ -511,6 +585,57 @@ export async function download(path: string, filename: string): Promise<void> {
 }
 export const tenantDownload = (p: string, filename: string) =>
   download(`/tenant${p}`, filename);
+
+/**
+ * Fetch a gated binary endpoint and return an object URL for it.
+ *
+ * WHY THIS EXISTS AND `<img src>` DOES NOT. Auth here is a Bearer token in a
+ * header, and a plain `src` attribute cannot carry one — the browser issues its
+ * own credential-free request and gets a 401. Public assets (a tenant logo, an
+ * avatar) are served unauthenticated under /media and need none of this; a
+ * private conversation's attachments are the opposite, so the bytes are
+ * fetched like any other API call and handed to the element as a blob.
+ *
+ * The caller MUST revoke the returned URL when it is done, or the whole blob
+ * stays pinned in memory for the life of the document — on a thread somebody
+ * scrolls through all day that is a leak with teeth. `useObjectUrl` in the chat
+ * feature is the hook that does it.
+ *
+ * Server-side `Cache-Control: private, max-age=…` still applies, so scrolling a
+ * photo back into view re-reads the HTTP cache rather than the network.
+ */
+export async function fetchObjectUrl(path: string, signal?: AbortSignal): Promise<string> {
+  return URL.createObjectURL(await fetchBlob(path, signal));
+}
+
+/**
+ * As `fetchObjectUrl`, but hands back the BLOB rather than a URL for it.
+ *
+ * Because a caller sometimes has to know what actually arrived. An object URL
+ * is opaque: hand one to an <audio> and a server that answered 200 with the
+ * SPA's index.html — an auth redirect, a proxy rule, a route that stopped
+ * matching — is indistinguishable from a codec this browser lacks. Both render
+ * as "can't play this", which is the sentence that has sent people hunting the
+ * wrong fault for weeks.
+ *
+ * `res.ok` does not cover it either: the failure being guarded against here is
+ * a 200 whose body is the wrong KIND of thing, and only the bytes can say so.
+ * See `features/comms/chat/clip-source.ts`, which sniffs the container.
+ */
+export async function fetchBlob(path: string, signal?: AbortSignal): Promise<Blob> {
+  const h = new Headers();
+  h.set("X-Praxis-Env", tokenStore.getEnv());
+  const t = tokenStore.getAccess();
+  if (t) h.set("Authorization", `Bearer ${t}`);
+  const res = await send(`/api${path}`, { headers: h, signal });
+  if (!res.ok) {
+    throw new ApiError("FETCH_FAILED", res.statusText || "Could not load that file", res.status);
+  }
+  return res.blob();
+}
+export const tenantBlob = (p: string, signal?: AbortSignal) => fetchBlob(`/tenant${p}`, signal);
+export const tenantObjectUrl = (p: string, signal?: AbortSignal) =>
+  fetchObjectUrl(`/tenant${p}`, signal);
 
 /**
  * As `download`, but POSTs a JSON body first.
@@ -559,3 +684,10 @@ export async function downloadPost(
   a.remove();
   URL.revokeObjectURL(url);
 }
+
+/** `downloadPost` on the tenant API, mirroring `tenantDownload` over `download`. */
+export const tenantDownloadPost = (
+  p: string,
+  body: unknown,
+  filename: string,
+) => downloadPost(`/tenant${p}`, body, filename);

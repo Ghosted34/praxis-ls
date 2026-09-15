@@ -48,7 +48,7 @@ export function CompanyProfilePage() {
   function jsonField(key: string, value: string) {
     try {
       field(key, JSON.parse(value));
-    } catch (_error) {
+    } catch {
       /* @silent:storage|parse|teardown */ 
       /* retain the last valid structured value */
     }

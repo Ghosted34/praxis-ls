@@ -151,20 +151,48 @@ const insertConnection = (client, data) => insertOne(client, "email_connection",
 const getConnection = (client, id) => getById(client, "email_connection", "email_connection_id", id);
 const updateConnection = (client, id, patch) => updateOne(client, "email_connection", "email_connection_id", id, patch);
 
+/**
+ * Does this connection hold a SEPARATE sending credential?
+ *
+ * Answered in SQL, as an EXISTS against the vault row rather than by reading the
+ * secret, because the caller only ever needs the boolean: the plaintext must not
+ * be decrypted to render a form, and a value that is never decrypted cannot be
+ * leaked by the surface that renders it. Same shape the password field already
+ * has — presence, never content.
+ *
+ * `13777` explains why this, and not a column, is what defines the mode.
+ */
+const SMTP_SECRET_EXISTS =
+  "EXISTS (SELECT 1 FROM setting s WHERE s.section = 'integration_secret' " +
+  "AND s.key = 'mail_conn_smtp:' || c.email_connection_id::text)";
+
 async function listConnections(client, q = {}) {
   const { limit, offset } = page(q);
   const params = [limit, offset];
   let where = "";
   // Per-user isolation (WS-E8): callers pass ownerUserId so a user sees only
   // their own connected mailboxes. Absent = unscoped (internal callers only).
-  if (q.ownerUserId) { params.push(q.ownerUserId); where = "WHERE owner_user_id = $3 "; }
+  if (q.ownerUserId) { params.push(q.ownerUserId); where = "WHERE c.owner_user_id = $3 "; }
   const { rows } = await client.query(
-    "SELECT email_connection_id, email_address, provider, display_name, status, last_sync_at, last_error, " +
-      "imap_host, imap_port, smtp_host, smtp_port, auth_user, owner_user_id, is_default, created_at " +
-      "FROM email_connection " + where + "ORDER BY is_default DESC, created_at DESC LIMIT $1 OFFSET $2",
+    "SELECT c.email_connection_id, c.email_address, c.provider, c.display_name, c.status, c.last_sync_at, c.last_error, " +
+      "c.imap_host, c.imap_port, c.smtp_host, c.smtp_port, c.auth_user, c.smtp_user, " +
+      "c.owner_user_id, c.is_default, c.created_at, " +
+      `${SMTP_SECRET_EXISTS} AS has_smtp_credentials ` +
+      "FROM email_connection c " + where + "ORDER BY c.is_default DESC, c.created_at DESC LIMIT $1 OFFSET $2",
     params,
   );
-  return rows;
+  // Derived, not stored: one fact with one home (13777). The client reopens the
+  // form in the right mode from this without the secret ever leaving the server.
+  return rows.map((r) => ({ ...r, smtp_auth: r.has_smtp_credentials ? "separate" : "same" }));
+}
+
+/** The same presence question for ONE connection — the read the edit form makes. */
+async function hasSmtpCredentials(client, id) {
+  const { rows } = await client.query(
+    "SELECT EXISTS (SELECT 1 FROM setting WHERE section = 'integration_secret' AND key = $1) AS present",
+    [`mail_conn_smtp:${id}`],
+  );
+  return Boolean(rows[0] && rows[0].present);
 }
 
 /** Connections the sync worker should poll: any CONNECTED mailbox (IMAP polls,
@@ -385,6 +413,7 @@ async function searchRecipients(client, q, { sources = [], limit = 20 } = {}) {
 module.exports = {
   listIdentities, listSentLog, listInbox, updateIdentity, upsertIdentity, archiveIdentity, setBindingsForIdentity,
   insertConnection, getConnection, updateConnection, listConnections, listSyncable, findByAddress, listRenewable, setCursor, setError,
+  hasSmtpCredentials,
   setDefaultConnection, ensureDefaultConnection, claimConnectionIfUnowned,
 
   findClientByEmail, searchRecipients, RECIPIENT_SOURCES, findDossierByRefs,

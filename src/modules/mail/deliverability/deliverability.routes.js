@@ -17,6 +17,7 @@ router.use(authMiddleware);
 // tests/security/mail-gate-scope-deliverability-signature.test.js.
 router.get("/deliverability", requireFeature("mail.deliverability"), requirePermission("MOD-70", "view"), c.list);
 router.post("/deliverability/check", requireFeature("mail.deliverability"), requirePermission("MOD-70", "edit"), v.check, c.check);
+router.post("/deliverability/route", requireFeature("mail.deliverability"), requirePermission("MOD-70", "view"), v.route, c.route);
 router.get("/deliverability/:domain/history", requireFeature("mail.deliverability"), requirePermission("MOD-70", "view"), c.history);
 
 module.exports = { basePath: "/mail", feature: null, router, idParam: "text" };

@@ -22,6 +22,19 @@
  * distrust the ones that work, so the page shows the mailbox they have and how
  * to change it instead.
  *
+ * ── AND WHY "CONNECT" NOW ASKS A QUESTION FIRST ─────────────────────────────
+ *
+ * The button used to open the cPanel wizard directly, which is the right first
+ * guess for the first tenant and a dead end for the next one: a company whose
+ * custom domain sits on Microsoft 365 has NO password that can work — Exchange
+ * Online retired Basic auth for IMAP/POP in 2022 and for SMTP AUTH in April
+ * 2026 — so every field in that wizard was answerable and the result could only
+ * ever be an authentication failure. Microsoft consent existed, but only on the
+ * Connections tab, which is not where a person is sent to connect their
+ * mailbox. `<ConnectMethodModal>` asks the one question that decides which of
+ * the two routes is even possible, and it is the same component the shared
+ * mailbox screens use.
+ *
  * ── THERE IS, HOWEVER, A WAY OUT ────────────────────────────────────────────
  *
  * There was not. A person could connect their mailbox here and then had no way
@@ -45,6 +58,15 @@ import { useResource, errMsg } from "@/lib/use-resource";
 import { dateFmt } from "@/lib/format";
 import { tr } from "@/lib/i18n";
 import { SmtpErrorGuide } from "@/components/mail/smtp-guide";
+import { DisconnectMailboxDialog } from "@/components/mail/disconnect-mailbox-dialog";
+import { SmtpSignInFields } from "@/components/mail/smtp-sign-in-fields";
+import { ConnectMethodModal } from "@/components/mail/connect-method-modal";
+import {
+  BLANK_SMTP_SIGN_IN,
+  smtpSignInBody,
+  smtpSignInReady,
+  type SmtpSignInValue,
+} from "@/lib/smtp-sign-in";
 import * as api from "@/lib/mail-api";
 import { HealthPill } from "./health-pill";
 
@@ -62,6 +84,7 @@ function ConnectWizard({ onClose, onDone }: { onClose: () => void; onDone: () =>
     smtp_host: "", smtp_port: 465, smtp_secure: true,
     auth_user: "", password: "",
   });
+  const [smtpAuth, setSmtpAuth] = React.useState<SmtpSignInValue>(BLANK_SMTP_SIGN_IN);
   const [result, setResult] = React.useState<api.Mailbox | null>(null);
 
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
@@ -114,6 +137,7 @@ function ConnectWizard({ onClose, onDone }: { onClose: () => void; onDone: () =>
         imap_host: f.imap_host, imap_port: Number(f.imap_port), imap_secure: String(f.imap_secure) !== "false",
         smtp_host: f.smtp_host, smtp_port: Number(f.smtp_port), smtp_secure: String(f.smtp_secure) !== "false",
         auth_user: f.auth_user || email, password: f.password,
+        ...smtpSignInBody(smtpAuth),
       });
       setResult(conn as unknown as api.Mailbox);
       setStep(3);
@@ -189,6 +213,11 @@ function ConnectWizard({ onClose, onDone }: { onClose: () => void; onDone: () =>
               <Input value={f.display_name} onChange={set("display_name")} placeholder="Ada Lovelace" />
             </Field>
           </div>
+          {/* Step 2 is "server settings", and which login the outgoing server
+              takes is one of them. Offered here rather than on a fourth step,
+              because a person who needs it needs it BEFORE the test in step 3
+              refuses them. */}
+          <SmtpSignInFields value={smtpAuth} onChange={setSmtpAuth} disabled={busy} />
           {error != null && (
             <>
               <ErrorState message={errMsg(error)} />
@@ -197,7 +226,7 @@ function ConnectWizard({ onClose, onDone }: { onClose: () => void; onDone: () =>
           )}
           <div className="flex items-center justify-between pt-1">
             <Button type="button" variant="outline" onClick={() => setStep(1)} disabled={busy}>{tr("Back")}</Button>
-            <Button type="submit" loading={busy} disabled={busy}>{tr("Connect and test")}</Button>
+            <Button type="submit" loading={busy} disabled={busy || !smtpSignInReady(smtpAuth)}>{tr("Connect and test")}</Button>
           </div>
         </form>
       )}
@@ -232,23 +261,33 @@ function ConnectWizard({ onClose, onDone }: { onClose: () => void; onDone: () =>
 const tone = (s?: string | null): Tone =>
   String(s).toUpperCase() === "CONNECTED" ? "ok" : String(s).toUpperCase() === "PENDING" ? "warn" : "bad";
 
-export function MyMailboxTab() {
+export function MyMailboxTab({ notice }: { notice?: React.ReactNode } = {}) {
   const mine = useResource(() => api.myMailboxes(), []);
+  /**
+   * Two steps, not one. `chooser` asks how the mailbox is hosted; `wizard` is
+   * the IMAP/SMTP form, reached only when the answer was "our own server".
+   * Microsoft never opens the wizard at all — it leaves the page for consent.
+   */
+  const [chooser, setChooser] = React.useState(false);
   const [wizard, setWizard] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
+  /**
+   * The sentence is the feature (see the header) — which is why it is no longer
+   * a `window.confirm`. That rendered the one paragraph people MUST read in the
+   * browser's own chrome: unbranded, unstyled, no warning red, "OK"/"Cancel".
+   * `<DisconnectMailboxDialog>` says the same thing in the product's voice and
+   * is likewise not dismissible by clicking away.
+   */
+  const [confirmTarget, setConfirmTarget] = React.useState<api.Mailbox | null>(null);
+
   async function disconnect(m: api.Mailbox) {
-    // The sentence is the feature. See the header.
-    const ok = window.confirm(
-      `${tr("Disconnect")} ${m.email_address}?\n\n` +
-      tr("New mail stops arriving and the saved password is deleted. Everything already received stays here and stays readable. You can connect the address again later.")
-    );
-    if (!ok) return;
     setBusy(true);
     setError(null);
     try {
       await api.disconnectMailbox(m.email_connection_id);
+      setConfirmTarget(null);
       mine.reload();
     } catch (err) {
       setError(errMsg(err));
@@ -268,10 +307,21 @@ export function MyMailboxTab() {
 
   return (
     <section className="space-y-5">
+      <DisconnectMailboxDialog
+        open={!!confirmTarget}
+        address={confirmTarget?.email_address || ""}
+        busy={busy}
+        onClose={() => setConfirmTarget(null)}
+        onConfirm={() => confirmTarget && void disconnect(confirmTarget)}
+      />
       <PageHeader
         title={tr("My mailbox")}
         description={tr("Your own professional address, and the team mailboxes you have been given access to.")}
       />
+
+      {/* The outcome of a Microsoft consent round trip, handed down by the page
+          that reads it off the query string. */}
+      {notice}
 
       {mine.error && <ErrorState message={mine.error} />}
       {error && <ErrorState message={error} />}
@@ -282,7 +332,7 @@ export function MyMailboxTab() {
           <p className="micro mx-auto mt-1 max-w-md text-muted-foreground">
             {tr("Connect your work address and you can read and answer it here, with every message attached to the client or shipment it belongs to.")}
           </p>
-          <Button className="mt-4" onClick={() => setWizard(true)}>{tr("Connect my mailbox")}</Button>
+          <Button className="mt-4" onClick={() => setChooser(true)}>{tr("Connect my mailbox")}</Button>
         </div>
       )}
 
@@ -319,7 +369,7 @@ export function MyMailboxTab() {
                 size="sm"
                 variant="ghost"
                 disabled={busy}
-                onClick={() => disconnect(personal)}
+                onClick={() => setConfirmTarget(personal)}
               >
                 {tr("Disconnect")}
               </Button>
@@ -349,6 +399,12 @@ export function MyMailboxTab() {
         </div>
       )}
 
+      <ConnectMethodModal
+        open={chooser}
+        scope={{ kind: "personal" }}
+        onClose={() => setChooser(false)}
+        onChooseSmtp={() => { setChooser(false); setWizard(true); }}
+      />
       {wizard && <ConnectWizard onClose={() => setWizard(false)} onDone={() => mine.reload()} />}
     </section>
   );

@@ -10,18 +10,26 @@ import {
   listInsights,
   type InsightCard,
   type InsightIndex,
+  type InsightKind,
 } from "@/lib/insights-api";
 import { getLang, tStatic } from "@/lib/i18n";
 import { dateFmt } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { p } from "@/lib/base-path";
 import { useDocumentMeta } from "@/lib/use-document-meta";
+import { StagedLines } from "@/components/ui/type";
 import { PageContainer, PageShell } from "@/components/site/page-shell";
 import { Section } from "@/components/site/section";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Chip } from "@/components/ui/pill";
 import { EmptyState, ErrorState, LoadingState } from "@/components/state";
+import { SectionHead } from "@/components/site/section-head";
+import { BadgePill } from "@/components/ui/badge-pill";
+import { IconTile } from "@/components/ui/icon-tile";
+import { BgMap } from "@/components/ui/bg-map";
+import { Reveal } from "@/components/ui/reveal";
+import { DocumentIcon } from "@/components/ui/icons";
 
 /**
  * `/public/insights` — the tenant's own writing.
@@ -57,6 +65,14 @@ export function InsightsPage() {
   const lang = getLang();
   const [params, setParams] = useSearchParams();
   const tag = params.get("tag") || "";
+  /* §8.6's kind filter, in the URL for the same reason `tag` is: a filtered
+     view somebody wants to send has to have an address. Anything that is not
+     one of the two kinds is read as "both" rather than passed to the server —
+     the endpoint would reject it with a 400, and a hand-edited URL should
+     degrade to the unfiltered page, not to an error screen. */
+  const kindParam = params.get("kind") || "";
+  const kind: InsightKind | "" =
+    kindParam === "article" || kindParam === "announcement" ? kindParam : "";
   const page = Math.max(1, Number(params.get("page") || 1) || 1);
   const [nonce, setNonce] = React.useState(0);
   const [state, setState] = React.useState<
@@ -73,7 +89,7 @@ export function InsightsPage() {
   React.useEffect(() => {
     const ctl = new AbortController();
     setState({ kind: "loading" });
-    listInsights({ tag: tag || undefined, page, signal: ctl.signal })
+    listInsights({ tag: tag || undefined, kind, page, signal: ctl.signal })
       .then((view) => setState({ kind: "ready", view }))
       .catch((e: unknown) => {
         if (ctl.signal.aborted) return;
@@ -84,7 +100,7 @@ export function InsightsPage() {
         });
       });
     return () => ctl.abort();
-  }, [tag, page, nonce]);
+  }, [tag, kind, page, nonce]);
 
   /** Changing a filter always returns to page one — page 4 of "strategy" is
    *  usually not a page at all, and an empty result there reads as "no
@@ -92,12 +108,24 @@ export function InsightsPage() {
   const choose = (next: string) => {
     const q = new URLSearchParams();
     if (next) q.set("tag", next);
+    // The kind SURVIVES a tag change, and vice versa. They are two questions —
+    // "what sort of post" and "about what" — and a filter bar that silently
+    // clears the other one every time is a filter bar people stop trusting.
+    if (kind) q.set("kind", kind);
+    setParams(q);
+  };
+
+  const chooseKind = (next: InsightKind | "") => {
+    const q = new URLSearchParams();
+    if (tag) q.set("tag", tag);
+    if (next) q.set("kind", next);
     setParams(q);
   };
 
   const goToPage = (next: number) => {
     const q = new URLSearchParams();
     if (tag) q.set("tag", tag);
+    if (kind) q.set("kind", kind);
     if (next > 1) q.set("page", String(next));
     setParams(q);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -105,44 +133,84 @@ export function InsightsPage() {
 
   return (
     <PageShell label={t("site.insights.title")} footer>
-      <section className="band-hero">
-        <PageContainer>
-          <p className="eyebrow text-[var(--brand-orange)]">
-            {t("site.insights.kicker")}
-          </p>
-          <h1 className="hero-title mt-3 text-[var(--hero-foreground)]">
-            {t("site.insights.title")}
-          </h1>
-          <p className="mt-4 max-w-measure text-[var(--hero-muted)]">
-            {t("site.insights.sub")}
-          </p>
-        </PageContainer>
-      </section>
+      <section className="band-hero relative overflow-hidden">
+        <BgMap />
+        <PageContainer className="relative">
+          <BadgePill onDark>{t("site.insights.kicker")}</BadgePill>
+          <SectionHead
+            className="mt-4"
+            as="h1"
+            titleClass="hero-title"
+            onDark
+            /* F-17: the LCP element on this route. */
+            title={<StagedLines paintImmediately text={t("site.insights.titleMain")} />}
+            accent={t("site.insights.titleAccent")}
+            lead={t("site.insights.sub")}
+          />
 
-      <Section>
-        {state.kind === "ready" && state.view.tags.length > 0 && (
-          <nav aria-label={t("site.insights.filterLabel")} className="mb-8">
+          {/*
+            The filter bar lives IN the hero, which is where their Kaizen page
+            puts its search and filters — and it is right for the same reason
+            the wizard's step dots sit above the form: this is the page's
+            primary control, and below the hero it is under the fold on a phone,
+            where a reader has to scroll past three cards to discover the page
+            can be filtered at all.
+
+            Rendered only once the list has answered: a bar that appears empty
+            and then fills is a layout that jumps under somebody's thumb.
+          */}
+          {/* §8.6's kind filter. ABOVE the tags and always present, because it
+              is the coarser cut: "articles or announcements" is a different
+              question from "which subject", and a reader who wants the notices
+              should not have to find them among the essays. It does not wait
+              for the list — unlike the tag bar, its three options are known
+              before any request, so rendering it immediately costs no layout
+              jump and gives the page a control on the first frame. */}
+          <nav aria-label={t("site.insights.kindLabel")} className="mt-8">
             <ul className="flex flex-wrap gap-2">
-              <li>
-                <FilterButton active={!tag} onClick={() => choose("")}>
-                  {t("site.insights.all")}
-                </FilterButton>
-              </li>
-              {state.view.tags.map((entry) => (
-                <li key={entry.tag}>
+              {([
+                ["", t("site.insights.kindAll")],
+                ["article", t("site.insights.kindArticle")],
+                ["announcement", t("site.insights.kindAnnouncement")],
+              ] as Array<[InsightKind | "", string]>).map(([value, label]) => (
+                <li key={value || "all"}>
                   <FilterButton
-                    active={tag === entry.tag}
-                    onClick={() => choose(entry.tag)}
+                    active={kind === value}
+                    onClick={() => chooseKind(value)}
                   >
-                    {entry.tag}
-                    <span className="num ml-1.5 text-xs opacity-70">{entry.count}</span>
+                    {label}
                   </FilterButton>
                 </li>
               ))}
             </ul>
           </nav>
-        )}
 
+          {state.kind === "ready" && state.view.tags.length > 0 && (
+            <nav aria-label={t("site.insights.filterLabel")} className="mt-8">
+              <ul className="flex flex-wrap gap-2">
+                <li>
+                  <FilterButton active={!tag} onClick={() => choose("")}>
+                    {t("site.insights.all")}
+                  </FilterButton>
+                </li>
+                {state.view.tags.map((entry) => (
+                  <li key={entry.tag}>
+                    <FilterButton
+                      active={tag === entry.tag}
+                      onClick={() => choose(entry.tag)}
+                    >
+                      {entry.tag}
+                      <span className="num ml-1.5 text-xs opacity-70">{entry.count}</span>
+                    </FilterButton>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+          )}
+        </PageContainer>
+      </section>
+
+      <Section>
         {state.kind === "loading" ? (
           <LoadingState
             label={t("site.insights.loading")}
@@ -180,10 +248,17 @@ export function InsightsPage() {
         ) : (
           <>
             <ul className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              {state.view.articles.map((a) => (
-                <li key={a.slug_fr || a.slug_en || insightTitle(a, lang)}>
+              {state.view.articles.map((a, i) => (
+                <Reveal
+                  as="li"
+                  key={a.slug_fr || a.slug_en || insightTitle(a, lang)}
+                  // Staggered by COLUMN, not by index: a three-across grid
+                  // whose ninth card waits half a second is a grid the reader
+                  // has finished looking at. The row resets the delay.
+                  delay={(i % 3) as 0 | 1 | 2}
+                >
                   <ArticleCard article={a} lang={lang} />
-                </li>
+                </Reveal>
               ))}
             </ul>
 
@@ -237,8 +312,10 @@ function FilterButton({
       className={cn(
         "inline-flex items-center rounded-full border px-3.5 py-1.5 text-sm transition-colors",
         active
-          ? "border-[var(--brand-orange)] bg-[var(--brand-orange)] font-semibold text-[var(--primary-foreground)]"
-          : "hover:bg-[rgb(var(--ink)/0.06)]",
+          ? "border-[rgb(var(--brand-orange))] bg-[rgb(var(--brand-orange))] font-semibold text-[var(--primary-foreground)]"
+          // On the hero plate `--ink` is inverted, so a resting chip has to
+          // borrow the band's own foreground rather than the page's.
+          : "border-[rgb(237_238_238/0.25)] text-[var(--hero-muted)] hover:bg-[rgb(237_238_238/0.10)]",
       )}
     >
       {children}
@@ -264,7 +341,7 @@ function ArticleCard({ article, lang }: { article: InsightCard; lang: string }) 
 
   const body = (
     <>
-      {src && coverOk && (
+      {src && coverOk ? (
         <img
           src={src}
           alt=""
@@ -272,6 +349,14 @@ function ArticleCard({ article, lang }: { article: InsightCard; lang: string }) 
           onError={() => setCoverOk(false)}
           className="h-40 w-full object-cover"
         />
+      ) : (
+        /* Not every article has a cover, and one that does not must not read as
+           a broken card beside three illustrated ones. A tinted plate with the
+           section's own glyph is an honest placeholder — it says "an article",
+           which is true, rather than standing in for a photograph nobody took. */
+        <div className="flex h-40 w-full items-center justify-center bg-[rgb(var(--ink)/0.04)]">
+          <IconTile icon={DocumentIcon} size="lg" />
+        </div>
       )}
       <div className="p-5">
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">

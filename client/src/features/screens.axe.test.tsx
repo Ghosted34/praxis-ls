@@ -91,6 +91,8 @@ import { EmailSignaturesPage } from "./settings/email-signatures";
 import { BusinessPoliciesPage } from "./settings/business-policies";
 import { CurrenciesPage } from "./settings/currencies";
 import { TaxJurisdictionsPage } from "./settings/tax-jurisdictions";
+import { WebsitePagesPage } from "./settings/website-pages";
+import { WebsitePageEditorPage } from "./settings/website-page-editor";
 import * as aiControl from "./ai-control/pages";
 import * as costing from "./costing/pages";
 import * as reconciliation from "./costing/reconciliation";
@@ -286,6 +288,17 @@ const USERS = [
 type ScreenCase = {
   name: string;
   render: () => React.ReactElement;
+  /**
+   * The address the router starts on, and the pattern that gives it params.
+   *
+   * Both are passed straight to `renderScreen`'s fixtures, which has always
+   * supported them — nothing in the register did, so a screen reading
+   * `useParams` could not be gated here at all and was simply left out. A
+   * screen missing from this file is a screen with no axe coverage and no
+   * four-state proof, which is the failure this register exists to prevent.
+   */
+  path?: string;
+  pattern?: string;
   /** Data that makes the populated state non-trivial. */
   routes?: Record<string, unknown>;
   /** Text proving the populated state rendered rows rather than an empty state. */
@@ -310,6 +323,23 @@ type ScreenCase = {
 };
 
 type Area = { area: string; screens: ScreenCase[] };
+
+/**
+ * The axe run every state assertion uses.
+ *
+ * `iframes: false` because jsdom cannot do the cross-frame messaging axe uses to
+ * reach into a frame — axe throws "Respondable target must be a frame in the
+ * current window" and the assertion never gets to run at all. It is not a
+ * finding being suppressed: the only iframe on a registered screen is
+ * `<CardPreview>`, whose document is the server-rendered signature card, has no
+ * controls, and is `sandbox=""` precisely so it cannot behave like a surface.
+ * Its markup is pinned by `tests/unit/mail-signature-card.test.js` instead.
+ *
+ * If a screen ever embeds a frame a person actually USES, this exclusion stops
+ * being honest — scan that frame's own content in its own test rather than
+ * turning this back on here, which would only reintroduce the jsdom throw.
+ */
+const scan = (container: Element) => axe(container, { iframes: false });
 
 /* ── the register ─────────────────────────────────────────────────────────── */
 
@@ -379,7 +409,7 @@ const AREAS: Area[] = [
     area: "Operations",
     screens: [
       {
-        name: "Operation files",
+        name: "Operations files",
         render: () => <OperationsFilesPage />,
         routes: {
           "/operations": [
@@ -1326,6 +1356,79 @@ const AREAS: Area[] = [
         },
       },
       {
+        name: "Website pages",
+        render: () => <WebsitePagesPage />,
+        routes: {
+          "/site/meta": { website_enabled: true, metrics: [] },
+          "/site/pages": [
+            {
+              page_id: "sp1",
+              key: "home",
+              title_fr: "Accueil",
+              title_en: "Home",
+              slug_fr: null,
+              slug_en: null,
+              is_published: true,
+              sort_order: 10,
+            },
+          ],
+        },
+        populatedProof: /Accueil/,
+      },
+      {
+        name: "Website page editor",
+        render: () => <WebsitePageEditorPage />,
+        // Reads `useParams`, so it needs both halves — see ScreenCase.
+        path: "/settings/website/sp1",
+        pattern: "/settings/website/:pageId",
+        routes: {
+          "/site/meta": { website_enabled: true, metrics: [] },
+          "/site/pages/sp1": {
+            page: {
+              page_id: "sp1",
+              key: "home",
+              title_fr: "Accueil",
+              title_en: "Home",
+              slug_fr: null,
+              slug_en: null,
+              meta_title_fr: null,
+              meta_title_en: null,
+              meta_description_fr: null,
+              meta_description_en: null,
+              is_published: true,
+              published_at: null,
+              sort_order: 10,
+            },
+            blocks: [
+              {
+                block_id: "sb1",
+                type: "stat_counters",
+                sort_order: 10,
+                is_visible: true,
+                content: {
+                  items: [
+                    {
+                      label: { fr: "Volume géré", en: "CBM managed" },
+                      unit: "CBM",
+                      value: 41850,
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+        /*
+          A BLOCK-level proof, not an item-level one, and the distinction is
+          worth stating because it will catch the next person: this screen is a
+          FORM, so the item's label, unit and figure live in input VALUES —
+          which `container.textContent` cannot see. `/CBM managed/` passes
+          nowhere and would look like the fixture never arrived. The toggle's
+          label is rendered per block, so it fires only if the blocks landed.
+        */
+        populatedProof: /Shown on the page/,
+      },
+      {
         name: "Payment gateways",
         render: () => <PaymentGatewaysPage />,
         routes: {
@@ -1397,6 +1500,70 @@ const AREAS: Area[] = [
               is_active: true,
             },
           ],
+          /* The card document the preview iframe renders — the same thing the
+             PNG buttons download, which is why the screen shows it rather than
+             the email body. A minimal document: what is being scanned here is
+             the page around the iframe, not the card's own markup. */
+          "/mail/signature/card": {
+            kind: "card",
+            document: "<!doctype html><html><body><p>Amina Ndoumbe</p></body></html>",
+            width: 650,
+            height: 325,
+            gaps: [],
+          },
+          /* `can_administer` gates the colour-role editor below the preview.
+             True here so the axe scan actually covers those controls. */
+          "/mail/me": {
+            can_view: true,
+            can_create: true,
+            can_edit: true,
+            can_administer: true,
+            is_ceo: false,
+          },
+          "/mail/signature/palette": {
+            template: {
+              signature_template_id: "st1",
+              name: "Signature card",
+              kind: "card",
+              is_system: true,
+              is_default: true,
+              scope_kind: "TENANT",
+              scope_value: null,
+            },
+            brand: [
+              { key: "primary", hex: "#f5821f", is_set: true },
+              { key: "secondary", hex: "#1c9bd7", is_set: true },
+              { key: "accent", hex: "#1C9BD7", is_set: false },
+              { key: "accentDeep", hex: "#0c4a7a", is_set: true },
+              { key: "accentGlow", hex: "#34aae2", is_set: true },
+            ],
+            roles: [
+              {
+                role: "ink",
+                paints: "name, website, motto, divider",
+                source: "accentDeep",
+                default_source: "accentDeep",
+                is_repointed: false,
+                hex: "#0c4a7a",
+              },
+              {
+                role: "glow",
+                paints: "card edge, background tint, accent bar",
+                source: "accentGlow",
+                default_source: "accentGlow",
+                is_repointed: false,
+                hex: "#34aae2",
+              },
+              {
+                role: "warm",
+                paints: "title dash, phone and website icons",
+                source: "primary",
+                default_source: "primary",
+                is_repointed: false,
+                hex: "#f5821f",
+              },
+            ],
+          },
         },
         populatedProof: /Amina Ndoumbe/,
       },
@@ -1770,19 +1937,30 @@ const CASES = AREAS.flatMap((a) =>
 
 describe.each(CASES)(
   "$area › $name",
-  ({ render: renderCase, routes, populatedProof, states, rendersRows }) => {
+  ({
+    render: renderCase,
+    routes,
+    populatedProof,
+    states,
+    rendersRows,
+    path,
+    pattern,
+  }) => {
     const has = (s: string) => !states || states.includes(s as never);
+    // Every state renders at the same address, or a params screen would be on
+    // its route for one assertion and off it for the other three.
+    const at = { path, pattern };
 
     it.runIf(has("loading"))(
       "loading state is clean and announced",
       async () => {
-        const { container } = renderScreen(renderCase(), { pending: true });
+        const { container } = renderScreen(renderCase(), { ...at, pending: true });
         // F10: skeletons carry role="status" so the wait is announced rather than
         // being a silent blank region.
         expect(
           container.querySelector('[role="status"], [aria-busy="true"]'),
         ).toBeTruthy();
-        expect(await axe(container)).toHaveNoViolations();
+        expect(await scan(container)).toHaveNoViolations();
       },
     );
 
@@ -1797,7 +1975,7 @@ describe.each(CASES)(
             ]),
           ),
         };
-        const { container } = renderScreen(renderCase(), f);
+        const { container } = renderScreen(renderCase(), { ...at, ...f });
         await waitFor(() =>
           expect(container.textContent).toMatch(
             /permission|failed|unable|error|wrong/i,
@@ -1805,7 +1983,7 @@ describe.each(CASES)(
         );
         // Addendum 6 defect 4: a 403 must NOT resolve into a reassuring empty state.
         expect(container.textContent).not.toMatch(/all clear/i);
-        expect(await axe(container)).toHaveNoViolations();
+        expect(await scan(container)).toHaveNoViolations();
       },
     );
 
@@ -1815,17 +1993,17 @@ describe.each(CASES)(
           Object.keys(routes ?? {}).map((k) => [k, []]),
         ),
       };
-      const { container } = renderScreen(renderCase(), f);
+      const { container } = renderScreen(renderCase(), { ...at, ...f });
       await waitFor(() =>
         expect(container.querySelector('[aria-busy="true"]')).toBeFalsy(),
       );
       // F11: "No records returned." is the fallback nobody should be shipping.
       expect(container.textContent).not.toMatch(/No records returned\./);
-      expect(await axe(container)).toHaveNoViolations();
+      expect(await scan(container)).toHaveNoViolations();
     });
 
     it("populated state is clean, with exactly one h1", async () => {
-      const { container } = renderScreen(renderCase(), { routes });
+      const { container } = renderScreen(renderCase(), { ...at, routes });
       if (populatedProof)
         await waitFor(() =>
           expect(container.textContent).toMatch(populatedProof),
@@ -1861,7 +2039,7 @@ describe.each(CASES)(
       // F13: 116 of 117 pages had no h1 at all. Two competing h1s is the other
       // failure mode, and just as wrong.
       expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
-      expect(await axe(container)).toHaveNoViolations();
+      expect(await scan(container)).toHaveNoViolations();
     });
   },
 );
@@ -1872,11 +2050,16 @@ describe.each(CASES)(
  * Found by the gate above, and worth pinning on its own because the two states
  * look almost identical on screen and lead the user to opposite remedies.
  *
- * `errMsg` renders every 403 as "You don't have permission to do this.", and the
- * old `isGated` regex matched `/permission/` in that sentence. So a user missing
- * the reports GRANT was shown "Reporting isn't enabled for this tenant" and sent
- * to a developer-dashboard feature flag that was already switched on. The actual
- * cause — their role — was never mentioned to them or to the admin they asked.
+ * `errMsg` USED TO render every 403 as "You don't have permission to do this."
+ * (F-GAP-09 has since made it keep the server's own message, falling back to that
+ * sentence only when there is none), and the old `isGated` regex matched
+ * `/permission/` in it. So a user missing the reports GRANT was shown "Reporting
+ * isn't enabled for this tenant" and sent to a developer-dashboard feature flag
+ * that was already switched on. The actual cause — their role — was never
+ * mentioned to them or to the admin they asked.
+ *
+ * The case below still passes that exact sentence as the SERVER's message, so it
+ * pins the same discrimination either way.
  *
  * Same family as the Control Tower defect in Addendum 6, where any 403 fell into
  * an empty state that told the user everything was fine.

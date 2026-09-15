@@ -144,10 +144,14 @@ describe("Master data · treasury account editing", () => {
     expect(
       (await screen.findByLabelText(/account number/i)).getAttribute("value"),
     ).toBe("1000521000123");
-    // A timestamp reaches <input type="date"> as YYYY-MM-DD or not at all.
+    // The control is `DateField`, which reads day-first whatever the
+    // workstation locale is. The point of the assertion is unchanged — the
+    // stored timestamp has to arrive in the box rather than blanking it — but
+    // what the operator sees is dd/mm/yyyy, and the ISO it will post back
+    // stays 2026-01-01.
     expect(
       (await screen.findByLabelText(/opening date/i)).getAttribute("value"),
-    ).toBe("2026-01-01");
+    ).toBe("01/01/2026");
   });
 
   it("is axe-clean with the form open", async () => {

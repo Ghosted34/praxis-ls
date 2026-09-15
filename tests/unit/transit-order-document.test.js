@@ -373,9 +373,15 @@ describe("the letterhead and the foot", () => {
     // legal name, the address, RCCM and NIU at BOTH ends — a quarter of the
     // identity block on the page was duplication, on a document whose entire
     // problem is height. Head and foot now share nothing.
+    //
+    // 12760 replaced the sheet's own `.lh2`/`.ifoot` pair with the SHARED
+    // shell — `.lhz` (a twelve-column grid) and `.sfoot` — now composed from
+    // `letterhead-blocks` and used by every document this product prints, not
+    // just this one. The anatomy this test guards is unchanged, which is the
+    // point of the migration; only the class names moved.
     const html = body(TPL.build(dataWith(), cfgFor("fr"), ENTITY, VERIFY));
-    const head = html.slice(html.indexOf('class="lh2"'), html.indexOf('class="lh2rule"'));
-    const foot = html.slice(html.indexOf('class="ifoot"'));
+    const head = html.slice(html.indexOf('class="lhz"'), html.indexOf('class="dname"'));
+    const foot = html.slice(html.indexOf('class="sfoot"'));
 
     expect(head).toContain(ENTITY.legal_name);
     expect(head).toContain("1030, Avenue Douala Manga Bell, Bali");
@@ -451,7 +457,7 @@ describe("the letterhead and the foot", () => {
     // max-content width in Chrome, so the letterhead collapsed to 0×0 and every
     // document rendered with a logo that had loaded and was invisible.
     const css = String(kit.shell("x", "", {}));
-    expect(css).toMatch(/\.lh2 \.mark img \{[^}]*height: \d+mm/);
+    expect(css).toMatch(/\.lhb img\.mark \{[^}]*height: \d+mm/);
   });
 
   test("the foot claims the page, and says what the document is", () => {

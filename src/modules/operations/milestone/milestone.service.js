@@ -216,7 +216,7 @@ async function activateTemplate(client, { id, actor = {} }) {
  * silently change weight or ownership underneath the file it is scheduling.
  */
 async function instantiate(client, { dossierId, serviceTypeId, baseDate, actor = {} }) {
-  if ((await repo.existingInstances(client, dossierId)) > 0) throw new AppError("ALREADY_INSTANTIATED", "dossier already has milestones", 409);
+  if ((await repo.existingInstances(client, dossierId)) > 0) throw new AppError("ALREADY_INSTANTIATED", "this operations file already has milestones", 409);
   const tpl = await repo.activeTemplate(client, serviceTypeId);
   if (!tpl) throw new AppError("NO_TEMPLATE", "no active milestone template for this service type", 422);
   const stageRows = await repo.stages(client, tpl.milestone_template_id);

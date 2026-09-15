@@ -34,6 +34,11 @@ export type InsightAuthor = {
   avatar_ref: string | null;
 };
 
+/** `article` or `announcement` — the `ck_insight_kind` CHECK (13784) admits
+ *  exactly these. An announcement is an article with a different renderer, not
+ *  a second CMS: same detail route, same media, same shape. */
+export type InsightKind = "article" | "announcement";
+
 export type InsightCard = {
   slug_fr: string | null;
   slug_en: string | null;
@@ -46,9 +51,19 @@ export type InsightCard = {
   has_cover: boolean;
   cover_id: string | null;
   author: InsightAuthor | null;
+  kind: InsightKind;
+  /** When this pin lapses. The band SHOWS it: a visitor who reads "until 4
+   *  March" knows the notice is current, which is most of what a notice is
+   *  for. Null on everything that is not pinned. */
+  pinned_until: string | null;
 };
 
 export type InsightArticle = InsightCard & {
+  /** Vault document ids, in the order the writer arranged them, drawn below the
+   *  body. Ids rather than URLs for the same reason `cover_id` is one:
+   *  `coverUrl()` composes the only legal URL, so a payload carrying a built
+   *  one would bake this deploy's hostname into the tenant's content. */
+  gallery_ids: string[];
   body_fr: string | null;
   body_en: string | null;
   meta_title_fr: string | null;
@@ -72,12 +87,54 @@ export type InsightIndex = {
 };
 
 export const listInsights = (
-  opts: { tag?: string; page?: number; signal?: AbortSignal } = {},
+  opts: {
+    tag?: string;
+    /** `article` | `announcement`, or absent for both (§8.6). Validated by the
+     *  server since 13784; the public route only started READING it in PR 4,
+     *  which is why nothing sent it before. */
+    kind?: InsightKind | "";
+    page?: number;
+    signal?: AbortSignal;
+  } = {},
 ) =>
   publicGet<InsightIndex>("/public/insights", {
-    query: { tag: opts.tag, page: opts.page },
+    query: { tag: opts.tag, kind: opts.kind || undefined, page: opts.page },
     signal: opts.signal,
   });
+
+/**
+ * The homepage band's read — `GET /public/site/announcements`.
+ *
+ * ── TWO COLLECTIONS, ONE REQUEST ───────────────────────────────────────────
+ *
+ * `pinned` is what the band draws and the server caps it at five; `articles` is
+ * the list behind "view more". They arrive together because they are one
+ * screenful, and a second round trip for the second half would land on the
+ * heels of the LCP.
+ *
+ * THE CAP IS THE SERVER'S. Do not re-slice here and do not raise it with
+ * `per_page` — that parameter narrows the LIST only. A client-side cap would be
+ * a cap this app enforces for itself and nobody else.
+ *
+ * A pinned announcement also appears in `articles`, deliberately: somebody who
+ * follows "view more" looking for the notice they just read should find it.
+ */
+export type AnnouncementIndex = InsightIndex & { pinned: InsightCard[] };
+
+export const listAnnouncements = (
+  opts: { page?: number; signal?: AbortSignal } = {},
+) =>
+  publicGet<AnnouncementIndex>("/public/site/announcements", {
+    query: { page: opts.page },
+    signal: opts.signal,
+  });
+
+/** Whether a pin is still live, by the same test the SQL makes
+ *  (`pinned_until > now()`). A payload can outlive its pin in a cache, and a
+ *  band that drew an expired notice would be the exact staleness 13784's
+ *  timestamp exists to prevent. */
+export const pinLive = (a: Pick<InsightCard, "pinned_until">): boolean =>
+  Boolean(a.pinned_until && new Date(a.pinned_until).getTime() > Date.now());
 
 export const getInsight = (slug: string, opts: { signal?: AbortSignal } = {}) =>
   publicGet<InsightArticle>(

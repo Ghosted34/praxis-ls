@@ -32,6 +32,33 @@ describe("vault doc types — master-data scans", () => {
     expect(isDocType("SUPPLIER_DOCUMENT")).toBe(true);
   });
 
+  /**
+   * The same failure, found again on the public-site media types.
+   *
+   * `SUCCESS_STORY_MEDIA` was registered when its upload shipped. `INSIGHT_MEDIA`
+   * (12757/13773) and `SERVICE_TYPE_MEDIA` (12755) were not, though all three are
+   * the same thing: bytes a tenant uploads to put on their own public page.
+   *
+   * `createDocument` does not call `assertDocType` — deliberately, because ad-hoc
+   * uploads are free-form — so nothing refused the unregistered code and the
+   * fallback quietly gated an article cover on SETTINGS. The marketing writer who
+   * had just uploaded it could not open it back unless they also administered the
+   * workspace, and every Settings holder could read all of them.
+   *
+   * Pinned here for the same reason as the scans above: dropping a registry row
+   * fails this rather than widening a permission in silence.
+   */
+  it("gates public-site media on the module that owns the page", () => {
+    expect(moduleKeyForDocType("INSIGHT_MEDIA")).toBe("MOD-29");
+    expect(moduleKeyForDocType("SERVICE_TYPE_MEDIA")).toBe("MOD-29");
+    expect(moduleKeyForDocType("SUCCESS_STORY_MEDIA")).toBe("MOD-26");
+  });
+
+  it("registers the public-site media types", () => {
+    expect(isDocType("INSIGHT_MEDIA")).toBe(true);
+    expect(isDocType("SERVICE_TYPE_MEDIA")).toBe(true);
+  });
+
   it("still falls back to Settings for anything unregistered", () => {
     // A party document TYPE code (the master-data registry) is not a vault doc
     // type — passing one through would land on this branch, which is the

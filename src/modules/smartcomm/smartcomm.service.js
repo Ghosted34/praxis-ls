@@ -11,6 +11,9 @@
 
 const crypto = require("crypto");
 const repo = require("./smartcomm.repo");
+const scheduled = require("./smartcomm.schedule.repo");
+const media = require("./smartcomm.media.service");
+const erp = require("./smartcomm.erp.service");
 const events = require("./smartcomm.events");
 const documents = require("../../services/documents/document.service");
 const { emitEvent, audit, resolveActorId } = require("../../shared/events/emit");
@@ -89,6 +92,56 @@ async function setMuted(client, { groupId, actor, muted }) { await assertMember(
 
 // ── Messages ──
 /**
+ * One posted attachment → one `comms_attachment` row.
+ *
+ * Three kinds now share the table, and the kind decides which column carries
+ * the pointer. It is normalised HERE rather than trusted from the request
+ * because the client sends back exactly what `store()` handed it, and a body
+ * that claimed `attachment_kind: "ERP"` while carrying a `vault_id` would
+ * otherwise produce a row that renders as a record card pointing at a file.
+ *
+ * A descriptor whose kind is unrecognised falls back to VAULT, which is what
+ * every row written before migration 13794 is.
+ */
+function attachmentRow(messageId, a) {
+  const kind = a && a.attachment_kind;
+  const base = {
+    message_id: messageId,
+    filename: (a && a.filename) || null,
+    content_type: (a && a.content_type) || null,
+    size_bytes: (a && a.size_bytes) || null,
+  };
+  if (kind === "MEDIA") {
+    return { ...base, attachment_kind: "MEDIA", media_id: a.media_id || null };
+  }
+  if (kind === "ERP") {
+    return {
+      ...base,
+      attachment_kind: "ERP",
+      erp_kind: a.erp_kind || null,
+      erp_id: a.erp_id || null,
+      // The sender's view of the reference, cached ONLY as the fallback
+      // caption for a reader without rights on the record. Never a figure —
+      // see smartcomm.erp.service.js.
+      erp_label: a.erp_label ? String(a.erp_label).slice(0, 120) : null,
+    };
+  }
+  return { ...base, attachment_kind: "VAULT", vault_id: (a && a.vault_id) || null };
+}
+
+/** What the notification says when the message is attachments and no words. */
+function attachmentSummary(attachments) {
+  const list = attachments || [];
+  if (!list.length) return "Sent an attachment";
+  if (list.some((a) => a && a.is_voice_note)) return "Sent a voice note";
+  if (list.some((a) => a && a.attachment_kind === "ERP")) return "Shared a record";
+  const first = list[0] || {};
+  if (first.kind === "IMAGE") return list.length > 1 ? `Sent ${list.length} photos` : "Sent a photo";
+  if (first.kind === "VIDEO") return "Sent a video";
+  return list.length > 1 ? `Sent ${list.length} files` : "Sent a file";
+}
+
+/**
  * `notifyMembers: false` posts the message without raising its own notification.
  *
  * For callers that have ALREADY notified the same people about the same logical
@@ -98,18 +151,28 @@ async function setMuted(client, { groupId, actor, muted }) { await assertMember(
  * "new message in Smart Comms". The chat card is still posted and still shows
  * up in the channel; only the duplicate notification is skipped.
  */
-async function postMessage(client, { groupId, body = null, mediaVaultId = null, replyTo = null, attachments = [], actor = {}, notifyMembers = true }) {
-  await assertMember(client, groupId, actor.user_id);
-  if (!body && !mediaVaultId && (!attachments || !attachments.length)) throw new AppError("EMPTY_MESSAGE", "a message needs a body or media", 422);
+async function postMessage(client, { groupId, body = null, mediaVaultId = null, replyTo = null, attachments = [], actor = {}, notifyMembers = true, scheduleId = null }) {
   await client.query("BEGIN");
   try {
+    if (scheduleId) {
+      const queued = await scheduled.claim(client, scheduleId);
+      if (!queued) { await client.query("COMMIT"); return null; }
+      groupId = queued.group_id;
+      actor = await scheduled.sender(client, queued.sender_user_id, groupId);
+      if (!actor) throw new AppError("NOT_A_MEMBER", "Sender no longer has permission to send", 403);
+      body = queued.body; attachments = queued.attachments; replyTo = queued.reply_to;
+      await require("./smartcomm.schedule.service").validateAttachments(client, groupId, attachments, replyTo);
+    }
+    await assertMember(client, groupId, actor.user_id);
+    if (!body && !mediaVaultId && (!attachments || !attachments.length)) throw new AppError("EMPTY_MESSAGE", "a message needs a body or media", 422);
     const m = await repo.insertMessage(client, { group_id: groupId, sender_user_id: actor.user_id || null, body, media_vault_id: mediaVaultId, reply_to_message_id: replyTo });
     for (const a of attachments || []) {
       /// eslint-disable-next-line no-await-in-loop
-      await repo.addAttachment(client, { message_id: m.message_id, vault_id: a.vault_id || null, filename: a.filename || null, content_type: a.content_type || null, size_bytes: a.size_bytes || null });
+      await repo.addAttachment(client, attachmentRow(m.message_id, a));
     }
     await repo.updateChannel(client, groupId, {}); // bump updated_at
     await emitEvent(client, { eventTypeKey: events.MESSAGE_POSTED, moduleKey: events.MODULE, entityRef: "comms_message:" + m.message_id, actorUserId: actor.user_id || null });
+    if (scheduleId) await scheduled.sent(client, scheduleId, m.message_id);
     await client.query("COMMIT");
     rtPublish(groupId, "comms:message", { group_id: groupId, message: m });
     // G22 — a posted message notifies the OTHER members through the same
@@ -120,7 +183,19 @@ async function postMessage(client, { groupId, body = null, mediaVaultId = null, 
     try {
       const others = notifyMembers ? await repo.memberUserIds(client, groupId, actor.user_id || null) : [];
       if (others.length) {
-        await require("../../notification/notification.service").notifyMany(client, others, {
+        // `../notification/…`, NOT `../../`. This file sits at
+        // src/modules/smartcomm/ — one level shallower than every OTHER
+        // notification caller (src/modules/<area>/<sub>/), which is where the
+        // `../../` was copied from. From here it resolved to
+        // src/notification/notification.service, a directory that has never
+        // existed, so this line threw MODULE_NOT_FOUND into the best-effort
+        // catch below and Smart Comms notified NOBODY — no in-app row, no
+        // push, no email — silently, for every message ever posted.
+        //
+        // The catch is right to be there (a notify failure must not fail the
+        // message) and is exactly what hid this: a require error and a push
+        // service being briefly unreachable are indistinguishable to it.
+        await require("../notification/notification.service").notifyMany(client, others, {
           eventTypeKey: "comms.message_posted",
           // The SENDER is the headline and the message is the body — the shape
           // every messaging app uses, and the one that reads correctly on a
@@ -136,7 +211,11 @@ async function postMessage(client, { groupId, body = null, mediaVaultId = null, 
             || body
             || "New message in Smart Comms",
           ).slice(0, 90),
-          body: body ? String(body).slice(0, 500) : "Sent an attachment",
+          // A lock screen that says "Sent an attachment" for a voice note tells
+          // the reader nothing about whether to pick up the phone. Naming the
+          // format costs nothing and is the difference between acting now and
+          // opening the app to find out.
+          body: body ? String(body).slice(0, 500) : attachmentSummary(attachments),
           entityRef: "comms_message:" + m.message_id,
           category: "comms",
           // Straight into the channel the message was posted in. `?channel=`
@@ -151,6 +230,31 @@ async function postMessage(client, { groupId, body = null, mediaVaultId = null, 
           renotify: true,
           // Somebody in the company is talking to this person right now.
           urgency: "high",
+          // Same reliability promise mail has made since it was written: a
+          // notification that reaches NO device must reach the person some
+          // other way. Chat was the one conversational channel without it, so
+          // a colleague messaging someone with no registered device produced
+          // an in-app row they would see whenever they next happened to open
+          // the app — which, for the channel people use when they need an
+          // answer now, is indistinguishable from not being told.
+          //
+          // It is not an email per message. `deliverOutbound` sends it only
+          // when push reached ZERO devices, and two carve-outs there already
+          // hold: nothing is sent to someone who SILENCED this category (that
+          // would route around an opt-out they made on purpose), and nothing
+          // is sent when the deploy has no VAPID keypair at all (an operations
+          // problem an email per notification would bury while flooding every
+          // inbox).
+          //
+          // What it does not bound is VOLUME for a recipient who has push
+          // available and has simply never opted a device in: `pushTag`
+          // collapses a fast exchange into one BANNER, but the email leg has
+          // no equivalent, so twenty messages in one channel are twenty
+          // emails. Mail lives with the same shape and its volume is bounded
+          // by real mail arriving; chat's is not. If that bites, the fix is a
+          // per-(user, channel) cooldown on the fallback leg rather than
+          // removing it — see the note on this in doc/PUSH_NOTIFICATIONS.md.
+          emailFallback: true,
           pushData: { kind: "comms", group_id: groupId, message_id: m.message_id },
         });
       }
@@ -179,7 +283,10 @@ async function editMessage(client, { messageId, body, actor }) {
   const m = await repo.getMessage(client, messageId);
   if (!m) throw new AppError("NOT_FOUND", "Message not found", 404);
   if (m.sender_user_id !== actor.user_id) throw new AppError("NOT_YOURS", "You can only edit your own message", 403);
+  await assertMember(client, m.group_id, actor.user_id);
+  if (m.deleted_at) throw new AppError("NOT_FOUND", "Message was deleted", 404);
   const updated = await repo.editMessage(client, messageId, body);
+  if (!updated) throw new AppError("NOT_FOUND", "Message was deleted", 404);
   rtPublish(m.group_id, "comms:message_edited", { group_id: m.group_id, message: updated });
   return updated;
 }
@@ -191,11 +298,73 @@ async function deleteMessage(client, { messageId, actor }) {
   if (deleted) rtPublish(m.group_id, "comms:message_deleted", { group_id: m.group_id, message_id: messageId });
   return { deleted };
 }
-async function thread(client, { groupId, actor, limit, before }) {
+/**
+ * A page of messages, with everything the bubble needs to render attached.
+ *
+ * `erpAllow` is the set of module keys THIS READER holds `view` on, resolved
+ * per-request by the controller. It is threaded down here rather than looked up
+ * in the service because permissions live on the request, and because passing
+ * it explicitly makes it impossible to forget: an ERP card resolved without it
+ * is a card with `redacted: true`, which fails safe.
+ *
+ * Three fan-out queries for the whole page, not three per message. Fifty
+ * bubbles used to be one query because a bubble was a line of text; the cost of
+ * making them rich is paid once per page, not once per bubble.
+ */
+async function thread(client, { groupId, actor, limit, before, erpAllow = new Set() }) {
   await assertMember(client, groupId, actor.user_id);
   await repo.touchPresence(client, groupId, actor.user_id);
-  const messages = await repo.listMessages(client, groupId, { limit: Number(limit) || 50, before });
-  return { group_id: groupId, messages };
+  // `before` is a query-string value and can arrive as an array (`?before=x&
+  // before=y`), which node-postgres would serialise as a Postgres array literal
+  // against a timestamptz comparison — a 500 rather than a page of messages.
+  // The first value is the right reading here: a cursor has one position.
+  const cursor = Array.isArray(before) ? before[0] : before;
+  const messages = await repo.listMessages(client, groupId, { limit: Number(limit) || 50, before: cursor || null });
+  const ids = messages.map((m) => m.message_id);
+
+  const [attachments, reactions, starred] = await Promise.all([
+    repo.listAttachmentsForMessages(client, ids),
+    repo.listReactionsForMessages(client, ids),
+    repo.listStarsForMessages(client, ids, actor.user_id),
+  ]);
+
+  // Resolve every ERP reference on the page against the reader, once per
+  // distinct record rather than once per bubble — the same invoice quoted
+  // three times in a conversation is one lookup.
+  const erpRefs = attachments.filter((a) => a.attachment_kind === "ERP" && a.erp_id);
+  const seen = new Map();
+  for (const r of erpRefs) {
+    const key = `${r.erp_kind}:${r.erp_id}`;
+    if (!seen.has(key)) seen.set(key, r);
+  }
+  const cards = await erp.resolveMany(client, [...seen.values()], erpAllow);
+  const cardByKey = new Map([...seen.keys()].map((k, i) => [k, cards[i]]));
+
+  const starSet = new Set(starred);
+  const byMessage = new Map(ids.map((id) => [id, { attachments: [], reactions: [] }]));
+  for (const a of attachments) {
+    const bucket = byMessage.get(a.message_id);
+    if (!bucket) continue;
+    bucket.attachments.push(
+      a.attachment_kind === "ERP"
+        ? { ...a, erp_card: cardByKey.get(`${a.erp_kind}:${a.erp_id}`) || null }
+        : a,
+    );
+  }
+  for (const r of reactions) {
+    const bucket = byMessage.get(r.message_id);
+    if (bucket) bucket.reactions.push({ emoji: r.emoji, count: r.count, users: r.users });
+  }
+
+  return {
+    group_id: groupId,
+    messages: messages.map((m) => ({
+      ...m,
+      attachments: byMessage.get(m.message_id)?.attachments || [],
+      reactions: byMessage.get(m.message_id)?.reactions || [],
+      starred_by_me: starSet.has(m.message_id),
+    })),
+  };
 }
 
 // ── Reactions / stars / search ──
@@ -237,7 +406,25 @@ async function star(client, { messageId, actor }) {
   return repo.toggleStar(client, { messageId, userId: actor.user_id });
 }
 const starred = (client, actor) => repo.listStarredForUser(client, actor.user_id);
-async function search(client, { actor, term }) { if (!term || term.length < 2) throw new AppError("BAD_SEARCH", "search term too short", 422); return repo.searchMessages(client, actor.user_id, term); }
+/**
+ * Cross-channel message search.
+ *
+ * `term` is coerced to a string before anything reads its length, because
+ * `?q=a&q=b` hands Express an ARRAY. `["a","b"].length` is 2, which sails past
+ * a `< 2` guard meant to reject one-character searches, and the value then
+ * string-concatenates into the ILIKE pattern as "a,b" — so the guard measured
+ * the number of parameters while the query searched for something the user
+ * never typed. CodeQL calls this type confusion through parameter tampering.
+ *
+ * Joining rather than taking the first is deliberate: somebody who sent two
+ * values meant both, and a search for "a,b" finding nothing is a truthful
+ * answer where silently searching for "a" is not.
+ */
+async function search(client, { actor, term }) {
+  const q = (Array.isArray(term) ? term.join(",") : String(term ?? "")).trim();
+  if (q.length < 2) throw new AppError("BAD_SEARCH", "search term too short", 422);
+  return repo.searchMessages(client, actor.user_id, q);
+}
 
 // ── Reads / presence ──
 async function markRead(client, { groupId, actor }) { await assertMember(client, groupId, actor.user_id); await repo.markChannelRead(client, groupId, actor.user_id); rtPublish(groupId, "comms:read", { group_id: groupId, user_id: actor.user_id }); return { ok: true }; }
@@ -250,16 +437,96 @@ async function clearDraft(client, { groupId, actor }) { await repo.deleteDraft(c
 
 // ── Quick replies ──
 const listQuickReplies = (client, actor) => repo.listQuickReplies(client, actor.user_id);
-const createQuickReply = (client, { data, actor }) => repo.createQuickReply(client, { owner_user_id: data.shared ? null : actor.user_id, label: data.label, body: data.body });
-const updateQuickReply = (client, { id, patch }) => repo.updateQuickReply(client, id, { ...(patch.label !== undefined ? { label: patch.label } : {}), ...(patch.body !== undefined ? { body: patch.body } : {}) });
-async function deleteQuickReply(client, { id }) { await repo.deleteQuickReply(client, id); return { deleted: true }; }
+const createQuickReply = (client, { data, actor }) => repo.createQuickReply(client, { owner_user_id: actor.user_id, label: data.label, body: data.body });
+async function updateQuickReply(client, { id, patch, actor }) {
+  const row = await repo.updateQuickReply(client, id, patch, actor.user_id);
+  if (!row) throw new AppError("NOT_FOUND", "Quick phrase not found", 404);
+  return row;
+}
+async function deleteQuickReply(client, { id, actor }) {
+  const row = await repo.deleteQuickReply(client, id, actor.user_id);
+  if (!row) throw new AppError("NOT_FOUND", "Quick phrase not found", 404);
+  return { deleted: true };
+}
+
+// ── Media + ERP references ──
+/**
+ * Upload one file into a channel and hand back an attachment descriptor.
+ *
+ * Membership is asserted HERE and not in the media service, so the media
+ * service stays a store rather than a second place authorisation is decided —
+ * `assertMember` is passed down to the reads that need it for the same reason.
+ *
+ * The message is NOT posted by this call. The composer uploads while the person
+ * is still typing and posts one message carrying the descriptors afterwards,
+ * which is what lets a picture appear in the bubble the instant it is sent
+ * rather than a beat later.
+ */
+async function uploadMedia(client, { groupId, file, isVoiceNote, durationMs, waveform, width, height, slug, actor }) {
+  await assertMember(client, groupId, actor.user_id);
+  return media.store(client, { groupId, file, isVoiceNote, durationMs, waveform, width, height, slug, actor });
+}
+
+/**
+ * Transcribe a voice note because a member asked, and tell the channel.
+ *
+ * Reader-initiated, not upload-initiated — see the long note in
+ * `smartcomm.media.service.js` for why the provider is no longer called for
+ * every clip anybody records.
+ *
+ * The realtime publish stays, and now earns more than it did: one person
+ * pressing Transcribe puts the words under the bubble for everyone else who
+ * has the thread open, so the second and third member of a channel do not each
+ * pay for the same clip to learn the same sentence.
+ *
+ * `groupId` comes off the media row rather than the URL: the caller addresses a
+ * media id, and taking the channel from anywhere but the row it belongs to
+ * would let a member of channel A publish into channel B.
+ */
+async function transcribeVoiceNote(client, { mediaId, language, actor }) {
+  const row = await media.transcribeVoiceNote(client, { mediaId, language, assertMember, actor });
+  if (row) {
+    rtPublish(row.group_id, "comms:transcript", {
+      group_id: row.group_id,
+      media_id: mediaId,
+      transcript: row.transcript,
+      transcript_status: row.transcript_status,
+    });
+  }
+  return {
+    media_id: mediaId,
+    transcript: (row && row.transcript) || null,
+    transcript_status: (row && row.transcript_status) || "FAILED",
+  };
+}
+
+const mediaBytes = (client, { mediaId, actor }) => media.bytes(client, { mediaId, assertMember, actor });
+const promoteMedia = (client, { mediaId, actor, slug, docType, entityRef }) =>
+  media.promote(client, { mediaId, assertMember, actor, slug, docType, entityRef });
+
+const erpSearch = (client, { term, allow, kinds, limit }) => erp.search(client, { term, allow, kinds, limit });
+const erpCard = (client, { kind, id, allow }) => erp.resolve(client, { kind, id, allow });
 
 // ── Directory + certified export ──
 const colleagues = (client, q) => repo.listColleagues(client, q);
 async function certifiedExport(client, { groupId, actor = {} }) {
   await assertMember(client, groupId, actor.user_id);
   const messages = await repo.listMessages(client, groupId, { limit: 200 });
-  const transcript = messages.map((m) => `[${m.created_at}] ${m.sender_user_id || "system"}: ${m.deleted_at ? "(deleted)" : (m.body || "(media)")}`).join("\n");
+  // A voice note used to render as "(media)" here — so the one format people
+  // reach for when an instruction is urgent was the one format that vanished
+  // from the certified record of the channel. Where a transcript exists it IS
+  // the line, marked as spoken so nobody later mistakes it for something that
+  // was typed.
+  const spoken = new Map(
+    (await repo.voiceTranscriptsForGroup(client, groupId)).map((r) => [r.message_id, r.transcript]),
+  );
+  const lineFor = (m) => {
+    if (m.deleted_at) return "(deleted)";
+    if (m.body) return m.body;
+    const said = spoken.get(m.message_id);
+    return said ? `(voice note) ${said}` : "(media)";
+  };
+  const transcript = messages.map((m) => `[${m.created_at}] ${m.sender_user_id || "system"}: ${lineFor(m)}`).join("\n");
   const contentHash = crypto.createHash("sha256").update(transcript).digest("hex");
   const doc = await documents.capture(client, { entityRef: gref(groupId), docType: "COMMS_CERTIFIED_EXPORT", contentHash, status: "VERIFIED" });
   await emitEvent(client, { eventTypeKey: events.EXPORTED, moduleKey: events.MODULE, entityRef: gref(groupId), actorUserId: actor.user_id || null });
@@ -275,4 +542,6 @@ module.exports = {
   getDraft, saveDraft, clearDraft,
   listQuickReplies, createQuickReply, updateQuickReply, deleteQuickReply,
   colleagues, certifiedExport, acknowledge,
+  uploadMedia, mediaBytes, promoteMedia, transcribeVoiceNote,
+  erpSearch, erpCard,
 };

@@ -26,7 +26,7 @@
 import * as React from "react";
 import { tr } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { DateField } from "@/components/ui/date-field";
 import { Pill } from "@/components/ui/pill";
 import { Segmented } from "@/components/ui/segmented";
 import { Callout } from "@/components/ui/callout";
@@ -98,19 +98,17 @@ function PeriodPicker({
       />
       {preset === "custom" && (
         <>
-          <Input
-            type="date"
+          <DateField
             aria-label="Period from"
             value={from}
-            onChange={(e) => onFrom(e.target.value)}
+            onChange={onFrom}
             className="w-40"
           />
           <span className="micro">to</span>
-          <Input
-            type="date"
+          <DateField
             aria-label="Period to"
             value={to}
-            onChange={(e) => onTo(e.target.value)}
+            onChange={onTo}
             className="w-40"
           />
         </>
@@ -363,7 +361,7 @@ export function SpendTab({ id }: { id: string }) {
 
       {/* Headline = actual. The other two tiles are context for it, which is why
           the variance is stated on the committed tile rather than as a fourth. */}
-      <KpiRow>
+      <KpiRow stack>
         <KpiTile
           label={`Actual (${cur})`}
           value={money(d.totals.actual, cur)}
@@ -482,7 +480,7 @@ export function SpendTab({ id }: { id: string }) {
                     Document
                   </th>
                   <th scope="col" className="px-3 py-2">
-                    Dossier
+                    File
                   </th>
                   <th scope="col" className="px-3 py-2">
                     Status

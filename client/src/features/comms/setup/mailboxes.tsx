@@ -13,6 +13,16 @@
  * and several already have ERP modules waiting to be wired to them. Showing them
  * as slots turns configuration into a checklist rather than a blank form.
  *
+ * ── AND EVERY SLOT NOW ASKS HOW, BEFORE IT ASKS FOR A PASSWORD ──────────────
+ *
+ * Clicking a slot used to open the IMAP/SMTP form directly. For a company whose
+ * domain sits on Microsoft 365 that form cannot succeed — Exchange Online
+ * retired Basic auth for IMAP/POP in 2022 and for SMTP AUTH in April 2026 — so
+ * "Operations", "Customer Support" and "New shared mailbox" were all buttons
+ * that led to an authentication failure with no way round it. They now open
+ * `<ConnectMethodModal>`, the same chooser the personal screen uses, and the
+ * password form is what is behind ONE of its two answers.
+ *
  * ── MEMBERS ARE THE POINT OF A SHARED MAILBOX ───────────────────────────────
  *
  * Reading a team's mail and sending as it are different rights, so the member
@@ -26,6 +36,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field, Modal, Select } from "@/components/ui/modal";
 import { ErrorState } from "@/components/ui/states";
+import { Callout } from "@/components/ui/callout";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { XIcon } from "@/components/ui/icons";
 import { DataList, PageHeader, type Column } from "@/components/data-list";
@@ -35,6 +46,16 @@ import { dateFmt } from "@/lib/format";
 import { tr } from "@/lib/i18n";
 import { reportActionError } from "@/lib/action-error";
 import { SmtpErrorGuide } from "@/components/mail/smtp-guide";
+import { DisconnectMailboxDialog } from "@/components/mail/disconnect-mailbox-dialog";
+import { SmtpSignInFields } from "@/components/mail/smtp-sign-in-fields";
+import { ConnectMethodModal } from "@/components/mail/connect-method-modal";
+import {
+  BLANK_SMTP_SIGN_IN,
+  smtpSignInFrom,
+  smtpSignInBody,
+  smtpSignInReady,
+  type SmtpSignInValue,
+} from "@/lib/smtp-sign-in";
 import * as api from "@/lib/mail-api";
 import { HealthPill } from "./health-pill";
 
@@ -59,14 +80,41 @@ const statusTone = (s?: string | null): Tone => {
 
 /* ── Create a shared mailbox from a catalogue slot ───────────────────────── */
 
+/**
+ * Transport details already typed into the Connections drawer, carried across
+ * when somebody discovers there that what they actually wanted was a team
+ * address. Everything except the password: it crosses a tab boundary and would
+ * then sit in the hub's state after this modal closed, and one field to retype
+ * is a smaller cost than a credential kept alive longer than the form that
+ * collected it.
+ */
+export type SharedMailboxSeed = {
+  email_address?: string;
+  display_name?: string;
+  imap_host?: string;
+  imap_port?: number;
+  smtp_host?: string;
+  smtp_port?: number;
+  auth_user?: string;
+};
+
 function CreateSharedModal({
-  slot, onClose, onDone,
-}: { slot: api.CatalogueEntry | null; onClose: () => void; onDone: () => void }) {
+  slot, seed, onClose, onDone,
+}: {
+  slot: api.CatalogueEntry | null;
+  seed?: SharedMailboxSeed;
+  onClose: () => void;
+  onDone: () => void;
+}) {
   const [f, setF] = React.useState({
-    email_address: "", display_name: slot?.label_en || "",
-    imap_host: "", imap_port: 993, smtp_host: "", smtp_port: 465,
-    auth_user: "", password: "", department: slot?.department || "",
+    email_address: seed?.email_address || "",
+    display_name: seed?.display_name || slot?.label_en || "",
+    imap_host: seed?.imap_host || "", imap_port: seed?.imap_port || 993,
+    smtp_host: seed?.smtp_host || "", smtp_port: seed?.smtp_port || 465,
+    auth_user: seed?.auth_user || "", password: "",
+    department: slot?.department || "",
   });
+  const [smtpAuth, setSmtpAuth] = React.useState<SmtpSignInValue>(BLANK_SMTP_SIGN_IN);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<unknown>(null);
   const [note, setNote] = React.useState<string | null>(null);
@@ -101,6 +149,7 @@ function CreateSharedModal({
         smtp_host: f.smtp_host, smtp_port: Number(f.smtp_port), smtp_secure: true,
         auth_user: f.auth_user || f.email_address,
         password: f.password,
+        ...smtpSignInBody(smtpAuth),
       });
       onDone(); onClose();
     } catch (err) { setError(err); reportActionError(err); }
@@ -144,10 +193,11 @@ function CreateSharedModal({
           <Field label={tr("Username")} required hint={tr("On cPanel, the full address.")}><Input value={f.auth_user} onChange={set("auth_user")} /></Field>
           <Field label={tr("Password")} required><Input value={f.password} onChange={set("password")} type="password" autoComplete="off" /></Field>
         </div>
+        <SmtpSignInFields value={smtpAuth} onChange={setSmtpAuth} disabled={busy} />
         {error != null && (<><ErrorState message={errMsg(error)} /><SmtpErrorGuide err={error} /></>)}
         <div className="flex justify-end gap-2 pt-1">
           <Button type="button" variant="outline" onClick={onClose} disabled={busy}>{tr("Cancel")}</Button>
-          <Button type="submit" loading={busy} disabled={busy}>{tr("Create and test")}</Button>
+          <Button type="submit" loading={busy} disabled={busy || !smtpSignInReady(smtpAuth)}>{tr("Create and test")}</Button>
         </div>
       </form>
     </Modal>
@@ -354,10 +404,47 @@ function HandoverModal({
 
 /* ── The page ────────────────────────────────────────────────────────────── */
 
-export function MailboxesTab() {
+/**
+ * `canCreate` is MOD-72 **create**, not `can_administer`.
+ *
+ * The tab itself is offered on `can_administer`, which the server answers with
+ * `can_update` — but `POST /mail/mailboxes/shared` is gated on `can_create`
+ * (mail.routes.js), because standing up a team address mints an identity the
+ * company sends from. Those are two different rights, and a role holding edit
+ * without create saw a "New shared mailbox" button that could only 403. None of
+ * the seeded roles are shaped that way, but the permission matrix is data a
+ * tenant edits, so the button follows the right that actually gates the call.
+ */
+export function MailboxesTab({
+  canCreate = true,
+  seed,
+  onSeedConsumed,
+  notice,
+}: {
+  canCreate?: boolean;
+  /** Transport details handed over from the Connections tab; opens the modal. */
+  seed?: SharedMailboxSeed | null;
+  onSeedConsumed?: () => void;
+  /** The outcome of a Microsoft consent round trip, read off the query string by the page. */
+  notice?: React.ReactNode;
+} = {}) {
   const boxes = useResource(() => api.allMailboxes(), []);
   const catalogue = useResource(() => api.listCatalogue(), []);
-  const [creating, setCreating] = React.useState<api.CatalogueEntry | null | undefined>(undefined);
+  /**
+   * Two steps to set up a team address, and the ORDER is the fix.
+   *
+   * `choosing` is the how — Microsoft sign-in or the company's own server —
+   * and `creating` is the IMAP/SMTP form, which is now only one of the two
+   * answers rather than the whole flow. `undefined` means neither is open;
+   * `null` inside either means "no catalogue slot", i.e. a free-form address.
+   *
+   * A seed from the Connections tab skips the question: somebody who has
+   * already typed an IMAP host has answered it.
+   */
+  const [choosing, setChoosing] = React.useState<api.CatalogueEntry | null | undefined>(undefined);
+  const [creating, setCreating] = React.useState<api.CatalogueEntry | null | undefined>(
+    seed ? null : undefined,
+  );
   const [members, setMembers] = React.useState<api.Mailbox | null>(null);
   const [limits, setLimits] = React.useState<api.Mailbox | null>(null);
   const [handover, setHandover] = React.useState<api.Mailbox | null>(null);
@@ -415,12 +502,14 @@ export function MailboxesTab() {
       <PageHeader
         title={tr("Mailboxes")}
         description={tr("Every mailbox in the company — the personal ones people connect themselves, and the team addresses you set up for them.")}
-        action={<Button onClick={() => setCreating(null)}>{tr("New shared mailbox")}</Button>}
+        action={canCreate ? <Button onClick={() => setChoosing(null)}>{tr("New shared mailbox")}</Button> : undefined}
       />
+
+      {notice}
 
       {error != null && <ErrorState message={errMsg(error)} />}
 
-      {unfilled.length > 0 && (
+      {canCreate && unfilled.length > 0 && (
         <div className="rounded-xl border border-border p-4">
           <div className="text-sm font-medium">{tr("Team addresses not set up yet")}</div>
           <p className="micro mt-1 text-muted-foreground">
@@ -431,7 +520,7 @@ export function MailboxesTab() {
               <button
                 key={c.catalogue_key}
                 type="button"
-                onClick={() => setCreating(c)}
+                onClick={() => setChoosing(c)}
                 title={c.description_en || undefined}
                 className="rounded-lg border border-dashed border-border px-3 py-2 text-left text-sm transition-colors hover:border-primary hover:bg-accent"
               >
@@ -452,12 +541,32 @@ export function MailboxesTab() {
         empty={{
           title: tr("No mailboxes yet"),
           hint: tr("People connect their own from the My mailbox tab. Team addresses are set up here."),
-          action: <Button onClick={() => setCreating(null)}>{tr("New shared mailbox")}</Button>,
+          action: canCreate ? <Button onClick={() => setChoosing(null)}>{tr("New shared mailbox")}</Button> : undefined,
         }}
       />
 
-      {creating !== undefined && (
-        <CreateSharedModal slot={creating} onClose={() => setCreating(undefined)} onDone={reload} />
+      {choosing !== undefined && canCreate && (
+        <ConnectMethodModal
+          open
+          scope={{
+            kind: "shared",
+            catalogue_key: choosing?.catalogue_key ?? null,
+            department: choosing?.department ?? null,
+            label: choosing?.label_en ?? null,
+          }}
+          title={choosing ? `${tr("Set up")} ${choosing.label_en}` : tr("New shared mailbox")}
+          description={choosing?.description_en || tr("A team address several people work together. First: where does this company's email live?")}
+          onClose={() => setChoosing(undefined)}
+          onChooseSmtp={() => { setCreating(choosing ?? null); setChoosing(undefined); }}
+        />
+      )}
+      {creating !== undefined && canCreate && (
+        <CreateSharedModal
+          slot={creating}
+          seed={seed || undefined}
+          onClose={() => { setCreating(undefined); onSeedConsumed?.(); }}
+          onDone={reload}
+        />
       )}
       {members && <MembersModal mailbox={members} onClose={() => { setMembers(null); reload(); }} />}
       {limits && <LimitsModal mailbox={limits} onClose={() => setLimits(null)} onDone={reload} />}
@@ -478,6 +587,13 @@ export function MailboxesTab() {
  * connecting a mailbox is still how a person gets into the product's mail.
  */
 
+/**
+ * The server's refusal of a second personal mailbox, by CODE rather than by
+ * matching its prose — the message is one `tr()` away from being French.
+ */
+const isPersonalMailboxConflict = (e: unknown): boolean =>
+  typeof e === "object" && e !== null && (e as { code?: string }).code === "PERSONAL_MAILBOX_EXISTS";
+
 const connTone = (s?: string | null): Tone => {
   const u = String(s || "").toUpperCase();
   if (u === "CONNECTED") return "ok";
@@ -493,9 +609,16 @@ const providerLabel: Record<api.Provider, string> = {
 function ImapConnectForm({
   existing,
   onDone,
+  onSharedInstead,
 }: {
   existing?: api.Connection;
   onDone: () => void;
+  /**
+   * Offered when the server refuses a SECOND personal mailbox. Undefined when
+   * the caller may not create shared mailboxes — pointing somebody at a screen
+   * that will 403 is worse than the dead end it replaces.
+   */
+  onSharedInstead?: (seed: SharedMailboxSeed) => void;
 }) {
   const editing = !!existing;
   const [f, setF] = React.useState({
@@ -508,6 +631,10 @@ function ImapConnectForm({
     auth_user: existing?.auth_user || "",
     password: "",
   });
+  // Reopened in whatever mode the mailbox is actually in — derived server-side,
+  // so the form is right without the SMTP password ever reaching the browser.
+  const [smtpAuth, setSmtpAuth] = React.useState<SmtpSignInValue>(() => smtpSignInFrom(existing));
+  const storedSmtpPassword = smtpSignInFrom(existing).smtp_auth === "separate";
   const set = (k: string, v: string) => setF((s) => ({ ...s, [k]: v }));
   const [busy, setBusy] = React.useState(false);
   const [discovering, setDiscovering] = React.useState(false);
@@ -556,6 +683,7 @@ function ImapConnectForm({
         smtp_port: Number(f.smtp_port) || undefined,
         auth_user: f.auth_user || undefined,
         password: f.password || undefined,
+        ...smtpSignInBody(smtpAuth),
       };
       const r = existing
         ? await api.updateImapConnection(existing.email_connection_id, body)
@@ -642,10 +770,59 @@ function ImapConnectForm({
           />
         </Field>
       </div>
+      {/* Below the shared credential, because it is a decision ABOUT it: the
+          question "does sending use this same login?" only makes sense once the
+          login above has been read. */}
+      <div className="mt-3">
+        <SmtpSignInFields
+          value={smtpAuth}
+          onChange={setSmtpAuth}
+          hasStoredPassword={storedSmtpPassword}
+          disabled={busy}
+        />
+      </div>
       {hint && <p className="mt-2 micro">{hint}</p>}
       {error != null && (
-        <div className="mt-2">
+        <div className="mt-2 space-y-2">
           <ErrorState message={errMsg(error)} />
+          {/*
+           * PERSONAL_MAILBOX_EXISTS used to end here, and the sentence it ends
+           * with is "ask an administrator to set up a shared mailbox" — which
+           * an administrator reads while BEING the administrator, on the only
+           * screen in the product that says "Connect a mailbox". The mailbox
+           * they want is a team address, that is a different object created on
+           * a different tab, and nothing here said so. This is the missing
+           * half: name the rule, then hand over what they have already typed.
+           */}
+          {isPersonalMailboxConflict(error) && onSharedInstead && (
+            <Callout
+              tone="info"
+              title={tr("Setting up a team address?")}
+              action={
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() =>
+                    onSharedInstead({
+                      email_address: f.email_address,
+                      display_name: f.display_name,
+                      imap_host: f.imap_host,
+                      imap_port: Number(f.imap_port) || undefined,
+                      smtp_host: f.smtp_host,
+                      smtp_port: Number(f.smtp_port) || undefined,
+                      auth_user: f.auth_user,
+                    })
+                  }
+                >
+                  {tr("Set up a shared mailbox")}
+                </Button>
+              }
+            >
+              {tr(
+                "A personal mailbox is one per person. An address a team works together — invoicing@, operations@ — is a shared mailbox, set up on the Mailboxes tab. What you have typed carries over; you will re-enter the password.",
+              )}
+            </Callout>
+          )}
           <SmtpErrorGuide err={error} />
         </div>
       )}
@@ -683,7 +860,8 @@ function ImapConnectForm({
             !f.email_address ||
             !f.imap_host ||
             !f.smtp_host ||
-            (!editing && !f.password)
+            (!editing && !f.password) ||
+            !smtpSignInReady(smtpAuth, storedSmtpPassword)
           }
         >
           {editing ? "Save & test" : "Connect & test"}
@@ -741,7 +919,16 @@ function RightDrawer({
   );
 }
 
-export function ConnectionsTab() {
+export function ConnectionsTab({
+  onCreateShared,
+}: {
+  /**
+   * Present only when the caller holds MOD-72 create — see `MailboxesTab`. The
+   * hub switches to the Mailboxes tab and opens the shared-mailbox form seeded
+   * with what was already typed here.
+   */
+  onCreateShared?: (seed: SharedMailboxSeed) => void;
+} = {}) {
   const conns = useResource(() => api.listConnections(), []);
   const [busyId, setBusyId] = React.useState<string>("");
   const [note, setNote] = React.useState<string>("");
@@ -753,48 +940,46 @@ export function ConnectionsTab() {
     message?: string;
   } | null>(null);
 
-  // Surface the OAuth callback result. The provider redirect lands back on
-  // /comms/mail?mail_connected=<provider> (or ?mail_error=<code>); show it,
-  // refresh the mailbox list, then strip the query so a reload doesn't replay it.
-  React.useEffect(() => {
-    const p = new URLSearchParams(window.location.search);
-    const ok = p.get("mail_connected");
-    const bad = p.get("mail_error");
-    if (!ok && !bad) return;
-    if (ok) {
-      const who = ok === "google" ? "Google" : "Microsoft";
-      const email = p.get("email");
-      setNote(`✓ Connected ${who}${email ? ` — ${email}` : ""}`);
-      conns.reload();
-    } else {
-      setNote(`✗ Connection failed (${bad})`);
-      setTestFail({ code: bad ?? undefined, message: undefined });
-    }
-    window.history.replaceState({}, "", window.location.pathname);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  /* ── The OAuth kick-off, hidden with its two buttons ──────────────────────
+  /*
+   * The OAuth callback result used to be read HERE, and never was.
    *
-   * Commented out rather than deleted, for the reason set out beside the
-   * buttons below: Microsoft Graph and Gmail are gated off for this programme
-   * (Q4, Q11, PR-0 P4), not abandoned. `api.startMicrosoft` and
-   * `api.startGoogle` are still exported, the adapters still have their CI
-   * tests, and the server now refuses the flow itself
-   * (`mail.service.assertProviderEnabled`, on both `startOAuth` and
-   * `completeOAuth`). Re-enabling a provider should be un-commenting this and
-   * the buttons, not rediscovering how the redirect worked.
-   *
-   *   async function oauth(kind: "ms" | "gg") {
-   *     try {
-   *       const r =
-   *         kind === "ms" ? await api.startMicrosoft() : await api.startGoogle();
-   *       window.location.href = r.url;
-   *     } catch (err) {
-   *       setNote(errMsg(err));
-   *     }
-   *   }
+   * The callback redirected to `/comms/mail`, which renders the inbox and does
+   * not mount this tab, so this effect ran on no page that a returning user
+   * ever saw: consent succeeded, the browser came back, and the person was
+   * shown an inbox with a stray `?mail_connected=microsoft` in the URL and no
+   * confirmation of any kind. The callback now lands on `/comms/setup`, and
+   * `CommsSetupPage` reads the query once, opens the tab the flow started from
+   * (personal → My mailbox, team address → Mailboxes) and renders the outcome
+   * there. Reading it in two places would race: whichever ran second would find
+   * the query already stripped.
    */
+
+  /* ── The OAuth kick-off ───────────────────────────────────────────────────
+   *
+   * Restored for Microsoft. It is no longer a "nice to have alongside IMAP":
+   * Exchange Online removed Basic auth for IMAP and POP in 2022 and retired it
+   * for SMTP AUTH on 30 April 2026, so for a mailbox hosted on Microsoft 365
+   * this is now the ONLY way to connect one at all. There is no password that
+   * works, and `connect()` refuses to pretend otherwise.
+   *
+   * Google stays out for now: its restricted mail scopes need a security
+   * assessment that runs for weeks, and 12775 split the flags so waiting for
+   * Google no longer holds Microsoft back. `api.startGoogle` is still exported
+   * and the adapter still has its CI tests, so turning it on is this function
+   * plus a second button.
+   *
+   * The gate remains on the SERVER — `startOAuth` and `completeOAuth` both call
+   * `assertProviderEnabled` — so a tenant without the flag gets a clear refusal
+   * rather than a redirect to a provider we would then turn away.
+   */
+  async function connectMicrosoft() {
+    try {
+      const r = await api.startMicrosoft();
+      window.location.href = r.url;
+    } catch (err) {
+      setNote(errMsg(err));
+    }
+  }
   async function test(id: string) {
     setBusyId(id);
     setNote("");
@@ -826,22 +1011,28 @@ export function ConnectionsTab() {
   /**
    * Disconnect — the action a person could not reach at all.
    *
-   * `window.confirm` rather than a modal, deliberately: this is destructive of
-   * a credential and the sentence has to be READ, and every dialog in this app
-   * is dismissible by clicking outside it. What the sentence says is the point
-   * — most people read "disconnect" as "delete my mail", and the difference
-   * matters the first time somebody needs last March's bill of lading.
+   * It used to be a `window.confirm`, deliberately, for one reason: this is
+   * destructive of a credential, the sentence has to be READ, and every dialog
+   * in this app is dismissible by clicking outside it. What the sentence says
+   * is the point — most people read "disconnect" as "delete my mail", and the
+   * difference matters the first time somebody needs last March's bill of
+   * lading.
+   *
+   * The reason was right; the remedy was the browser's. A native confirm has no
+   * brand, no type scale, no warning red and an OK/Cancel pair that does not
+   * name the action, and it is the only dialog in the product that looks like a
+   * different piece of software. `<DisconnectMailboxDialog>` keeps the property
+   * that mattered — `dismissible={false}`, so clicking away does not answer it
+   * — and states the consequences in the product's own voice and colour.
    */
+  const [confirmTarget, setConfirmTarget] = React.useState<api.Connection | null>(null);
+
   async function disconnect(c: api.Connection) {
-    const ok = window.confirm(
-      `${tr("Disconnect")} ${c.email_address}?\n\n` +
-      tr("New mail stops arriving and the saved password is deleted. Everything already received stays here and stays readable. You can connect the address again later.")
-    );
-    if (!ok) return;
     setBusyId(c.email_connection_id);
     setNote("");
     try {
       await api.disconnectMailbox(c.email_connection_id);
+      setConfirmTarget(null);
       setNote(`✓ ${tr("Disconnected")} — ${c.email_address}`);
       conns.reload();
     } catch (e) {
@@ -867,31 +1058,23 @@ export function ConnectionsTab() {
 
   return (
     <div className="space-y-5">
-      {/* ── Connect Microsoft 365 / Connect Google Workspace: HIDDEN ─────────
-       *
-       * Not deleted — hidden, because the adapters are not dead code. Q4 and
-       * Q11 put Microsoft Graph and Gmail out of scope for this programme
-       * ("one provider properly rather than four adequately"), and PR-0 P4 kept
-       * them "kept and tested but gated off — server-side, not only in the UI".
-       * The adapters, their tests and `oauth()` below all still work; the day
-       * `mail.provider.oauth` is turned on, this block comes back and nothing
-       * else has to change.
-       *
-       * The server now agrees, which it did not before: `startOAuth` and
-       * `completeOAuth` both call `assertProviderEnabled`. Until that was
-       * added, the gate sat only on `connect()` — which the OAuth path never
-       * goes through, since `completeOAuth` inserts its own connection row —
-       * so hiding these two buttons was literally the only thing standing
-       * between a caller and a half-supported provider.
-       *
-       *   <Button variant="outline" onClick={() => oauth("ms")}>
-       *     Connect Microsoft 365
-       *   </Button>
-       *   <Button variant="outline" onClick={() => oauth("gg")}>
-       *     Connect Google Workspace
-       *   </Button>
-       */}
+      <DisconnectMailboxDialog
+        open={!!confirmTarget}
+        address={confirmTarget?.email_address || ""}
+        busy={!!confirmTarget && busyId === confirmTarget.email_connection_id}
+        onClose={() => setConfirmTarget(null)}
+        onConfirm={() => confirmTarget && void disconnect(confirmTarget)}
+      />
+      {/* Microsoft first, and deliberately so: for a Microsoft 365 mailbox it is
+       * the only route that exists, while "Connect a mailbox" (IMAP/SMTP) is
+       * for a mailbox on the company's own mail server. Offering the password
+       * form first to a Microsoft tenant sends them down a road that ends in an
+       * authentication failure they cannot fix. Google Workspace returns here
+       * once its scope verification clears — see `oauth()` above. */}
       <div className="flex flex-wrap items-center gap-3">
+        <Button variant="outline" onClick={() => void connectMicrosoft()}>
+          {tr("Connect Microsoft 365")}
+        </Button>
         <Button variant="outline" onClick={() => setImapOpen(true)}>
           {tr("Connect a mailbox")}
         </Button>
@@ -962,7 +1145,7 @@ export function ConnectionsTab() {
               <Button
                 size="sm"
                 variant="ghost"
-                onClick={() => disconnect(c)}
+                onClick={() => setConfirmTarget(c)}
                 disabled={busyId === c.email_connection_id}
               >
                 {tr("Disconnect")}
@@ -992,6 +1175,7 @@ export function ConnectionsTab() {
         <ImapConnectForm
           key={editConn?.email_connection_id ?? "new"}
           existing={editConn ?? undefined}
+          onSharedInstead={editConn ? undefined : onCreateShared}
           onDone={() => {
             conns.reload();
             setImapOpen(false);

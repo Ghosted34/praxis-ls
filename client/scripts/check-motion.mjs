@@ -52,6 +52,34 @@ const clientRoot = join(here, "..");
 const cssPath = join(clientRoot, "src", "index.css");
 const twPath = join(clientRoot, "tailwind.config.ts");
 const css = readFileSync(cssPath, "utf8");
+
+/**
+ * ── EVERY STYLESHEET, NOT JUST index.css — O-13 ────────────────────────────
+ *
+ * This gate read one file, and `client/src/fonts/brittany-signature.css` is
+ * proof that one file is not where the CSS lives. A timed declaration in any
+ * other sheet was a silent pass — established by putting a 3000ms transition in
+ * a sibling and watching this gate report "within budget", not by inspection.
+ *
+ * Discovered rather than listed, for the reason the finding itself
+ * demonstrates: a hand-maintained list of stylesheets goes stale the first time
+ * somebody adds one, and it goes stale silently.
+ *
+ * `index.css` keeps its own binding above — the reduced-motion umbrella is a
+ * property of that file specifically, and is asserted against it by name.
+ */
+function stylesheets(dir) {
+  const out = [];
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, e.name);
+    if (e.isDirectory()) out.push(...stylesheets(full));
+    else if (e.name.endsWith(".css")) out.push(full);
+  }
+  return out;
+}
+const SHEETS = stylesheets(join(clientRoot, "src"))
+  .sort()
+  .map((file) => ({ file: relative(clientRoot, file), text: readFileSync(file, "utf8") }));
 const tw = readFileSync(twPath, "utf8");
 
 /** Every .ts/.tsx under client/src. Walked rather than globbed so this stays a
@@ -182,7 +210,10 @@ function declarations(source) {
       }
     }
     const m = line.match(
-      /(?:^|\s)(transition|animation)(?:-duration)?\s*:\s*([^;]+);/,
+      /* `{` and `;` beside whitespace: `.x{transition:opacity 3s}` on one line
+         matched nothing, so a compact or generated stylesheet read as a pass.
+         The same blind spot as public-web's copy, found the same way. */
+      /(?:^|[\s{;])(transition|animation)(?:-duration)?\s*:\s*([^;]+);/,
     );
     if (m) out.push({ prop: m[1], value: m[2], selector, line: i + 1 });
     if (line.includes("}")) {
@@ -206,7 +237,8 @@ const failures = [];
 const exempted = [];
 let checked = 0;
 
-for (const d of declarations(css)) {
+for (const sheet of SHEETS)
+for (const d of declarations(sheet.text).map((d) => ({ ...d, file: sheet.file }))) {
   const worst = Math.max(0, ...durations(d.value));
   if (worst === 0) continue;
   checked++;
@@ -339,23 +371,94 @@ for (const [name, where] of used) {
 /* ── 4. the reduced-motion umbrella ───────────────────────────────────────── */
 
 const reducedMotion = [];
-const globalKill = css.match(
-  /@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{\s*\*,\s*\*::before,\s*\*::after\s*\{([\s\S]*?)\}/,
-);
-if (!globalKill) {
+
+/**
+ * ── F-3: THIS CHECK COULD BE MASKED, IN TWO WAYS ──────────────────────────
+ *
+ * `public-web`'s gate found both holes in this one and fixed them there; this
+ * is the port back, which F-3 said was worth its own change and is overdue.
+ *
+ *   1. `css.match(…)` takes the FIRST reduced-motion block in the file. A
+ *      stylesheet with several — this one has more than one — leaves every
+ *      later block uninspected, so breaking one of them is invisible.
+ *   2. `([\s\S]*?)\}` stops at the first `}`, which is the first NESTED
+ *      close, not the block's own. Where a reduced-motion block opens with an
+ *      inner rule the captured "body" is that inner rule and the universal
+ *      selector underneath is never read at all.
+ *
+ * Both are fixed the way `public-web/scripts/check-motion.mjs` fixes them:
+ * count braces rather than match non-greedily, and hold EVERY block that claims
+ * the universal selector to the whole rule on its own.
+ */
+function reducedMotionBlocks(source) {
+  const out = [];
+  const opener = /@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{/g;
+  for (const m of source.matchAll(opener)) {
+    let depth = 1;
+    let i = m.index + m[0].length;
+    const start = i;
+    while (i < source.length && depth > 0) {
+      if (source[i] === "{") depth += 1;
+      else if (source[i] === "}") depth -= 1;
+      i += 1;
+    }
+    out.push(source.slice(start, i - 1));
+  }
+  return out;
+}
+
+/**
+ * Does this block hold the UNIVERSAL umbrella — a bare `*` selector?
+ *
+ * ── WHY A REGEX OVER THE BLOCK IS NOT ENOUGH ──────────────────────────────
+ *
+ * The obvious test, `/(^|[\s,{])\*[\s,{]/`, matches `.landing-content > *`,
+ * which is a CHILD selector and not an umbrella at all. `client/src/index.css`
+ * has exactly that inside a reduced-motion block, so the obvious test reported
+ * the landing-page block as a broken global kill and named four faults in a
+ * rule that was never claiming to be one.
+ *
+ * So the selector lists are parsed: the text before each `{`, split on commas,
+ * and a block qualifies only when one of its selectors is exactly `*`.
+ */
+function hasUniversalSelector(block) {
+  // Selector lists are the runs of text that precede a `{`.
+  for (const m of block.matchAll(/(^|[};])([^{}]*)\{/g)) {
+    const selectors = m[2].split(",").map((sel) => sel.trim());
+    if (selectors.some((sel) => sel === "*")) return true;
+  }
+  return false;
+}
+
+const rmBlocks = reducedMotionBlocks(css);
+const globalBlocks = rmBlocks.filter(hasUniversalSelector);
+
+if (rmBlocks.length === 0) {
+  reducedMotion.push("There is no `prefers-reduced-motion: reduce` block at all.");
+} else if (globalBlocks.length === 0) {
   reducedMotion.push(
-    "No global `*, *::before, *::after` block under prefers-reduced-motion.",
+    "No reduced-motion block uses the universal selector — the kill only reaches the rules someone remembered to name.",
   );
 } else {
-  const body = globalKill[1];
-  if (!/animation:\s*none\s*!important/.test(body))
-    reducedMotion.push(
-      "Global block does not kill `animation` with !important.",
-    );
-  if (!/transition:\s*none\s*!important/.test(body))
-    reducedMotion.push(
-      "Global block does not kill `transition` with !important.",
-    );
+  globalBlocks.forEach((block, i) => {
+    const label = globalBlocks.length > 1 ? ` (global block ${i + 1})` : "";
+    if (!/animation(?:-duration)?:\s*[^;]*!important/.test(block)) {
+      reducedMotion.push(`Global block does not kill \`animation\` with !important${label}.`);
+    }
+    if (!/transition(?:-duration)?:\s*[^;]*!important/.test(block)) {
+      reducedMotion.push(`Global block does not kill \`transition\` with !important${label}.`);
+    }
+    // BOTH pseudo-elements, not either. A kill that reaches `::before` and not
+    // `::after` leaves every `::after` affordance animating, and this
+    // stylesheet's focus underlines and arrow affordances are `::after`.
+    for (const pseudo of ["*::before", "*::after"]) {
+      if (!block.includes(pseudo)) {
+        reducedMotion.push(
+          `Global block does not reach \`${pseudo}\`${label} — those affordances keep animating.`,
+        );
+      }
+    }
+  });
 }
 
 /* ── report ───────────────────────────────────────────────────────────────── */
@@ -392,7 +495,8 @@ if (failures.length) {
         ? "a framework animation with no entry in FRAMEWORK_OK — this file cannot read its duration, so it must be reasoned about by hand"
         : `${Math.round(f.worst)}ms > ${BUDGET_MS}ms`;
     console.error(
-      `    ${f.selector}  { ${f.prop}: ${f.value.trim()} }  — ${why}`,
+      `    ${f.selector}  { ${f.prop}: ${f.value.trim()} }  — ${why}` +
+        (f.file ? `\n      ${f.file}` : ""),
     );
   }
   console.error(

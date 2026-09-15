@@ -175,6 +175,46 @@ export default tseslint.config(
        * uses.
        */
       "praxis/no-unmarked-silent-catch": "warn",
+
+      /**
+       * NO BROWSER-DRAWN POPUPS. Error from the day it lands, not "warn" —
+       * see client/eslint-local-rules/no-native-dialogs.cjs for why.
+       *
+       * The usual ratchet in this file is: land a rule at "warn", clear the
+       * backlog, then flip to "error". That is the right shape for a rule with
+       * a backlog someone still has to work through. This one has no backlog —
+       * the sweep that introduced the rule converted all 14 `window.confirm`
+       * sites in the same change — so landing it at "warn" would only create
+       * the possibility of a regression it exists to prevent.
+       *
+       * It is also, unlike most lint rules, USER-VISIBLE. A native confirm is
+       * not a style preference; it is the tenant's white-label branding being
+       * replaced by "app.praxis-ls.com says" at the exact moment the product
+       * asks them to destroy something.
+       */
+      "praxis/no-native-dialogs": "error",
+
+      /**
+       * The upload gate, at "error" for the same reason as the dialog one: the
+       * thing it prevents is user-visible, and a warning in a tree that already
+       * carries warnings is a rule nobody reads.
+       *
+       * Not-yet-migrated sites are listed in the override block below rather
+       * than being left to warn. That is the shape this repo already uses for a
+       * gate landing on existing code (see scripts/check-silent-catch.js's
+       * committed baseline, and ALLOW_LOCAL_SCHEMA in check-schemas.mjs): the
+       * rule is ON everywhere by default so nothing NEW can be written bare,
+       * and the exceptions are an explicit, shrinking list rather than an
+       * ambient permission.
+       */
+      "praxis/no-raw-upload": "error",
+
+      /**
+       * The companion to the rule above, and the one that would have caught
+       * what it missed: no-raw-upload governs how a file is PICKED, this one
+       * governs whether the user is told anything while it uploads.
+       */
+      "praxis/require-upload-progress": "error",
     },
   },
   // Test files run under Vitest globals and legitimately use non-null assertions.
@@ -184,5 +224,26 @@ export default tseslint.config(
     rules: {
       "@typescript-eslint/no-non-null-assertion": "off",
     },
+  },
+  // THE BAN IS NOT TYPESCRIPT-ONLY.
+  //
+  // Every other block in this file is scoped to TS and TSX files, which is right
+  // for rules about types and hooks — but it means the dialog gate stops at a
+  // file extension. Nothing in this repo forbids a .jsx component, a .js helper
+  // or a .mjs build script that touches the DOM, and the gate would have had
+  // nothing to say about any of them. A ban a rename defeats is not a ban.
+  //
+  // Deliberately ONE rule and no `extends`. Pulling the recommended sets over
+  // these files would report a backlog that has nothing to do with dialogs, and
+  // the pressure to make THAT green is how the whole block gets deleted.
+  {
+    files: ["**/*.{js,jsx,mjs,cjs,mts,cts}"],
+    languageOptions: {
+      ecmaVersion: 2022,
+      globals: { ...globals.browser, ...globals.node },
+      parserOptions: { ecmaFeatures: { jsx: true } },
+    },
+    plugins: { praxis },
+    rules: { "praxis/no-native-dialogs": "error" },
   },
 );

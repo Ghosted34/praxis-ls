@@ -1,9 +1,28 @@
 "use strict";
 const { z } = require("zod");
 const { AppError } = require("../../../utils/errors");
-const line = z.object({ dictionary_item_id: z.string().uuid().optional().nullable(), label: z.string().optional(), budget_amount: z.number().nonnegative().optional(), spent_amount: z.number().nonnegative().optional(), is_disbursement: z.boolean().optional(), proof_vault_id: z.string().uuid().optional().nullable(),
+const line = z.object({
+  // 12771 — the worksheet round-trips the line's own id so an edit is
+  // unambiguous even when its label and amount both change; absent means new.
+  cash_request_line_id: z.string().uuid().optional(),
+  // 12771 — the BUDGET LINE this claim draws down. Required on every line of an
+  // OPS request before it can be submitted (enforced in the service, so the AI
+  // and the import hit the same wall as the route).
+  costing_line_id: z.string().uuid().optional().nullable(),
+  dictionary_item_id: z.string().uuid().optional().nullable(),
+  label: z.string().optional(),
+  // 12771 — the legacy line shape. `budget_amount` alone still works and is
+  // read as 1 x that amount, so every existing caller is unaffected.
+  qty: z.number().positive().optional(),
+  unit_cost: z.number().nonnegative().optional(),
+  budget_amount: z.number().nonnegative().optional(),
+  spent_amount: z.number().nonnegative().optional(),
+  is_disbursement: z.boolean().optional(),
+  proof_vault_id: z.string().uuid().optional().nullable(),
   // §3.5 — legacy per-line VAT % and "Just. Req?" (10746).
-  vat_percent: z.number().min(0).max(100).optional().nullable(), justification_required: z.boolean().optional() });
+  vat_percent: z.number().min(0).max(100).optional().nullable(),
+  justification_required: z.boolean().optional(),
+});
 const d = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 // The OPS/OVH context fields the legacy screen carried (analysis doc §6.7):
 // beneficiary, category (OPS default), cost centre + justification for OVH,
@@ -19,16 +38,35 @@ const context = {
   // (:505-514) are a service rule so every caller hits the same wall.
   disbursement_method: z.enum(["CASH", "BANK", "CHEQUE", "MOMO"]).optional().nullable(),
   disbursement_details: z.record(z.string(), z.string()).optional().nullable(),
+  // 12771 — an OPS request INHERITS the costing's currency (the service
+  // enforces it); these are for an overhead request, which has no costing.
+  currency: z.string().length(3).optional(),
+  exchange_rate_to_xaf: z.number().positive().optional(),
 };
 const schemas = {
   create: z.object({ dossier_id: z.string().uuid().optional().nullable(), costing_id: z.string().uuid().optional().nullable(), requested_by: z.string().uuid().optional().nullable(), lines: z.array(line).optional(), ...context }),
   update: z.object({ lines: z.array(line), ...context }),
-  transition: z.object({ to: z.enum(["SUBMITTED", "VALIDATED", "APPROVED", "REJECTED"]), entity_id: z.string().uuid().optional().nullable(), date: d.optional() }),
+  // 12771 — DRAFT reopens a rejected request (the legacy allowed it and we did
+  // not). `reason` is REQUIRED for REJECTED and `over_budget_reason` when a
+  // submission claims more than the budget has left; both are enforced in the
+  // service, where the ledger is in hand.
+  transition: z.object({
+    to: z.enum(["SUBMITTED", "VALIDATED", "APPROVED", "REJECTED", "DRAFT"]),
+    entity_id: z.string().uuid().optional().nullable(),
+    date: d.optional(),
+    reason: z.string().max(2000).optional(),
+    over_budget_reason: z.string().max(2000).optional(),
+  }),
+  closeBalance: z.object({ reason: z.string().trim().min(1).max(2000) }),
+  acknowledge: z.object({
+    ack_kind: z.enum(["IN_APP", "WET_SCAN"]).optional(),
+    received_by: z.string().uuid().optional().nullable(),
+  }),
   importCosting: z.object({}).strict(),
   // AI-facing: cash_request_id in the payload → list_cash_requests picker.
   aiUpdate: z.object({ cash_request_id: z.string().uuid(), lines: z.array(line), ...context }),
   aiImportCosting: z.object({ cash_request_id: z.string().uuid() }),
-  aiTransition: z.object({ cash_request_id: z.string().uuid(), to: z.enum(["SUBMITTED", "VALIDATED", "APPROVED", "REJECTED"]), entity_id: z.string().uuid().optional().nullable(), date: d.optional() }),
+  aiTransition: z.object({ cash_request_id: z.string().uuid(), to: z.enum(["SUBMITTED", "VALIDATED", "APPROVED", "REJECTED", "DRAFT"]), entity_id: z.string().uuid().optional().nullable(), date: d.optional(), reason: z.string().max(2000).optional(), over_budget_reason: z.string().max(2000).optional() }),
   // The AI adapter passes its payload straight through, so a write action MUST
   // carry the entity id in its own schema. `disburse` did not: the manifest
   // used the bare `disburse` schema and called `service.disburse(c, payload)`,
@@ -51,4 +89,9 @@ const mw = (k) => (req, _res, next) => {
   if (!p.success) return next(new AppError("VALIDATION_ERROR", "Invalid body", 422, p.error.flatten().fieldErrors));
   req.body = p.data; return next();
 };
-module.exports = { create: mw("create"), update: mw("update"), transition: mw("transition"), disburse: mw("disburse"), justify: mw("justify"), importCosting: mw("importCosting"), schemas };
+module.exports = {
+  create: mw("create"), update: mw("update"), transition: mw("transition"),
+  disburse: mw("disburse"), justify: mw("justify"), importCosting: mw("importCosting"),
+  closeBalance: mw("closeBalance"), acknowledge: mw("acknowledge"),
+  schemas,
+};

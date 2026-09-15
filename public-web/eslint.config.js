@@ -11,6 +11,16 @@ import js from "@eslint/js";
 import globals from "globals";
 import reactHooks from "eslint-plugin-react-hooks";
 import tseslint from "typescript-eslint";
+import { createRequire } from "module";
+
+// Shared with the client — see public-web/eslint-local-rules/index.cjs. The
+// header above says to "port eslint-local-rules/ across when this app starts to
+// carry shared UI". The dialog ban does not wait for that: it is not a
+// convention about shared components, it is a promise to the tenant that no
+// screen on their domain renders a browser popup, and this app is the only one
+// of the three an unauthenticated prospect ever sees.
+const require = createRequire(import.meta.url);
+const praxis = require("./eslint-local-rules/index.cjs");
 
 export default tseslint.config(
   { ignores: ["dist", "coverage", "node_modules"] },
@@ -24,15 +34,68 @@ export default tseslint.config(
     },
     plugins: {
       "react-hooks": reactHooks,
+      praxis,
     },
     rules: {
       "react-hooks/rules-of-hooks": "error",
+
+      /**
+       * NO BROWSER-DRAWN POPUPS. Error, matching client/ and
+       * platform-console/ — see client/eslint-local-rules/no-native-dialogs.cjs.
+       *
+       * There is no backlog to clear here: this app has never had one. That is
+       * exactly why the rule belongs in before the first form handler grows an
+       * `alert("Thanks!")`, rather than after a sweep has to remove it.
+       */
+      "praxis/no-native-dialogs": "error",
+      // Shares the client's rule implementation — see the index.cjs note on why
+      // a second copy of a gate is a gate that drifts.
+      "praxis/no-raw-upload": "error",
       "react-hooks/exhaustive-deps": "warn",
       "@typescript-eslint/no-unused-vars": [
         "error",
         { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
       ],
       "no-empty": ["error", { allowEmptyCatch: true }],
+
+      /**
+       * D-1, AS A GATE RATHER THAN A COMMENT.
+       *
+       * `public-web` does not depend on `@praxis/shared` and the whole app is
+       * built around not doing so: `site-theme.ts` derives nothing and reads a
+       * server-computed palette, `social-row.tsx` re-declares the platform list,
+       * and `site-theme.ts` hardcodes the four font stacks — each with a comment
+       * saying importing the package would pull Zod and the ISO country tables
+       * into a bundle budgeted to the kilobyte.
+       *
+       * Three files argued for the rule and none of them enforced it, so the
+       * first test to import `@praxis/shared/design/site-fonts` did it anyway
+       * and PASSED — the root workspace hoists the package into a
+       * `node_modules` this app can see. It failed only in CI, in two jobs, for
+       * the one reason that matters: the public-web job and the Dockerfile both
+       * run `npm ci --prefix public-web`, which installs what this app
+       * DECLARES. A local `npm run ci` cannot reproduce that, so this is the
+       * check that has to stand in for it.
+       *
+       * Tests are covered deliberately — the violation was in a test, and a
+       * test that resolves a package the app does not declare is green by
+       * accident. Where a cross-package assertion is genuinely wanted, it goes
+       * in `tests/unit/` at the repo root, which is where `@praxis/shared`
+       * actually resolves; `tests/unit/font-fallback-metrics.test.js` is the
+       * worked example.
+       */
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["@praxis/shared", "@praxis/shared/*"],
+              message:
+                "public-web does not depend on @praxis/shared (D-1) — it resolves locally via the root workspace and fails in CI, where this app installs only its own dependencies. Re-declare the value here, or put the cross-package assertion in tests/unit/ at the repo root.",
+            },
+          ],
+        },
+      ],
     },
   },
   {
@@ -62,5 +125,26 @@ export default tseslint.config(
       // `console.warn`, which is what the equivalent client scripts do.
       "no-console": "off",
     },
+  },
+  // THE BAN IS NOT TYPESCRIPT-ONLY.
+  //
+  // Every other block in this file is scoped to TS and TSX files, which is right
+  // for rules about types and hooks — but it means the dialog gate stops at a
+  // file extension. Nothing in this repo forbids a .jsx component, a .js helper
+  // or a .mjs build script that touches the DOM, and the gate would have had
+  // nothing to say about any of them. A ban a rename defeats is not a ban.
+  //
+  // Deliberately ONE rule and no `extends`. Pulling the recommended sets over
+  // these files would report a backlog that has nothing to do with dialogs, and
+  // the pressure to make THAT green is how the whole block gets deleted.
+  {
+    files: ["**/*.{js,jsx,mjs,cjs,mts,cts}"],
+    languageOptions: {
+      ecmaVersion: 2022,
+      globals: { ...globals.browser, ...globals.node },
+      parserOptions: { ecmaFeatures: { jsx: true } },
+    },
+    plugins: { praxis },
+    rules: { "praxis/no-native-dialogs": "error" },
   },
 );

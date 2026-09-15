@@ -1,4 +1,5 @@
 import { cn } from "@/lib/cn";
+import { useRevealed } from "@/components/ui/reveal";
 
 /**
  * The two graphics this app draws by hand, in the brand's node-network language:
@@ -116,8 +117,23 @@ export function PortalPreview({
   stages: PreviewStage[];
   className?: string;
 }) {
+  /* The ledger advances when the card is first scrolled to. This is the one
+     piece of scroll-triggered motion on the site, and it is here rather than on
+     the bands because it is not decoration: the thing this panel claims about
+     the product — that a file moves through stages you can watch — is the thing
+     the animation performs. A static drawing of four ticks asserts it; the
+     drawing that fills in demonstrates it, in the three seconds a visitor gives
+     a mock before scrolling past.
+
+     Everything below degrades to the finished state rather than to an empty one:
+     without `IntersectionObserver` the hook reports true on first render, and
+     under `prefers-reduced-motion` the global rule collapses the durations, so
+     the ticks are simply already there. */
+  const [ref, shown] = useRevealed<HTMLDivElement>();
+
   return (
     <div
+      ref={ref}
       aria-hidden
       className={cn(
         "lux-card w-full max-w-md select-none p-5 text-left shadow-[var(--shadow-l)]",
@@ -127,7 +143,11 @@ export function PortalPreview({
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <p className="micro">File</p>
-          <p className="num mt-1 truncate font-display text-title font-semibold tracking-tight">
+          {/* Mono, because a file reference is a code: it gets read down a
+              phone line and typed back, and it is the single most
+              product-feeling detail on the page. The tracking field, the quote
+              receipt and this mock now set it the same way. */}
+          <p className="num mt-1 truncate font-mono text-title font-semibold tracking-tight">
             {reference}
           </p>
         </div>
@@ -137,13 +157,27 @@ export function PortalPreview({
       <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-[rgb(var(--ink)/0.08)]">
         <div
           className="h-full rounded-full bg-primary"
-          style={{ width: `${Math.max(0, Math.min(100, percent))}%` }}
+          style={{
+            width: shown ? `${Math.max(0, Math.min(100, percent))}%` : "0%",
+            transition: "width 900ms var(--ease)",
+          }}
         />
       </div>
 
       <ol className="mt-5 space-y-3">
         {stages.map((s, i) => (
-          <li key={i} className="flex items-center gap-3 text-sm">
+          <li
+            key={i}
+            className="flex items-center gap-3 text-sm"
+            style={{
+              opacity: shown ? 1 : 0,
+              transform: shown ? "none" : "translateY(6px)",
+              // Staggered against the bar, not against each other's arrival: the
+              // 220ms head start lets the progress fill begin before the first
+              // tick lands, so the two read as one movement rather than two.
+              transition: `opacity 320ms var(--ease) ${220 + i * 120}ms, transform 320ms var(--ease) ${220 + i * 120}ms`,
+            }}
+          >
             <span
               className={cn(
                 "grid h-5 w-5 shrink-0 place-items-center rounded-full text-[10px] font-bold",

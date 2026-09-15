@@ -115,6 +115,16 @@ export default {
          * Rule of thumb: `brand-blue` fills, `brand-blue-ink` writes.
          */
         "brand-blue-ink": "rgb(var(--brand-blue-ink) / <alpha-value>)",
+        /*
+         * The one blue that is NOT retuned under `.dark`, and that is the
+         * property being used rather than an oversight. `--brand-blue` is
+         * lightened in dark so it reads as TEXT on a dark card; a small fill
+         * carrying white type needs the opposite, and a token that moves with
+         * the theme cannot be both. The unread count badge measured 4.09:1 in
+         * light and 2.32:1 in dark on `--brand-blue`; on this one it is 9.2:1
+         * in both, because it is the same colour in both.
+         */
+        "brand-blue-deep": "rgb(var(--brand-blue-deep) / <alpha-value>)",
         "brand-orange": "rgb(var(--brand-orange) / <alpha-value>)",
 
         sidebar: {

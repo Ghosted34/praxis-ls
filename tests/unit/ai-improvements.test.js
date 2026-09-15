@@ -92,7 +92,9 @@ describe("entity card builders", () => {
         doc_prefix: "SLAS",
       });
       expect(card.text).toContain("share capital 100,000,000 XAF");
-      expect(card.text).toContain("incorporated 2019-04-02 in Douala");
+      // Day-first here too: this text is what the assistant quotes back, so an
+      // ISO date it reads out loud is one more thing for a reader to re-order.
+      expect(card.text).toContain("incorporated 02/04/2019 in Douala");
       // The distinction the assistant kept getting wrong: these are OURS.
       expect(card.text).toContain("OUR OWN legal entities");
       expect(card.ref).toBe("entity:SLAS");

@@ -34,6 +34,31 @@ const here = dirname(fileURLToPath(import.meta.url));
 const clientRoot = join(here, "..");
 const repoRoot = join(clientRoot, "..");
 
+/**
+ * WHICH APP THIS RUN IS CHECKING — `--app <dir>`, defaulting to `client`.
+ *
+ * `public-web` needs this gate too (guide §5.6), and the choice was between a
+ * second copy of 250 lines and one argument. CLAUDE.md already states the
+ * answer for the ESLint rules directory — "that directory is the single copy,
+ * re-exported by the other two apps, because a second copy of a gate is a gate
+ * that drifts" — and it is the same argument here. The palette list, the
+ * regexes and the guidance table are what would drift, and they are the whole
+ * substance of the check.
+ *
+ * Only the SCAN ROOT and the allow-list are per-app. Everything else is one
+ * definition, so a family added to PALETTE is added for all three surfaces at
+ * once.
+ */
+const APP = (() => {
+  const i = process.argv.indexOf("--app");
+  const value = i >= 0 ? process.argv[i + 1] : "client";
+  if (!/^[a-z-]+$/.test(value || "")) {
+    console.error(`✗ --app "${value}" is not an app directory name.`);
+    process.exit(1);
+  }
+  return value;
+})();
+
 /** Tailwind's default palette. `white`/`black`/`transparent`/`current` are fine. */
 const PALETTE = [
   "slate",
@@ -194,7 +219,7 @@ function sources() {
       "--others",
       "--exclude-standard",
       "--",
-      "client",
+      APP,
     ],
     { cwd: repoRoot, encoding: "utf8" },
   );
@@ -207,7 +232,7 @@ function sources() {
 
 const violations = [];
 for (const file of sources()) {
-  const rel = relative("client", file).replace(/\\/g, "/");
+  const rel = relative(APP, file).replace(/\\/g, "/");
   if (ALLOW.includes(rel)) continue;
 
   const text = stripComments(readFileSync(join(repoRoot, file), "utf8"));
@@ -228,7 +253,7 @@ for (const file of sources()) {
 
 if (violations.length === 0) {
   console.warn(
-    "Raw-palette gate: clean — every colour comes from a semantic token.",
+    `Raw-palette gate (${APP}): clean — every colour comes from a semantic token.`,
   );
   process.exit(0);
 }
@@ -253,5 +278,5 @@ for (const v of violations) {
   );
   console.error(`           ${v.src.slice(0, 110)}`);
 }
-console.error("\nTokens live in client/src/index.css. Pills: <Pill tone=…>.\n");
+console.error(`\nTokens live in ${APP}/src/index.css. Pills: <Pill tone=…>.\n`);
 process.exit(1);

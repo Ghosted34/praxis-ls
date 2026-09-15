@@ -12,7 +12,7 @@
  * would put a translation layer between a treasurer and the thing they are
  * signing.
  */
-import { tenant } from "./api-client";
+import { tenant, tenantWithProgress } from "./api-client";
 
 /* ─────────────── the canonical vocabulary a column map maps onto ─────────── */
 
@@ -250,9 +250,20 @@ export function fileToDataUrl(file: File): Promise<string> {
   });
 }
 
-export const previewStatement = (body: {
-  treasury_account_id: string; file: string; filename?: string;
-}) => tenant<PreviewResult>(`${base}/statements/preview`, { method: "POST", body });
+export const previewStatement = (
+  body: { treasury_account_id: string; file: string; filename?: string },
+  onProgress?: (percent: number) => void,
+) =>
+  onProgress
+    ? tenantWithProgress<PreviewResult>(
+        `${base}/statements/preview`,
+        body,
+        onProgress,
+      )
+    : tenant<PreviewResult>(`${base}/statements/preview`, {
+        method: "POST",
+        body,
+      });
 
 export const importStatement = (body: {
   treasury_account_id: string; file: string; filename?: string; statement_profile_id?: string;

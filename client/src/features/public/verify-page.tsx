@@ -59,6 +59,10 @@ type SummaryField = { key: string; label: string; value: string };
 type Payload = {
   status: "VALID" | "AMENDED" | "REVOKED";
   language: Lang;
+  // The code was minted in the tenant's test environment (sandbox), not live.
+  // Set from the printed URL's `?e=sandbox`, baked in when the PDF was
+  // rendered; a live document lacks it. The banner below tells the reader.
+  test_environment?: boolean;
   verdicts: Verdict[];
   signature: {
     verify_code: string;
@@ -114,6 +118,9 @@ const COPY = {
   fr: {
     title: "Vérification de document",
     lead: "Ce document porte une signature électronique. Voici ce qu'elle atteste.",
+    testEnvTitle: "Document d'environnement de test",
+    testEnvBody:
+      "Ce code a été émis dans l'environnement de test de l'émetteur. Le contrôle ci-dessous est authentique, mais le document lui-même n'est pas un document réel.",
     enterTitle: "Vérifier un document",
     enterLead:
       "Saisissez le code à douze caractères imprimé sous le QR code du document.",
@@ -169,6 +176,9 @@ const COPY = {
   en: {
     title: "Document verification",
     lead: "This document carries an electronic signature. Here is what it attests to.",
+    testEnvTitle: "Test-environment document",
+    testEnvBody:
+      "This code was minted in the issuer's test environment. The check below is genuine, but the document itself is not a real document.",
     enterTitle: "Verify a document",
     enterLead:
       "Enter the twelve-character code printed beneath the QR code on the document.",
@@ -373,6 +383,11 @@ export function VerifyPage() {
   const { code: routeCode } = useParams();
   const [query, setQuery] = useSearchParams();
   const lang: Lang = query.get("lang") === "en" ? "en" : "fr";
+  // The printed URL from a sandbox-signed document carries `?e=sandbox`
+  // (services/signatures/tokens.js). A primitive kept in a variable rather
+  // than read straight off `query` inside the fetch effect, so the deps array
+  // can name it and the effect re-fires exactly when it actually changes.
+  const envParam = query.get("e") === "sandbox" ? "sandbox" : null;
   const c = COPY[lang];
 
   const [code, setCode] = React.useState(routeCode || "");
@@ -402,6 +417,9 @@ export function VerifyPage() {
       // one read down a phone line are different stories.
       via: routeCode ? "QR" : "CODE",
     });
+    // Forward the printed URL's env to the API so the read pins to sandbox
+    // and the code resolves; a live URL has no `e` and reads live.
+    if (envParam === "sandbox") params.set("e", "sandbox");
     tenant<Payload>(`/v/${encodeURIComponent(code)}?${params}`, { auth: false })
       .then((r) => {
         if (!cancelled) setData(r);
@@ -418,7 +436,7 @@ export function VerifyPage() {
     return () => {
       cancelled = true;
     };
-  }, [code, lang, routeCode]);
+  }, [code, lang, routeCode, envParam]);
 
   const toggleLang = () => {
     const next = new URLSearchParams(query);
@@ -474,6 +492,16 @@ export function VerifyPage() {
 
       {data && headline && (
         <div className="mt-6 space-y-6">
+          {/* Test-environment banner (§5.4). Above the primary verdict callout
+              because it re-frames every claim below it: the seal is authentic,
+              the document is a test one. A reader who scrolls past it and
+              treats the sheet as production has been misled by our own page. */}
+          {data.test_environment && (
+            <Callout tone="warn" title={c.testEnvTitle}>
+              {c.testEnvBody}
+            </Callout>
+          )}
+
           <Callout tone={headline.tone} title={headline.title}>
             {headline.body || c.lead}
           </Callout>

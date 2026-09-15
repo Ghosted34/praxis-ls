@@ -1,0 +1,477 @@
+<title>Staging Richness Build List</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap">
+<style>
+  :root{
+    --carbon:#0a0a0a;
+    --orange:#FF5A00;
+    --orange-ink:#C74600;
+    --blue:#1884C4;
+    --sea:#28945E;
+    --air:#1C9BD7;
+    --road:#E07A1A;
+    --rail:#9333EA;
+
+    --bg:#FFFFFF;
+    --panel:#FFFFFF;
+    --panel-2:#F7F8F8;
+    --text:#191A1B;
+    --text-dim:#494B4E;
+    --text-faint:#7E8286;
+    --line:rgb(10 10 10 / .12);
+    --line-soft:rgb(10 10 10 / .07);
+    --accent:var(--orange-ink);
+    --code-bg:rgb(10 10 10 / .05);
+    --shadow-s:0 1px 2px rgb(10 10 10 / .05);
+    --shadow-m:0 6px 20px rgb(10 10 10 / .07);
+    --shadow-l:0 18px 50px rgb(10 10 10 / .12);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#101011;
+      --panel:#18191A;
+      --panel-2:#1F2021;
+      --text:#EDEEEE;
+      --text-dim:#BFC1C3;
+      --text-faint:#9EA1A4;
+      --line:rgb(237 238 238 / .16);
+      --line-soft:rgb(237 238 238 / .09);
+      --accent:#FF7A33;
+      --code-bg:rgb(237 238 238 / .07);
+      --shadow-s:0 1px 2px rgb(0 0 0 / .5);
+      --shadow-m:0 6px 20px rgb(0 0 0 / .45);
+      --shadow-l:0 18px 50px rgb(0 0 0 / .55);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#101011;
+    --panel:#18191A;
+    --panel-2:#1F2021;
+    --text:#EDEEEE;
+    --text-dim:#BFC1C3;
+    --text-faint:#9EA1A4;
+    --line:rgb(237 238 238 / .16);
+    --line-soft:rgb(237 238 238 / .09);
+    --accent:#FF7A33;
+    --code-bg:rgb(237 238 238 / .07);
+    --shadow-s:0 1px 2px rgb(0 0 0 / .5);
+    --shadow-m:0 6px 20px rgb(0 0 0 / .45);
+    --shadow-l:0 18px 50px rgb(0 0 0 / .55);
+  }
+
+  *{box-sizing:border-box}
+  body{
+    background:var(--bg);color:var(--text);
+    font-family:"Inter",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+    font-size:16px;line-height:1.62;-webkit-font-smoothing:antialiased;
+  }
+  h1,h2,h3,h4{font-family:"IBM Plex Sans",system-ui,sans-serif;margin:0;text-wrap:balance;letter-spacing:-.015em}
+  code,.mono{font-family:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace}
+  .wrap{max-width:1120px;margin:0 auto;padding:0 24px}
+
+  header.mast{background:var(--carbon);color:#EDEEEE;padding:60px 0 52px;position:relative;overflow:hidden}
+  header.mast::after{
+    content:"";position:absolute;right:-140px;top:-120px;width:520px;height:520px;border-radius:50%;
+    background:radial-gradient(circle, rgba(255,90,0,.22), transparent 62%);pointer-events:none;
+  }
+  .mast .wrap{position:relative;z-index:1}
+  .eyebrow{
+    font-family:"IBM Plex Sans";font-weight:700;font-size:.7rem;letter-spacing:.12em;
+    text-transform:uppercase;color:var(--orange);margin-bottom:14px;
+  }
+  .mast h1{font-size:clamp(2rem,1.3rem+2.7vw,3rem);font-weight:700;line-height:1.06}
+  .mast p{max-width:64ch;color:#BFC1C3;margin:16px 0 0}
+  .mast .stats{display:flex;flex-wrap:wrap;gap:28px;margin-top:30px;padding-top:24px;border-top:1px solid rgb(237 238 238 / .16)}
+  .mast .stat .n{font-family:"JetBrains Mono";font-size:1.5rem;font-weight:700;color:var(--orange);font-variant-numeric:tabular-nums}
+  .mast .stat .l{font-size:.75rem;letter-spacing:.08em;text-transform:uppercase;color:#9EA1A4;margin-top:2px}
+
+  .shell{display:grid;grid-template-columns:200px minmax(0,1fr);gap:52px;padding:52px 0 90px}
+  @media (max-width:900px){.shell{grid-template-columns:1fr;gap:0;padding-top:34px}nav.toc{display:none}}
+  nav.toc{position:sticky;top:24px;align-self:start;font-size:.85rem}
+  nav.toc div.h{font-family:"IBM Plex Sans";font-weight:700;font-size:.65rem;letter-spacing:.14em;text-transform:uppercase;color:var(--text-faint);margin-bottom:12px}
+  nav.toc a{display:block;padding:5px 0 5px 12px;color:var(--text-dim);text-decoration:none;border-left:2px solid var(--line-soft)}
+  nav.toc a:hover{color:var(--accent);border-left-color:var(--accent)}
+
+  section.block{margin:0 0 60px;scroll-margin-top:24px}
+  section.block > h2{font-size:1.5rem;font-weight:700;padding-bottom:12px;border-bottom:2px solid var(--line);margin-bottom:10px}
+  .lede{color:var(--text-dim);max-width:70ch;margin:0 0 26px}
+  p{margin:0 0 14px}
+  ul{margin:0 0 14px;padding-left:20px}
+  li{margin:0 0 6px;color:var(--text-dim)}
+  li strong{color:var(--text)}
+  code{background:var(--code-bg);border-radius:5px;padding:1px 6px;font-size:.85em}
+
+  /* work items */
+  .item{
+    border:1px solid var(--line);border-radius:10px;background:var(--panel);
+    box-shadow:var(--shadow-s);margin:0 0 16px;overflow:hidden;
+  }
+  .item > .head{display:flex;gap:14px;align-items:flex-start;padding:16px 18px 14px}
+  .item .id{
+    font-family:"JetBrains Mono";font-size:.72rem;font-weight:700;color:#fff;background:var(--carbon);
+    border-radius:6px;padding:4px 8px;flex:none;margin-top:2px;
+  }
+  .item.p0 .id{background:#B3241B}
+  .item.p1 .id{background:var(--orange);color:#0a0a0a}
+  .item.p2 .id{background:var(--blue)}
+  .item.p3 .id{background:#7E8286}
+  .item h3{font-size:1.02rem;font-weight:700;margin-bottom:3px}
+  .item .why{color:var(--text-dim);font-size:.92rem;margin:0}
+  .item .body{padding:0 18px 16px 18px}
+  .item dl{display:grid;grid-template-columns:96px minmax(0,1fr);gap:6px 14px;margin:12px 0 0;font-size:.88rem}
+  @media (max-width:560px){.item dl{grid-template-columns:1fr;gap:2px}.item dt{margin-top:8px}}
+  .item dt{
+    font-family:"IBM Plex Sans";font-weight:700;font-size:.66rem;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--text-faint);padding-top:3px;
+  }
+  .item dd{margin:0;color:var(--text-dim)}
+  .item dd.mono{font-family:"JetBrains Mono";font-size:.8rem;color:var(--text)}
+
+  .tier{
+    display:flex;align-items:baseline;gap:12px;margin:0 0 16px;
+  }
+  .tier .tag{
+    font-family:"JetBrains Mono";font-size:.7rem;font-weight:700;padding:4px 9px;border-radius:6px;color:#fff;
+  }
+  .tier.t0 .tag{background:#B3241B}
+  .tier.t1 .tag{background:var(--orange);color:#0a0a0a}
+  .tier.t2 .tag{background:var(--blue)}
+  .tier.t3 .tag{background:#7E8286}
+  .tier .txt{color:var(--text-dim);font-size:.9rem}
+
+  .tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--panel);margin-bottom:18px}
+  table{border-collapse:collapse;width:100%;font-size:.87rem;min-width:560px}
+  th,td{text-align:left;padding:11px 15px;border-bottom:1px solid var(--line-soft);vertical-align:top}
+  th{font-family:"IBM Plex Sans";font-weight:700;font-size:.66rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text-faint);background:var(--panel-2)}
+  tr:last-child td{border-bottom:none}
+  td.mono{font-family:"JetBrains Mono";font-size:.8rem}
+  .yes{color:var(--sea);font-weight:600}
+  .no{color:#B3241B;font-weight:600}
+
+  .modes{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:0 0 18px}
+  .mode{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--panel)}
+  .mode .bar{height:6px}
+  .mode .in{padding:12px 14px}
+  .mode .n{font-family:"IBM Plex Sans";font-weight:700;font-size:.92rem}
+  .mode .v{font-family:"JetBrains Mono";font-size:.74rem;color:var(--text-faint);margin-top:3px}
+
+  .callout{
+    border-left:3px solid var(--orange);background:var(--panel-2);border-radius:0 10px 10px 0;
+    padding:16px 18px;margin:0 0 20px;
+  }
+  .callout p{margin:0;color:var(--text-dim);font-size:.93rem}
+  .callout strong{color:var(--text)}
+
+  footer.foot{border-top:1px solid var(--line);padding:24px 0 60px;color:var(--text-faint);font-size:.82rem}
+  a{color:var(--accent)}
+  a:focus-visible{outline:2px solid var(--orange);outline-offset:3px}
+  @media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<header class="mast">
+  <div class="wrap">
+    <div class="eyebrow">Work order · staging.smartls.cm · 31 Aug 2026</div>
+    <h1>Staging Richness<br>Build List</h1>
+    <p>Sixteen changes that make the redesign out-look the live site before a single photograph or case note exists. No palette change, no colour-inheritance change, no restructure — this renders the system staging already declares.</p>
+    <div class="stats">
+      <div class="stat"><div class="n">3</div><div class="l">Broken now</div></div>
+      <div class="stat"><div class="n">9</div><div class="l">Richness, no assets</div></div>
+      <div class="stat"><div class="n">3</div><div class="l">Motion</div></div>
+      <div class="stat"><div class="n">1</div><div class="l">When images land</div></div>
+    </div>
+  </div>
+</header>
+
+<div class="wrap shell">
+  <nav class="toc">
+    <div class="h">Contents</div>
+    <a href="#brief">The brief</a>
+    <a href="#notchanging">Not changing</a>
+    <a href="#p0">P0 · Broken</a>
+    <a href="#p1">P1 · Richness</a>
+    <a href="#p2">P2 · Motion</a>
+    <a href="#p3">P3 · Images</a>
+    <a href="#score">Scoreboard</a>
+    <a href="#order">Order of work</a>
+  </nav>
+
+  <main>
+
+  <section class="block" id="brief">
+    <h2>The brief</h2>
+    <p class="lede">The client judges a redesign on richness. Staging currently reads as an empty page with good manners — clean hierarchy, plain-spoken copy, nothing to look at. Shown in that state it reads as a downgrade from the live site, whatever its merits.</p>
+    <div class="callout">
+      <p><strong>The core finding:</strong> staging's dullness is not the missing photography. The token system already declares a rich visual vocabulary that never reaches the screen — a brand blue, three elevations, an orange selection glow, a mono face, and four freight-mode colours. Nine of the sixteen items below are just <em>rendering what is already defined</em>. That is why this list needs no palette decision from anyone.</p>
+    </div>
+  </section>
+
+  <section class="block" id="notchanging">
+    <h2>Not changing</h2>
+    <ul>
+      <li><strong>The palette.</strong> Carbon <code>#0a0a0a</code>, orange <code>#ff5a00</code>, the slate 100–900 ramp. Untouched.</li>
+      <li><strong>Colour inheritance.</strong> No re-tokening, no renaming, no cascade rework. Every item below consumes existing custom properties.</li>
+      <li><strong>Type pairing.</strong> IBM Plex Sans display + Inter body + JetBrains Mono. One defect to fix (P0-3), no substitution.</li>
+      <li><strong>Band structure.</strong> The seven-band page stays. Two bands change ground; none are added or removed.</li>
+      <li><strong>The copy.</strong> It is the strongest thing on the site. Additions only.</li>
+    </ul>
+  </section>
+
+  <section class="block" id="p0">
+    <h2>P0 · Broken now</h2>
+    <div class="tier t0"><span class="tag">P0</span><span class="txt">Nothing else on this list matters if the client hits one of these in the first minute.</span></div>
+
+    <div class="item p0">
+      <div class="head"><span class="id">P0-1</span><div>
+        <h3>Services page renders skeleton loaders forever</h3>
+        <p class="why">Navigating to <code>/services</code> shows grey placeholder bars — an eyebrow, a title, a subtitle, then a card of nine grey pills that never resolve into content.</p>
+      </div></div>
+      <div class="body"><dl>
+        <dt>Where</dt><dd class="mono">/services</dd>
+        <dt>Fix</dt><dd>Resolve the data source, or render static content for the four service lines already written on the home page. Skeletons must have a terminal state — content, or an empty state with substance (see P1-4).</dd>
+        <dt>Accept</dt><dd>No grey pill is on screen two seconds after load, on a cold cache.</dd>
+      </dl></div>
+    </div>
+
+    <div class="item p0">
+      <div class="head"><span class="id">P0-2</span><div>
+        <h3>Hero Track button reads as disabled</h3>
+        <p class="why">The tracking card is the hero's whole proposition, and its button renders in flat light grey with grey label — visually identical to a disabled control. The primary action on the most-seen screen looks dead.</p>
+      </div></div>
+      <div class="body"><dl>
+        <dt>Where</dt><dd class="mono">Home hero · "Where is my cargo?" card</dd>
+        <dt>Fix</dt><dd>Give it the primary treatment: carbon fill with white label, or orange if it should outrank "Request a quote" (it should not — keep one orange per screen). Reserve the grey for the genuine disabled state, before a reference is typed.</dd>
+        <dt>Accept</dt><dd>Empty field → visibly disabled. One character typed → visibly live.</dd>
+      </dl></div>
+    </div>
+
+    <div class="item p0">
+      <div class="head"><span class="id">P0-3</span><div>
+        <h3>Declared body font is not the rendered body font</h3>
+        <p class="why"><code>--brand-font-body</code> declares <code>Inter Variable, Inter</code>, but <code>body</code> computes <code>Public Sans Variable, Public Sans</code>. The type system and the page disagree, so every spacing and measure decision is being made against a face that is not shipping.</p>
+      </div></div>
+      <div class="body"><dl>
+        <dt>Where</dt><dd class="mono">body · --brand-font-body</dd>
+        <dt>Fix</dt><dd>Pick one deliberately and make both agree. If Public Sans is the intent, update the token; if Inter is, fix whatever overrides <code>body</code>.</dd>
+        <dt>Accept</dt><dd>Computed <code>font-family</code> on <code>body</code> resolves to <code>var(--brand-font-body)</code>.</dd>
+      </dl></div>
+    </div>
+  </section>
+
+  <section class="block" id="p1">
+    <h2>P1 · Richness with zero new assets</h2>
+    <div class="tier t1"><span class="tag">P1</span><span class="txt">Every item here is buildable today with text, tokens and CSS. This is the tier that wins the meeting.</span></div>
+
+    <div class="item p1">
+      <div class="head"><span class="id">P1-1</span><div>
+        <h3>Render the four freight-mode colours</h3>
+        <p class="why">The system defines <code>--mode-sea</code>, <code>--mode-air</code>, <code>--mode-road</code> and <code>--mode-rail</code> and uses none of them. Four service lines, four declared colours, zero on screen — the single largest gap between the system's ambition and its appearance.</p>
+      </div></div>
+      <div class="body">
+        <div class="modes">
+          <div class="mode"><div class="bar" style="background:#28945E"></div><div class="in"><div class="n">Sea &amp; air freight</div><div class="v">--mode-sea · 40 148 94</div></div></div>
+          <div class="mode"><div class="bar" style="background:#1C9BD7"></div><div class="in"><div class="n">Customs clearance</div><div class="v">--mode-air · 28 155 215</div></div></div>
+          <div class="mode"><div class="bar" style="background:#E07A1A"></div><div class="in"><div class="n">Warehousing</div><div class="v">--mode-road · 224 122 26</div></div></div>
+          <div class="mode"><div class="bar" style="background:#9333EA"></div><div class="in"><div class="n">Hinterland transport</div><div class="v">--mode-rail · 147 51 234</div></div></div>
+        </div>
+        <dl>
+          <dt>Where</dt><dd class="mono">Home · services grid · /services cards</dd>
+          <dt>Fix</dt><dd>Assign one mode colour per service line and carry it consistently: a 6px top bar on the card, the icon chip tinted at 10–12%, the icon itself at full mode colour, and the "See this service" arrow inheriting it on hover. Same treatment on the service detail pages so a line is recognisable by colour before it is read.</dd>
+          <dt>Watch</dt><dd>Orange stays the action colour. Mode colours are identity, never a button.</dd>
+          <dt>Accept</dt><dd>Four cards, four distinct colours, orange still the only thing that looks clickable.</dd>
+        </dl>
+      </div>
+    </div>
+
+    <div class="item p1">
+      <div class="head"><span class="id">P1-2</span><div>
+        <h3>Replace the repeated placeholder with a designed panel</h3>
+        <p class="why">Four identical 16:9 grey boxes carrying the identical thin cube icon. Repetition is what makes it read <em>unfinished</em> — one empty box is a gap, four is a confession.</p>
+      </div></div>
+      <div class="body"><dl>
+        <dt>Where</dt><dd class="mono">Home · services grid · /services cards</dd>
+        <dt>Fix</dt><dd>Same 16:9 slot, but composed: a subtle diagonal gradient from the card's mode colour at 8% to transparent, an oversized mode-specific glyph (vessel, stamp, pallet, truck) bled to 55% opacity off the bottom-right corner, and a mono service code top-left — <code>SVC-SEA</code>, <code>SVC-CUS</code>, <code>SVC-WHS</code>, <code>SVC-HTL</code>.</dd>
+        <dt>Why it survives</dt><dd>When photography arrives it drops into this exact slot; the code and mode bar stay as overlay furniture. Nothing built here is thrown away.</dd>
+        <dt>Accept</dt><dd>Four visibly different panels. No repeated glyph anywhere on the page.</dd>
+      </dl></div>
+    </div>
+
+    <div class="item p1">
+      <div class="head"><span class="id">P1-3</span><div>
+        <h3>Add the proof strip</h3>
+        <p class="why">Staging carries no number, no certification, no network badge, no client mark. The live site carries CBM managed, average clearance time, land-freight distance, ISO 9001, and WCA / FIATA / JC Trans membership. All of that is text and it is already written down.</p>
+      </div></div>
+      <div class="body"><dl>
+        <dt>Where</dt><dd class="mono">New row directly beneath the hero, above SERVICES</dd>
+        <dt>Fix</dt><dd>Full-width band on carbon: three or four figures set in JetBrains Mono at ~2rem with <code>tabular-nums</code>, uppercase slate labels beneath at <code>--brand-tracking-eyebrow</code>, separated by hairlines at <code>--hero-line</code>. Then a quieter row of credentials — ISO 9001:2015, WCA, FIATA, JC Trans — as bordered pills.</dd>
+        <dt>Source</dt><dd>Figures and memberships already published on the live site; confirm currency with the client before they ship.</dd>
+        <dt>Accept</dt><dd>A visitor who scrolls one screen has seen a number, a certification and a network name.</dd>
+      </dl></div>
+    </div>
+
+    <div class="item p1">
+      <div class="head"><span class="id">P1-4</span><div>
+        <h3>Turn the empty states into content</h3>
+        <p class="why">"Nothing to show yet — ask us for references instead" is honest and it is a hole in the page. The fix is not better apology copy; it is putting something in the space that does not depend on work being published.</p>
+      </div></div>
+      <div class="body"><dl>
+        <dt>Where</dt><dd class="mono">Home · CASE NOTES band · /portfolio · /insights · /careers</dd>
+        <dt>Fix</dt><dd>Replace with a <strong>corridors</strong> panel: origin → destination pairs the firm actually runs (Douala · Kribi · Yaoundé → N'Djamena · Bangui · Libreville · Malabo), each row carrying its mode colour, transit indication and a customs note. Add a sectors row — energy, humanitarian, construction, pharma — as bordered chips.</dd>
+        <dt>Second choice</dt><dd>If corridor data is not to hand: a single anonymised operation written as a case note ("Out-of-gauge transformer, Douala → N'Djamena") reads as proof and needs no client sign-off on names.</dd>
+        <dt>Accept</dt><dd>No band on the site says a version of "nothing here yet".</dd>
+      </dl></div>
+    </div>
+
+    <div class="item p1">
+      <div class="head"><span class="id">P1-5</span><div>
+        <h3>Break the band monotony with one carbon section</h3>
+        <p class="why">Seven bands alternate <code>#ffffff</code> and <code>#f7f8f8</code> — a 3% difference — each divided by the same hairline. After the hero, the page never changes register again, so scrolling produces no events.</p>
+      </div></div>
+      <div class="body"><dl>
+        <dt>Where</dt><dd class="mono">CLIENT PORTAL band (best candidate) · optionally HOW IT WORKS</dd>
+        <dt>Fix</dt><dd>Flip the portal band to <code>--brand-carbon</code> with <code>--hero-foreground</code> text and <code>--hero-line</code> rules — tokens the hero already uses, so no new values. The portal mock's orange status ticks gain enormous contrast on carbon, and the page acquires a mid-scroll landmark.</dd>
+        <dt>Watch</dt><dd>One dark band, not two. Two makes the page striped rather than punctuated.</dd>
+        <dt>Accept</dt><dd>Thumbnail of the full page shows three distinct grounds, not two near-identical ones.</dd>
+      </dl></div>
+    </div>
+
+    <div class="item p1">
+      <div class="head"><span class="id">P1-6</span><div>
+        <h3>Spend the elevation tokens</h3>
+        <p class="why">Three shadows are defined — <code>--shadow-s</code>, <code>-m</code>, <code>-l</code> — and the page renders flat: cards are outlines. Depth is the cheapest richness there is and it is already sitting in the stylesheet.</p>
+      </div></div>
+      <div class="body"><dl>
+        <dt>Fix</dt><dd>Assign a scale and hold it: <code>--shadow-s</code> for resting cards, <code>--shadow-m</code> on hover with a 1–2px lift over <code>--dur</code>/<code>--ease</code>, <code>--shadow-l</code> reserved for the two hero-level objects (the tracking card and the portal mock).</dd>
+        <dt>Accept</dt><dd>Three distinguishable elevations on the home page; hovering a service card visibly changes it.</dd>
+      </dl></div>
+    </div>
+
+    <div class="item p1">
+      <div class="head"><span class="id">P1-7</span><div>
+        <h3>Lift the hero photograph out of the dark</h3>
+        <p class="why">The hero already loads an image. It is crushed to near-invisibility under the carbon overlay — the site is paying the bandwidth for a photo nobody can see.</p>
+      </div></div>
+      <div class="body"><dl>
+        <dt>Fix</dt><dd>Reduce the overlay to a directional scrim: near-opaque carbon behind the headline column, falling to roughly 55% across the right two-fifths so the crane and container stack read. Keep white-on-carbon contrast where the type actually sits.</dd>
+        <dt>Accept</dt><dd>Subject identifiable at a glance on a phone; headline contrast unchanged.</dd>
+      </dl></div>
+    </div>
+
+    <div class="item p1">
+      <div class="head"><span class="id">P1-8</span><div>
+        <h3>Use mono as texture, not just as a placeholder</h3>
+        <p class="why">The single most product-feeling detail on the whole site is the mono reference <code>SBL-OPS-2026-0142</code> in the tracking field. That texture appears exactly once.</p>
+      </div></div>
+      <div class="body"><dl>
+        <dt>Fix</dt><dd>Set every machine-shaped value in <code>--brand-font-mono</code>: file references, service codes, proof figures, dates, transit times, status codes in the portal mock, the reference the contact form promises. Sizes at <code>.78–.82rem</code> with <code>tabular-nums</code> wherever digits stack.</dd>
+        <dt>Why</dt><dd>It is what makes an operations firm look like it runs systems rather than a phone. Free, and orthogonal to imagery.</dd>
+        <dt>Accept</dt><dd>Mono appears in at least four distinct places per page.</dd>
+      </dl></div>
+    </div>
+
+    <div class="item p1">
+      <div class="head"><span class="id">P1-9</span><div>
+        <h3>Let the portal mock break its band</h3>
+        <p class="why">Everything on the page sits obediently inside its band. Nothing overlaps, so the page has no foreground and background — just a stack.</p>
+      </div></div>
+      <div class="body"><dl>
+        <dt>Fix</dt><dd>Pull the portal mock card up so it crosses the boundary into the band above by 40–60px, carrying <code>--shadow-l</code>. On mobile, drop the overlap and keep the shadow.</dd>
+        <dt>Accept</dt><dd>One deliberate overlap on the home page. Exactly one — the device stops working if repeated.</dd>
+      </dl></div>
+    </div>
+  </section>
+
+  <section class="block" id="p2">
+    <h2>P2 · Motion</h2>
+    <div class="tier t2"><span class="tag">P2</span><span class="txt">The live site rewards scrolling; staging does not move. Six reveal-tagged elements exist — use them properly and add two set-pieces.</span></div>
+
+    <div class="item p2">
+      <div class="head"><span class="id">P2-1</span><div>
+        <h3>Count the proof figures up</h3>
+        <p class="why">The live site's stat counters are the single most-noticed animation on it. Once P1-3 ships, staging has the numbers to do the same.</p>
+      </div></div>
+      <div class="body"><dl>
+        <dt>Fix</dt><dd>Trigger on intersection, once, ~900ms ease-out, <code>tabular-nums</code> so the width does not jitter. Honour <code>prefers-reduced-motion</code> by rendering the final value immediately.</dd>
+        <dt>Accept</dt><dd>Figures animate on first view only; never re-run on scroll-back.</dd>
+      </dl></div>
+    </div>
+
+    <div class="item p2">
+      <div class="head"><span class="id">P2-2</span><div>
+        <h3>Animate the shipment timeline</h3>
+        <p class="why">The portal mock — File opened → Vessel departed → Customs cleared → Delivery scheduled — is the best-looking object on the site and it is completely static.</p>
+      </div></div>
+      <div class="body"><dl>
+        <dt>Fix</dt><dd>On entering view, stagger the three completed ticks in at ~120ms intervals, then leave the fourth pulsing gently on its orange ring. It demonstrates the product in three seconds without a screenshot.</dd>
+        <dt>Accept</dt><dd>Plays once per page load; reduced-motion renders the completed state.</dd>
+      </dl></div>
+    </div>
+
+    <div class="item p2">
+      <div class="head"><span class="id">P2-3</span><div>
+        <h3>Give reveals a real cadence</h3>
+        <p class="why">Six elements carry reveal hooks on a 7,900px page, and <code>--dur</code> is <code>.15s</code> — too fast to register as motion.</p>
+      </div></div>
+      <div class="body"><dl>
+        <dt>Fix</dt><dd>Extend reveals to every band's heading block and card grid, at ~400ms with a 60–80ms stagger across siblings, translateY 12–16px. Keep <code>--dur</code> at <code>.15s</code> for interaction feedback — these are different jobs and should not share a token.</dd>
+        <dt>Accept</dt><dd>Every band announces itself once; no element animates twice.</dd>
+      </dl></div>
+    </div>
+  </section>
+
+  <section class="block" id="p3">
+    <h2>P3 · When the images land</h2>
+    <div class="tier t3"><span class="tag">P3</span><span class="txt">Nothing here blocks the client review. Written down so the P1 work is built to receive it.</span></div>
+
+    <div class="item p3">
+      <div class="head"><span class="id">P3-1</span><div>
+        <h3>Photography drops into slots that already exist</h3>
+        <p class="why">Every P1 item is additive to imagery rather than replaced by it — that is the point of building them first.</p>
+      </div></div>
+      <div class="body"><dl>
+        <dt>Slots</dt><dd class="mono">4 × 16:9 service panels · 1 hero · 1 portal band · 3–4 corridor thumbnails</dd>
+        <dt>Treatment</dt><dd>Mode bar stays above the photo; service code stays as overlay furniture; the gradient becomes a scrim at the same angle. Shoot list: vessel or port gantry, a customs counter, bonded racking, a truck on the N'Gaoundéré road.</dd>
+        <dt>Accept</dt><dd>Adding a photo changes no layout dimension.</dd>
+      </dl></div>
+    </div>
+  </section>
+
+  <section class="block" id="score">
+    <h2>Scoreboard</h2>
+    <p class="lede">The richness levers the live site pulls, what staging does with them today, and where this list leaves it.</p>
+    <div class="tablewrap">
+      <table>
+        <tr><th>Lever</th><th>Production</th><th>Staging today</th><th>After P0–P2</th></tr>
+        <tr><td>Photography</td><td class="yes">Heavy</td><td class="no">One crushed hero</td><td>Hero readable; designed panels</td></tr>
+        <tr><td>Colour range</td><td class="yes">Two blues + orange</td><td class="no">Greyscale + orange</td><td>Four mode colours + orange</td></tr>
+        <tr><td>Depth</td><td class="yes">Glass, gradients, shadow</td><td class="no">Flat outlines</td><td>Three elevations + one overlap</td></tr>
+        <tr><td>Motion</td><td class="yes">Counters, marquee, parallax</td><td class="no">Effectively none</td><td>Counters, timeline, reveals</td></tr>
+        <tr><td>Proof</td><td class="yes">Stats, logos, testimonial</td><td class="no">None</td><td>Figures, certifications, networks</td></tr>
+        <tr><td>Ground variety</td><td class="yes">Four grounds</td><td class="no">Two, 3% apart</td><td>Three, including carbon</td></tr>
+        <tr><td>Empty states</td><td>—</td><td class="no">Two apologies</td><td>Corridors and sectors</td></tr>
+        <tr><td>Hierarchy</td><td class="no">Uniformly dense</td><td class="yes">Clear</td><td class="yes">Clear</td></tr>
+        <tr><td>Legibility</td><td class="no">Text over busy photos</td><td class="yes">Clean</td><td class="yes">Clean</td></tr>
+      </table>
+    </div>
+    <div class="callout">
+      <p>Production wins four of these today. After P0–P2 it wins one — photography — and that one is scheduled. Staging keeps both rows it already wins, which production cannot fix without a rebuild.</p>
+    </div>
+  </section>
+
+  <section class="block" id="order">
+    <h2>Order of work</h2>
+    <ul>
+      <li><strong>Day 1 — P0.</strong> Services skeletons, Track button, font token. Nothing is demoable until these are gone.</li>
+      <li><strong>Day 2 — P1-1, P1-2.</strong> Mode colours and designed panels. This is the change that reads as "a designer touched it" in a thumbnail.</li>
+      <li><strong>Day 3 — P1-3, P1-4.</strong> Proof strip and corridors. This is the change that reads as "a real firm".</li>
+      <li><strong>Day 4 — P1-5 to P1-9.</strong> Carbon band, elevations, hero scrim, mono texture, the overlap. Half a day each at most.</li>
+      <li><strong>Day 5 — P2.</strong> Motion, then a pass on a real phone before it goes in front of anyone.</li>
+    </ul>
+    <p class="note">Show the client after Day 3 at the earliest. Before that, the mode colours are landed but the page still has no proof in it, and proof is what he is actually buying.</p>
+  </section>
+
+  <footer class="foot">
+    Compiled from the 31 August 2026 review of staging.smartls.cm and smartls.cm at 375px and 1280px. Companion to <em>Smart Logistics Design System</em> (production capture). Token names quoted from staging's own <code>:root</code>.
+  </footer>
+
+  </main>
+</div>

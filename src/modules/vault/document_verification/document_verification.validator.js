@@ -33,6 +33,12 @@ const query = z.object({
   // CHECK-constrained column.
   via: z.enum(["QR", "CODE"]).optional(),
   lang: z.enum(["fr", "en"]).optional(),
+  // The environment the code was minted in. Baked into the printed QR URL
+  // rather than trusted from a client header — a stranger sending
+  // `X-Praxis-Env: sandbox` on the public verify page would otherwise be
+  // choosing the environment for themselves (§5.4 note in the controller).
+  // Only 'sandbox' and 'live' are accepted; missing or anything else = live.
+  e: z.enum(["sandbox", "live"]).optional(),
 });
 
 const validate = (req, _res, next) => {

@@ -24,6 +24,7 @@
  */
 import * as React from "react";
 import { Button } from "@/components/ui/button";
+import { DateField } from "@/components/ui/date-field";
 import { FormButtons } from "@/components/ui/form-buttons";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
@@ -52,7 +53,16 @@ export function DisburseForm({
   onSaved: () => void;
 }) {
   const { rows: entities } = useList<Entity>("/entities");
-  const requested = Number(request.total_budget ?? 0);
+  /*
+   * `amount`, not `total_budget` (12771).
+   *
+   * `total_budget` is Σ of the lines' NET; `amount` is the TOTAL PAYABLE the
+   * request was approved for — net plus each line's VAT. Reading the net here
+   * understated the outstanding balance on any request carrying VAT, so the
+   * dialog offered to pay less than the treasury actually owed. `total_budget`
+   * stays as the fallback for a list row that carries no `amount`.
+   */
+  const requested = Number(request.amount ?? request.total_budget ?? 0);
   const paid = Number(request.disbursed_amount ?? 0);
   const outstanding = Math.round((requested - paid) * 100) / 100;
   // Blank means "the whole outstanding balance" — the server applies that
@@ -117,10 +127,9 @@ export function DisburseForm({
             </Select>
           </Field>
           <Field label={tr("Date")} required>
-            <Input
-              type="date"
+            <DateField
               value={f.entry_date}
-              onChange={(e) => set("entry_date", e.target.value)}
+              onChange={(iso) => set("entry_date", iso)}
             />
           </Field>
           <Field
@@ -310,10 +319,9 @@ export function JustifyForm({
         )}
         <div className="grid gap-4 lg:grid-cols-2">
           <Field label={tr("Date")} required>
-            <Input
-              type="date"
+            <DateField
               value={entryDate}
-              onChange={(e) => setEntryDate(e.target.value)}
+              onChange={setEntryDate}
             />
           </Field>
         </div>

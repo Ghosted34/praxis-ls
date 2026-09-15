@@ -126,7 +126,17 @@ router.post("/secure-links", requireFeature("mail.secure_links"), requirePermiss
     // operator is standing and where a 422 can say something useful. Restore
     // the kind here on the day a renderer exists, not before.
     target_kind: z.enum(["VAULT_DOC"]),
-    target_ref: z.string().min(1).max(200),
+    // A VAULT_DOC's target_ref is a document UUID and is USED as one: `mint`
+    // hands it to `assertDocumentAccess` → `document_vault.repo.get`, whose
+    // `WHERE doc_id = $1` casts it. `min(1)` let anything through, so a person
+    // typing a document's NAME into the mint dialog reached Postgres and came
+    // back as 22P02 — rendered to them as "One of the values is in the wrong
+    // format", which names neither the field nor what a right one looks like.
+    //
+    // Refused here instead, where the message can say what to do. The dialog
+    // now picks the document rather than asking anyone to type a UUID, so this
+    // is the backstop for an API caller and for a paste that lost characters.
+    target_ref: z.string().uuid("must be the id of a document in the vault — pick the document rather than typing its name"),
     entity_ref: z.string().max(128).optional(),
     label: z.string().max(200).optional(),
     days: z.coerce.number().int().min(1).max(90).optional(),

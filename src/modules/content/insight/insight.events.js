@@ -11,4 +11,8 @@ module.exports = {
   DELETED: "insight.deleted",
   PUBLISHED: "insight.published",
   UNPUBLISHED: "insight.unpublished",
+  // Pinning puts a piece on the tenant's front page. That is a publishing-grade
+  // act and it gets a publishing-grade record: who pinned it, and until when.
+  PINNED: "insight.pinned",
+  UNPINNED: "insight.unpinned",
 };

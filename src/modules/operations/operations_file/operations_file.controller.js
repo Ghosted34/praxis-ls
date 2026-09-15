@@ -12,7 +12,7 @@ module.exports = {
   // X-Total-Count so the screen can page instead of filtering a truncated 50.
   list: asyncHandler(async (req, res) =>
     sendPaged(res, await req.tenantDb((c) => service.listPaged(c, req.query)))),
-  get: asyncHandler(async (req, res) => { const r = await req.tenantDb((c) => service.get(c, req.params.id)); if (!r) throw new AppError("NOT_FOUND", "Dossier not found", 404); res.json({ data: r }); }),
+  get: asyncHandler(async (req, res) => { const r = await req.tenantDb((c) => service.get(c, req.params.id)); if (!r) throw new AppError("NOT_FOUND", "Operations file not found", 404); res.json({ data: r }); }),
   create: asyncHandler(async (req, res) => res.status(201).json({ data: await req.tenantDb((c) => service.create(c, { data: req.body, actor: actor(req) })) })),
   // The creation wizard: open a draft, then promote it. See the service.
   createDraft: asyncHandler(async (req, res) => res.status(201).json({ data: await req.tenantDb((c) => service.createDraft(c, { data: req.body, actor: actor(req) })) })),

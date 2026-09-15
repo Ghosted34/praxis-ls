@@ -265,6 +265,9 @@ export function AiComposer({
               "grid h-8 w-8 shrink-0 place-items-center rounded-md transition-all",
               canSend
                 ? "bg-primary text-primary-foreground hover:opacity-90"
+                // contrast-exempt: a DISABLED control, which WCAG 2.1 §1.4.3
+                // exempts outright — holding its label to 4.5:1 would make the
+                // disabled state look enabled, which is worse for the same user.
                 : "bg-muted text-muted-foreground/60",
             )}
           >

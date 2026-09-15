@@ -95,14 +95,20 @@ function cellSpec(column, context) {
       // Fraction in, % out (0.1925 → 19.3%) — the same convention the
       // assistant export's coerce() produces.
       return { fmt: "0.0%", coerce: num, align: "right" };
+    // Day-first, like every other date this product prints. These are Excel
+    // NUMBER FORMATS, not the stored value: the cell still holds a real date
+    // serial, so sorting, filtering and formulas are untouched — only what the
+    // reader sees changes. `dd/mm/yyyy` is also literal in Excel's format
+    // language (unlike the locale-dependent `m/d/yy` shorthands), so the file
+    // renders the same for whoever opens it.
     case "date":
       return {
-        fmt: "yyyy-mm-dd",
+        fmt: "dd/mm/yyyy",
         coerce: (v) => serialDate(v, { timezone: context.timezone, hasTime: false }) ?? textOut(v),
       };
     case "datetime":
       return {
-        fmt: "yyyy-mm-dd hh:mm",
+        fmt: "dd/mm/yyyy hh:mm",
         coerce: (v) => serialDate(v, { timezone: context.timezone, hasTime: true }) ?? textOut(v),
       };
     case "bool":

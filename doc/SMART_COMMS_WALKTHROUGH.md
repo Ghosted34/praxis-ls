@@ -24,16 +24,23 @@ employee, or client-mailbox data in the recording.
 
 Use consistent, clearly fictional data throughout the recording.
 
-| Item | Suggested demo value |
+Aligned with `END_TO_END_OPERATIONS_WALKTHROUGH.md` and
+`E2E_DEMO_DATA_SHEET.md` — same tenant, same people, same operation — so the two
+walkthroughs can be recorded back to back, and the mail in this one refers to
+documents the viewer has already watched being created.
+
+| Item | Demo value |
 |---|---|
-| Corporate entity | Arena Logistics Cameroon (consistent with the operations demo) |
+| Corporate entity | Arena Logistics Cameroun SARL |
 | Company domain (cPanel hosting) | `arena-logistics.cm` |
-| Personal mailbox | `demo@arena-logistics.cm` (cPanel mail account, 2FA **off** for the demo) |
-| Supplier | Demo Transport SARL — `contact@demo-transport.cm` |
-| Client | Demo Client SA |
-| Inbound mail to seed | (1) supplier: "advance invoice for DEMO-OPS-001 — please confirm by Friday"; (2) any automated/system notice, to show the system stream |
-| Group channel | `ops-demo` |
-| Colleague for the DM | any second demo user |
+| Personal mailbox | `ops.nkolo@arena-logistics.cm` (Serge Nkolo, Chargé d'Opérations; cPanel mail account, 2FA **off** for the demo) |
+| Supplier | Transit Wouri SARL — `contact@transit-wouri.cm` |
+| Client | Brasseries Mont Fébé SA — `achats@mont-febe.cm` (contact: Estelle Ngo Bikai) |
+| Operations file referenced | the dossier ref (e.g. `AL21FD3JX1CHGFSM`) — the sea-freight import from the operations walkthrough |
+| Inbound mail to seed | (1) from the client: *"Facture d'acompte 3 781 500 XAF — merci de confirmer avant vendredi"*, referencing the operations file; (2) from the supplier: *"Confirmation enlèvement conteneur MSCU4471820 — Douala → Bassa"*; (3) any automated/system notice, to show the system stream |
+| Group channel | `ops-mont-febe` |
+| Colleague for the DM | Aline Fotso (`fin.fotso@arena-logistics.cm`) |
+| Role mailboxes | `billing@arena-logistics.cm` · `documents@arena-logistics.cm` · `support@arena-logistics.cm` |
 
 Record the generated reference numbers as you go (sent-message id, thread
 binding) so they can be shown again in the closing recap.
@@ -48,7 +55,7 @@ binding) so they can be shown again in the closing recap.
    off by default — without it, Mail AI surfaces and "By meaning" search are
    hidden) and `mail.ocr` on (document extraction). `mail.deliverability` and
    `mail.signatures` are on by default.
-3. Create the cPanel mail account `demo@arena-logistics.cm` and write down its
+3. Create the cPanel mail account `ops.nkolo@arena-logistics.cm` and write down its
    password (or app-specific password). Confirm from the cPanel mail account
    screen: IMAP/SMTP server is the hosting domain, IMAP port **993** (SSL),
    SMTP port **465** (SSL) or **587** (STARTTLS).
@@ -57,7 +64,7 @@ binding) so they can be shown again in the closing recap.
 5. Set a **signature** once (Settings → Email signatures) so every sent email
    visibly carries it.
 6. Clear the notification bell. Start screen recording before the first click.
-7. Have the client record (Demo Client SA) open on a second monitor — we bind
+7. Have the client record (Brasseries Mont Fébé SA) open on a second monitor — we bind
    a thread to it in the second act.
 
 ---
@@ -95,7 +102,7 @@ binding) so they can be shown again in the closing recap.
    prove.)*
 4. Click **IMAP/SMTP** → the right-side drawer opens ("Connect and test" / FR
    *Connecter et tester*).
-5. Type the **email address** `demo@arena-logistics.cm`.
+5. Type the **email address** `ops.nkolo@arena-logistics.cm`.
 6. Click **Autodiscover** — the IMAP/SMTP host and port fields fill themselves
    in from the address. Confirm what filled in:
    - IMAP host `arena-logistics.cm`, port **993**
@@ -179,7 +186,7 @@ administrator creates.
 2. **Second entry point — the mailbox itself.** **Mailbox → Inbox** header:
    the **Compose** button (labelled on wide screens, icon-only on narrow).
    Use this one for the demo send.
-3. In the compose screen: type the recipient `contact@demo-transport.cm`
+3. In the compose screen: type the recipient `contact@transit-wouri.cm`
    (the field accepts plain text, comma-separated). The **Send** button stays
    disabled until there is a recipient **and** a body — show it locked with
    the body empty, then unlocked as you type.
@@ -283,8 +290,8 @@ sentence is enough.)*
    filters **All / Unread / In-house / Groups / Email** and **Search
    conversations…**.
 2. **New** → **In-house message**: pick a colleague, send "clearance docs
-   for DEMO-OPS-001 ready?" — show the unread badge update on the row.
-3. **New** → **Group channel**: create/open `ops-demo`, post a status line.
+   for the dossier ref ready?" — show the unread badge update on the row.
+3. **New** → **Group channel**: create/open `ops-mont-febe`, post a status line.
    Show the channel is deep-linkable (the URL carries the channel — shareable
    in a single message).
 4. Search "invoice" across the mixed feed; switch filters to **Groups** to
@@ -305,7 +312,7 @@ sentence is enough.)*
 1. Open the supplier thread in **Mailbox → Inbox**. Right-hand **work rail**
    (opens when a record is attached):
 2. **The record** (FR : *Le dossier*): the client/operations file this thread
-   belongs to (Demo Client SA → DEMO-OPS-001). If unbound: **Bind** it to the
+   belongs to (Brasseries Mont Fébé SA → the dossier ref). If unbound: **Bind** it to the
    record now, in front of the camera.
 3. **What you can start** (FR : *Ce que vous pouvez lancer*): actions that
    make sense from this record — documents, follow-ups, tasks.

@@ -5,6 +5,7 @@ import {
   Routes,
   useParams,
   useLocation,
+  useNavigationType,
 } from "react-router-dom";
 import { NotFoundPage } from "@/features/not-found/not-found-page";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -68,6 +69,11 @@ const Marketing = lazy(
   () => import("@/features/marketing/marketing-page"),
   "MarketingPage",
 );
+/* §9.1. Lazy like every other route, and it matters more here than most: the
+   About page carries the leadership renderer, the entity network and the three
+   proof bands, and a visitor who came to track a container downloads none of
+   it. */
+const About = lazy(() => import("@/features/about/about-page"), "AboutPage");
 const Track = lazy(() => import("@/features/tracking/track-page"), "TrackPage");
 const ServicesIndex = lazy(
   () => import("@/features/services/services-page"),
@@ -85,6 +91,10 @@ const PortfolioStory = lazy(
   () => import("@/features/portfolio/portfolio-page"),
   "PortfolioStoryPage",
 );
+const Quote = lazy(
+  () => import("@/features/quote/quote-page"),
+  "QuotePage",
+);
 const Insights = lazy(
   () => import("@/features/insights/insights-page"),
   "InsightsPage",
@@ -101,9 +111,17 @@ const Careers = lazy(
   () => import("@/features/careers/careers-page"),
   "CareersPage",
 );
+const Contact = lazy(
+  () => import("@/features/contact/contact-page"),
+  "ContactPage",
+);
 const Vacancy = lazy(
   () => import("@/features/careers/careers-page"),
   "VacancyPage",
+);
+const CareersUnsubscribe = lazy(
+  () => import("@/features/careers/careers-page"),
+  "CareersUnsubscribePage",
 );
 const PortalApp = lazy(
   () => import("@/features/portal/portal-app"),
@@ -173,9 +191,63 @@ function RouteFallback() {
   );
 }
 
+/**
+ * A new page starts at the top of itself.
+ *
+ * ── THE BUG ────────────────────────────────────────────────────────────────
+ *
+ * The browser resets scroll on a real navigation. A single-page app performs no
+ * navigation — it swaps a subtree and leaves the window exactly where it was —
+ * so somebody who read to the bottom of the services index and clicked
+ * "Careers" landed halfway down a page they had never seen, with the top of it
+ * above them. On the short pages that means below the content entirely: a blank
+ * screen, on a marketing site, from a nav link.
+ *
+ * ── THE THREE CASES, BECAUSE ONLY ONE OF THEM WANTS THE TOP ────────────────
+ *
+ *   · A LINK to a new path — scroll to the top. This is the case above and the
+ *     only one this component acts on.
+ *   · BACK or FORWARD (`POP`) — leave it alone. The browser is restoring a
+ *     position the reader had, and overriding that turns the Back button into a
+ *     way to lose your place, which is worse than the bug being fixed.
+ *   · A HASH (`/services#freight`, the home page's `#quote`) — leave it alone.
+ *     The whole point of the anchor is to arrive somewhere that is not the top,
+ *     and `scroll-mt-[var(--sticky-top)]` already positions it under the header.
+ *
+ * ── AND WHY `instant` IS SPELLED OUT ───────────────────────────────────────
+ *
+ * `index.css` sets `scroll-behavior: smooth` on `html`, which `behavior: "auto"`
+ * inherits — so the default would ANIMATE the jump, and a reader who clicked a
+ * nav link would watch three thousand pixels of a page they did not ask for
+ * slide past. `instant` is the one value that ignores the CSS. Under
+ * `prefers-reduced-motion` the umbrella in index.css turns the smooth scrolling
+ * off anyway; this stays correct either way.
+ */
+function ScrollToTop() {
+  const { pathname, hash } = useLocation();
+  const navigationType = useNavigationType();
+
+  React.useEffect(() => {
+    if (navigationType === "POP" || hash) return;
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+    // `hash` is a dependency so that leaving an anchored URL for a plain one
+    // still scrolls; `navigationType` so a PUSH to the path a POP just restored
+    // is not mistaken for the POP.
+  }, [pathname, hash, navigationType]);
+
+  return null;
+}
+
 export function AppRouter() {
   return (
-    <React.Suspense fallback={<RouteFallback />}>
+    /* ABOVE the Suspense boundary, not inside it. When a lazily-loaded route
+       suspends, everything inside the boundary is replaced by the fallback and
+       its effects are torn down — so a ScrollToTop in there would unmount on
+       the very navigations that need it and only fire once the chunk resolved.
+       Outside, it is never suspended and the scroll happens as the URL changes. */
+    <>
+      <ScrollToTop />
+      <React.Suspense fallback={<RouteFallback />}>
       <Routes>
         {/* At the root `p()` IS "/", and the marketing route below already
             claims it — a redirect here would point at itself. */}
@@ -184,6 +256,7 @@ export function AppRouter() {
         {/* ── the public site ── */}
         <Route path={p()} element={<Marketing />} />
         <Route path={p("/track")} element={<Track />} />
+        <Route path={p("/about")} element={<About />} />
         <Route path={p("/services")} element={<ServicesIndex />} />
         <Route path={p("/services/:slug")} element={<ServiceDetail />} />
         <Route path={p("/portfolio")} element={<PortfolioIndex />} />
@@ -192,17 +265,33 @@ export function AppRouter() {
         <Route path={p("/insights")} element={<Insights />} />
         <Route path={p("/insights/:slug")} element={<Insight />} />
         <Route path={p("/careers")} element={<Careers />} />
+        {/* Before `:token` for readability only — react-router ranks a static
+            segment above a dynamic one, and these are four segments against
+            two, so the order does not decide it. */}
+        <Route
+          path={p("/careers/alerts/unsubscribe/:token")}
+          element={<CareersUnsubscribe />}
+        />
         <Route path={p("/careers/:token")} element={<Vacancy />} />
-        {/* The form used to live at its own path; the band on the home page is the
-            same fields, and a bookmark should reach it rather than 404. */}
-        <Route
-          path={p("/quote")}
-          element={<Navigate to={p("#quote")} replace />}
-        />
-        <Route
-          path={p("/contact")}
-          element={<Navigate to={p("#contact")} replace />}
-        />
+        {/*
+          The quote form has its own route again, and the redirect it replaces
+          was the bug: the header's CTA pointed at `#quote`, which in an SPA
+          scrolls to an element the lazy marketing chunk has not rendered yet
+          (from another page) or re-renders what is already mounted without
+          moving (from the home page). Either way the button did nothing.
+          `features/quote/quote-page.tsx` records the rest.
+        */}
+        <Route path={p("/quote")} element={<Quote />} />
+        {/*
+          A page, not a redirect back to `…#contact`. That redirect was the
+          same defect the quote CTA had: the fragment is discarded by
+          `NavLink`'s active test — so the header highlighted Contact on the
+          home page — and following it scrolls to an element the lazy marketing
+          chunk has not rendered. `features/contact/contact-page.tsx` records
+          the rest. The home page keeps `#contact` as a band that points here,
+          so links already in circulation still land somewhere sensible.
+        */}
+        <Route path={p("/contact")} element={<Contact />} />
 
         {/* ── the external portal ── */}
         <Route path="/portal/*" element={<PortalApp />} />
@@ -265,7 +354,8 @@ export function AppRouter() {
             here would put a staff sign-in behind a marketing app. */}
 
         <Route path="*" element={<NotFoundPage />} />
-      </Routes>
-    </React.Suspense>
+        </Routes>
+      </React.Suspense>
+    </>
   );
 }

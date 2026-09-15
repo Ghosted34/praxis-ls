@@ -103,6 +103,33 @@ export function dateTimeFmt(d: string | Date | null | undefined): string {
   });
 }
 
+/**
+ * How long ago something happened, in words: "6 days ago" / "il y a 6 jours".
+ *
+ * ── WHY NOT THE ERP’S `fmtRelative` ──────────────────────────────────────
+ *
+ * `client/src/lib/format.ts` has one, and this file’s own header says to port
+ * rather than re-derive. It cannot be ported: it returns "just now", "2d ago"
+ * — English literals, on a surface whose whole claim is that it is bilingual to
+ * the database column. `Intl.RelativeTimeFormat` says the same thing in the
+ * reader’s language, at no bundle cost, and `numeric: "auto"` gives
+ * "yesterday" / "hier" where a number would read as a machine.
+ *
+ * Days up to 30, then months, then null — past a year "13 months ago" is worse
+ * than the date beside it, and every caller here prints that date anyway.
+ */
+export function dateAgo(d: unknown): string | null {
+  if (!d) return null;
+  const dt = d instanceof Date ? d : parseLoose(String(d));
+  if (!dt || Number.isNaN(dt.getTime())) return null;
+  const days = Math.round((dt.getTime() - Date.now()) / 86_400_000);
+  if (!Number.isFinite(days) || Math.abs(days) > 365) return null;
+  const rtf = new Intl.RelativeTimeFormat(dateLocale(), { numeric: "auto" });
+  return Math.abs(days) <= 30
+    ? rtf.format(days, "day")
+    : rtf.format(Math.round(days / 30), "month");
+}
+
 export function dateDmy(d: unknown): string {
   if (!d) return "—";
   const dt = d instanceof Date ? d : parseLoose(String(d));

@@ -15,6 +15,7 @@ import { dateFmt } from "@/lib/format";
 import { p } from "@/lib/base-path";
 import { useDocumentMeta } from "@/lib/use-document-meta";
 import { PageShell } from "@/components/site/page-shell";
+import { useScrollScrub } from "@/lib/motion";
 import { Section } from "@/components/site/section";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { Chip } from "@/components/ui/pill";
@@ -153,11 +154,66 @@ function Article({
 }) {
   const { t } = useTranslation();
   const [coverOk, setCoverOk] = React.useState(true);
+  /*
+   * The reading rail's scrub, over THIS ARTICLE's own travel rather than the
+   * viewport's default window. `start: 1, end: 0` would complete as the element
+   * left the top of the screen, which for a document taller than the viewport
+   * means the rail fills long before the reader reaches the end. Measuring 0→1
+   * across the article's own height is the only version of "how far through am
+   * I" that answers the question asked.
+   *
+   * Under reduced motion this writes 1 once and attaches no listener — the rail
+   * renders at full height, which reads as the LENGTH of the piece and makes no
+   * claim about position. See the markup below on why that is the right settled
+   * state and a top bar's would not be.
+   */
+  const progressRef = useScrollScrub<HTMLElement>({ start: 0, end: 1 });
   const body = insightBody(article, lang);
   const src = coverUrl(article.cover_id);
+  const [broken, setBroken] = React.useState<string[]>([]);
+  const gallery = (article.gallery_ids || []).filter((id) => !broken.includes(id));
 
   return (
-    <article className="mx-auto max-w-prose">
+    /*
+     * §8.6's editorial article.
+     *
+     * ── LONG-FORM IS EXEMPT FROM THE 90-WORD RULE, AND THAT IS THE POINT ────
+     *
+     * §1.5 carves this page out in as many words: "a reader who clicked an
+     * article wants an article". So nothing here breaks the prose up with
+     * diagrams or staged reveals — the treatment is the opposite of the ESG
+     * band's, and deliberately so. What an article page owes its reader is a
+     * comfortable measure, a clear type hierarchy and a sense of how much is
+     * left, which is what `.article-*` and the progress rail below provide.
+     *
+     * The headline is NOT staged either. `StagedLines` is on every other §8
+     * route because those are entrances a visitor arrives at; this is a
+     * document somebody has already chosen to read, and animating its title is
+     * the kind of flourish that makes a serious piece read as marketing.
+     */
+    <article ref={progressRef} className="article mx-auto max-w-prose">
+      {/*
+        THE READING-PROGRESS AFFORDANCE.
+
+        A rail down the side of the measure rather than a bar across the top of
+        the viewport. Two reasons, and the second is the binding one:
+
+          · A top bar is chrome. It sits over the header, competes with the
+            sticky nav this app already has, and on a phone it lands exactly
+            where the browser draws its own progress and URL affordances.
+          · It has to be able to say NOTHING. `useScrollScrub` writes 1 under
+            reduced motion — the settled state — and a top bar reading "100%"
+            on arrival is a lie about where the reader is. A rail at full height
+            is simply a rail: it reads as the length of the piece, which is
+            true, and carries no claim about position.
+
+        `aria-hidden` because it duplicates no information a screen reader
+        lacks — position in a document is something assistive technology
+        already reports, and a second, decorative announcement of it is noise.
+      */}
+      <div aria-hidden className="article-rail">
+        <span className="article-rail-fill" />
+      </div>
       <header>
         <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
           {article.published_at && (
@@ -202,6 +258,43 @@ function Article({
         // for a piece written in the OTHER language — say so rather than
         // printing a heading over white space.
         <p className="mt-8 text-muted-foreground">{t("site.insights.otherLanguageOnly")}</p>
+      )}
+
+      {/* The gallery, below the body rather than inside it.
+
+          In-prose placement would need a marker in the prose, and the marker
+          would be image markup — which `Markdown` refuses on purpose: it builds
+          React nodes directly with no `dangerouslySetInnerHTML`, and that is
+          what keeps tenant-authored text safe on a page a stranger loads. A
+          fixed strip underneath is the honest version of the feature.
+
+          Each image drops itself on error rather than leaving a broken frame.
+          The media route 404s a document whose article is not published, and it
+          404s one removed from the gallery since this page was rendered — both
+          are ordinary, and a grey box with a torn-page icon is not the way to
+          say so. */}
+      {gallery.length > 0 && (
+        <figure className="mt-10">
+          <div className="grid grid-cols-2 gap-3">
+            {gallery.map((id) => (
+              <img
+                key={id}
+                src={coverUrl(id) || undefined}
+                alt=""
+                loading="lazy"
+                decoding="async"
+                onError={() => setBroken((b) => [...b, id])}
+                className="aspect-[4/3] w-full rounded-[calc(var(--radius)-2px)] border object-cover"
+              />
+            ))}
+          </div>
+          {/* No caption is invented. The allowlist that let these through
+              carries no alt text, and a screen reader told "Warehouse" under a
+              photograph nobody has described is a lie about a picture. */}
+          <figcaption className="mt-2 text-xs text-muted-foreground">
+            {t("site.insights.gallery")}
+          </figcaption>
+        </figure>
       )}
     </article>
   );

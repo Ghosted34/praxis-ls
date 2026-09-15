@@ -27,9 +27,31 @@ import { p } from "@/lib/base-path";
 export function TrackWidget({
   variant = "compact",
   onDark = false,
+  shimmer = false,
 }: {
   variant?: "compact" | "page";
   onDark?: boolean;
+  /**
+   * A sheen that crosses the submit button on hover and on focus.
+   *
+   * ── WHY IT IS A PROP AND NOT JUST PART OF THE BUTTON ──────────────────
+   *
+   * This widget is the same control in three places, which is the reason it
+   * exists as one component. The hero is the only one of them where the button
+   * is competing for attention against a photograph, a moving route canvas and
+   * a beam; on the track page it is the only control on the screen and a
+   * shimmering submit is the page shouting at somebody who has already arrived.
+   *
+   * ── AND WHY IT IS NOT ON A TIMER ──────────────────────────────────────
+   *
+   * §7.3's rule is that the tenant's primary is the only thing on this page
+   * that looks clickable. A button that shimmers at a reader who has not
+   * reached for it is the page asking twice, and it would need its own
+   * exemption in `check-motion.mjs` to loop at all. On approach it is a
+   * response — which is what it actually is — and it fits inside the 200 ms
+   * response budget with room to spare.
+   */
+  shimmer?: boolean;
 }) {
   const { t } = useTranslation();
   const nav = useNavigate();
@@ -92,6 +114,10 @@ export function TrackWidget({
         className={cn(
           "min-h-11 shrink-0 rounded-[calc(var(--radius)-2px)] px-6 text-sm font-semibold transition-colors",
           onDark ? "btn-onhero" : "btn-primary",
+          // Named `.hero-*` so `check-motion.mjs` reads it as the hero band's
+          // rule rather than as a change to `.btn-primary`, which is every
+          // button in the app.
+          shimmer && "hero-shimmer",
         )}
       >
         {t("site.track.submit")}

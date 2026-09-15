@@ -25,6 +25,7 @@ jest.mock("../../src/services/email.service", () => ({ send: jest.fn().mockResol
 jest.mock("../../src/shared/push/push.service", () => ({
   sendToUser: jest.fn(),
   getPublicKey: jest.fn(),
+  currentKeyFingerprint: jest.fn(async () => "KEYHASH"),
 }));
 
 const repo = require("../../src/modules/notification/notification.repo");
@@ -96,6 +97,10 @@ describe("rotating", () => {
     expect(out.rotated).toBe(true);
     expect(repo.rotatePushSubscription).toHaveBeenCalledWith(client, {
       tokenHash: sha("TOKEN-ABCDEFGHIJKLMNOPQR"),
+      // A browser-initiated rotation re-subscribes with the key it already
+      // held, so this is unchanged — but writing it keeps a row created before
+      // 12770 from staying unstamped for ever.
+      vapidKeyHash: "KEYHASH",
       endpoint: subscription.endpoint,
       p256dh: "k1",
       auth: "k2",

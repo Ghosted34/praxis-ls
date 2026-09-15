@@ -33,13 +33,19 @@
 
 import * as React from "react";
 import { tr } from "@/lib/i18n";
+import { IndexRow } from "@/components/ui/index-row";
 import { useSearchParams } from "react-router-dom";
+import { useFieldHighlight } from "@/lib/use-url-tab";
 import { ScreenAi } from "@/components/screen-ai";
 import { Button } from "@/components/ui/button";
 import { FormButtons } from "@/components/ui/form-buttons";
 import { Input } from "@/components/ui/input";
 import { DateField } from "@/components/ui/date-field";
 import { Modal, Field, Select } from "@/components/ui/modal";
+import { FilePicker } from "@/components/ui/image-upload";
+import { UploadProgress } from "@/components/ui/upload-progress";
+import { useUpload } from "@/lib/use-upload";
+import { fileToDataUrl } from "@/lib/image-compress";
 import { EmptyState, ErrorState, LoadingRow } from "@/components/ui/states";
 import { ScreenError } from "@/components/connection/screen-error";
 import { DraftBanner } from "@/components/ui/draft-banner";
@@ -88,6 +94,96 @@ const FRAMEWORKS: { value: api.AccountingFramework; label: string }[] = [
 const NUMBERING_RESETS = ["NEVER", "ANNUAL", "MONTHLY"] as const;
 
 /** A titled block of fields — thirty controls in one flat grid is a wall. */
+/**
+ * One entity logo field — light or dark — on the upload engine.
+ *
+ * Extracted into its own component because the form renders this TWICE and
+ * `useUpload` is a hook: two independent uploads need two independent
+ * lifecycles, and a render function called twice cannot hold either.
+ *
+ * `profile="brand"`: this logo is printed on the entity's letterhead and its
+ * invoices, so its colours have to survive the round trip exactly. The
+ * enhancement chain is off for that reason, not for lack of ambition.
+ */
+function EntityLogoField({
+  entityId,
+  variant,
+  current,
+  hint,
+  onUploaded,
+  onError,
+}: {
+  /** Null until the entity exists — the upload is keyed by its id. */
+  entityId: string | null;
+  variant: "light" | "dark";
+  current: string;
+  hint: string;
+  onUploaded: (updated: api.Entity) => void;
+  onError: (message: string | null) => void;
+}) {
+  const upload = useUpload<api.Entity>({
+    profile: "brand",
+    send: async (file, ctx) =>
+      api.uploadEntityLogo(
+        entityId as string,
+        await fileToDataUrl(file),
+        variant,
+        ctx.onProgress,
+      ),
+    onAllComplete: ([updated]) => {
+      if (updated) onUploaded(updated);
+    },
+  });
+
+  const item = upload.items[0] ?? null;
+  const busy = item?.state === "uploading" || item?.state === "compressing";
+
+  React.useEffect(() => {
+    if (item?.state === "error" && item.error) onError(item.error);
+  }, [item?.state, item?.error, onError]);
+
+  return (
+    <Field
+      label={
+        variant === "light"
+          ? "Logo (light background)"
+          : "Logo (dark background)"
+      }
+      hint={hint}
+    >
+      <div className="flex items-center gap-3">
+        {item?.previewUrl || current ? (
+          <img
+            src={item?.previewUrl || current}
+            alt=""
+            className={`h-10 w-auto rounded border object-contain p-1 ${variant === "dark" ? "bg-foreground" : "bg-background"}`}
+          />
+        ) : null}
+        <div className="min-w-0 flex-1 space-y-1">
+          <FilePicker
+            variant="inline"
+            accept="image/png,image/jpeg,image/webp,image/svg+xml"
+            disabled={busy || !entityId}
+            trigger={busy ? "Uploading…" : current ? "Replace" : "Upload logo"}
+            onPick={(files) => {
+              if (!entityId) return;
+              onError(null);
+              void upload.pick(files);
+            }}
+          />
+          {item && item.state !== "idle" && (
+            <UploadProgress
+              state={item.state}
+              percent={item.percent}
+              error={item.error}
+            />
+          )}
+        </div>
+      </div>
+    </Field>
+  );
+}
+
 function Fieldset({
   legend,
   hint,
@@ -123,7 +219,6 @@ function EntityForm({
   const [v, setV] = React.useState<EntityFormValues>(() => valuesFrom(row));
   const [logoLight, setLogoLight] = React.useState(row?.logo_light_ref ?? "");
   const [logoDark, setLogoDark] = React.useState(row?.logo_dark_ref ?? "");
-  const [logoBusy, setLogoBusy] = React.useState<"light" | "dark" | null>(null);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [queued, setQueued] = React.useState(false);
@@ -163,32 +258,6 @@ function EntityForm({
   // A subsidiary's parent can be any other entity — never itself, which the API
   // rejects anyway (rules.assertNoCycle), but offering it would be a trap.
   const parentOptions = entities.filter((x) => x.entity_id !== row?.entity_id);
-
-  /** Entities must exist before a logo can be attached (the upload is keyed by id). */
-  async function pickLogo(file: File | null, variant: "light" | "dark") {
-    if (!file || isNew || !row) return;
-    setLogoBusy(variant);
-    setError(null);
-    try {
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        const r = new FileReader();
-        r.onload = () => resolve(String(r.result));
-        r.onerror = () => reject(new Error("Could not read the file."));
-        r.readAsDataURL(file);
-      });
-      const updated = await api.uploadEntityLogo(
-        row.entity_id,
-        dataUrl,
-        variant,
-      );
-      if (variant === "dark") setLogoDark(updated.logo_dark_ref ?? "");
-      else setLogoLight(updated.logo_light_ref ?? "");
-    } catch (err) {
-      setError(errMsg(err));
-    } finally {
-      setLogoBusy(null);
-    }
-  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -252,31 +321,17 @@ function EntityForm({
     current: string,
     hint: string,
   ) => (
-    <Field
-      label={
-        variant === "light"
-          ? "Logo (light background)"
-          : "Logo (dark background)"
-      }
+    <EntityLogoField
+      entityId={isNew || !row ? null : row.entity_id}
+      variant={variant}
+      current={current}
       hint={hint}
-    >
-      <div className="flex items-center gap-3">
-        {current ? (
-          <img
-            src={current}
-            alt=""
-            className={`h-10 w-auto rounded border object-contain p-1 ${variant === "dark" ? "bg-foreground" : "bg-background"}`}
-          />
-        ) : null}
-        <input
-          type="file"
-          accept="image/png,image/jpeg,image/webp,image/svg+xml"
-          disabled={logoBusy !== null}
-          onChange={(e) => pickLogo(e.target.files?.[0] ?? null, variant)}
-          className="block w-full text-sm text-muted-foreground file:mr-3 file:rounded-lg file:border-0 file:bg-primary file:px-3 file:py-2 file:text-sm file:font-medium file:text-primary-foreground hover:file:opacity-90"
-        />
-      </div>
-    </Field>
+      onUploaded={(updated) => {
+        if (variant === "dark") setLogoDark(updated.logo_dark_ref ?? "");
+        else setLogoLight(updated.logo_light_ref ?? "");
+      }}
+      onError={setError}
+    />
   );
 
   return (
@@ -321,7 +376,8 @@ function EntityForm({
               disabled={!isNew}
             />
           </Field>
-          <Field label={tr("Legal name")} required>
+          {/* `data-field`: the anchor `?field=legal_name` focuses and rings. */}
+          <Field label={tr("Legal name")} required data-field="legal_name">
             <Input
               value={v.legal_name}
               onChange={(e) => set("legal_name", e.target.value)}
@@ -427,7 +483,7 @@ function EntityForm({
               placeholder="+237690000000"
             />
           </Field>
-          <Field label={tr("Website")}>
+          <Field label={tr("Website")} data-field="website">
             <Input
               value={v.website}
               onChange={(e) => set("website", e.target.value)}
@@ -734,7 +790,13 @@ function EntityForm({
 }
 
 export function CorporateEntitiesPage() {
-  const { rows, error, loading, reload } = useList<api.Entity>("/entities");
+  // `?limit=` because `page()` caps an unparameterised list at 50 and this
+  // screen filters the result IN THE BROWSER — so entity 51 could not be found
+  // by searching for it, which is the truncation `listComplete`'s docblock
+  // describes ("the match sat at row 80 of 300"). 200 is that helper's maximum;
+  // past it the honest fix is to move the search server-side, where LIST_SQL
+  // already has the ILIKE branch waiting.
+  const { rows, error, loading, reload } = useList<api.Entity>(api.ENTITY_LIST);
   const [params, setParams] = useSearchParams();
   const [selId, setSelId] = React.useState<string | null>(null);
   const [q, setQ] = React.useState("");
@@ -753,20 +815,46 @@ export function CorporateEntitiesPage() {
     if (!selId && entities.length) setSelId(entities[0].entity_id);
   }, [entities, selId]);
 
-  // The dossier's "Edit details" links back here with ?edit=<id> — used by the
-  // deep-link page. One form, reachable from both places: open it and select
-  // that entity in the list.
-  const editId = params.get("edit");
+  /*
+   * OPEN THE EDIT FORM FROM THE URL. Two spellings, both live:
+   *
+   *   ?edit=<entityId>          the dossier's "Edit details" link (original)
+   *   ?edit=entity&row=<id>     the deep-link contract signature gaps emit
+   *
+   * The second exists because `edit` names WHAT to open on every other screen
+   * ("employee", "addresses", "motto") and an entity id there would be the one
+   * screen speaking a different dialect. The first is kept working rather than
+   * migrated: it is a link people have in their history, and honouring both
+   * costs one line.
+   *
+   * `legal_name` and `website` are entity SCALARS — the dossier only displays
+   * them, this form is where they are edited — which is why a "your website is
+   * missing" gap points at the list screen and not at the 360.
+   */
+  const editParam = params.get("edit");
+  const rowParam = params.get("row");
+  const editId = editParam === "entity" ? rowParam : editParam;
   React.useEffect(() => {
     if (!editId) return;
-    const found = entities.find((e) => e.entity_id === editId);
-    if (found) {
+    if (editId === "new") {
+      setEditing("new");
+    } else {
+      const found = entities.find((e) => e.entity_id === editId);
+      if (!found) return;
       setEditing(found);
       setSelId(found.entity_id);
-      params.delete("edit");
-      setParams(params, { replace: true });
     }
+    // Strip the arrival, keep the location: `?field=` stays so the highlight
+    // still runs, and closing the dialog does not put it back on refresh.
+    const next = new URLSearchParams(params);
+    next.delete("edit");
+    next.delete("row");
+    setParams(next, { replace: true });
   }, [editId, entities, params, setParams]);
+
+  // Runs again when the dialog opens, because the field it is looking for is
+  // inside it and does not exist until then.
+  useFieldHighlight([editing]);
 
   return (
     <section className={shell}>
@@ -790,6 +878,8 @@ export function CorporateEntitiesPage() {
           defaultSize={280}
           min={220}
           max={480}
+          activeKind={tr("Corporate entity")}
+          active={!!selected}
         >
           <div className="space-y-2">
             <Input
@@ -804,10 +894,11 @@ export function CorporateEntitiesPage() {
                 <div className="px-3 py-4 micro">No entities.</div>
               ) : (
                 filtered.map((en) => (
-                  <button
+                  <IndexRow
                     key={en.entity_id}
+                    selected={en.entity_id === selId}
                     onClick={() => setSelId(en.entity_id)}
-                    className={`flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors ${en.entity_id === selId ? "bg-primary/10 text-foreground" : "hover:bg-muted"}`}
+                    className="items-center justify-between gap-2"
                   >
                     <span className="min-w-0 truncate">
                       <span className="num font-medium">{en.code}</span> ·{" "}
@@ -816,7 +907,7 @@ export function CorporateEntitiesPage() {
                     <Pill tone={LIFECYCLE_TONE[statusOf(en)] || "mute"}>
                       {enumLabel(statusOf(en))}
                     </Pill>
-                  </button>
+                  </IndexRow>
                 ))
               )}
             </div>

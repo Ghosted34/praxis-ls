@@ -1,0 +1,133 @@
+/* Type, declared here rather than by importing the @fontsource package roots.
+ *
+ * ── WHY THIS FILE EXISTS ───────────────────────────────────────────────────
+ *
+ * `doc/WEB_BUILD_BRIEF.md` N5 says the faces are "self-hosted via @fontsource,
+ * subset `latin` + `latin-ext` so French accents render". `main.tsx` imported
+ * the package ROOTS, which declare seven unicode ranges per family — latin,
+ * latin-ext, and five this product has no audience for: cyrillic, cyrillic-ext,
+ * greek, greek-ext and vietnamese. The build emitted eighteen font files where
+ * the specification asks for eight.
+ *
+ * No visitor was ever downloading the extra five — `unicode-range` gates the
+ * fetch, and a page of French and English never touches a Cyrillic codepoint.
+ * So this is not an LCP fix and should not be reported as one. What it fixes is
+ * the deployed artefact: ten files, roughly 250 kB, shipped to a VPS and
+ * cache-warmed by a CDN for text nobody on this site will ever set.
+ *
+ * ── WHY THE RANGES ARE COPIED RATHER THAN IMPORTED ─────────────────────────
+ *
+ * They are Google Fonts' canonical subset definitions, which @fontsource
+ * reproduces. Copying them fixes the boundary at the version we tested against:
+ * a package bump that widens a range would otherwise silently re-introduce a
+ * file this file exists to remove, and nothing would fail.
+ *
+ * `latin` already contains Œ and œ (U+0152-0153) and the guillemets
+ * (U+00AB/00BB), so French sets entirely from it. `latin-ext` is kept for the
+ * OHADA region's other spellings and for any name a tenant types.
+ *
+ * ── ARCHIVO, AND WHY THERE IS A FOURTH FACE ────────────────────────────────
+ *
+ * IBM Plex Sans and Inter are two of the most-used faces on the B2B web;
+ * nothing set in them is the reason anyone remembers a page. Archivo is a
+ * grotesque with an industrial cut and a 100-900 weight axis, which is what
+ * `<WeightScrub>` animates. Display sizes only — body stays Inter, figures stay
+ * JetBrains Mono. See doc/PUBLIC_WEB_EXPERIENCE_GUIDE.md §5.5.
+ *
+ * `font-display: swap` on every face: a headline that is invisible until a font
+ * arrives is a worse first impression than one that reflows.
+ */
+
+/* latin — U+0000-00FF plus the punctuation and currency a Western page uses.
+   Includes Œ/œ and « », so French needs nothing beyond it. */
+@font-face {
+  font-family: "Inter Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("@fontsource-variable/inter/files/inter-latin-wght-normal.woff2")
+    format("woff2-variations");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Inter Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("@fontsource-variable/inter/files/inter-latin-ext-wght-normal.woff2")
+    format("woff2-variations");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7,
+    U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF,
+    U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: "IBM Plex Sans Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 700;
+  src: url("@fontsource-variable/ibm-plex-sans/files/ibm-plex-sans-latin-wght-normal.woff2")
+    format("woff2-variations");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "IBM Plex Sans Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 700;
+  src: url("@fontsource-variable/ibm-plex-sans/files/ibm-plex-sans-latin-ext-wght-normal.woff2")
+    format("woff2-variations");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7,
+    U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF,
+    U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: "JetBrains Mono Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 800;
+  src: url("@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-wght-normal.woff2")
+    format("woff2-variations");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "JetBrains Mono Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 800;
+  src: url("@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-ext-wght-normal.woff2")
+    format("woff2-variations");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7,
+    U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF,
+    U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: "Archivo Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("@fontsource-variable/archivo/files/archivo-latin-wght-normal.woff2")
+    format("woff2-variations");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Archivo Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("@fontsource-variable/archivo/files/archivo-latin-ext-wght-normal.woff2")
+    format("woff2-variations");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7,
+    U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF,
+    U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}

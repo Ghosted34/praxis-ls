@@ -4,7 +4,7 @@
  * lookups the forms need as dropdowns (entities, clients, dictionary items,
  * postable accounts). Kept out of the page files so the forms stay declarative.
  */
-import { tenant } from "@/lib/api-client";
+import { tenant, tenantWithProgress } from "@/lib/api-client";
 
 /* ── option loaders (id + display) ── */
 export type Option = { id: string; label: string; extra?: string };
@@ -540,7 +540,7 @@ export type TreasuryAccount = {
 export const listTreasuryAccounts = () =>
   tenant<TreasuryAccount[]>("/treasury-accounts");
 
-/* dossier option loader (ref + service key) — for tagging advances / invoices to an operation */
+/* operations-file option loader (ref + service key) — for tagging advances / invoices to a file */
 export async function loadDossiers(): Promise<Option[]> {
   const rows = await tenant<Record<string, unknown>[]>("/operations");
   return (rows || []).map((r) => ({
@@ -570,15 +570,20 @@ export const getInvoiceTotals = (id: string, entryDate?: string) =>
   );
 
 /* attach a scanned slip / reference document to a receipt (vault upload, base64 data-url) */
-export const uploadReceiptSlip = (receiptId: string, dataUrl: string) =>
-  tenant<{ vault_id?: string }>("/documents", {
-    method: "POST",
-    body: {
-      data_url: dataUrl,
-      doc_type: "RECEIPT_SLIP",
-      entity_ref: `payment_receipt:${receiptId}`,
-    },
-  });
+export const uploadReceiptSlip = (
+  receiptId: string,
+  dataUrl: string,
+  onProgress?: (percent: number) => void,
+) => {
+  const body = {
+    data_url: dataUrl,
+    doc_type: "RECEIPT_SLIP",
+    entity_ref: `payment_receipt:${receiptId}`,
+  };
+  return onProgress
+    ? tenantWithProgress<{ vault_id?: string }>("/documents", body, onProgress)
+    : tenant<{ vault_id?: string }>("/documents", { method: "POST", body });
+};
 
 /* ══════════════ Fixed assets (MOD-54) — register, depreciation, disposal ══════════════ */
 export type Asset = {

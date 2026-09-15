@@ -22,6 +22,10 @@ import { Select } from "@/components/ui/modal";
 import { tr } from "@/lib/i18n";
 import { FONTS } from "./fonts";
 import { type Editor } from "./use-editor";
+import { usePrompt } from "@/components/ui/use-prompt";
+import { Modal, Field } from "@/components/ui/modal";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 
 function Tool({
   label,
@@ -140,6 +144,9 @@ export function ComposerToolbar({
 }) {
   // TipTap mutates the editor in place, so React has nothing to re-render on.
   // Subscribing to its transactions is what keeps aria-pressed honest.
+  const [prompt, promptDialog] = usePrompt();
+  const [imageOpen, setImageOpen] = React.useState(false);
+  const [image, setImage] = React.useState({ src: "", alt: "" });
   const [, force] = React.useReducer((n: number) => n + 1, 0);
   React.useEffect(() => {
     if (!editor) return undefined;
@@ -150,7 +157,64 @@ export function ComposerToolbar({
   if (!editor) return null;
   const chain = () => editor.chain().focus();
 
+  const insertImage = () => {
+    const src = image.src.trim();
+    if (!/^https:\/\//i.test(src)) return;
+    chain().setImage({ src, alt: image.alt.trim() }).run();
+    setImageOpen(false);
+    setImage({ src: "", alt: "" });
+  };
+
   return (
+    <>
+    {promptDialog}
+    <Modal
+      open={imageOpen}
+      onClose={() => setImageOpen(false)}
+      title={tr("Insert an image")}
+      footer={
+        <>
+          <Button variant="outline" onClick={() => setImageOpen(false)}>
+            {tr("Cancel")}
+          </Button>
+          <Button
+            disabled={!/^https:\/\//i.test(image.src.trim())}
+            onClick={insertImage}
+          >
+            {tr("Insert image")}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        <Field
+          label={tr("Image address")}
+          hint={tr("https only — mail clients strip anything else as mixed content.")}
+          error={
+            image.src && !/^https:\/\//i.test(image.src.trim())
+              ? tr("Must start with https://")
+              : undefined
+          }
+          required
+        >
+          <Input
+            type="url"
+            placeholder="https://"
+            value={image.src}
+            onChange={(e) => setImage((v) => ({ ...v, src: e.target.value }))}
+          />
+        </Field>
+        <Field
+          label={tr("Describe the image")}
+          hint={tr("Recipients who block images see this instead.")}
+        >
+          <Input
+            value={image.alt}
+            onChange={(e) => setImage((v) => ({ ...v, alt: e.target.value }))}
+          />
+        </Field>
+      </div>
+    </Modal>
     <div
       role="toolbar"
       aria-label={tr("Formatting")}
@@ -195,11 +259,34 @@ export function ComposerToolbar({
         active={editor.isActive("link")}
         onClick={() => {
           if (editor.isActive("link")) { chain().unsetLink().run(); return; }
-          // window.prompt rather than a modal: the caret and the selection have
-          // to survive, and every dialog in this app moves focus. Replaced with
-          // an inline popover when one exists that does not steal focus.
-          const url = window.prompt(tr("Link to:"));
-          if (url) chain().setLink({ href: url }).run();
+          /*
+           * This was a `window.prompt`, with a comment explaining that the caret
+           * and selection had to survive and that every dialog in the app moves
+           * focus.
+           *
+           * The concern was right; the conclusion no longer holds. `chain()` is
+           * `editor.chain().focus()`, and TipTap re-applies the STORED selection
+           * when focus returns — which is why every other control on this
+           * toolbar works, since clicking any toolbar button already blurs the
+           * editor. The dialog additionally restores focus to its opener (this
+           * button) on close, so the editor is refocused from the same place
+           * Bold refocuses it from.
+           */
+          void (async () => {
+            const url = await prompt({
+              title: tr("Add a link"),
+              label: tr("Link to"),
+              type: "url",
+              placeholder: "https://",
+              hint: tr("The selected text becomes the link."),
+              confirmLabel: tr("Add link"),
+              validate: (v) =>
+                /^(https?:\/\/|mailto:)/i.test(v.trim())
+                  ? null
+                  : tr("Start with https:// or mailto:"),
+            });
+            if (url) chain().setLink({ href: url }).run();
+          })();
         }}
       >
         🔗
@@ -218,10 +305,13 @@ export function ComposerToolbar({
           // an https URL or a `cid:` part and nothing else. An http image is
           // stripped by most mail clients as mixed content anyway, so accepting
           // one here would only move the disappointment to the recipient.
-          const url = window.prompt(tr("Image address (https://…):"));
-          if (!url) return;
-          const alt = window.prompt(tr("Describe the image — recipients who block images see this instead:")) || "";
-          chain().setImage({ src: url, alt }).run();
+          //
+          // Two prompts became one dialog with two fields. The address and its
+          // alt text are a single decision, and asking for the description in a
+          // SECOND box — after the first had already been accepted — is how it
+          // came to be skipped nearly every time, which is an accessibility
+          // failure delivered to the recipient.
+          setImageOpen(true);
         }}
       >
         ▣
@@ -293,6 +383,7 @@ export function ComposerToolbar({
 
       <span className="ml-auto flex items-center gap-1">{slotRight}</span>
     </div>
+    </>
   );
 }
 

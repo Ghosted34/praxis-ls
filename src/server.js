@@ -28,6 +28,12 @@ const { router: clientErrorsRouter } = require("./routes/client-errors");
 const { router: metricsRouter } = require("./routes/metrics");
 const { initRateLimitStore, apiLimiter } = require("./shared/http/rate-limit");
 const { isPublicMediaPath } = require("./shared/http/media-guard");
+const {
+  parseDerivativeKey,
+  ensureDerivative,
+  profileForKey,
+} = require("./services/image-pipeline.service");
+const { RAISED: RAISED_BODY_LIMITS, DEFAULT_LIMIT: DEFAULT_BODY_LIMIT } = require("./shared/http/body-limits");
 const storage = require("./services/storage.service");
 const registry = require("./services/tenant/registry.service");
 const publicHead = require("./shared/http/public-head");
@@ -142,6 +148,31 @@ function buildCorsOptions() {
   };
 }
 
+/**
+ * The Content-Security-Policy directives this server serves.
+ *
+ * A pure function, and exported, for the same reason `buildCorsOptions` is:
+ * the policy is a security decision with a history of silent failures, and a
+ * decision nothing can assert is a decision nobody is checking. Booting the
+ * app to read one header would need a database.
+ */
+function buildCspDirectives(defaults, scriptSrc) {
+  return {
+    ...defaults,
+    /*
+     * BOTH of these carry `blob:` for one reason: a chat attachment is
+     * membership-gated, so its bytes arrive through an authenticated fetch and
+     * reach the element as a blob — a plain `src` cannot carry a Bearer token.
+     * An attachment kind whose directive omits `blob:` does not degrade, it is
+     * blocked outright, and the element reports that as an ordinary media
+     * error. See the note above the `app.use(helmet(...))` call.
+     */
+    "img-src": ["'self'", "data:", "blob:", "https:"],
+    "media-src": ["'self'", "blob:"],
+    "script-src": scriptSrc,
+  };
+}
+
 function buildApp() {
   const app = express();
   app.disable("x-powered-by");
@@ -196,23 +227,75 @@ function buildApp() {
    * other page, and editing the theme block moves the hash with it instead of
    * failing silently in production. See shared/http/inline-script-hashes.js.
    */
+  /**
+   * EVERY shell this server serves, not just public-web's.
+   *
+   * public-web was the only one listed, and `client/` ships its own inline
+   * block — the no-flash theme script that sets `.dark`, the titlebar colour
+   * and the manifest theme before first paint. Its hash was never in the
+   * policy, so the browser refused it on every page of the tenant ERP:
+   *
+   *     Executing inline script violates … 'script-src 'self' 'sha256-xCIIN…''
+   *
+   * That hash is public-web's; the one the browser asked for is client's. The
+   * cost was invisible in review and obvious in use — a dark-mode operator got
+   * a frame of the light theme on every load and refresh, a white titlebar
+   * strip, and a light PWA window frame around a dark app. The CSP was working
+   * exactly as configured; the configuration only knew about one of the apps.
+   *
+   * Derived from a list so adding a fourth shell cannot repeat it, and computed
+   * from the BUILT file so editing a theme block moves the allowance with it.
+   * `hashesForFile` yields [] for a shell that is not built, which is why an
+   * API-only deploy still boots.
+   */
   const cspDefaults = helmet.contentSecurityPolicy.getDefaultDirectives();
-  const publicWebShellHashes = inlineScriptHashes.hashesForFile(
-    path.resolve(__dirname, "../public-web/dist/index.html"),
-  );
+  const SPA_SHELLS = [
+    "../client/dist/index.html",
+    "../public-web/dist/index.html",
+    "../platform-console/dist/index.html",
+  ];
+  const shellHashes = [
+    ...new Set(
+      SPA_SHELLS.flatMap((rel) =>
+        inlineScriptHashes.hashesForFile(path.resolve(__dirname, rel)),
+      ),
+    ),
+  ];
   const scriptSrc = [
     ...(cspDefaults["script-src"] || ["'self'"]),
-    ...publicWebShellHashes,
+    ...shellHashes,
   ];
+  /**
+   * ── `media-src`, AND THE MONTHS IT COST TO NOT HAVE IT ────────────────────
+   *
+   * A chat attachment is membership-gated, so its bytes arrive through an
+   * authenticated `fetch` carrying a Bearer token and are handed to the element
+   * as a `blob:` URL — a plain `src` attribute cannot carry a header. That is
+   * true of every attachment kind, and `img-src` says `blob:` so IMAGES worked.
+   *
+   * `media-src` was never set. CSP falls back to `default-src` for a directive
+   * it has no value for, `default-src` is `'self'`, and `blob:` is not `'self'`
+   * — so the browser blocked EVERY <audio> and <video> in Smart Comms, on every
+   * platform, with the whole stack working perfectly:
+   *
+   *     Loading media from 'blob:https://…' violates the following Content
+   *     Security Policy directive: "default-src 'self'". Note that 'media-src'
+   *     was not explicitly set, so 'default-src' is used as a fallback.
+   *
+   * The element reports that refusal as an ordinary media error, which is
+   * indistinguishable from a codec it lacks — so "voice notes don't play" was
+   * chased through the recorder, the upload, the storage driver, the response
+   * headers, the blob technique, the service worker and the browser itself.
+   * All of them were fine. A header three hundred lines from any of them was
+   * not, and the one directive that was written down — `img-src` — is exactly
+   * why images kept working and hid it.
+   *
+   * `blob:` only. Not `https:` and not `data:`: the only media this product
+   * plays is media it fetched itself and holds in memory.
+   */
   app.use(
     helmet({
-      contentSecurityPolicy: {
-        directives: {
-          ...cspDefaults,
-          "img-src": ["'self'", "data:", "blob:", "https:"],
-          "script-src": scriptSrc,
-        },
-      },
+      contentSecurityPolicy: { directives: buildCspDirectives(cspDefaults, scriptSrc) },
     }),
   );
   /**
@@ -264,29 +347,24 @@ function buildApp() {
    * qes_public.controller and is null for non-JSON bodies.
    */
   /**
-   * ONE route gets a bigger body, and only this one.
+   * The routes allowed a bigger body than the global limit below, and why each
+   * one needs it, are in `shared/http/body-limits` — it is one list because the
+   * same base64-inflation bug has now been found in three separate features
+   * (a CV, a staff file, every picture on the tenant's website) and the fourth
+   * should be a line in that file rather than a fourth block of prose here.
    *
-   * A job applicant's CV is base64-encoded into the JSON body
-   * (`careers-api.ts` → `fileToDataUrl`), and base64 inflates by a third — so
-   * the 8 MB the form advertises, and which `careers.service.CV_MAX_BYTES`
-   * enforces, is about 10.7 MB on the wire. Against the 2 MB global limit below
-   * that meant anything over roughly 1.4 MB was refused with a 413 AFTER the
-   * applicant had waited through the whole upload, which is most phone-scanned
-   * CVs. The form promised 8 MB and the server had never been able to take it.
-   *
-   * Mounted BEFORE the global parser rather than after, because body-parser sets
-   * `req._body` once it has parsed and every downstream parser bails on that
-   * flag — a larger parser registered later would never run. Raising the global
-   * limit instead would hand 12 MB bodies to all ~600 routes to fix one; this
-   * gives it to the single public path that needs it.
+   * Mounted BEFORE the global parser, which is not a style choice: body-parser
+   * sets `req._body` once it has parsed, and every downstream body parser bails
+   * on that flag, so a larger parser registered afterwards never runs at all.
    */
-  const CV_APPLY_PATH = /^\/api\/(v\d+\/)?tenant\/careers\/[^/]+\/apply\/?$/;
-  app.use(
-    CV_APPLY_PATH,
-    express.json({ limit: "12mb", verify: (req, _res, buf) => { req.rawBody = buf.toString("utf8"); } }),
-  );
+  for (const group of RAISED_BODY_LIMITS) {
+    app.use(
+      group.path,
+      express.json({ limit: group.limit, verify: (req, _res, buf) => { req.rawBody = buf.toString("utf8"); } }),
+    );
+  }
 
-  app.use(express.json({ limit: "2mb", verify: (req, _res, buf) => { req.rawBody = buf.toString("utf8"); } }));
+  app.use(express.json({ limit: DEFAULT_BODY_LIMIT, verify: (req, _res, buf) => { req.rawBody = buf.toString("utf8"); } }));
   app.use(express.urlencoded({ extended: true }));
 
   // OBS-E2: browser crash reports. Mounted before the tenant router so it needs
@@ -364,11 +442,60 @@ function buildApp() {
           })
         : null;
 
+    /**
+     * AVIF/WebP derivatives are served here too, and generated on first request
+     * when they are missing.
+     *
+     * WHY GENERATE HERE rather than relying on upload-time generation alone.
+     * <picture> does not fall back: a <source srcset> that 404s renders a
+     * broken image instead of dropping to the <img>. So the frontend may only
+     * reference a derivative that is CERTAIN to exist — and every image stored
+     * before the pipeline shipped has none. Generating on miss makes the
+     * guarantee unconditional and removes the backfill from the critical path.
+     *
+     * The variant/format allow-list lives in parseDerivativeKey, and it is a
+     * security control: without it this route would let an anonymous caller
+     * name arbitrary encode dimensions and bill us the CPU for them.
+     */
+    const serveDerivative = async (req, res, next) => {
+      const key = decodeURIComponent(req.path).replace(/^\/+/, "");
+      if (!parseDerivativeKey(key)) return next();
+
+      let buffer = null;
+      try {
+        buffer = await storage.get(key);
+      } catch {
+        /* @silent:storage — a miss is the trigger for generating it below. */
+      }
+
+      if (!buffer || !buffer.length) {
+        const made = await ensureDerivative(key, { profile: profileForKey(key) });
+        if (!made) {
+          return res
+            .status(404)
+            .json({ error: { code: "NOT_FOUND", message: "Not found" } });
+        }
+        buffer = made.buffer;
+      }
+
+      // A derivative key is derived from a master key that already carries the
+      // upload's entropy suffix, so the bytes behind this URL can never change:
+      // a re-upload mints a new master key and therefore new derivative keys.
+      // That makes `immutable` accurate rather than optimistic, and it is what
+      // keeps repeat traffic off Node entirely.
+      res.set("Cache-Control", "public, max-age=31536000, immutable");
+      res.type(key.endsWith(".avif") ? "image/avif" : "image/webp");
+      return res.send(buffer);
+    };
+
     app.use("/media", (req, res, next) => {
       if (!isPublicMediaPath(req.path)) {
         // Deliberately 404, not 403: a probe shouldn't be able to tell a
         // protected key from a nonexistent one.
         return res.status(404).json({ error: { code: "NOT_FOUND", message: "Not found" } });
+      }
+      if (parseDerivativeKey(decodeURIComponent(req.path).replace(/^\/+/, ""))) {
+        return serveDerivative(req, res, next).catch(next);
       }
       if (mediaStatic) return mediaStatic(req, res, next);
 
@@ -795,4 +922,4 @@ function start() {
 
 if (require.main === module) start();
 
-module.exports = { buildApp, start, buildCorsOptions };
+module.exports = { buildApp, start, buildCorsOptions, buildCspDirectives };

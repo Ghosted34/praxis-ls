@@ -13,7 +13,7 @@ import {
   type EffectivePwa,
   type PwaBrandSource,
 } from "@shared";
-import { tenant } from "./api-client";
+import { tenant, tenantWithProgress } from "./api-client";
 import type { Branding } from "./branding";
 
 export type { PwaConfig, EffectivePwa };
@@ -241,14 +241,25 @@ export const savePwaConfig = (patch: Partial<PwaConfig>) =>
 /** Gated(edit). Uploads a base64 app-icon data URL; returns its /media URL.
  *  Separate from the logo upload because the size cap is different (2 MB — an
  *  app icon wants to be at least 512px square). */
-export const uploadAppIcon = (dataUrl: string) =>
-  tenant<{ iconUrl: string }>("/branding/pwa/icon", {
-    method: "POST",
-    body: { dataUrl },
-  });
+export const uploadAppIcon = (
+  dataUrl: string,
+  onProgress?: (percent: number) => void,
+) =>
+  onProgress
+    ? tenantWithProgress<{ iconUrl: string }>(
+        "/branding/pwa/icon",
+        { dataUrl },
+        onProgress,
+      )
+    : tenant<{ iconUrl: string }>("/branding/pwa/icon", {
+        method: "POST",
+        body: { dataUrl },
+      });
 
 /** Gated(edit). Title-bar artwork. Reuses the app-icon endpoint — same tenant
  *  namespace, same public /media segment, same 2 MB cap — and only the field it
  *  is assigned to differs. */
-export const uploadTitlebarImage = async (dataUrl: string) =>
-  (await uploadAppIcon(dataUrl)).iconUrl;
+export const uploadTitlebarImage = async (
+  dataUrl: string,
+  onProgress?: (percent: number) => void,
+) => (await uploadAppIcon(dataUrl, onProgress)).iconUrl;

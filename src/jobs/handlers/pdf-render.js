@@ -17,7 +17,7 @@ module.exports = async function pdfRender(job) {
     // resolves no tenant — and the wrong host cannot be corrected once printed.
     const { originForSlug } = require("../../services/signatures/verify-link");
     const origin = originForSlug(tenantMeta.slug);
-    return registry.withTenantConnection(tenantMeta, env, (c) => templateSvc.generate(c, { docType, recordId, entityId, origin }));
+    return registry.withTenantConnection(tenantMeta, env, (c) => templateSvc.generate(c, { docType, recordId, entityId, origin, env }));
   }
   if (!html || !entityRef) throw new Error("pdf job needs html + entityRef");
   return registry.withTenantConnection(tenantMeta, env, (c) => pdf.renderAndStore(c, { html, key, entityRef, docType }));

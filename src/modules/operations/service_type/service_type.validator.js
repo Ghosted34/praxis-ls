@@ -51,11 +51,22 @@ const OPS_REFERENCE_CODE = z
   .toUpperCase()
   .regex(/^[A-Z0-9]{2}$/, "Two characters, A-Z or 0-9 — e.g. SM");
 
+/**
+ * What a public quote enquiry has to ask for this service (migration 12774).
+ *
+ * NOT derived from the key, unlike the transport mode. Guessing from a string is
+ * fine for a glyph, where being wrong costs an icon; it is not fine for deciding
+ * which fields a stranger must fill before the form will let them talk to
+ * anybody. The tenant knows, so the tenant says.
+ */
+const ENQUIRY_SHAPE = z.enum(["ROUTE", "STORAGE", "NONE"]);
+
 const create = z.object({
   key: KEY,
   name_fr: z.string().min(1),
   name_en: z.string().min(1).optional(),
   territory: TERRITORY.optional(),
+  enquiry_shape: ENQUIRY_SHAPE.optional(),
   is_active: z.boolean().optional(),
   ops_reference_code: OPS_REFERENCE_CODE.optional(),
 });
@@ -67,6 +78,9 @@ const update = z.object({
   name_fr: z.string().min(1).optional(),
   name_en: z.string().min(1).nullable().optional(),
   territory: TERRITORY.nullable().optional(),
+  // Not nullable: the column is NOT NULL with a default, so "no shape" is not a
+  // state — ROUTE is.
+  enquiry_shape: ENQUIRY_SHAPE.optional(),
   is_active: z.boolean().optional(),
   // Editable only while no dossier has used it — the service enforces that.
   // Not nullable: a code can be corrected, never removed, because clearing it
@@ -91,4 +105,4 @@ const mw = (k) => (req, _res, next) => {
   return next();
 };
 
-module.exports = { create: mw("create"), update: mw("update"), dictionaryTier: mw("dictionaryTier"), schemas, TERRITORIES: TERRITORY.options };
+module.exports = { create: mw("create"), update: mw("update"), dictionaryTier: mw("dictionaryTier"), schemas, TERRITORIES: TERRITORY.options, ENQUIRY_SHAPES: ENQUIRY_SHAPE.options };

@@ -55,9 +55,20 @@ const existingSub = {
   toJSON: () => ({ endpoint: "https://fcm.example/abc", keys: { p256dh: "k1", auth: "k2" } }),
 };
 
+/**
+ * The sync now asks for the deployment's CURRENT VAPID key before deciding what
+ * to do with the subscription the browser is holding, so every case needs that
+ * call answered. See the "superseded key" test below for why it asks.
+ */
+function serverWith(key: string | null, subscribeResponse: unknown = {}) {
+  tenantMock.mockImplementation(async (path: string) =>
+    path === "/notifications/push/public-key" ? { public_key: key } : subscribeResponse,
+  );
+}
+
 beforeEach(() => {
   tenantMock.mockReset();
-  tenantMock.mockResolvedValue({});
+  serverWith("PUBKEY");
   saveTokenMock.mockClear();
 });
 afterEach(() => vi.unstubAllGlobals());
@@ -81,9 +92,6 @@ describe("syncPushSubscription", () => {
       toJSON: () => ({ endpoint: "https://fcm.example/new", keys: { p256dh: "n1", auth: "n2" } }),
     };
     const { subscribe } = setup({ subscription: null, subscribeResult: newSub });
-    tenantMock.mockImplementation(async (path: string) =>
-      path === "/notifications/push/public-key" ? { public_key: "PUBKEY" } : {},
-    );
 
     await expect(syncPushSubscription()).resolves.toBe("resubscribed");
     expect(subscribe).toHaveBeenCalledWith(
@@ -113,9 +121,7 @@ describe("syncPushSubscription", () => {
 
   it("VAPID unset on the deployment → skips instead of subscribing to nothing", async () => {
     const { subscribe } = setup({ subscription: null });
-    tenantMock.mockImplementation(async (path: string) =>
-      path === "/notifications/push/public-key" ? { public_key: null } : {},
-    );
+    serverWith(null);
     await expect(syncPushSubscription()).resolves.toBe("skipped");
     expect(subscribe).not.toHaveBeenCalled();
   });
@@ -124,6 +130,76 @@ describe("syncPushSubscription", () => {
     setup({ subscription: existingSub });
     tenantMock.mockRejectedValue(new Error("offline"));
     await expect(syncPushSubscription()).resolves.toBe("skipped");
+  });
+
+  /*
+   * ── THE ONE THAT MADE PUSH FAIL PERMANENTLY ─────────────────────────────
+   *
+   * A subscription is bound to ONE application server key. Rotate the deploy's
+   * VAPID pair — the obvious first thing to try when push "isn't working" —
+   * and every subscription everywhere becomes undeliverable at once. The push
+   * services answer 403 (bad signature), NOT 404/410 (gone), so nothing is
+   * pruned, the device count stays non-zero, and Settings keeps saying
+   * "You'll get alerts here".
+   *
+   * And this sync is what made it permanent: it re-POSTed whatever the browser
+   * was holding without ever asking which key it was minted under, so the one
+   * mechanism that repairs a device faithfully re-registered a dead
+   * subscription on every boot, for ever.
+   */
+  it("a subscription minted under a SUPERSEDED key is replaced, not re-registered", async () => {
+    const stale = {
+      endpoint: "https://fcm.example/stale",
+      options: { applicationServerKey: new Uint8Array([1, 2, 3]).buffer },
+      unsubscribe: vi.fn(async () => true),
+      toJSON: () => ({ endpoint: "https://fcm.example/stale", keys: { p256dh: "s1", auth: "s2" } }),
+    };
+    const fresh = {
+      endpoint: "https://fcm.example/fresh",
+      toJSON: () => ({ endpoint: "https://fcm.example/fresh", keys: { p256dh: "f1", auth: "f2" } }),
+    };
+    const { subscribe } = setup({ subscription: stale, subscribeResult: fresh });
+    // "AQID" is base64url for the bytes 1,2,3 — so this asserts the MISMATCH
+    // path by giving the server a different key from the one above.
+    serverWith("BQYH");
+
+    await expect(syncPushSubscription()).resolves.toBe("resubscribed");
+    expect(stale.unsubscribe).toHaveBeenCalled();
+    expect(tenantMock).toHaveBeenCalledWith("/notifications/push/subscribe", {
+      method: "DELETE",
+      body: { endpoint: stale.endpoint },
+    });
+    expect(subscribe).toHaveBeenCalled();
+    expect(tenantMock).toHaveBeenCalledWith("/notifications/push/subscribe", {
+      method: "POST",
+      body: { subscription: fresh.toJSON() },
+    });
+  });
+
+  it("a subscription minted under the CURRENT key is left alone", async () => {
+    const current = {
+      endpoint: "https://fcm.example/abc",
+      options: { applicationServerKey: new Uint8Array([1, 2, 3]).buffer },
+      unsubscribe: vi.fn(async () => true),
+      toJSON: () => ({ endpoint: "https://fcm.example/abc", keys: { p256dh: "k1", auth: "k2" } }),
+    };
+    const { subscribe } = setup({ subscription: current });
+    serverWith("AQID");
+
+    await expect(syncPushSubscription()).resolves.toBe("synced");
+    expect(current.unsubscribe).not.toHaveBeenCalled();
+    expect(subscribe).not.toHaveBeenCalled();
+  });
+
+  it("a browser that hides applicationServerKey is left alone rather than re-minted every boot", async () => {
+    // Guessing "stale" when we cannot tell would unsubscribe and re-subscribe
+    // on every single boot — a new endpoint each time, for devices that were
+    // almost certainly fine. The server's 403 handling still catches a real
+    // mismatch; it just costs one failed send.
+    const { subscribe } = setup({ subscription: existingSub });
+    serverWith("ANY-KEY");
+    await expect(syncPushSubscription()).resolves.toBe("synced");
+    expect(subscribe).not.toHaveBeenCalled();
   });
 
   it("a browser with no push support is not an error", async () => {
@@ -141,7 +217,7 @@ describe("the rotation token", () => {
     // instead when the browser rotates the subscription. Without it the repair
     // waits for the user to open an app that has stopped notifying them.
     setup({ subscription: existingSub });
-    tenantMock.mockResolvedValue({ rotation_token: "ROT-TOKEN-1" });
+    serverWith("PUBKEY", { rotation_token: "ROT-TOKEN-1" });
 
     await syncPushSubscription();
     expect(saveTokenMock).toHaveBeenCalledWith("ROT-TOKEN-1");
@@ -149,7 +225,7 @@ describe("the rotation token", () => {
 
   it("a server that issues none (migration not run) does not break the sync", async () => {
     setup({ subscription: existingSub });
-    tenantMock.mockResolvedValue({ rotation_token: null });
+    serverWith("PUBKEY", { rotation_token: null });
     await expect(syncPushSubscription()).resolves.toBe("synced");
     expect(saveTokenMock).not.toHaveBeenCalled();
   });

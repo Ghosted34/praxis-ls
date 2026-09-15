@@ -11,6 +11,7 @@ import * as React from "react";
 import { tenant, ApiError } from "@/lib/api-client";
 import { smartCell } from "@/lib/format";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
+import { DateField } from "@/components/ui/date-field";
 import { PageHeader } from "@/components/data-list";
 import { HubCrumb } from "@/components/tabbed-hub";
 import { EmptyState, ErrorState } from "@/components/ui/states";
@@ -321,17 +322,15 @@ export function ReportTabs({
               </Field>
             )}
             <Field label={tr("From")} className="w-40">
-              <Input
-                type="date"
+              <DateField
                 value={draft.from}
-                onChange={(e) => setDraft({ ...draft, from: e.target.value })}
+                onChange={(iso) => setDraft({ ...draft, from: iso })}
               />
             </Field>
             <Field label={tr("To")} className="w-40">
-              <Input
-                type="date"
+              <DateField
                 value={draft.to}
-                onChange={(e) => setDraft({ ...draft, to: e.target.value })}
+                onChange={(iso) => setDraft({ ...draft, to: iso })}
               />
             </Field>
             <div className="flex gap-2">

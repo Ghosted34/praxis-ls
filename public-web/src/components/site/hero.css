@@ -1,0 +1,882 @@
+/**
+ * The homepage hero's own stylesheet — and the reason it is a separate file.
+ *
+ * ── IT IS NOT ON THE ENTRY, AND THAT IS THE WHOLE POINT ────────────────────
+ *
+ * Everything here is mounted by `hero.tsx` and by nothing else, and `hero.tsx`
+ * is reachable only from `marketing-page.tsx`, which `router.tsx` loads with
+ * `React.lazy`. In `index.css` these rules were on the FIRST-PAINT path of every
+ * route in the app — the track page, the portal login, a policy page — none of
+ * which can render a hero. Here Rollup attaches them to the marketing chunk,
+ * which is the only chunk that can use them.
+ *
+ * That was not possible until PR #330. O-13 held per-route CSS splitting back on
+ * the grounds that `check:motion` and `check:contrast` read `src/index.css` and
+ * only that file, so splitting would have bought first-paint headroom by making
+ * two gates blind to the thing being moved. Both gates now walk every stylesheet
+ * under `src/`, discovered rather than listed, so this file is measured exactly
+ * as the rules were before it existed. Verified by running both against it.
+ *
+ * ── WHY NOTHING IN HERE IS IN AN `@layer` ─────────────────────────────────
+ *
+ * `index.css` declares its recipes inside `@layer components`, which is what
+ * lets a Tailwind utility in a `className` override them. This file is not
+ * processed as part of that layer stack — it has no `@tailwind` directives of
+ * its own — so an `@layer components` block here would become a NATIVE cascade
+ * layer with its own order, and native layer precedence is not the precedence
+ * these rules were written against. Unlayered is the honest answer: every rule
+ * below is hero-specific, nothing else declares the same selectors, and
+ * unlayered beats layered, so a utility cannot silently half-override one of
+ * them either.
+ *
+ * ── WHAT STAYED BEHIND ─────────────────────────────────────────────────────
+ *
+ * `.band-hero`, `.hero-title`, `.hero-lit` and `.hero-light` are in `index.css`
+ * still: every §8 page opens with a dark plate and uses them, so moving them
+ * here would either break those pages or duplicate the rules into a dozen route
+ * chunks — which costs more in total than it saves on the entry. So does
+ * `.staged-clip`, which belongs to `StagedLines` and is used by every staged
+ * headline in the app; and `.tilt-stage` and `.tilt-card`, which the services
+ * and marketing grids wear.
+ */
+
+/* ══ THE PASS ═══════════════════════════════════════════════════════════
+ *
+ * One raked beam crosses the whole band every `--beam-cycle`, passing behind
+ * the headline word by word and handing off to the plate's edge as it leaves.
+ * It is ONE event with two consumers, which is why both read the same token:
+ * an animation that is supposed to be a single object moving across a scene
+ * must not be two numbers that drift apart in review.
+ *
+ * BEHIND, not over. The beam lights the scene the type is standing in rather
+ * than the type itself — which is what a shutter crossing a room actually
+ * does, and, as the contrast note below records, the only version of this that
+ * survives being measured.
+ *
+ * ── WHY THIS IS ALLOWED TO LOOP AT ALL ────────────────────────────────────
+ *
+ * Guide §1.1 grants this app decorative motion — "impression is the job on
+ * this surface" — and §5.4 admits continuous motion by EXEMPTION ONLY, each
+ * one a named selector with a written reason in `check-motion.mjs`. Both
+ * selectors below are on that list. The two conditions the list's existing
+ * entries attach to a loop are honoured here and are not optional:
+ *
+ *   1. IT STOPS WHEN NOBODY IS WATCHING. `useInView` (the second shared
+ *      observer in reveal.tsx, built for exactly this) sets `data-live` on
+ *      the band, and that is the only thing that sets `animation-play-state`
+ *      to running. A beam still sweeping a hero four screens above the reader
+ *      is a phone battery being spent on nothing.
+ *   2. REDUCED MOTION RENDERS THE SETTLED STATE, AND THE MECHANISM IS THE
+ *      BASE STYLE RATHER THAN THE LAST KEYFRAME. The umbrella at the foot of
+ *      this file collapses every animation to a single 0.001 ms iteration;
+ *      none of these declares a `fill-mode`, so what the reader is left
+ *      looking at is the element's own declared style. Every one of them is
+ *      therefore written to REST correctly with no animation at all — the
+ *      beam parked off the left edge at zero opacity, the plate's ring at
+ *      zero, a lit word at its inherited colour. Verified by reading computed
+ *      style under `prefers-reduced-motion`, not by reasoning about it: an
+ *      effect whose resting state is only correct on its 100 % frame strands
+ *      somebody who asked their system to stop moving things in the middle of
+ *      a flash, and nothing in a test suite would notice.
+ *
+ * ── WHY IT CANNOT SPEND THE SCRIM'S MEASURED CONTRAST ────────────────────
+ *
+ * §7.1 requires any new treatment of this band to re-derive the scrim floors
+ * or keep them. This keeps them, in two different ways for the two states the
+ * band has, and BOTH of them come from where the layer sits rather than from
+ * how it is drawn.
+ *
+ * WITH A TENANT PHOTOGRAPH the track is mounted under the scrims, so the wash
+ * that caps the image caps the beam identically. Nothing is re-derived because
+ * nothing the floors were measured against has changed. That is the same
+ * construction `.hero-light` uses, and it is a guarantee rather than a hope:
+ * lightening cannot take an image past white, and white is the case that was
+ * measured.
+ *
+ * WITHOUT ONE there is no scrim to hide behind, and the number is
+ * `--beam-peak` — 22 %, derived in the token block against the eyebrow, which
+ * binds here for exactly the reason it binds there. The beam is still under
+ * the copy, so no type on this band changes colour as it passes; only the
+ * ground does, and the measurement is what keeps that ground dark enough.
+ *
+ * THE FIRST DRAFT OF THIS PUT THE BEAM ON TOP AT 58 % WHITE. It looked
+ * spectacular and it took the eyebrow to 1.9:1 while it crossed — a `screen`
+ * bright enough to be dramatic over light type on a dark ground washes the
+ * type and the ground toward the same white, and contrast is what is left in
+ * between. The failure is invisible in a still and invisible to the token
+ * gate, which measures pairs and not passing lights. It is written down here
+ * because the next person to want more drama will reach for exactly that.
+ *
+ * ── AND WHY THE TENANT'S `--primary`, NOT `--brand-orange` ────────────────
+ *
+ * This is LIGHT, not type. `--brand-orange` is Praxis's and is never
+ * tenant-overridden (see the file header), which is the right token for an
+ * accent WORD whose contrast was measured — and the wrong one for the thing
+ * sweeping a tenant's own front door. `--primary` is theirs. The white core
+ * is what guarantees the stripe reads as light for a tenant whose primary is
+ * navy or forest; the accent only decides its colour.
+ *
+ * NOTE, for whoever reads this next: the hero's eyebrow and accent WORD are
+ * still `--brand-orange` (section-head.tsx, `onDark`), so on a tenant whose
+ * primary is not orange the beam and the accent word disagree. The fix is one
+ * token — `--primary-ink-dark`, which theme.ts already computes AA-corrected
+ * for dark grounds, per tenant — but it repaints every dark band on the site
+ * and belongs in its own change with `check:contrast` run against it, not
+ * smuggled in behind a hero animation. */
+.hero-beam-track {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  /* NO `z-index`, AND THAT IS THE WHOLE SAFETY ARGUMENT.
+ 
+   The track is a positioned element at `auto`, mounted between the hero's
+   light and its scrims, so paint order alone puts it under both the scrims
+   and the copy. Two consequences, both load-bearing:
+ 
+   On a band with a tenant photograph the scrims are above it, so the beam is
+   capped by the same measured wash that caps the image — the floors in
+   hero.tsx bind unchanged and nothing is re-derived.
+ 
+   On a band without one the beam is on bare carbon, under the type: the
+   copy's own colours never change, only the ground behind them, and
+   `--beam-peak` is the measurement that keeps the eyebrow above 4.5:1 there.
+ 
+   It also means the beam never touches the two buttons. They have opaque
+   fills and sit above it, so the primary's label holds its 5.57:1 through
+   the pass — the one thing on this band that must stay legible under any
+   light is the thing you click. */
+  mix-blend-mode: screen;
+  /* THE MASK IS ON THE TRACK, NOT ON THE BEAM. A mask travels with the
+   element that wears it, so a fade-out painted on the moving stripe would
+   always fade the stripe's own trailing edge and never the part of the BAND
+   the plate occupies. The track is the thing that holds still.
+ 
+   It fades where the plate is, and the plate is in a different place at the
+   two layouts — which is the same fact the scrim encodes, so it is written
+   the same way round: stacked below `lg` (copy full-width, plate beneath),
+   split at `lg` and up (copy left, plate right). */
+  -webkit-mask-image: linear-gradient(180deg, black 0 56%, transparent 86%);
+  mask-image: linear-gradient(180deg, black 0 56%, transparent 86%);
+}
+
+@media (min-width: 1024px) {
+  .hero-beam-track {
+    -webkit-mask-image: linear-gradient(90deg, black 0 52%, transparent 82%);
+    mask-image: linear-gradient(90deg, black 0 52%, transparent 82%);
+  }
+}
+
+.hero-beam {
+  position: absolute;
+  /* Overhanging top and bottom because the stripe is raked: a bar rotated
+   seven degrees inside a box its own height leaves a triangle of unlit band
+   at each corner, which reads as the effect being clipped rather than as a
+   beam passing. */
+  top: -32%;
+  bottom: -32%;
+  left: 0;
+  /* Narrow and barely blurred, because the alpha is capped: a wide, soft
+   stripe at 22 % is a haze, and a narrow one at the same 22 % is an edge
+   moving across a room. Concentration is the only way left to buy drama
+   once the brightness has been spent. */
+  width: 13%;
+  rotate: 9deg;
+  transform: translate3d(-160%, 0, 0);
+  opacity: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--primary) var(--beam-flank), transparent) 32%,
+    /* The core is the tenant's accent carried most of the way to white —
+     warm, not white. A white core would wash the ground toward grey and
+     read as a smudge on glass; this reads as the accent lighting the
+     scene, which is what it is. */
+    color-mix(
+        in srgb,
+        color-mix(in srgb, var(--hero-foreground) 35%, var(--primary))
+          var(--beam-peak),
+        transparent
+      )
+      50%,
+    color-mix(in srgb, var(--primary) var(--beam-flank), transparent) 68%,
+    transparent 100%
+  );
+  filter: blur(5px);
+  animation: hero-beam-pass var(--beam-cycle) linear infinite;
+  /* Paused is the default STATE, not a fallback: nothing starts until the
+   band reports itself on screen. */
+  animation-play-state: paused;
+}
+
+.band-hero[data-live="true"] .hero-beam,
+.band-hero[data-live="true"] .hero-beam-edge {
+  animation-play-state: running;
+}
+
+/*
+ * `linear`, and the travel is 13 % of the cycle.
+ *
+ * A shutter moves at a constant speed; easing a beam makes it read as a
+ * highlight sliding on a surface rather than as something crossing the room.
+ * The remaining 87 % is the beam parked off the right edge at zero opacity —
+ * which is also, not by accident, the frame the reduced-motion umbrella
+ * lands on.
+ *
+ * The percentages are of `--beam-cycle`, so retiming the whole event is one
+ * token and the hand-off to the plate edge below cannot drift out of sync.
+ */
+@keyframes hero-beam-pass {
+  0% {
+    transform: translate3d(-160%, 0, 0);
+    opacity: 0;
+  }
+  1.5% {
+    opacity: 1;
+  }
+  11% {
+    opacity: 1;
+  }
+  13% {
+    /* 820 %, not 560 %. Translate percentages are of the ELEMENT's own width,
+     and the stripe went from 20 % of the band to 13 %: at 560 % its leading
+     edge stops at 73 % of the band and it visibly parks on screen instead of
+     leaving. The arithmetic has to be redone every time that width moves,
+     which is why it is written here. */
+    transform: translate3d(820%, 0, 0);
+    opacity: 0;
+  }
+  100% {
+    transform: translate3d(820%, 0, 0);
+    opacity: 0;
+  }
+}
+
+/* ── THE HEADLINE CATCHES IT, WORD BY WORD ───────────────────────────────
+ *
+ * The beam lights the scene; this is the scene lighting the type. Each word
+ * turns from near-white to the tenant's accent and back as the pass reaches
+ * it, so the sentence is read left to right by the light itself.
+ *
+ * ── WHY THE COLOUR AND NOT A BLEND ───────────────────────────────────────
+ *
+ * A `screen` bright enough to visibly change the type would wash the type and
+ * the ground toward the same white, and contrast is what is left in between —
+ * the first draft of the beam did exactly that and took the eyebrow to 1.9:1.
+ * Animating the colour instead cannot fail that way, and the reason is
+ * structural rather than careful: BOTH ENDPOINTS ARE MEASURED COLOURS ON AN
+ * UNCHANGED GROUND. `--hero-foreground` is 12.1:1 on carbon and `--primary` is
+ * 6.33:1, so every frame in between is a mix of two passes, and the ground the
+ * gate measured is still the ground underneath.
+ *
+ * That is also why this one is allowed to be dramatic where the beam is not.
+ * It spends nothing.
+ *
+ * ── ONE CLOCK ────────────────────────────────────────────────────────────
+ *
+ * `--beam-cycle` again, with a per-word `animation-delay` from `--wi`, the
+ * word's place in the whole headline — which `StagedLines` writes and which
+ * carries across the two instances the headline is split into, so the accent
+ * word is the sixth light and not a second first.
+ *
+ * Reading order rather than pixel position, deliberately. The x of a wrapped
+ * word is not knowable in CSS and measuring it in JavaScript would mean a
+ * layout read per word per resize, for a sequence the eye reads as a wave
+ * either way. A reader follows a headline in reading order; so does this.
+ *
+ * ── AND THE ACCENT WORD RUNS IT BACKWARDS ────────────────────────────────
+ *
+ * It is already the accent colour, so lighting it in the accent would be no
+ * light at all. It goes to near-white instead, which is the same event seen on
+ * a word that started on the other side of it. */
+.hero-word-light {
+  animation: hero-word-light var(--beam-cycle) var(--ease-standard) infinite;
+  animation-delay: calc(var(--wi, 0) * 110ms);
+  animation-play-state: paused;
+}
+
+.band-hero[data-live="true"] .hero-word-light {
+  animation-play-state: running;
+}
+
+@keyframes hero-word-light {
+  0%,
+  1% {
+    color: var(--hero-foreground);
+  }
+  4% {
+    color: var(--primary);
+  }
+  8% {
+    color: var(--hero-foreground);
+  }
+  100% {
+    color: var(--hero-foreground);
+  }
+}
+
+.hero-word-light-accent {
+  animation-name: hero-word-light-accent;
+}
+
+@keyframes hero-word-light-accent {
+  0%,
+  1% {
+    color: rgb(var(--brand-orange));
+  }
+  4% {
+    color: var(--hero-foreground);
+  }
+  8% {
+    color: rgb(var(--brand-orange));
+  }
+  100% {
+    color: rgb(var(--brand-orange));
+  }
+}
+
+/* The other half of the event: the plate's edge catches the beam as it leaves.
+ *
+ * It is a separate element rather than a keyframed `border-color` on the plate
+ * because the plate's border is a gradient (see `.track-widget::after`) and a
+ * gradient border cannot be animated as a colour. An overlay ring animating
+ * one property — opacity — is also the cheapest thing on this band: it
+ * composites, where a keyframed `box-shadow` repaints the whole card.
+ *
+ * 10 % is where the beam actually arrives, not a guess. The stripe is 13 % of
+ * the band wide and its left edge travels from -20.8 % to +106.6 % of the
+ * band, so its centre reaches the mask's far stop — 82 %, where the beam has
+ * finished fading out over the plate — at 76 % of a 13 % travel. */
+.hero-beam-edge {
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  border: 1px solid color-mix(in srgb, var(--primary) 66%, transparent);
+  box-shadow:
+    0 0 22px -3px color-mix(in srgb, var(--primary) 44%, transparent),
+    inset 0 0 20px -8px color-mix(in srgb, var(--primary) 36%, transparent);
+  opacity: 0;
+  pointer-events: none;
+  animation: hero-beam-catch var(--beam-cycle) var(--ease-standard) infinite;
+  animation-play-state: paused;
+}
+
+@keyframes hero-beam-catch {
+  0%,
+  8.4% {
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  15% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* FOCUS HOLDS THE EDGE LIT.
+ *
+ * The one state change on this band that is a person doing something rather
+ * than a scene playing: while the reference field has focus the ring stops
+ * flashing past and breathes, so the plate says "you are typing into me" in
+ * the tenant's own colour. It replaces the pass on the same element, so the
+ * two can never overlap into a double flash.
+ *
+ * WRITTEN SUBJECT-FIRST, and that is not style. `check-motion.mjs` keys its
+ * exemption list on the HEAD of the selector, so `.track-widget:focus-within
+ * .hero-beam-edge` would reach the gate as a `.track-widget` rule, be held to
+ * the 200 ms response budget, and fail — while describing a rule that is
+ * about the edge. Naming the subject first is both what makes the gate read
+ * it correctly and what it actually means. */
+.hero-beam-edge:is(.track-widget:focus-within *) {
+  animation-name: hero-beam-hold;
+  animation-duration: 2.6s;
+  animation-play-state: running;
+}
+
+@keyframes hero-beam-hold {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 0.9;
+  }
+}
+
+/* ══ THE PLATE'S SURFACE ════════════════════════════════════════════════
+ *
+ * The glare: a sheen that moves across the glass with the light.
+ *
+ * It reads `--lx`/`--ly` from the BAND rather than from the plate's own rect,
+ * deliberately. `.tilt-plate` already turns the plate using the band's
+ * numbers, and a glare computed in a different coordinate space from the
+ * rotation it is supposed to be lighting is a highlight sliding the wrong way
+ * across a turning object — the one artefact that makes a 3D effect read as
+ * two unrelated CSS tricks. One light source, one set of coordinates, every
+ * consumer on the band.
+ *
+ * NO TRANSITION. The properties are rewritten every frame by the pointer
+ * hook, so a transition here would fight the input rather than smooth it;
+ * `.tilt-plate` carries the damping for the whole plate and the sheen rides
+ * on it.
+ *
+ * AND IT IS CAPPED AT 10 %. This is the one decoration on the plate that
+ * lightens the ground UNDER text, so it spends contrast rather than adding
+ * it. Measured: the pane is `--hero-plate` (≈11 % of near-white) over carbon,
+ * about #1e1f22, and `--hero-muted` — the weakest type on it, the hint line —
+ * sits at 7.4:1 there. At the glare's hottest the ground reaches about
+ * #35363a and that falls to 4.6:1, which still clears AA at body size. At 15 %
+ * it does not. The number is the floor, not a taste. */
+.hero-plate-glare {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(
+    130% 110% at calc(var(--lx) * 100%) calc(var(--ly) * 100%),
+    color-mix(in srgb, var(--hero-foreground) 10%, transparent) 0%,
+    color-mix(in srgb, var(--hero-foreground) 4%, transparent) 40%,
+    transparent 72%
+  );
+}
+
+/* ══ THE ENTRANCE ══════════════════════════════════════════════════════
+ *
+ * The band arrives as one composition rather than as five elements that each
+ * happen to fade: eyebrow, headline, accent, lead, buttons, plate — in that
+ * order, on one shared `is-in` that the band's own reveal sets.
+ *
+ * THE SEQUENCE IS A DELAY PER ELEMENT, NOT A LONGER ANIMATION. Every declared
+ * duration below is inside §5.4's 600 ms narrative budget and the gate holds
+ * them there; what makes the arrival feel composed is the ORDER, which costs
+ * nothing and is what `--enter-delay` carries. The last element to settle is
+ * the plate at about 820 ms — stated plainly because it is past 600, and it is
+ * the only thing on the band that is: a plate the size of a quarter of the
+ * screen that snapped into place in the same beat as an eyebrow would read as
+ * a layout shift rather than as an object arriving.
+ *
+ * `--enter-delay` is not declared in this file on purpose — it is set inline,
+ * per element, by `hero.tsx`, which is where the choreography is legible as a
+ * sequence. The `0ms` fallback is what the gate resolves it to, and is also
+ * what any element that forgets to set one gets: no delay, not a broken
+ * animation. */
+.hero-enter {
+  opacity: 0;
+  transform: translateY(10px);
+  transition:
+    opacity var(--dur-enter) var(--ease-decelerate) var(--enter-delay, 0ms),
+    transform var(--dur-enter) var(--ease-decelerate) var(--enter-delay, 0ms);
+}
+
+.hero-enter.is-in {
+  opacity: 1;
+  transform: none;
+}
+
+/* THE SEQUENCE, IN ONE PLACE.
+ *
+ * Written as classes rather than as inline styles on each element so the
+ * whole choreography is legible as a list, and — the reason that matters —
+ * so `check-motion.mjs` can SEE the delays. It resolves custom properties
+ * before measuring, and a delay typed into a JSX `style` object is invisible
+ * to it. A sequence the gate cannot read is a sequence that drifts.
+ *
+ *   0 ms    eyebrow
+ *   80 ms   headline, then 45 ms a word
+ *   260 ms  the plate begins its travel — first of the big objects to start,
+ *           last to settle, because it has the furthest to come
+ *   300 ms  lead
+ *   340 ms  the accent word, on its own beat after the line has landed
+ *           (that one is in hero.tsx, where the headline is split)
+ *   360 ms  the two buttons
+ */
+.hero-enter-eyebrow {
+  --enter-delay: 0ms;
+}
+
+.hero-enter-lead {
+  --enter-delay: 300ms;
+}
+
+.hero-enter-cta {
+  --enter-delay: 360ms;
+}
+
+.hero-enter-plate {
+  --enter-delay: 260ms;
+}
+
+/* The plate's own arrival, and the only motion on this band with weight to it.
+ *
+ * It comes up and in from the bottom-right on `cubic-bezier(0.16, 1, 0.3, 1)`
+ * — a curve that spends four-fifths of its travel in the first third of its
+ * time and then takes the rest of the time to stop. That is what "heavy"
+ * means in motion: not slow, but carrying momentum it has to shed. A plate
+ * that eases evenly into place reads as a div appearing.
+ *
+ * ON A WRAPPER, NOT ON THE PLATE. `.tilt-plate` owns `transform` on the plate
+ * itself and rewrites it every frame from the pointer; an entrance sharing
+ * that property would be overwritten by the first mouse movement, or would
+ * overwrite the tilt — whichever lost the cascade. Two transforms, two
+ * elements, and `preserve-3d` so the wrapper does not flatten the rotation it
+ * contains.
+ *
+ * The curve is written out rather than tokenised because the easing set in
+ * §5.4 is four named curves for four jobs and this is not one of them: it is
+ * one object's signature move, used once. Adding a fifth token for a single
+ * call site is how an easing set stops meaning anything. */
+.hero-plate-enter {
+  transform-style: preserve-3d;
+  /* ── DEAF TO THE POINTER, AND THE PLATE HEARS AGAIN ──────────────────────
+   *
+   * THE BUG. `preserve-3d` above is load-bearing for the look (it is what lets
+   * `.tilt-plate`'s rotation reach `.tilt-stage`'s perspective, two elements
+   * up) and it broke every click on this plate. Chromium hit-tests a nested
+   * `preserve-3d` subtree against the FLAT box of the element that opens it, so
+   * pointer events over the left ~40% of the plate resolved to THIS wrapper
+   * instead of descending to what was drawn there. Measured on the real page:
+   * 22 of 56 sample points across the plate — the reference field's own centre
+   * among them — reported `div.hero-plate-enter` as the mousedown target, so
+   * the field never received the press, focus stayed on `<body>`, and typing
+   * went nowhere. Nothing is painted over the field; the hit test simply stops
+   * one element too early.
+   *
+   * IT IS INVISIBLE TO EVERY TEST IN THIS REPO, and will stay invisible.
+   * jsdom has no compositor: `.track-widget input` is found, `fireEvent.click`
+   * dispatches straight at the node, and the suite is green. Only a real
+   * browser can see it, and public-web has no Playwright harness — the layout
+   * gate in CI is client-only. So `hero.test.tsx` guards the PAIRING of the two
+   * declarations instead (this one and `.track-widget`'s), which is the
+   * regression that can realistically happen: someone tidies away a
+   * `pointer-events` line that looks like it does nothing. Reproducing the bug
+   * itself needs Chromium and the note above is the record of having done it.
+   *
+   * THE FIX, AND WHY THIS ONE. The wrapper exists to carry an entrance
+   * animation. It has no text, no controls and no reason to be a pointer
+   * target, so taking it out of hit-testing costs nothing and lets the test
+   * descend to the plate, which has always been hit-tested correctly. Geometry
+   * is untouched — the plate's rect is identical to the pixel before and after
+   * (837.69, 265.48, 540.92, 260.45 at full tilt), so the tilt, the
+   * perspective and the entrance all look exactly as they did.
+   *
+   * The alternatives all moved the picture. Flattening this wrapper drops the
+   * plate out of the stage's 3D space and the foreshortening with it; giving
+   * the wrapper its own `perspective` restores the look but re-centres the
+   * projection on the plate rather than the band, which is a different image
+   * unless `perspective-origin` is hand-derived from the grid's column ratio
+   * and gap — a number that silently goes wrong the day either changes. */
+  pointer-events: none;
+  opacity: 0;
+  transform: translate3d(4%, 26px, 0) scale(0.97);
+  transition:
+    opacity var(--dur-narrative) cubic-bezier(0.16, 1, 0.3, 1)
+      var(--enter-delay, 0ms),
+    transform var(--dur-narrative) cubic-bezier(0.16, 1, 0.3, 1)
+      var(--enter-delay, 0ms);
+}
+
+.hero-plate-enter.is-in {
+  opacity: 1;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* The umbrella kills the DURATION; only the resting state can fix an
+   element whose start state is invisible. Same reason `.staged-word`
+   carries this rule, stated there at length. */
+  .hero-enter,
+  .hero-plate-enter {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* The Track button's sheen.
+ *
+ * On hover and on focus, NOT on a loop. §7.3's rule is that the tenant's
+ * primary is the only thing on this page that looks clickable, and a button
+ * that shimmers at a reader who has not reached for it is the page asking
+ * twice. On approach it is a response, and it is inside the response budget.
+ *
+ * Named `.hero-*` so the gate reads it as this band's, not as a change to
+ * `.btn-primary` — which is every button in the app. */
+.hero-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+
+.hero-shimmer::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 45%;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--hero-foreground) 34%, transparent) 50%,
+    transparent 100%
+  );
+  transform: translate3d(-220%, 0, 0);
+  transition: transform var(--dur-response-max) var(--ease-standard);
+}
+
+.hero-shimmer:hover:not(:disabled)::after,
+.hero-shimmer:focus-visible:not(:disabled)::after {
+  transform: translate3d(340%, 0, 0);
+}
+
+/* ── IT FOLLOWS THE BAND, NOT THE PAGE ───────────────────────────────────
+ *
+ * This used to paint from `--card`, which is `#ffffff` in the light theme. The
+ * band under it is carbon in BOTH themes (`--hero` is deliberately not a
+ * tenant token — see its note in the token block), so the one functional
+ * object on the homepage was a white tile in light mode and a pane of glass in
+ * dark mode. One class, two objects, and only one of them was the design.
+ *
+ * `--hero-plate` is dark glass in every theme, tinted with the tenant's
+ * `--primary` at a fifth strength over a near-white base. That ordering is
+ * what keeps it white-label: the base decides that it is GLASS, the tenant
+ * decides what colour the light in it is, and a tenant whose primary is navy
+ * gets a cool pane rather than an invisible one.
+ *
+ * Everything inside it therefore takes the hero family — `--hero-foreground`,
+ * `--hero-muted`, the field's and the button's on-dark variants — and
+ * `track-widget.tsx` is passed `onDark` for exactly that reason. The prop
+ * already existed; nothing on the hero had ever set it.
+ *
+ * IT IS THE GLASS SURFACE RATHER THAN WEARING `.glass`. `.track-widget` is
+ * declared after `.glass` in this file, so an opaque background here would win
+ * the cascade and the blur would never show — two classes quietly fighting,
+ * which is the failure the recipe block exists to prevent.
+ *
+ * THE BLUR WENT 16 → 20 AND THE SHADOW GREW A COLOUR. A shadow in pure black
+ * under a plate floating over a photograph is the tell that the plate is not
+ * in the scene: real ambient occlusion carries the room's light, and this room
+ * is carbon with a warm accent in it. Three layers, because one large soft
+ * shadow reads as a blur and three reads as distance — contact, mid, and the
+ * long throw that puts the plate in front of the band rather than on it. */
+.track-widget {
+  /* Back on, because `.hero-plate-enter` above is `pointer-events: none` and
+     that inherits. This is the element the wrapper's exemption is FOR: the
+     plate and everything in it — the reference field, the Track button, the
+     portal link — are hit-tested from here down. */
+  pointer-events: auto;
+  position: relative;
+  background: var(--hero-plate);
+  backdrop-filter: saturate(1.6) blur(20px);
+  -webkit-backdrop-filter: saturate(1.6) blur(20px);
+  color: var(--hero-foreground);
+  /* The fallback edge. `::after` draws the real one where masks are
+   available; this is what a browser without them keeps, and it is a
+   deliberate hairline rather than nothing. */
+  border: 1px solid var(--hero-plate-edge-far);
+  border-radius: calc(var(--radius) + 6px);
+  box-shadow:
+    0 2px 6px -2px rgb(0 0 0 / 0.5),
+    0 18px 40px -12px rgb(0 0 0 / 0.55),
+    0 48px 90px -40px color-mix(in srgb, var(--primary) 26%, rgb(0 0 0 / 0.6)),
+    inset 0 1px 0 color-mix(in srgb, var(--hero-foreground) 20%, transparent);
+}
+
+/* THE GLASS EDGE — bright where the light is, gone by the far corner.
+ *
+ * A uniform 1px border is the tell that a "glass" card is a rectangle with a
+ * blur behind it: a real pane catches light on the edge facing the source and
+ * nowhere else. This is the standard gradient-border construction — a padded
+ * box whose background is the gradient, masked so only the 1px ring survives —
+ * and it is behind `@supports` because the failure mode without
+ * `mask-composite` is not a missing edge but a filled rectangle over the
+ * card's contents. The plain border above is the answer there.
+ *
+ * The angle is 135°, which is the §5.3 light model's rest position (light
+ * above and to the left). It does not track the pointer: an edge that chases
+ * the cursor makes the plate read as rotating rather than as being lit, and
+ * `.hero-plate-glare` is already the part of this that moves. */
+@supports ((mask-composite: exclude) or (-webkit-mask-composite: xor)) {
+  .track-widget::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    pointer-events: none;
+    background: linear-gradient(
+      135deg,
+      var(--hero-plate-edge) 0%,
+      color-mix(in srgb, var(--hero-foreground) 14%, transparent) 38%,
+      var(--hero-plate-edge-far) 100%
+    );
+    -webkit-mask:
+      linear-gradient(black, black) content-box,
+      linear-gradient(black, black);
+    mask:
+      linear-gradient(black, black) content-box,
+      linear-gradient(black, black);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+  }
+}
+
+/* Where the browser cannot blur, the pane becomes a solid of the same colour
+   rather than a washed-out translucent one: the type on it has to stay
+   readable, and legibility is not the part of this that is decoration. */
+@supports not (backdrop-filter: blur(1px)) {
+  .track-widget {
+    background: color-mix(in srgb, var(--primary) 7%, var(--hero));
+  }
+}
+
+/* ── Depth rung 2: real 3D, shared by the hero plate and the service cards ─
+ *
+ * §7.1 asks the hero for rungs 2 AND 4 — CSS 3D and canvas. The canvas is the
+ * route network; this is the 3D. It is a real `perspective` on the stage and a
+ * real rotation on the plate, not a `translate` pretending: a plate that turns
+ * toward the light has a near edge and a far edge, and that is the difference
+ * between an object in a room and a rectangle with a shadow.
+ *
+ * THE ANGLES ARE SMALL ON PURPOSE — SEVEN DEGREES AND FIVE, RAISED FROM
+ * THREE AND TWO. The track widget is the functional object on this page —
+ * half the audience came to type a reference into it — so the ceiling is set
+ * by how far the input may move under a hand that is already reaching for it,
+ * not by how much depth looks good in a screenshot. Three degrees was below
+ * the threshold at which anybody noticed the plate was a solid at all; at
+ * fourteen, which is where a demo wants to be, the field visibly slides away
+ * from the cursor on the approach. Seven is the most that still lands a click
+ * where the eye aimed it.
+ *
+ * AND IT STOPS DEAD WHEN SOMEBODY IS USING IT. `:focus-within` returns the
+ * plate to flat: a field that moves while you are typing in it is worse than
+ * no effect at all, and this is the one place on the site where that risk is
+ * real. Nothing here is load-bearing, so losing it costs nothing. Raising the
+ * angle raises the value of that rule rather than weakening it.
+ *
+ * `.tilt-card` below is the SERVICES band's version and is deliberately not
+ * this: those cards are links in a grid, not a control, and they carry their
+ * own arithmetic.
+ *
+ * Under reduced motion `--lx`/`--ly` are never written and rest at 0.5, so
+ * both rotations evaluate to 0deg — flat, settled, no rule needed.
+ *
+ * NAMED `.tilt-*` RATHER THAN `.hero-*` FOR TWO REASONS. `.tilt-stage` is
+ * reused by the services band (§7.3), which needs the same real perspective;
+ * and
+ * `check-motion.mjs` holds anything matching `^\.hero` to the NARRATIVE
+ * budget, which would be the wrong classification for this. A pointer
+ * response is a response — 200ms, the tighter number — and taking the looser
+ * budget by accident of a class name is how a gate stops meaning anything. */
+.tilt-stage {
+  perspective: 1400px;
+}
+
+.tilt-plate {
+  transform-style: preserve-3d;
+  transform: rotateY(calc((var(--lx) - 0.5) * -7deg))
+    rotateX(calc((var(--ly) - 0.5) * 5deg));
+  /* Damping, not choreography. The properties are rewritten every frame by
+   the pointer, so this smooths a jittery cursor into a glide. Inside the
+   200ms response budget because that is what it is: a response. */
+  transition: transform var(--dur-response) var(--ease-standard);
+}
+
+.tilt-plate:focus-within {
+  transform: none;
+}
+
+/* The tokens these rules read, and nothing else in the app does.
+ *
+ * They moved out of `index.css`'s `:root` with the rules, because a token on
+ * the entry whose only consumer is on a lazy chunk is first-paint weight
+ * nobody spends. `:root` still, so a rule here resolves them the same way it
+ * did: custom properties are inherited, and this sheet lands before the hero
+ * it styles is committed. */
+:root {
+  /* ── The hero plate: dark glass, in EVERY theme ─────────────────────────
+     *
+     * The track widget used to paint itself from `--card`, which is `#ffffff`
+     * in the light theme — so on a band that is carbon in both themes the one
+     * functional object was a WHITE tile in light mode and dark glass in dark
+     * mode. Two different objects, one class, and only the dark one looked like
+     * the design.
+     *
+     * `--hero` is deliberately not a tenant token (see the note above it): the
+     * band is carbon whatever the visitor's theme is. A plate that floats on it
+     * has to follow the band, not the page, or it stops being a pane of glass
+     * and becomes a sheet of paper lying on tarmac.
+     *
+     * THE TINT IS THE TENANT'S, AND IT IS THE SMALL TERM ON PURPOSE. The
+     * dominant term is `--hero-foreground` — near-white — so the pane reads as
+     * glass for every tenant including one whose primary is navy or forest. The
+     * accent only decides what colour the light in the glass is. `--primary` is
+     * the tenant's fill (`--brand-orange` is Praxis's and is never
+     * tenant-overridden, so it would be the wrong token for anything that is
+     * supposed to be theirs). */
+  --hero-plate-tint: 22%;
+  --hero-plate-alpha: 11%;
+  --hero-plate: color-mix(
+    in srgb,
+    color-mix(
+        in srgb,
+        var(--primary) var(--hero-plate-tint),
+        var(--hero-foreground)
+      )
+      var(--hero-plate-alpha),
+    transparent
+  );
+  /* The pane's edge. Bright where the light hits it (top-left), gone by the
+     far corner — a real glass edge catches light on one side only, and a
+     uniform 1px border is the tell that a "glass" card is a rectangle with a
+     blur behind it. */
+  --hero-plate-edge: color-mix(
+    in srgb,
+    var(--hero-foreground) 38%,
+    transparent
+  );
+  --hero-plate-edge-far: color-mix(
+    in srgb,
+    var(--hero-foreground) 6%,
+    transparent
+  );
+
+  /* One clock for the whole band: the beam's pass, and the plate edge that
+     catches it as it leaves. Two animations that are supposed to be one event
+     must not be two numbers. */
+  --beam-cycle: 11s;
+
+  /* ── HOW BRIGHT THE BEAM IS ALLOWED TO BE, AND WHERE THE NUMBER CAME FROM
+     *
+     * The eyebrow binds. Again — the same element, for the same reason, as the
+     * scrim floors in hero.tsx: `#ff5a00` at 11px needs 4.5:1, and it is the
+     * only thing on this band whose own colour is close to the light being
+     * thrown at it.
+     *
+     * The beam passes UNDER the copy (see `.hero-beam-track`), so the type's
+     * colour is untouched and only the ground behind it moves. On carbon,
+     * `screen` at peak alpha `a` of the beam's warm core lifts the ground's
+     * relative luminance from 0.00213 to:
+     *
+     *     a = 0.18   L = 0.0196   eyebrow 4.96:1
+     *     a = 0.22   L = 0.0237   eyebrow 4.56:1   ← the floor
+     *     a = 0.26   L = 0.0281   eyebrow 4.30:1   ✗
+     *
+     * 22 % it is, and everything else on the band clears it comfortably at that
+     * value — the lead at 5.49:1, the headline at 12.1:1. The primary button is
+     * not in the list because it is not affected: it has an opaque fill, and the
+     * beam is behind it.
+     *
+     * WITH A TENANT PHOTOGRAPH THIS NUMBER STOPS MATTERING, WHICH IS THE POINT
+     * OF WHERE THE LAYER SITS. The beam is mounted UNDER the two scrims, so on
+     * an image-backed hero the scrim caps it exactly as it caps the photograph,
+     * and the measured floors bind unchanged rather than being re-derived. That
+     * is the same construction `.hero-light` uses and it is the only reason
+     * either of them is safe: lightening cannot take an image past white, and
+     * white is the case the floors were measured against. */
+  --beam-peak: 22%;
+  --beam-flank: 13%;
+}

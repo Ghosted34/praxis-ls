@@ -57,9 +57,9 @@ type FinanceRow = SalesRow & {
 
 const PV_AI: AiAction[] = [
   {
-    label: "Flag at-risk dossiers",
+    label: "Flag at-risk files",
     kind: "assist",
-    describe: "Summarise dossiers whose pricing variance is amber/red and why.",
+    describe: "Summarise operations files whose pricing variance is amber/red and why.",
   },
 ];
 
@@ -242,7 +242,7 @@ export function PricingVariancePage() {
   );
   const nameOf = (r: SalesRow) =>
     dossierRef.get(String(r.dossier_id)) ??
-    `Dossier ${String(r.dossier_id).slice(0, 8)}`;
+    `File ${String(r.dossier_id).slice(0, 8)}`;
 
   const filtered = React.useMemo(
     () => (rows || []).filter((r) => !filter || String(r.flag) === filter),
@@ -252,7 +252,7 @@ export function PricingVariancePage() {
   const columns: Column<SalesRow>[] = [
     {
       key: "dossier",
-      label: "Dossier",
+      label: "File",
       render: (r) => (
         <span className="font-medium text-foreground">{nameOf(r)}</span>
       ),
@@ -311,7 +311,7 @@ export function PricingVariancePage() {
       ) : rows !== null && rows.length === 0 ? (
         <EmptyState
           title="No reconciliations yet"
-          hint="The index derives from dossier reconciliations — draft one in Costing → Reconciliation and its flag appears here."
+          hint="The index derives from operations file reconciliations — draft one in Costing → Reconciliation and its flag appears here."
         />
       ) : (
         <DataList

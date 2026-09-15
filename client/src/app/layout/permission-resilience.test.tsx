@@ -69,6 +69,7 @@ const storedPrefs = {
     ribbonPinned: null,
     railPins: null,
     towerPins: null,
+    kpiPins: null,
     railHintSeen: true,
   } as ShellPrefs,
 };
@@ -160,6 +161,7 @@ beforeEach(() => {
     ribbonPinned: null,
     railPins: null,
     towerPins: null,
+    kpiPins: null,
     railHintSeen: true,
   };
   clock = 1_000_000;

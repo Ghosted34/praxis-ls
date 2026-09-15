@@ -42,8 +42,26 @@ afterEach(() => {
 /* ─────────────────────────── F12: the double wrap ────────────────────────── */
 
 describe("errMsg (F12 — the double-wrap defect)", () => {
-  it("turns a 403 into the permission sentence", () => {
-    expect(errMsg(new ApiError("FORBIDDEN", "nope", 403))).toBe(
+  /**
+   * F-GAP-09. A 403 used to render as the generic sentence WHATEVER the server
+   * said, which threw away every message the authorization layer writes to name
+   * the remedy ("You cannot change your own roles. Ask another administrator.").
+   * The server's sentence now wins; the generic one is the fallback.
+   */
+  it("keeps the server's own message on a 403", () => {
+    expect(
+      errMsg(
+        new ApiError(
+          "SELF_ROLE_CHANGE",
+          "You cannot change your own roles. Ask another administrator.",
+          403,
+        ),
+      ),
+    ).toBe("You cannot change your own roles. Ask another administrator.");
+  });
+
+  it("falls back to the permission sentence when a 403 carries no message", () => {
+    expect(errMsg(new ApiError("FORBIDDEN", "", 403))).toBe(
       "You don't have permission to do this.",
     );
   });
@@ -74,7 +92,7 @@ describe("errMsg (F12 — the double-wrap defect)", () => {
    */
   it("DESTROYS an already-formatted message if applied twice — why the 16 sites were a bug", () => {
     const once = errMsg(new ApiError("FORBIDDEN", "nope", 403));
-    expect(once).toBe("You don't have permission to do this.");
+    expect(once).toBe("nope");
     expect(errMsg(once)).toBe("Something went wrong.");
     expect(errMsg(once)).not.toBe(once);
   });
@@ -109,10 +127,9 @@ describe("useList", () => {
     tenantSpy.mockRejectedValue(new ApiError("FORBIDDEN", "nope", 403));
     render(<ListProbe path="/clients" />, { wrapper: wrapper() });
 
+    // F-GAP-09: the server's own 403 message survives to the screen.
     await waitFor(() =>
-      expect(screen.getByTestId("error")).toHaveTextContent(
-        "You don't have permission to do this.",
-      ),
+      expect(screen.getByTestId("error")).toHaveTextContent("nope"),
     );
   });
 
@@ -260,9 +277,7 @@ describe("useResource", () => {
       { wrapper: wrapper() },
     );
     await waitFor(() =>
-      expect(screen.getByTestId("b-error")).toHaveTextContent(
-        "You don't have permission to do this.",
-      ),
+      expect(screen.getByTestId("b-error")).toHaveTextContent("nope"),
     );
   });
 

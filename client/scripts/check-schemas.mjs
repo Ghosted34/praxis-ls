@@ -152,9 +152,23 @@ for (const f of clientFiles)
 
 /* ── rule 3: a migrated validator must not re-declare rules ───────────────── */
 
-/** Validators allowed to keep a local `z.object`, each with the reason. */
+/**
+ * Validators allowed to keep a local `z.object`, each with the reason.
+ *
+ * Rule 3 decides "migrated" by the presence of an `@praxis/shared` import,
+ * which is the right proxy for a validator that was moved over wholesale and
+ * the wrong one for a file that is PARTLY migrated — it consumes one shared
+ * schema while the rest of its shape is still local. An entry here says which
+ * of the two a file is, and what would earn its removal.
+ */
 const ALLOW_LOCAL_SCHEMA = {
-  // (none yet — add `"src/modules/x/x.validator.js": "why"` when one earns it)
+  "src/modules/master/employees/employees.validator.js":
+    "Partly migrated (13775). `work_schedule` is `@praxis/shared`'s "
+    + "workSchedule.schema — the day vocabulary the form draws its checkboxes "
+    + "from is the same list the API accepts. The other ~55 employee columns "
+    + "have never been shared and are still declared here. Remove this entry "
+    + "when the employee shape itself moves into packages/shared; until then "
+    + "the file is a normal validator that happens to import one shared rule.",
 };
 
 const migratedValidators = apiFiles.filter(
@@ -177,6 +191,18 @@ const regressed = migratedValidators.filter((f) => {
 
 const ENTITY_FORM = "client/src/features/masterdata/entity-form-fields.ts";
 const ENTITY_DOSSIER = "client/src/features/masterdata/entity-360.tsx";
+/**
+ * The letterhead designer is TWO files since 12760: the dossier's
+ * `LetterheadTab` still owns the wording, brand and payment panels, and it
+ * delegates the page itself to `LetterheadStudio` — the drag-and-drop canvas
+ * where the block visibility, the layout and the mark's height are set.
+ *
+ * Rule 6 reads both. Reading only the tab would report every column the studio
+ * owns as unreachable, which is the opposite of true and would push someone to
+ * "fix" it by adding a second control beside the real one.
+ */
+const LETTERHEAD_STUDIO =
+  "client/src/features/masterdata/letterhead-studio.tsx";
 
 /**
  * Columns no form writes, and what writes them instead.
@@ -235,6 +261,9 @@ const entityFormSrc = existsSync(join(repoRoot, ENTITY_FORM))
   : "";
 const dossierSrc = existsSync(join(repoRoot, ENTITY_DOSSIER))
   ? readFileSync(join(repoRoot, ENTITY_DOSSIER), "utf8")
+  : "";
+const studioSrc = existsSync(join(repoRoot, LETTERHEAD_STUDIO))
+  ? readFileSync(join(repoRoot, LETTERHEAD_STUDIO), "utf8")
   : "";
 
 // The form's PATCH/POST body. Its keys ARE what the form sends — `entityFormBody`
@@ -326,17 +355,23 @@ for (const [seg, keys] of Object.entries(nestedShapes)) {
 
 /**
  * Looser than rules 4 and 5, deliberately. The designer is not a `FieldSpec`
- * list — toggles come from one array, colours and heights from a draft object,
- * the two enums from Selects that patch on change — so this asserts only that
- * each column is MENTIONED in the tab. That is enough to catch what actually
+ * list — the wording and colours come from a draft object, the enums from
+ * Selects that patch on change, and the block visibility and layout from the
+ * studio's canvas — so this asserts only that each column is MENTIONED
+ * somewhere a person can reach. That is enough to catch what actually
  * happened: six columns the API happily saved and the designer never named. A
  * stricter parser over hand-written JSX would break on reformatting, and a gate
  * that breaks on reformatting is a gate someone deletes.
+ *
+ * BOTH HALVES OF THE DESIGNER, since 12760. The studio is read whole rather
+ * than sliced: it is the letterhead editor end to end, so there is no
+ * surrounding code to exclude.
  */
 const letterheadTab = sliceBody(dossierSrc, "function LetterheadTab(", "\n}\n");
+const letterheadSrc = letterheadTab ? letterheadTab + studioSrc : null;
 const letterheadKeys = shared.entityCommon?.letterheadKeys ?? [];
-const letterheadGaps = letterheadTab
-  ? letterheadKeys.filter((k) => !new RegExp(`\\b${k}\\b`).test(letterheadTab))
+const letterheadGaps = letterheadSrc
+  ? letterheadKeys.filter((k) => !new RegExp(`\\b${k}\\b`).test(letterheadSrc))
   : [];
 
 /* ── report ───────────────────────────────────────────────────────────────── */
@@ -472,7 +507,8 @@ if (letterheadGaps.length) {
   for (const k of letterheadGaps) console.error(`    ${k}`);
   console.error(
     "\n  PUT /entities/:id/letterhead accepts these and the designer offers no way\n" +
-      "  to reach them, so the stored value can only ever be the default.\n",
+      "  to reach them, so the stored value can only ever be the default.\n" +
+      `  The designer is ${ENTITY_DOSSIER}'s LetterheadTab plus ${LETTERHEAD_STUDIO}.\n`,
   );
 }
 

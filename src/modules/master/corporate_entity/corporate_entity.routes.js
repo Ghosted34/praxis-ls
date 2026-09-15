@@ -23,6 +23,17 @@ router.get("/:id/cap-table", requirePermission(MODULE, "edit"), controller.capTa
 // so what the designer shows is what a document prints.
 router.get("/:id/letterhead", requirePermission(MODULE, "view"), controller.letterhead);
 router.put("/:id/letterhead", requirePermission(MODULE, "edit"), validator.letterhead, controller.saveLetterhead);
+/*
+ * The tenant's own letterhead lines (12760) — what derivation cannot reach: a
+ * strapline, a customs licence, a trade-body membership.
+ *
+ * MOD-01 `edit`, the same grant as the letterhead itself, because that is what
+ * these are: a line on the letterhead. DELETE carries no body, so it skips the
+ * validator; the controller reads the verb.
+ */
+router.post("/:id/letterhead/lines", requirePermission(MODULE, "edit"), validator.letterheadLine, controller.saveLetterheadLine);
+router.put("/:id/letterhead/lines/:lineId", requirePermission(MODULE, "edit"), validator.letterheadLine, controller.saveLetterheadLine);
+router.delete("/:id/letterhead/lines/:lineId", requirePermission(MODULE, "edit"), controller.saveLetterheadLine);
 // Everything on this entity that needs renewing. Advisory: severities stop at
 // SOFT_BLOCK_RECOMMENDATION and no rule ever hard-blocks.
 // Working calendar — the hours the milestone engine schedules in (0650).

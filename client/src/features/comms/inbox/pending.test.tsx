@@ -20,7 +20,7 @@ import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { axe } from "jest-axe";
 import { DraftList, OutboxList } from "./pending";
-import { renderScreen } from "@/test/screen-harness";
+import { renderScreen, apiError } from "@/test/screen-harness";
 import type { Draft, OutboxEntry } from "@/lib/mail-api";
 
 vi.mock("@/lib/api-client", async () => {
@@ -81,13 +81,49 @@ describe("Drafts", () => {
     expect(await screen.findByText("No drafts")).toBeInTheDocument();
   });
 
-  it("discarding asks first, and says the attachments go too", async () => {
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+  /*
+   * This used to spy on `window.confirm`. It now asserts against the rendered
+   * dialog, which is a STRONGER check and not merely a port: the spy could only
+   * prove that some string was passed to the browser, whereas this proves the
+   * warning is on screen, names the draft it is about, and offers a button that
+   * says what it does. The old assertion would have passed against a confirm
+   * that said "cannot be undone" and nothing else.
+   */
+  it("discarding asks first, names the draft, and says the attachments go too", async () => {
     renderScreen(<DraftList onOpen={vi.fn()} />, { routes: { "/mail/drafts": [draft()] } });
     await screen.findByText("Demurrage on MSKU4567890");
     await userEvent.click(screen.getByRole("button", { name: "Discard" }));
-    expect(confirm).toHaveBeenCalledWith(expect.stringContaining("cannot be undone"));
-    confirm.mockRestore();
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Discard this draft?")).toBeInTheDocument();
+    // The draft is named inside the dialog, so a list of drafts cannot ask an
+    // ambiguous question about which one is about to go.
+    expect(within(dialog).getByText("Demurrage on MSKU4567890")).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(/deleted, along with anything attached to it/i),
+    ).toBeInTheDocument();
+    // Named actions, not OK/Cancel.
+    expect(
+      within(dialog).getByRole("button", { name: "Discard draft" }),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole("button", { name: "Keep editing" }),
+    ).toBeInTheDocument();
+  });
+
+  it("keeping the draft closes the dialog and deletes nothing", async () => {
+    const del = vi.fn();
+    renderScreen(<DraftList onOpen={vi.fn()} />, {
+      routes: { "/mail/drafts": [draft()], "DELETE /mail/drafts/d1": del },
+    });
+    await screen.findByText("Demurrage on MSKU4567890");
+    await userEvent.click(screen.getByRole("button", { name: "Discard" }));
+    await userEvent.click(
+      within(await screen.findByRole("dialog")).getByRole("button", {
+        name: "Keep editing",
+      }),
+    );
+    expect(del).not.toHaveBeenCalled();
   });
 
   it("has no accessibility violations", async () => {
@@ -182,6 +218,76 @@ describe("Outbox", () => {
     expect(
       await screen.findByText("Not sent yet. Cancel it and it never goes."),
     ).toBeInTheDocument();
+  });
+
+  /* ── Sending it again ──────────────────────────────────────────────────────
+   *
+   * The gap this closes: a FAILED row was a dead end. The screen showed the
+   * server's refusal and the steps that fix it, and then the only way to act on
+   * the fix was to write the message again from memory — the row is not a draft
+   * and cannot be opened. So a corrected SMTP password and an unsent invoice sat
+   * one click apart with no click between them.
+   */
+  it("SEND AGAIN IS OFFERED ON A FAILED ROW, and says what happened", async () => {
+    renderScreen(<OutboxList />, {
+      routes: {
+        "/mail/outbox": [queued({ status: "FAILED", last_error: "550 nope" })],
+      },
+    });
+    await screen.findByText("Did not send");
+    await userEvent.click(screen.getByRole("button", { name: "Send again" }));
+    expect(await screen.findByText(/Queued again/)).toBeInTheDocument();
+  });
+
+  it("offers it even for a PERMANENT refusal — that is the case somebody just fixed", async () => {
+    // `PERMANENT_CODES` stops the QUEUE retrying on its own, and should. Every
+    // code on it is a failure only a person can clear, so greying the button out
+    // for exactly those would refuse the only case it exists for.
+    renderScreen(<OutboxList />, {
+      routes: {
+        "/mail/outbox": [
+          queued({
+            status: "FAILED",
+            error_code: "SENDER_NOT_AUTHORIZED",
+            last_error: "550 Sender verify failed",
+          }),
+        ],
+      },
+    });
+    await screen.findByText("Did not send");
+    expect(screen.getByRole("button", { name: "Send again" })).toBeInTheDocument();
+  });
+
+  it("OFFERS IT ONLY ON A FAILED ROW — the only status the server accepts", async () => {
+    // `repo.retry` is `UPDATE … WHERE status = 'FAILED'`, the same rule that
+    // keeps Cancel off everything but HELD.
+    renderScreen(<OutboxList />, {
+      routes: {
+        "/mail/outbox": [
+          queued({ email_send_queue_id: "q1", status: "HELD" }),
+          queued({ email_send_queue_id: "q2", status: "QUEUED" }),
+          queued({ email_send_queue_id: "q3", status: "SENDING" }),
+        ],
+      },
+    });
+    await screen.findByText("Going out");
+    expect(screen.queryByRole("button", { name: "Send again" })).toBeNull();
+  });
+
+  it("a 409 is the honest answer, not an apology", async () => {
+    // Another tab pressed it first, or the flusher already has the row. Both
+    // mean the message is moving, which is what the button asked for. The
+    // fixture is keyed on the retry path, so this also proves the click reaches
+    // POST /mail/send/:id/retry rather than some other endpoint.
+    renderScreen(<OutboxList />, {
+      routes: {
+        "/mail/outbox": [queued({ status: "FAILED", last_error: "550 nope" })],
+        "/mail/send/q1/retry": apiError(409, "That message is already on its way.", "BAD_STATE"),
+      },
+    });
+    await screen.findByText("Did not send");
+    await userEvent.click(screen.getByRole("button", { name: "Send again" }));
+    expect(await screen.findByText("That message is already on its way.")).toBeInTheDocument();
   });
 
   it("the empty state says what would collect here", async () => {

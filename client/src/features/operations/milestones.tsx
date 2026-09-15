@@ -246,7 +246,7 @@ function NewTemplatePicker({
       open
       onClose={onClose}
       title="New milestone template"
-      description="A template is the chain every new dossier of a service type opens with. Pick the service type to write one for."
+      description="A template is the chain every new file of a service type opens with. Pick the service type to write one for."
     >
       {types.loading ? (
         <p className="py-6 text-center micro">Loading service types…</p>
@@ -345,7 +345,7 @@ function TemplatesPanel() {
       label: "Status",
       render: (r) => (
         <Pill tone={(r.is_active ? "ok" : "mute") as Tone}>
-          {r.is_active ? "Active — seeds new dossiers" : "Superseded"}
+          {r.is_active ? "Active — seeds new files" : "Superseded"}
         </Pill>
       ),
     },
@@ -463,7 +463,7 @@ function TemplatesPanel() {
             {num(openTpl.version)}
           </h2>
           <p className="micro text-muted-foreground">
-            The stages a dossier of this service type opens with, in chain order.
+            The stages a file of this service type opens with, in chain order.
           </p>
         </div>
         {error && <ErrorState message={error} />}
@@ -487,11 +487,11 @@ function TemplatesPanel() {
           template does, which made the register unreadable — and unworkable. */}
       <Callout tone="info" title="What a template is">
         A template is what a service type promises about how a shipment runs.
-        When a dossier is opened with that service type, the ACTIVE template is
+        When a file is opened with that service type, the ACTIVE template is
         stamped onto it as its milestone chain — every stage, its owner, its
         weight and its due offset — and the engine forecasts each stage&rsquo;s
         due date from those offsets. Edit a chain and publish it to supersede
-        the current version (existing dossiers keep the chain they were
+        the current version (existing files keep the chain they were
         stamped with); Activate a superseded version to roll back without
         minting a fake new one.
       </Callout>
@@ -519,7 +519,7 @@ function TemplatesPanel() {
         rowKey={(r) => r.milestone_template_id}
         empty={{
           title: "No templates",
-          hint: "Publish one — it is the chain every new dossier of that service type opens with.",
+          hint: "Publish one — it is the chain every new file of that service type opens with.",
           action: <Button onClick={() => setPicking(true)}>New template</Button>,
         }}
       />
@@ -535,7 +535,7 @@ function TemplatesPanel() {
           size="wide"
           onClose={() => setOpenId(null)}
           title={`${openTpl.service_type_name || openTpl.service_type_code || "Template"} · v${num(openTpl.version)}`}
-          description="The stages a dossier of this service type opens with, in chain order."
+          description="The stages a file of this service type opens with, in chain order."
           headerRight={
             openTpl.is_active ? (
               <Pill tone="ok">Active</Pill>
@@ -587,9 +587,9 @@ export function MilestonesPage() {
    *
    * The register used to sit under the chain, the client queries and the delay
    * attribution — so reading a template meant scrolling past three unrelated
-   * surfaces, and the dossier picker at the top scrolled away with them even
+   * surfaces, and the file picker at the top scrolled away with them even
    * though it governs none of it. The two things are a genuine tab pair: the
-   * chain is ABOUT the selected dossier, the register is about every dossier
+   * chain is ABOUT the selected file, the register is about every file
    * that has not been opened yet. Neither is a sub-view of the other.
    *
    * Sibling views of one screen, one URL — `<Tabs>`, not routes, exactly as
@@ -601,10 +601,10 @@ export function MilestonesPage() {
     <Select
       value={dossierId}
       onChange={(e) => setDossierId(e.target.value)}
-      aria-label={tr("Dossier")}
+      aria-label={tr("Operations file")}
       className="w-full sm:w-72"
     >
-      <option value="">Select a dossier…</option>
+      <option value="">Select an operations file…</option>
       {(dossiers || []).map((d) => (
         <option key={d.dossier_id} value={d.dossier_id}>
           {d.ref}
@@ -618,7 +618,7 @@ export function MilestonesPage() {
       <PageHeader
         eyebrow={<HubCrumb area="Operations" to="/operations" />}
         title={tr("Milestones")}
-        description="Track a dossier's milestone chain; read the templates that seed them."
+        description="Track a file's milestone chain; read the templates that seed them."
       />
       <HubTabs />
 
@@ -677,8 +677,8 @@ export function MilestonesPage() {
                 <MilestoneChain dossierId={dossierId} />
               ) : (
                 <EmptyState
-                  title="No dossier selected"
-                  hint="Pick a dossier above to see its milestone chain — every stage, its owner and its three dates."
+                  title="No operations file selected"
+                  hint="Pick a file above to see its milestone chain — every stage, its owner and its three dates."
                 />
               )}
             </div>

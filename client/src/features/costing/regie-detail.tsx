@@ -26,6 +26,7 @@
  */
 import * as React from "react";
 import { Button } from "@/components/ui/button";
+import { DateField } from "@/components/ui/date-field";
 import { FormButtons } from "@/components/ui/form-buttons";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -252,7 +253,7 @@ function RetireForm({
       open
       onClose={onClose}
       title={tr("Retire advance")}
-      description={`Open balance ${money(open, advance.currency)}. A receipt posts Dr 4731 per dossier; returned cash posts Dr 571. Both credit 581.`}
+      description={`Open balance ${money(open, advance.currency)}. A receipt posts Dr 4731 per operations file; returned cash posts Dr 571. Both credit 581.`}
     >
       <form className="space-y-4" onSubmit={submit}>
         <div className="grid gap-4 lg:grid-cols-2">
@@ -285,9 +286,9 @@ function RetireForm({
           </Field>
           {f.kind === "RECEIPT" && (
             <Field
-              label={tr("Dossier")}
+              label={tr("Operations file")}
               required
-              hint="4731 is analytical — a receipt must say which dossier it belongs to."
+              hint="4731 is analytical — a receipt must say which operations file it belongs to."
             >
               <Select
                 value={f.dossier_id}
@@ -303,10 +304,9 @@ function RetireForm({
             </Field>
           )}
           <Field label={tr("Date")} required>
-            <Input
-              type="date"
+            <DateField
               value={f.entry_date}
-              onChange={(e) => set("entry_date", e.target.value)}
+              onChange={(iso) => set("entry_date", iso)}
             />
           </Field>
           {f.kind === "RECEIPT" && (
@@ -473,10 +473,9 @@ function WriteOffForm({
             />
           </Field>
           <Field label={tr("Date")} required>
-            <Input
-              type="date"
+            <DateField
               value={f.entry_date}
-              onChange={(e) => set("entry_date", e.target.value)}
+              onChange={(iso) => set("entry_date", iso)}
             />
           </Field>
         </div>
@@ -549,10 +548,9 @@ function UnageForm({
       <form className="space-y-4" onSubmit={submit}>
         <div className="grid gap-4 lg:grid-cols-2">
           <Field label={tr("Date")} required>
-            <Input
-              type="date"
+            <DateField
               value={f.entry_date}
-              onChange={(e) => set("entry_date", e.target.value)}
+              onChange={(iso) => set("entry_date", iso)}
             />
           </Field>
         </div>
@@ -700,7 +698,7 @@ export function RegieDetail({
                 <tr className="border-b border-border text-left text-micro uppercase text-muted-foreground">
                   <th className="py-2 pr-3 font-medium">{tr("Date")}</th>
                   <th className="py-2 pr-3 font-medium">{tr("Kind")}</th>
-                  <th className="py-2 pr-3 font-medium">{tr("Dossier")}</th>
+                  <th className="py-2 pr-3 font-medium">{tr("File")}</th>
                   <th className="py-2 pr-3 text-right font-medium">
                     {tr("Amount")}
                   </th>

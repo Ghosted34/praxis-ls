@@ -4,6 +4,8 @@
  * review its maintenance, dispatch, compliance, fuel and incident history.
  */
 import { pageShell } from "@/lib/layout";
+import { SplitPane } from "@/components/ui/split-pane";
+import { IndexRow } from "@/components/ui/index-row";
 import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
@@ -457,7 +459,15 @@ export function VehiclesPage() {
       {vehicles.error ? (
         <ErrorState message={vehicles.error} />
       ) : (
-        <div className="grid gap-5 lg:grid-cols-[280px_1fr]">
+        <SplitPane
+          storageKey="fleet.vehicles"
+          label="Vehicle list width"
+          defaultSize={280}
+          min={220}
+          max={480}
+          activeKind={tr("Vehicle")}
+          active={!!selected}
+        >
           <div className="space-y-2">
             <Input
               placeholder="Search registration…"
@@ -471,10 +481,11 @@ export function VehiclesPage() {
                 <div className="px-3 py-4 micro">No vehicles.</div>
               ) : (
                 filtered.map((v) => (
-                  <button
+                  <IndexRow
                     key={v.vehicle_id}
+                    selected={v.vehicle_id === selId}
                     onClick={() => setSelId(v.vehicle_id)}
-                    className={`flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm transition-colors ${v.vehicle_id === selId ? "bg-primary/10 text-foreground" : "hover:bg-muted"}`}
+                    className="items-center justify-between"
                   >
                     <span className="num font-medium">
                       {v.registration || v.vehicle_id.slice(0, 8)}
@@ -482,7 +493,7 @@ export function VehiclesPage() {
                     <Pill tone={VSTATUS_TONE[v.status || ""] || "mute"}>
                       {enumLabel(v.status)}
                     </Pill>
-                  </button>
+                  </IndexRow>
                 ))
               )}
             </div>
@@ -495,7 +506,7 @@ export function VehiclesPage() {
               hint="Choose a vehicle from the list."
             />
           )}
-        </div>
+        </SplitPane>
       )}
       <ScreenAi path="fleet/vehicles" />
     </section>

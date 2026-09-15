@@ -121,4 +121,44 @@ async function checkAll(client) {
 const dashboard = (client) => repo.latestByDomain(client);
 const history = (client, domain, q) => repo.history(client, domain, q);
 
-module.exports = { checkOne, checkAll, checkDmarc, dashboard, history };
+/**
+ * "Will mail we send actually REACH this domain?" — the outbound route check,
+ * on demand, for one recipient domain.
+ *
+ * Deliberately not part of `checkAll`. Every other check in this module is about
+ * a domain WE send AS: its SPF, its DKIM, its DMARC, our IP's PTR and blocklist
+ * standing. Those are properties of our own sending identity, and sweeping them
+ * on a schedule makes sense. This asks the opposite question — about a domain we
+ * send TO — and the set of those is every address the tenant has ever mailed, so
+ * there is nothing coherent to sweep. It is a lookup, and it belongs on demand.
+ *
+ * It exists as a panel because the send-path guard, which is where this really
+ * bites, only speaks when someone tries to send. An administrator who has just
+ * been told "mail to this client vanishes" needs to be able to ask the question
+ * directly, and see the three facts the verdict rests on rather than be asked to
+ * take the verdict on trust.
+ *
+ * The relay is resolved exactly as a real send would resolve it — same purpose,
+ * same tier logic — because a check against a different transport than the one
+ * that will carry the message is worse than no check at all.
+ */
+async function checkDeliveryRoute(client, domain, { purpose = "NOTIFICATIONS" } = {}) {
+  // Required lazily: email.service already depends on route-check, and a static
+  // require here would put this module into that graph for no benefit.
+  const email = require("../../../services/email.service");
+  const routeCheck = require("./route-check");
+  const cfg = await email.resolveMail(client, { purpose });
+  if (!cfg.smtp_host) {
+    return {
+      state: routeCheck.STATES.UNKNOWN,
+      ok: null,
+      reason: "No sending host is configured yet, so there is no route to check.",
+      domain: String(domain || "").trim().toLowerCase(),
+      smtp_host: null,
+    };
+  }
+  const verdict = await routeCheck.checkRoute({ smtpHost: cfg.smtp_host, recipientDomain: domain });
+  return { ...verdict, sender_source: cfg.sender_source };
+}
+
+module.exports = { checkOne, checkAll, checkDmarc, dashboard, history, checkDeliveryRoute };

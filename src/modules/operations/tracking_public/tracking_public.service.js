@@ -1,45 +1,21 @@
 "use strict";
 
 const { AppError } = require("../../../utils/errors");
+/**
+ * The transport mode a service type moves cargo by.
+ *
+ * The rules moved to `operations/_shared/service-mode.js` when the public
+ * services read needed the same answer — see that file for why it is derived
+ * from `service_type.key` rather than stored. Re-exported here because this
+ * module's payload contract (and `tests/unit/tracking-public-payload.test.js`)
+ * names it, and because `routeLabels` below switches on it rather than
+ * re-testing the key: the ship icon and the port-of-loading label can then never
+ * disagree about what kind of shipment this is.
+ */
+const { serviceMode } = require("../_shared/service-mode");
 
 const missing = () => new AppError("NOT_FOUND", "Shipment not found", 404);
 const internalStatus = (row) => row.internal_status || row.status;
-
-/**
- * The transport mode a service type moves cargo by, derived from its key.
- *
- * `service_type` has no mode column and should not grow one for this: services
- * are DATA (0310_operations.sql — "user-creatable"), so a tenant can add
- * SEA_FREIGHT_TRANSSHIPMENT tomorrow and would have to come back to engineering
- * to make it show a ship. Reading the key they already chose costs nothing and
- * covers every key they will choose next, and an unrecognised one answers OTHER
- * rather than nothing — a neutral icon, never a wrong one.
- *
- * The order is the whole content of the function, and it is the precedence
- * `routeLabels` has always applied. AIR before SEA, because that function tests
- * the air fields first and a combined key — a sea-air service — must land the
- * same way in both. RAIL before ROAD, because RAIL_HINTERLAND_TRANSIT is a rail
- * movement that also runs on a truck at one end, and the leg that names the
- * service is the rail one.
- *
- * Two callers, one table: `routeLabels` switches on the mode rather than
- * re-testing the key, so the ship icon and the port-of-loading label can never
- * disagree about what kind of shipment this is.
- *
- * @param {string|null} key  service_type.key
- * @returns {"SEA"|"AIR"|"RAIL"|"ROAD"|"WAREHOUSE"|"CUSTOMS"|"OTHER"}
- */
-function serviceMode(key) {
-  const k = String(key || "").toUpperCase();
-  if (k.includes("AIR") || k.includes("FLIGHT")) return "AIR";
-  if (k.includes("SEA") || k.includes("OCEAN") || k.includes("SHIPPING")) return "SEA";
-  if (k.includes("RAIL")) return "RAIL";
-  if (k.includes("ROAD") || k.includes("TRUCK") || k.includes("HAULAGE")
-      || k.includes("HINTERLAND")) return "ROAD";
-  if (k.includes("WAREHOUS") || k.includes("STORAGE")) return "WAREHOUSE";
-  if (k.includes("CUSTOMS") || k.includes("CLEARANCE") || k.includes("DECLARATION")) return "CUSTOMS";
-  return "OTHER";
-}
 
 function routeLabels(dossier) {
   const mode = serviceMode(dossier.service_key);

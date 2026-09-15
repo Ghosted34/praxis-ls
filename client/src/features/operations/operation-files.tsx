@@ -1,17 +1,17 @@
 /**
- * Operation files — the dossier list.
+ * Operations files — the list.
  *
  * PHASE 3, and this one is a CORRECTNESS fix, not a refactor (Addendum 3).
  *
  * The screen used to call `useList("/operations")` and filter the result in the
  * browser. The API's shared pagination helper clamps every list to 50 rows, so
- * on any tenant past its fiftieth dossier the search box was searching the fifty
- * most recent files and reporting "No operation files yet" for a dossier that
+ * on any tenant past its fiftieth file the search box was searching the fifty
+ * most recent files and reporting "No operations files yet" for a file that
  * existed. Same shape as the Finance hub's defect, same fix: the search, the
  * status filter, the service-type filter and the paging all happen in SQL, and
  * the counts on the chips come from `X-Total-Count` rather than `rows.length`.
  *
- * The service-FAMILY chips are gone, and deliberately. They bucketed dossiers by
+ * The service-FAMILY chips are gone, and deliberately. They bucketed files by
  * substring-matching `service_key` against four hardcoded families ("SEA",
  * "AIR", "HINTERLAND", "WAREHOUSING") — a guess that could only ever be made
  * over the rows already loaded, and that silently filed anything else under
@@ -32,7 +32,8 @@ import { AiActions } from "@/components/ai-actions";
 import { HubTabs, HubCrumb } from "@/components/tabbed-hub";
 import { useList, useListPaged } from "@/lib/use-resource";
 import { useFocusRow } from "@/lib/use-focus-row";
-import { useRecordParam, useTrailTitle } from "@/app/layout/nav-trail-context";
+import { useTrailTitle } from "@/app/layout/nav-trail-context";
+import { useRecordOpener } from "@/lib/record-360";
 import { useDebounced } from "@/lib/use-debounced";
 import { money0 } from "@/lib/format";
 import { errMsg } from "@/lib/use-resource";
@@ -40,20 +41,20 @@ import * as api from "@/lib/operations-api";
 import type { AiAction } from "@/features/scaffold/screen-specs";
 import { DossierForm } from "./dossier-form";
 import { DossierWizard } from "./dossier-wizard";
-import { Dossier360Modal } from "./dossier-360";
+import { OperationFile360Modal } from "./file-360";
 import { routeLabel, serviceLabel, tone } from "./shared";
 import { MilestoneCell } from "./components";
 
 const OPS_FILES_AI: AiAction[] = [
   {
-    label: "List / get dossiers",
+    label: "List / get operations files",
     kind: "read",
-    describe: "List operation files (dossiers) or fetch one.",
+    describe: "List operations files or fetch one.",
   },
   {
-    label: "Open / advance dossier",
+    label: "Open / advance a file",
     kind: "write",
-    describe: "Open a dossier, update it, or advance its status.",
+    describe: "Open an operations file, update it, or advance its status.",
   },
 ];
 
@@ -67,9 +68,10 @@ const STATUS_CHIPS: { key: string; label: string; status?: string }[] = [
 ];
 
 export function OperationsFilesPage() {
-  // `?ref=` deep-links a single dossier — the Control Tower's live-shipment rows
-  // use it, since there's no dossier-detail route to send them to. It only seeds
-  // the initial search; the user can clear or change it like any other query.
+  // `?ref=` seeds the search box with a file reference — the Control Tower's
+  // live-shipment rows use it, and it stays the friendlier half of the pair now
+  // that `?focus=<id>` opens the 360 outright. The user can clear or change it
+  // like any other query.
   const [searchParams] = useSearchParams();
   const [q, setQ] = React.useState(() => searchParams.get("ref") || "");
   const [status, setStatus] = React.useState("ALL");
@@ -99,37 +101,33 @@ export function OperationsFilesPage() {
     pageSize: PAGE_SIZE,
   });
   // `?focus=<dossier_id>` scrolls the row into view and highlights it — from
-  // the client 360's dossiers drill-in, and now from the back arrow too.
+  // the client 360's files drill-in, and now from the back arrow too.
   // Operations also honours the friendlier `?ref=<ref>` (seeded into the search
   // box above); this is the path for links that only had the uuid at hand.
   const { focusId } = useFocusRow(list.rows);
 
   /*
-   * THE OPEN DOSSIER LIVES IN THE URL, which is what makes it a place the back
-   * and forward arrows can reach (app/layout/nav-trail-context.tsx).
-   *
-   * It used to be `useState`, so opening a file changed nothing the browser
-   * could see: back from an open dossier left Operations entirely, and forward
-   * could never bring it back. Writing the id the app ALREADY deep-links by
-   * turns "I opened SLS-2481" into a real step — and collapses the separate
-   * auto-open effect that used to mirror `?focus=` into local state, since the
-   * param is now the only thing that decides whether the 360 is showing.
+   * OPENING A FILE IS TWO DIFFERENT GESTURES — desktop navigates to the file's
+   * own page, a phone opens the sheet over this list — and the branch, the
+   * `?focus=` exchange and the redirects are the same on all three operations
+   * 360s. They live in components/record-360.tsx so there is one copy.
    */
   const {
-    record: view,
-    open: openDossier,
-    close: closeDossier,
-  } = useRecordParam(list.rows, (d) => d.dossier_id);
+    openRecord: openFile,
+    sheetRecord: view,
+    closeSheet: closeFile,
+    isDesktop,
+  } = useRecordOpener("/operations/files", list.rows, (d) => d.dossier_id);
 
   // What the back tooltip and the hold-menu call this step. The route can only
   // ever say "Files"; this screen is the one thing that knows the reference.
-  useTrailTitle(view ? `Dossier ${view.ref}` : null);
+  useTrailTitle(view ? `Operations file ${view.ref}` : null);
 
   /**
    * Chip counts, honestly.
    *
    * Each is a one-row request read purely for its `X-Total-Count`, so a chip
-   * says how many dossiers match ACROSS THE TENANT rather than how many happen
+   * says how many files match ACROSS THE TENANT rather than how many happen
    * to be on the loaded page. They share the search and service filters, so the
    * counts track what the user has narrowed to. Four ~200-byte responses,
    * deduplicated and cached by Query for 30s.
@@ -266,8 +264,8 @@ export function OperationsFilesPage() {
   return (
     <ListPage<api.Dossier>
       eyebrow={<HubCrumb area="Operations" to="/operations" />}
-      title="Operation files"
-      description="The dossier is the centre of gravity — route, milestones, costing, money and documents in one 360° view."
+      title="Operations files"
+      description="The operations file is the centre of gravity — route, milestones, costing, money and documents in one 360° view."
       action={<Button onClick={() => setEditing("new")}>New file</Button>}
       tabs={<HubTabs />}
       toolbar={
@@ -302,8 +300,8 @@ export function OperationsFilesPage() {
             <Input
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              aria-label="Search operation files"
-              placeholder="Search by ref, client, BL/MAWB, vessel…"
+              aria-label="Search operations files"
+              placeholder="Search by ref, client, transport doc, vessel…"
               className="w-full max-w-xs"
             />
           </div>
@@ -314,17 +312,17 @@ export function OperationsFilesPage() {
       error={list.error}
       loading={list.loading}
       rowKey={(r) => r.dossier_id}
-      onRowClick={openDossier}
+      onRowClick={openFile}
       highlightRowKey={focusId}
       empty={{
-        title: "No operation files yet",
-        hint: "Open a dossier to start moving a shipment — route, milestones, costing and invoicing all hang off it.",
+        title: "No operations files yet",
+        hint: "Open a file to start moving a shipment — route, milestones, costing and invoicing all hang off it.",
         action: <Button onClick={() => setEditing("new")}>New file</Button>,
       }}
       filtered={filtered}
       emptyFiltered={{
-        title: "No operation files match",
-        hint: "The search covers reference, client, BL/MAWB and vessel across every file, not just this page.",
+        title: "No operations files match",
+        hint: "The search covers reference, client, transport document (BL, MAWB, waybill or CIM) and vessel across every file, not just this page.",
         action: (
           <Button
             variant="outline"
@@ -363,11 +361,14 @@ export function OperationsFilesPage() {
           onSaved={list.reload}
         />
       )}
-      {view && (
-        <Dossier360Modal
-          dossier={view}
+      {/* Phone only — a desktop `?focus=` was exchanged for the route above. */}
+      {view && !isDesktop && (
+        <OperationFile360Modal
+          file={view}
           clientLabel={clientOf(view)}
-          onClose={closeDossier}
+          onClose={closeFile}
+          onEdit={() => setEditing(view)}
+          onChanged={list.reload}
         />
       )}
       <AiActions actions={OPS_FILES_AI} />

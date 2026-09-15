@@ -8,6 +8,7 @@ import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
+import { DateField } from "@/components/ui/date-field";
 import { Panel } from "@/components/ui/panel";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import { SkeletonTable } from "@/components/ui/skeleton";
@@ -230,23 +231,19 @@ export function SelfServicePage() {
         <Panel title={t("hr.requestLeave")}>
           <form onSubmit={(e) => void requestLeave(e)} className="space-y-2">
             <div className="grid gap-2 sm:grid-cols-2">
-              <input
-                type="date"
+              <DateField
                 required
                 value={leaveForm.starts_on}
-                onChange={(e) =>
-                  setLeaveForm((f) => ({ ...f, starts_on: e.target.value }))
+                onChange={(iso) =>
+                  setLeaveForm((f) => ({ ...f, starts_on: iso }))
                 }
-                className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
               />
-              <input
-                type="date"
+              <DateField
                 required
                 value={leaveForm.ends_on}
-                onChange={(e) =>
-                  setLeaveForm((f) => ({ ...f, ends_on: e.target.value }))
+                onChange={(iso) =>
+                  setLeaveForm((f) => ({ ...f, ends_on: iso }))
                 }
-                className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
               />
             </div>
             <textarea

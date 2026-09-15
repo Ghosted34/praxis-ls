@@ -26,6 +26,7 @@ import {
 import { FontPicker } from "@/components/settings/font-picker";
 import { fontByValue } from "@/lib/fonts";
 import { cn } from "@/lib/cn";
+import { useFieldHighlight } from "@/lib/use-url-tab";
 
 /**
  * `fallback` is what the app ACTUALLY renders when a token is unset — the values
@@ -63,6 +64,7 @@ export function AppearancePage() {
   });
   const [logoUrl, setLogoUrl] = React.useState(branding.logoUrl || "");
   const [logoAltUrl, setLogoAltUrl] = React.useState(branding.logoAltUrl || "");
+  useFieldHighlight();
   const [faviconUrl, setFaviconUrl] = React.useState(branding.faviconUrl || "");
   const [fontDisplay, setFontDisplay] = React.useState(
     branding.fontDisplay || "",
@@ -195,7 +197,11 @@ export function AppearancePage() {
           desc="Transparent PNG/WEBP recommended, ≤512 KB."
         >
           <div className="grid gap-4 sm:grid-cols-3">
-            <ImageField label="Logo" value={logoUrl} onChange={setLogoUrl} />
+            {/* `data-field="logo"`: a signature reporting "no logo" links
+                straight here rather than to the top of Appearance. */}
+            <div data-field="logo">
+              <ImageField label="Logo" value={logoUrl} onChange={setLogoUrl} />
+            </div>
             <ImageField
               label="Alt logo (for light/dark)"
               value={logoAltUrl}

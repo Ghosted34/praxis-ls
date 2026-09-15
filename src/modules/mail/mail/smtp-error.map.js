@@ -60,7 +60,30 @@ function isTransient(code, raw) {
   return TRANSIENT_SNIFF.test(String(raw || ""));
 }
 
-function mapSmtpError(err) {
+/**
+ * Which sign-in was refused, said out loud.
+ *
+ * A mailbox can receive on one server and send through another with a DIFFERENT
+ * credential, and when the relay refuses the sending one the old sentence — "The
+ * mail server rejected the SMTP credentials for this mailbox" — named neither
+ * the leg nor the credential. Both readings are available to the operator and
+ * only one is true, so the message says which password was offered and which
+ * screen holds it. Splitting on the mode rather than adding a hedge to one
+ * sentence keeps each version short enough to read.
+ */
+const AUTH_MESSAGE = {
+  shared:
+    "Sending (SMTP) was refused: the mail server rejected this mailbox's sign-in. "
+    + "The same username and password are used for receiving and for sending — if your "
+    + "outgoing server needs its own sign-in (a relay such as SMTP2GO, SES or SendGrid does), "
+    + "edit the mailbox and choose \"Use different credentials\" for sending.",
+  separate:
+    "Sending (SMTP) was refused: the mail server rejected the SEPARATE sending credentials "
+    + "on this mailbox. The IMAP password was not offered here, so receiving is unaffected — "
+    + "check the SMTP username and password on the mailbox.",
+};
+
+function mapSmtpError(err, { separateSmtpCredentials = false } = {}) {
   if (err instanceof AppError) return err;
   const code = smtpReply(err);
   const raw = smtpText(err);
@@ -69,9 +92,9 @@ function mapSmtpError(err) {
   if (isAuthFailure(err, code, raw)) {
     return new AppError(
       "SMTP_AUTH_FAILED",
-      "The mail server rejected the SMTP credentials for this mailbox.",
+      separateSmtpCredentials ? AUTH_MESSAGE.separate : AUTH_MESSAGE.shared,
       502,
-      details,
+      { ...details, leg: "smtp", smtp_auth: separateSmtpCredentials ? "separate" : "same" },
     );
   }
   if (isSenderRejected(code, raw)) {
@@ -133,10 +156,40 @@ function isSmtpError(err) {
   return !!(err.responseCode || err.code === "EAUTH" || err.code === "EENVELOPE" || smtpCodeFromMessage(err.response || err.message));
 }
 
+/**
+ * The RECEIVING leg's counterpart to the block above.
+ *
+ * imapflow reports a refused login as a bare `AUTHENTICATIONFAILED`, which
+ * reads as "you typed your password wrong" and says nothing about which of a
+ * mailbox's two sign-ins is meant. Once a mailbox can hold two, that ambiguity
+ * costs the operator the same wrong hour the SMTP one did — so the receiving
+ * leg names itself too, and says that the sending credential is not what was
+ * refused.
+ *
+ * Only an AUTH failure is renamed. A DNS failure, a refused connection or a TLS
+ * error is a fact about the HOST, and dressing one up as a credential problem
+ * would send somebody to retype a password that is perfectly correct — so those
+ * keep imapflow's own text and carry no code.
+ */
+const IMAP_AUTH_SNIFF = /authenticationfailed|invalid credentials|login failed|\[auth\]|authentication failed/i;
+
+function describeImapFailure(err) {
+  const raw = String((err && err.message) || err || "");
+  if (!IMAP_AUTH_SNIFF.test(raw)) return { message: raw, code: null };
+  return {
+    message:
+      "Receiving (IMAP) was refused: the mail server rejected this mailbox's sign-in "
+      + `(${raw.slice(0, 120)}). This is the mailbox password, not any separate sending `
+      + "credential — check the username and password on the mailbox.",
+    code: "IMAP_AUTH_FAILED",
+  };
+}
+
 module.exports = {
   mapSmtpError,
   smtpCodeFromMessage,
   isSmtpError,
   isSenderRejected,
   isRecipientRejected,
+  describeImapFailure,
 };

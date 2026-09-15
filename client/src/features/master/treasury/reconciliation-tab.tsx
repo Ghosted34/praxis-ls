@@ -635,6 +635,11 @@ export function ReconciliationTab({
   const [selected, setSelected] = React.useState<recon.BankStatement | null>(null);
   const [file, setFile] = React.useState<File | null>(null);
   const [preview, setPreview] = React.useState<recon.PreviewResult | null>(null);
+  /** A bank export is routinely megabytes; without this the wait is a spinner. */
+  const [statementProgress, setStatementProgress] = React.useState<
+    number | null
+  >(null);
+  const [statementDone, setStatementDone] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [notice, setNotice] = React.useState<string | null>(null);
@@ -655,11 +660,20 @@ export function ReconciliationTab({
   const doPreview = async (picked: File) => {
     setBusy(true); setError(null); setNotice(null); setPreview(null);
     try {
-      setPreview(await recon.previewStatement({
-        treasury_account_id: accountId,
-        file: await recon.fileToDataUrl(picked),
-        filename: picked.name,
-      }));
+      setStatementProgress(0);
+      setStatementDone(false);
+      setPreview(
+        await recon.previewStatement(
+          {
+            treasury_account_id: accountId,
+            file: await recon.fileToDataUrl(picked),
+            filename: picked.name,
+          },
+          setStatementProgress,
+        ),
+      );
+      setStatementProgress(100);
+      setStatementDone(true);
     } catch (e) {
       setError(errMsg(e));
     } finally {
@@ -714,7 +728,15 @@ export function ReconciliationTab({
 
         <FileDrop
           file={file}
-          onPick={(f) => { setFile(f); setPreview(null); if (f) void doPreview(f); }}
+          uploadProgress={statementProgress}
+          uploadSuccess={statementDone}
+          onPick={(f) => {
+            setFile(f);
+            setPreview(null);
+            setStatementProgress(null);
+            setStatementDone(false);
+            if (f) void doPreview(f);
+          }}
           accept={ACCEPT}
           hint={tr("Drop the export from your bank or mobile-money portal")}
           disabled={busy}

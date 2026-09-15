@@ -131,6 +131,55 @@ const draftAddressList = (max = 100) => z.preprocess(
   z.array(z.string().trim().max(320)).max(max),
 );
 
+/* ── The sending leg's own sign-in ──────────────────────────────────────────
+ *
+ * Three mailbox payloads carry transport credentials — `connect`, `connectPatch`
+ * and `sharedMailbox` — and all three now have to carry the same choice, so the
+ * fields are declared once and spread into each. Three hand-copied blocks are
+ * three places for the max length to drift.
+ *
+ * `smtp_auth` is the MODE and is what makes the choice explicit on the wire.
+ * Deriving it from "did they send a password" would be ambiguous in the one case
+ * that matters: on an edit, a blank SMTP password means "keep the stored one",
+ * which is indistinguishable from "there is no separate sign-in" unless the
+ * caller says which it meant. Absent = leave the mailbox's current mode alone,
+ * so every client written before this field keeps working unchanged.
+ *
+ * `smtp_user` is nullable so clearing it is expressible; the empty string is
+ * accepted for the same reason a form sends one, and the service normalises it.
+ */
+const SMTP_SIGN_IN = {
+  smtp_auth: z.enum(["same", "separate"]).optional(),
+  smtp_user: z.string().trim().max(320).nullable().optional(),
+  smtp_password: z.string().min(1).max(4000).optional(),
+};
+
+/**
+ * On CREATE, "different credentials" means both halves or neither.
+ *
+ * A create has no stored secret to fall back on, so this is decidable from the
+ * body alone and belongs here — the 422 names the field and arrives before the
+ * connection row exists. The edit path cannot be checked here at all (see
+ * `connectPatch`), so it is not.
+ */
+const requireSmtpSignIn = (val, ctx) => {
+  if (val.smtp_auth !== "separate") return;
+  if (!val.smtp_user) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["smtp_user"],
+      message: "required when sending uses different credentials",
+    });
+  }
+  if (!val.smtp_password) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["smtp_password"],
+      message: "required when sending uses different credentials",
+    });
+  }
+};
+
 const schemas = {
   // SEC H3 guard. The two provider webhooks passed req.body straight into the
   // notification handlers with nothing checking it.
@@ -196,7 +245,8 @@ const schemas = {
     smtp_secure: z.boolean().optional(),
     auth_user: z.string().optional(),
     password: z.string().min(1).max(4000).optional(),
-  }),
+    ...SMTP_SIGN_IN,
+  }).superRefine(requireSmtpSignIn),
   // Edit an existing IMAP/SMTP connection — everything optional (blank password
   // keeps the current one). email_address stays optional so a rename is allowed.
   connectPatch: z.object({
@@ -210,6 +260,12 @@ const schemas = {
     smtp_secure: z.boolean().optional(),
     auth_user: z.string().optional(),
     password: z.string().min(1).max(4000).optional(),
+    ...SMTP_SIGN_IN,
+    // NOT superRefined. On an edit a blank SMTP password is legitimate — it
+    // keeps the stored one, the same convention `password` above already has —
+    // and only the server can tell "keeping a stored secret" from "storing
+    // nothing at all". mail.service.assertSmtpCredentialsComplete makes that
+    // call, because it is the only layer that can see the vault.
   }),
   // The old inline `send` schema is gone: POST /mail/send now queues rather than
   // talking to SMTP, and its schema lives with the other PR-1B ones below. Two
@@ -247,7 +303,8 @@ const schemas = {
     smtp_secure: z.coerce.boolean().optional(),
     auth_user: z.string().trim().max(320).optional(),
     password: z.string().max(1024).optional(),
-  }),
+    ...SMTP_SIGN_IN,
+  }).superRefine(requireSmtpSignIn),
 
   catalogueEntry: z.object({
     catalogue_key: z.string().trim().min(1).max(64),
@@ -482,7 +539,13 @@ const schemas = {
  * about the field the operator is looking at. Anything not listed keeps its
  * own key, which is the honest thing to show for a body no human typed.
  */
-const LABELS = { to: "To", cc: "Cc", bcc: "Bcc", subject: "Subject", body_json: "Message" };
+const LABELS = {
+  to: "To", cc: "Cc", bcc: "Bcc", subject: "Subject", body_json: "Message",
+  // The two fields the mailbox form only shows in "different credentials" mode.
+  // Without a label the message reads "smtp_user: required when…", which names a
+  // column rather than the control the operator is looking at.
+  smtp_user: "SMTP username", smtp_password: "SMTP password",
+};
 
 /**
  * "Invalid body" is true of every one of these and useful about none of them.

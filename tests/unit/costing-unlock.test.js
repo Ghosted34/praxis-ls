@@ -14,14 +14,23 @@
  * REQUEST_UNLOCK / UNLOCK / DENY_UNLOCK), and régie's rules module explicitly
  * named it as the thing not to repeat. These tests pin the fix.
  *
- * THE PART THAT IS NOT IN THE LEGACY, AND MATTERS MOST: approving a costing
- * opens a FINAL invoice for its dossier (`ensureDraftForCosting`), and that
- * invoice can reach POSTED_LOCKED with a real `entry_id`. Reopening the costing
- * underneath a posted receivable would let the priced basis move while the
- * booked revenue stayed put. The guard against that is the bulk of this file.
+ * THE GUARD THAT USED TO BE HERE, AND WHY IT IS GONE (12766). An earlier
+ * version refused the unlock once the dossier's final invoice had left DRAFT,
+ * on the reasoning that approving a costing PRICED that invoice. Neither half
+ * of that is true any more: the invoice prices from the accepted quotation
+ * (`final_invoice.assertPricedSource`), and a costing no longer opens an
+ * invoice at all.
  *
- * DB-free: the service runs against a stub client that answers the two queries
- * it makes (the costing row, the invoice probe), so the SQL and the branching
+ * It also blocked a real case. A file is billed; a week later the carrier sends
+ * a detention charge because the box sat past its free time. The only correct
+ * response is to reopen the costing, add the line, raise the cash and amend the
+ * invoice — and the guard made that impossible, leaving the spend with nowhere
+ * to be budgeted and therefore outside the file's margin. So the tests below
+ * pin the ABSENCE of that guard, which is a behaviour worth protecting: it
+ * would be easy to reintroduce as a well-meaning safety check.
+ *
+ * DB-free: the service runs against a stub client that answers the query it
+ * makes (the costing row) and records the UPDATE, so the SQL and the branching
  * asserted here are the ones that run in production.
  */
 
@@ -236,83 +245,70 @@ describe("the unlock state machine", () => {
   });
 });
 
-describe("a posted final invoice blocks the unlock", () => {
-  // Approving a costing opens a FINAL invoice for its dossier. Once that
-  // invoice leaves DRAFT the costing is settled history.
+describe("an issued invoice does not block the unlock (12766)", () => {
+  // The costing is a BUDGET. What the client was billed says nothing about
+  // whether what the file COST us is still correctly stated, so no invoice
+  // status is a reason to refuse a correction.
   test.each([
     "ISSUED_LOCKED",
     "APPROVED_LOCKED",
     "POSTED_LOCKED",
     "REVERSED",
     "CANCELLED",
-  ])(
-    "UNLOCK is refused while the final invoice is %s",
-    async (invoiceStatus) => {
-      const c = stubClient({ status: "UNLOCK_REQUESTED", invoiceStatus });
-      const err = await expectCode(
-        service.unlockTransition(c, { id: ID, action: "UNLOCK", actor: ACTOR }),
-        "INVOICE_ISSUED",
-      );
-      expect(err.status).toBe(422);
-      // The message names the offending document, so the user knows what to
-      // reverse rather than being told "no".
-      expect(err.message).toContain("FIN-2026-0007");
-      expect(err.message).toContain(invoiceStatus);
-      expect(c.updates).toHaveLength(0);
-    },
-  );
-
-  test("a DRAFT final invoice does not block it — nothing is posted yet", async () => {
-    // The probe filters `status <> 'DRAFT'` in SQL, so a draft returns no rows.
-    const c = stubClient({ status: "UNLOCK_REQUESTED", invoiceStatus: null });
-    await service.unlockTransition(c, {
-      id: ID,
-      action: "UNLOCK",
-      actor: ACTOR,
-    });
+  ])("UNLOCK is granted while the final invoice is %s", async (invoiceStatus) => {
+    const c = stubClient({ status: "UNLOCK_REQUESTED", invoiceStatus });
+    await service.unlockTransition(c, { id: ID, action: "UNLOCK", actor: ACTOR });
     expect(c.updates).toHaveLength(1);
+    expect(c.updates[0].params).toContain("DRAFT");
   });
 
-  test("the probe looks only at FINAL invoices for THIS dossier", async () => {
-    const c = stubClient({ status: "UNLOCK_REQUESTED" });
-    await service.unlockTransition(c, {
-      id: ID,
-      action: "UNLOCK",
-      actor: ACTOR,
-    });
-    const probe = c.queries.find((q) => /FROM invoice/i.test(q.text));
-    expect(probe).toBeDefined();
-    expect(probe.text).toMatch(/type = 'FINAL'/);
-    expect(probe.text).toMatch(/status <> 'DRAFT'/);
-    expect(probe.params).toEqual([DOSSIER]);
-  });
-
-  test("a costing with no dossier skips the probe rather than failing", async () => {
-    const c = stubClient({ status: "UNLOCK_REQUESTED", dossierId: null });
-    await service.unlockTransition(c, {
-      id: ID,
-      action: "UNLOCK",
-      actor: ACTOR,
-    });
+  test("the invoice is not consulted at all — no probe is issued", async () => {
+    // Not merely "the probe returns nothing": the query is gone. A probe whose
+    // result is ignored is a round trip per unlock and an invitation for
+    // somebody to start branching on it again.
+    const c = stubClient({ status: "UNLOCK_REQUESTED", invoiceStatus: "POSTED_LOCKED" });
+    await service.unlockTransition(c, { id: ID, action: "UNLOCK", actor: ACTOR });
     expect(c.queries.find((q) => /FROM invoice/i.test(q.text))).toBeUndefined();
-    expect(c.updates).toHaveLength(1);
   });
 
-  test("REQUEST_UNLOCK is NOT blocked by a posted invoice — asking is harmless", async () => {
-    // The invoice may well be reversed between the request and the decision;
-    // refusing the request too would make that ordering impossible.
-    const c = stubClient({
-      status: "APPROVED_LOCKED",
-      invoiceStatus: "POSTED_LOCKED",
-    });
-    await service.unlockTransition(c, {
+  test("the carrier-detention case: bill, then reopen to budget the late charge", async () => {
+    // The scenario the guard used to prevent, end to end. The box sat past its
+    // free time, the carrier invoiced us after we had already billed the
+    // client, and the charge has to land on the file's budget before it can be
+    // paid and re-billed.
+    const requested = stubClient({ status: "APPROVED_LOCKED", invoiceStatus: "POSTED_LOCKED" });
+    await service.unlockTransition(requested, {
       id: ID,
       action: "REQUEST_UNLOCK",
-      reason: "wrong container type",
+      reason: "Maersk detention — container held 3 days past free time",
       actor: ACTOR,
     });
-    expect(c.updates).toHaveLength(1);
-    expect(c.queries.find((q) => /FROM invoice/i.test(q.text))).toBeUndefined();
+    expect(requested.updates).toHaveLength(1);
+
+    const granted = stubClient({ status: "UNLOCK_REQUESTED", invoiceStatus: "POSTED_LOCKED" });
+    const row = await service.unlockTransition(granted, { id: ID, action: "UNLOCK", actor: ACTOR });
+    expect(row).toBeDefined();
+    // Back to DRAFT, which is the only status updateDraft will edit — so the
+    // detention line can actually be added.
+    expect(granted.updates[0].params).toContain("DRAFT");
+  });
+
+  test("granting an unlock clears locked_at, so the sheet stops claiming a lock", async () => {
+    const c = stubClient({ status: "UNLOCK_REQUESTED" });
+    await service.unlockTransition(c, { id: ID, action: "UNLOCK", actor: ACTOR });
+    expect(c.updates[0].text).toMatch(/locked_at/);
+    expect(c.updates[0].params).toContain(null);
+  });
+
+  test("REQUEST_UNLOCK still needs a written reason", async () => {
+    // The one thing that DOES gate a reopening, and the reason the audit trail
+    // can answer "why is this approved costing open again".
+    const c = stubClient({ status: "APPROVED_LOCKED" });
+    await expectCode(
+      service.unlockTransition(c, { id: ID, action: "REQUEST_UNLOCK", actor: ACTOR }),
+      "REASON_REQUIRED",
+    );
+    expect(c.updates).toHaveLength(0);
   });
 });
 

@@ -5,7 +5,11 @@ const { AppError } = require("../../../utils/errors");
 
 const schemas = {
   create: z.object({
-    data_url: z.string().min(1),
+    // Optional because this route now takes multipart too, where the bytes
+    // arrive as a file part rather than as a body field. Exactly one of the two
+    // must be present, and the service is what enforces that (it is the only
+    // layer that can see both req.file and req.body).
+    data_url: z.string().min(1).optional().nullable(),
     doc_type: z.string().max(64).optional().nullable(),
     entity_ref: z.string().max(200).optional().nullable(),
     file_context: z.enum(["OPS", "OVH"]).optional().nullable(),

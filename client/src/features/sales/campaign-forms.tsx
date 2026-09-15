@@ -11,6 +11,7 @@
 import * as React from "react";
 import { tr } from "@/lib/i18n";
 import { Textarea } from "@/components/ui/textarea";
+import { DateField } from "@/components/ui/date-field";
 import { tenant } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -178,10 +179,10 @@ export function CampaignForm({
             </Select>
           </Field>
           <Field label="Starts on">
-            <Input type="date" value={startsOn} onChange={(e) => setStartsOn(e.target.value)} />
+            <DateField value={startsOn} onChange={setStartsOn} />
           </Field>
           <Field label="Ends on" hint="Blank means ongoing">
-            <Input type="date" value={endsOn} onChange={(e) => setEndsOn(e.target.value)} />
+            <DateField value={endsOn} onChange={setEndsOn} />
           </Field>
           <Field label="Send channel" hint="Used by the newsletter send">
             <Select value={channel} onChange={(e) => setChannel(e.target.value)}>

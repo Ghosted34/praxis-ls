@@ -20,7 +20,7 @@ import {
 import { can, platform } from "@/lib/api";
 import type { TenantListRow } from "@/lib/types";
 import { fmtDateTime } from "@/lib/format";
-import { Button, Card, Empty, Field, Loading, PageHeader } from "@/components/ui";
+import { Button, Card, ConfirmModal, Empty, Field, Loading, PageHeader } from "@/components/ui";
 import { useToast } from "@/components/Toast";
 
 type Tenant = Pick<TenantListRow, "slug" | "display_name">;
@@ -119,6 +119,13 @@ function RuleEditor({ rule, editable, onChanged }: { rule: EscalationRule; edita
   const [saving, setSaving] = useState(false);
   const [preview, setPreview] = useState<RuleMatch[] | null>(null);
   const [previewing, setPreviewing] = useState(false);
+  /**
+   * Was a `window.confirm`. This console has had its own <ConfirmModal> — with
+   * a `danger` variant — since Plans and OpsBackups were written; this one call
+   * site simply never used it, so deleting an escalation rule was the only
+   * destructive action here that asked in the browser's chrome instead of ours.
+   */
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const dirty = JSON.stringify(draft) !== JSON.stringify(rule);
 
   useEffect(() => setDraft(rule), [rule]);
@@ -183,7 +190,6 @@ function RuleEditor({ rule, editable, onChanged }: { rule: EscalationRule; edita
   };
 
   const remove = async () => {
-    if (!window.confirm(`Delete “${rule.name}”? Notifications from this rule stop immediately.`)) return;
     try {
       await errorsApi.deleteRule(rule.id);
       toast("Rule deleted");
@@ -194,6 +200,17 @@ function RuleEditor({ rule, editable, onChanged }: { rule: EscalationRule; edita
   };
 
   return (
+    <>
+      {confirmOpen && (
+        <ConfirmModal
+          title={`Delete “${rule.name}”?`}
+          danger
+          confirmLabel="Delete rule"
+          body="Notifications from this rule stop immediately. Errors already recorded are unaffected, and you can create the rule again later."
+          onClose={() => setConfirmOpen(false)}
+          onConfirm={remove}
+        />
+      )}
     <Card
       title={
         <input
@@ -216,7 +233,7 @@ function RuleEditor({ rule, editable, onChanged }: { rule: EscalationRule; edita
           </label>
           <Button size="sm" variant="ghost" loading={previewing} onClick={() => void runPreview()}>Test rule</Button>
           {editable && dirty && <Button size="sm" variant="primary" loading={saving} onClick={() => void save()}>Save</Button>}
-          {editable && <Button size="sm" variant="danger" onClick={() => void remove()}>Delete</Button>}
+          {editable && <Button size="sm" variant="danger" onClick={() => setConfirmOpen(true)}>Delete</Button>}
         </div>
       }
     >
@@ -370,5 +387,6 @@ function RuleEditor({ rule, editable, onChanged }: { rule: EscalationRule; edita
         </div>
       </div>
     </Card>
+    </>
   );
 }

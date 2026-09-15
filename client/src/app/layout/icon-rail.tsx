@@ -56,12 +56,20 @@ function PlusIcon(p: IP) {
   );
 }
 
-/** One rail cell. A link when it navigates, a button when it acts. */
+/**
+ * One rail cell. A link when it navigates, a button when it acts.
+ *
+ * `badge` is a COUNT, not a dot, and it is spoken as well as drawn: the
+ * accessible name becomes "Messages, 5 unread", because a badge is a picture
+ * and a rail of icons with tooltips is already the surface where a screen
+ * reader user has the least to go on.
+ */
 function RailButton({
   label,
   active,
   to,
   onSelect,
+  badge = 0,
   className,
   children,
 }: {
@@ -69,31 +77,43 @@ function RailButton({
   active?: boolean;
   to?: string;
   onSelect?: () => void;
+  badge?: number;
   className?: string;
   children: React.ReactNode;
 }) {
   const cls = cn("rail-btn", active && "active", className);
+  const name = badge > 0 ? `${label}, ${badge} unread` : label;
+  const content = (
+    <>
+      {children}
+      {badge > 0 && (
+        <span aria-hidden className="rail-badge">
+          {badge > 99 ? "99+" : badge}
+        </span>
+      )}
+    </>
+  );
   return (
     <Tooltip content={label} side="right">
       {to ? (
-        <Link to={to} className={cls} aria-label={label}>
-          {children}
+        <Link to={to} className={cls} aria-label={name}>
+          {content}
         </Link>
       ) : (
         <button
           type="button"
           className={cls}
           onClick={onSelect}
-          aria-label={label}
+          aria-label={name}
         >
-          {children}
+          {content}
         </button>
       )}
     </Tooltip>
   );
 }
 
-export function IconRail() {
+export function IconRail({ messageBadge = 0 }: { messageBadge?: number }) {
   const { t } = useTranslation();
   const { access, ready, resolved, prefs, setPrefs } = useShell();
   const { pathname } = useLocation();
@@ -186,8 +206,25 @@ export function IconRail() {
           middle can grow without the two ends moving. */}
       <span className="flex-1" />
 
+      {/* THE MESSAGES CELL CARRIES THE UNREAD COUNT.
+
+          It did not, and that was the whole of the complaint: Smart Comms held
+          unread chats and unread mail, and the one Messages affordance on a
+          desktop screen — this one — drew a bare speech bubble. The count did
+          exist; it was on a burst icon in the title bar that gave no hint it
+          was about messages at all, and that trigger is now gone (app-shell).
+
+          The number comes from the shell's own poll and is passed in rather
+          than fetched here: the same `useUnreadCounts` query feeds the bell,
+          so the rail costs no extra request and cannot show a different total
+          from the rest of the chrome. */}
       {quickActions.map((a) => (
-        <RailButton key={a.key} label={a.label} onSelect={a.onSelect}>
+        <RailButton
+          key={a.key}
+          label={a.label}
+          onSelect={a.onSelect}
+          badge={a.key === "msg" ? messageBadge : 0}
+        >
           <a.Icon width={18} height={18} />
         </RailButton>
       ))}

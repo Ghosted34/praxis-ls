@@ -15,13 +15,35 @@ import { usePublishedServices } from "@/lib/use-services";
 import { PageContainer, PageShell } from "@/components/site/page-shell";
 import { MediaCard, MoreLink, Section } from "@/components/site/section";
 import { Card } from "@/components/ui/card";
+import { IconTile } from "@/components/ui/icon-tile";
 import { Panel } from "@/components/ui/panel";
 import { ButtonLink } from "@/components/ui/button";
 import { EmptyState, ErrorState } from "@/components/state";
 import { PageSkeleton } from "@/components/ui/skeleton";
-import { CheckIcon, ChevronDownIcon } from "@/components/ui/icons";
-import { Markdown } from "@/components/ui/markdown";
-import { QuoteWizard } from "@/components/site/quote-wizard";
+import {
+  BoltIcon,
+  ShieldIcon,
+  BoxIcon,
+  CheckIcon,
+  ChevronDownIcon,
+} from "@/components/ui/icons";
+import {
+  iconByName,
+  modeToken,
+  serviceColor,
+  serviceIdentity,
+} from "@/lib/service-identity";
+import { SectionHead } from "@/components/site/section-head";
+import { BadgePill } from "@/components/ui/badge-pill";
+import { BgMap } from "@/components/ui/bg-map";
+import { StagedLines } from "@/components/ui/type";
+import { usePointerLight, useProximity } from "@/lib/motion";
+import { EsgTriptych } from "@/components/site/esg-triptych";
+import { getPublicEsg, hasEsg, type EsgContent } from "@/lib/site-api";
+import { afterPaint } from "@/lib/after-paint";
+import { Reveal } from "@/components/ui/reveal";
+import { LongCopy } from "./long-copy";
+import { QuoteBand } from "@/components/site/quote-band";
 import { useDocumentMeta } from "@/lib/use-document-meta";
 import { p } from "@/lib/base-path";
 
@@ -47,10 +69,89 @@ import { p } from "@/lib/base-path";
  * fallback — send the unknown one to the homepage — strands a French reader on a
  * page they never asked for. No `alternates`, no switcher.
  */
+/**
+ * The tenant's ESG story, read AFTER paint.
+ *
+ * `lib/after-paint.ts` is the deferral primitive PR 3 left for exactly this: a
+ * read that nobody is waiting for does not belong on the critical path. The
+ * band it feeds is the last thing on the page and renders nothing until the
+ * answer arrives, so a visitor who came to choose a service never waits on a
+ * request about recycling policy.
+ *
+ * Aborted on unmount, and every failure is the empty answer — see
+ * `getPublicEsg`, which folds an unpublished story, a tenant without the
+ * `website` package and a network error into the one fact this component can
+ * act on: there is nothing to draw.
+ */
+function useEsg(): EsgContent | null {
+  const lang = getLang();
+  const [esg, setEsg] = React.useState<EsgContent | null>(null);
+  React.useEffect(() => {
+    const controller = new AbortController();
+    let alive = true;
+    const cancel = afterPaint(() => {
+      getPublicEsg({ lang, signal: controller.signal }).then((next) => {
+        if (alive) setEsg(next);
+      });
+    });
+    return () => {
+      alive = false;
+      cancel();
+      controller.abort();
+    };
+  }, [lang]);
+  return esg;
+}
+
+/**
+ * One pillar's grid, at depth rung 2 (§8.2).
+ *
+ * ── WHY THIS IS A COMPONENT AND NOT TWO HOOKS INLINE ──────────────────────
+ *
+ * The home page's services band drives its whole row from one pair of
+ * listeners on the `<ul>` — `usePointerLight` for where the pointer is across
+ * the grid, `useProximity` for whether it is near at all — and each card reads
+ * those plus its own `--cx`. This index renders one grid PER PILLAR, and hooks
+ * cannot be called inside the `.map()` that produces them. Lifting the pair
+ * into a component is what keeps the rule the home page states: one listener
+ * per grid, never one per card.
+ *
+ * `useProximity` rests at 0, so a pillar the pointer has never been near is
+ * flat — and under reduced motion neither hook writes anything, so every grid
+ * on the page is flat and settled with no rule needed.
+ */
+function ModeGrid({
+  count,
+  children,
+}: {
+  count: number;
+  children: React.ReactNode;
+}) {
+  const light = usePointerLight<HTMLUListElement>();
+  const near = useProximity<HTMLUListElement>({ radius: 420 });
+  const grid = React.useCallback(
+    (el: HTMLUListElement | null) => {
+      (light as React.MutableRefObject<HTMLUListElement | null>).current = el;
+      (near as React.MutableRefObject<HTMLUListElement | null>).current = el;
+    },
+    [light, near],
+  );
+  return (
+    <ul
+      ref={grid}
+      className="tilt-stage grid gap-x-8 gap-y-6 sm:grid-cols-2 lg:grid-cols-3"
+      data-count={count}
+    >
+      {children}
+    </ul>
+  );
+}
+
 export function ServicesIndexPage() {
   const { t } = useTranslation();
   const lang = getLang();
-  const { services, disabled, failed } = usePublishedServices();
+  const { groups, services, loading } = usePublishedServices();
+  const esg = useEsg();
 
   useDocumentMeta({
     title: `${t("site.servicesPage.title")} · ${t("site.hero.eyebrow")}`,
@@ -58,42 +159,224 @@ export function ServicesIndexPage() {
   });
 
   return (
-    <PageShell label={t("site.servicesPage.title")}>
-      <Section
-        eyebrow={t("site.services.eyebrow")}
-        title={t("site.servicesPage.title")}
-        lead={t("site.servicesPage.sub")}
-        // Index page with no hero band — this is the page h1.
-        titleAs="h1"
-      >
-        {services.length ? (
-          <div className="grid gap-x-8 gap-y-6 sm:grid-cols-2 lg:grid-cols-3">
-            {services.map((s) => (
-              <MediaCard
-                key={s.service_type_id}
-                image={s.cover_url}
-                imageAlt={pickText(s, "name", lang) || ""}
-                eyebrow={s.published_month || undefined}
-                title={pickText(s, "name", lang) || pickSlug(s, lang)}
-                to={p(`/services/${encodeURIComponent(pickSlug(s, lang))}`)}
-                linkLabel={t("site.services.more")}
-              >
-                {pickText(s, "short_description", lang)}
-              </MediaCard>
-            ))}
-          </div>
-        ) : failed || disabled ? (
-          <EmptyState
-            title={t("site.servicesPage.empty")}
-            action={
-              <ButtonLink to={p("#quote")} size="lg">
-                {t("site.quote.submit")}
-              </ButtonLink>
+    <PageShell label={t("site.servicesPage.title")} footer>
+      {/* §8.2's animated header. This page shipped as a bare `<h1>` on white,
+          which is exactly what §8 exists to remove — and it is the page a buyer
+          lands on from a search for the service they need, so it was the worst
+          remaining instance. Same plate and same lane field as the track and
+          quote heroes, so the site has one entrance vocabulary rather than a
+          different idea per route. */}
+      <section className="band-hero relative overflow-hidden">
+        <BgMap />
+        <PageContainer className="relative">
+          <BadgePill onDark>{t("site.services.eyebrow")}</BadgePill>
+          <SectionHead
+            className="mt-4"
+            as="h1"
+            titleClass="hero-title"
+            onDark
+            title={
+              /* F-17 again: this headline is the LCP element on this route. */
+              <StagedLines
+                paintImmediately
+                text={t("site.servicesPage.titleMain")}
+              />
             }
+            accent={t("site.servicesPage.titleAccent")}
+            lead={t("site.servicesPage.sub")}
           />
-        ) : (
+        </PageContainer>
+      </section>
+
+      <Section>
+        {services.length ? (
+          /* Pillars, not a list (migration 12755). A services page in this
+             industry is a small number of named sections — Freight / Logistics /
+             Value-Added — with the services underneath them and an anchor per
+             section, and the flat grid this used to render could not express
+             that however many cards it drew.
+
+             `key` is the anchor and it is null for the trailing bucket the
+             server collects unassigned services into. That bucket renders
+             without a heading rather than under an invented one: every tenant
+             starts there on the day the column ships, and a service returns
+             there when its pillar is retired. */
+          <div className="space-y-14">
+            {groups.map((group, gi) => {
+              const label =
+                lang === "en"
+                  ? group.name_en || group.name_fr
+                  : group.name_fr || group.name_en;
+              // Identity is indexed across the WHOLE page, not per pillar, so
+              // the first card of the second pillar does not repeat the colour,
+              // glyph and code of the first card of the first.
+              const offset = groups
+                .slice(0, gi)
+                .reduce((n, g) => n + (g.services?.length || 0), 0);
+              return (
+                <section
+                  key={group.key || `ungrouped-${gi}`}
+                  id={group.key || undefined}
+                  className="scroll-mt-[var(--sticky-top)]"
+                >
+                  {label ? (
+                    /* The pillar's own icon, by name (12755). Unrecognised
+                       names draw nothing rather than a fallback glyph: a
+                       heading with no icon is a smaller failure than a heading
+                       wearing the wrong one. */
+                    <div className="mb-6 flex items-center gap-3">
+                      {iconByName(group.icon) ? (
+                        <IconTile icon={iconByName(group.icon)!} size="md" />
+                      ) : null}
+                      <h2 className="section-title">{label}</h2>
+                    </div>
+                  ) : null}
+                  <ModeGrid count={group.services.length}>
+                    {group.services.map((s, i) => {
+                      // The same table the home page reads, indexed the same
+                      // way, so a line keeps its colour, glyph and code between
+                      // the two grids. `BoxIcon` on every card was the version
+                      // of this that made an eleven-service index look like one
+                      // card repeated eleven times.
+                      const identity = serviceIdentity(offset + i);
+                      return (
+                        <Reveal
+                          as="li"
+                          key={s.service_type_id}
+                          // Staggered by COLUMN, the way the insights grid is: a
+                          // card in the fourth row must not wait for the three
+                          // above it.
+                          delay={(i % 3) as 0 | 1 | 2}
+                          className="tilt-card"
+                          /* The card's own centre across its ROW, 0…1 — three
+                             columns here against the home page's four, so the
+                             divisor is the column count and not `IDENTITY_COUNT`.
+                             Getting that wrong is invisible (the cards still
+                             turn) and wrong (they turn toward the wrong place),
+                             which is why it is derived from the same constant
+                             the grid classes use. */
+                          style={
+                            {
+                              "--cx": String(((i % 3) + 0.5) / 3),
+                            } as React.CSSProperties
+                          }
+                        >
+                          <MediaCard
+                            className="h-full"
+                            image={s.cover_url}
+                            imageAlt={pickText(s, "name", lang) || ""}
+                            // A tenant with one photograph and four services
+                            // gets one illustrated card and three text boxes
+                            // without this.
+                            icon={identity.icon}
+                            mode={identity.mode}
+                            accent={s.accent}
+                            code={identity.code}
+                            /* The closing proof line (12755). It is deliberately
+                               NOT `highlights[0]` — the migration rejects that
+                               positional convention — so it renders as the
+                               card's footer, below the description and above
+                               the link, in the card's own colour. */
+                            footer={
+                              pickText(s, "claim", lang) ? (
+                                <p
+                                  className="mt-3 text-sm font-semibold"
+                                  style={{
+                                    color: serviceColor(
+                                      s.accent,
+                                      identity.mode,
+                                    ),
+                                  }}
+                                >
+                                  {pickText(s, "claim", lang)}
+                                </p>
+                              ) : undefined
+                            }
+                            eyebrow={s.published_month || undefined}
+                            title={
+                              pickText(s, "name", lang) || pickSlug(s, lang)
+                            }
+                            to={p(
+                              `/services/${encodeURIComponent(pickSlug(s, lang))}`,
+                            )}
+                            linkLabel={t("site.services.more")}
+                          >
+                            {pickText(s, "short_description", lang)}
+                          </MediaCard>
+                        </Reveal>
+                      );
+                    })}
+                  </ModeGrid>
+                </section>
+              );
+            })}
+          </div>
+        ) : loading ? (
           <PageSkeleton rows={3} cols={3} />
+        ) : (
+          // Every not-loading, no-rows case lands here — a tenant who has
+          // published nothing, a disabled `website` feature, a failed fetch.
+          // They are one screen on purpose: the visitor's next move is the same
+          // in all three, and a skeleton that never resolves (which is what the
+          // old ordering produced for the 200-empty case) is the one answer that
+          // helps nobody.
+          //
+          // No quote button here: the band below is the same offer, and two CTAs
+          // a screen apart read as a page unsure what it wants.
+          <EmptyState title={t("site.servicesPage.empty")} />
         )}
+      </Section>
+
+      {/* ── §8.4's ESG interactive, and WHY IT IS ON THIS PAGE ──────────────
+          ─────────────────────────────────────────────────────────────────────
+          A DELIBERATE DEVIATION, recorded in the progress log. §8.4 assigns the
+          ESG interactive to PR 4 and §9.1 assigns the About page — where ESG
+          belongs in the group story — to PR 5. So the guide gives PR 4 a piece
+          of About-page content and no About page to put it on.
+
+          Three ways out, and only one of them is honest. Building the component
+          and mounting it nowhere is dead code, and §2's own rule is that
+          partial work counts zero. Creating `/about` here takes PR 5's scope,
+          including the nav and footer entries §9.1 specifies. So it is mounted
+          where it does real work today.
+
+          The services index is that place. ESG on a freight forwarder's site is
+          procurement-facing — tenders in this market ask for it — and a buyer
+          comparing services is exactly who reads it. It sits BELOW the grid, so
+          it never delays the page's actual job, and above the quote band, so
+          the page still ends on the way out.
+
+          `EsgTriptych` takes its content as a prop and knows nothing about this
+          page, so §9.1 mounts the identical component on About with no change
+          to it. It renders nothing at all for a tenant who has written no ESG,
+          which is every tenant until somebody fills in Settings › Website ›
+          About. */}
+      {hasEsg(esg) ? (
+        <Section
+          variant="muted"
+          divided
+          eyebrow={t("site.esg.kicker")}
+          eyebrowIcon={ShieldIcon}
+          title={t("site.esg.title")}
+          accent={t("site.esg.titleAccent")}
+        >
+          <EsgTriptych esg={esg} />
+        </Section>
+      ) : null}
+
+      {/* The alternating surface §4 pattern 6 asks for — and the one band this
+          page was missing: an index that ends on its own grid ends with no way
+          out. The copy is the quote desk's own, not a second version of it. */}
+      <Section
+        divided
+        eyebrow={t("site.quote.kicker")}
+        eyebrowIcon={BoltIcon}
+        title={t("site.quote.title")}
+        lead={t("site.quote.sub")}
+      >
+        <ButtonLink to={p("/quote")} size="lg">
+          {t("site.quote.bandCta")}
+        </ButtonLink>
       </Section>
     </PageShell>
   );
@@ -113,6 +396,11 @@ export function ServiceDetailPage() {
   const { slug = "" } = useParams();
   const lang = getLang();
   const [state, setState] = React.useState<DetailState>({ kind: "loading" });
+  /* The published list, for identity only — it is the module-cached read the
+     index page and the footer already share, so this costs no request. A line's
+     colour has to be the SAME colour it had on the card the visitor clicked, and
+     the only stable key for that is its position in the published order. */
+  const { services } = usePublishedServices();
 
   React.useEffect(() => {
     let alive = true;
@@ -199,6 +487,15 @@ export function ServiceDetailPage() {
     );
   }
 
+  /* `-1` until the list arrives, or for a profile the list does not carry — a
+     slug reached directly while `GET /public/services` was refused, say. No
+     index, no colour: a bar in the wrong colour is worse than no bar, because
+     the whole claim of the palette is that the colour identifies the line. */
+  const identityIndex = services.findIndex(
+    (row) => row.service_type_id === profile.service_type_id,
+  );
+  const identity = identityIndex < 0 ? null : serviceIdentity(identityIndex);
+
   const name = pickText(profile, "name", lang) || "";
   const shortText = pickText(profile, "short_description", lang);
   const longText = pickText(profile, "long_description", lang);
@@ -218,30 +515,117 @@ export function ServiceDetailPage() {
       }).format(new Date(profile.published_month))
     : null;
 
+  /**
+   * The bands below the body alternate their surface (§4 pattern 6), and both
+   * the FAQ and the related list are optional — a profile with no FAQ would
+   * otherwise show two plain bands in a row, which is the flatness the pattern
+   * exists to break. So the surface is DERIVED from how many bands have
+   * actually been emitted, in render order, rather than typed onto each one.
+   */
+  const emitted: Array<"default" | "muted"> = [];
+  const nextSurface = (): "default" | "muted" => {
+    const v: "default" | "muted" =
+      emitted.length % 2 === 0 ? "muted" : "default";
+    emitted.push(v);
+    return v;
+  };
+
   return (
     <PageShell label={name}>
-      <section className="band">
-        <PageContainer size="reading">
+      {/* §8.2's per-service entrance.
+          ─────────────────────────────────────────────────────────────────────
+          This was a muted band with a 6px rule across the top, which reads as a
+          tab strip rather than as an arrival. It is a lit plate now, and the
+          light is THIS SERVICE'S OWN MODE — so a reader who clicked a green
+          card lands on a green page, which is what "recognisable by colour
+          before it is read" has to mean past the index.
+
+          THE COVER IS THE GROUND, UNDER THE HERO'S OWN MEASURED SCRIM. The
+          previous comment here argued a scrim could not be trusted over
+          tenant-uploaded artwork — "there is no floor that holds for every
+          image a stranger may upload". `hero.tsx` had already answered that by
+          deriving one against the worst case a tenant can upload (a blown-out,
+          near-white photograph) and pinning it in a test: α ≥ 0.87 wherever
+          copy sits, which is the eyebrow's requirement and binds the rest.
+          `.band-service-scrim` uses those numbers, so the image can be the
+          ground here without a per-photograph judgement.
+
+          AND IT IS DESIGNED FOR NO IMAGE, because that is today's normal case:
+          §6.3's upload control is still unbuilt, so `cover_url` is null for
+          every tenant. The mode's light is the composition; a cover improves
+          it. */}
+      <section
+        className="band-service"
+        style={
+          identity
+            ? ({ "--mode": modeToken(identity.mode.toUpperCase()) || undefined } as React.CSSProperties)
+            : undefined
+        }
+      >
+        {profile.cover_url ? (
+          <>
+            <img
+              src={profile.cover_url}
+              alt=""
+              aria-hidden
+              className="absolute inset-0 h-full w-full object-cover"
+            />
+            <span aria-hidden className="band-service-scrim" />
+          </>
+        ) : null}
+        <PageContainer size="reading" className="relative">
           <nav aria-label={t("site.services.eyebrow")} className="mb-6">
             <Link
               to={p("/services")}
-              className="text-sm text-muted-foreground underline-offset-4 hover:underline"
+              className="text-sm text-[var(--hero-muted)] underline-offset-4 hover:underline"
             >
               {t("site.servicesPage.back")}
             </Link>
           </nav>
-          <p className="eyebrow">{t("site.services.eyebrow")}</p>
-          <h1 className="mt-3 text-h1 font-semibold leading-[1.08] tracking-tight">
-            {name}
-          </h1>
-          {shortText ? (
-            <p className="mt-4 text-lg text-muted-foreground">{shortText}</p>
-          ) : null}
+          {/* The shared heading block, not a hand-rolled eyebrow and h1 — the
+              regression §9 tells a reviewer to catch. The name is the tenant's
+              own row, so it carries no accent word: splitting somebody else's
+              service name across two colours is a decision we do not get to
+              make for them. */}
+          <div className="flex flex-wrap items-center gap-3">
+            <BadgePill onDark>{t("site.services.eyebrow")}</BadgePill>
+            {identity ? (
+              /*
+               * THE CODE IS NOT PAINTED IN THE MODE COLOUR HERE, AND THAT IS A
+               * MEASUREMENT RATHER THAN A PREFERENCE.
+               *
+               * On a light card the mode colour is the identity and it reads
+               * fine. On this plate it is 11px type on carbon, held to 4.5:1,
+               * and the four modes measure 5.17 / 6.33 / 6.57 / **3.68** —
+               * `--mode-rail` fails in the light theme. Painting the code by
+               * mode would therefore ship an AA failure on exactly one of the
+               * four service kinds, which is the sort of defect that survives
+               * review because three of the four screenshots look right.
+               *
+               * The mode still carries the band: it is the light in
+               * `.band-service`'s gradient, where it is a wash and not type.
+               * The four mode-on-hero pairs are pinned in `check:contrast` at
+               * the 3:1 non-text floor so that stays true.
+               */
+              <span className="font-mono text-[11px] font-semibold tracking-tight text-[var(--hero-foreground)]">
+                {identity.code}
+              </span>
+            ) : null}
+          </div>
+          <SectionHead
+            className="mt-4"
+            as="h1"
+            titleClass="hero-title"
+            onDark
+            /* F-17: the LCP element on this route. */
+            title={<StagedLines paintImmediately text={name} />}
+            lead={shortText || undefined}
+          />
           <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
             {month ? (
-              <span className="text-muted-foreground">
+              <span className="text-[var(--hero-muted)]">
                 {t("site.servicesPage.updated")}{" "}
-                <span className="num">{month}</span>
+                <span className="num font-mono">{month}</span>
               </span>
             ) : null}
             {altSlug ? (
@@ -256,7 +640,14 @@ export function ServiceDetailPage() {
                     p(`/services/${encodeURIComponent(altSlug)}`),
                   );
                 }}
-                className="text-primary-ink underline underline-offset-4"
+                /* `--hero-foreground`, NOT `--primary-ink`. The ink token is
+                   the accent stepped down for type on WHITE; on this plate it
+                   measures about 3.4:1 and fails, which is the inversion
+                   `hero.tsx` documents. `check:contrast` would not have caught
+                   this one — it hunts for a FILL token in a text position, and
+                   `--primary-ink` is an ink token being used on the wrong
+                   ground. Worth remembering when a band changes colour. */
+                className="text-[var(--hero-foreground)] underline underline-offset-4"
               >
                 {altLang === "fr"
                   ? t("site.chrome.toFrench")
@@ -264,6 +655,10 @@ export function ServiceDetailPage() {
               </button>
             ) : null}
           </div>
+          {/* The cover is the band's GROUND now (see the section comment), so
+              it is no longer repeated here. It was rendered as a bordered
+              rectangle under the type, which is the treatment a page gives an
+              illustration rather than an entrance. */}
         </PageContainer>
       </section>
 
@@ -271,9 +666,7 @@ export function ServiceDetailPage() {
         <div className="grid gap-10 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
           <div className="min-w-0 max-w-prose">
             {longText ? (
-              <div className="prose-site">
-                <Markdown text={longText} />
-              </div>
+              <LongCopy text={longText} />
             ) : (
               <p className="text-sm text-muted-foreground">
                 {t("site.servicesPage.noLong")}
@@ -281,7 +674,8 @@ export function ServiceDetailPage() {
             )}
 
             {gallery.length > 0 && (
-              <figure className="mt-8">
+              <Reveal className="mt-8">
+                <figure>
                 <div className="grid grid-cols-2 gap-3">
                   {gallery.slice(0, 4).map((u) => (
                     <img
@@ -298,10 +692,11 @@ export function ServiceDetailPage() {
                     />
                   ))}
                 </div>
-                <figcaption className="mt-2 text-xs text-muted-foreground">
-                  {t("site.servicesPage.gallery")}
-                </figcaption>
-              </figure>
+                  <figcaption className="mt-2 text-xs text-muted-foreground">
+                    {t("site.servicesPage.gallery")}
+                  </figcaption>
+                </figure>
+              </Reveal>
             )}
           </div>
 
@@ -311,7 +706,7 @@ export function ServiceDetailPage() {
                 <ul className="space-y-2.5">
                   {highlights.map((h) => (
                     <li key={h} className="flex items-start gap-2.5 text-sm">
-                      <CheckIcon size={15} className="mt-1 text-[var(--ok)]" />
+                      <CheckIcon size={15} className="mt-1 text-[rgb(var(--ok))]" />
                       <span>{h}</span>
                     </li>
                   ))}
@@ -339,7 +734,7 @@ export function ServiceDetailPage() {
               </Card>
             ) : null}
             <ButtonLink
-              to={p("#quote")}
+              to={p("/quote")}
               size="lg"
               className="w-full justify-center"
             >
@@ -350,8 +745,8 @@ export function ServiceDetailPage() {
       </Section>
 
       {faq.length > 0 && (
-        <Section variant="muted" title={t("site.servicesPage.faq")} divided>
-          <div className="max-w-prose divide-y divide-[var(--border)]">
+        <Section variant={nextSurface()} title={t("site.servicesPage.faq")} divided>
+          <Reveal className="max-w-prose divide-y divide-[var(--border)]">
             {faq.map((f) => (
               <details key={f.faq_id} className="group py-4">
                 <summary className="flex cursor-pointer list-none items-start justify-between gap-4 font-medium">
@@ -363,34 +758,68 @@ export function ServiceDetailPage() {
                 </p>
               </details>
             ))}
-          </div>
+          </Reveal>
         </Section>
       )}
 
       {related.length > 0 && (
-        <Section title={t("site.servicesPage.related")} divided>
-          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {related.map((r) => (
-              <MediaCard
-                key={r.slug_en}
-                title={pickText(r, "name", lang) || ""}
-                to={p(`/services/${encodeURIComponent(pickSlug(r, lang))}`)}
-                linkLabel={t("site.services.more")}
-              />
-            ))}
-          </div>
+        <Section
+          variant={nextSurface()}
+          title={t("site.servicesPage.related")}
+          divided
+        >
+          <ul className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {related.map((r, i) => {
+              // `related` carries a name and two slugs and nothing else, so
+              // every one of these cards is coverless by construction — and its
+              // identity has to be looked up rather than derived from `i`, or a
+              // service would wear one colour in the grid and another in the
+              // "related" row of the page beside it.
+              const at = services.findIndex(
+                (row) => row.slug_en === r.slug_en,
+              );
+              const relId = at < 0 ? null : serviceIdentity(at);
+              return (
+                <Reveal as="li" key={r.slug_en} delay={(i % 3) as 0 | 1 | 2}>
+                  <MediaCard
+                    className="h-full"
+                    icon={relId ? relId.icon : BoxIcon}
+                    mode={relId ? relId.mode : undefined}
+                    code={relId ? relId.code : undefined}
+                    title={pickText(r, "name", lang) || ""}
+                    to={p(`/services/${encodeURIComponent(pickSlug(r, lang))}`)}
+                    linkLabel={t("site.services.more")}
+                  />
+                </Reveal>
+              );
+            })}
+          </ul>
         </Section>
       )}
 
+      {/* Never two plain bands next to each other — which is most of why a long
+          page reads as one flat column (§6.4). */}
       <Section
         id="quote"
+        variant={nextSurface()}
         title={t("site.quote.title")}
         lead={t("site.quote.sub")}
         divided
       >
-        <Card padded className="max-w-reading">
-          <QuoteWizard />
-        </Card>
+        {/* Deferred, not removed — F-18. The wizard is the largest thing on
+            this route and it sits below two screens of prose; `QuoteBand`
+            fetches it a screen early so it is in place before it is read and
+            off the critical path for the visitor who never scrolls this far.
+            The props are unchanged: `services` is the module-cached read this
+            page already holds, so neither costs a request. */}
+        <QuoteBand
+          services={services}
+          preselect={
+            services.find(
+              (row) => row.service_type_id === profile.service_type_id,
+            ) || null
+          }
+        />
       </Section>
     </PageShell>
   );

@@ -74,15 +74,31 @@ const PERM_COLOR: Record<PermKey, string> = {
   can_update: "rgb(var(--warn))",
   can_delete: "rgb(var(--bad))",
   can_approve: "rgb(var(--ok))",
+  // 12771. Export is a data right, so it wears the neutral ink rather than a
+  // decision colour; validate and disburse sit beside approve because that is
+  // the family they belong to.
+  can_export: "rgb(var(--ink-3))",
+  can_validate: "rgb(var(--warn))",
+  can_disburse: "rgb(var(--ok))",
 };
 
-/** Weakest → strongest. The cell dot shows the strongest granted permission. */
+/**
+ * Weakest → strongest. The cell dot shows the strongest granted permission.
+ *
+ * 12771 puts `can_disburse` at the top: releasing cash is the strongest thing
+ * any grant in this product authorises, and a role that holds it should read as
+ * the strongest at a glance. `can_export` sits low — it is a right over data,
+ * not a decision, and a role with only export is not a powerful role.
+ */
 const STRENGTH: PermKey[] = [
   "can_read",
+  "can_export",
   "can_create",
   "can_update",
   "can_delete",
+  "can_validate",
   "can_approve",
+  "can_disburse",
 ];
 
 function strongest(g: Grant | undefined): PermKey | null {

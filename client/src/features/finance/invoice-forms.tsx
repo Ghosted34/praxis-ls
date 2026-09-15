@@ -8,6 +8,7 @@ import { tr } from "@/lib/i18n";
 import { amount } from "@/lib/format";
 import { errMsg } from "@/lib/use-resource";
 import { LoadingRow, ErrorState } from "@/components/ui/states";
+import { DateField } from "@/components/ui/date-field";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
@@ -120,14 +121,14 @@ export function InvoiceDraftForm({
             </Select>
           </Field>
           <Field
-            label={tr("Dossier")}
-            hint="Links this to an operation file — sets service type and matches advances."
+            label={tr("Operations file")}
+            hint="Links this to an operations file — sets service type and matches advances."
           >
             <Select
               value={dossierId}
               onChange={(e) => setDossierId(e.target.value)}
             >
-              <option value="">No dossier</option>
+              <option value="">No operations file</option>
               {dossiers.map((o) => (
                 <option key={o.id} value={o.id}>
                   {optionLabel(o)}
@@ -295,10 +296,9 @@ export function InvoiceSubmitForm({
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Posting date" required>
-            <Input
-              type="date"
+            <DateField
               value={entryDate}
-              onChange={(e) => setEntryDate(e.target.value)}
+              onChange={setEntryDate}
             />
           </Field>
           <Field label={tr("Source document ref")} required>

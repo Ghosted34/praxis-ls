@@ -123,7 +123,7 @@ function CustomFieldForm({
       open={open}
       onClose={onClose}
       title={editing ? `Fields — ${editing.key}` : "New custom fields"}
-      description="Extra field definitions for an entity type (client, supplier, dossier…)."
+      description="Extra field definitions for an entity type (client, supplier, operations file…)."
       size="xl"
     >
       <div className="space-y-4">

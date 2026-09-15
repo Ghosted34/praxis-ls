@@ -6,6 +6,41 @@
  */
 "use strict";
 
+/**
+ * A date as this product writes them: dd/mm/yyyy.
+ *
+ * `dmy(v)` with no locale — which is what every card
+ * below used to call — renders in the SERVER's locale. A container with no LANG
+ * set resolves that to en-US, so every date the assistant ever quoted back was
+ * month-first: "ETA 09/11/2026" for a file arriving on the 9th of November, and
+ * an operator who reads day-first has no way to tell that from the 11th of
+ * September. These strings are retrieval text an AI answers from, so a wrong
+ * reading does not merely look wrong — it gets asserted.
+ *
+ * Built from the parts rather than by locale, so there is nothing to configure
+ * and nothing to drift. `scripts/check-date-format.js` fails the build on a
+ * locale-less date format anywhere in the tree.
+ */
+const CALENDAR_DATE = /^(\d{4})-(\d{2})-(\d{2})/;
+function dmy(v) {
+  if (!v) return "";
+  // A bare calendar date is reordered as TEXT, never through a Date. `date`
+  // columns (incorporation_date, expires_on, start_date…) carry no time and no
+  // zone, and `new Date("2026-07-27")` is midnight UTC — read back with local
+  // getters on a server behind UTC that is the 26th. These strings are what an
+  // assistant quotes back as fact, so a day lost to a timezone is a wrong
+  // answer stated confidently.
+  if (typeof v === "string") {
+    const m = CALENDAR_DATE.exec(v);
+    if (m) return `${m[3]}/${m[2]}/${m[1]}`;
+  }
+  const d = v instanceof Date ? v : new Date(v);
+  if (Number.isNaN(d.getTime())) return String(v);
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${pad(d.getUTCDate())}/${pad(d.getUTCMonth() + 1)}/${d.getUTCFullYear()}`;
+}
+
+
 // [sql, mapRow→card] per entity. Defensive: LIMIT and only-if-table-exists.
 const BUILDERS = [
   {
@@ -15,9 +50,9 @@ const BUILDERS = [
            ORDER BY d.created_at DESC LIMIT $1`,
     card: (r) => ({
       ref: `dossier:${r.ref}`,
-      title: `Operation file ${r.ref}`,
+      title: `Operations file ${r.ref}`,
       confidentiality: "normal",
-      text: `Operation file ${r.ref} for client ${r.client || "?"} — status ${r.status}, incoterm ${r.incoterm || "?"}, route ${r.pol || "?"}→${r.pod || "?"}.`,
+      text: `Operations file ${r.ref} for client ${r.client || "?"} — status ${r.status}, incoterm ${r.incoterm || "?"}, route ${r.pol || "?"}→${r.pod || "?"}.`,
     }),
   },
   {
@@ -54,7 +89,7 @@ const BUILDERS = [
       ref: `invoice:${r.doc_number || r.invoice_id}`,
       title: `Invoice ${r.doc_number || "draft"}`,
       confidentiality: "normal",
-      text: `Invoice ${r.doc_number || "draft"} for ${r.client || "?"} — status ${r.status}, total ${r.total_ttc || 0} XAF${r.issued_at ? `, issued ${new Date(r.issued_at).toLocaleDateString()}` : ""}.`,
+      text: `Invoice ${r.doc_number || "draft"} for ${r.client || "?"} — status ${r.status}, total ${r.total_ttc || 0} XAF${r.issued_at ? `, issued ${dmy(r.issued_at)}` : ""}.`,
     }),
   },
   {
@@ -178,7 +213,7 @@ const BUILDERS = [
       ref: `transit:${r.ref}`,
       title: `Transit Order ${r.ref}`,
       confidentiality: "normal",
-      text: `Transit order ${r.ref} — ${r.transport_mode || "?"}, ${r.pol || "?"}→${r.pod || "?"}, status ${r.status}${r.etd ? `, ETD ${new Date(r.etd).toLocaleDateString()}` : ""}${r.eta ? `, ETA ${new Date(r.eta).toLocaleDateString()}` : ""}.`,
+      text: `Transit order ${r.ref} — ${r.transport_mode || "?"}, ${r.pol || "?"}→${r.pod || "?"}, status ${r.status}${r.etd ? `, ETD ${dmy(r.etd)}` : ""}${r.eta ? `, ETA ${dmy(r.eta)}` : ""}.`,
     }),
   },
   {
@@ -190,7 +225,7 @@ const BUILDERS = [
       ref: `delivery_note:${r.doc_number || r.delivery_note_id}`,
       title: `Delivery Note ${r.doc_number || "draft"}`,
       confidentiality: "normal",
-      text: `Delivery note ${r.doc_number || "draft"} for ${r.client || "?"} — status ${r.status}${r.delivery_date ? `, delivered ${new Date(r.delivery_date).toLocaleDateString()}` : ""}.`,
+      text: `Delivery note ${r.doc_number || "draft"} for ${r.client || "?"} — status ${r.status}${r.delivery_date ? `, delivered ${dmy(r.delivery_date)}` : ""}.`,
     }),
   },
   {
@@ -202,7 +237,7 @@ const BUILDERS = [
       ref: `milestone:${r.title}`,
       title: `Milestone: ${r.title}`,
       confidentiality: "normal",
-      text: `Milestone "${r.title}" on dossier ${r.dossier_ref || "?"} — status ${r.status}${r.due_date ? `, due ${new Date(r.due_date).toLocaleDateString()}` : ""}.`,
+      text: `Milestone "${r.title}" on dossier ${r.dossier_ref || "?"} — status ${r.status}${r.due_date ? `, due ${dmy(r.due_date)}` : ""}.`,
     }),
   },
   // ── Procurement ──
@@ -226,7 +261,7 @@ const BUILDERS = [
       ref: `grn:${r.doc_number || r.goods_received_note_id}`,
       title: `GRN ${r.doc_number || "draft"}`,
       confidentiality: "normal",
-      text: `Goods received note ${r.doc_number || "draft"} from ${r.supplier || "?"} — status ${r.status}${r.received_date ? `, received ${new Date(r.received_date).toLocaleDateString()}` : ""}.`,
+      text: `Goods received note ${r.doc_number || "draft"} from ${r.supplier || "?"} — status ${r.status}${r.received_date ? `, received ${dmy(r.received_date)}` : ""}.`,
     }),
   },
   // ── Finance ──
@@ -250,7 +285,7 @@ const BUILDERS = [
       ref: `journal_entry:${r.entry_ref || r.journal_entry_id}`,
       title: `Journal Entry ${r.entry_ref || "draft"}`,
       confidentiality: "confidential",
-      text: `Journal entry ${r.entry_ref || "draft"} — ${r.description || "no description"}, status ${r.status}, total debit ${r.total_debit || 0} XAF${r.entry_date ? `, dated ${new Date(r.entry_date).toLocaleDateString()}` : ""}.`,
+      text: `Journal entry ${r.entry_ref || "draft"} — ${r.description || "no description"}, status ${r.status}, total debit ${r.total_debit || 0} XAF${r.entry_date ? `, dated ${dmy(r.entry_date)}` : ""}.`,
     }),
   },
   {
@@ -296,7 +331,7 @@ const BUILDERS = [
       ref: `contract:${r.employee_name}`,
       title: `Contract: ${r.employee_name}`,
       confidentiality: "confidential",
-      text: `Employment contract for ${r.employee_name || "?"} — ${r.contract_type || "?"} contract, status ${r.status}${r.start_date ? `, from ${new Date(r.start_date).toLocaleDateString()}` : ""}${r.end_date ? ` to ${new Date(r.end_date).toLocaleDateString()}` : ""}.`,
+      text: `Employment contract for ${r.employee_name || "?"} — ${r.contract_type || "?"} contract, status ${r.status}${r.start_date ? `, from ${dmy(r.start_date)}` : ""}${r.end_date ? ` to ${dmy(r.end_date)}` : ""}.`,
     }),
   },
   {
@@ -307,7 +342,7 @@ const BUILDERS = [
       ref: `training:${r.title}`,
       title: `Training: ${r.title}`,
       confidentiality: "normal",
-      text: `Training "${r.title}" — status ${r.status}${r.start_date ? `, ${new Date(r.start_date).toLocaleDateString()}` : ""}${r.end_date ? ` to ${new Date(r.end_date).toLocaleDateString()}` : ""}${r.budget ? `, budget ${r.budget} XAF` : ""}.`,
+      text: `Training "${r.title}" — status ${r.status}${r.start_date ? `, ${dmy(r.start_date)}` : ""}${r.end_date ? ` to ${dmy(r.end_date)}` : ""}${r.budget ? `, budget ${r.budget} XAF` : ""}.`,
     }),
   },
   {
@@ -330,7 +365,7 @@ const BUILDERS = [
       ref: `driver:${r.full_name}`,
       title: `Driver: ${r.full_name}`,
       confidentiality: "normal",
-      text: `Driver ${r.full_name} — license ${r.license_number || "?"}, status ${r.status}${r.license_expiry ? `, license expires ${new Date(r.license_expiry).toLocaleDateString()}` : ""}.`,
+      text: `Driver ${r.full_name} — license ${r.license_number || "?"}, status ${r.status}${r.license_expiry ? `, license expires ${dmy(r.license_expiry)}` : ""}.`,
     }),
   },
   {
@@ -342,7 +377,7 @@ const BUILDERS = [
       ref: `fuel_log:${r.fuel_log_id}`,
       title: `Fuel Log: ${r.plate}`,
       confidentiality: "normal",
-      text: `Fuel log for vehicle ${r.plate || "?"} — ${r.quantity_litres || 0} litres, cost ${r.cost || 0} XAF${r.log_date ? `, ${new Date(r.log_date).toLocaleDateString()}` : ""}.`,
+      text: `Fuel log for vehicle ${r.plate || "?"} — ${r.quantity_litres || 0} litres, cost ${r.cost || 0} XAF${r.log_date ? `, ${dmy(r.log_date)}` : ""}.`,
     }),
   },
   {
@@ -407,7 +442,7 @@ const BUILDERS = [
       ref: `campaign:${r.name}`,
       title: `Campaign: ${r.name}`,
       confidentiality: "normal",
-      text: `Marketing campaign "${r.name}" — status ${r.status}, budget ${r.budget_amount || 0} ${r.budget_currency || "XAF"}${r.starts_on ? `, ${new Date(r.starts_on).toLocaleDateString()}` : ""}${r.ends_on ? ` to ${new Date(r.ends_on).toLocaleDateString()}` : ""}. Recorded (hand-entered) performance: ${r.actual_leads || 0} leads, ${r.actual_won || 0} won.`,
+      text: `Marketing campaign "${r.name}" — status ${r.status}, budget ${r.budget_amount || 0} ${r.budget_currency || "XAF"}${r.starts_on ? `, ${dmy(r.starts_on)}` : ""}${r.ends_on ? ` to ${dmy(r.ends_on)}` : ""}. Recorded (hand-entered) performance: ${r.actual_leads || 0} leads, ${r.actual_won || 0} won.`,
     }),
   },
   // ── Master data ──
@@ -472,7 +507,7 @@ const BUILDERS = [
             && Number(r.share_capital_paid_up) !== Number(r.share_capital)
             ? ` (${Number(r.share_capital_paid_up).toLocaleString("en-US")} paid up)` : "");
       const born = r.incorporation_date
-        ? `incorporated ${String(r.incorporation_date).slice(0, 10)}${r.incorporation_place ? ` in ${r.incorporation_place}` : ""}`
+        ? `incorporated ${dmy(r.incorporation_date)}${r.incorporation_place ? ` in ${r.incorporation_place}` : ""}`
         : null;
       const group = r.parent_code
         ? `${(r.relationship_type || "subsidiary").toLowerCase().replace(/_/g, " ")} of ${r.parent_code} — ${r.parent_name}`
@@ -515,7 +550,7 @@ const BUILDERS = [
         + `${r.country_code ? ` in ${r.country_code}` : ""}`
         + `${r.issuing_authority ? `, issued by ${r.issuing_authority}` : ""}`
         + `${r.is_primary ? " (primary for that country)" : ""}`
-        + `${r.expires_on ? `, expiring ${String(r.expires_on).slice(0, 10)}` : ""}.`,
+        + `${r.expires_on ? `, expiring ${dmy(r.expires_on)}` : ""}.`,
     }),
   },
 ];

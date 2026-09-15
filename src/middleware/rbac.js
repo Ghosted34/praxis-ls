@@ -11,7 +11,7 @@
  *
  * Real permission table layout (migrations/tenant/0110_rbac.sql):
  *   permission(role_id, module_key, can_create, can_read, can_update,
- *              can_delete, can_approve)
+ *              can_delete, can_approve, can_export, can_validate, can_disburse)
  *     where module_key matches platform.module_catalogue, e.g. 'MOD-67'.
  *
  * Fixed vs. the original: this previously assumed a `shared.permissions`
@@ -34,9 +34,9 @@
  * existing module tables; that's a per-module call outside this pass.
  *
  * NOT YET HANDLED (flagged, not silently dropped):
- *   - 'export' and 'publish' have no dedicated DB column yet — mapped to
- *     can_read / can_update respectively as a placeholder; revisit if the
- *     product needs to grant them independently of read/update.
+ *   - 'publish' has no dedicated DB column yet — mapped to can_update as a
+ *     placeholder; revisit if the product needs to grant it independently.
+ *     ('export' got one in 12771, alongside 'validate' and 'disburse'.)
  *
  * CEO bypasses checks (role.code = 'CEO', PRD §3).
  */
@@ -48,6 +48,24 @@ const identityCache = require("../shared/cache/identity-cache");
 const { logger } = require("../config/logger");
 const metrics = require("../shared/observability/metrics");
 
+/**
+ * Friendly action → the `permission` column that grants it.
+ *
+ * 12771 closed two of the three standing TODOs here by giving `export`,
+ * `validate` and `disburse` real columns, backfilled from whatever gated them
+ * before, so no role lost access on deploy:
+ *
+ *   export    was can_read.    A right over DATA — taking a module's contents
+ *                              out of the building — which does not follow from
+ *                              being allowed to read it on screen.
+ *   validate  was can_approve.  The finance visa. A visa, not a signature.
+ *   disburse  was can_approve.  Handing over the cash. Separated because the
+ *                              manager who approves a spend should not be the
+ *                              cashier who releases it.
+ *
+ * `publish` still has no column of its own; it is one caller and no product
+ * decision has been taken on it.
+ */
 const ACTION_COLUMN = {
   view: "can_read",
   read: "can_read",
@@ -56,7 +74,9 @@ const ACTION_COLUMN = {
   update: "can_update",
   delete: "can_delete",
   approve: "can_approve",
-  export: "can_read", // TODO: add permission.can_export if this needs to be independent
+  export: "can_export",
+  validate: "can_validate",
+  disburse: "can_disburse",
   publish: "can_update", // TODO: add permission.can_publish if this needs to be independent
 };
 
@@ -199,4 +219,58 @@ function requireCeo() {
   };
 }
 
-module.exports = { requirePermission, requireCapability, requireCeo };
+/**
+ * READ a caller's permissions without gating on them.
+ *
+ * `requirePermission` answers "may this request proceed?" by throwing. Some
+ * screens need the weaker question — "would it?" — so they can shape what they
+ * show: the signature designer lists the fields a signature is missing, and a
+ * gap the reader cannot fix should read "ask an administrator" rather than
+ * offering a link into a 403.
+ *
+ * ADDITIVE ON PURPOSE. `requirePermission` is untouched: this is a separate
+ * function reusing the same grant cache and the same ACTION_COLUMN map, not a
+ * refactor of the gate. A bug here shows the wrong hint; a bug in the gate is a
+ * security incident, and the two should not share a control flow for the sake
+ * of tidiness.
+ *
+ * NOT A SECURITY BOUNDARY. Nothing may be authorised on this answer. The
+ * destination routes enforce their own permissions, and this only decides
+ * whether a link is worth offering.
+ *
+ * @param {object} req    an authed request (needs req.user and req.identityDb)
+ * @param {Array<[string,string]>} specs  [[moduleKey, action], …]
+ * @returns {Promise<boolean[]>} one answer per spec, in order
+ */
+async function readPermissions(req, specs = []) {
+  if (!req || !req.user || !Array.isArray(specs) || !specs.length) {
+    return specs.map(() => false);
+  }
+  // Same bypass as the gate, and for the same reason — a CEO who saw "ask an
+  // administrator" against a field they can edit would be told to ask
+  // themselves.
+  if (req.user.is_ceo === true) return specs.map(() => true);
+  if (!req.identityDb) return specs.map(() => false);
+
+  try {
+    return await req.identityDb(async (client) => {
+      const out = [];
+      for (const [moduleKey, action] of specs) {
+        const column = ACTION_COLUMN[action];
+        if (!column) { out.push(false); continue; }
+        const grants = await identityCache.getGrants(client, {
+          role_ids: req.user.role_ids, module: moduleKey,
+        });
+        out.push(grants.some((g) => g[column] === true));
+      }
+      return out;
+    });
+  } catch {
+    /* @silent:storage — a hint that cannot be resolved is shown as "ask an
+       administrator", which is the safe direction: it under-offers links
+       rather than offering one into a refusal. */
+    return specs.map(() => false);
+  }
+}
+
+module.exports = { requirePermission, requireCapability, requireCeo, readPermissions };

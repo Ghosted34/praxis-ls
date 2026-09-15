@@ -118,11 +118,22 @@ const formatCode = (code) => normaliseCode(code).replace(/(.{4})(?=.)/g, "$1-");
  *  which passes a base its own loop has already trimmed. But this function is
  *  exported, the origin behind it begins life as `req.get("host")`, and "safe
  *  because of what the one current caller happens to do" is exactly the property
- *  that stops holding without anyone noticing. Linear costs nothing here. */
-function verifyUrl(code, baseUrl) {
+ *  that stops holding without anyone noticing. Linear costs nothing here.
+ *
+ *  ── `env` and why it is in the URL ────────────────────────────────────────
+ *  A tenant reaches sandbox by sending `X-Praxis-Env: sandbox` on their session
+ *  requests; the same tenant host serves live otherwise. A verify page has no
+ *  session and no header the user controls that we would trust, so the env has
+ *  to travel with the printed URL itself. `?e=sandbox` is appended when the QR
+ *  was minted in sandbox; live URLs stay bare, so nothing changes for the vast
+ *  majority of documents that were ever printed. The controller reads this and
+ *  pins its database read to the matching environment, and the response marks
+ *  the page as a test-environment verification so the reader knows. */
+function verifyUrl(code, baseUrl, env = "live") {
   let base = String(baseUrl || "");
   while (base.endsWith("/")) base = base.slice(0, -1);
-  return `${base}/v/${normaliseCode(code)}`;
+  const suffix = env === "sandbox" ? "?e=sandbox" : "";
+  return `${base}/v/${normaliseCode(code)}${suffix}`;
 }
 
 // ── Signing tokens (PR-3 consumes these; they live here so both credentials

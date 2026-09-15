@@ -3,7 +3,7 @@
  * Notifications/Support) and the outbound send log. Each section sends from its
  * own verified identity; this surfaces what went out and its delivery state.
  */
-import { tenant } from "./api-client";
+import { tenant, tenantWithProgress } from "./api-client";
 // The workflow/security half of the mail API. Imported for the types the core
 // thread and message shapes reference; re-exported wholesale at the foot.
 import type { AuthVerdict, Visibility, WorkStatus } from "./mail-api-work";
@@ -97,6 +97,21 @@ export const archiveSender = (id: string) =>
 
 export type Provider = "imap_smtp" | "microsoft_graph" | "google_gmail";
 
+/**
+ * How the SENDING leg signs in.
+ *
+ * `"same"` — one username and password for receiving and sending, which is every
+ * mailbox on a single host and the default. `"separate"` — the outgoing server
+ * has its own sign-in, which is what a relay (SMTP2GO, SES, SendGrid) in front
+ * of a cPanel mailbox needs.
+ *
+ * DERIVED SERVER-SIDE from whether a separate secret exists, never stored as a
+ * mode of its own, so the form can reopen in the right state without the
+ * password ever leaving the server. `has_smtp_credentials` is the same fact as a
+ * boolean — the presence-only treatment the mailbox password already gets.
+ */
+export type SmtpAuthMode = "same" | "separate";
+
 export type Connection = {
   email_connection_id: string;
   email_address: string;
@@ -110,6 +125,9 @@ export type Connection = {
   smtp_host?: string | null;
   smtp_port?: number | null;
   auth_user?: string | null;
+  smtp_user?: string | null;
+  smtp_auth?: SmtpAuthMode;
+  has_smtp_credentials?: boolean;
   owner_user_id?: string | null;
   is_default?: boolean;
   created_at?: string | null;
@@ -157,8 +175,11 @@ export type Attachment = {
 export type TestResult = {
   ok: boolean;
   error?: string;
+  /** Which leg refused — "imap" (receiving) or "smtp" (sending). */
   stage?: string;
   code?: string;
+  /** Which sending credential was offered, so a client can mark the right field. */
+  smtp_auth?: SmtpAuthMode;
 };
 
 export type Autoconfig = {
@@ -188,6 +209,10 @@ export const connectImap = (body: {
   smtp_secure?: boolean;
   auth_user?: string;
   password: string;
+  /** Omit for "same as IMAP"; "separate" requires both fields below. */
+  smtp_auth?: SmtpAuthMode;
+  smtp_user?: string | null;
+  smtp_password?: string;
 }) =>
   tenant<Connection & { test?: TestResult }>("/mail/connections", {
     method: "POST",
@@ -217,11 +242,72 @@ export const disconnectMailbox = (id: string) =>
     { method: "POST" },
   );
 
+/**
+ * Query string from an object, skipping anything absent or empty.
+ *
+ * Lifted above its first caller when the OAuth start endpoints grew parameters:
+ * it is used by the thread list far below as well, and a second copy beside
+ * this one is the sort of helper that drifts into two slightly different
+ * escaping rules.
+ */
+const qs = (o: Record<string, unknown>) => {
+  const p = new URLSearchParams();
+  for (const [k, v] of Object.entries(o)) {
+    if (v !== undefined && v !== null && v !== "") p.set(k, String(v));
+  }
+  const s = p.toString();
+  return s ? `?${s}` : "";
+};
+
+/**
+ * Which ways of connecting a mailbox this tenant may actually use.
+ *
+ * The chooser needs this BEFORE anyone picks anything. Microsoft OAuth has two
+ * independent prerequisites — a per-tenant feature flag an administrator flips,
+ * and an Entra app registration on the deployment whose client secret expires —
+ * and they are reported separately because they are fixed by different people
+ * in different places. `reason` is `NOT_ENABLED` or `NOT_CONFIGURED`.
+ */
+export type ConnectMethod = {
+  available: boolean;
+  enabled: boolean;
+  configured: boolean;
+  reason: "NOT_ENABLED" | "NOT_CONFIGURED" | null;
+};
+export type ConnectMethods = {
+  imap_smtp: ConnectMethod;
+  microsoft_graph: ConnectMethod;
+  google_gmail: ConnectMethod;
+};
+export const connectMethods = () =>
+  tenant<ConnectMethods>("/mail/connect-methods");
+
 // OAuth — start returns the provider consent URL to redirect the browser to.
 export const microsoftStartUrl = () => "/api/tenant/mail/oauth/microsoft/start";
 export const googleStartUrl = () => "/api/tenant/mail/oauth/google/start";
-export const startMicrosoft = () =>
-  tenant<{ url: string }>("/mail/oauth/microsoft/start");
+
+/** Consent for the caller's OWN mailbox. MOD-72 `edit`. */
+export const startMicrosoft = (opts: { display_name?: string } = {}) =>
+  tenant<{ url: string }>(`/mail/oauth/microsoft/start${qs(opts)}`);
+
+/**
+ * Consent for a TEAM address. A separate endpoint, not a flag on the one above,
+ * because it is gated on MOD-72 `create` rather than `edit` — standing up an
+ * address the whole company sends from is a different right from connecting
+ * your own mailbox.
+ *
+ * The address itself is NOT sent: it is whichever mailbox the operator signs in
+ * as at Microsoft, and the server reads it back from Graph. What is sent is the
+ * classification to apply to whatever comes back — which catalogue slot it
+ * fills and which department owns it.
+ */
+export const startMicrosoftShared = (opts: {
+  catalogue_key?: string | null;
+  department?: string | null;
+  display_name?: string | null;
+} = {}) =>
+  tenant<{ url: string }>(`/mail/oauth/microsoft/start/shared${qs(opts)}`);
+
 export const startGoogle = () =>
   tenant<{ url: string }>("/mail/oauth/google/start");
 
@@ -270,6 +356,15 @@ export const updateImapConnection = (
     smtp_secure?: boolean;
     auth_user?: string;
     password?: string;
+    /**
+     * Absent leaves the mailbox's current sending sign-in ALONE — which is what
+     * a patch that only moves the SMTP host must do. `"same"` deletes the stored
+     * SMTP secret; `"separate"` with a blank `smtp_password` keeps it, the same
+     * convention `password` above has.
+     */
+    smtp_auth?: SmtpAuthMode;
+    smtp_user?: string | null;
+    smtp_password?: string;
   },
 ) =>
   tenant<Connection & { test?: TestResult }>(`/mail/connections/${id}`, {
@@ -751,15 +846,6 @@ const normaliseMessage = (m: Message): Message => ({
   cc_address: toAddressList(m.cc_address),
 });
 
-const qs = (o: Record<string, unknown>) => {
-  const p = new URLSearchParams();
-  for (const [k, v] of Object.entries(o)) {
-    if (v !== undefined && v !== null && v !== "") p.set(k, String(v));
-  }
-  const s = p.toString();
-  return s ? `?${s}` : "";
-};
-
 export const listThreads = (q: ThreadQuery = {}) =>
   tenant<Thread[]>(`/mail/threads${qs(q)}`).then((rows) => (rows || []).map(normaliseThread));
 export const getThread = (id: string) =>
@@ -973,15 +1059,23 @@ export const discardDraft = (id: string) =>
 /* Attachments */
 export const draftAttachments = (draftId: string) =>
   tenant<AttachmentTray>(`/mail/drafts/${draftId}/attachments`);
-export const uploadAttachment = (body: {
-  email_draft_id: string;
-  filename: string;
-  data_url: string;
-  disposition?: "attachment" | "inline";
-  content_id?: string;
-}) => tenant<MailAttachment & { total_bytes: number; offer_secure_link: boolean }>(
-  "/mail/attachments/upload", { method: "POST", body: body },
-);
+export const uploadAttachment = (
+  body: {
+    email_draft_id: string;
+    filename: string;
+    data_url: string;
+    disposition?: "attachment" | "inline";
+    content_id?: string;
+  },
+  onProgress?: (percent: number) => void,
+) =>
+  onProgress
+    ? tenantWithProgress<
+        MailAttachment & { total_bytes: number; offer_secure_link: boolean }
+      >("/mail/attachments/upload", body, onProgress)
+    : tenant<
+        MailAttachment & { total_bytes: number; offer_secure_link: boolean }
+      >("/mail/attachments/upload", { method: "POST", body });
 export const attachFromVault = (body: {
   email_draft_id: string;
   vault_id: string;
@@ -1012,6 +1106,22 @@ export const sendMessage = (body: {
 
 export const cancelSend = (queueId: string) =>
   tenant<{ status: "CANCELLED" }>(`/mail/send/${queueId}/cancel`, { method: "POST" });
+
+/**
+ * Send a failed message again, after the operator fixed what refused it.
+ *
+ * The row is requeued with its frozen payload, so this is not a second message:
+ * same queue id, same Message-ID, same attachments. 409 when the row is not
+ * FAILED any more — another tab pressed it first, or the flusher picked it up.
+ */
+export const retrySend = (queueId: string) =>
+  tenant<{
+    email_send_queue_id: string;
+    status: OutboxEntry["status"];
+    release_at: string;
+    attempts: number;
+  }>(`/mail/send/${queueId}/retry`, { method: "POST" });
+
 export const listOutbox = () => tenant<OutboxEntry[]>("/mail/outbox");
 
 /* Slash commands */
@@ -1072,6 +1182,44 @@ export const previewSignature = (lang?: string) =>
   tenant<{ html: string; text: string }>(`/mail/signature/preview${lang ? `?lang=${lang}` : ""}`);
 export const listSignatureTemplates = () => tenant<SignatureTemplate[]>("/mail/signature/templates");
 
+/** MOD-70 `edit`. The server refuses to deactivate a seeded template. */
+export const updateSignatureTemplate = (
+  id: string,
+  patch: Partial<Pick<SignatureTemplate, "name" | "is_default" | "is_active">>,
+) =>
+  tenant<SignatureTemplate>(`/mail/signature/templates/${id}`, {
+    method: "PATCH",
+    body: patch,
+  });
+
+export type SignatureMotto = {
+  signature_template_id: string;
+  name: string;
+  /** Empty string means "no motto", which is a value, not a missing record. */
+  en: string;
+  fr: string;
+};
+
+/**
+ * The motto/slogan on one template, per language.
+ *
+ * A pair of its own rather than a slice of the template PATCH, because the
+ * motto lives inside the `copy_en` / `copy_fr` blobs and writing it through
+ * those means read-modify-write — get it wrong and the confidentiality notice
+ * in the same object is erased. The server does the merge; this sends strings.
+ */
+export const getSignatureMotto = (templateId: string) =>
+  tenant<SignatureMotto>(`/mail/signature/templates/${templateId}/motto`);
+
+export const saveSignatureMotto = (
+  templateId: string,
+  body: { en?: string; fr?: string },
+) =>
+  tenant<SignatureMotto>(`/mail/signature/templates/${templateId}/motto`, {
+    method: "POST",
+    body,
+  });
+
 export async function downloadSignaturePng(opts: { language?: string; scale?: 1 | 2 | 3 } = {}) {
   const q = new URLSearchParams();
   if (opts.language) q.set("lang", opts.language);
@@ -1079,6 +1227,177 @@ export async function downloadSignaturePng(opts: { language?: string; scale?: 1 
   const { tenantDownload } = await import("./api-client");
   await tenantDownload(`/mail/signature/png?${q.toString()}`, `signature-${opts.scale || 1}x.png`);
 }
+
+/** One blank field on the signature, and where to go and fill it. */
+export type SignatureGap = {
+  key: string;
+  label: string;
+  /** "you", "HR", "an administrator" — who can fill it. */
+  owner: string;
+  hint: string;
+  scope: "self" | "hr" | "entity" | "brand" | "template";
+  /**
+   * Null for either of two reasons, and they mean different things: the caller
+   * has no grant on the surface that owns the field, OR the server could not
+   * build a link that lands on the control (see `precise`). A link is never
+   * degraded to "somewhere near it".
+   */
+  href: string | null;
+  actionable: boolean;
+  /** The path in words — "Master data → Corporate entities → …". Always set. */
+  where: string | null;
+  /** True when `href` lands on the field itself. False means there is no href. */
+  precise: boolean;
+};
+
+export type SignatureCard = {
+  kind: string;
+  gaps?: SignatureGap[];
+  /** The full HTML document the PNG renderer screenshots. Null for the
+   *  non-card layouts, which have no separate card document. */
+  document: string | null;
+  html?: string;
+  width: number;
+  height: number;
+  language?: string;
+};
+
+/** The card exactly as it will be rendered to PNG. See signature.service.cardPreview. */
+export const getSignatureCard = (lang?: string) =>
+  tenant<SignatureCard>(`/mail/signature/card${lang ? `?lang=${lang}` : ""}`);
+
+/**
+ * A brand colour, by NAME. These are the five colour fields Appearance stores,
+ * and they are the only values the card's role mapping accepts — there is no
+ * hex on this wire in either direction that was not resolved from one of them.
+ */
+export type BrandColorKey =
+  | "primary"
+  | "secondary"
+  | "accent"
+  | "accentDeep"
+  | "accentGlow";
+
+/** One card role: what it paints, which brand colour it is pointed at, and the
+ *  hex that produces. `source` is the live answer, `default_source` what it
+ *  would be with no re-point — the two differ exactly when `is_repointed`. */
+export type SignatureRole = {
+  role: "ink" | "glow" | "warm";
+  paints: string;
+  source: BrandColorKey;
+  default_source: BrandColorKey;
+  is_repointed: boolean;
+  hex: string;
+};
+
+export type SignaturePalette = {
+  template: {
+    signature_template_id: string;
+    name: string;
+    /** "card" is the only layout these colours reach. */
+    kind: string;
+    is_system: boolean;
+    is_default: boolean;
+    scope_kind: "TENANT" | "DEPARTMENT" | "ENTITY";
+    scope_value?: string | null;
+  };
+  /** `is_set` false means the tenant has not chosen that colour and is
+   *  rendering the Praxis default — worth saying rather than presenting a
+   *  borrowed colour as theirs. */
+  brand: { key: BrandColorKey; hex: string; is_set: boolean }[];
+  roles: SignatureRole[];
+};
+
+/**
+ * Which of the tenant's brand colours paints which part of the card.
+ *
+ * MOD-70, and stored on the TEMPLATE, so it moves everyone rendering with it.
+ * Not a colour picker: the only values it takes are the names of brand colours
+ * already set in Appearance, so the brand keeps one definition and the card
+ * follows it. `null` for a role hands it back to the default mapping.
+ */
+export const getSignaturePalette = () =>
+  tenant<SignaturePalette>("/mail/signature/palette");
+
+export const saveSignaturePalette = (
+  templateId: string,
+  roles: Partial<Record<"ink" | "glow" | "warm", BrandColorKey | null>>,
+) =>
+  tenant<SignaturePalette>(`/mail/signature/templates/${templateId}/palette`, {
+    method: "PUT",
+    body: roles,
+  });
+
+/** The caller's own staff record. `/employees/mine` — no grant, no id. */
+export type MyEmployee = {
+  linked: boolean;
+  employee: null | {
+    employee_id: string;
+    full_name: string | null;
+    job_title: string | null;
+    department: string | null;
+    email: string | null;
+    phone_desk: string | null;
+    phone_mobile: string | null;
+    entity_id: string | null;
+    is_active: boolean | null;
+  };
+};
+
+export const getMyEmployee = () => tenant<MyEmployee>("/employees/mine");
+
+/** Only the caller's own phones are writable here; the server allow-lists. */
+export const updateMyEmployee = (patch: {
+  phone_desk?: string | null;
+  phone_mobile?: string | null;
+}) => tenant<MyEmployee>("/employees/mine", { method: "PATCH", body: patch });
+
+export type SignatureStaff = {
+  user_id: string;
+  full_name: string;
+  job_title: string | null;
+  department: string | null;
+  email: string | null;
+  has_profile: boolean;
+};
+
+export const listSignatureStaff = (q?: string) =>
+  tenant<SignatureStaff[]>(`/mail/signature/staff${q ? `?q=${encodeURIComponent(q)}` : ""}`);
+
+/** One ZIP of PNGs for the selected staff. MOD-70 `edit`. */
+export async function downloadSignatureBatch(body: {
+  user_ids: string[];
+  language?: string;
+  scale?: 1 | 2 | 3;
+}) {
+  const stamp = new Date().toISOString().slice(0, 10);
+  const { tenantDownloadPost } = await import("./api-client");
+  await tenantDownloadPost("/mail/signature/batch", body, `signatures-${stamp}.zip`);
+}
+
+export type SignatureDiagnosticStep = {
+  step: string;
+  ok: boolean;
+  why?: string;
+  [detail: string]: unknown;
+};
+
+export type SignatureDiagnostics = {
+  ok: boolean;
+  /** The step to fix. The ones after it are usually consequences. */
+  first_failure: string | null;
+  renderer_version: number;
+  steps: SignatureDiagnosticStep[];
+};
+
+/**
+ * Run the card-delivery chain and report the first broken link. MOD-70 `view`.
+ *
+ * `write: true` also stores one throwaway object, which is the only way to
+ * prove the storage leg rather than infer it.
+ */
+export const diagnoseSignature = (write = false) =>
+  tenant<SignatureDiagnostics>(`/mail/signature/diagnose${write ? "?write=true" : ""}`);
 
 export type DomainHealthRow = {
   domain_health_check_id: string;
@@ -1090,6 +1409,32 @@ export type DomainHealthRow = {
   suggestion?: string | null;
   checked_at: string;
 };
+
+/**
+ * "Will mail we send actually REACH this domain?"
+ *
+ * The opposite question to the rest of this panel. Every other check is about a
+ * domain we send AS; this is about one we send TO, and it catches a relay that
+ * hosts the recipient's domain and would file the message into a mailbox on
+ * itself rather than routing it — accepted, never delivered, never bounced.
+ */
+export type DeliveryRouteVerdict = {
+  state: "OK" | "LOCAL_TRAP" | "UNKNOWN";
+  ok: boolean | null;
+  reason: string;
+  domain: string | null;
+  smtp_host: string | null;
+  relay_ips?: string[];
+  recipient_ips?: string[];
+  mx_hosts?: string[];
+  sender_source?: string;
+};
+
+export const checkDeliveryRoute = (domain: string) =>
+  tenant<DeliveryRouteVerdict>("/mail/deliverability/route", {
+    method: "POST",
+    body: { domain },
+  });
 
 export const listDeliverability = () => tenant<DomainHealthRow[]>("/mail/deliverability");
 export const checkDeliverability = (domain?: string) =>

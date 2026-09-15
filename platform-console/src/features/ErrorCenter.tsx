@@ -13,6 +13,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { fmtDateTime } from "@/lib/format";
 import { useSearchParams } from "react-router-dom";
 import {
   errorsApi, LEVELS, LEVEL_STYLE, ago, duration,
@@ -22,6 +23,7 @@ import { platform, can } from "@/lib/api";
 import type { TenantListRow } from "@/lib/types";
 import { useErrorStream } from "@/lib/useErrorStream";
 import { Button, Empty, Loading, PageHeader, Pill } from "@/components/ui";
+import { DateField } from "@/components/DateField";
 import { useToast } from "@/components/Toast";
 import { ErrorDetailDrawer } from "@/components/ErrorDetailDrawer";
 import { ShareErrorModal } from "@/components/ShareErrorModal";
@@ -328,19 +330,17 @@ export function ErrorCenter() {
         </select>
         {hours === 0 && (
           <>
-            <input
-              type="date"
+            <DateField
               value={customFrom}
               max={customTo || undefined}
-              onChange={(e) => setCustomFrom(e.target.value)}
+              onChange={setCustomFrom}
               aria-label="From date"
               style={{ width: "auto" }}
             />
-            <input
-              type="date"
+            <DateField
               value={customTo}
               min={customFrom || undefined}
-              onChange={(e) => setCustomTo(e.target.value)}
+              onChange={setCustomTo}
               aria-label="To date"
               style={{ width: "auto" }}
             />
@@ -530,7 +530,7 @@ function ActivityChart({ trends }: { trends: Trends }) {
             return (
               <div
                 key={p.bucket}
-                title={`${new Date(p.bucket).toLocaleString()} — ${p.occurrences} occurrence(s), ${p.fatal} fatal`}
+                title={`${fmtDateTime(p.bucket)} — ${p.occurrences} occurrence(s), ${p.fatal} fatal`}
                 style={{
                   flex: 1,
                   height: h,

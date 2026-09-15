@@ -21,7 +21,7 @@ module.exports = {
       schema: validator.schemas.create,
       permission: { module: "MOD-33", action: "create" },
       confirm: true,
-      describe: "Open a goods-received note for a dossier.",
+      describe: "Open a goods-received note for an operations file.",
     },
     {
       key: "update_inbound",

@@ -35,6 +35,7 @@ const { AppError, asyncHandler } = require("../../../utils/errors");
 const storage = require("../../../services/storage.service");
 const { publishedMonth } = require("../../../shared/date/published-month");
 const repo = require("../service_type_web/service_type_web.repo");
+const { serviceMode } = require("../_shared/service-mode");
 const grouping = require("./service_type_web_public.service");
 
 const router = express.Router();
@@ -85,6 +86,32 @@ router.get("/", limit, asyncHandler(async (req, res) => {
       slug_en: row.slug_en,
       name_fr: row.name_fr,
       name_en: row.name_en,
+      /* The transport mode, derived from `service_type.key` by the same
+         function the tracking page uses (`_shared/service-mode.js`).
+ 
+         It ships on the card because the quote wizard's first question — "how
+         is it moving?" — was a hardcoded list of four options in the browser,
+         which is a taxonomy the tenant does not own asked in front of a
+         taxonomy they do. With the mode on the row the form can build that
+         question FROM the published services and set it from whichever one the
+         visitor picks, instead of asking twice and hoping the answers agree.
+ 
+         The KEY itself is deliberately not sent: it is an internal identifier
+         (`SEA_FREIGHT_IMPORT`) that appears on operations paperwork, and a
+         public page has no use for it beyond the one fact this field already
+         carries. */
+      mode: serviceMode(row.service_key),
+      /* What the quote form must ask for this service (migration 12774).
+ 
+         Separate from `mode` on purpose, and the distinction is the whole point:
+         the mode is DERIVED from a key and decides a glyph and a pair of route
+         labels, where being wrong costs an icon. This is AUTHORED by the tenant
+         and decides which fields a stranger is made to fill before the form will
+         let them talk to anybody — which is not a thing to guess from a string.
+ 
+         `ROUTE` when the column is somehow absent, matching its own default: a
+         payload without it must behave like every build before it existed. */
+      enquiry_shape: row.enquiry_shape || "ROUTE",
       short_description_fr: row.short_description_fr,
       short_description_en: row.short_description_en,
       claim_fr: row.claim_fr,
@@ -112,9 +139,15 @@ router.get("/:slug", limit, asyncHandler(async (req, res) => {
   });
   if (!result) throw notFound("Service not found");
   const { row, mediaByRole, related, faq } = result;
-  const coverAllowed = mediaByRole.has(row.cover_vault_id);
-  const iconAllowed = mediaByRole.has(row.icon_vault_id);
-  const galleryAllowed = (row.gallery_vault_ids || []).filter((id) => mediaByRole.has(id));
+  // Role must match the SLOT, not merely be present in the allowlist. A doc
+  // bound as GALLERY that some earlier write also left in `cover_vault_id`
+  // would otherwise be served as this service's cover here while the list card
+  // (whose EXISTS asserts `public_media_role = 'COVER'`) correctly shows none —
+  // one page of the public site disagreeing with the other about the same row.
+  const roleIs = (id, role) => Boolean(id) && mediaByRole.get(id) === role;
+  const coverAllowed = roleIs(row.cover_vault_id, "COVER");
+  const iconAllowed = roleIs(row.icon_vault_id, "ICON");
+  const galleryAllowed = (row.gallery_vault_ids || []).filter((id) => roleIs(id, "GALLERY"));
   res.json({
     data: {
       service_type_id: row.service_type_id,

@@ -51,7 +51,7 @@ const DEFAULTS = { prefix: "DOC", padding: 4, reset: "yearly", separator: "-" };
  * token per module via `setting` section='numbering' (see schemeFor).
  */
 const MODULE_TOKENS = {
-  "MOD-29": "OPS", // operation file / dossier
+  "MOD-29": "OPS", // operations file
   "MOD-30": "TRO", // transit order
   "MOD-32": "DN", //  delivery note
   "MOD-27": "QTE", // quotation

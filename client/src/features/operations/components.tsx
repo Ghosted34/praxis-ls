@@ -7,8 +7,12 @@
  * label/value row had to copy it.
  */
 import * as React from "react";
-import type * as api from "@/lib/operations-api";
-import { milestonePct } from "./shared";
+import { Button } from "@/components/ui/button";
+import { ErrorState } from "@/components/ui/states";
+import { useResource, errMsg } from "@/lib/use-resource";
+import { openVaultDoc } from "@/lib/vault-file";
+import * as api from "@/lib/operations-api";
+import { humanizeKey, milestonePct } from "./shared";
 
 /**
  * Milestone progress cell for the files table.
@@ -151,6 +155,84 @@ export function DocRow({
     <div className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-1.5">
       {label}
       <div className="flex items-center gap-3">{children}</div>
+    </div>
+  );
+}
+
+/**
+ * The file's own vault documents, shown under the checklist so an operator can
+ * preview what is actually attached before ticking the corresponding box —
+ * the checklist alone is just a list of nouns, and an order raised on a file
+ * whose B/L was never uploaded should be visible at the moment of decision.
+ */
+export function DossierDocuments({ dossierId }: { dossierId: string }) {
+  const { data, error, loading } = useResource(
+    () => api.listDossierDocuments(dossierId),
+    [dossierId],
+  );
+
+  if (error) return <ErrorState message={errMsg(error)} />;
+
+  const rows = data || [];
+  if (!loading && rows.length === 0) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        No documents in this file's vault yet — attach them from the file's
+        documents tab, then they will preview here.
+      </p>
+    );
+  }
+
+  return (
+    <div className="rounded-md border border-line">
+      <div className="micro border-b border-line px-2 py-1.5 text-muted-foreground">
+        On this file
+      </div>
+      {rows.map((d) => (
+        <div
+          key={d.doc_id}
+          className="flex items-center justify-between gap-2 border-b border-line px-2 py-1.5 last:border-b-0"
+        >
+          <div className="min-w-0 flex-1">
+            <span className="block truncate text-sm text-foreground">
+              {d.doc_type ? humanizeKey(d.doc_type) : "Document"}
+              {d.version_no && d.version_no > 1 ? ` · v${d.version_no}` : ""}
+            </span>
+            <span className="micro text-muted-foreground">{d.status || "—"}</span>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            onClick={() => void openVaultDoc(d.doc_id)}
+          >
+            Preview
+          </Button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * One label-over-value cell in a record's facts grid.
+ *
+ * `<dt>`/`<dd>`, so the grid it sits in is a real description list and a screen
+ * reader announces "Direction · Import" as one fact rather than two loose
+ * strings. Shared because the transit order and the delivery note both lay
+ * their instruction out this way.
+ */
+export function Fact({
+  label,
+  value,
+}: {
+  label: string;
+  value?: React.ReactNode;
+}) {
+  return (
+    <div className="min-w-0">
+      <dt className="micro text-muted-foreground">{label}</dt>
+      <dd className="truncate font-medium text-foreground">{value || "—"}</dd>
     </div>
   );
 }

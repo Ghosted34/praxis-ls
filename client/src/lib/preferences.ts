@@ -58,6 +58,14 @@ export type ShellPrefs = {
   railPins: string[] | null;
   /** Area keys pinned to the Control Tower's 11+1 shortcut grid, in order. */
   towerPins: string[] | null;
+  /**
+   * The four KPI-band tiles this user picked, in left-to-right order
+   * (doc/KPI_BAND_ENGINEERING_GUIDE.md). Same null/[] rule as the pin lists:
+   * null is "no choice made — follow my role's default", [] is "band cleared,
+   * on purpose". Validity of the ids and their eligibility resolve
+   * server-side on every read; the client stores no second truth.
+   */
+  kpiPins: string[] | null;
   /** Has this user already been shown the "you can customise this" nudge? */
   railHintSeen: boolean | null;
 };
@@ -66,6 +74,7 @@ export const EMPTY_SHELL_PREFS: ShellPrefs = {
   ribbonPinned: null,
   railPins: null,
   towerPins: null,
+  kpiPins: null,
   railHintSeen: null,
 };
 
@@ -83,6 +92,9 @@ export const fetchShellPrefs = async (): Promise<ShellPrefs> => {
       : null,
     towerPins: Array.isArray(p.towerPins)
       ? p.towerPins.filter((k): k is string => typeof k === "string")
+      : null,
+    kpiPins: Array.isArray(p.kpiPins)
+      ? p.kpiPins.filter((k): k is string => typeof k === "string").slice(0, 4)
       : null,
     railHintSeen: typeof p.railHintSeen === "boolean" ? p.railHintSeen : null,
   };

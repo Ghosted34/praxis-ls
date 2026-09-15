@@ -124,6 +124,24 @@ const CASES = [
     to: "export const Regression = () => <div onClick={() => {}}>x</div>;\nimport * as React",
   },
   {
+    name: "lint (native dialogs)",
+    defect:
+      "the browser's own confirm box, back on a destructive action — the whole of PR #276",
+    cmd: ["npx", ["eslint", "src/components/ui/panel.tsx"]],
+    file: "src/components/ui/panel.tsx",
+    from: "import * as React",
+    to: "export const Regression = () => window.confirm(\"Delete?\");\nimport * as React",
+  },
+  {
+    name: "lint (native dialogs — the alias)",
+    defect:
+      "the same dialog reached through a local alias, which the first version of the rule passed",
+    cmd: ["npx", ["eslint", "src/components/ui/panel.tsx"]],
+    file: "src/components/ui/panel.tsx",
+    from: "import * as React",
+    to: 'const ask = window["confirm"];\nexport const Regression = () => ask("Delete?");\nimport * as React',
+  },
+  {
     name: "typecheck",
     defect: "a prop that does not exist on ListPage",
     cmd: ["npx", ["tsc", "-b", "--force"]],

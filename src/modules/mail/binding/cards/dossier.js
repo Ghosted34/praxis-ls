@@ -9,7 +9,7 @@
 
 module.exports = {
   key: "dossier",
-  label_en: "Dossier",
+  label_en: "Operations file",
   label_fr: "Dossier",
   target: "/operations/dossiers/new",
   appliesTo: (f) => Boolean(f.client_id),

@@ -8,6 +8,7 @@ import { InstallBanner } from "./install-banner";
 import { PwaUpdater } from "./pwa-updater";
 import { OfflineIndicator } from "./offline-indicator";
 import { PushSync } from "./push-sync";
+import { PushEnrolmentBanner } from "./push-enrolment-banner";
 import { ConnectionWatcher } from "@/components/connection/connection-watcher";
 
 export function PwaLayer() {
@@ -24,6 +25,11 @@ export function PwaLayer() {
           subscription the browser silently rotated is a phone that has stopped
           receiving notifications with nothing, anywhere, reporting it. */}
       <PushSync />
+      {/* Asks once, on a deliberate click, for the permission that makes every
+          other part of the notification pipeline able to reach a person who is
+          not looking at the app. Renders nothing unless there is something to
+          fix — see the file header for why it is never an unbidden prompt. */}
+      <PushEnrolmentBanner />
     </>
   );
 }

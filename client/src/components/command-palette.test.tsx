@@ -115,7 +115,7 @@ describe("the palette offers only what this user can open", () => {
     const shown = labels();
     expect(shown).not.toContain("New invoice");
     expect(shown).not.toContain("File a tax return");
-    expect(shown).not.toContain("New operation file");
+    expect(shown).not.toContain("New operations file");
   });
 
   it("keeps an action whose destination is open", async () => {

@@ -35,6 +35,10 @@ import { useToast } from "@/components/ui/toast";
 import { errMsg } from "@/lib/use-resource";
 import { num } from "@/lib/format";
 import * as api from "@/lib/masterdata-api";
+import { FilePicker } from "@/components/ui/image-upload";
+import { UploadProgress } from "@/components/ui/upload-progress";
+import { useUpload } from "@/lib/use-upload";
+import { fileToDataUrl } from "@/lib/image-compress";
 
 const PAGE_SIZE = 50;
 type Filter = "all" | "valid" | "rejected";
@@ -51,15 +55,6 @@ const cell = (v: unknown) =>
 
 /** Read a File as the base64 data URL the upload endpoint expects (same shape
  *  the document vault uses, so there is one upload convention in the product). */
-function readAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const fr = new FileReader();
-    fr.onload = () => resolve(String(fr.result));
-    fr.onerror = () => reject(new Error("Could not read that file"));
-    fr.readAsDataURL(file);
-  });
-}
-
 export function DictImportModal({
   open,
   onClose,
@@ -81,7 +76,6 @@ export function DictImportModal({
     React.useState<api.ImportCommitResult | null>(null);
   const [filter, setFilter] = React.useState<Filter>("all");
   const [page, setPage] = React.useState(0);
-  const fileRef = React.useRef<HTMLInputElement>(null);
 
   const reset = () => {
     setResult(null);
@@ -136,26 +130,43 @@ export function DictImportModal({
     }
   }
 
-  async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    // Clear immediately so re-picking the SAME file after a fix still fires
-    // change — the input keeps its value otherwise and the second upload
-    // silently does nothing.
-    e.target.value = "";
-    if (!file) return;
-    setBusy("upload");
+  /**
+   * Through the upload engine for the percentage and the retry. There is no
+   * compression to do — an .xlsx is not a raster, so the pipeline passes it
+   * through untouched — and no preview, because a spreadsheet has nothing to
+   * show. What it does have is size: a filled dictionary template is routinely
+   * megabytes, and the wait was previously a spinner.
+   */
+  const upload = useUpload<api.ImportValidateResult>({
+    profile: "document",
+    send: async (file, ctx) =>
+      api.validateDictImport(
+        await fileToDataUrl(file),
+        file.name,
+        ctx.onProgress,
+      ),
+    onAllComplete: ([validated]) => {
+      if (!validated) return;
+      setResult(validated);
+      setPage(0);
+    },
+  });
+
+  const uploadItem = upload.items[0] ?? null;
+  const uploading =
+    uploadItem?.state === "uploading" || uploadItem?.state === "compressing";
+
+  React.useEffect(() => {
+    if (uploadItem?.state !== "error") return;
+    setError(uploadItem.error);
+    setResult(null);
+  }, [uploadItem?.state, uploadItem?.error]);
+
+  function onFile(files: FileList | null) {
+    if (!files?.length) return;
     setError(null);
     setCommitted(null);
-    try {
-      const dataUrl = await readAsDataUrl(file);
-      setResult(await api.validateDictImport(dataUrl, file.name));
-      setPage(0);
-    } catch (err) {
-      setError(errMsg(err));
-      setResult(null);
-    } finally {
-      setBusy(null);
-    }
+    void upload.pick(files);
   }
 
   async function commit() {
@@ -236,27 +247,32 @@ export function DictImportModal({
           >
             1 · Download template
           </Button>
-          <Button
-            type="button"
-            variant="outline"
-            loading={busy === "upload"}
-            onClick={() => fileRef.current?.click()}
-          >
-            2 · Upload filled sheet
-          </Button>
-          <input
-            ref={fileRef}
-            type="file"
+          <FilePicker
+            variant="inline"
             accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            className="sr-only"
-            aria-label="Upload a filled dictionary template"
-            onChange={onFile}
+            label="Upload a filled dictionary template"
+            disabled={uploading}
+            trigger={
+              <span className="inline-flex h-9 items-center rounded-lg border px-3 text-sm no-underline">
+                {uploading ? "Uploading…" : "2 · Upload filled sheet"}
+              </span>
+            }
+            onPick={onFile}
           />
           <p className="micro ml-auto">
             Enum dropdowns and your own account, tax and service codes are on
             the template&apos;s Reference sheet.
           </p>
         </div>
+
+        {uploadItem && uploadItem.state !== "idle" && (
+          <UploadProgress
+            className="max-w-sm"
+            state={uploadItem.state}
+            percent={uploadItem.percent}
+            error={uploadItem.error}
+          />
+        )}
 
         {error && <ErrorState message={error} />}
 

@@ -185,12 +185,40 @@ async function employeeExists(client, employeeId) {
   const { rows } = await client.query("SELECT 1 FROM employee WHERE employee_id = $1", [employeeId]);
   return rows.length > 0;
 }
-/** Active employees in THIS (identity/live) schema — the only ones an app_user
- *  can be linked to, since app_user + its employee FK live in the live schema.
- *  Used by the user-edit picker so it never offers sandbox employees. */
+/**
+ * Employees in THIS (identity/live) schema that a login can be attached to.
+ *
+ * Live schema only, and that is not a filter this function chose: `app_user`
+ * and its employee FK live there, so offering a sandbox employee would produce
+ * a 409/EMPLOYEE_NOT_FOUND on save. The caller is `req.identityDb`.
+ *
+ * ── WHY NOT `is_active = true` ────────────────────────────────────────────
+ *
+ * That was the filter, and it hid exactly the people this picker exists for.
+ * `is_active` is DERIVED from `status` (12763's trigger), so a PENDING
+ * employee — "record created, has not started yet", which is what the hire
+ * wizard writes and what "Provision account" is clicked on — is `is_active =
+ * false` and was absent from the list. The one moment you provision somebody
+ * is the one moment they were missing from it.
+ *
+ * TERMINATED is the only state excluded now: creating a way in for somebody who
+ * has left is not an oversight worth accommodating. A SUSPENDED employee stays
+ * listed, because suspension is temporary and the account often outlives it.
+ *
+ * The matricule and both addresses come back with the name because a list of
+ * bare names cannot be searched or told apart — two people called Ngo Marie is
+ * not a hypothetical in a 400-person tenant. `has_account` says who already has
+ * a login, since `app_user.employee_id` carries no unique constraint and
+ * nothing else would stop a second one being created by accident.
+ */
 async function listEmployeesLite(client) {
   const { rows } = await client.query(
-    "SELECT employee_id, full_name FROM employee WHERE is_active = true ORDER BY full_name",
+    `SELECT e.employee_id, e.full_name, e.staff_no, e.job_title, e.status,
+            e.email, e.personal_email,
+            EXISTS (SELECT 1 FROM app_user au WHERE au.employee_id = e.employee_id) AS has_account
+       FROM employee e
+      WHERE COALESCE(e.status, 'ACTIVE') <> 'TERMINATED'
+      ORDER BY e.full_name`,
   );
   return rows;
 }

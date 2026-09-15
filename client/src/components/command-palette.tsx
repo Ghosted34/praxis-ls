@@ -171,7 +171,7 @@ export function CommandPalette({
       [
         {
           key: "act:new-dossier",
-          label: "New operation file",
+          label: "New operations file",
           Icon: PlusIcon,
           to: "/operations",
         },
@@ -336,7 +336,7 @@ export function CommandPalette({
             ref={inputRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search apps, dossiers, invoices, actions…"
+            placeholder="Search apps, files, invoices, actions…"
             className="h-12 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
           />
           <kbd className="rounded-md bg-foreground/[0.06] px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">

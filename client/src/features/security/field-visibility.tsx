@@ -28,6 +28,7 @@ const visTone = (v: string): Tone =>
 const KNOWN_FIELDS = [
   "dossier.margin",
   "employee.salary",
+  "employee.personal",
   "supplier.cost_rate",
   "invoice.cost_price",
   "quotation.margin",

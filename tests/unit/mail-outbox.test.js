@@ -389,6 +389,93 @@ describe("cancel", () => {
   });
 });
 
+describe("retry — the verb a failed row was missing", () => {
+  const failed = (over = {}) => queued({
+    status: "FAILED", attempts: 3,
+    last_error: "550 Sender verify failed", error_code: "SENDER_NOT_AUTHORIZED",
+    ...over,
+  });
+
+  test("requeues the row, with the same payload and the same id", async () => {
+    // Not a new message: same queue id, same frozen payload, same Message-ID.
+    // Composing a second one would double-send anything that half-worked.
+    repo.getQueued.mockResolvedValue(failed());
+    repo.retry.mockResolvedValue(queued({ status: "QUEUED", attempts: 0 }));
+
+    const res = await outbox.retry({}, ME, "q-1");
+    expect(res).toMatchObject({ email_send_queue_id: "q-1", status: "QUEUED", attempts: 0 });
+    expect(repo.enqueue).not.toHaveBeenCalled();
+    expect(repo.retry).toHaveBeenCalledWith({}, "user-1", "q-1");
+  });
+
+  test("A PERMANENT REFUSAL IS STILL RETRYABLE BY A PERSON", async () => {
+    // `PERMANENT_CODES` decides whether the QUEUE tries again on its own, and
+    // must not decide whether a human may: every code on it is a failure only a
+    // person can clear, so refusing them here would refuse the only case the
+    // button exists for.
+    for (const code of outbox.PERMANENT_CODES) {
+      repo.getQueued.mockResolvedValue(failed({ error_code: code }));
+      repo.retry.mockResolvedValue(queued({ status: "QUEUED", attempts: 0 }));
+      await expect(outbox.retry({}, ME, "q-1")).resolves.toMatchObject({ status: "QUEUED" });
+    }
+  });
+
+  test("the ledger keeps what it failed with, because the row stops saying", async () => {
+    repo.getQueued.mockResolvedValue(failed());
+    repo.retry.mockResolvedValue(queued({ status: "QUEUED", attempts: 0 }));
+    await outbox.retry({}, ME, "q-1");
+    expect(emitEvent).toHaveBeenCalledWith({}, expect.objectContaining({
+      eventTypeKey: "email.send.retried",
+      payload: expect.objectContaining({
+        previous_error: "550 Sender verify failed",
+        previous_error_code: "SENDER_NOT_AUTHORIZED",
+        previous_attempts: 3,
+      }),
+    }));
+  });
+
+  test("only a FAILED row — anything else is a 409, not a second send", async () => {
+    for (const status of ["HELD", "QUEUED", "SENDING", "SENT", "CANCELLED"]) {
+      repo.getQueued.mockResolvedValue(queued({ status }));
+      await expect(outbox.retry({}, ME, "q-1")).rejects.toMatchObject({
+        code: "BAD_STATE", status: 409,
+      });
+      expect(repo.retry).not.toHaveBeenCalled();
+    }
+  });
+
+  test("THE DATABASE DECIDES THE RACE HERE TOO", async () => {
+    // Two tabs, or the flusher picking the row up after `requeueStalled`. The
+    // UPDATE matched nothing, and the honest answer is that it is already going.
+    repo.getQueued.mockResolvedValue(failed());
+    repo.retry.mockResolvedValue(null);
+    await expect(outbox.retry({}, ME, "q-1")).rejects.toMatchObject({
+      code: "BAD_STATE", status: 409, message: expect.stringMatching(/already on its way/),
+    });
+  });
+
+  test("a mailbox retired since the failure refuses rather than queueing", async () => {
+    repo.getQueued.mockResolvedValue(failed());
+    mailRepo.getConnection.mockResolvedValue({ ...CONN, status: "ARCHIVED" });
+    await expect(outbox.retry({}, ME, "q-1")).rejects.toMatchObject({
+      code: "MAILBOX_ARCHIVED", status: 422,
+    });
+    expect(repo.retry).not.toHaveBeenCalled();
+  });
+
+  test("a grant revoked since the send still refuses — the check is re-run", async () => {
+    repo.getQueued.mockResolvedValue(failed());
+    access.assertCanSend.mockRejectedValue(Object.assign(new Error("nope"), { status: 403 }));
+    await expect(outbox.retry({}, ME, "q-1")).rejects.toMatchObject({ status: 403 });
+    expect(repo.retry).not.toHaveBeenCalled();
+  });
+
+  test("an id that is not the caller's is a 404, not someone else's message", async () => {
+    repo.getQueued.mockResolvedValue(null);
+    await expect(outbox.retry({}, ME, "q-x")).rejects.toMatchObject({ status: 404 });
+  });
+});
+
 /* ── The flusher ──────────────────────────────────────────────────────────── */
 
 describe("flushing", () => {

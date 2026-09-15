@@ -11,8 +11,41 @@ const validator = require("./costing.validator");
 const MODULE = "MOD-46";
 const router = express.Router();
 router.use(authMiddleware);
-router.get("/", requirePermission(MODULE, "view"), controller.list);
+// Literal segments before "/:id", or "suggest" and "kpis" parse as costing ids.
+//
+// Both need only `view`. `suggest` in particular WRITES NOTHING — it reads the
+// service type's tiered charge set and prices it — so gating it on `create`
+// would stop a validator seeing what the author was offered.
+//
+// It also resolves expense rates server-side, deliberately: the client used to
+// call `GET /expense-rates/resolve` once per line, which is N round trips AND
+// requires the caller to hold MOD-10 (Expense Rates) just to have a costing
+// price itself. One call, gated on the module that owns the document.
+router.get("/suggest", requirePermission(MODULE, "view"), validator.suggestQuery, controller.suggest);
+router.get("/kpis", requirePermission(MODULE, "view"), validator.listQuery, controller.kpis);
+router.get("/", requirePermission(MODULE, "view"), validator.listQuery, controller.list);
+// 12774 — the costing gate for one operations file. BEFORE "/:id", because
+// Express would otherwise match "gate" as a costing id and answer 404 for a
+// route that exists.
+router.get("/gate", requirePermission(MODULE, "view"), validator.gateQuery, controller.gate);
 router.get("/:id", requirePermission(MODULE, "view"), controller.get);
+// The budget ledger (12771). `view` on the costing, not on MOD-49: this is the
+// SHEET telling you what is left of it, and the cash-request worksheet reads it
+// to seed and to warn. Declared after "/:id" — a distinct sub-path, so no
+// ambiguity with a costing id.
+router.get("/:id/budget", requirePermission(MODULE, "view"), validator.budgetQuery, controller.budget);
+/*
+ * Chase whoever is holding a pending costing (12774).
+ *
+ * `view`, not `edit`. It changes nothing about the sheet — it sends a reminder
+ * about one — and the person who most needs it is the requester whose cash
+ * request is blocked, who often holds no costing rights at all. Gating it on
+ * `edit` would hand the chase to exactly the people who are not waiting.
+ *
+ * The abuse it might invite is answered by the quota rather than by the grant:
+ * three a day per sheet, refused with 429 (costing.rules.NUDGE_DAILY_LIMIT).
+ */
+router.post("/:id/nudge", requirePermission(MODULE, "view"), controller.nudge);
 router.post("/", requirePermission(MODULE, "create"), validator.create, controller.create);
 router.patch("/:id", requirePermission(MODULE, "edit"), validator.update, controller.update);
 // Both sides of the merge are kept, applied per target state.

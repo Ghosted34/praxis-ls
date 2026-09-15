@@ -62,7 +62,15 @@ const GRANDFATHERED = new Map(Object.entries({
   clientTimeline: "superseded by the dossier drawer's Interactions tab",
   /* Duplicates of a wrapper that IS used. */
   microsoftStartUrl: "duplicate of startMicrosoft, which the setup screen uses",
-  googleStartUrl: "duplicate of startGoogle, which the setup screen uses",
+  googleStartUrl: "duplicate of startGoogle, which has no button yet — see below",
+  /* Microsoft's button is now on the setup screen, because for a Microsoft 365
+   * mailbox OAuth is the ONLY way in: Exchange Online removed Basic auth for
+   * IMAP/POP in 2022 and retired it for SMTP AUTH in April 2026. Google's is
+   * not, and this is the honest record of that: its restricted mail scopes
+   * need a security assessment that runs for weeks, and 12775 split the
+   * feature flags so waiting for Google no longer holds Microsoft back. The
+   * wrapper and the adapter stay tested; only the button is missing. */
+  startGoogle: "Google Workspace is not enabled yet — awaiting restricted-scope verification",
   /* Endpoints ahead of their screen. */
   getDraft: "the Drafts list opens the row it already has, so nothing re-fetches by id",
   deleteLabel: "labels can be created and listed; no delete affordance yet",
@@ -144,7 +152,18 @@ describe("every mail endpoint with a client wrapper is reachable from a screen",
     // gave the send queue and the draft list a screen; `listOutbox`'s entry was
     // also WRONG, not merely stale — it read "superseded by the thread list",
     // and the queue is precisely the mail that is NOT in the thread list yet.
-    expect(GRANDFATHERED.size).toBeLessThanOrEqual(21);
+    //
+    // 21 -> 22, and this one is worth reading rather than waving through, since
+    // the ratchet exists to make growth uncomfortable. No wrapper was added and
+    // none was parked. `startGoogle` was ALREADY unwired; it counted as used
+    // only because a commented-out `api.startGoogle()` sat in mailboxes.tsx,
+    // and a commented call is a string this scanner cannot tell from a real
+    // one. Wiring Microsoft's button meant deleting that comment block, which
+    // removed the fake usage and left the truth behind. The number went up
+    // because the count got HONEST — the alternative was keeping dead code
+    // around purely to satisfy a gate, which is the failure mode this file is
+    // meant to prevent, not an example of it.
+    expect(GRANDFATHERED.size).toBeLessThanOrEqual(22);
   });
 
   test("nothing sits on the list that is now wired", () => {

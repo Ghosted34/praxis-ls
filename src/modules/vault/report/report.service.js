@@ -30,7 +30,7 @@ const REPORTS = {
   dossier_360: { describe: "360° view of one dossier (needs dossier_id).", run: (c, p) => dossier.overview(c, p.dossier_id) },
   cash_position: { describe: "Cash balance per treasury (class-5) account.", run: (c, p) => repo.cashPosition(c, p) },
   procurement_spend: { describe: "PO + posted supplier-invoice spend for a period.", run: (c, p) => repo.procurementSpend(c, p) },
-  dossier_margin_portfolio: { describe: "Billed vs actual cost + margin per dossier.", run: (c, p) => repo.dossierMarginPortfolio(c, p) },
+  dossier_margin_portfolio: { describe: "Billed vs actual cost + margin per operations file.", run: (c, p) => repo.dossierMarginPortfolio(c, p) },
 
   // ── G9: group read layer (PRD §13 / Settings §12) ─────────────────────────
   // A tenant with two entities has two sets of books and, until now, no group

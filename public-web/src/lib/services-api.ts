@@ -18,14 +18,70 @@ import { PublicApiError, publicGet } from "./api";
 
 export type Lang = "en" | "fr";
 
+export type ServiceAccent = "PRIMARY" | "ACCENT" | "SUCCESS";
+
+/** The seven answers `_shared/service-mode.js` can give. Kept in sync with that
+ *  file by `service-modes.ts`, which is where the ordering and the labels live —
+ *  this is the wire type and nothing more. */
+/**
+ * ROUTE    from somewhere to somewhere, on an agreed delivery term.
+ * STORAGE  a place and a duration, no journey.
+ * NONE     no movement to describe — the enquiry is the message.
+ */
+export type EnquiryShape = "ROUTE" | "STORAGE" | "NONE";
+
+export type ServiceMode =
+  | "SEA"
+  | "AIR"
+  | "RAIL"
+  | "ROAD"
+  | "WAREHOUSE"
+  | "CUSTOMS"
+  | "OTHER";
+
 export type ServiceCard = {
   service_type_id: string;
   slug_fr: string;
   slug_en: string;
   name_fr: string;
   name_en: string;
+  /**
+   * How this service moves cargo, derived server-side from `service_type.key`.
+   *
+   * The one operational fact the public payload carries, and it is here to stop
+   * the quote wizard asking for it. The wizard's first question used to be four
+   * hardcoded cards — Sea / Air / Road / Storage — which is a taxonomy the
+   * tenant does not own, asked in front of the one they do; and its second
+   * question then asked for the service in free text on any tenant whose
+   * services had not loaded. Both questions are answered by one row now.
+   *
+   * `OTHER` is a real answer, not a miss: a tenant may sell something none of
+   * the six words describe, and it belongs on the form rather than being
+   * dropped from it.
+   */
+  mode: ServiceMode;
+  /**
+   * What a quote enquiry for this service has to ask — authored by the tenant
+   * (migration 12774), never derived.
+   *
+   * The distinction from `mode` is the point. A mode is guessed from a key and
+   * decides a glyph and a pair of route labels; being wrong there costs an icon.
+   * This decides which fields a stranger must fill before the form will let them
+   * continue, and the old version guessed that too: everything that was not
+   * warehousing got origin, destination and a required Incoterm — including
+   * business representation, where all three are questions with no answer.
+   */
+  enquiry_shape: EnquiryShape;
   short_description_fr: string | null;
   short_description_en: string | null;
+  /** The one emphasised line closing the card. Migration 12755 is explicit that
+   *  this is NOT `highlights[0]` — a positional convention that survives exactly
+   *  until somebody reorders the list. */
+  claim_fr: string | null;
+  claim_en: string | null;
+  /** A brand TOKEN NAME, never a hex: the palette is tenant config, so a stored
+   *  colour would hardcode one tenant's brand into another's data. */
+  accent: ServiceAccent;
   cover_url: string | null;
   icon_url: string | null;
   has_video: boolean;
@@ -118,7 +174,40 @@ export const isFeatureDisabled = (e: unknown): boolean =>
   e instanceof PublicApiError &&
   (e.code === "FEATURE_DISABLED" || e.status === 403);
 
-export const listServices = () => publicGet<ServiceCard[]>("/public/services");
+/**
+ * A pillar, with its services under it.
+ *
+ * `key` is the anchor handle (`/services#freight`), stable across a rename, and
+ * it is `null` for the trailing bucket the server collects unassigned services
+ * into. That bucket is not an error state: it is where every tenant starts on
+ * the day the column ships, and where a service returns when its pillar is
+ * retired. It renders without a heading — it is never dropped.
+ */
+export type ServiceGroup = {
+  key: string | null;
+  name_fr: string | null;
+  name_en: string | null;
+  /** An icon NAME resolved by the renderer against its own set — not a URL and
+   *  not markup, because a tenant-editable field that reached the DOM as HTML
+   *  would be stored XSS on a public page. */
+  icon: string | null;
+  services: ServiceCard[];
+};
+
+/**
+ * `GET /public/services` answers an OBJECT, not the flat array it used to.
+ *
+ * This is the shape migration 12755 introduced and the reason the services page
+ * has been empty: the client asked for `ServiceCard[]`, got `{groups: […]}`,
+ * and every consumer guarded with `Array.isArray(rows) ? rows : []` — which is
+ * false for an object, so a tenant's published services were parsed as "none"
+ * and thrown away on every load. The type is the fix; the guard was doing
+ * exactly what it was written to do.
+ */
+export type ServicesIndex = { groups: ServiceGroup[] };
+
+export const listServices = () =>
+  publicGet<ServicesIndex>("/public/services");
 
 export const getService = (slug: string) =>
   publicGet<ServiceProfile>(`/public/services/${encodeURIComponent(slug)}`);

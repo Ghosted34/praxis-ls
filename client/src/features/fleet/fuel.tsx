@@ -113,7 +113,7 @@ function LogFillForm({
           </Field>
         </div>
         <Field
-          label={tr("Dossier")}
+          label={tr("Operations file")}
           hint="Optional — attribute the fuel cost to an operation"
         >
           <Select

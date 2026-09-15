@@ -6,6 +6,7 @@
  * the supplier master (party-360.tsx).
  */
 import { pageShell } from "@/lib/layout";
+import { IndexRow } from "@/components/ui/index-row";
 import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { useRecordParam, useTrailTitle } from "@/app/layout/nav-trail-context";
@@ -84,6 +85,8 @@ export function ClientsPage() {
           defaultSize={260}
           min={200}
           max={480}
+          activeKind={tr("Client")}
+          active={!!selected}
         >
           <div className="space-y-2">
             <Input
@@ -98,16 +101,17 @@ export function ClientsPage() {
                 <div className="px-3 py-4 micro">No clients.</div>
               ) : (
                 filtered.map((c) => (
-                  <button
+                  <IndexRow
                     key={c.client_id}
+                    selected={c.client_id === selId}
                     onClick={() => select(c)}
-                    className={`flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors ${c.client_id === selId ? "bg-primary/10 text-foreground" : "hover:bg-muted"}`}
+                    className="items-center justify-between gap-2"
                   >
                     <span className="truncate font-medium">{c.name}</span>
                     <Pill tone={c.is_active ? "ok" : "mute"}>
                       {c.is_active ? "Active" : "Off"}
                     </Pill>
-                  </button>
+                  </IndexRow>
                 ))
               )}
             </div>

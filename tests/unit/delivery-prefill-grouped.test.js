@@ -6,8 +6,9 @@
  * ── WHAT BROKE, AND WHAT THESE PROTECT ─────────────────────────────────────
  *
  * `deliveryNoteFrom` read only `dossier_container_unit` rows. A file in
- * GROUPED mode — the default for containerised service types — states its
- * equipment as container LINES ("3 × 40' HC") and has no units at all, so the
+ * GROUPED mode — still a supported choice, though PER_BOX is the default since
+ * 12772 — states its equipment as container LINES ("3 × 40' HC") and has no
+ * units at all, so the
  * prefill offered NOTHING from exactly the files the delivery note exists to
  * serve. 10708 makes the line a first-class container shape on the note.
  *

@@ -249,4 +249,67 @@ async function alertEmail(cfg) {
   return { message_id: r.message_id, note: "test email sent — check it arrives, and check the spam folder" };
 }
 
-module.exports = { s3, geoapify, smtp, vapid, signwell, alertWebhook, alertEmail, backupStorage };
+/**
+ * Microsoft Entra app registration — prove the client_id + client_secret pair.
+ *
+ * Uses the CLIENT CREDENTIALS grant, which needs no user and no consent: if the
+ * app exists in the directory and the secret is current, Entra issues a token.
+ * That is exactly the question the console is asking, and it is the one an
+ * administrator cannot answer by looking — a wrong or expired secret is
+ * indistinguishable from a correct one in the portal, and the symptom otherwise
+ * shows up much later as every mailbox quietly failing to sign in.
+ *
+ * WHY THIS DEMANDS A DIRECTORY ID. The multi-tenant sign-in endpoints
+ * (`common`, `organizations`, `consumers`) are for USER sign-in and will not
+ * issue a token against an app's own credentials — so a test against them
+ * cannot distinguish a good secret from a bad one. Rather than let a probe pass
+ * or fail on something it never checked, it refuses and says what to fill in.
+ * The whole point of a Test button is that a green tick means something.
+ */
+async function microsoftGraph(cfg) {
+  if (!cfg.client_id) throw new Error("No application (client) ID configured.");
+  if (!cfg.client_secret) throw new Error("No client secret configured.");
+  const directory = String(cfg.directory_id || "").trim();
+  if (!directory || /^(common|organizations|consumers)$/i.test(directory)) {
+    throw new Error(
+      "Fill in the Directory (tenant) ID to test these credentials. The multi-tenant sign-in "
+      + "endpoints do not issue a token for an app's own credentials, so a test against "
+      + `'${directory || "nothing"}' would prove neither that the secret is right nor that it is wrong.`,
+    );
+  }
+  const qs = require("querystring");
+  try {
+    const r = await axios.post(
+      `https://login.microsoftonline.com/${encodeURIComponent(directory)}/oauth2/v2.0/token`,
+      qs.stringify({
+        grant_type: "client_credentials",
+        client_id: cfg.client_id,
+        client_secret: cfg.client_secret,
+        scope: "https://graph.microsoft.com/.default",
+      }),
+      { headers: { "Content-Type": "application/x-www-form-urlencoded" }, timeout: 10000 },
+    );
+    return {
+      client_id: cfg.client_id,
+      directory_id: directory,
+      token_expires_in: (r.data && r.data.expires_in) || null,
+    };
+  } catch (err) {
+    // Entra answers { error, error_description } — neither `error.message` nor
+    // `message`, which is what the generic handler in settings.service looks
+    // for, so the useful half would be dropped. The description carries the
+    // AADSTS code and the sentence that names the actual problem; its later
+    // lines are a correlation id and timestamp nobody reads on a settings page.
+    const d = err.response && err.response.data;
+    const desc = d && (d.error_description || d.error);
+    if (desc) {
+      const first = String(desc).split(/\r?\n/)[0].trim();
+      const e = new Error(first);
+      e.response = err.response;
+      throw e;
+    }
+    throw err;
+  }
+}
+
+module.exports = { s3, geoapify, smtp, vapid, signwell, alertWebhook, alertEmail, backupStorage, microsoftGraph };

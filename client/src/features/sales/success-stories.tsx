@@ -2,18 +2,20 @@
 import * as React from "react";
 import { tr } from "@/lib/i18n";
 import { pageShell } from "@/lib/layout";
-import { tenant } from "@/lib/api-client";
+import { tenant, tenantWithProgress } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Modal, Field } from "@/components/ui/modal";
-import { FileDrop } from "@/components/ui/file-drop";
+import { FileDrop, fileDropProps } from "@/components/ui/file-drop";
+import { UploadProgress } from "@/components/ui/upload-progress";
+import { useUpload } from "@/lib/use-upload";
+import { fileToDataUrl } from "@/lib/image-compress";
 import { PageHeader } from "@/components/data-list";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import { SkeletonTable } from "@/components/ui/skeleton";
 import { errMsg, useList, useRefresh, type Row } from "@/lib/use-resource";
-import { readFileAsDataUrl } from "@/lib/vault-file";
 import type { Client } from "@/lib/masterdata-api";
 import { cell, dateFmt } from "@/lib/format";
 import { StatusPill } from "@/components/ui/pill";
@@ -61,7 +63,14 @@ function storyStatus(row: Row): string {
 function imageProblem(file: File): string | null {
   if (!file.size) return "That image is empty.";
   if (file.size > IMAGE_MAX_BYTES) return "Images must be no larger than 10 MB.";
-  if (!IMAGE_ACCEPT.split(",").includes(file.type.toLowerCase())) {
+  // A browser reports an EMPTY type for a file whose extension the operating
+  // system has no registry entry for, and `.webp` is the one that still hits
+  // that on Windows — so treating "" as "not an image" refused genuine WebP
+  // files with a message telling the person to pick a WebP. The vault sniffs the
+  // magic bytes and is the authority (`document_vault.service.sniffContentType`);
+  // only an outright mismatch is worth refusing here. Same rule as
+  // `vault-file.scanFileProblem`.
+  if (file.type && !IMAGE_ACCEPT.split(",").includes(file.type.toLowerCase())) {
     return "Choose a PNG, JPEG or WebP image.";
   }
   return null;
@@ -89,9 +98,43 @@ function StoryForm({
   const [kpis, setKpis] = React.useState<Kpi[]>([]);
   const [selected, setSelected] = React.useState<string[]>([]);
   const [roughNotes, setRoughNotes] = React.useState("");
-  const [coverFile, setCoverFile] = React.useState<File | null>(null);
-  const [logoFile, setLogoFile] = React.useState<File | null>(null);
-  const [galleryFiles, setGalleryFiles] = React.useState<File[]>([]);
+  /**
+   * Deferred (`autoStart: false`): media binds to a story that does not exist
+   * until Save, so `send` reads the id from a ref set at that moment. The
+   * preview and the compression still happen the instant a file is picked.
+   *
+   * `profile: "photo"` for the cover and the gallery — these are the pictures
+   * on a published case study. The client logo is `brand`: it is someone
+   * else's mark, and returning it in a slightly different colour is worse here
+   * than anywhere, because it is printed next to their name.
+   */
+  const storyIdRef = React.useRef<string | null>(null);
+  const mediaUpload = (role: "COVER" | "CLIENT_LOGO" | "GALLERY") =>
+    ({
+      profile: role === "CLIENT_LOGO" ? ("brand" as const) : ("photo" as const),
+      autoStart: false,
+      send: async (file: File, ctx: { onProgress: (p: number) => void }) =>
+        tenantWithProgress(
+          `/success-stories/${storyIdRef.current}/media`,
+          {
+            role,
+            data_url: await fileToDataUrl(file),
+            original_name: file.name,
+          },
+          ctx.onProgress,
+        ),
+    });
+
+  const coverUpload = useUpload(mediaUpload("COVER"));
+  const logoUpload = useUpload(mediaUpload("CLIENT_LOGO"));
+  const galleryUpload = useUpload({ ...mediaUpload("GALLERY"), multiple: true });
+
+  // The reset callbacks are stable (useCallback in the engine); the uploader
+  // OBJECTS are new every render, so depending on those would re-run the reset
+  // effect on every keystroke in this form.
+  const { reset: resetCover } = coverUpload;
+  const { reset: resetLogo } = logoUpload;
+  const { reset: resetGallery } = galleryUpload;
   const [mediaError, setMediaError] = React.useState<string | null>(null);
 
   const [query, setQuery] = React.useState("");
@@ -115,15 +158,17 @@ function StoryForm({
     setKpis(Array.isArray(editing?.kpis) ? editing.kpis : []);
     setSelected((editing?.dossiers ?? []).map((dossier) => dossier.dossier_id));
     setRoughNotes("");
-    setCoverFile(null);
-    setLogoFile(null);
-    setGalleryFiles([]);
+    resetCover();
+    resetLogo();
+    resetGallery();
     setMediaError(null);
     setQuery("");
     setOffset(0);
     setError(null);
     setNotice(null);
-  }, [open, editing]);
+    // The reset callbacks are stable, so listing them costs nothing and keeps
+    // the rule satisfied honestly rather than by disabling it.
+  }, [open, editing, resetCover, resetLogo, resetGallery]);
 
   React.useEffect(() => {
     if (!open) return;
@@ -145,15 +190,18 @@ function StoryForm({
       : [...current, id]);
   }
 
-  function chooseImage(file: File | null, setter: (value: File | null) => void) {
+  function chooseImage(
+    file: File | null,
+    uploader: { pick: (files: File[]) => void; reset: () => void },
+  ) {
     setMediaError(null);
-    if (!file) return setter(null);
+    if (!file) return uploader.reset();
     const problem = imageProblem(file);
     if (problem) {
       setMediaError(problem);
-      return setter(null);
+      return uploader.reset();
     }
-    return setter(file);
+    return uploader.pick([file]);
   }
 
   async function generate() {
@@ -185,17 +233,6 @@ function StoryForm({
     } finally {
       setGenerating(false);
     }
-  }
-
-  async function upload(id: string, role: "COVER" | "CLIENT_LOGO" | "GALLERY", file: File) {
-    await tenant(`/success-stories/${id}/media`, {
-      method: "POST",
-      body: {
-        role,
-        data_url: await readFileAsDataUrl(file),
-        original_name: file.name,
-      },
-    });
   }
 
   async function submit() {
@@ -234,13 +271,20 @@ function StoryForm({
             body: request,
           })
         : await tenant<StoryFormRow>("/success-stories", { method: "POST", body: request });
-      const id = String(story.success_story_id);
-      if (coverFile) await upload(id, "COVER", coverFile);
-      if (logoFile) await upload(id, "CLIENT_LOGO", logoFile);
-      for (const file of galleryFiles) {
-        // Intentionally sequential: each upload binds and audits one vault object.
-        // eslint-disable-next-line no-await-in-loop
-        await upload(id, "GALLERY", file);
+      storyIdRef.current = String(story.success_story_id);
+      // Sequential by slot: each upload binds and audits one vault object, and
+      // the engine reports a percentage for each as it goes.
+      const outcomes = [];
+      for (const uploader of [coverUpload, logoUpload, galleryUpload]) {
+        outcomes.push(await uploader.start());
+      }
+      if (outcomes.some((o) => !o.ok)) {
+        // The story IS saved — saying otherwise would have them write it twice.
+        setError(
+          "The story was saved, but an image did not upload. Reopen it and add the image again.",
+        );
+        onSaved();
+        return;
       }
       onSaved();
       onClose();
@@ -384,28 +428,62 @@ function StoryForm({
             <p className="text-xs text-muted-foreground">Images are content-checked, classified and bound to this story. Raw vault IDs are not accepted.</p>
           </div>
           <div className="grid gap-4 md:grid-cols-2">
-            <FileDrop file={coverFile} onPick={(file) => chooseImage(file, setCoverFile)} accept={IMAGE_ACCEPT} label="Cover image" hint="PNG, JPEG or WebP · 10 MB maximum" />
-            <FileDrop file={logoFile} onPick={(file) => chooseImage(file, setLogoFile)} accept={IMAGE_ACCEPT} label="Client logo" hint="Shown only when client consent is NAMED" />
+            <FileDrop
+              {...fileDropProps(coverUpload.items[0])}
+              onPick={(file) => chooseImage(file, coverUpload)}
+              accept={IMAGE_ACCEPT}
+              label="Cover image"
+              hint="PNG, JPEG or WebP · 10 MB maximum"
+            />
+            <FileDrop
+              {...fileDropProps(logoUpload.items[0])}
+              onPick={(file) => chooseImage(file, logoUpload)}
+              accept={IMAGE_ACCEPT}
+              label="Client logo"
+              hint="Shown only when client consent is NAMED"
+            />
           </div>
           <FileDrop
-            file={null}
+            {...fileDropProps(null)}
             onPick={(file) => {
               if (!file) return;
               const problem = imageProblem(file);
               if (problem) return setMediaError(problem);
               setMediaError(null);
-              setGalleryFiles((current) => [...current, file]);
+              void galleryUpload.pick([file]);
             }}
             accept={IMAGE_ACCEPT}
             label="Add gallery images"
             hint="Choose repeatedly to queue more than one image"
           />
-          {galleryFiles.length > 0 && (
+          {galleryUpload.items.length > 0 && (
             <ul className="space-y-1 text-sm">
-              {galleryFiles.map((file, index) => (
-                <li key={`${file.name}-${index}`} className="flex items-center justify-between rounded border px-3 py-2">
-                  <span>{file.name}</span>
-                  <Button size="sm" variant="ghost" onClick={() => setGalleryFiles(galleryFiles.filter((_, i) => i !== index))}>{tr("Remove")}</Button>
+              {galleryUpload.items.map((item) => (
+                <li
+                  key={item.id}
+                  className="flex items-center justify-between gap-3 rounded border px-3 py-2"
+                >
+                  <span className="min-w-0 flex-1 truncate">
+                    {item.file.name}
+                  </span>
+                  {/* Each queued image reports its own percentage while the
+                      story is saving — one bar for the batch would say nothing
+                      about which of five images is still going up. */}
+                  {item.state !== "idle" && (
+                    <UploadProgress
+                      className="w-32 shrink-0"
+                      state={item.state}
+                      percent={item.percent}
+                      error={item.error}
+                    />
+                  )}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => galleryUpload.remove(item.id)}
+                  >
+                    {tr("Remove")}
+                  </Button>
                 </li>
               ))}
             </ul>
@@ -481,7 +559,7 @@ export function SuccessStoriesPage() {
       <PageHeader
         eyebrow={<HubCrumb area="Sales & CRM" to="/sales" />}
         title="Success stories"
-        description="Build from completed operation files, sign off, then publish to the portfolio."
+        description="Build from completed operations files, sign off, then publish to the portfolio."
         action={<Button onClick={() => { setEditing(null); setFormOpen(true); }}>New story</Button>}
       />
       <HubTabs />

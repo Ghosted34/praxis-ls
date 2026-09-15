@@ -35,7 +35,7 @@
  *       }}
  *     >
  *       <FormField form={form} name="entry_date" label="Entry date" required>
- *         {(field) => <Input type="date" {...field} />}
+ *         {(field) => <DateField {...field} value={String(field.value ?? "")} />}
  *       </FormField>
  *       <FormField form={form} name="source_doc_ref" label="Document reference" required>
  *         {(field) => <Input {...field} />}

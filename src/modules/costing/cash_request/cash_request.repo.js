@@ -32,14 +32,85 @@ async function paymentsTotal(client, id) {
 }
 const insertLine = (client, data) => insertOne(client, "cash_request_line", data);
 const insertPayment = (client, data) => insertOne(client, "cash_request_payment", data);
+const updateLine = (client, lineId, fields) =>
+  updateOne(client, "cash_request_line", "cash_request_line_id", lineId, fields);
 
-async function deleteLines(client, id) { await client.query("DELETE FROM cash_request_line WHERE cash_request_id = $1", [id]); }
+/**
+ * Just the identity of each line — what the in-place upsert needs to decide
+ * whether a payload line is an edit or an insert (12771).
+ *
+ * `listLines` is `SELECT *` and runs on every read of the request; this runs on
+ * every SAVE of a draft and needs three columns.
+ */
+async function lineIdentities(client, id) {
+  const { rows } = await client.query(
+    "SELECT cash_request_line_id, costing_line_id, line_no FROM cash_request_line " +
+      "WHERE cash_request_id = $1 ORDER BY line_no, cash_request_line_id",
+    [id],
+  );
+  return rows;
+}
+
+/** Drop the lines a save did not keep. `keepIds` may be empty (all go). */
+async function deleteLinesExcept(client, id, keepIds = []) {
+  await client.query(
+    "DELETE FROM cash_request_line WHERE cash_request_id = $1 " +
+      "AND NOT (cash_request_line_id = ANY($2::uuid[]))",
+    [id, keepIds],
+  );
+}
+
+/** One payment row, for the receipt acknowledgement. */
+async function getPayment(client, paymentId) {
+  const { rows } = await client.query(
+    "SELECT * FROM cash_request_payment WHERE cash_request_payment_id = $1",
+    [paymentId],
+  );
+  return rows[0] || null;
+}
+
+const updatePayment = (client, paymentId, fields) =>
+  updateOne(client, "cash_request_payment", "cash_request_payment_id", paymentId, fields);
+
 async function listLines(client, id) {
-  const { rows } = await client.query("SELECT * FROM cash_request_line WHERE cash_request_id = $1 ORDER BY cash_request_line_id", [id]);
+  /*
+   * `line_no` FIRST — the order the requester put the lines in.
+   *
+   * This read was `ORDER BY cash_request_line_id`, which is a uuid: stable, and
+   * meaningless. 12771 added `line_no` and taught `lineIdentities` to use it,
+   * and this reader was left behind — so the worksheet, the voucher and the
+   * justification screen all rendered the lines in an arbitrary order that
+   * matched neither the order they were typed nor the order the costing prints.
+   *
+   * It is not only cosmetic. `applySpend` falls back to matching BY POSITION
+   * when a caller sends no line ids (an AI action, an integration), and its own
+   * comment says the order is `line_no` — so under the old ordering spend could
+   * be recorded against the wrong line, silently, in the one workflow where the
+   * numbers are the point.
+   *
+   * The uuid stays as the tie-break, so pre-12771 rows with a NULL `line_no`
+   * (which Postgres sorts last) keep the stable order they have always had.
+   */
+  const { rows } = await client.query(
+    "SELECT * FROM cash_request_line WHERE cash_request_id = $1 ORDER BY line_no, cash_request_line_id",
+    [id],
+  );
   return rows;
 }
 async function listPayments(client, id) {
-  const { rows } = await client.query("SELECT * FROM cash_request_payment WHERE cash_request_id = $1 ORDER BY paid_on", [id]);
+  /*
+   * The id as the tie-break, because this order is not only a display: the
+   * payment receipt is NUMBERED from it (DF-2026-0007 / R2), and its running
+   * balance is derived from everything ordered before it. `paid_on` is a DATE,
+   * so two instalments released on one day would order arbitrarily — and two
+   * receipts could each claim to be the second, with two different balances,
+   * both sealed. The receipt projection sorts by the same pair for the same
+   * reason; they must not drift.
+   */
+  const { rows } = await client.query(
+    "SELECT * FROM cash_request_payment WHERE cash_request_id = $1 ORDER BY paid_on, cash_request_payment_id",
+    [id],
+  );
   return rows;
 }
 async function update(client, id, fields) {
@@ -86,24 +157,57 @@ async function list(client, q = {}) {
   return rows;
 }
 /**
- * The linked costing, only when it can feed a request: its status/ref plus the
- * line facts (label, qty, unit_cost, is_disbursement, dictionary item). Used by
- * `importCostingLines` — the legacy `costing_lines_get` gate lives in the
- * service (APPROVED_LOCKED only), this is just the read.
+ * The KPI strip, aggregated over the SAME filter the page used (12771).
+ *
+ * The list screen counted statuses in the browser, over whichever page it had
+ * loaded — so "Approved: 3" meant three on this page, and the number was simply
+ * wrong past the first fifty rows. Its own endpoint rather than a `meta` block,
+ * matching `costing.repo.kpis`: the registry re-pages far more often than the
+ * totals move.
+ *
+ * `outstanding` is what Finance actually wants to see — approved money not yet
+ * paid — and it is the one figure that cannot be derived from a count.
  */
-async function costingForImport(client, costingId) {
-  if (!costingId) return null;
+async function kpis(client, q = {}) {
+  const params = [];
+  const wh = [];
+  if (q.status) { params.push(q.status); wh.push("status = $" + params.length); }
+  if (q.dossier_id) { params.push(q.dossier_id); wh.push("dossier_id = $" + params.length); }
+  if (q.costing_id) { params.push(q.costing_id); wh.push("costing_id = $" + params.length); }
+  const where = wh.length ? "WHERE " + wh.join(" AND ") : "";
   const { rows } = await client.query(
-    "SELECT costing_id, status, doc_number FROM costing WHERE costing_id = $1 LIMIT 1",
-    [costingId],
+    "SELECT COUNT(*)::int AS total, " +
+      "COUNT(*) FILTER (WHERE status = 'DRAFT')::int AS draft, " +
+      "COUNT(*) FILTER (WHERE status = 'SUBMITTED')::int AS to_validate, " +
+      "COUNT(*) FILTER (WHERE status = 'VALIDATED')::int AS to_approve, " +
+      "COUNT(*) FILTER (WHERE status = 'APPROVED')::int AS to_disburse, " +
+      "COUNT(*) FILTER (WHERE status = 'PARTIALLY_DISBURSED')::int AS partially_disbursed, " +
+      "COUNT(*) FILTER (WHERE status = 'DISBURSED')::int AS disbursed, " +
+      "COUNT(*) FILTER (WHERE status = 'JUSTIFIED')::int AS justified, " +
+      "COUNT(*) FILTER (WHERE status = 'REJECTED')::int AS rejected, " +
+      "COALESCE(SUM(disbursed_amount), 0) AS disbursed_total_xaf, " +
+      // Approved but not yet in the holder's hands. Excludes CLOSED_SHORT: a
+      // request settled short is owed nothing more.
+      "COALESCE(SUM(amount - disbursed_amount) FILTER " +
+      "(WHERE status IN ('APPROVED','PARTIALLY_DISBURSED')), 0) AS outstanding_xaf " +
+      "FROM cash_request " + where,
+    params,
   );
-  const head = rows[0];
-  if (!head) return null;
-  const lr = await client.query(
-    "SELECT dictionary_item_id, label, qty, unit_cost, is_disbursement FROM costing_line WHERE costing_id = $1 ORDER BY costing_line_id",
-    [costingId],
-  );
-  return { ...head, lines: lr.rows };
+  const r = rows[0] || {};
+  const n = (k) => Number(r[k] || 0);
+  return {
+    total: n("total"), draft: n("draft"), to_validate: n("to_validate"),
+    to_approve: n("to_approve"), to_disburse: n("to_disburse"),
+    partially_disbursed: n("partially_disbursed"), disbursed: n("disbursed"),
+    justified: n("justified"), rejected: n("rejected"),
+    disbursed_total_xaf: n("disbursed_total_xaf"),
+    outstanding_xaf: n("outstanding_xaf"),
+  };
 }
 
-module.exports = { insertCR, getCR, getCRForUpdate, paymentsTotal, insertLine, insertPayment, deleteLines, listLines, listPayments, update, list, costingForImport };
+module.exports = {
+  insertCR, getCR, getCRForUpdate, paymentsTotal,
+  insertLine, updateLine, deleteLinesExcept, lineIdentities, listLines,
+  insertPayment, listPayments, getPayment, updatePayment,
+  update, list, kpis,
+};

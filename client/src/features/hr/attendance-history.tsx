@@ -30,7 +30,7 @@
 import * as React from "react";
 import { tr } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { DateField } from "@/components/ui/date-field";
 import { Select } from "@/components/ui/modal";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
@@ -103,21 +103,19 @@ export function PeriodChips({
         <div className="flex flex-wrap items-end gap-3">
           <label className="flex flex-col gap-1">
             <span className="micro">{tr("From")}</span>
-            <Input
-              type="date"
+            <DateField
               value={win.from}
               max={win.to}
-              onChange={(e) => onWindow({ ...win, from: e.target.value })}
+              onChange={(iso) => onWindow({ ...win, from: iso })}
               className="w-auto"
             />
           </label>
           <label className="flex flex-col gap-1">
             <span className="micro">{tr("To")}</span>
-            <Input
-              type="date"
+            <DateField
               value={win.to}
               min={win.from}
-              onChange={(e) => onWindow({ ...win, to: e.target.value })}
+              onChange={(iso) => onWindow({ ...win, to: iso })}
               className="w-auto"
             />
           </label>

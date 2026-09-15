@@ -100,7 +100,7 @@ export function TenantDetail() {
           })}>Wipe sandbox</Button>
           <Button size="sm" onClick={() => run({
             title: `Seed sandbox demo for '${t.slug}'?`, confirmLabel: "Seed sandbox",
-            body: <>Loads the <b>demo business dataset</b> (employees, clients, dossiers, invoices, containers) into the <b>sandbox</b> schema. Live data is untouched. Idempotent — safe to re-run.</>,
+            body: <>Loads the <b>demo business dataset</b> (employees, clients, operations files, invoices, containers) into the <b>sandbox</b> schema. Live data is untouched. Idempotent — safe to re-run.</>,
             action: () => platform.seedSandboxDemo(slug).then(() => { toast("Sandbox demo seeded"); reloadAll(); }),
           })}>Seed sandbox demo</Button>
         </div>

@@ -21,7 +21,7 @@ module.exports = {
       schema: validator.schemas.create,
       permission: { module: "MOD-42", action: "create" },
       confirm: true,
-      describe: "Assign a vehicle (and driver) for a dossier.",
+      describe: "Assign a vehicle (and driver) for an operations file.",
     },
     {
       key: "update_dispatch",

@@ -21,7 +21,41 @@ import {
 import { tokenStore } from "@/lib/token-store";
 import { pinStore } from "@/lib/pin-store";
 import { deviceIdStore } from "@/lib/device-id";
+import { lastSessionStore } from "@/lib/last-session";
 import { onReconnect, probeNow, reportUnreachable } from "@/lib/connection";
+function b64urlToBuf(b64url: string): ArrayBuffer {
+  const pad = "=".repeat((4 - (b64url.length % 4)) % 4);
+  const b64 = (b64url + pad).replace(/-/g, "+").replace(/_/g, "/");
+  const str = atob(b64);
+  const bytes = new Uint8Array(str.length);
+  for (let i = 0; i < str.length; i++) bytes[i] = str.charCodeAt(i);
+  return bytes.buffer;
+}
+function bufToB64url(buf: ArrayBuffer | Uint8Array): string {
+  const bytes = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
+  let str = "";
+  for (let i = 0; i < bytes.length; i++) str += String.fromCharCode(bytes[i]);
+  return btoa(str).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+function toPublicKeyOptions(opt: any): any {
+  if (opt.challenge) opt.challenge = b64urlToBuf(opt.challenge);
+  if (opt.user && opt.user.id) opt.user.id = b64urlToBuf(opt.user.id);
+  if (opt.allowCredentials) for (const c of opt.allowCredentials) c.id = b64urlToBuf(c.id);
+  if (opt.excludeCredentials) for (const c of opt.excludeCredentials) c.id = b64urlToBuf(c.id);
+  return opt;
+}
+function fromCredential(cred: PublicKeyCredential): any {
+  const rawId = bufToB64url(cred.rawId);
+  const resp: any = (cred as any).response;
+  const out: any = { id: (cred as any).id, rawId, type: cred.type, response: {} };
+  if (resp.clientDataJSON) out.response.clientDataJSON = bufToB64url(resp.clientDataJSON);
+  if (resp.authenticatorData) out.response.authenticatorData = bufToB64url(resp.authenticatorData);
+  if (resp.signature) out.response.signature = bufToB64url(resp.signature);
+  if (resp.userHandle !== undefined && resp.userHandle !== null) out.response.userHandle = resp.userHandle ? bufToB64url(resp.userHandle) : null;
+  if (resp.attestationObject) out.response.attestationObject = bufToB64url(resp.attestationObject);
+  return out;
+}
+
 
 export type User = {
   user_id: string;
@@ -58,6 +92,7 @@ type AuthState = {
     pin: string,
     label?: string | null,
   ) => Promise<{ device_id: string }>;
+  passkeyLogin: (email?: string) => Promise<void>;
   logout: () => Promise<void>;
   /** Merge fields into the cached user (e.g. after an avatar upload). */
   patchUser: (partial: Partial<User>) => void;
@@ -180,6 +215,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     tokenStore.setAccess(r.access_token);
     tokenStore.setRefresh(r.refresh_token);
     persistUser(r.user);
+    lastSessionStore.fromUser(r.user);
     setUser(r.user);
     setPendingToken(null);
     setStatus("authed");
@@ -190,6 +226,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     tenant<User>("/auth/me")
       .then((fresh) => {
         persistUser(fresh);
+        lastSessionStore.fromUser(fresh);
         setUser(fresh);
       })
       .catch(() => {
@@ -321,6 +358,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [user],
   );
 
+  const passkeyLogin: AuthState["passkeyLogin"] = React.useCallback(async (email?: string) => {
+    if (!window.PublicKeyCredential) throw Object.assign(new Error("Passkeys aren't supported in this browser."), { code: "WEBAUTHN_NOT_SUPPORTED" });
+    const options: any = await tenant<any>("/auth/passkey/login/options", {
+      method: "POST",
+      auth: false,
+      body: email ? { email: email.trim().toLowerCase() } : {},
+    });
+    const publicKey = toPublicKeyOptions(options) as PublicKeyCredentialRequestOptions;
+    let cred: PublicKeyCredential | null = null;
+    try {
+      cred = (await navigator.credentials.get({ publicKey })) as PublicKeyCredential | null;
+    } catch (e: any) {
+      const err: any = new Error(e?.message || "Passkey cancelled");
+      err.name = e?.name || "NotAllowedError";
+      err.code = "NOT_ALLOWED";
+      throw err;
+    }
+    if (!cred) throw Object.assign(new Error("No passkey selected"), { code: "NOT_ALLOWED" });
+    const assertion = fromCredential(cred);
+    const r = await tenant<{ access_token: string; refresh_token: string; user: User }>("/auth/passkey/login/verify", {
+      method: "POST",
+      auth: false,
+      body: { email: email ? email.trim().toLowerCase() : undefined, assertion, challengeToken: (options as any)._challengeToken, _challenge: (options as any)._challenge },
+    });
+    tokenStore.setPersist(true);
+    acceptTokens(r);
+  }, []);
+
   const logout: AuthState["logout"] = React.useCallback(async () => {
     try {
       await tenant("/auth/logout", { method: "POST" });
@@ -341,9 +406,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const pinSnap = pinStore.snapshot(); // trusted PIN devices survive sign-out
       const devSnap = deviceIdStore.snapshot();
+      const lastSnap = lastSessionStore.snapshot();
       localStorage.clear();
       pinStore.restore(pinSnap);
       deviceIdStore.restore(devSnap);
+      lastSessionStore.restore(lastSnap);
     } catch {
       /* @silent:storage */
     }
@@ -357,6 +424,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (!u) return u;
         const next = { ...u, ...partial };
         persistUser(next);
+        lastSessionStore.fromUser(next);
         return next;
       }),
     [],
@@ -400,6 +468,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       verify2fa,
       pinLogin,
       registerPin,
+      passkeyLogin,
       logout,
       patchUser,
     }),
@@ -411,6 +480,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       verify2fa,
       pinLogin,
       registerPin,
+      passkeyLogin,
       logout,
       patchUser,
     ],

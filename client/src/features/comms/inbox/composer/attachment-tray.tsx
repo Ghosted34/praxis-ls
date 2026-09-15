@@ -12,6 +12,8 @@ import * as React from "react";
 import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/button";
 import { Pill } from "@/components/ui/pill";
+import { FilePicker } from "@/components/ui/image-upload";
+import { compressImage } from "@/lib/image-compress";
 import { tr } from "@/lib/i18n";
 import type { AttachmentTray as Tray } from "@/lib/mail-api";
 
@@ -128,26 +130,46 @@ export function AttachButton({
   onFiles: (files: File[]) => void;
   disabled?: boolean;
 }) {
-  const ref = React.useRef<HTMLInputElement>(null);
+  const [working, setWorking] = React.useState(false);
+
+  /**
+   * Images are compressed before they become attachments. Emailing a 6 MB phone
+   * photo is the exact case this costs the most — the sender waits for it, the
+   * recipient's mailbox keeps it, and it is a 400 KB picture.
+   *
+   * Profile is "document" ON PURPOSE, even for a holiday photo: that profile
+   * keeps the SOURCE format, and an attachment must arrive as the kind of file
+   * the recipient expects. A JPEG silently re-encoded to WebP is one their mail
+   * client may refuse to preview and their colleague may not be able to open.
+   * Non-images pass through untouched.
+   */
+  async function handle(files: FileList | null) {
+    const picked = [...(files || [])];
+    if (!picked.length) return;
+    setWorking(true);
+    try {
+      const prepared = await Promise.all(
+        picked.map(async (f) => (await compressImage(f, "document")).file),
+      );
+      onFiles(prepared);
+    } finally {
+      setWorking(false);
+    }
+  }
+
   return (
-    <>
-      <input
-        ref={ref}
-        type="file"
-        multiple
-        className="sr-only"
-        aria-hidden="true"
-        tabIndex={-1}
-        onChange={(e) => {
-          onFiles([...(e.target.files || [])]);
-          // Reset, or picking the same file twice in a row does nothing and
-          // reads as the button being broken.
-          e.target.value = "";
-        }}
-      />
-      <Button size="sm" variant="outline" disabled={disabled} onClick={() => ref.current?.click()}>
-        {tr("Attach")}
-      </Button>
-    </>
+    <FilePicker
+      variant="inline"
+      accept="*/*"
+      label={tr("Attach")}
+      multiple
+      disabled={disabled || working}
+      trigger={
+        <span className="inline-flex h-8 items-center rounded-lg border px-3 text-sm no-underline">
+          {working ? tr("Preparing…") : tr("Attach")}
+        </span>
+      }
+      onPick={(files) => void handle(files)}
+    />
   );
 }

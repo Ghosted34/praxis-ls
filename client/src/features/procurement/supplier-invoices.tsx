@@ -9,6 +9,7 @@ import { tr } from "@/lib/i18n";
 import { HubTabs, HubCrumb } from "@/components/tabbed-hub";
 import { ScreenAi } from "@/components/screen-ai";
 import { Button } from "@/components/ui/button";
+import { DateField } from "@/components/ui/date-field";
 import { FormButtons } from "@/components/ui/form-buttons";
 import { DocButton } from "@/components/doc-button";
 import { Input } from "@/components/ui/input";
@@ -132,10 +133,9 @@ function SupplierInvoiceForm({
             />
           </Field>
           <Field label={tr("Due on")}>
-            <Input
-              type="date"
+            <DateField
               value={f.due_on}
-              onChange={(e) => set("due_on", e.target.value)}
+              onChange={(iso) => set("due_on", iso)}
             />
           </Field>
         </div>
@@ -280,10 +280,9 @@ function PayForm({
             />
           </Field>
           <Field label={tr("Paid on")}>
-            <Input
-              type="date"
+            <DateField
               value={f.entry_date}
-              onChange={(e) => set("entry_date", e.target.value)}
+              onChange={(iso) => set("entry_date", iso)}
             />
           </Field>
           <Field label={tr("Treasury account")}>

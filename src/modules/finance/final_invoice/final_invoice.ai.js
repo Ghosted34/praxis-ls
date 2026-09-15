@@ -47,7 +47,7 @@ module.exports = {
       permission: { module: "MOD-51", action: "edit" },
       confirm: true,
       describe:
-        "Edit a DRAFT final invoice by id. Lines must match the dossier's accepted quotation. Billing something unquoted is not available here — it needs an approver on the invoice screen.",
+        "Edit a DRAFT final invoice by id. Lines must match the operations file's accepted quotation. Billing something unquoted is not available here — it needs an approver on the invoice screen.",
     },
     { key: "submit_final_invoice", service: (c, p) => service.submit(c, { invoiceId: p.invoice_id, entryDate: p.entry_date, sourceDocRef: p.source_doc_ref }), schema: validator.schemas.aiSubmit, permission: { module: "MOD-51", action: "approve" }, confirm: true, describe: "Submit a final invoice by id; auto-posts (revenue+débours+VAT, clears advance, numbers + captures the doc) when no workflow is bound. KB §8.3." },
   ],

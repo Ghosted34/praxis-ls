@@ -1,6 +1,10 @@
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { PageShell } from "@/components/site/page-shell";
+import { PageContainer, PageShell } from "@/components/site/page-shell";
+import { SectionHead } from "@/components/site/section-head";
+import { BadgePill } from "@/components/ui/badge-pill";
+import { BgMap } from "@/components/ui/bg-map";
+import { StagedLines } from "@/components/ui/type";
 import { Section } from "@/components/site/section";
 import { useDocumentMeta } from "@/lib/use-document-meta";
 import { p } from "@/lib/base-path";
@@ -25,12 +29,42 @@ export function NotFoundPage() {
   useDocumentMeta({ title: t("site.notFound.title") });
 
   return (
-    <PageShell label={t("site.notFound.title")}>
-      <Section
-        title={t("site.notFound.title")}
-        lead={t("site.notFound.hint")}
-        titleAs="h1"
-      >
+    <PageShell label={t("site.notFound.title")} footer>
+      {/*
+        A 404 GETS A DESIGNED ENTRANCE TOO, and this is the route where that is
+        least obvious and most worth it.
+
+        §8.7 says every route in `router.tsx`, and a 404 is the one page nobody
+        designs because nobody plans to visit it — which is exactly backwards.
+        It is reached by a mistyped URL, an old printed link and a stale search
+        result, so it is often a stranger's FIRST page on this site. Leaving it
+        as a bare heading on white means the one visitor who arrived by accident
+        is the only one who sees an undesigned product.
+
+        The same plate as every other route, and the two ways out kept exactly
+        where they were: this page's job is to be left, and the entrance must
+        not put anything between the reader and the door.
+      */}
+      <section className="band-hero relative overflow-hidden">
+        <BgMap />
+        <PageContainer className="relative">
+          <BadgePill onDark>{t("site.notFound.kicker")}</BadgePill>
+          <SectionHead
+            className="mt-4"
+            as="h1"
+            titleClass="hero-title"
+            onDark
+            /* F-17: on the one route where a slow paint is most likely to be
+               read as "this site is broken too". */
+            title={
+              <StagedLines paintImmediately text={t("site.notFound.title")} />
+            }
+            lead={t("site.notFound.hint")}
+          />
+        </PageContainer>
+      </section>
+
+      <Section>
         <div className="flex flex-wrap gap-3">
           <Link
             to={p()}

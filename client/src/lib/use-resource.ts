@@ -57,12 +57,41 @@ export type Row = Record<string, unknown>;
  * (Routing those messages to the offending inputs rather than into one banner
  * is the remaining half of F12, and belongs to the Field/RHF work in PR2.)
  *
+ * F-GAP-09 — WHY 403 NO LONGER DISCARDS THE SERVER'S SENTENCE.
+ *
+ * Every 403 used to render as the generic sentence below, whatever the server
+ * said. The authorization layer goes to real trouble to write messages that name
+ * the remedy, and all of them died here:
+ *
+ *   SELF_ROLE_CHANGE      "You cannot change your own roles. Ask another administrator."
+ *   SELF_GRANT_FORBIDDEN  "You cannot grant yourself the APPROVER authority — another must."
+ *   SELF_APPROVAL         "You raised this change — it must be approved by someone else."
+ *   ROLE_ESCALATION       "You cannot grant Finance because you do not hold it."
+ *   PRIVILEGED_TARGET     "Only a CEO can set a CEO's password…"
+ *   NOT_ELIGIBLE          "This step requires the APPROVER authority"
+ *   PERMISSION_DENIED     "No permission for MOD-03.approve"
+ *
+ * Observed cost: an administrator hit maker-checker on a client activation, was
+ * told they lacked permission, and went hunting for a grant that was not the
+ * problem. Three of those messages are not about a missing grant at all — they
+ * are about WHO is acting, which no amount of granting will fix. Flattening them
+ * sends the reader in the wrong direction, confidently.
+ *
+ * Note the asymmetry this removes: 422 field errors were already unpacked one
+ * branch down. 403 was the only class blanked — the one where the server most
+ * reliably knows the remedy.
+ *
+ * The generic sentence stays as the FALLBACK, for a 403 that carries no message.
+ * Same shape as the `return e.message || …` on the last branch: prefer what the
+ * server said, keep a sentence for when it said nothing.
+ *
  * Call this in a `catch` block. Do NOT call it on the `error` string returned
  * by `useList`/`useResource` — that has already been through here.
  */
 export function errMsg(e: unknown): string {
   if (e instanceof ApiError) {
-    if (e.status === 403) return "You don't have permission to do this.";
+    if (e.status === 403)
+      return e.message || "You don't have permission to do this.";
     if (e.status === 422 && e.fields && typeof e.fields === "object") {
       const parts = Object.entries(
         e.fields as Record<string, string[] | string>,

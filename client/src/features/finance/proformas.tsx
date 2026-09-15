@@ -13,6 +13,7 @@ import { errMsg } from "@/lib/use-resource";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
 import { HubCrumb } from "@/components/tabbed-hub";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
+import { DateField } from "@/components/ui/date-field";
 import { ErrorState } from "@/components/ui/states";
 import { Button } from "@/components/ui/button";
 import { DocButton } from "@/components/doc-button";
@@ -120,14 +121,14 @@ function AdvancePaymentForm({
             </Select>
           </Field>
           <Field
-            label={tr("Dossier")}
-            hint="Links this to an operation file — sets service type and matches advances."
+            label={tr("Operations file")}
+            hint="Links this to an operations file — sets service type and matches advances."
           >
             <Select
               value={dossierId}
               onChange={(e) => setDossierId(e.target.value)}
             >
-              <option value="">No dossier</option>
+              <option value="">No operations file</option>
               {dossiers.map((o) => (
                 <option key={o.id} value={o.id}>
                   {optionLabel(o)}
@@ -163,10 +164,9 @@ function AdvancePaymentForm({
             </Select>
           </Field>
           <Field label={tr("Entry date")} required>
-            <Input
-              type="date"
+            <DateField
               value={entryDate}
-              onChange={(e) => setEntryDate(e.target.value)}
+              onChange={setEntryDate}
             />
           </Field>
           <Field label={tr("Source document ref")} required>
@@ -266,7 +266,7 @@ export const ProformasPage = () => {
     },
     {
       key: "dossier",
-      label: "Dossier",
+      label: "File",
       render: (r) => (
         <span className="num text-muted-foreground">
           {dossierRef[str(r, "dossier_id")] ||

@@ -120,6 +120,42 @@ async function listBlocks(client, pageId, { visibleOnly = false } = {}) {
   return rows;
 }
 
+/**
+ * Every visible `copy_overrides` block on every PUBLISHED page, oldest page
+ * first.
+ *
+ * ── WHY THIS IS ONE QUERY AND NOT ONE PER PAGE ────────────────────────────
+ *
+ * The overrides are read on the FIRST paint of every public route — they are
+ * what decides whether the heading says "Success stories" or the tenant's own
+ * words — so the cost of the read is paid by every visitor, on a connection
+ * this app's payload budget exists for. A per-page fetch would have meant one
+ * request per route plus one for the chrome, each re-deciding the same footer.
+ *
+ * ── WHY PUBLISHED PAGES AND NOT ALL PAGES ─────────────────────────────────
+ *
+ * Copy is content. A tenant drafting a rewrite of their careers page must not
+ * have half of it appear on the live site because the strings happen to live in
+ * a different table from the paragraphs — `is_published` is the one switch that
+ * means "a stranger may read this", and it governs here exactly as it governs
+ * the blocks beside it.
+ *
+ * Ordered by the page's own nav order so that two pages overriding the same key
+ * resolve deterministically — the service takes the LAST one and says why.
+ */
+async function listPublishedCopyOverrides(client) {
+  const { rows } = await client.query(
+    `SELECT b.content
+       FROM site_block b
+       JOIN site_page p ON p.page_id = b.page_id
+      WHERE b.type = 'copy_overrides'
+        AND b.is_visible = true
+        AND p.is_published = true
+      ORDER BY p.sort_order ASC, p.key ASC, b.sort_order ASC, b.created_at ASC`,
+  );
+  return rows;
+}
+
 async function getBlock(client, blockId) {
   const { rows } = await client.query(
     "SELECT * FROM site_block WHERE block_id = $1",
@@ -207,6 +243,7 @@ module.exports = {
   setPublished,
   deletePage,
   listBlocks,
+  listPublishedCopyOverrides,
   getBlock,
   createBlock,
   updateBlock,

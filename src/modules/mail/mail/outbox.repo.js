@@ -259,6 +259,37 @@ const cancel = (client, userId, id) =>
   ).then((r) => r.rows[0] || null);
 
 /**
+ * RETRY a send the queue gave up on.
+ *
+ * `WHERE status = 'FAILED'` is the whole guard, for the same reason `cancel`
+ * matches on HELD: it is the database, not the browser, that decides whether
+ * the row is still in the state the button was drawn for. A row the flusher has
+ * since picked up, or one that was retried from a second tab, matches nothing
+ * and the caller is told so rather than being shown a second countdown for a
+ * message that is already on its way.
+ *
+ * `attempts = 0` and not `attempts` left as it was. The ladder in `retryPlan`
+ * gives up at three, so a row that reached FAILED has spent its attempts; a
+ * retry that kept them would be claimed once, fail its transient failure once
+ * more and be FAILED again with no backoff at all — which is not a retry, it is
+ * a button that reproduces the error. A person pressing Retry is asserting that
+ * something changed, and the honest reading of that is a fresh ladder.
+ *
+ * The error text is CLEARED here rather than at the next attempt, so the row
+ * cannot sit in QUEUED still showing in red why it failed last time.
+ */
+const retry = (client, userId, id) =>
+  client.query(
+    `UPDATE email_send_queue
+        SET status = 'QUEUED', attempts = 0, release_at = now(),
+            last_error = NULL, error_code = NULL, updated_at = now()
+      WHERE email_send_queue_id = $1 AND status = 'FAILED'
+        AND ($2::uuid IS NULL OR user_id = $2)
+      RETURNING ${QUEUE_COLS}`,
+    [id, userId],
+  ).then((r) => r.rows[0] || null);
+
+/**
  * Claim the due rows, atomically.
  *
  * `FOR UPDATE SKIP LOCKED` is what lets several workers drain the queue at once
@@ -331,6 +362,6 @@ const requeueStalled = (client, { stalledMinutes = 10, maxAttempts = 3 } = {}) =
 module.exports = {
   getDraft, listDrafts, upsertDraft, deleteDraft,
   addAttachment, listDraftAttachments, draftAttachmentBytes, removeDraftAttachment, attachToMessage,
-  enqueue, getQueued, listQueued, cancel, claimDue, markSent, markAttemptFailed, requeueStalled,
+  enqueue, getQueued, listQueued, cancel, retry, claimDue, markSent, markAttemptFailed, requeueStalled,
   byId: (client, id) => getById(client, "email_send_queue", "email_send_queue_id", id),
 };

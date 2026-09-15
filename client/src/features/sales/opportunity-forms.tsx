@@ -369,7 +369,7 @@ export function WinModal({
   async function submit() {
     if (!opp) return;
     if (createDossier && !entityId) {
-      setError("Choose the entity to open the dossier under.");
+      setError("Choose the entity to open the operations file under.");
       return;
     }
     setBusy(true);
@@ -405,7 +405,7 @@ export function WinModal({
       open={open}
       onClose={onClose}
       title="Mark opportunity won"
-      description="Settle this deal — optionally open the delivery dossier and link it(→)."
+      description="Settle this deal — optionally open the delivery file and link it(→)."
     >
       <div className="space-y-4">
         {opp && (
@@ -422,7 +422,7 @@ export function WinModal({
             checked={createDossier}
             onChange={(e) => setCreateDossier(e.target.checked)}
           />
-          Open a delivery dossier now
+          Open a delivery file now
         </label>
         {createDossier && (
           <Field

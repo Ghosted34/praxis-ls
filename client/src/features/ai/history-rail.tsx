@@ -25,6 +25,7 @@
  * what made the old copilot's history sidebar cover its own transcript.
  */
 import * as React from "react";
+import { dateDmy } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { Input } from "@/components/ui/input";
 import { LoadingRow } from "@/components/ui/states";
@@ -181,7 +182,7 @@ export function AiHistoryRail({
                             {c.title || "Untitled conversation"}
                           </span>
                           <span className="micro text-muted-foreground">
-                            {new Date(c.last_at).toLocaleDateString()} ·{" "}
+                            {dateDmy(c.last_at)} ·{" "}
                             {c.message_count} message
                             {c.message_count === 1 ? "" : "s"}
                           </span>

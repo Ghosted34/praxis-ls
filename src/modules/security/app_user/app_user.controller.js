@@ -10,7 +10,14 @@ const linkableEmployees = asyncHandler(async (req, res) => res.json({ data: awai
 // the tenant's plan. Absent it the check is skipped, which is the correct
 // behaviour for any caller that has no tenant context rather than a silent
 // bypass — there is no such caller on this route.
-const create = asyncHandler(async (req, res) => res.status(201).json({ data: await req.identityDb((c) => service.createUser(c, { data: req.body, actor: actor(req), tenantId: req.tenant && req.tenant.tenant_id })) }));
+/** The link an invitation email points at — the requesting host, so it lands
+ *  back on THIS tenant's workspace. Same derivation as forgotPassword. */
+const linkOrigin = (req) =>
+  `${process.env.NODE_ENV === "production" ? "https" : req.protocol}://${req.get("host")}`;
+
+const create = asyncHandler(async (req, res) => res.status(201).json({ data: await req.identityDb((c) => service.createUser(c, { data: req.body, actor: actor(req), tenantId: req.tenant && req.tenant.tenant_id, origin: linkOrigin(req) })) }));
+/** Re-send an activation link — the invitation expired, or the first one bounced. */
+const resendInvite = asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.issueInvite(c, { userId: req.params.id, origin: linkOrigin(req), actor: actor(req) })) }));
 const update = asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.updateUser(c, { id: req.params.id, patch: req.body, actor: actor(req) })) }));
 const setPassword = asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.setPassword(c, { id: req.params.id, newPassword: req.body.new_password, actor: actor(req) })) }));
 const setStatus = asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.setStatus(c, { id: req.params.id, status: req.body.status, actor: actor(req) })) }));
@@ -130,6 +137,7 @@ const disableTotp = asyncHandler(async (req, res) => {
 });
 
 module.exports = {
+  resendInvite,
   list, get, linkableEmployees, create, update, setPassword, setStatus, getSignature, setSignature,
   pinRegister, pinLogin, pinDevices, pinRevoke,
   login,

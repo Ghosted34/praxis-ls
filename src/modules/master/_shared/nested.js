@@ -15,7 +15,7 @@
  * helper, not a mounted module.
  */
 "use strict";
-const { insertOne, updateOne, getById, page } = require("../../../shared/db/query-helpers");
+const { insertOne, updateOne, getById, page, ident } = require("../../../shared/db/query-helpers");
 const { audit, emitEvent } = require("../../../shared/events/emit");
 const { requirePermission } = require("../../../middleware/rbac");
 const { asyncHandler, AppError } = require("../../../utils/errors");
@@ -34,10 +34,66 @@ const validate = (schema) => (req, _res, next) => {
   return next();
 };
 
+/**
+ * Drop the keys a request did not actually provide.
+ *
+ * `blankToUndefined` in packages/shared maps `""` to undefined but LEAVES THE
+ * KEY on the parsed object, and `updateOne` builds its SET clause from
+ * `Object.keys`. Postgres's driver then turns that undefined into a NULL — so
+ * an empty box arriving from any caller wrote a NULL over the column, while the
+ * entity master's own service (`corporate_entity.service.update`, which filters
+ * on `!== undefined`) treated the same input as "not filled in" and left the
+ * value alone. The same empty string meant two opposite things on sibling
+ * endpoints, and only one of them was written down anywhere.
+ *
+ * One meaning now, matching the master: `undefined` is "no opinion", `null` is
+ * "clear it". Nothing can NULL a column by accident.
+ */
+const provided = (obj) =>
+  Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined));
+
 function buildResource(cfg) {
-  const { table, pk, parentCol, parentTable, parentPk, moduleKey, label, writable, touch, isBank, isDocument, kind, governed, numberingKey, immutable = [] } = cfg;
+  const { table, pk, parentCol, parentTable, parentPk, moduleKey, label, writable, touch, isBank, isDocument, kind, governed, numberingKey, immutable = [], primaryScope } = cfg;
   const insertAllow = [...writable, parentCol];
   const updateAllow = writable.filter((field) => !immutable.includes(field));
+
+  /**
+   * Leave exactly one row flying the `is_primary` flag.
+   *
+   * "Primary" is read with `.find(x => x.is_primary)` in half a dozen places —
+   * the letterhead's address block, its identifier list, the contact a document
+   * is addressed to. Nothing stopped a second row being ticked, and with two the
+   * `find` returns whichever the list's ORDER BY happened to put first: the
+   * letterhead silently printed one of two RCCM numbers with nothing to say it
+   * had chosen. Ticking a new primary now demotes the old one in the SAME
+   * transaction, which is what the checkbox has always claimed to do.
+   *
+   * `primaryScope` names the columns the flag is scoped BY — `["country_code"]`
+   * for a registration, whose label reads "Primary for this country", and `[]`
+   * for a contact, where there is one primary per entity. `IS NOT DISTINCT
+   * FROM` rather than `=` because those columns are nullable, and two rows with
+   * no country are still two rows in the same scope.
+   *
+   * Only a request that ASSERTS primacy demotes anything (`asserted`): an edit
+   * to a primary row's phone number is not a statement about any other row, and
+   * silently unticking a sibling as a side effect of an unrelated save is its
+   * own surprise. What this guarantees is that no request can leave a second
+   * primary behind it.
+   */
+  async function demoteOtherPrimaries(c, row, asserted) {
+    if (!primaryScope || asserted !== true || row.is_primary !== true) return;
+    const params = [row[parentCol], row[pk]];
+    const scoped = primaryScope.map((col) => {
+      params.push(row[col] ?? null);
+      return `${ident(col)} IS NOT DISTINCT FROM $${params.length}`;
+    });
+    await c.query(
+      `UPDATE ${table} SET is_primary = false${touch ? `, ${ident("updated_at")} = now()` : ""}
+        WHERE ${ident(parentCol)} = $1 AND ${ident(pk)} <> $2 AND is_primary
+              ${scoped.length ? `AND ${scoped.join(" AND ")}` : ""}`,
+      params,
+    );
+  }
 
   async function assertParent(c, parentId) {
     const { rows } = await c.query(`SELECT 1 FROM ${parentTable} WHERE ${parentPk} = $1`, [parentId]);
@@ -158,7 +214,8 @@ function buildResource(cfg) {
             : await numbering.allocatePartyDocument(c, { moduleKey: numberingKey, partyKind: kind, date: issuedOrToday });
           insertData.document_number = allocated.number;
         }
-        const row = await insertOne(c, table, { ...insertData, [parentCol]: parentId }, "*", insertAllow);
+        const row = await insertOne(c, table, provided({ ...insertData, [parentCol]: parentId }), "*", insertAllow);
+        await demoteOtherPrimaries(c, row, data.is_primary === true);
         await audit(c, { actorUserId: actor.user_id || null, action: `${label}.created`, moduleKey, entityRef: `${label}:${row[pk]}`, after: row });
         await afterWrite(c, { op: "create", row, actor });
         await c.query("COMMIT");
@@ -187,7 +244,8 @@ function buildResource(cfg) {
       }
       await c.query("BEGIN");
       try {
-        const row = await updateOne(c, table, pk, id, patch, "*", updateAllow, touch ? { touch: "updated_at" } : {});
+        const row = await updateOne(c, table, pk, id, provided(patch), "*", updateAllow, touch ? { touch: "updated_at" } : {});
+        await demoteOtherPrimaries(c, row, patch.is_primary === true);
         await audit(c, { actorUserId: actor.user_id || null, action: `${label}.updated`, moduleKey, entityRef: `${label}:${id}`, before, after: row });
         await afterWrite(c, { op: "update", row, actor });
         await c.query("COMMIT");
@@ -322,16 +380,23 @@ function entityResourceSpecs() {
     {
       seg: "contacts", table: "entity_contact", pk: "contact_id",
       create: entityCommon.contactCreate, update: entityCommon.contactUpdate, touch: true,
+      // One primary contact per entity.
+      primaryScope: [],
       writable: ["name", "title", "email", "phone", "role_tags", "is_primary", "language", "timezone", "is_active"],
     },
     {
       seg: "addresses", table: "entity_address", pk: "address_id",
       create: entityCommon.addressCreate, update: entityCommon.addressUpdate, touch: true,
+      // One primary address per entity — it is the fallback the letterhead
+      // prints when no address is marked REGISTERED.
+      primaryScope: [],
       writable: ["type", "line1", "line2", "city", "region", "postal_code", "country_code", "po_box", "is_primary", "is_active"],
     },
     {
       seg: "registrations", table: "entity_registration", pk: "registration_id",
       create: entityCommon.registrationCreate, update: entityCommon.registrationUpdate, touch: true,
+      // "Primary for this country" — what the checkbox on the form says.
+      primaryScope: ["country_code"],
       writable: ["country_code", "kind", "number", "issuing_authority", "issued_on", "expires_on", "is_primary", "notes"],
     },
     {
@@ -362,6 +427,7 @@ function entityResourceSpecs() {
       // MOD-07; this is the binding between an entity and a jurisdiction.
       seg: "tax-registrations", table: "entity_tax_registration", pk: "tax_registration_id",
       create: entityCommon.taxRegistrationCreate, update: entityCommon.taxRegistrationUpdate, touch: true,
+      primaryScope: ["country_code"],
       writable: ["jurisdiction_id", "country_code", "tax_kind", "tax_number", "regime",
         "filing_frequency", "filing_due_day", "currency", "is_withholding_agent",
         "reverse_charge_applies", "registered_on", "deregistered_on", "is_primary",
@@ -386,6 +452,7 @@ function mountEntityNested(router, { moduleKey, parentTable, parentPk }) {
       parentTable, parentPk, moduleKey, label: r.table,
       writable: r.writable, touch: r.touch, isDocument: r.isDocument,
       numberingKey: r.numberingKey, immutable: r.immutable,
+      primaryScope: r.primaryScope,
     });
     // `people` carries the cap table and personal identifiers, and `documents`
     // the statutes and tax certificates — both need the same UPDATE grant that

@@ -73,6 +73,37 @@ describe("inline script hashes", () => {
     expect(html).toMatch(/<script>[\s\S]*data-theme[\s\S]*<\/script>/);
     expect(hashes.hashesForFile(shell)).toHaveLength(1);
   });
+
+  /**
+   * The gap that shipped: only public-web was listed, and `client/` has an
+   * inline block of its own. Its hash was absent from the policy, so the
+   * browser refused the no-flash theme script on every page of the tenant ERP
+   * and a dark-mode operator got a light frame on every load.
+   *
+   * Asserted per app, from the SOURCE shells, so a new app or a newly-added
+   * inline block fails here rather than in a console nobody is reading.
+   */
+  it("every app shell that ships an inline script is named in the CSP", () => {
+    const serverSrc = fs.readFileSync(path.join(repo, "src/server.js"), "utf8");
+    for (const app of ["client", "public-web", "platform-console"]) {
+      const shell = path.join(repo, app, "index.html");
+      if (!fs.existsSync(shell)) continue;
+      if (hashes.hashesForFile(shell).length === 0) continue;
+      expect(serverSrc).toContain(`${app}/dist/index.html`);
+    }
+  });
+
+  it("the client shell's no-flash theme block is one of them", () => {
+    // Named explicitly: this is the one that was missing, and a loop can go
+    // green by finding nothing to check.
+    const shell = path.join(repo, "client/index.html");
+    const html = fs.readFileSync(shell, "utf8");
+    expect(html).toMatch(/classList\.add\("dark"\)/);
+    expect(hashes.hashesForFile(shell)).toHaveLength(1);
+    expect(
+      fs.readFileSync(path.join(repo, "src/server.js"), "utf8"),
+    ).toContain("client/dist/index.html");
+  });
 });
 
 describe("CSP wiring in server.js", () => {
@@ -82,7 +113,7 @@ describe("CSP wiring in server.js", () => {
     const scriptSrc = serverSrc.match(/const scriptSrc = \[([\s\S]*?)\n {2}\];/);
     expect(scriptSrc).not.toBeNull();
     expect(serverSrc).toContain('"script-src": scriptSrc,');
-    expect(scriptSrc[1]).toContain("publicWebShellHashes");
+    expect(scriptSrc[1]).toContain("shellHashes");
     // SEC-M8: reopening this platform-wide would switch the primary XSS
     // mitigation off for every page, login included. Asserted against the
     // DIRECTIVE, not the file — the token appears in the comment above the

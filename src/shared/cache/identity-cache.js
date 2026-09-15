@@ -45,8 +45,13 @@ function tenantNs() {
 }
 
 const authKey = (userId) => `identity:${tenantNs()}:auth:${userId}`;
+// `grants2` — the SHAPE version, not a tenant namespace. 12771 added three
+// columns to the row cached below; an entry written by the previous release
+// would come back without them and every export/validate/disburse check would
+// read undefined and deny for the length of the TTL. Bump this segment whenever
+// the selected column list changes.
 const grantsKey = (roleIds, moduleKey) =>
-  `identity:${tenantNs()}:grants:${[...new Set(roleIds)].sort().join(",")}:${moduleKey}`;
+  `identity:${tenantNs()}:grants2:${[...new Set(roleIds)].sort().join(",")}:${moduleKey}`;
 const scopeKey = (userId) => `identity:${tenantNs()}:scope:${userId}`;
 const capsKey = (userId) => `identity:${tenantNs()}:caps:${userId}`;
 
@@ -118,7 +123,8 @@ async function getGrants(client, { role_ids, module }) {
   }
 
   const { rows } = await client.query(
-    `SELECT can_create, can_read, can_update, can_delete, can_approve
+    `SELECT can_create, can_read, can_update, can_delete, can_approve,
+            can_export, can_validate, can_disburse
      FROM permission
      WHERE role_id = ANY($1::uuid[]) AND module_key = $2`,
     [role_ids, module],
@@ -256,7 +262,10 @@ async function getUserScopeClosure(client, userId) {
       try {
         return JSON.parse(cached);
       } catch {
-        /* corrupt entry — fall through and recompute */
+        /* @silent:parse — a cache entry that will not parse is a cache entry,
+           not a fact. Falling through recomputes it from the database and
+           overwrites it; raising would take an authorisation check down over a
+           value that is by definition reconstructible. */
       }
     }
   }
@@ -424,7 +433,12 @@ async function scanDelete(redis, pattern) {
 async function invalidateGrants({ allTenants = false } = {}) {
   const redis = safeRedis();
   if (!redis) return;
-  const pattern = allTenants ? "identity:*:grants:*" : `identity:${tenantNs()}:grants:*`;
+  // `grants*`, not `grants:*` — the key carries a SHAPE VERSION (`grants2:`,
+  // see grantsKey) and a pattern pinned to one version would silently stop
+  // invalidating the moment that version moved. `grants:fields:` is matched by
+  // this too, which is correct: a field_visibility write invalidates through
+  // here as well.
+  const pattern = allTenants ? "identity:*:grants*" : `identity:${tenantNs()}:grants*`;
   await scanDelete(redis, pattern);
 }
 

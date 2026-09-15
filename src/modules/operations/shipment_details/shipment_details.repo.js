@@ -7,7 +7,7 @@
  */
 "use strict";
 
-const { insertOne, updateOne } = require("../../../shared/db/query-helpers");
+const { insertOne, jsonbFields, updateOne } = require("../../../shared/db/query-helpers");
 
 /**
  * Column list for a field. `service_type_field.*` would work, but naming them
@@ -247,6 +247,20 @@ const FIELD_WRITABLE = new Set([
  */
 const INSERT_WRITABLE = new Set([...FIELD_WRITABLE, "service_type_field_set_id"]);
 
+/**
+ * The jsonb columns on `service_type_field`.
+ *
+ * `options_json` is an ARRAY off the validator (`z.array(OPTION)`), and a JS
+ * array bound to jsonb becomes a Postgres array literal, not JSON — 22P02, and
+ * the tenant sees "One of the values is in the wrong format" with nothing
+ * named. That made every SELECT / MULTISELECT field unsaveable. `default_value`
+ * is `z.any()`, so it can be an array or a bare string and has the same
+ * problem; `validation_json` is an object, which pg happens to serialise
+ * correctly, and is listed anyway so the set matches the schema rather than
+ * matching today's luck.
+ */
+const FIELD_JSONB = ["options_json", "validation_json", "default_value"];
+
 async function insertField(client, fieldSetId, data) {
   // Through the shared helper, not a hand-rolled column list.
   //
@@ -265,7 +279,7 @@ async function insertField(client, fieldSetId, data) {
   return insertOne(
     client,
     "service_type_field",
-    { service_type_field_set_id: fieldSetId, ...clean },
+    jsonbFields({ service_type_field_set_id: fieldSetId, ...clean }, FIELD_JSONB),
     "*",
     INSERT_WRITABLE,
   );
@@ -277,7 +291,10 @@ async function updateField(client, fieldId, patch) {
     if (FIELD_WRITABLE.has(k)) clean[k] = v;
   }
   if (!Object.keys(clean).length) return getField(client, fieldId);
-  return updateOne(client, "service_type_field", "service_type_field_id", fieldId, clean, "*", FIELD_WRITABLE);
+  return updateOne(
+    client, "service_type_field", "service_type_field_id", fieldId,
+    jsonbFields(clean, FIELD_JSONB), "*", FIELD_WRITABLE,
+  );
 }
 
 async function getField(client, fieldId) {

@@ -35,6 +35,7 @@
 import * as React from "react";
 import { tr } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
+import { DateField } from "@/components/ui/date-field";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -55,8 +56,9 @@ const numStr = (v: string | number | null | undefined) => {
 };
 const str = (v: string | null | undefined) =>
   v === null || v === undefined ? "" : String(v);
-/** `opening_date` may come back as a date or a full ISO timestamp; <input
- *  type="date"> only accepts YYYY-MM-DD. */
+/** `opening_date` may come back as a date or a full ISO timestamp; <DateField
+ *
+/> only accepts YYYY-MM-DD. */
 const dateStr = (v: string | null | undefined) =>
   v ? String(v).slice(0, 10) : "";
 /** Edit-mode patches send `null` (not `undefined`) to CLEAR a field — the
@@ -595,10 +597,9 @@ export function AccountModal({
               />
             </Field>
             <Field label="Opening date">
-              <Input
-                type="date"
+              <DateField
                 value={openDate}
-                onChange={(e) => setOpenDate(e.target.value)}
+                onChange={setOpenDate}
               />
             </Field>
             <Field

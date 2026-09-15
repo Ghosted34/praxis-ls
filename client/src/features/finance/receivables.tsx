@@ -7,8 +7,12 @@ import { pageShell } from "@/lib/layout";
 import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
+import { DateField } from "@/components/ui/date-field";
 import { RowActions } from "@/components/ui/row-actions";
 import { FormButtons } from "@/components/ui/form-buttons";
+import { FilePicker, UploadList } from "@/components/ui/image-upload";
+import { useUpload } from "@/lib/use-upload";
+import { fileToDataUrl } from "@/lib/image-compress";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { ErrorState } from "@/components/ui/states";
@@ -63,7 +67,26 @@ function ReceiptForm({
     amount: "",
     received_on: todayISO(),
   });
-  const [slip, setSlip] = React.useState<File | null>(null);
+  /**
+   * Deferred: the slip can only be attached once the receipt exists, so the
+   * bytes wait for Save and `send` reads the id from a ref set at that moment.
+   * The preview and the compression still happen the instant it is picked.
+   *
+   * `profile="document"` — a bank slip or cheque image is evidence of a
+   * payment, so it is never tonally corrected.
+   */
+  const receiptIdRef = React.useRef<string | null>(null);
+  const slip = useUpload({
+    profile: "document",
+    autoStart: false,
+    send: async (file, ctx) =>
+      api.uploadReceiptSlip(
+        receiptIdRef.current as string,
+        await fileToDataUrl(file),
+        ctx.onProgress,
+      ),
+  });
+  const slipItem = slip.items[0] ?? null;
   const set = (k: string, v: string) => setF((s) => ({ ...s, [k]: v }));
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -83,14 +106,17 @@ function ReceiptForm({
         amount: Number(f.amount),
         received_on: f.received_on || undefined,
       });
-      if (slip && created?.receipt_id) {
-        const dataUrl = await new Promise<string>((resolve, reject) => {
-          const r = new FileReader();
-          r.onload = () => resolve(String(r.result));
-          r.onerror = reject;
-          r.readAsDataURL(slip);
-        });
-        await api.uploadReceiptSlip(created.receipt_id, dataUrl);
+      if (slipItem && created?.receipt_id) {
+        receiptIdRef.current = created.receipt_id;
+        const { ok } = await slip.start();
+        if (!ok) {
+          // The receipt IS created — saying otherwise would have them log it
+          // twice. Name what actually failed instead.
+          setError(
+            "The receipt was saved, but its slip did not upload. Attach it again from the receipt.",
+          );
+          return;
+        }
       }
       onSaved();
       onClose();
@@ -171,10 +197,9 @@ function ReceiptForm({
             />
           </Field>
           <Field label="Received on">
-            <Input
-              type="date"
+            <DateField
               value={f.received_on}
-              onChange={(e) => set("received_on", e.target.value)}
+              onChange={(iso) => set("received_on", iso)}
             />
           </Field>
           <Field
@@ -182,11 +207,16 @@ function ReceiptForm({
             className="sm:col-span-2"
             hint="Attach the bank slip, transfer confirmation or cheque image (optional)."
           >
-            <input
-              type="file"
+            <FilePicker
               accept="image/*,application/pdf"
-              onChange={(e) => setSlip(e.target.files?.[0] || null)}
-              className="block w-full text-sm text-muted-foreground file:mr-3 file:rounded-md file:border file:border-border file:bg-transparent file:px-3 file:py-1 file:text-sm file:text-foreground"
+              hint="Image or PDF · optional"
+              onPick={(files) => void slip.pick(files)}
+            />
+            <UploadList
+              className="mt-2"
+              items={slip.items}
+              onRemove={slip.remove}
+              onRetry={slip.retry}
             />
           </Field>
         </div>
@@ -266,10 +296,9 @@ function PostForm({
             </Select>
           </Field>
           <Field label={tr("Entry date")} required>
-            <Input
-              type="date"
+            <DateField
               value={f.entry_date}
-              onChange={(e) => set("entry_date", e.target.value)}
+              onChange={(iso) => set("entry_date", iso)}
             />
           </Field>
           <Field label={tr("Source doc ref")} className="sm:col-span-2">

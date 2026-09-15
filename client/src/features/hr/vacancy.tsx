@@ -5,12 +5,15 @@
  * DRAFT → OPEN → CLOSED lifecycle.
  */
 import { pageShell } from "@/lib/layout";
+import { SplitPane } from "@/components/ui/split-pane";
+import { IndexRow } from "@/components/ui/index-row";
 import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { FileDrop } from "@/components/ui/file-drop";
+import { compressImage } from "@/lib/image-compress";
 import { Callout } from "@/components/ui/callout";
 import { Modal, Field } from "@/components/ui/modal";
 import { Pill, type Tone } from "@/components/ui/pill";
@@ -31,6 +34,7 @@ import { LoadingRow } from "@/components/ui/states";
 import { ApplicantDrawer, CriteriaEditor } from "./applicant-drawer";
 import { VacancyWizard } from "./vacancy-wizard";
 import { VacancyEditor } from "./vacancy-editor";
+import { useConfirm } from "@/components/ui/use-confirm";
 
 const shell = pageShell.wide;
 const VAC_TONE: Record<string, Tone> = {
@@ -127,6 +131,13 @@ function AddApplicantForm({
   // Without it a referral can never be scored on more than the typed fields,
   // while an online applicant is read in full.
   const [cv, setCv] = React.useState<File | null>(null);
+  /**
+   * The CV rides inside the applicant payload rather than going up on its own,
+   * so the percentage here is that one request's — which is the honest number,
+   * because the CV is nearly all of its weight.
+   */
+  const [cvProgress, setCvProgress] = React.useState<number | null>(null);
+  const [cvDone, setCvDone] = React.useState(false);
   const [cvError, setCvError] = React.useState<string | null>(null);
   const readDataUrl = (file: File) =>
     new Promise<string>((resolve, reject) => {
@@ -141,26 +152,42 @@ function AddApplicantForm({
     setBusy(true);
     setError(null);
     try {
-      const cvDataUrl = cv ? await readDataUrl(cv) : undefined;
-      await api.addApplicant(vacancyId, {
-        cv_data_url: cvDataUrl,
-        cv_filename: cv?.name,
-        full_name: f.full_name,
-        email: f.email || undefined,
-        phone: f.phone || undefined,
-        address: f.address || undefined,
-        // The scorer matches these by substring, so blanks would be scored as a
-        // required skill nobody can meet.
-        skills: f.skills
-          .split(",")
-          .map((x) => x.trim())
-          .filter(Boolean),
-        experience_years: num(f.experience_years),
-        expected_salary: num(f.expected_salary),
-        portfolio_url: withScheme(f.portfolio_url) || undefined,
-        cover_note: f.cover_note || undefined,
-        source: f.source || undefined,
-      });
+      // Compressed before it is encoded: a CV photographed on a phone is
+      // routinely 8-12 MB, and "document" keeps its source format so the
+      // recruiter opens the kind of file they expect.
+      const prepared = cv ? (await compressImage(cv, "document")).file : null;
+      const cvDataUrl = prepared ? await readDataUrl(prepared) : undefined;
+      if (cv) {
+        setCvProgress(0);
+        setCvDone(false);
+      }
+      await api.addApplicant(
+        vacancyId,
+        {
+          cv_data_url: cvDataUrl,
+          cv_filename: cv?.name,
+          full_name: f.full_name,
+          email: f.email || undefined,
+          phone: f.phone || undefined,
+          address: f.address || undefined,
+          // The scorer matches these by substring, so blanks would be scored as a
+          // required skill nobody can meet.
+          skills: f.skills
+            .split(",")
+            .map((x) => x.trim())
+            .filter(Boolean),
+          experience_years: num(f.experience_years),
+          expected_salary: num(f.expected_salary),
+          portfolio_url: withScheme(f.portfolio_url) || undefined,
+          cover_note: f.cover_note || undefined,
+          source: f.source || undefined,
+        },
+        cv ? setCvProgress : undefined,
+      );
+      if (cv) {
+        setCvProgress(100);
+        setCvDone(true);
+      }
       onSaved();
       onClose();
     } catch (err) {
@@ -278,6 +305,8 @@ function AddApplicantForm({
         </Field>
         <FileDrop
           file={cv}
+          uploadProgress={cvProgress}
+          uploadSuccess={cvDone}
           onPick={(picked) => {
             // Refused here as well as server-side, because the alternative is
             // reading an 80 MB file into memory to be told no afterwards.
@@ -288,6 +317,8 @@ function AddApplicantForm({
               return;
             }
             setCvError(null);
+            setCvProgress(null);
+            setCvDone(false);
             setCv(picked);
           }}
           accept="application/pdf,image/png,image/jpeg"
@@ -405,8 +436,9 @@ function NewVacancyForm({
         <Field
           label={tr("Department")}
           hint={tr("From your organigramme — Security › Scopes.")}
+          htmlFor="vacancy-filter-department"
         >
-          <DepartmentSelect value={dept} onChange={setDept} />
+          <DepartmentSelect id="vacancy-filter-department" value={dept} onChange={setDept} />
         </Field>
         <Field label={tr("Description")}>
           <Input
@@ -458,6 +490,7 @@ function Pipeline({
   const [copied, setCopied] = React.useState(false);
   const [rescored, setRescored] = React.useState<string | null>(null);
   const [criteriaOpen, setCriteriaOpen] = React.useState(false);
+  const [confirm, confirmDialog] = useConfirm();
 
   const paused = vacancy.status === "PAUSED";
   /**
@@ -482,13 +515,16 @@ function Pipeline({
 
   async function togglePublish() {
     const next = !vacancy.public_token;
-    if (
-      !next &&
-      !window.confirm(
-        "Unpublish this role?\n\nThe careers link stops working immediately, and re-publishing creates a DIFFERENT link — anyone holding the old one will not be able to apply again.",
-      )
-    )
-      return;
+    if (!next) {
+      const ok = await confirm({
+        title: "Unpublish this role?",
+        body: "The careers link stops working immediately, and re-publishing creates a DIFFERENT link — anyone holding the old one will not be able to apply again.",
+        confirmLabel: "Unpublish the role",
+        cancelLabel: "Keep it published",
+        destructive: true,
+      });
+      if (!ok) return;
+    }
     setBusy("publish");
     setError(null);
     try {
@@ -616,6 +652,7 @@ function Pipeline({
 
   return (
     <div className="min-w-0 space-y-4">
+      {confirmDialog}
       <div className="flex flex-wrap items-start justify-between gap-3 rounded-xl border bg-card p-5">
         <div>
           <div className="flex items-center gap-2">
@@ -869,7 +906,15 @@ export function VacanciesPage() {
       {vacancies.error ? (
         <ErrorState message={vacancies.error} />
       ) : (
-        <div className="grid gap-5 lg:grid-cols-[240px_1fr]">
+        <SplitPane
+          storageKey="hr.vacancies"
+          label="Vacancy list width"
+          defaultSize={240}
+          min={200}
+          max={420}
+          activeKind={tr("Vacancy")}
+          active={!!selected}
+        >
           <div className="space-y-2">
             <div
               className="flex flex-wrap gap-1"
@@ -908,10 +953,11 @@ export function VacanciesPage() {
                 </div>
               ) : (
                 rows.map((v) => (
-                  <button
+                  <IndexRow
                     key={v.vacancy_id}
+                    selected={v.vacancy_id === selId}
                     onClick={() => setSelId(v.vacancy_id)}
-                    className={`flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors ${v.vacancy_id === selId ? "bg-primary/10 text-foreground" : "hover:bg-muted"}`}
+                    className="items-center justify-between gap-2"
                   >
                     <span className="truncate font-medium">
                       {v.title || v.vacancy_id.slice(0, 8)}
@@ -919,7 +965,7 @@ export function VacanciesPage() {
                     <Pill tone={VAC_TONE[v.status] || "mute"}>
                       {enumLabel(v.status)}
                     </Pill>
-                  </button>
+                  </IndexRow>
                 ))
               )}
             </div>
@@ -936,7 +982,7 @@ export function VacanciesPage() {
               hint="Choose a role from the list."
             />
           )}
-        </div>
+        </SplitPane>
       )}
       {creating && (
         <VacancyWizard

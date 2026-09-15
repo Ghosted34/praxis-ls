@@ -11,6 +11,7 @@ import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { tenant } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
+import { DateField } from "@/components/ui/date-field";
 import { PageHeader } from "@/components/data-list";
 import { HubCrumb } from "@/components/tabbed-hub";
 import { Input } from "@/components/ui/input";
@@ -170,10 +171,9 @@ function GrantModal({
             </Field>
           )}
           <Field label="Expires at" hint="Optional — recommended for auditors">
-            <Input
-              type="date"
+            <DateField
               value={expiresAt}
-              onChange={(e) => setExpiresAt(e.target.value)}
+              onChange={setExpiresAt}
             />
           </Field>
         </div>
@@ -199,7 +199,7 @@ function GrantModal({
 
         {error && <ErrorState message={error} />}
         {notice && (
-          <div className="rounded-lg border border-[hsl(var(--warn))]/40 bg-[hsl(var(--warn))]/10 p-3 text-sm text-foreground">
+          <div className="rounded-lg border border-[rgb(var(--warn))]/40 bg-[rgb(var(--warn))]/10 p-3 text-sm text-foreground">
             {notice}
           </div>
         )}
@@ -449,7 +449,7 @@ export function PortalAccessPage() {
                       {portal.toLowerCase()}
                     </span>
                     {!login ? (
-                      <span className="rounded-full bg-[hsl(var(--warn))]/15 px-2 py-0.5 text-[11px] font-medium text-[hsl(var(--warn))]">
+                      <span className="rounded-full bg-[rgb(var(--warn))]/15 px-2 py-0.5 text-[11px] font-medium text-[rgb(var(--warn))]">
                         no sign-in
                       </span>
                     ) : !signedInBefore ? (

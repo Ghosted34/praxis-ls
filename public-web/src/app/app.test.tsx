@@ -4,7 +4,8 @@ import { MemoryRouter, useLocation } from "react-router-dom";
 import { BrandingProvider } from "@/app/branding";
 import { AppErrorBoundary } from "@/app/error-boundary";
 import { AppRouter } from "@/app/router";
-import { en } from "@/lib/i18n-dict";
+// The runtime tree — see i18n-tree.test-helper.ts.
+import { en } from "@/lib/i18n-tree.test-helper";
 
 /**
  * The render gate for the whole app: every route mounts, shows the copy it is
@@ -84,6 +85,10 @@ const ROUTES: Case[] = [
     shows: "site.portfolioPage.unavailable",
     h1: "max",
   },
+  // The quote form has its own route. It was a redirect to `#quote` on the home
+  // page, which is why the header's primary CTA did nothing: an SPA cannot
+  // scroll to an element the lazy marketing chunk has not rendered.
+  { path: "/public/quote", shows: "site.quote.titleAccent", h1: 1 },
   { path: "/public/insights", shows: "site.insights.title", h1: 1 },
   // Fetch is stubbed to 404 everything here, and a 404 on an article is a
   // CONTENT state — the link is old or mistyped, or the piece is a draft, which

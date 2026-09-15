@@ -28,6 +28,50 @@ const KNOWN = {
 };
 
 /**
+ * Which managed provider runs a domain's mailboxes, read off its MX.
+ *
+ * ONE list, used twice: `autodiscover` turns a hit into transport settings, and
+ * the connect path uses the same hit to refuse a password where the provider no
+ * longer accepts one. A second copy of these patterns would drift, and the
+ * symptom of that drift is a mailbox that autodiscovers as Microsoft and is then
+ * waved through as IMAP with a password that cannot work.
+ */
+const MX_PROVIDERS = [
+  { key: "google", match: /google|googlemail|aspmx/, settings: gmail },
+  { key: "microsoft", match: /outlook|office365|protection\.outlook/, settings: o365 },
+  { key: "zoho", match: /zoho/, settings: zoho },
+];
+
+/** Consumer domains whose provider is known without a lookup. */
+const CONSUMER_PROVIDERS = {
+  "gmail.com": "google", "googlemail.com": "google",
+  "outlook.com": "microsoft", "hotmail.com": "microsoft", "live.com": "microsoft",
+  "msn.com": "microsoft", "office365.com": "microsoft",
+};
+
+/**
+ * `{ key, source }` naming who runs this domain's mailboxes, or null when it is
+ * an ordinary mail host (cPanel, a private server) or cannot be determined.
+ *
+ * A resolver failure returns null — "we could not tell", never "nobody". Callers
+ * gate on a POSITIVE answer only, so a DNS hiccup can never block a connection
+ * that would otherwise have worked.
+ */
+async function hostedProviderOf(domain) {
+  const d = String(domain || "").trim().toLowerCase().replace(/^.*@/, "");
+  if (!d) return null;
+  if (CONSUMER_PROVIDERS[d]) return { key: CONSUMER_PROVIDERS[d], source: "known" };
+  let mxHosts = "";
+  try {
+    mxHosts = (await dns.resolveMx(d)).map((m) => String(m.exchange || "").toLowerCase()).join(" ");
+  } catch {
+    return null;
+  }
+  const hit = MX_PROVIDERS.find((p) => p.match.test(mxHosts));
+  return hit ? { key: hit.key, source: "mx", mx: mxHosts } : null;
+}
+
+/**
  * The cPanel preset.
  *
  * The first tenant runs cPanel, and this programme deliberately does one provider
@@ -58,7 +102,7 @@ function cpanelPreset(email) {
 function probe(host, port, ms = 2500) {
   return new Promise((resolve) => {
     let done = false;
-    const finish = (ok) => { if (!done) { done = true; try { socket.destroy(); } catch { /* noop */ } resolve(ok); } };
+    const finish = (ok) => { if (!done) { done = true; try { socket.destroy(); } catch { /* @silent:teardown the socket may already be gone; the probe verdict is the useful answer */ } resolve(ok); } };
     const socket = tls.connect({ host, port, servername: host, rejectUnauthorized: false }, () => finish(true));
     socket.setTimeout(ms, () => finish(false));
     socket.on("error", () => finish(false));
@@ -80,10 +124,11 @@ async function autodiscover({ email } = {}) {
   if (KNOWN[domain]) return { source: "known", provider: domain, ...KNOWN[domain] };
 
   let mxHosts = "";
-  try { mxHosts = (await dns.resolveMx(domain)).map((m) => m.exchange.toLowerCase()).join(" "); } catch { /* no MX */ }
-  if (/google|googlemail|aspmx/.test(mxHosts)) return { source: "mx:google", ...gmail };
-  if (/outlook|office365|protection\.outlook/.test(mxHosts)) return { source: "mx:microsoft", ...o365 };
-  if (/zoho/.test(mxHosts)) return { source: "mx:zoho", ...zoho };
+  // @silent:parse — a domain with no usable MX answer falls through to the
+  // convention guess below, which is the defined fallback for exactly this case.
+  try { mxHosts = (await dns.resolveMx(domain)).map((m) => m.exchange.toLowerCase()).join(" "); } catch { /* @silent:parse no MX; the convention guess below is the fallback */ }
+  const hosted = MX_PROVIDERS.find((p) => p.match.test(mxHosts));
+  if (hosted) return { source: `mx:${hosted.key}`, ...hosted.settings };
 
   // Convention: prefer a host that actually answers TLS on 993 / 465.
   const imap_host = (await firstReachable([`imap.${domain}`, `mail.${domain}`], 993)) || `mail.${domain}`;
@@ -97,4 +142,4 @@ async function autodiscover({ email } = {}) {
   };
 }
 
-module.exports = { autodiscover, cpanelPreset };
+module.exports = { autodiscover, cpanelPreset, hostedProviderOf };

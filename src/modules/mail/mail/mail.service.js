@@ -28,7 +28,8 @@ const msOAuth = require("./providers/microsoftOAuth");
 const googleOAuth = require("./providers/googleOAuth");
 const documentVault = require("../../vault/document_vault/document_vault.service");
 const { publishMailEvent } = require("../../../realtime/mail-bus");
-const { autodiscover } = require("./autodiscover");
+const { autodiscover, hostedProviderOf } = require("./autodiscover");
+const routeCheck = require("../deliverability/route-check");
 // PR-0 foundation. The engine now asks three questions before it sends: may this
 // person send as this mailbox (access), is the mailbox within its host's rate
 // limit (mailbox.checkSendAllowance), and what stamp goes on the wire (origin).
@@ -92,18 +93,35 @@ const archiveIdentity = (client, id) => repo.archiveIdentity(client, id);
 // ── Engine helpers ──
 const secretKeyFor = (id) => `mail_conn:${id}`;
 
+/**
+ * The SENDING leg's own secret, when it has one.
+ *
+ * A SECOND vault entry beside `mail_conn:<id>`, not a second field inside it.
+ * The existing entry is read by three code paths and holds an OAuth token
+ * bundle for two of the three providers; widening its value shape would make
+ * every one of those readers care about a key that means nothing to them. A
+ * separate key means the absent case needs no migration and no parsing — the
+ * row is simply not there, which is exactly the question the mode asks.
+ */
+const smtpSecretKeyFor = (id) => `mail_conn_smtp:${id}`;
+
 const fmtFrom = (conn) => (conn.display_name ? `"${conn.display_name}" <${conn.email_address}>` : conn.email_address);
 
 /** Build the right provider adapter for a connection, with its decrypted secret. */
 async function resolveAdapter(client, conn) {
   if (conn.provider === "imap_smtp") {
     const password = conn.secret_key ? await settings.readSecret(client, conn.secret_key) : null;
+    // Absent for every mailbox that shares one credential, which is every
+    // mailbox connected before 13777. `readSecret` answers null for a key with
+    // no row, so this needs no guard and no column to tell it whether to look.
+    const smtpPassword = await settings.readSecret(client, smtpSecretKeyFor(conn.email_connection_id));
     return new ImapSmtpProvider({
       email_address: conn.email_address,
       from: fmtFrom(conn),
       imap_host: conn.imap_host, imap_port: conn.imap_port, imap_secure: conn.imap_secure,
       smtp_host: conn.smtp_host, smtp_port: conn.smtp_port, smtp_secure: conn.smtp_secure,
       auth_user: conn.auth_user, password,
+      smtp_user: conn.smtp_user, smtp_password: smtpPassword,
     });
   }
   if (conn.provider === "microsoft_graph") {
@@ -188,18 +206,274 @@ async function searchRecipients(client, q, { user = null } = {}) {
  */
 const OAUTH_PROVIDERS = new Set(["microsoft_graph", "google_gmail"]);
 
+/**
+ * Per-provider flags, added in 12775 alongside the original umbrella key.
+ *
+ * The two providers stopped being ready at the same time. Microsoft is now the
+ * ONLY way a Microsoft 365 tenant can connect a mailbox — Exchange Online
+ * removed Basic auth for IMAP/POP in 2022 and retired it for SMTP AUTH in April
+ * 2026 — while Google's restricted mail scopes still need a security assessment
+ * that runs for weeks. One switch for both would hold Microsoft behind Google
+ * for no reason.
+ *
+ * EITHER key answers: a provider is on when its own flag is on, OR when the
+ * umbrella `mail.provider.oauth` is. So a tenant that already has the umbrella
+ * switched on is unaffected, and the console can now enable Microsoft alone.
+ */
+const PROVIDER_FLAGS = {
+  microsoft_graph: "mail.provider.microsoft",
+  google_gmail: "mail.provider.google",
+};
+
+/**
+ * Is this provider switched on for the tenant? The QUESTION behind
+ * `assertProviderEnabled`, split out so a screen can ASK it instead of finding
+ * out by being refused.
+ *
+ * The chooser modal ("how is this mailbox hosted?") has to render the Microsoft
+ * option before anybody clicks anything, and the only honest way to draw it is
+ * to know whether it would work. Offering a live button that answers 403, or
+ * hiding the option so a Microsoft 365 tenant sees only the password form that
+ * cannot ever work for them, are both worse than saying which switch is off.
+ */
+async function providerEnabled(client, provider) {
+  if (!OAUTH_PROVIDERS.has(provider)) return true;
+  const keys = [PROVIDER_FLAGS[provider], "mail.provider.oauth"].filter(Boolean);
+  const { rows } = await client.query(
+    "SELECT state FROM feature_state WHERE feature_key = ANY($1)",
+    [keys],
+  );
+  return rows.some((r) => r && r.state === "on");
+}
+
+/**
+ * What the connect chooser may offer, and — when it may not — WHICH of the two
+ * independent things is missing.
+ *
+ * They fail for different people. "Not switched on for this tenant" is a
+ * feature flag an administrator flips in the Platform Console; "not configured
+ * on this deployment" is an Entra app registration whoever runs the server has
+ * to create, and an Entra client SECRET EXPIRES, so a deployment that worked
+ * last quarter can be in the second state with nobody having changed anything.
+ * A single "unavailable" would send an administrator hunting for a switch that
+ * is already on.
+ *
+ * IMAP/SMTP is always offered: it is the path that needs no deploy-wide
+ * credential at all. Whether the ADDRESS can use it is a different question,
+ * answered per address by `assertPasswordAuthPossible` — a Microsoft-hosted
+ * domain is refused there, by name, rather than being hidden here.
+ */
+/**
+ * `idp.isConfigured()`, for an `idp` that may answer either way.
+ *
+ * ── THE CRASH THIS FIXES ────────────────────────────────────────────────────
+ *
+ * This was `idp.isConfigured().catch(() => false)`, and it took the whole
+ * endpoint down with `TypeError: idp.isConfigured(...).catch is not a
+ * function` — so the chooser could not be drawn at all, on every surface, for
+ * every tenant.
+ *
+ * The two adapters do not agree on the shape. Microsoft's is `async` because
+ * it resolves its credentials from the platform vault (a DB read); Google's is
+ * a synchronous `Boolean(config.GOOGLE_CLIENT_ID && …)` off `.env`, and a
+ * boolean has no `.catch`. `startOAuth` already knew this and says so — "await
+ * on the still-synchronous Google adapter is a no-op, so one call shape keeps
+ * serving both" — and `await` is exactly the operator that does not care.
+ * `.catch()` is not: it is a Promise method, reached before any await.
+ *
+ * So: `await` inside `try`, which normalises both return shapes AND both
+ * failure shapes — a rejected promise from the vault read, and a synchronous
+ * throw, which `.catch()` could never have caught either. Failing to `false`
+ * is the honest answer: a provider whose configuration cannot be read is one
+ * this tenant cannot connect through, and the chooser says so and still offers
+ * the IMAP/SMTP route, rather than 500-ing the page that was supposed to
+ * explain the problem.
+ */
+async function isConfiguredSafely(idp) {
+  try {
+    return Boolean(await idp.isConfigured());
+  } catch {
+    /* @silent:storage the platform vault being unreachable makes the provider
+       unavailable, which is a state this endpoint reports rather than throws */
+    return false;
+  }
+}
+
+async function listConnectMethods(client) {
+  const oauth = async (provider, idp) => {
+    const [enabled, configured] = await Promise.all([
+      providerEnabled(client, provider),
+      isConfiguredSafely(idp),
+    ]);
+    return {
+      available: enabled && configured,
+      enabled,
+      configured,
+      reason: enabled && configured
+        ? null
+        : !enabled
+          ? "NOT_ENABLED"
+          : "NOT_CONFIGURED",
+    };
+  };
+  const [microsoft_graph, google_gmail] = await Promise.all([
+    oauth("microsoft_graph", msOAuth),
+    oauth("google_gmail", googleOAuth),
+  ]);
+  return {
+    imap_smtp: { available: true, enabled: true, configured: true, reason: null },
+    microsoft_graph,
+    google_gmail,
+  };
+}
+
 async function assertProviderEnabled(client, provider) {
   if (!OAUTH_PROVIDERS.has(provider)) return;
-  const { rows } = await client.query(
-    "SELECT state FROM feature_state WHERE feature_key = $1",
-    ["mail.provider.oauth"],
-  );
-  if (!rows[0] || rows[0].state !== "on") {
+  if (!(await providerEnabled(client, provider))) {
     throw new AppError(
       "PROVIDER_NOT_ENABLED",
-      "Microsoft 365 and Google mailboxes are not enabled yet. Connect your mailbox with its IMAP/SMTP settings — if your company uses cPanel, the setup wizard fills these in for you.",
+      "Microsoft 365 and Google mailboxes are not switched on for this tenant yet — they connect over "
+        + "OAuth, which an administrator enables. Microsoft and Google no longer accept a password on "
+        + "IMAP or SMTP, so there is no interim setting that would work for one of those mailboxes. A "
+        + "mailbox on your company's own mail server can still be connected with its IMAP/SMTP settings "
+        + "— if that server runs cPanel, the setup wizard fills them in for you.",
       403,
     );
+  }
+}
+
+/**
+ * Refuse a PASSWORD for a mailbox whose provider no longer accepts one.
+ *
+ * Microsoft and Google both finished removing Basic authentication from the
+ * legacy mail protocols:
+ *
+ *   • Exchange Online disabled Basic auth for POP and IMAP in 2022, and retired
+ *     it for Client Submission (SMTP AUTH) on 30 April 2026. App Passwords were
+ *     built on Basic auth and went with it.
+ *   • Google removed "less secure app" password sign-in for Gmail and Workspace.
+ *
+ * So for a domain whose MX points at either of them, `imap_smtp` + a password
+ * cannot ever succeed — not with the mailbox password, not with an app password.
+ * Without this guard the attempt is still made, and what comes back is a bare
+ * AUTHENTICATIONFAILED from the provider. That reads as "you typed your password
+ * wrong", so the person retypes it, tries an app password, and eventually asks
+ * their IT team to check the account — none of which can help, because the
+ * protocol itself is closed. Worse, the host they are most likely to enter is
+ * `mail.<their-domain>`, which for a domain whose website we host resolves to
+ * OUR server: they then authenticate against a local mailbox that is not theirs
+ * and see an empty inbox that looks like a working connection.
+ *
+ * Detection is by MX (`hostedProviderOf`), so it covers a custom domain — the
+ * case that matters, since nobody is confused about @outlook.com. It fails OPEN:
+ * a resolver failure returns null and the connection proceeds exactly as before,
+ * because a DNS hiccup must never block a mailbox that would have worked.
+ */
+const OAUTH_ONLY = {
+  microsoft: {
+    label: "Microsoft 365",
+    detail: "Microsoft disabled password sign-in for IMAP and POP in 2022 and for SMTP in April 2026.",
+  },
+  google: {
+    label: "Google Workspace / Gmail",
+    detail: "Google removed password sign-in for external mail apps.",
+  },
+};
+
+async function assertPasswordAuthPossible({ email_address, provider }) {
+  if (provider !== "imap_smtp") return;
+  const hosted = await hostedProviderOf(email_address);
+  const oauthOnly = hosted && OAUTH_ONLY[hosted.key];
+  if (!oauthOnly) return;
+  throw new AppError(
+    "MAILBOX_OAUTH_REQUIRED",
+    `This address is hosted on ${oauthOnly.label}, which cannot be connected with a password. `
+      + `${oauthOnly.detail} It has to be connected by signing in to ${oauthOnly.label} instead — ask an `
+      + "administrator to switch on Microsoft 365 and Google mailboxes for this tenant.",
+    422,
+    { hosted_provider: hosted.key, detected_from: hosted.source },
+  );
+}
+
+/**
+ * Put a connection into "same as IMAP" or "different credentials" mode.
+ *
+ * ── WHY ONE FUNCTION FOR BOTH CREATE AND EDIT ───────────────────────────────
+ *
+ * The rules are identical on both paths and every one of them is a rule about
+ * pairs: a stored SMTP password with no username, or a username left behind on a
+ * row whose password has been cleared, are both configurations nobody chose and
+ * both send one leg's user with the other leg's secret. Written twice they would
+ * drift on the first change to either.
+ *
+ * ── THE THREE INPUTS, AND WHY `undefined` IS NOT `"same"` ───────────────────
+ *
+ *   smtp_auth "separate" — store the password when one was typed; write the
+ *                          username. A BLANK password keeps the stored one, the
+ *                          same convention `password` has always had, so an edit
+ *                          that only moves the SMTP host does not demand a
+ *                          credential the operator cannot re-read.
+ *   smtp_auth "same"     — DELETE the vault entry and null `smtp_user`. Leaving
+ *                          the secret would orphan it: unreachable through the
+ *                          UI, still decryptable on disk, and read again the
+ *                          moment somebody switched back.
+ *   smtp_auth absent     — TOUCH NOTHING. A PATCH that carries only
+ *                          `display_name` must not silently destroy a working
+ *                          relay credential, and every client that predates this
+ *                          field sends exactly that.
+ */
+async function applySmtpCredentialMode(client, connectionId, input = {}, actor = {}) {
+  const mode = input.smtp_auth;
+  if (mode === undefined) return;
+  const key = smtpSecretKeyFor(connectionId);
+
+  if (mode === "same") {
+    try {
+      await settings.remove(client, { section: settings.SECRET_SECTION, key, actor });
+    } catch (err) {
+      // A secret that is already absent IS the state being asked for. Anything
+      // else is a real storage failure and must not be swallowed.
+      if (err && err.code !== "NOT_FOUND") throw err;
+    }
+    await repo.updateConnection(client, connectionId, { smtp_user: null });
+    return;
+  }
+
+  if (input.smtp_password) {
+    await settings.put(client, {
+      section: settings.SECRET_SECTION,
+      key,
+      value: { provider: "imap_smtp", key_name: "MAIL_CONN_SMTP", secret: input.smtp_password },
+      actor,
+    });
+  }
+  if (input.smtp_user !== undefined) {
+    await repo.updateConnection(client, connectionId, { smtp_user: input.smtp_user || null });
+  }
+}
+
+/**
+ * A separate sending credential needs BOTH halves before it can be stored.
+ *
+ * Checked here rather than only in the validator because the validator cannot
+ * see the vault: on an edit a blank password is legitimate when one is already
+ * stored and a refusal when none is, and only the server knows which. The
+ * message names the field, since "Invalid body" on a form with two new inputs
+ * is a guess.
+ */
+async function assertSmtpCredentialsComplete(client, connectionId, input = {}) {
+  if (input.smtp_auth !== "separate") return;
+  if (!input.smtp_user) {
+    throw new AppError("VALIDATION_ERROR", "smtp_user: a separate sending sign-in needs its username", 422, {
+      smtp_user: ["Required when sending uses different credentials"],
+    });
+  }
+  if (input.smtp_password) return;
+  const stored = connectionId ? await repo.hasSmtpCredentials(client, connectionId) : false;
+  if (!stored) {
+    throw new AppError("VALIDATION_ERROR", "smtp_password: a separate sending sign-in needs its password", 422, {
+      smtp_password: ["Required when sending uses different credentials"],
+    });
   }
 }
 
@@ -207,11 +481,35 @@ async function connect(client, input = {}) {
   const { email_address, provider = "imap_smtp", display_name, password, actor = {} } = input;
   if (!email_address) throw new AppError("VALIDATION_ERROR", "email_address is required", 422);
   await assertProviderEnabled(client, provider);
+  // Before any row is written or any secret is vaulted: a Microsoft/Google
+  // mailbox cannot be reached with a password, whatever was typed into the form.
+  await assertPasswordAuthPossible({ email_address, provider });
   // One personal mailbox per person (PR-0 Q1). The partial unique index in 10723
   // is the enforcement; this turns a 23505 into a sentence naming the mailbox
   // they already have and what to do instead.
   const kind = input.kind === "SHARED" ? "SHARED" : "PERSONAL";
   if (kind === "PERSONAL" && actor.user_id) await mailbox.assertNoPersonalMailbox(client, actor.user_id);
+  // Before the row exists: on CREATE there is no stored secret to fall back on,
+  // so an incomplete separate sign-in is refused here rather than producing a
+  // mailbox that is in "different credentials" mode with no credential. First
+  // because it is the only one of the two that needs no query.
+  await assertSmtpCredentialsComplete(client, null, input);
+  // The other way this INSERT can hit a unique index, turned into a sentence for
+  // the same reason `assertNoPersonalMailbox` is one: 23505 reaches the user as
+  // "A record with these values already exists", which names neither the address
+  // nor what to do. `ux_email_connection_address_live` (13776) is the authority;
+  // this only says out loud what it is about to refuse. An ARCHIVED row does not
+  // count — retiring a mailbox releases its address, which is the whole point of
+  // that migration.
+  const taken = await repo.findByAddress(client, email_address, provider);
+  if (taken && taken.status !== "ARCHIVED") {
+    throw new AppError(
+      "MAILBOX_ADDRESS_IN_USE",
+      `${email_address} is already connected to this company. Open it from Comms → Setup to edit or disconnect it, or retire it first if you want to connect it afresh.`,
+      409,
+      { email_address, email_connection_id: taken.email_connection_id },
+    );
+  }
   const conn = await repo.insertConnection(client, {
     email_address, provider, display_name: display_name || null,
     imap_host: input.imap_host || null, imap_port: input.imap_port || null,
@@ -219,7 +517,26 @@ async function connect(client, input = {}) {
     smtp_host: input.smtp_host || null, smtp_port: input.smtp_port || null,
     smtp_secure: input.smtp_secure === true,
     auth_user: input.auth_user || null,
+    // NULL unless the sending leg signs in separately — applySmtpCredentialMode
+    // below writes it, and only in "separate" mode, so a username can never be
+    // stored without the password that makes it mean something.
+    smtp_user: null,
     owner_user_id: actor.user_id || null,
+    // The row must be BORN with its kind. `classify` below stamps the rest of the
+    // classification (catalogue slot, entity, department, visibility) and can do
+    // that a statement later — but `kind` cannot wait, because
+    // `ux_email_connection_one_personal` is a partial index ON THIS INSERT:
+    //
+    //   UNIQUE (owner_user_id) WHERE kind = 'PERSONAL' AND status <> 'ARCHIVED'
+    //
+    // and `email_connection.kind` DEFAULTS to 'PERSONAL' (10723). Omitting it
+    // therefore made every new row — a team address included — momentarily a
+    // second personal mailbox for its creator, which the index rejects. Anyone
+    // who already had a personal mailbox could not create a SHARED one at all:
+    // the INSERT raised 23505 and the error handler rendered it as "A record
+    // with these values already exists", naming neither the mailbox in the way
+    // nor the rule. The guard above deliberately skips SHARED; the index did not.
+    kind,
     status: "PENDING",
   });
   const secret_key = secretKeyFor(conn.email_connection_id);
@@ -232,6 +549,9 @@ async function connect(client, input = {}) {
     });
   }
   await repo.updateConnection(client, conn.email_connection_id, { secret_key });
+  // BEFORE the test: the test is what tells the operator whether the credentials
+  // work, so it has to run against the ones they just typed.
+  await applySmtpCredentialMode(client, conn.email_connection_id, input, actor);
   const test = await testConnection(client, conn.email_connection_id);
   // Stamp WHAT this mailbox is (personal vs a team address, which entity it
   // belongs to, who may work it). The transport row above knows how to reach the
@@ -245,7 +565,13 @@ async function connect(client, input = {}) {
   });
   if (kind === "PERSONAL") await repo.ensureDefaultConnection(client, actor.user_id);
   const created = await repo.getConnection(client, conn.email_connection_id);
-  return { ...created, secret_key, status: test.ok ? "CONNECTED" : "ERROR", test };
+  return {
+    ...created,
+    ...(await smtpAuthShape(client, conn.email_connection_id)),
+    secret_key,
+    status: test.ok ? "CONNECTED" : "ERROR",
+    test,
+  };
 }
 
 /** Edit an IMAP/SMTP connection's transport/credentials, then re-test. OAuth
@@ -257,7 +583,14 @@ async function updateImapConnection(client, id, input = {}) {
   if (input.ownerUserId && conn.owner_user_id && conn.owner_user_id !== input.ownerUserId) {
     throw new AppError("FORBIDDEN", "You can only edit your own mailboxes", 403);
   }
+  // Refused BEFORE anything is written, so a half-typed separate sign-in cannot
+  // leave the mailbox with a host change applied and a credential missing.
+  await assertSmtpCredentialsComplete(client, id, input);
   const patch = {};
+  // `smtp_user` is deliberately NOT in this list. It is written only by
+  // applySmtpCredentialMode, which is the one place that knows whether the row
+  // is supposed to have one at all — copying it here would let a username be
+  // saved onto a mailbox in "same as IMAP" mode.
   for (const k of ["email_address", "display_name", "imap_host", "imap_port", "imap_secure", "smtp_host", "smtp_port", "smtp_secure", "auth_user"]) {
     if (input[k] !== undefined) patch[k] = input[k];
   }
@@ -271,25 +604,52 @@ async function updateImapConnection(client, id, input = {}) {
     });
     if (!conn.secret_key) await repo.updateConnection(client, id, { secret_key });
   }
+  await applySmtpCredentialMode(client, id, input, input.actor || {});
   const test = await testConnection(client, id);
   const updated = await repo.getConnection(client, id);
-  return { ...updated, status: test.ok ? "CONNECTED" : "ERROR", test };
+  return { ...updated, ...(await smtpAuthShape(client, id)), status: test.ok ? "CONNECTED" : "ERROR", test };
 }
 
-/** Live connectivity/auth check; updates status. Never throws. */
+/**
+ * The two derived fields the form reopens on, and the secret is not one of them.
+ *
+ * A GET must be able to say "this mailbox sends with its own sign-in" without
+ * ever handing back what that sign-in is — the same rule the mailbox password
+ * has always followed. `smtp_user` is on the row and rides along with it; the
+ * password only ever appears as a boolean.
+ */
+async function smtpAuthShape(client, id) {
+  const present = await repo.hasSmtpCredentials(client, id);
+  return { has_smtp_credentials: present, smtp_auth: present ? "separate" : "same" };
+}
+
+/**
+ * Live connectivity/auth check; updates status. Never throws.
+ *
+ * The result carries `stage` ("imap" | "smtp") and, when the mailbox has one, the
+ * fact that the sending leg signs in separately — because the question the
+ * operator is actually asking is "which password is wrong", and a verdict that
+ * cannot answer it is the ambiguity that made the original failure unreadable.
+ * The adapter's own messages name the leg; `smtp_auth` here lets a client mark
+ * the right field without parsing prose.
+ */
 async function testConnection(client, id) {
   const conn = await repo.getConnection(client, id);
   if (!conn) throw new AppError("NOT_FOUND", "connection not found", 404);
+  const separateSmtpCredentials = conn.provider === "imap_smtp"
+    ? await repo.hasSmtpCredentials(client, id)
+    : false;
   let result;
   try {
     const adapter = await resolveAdapter(client, conn);
     result = await adapter.verify();
   } catch (err) {
     // Classify SMTP verdicts so the UI can render the matching fix guide.
-    const mapped = isSmtpError(err) ? mapSmtpError(err) : null;
+    const mapped = isSmtpError(err) ? mapSmtpError(err, { separateSmtpCredentials }) : null;
     result = { ok: false, error: mapped ? mapped.message : err.message };
     if (mapped) result.code = mapped.code;
   }
+  if (!result.ok) result.smtp_auth = separateSmtpCredentials ? "separate" : "same";
   if (result.ok) await repo.updateConnection(client, id, { status: "CONNECTED", last_error: null });
   else await repo.setError(client, id, result.error || result.stage || "verify failed");
   return result;
@@ -811,6 +1171,33 @@ async function prepareSend(client, conn, { actor = {}, sendPoint = null, slug = 
     );
   }
 
+  // NEVER LET A USER'S MESSAGE BE SWALLOWED IN SILENCE.
+  //
+  // This is the path the incident actually travelled: a compose from a connected
+  // IMAP/SMTP mailbox, relayed through a shared host that also hosted the
+  // recipient's domain. The relay answered 250, filed the message into a local
+  // mailbox on itself, and generated no bounce — so the product recorded a
+  // successful send for a message nobody would ever receive.
+  //
+  // Only SMTP can be trapped this way. Graph and Gmail hand the message to the
+  // provider's own API, which routes it; there is no relay in between to get
+  // the destination wrong, so they are not checked.
+  //
+  // Placed in prepareSend because `send()` and `reply()` both come through here,
+  // and a guard that covers one of two send paths is not a guard. It runs before
+  // the allowance is spent and before anything is handed to the adapter.
+  if (conn.provider === "imap_smtp" && conn.smtp_host && to) {
+    try {
+      await routeCheck.assertRoutable({ smtpHost: conn.smtp_host, to });
+    } catch (err) {
+      if (err && err.code === "MAIL_ROUTE_TRAPPED") {
+        throw new AppError("MAIL_ROUTE_TRAPPED", err.message, 422, err.details || null);
+      }
+      /* @silent:parse the checker could not answer; sending as before is the
+         defined fallback, and a broken guard must never block a real send */
+    }
+  }
+
   const messageId = origin.generateMessageId(conn.email_address);
   const headers = origin.buildOriginHeaders({
     tenantSlug: slug, userId: actor.user_id || null,
@@ -951,15 +1338,98 @@ async function recordOutbound(client, conn, m) {
 
 // ── OAuth providers (Microsoft 365 + Google Gmail) ──
 // One flow, parameterised by provider. Each entry supplies its IdP helper, a
-// state `purpose` tag, and a probe adapter to resolve the mailbox address.
+// state `purpose` tag, the path its consent redirect MUST come back to, and a
+// probe adapter to resolve the mailbox address.
 const OAUTH = {
-  microsoft_graph: { idp: msOAuth, purpose: "ms_oauth", probe: (tok) => new MicrosoftGraphProvider({ getAccessToken: async () => tok }) },
-  google_gmail: { idp: googleOAuth, purpose: "gg_oauth", probe: (tok) => new GmailProvider({ getAccessToken: async () => tok }) },
+  microsoft_graph: {
+    idp: msOAuth, purpose: "ms_oauth", callbackPath: "/oauth/microsoft/callback",
+    probe: (tok) => new MicrosoftGraphProvider({ getAccessToken: async () => tok }),
+  },
+  google_gmail: {
+    idp: googleOAuth, purpose: "gg_oauth", callbackPath: "/oauth/google/callback",
+    probe: (tok) => new GmailProvider({ getAccessToken: async () => tok }),
+  },
 };
 
-/** Step 1: return the provider consent URL. State is a signed JWT binding the
- *  provider + tenant slug + initiating user + redirect (CSRF + tenant pinning). */
-async function startOAuth(client, provider, { slug, redirectUri, display_name = null, actor = {} }) {
+/**
+ * Refuse a redirect URI that does not point at the callback — BEFORE anybody is
+ * sent to the provider.
+ *
+ * ── THE FAILURE THIS REPLACES ───────────────────────────────────────────────
+ *
+ * A deployment had its Microsoft redirect URI configured as the `/start`
+ * endpoint rather than `/callback`. Everything about that looks fine right up
+ * until it is far too late: consent is requested normally, the provider's
+ * sign-in page renders, the operator types their password and approves — and
+ * only THEN does the provider redirect the browser to the address it was
+ * given. `/start` sits behind `authMiddleware` (a consent flow is a write, so
+ * it must), and a provider redirect is a bare browser GET carrying no session,
+ * so what the operator got for their password was a raw JSON body:
+ *
+ *   {"error":{"code":"AUTH_REQUIRED","message":"Authorization header missing"}}
+ *
+ * That names nothing they can act on. It does not say which URL was wrong, or
+ * that a URL was wrong at all, and it arrives on a screen belonging to neither
+ * this product nor Microsoft. `/callback` is mounted ABOVE `authMiddleware`
+ * precisely so it can receive that redirect — the misconfiguration was simply
+ * pointing at the one endpoint that structurally cannot serve it.
+ *
+ * ── WHY IT IS CHECKED HERE ──────────────────────────────────────────────────
+ *
+ * This is the last moment we hold the value and the first moment we know which
+ * provider it is for, and it is before the redirect — so the operator is told
+ * in the connect dialog, having typed nothing and consented to nothing, rather
+ * than after handing their credentials to a flow that could never complete.
+ * The check cannot fix the OTHER half (the provider's own app registration has
+ * to carry the same URI), but a deployment whose stored value is right and
+ * whose registration is wrong fails at the provider with its own named error
+ * — AADSTS50011 — which at least says what it is.
+ *
+ * A DERIVED redirect URI always ends in the callback path, so this only ever
+ * fires on a value somebody configured by hand.
+ */
+function assertRedirectUriIsCallback(provider, redirectUri, callbackPath) {
+  let pathname;
+  try {
+    ({ pathname } = new URL(String(redirectUri)));
+  } catch {
+    /* @silent:parse an unparseable URI is reported below as the
+       misconfiguration it is, with the offending value named */
+    pathname = null;
+  }
+  if (pathname && pathname.replace(/\/+$/, "").endsWith(callbackPath)) return;
+  throw new AppError(
+    "OAUTH_REDIRECT_MISCONFIGURED",
+    `The sign-in return address configured for ${provider} is "${redirectUri}", which does not end in `
+      + `"${callbackPath}". A provider sends people back to that address AFTER they have signed in, and `
+      + "only the callback endpoint can receive them — every other route requires a session the return "
+      + "visit does not carry, so the sign-in would fail at the last step with an authorisation error. "
+      + "Correct it in Platform Console → Integrations (or the deployment's redirect-URI environment "
+      + "variable, which is used when that field is blank), and register the SAME address with the "
+      + "provider. Leaving both blank is also valid — the address is then derived correctly on its own.",
+    500,
+    { provider, redirect_uri: String(redirectUri), expected_suffix: callbackPath },
+  );
+}
+
+/**
+ * Step 1: return the provider consent URL. State is a signed JWT binding the
+ * provider + tenant slug + initiating user + redirect (CSRF + tenant pinning).
+ *
+ * ── AND WHAT KIND OF MAILBOX IS BEING CONNECTED ─────────────────────────────
+ *
+ * `kind`, `catalogue_key` and `department` ride in the state for the same
+ * reason the tenant slug does: the callback arrives as a bare browser redirect
+ * from Microsoft, with no session, no body and no way to ask the operator
+ * anything. Whatever `completeOAuth` needs to classify the mailbox it has to
+ * have been TOLD before the redirect, and the state is the only channel that
+ * survives the round trip — signed, so a consent begun for `operations@` cannot
+ * be replayed into somebody's personal mailbox by editing a query string.
+ */
+async function startOAuth(client, provider, {
+  slug, redirectUri, display_name = null, actor = {},
+  kind: rawKind = null, catalogue_key = null, department = null,
+}) {
   const o = OAUTH[provider];
   if (!o) throw new AppError("PROVIDER_UNSUPPORTED", `Unknown OAuth provider '${provider}'`, 400);
   // P4: "kept and tested but gated off — SERVER-SIDE, not only in the UI." The
@@ -971,13 +1441,55 @@ async function startOAuth(client, provider, { slug, redirectUri, display_name = 
   // before anyone is redirected to Microsoft, rather than after they have
   // consented and come back.
   await assertProviderEnabled(client, provider);
-  if (!o.idp.isConfigured()) throw new AppError("NOT_CONFIGURED", `${provider} OAuth is not configured`, 400);
+  // Microsoft resolves these from the platform vault, so they are async now.
+  // `await` on the still-synchronous Google adapter is a no-op, so one call
+  // shape keeps serving both.
+  if (!(await o.idp.isConfigured())) throw new AppError("NOT_CONFIGURED", `${provider} OAuth is not configured`, 400);
   if (!slug || !redirectUri) throw new AppError("VALIDATION_ERROR", "slug and redirectUri are required", 422);
+  // Before the consent URL is built, so a misconfigured return address is a
+  // sentence in the connect dialog rather than a raw 401 the operator meets
+  // after they have already typed their password at the provider.
+  assertRedirectUriIsCallback(provider, redirectUri, o.callbackPath);
+  const kind = rawKind === "SHARED" ? "SHARED" : "PERSONAL";
+  // NOT the place to refuse a second personal mailbox, however tempting it is
+  // to fail before the redirect: which mailbox this is, is not known until
+  // Microsoft says so. Re-running consent is also the ONLY way to reconnect an
+  // OAuth mailbox whose tokens have gone stale — there is no password to
+  // re-enter — so a guard here would lock a person out of repairing the very
+  // mailbox they already own. `completeOAuth` asks once the address is known,
+  // where it can tell "a second mailbox" apart from "the same one again".
   const state = jwt.sign(
-    { purpose: o.purpose, provider, slug, user_id: actor.user_id || null, display_name, redirectUri },
+    {
+      purpose: o.purpose, provider, slug, user_id: actor.user_id || null,
+      display_name, redirectUri,
+      kind,
+      catalogue_key: kind === "SHARED" ? catalogue_key || null : null,
+      department: kind === "SHARED" ? department || null : null,
+    },
     config.JWT_ACCESS_SECRET, { expiresIn: OAUTH_STATE_TTL },
   );
-  return { url: o.idp.authorizeUrl({ state, redirectUri }) };
+  return { url: await o.idp.authorizeUrl({ state, redirectUri }) };
+}
+
+/**
+ * What kind of mailbox a consent flow was for, read back WITHOUT throwing.
+ *
+ * Only ever used to decide which tab the browser lands on after the redirect,
+ * including the failure path, where the whole point is that something already
+ * went wrong and a second exception would replace a useful error message with a
+ * useless one. It verifies the signature — an unverified `jwt.decode` would let
+ * a crafted state steer the redirect — and answers `null` for anything it
+ * cannot read. Nothing is authorised on the strength of it.
+ */
+function readOAuthStateKind(state) {
+  try {
+    const claims = jwt.verify(state, config.JWT_ACCESS_SECRET);
+    return claims && claims.kind === "SHARED" ? "SHARED" : "PERSONAL";
+  } catch {
+    /* @silent:parse an unreadable or expired state has a defined fallback —
+       no hint — and the caller only wants one to choose a tab with */
+    return null;
+  }
 }
 
 /** Step 2: exchange the code, resolve the mailbox, upsert the connection, store
@@ -1001,16 +1513,47 @@ async function completeOAuth(client, provider, { code, state, slug, webhookUrl }
   const who = await o.probe(tokens.access_token).verify();
   if (!who.ok || !who.email) throw new AppError("OAUTH_PROBE_FAILED", who.error || "could not read mailbox", 502);
 
+  // A SHARED mailbox is a team address, not the consenting person's own — so it
+  // is born SHARED, ownerless, and the operator gets it as a MANAGER grant
+  // rather than as `owner_user_id`.
+  const kind = claims.kind === "SHARED" ? "SHARED" : "PERSONAL";
+  const ownerUserId = kind === "SHARED" ? null : claims.user_id || null;
+
   let conn = await repo.findByAddress(client, who.email, provider);
+  const isNew = !conn;
+  // Now that the address is known, the one-personal-mailbox rule can be applied
+  // the way it is meant to be: a NEW second mailbox is refused with a sentence
+  // naming the one already held, while re-consenting to a mailbox the person
+  // already owns — the only way to refresh a stale OAuth token — goes through.
+  // Without this the 23505 from `ux_email_connection_one_personal` reaches the
+  // browser as the error handler's generic "A record with these values already
+  // exists", on the far side of a redirect, naming nothing.
+  if (isNew && kind === "PERSONAL" && claims.user_id) {
+    await mailbox.assertNoPersonalMailbox(client, claims.user_id);
+  }
   if (!conn) {
     conn = await repo.insertConnection(client, {
       email_address: who.email, provider, display_name: claims.display_name || null,
-      owner_user_id: claims.user_id || null,
+      owner_user_id: ownerUserId,
+      // Stamped on the INSERT, not by `classify` a statement later. 10723 gives
+      // `kind` a DEFAULT of 'PERSONAL' and a partial unique index over it —
+      // UNIQUE (owner_user_id) WHERE kind = 'PERSONAL' AND status <> 'ARCHIVED'
+      // — so a row that arrives without its kind is momentarily a SECOND
+      // personal mailbox for whoever created it, and the index refuses it with
+      // a 23505 the error handler renders as "A record with these values
+      // already exists". That is the exact defect 82d02ec fixed on the password
+      // path (tests/unit/mail-shared-mailbox-kind.test.js); this path inserts
+      // its own row and never went through `connect()`, so it still had it.
+      kind,
       status: "CONNECTED", token_expires_at: new Date(expires_at),
     });
   } else {
     await repo.updateConnection(client, conn.email_connection_id, { status: "CONNECTED", last_error: null, token_expires_at: new Date(expires_at) });
-    await repo.claimConnectionIfUnowned(client, conn.email_connection_id, claims.user_id);
+    // Never onto a team address: `owner_user_id` on a SHARED mailbox is what
+    // "this is one person's mailbox" means, and claiming operations@ for
+    // whoever happened to reconnect it is how a team address quietly becomes
+    // somebody's personal one.
+    if (kind !== "SHARED") await repo.claimConnectionIfUnowned(client, conn.email_connection_id, claims.user_id);
   }
 
   const secret_key = secretKeyFor(conn.email_connection_id);
@@ -1020,9 +1563,34 @@ async function completeOAuth(client, provider, { code, state, slug, webhookUrl }
     actor: { user_id: claims.user_id || null },
   });
   await repo.updateConnection(client, conn.email_connection_id, { secret_key });
-  await repo.ensureDefaultConnection(client, claims.user_id);
+  // Stamp WHAT this mailbox is — the team slot it fills, its department, its
+  // visibility, and (for a shared one) the MANAGER grant that lets the person
+  // who just set it up add anybody else to it. `connect()` does exactly this
+  // for the password path; the OAuth path wrote a transport row and stopped,
+  // which is why a mailbox connected here never appeared against its catalogue
+  // slot and had no members at all.
+  //
+  // ON THE INSERT ONLY. A mailbox that already exists has already been
+  // classified, and re-stamping it here would let a RECONNECT rewrite what the
+  // mailbox IS: a personal mailbox reconnected through the shared chooser would
+  // silently become a team address (exposing one person's correspondence to
+  // whoever holds the slot), and a team address reconnected through the
+  // personal one would lose its catalogue slot and department. Converting a
+  // personal mailbox into a shared one is a deliberate, audited action —
+  // `mailbox.handover` — and must not be reachable by picking the other button.
+  if (isNew) {
+    await mailbox.classify(client, conn.email_connection_id, {
+      kind,
+      catalogueKey: kind === "SHARED" ? claims.catalogue_key || null : null,
+      department: kind === "SHARED" ? claims.department || null : null,
+      actor: { user_id: claims.user_id || null },
+    });
+  }
+  // "Which mailbox do I send from by default" is a question about a person's
+  // own mailboxes. A team address is not one of them.
+  if (kind !== "SHARED") await repo.ensureDefaultConnection(client, claims.user_id);
   await setupPush(client, conn.email_connection_id, provider, { webhookUrl }).catch(() => { /* @silent:storage push optional; polling covers it */ });
-  return { email_connection_id: conn.email_connection_id, email_address: who.email, provider, status: "CONNECTED" };
+  return { email_connection_id: conn.email_connection_id, email_address: who.email, provider, status: "CONNECTED", kind };
 }
 
 /** Best-effort push registration after connect. Graph → change subscription to our
@@ -1186,6 +1754,7 @@ module.exports = {
   listIdentities, listSent, listInbox, updateIdentity, upsertIdentity, archiveIdentity,
   listConnections, setDefaultMailbox, connect, updateImapConnection, testConnection, syncConnection, send, reply, listThread, getMessage, markRead, listAttachments,
   clientTimeline, linkEntity, autodiscover, searchRecipients, allowedRecipientSources,
+  listConnectMethods, readOAuthStateKind,
   startMicrosoftOAuth, completeMicrosoftOAuth, handleGraphNotification,
   startGoogleOAuth, completeGoogleOAuth, handleGmailNotification, renewSubscriptions,
   // Exported for the send-queue flusher, which injects them rather than

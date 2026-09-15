@@ -27,6 +27,8 @@
 import * as React from "react";
 import { tr } from "@/lib/i18n";
 import { useNavigate, useParams, Link } from "react-router-dom";
+import { useUrlTab, useFieldHighlight, useDeepLinkEdit } from "@/lib/use-url-tab";
+import { LetterheadStudio } from "./letterhead-studio";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
@@ -47,6 +49,7 @@ import {
   readFileAsDataUrl,
 } from "@/lib/vault-file";
 import { WorkingCalendarTab } from "./working-calendar-tab";
+import { EntityPublicStoryTab } from "./entity-public-story-tab";
 import { useResource, useList, errMsg } from "@/lib/use-resource";
 import { money, num, dateDmy, enumLabel, toDateInput } from "@/lib/format";
 import { reportActionError } from "@/lib/action-error";
@@ -85,6 +88,12 @@ const TABS = [
   "Letterhead",
   "Renewals",
   "Working calendar",
+  /* §6.8. Last in the strip on purpose: it is the only tab whose audience is
+     strangers rather than the finance and compliance staff the other ten serve,
+     and it is behind a different permission (MOD-29, the website's, not
+     MOD-01's). Somebody opening this dossier to check a tax jurisdiction should
+     not pass through the marketing copy to get there. */
+  "Public story",
 ] as const;
 type Tab = (typeof TABS)[number];
 
@@ -172,19 +181,37 @@ function Detail({
   );
 }
 
+/**
+ * `field` is the DEEP-LINK ANCHOR — the value `?field=` looks for.
+ *
+ * `useFieldHighlight` finds `[data-field="…"]`, scrolls it into view, focuses
+ * the first control inside it and rings it briefly. Until now the dossier
+ * carried none of these, so `?field=` was plumbing that landed the tab and then
+ * silently did nothing — someone sent to fix a missing P.O. Box still had the
+ * whole tab to search.
+ *
+ * The anchor sits on the SECTION rather than on the input because most of these
+ * facts are edited in a modal opened from a row, and a field inside a modal
+ * that has not been opened is not in the document to focus. Landing on the
+ * section that owns the fact, with its "Add…" button focused, is the honest
+ * best — and it is what the letterhead studio's block links point at, because
+ * the block catalogue names the section, not a control that may not exist yet.
+ */
 function Section({
   title,
   description,
   action,
+  field,
   children,
 }: {
   title: string;
   description?: string;
   action?: React.ReactNode;
+  field?: string;
   children: React.ReactNode;
 }) {
   return (
-    <section className="space-y-3 rounded-xl border bg-card p-4">
+    <section data-field={field} className="space-y-3 rounded-xl border bg-card p-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <h3 className="text-sm font-semibold text-foreground">{title}</h3>
@@ -435,7 +462,7 @@ function ChildModal({
                       {heading}
                     </h4>
                   )}
-                  <div className={cls}>
+                  <div className={cls} data-field={f.key}>
                     {f.type === "checkbox" ? (
                       <Checkbox
                         checked={!!values[f.key]}
@@ -474,7 +501,11 @@ function ChildModal({
                     {heading}
                   </h4>
                 )}
-                <label className={cls}>
+                {/* `data-field`: every field in every collection modal is a
+                    deep-link target for free, keyed on the column name the
+                    server already uses — `?edit=addresses&row=…&field=po_box`
+                    focuses this input. */}
+                <label className={cls} data-field={f.key}>
                   <span className="font-medium text-foreground">{f.label}</span>
                   {f.type === "country" ? (
                     <SmartCountryPicker
@@ -572,6 +603,47 @@ function ChildModal({
       </form>
     </Modal>
   );
+}
+
+/**
+ * The request body for a nested-collection save — the counterpart of the seed
+ * in `ChildModal` above.
+ *
+ * THE DEFECT THIS CLOSES. It used to drop every empty value before the request
+ * was built: `.filter(([, v]) => v !== "" && v !== undefined)`. That is right
+ * for a CREATE — an untouched box is "not filled in", and omitting it lets the
+ * column's default and the 0515 triggers do their work — and silently wrong for
+ * an EDIT, where an empty box is a field somebody just EMPTIED. The key never
+ * reached the wire, so the API built no SET clause for it and answered 200
+ * having changed nothing.
+ *
+ * That is the reported bug: an entity's RCCM registration had an expiry date
+ * entered by mistake, and clearing it did nothing at all — Save reported
+ * success and the "Registrations needing attention · Expired" banner stayed,
+ * with no error to explain why. The entity's OWN form had already learned this
+ * (`entity-form-fields.ts`: "a user who empties a field and saves would watch it
+ * come straight back"); its collections had not.
+ *
+ * So on an update `""` becomes an explicit `null`, which the shared schemas now
+ * accept as "clear this column". A field that cannot be null — a registration's
+ * type, a tax registration's country — answers 422 naming the field, which is
+ * the honest outcome and the one thing the old filter could never produce.
+ */
+function childBody(
+  values: Record<string, unknown>,
+  isUpdate: boolean,
+  omit: readonly string[] = [],
+): Record<string, unknown> {
+  const body: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(values)) {
+    if (omit.includes(key) || value === undefined) continue;
+    if (value === "") {
+      if (isUpdate) body[key] = null;
+      continue;
+    }
+    body[key] = value;
+  }
+  return body;
 }
 
 const opts = (xs: readonly string[]) =>
@@ -987,7 +1059,9 @@ function useChildFields(
 ) {
   const needs = (...segs: api.EntityCollection[]) => segs.includes(seg);
   const entities = useList<Lookups["entities"][number]>(
-    needs("people") ? "/entities" : null,
+    // A corporate shareholder this picker cannot offer is a cap table that
+    // cannot be recorded. See ENTITY_LIST.
+    needs("people") ? api.ENTITY_LIST : null,
   );
   const employees = useList<Lookups["employees"][number]>(
     needs("people", "establishments") ? "/employees" : null,
@@ -1107,7 +1181,10 @@ export function EntityDossier({
     () => api.entityDossier(entityId),
     [entityId],
   );
-  const [tab, setTab] = React.useState<Tab>("Overview");
+  // `?tab=` / `?field=`. The route was always deep-linkable (see the comment on
+  // it in app.tsx); the TAB was not, so a link that meant "the P.O. Box is
+  // missing" landed on Overview with eleven tabs to guess from.
+  const [tab, setTab] = useUrlTab<Tab>(TABS, "Overview");
   // The field list is no longer carried in this state: it depends on lookups
   // fetched when the modal opens, so only the collection, the title and the row
   // being edited live here.
@@ -1116,6 +1193,9 @@ export function EntityDossier({
     title: string;
     row?: Record<string, unknown> | null;
   }>(null);
+  // `editing` is a dependency, not just `tab`: half these anchors are on inputs
+  // inside the modal, which is not in the document until it opens.
+  useFieldHighlight([tab, editing]);
   const [statusOpen, setStatusOpen] = React.useState(false);
   const [structureOpen, setStructureOpen] = React.useState(false);
   const [opsPrefixOpen, setOpsPrefixOpen] = React.useState(false);
@@ -1146,11 +1226,7 @@ export function EntityDossier({
     values: Record<string, unknown>,
     childId?: string,
   ) {
-    // Empty strings mean "not filled in", not "set to empty" — the API's shared
-    // schemas normalise them away, and sending them would write blanks.
-    const body = Object.fromEntries(
-      Object.entries(values).filter(([, v]) => v !== "" && v !== undefined),
-    );
+    const body = childBody(values, Boolean(childId));
     if (childId) await api.updateEntityChild(entityId, seg, childId, body);
     else await api.addEntityChild(entityId, seg, body);
     toast.success("Saved.");
@@ -1166,6 +1242,47 @@ export function EntityDossier({
       reportActionError(e);
     }
   }
+
+  /*
+   * OPEN A COLLECTION ROW'S MODAL FROM THE URL — `?edit=<seg>&row=<id|new>`.
+   *
+   * The Section anchors below land a `?field=` on the section that OWNS a fact,
+   * with its "Add…" button focused, and the comment there calls that "the
+   * honest best". It was, while the URL could not name a row. It is not the
+   * same as taking someone to the field: for a reader who does not know this
+   * screen, a focused button that reveals a dialog is still one they have to
+   * know to open.
+   *
+   * So the row is named now. `new` opens the create form — the correct
+   * destination for "there is no registered address", not a failure to find one
+   * — with REGISTERED prefilled, because that is the address a signature and a
+   * letterhead print and the reason the gap fired.
+   *
+   * ABOVE the loading and error returns, and reading `d.data` defensively
+   * rather than the destructured `addresses` below them: this runs before the
+   * dossier has loaded, and a hook after an early return is a hook that
+   * sometimes does not run. React counts them, and it is right to.
+   */
+  const deepEdit = useDeepLinkEdit("addresses");
+  const loadedAddresses = d.data ? d.data.addresses : null;
+  React.useEffect(() => {
+    // Not loaded yet — the arrival params stay in the URL and this runs again
+    // when they are, which is the whole reason `clear()` is called on success
+    // rather than on mount.
+    if (!deepEdit.open || !loadedAddresses) return;
+    const id = deepEdit.row;
+    const found = id && id !== "new"
+      ? loadedAddresses.find((a) => a.address_id === id)
+      : null;
+    setEditing({
+      seg: "addresses",
+      title: found ? "Edit address" : "Add address",
+      row: found
+        ? (found as unknown as Record<string, unknown>)
+        : { type: "REGISTERED" },
+    });
+    deepEdit.clear();
+  }, [deepEdit, loadedAddresses]);
 
   if (d.loading) return <LoadingRow label="Loading entity…" />;
   if (d.error || !d.data) {
@@ -1189,6 +1306,7 @@ export function EntityDossier({
     expiring_registrations: expiring,
     can_see_governance: gov,
   } = d.data;
+
   const status =
     e.registration_status || (e.is_active ? "ACTIVE" : "DEACTIVATED");
   const currency = e.default_currency || "XAF";
@@ -1276,7 +1394,7 @@ export function EntityDossier({
         </Callout>
       )}
 
-      <KpiRow>
+      <KpiRow stack>
         <KpiTile
           label={tr("Shareholders")}
           value={num(gov ? shareholders.length : cap.holder_count)}
@@ -1312,6 +1430,7 @@ export function EntityDossier({
         <div className="grid gap-4 lg:grid-cols-2">
           <Section
             title="About"
+            field="contact"
             description="Shown on the entity picker and internal directories."
           >
             <p className="text-sm text-muted-foreground">
@@ -1331,6 +1450,7 @@ export function EntityDossier({
 
           <Section
             title="Incorporation"
+            field="legal_form"
             description="The statutory facts printed on documents."
           >
             <dl className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
@@ -1482,6 +1602,7 @@ export function EntityDossier({
       {tab === "Identity & registrations" && (
         <Section
           title={tr("Registrations")}
+          field="registrations"
           description="Tax and trade identifiers, one row per country. This is what keeps a multi-country group compliant in each system."
           action={
             <Button
@@ -1557,13 +1678,30 @@ export function EntityDossier({
       )}
 
       {tab === "Documents" && (
-        <DocumentsTab
-          entityId={entityId}
-          documents={d.data.documents}
-          establishments={establishments}
-          onRemove={(id) => removeChild("documents", id)}
-          onSaved={reload}
-        />
+        <div className="space-y-4">
+          {/* Same server-side redaction the People tab explains, and the same
+              reason for saying so: a column reading "—" for a number that is
+              on file looks like missing data unless the page says otherwise. */}
+          {!gov && (
+            <div className="rounded-lg border p-3">
+              <p className="text-sm text-foreground">
+                Document references are hidden
+              </p>
+              <p className="micro text-muted-foreground">
+                Numbers, issuing authorities, filing references and the scans
+                themselves need the entity-admin permission. What each document
+                is and when it expires is shown, so renewals stay visible.
+              </p>
+            </div>
+          )}
+          <DocumentsTab
+            entityId={entityId}
+            documents={d.data.documents}
+            establishments={establishments}
+            onRemove={(id) => removeChild("documents", id)}
+            onSaved={reload}
+          />
+        </div>
       )}
 
       {tab === "Tax & jurisdiction" && (
@@ -1763,6 +1901,8 @@ export function EntityDossier({
 
       {tab === "Working calendar" && <WorkingCalendarTab entityId={entityId} />}
 
+      {tab === "Public story" && <EntityPublicStoryTab entity={e} onSaved={reload} />}
+
       {tab === "Renewals" && (
         <Section
           title="Renewals"
@@ -1801,7 +1941,7 @@ export function EntityDossier({
           {datedRenewals.error && (
             <ErrorState message={errMsg(datedRenewals.error)} />
           )}
-          <KpiRow>
+          <KpiRow stack>
             <KpiTile label={tr("Expired")} value={num(renewalsView.counts.expired)} />
             <KpiTile label="Due now" value={num(renewalsView.counts.due)} />
             <KpiTile
@@ -2158,6 +2298,7 @@ export function EntityDossier({
         <div className="space-y-4">
           <Section
             title="Addresses"
+            field="address_registered"
             description="REGISTERED is the statutory office the letterhead prints — often not where people actually work."
             action={
               <Button
@@ -2438,6 +2579,7 @@ export function EntityDossier({
 
           <Section
             title="Establishments"
+            field="establishments"
             description="Sites that are not separate legal persons — a warehouse or branch office with its own tax-office reference but no separate books."
             action={
               <Button
@@ -2533,6 +2675,7 @@ export function EntityDossier({
       {tab === "Banking & treasury" && (
         <Section
           title="Treasury accounts"
+          field="treasury_accounts"
           description="Read-only here. Bank, cash and mobile-money accounts are owned by Treasury so the GL mapping and the invoice payment block can never disagree."
           action={
             <Button
@@ -2798,15 +2941,9 @@ function DocumentsTab({
     setUploadSuccess(false);
     setAttachError(null);
     try {
-      const body = Object.fromEntries(
-        Object.entries(values).filter(
-          ([key, value]) =>
-            key !== "scan_file" &&
-            key !== "document_number" &&
-            value !== "" &&
-            value !== undefined,
-        ),
-      );
+      // `document_number` is allocated by the server and immutable afterwards;
+      // `scan_file` is not a column at all.
+      const body = childBody(values, Boolean(id), ["scan_file", "document_number"]);
       let documentId = id;
       if (id) await api.updateEntityChild(entityId, "documents", id, body);
       else {
@@ -3107,91 +3244,41 @@ function LetterheadTab({
     remittance_account_id: remittance,
   } = lh.data;
   const p = preview[lang];
-  const toggles: {
-    key: keyof api.LetterheadConfig;
-    label: string;
-    hint: string;
-  }[] = [
-    {
-      key: "show_legal_form",
-      label: "Legal form",
-      hint: "SARL, SAS, Ltd — mandatory in most of the EU.",
-    },
-    {
-      key: "show_share_capital",
-      label: "Share capital",
-      hint: "Mandatory on French invoices.",
-    },
-    {
-      key: "show_registered_address",
-      label: "Registered address",
-      hint: "The statutory office, not the trading one.",
-    },
-    {
-      key: "show_registrations",
-      label: "Tax & trade identifiers",
-      hint: "NIU, RCCM, VAT, EORI.",
-    },
-    { key: "show_contact", label: "Phone, email, website", hint: "" },
-    {
-      key: "show_bank_block",
-      label: "Payment block",
-      hint: "Bank details on invoices.",
-    },
-    {
-      key: "show_establishment",
-      label: "Establishment",
-      hint: "The issuing site — a branch's own tax-office reference, where the law wants it.",
-    },
-  ];
 
   return (
-    <div className="grid gap-4 lg:grid-cols-2">
-      <div className="space-y-4">
-        <Section
-          title="What appears"
-          description="The content is taken from the entity's own record — you choose which blocks print. Mandatory mentions differ by country."
-        >
-          <div className="space-y-2">
-            {toggles.map((t) => (
-              <div
-                key={String(t.key)}
-                className="flex items-start justify-between gap-3"
-              >
-                <div className="min-w-0">
-                  <p className="text-sm text-foreground">{t.label}</p>
-                  {t.hint && (
-                    <p className="micro text-muted-foreground">{t.hint}</p>
-                  )}
-                </div>
-                <Checkbox
-                  checked={c[t.key] === true}
-                  disabled={busy}
-                  onCheckedChange={(v) => patch({ [t.key]: v === true })}
-                  label={<span className="sr-only">{t.label}</span>}
-                />
-              </div>
-            ))}
-          </div>
-        </Section>
+    <div className="space-y-4">
+      {/*
+       * THE STUDIO — the page itself, arranged by dragging.
+       *
+       * This replaced a hand-drawn React header/footer whose docstring claimed
+       * it was "rendered by the same code the invoice generator uses". That was
+       * true of the DATA and false of the pixels, and it drifted: it showed a
+       * payment block on documents that never print one, and every toggle it
+       * saved reached a column the renderer never read.
+       *
+       * The canvas below draws the renderer's OWN composed blocks, and since
+       * 12760 those blocks are what every document prints.
+       */}
+      <LetterheadStudio
+        entityId={entityId}
+        bundle={lh.data}
+        lang={lang}
+        onLang={setLang}
+        onReload={lh.reload}
+        onSaved={onSaved}
+      />
 
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="space-y-4">
         <Section
           title="Wording"
+          field="wording"
           description="What cannot be derived — a strapline, payment terms, a jurisdiction clause. Per language, so a French document never falls back to English small print."
         >
-          <div className="flex gap-1 border-b">
-            {(["fr", "en"] as const).map((l) => (
-              <button
-                key={l}
-                type="button"
-                onClick={() => setLang(l)}
-                aria-current={lang === l ? "page" : undefined}
-                className={`-mb-px border-b-2 px-3 py-1.5 text-sm ${lang === l ? "border-primary font-medium text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}
-              >
-                {l === "fr" ? "Français" : "English"}
-              </button>
-            ))}
-          </div>
+          <p className="micro text-muted-foreground">
+            {tr("Editing")} {lang === "fr" ? tr("Français") : tr("English")} —{" "}
+            {tr("switch language on the page above.")}
+          </p>
           {(["header_note", "footer_note", "legal_mentions"] as const).map(
             (base) => {
               const key = `${base}_${lang}`;
@@ -3202,7 +3289,15 @@ function LetterheadTab({
                     ? "Footer note"
                     : "Legal mentions";
               return (
-                <label key={key} className="block space-y-1 text-sm">
+                // Anchored per FIELD, not per panel: "the late-payment clause
+                // is missing" should ring the late-payment box, not the three
+                // boxes it sits among. Keyed on the base name so a link works
+                // whichever language is being edited.
+                <label
+                  key={key}
+                  data-field={base}
+                  className="block space-y-1 text-sm"
+                >
                   <span className="font-medium text-foreground">{label}</span>
                   <textarea
                     className="min-h-16 w-full rounded-lg border bg-background px-3 py-2 text-sm"
@@ -3233,6 +3328,7 @@ function LetterheadTab({
             and heights are typed, so they ride the same draft as the wording. */}
         <Section
           title="Page and brand"
+          field="brand_color"
           description="How the sheet is laid out and coloured. The preview is drawn from these, so a change here is visible immediately."
         >
           <div className="grid gap-3 sm:grid-cols-2">
@@ -3367,134 +3463,6 @@ function LetterheadTab({
         </Section>
       </div>
 
-      <div className="space-y-4">
-        <Section
-          title={tr("Preview")}
-          description={`Exactly what a document prints in ${lang === "fr" ? "French" : "English"} on ${p.paper_size || "A4"} — rendered by the same code the invoice generator uses.`}
-        >
-          <article
-            className="space-y-3 rounded-lg border bg-background p-4"
-            style={
-              p.brand_color
-                ? { borderTopColor: p.brand_color, borderTopWidth: 3 }
-                : undefined
-            }
-          >
-            <header
-              className={`space-y-1 ${p.logo_position === "CENTER" ? "text-center" : p.logo_position === "RIGHT" ? "text-right" : ""}`}
-            >
-              {p.header.logo ? (
-                <img
-                  src={p.header.logo}
-                  alt=""
-                  className="inline-block h-10 w-auto object-contain"
-                />
-              ) : (
-                <div className="inline-flex h-10 items-center micro text-muted-foreground">
-                  No logo
-                </div>
-              )}
-              {p.header.company_line && (
-                <p className="text-sm font-semibold text-foreground">
-                  {p.header.company_line}
-                </p>
-              )}
-              {p.header.address_line && (
-                <p className="micro text-muted-foreground">
-                  {p.header.address_line}
-                </p>
-              )}
-              {p.header.contact_line && (
-                <p className="micro text-muted-foreground">
-                  {p.header.contact_line}
-                </p>
-              )}
-              {p.header.note && (
-                <p className="micro text-muted-foreground">{p.header.note}</p>
-              )}
-            </header>
-
-            <div className="rounded border border-dashed py-8 text-center micro text-muted-foreground">
-              Document body
-            </div>
-
-            {p.payment_block.accounts.length > 0 && (
-              <div className="space-y-0.5 border-t pt-2">
-                <p className="micro font-medium text-foreground">
-                  {lang === "fr" ? "Coordonnées bancaires" : "Payment details"}
-                </p>
-                {p.payment_block.accounts.map((a, i) => (
-                  <p key={i} className="micro num text-muted-foreground">
-                    {[
-                      a.bank_name,
-                      a.branch,
-                      a.account_number,
-                      a.iban,
-                      a.swift_bic,
-                      a.currency,
-                    ]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </p>
-                ))}
-              </div>
-            )}
-
-            {/* The accent colour is the footer rule — a colour you can set but
-                never see is a colour nobody sets on purpose. */}
-            <footer
-              className="space-y-0.5 border-t pt-2 text-center"
-              style={
-                p.accent_color ? { borderTopColor: p.accent_color } : undefined
-              }
-            >
-              {p.footer.company_line && (
-                <p className="micro text-muted-foreground">
-                  {p.footer.company_line}
-                </p>
-              )}
-              {p.footer.address_line && (
-                <p className="micro text-muted-foreground">
-                  {p.footer.address_line}
-                </p>
-              )}
-              {p.footer.identifier_line && (
-                <p className="micro num text-muted-foreground">
-                  {p.footer.identifier_line}
-                </p>
-              )}
-              {p.footer.establishment_line && (
-                <p className="micro text-muted-foreground">
-                  {p.footer.establishment_line}
-                </p>
-              )}
-              {p.footer.note && (
-                <p className="micro text-muted-foreground">{p.footer.note}</p>
-              )}
-              {p.footer.legal_mentions && (
-                <p className="micro text-muted-foreground">
-                  {p.footer.legal_mentions}
-                </p>
-              )}
-            </footer>
-          </article>
-        </Section>
-
-        {p.empty_blocks.length > 0 && (
-          <Callout tone="warn" title="Switched on, but empty">
-            <p className="text-muted-foreground">
-              These blocks are enabled and would print nothing. Fill them in on
-              the entity&apos;s other tabs, or switch them off.
-            </p>
-            <ul className="mt-2 flex flex-wrap gap-1.5">
-              {p.empty_blocks.map((b) => (
-                <li key={b}>
-                  <Pill tone="warn">{enumLabel(b)}</Pill>
-                </li>
-              ))}
-            </ul>
-          </Callout>
-        )}
       </div>
     </div>
   );
@@ -3525,7 +3493,9 @@ function StructureModal({
   onSaved: () => void;
 }) {
   const toast = useToast();
-  const { rows: entities } = useList<api.Entity>("/entities");
+  // The whole list, not the first 50 — a parent this picker cannot offer is a
+  // group structure that cannot be recorded. See ENTITY_LIST.
+  const { rows: entities } = useList<api.Entity>(api.ENTITY_LIST);
   const [parentId, setParentId] = React.useState(
     structure.parent_entity_id ?? "",
   );
@@ -3713,7 +3683,7 @@ function OpsReferencePrefixModal({ entityId, current, onClose, onSaved }: {
       open
       onClose={onClose}
       title="Operation reference prefix"
-      description="The two characters every operation file of this entity starts with. Fixed once a file has used it."
+      description="The two characters every operations file of this entity starts with. Fixed once a file has used it."
     >
       <div className="space-y-3">
         <Field label="Prefix" hint="Two characters, A–Z or 0–9. Unique across this tenant's entities.">

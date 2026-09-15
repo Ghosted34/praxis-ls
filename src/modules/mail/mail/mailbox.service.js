@@ -221,9 +221,16 @@ async function archive(client, id, actor = {}) {
  *   1. ARCHIVE      via `archive` above: sync stops, the mailbox leaves every
  *                   workspace, every live grant is withdrawn and the whole
  *                   thing is written to the access audit and the event log.
- *   2. FORGET       delete the row in `integration_secret` that holds the IMAP
- *                   password or the OAuth bundle, and null the columns that
- *                   point at it. This is the step "Retire" never did.
+ *   2. FORGET       delete EVERY row in `integration_secret` this mailbox owns —
+ *                   `mail_conn:<id>`, which holds the IMAP password or the OAuth
+ *                   bundle, AND `mail_conn_smtp:<id>`, the separate sending
+ *                   sign-in a relay-backed mailbox has (13777) — and null the
+ *                   columns that point at them. This is the step "Retire" never
+ *                   did, and "the credential is gone" has to mean BOTH of them:
+ *                   a mailbox disconnected with its relay password still on disk
+ *                   has not been forgotten, it has been half-forgotten, which is
+ *                   the state somebody rotating a compromised key is trying to
+ *                   leave.
  *
  * Archive first: if the secret is deleted and the archive then fails, a mailbox
  * is left CONNECTED with no credential, and the sync worker retries it every
@@ -246,12 +253,17 @@ async function disconnect(client, id, actor = {}) {
 
   const row = conn.status === "ARCHIVED" ? conn : await archive(client, id, actor);
 
-  if (conn.secret_key) {
+  // Both keys, unconditionally. `mail_conn_smtp:<id>` is derivable from the id
+  // and is NOT recorded in `secret_key`, so it is not gated on that column: a
+  // mailbox whose shared secret was already cleared can still be holding a relay
+  // password, and that is precisely the row that must not be left behind.
+  for (const key of [conn.secret_key, `mail_conn_smtp:${id}`]) {
+    if (!key) continue;
     // Best-effort by design. A secret row that is already gone is the state we
     // want, and a settings failure must not leave the mailbox half-retired:
     // the archive above is the part that stops mail moving.
     try {
-      await settings.remove(client, { section: settings.SECRET_SECTION, key: conn.secret_key, actor });
+      await settings.remove(client, { section: settings.SECRET_SECTION, key, actor });
     } catch (err) {
       if (err && err.code !== "NOT_FOUND") throw err;
     }
@@ -259,6 +271,9 @@ async function disconnect(client, id, actor = {}) {
 
   await repo.updateConnection(client, id, {
     secret_key: null,
+    // The username goes with the password it names. Left behind it would put the
+    // reconnected mailbox back in a state the vault no longer agrees with.
+    smtp_user: null,
     token_expires_at: null,
     push_subscription_id: null,
     push_expires_at: null,

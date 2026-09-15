@@ -18,6 +18,7 @@
  */
 import * as React from "react";
 import { cn } from "@/lib/cn";
+import type { UploadItem } from "@/lib/use-upload";
 import { UploadIcon } from "@/components/ui/icons";
 import { Modal } from "@/components/ui/modal";
 import { PdfPreview } from "@/components/ui/pdf-preview";
@@ -145,7 +146,8 @@ export function FileDrop({
           onPick(e.dataTransfer.files?.[0] ?? null);
         }}
         className={cn(
-          "flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-[10px] border border-dashed border-input px-4 py-6 text-center transition-colors hover:border-[color-mix(in_srgb,var(--primary)_50%,transparent)] hover:bg-accent/40",
+          // `relative` IS LOAD-BEARING — see the note above the <input>.
+          "relative flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-[10px] border border-dashed border-input px-4 py-6 text-center transition-colors hover:border-[color-mix(in_srgb,var(--primary)_50%,transparent)] hover:bg-accent/40",
           disabled && "pointer-events-none opacity-60",
         )}
       >
@@ -170,6 +172,37 @@ export function FileDrop({
           </>
         )}
         {hint && <span className="micro text-muted-foreground">{hint}</span>}
+        {/*
+         * THE LABEL ABOVE MUST STAY `relative`, AND THIS IS THE ENTIRE REASON.
+         *
+         * `sr-only` is `position: absolute` with no offsets. Absolute means the
+         * element is laid out against its nearest POSITIONED ancestor, and if
+         * there is none that is the initial containing block — the document.
+         * An element positioned against the document contributes to the
+         * DOCUMENT's scrollable overflow, even though it visually sits inside
+         * the app shell's own scroll container.
+         *
+         * So on a long screen, scrolled down, this 1px input gave <html> a
+         * scrollable region several hundred pixels tall. Clicking the label
+         * focuses the input — that is how a file picker is opened — and the
+         * browser scrolls the focused element into view. It scrolled the
+         * DOCUMENT, pushing the whole app shell up and out of the viewport.
+         *
+         * What the user sees is the page turn black, because `html, body,
+         * #root` are `height: 100%; overflow: hidden` (index.css) and what is
+         * left below the shell is bare body background. And `overflow: hidden`
+         * is why it does not come back: it suppresses the SCROLLBAR, it does
+         * not stop the browser scrolling programmatically — so there is no way
+         * left to scroll it back, and only a reload resets it. Measured in
+         * Chromium at 1440×900: document scrollTop 50 → 768, `#root` top 0 →
+         * -768. It reproduced on Cancel as well as on picking a file, because
+         * the focus — not the file — is what moves it.
+         *
+         * One `relative` on the label gives this a containing block inside the
+         * app's own scroll container, and the document's scrollable overflow
+         * goes to zero. Do not remove it, and do not replace `sr-only` with
+         * something else absolutely positioned without re-reading this.
+         */}
         <input
           type="file"
           className="sr-only"
@@ -246,4 +279,51 @@ export function FileDrop({
       )}
     </div>
   );
+}
+
+/**
+ * Map an upload-engine item onto FileDrop's props.
+ *
+ * WHY THIS EXISTS. FileDrop has accepted `uploadProgress` and `uploadSuccess`
+ * since the day it was written, and of its ten call sites TWO passed them —
+ * the same two that were passing them before the upload engine was built. The
+ * props were never the problem: assembling them by hand is a file, a
+ * percentage, a success flag, an error and a reset, in every site, every time.
+ *
+ * So this is the whole wiring, once:
+ *
+ *     const upload = useUpload({ profile: "photo", send });
+ *     <FileDrop
+ *       {...fileDropProps(upload.items[0])}
+ *       onPick={(f) => (f ? void upload.pick([f]) : upload.reset())}
+ *       accept={IMAGE_ACCEPT}
+ *       label="Cover image"
+ *     />
+ *
+ * and the site gets compression, a real 0→100 percentage and the completion
+ * state for free, because they all come from the same engine every other
+ * upload in the product uses.
+ *
+ * `praxis/require-upload-progress` fails a `<FileDrop>` that has neither this
+ * spread nor an explicit `uploadProgress`, so the two-of-ten outcome cannot
+ * happen again quietly.
+ */
+export function fileDropProps<T>(item: UploadItem<T> | null | undefined): {
+  file: File | null;
+  uploadProgress: number | null;
+  uploadSuccess: boolean;
+  error: string | null;
+} {
+  return {
+    // The PREPARED file once compression has run, so the chip shows the size
+    // that will actually be sent rather than the one off the camera.
+    file: item ? (item.prepared ?? item.file) : null,
+    // null while idle: a bar reading 0% before anything has started is noise.
+    uploadProgress:
+      item && item.state !== "idle" && item.state !== "error"
+        ? item.percent
+        : null,
+    uploadSuccess: item?.state === "success",
+    error: item?.error ?? null,
+  };
 }

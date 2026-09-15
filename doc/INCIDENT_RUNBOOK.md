@@ -156,6 +156,11 @@ change, and restoring it loses everything written since. If a migration is
 implicated, get the database owner involved before doing anything — a hasty
 restore is how an outage becomes data loss.
 
+A deploy that **never got past `── fetching`** shipped nothing at all — the
+fetch runs before the backup and the migrations, so production is still on the
+previous build and there is nothing to roll back. That failure is a credential
+problem on the server, not an outage: doc/DEPLOYMENT.md §6a.
+
 ### 4.2 The database is unreachable
 
 `checks.postgres: down`. Confirm from the server, not from your laptop:

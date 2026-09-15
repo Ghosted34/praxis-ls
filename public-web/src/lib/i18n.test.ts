@@ -1,16 +1,20 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import i18n from "./i18n";
 import {
   detectLang,
+  fromBrowser,
   getLang,
   setLang,
   LANG_KEY,
   tList,
   currentLocale,
 } from "./i18n";
-import { en, fr } from "./i18n-dict";
+// The RUNTIME tree, not just the entry dictionary: `site.careers.*` lives in the
+// careers chunk since 13792, and both assertions below are about what i18next
+// actually resolves rather than about which file a string was written in.
+import { en, fr } from "./i18n-tree.test-helper";
 
 /**
  * The dictionary's own tests — the three failures a bilingual app grows on its
@@ -211,8 +215,31 @@ describe("language resolution", () => {
     expect(currentLocale()).toBe("fr-FR");
   });
 
-  it("falls back to the browser, then to English", () => {
-    expect(detectLang()).toBe("en");
+  it("falls back to English, NOT to the browser's language", () => {
+    // The point of the case: a French-set browser with no `?lang=` and no
+    // stored choice still gets English. Asserting `detectLang()` alone would
+    // pass for the wrong reason under jsdom's default `en-US`, so the browser
+    // is made to say French first.
+    const langs = vi
+      .spyOn(navigator, "languages", "get")
+      .mockReturnValue(["fr-FR", "fr"]);
+    try {
+      expect(fromBrowser()).toBe("fr"); // the signal is there …
+      expect(detectLang()).toBe("en"); // … and deliberately not consulted
+    } finally {
+      langs.mockRestore();
+    }
+  });
+
+  it("still lets an explicit choice beat the English default", () => {
+    // Both the ways French is reachable, since the case above is the only thing
+    // standing between "English by default" and "English only".
+    window.history.replaceState({}, "", "/public?lang=fr");
+    expect(detectLang()).toBe("fr");
+    window.history.replaceState({}, "", "/");
+
+    localStorage.setItem(LANG_KEY, "fr");
+    expect(detectLang()).toBe("fr");
   });
 
   it("persists an explicit choice and drops it on auto", () => {
@@ -221,9 +248,12 @@ describe("language resolution", () => {
     expect(getLang()).toBe("fr");
     expect(i18n.language).toBe("fr");
     setLang("auto");
-    // "auto" REMOVES the key rather than writing "auto": a stored "auto" would
-    // win over the browser check on the next load and freeze the language.
+    // "auto" REMOVES the key rather than writing "auto": a stored "auto" is not
+    // a language, so it would fail `asLang` on the next load and silently
+    // become the default with no way back to it.
     expect(localStorage.getItem(LANG_KEY)).toBeNull();
+    // And "auto" now means English rather than "ask the browser".
+    expect(getLang()).toBe("en");
   });
 
   it("returns [] for a tList key that is not a list", () => {

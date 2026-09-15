@@ -105,6 +105,33 @@ function emptyProfile(serviceTypeId) {
  * API accepts and can never write; the reverse is a column writable through
  * PUT that no validator ever admits. Both are silent.
  */
+/**
+ * The jsonb columns on `service_type_web_profile`.
+ *
+ * A JS array handed to node-postgres becomes a POSTGRES ARRAY LITERAL —
+ * `{"a","b"}` — which is not JSON. Casting that to jsonb raises 22P02, which
+ * the error handler maps to `400 INVALID_VALUE`, "One of the values is in the
+ * wrong format": no field named, no column named, on a request carrying a whole
+ * page of copy. Every save that included highlights failed that way.
+ *
+ * Listed per column rather than "stringify anything that is an array", because
+ * `gallery_vault_ids` is `uuid[]` and the raw array is exactly what IT needs.
+ * The same distinction is why this cannot be a blanket rule in the query layer.
+ */
+const JSONB_COLUMNS = new Set(["highlights_fr", "highlights_en"]);
+
+/** Serialise a value for the column it is bound to. */
+function bind(col, value) {
+  if (value === undefined) return null;
+  if (!JSONB_COLUMNS.has(col)) return value;
+  // Already a string means a caller has stringified it; sending it twice would
+  // store a JSON string containing JSON.
+  if (typeof value === "string") return value;
+  // `null` on a NOT NULL DEFAULT '[]' column is 23502 — an empty list is how
+  // the highlights are cleared, so that is what a null becomes here.
+  return JSON.stringify(value ?? []);
+}
+
 const PROFILE_COLUMNS = [
   "short_description_fr", "short_description_en",
   "long_description_fr", "long_description_en",
@@ -129,16 +156,29 @@ async function upsertProfile(client, serviceTypeId, patch) {
   const sent = COLUMNS.filter((col) => Object.prototype.hasOwnProperty.call(patch, col));
   if (sent.length === 0) {
     // Pure touch (e.g. the caller only sent an audio field that maps to no
-    // column). INSERT defaults and RETURN.
+    // column). Create the row if it is absent, return it untouched if it is not.
+    //
+    // The conflict clause is not decoration. This branch is reached with an
+    // EXISTING row on a live path: `removeMedia` builds an empty `fields` when
+    // the doc it is unbinding is scoped to this service but is no longer the
+    // row's `cover_vault_id` / `icon_vault_id` — which is exactly the state a
+    // PUT `{cover_vault_id: null}` leaves behind, and exactly when someone goes
+    // to clean the orphaned document up. A bare INSERT there raises 23505 on
+    // the primary key, aborts the surrounding transaction, and answers 500 to a
+    // request that should have been a no-op. `DO UPDATE` (rather than
+    // `DO NOTHING`) so `RETURNING *` still yields the row.
     const { rows } = await client.query(
-      `INSERT INTO service_type_web_profile (service_type_id) VALUES ($1) RETURNING *`,
+      `INSERT INTO service_type_web_profile (service_type_id) VALUES ($1)
+       ON CONFLICT (service_type_id)
+         DO UPDATE SET service_type_id = EXCLUDED.service_type_id
+       RETURNING *`,
       [serviceTypeId],
     );
     return rows[0];
   }
   const insertCols = ["service_type_id", ...sent];
   const placeholders = insertCols.map((_, i) => `$${i + 1}`).join(", ");
-  const values = [serviceTypeId, ...sent.map((col) => (patch[col] === undefined ? null : patch[col]))];
+  const values = [serviceTypeId, ...sent.map((col) => bind(col, patch[col]))];
   // EXCLUDED.<col> = the value the INSERT tried to write (i.e. what the
   // caller sent, including a real null). No COALESCE — explicit null is a
   // clear, omitted keys are not in the SET list at all.
@@ -168,10 +208,21 @@ async function lockProfile(client, serviceTypeId) {
   return rows[0] || null;
 }
 
-/** The name_en presence + is_active read the publish gate needs. */
+/**
+ * The name_en presence + is_active read the publish gate needs — plus name_fr,
+ * which the gate itself does not use but `getTab` returns to the tab.
+ *
+ * `name_fr` was missing here while `getTab` read `serviceType.name_fr`, so
+ * `service_type.name_fr` left every GET as `undefined` and JSON dropped it. The
+ * tab uses that name for two visible things: the FR slug SUGGESTION (which then
+ * fell back to the SCREAMING_SNAKE key, offering `project-cargo` where the
+ * French name gives `cargaison-speciale`) and the meta-title fallback hint,
+ * which rendered blank. Both read as the server having no French name for a row
+ * that has one.
+ */
 async function serviceTypeForPublish(client, serviceTypeId) {
   const { rows } = await client.query(
-    `SELECT service_type_id, name_en, is_active
+    `SELECT service_type_id, name_en, name_fr, is_active
        FROM service_type
       WHERE service_type_id = $1`,
     [serviceTypeId],
@@ -313,7 +364,8 @@ async function replaceRelated(client, serviceTypeId, ids) {
 async function publicList(client) {
   const { rows } = await client.query(
     `SELECT p.service_type_id, p.slug_fr, p.slug_en,
-            st.name_fr, st.name_en,
+            st.name_fr, st.name_en, st.key AS service_key,
+            st.enquiry_shape,
             p.short_description_fr, p.short_description_en,
             p.claim_fr, p.claim_en, p.accent,
             p.cover_vault_id, p.icon_vault_id,
@@ -378,6 +430,15 @@ async function publicDetail(client, slug) {
   // Allowlist re-check at read time (cover + icon + gallery), one IN-list
   // round trip. A row's media URLs are derived from the allowlist, not
   // from the profile row alone.
+  //
+  // The map is doc id → ROLE, and the caller must compare the role to the slot
+  // it found the id in. Presence alone is not the allowlist: every other check
+  // on this table binds role to slot — `publicList` asserts
+  // `public_media_role = 'COVER'` inside its EXISTS, `publicMediaForServe`
+  // asserts role AND slot before streaming a byte, and the admin
+  // `isCoverAllowed` asserts `role === "COVER"`. Reading presence only would
+  // make the detail page the one surface that shows a GALLERY document as the
+  // cover, on a row whose card in the list correctly shows none.
   const ids = [row.cover_vault_id, row.icon_vault_id, ...(row.gallery_vault_ids || [])].filter(Boolean);
   const mediaByRole = new Map();
   if (ids.length) {

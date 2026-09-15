@@ -23,18 +23,23 @@ import { HubTabs } from "@/components/tabbed-hub";
 import { TeamChatPage } from "./team-chat";
 import { InboxPage } from "./inbox";
 import { CommsSetupPage } from "./setup/index";
+import { SignaturesPage } from "./signatures";
 
 const TABS = [
   { to: "/comms", label: "Chat", end: true },
   { to: "/comms/mail", label: "Mailbox", end: false },
+  { to: "/comms/signatures", label: "Signatures", end: false },
   { to: "/comms/setup", label: "Setup", end: false },
 ] as const;
 
 export function CommsHub() {
   const { section } = useParams();
+  const isChat = !section || !["setup", "signatures", "mail"].includes(section);
   const page =
     section === "setup" ? (
       <CommsSetupPage />
+    ) : section === "signatures" ? (
+      <SignaturesPage />
     ) : section === "mail" ? (
       /* The legacy Mail page's mode switcher (inbox / message log / mailboxes)
          was deleted with the legacy composer: the inbox IS the mailbox now.
@@ -47,9 +52,9 @@ export function CommsHub() {
       <TeamChatPage />
     );
   return (
-    <section className="animate-fade-in">
+    <section className={cn("animate-fade-in", isChat && "flex h-full min-h-0 flex-col")}>
       <nav
-        className="mb-4 flex items-end gap-1 border-b border-border"
+        className="mb-4 flex shrink-0 items-end gap-1 border-b border-border"
         aria-label="Comms sections"
       >
         {TABS.map((t) => (

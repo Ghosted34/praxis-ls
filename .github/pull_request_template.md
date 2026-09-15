@@ -28,3 +28,15 @@
 ## How it was verified
 
 <!-- Which tests were run, which screens were exercised, or why manual verification was enough. -->
+
+## Frontend checklist
+
+<!-- Delete this section if the PR touches no frontend code. -->
+
+- [ ] No `window.confirm` / `window.alert` / `window.prompt` — used `useConfirm()`,
+      `usePrompt()`, `<Callout>` or `useToast()` instead (doc/FRONTEND_GUIDE.md §3.10).
+      Native dialogs are drawn by the browser, so they ignore the tenant's white-label
+      branding entirely. `npm run lint` fails on them.
+- [ ] Colour comes from tokens — no raw palette classes (`npm run check:palette`).
+- [ ] Light and dark both check out.
+- [ ] `npm run lint` and `npm test` pass in every frontend app the PR touches.

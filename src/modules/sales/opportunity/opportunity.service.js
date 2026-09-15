@@ -125,7 +125,7 @@ async function win(client, { id, createDossier = false, entityId = null, service
   const result = await atomically(client, async () => {
     let dossierId = opp.dossier_id;
     if (createDossier && !dossierId) {
-      if (!entityId) throw new AppError("ENTITY_REQUIRED", "entity_id required to open a dossier", 422);
+      if (!entityId) throw new AppError("ENTITY_REQUIRED", "entity_id required to open an operations file", 422);
       createdDossier = await dossierSvc.insertForCreate(client, {
         data: { entity_id: entityId, client_id: opp.client_id, service_type_id: serviceTypeId, title: opp.name },
         actor,

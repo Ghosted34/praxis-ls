@@ -106,7 +106,7 @@ function AccountForm({
       open
       onClose={onClose}
       title={isNew ? "New account" : `Edit ${row!.code}`}
-      description="Only leaf/detail accounts are postable; 4731 / 706 / 707 require a dossier."
+      description="Only leaf/detail accounts are postable; 4731 / 706 / 707 require an operations file."
     >
       <form className="space-y-4" onSubmit={submit}>
         <div className="grid gap-4 sm:grid-cols-2">
@@ -261,7 +261,7 @@ export function ChartOfAccountsPage() {
       label: "Analytic",
       render: (a) =>
         a.requires_analytic ? (
-          <Pill tone="warn">{tr("Dossier")}</Pill>
+          <Pill tone="warn">{tr("File")}</Pill>
         ) : (
           <span className="text-muted-foreground">—</span>
         ),

@@ -11,6 +11,7 @@ import * as React from "react";
 import { tr } from "@/lib/i18n";
 import { tenant } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
+import { DateField } from "@/components/ui/date-field";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { ErrorState } from "@/components/ui/states";
@@ -288,10 +289,9 @@ export function QuotationForm({
             />
           </Field>
           <Field label={tr("Valid until")}>
-            <Input
-              type="date"
+            <DateField
               value={validUntil}
-              onChange={(e) => setValidUntil(e.target.value)}
+              onChange={setValidUntil}
             />
           </Field>
           <Field label="Target margin %" hint={tr("Optional")}>

@@ -17,9 +17,11 @@ const events = require("./corporate_entity.events");
 const rules = require("./corporate_entity.rules");
 const renewalRules = require("./corporate_entity.renewals");
 const letterheadService = require("../entity-letterhead.service");
+const letterheadBlocks = require("../../../services/documents/templates/letterhead-blocks");
 const dossierService = require("../entity-360.service");
 const { maskBank } = require("../_shared/confidential");
 const storage = require("../../../services/storage.service");
+const imagePipeline = require("../../../services/image-pipeline.service");
 const { emitEvent, audit, resolveActorId } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
 const opsRef = require("../../../services/documents/operation-reference");
@@ -145,9 +147,9 @@ async function setOpsReferencePrefix(client, { id, prefix, actor = {} }) {
     if (used.rowCount) {
       throw new AppError(
         "PREFIX_IN_USE",
-        `Operation files already carry the prefix "${before.ops_reference_prefix}". It cannot be changed without renaming references that have been issued.`,
+        `Operations files already carry the prefix "${before.ops_reference_prefix}". It cannot be changed without renaming references that have been issued.`,
         422,
-        { ops_reference_prefix: ["already used by existing operation files"] },
+        { ops_reference_prefix: ["already used by existing operations files"] },
       );
     }
   }
@@ -299,7 +301,12 @@ async function uploadLogo(client, { id, dataUrl, variant = "light", slug, actor 
   if (buffer.length > MAX_LOGO_BYTES) throw new AppError("IMAGE_TOO_LARGE", "Logo must be 512 KB or smaller", 413);
 
   const key = `tenant_${slug}/entity/${id}/logo_${variant}_${crypto.randomBytes(6).toString("hex")}.${ext}`;
-  const stored = await storage.put(buffer, { key, contentType });
+  // 'brand', not 'photo': this logo is printed on the entity's letterhead and
+  // invoices, so its colours have to survive the round trip exactly.
+  const stored = await imagePipeline.storeImage(
+    { buffer, mimetype: contentType, originalname: `logo_${variant}.${ext}` },
+    { key, profile: "brand" },
+  );
   const column = variant === "dark" ? "logo_dark_ref" : "logo_light_ref";
   const row = await repo.updateInternal(client, id, { [column]: stored.public_url });
   await audit(client, { actorUserId: actor.user_id || null, action: events.UPDATED, moduleKey: events.MODULE, entityRef: ref(id), before, after: row });
@@ -359,6 +366,34 @@ async function letterhead(client, id, lang = null, { financials = false } = {}) 
   // Same confidentiality rule as the dossier: the payment block and the account
   // list both carry the number, and this route is MOD-01 `view`.
   const mask = (p) => dossierService.maskPaymentBlock(p, financials);
+  /*
+   * The COMPOSED blocks — what the editor drags and what the renderer prints.
+   *
+   * `preview` below is the older, flatter shape: named header/footer strings
+   * the previous designer hand-drew from. It stays because the entity 360
+   * summary and the AI entity cards read it, and because a flat shape is the
+   * right one for "tell me this entity's address line". `blocks` is the one the
+   * editor works in, and the one `template.service` folds into every render, so
+   * the sheet on screen and the sheet that prints are the same composition.
+   */
+  const customLines = await repo.letterheadLines(client, id);
+  const composeInput = {
+    entity, config, addresses, establishments, treasuryAccounts, customLines,
+    layout: (config && config.layout) || null,
+    logo_url: entity.logo_light_ref || null,
+  };
+  const composeFor = (l) => {
+    const c = letterheadBlocks.compose(composeInput, l);
+    return {
+      ...c,
+      // The payment block carries an account number and this route is MOD-01
+      // `view`, not a financial grant — same rule the dossier applies.
+      footer: c.footer.map((b) => (b.id === "payment" && !financials
+        ? { ...b, lines: b.lines.map(() => ({ type: "text", text: "••••" })) }
+        : b)),
+    };
+  };
+
   return {
     config: config || { entity_id: id, ...letterheadService.DEFAULT_CONFIG },
     remittance_account_id: entity.remittance_account_id || null,
@@ -369,17 +404,79 @@ async function letterhead(client, id, lang = null, { financials = false } = {}) 
       fr: mask(letterheadService.render(input, "fr")),
       en: mask(letterheadService.render(input, "en")),
     },
+    blocks: { fr: composeFor("fr"), en: composeFor("en") },
+    custom_lines: customLines,
+    // What the editor may ADD, where each block's content comes from, and which
+    // dossier tab and field fixes it — the deep link is a property of the
+    // catalogue, so the editor never hardcodes a route.
+    catalogue: letterheadBlocks.catalogue(lang === "fr" ? "fr" : "en"),
+    tokens: letterheadBlocks.tokens(lang === "fr" ? "fr" : "en"),
     language: lang || entity.default_language || "en",
   };
 }
 
-/** Renewals due across documents, registrations and tax registrations. */
-async function renewals(client, id, asOf = null) {
+/**
+ * Add, edit or remove one tenant-authored letterhead line.
+ *
+ * Returns the whole letterhead bundle rather than the row, for the same reason
+ * `saveLetterhead` does: the editor's canvas must reflect what was STORED, and
+ * a line that changed the composed height has just changed the page.
+ */
+async function saveLetterheadLine(client, { id, lineId = null, patch = {}, remove = false, actor = {} }) {
+  const entity = await repo.get(client, id);
+  if (!entity) throw new AppError("NOT_FOUND", "Entity not found", 404);
+  const actorId = await resolveActorId(client, actor.user_id);
+  const before = await repo.letterheadLines(client, id);
+
+  if (remove) {
+    // `LINE_REQUIRED`, not a generic `BAD_REQUEST`: doc/ERROR_CODES.md is
+    // generated from these and a code a client already switches on cannot be
+    // renamed, so a new one is worth naming for what it means. 422 is the
+    // repo's status for every other `*_REQUIRED`.
+    if (!lineId) throw new AppError("LINE_REQUIRED", "A line id is required to remove a line", 422);
+    const gone = await repo.deleteLetterheadLine(client, id, lineId);
+    if (!gone) throw new AppError("NOT_FOUND", "That letterhead line does not belong to this entity", 404);
+  } else if (lineId) {
+    const row = await repo.updateLetterheadLine(client, id, lineId, patch, actorId);
+    if (!row) throw new AppError("NOT_FOUND", "That letterhead line does not belong to this entity", 404);
+  } else {
+    await repo.addLetterheadLine(client, id, patch, actorId);
+  }
+
+  await audit(client, {
+    actorUserId: actor.user_id || null, action: events.LETTERHEAD_UPDATED,
+    moduleKey: events.MODULE, entityRef: ref(id),
+    before, after: await repo.letterheadLines(client, id),
+  });
+  return letterhead(client, id);
+}
+
+/**
+ * Renewals due across documents, registrations and tax registrations.
+ *
+ * Documents are redacted for a caller without the governance grant, for the
+ * same reason the dossier redacts them — and because a renewal LABEL falls back
+ * to `document_number` when a document has neither a title nor a type, which
+ * put a redacted field back on the wire through a route gated only at `view`.
+ * Deriving the two lists from differently-redacted rows would also have made
+ * the dossier's renewals and this route disagree about the same document.
+ *
+ * `governance` defaults to FALSE: a caller that has not established the grant
+ * gets the redacted list, so a new call site fails closed rather than open.
+ */
+async function renewals(client, id, asOf = null, { governance = false } = {}) {
   const entity = await repo.get(client, id);
   if (!entity) throw new AppError("NOT_FOUND", "Entity not found", 404);
   const { registrations } = await repo.collections(client, id);
   const { documents, tax_registrations: taxRegistrations } = await repo.documentsAndTax(client, id);
-  return renewalRules.renewals({ documents, registrations, taxRegistrations }, asOf);
+  return renewalRules.renewals(
+    {
+      documents: governance ? documents : documents.map(dossierService.redactDocument),
+      registrations,
+      taxRegistrations,
+    },
+    asOf,
+  );
 }
 
 /** Cap-table reconciliation for one entity, as of a date. Advisory, never throws. */
@@ -395,5 +492,5 @@ const list = (client, q) => repo.list(client, q);
 
 module.exports = {
   create, update, setStatus, setActive, setStructure, uploadLogo, capTable,
-  letterhead, saveLetterhead, renewals, get, list, setOpsReferencePrefix,
+  letterhead, saveLetterhead, saveLetterheadLine, renewals, get, list, setOpsReferencePrefix,
 };

@@ -18,10 +18,13 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-const uploadVaultDocument = vi.fn();
+const uploadVaultFile = vi.fn();
 vi.mock("@/lib/masterdata-api", () => ({
-  uploadVaultDocument: (b: unknown, p?: (percent: number) => void) =>
-    uploadVaultDocument(b, p),
+  uploadVaultFile: (
+    file: File,
+    fields: unknown,
+    ctx?: { onProgress?: (percent: number) => void; signal?: AbortSignal },
+  ) => uploadVaultFile(file, fields, ctx),
 }));
 
 import { ScanAttachment } from "./scan-attachment";
@@ -32,7 +35,10 @@ const pdf = (name = "clearance.pdf", size = 1024) =>
   new File([new Uint8Array(size)], name, { type: "application/pdf" });
 
 beforeEach(() => {
-  uploadVaultDocument.mockReset().mockResolvedValue({ doc_id: "vault-1" });
+  uploadVaultFile.mockReset().mockResolvedValue({ doc_id: "vault-1" });
+  // The engine creates an object URL for the preview; jsdom has neither half.
+  URL.createObjectURL = vi.fn(() => "blob:scan-preview");
+  URL.revokeObjectURL = vi.fn();
 });
 afterEach(() => vi.restoreAllMocks());
 
@@ -50,18 +56,18 @@ describe("ScanAttachment", () => {
     await userEvent.upload(screen.getByLabelText("Attach scan"), pdf());
 
     await waitFor(() => expect(onAttached).toHaveBeenCalledWith("vault-1"));
-    expect(uploadVaultDocument).toHaveBeenCalledWith(
+    expect(uploadVaultFile).toHaveBeenCalledWith(
+      expect.any(File),
       expect.objectContaining({
         doc_type: "CLIENT_DOCUMENT",
         entity_ref: "client_document:d1",
       }),
-      expect.any(Function),
+      expect.objectContaining({ onProgress: expect.any(Function) }),
     );
-    // The file is sent as the base64 data URL POST /documents parses, not as a
-    // FormData part — the endpoint accepts nothing else.
-    expect(String(uploadVaultDocument.mock.calls[0][0].data_url)).toMatch(
-      /^data:application\/pdf;base64,/,
-    );
+    // The file now travels as a multipart part, not as a base64 data URL in a
+    // JSON body — POST /documents accepts both, and base64 inflated a 5 MB scan
+    // to a 6.7 MB string the API had to hold, parse and slice.
+    expect(uploadVaultFile.mock.calls[0][0]).toBeInstanceOf(File);
   });
 
   it("refuses a file the vault would reject, without uploading it", async () => {
@@ -84,14 +90,14 @@ describe("ScanAttachment", () => {
     await waitFor(() =>
       expect(onError).toHaveBeenCalledWith(expect.stringContaining("25.0 MB")),
     );
-    expect(uploadVaultDocument).not.toHaveBeenCalled();
+    expect(uploadVaultFile).not.toHaveBeenCalled();
     expect(onAttached).not.toHaveBeenCalled();
   });
 
   it("reports the upload failure instead of marking the document scanned", async () => {
     const onError = vi.fn();
     const onAttached = vi.fn();
-    uploadVaultDocument.mockRejectedValue(
+    uploadVaultFile.mockRejectedValue(
       new ApiError("FILE_TOO_LARGE", "File exceeds 25 MB", 413),
     );
     render(

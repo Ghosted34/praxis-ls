@@ -255,6 +255,79 @@ touching the running containers — nothing breaks; check
 `deploy` user in the `docker` group instead of root, with a single-purpose SSH
 key.
 
+## 6a. The server's GitHub credential (`could not read Username`)
+
+**Symptom:** the Deploy workflow stops a few lines in and the job fails with
+exit code 128:
+
+```
+── recording the currently-running build (for rollback)
+   previous: b21250dbf43a3f4dfcfdd67681d6bda7aa0f34b0
+── fetching
+fatal: could not read Username for 'https://github.com': No such device or address
+```
+
+Nothing shipped, and nothing broke either — the fetch is the first thing
+`scripts/deploy.sh` does, well before the backup and the migrations. The
+running build is untouched.
+
+**Why.** The server's `origin` is an HTTPS URL and the box has no GitHub
+credential for it, so git asks for a username. A CI deploy is a
+non-interactive SSH session with no terminal to ask on, so the open of
+`/dev/tty` fails with `ENXIO` — that is the "No such device or address" — and
+`set -euo pipefail` ends the run.
+
+It is confusing because **running the same command by hand on the server
+usually works**: an interactive login has a terminal, and any credential git
+cached there belongs to your user, not to the deploy session. Something
+having changed (a PAT reaching its expiry, a re-cloned checkout, a revoked
+credential-helper entry) is the usual trigger.
+
+**How it works now.** The deploy does not rely on a credential living on the
+server. `.github/workflows/deploy.yaml` forwards the workflow run's own token
+as `DEPLOY_GIT_TOKEN` — read-only, scoped to this repo, dead when the run ends
+— by **piping the remote script over the SSH session's stdin** rather than
+passing it as a command string, so it never appears in an argv that `ps` on the
+box could show. That script exports a `GIT_ASKPASS` helper for the session
+(mode 700 in `/tmp`, removed by a trap when the session ends), which every git
+in the deploy inherits — **including the copy of `scripts/deploy.sh` already
+checked out on the server**, which is the one that runs, so the fix does not
+have to be on the box before it can get onto the box. `scripts/deploy.sh` then
+does the same thing for itself with a per-invocation credential helper, which
+is what a hand-run uses; nothing is written to `.git/config` either way. Set
+the optional `DEPLOY_GIT_TOKEN` repo secret to override the run's token with a
+PAT if the server ever needs to fetch something it cannot reach.
+
+The fetch retries four times (2s/4s/8s) for a network blip and falls back from
+`origin` to the repo's canonical HTTPS URL, so a stale remote on the box does
+not block a deploy. If it still cannot fetch, the script aborts **before**
+checking anything out and says which remotes it tried.
+
+Nothing changes for a hand-run `bash scripts/deploy.sh`: with
+`DEPLOY_GIT_TOKEN` unset it fetches exactly as before, using whatever
+credential the operator has, and it still prompts if there is a terminal to
+prompt on.
+
+**Fixing the server by hand.** Either shape works for a manual fetch:
+
+```bash
+cd ~/praxis-ls
+git remote -v                    # what is origin actually pointing at?
+
+# HTTPS + a token, per command, so nothing is stored in the checkout:
+GIT_TERMINAL_PROMPT=0 DEPLOY_GIT_TOKEN='<PAT with Contents: Read>' \
+git -c credential.helper= \
+    -c credential.helper='!f() { printf "username=x-access-token\npassword=%s\n" "$DEPLOY_GIT_TOKEN"; }; f' \
+    fetch --prune origin
+
+# or SSH + a read-only deploy key (public half added to the repo on GitHub):
+git remote set-url origin git@github.com:<owner>/praxis-ls.git
+```
+
+Do **not** put a token in the remote URL (`https://<token>@github.com/...`).
+It lands in `.git/config` in plaintext, survives every deploy, leaks into any
+log that echoes a remote, and outlives whoever set it up.
+
 ## 7. Operations notes
 
 - **Backups** — everything lives in the `praxis_pgdata` volume + `./data`
@@ -291,3 +364,4 @@ key.
 | `sharp`/`argon2` load error at boot | image built with `npm ci` against the Windows lockfile — the Dockerfile uses `npm install` on purpose; don't "fix" it back |
 | Real-time chat not updating         | WebSocket upgrade headers missing in the proxy                                                                             |
 | PDF render fails                    | Chromium is in the image at `/usr/bin/chromium` — ensure `PUPPETEER_EXECUTABLE_PATH` is empty or that path                 |
+| Deploy dies at `── fetching` with `could not read Username for 'https://github.com'` | the server has no credential for `origin` and CI has no terminal to prompt on — section 6a                                  |

@@ -8,6 +8,7 @@
  */
 import * as React from "react";
 import { tr } from "@/lib/i18n";
+import { IndexRow } from "@/components/ui/index-row";
 import { ScreenAi } from "@/components/screen-ai";
 import { Button } from "@/components/ui/button";
 import { FormButtons } from "@/components/ui/form-buttons";
@@ -339,6 +340,8 @@ export function SuppliersPage() {
           defaultSize={260}
           min={200}
           max={480}
+          activeKind={tr("Supplier")}
+          active={!!selected}
         >
           <div className="space-y-2">
             <Input
@@ -353,16 +356,17 @@ export function SuppliersPage() {
                 <div className="px-3 py-4 micro">No suppliers.</div>
               ) : (
                 filtered.map((s) => (
-                  <button
+                  <IndexRow
                     key={s.supplier_id}
+                    selected={s.supplier_id === selId}
                     onClick={() => setSelId(s.supplier_id)}
-                    className={`flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors ${s.supplier_id === selId ? "bg-primary/10 text-foreground" : "hover:bg-muted"}`}
+                    className="items-center justify-between gap-2"
                   >
                     <span className="truncate font-medium">{s.name}</span>
                     <Pill tone={s.is_active ? "ok" : "mute"}>
                       {s.is_active ? "Active" : "Off"}
                     </Pill>
-                  </button>
+                  </IndexRow>
                 ))
               )}
             </div>

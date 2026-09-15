@@ -30,7 +30,13 @@ import {
   type LoginConfig,
 } from "@/lib/branding";
 import { applyBrand } from "@/lib/theme";
-import { getMode } from "@/lib/theme-mode";
+import {
+  applySiteTheme,
+  getSiteTheme,
+  readCachedSiteTheme,
+  writeCachedSiteTheme,
+} from "@/lib/site-theme";
+import { FORCE_DARK, getMode } from "@/lib/theme-mode";
 
 type Ctx = {
   branding: Branding;
@@ -49,8 +55,17 @@ const BrandingContext = React.createContext<Ctx>({
 export const DEFAULT_PRIMARY = "#ff5a00";
 
 /** The `theme` a tenant picked in Appearance is a hint, not an order: a public
- *  visitor's own persisted choice wins, because they are the one reading it. */
+ *  visitor's own persisted choice wins, because they are the one reading it.
+ *
+ *  While `FORCE_DARK` holds, the hint is not applied at all. This was the last
+ *  path to a light page and the worst-looking one: `GET /branding` resolves
+ *  AFTER first paint, so a tenant with `theme: "light"` did not merely start
+ *  light — the site painted dark and then flipped to white under the reader a
+ *  beat later, on every load, for every visitor who had never touched the
+ *  toggle. Locking the mode without this line would have left that flip in
+ *  place and made it look like a bug in the lock. */
 function syncTenantThemePreference(b: Branding): void {
+  if (FORCE_DARK) return;
   if (!b.theme) return;
   const stored = (() => {
     try {
@@ -105,20 +120,37 @@ export function BrandingProvider({ children }: { children: React.ReactNode }) {
     // fetch can land) so a repeat visit never shows the default dress.
     paintDocumentIdentity(branding);
 
+    // The WEBSITE's own palette, from the cache, painted after the branding
+    // above so it wins on colour for the surface it owns. `GET /branding` is the
+    // ERP's appearance row — the logo, the name, and the colours the tenant's
+    // staff see all day; this is the row for the site strangers judge them by,
+    // and the two are deliberately separate records.
+    const cachedTheme = readCachedSiteTheme();
+    if (cachedTheme) applySiteTheme(cachedTheme);
+
     let alive = true;
     // allSettled, not all: a tenant with no login config (the common case) must
-    // not stop their colours from being applied.
-    void Promise.allSettled([fetchBranding(), fetchLoginConfig()]).then(
-      ([b, l]) => {
-        if (!alive) return;
-        if (b.status === "fulfilled" && b.value) {
-          setState(b.value);
-          paintDocumentIdentity(b.value);
-          writeCachedBranding(b.value);
-        }
-        if (l.status === "fulfilled" && l.value) setLogin(l.value);
-      },
-    );
+    // not stop their colours from being applied, and a website theme that 404s
+    // (the `website` package off) must not stop their branding.
+    void Promise.allSettled([
+      fetchBranding(),
+      fetchLoginConfig(),
+      getSiteTheme(),
+    ]).then(([b, l, t]) => {
+      if (!alive) return;
+      if (b.status === "fulfilled" && b.value) {
+        setState(b.value);
+        paintDocumentIdentity(b.value);
+        writeCachedBranding(b.value);
+      }
+      if (l.status === "fulfilled" && l.value) setLogin(l.value);
+      if (t.status === "fulfilled" && t.value) {
+        // Applied LAST, for the reason above: on this surface the website's
+        // theme is the answer and the ERP's appearance is the floor beneath it.
+        applySiteTheme(t.value);
+        writeCachedSiteTheme(t.value);
+      }
+    });
     return () => {
       alive = false;
     };

@@ -41,7 +41,7 @@ module.exports = {
       // — a caller who needs the money should open the screen.
       key: "get_service_type_360",
       service: (c, p) => dossier360.dossier(c, (p && p.service_type_id) || p, { canSeeFinancials: false }), permission: { module: "MOD-29", action: "view" },
-      describe: "Full dossier for one service type: milestone templates and their stages, applicable financial dictionary items, recent dossiers and margin simulations, and the money rollup (billed / planned / actual — masked without finance visibility).",
+      describe: "Full 360 for one service type: milestone templates and their stages, applicable financial dictionary items, recent operations files and margin simulations, and the money rollup (billed / planned / actual — masked without finance visibility).",
     },
   ],
   writes: [],

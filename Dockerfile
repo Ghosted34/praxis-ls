@@ -95,7 +95,9 @@ RUN npm install --prefix platform-console --no-audit --no-fund \
 # `npm ci` resolves on the Alpine builder, and it buys the check `install` cannot:
 # a `package.json` whose dependencies and lockfile disagree fails this build at
 # once, instead of shipping a container built against a dependency set nobody
-# reviewed. Verified: `npm ci --prefix public-web` installs 344 packages clean.
+# reviewed. Verified: `npm ci --prefix public-web` installs 413 packages clean
+# (344 before fontkit, which `check:fonts-fallback` needs and which this stage
+# discards — the runtime stage copies public-web/dist and no node_modules).
 FROM base AS publicwebbuild
 COPY . .
 RUN npm ci --prefix public-web --no-audit --no-fund \

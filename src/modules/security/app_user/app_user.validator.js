@@ -29,10 +29,23 @@ const verifyTotp = zValidate(z.object({ pending_token: z.string().min(1), code: 
 const totpCode = zValidate(z.object({ code: z.string().min(6).max(8) }));
 
 const schemas = {
+  // `password` is optional ONLY because `invite` is the alternative — the
+  // service refuses a create that carries neither, with a message that names
+  // both. Keeping the either/or in the service rather than as a Zod refinement
+  // is deliberate: the password itself is then checked by the full policy
+  // (length, complexity, HIBP) in one place, instead of a min(8) here and the
+  // real rules somewhere else disagreeing about what is acceptable.
   create: z.object({
     email: z.string().trim().email(),
     full_name: z.string().min(1),
-    password: z.string().min(8),
+    // min(1), not min(8). The length that matters is the POLICY's twelve, and
+    // it is applied in the service (assertStrongPassword) — a second, shorter
+    // minimum here only decides which of two errors a weak password gets: a
+    // seven-character one used to come back as a bare VALIDATION_ERROR while an
+    // eight-character one came back naming the five rules it missed. One rule,
+    // one message, whatever the length.
+    password: z.string().min(1).optional(),
+    invite: z.boolean().optional(),
     username: z.string().optional().nullable(),
     employee_id: z.string().uuid().optional().nullable(),
     status: z.enum(["ACTIVE", "SUSPENDED", "LOCKED"]).optional(),
@@ -46,7 +59,8 @@ const schemas = {
     whatsapp_number: z.string().min(6).max(20).optional().nullable(),
     role_ids: z.array(z.string().uuid()).optional(),
   }),
-  password: z.object({ new_password: z.string().min(8) }),
+  // Same reasoning as `create.password`: the policy owns the length.
+  password: z.object({ new_password: z.string().min(1) }),
   status: z.object({ status: z.enum(["ACTIVE", "SUSPENDED", "LOCKED"]) }),
   // AI-facing: user_id in the payload → list_users picker.
   aiUpdate: z.object({ user_id: z.string().uuid(), full_name: z.string().optional(), username: z.string().optional().nullable(), email: z.string().trim().email().optional(), employee_id: z.string().uuid().optional().nullable(), whatsapp_number: z.string().min(6).max(20).optional().nullable(), role_ids: z.array(z.string().uuid()).optional() }),
@@ -65,12 +79,18 @@ const resetPassword = zValidate(z.object({ token: z.string().min(16), new_passwo
 const changePassword = zValidate(z.object({ current_password: z.string().min(1), new_password: z.string().min(1) }));
 
 const signature = zValidate(z.object({ html: z.string().max(20000) }));
-const pinRegister = zValidate(z.object({ pin: z.string().regex(/^\d{4,8}$/), label: z.string().max(80).optional().nullable() }));
-const pinLogin = zValidate(z.object({ email: z.string().trim().email(), device_id: z.string().uuid(), pin: z.string().regex(/^\d{4,8}$/), keep_signed_in: z.boolean().optional() }));
+const pinRegister = zValidate(z.object({ pin: z.string().regex(/^\d{4}$/), label: z.string().max(80).optional().nullable() }));
+const pinLogin = zValidate(z.object({ email: z.string().trim().email(), device_id: z.string().uuid(), pin: z.string().regex(/^\d{4}$/), keep_signed_in: z.boolean().optional() }));
+// WebAuthn passkey — attestation/assertion are intricate client-generated objects; validate as pass-through
+const passkeyRegisterOptions = zValidate(z.object({ label: z.string().max(80).optional().nullable() }).passthrough());
+const passkeyRegisterVerify = (req, _res, next) => next(); // complex nested, allow any — verification is cryptographic
+const passkeyLoginOptions = zValidate(z.object({ email: z.string().trim().email().optional().nullable() }).passthrough());
+const passkeyLoginVerify = (req, _res, next) => next();
 
 module.exports = {
   ...passthrough,
   login, refresh, verifyTotp, totpCode, signature, pinRegister, pinLogin,
+  passkeyRegisterOptions, passkeyRegisterVerify, passkeyLoginOptions, passkeyLoginVerify,
   avatar, forgotPassword, resetPassword, changePassword,
   create: zValidate(schemas.create),
   update: zValidate(schemas.update),

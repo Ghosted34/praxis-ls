@@ -19,9 +19,16 @@ const WRITABLE = [
   "meta_title_fr", "meta_title_en",
   "meta_description_fr", "meta_description_en",
   "cover_vault_id",
+  "gallery_vault_ids",
   "tags",
   "author_user_id",
   "sort_order",
+  // 13784. `kind` is writable because it is a property of the piece — a writer
+  // decides they are writing an announcement — whereas `pinned_until` is NOT:
+  // it is set by `setPinned`, which is its own endpoint for the reason
+  // `setPublished` is. Putting a pin on the homepage is a deliberate act with a
+  // stated expiry, not a field somebody brushes past while fixing a typo.
+  "kind",
 ];
 
 /**
@@ -52,11 +59,12 @@ const SELECT_LIST = `
     LEFT JOIN employee e ON e.employee_id = u.employee_id
 `;
 
-async function list(client, { publishedOnly = false, tag = null, limit = null, offset = 0 } = {}) {
-  const params = [publishedOnly, tag];
+async function list(client, { publishedOnly = false, tag = null, kind = null, limit = null, offset = 0 } = {}) {
+  const params = [publishedOnly, tag, kind];
   let sql = `${SELECT_LIST}
      WHERE ($1::boolean = false OR a.is_published = true)
        AND ($2::text IS NULL OR a.tags @> ARRAY[$2]::text[])
+       AND ($3::text IS NULL OR a.kind = $3)
      ORDER BY a.published_at DESC NULLS LAST, a.sort_order ASC, a.created_at DESC`;
   if (limit !== null) {
     params.push(limit, offset);
@@ -67,15 +75,64 @@ async function list(client, { publishedOnly = false, tag = null, limit = null, o
 }
 
 /** The count the paginated list reports, under the same filter. */
-async function count(client, { publishedOnly = false, tag = null } = {}) {
+async function count(client, { publishedOnly = false, tag = null, kind = null } = {}) {
   const { rows } = await client.query(
     `SELECT COUNT(*)::int AS n
        FROM insight_article a
       WHERE ($1::boolean = false OR a.is_published = true)
-        AND ($2::text IS NULL OR a.tags @> ARRAY[$2]::text[])`,
-    [publishedOnly, tag],
+        AND ($2::text IS NULL OR a.tags @> ARRAY[$2]::text[])
+        AND ($3::text IS NULL OR a.kind = $3)`,
+    [publishedOnly, tag, kind],
   );
   return rows[0].n;
+}
+
+/**
+ * The live pins — what the homepage band draws.
+ *
+ * THE CAP IS AN ARGUMENT AND IT IS APPLIED IN SQL. §6.4 requires the pinned
+ * collection to be capped server-side, and the only cap worth having is one a
+ * caller cannot raise: a `LIMIT` here means a tenant who pins everything gets a
+ * band, and a client that asks for more gets the same five rows.
+ *
+ * `pinned_until > now()` is what makes the expiry real rather than decorative.
+ * A pin whose date has passed is not a pin, so nothing has to sweep the table
+ * and nobody has to remember — which is the whole reason 13784 stored a
+ * timestamp instead of a boolean.
+ *
+ * Ordered by the expiry DESCENDING: the pin the tenant expects to matter
+ * longest leads the band. That is also the direction `ix_insight_pinned` is
+ * built in, so this reads the partial index rather than the table.
+ */
+async function listPinned(client, { limit = 5, kind = null } = {}) {
+  const { rows } = await client.query(
+    `${SELECT_LIST}
+      WHERE a.is_published = true
+        AND a.pinned_until IS NOT NULL
+        AND a.pinned_until > now()
+        AND ($1::text IS NULL OR a.kind = $1)
+      ORDER BY a.pinned_until DESC, a.published_at DESC NULLS LAST
+      LIMIT $2`,
+    [kind, limit],
+  );
+  return rows;
+}
+
+/**
+ * Set or clear the pin. Its own write, for the reason `setPublished` has one:
+ * `pinned_until` is deliberately absent from WRITABLE, so an ordinary PATCH
+ * cannot put an article on the homepage.
+ */
+async function setPinned(client, id, pinnedUntil) {
+  await client.query(
+    `UPDATE ${TABLE} SET pinned_until = $2 WHERE insight_article_id = $1`,
+    [id, pinnedUntil],
+  );
+  // Re-read through SELECT_LIST rather than RETURNING *, so a pin answers with
+  // the same shape every other write does — author joins included. A caller
+  // that got a thinner row from one endpoint than from its neighbours is a
+  // caller that grows a special case.
+  return get(client, id);
 }
 
 /**
@@ -223,9 +280,46 @@ async function publicCoverForServe(client, docId) {
   return rows[0] || null;
 }
 
+/**
+ * A gallery image, for the public media route.
+ *
+ * Same fail-closed shape as `publicCoverForServe` and one clause different: the
+ * doc must be a member of the owning article's `gallery_vault_ids`, which is
+ * what `= ANY(a.gallery_vault_ids)` asserts. A doc removed from the array stops
+ * being servable on the next request even though its vault row still exists —
+ * which is the property that lets removal archive rather than delete.
+ */
+async function publicGalleryForServe(client, docId) {
+  if (!UUID_RE.test(String(docId || ""))) return null;
+  const { rows } = await client.query(
+    `SELECT v.doc_id, v.public_media_content_type, v.storage_path
+       FROM document_vault v
+       JOIN insight_article a ON v.doc_id = ANY(a.gallery_vault_ids)
+      WHERE v.doc_id = $1
+        AND v.status = 'VERIFIED'
+        AND v.public_media_scope = 'INSIGHT'
+        AND v.public_media_role = 'GALLERY'
+        AND v.public_media_content_type = ANY($2::text[])
+        AND a.is_published = true`,
+    [docId, IMAGE_TYPES],
+  );
+  return rows[0] || null;
+}
+
+/** The cover or a gallery image — the public media route serves one URL space
+ *  and does not know which of the two an id is until it asks. Cover first: it
+ *  is the one every article has. */
+async function publicMediaForServe(client, docId) {
+  return (
+    (await publicCoverForServe(client, docId)) ||
+    (await publicGalleryForServe(client, docId))
+  );
+}
+
 module.exports = {
   TABLE, WRITABLE, IMAGE_TYPES, UUID_RE,
-  publicCoverForServe,
+  publicCoverForServe, publicGalleryForServe, publicMediaForServe,
   list, count, tagsInUse, get, getBySlug, slugTaken,
+  listPinned, setPinned,
   insert, update, setPublished, remove,
 };

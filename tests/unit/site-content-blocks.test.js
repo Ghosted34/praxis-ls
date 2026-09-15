@@ -16,14 +16,49 @@ const repoRoot = path.resolve(__dirname, "../..");
 const schema = require("../../src/modules/site/site_content/site_content.schema");
 const metrics = require("../../src/modules/site/site_content/site_content.metrics");
 
+/** 12753's own DDL — the migration that CREATED the tables. The `migration
+ *  12753` block below asserts about that file specifically (the cascade, the
+ *  render index, the unpublished default), which is different from asking what
+ *  the block CHECK admits today. */
 const sql = fs.readFileSync(
   path.join(repoRoot, "migrations/tenant/12753_site_page_blocks.sql"),
   "utf8",
 );
 
-/** The types the CHECK actually admits. */
+/**
+ * The types the CHECK actually admits, as the database would have them after
+ * the whole migration set has run.
+ *
+ * Read from the LAST migration that defines `site_block_type_chk` rather than
+ * from 12753, which created it. The library is extended by widening that
+ * constraint — 13790 added `copy_overrides` — so a test pinned to the creating
+ * migration starts failing on a correct change and, worse, would keep passing
+ * on an incorrect one if a later migration NARROWED the list. Numeric order,
+ * not lexicographic: `9086` sorts after `13790` as a string.
+ */
+function effectiveCheckSql() {
+  const dir = path.join(repoRoot, "migrations/tenant");
+  const owning = fs
+    .readdirSync(dir)
+    .filter((f) => f.endsWith(".sql"))
+    .map((f) => ({ file: f, n: Number.parseInt(f, 10) }))
+    .filter((f) => Number.isFinite(f.n))
+    .sort((a, b) => a.n - b.n)
+    .map((f) => path.join(dir, f.file))
+    .filter((f) => fs.readFileSync(f, "utf8").includes("site_block_type_chk CHECK (type IN ("))
+    .pop();
+  if (!owning) throw new Error("no migration defines site_block_type_chk");
+  return fs.readFileSync(owning, "utf8");
+}
+
 function checkTypes() {
-  const block = sql.slice(sql.indexOf("site_block_type_chk CHECK (type IN ("));
+  const effective = effectiveCheckSql();
+  // The DOWN block at the foot of a migration restates the OLD list in a
+  // comment. Cut the file at the VERIFY banner so the narrower list a
+  // rollback would restore is never mistaken for the one that ships.
+  const cut = effective.indexOf("-- VERIFY");
+  const live = cut === -1 ? effective : effective.slice(0, cut);
+  const block = live.slice(live.indexOf("site_block_type_chk CHECK (type IN ("));
   const list = block.slice(0, block.indexOf("));"));
   return [...list.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]);
 }
@@ -42,6 +77,11 @@ describe("the block library and the CHECK agree", () => {
       "card_grid", "text_image", "two_column_values", "leader_message",
       "pillar_framework", "testimonials", "form_block", "contact_block",
       "cta_band", "policies",
+      // The words the APP puts on a tenant's pages, overridden one dictionary
+      // key at a time (13790). Not in the original plan's fourteen: the plan
+      // assumed the scaffold's own copy was ours to write, which on a
+      // white-label product it is not.
+      "copy_overrides",
     ]) {
       expect(schema.BLOCK_TYPES).toContain(type);
     }

@@ -19,6 +19,7 @@ import * as React from "react";
 import { tr } from "@/lib/i18n";
 
 import { Button } from "@/components/ui/button";
+import { DateField } from "@/components/ui/date-field";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { ErrorState } from "@/components/ui/states";
@@ -217,10 +218,9 @@ function SopForm({
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label={tr("Effective from")}>
-            <Input
-              type="date"
+            <DateField
               value={f.effective_on}
-              onChange={(e) => set("effective_on", e.target.value)}
+              onChange={(iso) => set("effective_on", iso)}
             />
           </Field>
           <Field label={tr("Version")}>

@@ -99,9 +99,12 @@ function forParty(sig, entity) {
  * @param {string} opts.docRef  the document's own number, printed as evidence
  * @param {string} opts.language 'fr' | 'en'
  * @param {string} [opts.origin] host the QR should resolve on
+ * @param {string} [opts.env] the environment ('live' or 'sandbox') this render
+ *                            was minted in — baked into the QR URL so a
+ *                            sandbox-signed document verifies from sandbox
  * @returns {Promise<object[]>} inputs for kit.sealBlock, in print order
  */
-async function build(client, signatures, { entity = {}, docRef = "", language = "fr", origin = null } = {}) {
+async function build(client, signatures, { entity = {}, docRef = "", language = "fr", origin = null, env = "live" } = {}) {
   const rows = (Array.isArray(signatures) ? signatures : []).filter((r) => r && !r.revoked_at);
   if (!rows.length) return [];
   const L = lang(language);
@@ -123,7 +126,7 @@ async function build(client, signatures, { entity = {}, docRef = "", language = 
     const sig = ordered[i];
     let verify = null;
     try {
-      verify = await verifyLink.verifyContext(client, { code: sig.verify_code, origin, sizeMm: 22 });
+      verify = await verifyLink.verifyContext(client, { code: sig.verify_code, origin, sizeMm: 22, env });
     } catch (err) {
       logger.warn({ err: err && err.message, signature_id: sig.signature_id }, "seal QR could not be rendered");
     }

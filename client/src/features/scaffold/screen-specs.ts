@@ -83,7 +83,7 @@ export const SPECS: ScreenSpec[] = [
     tabs: [
       {
         label: "Quotations",
-        columns: ["Ref", "Client", "Dossier", "Status", "Total", "Valid until"],
+        columns: ["Ref", "Client", "File", "Status", "Total", "Valid until"],
         actions: ["New quotation", "Send", "Accept"],
       },
       {
@@ -103,7 +103,7 @@ export const SPECS: ScreenSpec[] = [
       {
         label: "List quotations",
         kind: "read",
-        describe: "List quotations (filter status/client/dossier).",
+        describe: "List quotations (filter status/client/operations file).",
       },
       {
         label: "Draft quotation",
@@ -127,7 +127,7 @@ export const SPECS: ScreenSpec[] = [
     module: "MOD-27",
     status: "ready",
     columns: [
-      "Dossier",
+      "File",
       "Status",
       "Margin %",
       "Price",
@@ -167,7 +167,7 @@ export const SPECS: ScreenSpec[] = [
     area: "Commercial",
     title: "Extra-charge simulation",
     purpose:
-      "Five-family demurrage/detention workbench per FILE (§3.2): pick the dossier and the containers/ATA/shipping line prefill; Rate Configuration lives ON the screen and persists; saved simulations re-apply.",
+      "Five-family demurrage/detention workbench per FILE (§3.2): pick the operations file and the containers/ATA/shipping line prefill; Rate Configuration lives ON the screen and persists; saved simulations re-apply.",
     module: "MOD-28",
     status: "ready",
     columns: [
@@ -201,7 +201,7 @@ export const SPECS: ScreenSpec[] = [
     module: "MOD-56",
     status: "ready",
     columns: [
-      "Dossier",
+      "File",
       "Quoted (HT)",
       "Margin %",
       "Flag",
@@ -214,7 +214,7 @@ export const SPECS: ScreenSpec[] = [
         label: "List pricing variance",
         kind: "read",
         describe:
-          "Sales pricing-variance list derived from dossier reconciliations (R/Y/G flag + quote; never raw cost).",
+          "Sales pricing-variance list derived from operations file reconciliations (R/Y/G flag + quote; never raw cost).",
       },
     ],
   },
@@ -322,7 +322,7 @@ export const SPECS: ScreenSpec[] = [
         label: "Win / lose",
         kind: "write",
         describe:
-          "Mark an opportunity won (optionally open a dossier) or lost.",
+          "Mark an opportunity won (optionally open an operations file) or lost.",
       },
     ],
   },
@@ -410,7 +410,7 @@ export const SPECS: ScreenSpec[] = [
     area: "Sales & CRM",
     title: "Success stories",
     purpose:
-      "Portfolio case studies — AI-drafted from a dossier, signed off, then published.",
+      "Portfolio case studies — AI-drafted from an operations file, signed off, then published.",
     module: "sales/success_story",
     status: "ready",
     columns: ["Title", "Client", "Status", "Published"],
@@ -433,16 +433,16 @@ export const SPECS: ScreenSpec[] = [
   {
     path: "operations/files",
     area: "Operations",
-    title: "Operations files (dossiers)",
+    title: "Operations files",
     purpose:
       "The freight-forwarding file is the operational hub — milestones, transit orders and delivery notes hang off it.",
     module: "operations/operations_file",
     status: "ready",
     tabs: [
       {
-        label: "Dossiers",
+        label: "Files",
         columns: ["Ref", "Client", "Service", "Status", "Opened"],
-        actions: ["Open dossier", "Advance"],
+        actions: ["Open file", "Advance"],
       },
       {
         label: "Milestones",
@@ -462,14 +462,14 @@ export const SPECS: ScreenSpec[] = [
     ],
     ai: [
       {
-        label: "List / get dossiers",
+        label: "List / get operations files",
         kind: "read",
-        describe: "List operation files (dossiers) or fetch one.",
+        describe: "List operations files or fetch one.",
       },
       {
-        label: "Open / advance dossier",
+        label: "Open / advance a file",
         kind: "write",
-        describe: "Open a dossier, update it, or advance its status.",
+        describe: "Open an operations file, update it, or advance its status.",
       },
     ],
   },
@@ -478,10 +478,10 @@ export const SPECS: ScreenSpec[] = [
     area: "Operations",
     title: "Milestones",
     purpose:
-      "Shipment milestones across all dossiers — the operational timeline / SLA tracker.",
+      "Shipment milestones across all operations files — the operational timeline / SLA tracker.",
     module: "operations/milestone",
     status: "ready",
-    columns: ["Dossier", "Milestone", "Due", "Owner", "Status"],
+    columns: ["File", "Milestone", "Due", "Owner", "Status"],
     actions: ["Add milestone", "Complete"],
   },
   {
@@ -489,7 +489,7 @@ export const SPECS: ScreenSpec[] = [
     area: "Master data",
     title: "Service types",
     purpose:
-      "The tenant's own service taxonomy (services as DATA, not code) with a per-service 360°: milestone templates, applicable financial dictionary lines, dossiers, margin sims, invoices and money rollup. Backend module still lives under operations and rides MOD-29 — this is a Master Data UI regrouping.",
+      "The tenant's own service taxonomy (services as DATA, not code) with a per-service 360°: milestone templates, applicable financial dictionary lines, operations files, margin sims, invoices and money rollup. Backend module still lives under operations and rides MOD-29 — this is a Master Data UI regrouping.",
     module: "operations/service_type",
     status: "ready",
     columns: ["Service", "Territory", "Milestones", "Status"],
@@ -505,7 +505,7 @@ export const SPECS: ScreenSpec[] = [
         label: "Get service type 360",
         kind: "read",
         describe:
-          "Full dossier for one service type: templates, dictionary items, dossiers, margin sims, money rollup.",
+          "Full 360 for one service type: templates, dictionary items, operations files, margin sims, money rollup.",
       },
     ],
   },
@@ -514,10 +514,10 @@ export const SPECS: ScreenSpec[] = [
     area: "Operations",
     title: "Transit orders",
     purpose:
-      "Transport instructions to carriers — own register, also surfaced as a dossier tab.",
+      "Transport instructions to carriers — own register, also surfaced as a tab on the operations file.",
     module: "operations/transit_order",
     status: "ready",
-    columns: ["Ref", "Dossier", "Mode", "Carrier", "Status", "Created"],
+    columns: ["Ref", "File", "Mode", "Carrier", "Status", "Created"],
     actions: ["New transit order"],
   },
   {
@@ -525,10 +525,10 @@ export const SPECS: ScreenSpec[] = [
     area: "Operations",
     title: "Delivery notes",
     purpose:
-      "Proof-of-delivery documents — own register, also surfaced as a dossier tab.",
+      "Proof-of-delivery documents — own register, also surfaced as a tab on the operations file.",
     module: "operations/delivery_note",
     status: "ready",
-    columns: ["Ref", "Dossier", "Consignee", "Status", "Date"],
+    columns: ["Ref", "File", "Consignee", "Status", "Date"],
     actions: ["New delivery note"],
   },
 
@@ -608,15 +608,15 @@ export const SPECS: ScreenSpec[] = [
   {
     path: "costing/costing",
     area: "Costing",
-    title: "Dossier costing",
+    title: "Operations file costing",
     purpose:
-      "Job-costing sheet per dossier — budget, HT / VAT / TTC (débours pass-through, §6.7). No margin: pricing lives in the margin simulator and the quotation (§2.2).",
+      "Job-costing sheet per operations file — budget, HT / VAT / TTC (débours pass-through, §6.7). No margin: pricing lives in the margin simulator and the quotation (§2.2).",
     module: "MOD-46",
     status: "ready",
     tabs: [
       {
         label: "Costing sheet",
-        columns: ["Dossier", "Budget", "Total (HT/VAT/TTC)", "Status"],
+        columns: ["File", "Budget", "Total (HT/VAT/TTC)", "Status"],
         actions: ["New costing", "Validate", "Approve"],
       },
       {
@@ -629,7 +629,7 @@ export const SPECS: ScreenSpec[] = [
         label: "List / get costing",
         kind: "read",
         describe:
-          "List dossier costings or fetch one with lines + computed margin.",
+          "List operations file costings or fetch one with lines + computed margin.",
       },
       {
         label: "Create / advance costing",
@@ -672,15 +672,15 @@ export const SPECS: ScreenSpec[] = [
           "Files × cost items with TOTAL SPEND / TOTAL BALANCE — 'which file is bleeding on Demurrage' at a glance.",
       },
       {
-        label: "Reconcile dossier",
+        label: "Reconcile a file",
         kind: "assist",
-        describe: "Budget vs actual reconciliation for a dossier.",
+        describe: "Budget vs actual reconciliation for an operations file.",
       },
       {
         label: "Record cost",
         kind: "write",
         describe:
-          "Record an actual dossier cost and post it to the ledger (débours→4731).",
+          "Record an actual operations file cost and post it to the ledger (débours→4731).",
       },
     ],
   },
@@ -890,7 +890,7 @@ export const SPECS: ScreenSpec[] = [
     area: "Vault",
     title: "Compliance flags",
     purpose:
-      "Compliance issues raised against entities/dossiers, with severity and resolution tracking.",
+      "Compliance issues raised against entities and operations files, with severity and resolution tracking.",
     module: "vault/compliance_flag",
     status: "ready",
     columns: ["Entity", "Flag", "Severity", "Raised", "Status"],
@@ -922,7 +922,7 @@ export const SPECS: ScreenSpec[] = [
         label: "Report catalogue",
         kind: "read",
         describe:
-          "List available reports and run one by key (statements, ageing, dossier 360…).",
+          "List available reports and run one by key (statements, ageing, operations file 360…).",
       },
     ],
   },
@@ -933,7 +933,7 @@ export const SPECS: ScreenSpec[] = [
     area: "Communication",
     title: "Smart Comms",
     purpose:
-      "Corporate messaging — channels (department/project/dossier/client), DMs, presence, certified export.",
+      "Corporate messaging — channels (department/project/file/client), DMs, presence, certified export.",
     module: "smartcomm",
     status: "ready",
     tabs: [
@@ -1067,7 +1067,7 @@ export const SPECS: ScreenSpec[] = [
     area: "Settings",
     title: "Portal access",
     purpose:
-      "Grant scoped external access — clients see their dossiers/invoices, investors a board terminal, auditors a time-boxed view.",
+      "Grant scoped external access — clients see their files and invoices, investors a board terminal, auditors a time-boxed view.",
     module: "portal",
     status: "ready",
     tabs: [
@@ -1078,7 +1078,7 @@ export const SPECS: ScreenSpec[] = [
       },
       {
         label: "Client view",
-        columns: ["Dossier", "Invoices", "Receivables ageing"],
+        columns: ["File", "Invoices", "Receivables ageing"],
       },
       {
         label: "Investor terminal",
@@ -1101,7 +1101,7 @@ export const SPECS: ScreenSpec[] = [
         label: "Client / investor view",
         kind: "read",
         describe:
-          "A client's scoped dossiers/invoices/ageing, or the investor income-statement + cash terminal.",
+          "A client's scoped files, invoices and ageing, or the investor income-statement + cash terminal.",
       },
     ],
   },

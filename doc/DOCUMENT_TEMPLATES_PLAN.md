@@ -135,15 +135,21 @@ Build once in `templates/kit.js`, reuse everywhere:
 
 - **`shell(cfg, brand, bodyHtml)`** — `<html>` + injected CSS theme (accent, fonts,
   margins, paper size), page `@page` rules, header/footer running elements.
-- **`letterhead(entity, cfg)`** — logo + legal identity block (name, address,
-  RCCM, NIU, share capital) — the OHADA header.
+- **`standardHead(entity, cfg, {title, number, meta})`** / **`standardFoot(entity,
+  cfg, verify, opts)`** — **the one shell every document prints** (12760). See
+  §3a.
+- **`letterhead(entity, cfg)`** — ⚠ DEPRECATED. Logo + a comma-joined identity
+  line with **hardcoded `RCCM` and `NIU` labels**, which is correct in exactly
+  one country. Superseded by `standardHead`; kept only so nothing breaks
+  mid-migration. Nothing in the registry calls it.
 - **`partyBlock(label, party)`** — Bill-to / Ship-to / Supplier / Employee.
 - **`metaBlock(fields)`** — number, date, due/validity, reference, page.
 - **`lineTable(columns, rows, cfg)`** — the shared items grid (qty × unit × tax ×
   total) with show/hide columns.
 - **`totals(summary, cfg)`** — HT / VAT breakdown / WHT / TTC, in words (FR/EN).
-- **`legalFooter(entity, cfg)`** — RCCM · NIU · capital · bank block · custom
-  mentions + page numbers.
+- **`footer(entity, cfg, verify)`** / **`instrumentHead`** / **`instrumentFoot`** —
+  ⚠ DEPRECATED, same reason. `standardHead`/`standardFoot` are the generalised
+  form of the instrument pair.
 - **`signatureBlock(cfg)`**, **`qrVerify(token)`**, **`watermark(text)`** (DRAFT /
   PAID / COPY / VOID).
 - **i18n** — a `t(key, lang)` dictionary; each template ships FR + EN strings;
@@ -151,6 +157,112 @@ Build once in `templates/kit.js`, reuse everywhere:
 
 All colours/spacing are CSS variables set from `cfg` + `brand`, so re-theming is
 data, never a code edit — the same discipline as the app kit.
+
+---
+
+## 3a. The standard shell, and the block model behind it (12760)
+
+**Before this, a letterhead was described three times.** `instrumentHead`/
+`instrumentFoot` built the header for the transit order and the delivery note;
+`letterhead`/`head`/`footer` built a *different* one for the other ~25
+documents; and the entity dossier's Letterhead tab hand-drew a *third* in React,
+which is the one a tenant actually designs against. Three descriptions of one
+thing drift, and they had — the dossier preview showed a payment block on
+documents that never print one.
+
+Worse: **the Letterhead tab reached nothing.** `entity_letterhead` has existed
+since 0516 and `template.service.resolveCfg` never read it, taking the settings
+store instead. Every `show_*` toggle, colour, note and paper size on that tab was
+a dead end. A tenant could switch the share capital off, watch the preview obey,
+and keep printing it on every invoice.
+
+**The anatomy is now stated once, as data**, in
+`services/documents/templates/letterhead-blocks.js`:
+
+```
+entity_letterhead ─┐
+entity_..._line    ├→ blocks.compose() → [{id,row,col,span,align,size,…,lines}]
+entity facts       ┘        │
+                            ├→ kit.standardHead / standardFoot → print HTML
+                            ├→ the Letterhead Studio canvas      (drag to arrange)
+                            └→ blocks.measure()                  → mm for the fit
+```
+
+Three consumers, one definition. Add a block to the catalogue and all three
+accommodate it — which is the whole point.
+
+**What it looks like is the transit order, to the point.** Mark left, identity
+right, one 0.7mm accent rule under both, the same type sizes. The default layout
+*is* the instrument sheet expressed as data, so a tenant who never opens the
+editor prints exactly what they printed before.
+
+**Four properties worth knowing:**
+
+1. **The identifiers are jurisdictional.** Derived from the registration rows, so
+   a Cameroonian sheet carries NIU and RCCM and a French one SIREN and TVA.
+   Standardising on this shell fixed the two hardcoded labels for ~25 documents.
+2. **Head and foot share nothing, by default.** The first rebuild of the transit
+   order printed name, address, RCCM and NIU at *both* ends — a quarter of the
+   identity block was duplication on a page whose entire problem is height.
+   `foot_company`/`foot_address` are catalogued but off.
+3. **A saved layout is a preference, not a schema.** `mergeLayout` merges it over
+   the default, so a block catalogued next year still appears on a letterhead
+   somebody arranged last year, and a saved entry for a block that no longer
+   exists is dropped rather than rendered.
+4. **The shell measures itself.** `kit.shellMm(entity, cfg)` returns
+   `{head, foot, fixed, headScaling}`. `fixed` is the mark's *marginal* height —
+   what it adds beside the identity column, which is its full height on a short
+   letterhead and **zero** when the identity column is already taller. This
+   replaces the per-template `HEIGHT_MM.head` / `.foot` constants, which were
+   right on the day they were measured and became a lie the moment a tenant
+   added a footer line. See §3b.
+
+### Tenant-authored lines and tokens
+
+`entity_letterhead_line` holds what derivation cannot reach — a strapline, a
+customs licence, a trade-body membership — per language, ordered, placed by the
+same layout. The text may carry `{{entity.rccm}}`-style tokens resolved at
+render, which keeps the *sentence* the tenant's and the *fact* ours. An unknown
+token resolves to empty, never to itself; a line whose every token is empty is
+dropped rather than printed as dangling scaffolding.
+
+### The Letterhead Studio
+
+`client/src/features/masterdata/letterhead-studio.tsx`, on the entity dossier's
+Letterhead tab. A drag-and-drop canvas at true paper proportions, drawn from the
+renderer's **own composed blocks** — it positions and styles them, it never
+re-derives what they say. The drop lanes are `<button>`s, so the twelve targets a
+mouse drags onto are the twelve a keyboard can Tab to and press.
+
+Every block carries `source: {tab, field}` from the server catalogue, so "the NIU
+is wrong" is one click to the input that sets it (`?tab=&field=`, read by
+`use-url-tab`'s `useFieldHighlight`). A block whose source is the Letterhead tab
+itself scrolls and rings in place instead of reloading. **The links are gated**
+in `tests/unit/letterhead-blocks.test.js`: every catalogue `source` must resolve
+to a tab in the dossier's `TABS` and a real `data-field` anchor — it caught a
+missing `logo` anchor on its first run.
+
+### Precedence
+
+brand default → **entity letterhead** → Studio tenant default → Studio
+per-entity override → the caller's per-render override. The entity sits below the
+Studio deliberately: the Studio's remaining knobs are per-*document* (a watermark
+on a proforma, terms on a quotation), and a setting made for one document type
+should still win for it. What changed is that the entity's values are no longer
+ignored — they are the floor every document starts from.
+
+---
+
+## 3b. Re-measuring
+
+`node scripts/dev/measure-instrument.js` still reports every block's rendered
+height and the page count across a sweep. Run it after any change to the sheet
+stylesheet or to which blocks a template renders.
+
+The head and foot no longer need a constant — `shellMm` measures them — but the
+*body* constants in each template's `HEIGHT_MM` are still measurements, not
+aspirations. Verified after 12760: transit order one page at 1/8/20/**50** cargo
+lines (the documented ceiling); delivery note one page at 1/6/12/24 containers.
 
 ---
 

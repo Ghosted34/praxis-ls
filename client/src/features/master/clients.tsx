@@ -316,7 +316,7 @@ export function ClientsPage() {
       ) : rows.length === 0 ? (
         <EmptyState
           title="No clients yet"
-          hint="Create the first client to reference it in quotations, dossiers and invoices."
+          hint="Create the first client to reference it in quotations, operations files and invoices."
         />
       ) : (
         <Table>

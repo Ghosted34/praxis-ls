@@ -89,9 +89,17 @@ before `: ; ! ?`, guillemets `« »`, accented capitals, sentence case in headin
 full list. These are the details that decide whether the French reads native.
 
 **N9 — Performance budgets.** LCP < 1.5s on Slow 4G / mid-range Android · CLS <
-0.05 · INP < 200ms · **JS < 100 KB compressed** · page < 600 KB · Lighthouse ≥ 95
+0.05 · INP < 200ms · **JS < 128 KB compressed** · page < 600 KB · Lighthouse ≥ 95
 on all four categories, **measured in both languages** on a mobile profile.
 Report the real numbers in `HANDOFF.md`.
+
+> **Amended 2026-09: 100 KB → 128 KB.** This clause said 100 KB while
+> `public-web/scripts/check-bundle.mjs` — the thing that actually fails a build —
+> has always said 128 KB, and the tree shipped 119.5 KB: over the brief, under
+> the gate, with nothing to tell anyone which was real. Two documents disagreeing
+> about a budget is how a build ends up outside both. **128 KB is the number**,
+> because it is the one that is enforced. See
+> `doc/PUBLIC_WEB_EXPERIENCE_GUIDE.md` §1.1.
 
 **N10 — Accessibility.** WCAG AA in _both_ themes. Full keyboard operation,
 visible focus (orange, ink variant), correct landmarks and heading order, one

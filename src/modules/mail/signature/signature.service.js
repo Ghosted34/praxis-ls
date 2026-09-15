@@ -10,21 +10,83 @@
 
 const repo = require("./signature.repo");
 const resolveMod = require("./signature.resolve");
+const paletteMod = require("./signature.palette");
+const gapsMod = require("./signature.gaps");
+const zipMod = require("./signature.zip");
 const htmlMod = require("./signature.html");
 const pngMod = require("./signature.png");
 const { resolveLanguage } = require("./language");
 const events = require("./signature.events");
 const { AppError } = require("../../../utils/errors");
 const { emitEvent, audit } = require("../../../shared/events/emit");
+const brandLogo = require("../../../services/brand-logo.service");
+const storage = require("../../../services/storage.service");
+// For the tenant stamped on the connection — see `tenantMeta`. The notification
+// service reaches for the registry from a module the same way.
+const registry = require("../../../services/tenant/registry.service");
+const { config } = require("../../../config/env");
+const { logger } = require("../../../config/logger");
+const metrics = require("../../../shared/observability/metrics");
 
-function inputsFor(person, entity, profile, template, mailbox, language, identity, system) {
+/**
+ * The employee fields the renderer reads, projected out of `loadPerson`'s row.
+ *
+ * Shared by `inputsFor` and `modelFrom` because they must agree: a field the
+ * model renders but the hash does not cover is a field whose change never
+ * invalidates the cache, so the signature keeps showing the old value until
+ * something unrelated happens to move. They were two separate object literals
+ * and the phone columns would have been added to one of them.
+ */
+function employeeOf(person) {
+  if (!person) return null;
   return {
+    // Not rendered on any card — carried so `signature.gaps` can link a missing
+    // job title to THIS person's dossier instead of to a list of everyone. It
+    // joins the hash rather than being added to the model alone, because this
+    // shape is deliberately the single definition both sides read (above).
+    employee_id: person.employee_id || null,
+    full_name: person.employee_full_name || person.user_full_name,
+    job_title: person.job_title,
+    department: person.department,
+    email: person.employee_email || person.user_email || null,
+    phone_desk: person.employee_phone_desk || null,
+    phone_mobile: person.employee_phone_mobile || null,
+  };
+}
+
+/**
+ * Bump this when the RENDERER changes what it produces from unchanged data.
+ *
+ * `source_hash` covers the inputs — employee, entity, template, branding — and
+ * nothing about the code. That is correct for data staleness and silently wrong
+ * for everything else: a signature rendered while the card PNG was failing was
+ * cached as HTML with no <img>, and because none of its inputs changed, every
+ * subsequent send returned that same broken HTML from the cache. Shipping a fix
+ * did nothing. Two rounds of "why is it still not working" were this.
+ *
+ * So the renderer's own version is an input. Changing it invalidates every
+ * cached render at once, which is exactly what a render-behaviour fix needs and
+ * costs one re-render per person on their next send.
+ *
+ *   1 — card + text fallback (#288)
+ *   2 — servable storage key, branded fallback (#289)
+ *   3 — chromium resolved by probe, screenshot coerced to Buffer
+ *   4 — the card is addressed at the TENANT's host and namespaced by the
+ *       tenant's own slug, instead of the platform apex and whichever tenant
+ *       happened to render first. Both live in the cached HTML, and neither is
+ *       an input to `source_hash`, so without this bump every signature already
+ *       in `signature_render` would keep the broken `<img>` until something
+ *       unrelated moved — which is the exact "shipping a fix did nothing"
+ *       failure this constant was introduced for. It costs one re-render per
+ *       person on their next send.
+ */
+const RENDERER_VERSION = 4;
+
+function inputsFor(person, entity, profile, template, mailbox, language, identity, system, branding) {
+  return {
+    renderer: RENDERER_VERSION,
     employee_updated: person && (person.employee_id || person.job_title || person.department),
-    employee: person && {
-      full_name: person.employee_full_name || person.user_full_name,
-      job_title: person.job_title,
-      department: person.department,
-    },
+    employee: employeeOf(person),
     entity_id: entity && entity.entity_id,
     entity_updated: entity && entity.updated_at,
     profile_updated: profile && profile.updated_at,
@@ -35,16 +97,17 @@ function inputsFor(person, entity, profile, template, mailbox, language, identit
     mailbox: mailbox && mailbox.email_address,
     identity: identity && identity.purpose,
     system: Boolean(system),
+    // The card's colours and fonts come from tenant branding, so branding IS an
+    // input to the render. Leaving it out would mean a tenant changing their
+    // brand colour saw the old palette on every cached signature until something
+    // else happened to change — the exact staleness `source_hash` exists to stop.
+    branding: branding || null,
   };
 }
 
-function modelFrom(person, entity, profile, template, mailbox, language, identity, system) {
-  return resolveMod.resolve({
-    employee: person && {
-      full_name: person.employee_full_name || person.user_full_name,
-      job_title: person.job_title,
-      department: person.department,
-    },
+function modelFrom(person, entity, profile, template, mailbox, language, identity, system, extras = {}) {
+  const model = resolveMod.resolve({
+    employee: employeeOf(person),
     user: person && { full_name: person.user_full_name },
     entity,
     profile,
@@ -52,7 +115,16 @@ function modelFrom(person, entity, profile, template, mailbox, language, identit
     mailbox,
     identity,
     system,
+    logo: extras.logo || null,
   }, language);
+
+  // The card renderer reads its palette and families off the model, so both are
+  // resolved once here rather than at each of the three call sites (preview,
+  // PNG, send) that would otherwise each have to remember to do it.
+  const layout = (template && template.layout) || {};
+  model.palette = paletteMod.resolve(extras.branding || {}, layout);
+  model.fonts = paletteMod.fonts(layout);
+  return model;
 }
 
 async function pickTemplate(client, { profile, person, templateId }) {
@@ -87,6 +159,7 @@ async function resolveFor(client, {
   system = false,
   format = "HTML",
   scale = 1,
+  tenantSlug = null,
 } = {}) {
   const language = resolveLanguage({
     explicit: langHint,
@@ -102,6 +175,31 @@ async function resolveFor(client, {
     return { html: "", text: "", model: null, language, cached: false, disabled: true };
   }
 
+  /*
+   * WHICH COMPANY IS THIS SIGNATURE FROM?
+   *
+   * In a group with several legal entities the answer is NOT "the primary one"
+   * — there is no such column on `corporate_entity`, and there should not be.
+   * A signature carries the address of the entity that EMPLOYS the sender: if
+   * you work for the Douala subsidiary, your mail must show Douala's
+   * registered address, not the group flagship's.
+   *
+   * So, in order:
+   *   employee — the entity on the sender's own staff record. The right answer.
+   *   mailbox  — the entity bound to the identity being sent from. Correct for
+   *              a shared box like ops@ that belongs to one entity.
+   *   fallback — `loadEntity(null)` takes the OLDEST ACTIVE entity. That is a
+   *              guess, and it is silent, and on a one-entity tenant it happens
+   *              to be right every time, which is exactly why it went unnoticed.
+   *
+   * The provenance is carried rather than discarded because the third case is a
+   * data gap worth telling someone about: the card prints a company the sender
+   * is not recorded as working for. `signature.gaps` turns it into a link to
+   * the staff record that would settle it.
+   */
+  const entitySource = (person && person.entity_id)
+    ? "employee"
+    : ((identity && identity.entity_id) ? "mailbox" : "fallback");
   const entity = await repo.loadEntity(client, (person && person.entity_id) || (identity && identity.entity_id) || null);
   const template = await pickTemplate(client, {
     profile,
@@ -121,8 +219,16 @@ async function resolveFor(client, {
     mailbox = rows[0] || null;
   }
 
-  const hash = resolveMod.sourceHash(inputsFor(person, entity, profile, template, mailbox, language, identity, system));
+  const branding = await repo.loadBranding(client);
+  // Bytes, not a reference: the card renders in headless Chromium, which cannot
+  // resolve a relative /media URL. See services/brand-logo.service.js.
+  const logo = await brandLogo.entityLogo(client, entity);
+
+  const hash = resolveMod.sourceHash(
+    inputsFor(person, entity, profile, template, mailbox, language, identity, system, branding),
+  );
   const identityKey = system ? `system:${(identity && identity.purpose) || "NOTIFICATIONS"}` : null;
+  const extras = { branding, logo };
   const cached = await repo.getCached(client, {
     userId: system ? null : userId,
     identityKey,
@@ -131,7 +237,14 @@ async function resolveFor(client, {
     scale,
   });
   if (cached && cached.source_hash === hash) {
-    const model = modelFrom(person, entity, profile, template, mailbox, language, identity, system);
+    const model = modelFrom(person, entity, profile, template, mailbox, language, identity, system, extras);
+    model.entity_source = entitySource;
+    // The template that produced this render — the motto is authored on it, so
+    // a missing-motto gap needs its id to link anywhere at all.
+    model.template_id = template.signature_template_id || null;
+    model.card_png_url = cached.storage_path
+      ? mediaUrl(await tenantMediaOrigin(client), cached.storage_path)
+      : null;
     return {
       html: format === "HTML" ? cached.content : htmlMod.render(model),
       text: resolveMod.textContent(model),
@@ -142,19 +255,227 @@ async function resolveFor(client, {
     };
   }
 
-  const model = modelFrom(person, entity, profile, template, mailbox, language, identity, system);
-  const html = htmlMod.render(model);
+  const model = modelFrom(person, entity, profile, template, mailbox, language, identity, system, extras);
+  model.entity_source = entitySource;
+  // The template that produced this render — the motto is authored on it, so
+  // a missing-motto gap needs its id to link anywhere at all.
+  model.template_id = template.signature_template_id || null;
   const text = resolveMod.textContent(model);
 
   if (format === "HTML") {
+    // A card's email body is an <img> plus the text fallback, so the PNG has to
+    // EXIST before the HTML that points at it is cached. Rendering it here — on
+    // the miss, not on every send — is what makes that ordering hold without a
+    // second pass. A failure to screenshot degrades to the text half rather than
+    // failing the send: an email that goes out with a plain signature is a far
+    // better outcome than one that does not go out.
+    if (model.kind === "card") {
+      model.card_png_url = await ensureCardPng(client, {
+        model, userId, identityKey, language, hash, tenantSlug,
+      });
+    }
+    const html = htmlMod.render(model);
     await repo.putCached(client, {
       user_id: system ? null : userId,
       identity_key: identityKey,
       language, format, scale, content: html, source_hash: hash,
+      storage_path: model.card_png_url ? storagePathOf(model.card_png_url) : null,
     });
+    return { html, text, model, language, cached: false, source_hash: hash };
   }
 
-  return { html, text, model, language, cached: false, source_hash: hash };
+  return { html: htmlMod.render(model), text, model, language, cached: false, source_hash: hash };
+}
+
+/**
+ * The absolute URL an email client can fetch the card from.
+ *
+ * `storage.publicUrl` returns `/media/<key>` — correct for the app's own pages
+ * and useless in an email, where there is no page origin to resolve against. The
+ * tenant's own host is the right base: a signature on mail from
+ * smartls.praxisls.com should load from smartls.praxisls.com.
+ *
+ * IT DID NOT. This built `https://${config.APP_BASE_DOMAIN}/media/…` — the
+ * APEX — which the comment above has always said was the wrong host and which
+ * `middleware/host-tenent-resolver.js` lists in `PLATFORM_HOSTS`: it is the
+ * platform's own domain, not any tenant's workspace. Every card that has gone
+ * out points a recipient's mail client at a host that belongs to us, serves the
+ * marketing site on most deployments, and is not where that tenant's media
+ * lives. The symptom is the one this whole module is built to avoid — a broken
+ * image in the signature, with the text fallback beneath it and nothing
+ * anywhere saying why.
+ *
+ * So the origin is now passed IN, resolved once per render from the tenant on
+ * the connection (`tenantMediaOrigin`), and this function only joins it to a
+ * key.
+ */
+function mediaUrl(origin, key) {
+  const k = String(key || "").replace(/^\/media\//, "").replace(/^\/+/, "");
+  if (!k) return null;
+  if (/^https?:/i.test(k)) return k;
+  const base = String(origin || "").replace(/\/+$/, "");
+  if (!base) return null;
+  return `${base}/media/${k}`;
+}
+
+const storagePathOf = (url) => String(url || "").replace(/^https?:\/\/[^/]+\/media\//i, "") || null;
+
+/**
+ * Render the card at 2× and put it in storage, returning its absolute URL.
+ *
+ * 2× because the image is displayed at 650 CSS px and a 1× copy is visibly soft
+ * on the retina and HiDPI screens most people now read mail on; 3× would triple
+ * the bytes on every message for no visible gain at this size.
+ *
+ * PUBLIC key prefix, deliberately: this image is embedded in outbound email and
+ * has to be fetchable by a recipient who has no session here. It carries a
+ * person's name, title and work contact details — the same things the signature
+ * itself publishes to that recipient — and nothing else.
+ */
+/**
+ * WHO THIS CONNECTION BELONGS TO — slug and asset origin, memoised.
+ *
+ * THE BUG THIS REPLACES, because it is worth being exact about. The previous
+ * version derived the namespace from `current_database()` and memoised it in
+ * ONE module-level variable:
+ *
+ *     let namespaceCache = null;
+ *
+ * One Node process serves every tenant — `registry.acquire` hands out a
+ * connection per tenant from pools keyed by database name — so that variable is
+ * shared by all of them. The first tenant to render a signature card filled it
+ * in, and every tenant after that wrote its cards under THE FIRST TENANT'S
+ * prefix: `tenant_<someone else>/signatures/…`. The slug parameter that would
+ * have avoided it is never passed — neither `outbox.attachSignature` nor
+ * `email.attachSystemSignature` carries one, which is precisely what the old
+ * comment here said and then worked around instead of fixing.
+ *
+ * THE ANSWER WAS ALREADY ON THE CLIENT. `registry.acquire` stamps the tenant id
+ * on every connection it hands out, for exactly this: *"anything holding a
+ * tenant client can resolve its tenant, and 'the caller forgot to pass it' stops
+ * being reachable."* So nothing has to be threaded through the send path after
+ * all — the connection knows.
+ *
+ * Memoised per TENANT with a short TTL rather than forever: a tenant's host can
+ * change (a custom domain is verified, a subdomain is re-pointed), and a
+ * process that has been up for a week should not still be addressing the old
+ * one. Sixty seconds matches the registry's own host cache.
+ */
+const TENANT_META_TTL_MS = 60_000;
+const tenantMetaCache = new Map(); // tenant_id -> { expires, slug, origin }
+
+const cleanSegment = (v) => String(v || "").toLowerCase().replace(/[^\w-]/g, "");
+
+async function tenantMeta(client) {
+  const tenantId = registry.tenantIdOf(client);
+  if (!tenantId) return { slug: null, origin: null };
+
+  const hit = tenantMetaCache.get(tenantId);
+  if (hit && hit.expires > Date.now()) return hit;
+
+  let meta = { slug: null, origin: null };
+  try {
+    meta = (await registry.workspaceOrigin(tenantId)) || meta;
+  } catch (err) {
+    // NOT silent: an unreadable registry means every card this process renders
+    // is addressed at a guess, and the whole point of this file's history is
+    // that a signature failing quietly costs weeks.
+    logger.warn({ err: err.message, tenant_id: tenantId }, "signature: tenant host lookup failed");
+  }
+  const row = { ...meta, expires: Date.now() + TENANT_META_TTL_MS };
+  tenantMetaCache.set(tenantId, row);
+  return row;
+}
+
+/**
+ * The tenant namespace for a storage key — `tenant_<this>/signatures/…`.
+ *
+ * The slug, now that the connection can supply it, because that is what every
+ * OTHER storage caller uses (`req.tenant.slug`) and a second shape for the same
+ * namespace is a key that reads as another tenant's. The database name is kept
+ * as the last resort for a connection with no tenant stamped on it — a test
+ * double, or a script holding a raw pool — where a wrong-but-stable namespace
+ * still beats an empty one.
+ */
+async function tenantNamespace(client, tenantSlug) {
+  if (tenantSlug) return cleanSegment(tenantSlug) || "unknown";
+
+  const { slug } = await tenantMeta(client);
+  if (slug) return cleanSegment(slug) || "unknown";
+
+  try {
+    const { rows } = await client.query("SELECT current_database() AS db");
+    return cleanSegment(rows[0] && rows[0].db) || "unknown";
+  } catch {
+    /* @silent:storage a namespace we cannot read is not a reason to skip the
+       render — "unknown" still produces a servable, correctly-shaped key. */
+    return "unknown";
+  }
+}
+
+/**
+ * The origin a recipient's mail client fetches this tenant's card from.
+ *
+ * Three steps down, and each one is a worse answer than the last:
+ *
+ *   1. the tenant's registered workspace host — the right answer, and the one
+ *      the platform provisions a certificate for;
+ *   2. `<slug>.<APP_BASE_DOMAIN>` — the conventional shape, for a tenant whose
+ *      registry row has no subdomain yet;
+ *   3. the apex, which is what this always did and is very likely wrong.
+ *
+ * Step 3 is kept rather than returning null so that no deployment is made worse
+ * by this change: a single-host install where the apex IS the app keeps working
+ * exactly as before (and in fact reaches step 1, because its subdomain row says
+ * so). It carries a warning, because reaching it means we are about to put a
+ * platform host in a tenant's outbound mail and nobody would otherwise know.
+ */
+async function tenantMediaOrigin(client) {
+  const { slug, origin } = await tenantMeta(client);
+  if (origin) return origin;
+  if (slug) return `https://${cleanSegment(slug)}.${config.APP_BASE_DOMAIN}`;
+  logger.warn(
+    { base: config.APP_BASE_DOMAIN },
+    "signature: no tenant host resolved — the card will be addressed at the platform apex",
+  );
+  return `https://${config.APP_BASE_DOMAIN}`;
+}
+
+async function ensureCardPng(client, { model, userId, identityKey, language, hash, tenantSlug }) {
+  const who = String(userId || identityKey || "system").replace(/[^\w-]/g, "");
+  // `tenant_<slug>/signatures/...` — the shape every other storage caller uses,
+  // and the ONLY shape /media will serve. The first version of this wrote
+  // `public/signatures/...`, which reads as though it says "public" and does the
+  // opposite: media-guard takes the SECOND segment as the visibility class, so
+  // that key resolved to the segment "signatures" under a tenant called
+  // "public", failed `isPublicStorageKey`, and produced a URL the mount refuses.
+  // Every card rendered under it was a 403 in the recipient's mail client.
+  const slug = await tenantNamespace(client, tenantSlug);
+  const key = `tenant_${slug}/signatures/${who}-${language}-${hash.slice(0, 12)}.png`;
+
+  try {
+    const png = await pngMod.render(model, 2);
+    const stored = await storage.put(png.buffer, { key, contentType: "image/png" });
+    const url = mediaUrl(await tenantMediaOrigin(client), stored.key || key);
+    logger.debug({ user_id: userId, key: stored.key || key, bytes: png.buffer.length }, "signature card rendered");
+    return url;
+  } catch (err) {
+    // NOT a silent catch. The first version swallowed this entirely, and the
+    // failure mode it hid is the whole feature quietly not working: the send
+    // still succeeds, the text fallback still renders, and the recipient gets a
+    // plain block where the card should be — with nothing anywhere saying why.
+    // That is exactly the class doc/ERROR_HANDLING.md exists to stop being
+    // invisible. Degrading is still right; degrading in silence was not.
+    logger.error(
+      { err: err.message, user_id: userId, identity_key: identityKey, key },
+      "signature card render failed — the email will carry the text fallback only",
+    );
+    metrics.inc(
+      "praxis_signature_card_render_failures_total", {}, 1,
+      "Signature card PNG renders that failed and fell back to text-only.",
+    );
+    return null;
+  }
 }
 
 async function renderPng(client, { userId, language = "en", scale = 1, shot = undefined }) {
@@ -172,6 +493,240 @@ async function renderPng(client, { userId, language = "en", scale = 1, shot = un
     source_hash: r.source_hash,
   });
   return png;
+}
+
+/**
+ * Render one PNG per selected member of staff and return them as one ZIP.
+ *
+ * WHY SEQUENTIALLY. `signature.png.js` keeps ONE Chromium and opens a page per
+ * shot. Rendering a 40-person team in parallel would open 40 pages against that
+ * single browser and spike memory on a box that is also serving requests; the
+ * screenshots are ~200 ms each, so a team completes in seconds either way. This
+ * is a manager clicking a button, not a hot path.
+ *
+ * WHY A PARTIAL RESULT IS RETURNED RATHER THAN AN ERROR. One person with no
+ * employee row, or a logo the storage backend cannot hand back, must not cost
+ * the other thirty-nine their signatures. Failures come back in `skipped` so the
+ * caller can say which, rather than being swallowed.
+ */
+async function renderBatch(client, { userIds = [], language = "en", scale = 2, shot = undefined } = {}) {
+  const ids = [...new Set((userIds || []).filter(Boolean))];
+  if (!ids.length) throw new AppError("VALIDATION_ERROR", "Select at least one member of staff", 422);
+  if (ids.length > 200) throw new AppError("VALIDATION_ERROR", "Batch is limited to 200 people at a time", 422);
+
+  const files = [];
+  const skipped = [];
+
+  for (const userId of ids) {
+    try {
+      const r = await resolveFor(client, { userId, language, format: "PNG", scale });
+      if (!r.model) { skipped.push({ user_id: userId, reason: "no_signature" }); continue; }
+      const png = await pngMod.render(r.model, scale, shot);
+      const who = (r.model.person && r.model.person.full_name) || userId;
+      files.push({ name: `Signature_${String(who).trim().replace(/\s+/g, "_")}.png`, data: png.buffer });
+    } catch (err) {
+      skipped.push({ user_id: userId, reason: err && err.code ? err.code : "render_failed" });
+    }
+  }
+
+  if (!files.length) throw new AppError("NOT_FOUND", "No signature could be rendered for the selected staff", 404);
+  return { buffer: zipMod.build(files), count: files.length, skipped };
+}
+
+/**
+ * The card document, for the on-screen preview.
+ *
+ * Returns the SAME document `signature.png.js` screenshots, fonts and all, so
+ * the preview is not a reimplementation of the card in React that can drift
+ * from it — it is the card. The client renders it in a sandboxed iframe, which
+ * is also what keeps the card's own CSS (bare `.card`, `.person-name`) from
+ * leaking into the app's stylesheet.
+ *
+ * The embedded fonts make this ~270 kB. That is a real cost, paid on a preview
+ * the user explicitly opened, and it buys the one guarantee the screen exists
+ * to give: what you approve is what is sent.
+ */
+async function cardPreview(client, { userId, language = "en", can = {} } = {}) {
+  const r = await resolveFor(client, { userId, language, format: "PREVIEW" });
+  if (!r.model) throw new AppError("NOT_FOUND", "No signature to preview", 404);
+  if (r.model.kind !== "card") {
+    return {
+      kind: r.model.kind, document: null, html: r.html,
+      width: r.model.width_px, height: r.model.height_px,
+      gaps: gapsMod.gaps(r.model, can),
+    };
+  }
+  const fontsCss = require("./signature.fonts").fontFaceCss();
+  const cardMod = require("./signature.card");
+  return {
+    kind: "card",
+    document: cardMod.document(r.model, r.model.palette, r.model.fonts, fontsCss),
+    width: cardMod.CARD_W,
+    height: cardMod.CARD_H,
+    palette: r.model.palette,
+    fonts: r.model.fonts,
+    language: r.language,
+    gaps: gapsMod.gaps(r.model, can),
+  };
+}
+
+/**
+ * THE CARD'S COLOUR ROLES — which of the tenant's brand colours paints what.
+ *
+ * WHY THIS EXISTS, given that the templates screen says in so many words that
+ * the card's colours are not editable there. It still says it, and it is still
+ * true: nothing here sets a colour. What this pair of endpoints moves is a
+ * ROLE — "the name is painted with Accent deep" becomes "the name is painted
+ * with Secondary" — and the only values it accepts are the five brand colours
+ * Appearance already stores. A tenant whose deep accent is their orange and
+ * whose secondary is their blue could not previously get a blue name without
+ * editing the brand itself, which would have moved that colour everywhere else
+ * in the product too. That is the gap: not a missing colour picker, a missing
+ * mapping.
+ *
+ * So the brand stays set in one place, and the card says which parts of itself
+ * each brand colour paints. Change the blue in Appearance and the name follows,
+ * because what is stored here is the NAME of the colour and never its hex.
+ *
+ * ON THE TEMPLATE, NOT THE PERSON. The mapping lives in `signature_template.
+ * layout`, so it is MOD-70 and it moves everyone on that template at once. A
+ * per-person override would let a company's outbound mail arrive in as many
+ * colourways as it has staff, which is the opposite of what a white-label
+ * product is for.
+ */
+function paletteFor(template, branding) {
+  const layout = (template && template.layout) || {};
+  return {
+    template: {
+      signature_template_id: template.signature_template_id,
+      name: template.name,
+      kind: layout.kind || "classic",
+      is_system: Boolean(template.is_system),
+      is_default: Boolean(template.is_default),
+      scope_kind: template.scope_kind,
+      scope_value: template.scope_value,
+    },
+    // Only the card paints with these. A tenant still on `smartls_classic` gets
+    // the roles and an honest `kind`, so the screen can say the mapping will not
+    // show up until they switch rather than offering controls that do nothing.
+    brand: paletteMod.swatches(branding),
+    roles: paletteMod.roles(branding, layout),
+  };
+}
+
+/**
+ * The mapping as it applies to the CALLER — their own template, not the tenant
+ * default, because a person on a department template needs to see the colours
+ * their own card is painted with.
+ *
+ * Deliberately lighter than `resolveFor`: picking the template is the same two
+ * reads, and the rest of that function (the entity, the logo bytes, the render
+ * cache) exists to draw a card nobody is asking for here.
+ */
+async function getPalette(client, { userId } = {}) {
+  const branding = await repo.loadBranding(client);
+  const person = await repo.loadPerson(client, userId);
+  const profile = await repo.getProfile(client, userId);
+  const template = await pickTemplate(client, {
+    profile, person, templateId: profile && profile.signature_template_id,
+  });
+  if (!template) throw new AppError("NOT_FOUND", "No signature template to colour", 404);
+  return paletteFor(template, branding);
+}
+
+/**
+ * Point one or more roles at a brand colour. `null` clears the re-point and
+ * hands the role back to the default mapping — there is no separate reset,
+ * because "the default" is a value like any other.
+ *
+ * The write goes through `updateTemplate` rather than straight to the repo so it
+ * picks up the audit row, the template-changed event and — the one that matters
+ * — `deleteAllCached`. A recoloured card that nobody sees until their next
+ * unrelated edit is the staleness bug `source_hash` was built for, and the cache
+ * is keyed on inputs that include `template_updated`, so this is belt and braces
+ * rather than either on its own.
+ */
+async function savePalette(client, templateId, roles = {}, actor = {}) {
+  const template = await repo.getTemplate(client, templateId);
+  if (!template) throw new AppError("NOT_FOUND", "template not found", 404);
+
+  const layout = { ...(template.layout || {}) };
+  let changed = false;
+  for (const { role } of paletteMod.CARD_ROLES) {
+    const next = roles[role];
+    if (next === undefined) continue;
+    const key = paletteMod.sourceKey(role);
+    // A pinned `<role>_color` is deliberately LEFT ALONE — see the precedence
+    // note in signature.palette.js. The re-point already outranks it, and
+    // keeping it is what makes clearing one a true undo.
+    if (next === null) {
+      if (layout[key] === undefined) continue;
+      delete layout[key];
+    } else {
+      if (layout[key] === next) continue;
+      layout[key] = next;
+    }
+    changed = true;
+  }
+
+  const branding = await repo.loadBranding(client);
+  if (!changed) return paletteFor(template, branding);
+
+  const row = await updateTemplate(client, templateId, { layout }, actor);
+  return paletteFor(row, branding);
+}
+
+/**
+ * THE MOTTO / SLOGAN — the line in the script face across the bottom of the card.
+ *
+ * WHY IT HAS ITS OWN PAIR OF ENDPOINTS rather than riding on the template PATCH
+ * that already accepts `copy_en` / `copy_fr`. Those two columns are opaque JSON
+ * blobs holding every piece of authored copy a template carries. Writing the
+ * motto through them means the caller must read the blob, merge one key and
+ * write the whole thing back — and a client that gets that read-modify-write
+ * wrong silently erases the confidentiality notice sitting in the same object.
+ * That is not a hypothetical: it is the ordinary outcome of a PATCH that sends
+ * `{copy_en: {motto: "..."}}`, which is exactly what the obvious client code
+ * does.
+ *
+ * So the merge lives here, once, on the server, and the wire format is a
+ * string per language.
+ *
+ * PER LANGUAGE, because the card is bilingual and a French motto is not a
+ * translation the product can invent.
+ */
+async function getMotto(client, templateId) {
+  const t = await repo.getTemplate(client, templateId);
+  if (!t) throw new AppError("NOT_FOUND", "template not found", 404);
+  return {
+    signature_template_id: t.signature_template_id,
+    name: t.name,
+    en: (t.copy_en && t.copy_en.motto) || "",
+    fr: (t.copy_fr && t.copy_fr.motto) || "",
+  };
+}
+
+/**
+ * Set the motto for one or both languages. Omitting a language leaves it alone;
+ * sending an empty string clears it, which is how a motto is removed — there is
+ * no separate delete, because "no motto" is a value, not a missing record.
+ */
+async function saveMotto(client, templateId, { en, fr } = {}, actor = {}) {
+  const t = await repo.getTemplate(client, templateId);
+  if (!t) throw new AppError("NOT_FOUND", "template not found", 404);
+
+  const fields = {};
+  // Spread the EXISTING blob first — the whole point of this endpoint.
+  if (en !== undefined) fields.copy_en = { ...(t.copy_en || {}), motto: String(en).trim() };
+  if (fr !== undefined) fields.copy_fr = { ...(t.copy_fr || {}), motto: String(fr).trim() };
+  if (!Object.keys(fields).length) return getMotto(client, templateId);
+
+  await updateTemplate(client, templateId, fields, actor);
+  return getMotto(client, templateId);
+}
+
+async function listStaff(client, query) {
+  return repo.listSignatureStaff(client, query || {});
 }
 
 async function getOwnProfile(client, userId) {
@@ -268,6 +823,9 @@ function bake(html, text, resolved) {
 }
 
 module.exports = {
-  resolveFor, renderPng, getOwnProfile, saveOwnProfile,
-  listTemplates, updateTemplate, invalidateForUser, invalidateForEntity, bake,
+  RENDERER_VERSION,
+  tenantNamespace, tenantMediaOrigin,
+  resolveFor, renderPng, renderBatch, listStaff, cardPreview, getOwnProfile, saveOwnProfile,
+  listTemplates, updateTemplate, getMotto, saveMotto, getPalette, savePalette,
+  invalidateForUser, invalidateForEntity, bake,
 };

@@ -150,7 +150,7 @@ function NewDispatchForm({
       open
       onClose={onClose}
       title="New dispatch"
-      description="Assign a vehicle and driver — optionally to a dossier for cost attribution."
+      description="Assign a vehicle and driver — optionally to an operations file for cost attribution."
     >
       <form className="space-y-4" onSubmit={submit}>
         <Field label={tr("Vehicle")} required>
@@ -181,7 +181,7 @@ function NewDispatchForm({
           </Select>
         </Field>
         <Field
-          label={tr("Dossier")}
+          label={tr("Operations file")}
           hint="Optional — driver time is costed here on return"
         >
           <Select

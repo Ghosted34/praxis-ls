@@ -120,6 +120,7 @@ const SHELL_KEYS = {
   ribbonPinned: "ribbon_pinned",
   railPins: "rail_pins",
   towerPins: "tower_pins",
+  kpiPins: "kpi_pins",
   railHintSeen: "rail_hint_seen",
 };
 

@@ -709,3 +709,164 @@ export declare namespace marks {
       Map<string, MarksContainerType> | Record<string, MarksContainerType>,
   ): string;
 }
+
+/**
+ * Which notifications may INTERRUPT — sound, hold the banner until dealt with,
+ * vibrate a phone. Shared because the API stamps it onto the push payload, the
+ * socket listener decides whether to make a noise with it, and the Preferences
+ * matrix draws its default from it. See rules/notification-interrupt.js.
+ */
+export declare namespace notificationInterrupt {
+  /** Categories that interrupt regardless of priority. */
+  const INTERRUPT_CATEGORIES: ReadonlySet<string>;
+  /** The pseudo-channel these preferences are stored under (migration 13795). */
+  const INTERRUPT_CHANNEL: "INTERRUPT";
+  /** The answer absent any preference: anything HIGH, plus approvals and comms. */
+  function defaultInterrupt(input: {
+    priority?: string | null;
+    category?: string | null;
+  }): boolean;
+  /**
+   * The answer for one notification and one user. An explicit `false`
+   * preference silences a category even for HIGH; only security notifications
+   * ignore preferences, and that is enforced in the service, not here.
+   */
+  function interruptFor(input: {
+    priority?: string | null;
+    category?: string | null;
+    preference?: boolean | null;
+  }): boolean;
+}
+
+/**
+ * Where a notification about an `entity_ref` should take the reader.
+ *
+ * Shared because the API stamps `notification.link_url` from it when the row is
+ * written and the client resolves it again when the row is drawn — every
+ * notification predating that column has a null `link_url` and a good
+ * `entity_ref`. See rules/entity-route.js for why one copy rather than two.
+ */
+export type EntityLinkPrecision = "record" | "section";
+export type EntityLink = { url: string; precision: EntityLinkPrecision };
+
+export declare namespace entityRoute {
+  /** Types with a detail route; the id opens the record itself. */
+  const DETAIL: Readonly<Record<string, (id: string) => string>>;
+  /** Types with no detail route; the link opens the list that holds them. */
+  const SECTION: Readonly<Record<string, string>>;
+  /** "email_thread:39cb…" → { type, id }. Null for an empty ref. */
+  function parseRef(
+    entityRef?: string | null,
+  ): { type: string; id: string } | null;
+  /**
+   * The link, or null when the ref maps nowhere — a `domain:` alert, or a
+   * notification with no entity at all (a God Mode PIN has no page, and
+   * inventing one would send the reader back where they clicked from).
+   */
+  function linkFor(entityRef?: string | null): EntityLink | null;
+  /** Just the path, for callers indifferent to how precise it is. */
+  function urlFor(entityRef?: string | null): string | null;
+  /** Every path this module can emit — what the router test asserts against. */
+  function allRoutes(): string[];
+}
+
+/**
+ * The working week, per day: worked or not, from when to when, on site or
+ * remote. `employee.work_schedule` stores it and `employee.working_hours` — the
+ * line a contract prints — is DERIVED from it by `summarise()` on every write,
+ * so the sentence and the grid cannot disagree. See rules/work-schedule.js.
+ */
+export type WorkDayCode = "MON" | "TUE" | "WED" | "THU" | "FRI" | "SAT" | "SUN";
+export type WorkDayMode = "ON_SITE" | "REMOTE";
+export type WorkDay = {
+  day: WorkDayCode;
+  worked: boolean;
+  /** `HH:MM`, 24-hour. */
+  start: string;
+  end: string;
+  mode: WorkDayMode;
+};
+export type WorkSchedule = { days: WorkDay[] };
+
+export declare namespace workSchedule {
+  /** One day, as the API accepts it. */
+  const daySchema: z.ZodType<WorkDay, z.ZodTypeDef, unknown>;
+  /** The week — `employee.work_schedule`'s wire shape. Nullable: clearing the
+   *  grid is a real edit, and it takes the derived line with it. */
+  const schema: z.ZodType<WorkSchedule | null | undefined, z.ZodTypeDef, unknown>;
+  const DAYS: ReadonlyArray<{
+    code: WorkDayCode;
+    label: string;
+    short: string;
+  }>;
+  const DAY_CODES: ReadonlyArray<WorkDayCode>;
+  const MODES: ReadonlyArray<WorkDayMode>;
+  const DEFAULT_START: string;
+  const DEFAULT_END: string;
+  /** Mon–Fri, 09:00–17:00, on site — what the new-employee form opens with. */
+  function defaultSchedule(): WorkSchedule;
+  /** Canonical shape, or null when nothing schedule-shaped arrived. */
+  function normalise(input: unknown): WorkSchedule | null;
+  /** `"9:5"` → `"09:05"`; not a time of day → null. */
+  function normaliseTime(value: unknown): string | null;
+  /** The line a contract prints ("Mon–Fri, 09:00–17:00"). */
+  function summarise(schedule: unknown): string;
+  function weeklyHours(schedule: unknown): number;
+  /** "On-site" | "Remote" | "Hybrid" — vacancy.work_mode's three words. */
+  function workMode(schedule: unknown): string | null;
+  function workedDays(schedule: WorkSchedule | null): WorkDay[];
+}
+
+/**
+ * Website settings payloads. Every one is a FORM the settings screens render
+ * and the API validates — one definition, so a field that accepts a value
+ * cannot hand the API something it refuses.
+ *
+ * Typed as concrete Zod objects rather than `ZodTypeAny` for the reason stated
+ * at the top of this file: the loose form compiles and erases every field into
+ * `any`, which makes the shared package typecheck while proving nothing.
+ */
+export declare const siteSettings: {
+  theme: z.ZodObject<{
+    primary_hex: z.ZodString;
+    secondary_hex: z.ZodTypeAny;
+    tertiary_hex: z.ZodTypeAny;
+    font_display: z.ZodString;
+    font_body: z.ZodString;
+    font_mono: z.ZodString;
+    radius_px: z.ZodTypeAny;
+    default_mode: z.ZodEnum<["light", "dark"]>;
+  }>;
+  socialLink: z.ZodTypeAny;
+  partner: z.ZodTypeAny;
+  credential: z.ZodTypeAny;
+  about: z.ZodTypeAny;
+  leader: z.ZodTypeAny;
+  entityPublicStory: z.ZodTypeAny;
+  HEX: z.ZodString;
+
+  /**
+   * The website's image slots (§6.3), and what each one accepts.
+   *
+   * Typed concretely for the reason the theme object is: the settings upload
+   * control READS these numbers to state a constraint before the file dialog
+   * opens, and a `Record<string, any>` would let it print a field that does not
+   * exist. `evidence` and `transparent` in particular are rules, not metadata —
+   * §1.3's generated-imagery line and O-3's white-rectangle problem — and both
+   * are decided by a `boolean` the compiler should be checking.
+   */
+  SITE_MEDIA_SLOTS: Record<
+    "leader-portrait" | "partner-mark" | "credential-mark" | "entity-cover",
+    {
+      role: string;
+      evidence: boolean;
+      transparent: boolean;
+      maxBytes: number;
+      minWidth: number;
+      aspect: string;
+    }
+  >;
+  SITE_MEDIA_SLOT_IDS: string[];
+  SITE_MEDIA_PROVENANCE: string[];
+  siteMediaUpload: z.ZodTypeAny;
+};

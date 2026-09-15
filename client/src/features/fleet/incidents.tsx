@@ -7,6 +7,7 @@ import { pageShell } from "@/lib/layout";
 import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
+import { DateTimeField } from "@/components/ui/datetime-field";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { Pill, type Tone } from "@/components/ui/pill";
@@ -121,10 +122,9 @@ function NewIncidentForm({
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Occurred at">
-            <Input
-              type="datetime-local"
+            <DateTimeField
               value={f.occurred_at}
-              onChange={(e) => set("occurred_at", e.target.value)}
+              onChange={(iso) => set("occurred_at", iso)}
             />
           </Field>
           <Field label={tr("Severity")} required>

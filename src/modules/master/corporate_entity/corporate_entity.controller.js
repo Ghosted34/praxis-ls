@@ -48,8 +48,34 @@ module.exports = {
   saveLetterhead: asyncHandler(async (req, res) =>
     res.json({ data: await req.tenantDb((c) => service.saveLetterhead(c, { id: req.params.id, patch: req.body, actor: actor(req) })) })),
 
-  renewals: asyncHandler(async (req, res) =>
-    res.json({ data: await req.tenantDb((c) => service.renewals(c, req.params.id, req.query.as_of || null)) })),
+  /*
+   * The tenant's own letterhead lines (12760). One handler for all three verbs:
+   * the service branches on `lineId` and `remove`, and every branch returns the
+   * whole letterhead bundle — the editor's canvas has to reflect what was
+   * STORED, and a line that changed the composed height has just changed the
+   * page it sits on.
+   */
+  saveLetterheadLine: asyncHandler(async (req, res) =>
+    res.json({
+      data: await req.tenantDb((c) => service.saveLetterheadLine(c, {
+        id: req.params.id,
+        lineId: req.params.lineId || null,
+        patch: req.body,
+        remove: req.method === "DELETE",
+        actor: actor(req),
+      })),
+    })),
+
+  /*
+   * MOD-01 `view`, like the dossier — and redacted the same way. A renewal
+   * label falls back to the document's own reference, so the governance grant
+   * has to be resolved here too or this route hands out what /360 withholds.
+   */
+  renewals: asyncHandler(async (req, res) => {
+    const governance = await dossierService.canSeeGovernance(req);
+    const data = await req.tenantDb((c) => service.renewals(c, req.params.id, req.query.as_of || null, { governance }));
+    res.json({ data });
+  }),
 
   capTable: asyncHandler(async (req, res) => {
     const data = await req.tenantDb((c) => service.capTable(c, req.params.id, req.query.as_of || null));

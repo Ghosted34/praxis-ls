@@ -1,12 +1,12 @@
 {
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
-  "modules_mounted": 138,
-  "route_count": 1490,
+  "modules_mounted": 140,
+  "route_count": 1593,
   "tiers": {
-    "public": 51,
-    "self-scoped": 89,
-    "gated": 1350
+    "public": 65,
+    "self-scoped": 96,
+    "gated": 1432
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -183,6 +183,18 @@
       "validated": false,
       "tier": "gated"
     },
+    "DELETE /api/tenant/employees/:id/allowances/:allowanceId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "DELETE /api/tenant/employees/:id/documents/:documentId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "DELETE /api/tenant/entities/:id/addresses/:childId": {
       "auth": true,
       "rbac": true,
@@ -202,6 +214,12 @@
       "tier": "gated"
     },
     "DELETE /api/tenant/entities/:id/establishments/:childId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "DELETE /api/tenant/entities/:id/letterhead/lines/:lineId": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -280,6 +298,12 @@
       "tier": "gated"
     },
     "DELETE /api/tenant/insights/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": true,
+      "tier": "gated"
+    },
+    "DELETE /api/tenant/insights/:id/cover": {
       "auth": true,
       "rbac": true,
       "validated": true,
@@ -495,6 +519,30 @@
       "validated": false,
       "tier": "gated"
     },
+    "DELETE /api/tenant/site-settings/credentials/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "DELETE /api/tenant/site-settings/leaders/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "DELETE /api/tenant/site-settings/media/:slot/:ownerId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "DELETE /api/tenant/site-settings/partners/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "DELETE /api/tenant/site/blocks/:blockId": {
       "auth": true,
       "rbac": true,
@@ -526,6 +574,12 @@
       "tier": "gated"
     },
     "DELETE /api/tenant/smartcomm/quick-replies/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "DELETE /api/tenant/smartcomm/scheduled/:id": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -898,6 +952,12 @@
       "tier": "gated"
     },
     "GET /api/platform/settings/:section/:key": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/platform/support/attachments/:id": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -1293,6 +1353,12 @@
       "validated": false,
       "tier": "public"
     },
+    "GET /api/tenant/careers/settings/public": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
+    },
     "GET /api/tenant/cash-requests/": {
       "auth": true,
       "rbac": true,
@@ -1300,6 +1366,12 @@
       "tier": "gated"
     },
     "GET /api/tenant/cash-requests/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/cash-requests/kpis": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -1503,6 +1575,30 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/costings/:id/budget": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/costings/gate": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/costings/kpis": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/costings/suggest": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/countries/": {
       "auth": true,
       "rbac": false,
@@ -1701,7 +1797,37 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/employees/:id/account": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/employees/:id/allowances": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/employees/:id/documents": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/employees/:id/managers": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/employees/:id/pay": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/employees/:id/readiness": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -1725,7 +1851,25 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/employees/document-types": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/employees/drivers": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/employees/mine": {
+      "auth": true,
+      "rbac": false,
+      "validated": false,
+      "tier": "self-scoped"
+    },
+    "GET /api/tenant/employees/readiness-requirements": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -2301,6 +2445,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/mail/connect-methods": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/mail/connections": {
       "auth": true,
       "rbac": true,
@@ -2445,6 +2595,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/mail/oauth/microsoft/start/shared": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/mail/outbox": {
       "auth": true,
       "rbac": true,
@@ -2493,6 +2649,24 @@
       "validated": false,
       "tier": "self-scoped"
     },
+    "GET /api/tenant/mail/signature/card": {
+      "auth": true,
+      "rbac": false,
+      "validated": false,
+      "tier": "self-scoped"
+    },
+    "GET /api/tenant/mail/signature/diagnose": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/mail/signature/palette": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/mail/signature/png": {
       "auth": true,
       "rbac": false,
@@ -2505,7 +2679,19 @@
       "validated": false,
       "tier": "self-scoped"
     },
+    "GET /api/tenant/mail/signature/staff": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/mail/signature/templates": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/mail/signature/templates/:id/motto": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -3189,6 +3375,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/public/corridors/": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
+    },
     "GET /api/tenant/public/insights/": {
       "auth": false,
       "rbac": false,
@@ -3285,6 +3477,42 @@
       "validated": false,
       "tier": "public"
     },
+    "GET /api/tenant/public/site/about": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
+    },
+    "GET /api/tenant/public/site/announcements": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
+    },
+    "GET /api/tenant/public/site/copy": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
+    },
+    "GET /api/tenant/public/site/entities": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
+    },
+    "GET /api/tenant/public/site/media/:id": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
+    },
+    "GET /api/tenant/public/site/media/:id/:variant": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
+    },
     "GET /api/tenant/public/site/pages": {
       "auth": false,
       "rbac": false,
@@ -3292,6 +3520,24 @@
       "tier": "public"
     },
     "GET /api/tenant/public/site/pages/:key": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
+    },
+    "GET /api/tenant/public/site/partners": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
+    },
+    "GET /api/tenant/public/site/social": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
+    },
+    "GET /api/tenant/public/site/theme": {
       "auth": false,
       "rbac": false,
       "validated": false,
@@ -3759,6 +4005,72 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/site-settings/about": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/site-settings/careers": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/site-settings/credentials": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/site-settings/entities/:id/story": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/site-settings/leaders": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/site-settings/partners": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/site-settings/social": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/site-settings/theme": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/site-settings/theme/preview": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/site/copy/catalogue": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/site/meta": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/site/pages": {
       "auth": true,
       "rbac": true,
@@ -3801,6 +4113,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/smartcomm/channels/:id/scheduled": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/smartcomm/colleagues": {
       "auth": true,
       "rbac": true,
@@ -3808,6 +4126,24 @@
       "tier": "gated"
     },
     "GET /api/tenant/smartcomm/config": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/smartcomm/erp/:kind/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/smartcomm/erp/search": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/smartcomm/media/:mediaId": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -4016,6 +4352,12 @@
       "rbac": true,
       "validated": false,
       "tier": "gated"
+    },
+    "GET /api/tenant/support/attachments/:id": {
+      "auth": true,
+      "rbac": false,
+      "validated": false,
+      "tier": "self-scoped"
     },
     "GET /api/tenant/support/tickets": {
       "auth": true,
@@ -4635,6 +4977,24 @@
       "validated": false,
       "tier": "gated"
     },
+    "PATCH /api/tenant/employees/:id/allowances/:allowanceId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PATCH /api/tenant/employees/:id/documents/:documentId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PATCH /api/tenant/employees/mine": {
+      "auth": true,
+      "rbac": false,
+      "validated": false,
+      "tier": "self-scoped"
+    },
     "PATCH /api/tenant/entities/:id": {
       "auth": true,
       "rbac": true,
@@ -5019,6 +5379,24 @@
       "validated": false,
       "tier": "gated"
     },
+    "PATCH /api/tenant/site-settings/credentials/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PATCH /api/tenant/site-settings/leaders/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PATCH /api/tenant/site-settings/partners/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "PATCH /api/tenant/site/blocks/:blockId": {
       "auth": true,
       "rbac": true,
@@ -5038,6 +5416,12 @@
       "tier": "gated"
     },
     "PATCH /api/tenant/smartcomm/quick-replies/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PATCH /api/tenant/smartcomm/scheduled/:id": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -5362,6 +5746,18 @@
       "tier": "gated"
     },
     "POST /api/platform/settings/push/vapid/generate": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/platform/support/tickets/:id/attachments": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/platform/support/tickets/:id/replies": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -5823,7 +6219,31 @@
       "validated": false,
       "tier": "public"
     },
+    "POST /api/tenant/careers/alerts": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
+    },
+    "POST /api/tenant/careers/alerts/unsubscribe/:token": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
+    },
+    "POST /api/tenant/careers/open-application": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
+    },
     "POST /api/tenant/cash-requests/": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/cash-requests/:id/close-balance": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -5842,6 +6262,12 @@
       "tier": "gated"
     },
     "POST /api/tenant/cash-requests/:id/justify": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/cash-requests/:id/payments/:paymentId/receipt": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -6087,6 +6513,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/costings/:id/nudge": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/costings/:id/status": {
       "auth": true,
       "rbac": true,
@@ -6237,6 +6669,24 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/employees/:id/allowances": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/employees/:id/documents": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/employees/:id/status": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/entities/": {
       "auth": true,
       "rbac": true,
@@ -6274,6 +6724,12 @@
       "tier": "gated"
     },
     "POST /api/tenant/entities/:id/establishments": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/entities/:id/letterhead/lines": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -6538,6 +6994,24 @@
       "tier": "gated"
     },
     "POST /api/tenant/insights/": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/insights/:id/cover": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/insights/:id/gallery": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/insights/:id/pin": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -6813,6 +7287,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/mail/deliverability/route": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/mail/drafts": {
       "auth": true,
       "rbac": true,
@@ -6891,6 +7371,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/mail/send/:id/retry": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/mail/senders": {
       "auth": true,
       "rbac": true,
@@ -6903,11 +7389,23 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/mail/signature/batch": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/mail/signature/png": {
       "auth": true,
       "rbac": false,
       "validated": false,
       "tier": "self-scoped"
+    },
+    "POST /api/tenant/mail/signature/templates/:id/motto": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/mail/sla-policies": {
       "auth": true,
@@ -7192,6 +7690,12 @@
       "tier": "public"
     },
     "POST /api/tenant/notifications/push/subscribe": {
+      "auth": true,
+      "rbac": false,
+      "validated": false,
+      "tier": "self-scoped"
+    },
+    "POST /api/tenant/notifications/push/test": {
       "auth": true,
       "rbac": false,
       "validated": false,
@@ -7893,6 +8397,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/service-types/:id/web/ai-copy": {
+      "auth": true,
+      "rbac": true,
+      "validated": true,
+      "tier": "gated"
+    },
     "POST /api/tenant/service-types/:id/web/media": {
       "auth": true,
       "rbac": true,
@@ -8019,6 +8529,30 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/site-settings/credentials": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/site-settings/leaders": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/site-settings/media": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/site-settings/partners": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/site/pages": {
       "auth": true,
       "rbac": true,
@@ -8061,6 +8595,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/smartcomm/channels/:id/media": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/smartcomm/channels/:id/members": {
       "auth": true,
       "rbac": true,
@@ -8091,6 +8631,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/smartcomm/channels/:id/scheduled": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/smartcomm/config/email/dns-check": {
       "auth": true,
       "rbac": true,
@@ -8110,6 +8656,12 @@
       "tier": "gated"
     },
     "POST /api/tenant/smartcomm/config/whatsapp/test": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/smartcomm/media/:mediaId/promote": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -8361,6 +8913,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/support/attachments": {
+      "auth": true,
+      "rbac": false,
+      "validated": false,
+      "tier": "self-scoped"
+    },
     "POST /api/tenant/support/tickets": {
       "auth": true,
       "rbac": false,
@@ -8368,6 +8926,12 @@
       "tier": "self-scoped"
     },
     "POST /api/tenant/support/tickets/:id/csat": {
+      "auth": true,
+      "rbac": false,
+      "validated": false,
+      "tier": "self-scoped"
+    },
+    "POST /api/tenant/support/tickets/:id/replies": {
       "auth": true,
       "rbac": false,
       "validated": false,
@@ -8554,6 +9118,12 @@
       "tier": "gated"
     },
     "POST /api/tenant/users/": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/users/:id/invite": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -8787,6 +9357,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "PUT /api/tenant/entities/:id/letterhead/lines/:lineId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "PUT /api/tenant/entities/:id/working-calendar": {
       "auth": true,
       "rbac": true,
@@ -8794,6 +9370,12 @@
       "tier": "gated"
     },
     "PUT /api/tenant/extra-charge-simulations/rates": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PUT /api/tenant/insights/:id/gallery": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -8822,6 +9404,12 @@
       "rbac": false,
       "validated": false,
       "tier": "self-scoped"
+    },
+    "PUT /api/tenant/mail/signature/templates/:id/palette": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "PUT /api/tenant/master-config/:appliesTo": {
       "auth": true,
@@ -8920,6 +9508,36 @@
       "tier": "gated"
     },
     "PUT /api/tenant/settings/:section/:key": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PUT /api/tenant/site-settings/about": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PUT /api/tenant/site-settings/careers": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PUT /api/tenant/site-settings/entities/:id/story": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PUT /api/tenant/site-settings/social": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PUT /api/tenant/site-settings/theme": {
       "auth": true,
       "rbac": true,
       "validated": false,

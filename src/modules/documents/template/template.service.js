@@ -10,7 +10,7 @@ const settings = require("../../security/setting/setting.service");
 const registry = require("../../../services/documents/templates/registry");
 const kit = require("../../../services/documents/templates/kit");
 const pdf = require("../../../services/pdf.service");
-const storage = require("../../../services/storage.service");
+const brandLogo = require("../../../services/brand-logo.service");
 const emailSvc = require("../../../services/email.service");
 const verifyLink = require("../../../services/signatures/verify-link");
 const sealView = require("../../../services/signatures/seal-view");
@@ -20,6 +20,7 @@ const { asLang } = require("../../mail/signature/language");
 // The one letterhead assembler (MOD-01). The entity dossier previews with the
 // same function, so the designer and the printer cannot disagree.
 const letterhead = require("../../master/entity-letterhead.service");
+const letterheadBlocks = require("../../../services/documents/templates/letterhead-blocks");
 const { audit } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
 const { logger } = require("../../../config/logger");
@@ -37,42 +38,11 @@ async function safeGet(client, key) {
 
 const list = () => registry.list();
 
-const LOGO_MIME = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", svg: "image/svg+xml", gif: "image/gif" };
-
-// Turn a stored logo reference into something that renders EVERYWHERE — the live
-// preview iframe, the Puppeteer-rendered PDF (which has no page origin, so a
-// relative /media URL never loads), and emailed HTML. We inline the bytes as a
-// base64 data URI. `ref` is either a storage key or a /media/<key> public URL.
-async function resolveLogo(ref) {
-  if (!ref) return null;
-  if (/^data:/i.test(ref)) return ref;
-  if (/^https?:/i.test(ref)) return ref; // remote/CDN URL — used as-is
-  const key = String(ref).replace(/^\/media\//, "").replace(/^\/+/, "");
-  try {
-    const buf = await storage.get(key);
-    if (buf && buf.length) {
-      const ext = (key.split(".").pop() || "png").toLowerCase();
-      return `data:${LOGO_MIME[ext] || "image/png"};base64,${buf.toString("base64")}`;
-    }
-  } catch { /* @silent:storage — a logo the storage backend cannot hand back must
-    not stop a document rendering. Falling through to the raw ref gives the
-    renderer a URL to try; a missing letterhead is a cosmetic loss, a failed
-    invoice render is not. */ }
-  return ref;
-}
-
-// Tenant-wide letterhead logo reference (Appearance → logo_url), used when a
-// corporate entity has no per-entity logo of its own. Most tenants set only the
-// branding logo, so without this the documents fall back to the brand *name*.
-async function brandingLogoRef(client) {
-  try {
-    const { rows } = await client.query(
-      "SELECT value FROM setting WHERE section = 'appearance' AND key = 'logo_url' LIMIT 1",
-    );
-    const v = rows[0] && rows[0].value;
-    return v ? (typeof v === "string" ? v : String(v)) : null;
-  } catch { return null; }
-}
+// Moved to services/brand-logo.service.js when the signature card needed the
+// same resolution — see that file's header for why it is shared rather than
+// copied. Re-exported through these local bindings so the call sites below read
+// unchanged.
+const { resolveLogo, brandingLogoRef } = brandLogo;
 
 /**
  * The tenant's active-currency catalogue (code → { symbol, decimals, name }),
@@ -158,12 +128,95 @@ async function resolveEntity(client, entityId, { language = "en" } = {}) {
     ]);
     entity.address_lines = letterhead.addressLines(entity, addresses, { countryName, language });
     entity.identifiers = letterhead.identifiers(entity, registrations, taxRegistrations);
+    /*
+     * THE LETTERHEAD ROW, AND WHY IT IS FETCHED HERE.
+     *
+     * `entity_letterhead` has existed since 0516 and until now this function
+     * never read it. The designer wrote it, the dossier drew its own preview
+     * from it, and the RENDERER took a different road entirely — the settings
+     * store — so every toggle on that tab was a dead end: a tenant could switch
+     * the share capital off, watch the preview obey, and keep printing it.
+     *
+     * The same best-effort rule as the derivations above: a document must still
+     * render for a tenant whose dossier tables are empty or unreadable, so each
+     * of these falls back on its own and a partial failure costs one block, not
+     * the header.
+     *
+     * WHAT THE `.catch` DOES AND DOES NOT COVER. `req.tenantDb` hands out a
+     * PINNED connection, not an open transaction (see middleware/tenant-context
+     * — there is no BEGIN), so a failing query here is an autocommit error and
+     * the ones beside it still succeed. It would NOT survive being called from
+     * inside someone else's transaction, where the first error aborts the whole
+     * thing regardless of who catches it. That is the same exposure every other
+     * read in this function already has, and the reason it is acceptable is the
+     * repo's migration discipline: 12760 ships with this code, so
+     * `entity_letterhead_line` exists by the time anything renders.
+     */
+    const [lhRow, lhLines, treasury, establishments] = await Promise.all([
+      client.query("SELECT * FROM entity_letterhead WHERE entity_id = $1", [entity.entity_id])
+        .then((r) => r.rows[0] || null).catch(() => null),
+      client.query(
+        `SELECT * FROM entity_letterhead_line
+           WHERE entity_id = $1 AND is_active
+           ORDER BY zone, sort_order, created_at`, [entity.entity_id])
+        .then((r) => r.rows).catch(() => []),
+      client.query("SELECT * FROM treasury_account WHERE entity_id = $1", [entity.entity_id])
+        .then((r) => r.rows).catch(() => []),
+      client.query("SELECT * FROM entity_establishment WHERE entity_id = $1", [entity.entity_id])
+        .then((r) => r.rows).catch(() => []),
+    ]);
+    entity.letterhead_row = lhRow;
+    entity.letterhead_lines = lhLines;
+    entity.letterhead_sources = { addresses, treasuryAccounts: treasury, establishments };
   } else {
     entity.address_lines = letterhead.addressLines(entity, [], { countryName, language });
     entity.identifiers = letterhead.identifiers(entity, [], []);
+    entity.letterhead_row = null;
+    entity.letterhead_lines = [];
+    entity.letterhead_sources = { addresses: [], treasuryAccounts: [], establishments: [] };
   }
 
   return { entity, brand: { logo_url: await resolveLogo(ref) } };
+}
+
+/*
+ * ── THE ENTITY OWNS ITS IDENTITY AND ITS BRAND ─────────────────────────────
+ *
+ * The knobs below existed in TWO places under two different names: the entity's
+ * Letterhead tab (`paper_size`, `logo_position`, `brand_color`, `accent_color`,
+ * `footer_note_*`) and the Document Studio's per-docType config (`paper`,
+ * `logo.align`, `accent`, `footer_text`). Only the Studio's reached the page.
+ *
+ * Precedence is now: brand default → ENTITY LETTERHEAD → Studio tenant default
+ * → Studio per-entity override → the caller's per-render override. The entity
+ * sits below the Studio deliberately: the Studio's remaining knobs are
+ * per-DOCUMENT (a watermark on a proforma, a terms block on a quotation), and a
+ * setting made for one document type should still win for that document type.
+ * What changed is that the entity's values are no longer ignored — they are the
+ * floor every document starts from, so setting the accent once on the dossier
+ * colours every sheet the tenant prints.
+ *
+ * A colour is validated, not trusted. These land in a stylesheet that themes
+ * every document, and the row is tenant-writable; anything that is not a plain
+ * hex triple is dropped rather than interpolated.
+ */
+const HEX = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
+const hex = (v) => (typeof v === "string" && HEX.test(v.trim()) ? v.trim() : null);
+
+function entityLetterheadCfg(entity) {
+  const row = entity.letterhead_row;
+  if (!row) return {};
+  const out = {};
+  if (hex(row.brand_color)) out.accent = hex(row.brand_color);
+  if (hex(row.accent_color)) out.rule = hex(row.accent_color);
+  if (row.paper_size === "A4" || row.paper_size === "LETTER") {
+    out.paper = row.paper_size === "LETTER" ? "Letter" : "A4";
+  }
+  const align = { LEFT: "left", CENTER: "center", RIGHT: "right" }[row.logo_position];
+  if (align) out.logo = { align };
+  const mm = Number(row.logo_height_mm);
+  if (Number.isFinite(mm) && mm > 0) out.logo = { ...(out.logo || {}), height_mm: Math.min(60, Math.max(4, mm)) };
+  return out;
 }
 
 /** entity override merged over the tenant default (entity_id = null). */
@@ -174,36 +227,83 @@ async function savedConfig(client, docType, entityId) {
 }
 
 /**
- * The language ONE render comes out in.
+ * The language ONE render comes out in — always a single language, never both.
  *
  * Resolution order, and it is deliberately short:
  *   1. what the operator picked at print time (`language`, from the request)
  *   2. what the tenant configured for this doc type in the Document Studio
+ *   3. the entity's `default_language` (passed in by the caller)
+ *   4. 'en' as a last resort, so a render never emits nothing
  *
  * The operator's pick wins because they are the one looking at the client's
  * file while they press Download — a tenant-wide default cannot know that this
- * particular consignee reads English. `asLang` drops anything that is not a
- * supported code, so an unrecognised value falls through to the tenant setting
- * rather than rendering a document in nothing.
+ * particular consignee reads English.
  *
- * "bilingual" is a legitimate configured value and is passed through untouched;
- * it is only ever chosen deliberately.
+ * ── Why "bilingual" is not on the list ─────────────────────────────────────
+ * `asLang` from mail/signature/language.js accepts only 'fr'/'en'. That is the
+ * shape this product prints its documents in: one language per sheet, whichever
+ * language its reader is going to be reading. A bilingual A4 pairs every label
+ * with a slash and its translation — "Total estimé (TTC) / Total estimate
+ * (TTC)" — and the sheet stops looking like a document and starts looking like
+ * a form. Any saved 'bilingual' from a legacy Studio config falls through the
+ * `asLang` filter and lands on the entity's default_language, exactly the same
+ * as an unconfigured template.
  */
-function resolveDocLanguage(picked, saved) {
-  const explicit = asLang(picked);
-  if (explicit) return explicit;
-  return (saved && saved.language) || undefined;
+function resolveDocLanguage(picked, saved, entityDefault) {
+  return (
+    asLang(picked)
+    || asLang(saved && saved.language)
+    || asLang(entityDefault)
+    || "en"
+  );
+}
+
+/**
+ * `entity.default_language`, in isolation, before the full entity load.
+ *
+ * The full `resolveEntity` reads the corporate_entity row and every related
+ * dossier table (addresses, registrations, tax IDs, letterhead sources) and
+ * renders them into `address_lines` and `identifiers` USING the language it is
+ * given. So the language has to be decided before that call, and one of the
+ * inputs to that decision — after the operator's pick and the tenant's saved
+ * doc-type language — is the entity's own default_language. A one-column peek
+ * gives us that without loading the rest twice.
+ *
+ * Returns undefined for a missing entity or an unreadable row; the resolver
+ * treats that the same as no preference set and falls through to the final
+ * 'en' floor.
+ */
+async function peekEntityDefaultLanguage(client, entityId) {
+  try {
+    const q = entityId
+      ? await client.query("SELECT default_language FROM corporate_entity WHERE entity_id = $1", [entityId])
+      : await client.query("SELECT default_language FROM corporate_entity ORDER BY created_at LIMIT 1");
+    return q.rows[0] && q.rows[0].default_language;
+  } catch {
+    /* @silent:storage — an unreadable entity must not fail the render; the
+       caller falls back to 'en' rather than to bilingual. */
+    return undefined;
+  }
 }
 
 async function resolveCfg(client, docType, entityId, override, { language = null } = {}) {
   const saved = await savedConfig(client, docType, entityId);
-  const picked = resolveDocLanguage(language, saved);
-  // Resolved BEFORE the entity, because the entity's own derived lines are
-  // language-dependent — a French document says "Cameroun", an English one
-  // "Cameroon", and both come from the same country_code.
-  const { entity, brand } = await resolveEntity(client, entityId, { language: picked === "fr" ? "fr" : "en" });
+  // Language, decided BEFORE the entity, in one call rather than two: operator's
+  // pick, then the Studio's saved doc-type language, then the entity's own
+  // default_language, then 'en'. The entity is then resolved IN that language,
+  // so address_lines and identifiers come out matching the sheet they print on.
+  const entityDefault = await peekEntityDefaultLanguage(client, entityId);
+  const picked = resolveDocLanguage(language, saved, entityDefault);
+  const { entity, brand } = await resolveEntity(client, entityId, { language: picked });
+  const fromEntity = entityLetterheadCfg(entity);
+  // `language` is forced onto the merged cfg (rather than spread conditionally
+  // as before) so the kit's own 'bilingual' default cannot re-emerge for a
+  // legacy Studio config carrying language:'bilingual' — see resolveDocLanguage.
   const cfg = kit.mergeCfg(brand, {
-    ...saved, ...(override || {}), ...(picked ? { language: picked } : {}),
+    ...fromEntity, ...saved, ...(override || {}), language: picked,
+    // `logo` is nested, so a spread would let the Studio's {show:true} erase the
+    // entity's height_mm and align. Merged key-wise instead, entity underneath.
+    logo: { ...(fromEntity.logo || {}), ...(saved.logo || {}), ...((override || {}).logo || {}) },
   });
   /*
    * The company cachet, inlined the same way the letterhead logo is.
@@ -226,6 +326,30 @@ async function resolveCfg(client, docType, entityId, override, { language = null
   cfg.base_currency = base;
   const b = currencies[base];
   entity.default_currency_decimals = b ? b.decimals : 2;
+
+  /*
+   * Compose the shell ONCE, here, and hand it to the kit on `cfg`.
+   *
+   * `kit.standardHead` can compose for itself and does when this is absent —
+   * that is what keeps an unmigrated caller rendering. But composing here is
+   * what lets it see the entity's ADDRESS ROWS, TREASURY ACCOUNTS and
+   * ESTABLISHMENTS, which the kit has no way to fetch and no business fetching.
+   * The alternative is a letterhead that silently drops the payment block on
+   * every real render and shows it in every preview.
+   */
+  const src = entity.letterhead_sources || {};
+  cfg.letterhead = letterheadBlocks.compose({
+    entity,
+    config: entity.letterhead_row || {},
+    layout: (entity.letterhead_row && entity.letterhead_row.layout) || null,
+    customLines: entity.letterhead_lines || [],
+    addresses: src.addresses || [],
+    treasuryAccounts: src.treasuryAccounts || [],
+    establishments: src.establishments || [],
+    logo_url: (cfg.logo && cfg.logo.show !== false && cfg.logo.url) || null,
+    logo_height_mm: (cfg.logo && cfg.logo.height_mm) || null,
+  }, cfg.language === "fr" ? "fr" : "en");
+
   return { cfg, entity };
 }
 
@@ -261,6 +385,7 @@ const SIMPLE = {
   PURCHASE_ORDER: { table: "purchase_order", pk: "po_id", label: "doc_number" },
   PURCHASE_REQUEST: { table: "purchase_request", pk: "pr_id", label: "doc_number" },
   CASH_REQUEST: { table: "cash_request", pk: "cash_request_id", label: "doc_number" },
+  CASH_PAYMENT_RECEIPT: { table: "cash_request_payment", pk: "cash_request_payment_id", label: null },
   COSTING: { table: "costing", pk: "costing_id", label: "doc_number" },
   REGIE_ADVANCE: { table: "regie_advance", pk: "regie_advance_id", label: null },
   WORK_ORDER: { table: "work_order", pk: "work_order_id", label: null },
@@ -850,16 +975,55 @@ async function loadRecord(client, docType, recordId) {
     };
   }
 
+  /*
+   * §3.5 / owner Q16 — the cash request voucher, at costing parity.
+   *
+   * WHAT THIS PROJECTION USED TO LEAVE OFF THE PAGE, and why each mattered.
+   *
+   * `entity_id: null`, exactly the defect the costing had: `resolveEntity`
+   * answers null with the FIRST corporate entity by created_at, so on a
+   * multi-entity tenant every voucher printed the letterhead, address and tax
+   * identifiers of whichever company was created first. It comes from the FILE
+   * now, which is the entity whose treasury is paying.
+   *
+   * NO BUDGET. A voucher is a DRAW against an approved costing (12771), and
+   * the page showed the claim with no sight of the budget it consumes — so the
+   * approving authority signed "2 650 000" with no way to know whether the
+   * file had it. The per-line Budget / Claimed / This request / Remaining set
+   * is the same one the worksheet shows on screen, for the same reason.
+   *
+   * NO REQUISITIONER. The legacy voucher's grid — name, matricule, department,
+   * job title — is one of the few parts of that screen worth copying: a cashier
+   * at a window matches a face to a row, and "Jean Mballa" alone does not do
+   * that. `signatory_name` and `staff_no` come from `employee`, the join every
+   * other projection here already makes.
+   *
+   * NO PAYMENTS. A request paid in two tranches printed as though nothing had
+   * moved, so the copy in the file disagreed with the ledger the moment the
+   * first franc left.
+   *
+   * NOTHING SEALED. The three signature boxes were ruled lines, and the three
+   * decisions (raised, approved, disbursed) are recorded in the database. They
+   * print as seals now, with the ruled boxes kept as the fallback for a voucher
+   * nobody has signed yet.
+   */
   if (docType === "CASH_REQUEST") {
     const { rows } = await client.query(
-      `SELECT cr.*, u.full_name AS requester_name, u.email AS requester_email, d.ref AS dossier_ref,
+      `SELECT cr.*, u.full_name AS requester_login_name, u.email AS requester_email,
+              d.ref AS dossier_ref, d.entity_id,
+              COALESCE(e_r.signatory_name, u.full_name) AS requester_name,
+              e_r.job_title AS requester_title, e_r.department AS requester_department,
+              e_r.staff_no AS requester_staff_no,
+              co.doc_number AS costing_ref,
               COALESCE(e_v.signatory_name, au_v.full_name) AS validated_by_name,
               e_v.job_title AS validated_by_title,
               COALESCE(e_a.signatory_name, au_a.full_name) AS approved_by_name,
               e_a.job_title AS approved_by_title
          FROM cash_request cr
          LEFT JOIN app_user u ON u.user_id = cr.requested_by
+         LEFT JOIN employee e_r ON e_r.employee_id = u.employee_id
          LEFT JOIN dossier d ON d.dossier_id = cr.dossier_id
+         LEFT JOIN costing co ON co.costing_id = cr.costing_id
          LEFT JOIN app_user au_v ON au_v.user_id = cr.validated_by
          LEFT JOIN employee e_v ON e_v.employee_id = au_v.employee_id
          LEFT JOIN app_user au_a ON au_a.user_id = cr.approver_id
@@ -869,71 +1033,463 @@ async function loadRecord(client, docType, recordId) {
     );
     const cr = rows[0];
     if (!cr) return null;
-    const lr = await client.query("SELECT label, budget_amount, vat_percent FROM cash_request_line WHERE cash_request_id = $1 ORDER BY cash_request_line_id", [recordId]);
-    const purpose = lr.rows.map((l) => l.label).filter(Boolean).join(", ");
+
+    // The line reader the worksheet itself uses, in `line_no` order — the same
+    // rule the costing branch below follows, and for the same reason: a second
+    // hand-rolled copy of an existing query is the copy that drifts.
+    const crRepo = require("../../costing/cash_request/cash_request.repo");
+    const crLines = await crRepo.listLines(client, recordId);
+    const payments = await crRepo.listPayments(client, recordId);
+
     // §3.5 — the voucher footer: Subtotal / VAT / TOTAL PAYABLE, same rule the
     // service applies (lazy require: see the transit-order branch note).
-    const { computeTotals } = require("../../costing/cash_request/cash_request.rules");
-    const totals = computeTotals(lr.rows);
+    const crRules = require("../../costing/cash_request/cash_request.rules");
+    const totals = crRules.computeTotals(crLines);
+
+    /*
+     * The budget each line draws on, joined by `costing_line_id`.
+     *
+     * Best-effort and EXCLUDING THIS REQUEST, exactly as the screen reads it:
+     * a request must be measured against the budget it is claiming from, not
+     * against one that already counts its own claim. A costing that has been
+     * deleted, or a ledger read that fails, prints a voucher without the budget
+     * columns rather than no voucher at all.
+     *
+     * These figures are deliberately NOT in the canonical payload (see
+     * canonical.js CASH_REQUEST): what a file has left changes as other
+     * requests are approved, and hashing a moving number would report an
+     * untouched voucher as amended.
+     */
+    let budgetByLine = new Map();
+    let budgetTotals = null;
+    // How many times the sheet has been approved. NOT a column on `costing` —
+    // it is the count of `costing_approval_snapshot` rows, which is why it is
+    // read from the ledger rather than joined for above.
+    let liveRevision = null;
+    if (cr.costing_id) {
+      try {
+        const costingService = require("../../costing/costing/costing.service");
+        const ledger = await costingService.budget(client, cr.costing_id, { excludeCashRequestId: recordId });
+        budgetByLine = new Map((ledger.lines || []).map((l) => [l.costing_line_id, l]));
+        budgetTotals = ledger.totals || null;
+        liveRevision = ledger.revision;
+      } catch (err) {
+        logger.warn({ err, cash_request_id: recordId }, "[documents] cash request printed without its budget columns");
+      }
+    }
+
+    const lines = crLines.map((l) => {
+      const b = l.costing_line_id ? budgetByLine.get(l.costing_line_id) : null;
+      const claim = crRules.lineClaim(l);
+      return {
+        label: l.label,
+        costing_line_id: l.costing_line_id || null,
+        qty: Number(l.qty || 1),
+        unit: Number(l.unit_cost !== null && l.unit_cost !== undefined ? l.unit_cost : l.budget_amount),
+        tax: l.vat_percent !== null && l.vat_percent !== undefined ? Number(l.vat_percent) : null,
+        is_disbursement: l.is_disbursement === true,
+        // Q17: the obligation this line puts on whoever takes the cash. It IS
+        // attested — clearing it after approval would erase a duty somebody
+        // signed for.
+        justification_required: l.justification_required === true,
+        amount: Number(l.budget_amount || 0),
+        // The claim in the money the voucher is actually paid in (TTC), which
+        // is what the budget columns below are measured against.
+        claim,
+        // Live, never hashed. `null` when there is no budget to read.
+        budget: b
+          ? {
+            approved: Number(b.budget || 0),
+            committed: Number(b.committed_elsewhere || 0),
+            remaining: Number(b.remaining || 0),
+            after: Math.round((Number(b.remaining || 0) - claim) * 100) / 100,
+          }
+          : null,
+      };
+    });
+
+    /*
+     * The payments, and the balance after each one. Running rather than final,
+     * because a voucher paid in tranches is read to answer "how much is left",
+     * and a reader should not have to subtract down a column to find out.
+     */
+    const requested = Number(cr.amount || 0);
+    let running = 0;
+    const paymentRows = payments.map((p, i) => {
+      running = Math.round((running + Number(p.amount || 0)) * 100) / 100;
+      return {
+        no: i + 1,
+        paid_on: p.paid_on || p.created_at,
+        amount: Number(p.amount || 0),
+        balance: Math.round((requested - running) * 100) / 100,
+        memo: p.memo || null,
+        received_at: p.received_at || null,
+        received_ack_kind: p.received_ack_kind || null,
+      };
+    });
+
     return {
-      entity_id: null,
+      // From the FILE, so a multi-entity tenant prints the right letterhead.
+      // An overhead request has no file and falls back to the tenant default.
+      entity_id: cr.entity_id || null,
       data: {
         number: cr.doc_number || String(cr.cash_request_id).slice(0, 8), date: cr.created_at, status: cr.status,
-        amount: Number(cr.amount), purpose, dossier_ref: cr.dossier_ref,
+        // A PAIR, never a pre-joined bilingual string — the costing's lesson:
+        // a projection that joins the two halves leaves `cfg.language` nothing
+        // to decide, and an enum must never reach a person.
+        status_words: crRules.statusWords(cr.status),
+        amount: requested, dossier_ref: cr.dossier_ref,
         beneficiary: cr.beneficiary, category: cr.category, cost_center: cr.cost_center,
         overhead_justification: cr.overhead_justification, remarks: cr.remarks,
         method: cr.disbursement_method || null,
         method_details: cr.disbursement_details || {},
-        lines: lr.rows.map((l) => ({ label: l.label, qty: 1, unit: Number(l.budget_amount), tax: l.vat_percent !== null && l.vat_percent !== undefined ? Number(l.vat_percent) : null, amount: Number(l.budget_amount) })),
+        // The budget this claim draws on, so the approver can open the sheet
+        // the figures came from.
+        costing_id: cr.costing_id || null,
+        costing_ref: cr.costing_ref || null,
+        // The revision it was APPROVED against, falling back to the sheet's
+        // current one for a voucher not yet approved.
+        // The revision it was APPROVED against, stamped on the request at
+        // approval (12771). A voucher not yet approved falls back to the
+        // sheet's current one, so the reader always knows which version of the
+        // budget the figures in front of them came from.
+        costing_revision: cr.costing_revision !== null && cr.costing_revision !== undefined
+          ? Number(cr.costing_revision)
+          : liveRevision,
+        lines,
         totals,
-        party: { name: cr.requester_name || "—", lines: [cr.requester_email].filter(Boolean) },
+        budget_totals: budgetTotals,
+        payments: paymentRows,
+        paid_total: running,
+        balance: Math.round((requested - running) * 100) / 100,
+        party: { name: cr.requester_name || cr.requester_login_name || "—", lines: [cr.requester_email].filter(Boolean) },
+        // The legacy's requisitioner grid (analysis §1.4) — the part of that
+        // screen worth copying.
+        requisitioner: {
+          name: cr.requester_name || cr.requester_login_name || null,
+          staff_no: cr.requester_staff_no || null,
+          department: cr.requester_department || null,
+          job_title: cr.requester_title || null,
+          email: cr.requester_email || null,
+        },
         validated_by_name: cr.validated_by_name || null,
         validated_by_title: cr.validated_by_title || null,
+        validated_at: cr.validated_at || null,
         approved_by_name: cr.approved_by_name || null,
         approved_by_title: cr.approved_by_title || null,
+        approved_at: cr.approved_at || null,
+        rejection_reason: cr.rejection_reason || null,
+        over_budget_reason: cr.over_budget_reason || null,
+        settlement_reason: cr.settlement_reason || null,
         received_by_name: cr.beneficiary || null,
-        currency: null,
+        amount_in_words: totals.total_payable,
+        currency: cr.currency || null,
       },
     };
   }
 
-  /* §3.3 — the costing worksheet, footer Subtotal (HT) / VAT / Total Estimate.
-   * Totals are computed the same way costing.service.get computes them
-   * (per-line VAT from the line's own tax code; no margin — §2.2). */
+  /*
+   * Owner Q16 C — the receipt for ONE instalment.
+   *
+   * A separate document from the voucher because it records a different fact:
+   * the voucher says what was approved, the receipt says what was actually
+   * handed over, on a date, and what is still to run. Signed by TWO — the
+   * disbursing authority who released it and the person who took it — where
+   * the voucher is signed by three.
+   *
+   * Keyed on the PAYMENT, so a request paid in three tranches produces three
+   * receipts with three refs, three seals and three balances. The legacy's
+   * single `disbursed_time` on the header is precisely the shape that cannot
+   * express this.
+   */
+  if (docType === "CASH_PAYMENT_RECEIPT") {
+    const { rows } = await client.query(
+      `SELECT p.*, cr.cash_request_id, cr.doc_number AS request_number, cr.amount AS request_amount,
+              cr.currency, cr.beneficiary, cr.approved_at AS request_approved_at,
+              cr.disbursement_method, cr.requested_by,
+              d.ref AS dossier_ref, d.entity_id,
+              COALESCE(e_h.signatory_name, u_h.full_name) AS received_by_name,
+              e_h.job_title AS received_by_title, e_h.staff_no AS received_by_staff_no,
+              COALESCE(e_p.signatory_name, u_p.full_name) AS paid_by_name,
+              e_p.job_title AS paid_by_title,
+              COALESCE(e_a.signatory_name, u_a.full_name) AS approved_by_name,
+              e_a.job_title AS approved_by_title,
+              ta.label AS treasury_account_name
+         FROM cash_request_payment p
+         JOIN cash_request cr ON cr.cash_request_id = p.cash_request_id
+         LEFT JOIN dossier d ON d.dossier_id = cr.dossier_id
+         LEFT JOIN app_user u_h ON u_h.user_id = COALESCE(p.received_by, cr.requested_by)
+         LEFT JOIN employee e_h ON e_h.employee_id = u_h.employee_id
+         LEFT JOIN app_user u_p ON u_p.user_id = p.created_by
+         LEFT JOIN employee e_p ON e_p.employee_id = u_p.employee_id
+         LEFT JOIN app_user u_a ON u_a.user_id = cr.approver_id
+         LEFT JOIN employee e_a ON e_a.employee_id = u_a.employee_id
+         LEFT JOIN treasury_account ta ON ta.treasury_account_id = p.treasury_account_id
+        WHERE p.cash_request_payment_id = $1`,
+      [recordId],
+    );
+    const p = rows[0];
+    if (!p) return null;
+
+    /*
+     * Where this instalment sits in the request: everything paid UP TO AND
+     * INCLUDING it, and what was still outstanding after it.
+     *
+     * `paid_on, cash_request_payment_id` as the ordering, not `paid_on` alone:
+     * two instalments released on one day would otherwise order arbitrarily,
+     * and the two receipts could both claim to be the second — with two
+     * different balances, both sealed.
+     */
+    const { rows: siblings } = await client.query(
+      `SELECT cash_request_payment_id, amount
+         FROM cash_request_payment
+        WHERE cash_request_id = $1
+        ORDER BY paid_on, cash_request_payment_id`,
+      [p.cash_request_id],
+    );
+    let paidToDate = 0;
+    let instalmentNo = 0;
+    for (let i = 0; i < siblings.length; i += 1) {
+      paidToDate = Math.round((paidToDate + Number(siblings[i].amount || 0)) * 100) / 100;
+      // Compared against the row's OWN id, not against `recordId`: the latter
+      // arrives from a route param, and a uuid typed in upper case matches the
+      // `WHERE` above (Postgres compares uuids by value) but would never match
+      // a lower-case sibling here — leaving the receipt numbered R1 with a
+      // balance summed over every instalment.
+      if (siblings[i].cash_request_payment_id === p.cash_request_payment_id) { instalmentNo = i + 1; break; }
+    }
+    const requestTotal = Number(p.request_amount || 0);
+
+    return {
+      entity_id: p.entity_id || null,
+      data: {
+        // Derived from the request's own reference so the two documents read as
+        // one file: DF-2026-0007 / R2. There is no separate counter to keep in
+        // step, and a receipt can always be traced back by eye.
+        number: `${p.request_number || String(p.cash_request_id).slice(0, 8)} / R${instalmentNo || 1}`,
+        instalment_no: instalmentNo || 1,
+        instalment_count: siblings.length,
+        date: p.paid_on || p.created_at,
+        request_id: p.cash_request_id,
+        request_number: p.request_number || String(p.cash_request_id).slice(0, 8),
+        request_approved_at: p.request_approved_at || null,
+        dossier_ref: p.dossier_ref || null,
+        amount: Number(p.amount || 0),
+        request_total: requestTotal,
+        paid_to_date: paidToDate,
+        balance: Math.round((requestTotal - paidToDate) * 100) / 100,
+        method: p.disbursement_method || null,
+        treasury_account: p.treasury_account_name || null,
+        beneficiary: p.beneficiary || null,
+        memo: p.memo || null,
+        // The counterparty of this movement — whoever took the cash. `party` is
+        // the shape canonical.js hashes and the verification portal reads.
+        party: {
+          name: p.received_by_name || "—",
+          lines: [p.received_by_staff_no, p.received_by_title].filter(Boolean),
+        },
+        received_by_name: p.received_by_name || null,
+        received_by_title: p.received_by_title || null,
+        received_at: p.received_at || null,
+        received_ack_kind: p.received_ack_kind || null,
+        paid_by_name: p.paid_by_name || null,
+        paid_by_title: p.paid_by_title || null,
+        approved_by_name: p.approved_by_name || null,
+        approved_by_title: p.approved_by_title || null,
+        amount_in_words: Number(p.amount || 0),
+        currency: p.currency || null,
+      },
+    };
+  }
+
+  /*
+   * §3.3 — the costing worksheet.
+   *
+   * WHAT THIS PROJECTION USED TO GET WRONG, and why each mattered.
+   *
+   * `entity_id: null`. Every other document that belongs to a corporate entity
+   * passes one; this passed null, and `resolveEntity` answers null with
+   * `SELECT * FROM corporate_entity ORDER BY created_at LIMIT 1`. So on a
+   * multi-entity tenant — which is the shape this product is sold in — the
+   * costing printed the letterhead, the address and the tax identifiers of
+   * whichever company was created first. It comes from the FILE now, which is
+   * the entity whose paper this is.
+   *
+   * NO COUNTERPARTY. `party` is the shape `canonical.js` hashes and the
+   * verification portal reads. Without it a signed costing attested to
+   * `party: { name: "" }`, so the one field that says whose file this is was
+   * absent from the very payload meant to prove the sheet had not changed.
+   *
+   * NO SHIPMENT FACTS. A pricer prices the SHIPMENT — a vessel, a route, a
+   * B/L, a container count — and the sheet showed a table of charges with none
+   * of it. The snapshot comes first for the same reason the transit order's
+   * does: an approved sheet must keep citing what it was approved WITH.
+   *
+   * TOTALS WERE RECOMPUTED. `computeCosting` at print time answers with
+   * today's tax rates, so reprinting a sheet approved before a VAT change
+   * printed a different total than the copy in the file. 12766 persisted the
+   * totals as columns precisely so the stored figures are what prints; the
+   * recompute stays only as the fallback for a pre-12766 row that has none.
+   *
+   * DÉBOURS VAT IS BUDGETED (12768). A débours is re-billed at the supplier's
+   * net plus their VAT; that VAT is the operations officer's cash to spend, so
+   * on this BUDGET (not a fiscal invoice) it counts toward the VAT total and the
+   * TTC, shown per line as "amount (PT)" and named in a remarks line. The stored
+   * total_vat already includes it.
+   */
   if (docType === "COSTING") {
     const { rows } = await client.query(
-      `SELECT c.*, d.ref AS dossier_ref, v.full_name AS validator_name
+      `SELECT c.*,
+              d.ref AS dossier_ref, d.entity_id, d.bl_mawb, d.pol, d.pod, d.eta, d.incoterm,
+              cm.name AS client_name, cm.niu AS client_niu, cm.rccm AS client_rccm,
+              st.name_en AS service_name_en, st.name_fr AS service_name_fr,
+              rp.name AS rate_provider_name,
+              COALESCE(e_v.signatory_name, v.full_name) AS validator_name, e_v.job_title AS validator_title,
+              COALESCE(e_vb.signatory_name, vb.full_name) AS validated_by_name, e_vb.job_title AS validated_by_title,
+              COALESCE(e_a.signatory_name, ap.full_name) AS approver_name, e_a.job_title AS approver_title
          FROM costing c
          LEFT JOIN dossier d ON d.dossier_id = c.dossier_id
-         LEFT JOIN app_user v ON v.user_id = c.validator_id
+         LEFT JOIN client_master cm ON cm.client_id = d.client_id
+         LEFT JOIN service_type st ON st.service_type_id = d.service_type_id
+         LEFT JOIN rate_provider rp ON rp.rate_provider_id = d.rate_provider_id
+         LEFT JOIN app_user v  ON v.user_id  = c.validator_id
+         LEFT JOIN app_user vb ON vb.user_id = c.validated_by
+         LEFT JOIN app_user ap ON ap.user_id = c.approver_id
+         -- The title is on employee, not on app_user — the join every other
+         -- projection in this file makes (CASH_REQUEST, PURCHASE_REQUEST, the
+         -- invoice pair). signatory_name is the name a person wants ON PAPER,
+         -- which is not always the one they log in under.
+         LEFT JOIN employee e_v  ON e_v.employee_id  = v.employee_id
+         LEFT JOIN employee e_vb ON e_vb.employee_id = vb.employee_id
+         LEFT JOIN employee e_a  ON e_a.employee_id  = ap.employee_id
         WHERE c.costing_id = $1`,
       [recordId],
     );
     const c = rows[0];
     if (!c) return null;
-    const lr = await client.query(
-      `SELECT cl.label, cl.qty, cl.unit_cost, cl.is_disbursement, tc.rate_percent AS tax_rate_percent
-         FROM costing_line cl LEFT JOIN tax_code tc ON tc.tax_code_id = cl.tax_code_id
-        WHERE cl.costing_id = $1 ORDER BY cl.costing_line_id`,
-      [recordId],
-    );
-    // Lazy require (pattern of the transit-order branch above): pulling the
-    // costing rules at module load would force every test that mocks this
-    // service's collaborators to know about them.
-    const { computeCosting } = require("../../costing/costing/costing.rules");
-    const totals = computeCosting(lr.rows);
+
+    // The line reader the worksheet itself uses — container type, item code,
+    // the line's own VAT rate and its pass-through nature, in `line_no` order.
+    // Reading `costing_line` directly here would be a second, poorer copy of a
+    // query that already exists, and it is the copy that would drift.
+    const costingRepo = require("../../costing/costing/costing.repo");
+    const lines = await costingRepo.listLines(client, recordId);
+
+    // Frozen for an approved sheet, live for one still being worked on — the
+    // rule the transit order follows above, for the same reason.
+    let details = c.shipment_details_snapshot || null;
+    if (!details && c.dossier_id) {
+      try {
+        const shipmentDetails = require("../../operations/shipment_details/shipment_details.service");
+        details = await shipmentDetails.forDossier(client, c.dossier_id);
+      } catch (err) {
+        // A file whose service type has lost its field set must still PRINT.
+        logger.warn({ err, costing_id: recordId }, "[documents] costing printed without shipment details");
+      }
+    }
+
+    // Lazy require (the transit-order branch's pattern): pulling the costing
+    // rules at module load would force every test that mocks this service's
+    // collaborators to know about them.
+    const rules = require("../../costing/costing/costing.rules");
+    // 12766 persisted these. The recompute is the fallback for a row written
+    // before it, never the preference — see the header.
+    const stored = c.total_ttc !== null && c.total_ttc !== undefined;
+    const computed = stored ? null : rules.computeCosting(lines);
+    const totals = stored
+      ? {
+        total_ht: Number(c.total_ht || 0),
+        vat_total: Number(c.total_vat || 0),
+        total_ttc: Number(c.total_ttc || 0),
+        disbursement_total: lines.reduce((a, l) => a + (l.is_disbursement ? Number(l.qty) * Number(l.unit_cost) : 0), 0),
+        upstream_vat_total: lines.reduce((a, l) => a + (l.is_disbursement ? Number(l.upstream_vat_amount || 0) : 0), 0),
+      }
+      : {
+        total_ht: computed.total_ht,
+        vat_total: computed.vat_total,
+        total_ttc: computed.total_ttc,
+        disbursement_total: computed.disbursement_total,
+        upstream_vat_total: computed.upstream_vat_total,
+      };
+
+    // Best-effort, like every other derivation on this path: a sheet whose
+    // snapshot cannot be read must still PRINT.
+    let amendment = null;
+    try {
+      const snapshot = await costingRepo.latestSnapshot(client, recordId);
+      if (snapshot) {
+        const diff = rules.diffLines(snapshot.lines || [], lines);
+        if (diff.has_changes) {
+          amendment = { ...diff, since_revision: snapshot.revision, approved_at: snapshot.approved_at };
+        }
+      }
+    } catch (err) {
+      logger.warn({ err, costing_id: recordId }, "[documents] costing printed without its amendment summary");
+    }
+
     return {
-      entity_id: null,
+      entity_id: c.entity_id || null,
       data: {
-        number: c.doc_number || String(c.costing_id).slice(0, 8), date: c.created_at, status: c.status,
-        dossier_ref: c.dossier_ref, validator: c.validator_name, remarks: c.remarks,
+        number: c.doc_number || String(c.costing_id).slice(0, 8),
+        date: c.created_at,
+        status: c.status,
+        // A PAIR, never a pre-joined bilingual string — the transit order's
+        // lesson: a projection that joins the two halves leaves `cfg.language`
+        // nothing to decide.
+        status_words: rules.statusWords(c.status),
+        dossier_ref: c.dossier_ref,
+        service: { fr: c.service_name_fr || c.service_name_en || "", en: c.service_name_en || c.service_name_fr || "" },
+        carrier: c.rate_provider_name || null,
+        incoterm: c.incoterm || null,
+        bl_mawb: c.bl_mawb || null,
+        pol: c.pol || null,
+        pod: c.pod || null,
+        eta: c.eta || null,
+        // The counterparty, in the shape canonical.js hashes and the portal reads.
+        party: {
+          name: c.client_name || "—",
+          lines: clientLines(c),
+        },
+        client: c.client_name || "—",
+        shipment: details || null,
+        validator: c.validator_name,
+        validator_title: c.validator_title || null,
+        validated_by_name: c.validated_by_name || null,
+        validated_by_title: c.validated_by_title || null,
+        validated_at: c.validated_at || null,
+        approved_by_name: c.approver_name || null,
+        approved_by_title: c.approver_title || null,
+        approved_at: c.approved_at || null,
+        remarks: c.remarks,
+        // What moved since the last approval. On paper for the same reason it
+        // is on screen: after an unlock somebody is asked to approve the sheet
+        // a second time, and three changed lines are a shorter read than
+        // fourteen unchanged ones. Derived, never attested — it is deliberately
+        // NOT in the canonical payload, because it describes the diff rather
+        // than the commitment.
+        amendment,
         exchange_rate: Number(c.exchange_rate_to_xaf),
-        lines: lr.rows.map((l) => ({
-          label: l.label, qty: Number(l.qty), unit: Number(l.unit_cost),
+        lines: lines.map((l) => ({
+          label: l.label,
+          item_code: l.item_code || null,
+          // D10: the equipment a per-container charge was priced FOR. A sheet
+          // with "Demurrage" twice and no box named is unreadable — and
+          // demurrage IS one line per container type.
+          container_type: l.container_type_code || null,
+          qty: Number(l.qty),
+          unit: Number(l.unit_cost),
           tax: l.is_disbursement ? null : (l.tax_rate_percent !== null && l.tax_rate_percent !== undefined ? Number(l.tax_rate_percent) : null),
+          is_disbursement: l.is_disbursement === true,
+          // 12768: the supplier's VAT on a débours, now budgeted into the sheet's
+          // VAT total (the stored total_vat already includes it). Shown on the
+          // line as "amount (PT)"; a remarks line explains it.
+          upstream_vat: l.is_disbursement && l.upstream_vat_amount !== null && l.upstream_vat_amount !== undefined
+            ? Number(l.upstream_vat_amount)
+            : null,
           amount: Number(l.qty) * Number(l.unit_cost),
         })),
-        totals: { total_ht: totals.total_ht, vat_total: totals.vat_total, total_ttc: totals.total_ttc, disbursement_total: totals.disbursement_total },
+        totals,
+        amount_in_words: totals.total_ttc,
         currency: c.currency,
       },
     };
@@ -1253,7 +1809,7 @@ async function wetPrintBlockFor(client, { entityRef }) {
  * Best-effort, like everything else on this path: no seals is the same page a
  * tenant with no signatures gets.
  */
-async function sealsFor(client, { entityRef, entity, data, cfg, origin = null, signatures = null }) {
+async function sealsFor(client, { entityRef, entity, data, cfg, origin = null, signatures = null, env = "live" }) {
   if (!entityRef || !cfg || !cfg.show || !cfg.show.signature) return [];
   try {
     const rows = signatures || (await activeSignatures(client, entityRef));
@@ -1261,10 +1817,14 @@ async function sealsFor(client, { entityRef, entity, data, cfg, origin = null, s
     return await sealView.build(client, rows, {
       entity,
       docRef: (data && data.number) || "",
-      // A bilingual document seals in French: the seal is a sentence, not a
-      // label pair, and `sealBlock` has no stacked form to render both in.
+      // The document prints in one language now (never bilingual): the seal
+      // takes the same language as the sheet it sits on.
       language: cfg.language === "en" ? "en" : "fr",
       origin,
+      // The env this render was minted in. Baked into the seal's QR URL so a
+      // sandbox-signed document verifies against sandbox rather than 404ing
+      // against live.
+      env,
     });
   } catch (err) {
     logger.warn({ err: err && err.message, entity_ref: entityRef }, "seals could not be resolved for render");
@@ -1272,11 +1832,11 @@ async function sealsFor(client, { entityRef, entity, data, cfg, origin = null, s
   }
 }
 
-async function verifyBlockFor(client, { entityRef, origin = null, signatures = null }) {
+async function verifyBlockFor(client, { entityRef, origin = null, signatures = null, env = "live" }) {
   const rows = signatures || (await activeSignatures(client, entityRef));
   if (!rows.length) return null;
   try {
-    return await verifyLink.verifyContext(client, { code: rows[0].verify_code, origin });
+    return await verifyLink.verifyContext(client, { code: rows[0].verify_code, origin, env });
   } catch (err) {
     logger.warn({ err: err && err.message, entity_ref: entityRef }, "verification block could not be rendered");
     return null;
@@ -1284,7 +1844,7 @@ async function verifyBlockFor(client, { entityRef, origin = null, signatures = n
 }
 
 /** Live preview → HTML (no PDF). Real record when recordId + a loader exist, else sample. */
-async function preview(client, { docType, entityId, recordId, config, origin = null, language = null }) {
+async function preview(client, { docType, entityId, recordId, config, origin = null, language = null, env = "live" }) {
   const tpl = registry.get(docType);
   if (!tpl) throw new AppError("UNKNOWN_DOC", `No template '${docType}'`, 404);
   let data = tpl.sampleData;
@@ -1320,10 +1880,10 @@ async function preview(client, { docType, entityId, recordId, config, origin = n
   }
   const { cfg, entity } = await resolveCfg(client, docType, ent, config, { language });
   cfg.wet_print = await wetPrintBlockFor(client, { entityRef: signedRef });
-  const verify = await verifyBlockFor(client, { entityRef: signedRef, origin });
+  const verify = await verifyBlockFor(client, { entityRef: signedRef, origin, env });
   // The preview must show the seal the PDF will carry, or the operator checks
   // one document and sends another.
-  const seals = await sealsFor(client, { entityRef: signedRef, entity, data, cfg, origin });
+  const seals = await sealsFor(client, { entityRef: signedRef, entity, data, cfg, origin, env });
   const shown = seals.length ? { ...data, seals } : data;
   return {
     html: tpl.build(shown, cfg, entity, verify),
@@ -1356,7 +1916,7 @@ async function preview(client, { docType, entityId, recordId, config, origin = n
  * `origin` is the host the QR should resolve on. The HTTP path passes the
  * request's own host; the worker passes the tenant's. See verify-link.js.
  */
-async function generate(client, { docType, entityId, recordId, actor, origin = null, language = null }) {
+async function generate(client, { docType, entityId, recordId, actor, origin = null, language = null, env = "live" }) {
   const tpl = registry.get(docType);
   if (!tpl) throw new AppError("UNKNOWN_DOC", `No template '${docType}'`, 404);
   const rec = recordId ? await loadRecord(client, docType, recordId) : null;
@@ -1369,8 +1929,8 @@ async function generate(client, { docType, entityId, recordId, actor, origin = n
   cfg.watermark = kit.watermarkFor(client, cfg.watermark);
   const signatures = await activeSignatures(client, entityRef);
   cfg.wet_print = await wetPrintBlockFor(client, { entityRef });
-  const verify = await verifyBlockFor(client, { entityRef, origin, signatures });
-  const seals = await sealsFor(client, { entityRef, entity, data, cfg, origin, signatures });
+  const verify = await verifyBlockFor(client, { entityRef, origin, signatures, env });
+  const seals = await sealsFor(client, { entityRef, entity, data, cfg, origin, signatures, env });
   const html = tpl.build(seals.length ? { ...data, seals } : data, cfg, entity, verify);
   const out = await pdf.renderAndStore(client, { html, key, entityRef, docType, actor });
   await recordArtifact(client, signatures, out);

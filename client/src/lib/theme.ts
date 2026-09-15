@@ -171,6 +171,31 @@ function pillGround(colour: Rgb, surface: Rgb): Rgb {
 
 const rgbCss = ([r, g, b]: Rgb) => `rgb(${r} ${g} ${b})`;
 
+/**
+ * Carbon or white — whichever is legible ON this fill.
+ *
+ * The same choice `labelOn` makes in `packages/shared/design/palette.js`, and
+ * deliberately only its FIRST branch: the server may darken a tenant's fill
+ * until a label clears AA, because it is deriving a whole palette for a page
+ * nobody has seen yet. Changing the fill under an operator mid-session is a
+ * different thing entirely, so this picks the better of the two and leaves the
+ * colour the tenant chose alone.
+ *
+ * A fill where neither clears AA is a fill the tenant should be warned about,
+ * and the settings preview already does that from the server's `corrections`.
+ * Returning the better of the two is still strictly better than inheriting a
+ * constant chosen for a different colour.
+ */
+export function labelOn(fill?: string | null): string | null {
+  const rgb = fill ? parseHex(fill) : null;
+  if (!rgb) return null;
+  const CARBON: Rgb = [10, 10, 10];
+  const PAPER: Rgb = [255, 255, 255];
+  return contrast(CARBON, rgb) >= contrast(PAPER, rgb)
+    ? "rgb(10 10 10)"
+    : "rgb(255 255 255)";
+}
+
 export function applyBrand(brand: Brand) {
   const r = root();
   const set = (name: string, value?: string | null) => {
@@ -185,7 +210,24 @@ export function applyBrand(brand: Brand) {
   // Accent (full colour strings — Tailwind consumes these directly).
   set("--primary", brand.primary);
   set("--ring", brand.primary);
-  set("--primary-foreground", brand.primaryForeground);
+  /*
+   * ── THE LABEL ON THE FILL IS DERIVED WHEN THE TENANT HAS NOT CHOSEN ONE ──
+   *
+   * `set` skips a null, so before this a tenant who picked a brand colour and
+   * never opened the foreground field kept whatever `index.css` said. That
+   * constant is now carbon, which is right for the default orange (7.63:1) and
+   * wrong for a dark navy, where carbon is the unreadable one.
+   *
+   * So an unset foreground is COMPUTED from the tenant's own fill rather than
+   * inherited. `labelOn` is the same rule `packages/shared/design/palette.js`
+   * applies server-side for the website — whichever of carbon and white reads
+   * better — because two implementations of "readable" would drift, which is
+   * the note at the top of this file about `--primary-ink`.
+   *
+   * F-20 is what happens without it: white on orange at 2.59:1, on every
+   * primary button in the ERP, for every tenant who never touched the field.
+   */
+  set("--primary-foreground", brand.primaryForeground || labelOn(brand.primary));
   set("--secondary", brand.secondary);
   set("--accent", brand.accent);
 

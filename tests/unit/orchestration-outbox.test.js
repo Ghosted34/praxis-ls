@@ -15,11 +15,16 @@
  * THE HANDLERS, and it had never been tested from either side.
  *
  * The handlers behind this are the cross-module money flows —
- * costing-approved-draft-invoice, supplier-invoice-posted-cost-entry,
- * receipt-posted-collected-signal. Double delivery means two draft invoices for
- * one approved costing. Zero delivery means none, permanently, while the app
- * returns 200s. Both have happened in this class of system, and neither is
- * visible without a test that says which is supposed to happen.
+ * supplier-invoice-posted-cost-entry, receipt-posted-collected-signal. Double
+ * delivery means two cost entries for one posted supplier invoice. Zero
+ * delivery means none, permanently, while the app returns 200s. Both have
+ * happened in this class of system, and neither is visible without a test that
+ * says which is supposed to happen.
+ *
+ * (`costing.approved` still appears below as the event key the stub handlers
+ * are registered against — it is a convenient real key, and the handler that
+ * used to answer it was removed in 12766. Nothing here depends on that
+ * handler; the fixtures register their own.)
  *
  * WHAT IS ASSERTED
  *

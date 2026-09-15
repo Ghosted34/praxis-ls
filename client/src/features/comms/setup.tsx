@@ -26,6 +26,7 @@ import {
   MailTroubleshootingCard,
 } from "@/components/mail/smtp-guide";
 import { MailSetupWizard } from "./mail-setup-wizard";
+import { useConfirm } from "@/components/ui/use-confirm";
 
 /* The ERP send points a sender can be bound to. These are the system-mail
  * purposes the app sends today; a sender bound to one becomes its From. */
@@ -434,14 +435,19 @@ export function SetupPage() {
   } | null>(null);
   const [guideOpen, setGuideOpen] = React.useState(false);
   const activeCount = (senders.data || []).filter((s) => s.is_active).length;
+  const [confirm, confirmDialog] = useConfirm();
 
   async function archive(s: api.Sender) {
-    if (
-      !window.confirm(
-        `Archive the "${s.purpose}" sender? It stops being available and is hidden from this list.`,
-      )
-    )
-      return;
+    // Archiving is reversible (the row is hidden, not deleted), so this is the
+    // one confirmation here that is NOT `destructive` — it stays dismissible
+    // and keeps the primary button colour. Reserving red for the irreversible
+    // is what keeps red meaning something.
+    const ok = await confirm({
+      title: `Archive the “${s.purpose}” sender?`,
+      body: "It stops being available and is hidden from this list. Mail already sent through it is unaffected.",
+      confirmLabel: "Archive sender",
+    });
+    if (!ok) return;
     try {
       await api.archiveSender(s.email_identity_id);
       senders.reload();
@@ -521,6 +527,7 @@ export function SetupPage() {
 
   return (
     <section className={pageShell.wide}>
+      {confirmDialog}
       <div className="mb-4 flex items-center justify-between gap-3 border-b border-border pb-3">
         <div>
           <div className="micro uppercase tracking-wide">Comms</div>

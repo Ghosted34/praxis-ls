@@ -4,14 +4,46 @@
  * flex/grid, no CSS variables, logo as absolute HTTPS with alt + width +
  * display:block.
  *
- * The PNG renderer screenshots THIS output, so the two cannot drift on
- * content: they share one HTML.
+ * TWO KINDS, TWO RELATIONSHIPS TO THE PNG.
+ *
+ * For `classic` and `compact`, the PNG renderer screenshots THIS output, so the
+ * two cannot drift: they share one HTML.
+ *
+ * For `card` they do not, and cannot — the card is flexbox, gradients and two
+ * webfonts, none of which an email client can render (signature.card.js explains
+ * why at length). There the PNG is screenshotted from the card document and this
+ * file emits the `<img>` plus a live-text fallback. What keeps THOSE two honest
+ * is that both are computed from the same resolved model, and
+ * `mail-signature.test.js` asserts their text content is identical — the
+ * drift-guard moved from "one HTML" to "one model", it did not disappear.
  */
 "use strict";
 
 const { textContent } = require("./signature.resolve");
 
 const FONT = "Arial, Helvetica, sans-serif";
+
+/**
+ * The card fallback's stack: a library face first, then a generic keyword.
+ *
+ * That is the rule doc/TYPOGRAPHY.md sets for email specifically — "Name only.
+ * Outlook and most desktop clients ignore @font-face; the stack names library
+ * faces first over a generic keyword." Montserrat is in the library and is the
+ * card's own face, so a recipient who happens to have it installed sees the
+ * signature set in the same type as the image above it, and everyone else gets
+ * their system sans. Naming Arial instead, as this did, guaranteed the second
+ * outcome for everybody.
+ */
+const CARD_FONT = "'Montserrat', sans-serif";
+
+/** `tel:` needs digits and a leading +, nothing else. */
+const telHref = (v) => String(v || "").replace(/[^\d+]/g, "");
+
+/** An anchor that stays readable if a client strips the href. */
+function link(href, text, style) {
+  if (!text) return "";
+  return `<a href="${esc(href)}" style="${style};text-decoration:none">${esc(text)}</a>`;
+}
 
 function esc(s) {
   return String(s === null || s === undefined ? "" : s)
@@ -44,10 +76,101 @@ function render(model) {
   const co = model.company || {};
   const kind = model.kind || "classic";
 
+  if (kind === "card") {
+    return cardHtml({ width, p, c, co, model });
+  }
   if (kind === "compact") {
     return compactHtml({ width, brand, p, c, co });
   }
   return classicHtml({ width, brand, accent, p, c, co, model });
+}
+
+/**
+ * The CARD, as an email body: the rendered PNG, with the same content as live
+ * text underneath it.
+ *
+ * WHY BOTH, and not just the image. The card is a designed object — Montserrat,
+ * a script motto, four gradients — and no email client can lay that out (see
+ * the header of signature.card.js). A picture of it is the only way a recipient
+ * sees what the tenant designed. But an image alone is a bad signature: Outlook
+ * and Gmail block remote images by default for unknown senders, so the first
+ * mail a new client receives would carry a grey box where the sender's phone
+ * number should be; a screen reader gets one alt string instead of a contact
+ * block; and a mail full of image and empty of text scores worse with spam
+ * filters. So the image carries the design and the text carries the content,
+ * and a recipient who has images turned off still gets a working signature
+ * rather than a broken one.
+ *
+ * The text half is deliberately the SAME markup the classic layout emits —
+ * tables, inline styles, web-safe stack — because it is the half that has to
+ * survive Outlook's Word engine.
+ */
+function cardHtml({ width, p, c, co, model }) {
+  const src = model.card_png_url || "";
+  const pal = model.palette || {};
+  // THE TENANT'S palette, not a literal. This read `model.brand_color ||
+  // "#0f4c81"`, and the card template deliberately sets no `brand_color`
+  // (its colours resolve from branding), so every fallback ever rendered used
+  // that hard-coded blue — the one colour on the page belonging to nobody.
+  const ink = pal.ink || model.brand_color || "#0f4c81";
+  const warm = pal.warm || model.accent_color || "#c9a227";
+  const alt = [p.person_line || p.department, p.job_title, co.legal_name]
+    .filter(Boolean).join(" — ");
+
+  const image = src
+    ? `<tr><td style="padding:0 0 14px 0"><img src="${esc(src)}" alt="${esc(alt)}" width="${width}" style="display:block;width:${width}px;max-width:100%;height:auto;border:0;outline:none;text-decoration:none" /></td></tr>`
+    : "";
+
+  const phones = [c.phone_desk, c.phone_mobile].filter(Boolean);
+  const phoneLine = phones
+    .map((v) => link(`tel:${telHref(v)}`, v, "color:#334155"))
+    .join('<span style="color:#cbd5e1"> &nbsp;|&nbsp; </span>');
+
+  const rows = [
+    p.person_line
+      && `<div style="font-family:${CARD_FONT};font-size:14px;font-weight:bold;color:${ink};letter-spacing:0.3px;line-height:20px">${esc(p.person_line)}</div>`,
+    // The warm dash, echoing the card's title rule — the one mark that ties the
+    // text block to the image above it without repeating anything.
+    p.job_title
+      && `<div style="font-family:${CARD_FONT};font-size:12px;color:#475569;line-height:18px;padding-top:1px">`
+        + `<span style="color:${warm};font-weight:bold">—</span>&nbsp; ${esc(p.job_title)}</div>`,
+    co.legal_name
+      && `<div style="font-family:${CARD_FONT};font-size:12px;color:#334155;line-height:18px;padding-top:6px">${esc(co.legal_name)}</div>`,
+    phoneLine
+      && `<div style="font-family:${CARD_FONT};font-size:12px;line-height:18px;padding-top:6px">${phoneLine}</div>`,
+    c.email
+      && `<div style="font-family:${CARD_FONT};font-size:12px;line-height:18px">${link(`mailto:${c.email}`, c.email, "color:#334155")}</div>`,
+    co.address_line
+      && `<div style="font-family:${CARD_FONT};font-size:12px;color:#64748b;line-height:18px">${esc(co.address_line)}</div>`,
+    co.website
+      && `<div style="font-family:${CARD_FONT};font-size:12px;line-height:18px;padding-top:2px">`
+        + `${link(webHref(co.website), co.website, `color:${ink};font-weight:bold`)}</div>`,
+    co.confidentiality
+      && `<div style="font-family:${CARD_FONT};font-size:10px;color:#94a3b8;line-height:15px;padding-top:8px">${esc(co.confidentiality)}</div>`,
+  ].filter(Boolean).join("");
+
+  // A 3px rule in the brand colour, then the block. Two cells rather than a
+  // border-left because Outlook's Word engine drops CSS borders on a <td> but
+  // renders a background-coloured cell reliably — the same reason the classic
+  // layout puts its logo panel in its own cell.
+  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="${width}" style="width:${width}px;border-collapse:collapse;max-width:${width}px">
+  ${image}
+  <tr><td style="padding:0">
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse">
+      <tr>
+        <td width="3" bgcolor="${ink}" style="width:3px;background:${ink};font-size:0;line-height:0">&nbsp;</td>
+        <td width="14" style="width:14px">&nbsp;</td>
+        <td style="vertical-align:top">${rows}</td>
+      </tr>
+    </table>
+  </td></tr>
+</table>`;
+}
+
+/** A bare domain is not a link until it has a scheme. */
+function webHref(v) {
+  const s = String(v || "").trim();
+  return /^https?:\/\//i.test(s) ? s : `https://${s}`;
 }
 
 function compactHtml({ width, brand, p, c, co }) {
@@ -93,6 +216,11 @@ function classicHtml({ width, brand, accent, p, c, co, model }) {
   <tr>${left}${cell(body, "padding:12px 16px;vertical-align:top")}</tr>
   ${motto}
 </table>`;
+}
+
+/** Values on one line, with no dangling separator when one is absent. */
+function joinDot(parts) {
+  return parts.map((v) => (v === null || v === undefined ? "" : String(v).trim())).filter(Boolean).join(" · ");
 }
 
 function joinPhoneWeb(co) {

@@ -9,6 +9,7 @@ const events = require("./document_vault.events");
 const { assertDocType, moduleKeyForDocType } = require("./document_vault.types");
 const identityCache = require("../../../shared/cache/identity-cache");
 const storage = require("../../../services/storage.service");
+const imagePipeline = require("../../../services/image-pipeline.service");
 const { emitEvent, audit, resolveActorId } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
 const { parseDataUrl } = require("../../../utils/data-url");
@@ -181,7 +182,7 @@ const list = (client, q) => repo.list(client, q);
  */
 async function createDocument(client, opts) {
   const {
-    entityRef = null, docType = null, dataUrl, fileContext = null, folderRef = null,
+    entityRef = null, docType = null, dataUrl, file = null, fileContext = null, folderRef = null,
     dossierId = null, docTypeRefId = null, clientId = null, originalName = null,
     // Stricter rules for one caller, rather than tightened for all. An
     // operations file accepts what legacy accepted — 5 MB, PDF/PNG/JPG, content
@@ -196,10 +197,20 @@ async function createDocument(client, opts) {
   // Parameters are legal in a data URL's media type (`;codecs=`, `;charset=`)
   // and the pattern this replaced could not cross them — see utils/data-url.
   // `mimeType` is the bare type, which is what `allowedTypes` compares against.
-  const parsed = parseDataUrl(dataUrl);
-  if (!parsed) throw new AppError("BAD_FILE", "Expected a base64 data URL", 400);
-  const contentType = parsed.mimeType;
-  const buffer = parsed.buffer;
+  // Either transport. `file` is the multipart path (multer-shaped); `dataUrl`
+  // is the legacy JSON one, still used by callers that have not migrated and by
+  // internal callers that synthesise a document rather than receiving one.
+  let contentType;
+  let buffer;
+  if (file && Buffer.isBuffer(file.buffer)) {
+    contentType = String(file.mimetype || "").toLowerCase();
+    buffer = file.buffer;
+  } else {
+    const parsed = parseDataUrl(dataUrl);
+    if (!parsed) throw new AppError("BAD_FILE", "Expected a file upload or a base64 data URL", 400);
+    contentType = parsed.mimeType;
+    buffer = parsed.buffer;
+  }
   if (!buffer.length) throw new AppError("EMPTY_FILE", "File is empty", 422);
   if (buffer.length > maxBytes) {
     throw new AppError("FILE_TOO_LARGE", `File exceeds ${Math.round(maxBytes / (1024 * 1024))} MB`, 413);
@@ -223,10 +234,32 @@ async function createDocument(client, opts) {
       throw new AppError("BAD_FILE_TYPE", `This file says it is ${contentType} but its contents are ${actual}`, 422);
     }
   }
-  const ext = EXT[contentType] || "bin";
-  const contentHash = crypto.createHash("sha256").update(buffer).digest("hex");
+  // Compress AFTER validation and sniffing — so the checks above judge what the
+  // user actually sent — and BEFORE hashing, which is the ordering that matters
+  // most in this function. document_signature records `artifact_hash` from this
+  // row's `content_hash`, and document_verification compares the two back
+  // against the stored file; a hash taken over the pre-compression bytes would
+  // fail verification on a document nobody had tampered with.
+  //
+  // The 'document' profile downscales an oversized scan and re-encodes at high
+  // quality but applies NO tonal correction: a vault document has to keep
+  // matching the paper it came from. PDFs and other non-rasters pass straight
+  // through. See image-pipeline.service.js.
+  const processed = await imagePipeline.processImage(
+    {
+      buffer,
+      mimetype: contentType,
+      originalname: originalName || `upload.${EXT[contentType] || "bin"}`,
+    },
+    { profile: "document" },
+  );
+  const storedBuffer = processed.master.buffer;
+  const storedType = processed.master.mime_type || contentType;
+  const ext = EXT[storedType] || EXT[contentType] || "bin";
+  const contentHash = crypto.createHash("sha256").update(storedBuffer).digest("hex");
   const key = `tenant_${slug}/vault/doc_${crypto.randomBytes(8).toString("hex")}.${ext}`;
-  await storage.put(buffer, { key, contentType });
+  await storage.put(storedBuffer, { key, contentType: storedType });
+  await imagePipeline.putDerivatives(key, processed.derivatives);
   const row = await repo.insert(client, {
     entity_ref: entityRef, doc_type: docType, storage_path: key, content_hash: contentHash,
     file_context: fileContext, folder_ref: folderRef, dossier_id: dossierId, status: "VERIFIED",

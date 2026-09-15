@@ -13,8 +13,8 @@ const GUIDES: { title: string; body: string; to?: string }[] = [
     to: "/",
   },
   {
-    title: "Operation files",
-    body: "The dossier is the centre of gravity — route, milestones, costing, money and documents in one 360° view.",
+    title: "Operations files",
+    body: "The operations file is the centre of gravity — route, milestones, costing, money and documents in one 360° view.",
     to: "/operations",
   },
   {

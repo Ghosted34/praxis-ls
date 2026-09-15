@@ -77,7 +77,7 @@ const OPP_AI: AiAction[] = [
     label: "Win / lose",
     kind: "write",
     describe:
-      "Mark an opportunity won (optionally open a delivery dossier) or lost.",
+      "Mark an opportunity won (optionally open a delivery file) or lost.",
   },
 ];
 

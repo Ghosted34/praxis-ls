@@ -18,7 +18,13 @@ register(dossierMilestones);                                    // dossier.creat
 register({ eventKey: "dossier.updated", handlerKey: "dossier.updated:instantiate-milestones", feature: null, run: dossierMilestones.run }); // late service_type
 
 // ── Operations → Finance (money flow) ──
-register(require("./costing-approved-draft-invoice"));          // costing.approved → draft final invoice (async backstop; sync primary in costing.service)
+// 12766 — `costing.approved → draft final invoice` is GONE, both the async
+// backstop that lived here and the synchronous call in costing.service.
+// A costing is a BUDGET raised by an operations officer; the final invoice is
+// raised by a finance officer from the accepted quotation, which is where its
+// prices come from (`final_invoice.assertPricedSource`). A document that
+// silently creates another department's document is a control weakness, and
+// the invoice it opened was an empty shell nobody had asked for.
 register(require("./supplier-invoice-posted-cost-entry"));      // supplier_invoice.posted → dossier cost_entry (links existing GL entry)
 register(require("./fuel-log-created-dossier-cost"));            // fuel_log.created → dossier cost (recordCost, settings-gated)
 

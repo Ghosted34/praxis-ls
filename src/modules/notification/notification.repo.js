@@ -20,12 +20,12 @@ async function mine(client, userId, q = {}) {
  * shared/events/emit.js. Runs on the caller's connection so it can join the
  * triggering transaction.
  */
-async function insertForUser(client, { userId, eventTypeKey = null, title, body = null, entityRef = null, priority = "NORMAL", category = null }) {
+async function insertForUser(client, { userId, eventTypeKey = null, title, body = null, entityRef = null, priority = "NORMAL", category = null, linkUrl = null }) {
   const { rows } = await client.query(
-    `INSERT INTO notification (user_id, channel, event_type_key, title, body, entity_ref, priority, category)
-     VALUES ($1, 'IN_APP', $2, $3, $4, $5, $6, $7)
+    `INSERT INTO notification (user_id, channel, event_type_key, title, body, entity_ref, priority, category, link_url)
+     VALUES ($1, 'IN_APP', $2, $3, $4, $5, $6, $7, $8)
      RETURNING notification_id, created_at`,
-    [userId, eventTypeKey, title, body, entityRef, priority === "HIGH" ? "HIGH" : "NORMAL", category],
+    [userId, eventTypeKey, title, body, entityRef, priority === "HIGH" ? "HIGH" : "NORMAL", category, linkUrl],
   );
   return rows[0];
 }
@@ -44,15 +44,42 @@ async function markAllRead(client, userId) {
 }
 
 // ── Preferences (1.2) — a user manages their own opt-outs. Missing row = enabled. ──
+/**
+ * INTERRUPT is a pseudo-channel. It reads and writes through this same endpoint
+ * so the API, the validator and the Preferences grid need no separate path, but
+ * it is backed by its own table — `notification_preference` is pre-existing and
+ * migrations above 13791 may not widen its channel CHECK without breaking
+ * fresh-tenant provisioning (see migration 13795).
+ */
+const INTERRUPT = "INTERRUPT";
+
 async function getPreferences(client, userId) {
-  const { rows } = await client.query(
-    "SELECT channel, category, enabled, updated_at FROM notification_preference WHERE user_id = $1 ORDER BY channel, category",
-    [userId]);
-  return rows;
+  const [base, interrupt] = await Promise.all([
+    client.query(
+      "SELECT channel, category, enabled, updated_at FROM notification_preference WHERE user_id = $1 ORDER BY channel, category",
+      [userId]),
+    client.query(
+      "SELECT category, enabled, updated_at FROM notification_interrupt_preference WHERE user_id = $1 ORDER BY category",
+      [userId]),
+  ]);
+  return [
+    ...base.rows,
+    ...interrupt.rows.map((r) => ({ channel: INTERRUPT, ...r })),
+  ];
 }
 async function putPreferences(client, userId, prefs) {
   const out = [];
   for (const p of prefs) {
+    if (p.channel === INTERRUPT) {
+       
+      const { rows } = await client.query(
+        "INSERT INTO notification_interrupt_preference (user_id, category, enabled) VALUES ($1,$2,$3) " +
+          "ON CONFLICT (user_id, category) DO UPDATE SET enabled = EXCLUDED.enabled, updated_at = now() " +
+          "RETURNING category, enabled, updated_at",
+        [userId, p.category, p.enabled]);
+      out.push({ channel: INTERRUPT, ...rows[0] });
+      continue;
+    }
      
     const { rows } = await client.query(
       "INSERT INTO notification_preference (user_id, channel, category, enabled) VALUES ($1,$2,$3,$4) " +
@@ -116,15 +143,32 @@ async function requesterFor(client, entityRef) {
 }
 
 // ── Web-Push subscriptions (0473) — a user's opted-in browsers/devices. ──
-async function savePushSubscription(client, userId, { endpoint, p256dh, auth, userAgent }) {
+/**
+ * Register (or refresh) one device.
+ *
+ * `vapidKeyHash` (12770) is the fingerprint of the public key the browser
+ * subscribed with. It is what lets a later send recognise a subscription that
+ * belongs to a key this deployment has since rotated away from — the failure
+ * that produced a permanent, silent push outage, because push services answer
+ * that case with 403 and every safety net here was watching for 404/410.
+ *
+ * `last_used_at` is deliberately NOT set here any more. It was, by both this
+ * and the rotation below, and nothing else ever wrote it — so the one column
+ * that could say "has this device ever actually received anything" only ever
+ * said "when did it register". The send path writes it now; `created_at`
+ * already records the registration.
+ */
+async function savePushSubscription(client, userId, { endpoint, p256dh, auth, userAgent, vapidKeyHash = null }) {
   const { rows } = await client.query(
-    `INSERT INTO push_subscription (user_id, endpoint, p256dh, auth, user_agent, last_used_at)
-     VALUES ($1,$2,$3,$4,$5, now())
+    `INSERT INTO push_subscription (user_id, endpoint, p256dh, auth, user_agent, vapid_key_hash)
+     VALUES ($1,$2,$3,$4,$5,$6)
      ON CONFLICT (endpoint) DO UPDATE
        SET user_id = EXCLUDED.user_id, p256dh = EXCLUDED.p256dh, auth = EXCLUDED.auth,
-           user_agent = EXCLUDED.user_agent, last_used_at = now()
+           user_agent = EXCLUDED.user_agent,
+           vapid_key_hash = COALESCE(EXCLUDED.vapid_key_hash, push_subscription.vapid_key_hash),
+           last_error = NULL, last_failed_at = NULL
      RETURNING subscription_id`,
-    [userId, endpoint, p256dh, auth, userAgent || null],
+    [userId, endpoint, p256dh, auth, userAgent || null, vapidKeyHash],
   );
   return rows[0];
 }
@@ -157,14 +201,15 @@ async function setRotationToken(client, endpoint, tokenHash) {
  * Returns the owning user_id when a row moved, or null when the token was
  * unknown, already spent, or the subscription is gone.
  */
-async function rotatePushSubscription(client, { tokenHash, endpoint, p256dh, auth }) {
+async function rotatePushSubscription(client, { tokenHash, endpoint, p256dh, auth, vapidKeyHash = null }) {
   const { rows } = await client.query(
     `UPDATE push_subscription
         SET endpoint = $2, p256dh = $3, auth = $4,
-            rotation_token_hash = NULL, last_used_at = now()
+            vapid_key_hash = COALESCE($5, vapid_key_hash),
+            rotation_token_hash = NULL, last_error = NULL, last_failed_at = NULL
       WHERE rotation_token_hash = $1
       RETURNING user_id, subscription_id`,
-    [tokenHash, endpoint, p256dh, auth],
+    [tokenHash, endpoint, p256dh, auth, vapidKeyHash],
   );
   return rows[0] || null;
 }
@@ -176,6 +221,26 @@ async function countPushSubscriptions(client, userId) {
     [userId],
   );
   return rows[0].n;
+}
+
+/**
+ * One row per registered device, for the Settings panel and the self-test.
+ *
+ * The ENDPOINT never leaves the server. It is a capability URL: anyone holding
+ * it can push to that device, which is exactly why 12752 refused to use it as
+ * proof of identity. Its host is enough to tell an Android phone from a
+ * desktop Firefox, and the user agent names the rest.
+ */
+async function listPushSubscriptions(client, userId) {
+  const { rows } = await client.query(
+    `SELECT endpoint, user_agent, vapid_key_hash, created_at,
+            last_used_at, last_failed_at, last_error
+       FROM push_subscription
+      WHERE user_id = $1
+      ORDER BY created_at`,
+    [userId],
+  );
+  return rows;
 }
 
 /**
@@ -224,6 +289,12 @@ async function deletePushSubscription(client, userId, endpoint) {
  * (security-critical alerts are unconditional).
  */
 async function isChannelEnabled(client, userId, channel, category, defaultEnabled = true) {
+  if (channel === INTERRUPT) {
+    const { rows } = await client.query(
+      "SELECT enabled FROM notification_interrupt_preference WHERE user_id = $1 AND category = $2",
+      [userId, category]);
+    return rows[0] ? rows[0].enabled === true : defaultEnabled;
+  }
   const { rows } = await client.query(
     "SELECT enabled FROM notification_preference WHERE user_id = $1 AND channel = $2 AND category = $3",
     [userId, channel, category]);
@@ -243,11 +314,23 @@ async function isChannelEnabled(client, userId, channel, category, defaultEnable
  */
 async function preferencesFor(client, userIds, channels, category) {
   if (!userIds || userIds.length === 0) return new Map();
+  // One UNION rather than a second round-trip: the batch fan-out reads these
+  // once for every recipient of one event, and PERF S5 exists because this path
+  // used to issue a query per user per channel.
+  const wantsInterrupt = (channels || []).includes(INTERRUPT);
   const { rows } = await client.query(
     `SELECT user_id, channel, enabled
        FROM notification_preference
-      WHERE user_id = ANY($1::uuid[]) AND channel = ANY($2::text[]) AND category = $3`,
-    [userIds, channels, category],
+      WHERE user_id = ANY($1::uuid[]) AND channel = ANY($2::text[]) AND category = $3
+     UNION ALL
+     SELECT user_id, $5::text AS channel, enabled
+       FROM notification_interrupt_preference
+      WHERE $4::boolean AND user_id = ANY($1::uuid[]) AND category = $3`,
+    // Bound, not interpolated. It is a module constant today, but this file
+    // already carries a warning about a column name reaching SQL by
+    // concatenation, and the shape is what review and CodeQL read — not the
+    // provenance of this particular string.
+    [userIds, channels, category, wantsInterrupt, INTERRUPT],
   );
   const map = new Map();
   for (const r of rows) map.set(`${r.user_id}:${r.channel}`, r.enabled === true);
@@ -262,13 +345,13 @@ async function preferencesFor(client, userIds, channels, category) {
  * building a VALUES list, means N placeholders and a statement whose text
  * changes with the recipient count, which defeats the plan cache.
  */
-async function insertForUsers(client, userIds, { eventTypeKey = null, title, body = null, entityRef = null, priority = "NORMAL", category = null }) {
+async function insertForUsers(client, userIds, { eventTypeKey = null, title, body = null, entityRef = null, priority = "NORMAL", category = null, linkUrl = null }) {
   if (!userIds || userIds.length === 0) return [];
   const { rows } = await client.query(
-    `INSERT INTO notification (user_id, channel, event_type_key, title, body, entity_ref, priority, category)
-     SELECT u, 'IN_APP', $2, $3, $4, $5, $6, $7 FROM unnest($1::uuid[]) AS u
+    `INSERT INTO notification (user_id, channel, event_type_key, title, body, entity_ref, priority, category, link_url)
+     SELECT u, 'IN_APP', $2, $3, $4, $5, $6, $7, $8 FROM unnest($1::uuid[]) AS u
      RETURNING notification_id, user_id, created_at`,
-    [userIds, eventTypeKey, title, body, entityRef, priority === "HIGH" ? "HIGH" : "NORMAL", category],
+    [userIds, eventTypeKey, title, body, entityRef, priority === "HIGH" ? "HIGH" : "NORMAL", category, linkUrl],
   );
   return rows;
 }
@@ -312,7 +395,7 @@ module.exports = {
   getPreferences, putPreferences, isChannelEnabled,
   preferencesFor, insertForUsers, activeEmailsFor, unreadCountsFor,
   savePushSubscription, deletePushSubscription,
-  setRotationToken, rotatePushSubscription, countPushSubscriptions,
+  setRotationToken, rotatePushSubscription, countPushSubscriptions, listPushSubscriptions,
   claimDeviceLapseNotice, clearDeviceLapse,
   roleRecipients, requesterFor, recipientsWithPermission,
 };

@@ -8,6 +8,8 @@ import {
   type PortfolioStory,
 } from "@/lib/portfolio-api";
 import { PublicApiError, messageFor } from "@/lib/api";
+import { listCorridors, type Corridor } from "@/lib/corridors-api";
+import { CorridorPanel } from "@/components/site/corridor-panel";
 import { currentLocale, tStatic } from "@/lib/i18n";
 import { PageContainer, PageShell } from "@/components/site/page-shell";
 import { MediaCard, MoreLink, Section } from "@/components/site/section";
@@ -18,6 +20,13 @@ import { PageSkeleton, Skeleton } from "@/components/ui/skeleton";
 import { Chip } from "@/components/ui/pill";
 import { useDocumentMeta } from "@/lib/use-document-meta";
 import { p } from "@/lib/base-path";
+import { ButtonLink } from "@/components/ui/button";
+import { BoltIcon, DocumentIcon } from "@/components/ui/icons";
+import { SectionHead } from "@/components/site/section-head";
+import { BgMap } from "@/components/ui/bg-map";
+import { StagedLines } from "@/components/ui/type";
+import { BadgePill } from "@/components/ui/badge-pill";
+import { Reveal } from "@/components/ui/reveal";
 
 /**
  * `/public/portfolio` and `/public/portfolio/:slug` — published case notes, from
@@ -49,6 +58,12 @@ export function PortfolioIndexPage() {
   const { t } = useTranslation();
   const [rows, setRows] = React.useState<PortfolioCard[] | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  /* The lanes, for the empty case only — and fetched unconditionally beside the
+     stories rather than after them, because a page that waits for one empty
+     answer before asking the next question spends two round trips to show
+     nothing. The home page's proof band makes the same call for the same
+     reason. */
+  const [lanes, setLanes] = React.useState<Corridor[] | null>(null);
 
   React.useEffect(() => {
     let alive = true;
@@ -60,6 +75,11 @@ export function PortfolioIndexPage() {
           setRows([]);
         else setError(messageFor(e, tStatic("errors.loadFailed")));
       });
+    listCorridors()
+      .then((r) => alive && setLanes(Array.isArray(r) ? r : []))
+      // FEATURE_DISABLED is a configuration state, not an outage: no lanes, no
+      // noise.
+      .catch(() => alive && setLanes([]));
     return () => {
       alive = false;
     };
@@ -71,14 +91,35 @@ export function PortfolioIndexPage() {
   });
 
   return (
-    <PageShell label={t("site.portfolioPage.title")}>
-      <Section
-        eyebrow={t("site.proof.eyebrow")}
-        title={t("site.portfolioPage.title")}
-        lead={t("site.portfolioPage.sub")}
-        // Index page with no hero band — this is the page h1.
-        titleAs="h1"
-      >
+    <PageShell label={t("site.portfolioPage.title")} footer>
+      {/* §8.7's first acceptance criterion is EVERY route in `router.tsx`, not
+          only the six §8 names. This one shipped as a bare `<h1>` on white and
+          is the page a buyer reaches when they want evidence rather than a
+          brochure — the same plate as the other index routes, so the site has
+          one entrance vocabulary. */}
+      <section className="band-hero relative overflow-hidden">
+        <BgMap />
+        <PageContainer className="relative">
+          <BadgePill onDark>{t("site.proof.eyebrow")}</BadgePill>
+          <SectionHead
+            className="mt-4"
+            as="h1"
+            titleClass="hero-title"
+            onDark
+            /* F-17: the LCP element on this route. */
+            title={
+              <StagedLines
+                paintImmediately
+                text={t("site.portfolioPage.titleMain")}
+              />
+            }
+            accent={t("site.portfolioPage.titleAccent")}
+            lead={t("site.portfolioPage.sub")}
+          />
+        </PageContainer>
+      </section>
+
+      <Section>
         {error ? (
           <ErrorState message={error} />
         ) : rows === null ? (
@@ -88,27 +129,63 @@ export function PortfolioIndexPage() {
             ))}
           </div>
         ) : !rows.length ? (
-          <EmptyState
-            title={t("site.portfolioPage.empty")}
-            hint={t("site.proof.empty")}
-          />
+          /* Two answers, in descending order of what they prove — the same pair
+             the home page's proof band offers, and deliberately the same
+             component rather than a second version of it.
+
+             No case notes does not mean nothing to show. The lanes are not copy:
+             they are a GROUP BY over completed itinerary legs, floored so that
+             no corridor can identify a client's shipment. N12 forbids inventing
+             proof; it does not forbid counting it. Below the floor, or before
+             the ledger has enough history, the honest sentence is still the
+             answer. */
+          lanes && lanes.length ? (
+            <CorridorPanel lanes={lanes} />
+          ) : (
+            <EmptyState
+              title={t("site.portfolioPage.empty")}
+              hint={t("site.proof.empty")}
+            />
+          )
         ) : (
-          <div className="grid gap-x-8 gap-y-6 sm:grid-cols-2 lg:grid-cols-3">
-            {rows.map((s) => (
-              <MediaCard
-                key={s.slug}
-                image={s.cover_url}
-                imageAlt={s.client_name || s.title}
-                eyebrow={s.client_name || undefined}
-                title={s.title}
-                to={p(`/portfolio/${encodeURIComponent(s.slug)}`)}
-                linkLabel={t("site.proof.more")}
-              >
-                {s.service_category ? <Chip>{s.service_category}</Chip> : null}
-              </MediaCard>
+          <ul className="grid gap-x-8 gap-y-6 sm:grid-cols-2 lg:grid-cols-3">
+            {rows.map((s, i) => (
+              <Reveal as="li" key={s.slug} delay={(i % 3) as 0 | 1 | 2}>
+                <MediaCard
+                  className="h-full"
+                  image={s.cover_url}
+                  imageAlt={s.client_name || s.title}
+                  // A story whose cover the tenant never marked public is the
+                  // normal case, not the exception — the allowlist nulls it.
+                  icon={DocumentIcon}
+                  eyebrow={s.client_name || undefined}
+                  title={s.title}
+                  to={p(`/portfolio/${encodeURIComponent(s.slug)}`)}
+                  linkLabel={t("site.proof.more")}
+                >
+                  {s.service_category ? (
+                    <Chip>{s.service_category}</Chip>
+                  ) : null}
+                </MediaCard>
+              </Reveal>
             ))}
-          </div>
+          </ul>
         )}
+      </Section>
+
+      {/* The alternating surface, and the way out of a page whose whole job is
+          to make somebody want one (§4 pattern 6). */}
+      <Section
+        variant="muted"
+        divided
+        eyebrow={t("site.quote.kicker")}
+        eyebrowIcon={BoltIcon}
+        title={t("site.quote.title")}
+        lead={t("site.quote.sub")}
+      >
+        <ButtonLink to={p("/quote")} size="lg">
+          {t("site.quote.bandCta")}
+        </ButtonLink>
       </Section>
     </PageShell>
   );
@@ -211,7 +288,7 @@ export function PortfolioStoryPage() {
   return (
     <PageShell label={story.title}>
       <article>
-        <section className="band">
+        <section className="band band-muted">
           <PageContainer size="reading">
             <nav aria-label={t("site.portfolioPage.title")} className="mb-6">
               <Link
@@ -228,17 +305,15 @@ export function PortfolioStoryPage() {
                 className="mb-8 aspect-[21/9] w-full rounded-[calc(var(--radius)+4px)] border object-cover"
               />
             ) : null}
-            <p className="eyebrow">
+            <BadgePill>
               {story.service_category || t("site.proof.eyebrow")}
-            </p>
-            <h1 className="mt-3 text-h1 font-semibold leading-[1.08] tracking-tight">
-              {story.title}
-            </h1>
-            {story.headline ? (
-              <p className="mt-4 text-lg text-muted-foreground">
-                {story.headline}
-              </p>
-            ) : null}
+            </BadgePill>
+            <SectionHead
+              className="mt-4"
+              as="h1"
+              title={story.title}
+              lead={story.headline || undefined}
+            />
             <div className="mt-5 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
               {story.client_name ? <Chip>{story.client_name}</Chip> : null}
               {month ? (
@@ -252,7 +327,11 @@ export function PortfolioStoryPage() {
 
         <Section divided>
           <div className="grid gap-10 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-            <div className="min-w-0 max-w-prose space-y-8">
+            {/* The narrative, which a reader scrolls to. The KPI panel beside
+                it gets its own Reveal rather than sharing this one: on a phone
+                they stack, and one wrapper would hold the figures hidden until
+                the prose above them had arrived. */}
+            <Reveal className="min-w-0 max-w-prose space-y-8">
               {story.executive_summary ? (
                 <div>
                   <h2 className="text-h3 font-semibold tracking-tight">
@@ -293,9 +372,9 @@ export function PortfolioStoryPage() {
                   </figcaption>
                 </figure>
               )}
-            </div>
+            </Reveal>
 
-            <div className="space-y-6">
+            <Reveal className="space-y-6" delay={1}>
               {kpis.length > 0 && (
                 <Panel title={t("site.portfolioPage.results")} titleAs="h2">
                   <dl className="grid grid-cols-2 gap-x-4 gap-y-5">
@@ -325,8 +404,8 @@ export function PortfolioStoryPage() {
                   </div>
                 </Card>
               ) : null}
-              <MoreLink to={p("#quote")}>{t("site.hero.cta")}</MoreLink>
-            </div>
+              <MoreLink to={p("/quote")}>{t("site.hero.cta")}</MoreLink>
+            </Reveal>
           </div>
         </Section>
       </article>

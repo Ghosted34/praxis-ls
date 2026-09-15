@@ -35,6 +35,7 @@
  */
 import * as React from "react";
 import { Button } from "@/components/ui/button";
+import { DateTimeField } from "@/components/ui/datetime-field";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { Select } from "@/components/ui/modal";
 import { Input } from "@/components/ui/input";
@@ -168,7 +169,7 @@ export function TriageBar({
 
       {/* The SLA, in the terms an operator cares about: is it late. */}
       {thread.sla_due_at && (
-        <p className={overdue ? "text-xs font-medium text-[var(--bad)]" : "text-xs text-muted-foreground"}>
+        <p className={overdue ? "text-xs font-medium text-[rgb(var(--bad))]" : "text-xs text-muted-foreground"}>
           {overdue
             ? `${tr("A first reply was due")} ${dateTimeFmt(thread.sla_due_at)}.`
             : dueSoon
@@ -206,10 +207,9 @@ export function TriageBar({
             ))}
           </div>
           <div className="flex items-center gap-2">
-            <Input
-              type="datetime-local"
+            <DateTimeField
               value={customDue}
-              onChange={(e) => setCustomDue(e.target.value)}
+              onChange={setCustomDue}
               aria-label={tr("Bring it back at")}
               className="h-8 text-xs"
             />

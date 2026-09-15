@@ -46,6 +46,13 @@ const ALLOW_BASE_TABLE = {
     "Owns the draft lifecycle. `sweepDrafts` enumerates drafts ON PURPOSE — it " +
     "is the one query in the codebase whose job is to find them — and the " +
     "delete is scoped to status = 'DRAFT'. The view would return nothing.",
+  "modules/operations/operations_file/operations_file.repo.js":
+    "`headerJoins(dossierId)` only — what the ids on ONE known file mean (client " +
+    "name, service-type names, milestone progress) for the 360's header. It has " +
+    "to agree with `get`, which reads the base table through the query helper, " +
+    "or a DRAFT the wizard is still filling in would render a header with a " +
+    "reference and no client. `listPaged` — the enumeration in this same file — " +
+    "reads `dossier_visible`, and must keep doing so.",
   "modules/operations/dossier_container/dossier_container.service.js":
     "By dossier_id. The wizard edits its own draft's containers before promotion.",
   "modules/operations/shipment_details/shipment_details.repo.js":
@@ -61,8 +68,6 @@ const ALLOW_BASE_TABLE = {
     "dossierPrefill(dossierId) — §3.2: the simulator prefills containers/ATA/" +
     "shipping line from ONE file the pricer just picked from the (view-backed) " +
     "picker. By dossier_id, never an enumeration.",
-  "modules/finance/final_invoice/final_invoice.service.js":
-    "Resolves a costing's dossier by costing_id. A costing implies a promoted file.",
   "modules/documents/template/template.service.js":
     "Recipient lookup from a delivery note / transit order id. Neither exists on a draft.",
   "orchestration/handlers/fuel-log-created-dossier-cost.js":

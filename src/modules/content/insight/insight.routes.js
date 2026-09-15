@@ -26,8 +26,9 @@ const router = express.Router();
 // without an account.
 router.use(authMiddleware);
 
-router.get("/", requirePermission(MODULE, "view"), asyncHandler(async (req, res) => {
-  res.json({ data: await req.tenantDb((c) => service.list(c, { tag: req.query.tag || null })) });
+router.get("/", requirePermission(MODULE, "view"), v.listQuery, asyncHandler(async (req, res) => {
+  const { tag, kind } = req.validatedQuery;
+  res.json({ data: await req.tenantDb((c) => service.list(c, { tag: tag || null, kind: kind || null })) });
 }));
 
 router.post("/", requirePermission(MODULE, "edit"), v.create, asyncHandler(async (req, res) => {
@@ -51,6 +52,84 @@ router.patch("/:id", requirePermission(MODULE, "edit"), v.update, asyncHandler(a
 router.post("/:id/publish", requirePermission(MODULE, "edit"), v.publish, asyncHandler(async (req, res) => {
   const data = await req.tenantDb((c) => service.setPublished(c, {
     id: req.params.id, published: req.body.published, actor: req.user || {},
+  }));
+  res.json({ data });
+}));
+
+/**
+ * The pin. Its own endpoint for the reason publishing has one.
+ *
+ * `pinned_until` is absent from the repo's WRITABLE list, so this is the ONLY
+ * way a piece reaches the homepage band — an ordinary PATCH cannot do it by
+ * accident, and the act is stamped in the audit trail with who and until when.
+ *
+ * Written out explicitly, like every other route in this file. F-8 in the
+ * guide's §3.3 records what a table-driven mount does to
+ * `check-write-route-validators`: a gate that cannot statically see a write
+ * route cannot vouch that it validates its body, and that gate exists because
+ * SEC H3 found request-body keys reaching `insertOne` as column identifiers.
+ */
+router.post("/:id/pin", requirePermission(MODULE, "edit"), v.pin, asyncHandler(async (req, res) => {
+  const data = await req.tenantDb((c) => service.setPinned(c, {
+    id: req.params.id, pinnedUntil: req.body.pinned_until, actor: req.user || {},
+  }));
+  res.json({ data });
+}));
+
+/**
+ * The cover. Its own pair of endpoints, not a field on the PATCH.
+ *
+ * A cover is BYTES — it goes to the vault, gets sniffed, gets a public scope
+ * and returns a document id — and a PATCH that accepted a data URL among the
+ * text fields would make every ordinary save carry a possible ten-megabyte
+ * upload. The article row is returned from both, so the editor re-renders from
+ * one answer rather than re-fetching.
+ *
+ * Deliberately allowed while the article is published: the media URL is keyed
+ * by the DOCUMENT id, so replacing a cover mints a new id and a new URL and
+ * breaks no link. See the note on `setCover`.
+ */
+router.post("/:id/cover", requirePermission(MODULE, "edit"), v.cover, asyncHandler(async (req, res) => {
+  const data = await req.tenantDb((c) => service.setCover(c, {
+    id: req.params.id,
+    dataUrl: req.body.data_url,
+    originalName: req.body.original_name,
+    actor: req.user || {},
+    slug: req.tenant && req.tenant.slug,
+  }));
+  res.json({ data });
+}));
+
+router.delete("/:id/cover", requirePermission(MODULE, "edit"), v.validateNoBody, asyncHandler(async (req, res) => {
+  const data = await req.tenantDb((c) => service.removeCover(c, {
+    id: req.params.id, actor: req.user || {},
+  }));
+  res.json({ data });
+}));
+
+/**
+ * Gallery images — the ones drawn below the body.
+ *
+ * POST adds one (bytes, so a data URL, so its own endpoint for the same reason
+ * the cover has one). PUT stores the whole list, which is both the reorder and
+ * the removal: the array IS the display order, so "move this up" and "take this
+ * out" are one write. Anything the caller names that was not already the
+ * article's own is ignored by the service — an id is not a capability.
+ */
+router.post("/:id/gallery", requirePermission(MODULE, "edit"), v.cover, asyncHandler(async (req, res) => {
+  const data = await req.tenantDb((c) => service.addGalleryImage(c, {
+    id: req.params.id,
+    dataUrl: req.body.data_url,
+    originalName: req.body.original_name,
+    actor: req.user || {},
+    slug: req.tenant && req.tenant.slug,
+  }));
+  res.json({ data });
+}));
+
+router.put("/:id/gallery", requirePermission(MODULE, "edit"), v.gallery, asyncHandler(async (req, res) => {
+  const data = await req.tenantDb((c) => service.setGallery(c, {
+    id: req.params.id, ids: req.body.ids, actor: req.user || {},
   }));
   res.json({ data });
 }));

@@ -121,6 +121,45 @@ function redactPerson(p) {
 }
 
 /**
+ * What a document row must not carry to a caller without the governance grant.
+ *
+ * THE HOLE THIS CLOSES. `GET /entities/:id/documents` is gated at MOD-01 `edit`,
+ * and the comment on that gate (nested.js) says why: documents carry "the
+ * statutes and tax certificates", so the collection needs "the same UPDATE grant
+ * that entity-360's redaction tests, or the collection endpoint becomes a way to
+ * read around the dossier's redaction entirely". That was half true. `people`
+ * IS redacted here; `documents` never was — the dossier returned every row in
+ * full at MOD-01 `view`, so the harder gate on the collection protected nothing
+ * and the sentence explaining it described a check that did not exist.
+ *
+ * WHAT STAYS. That a document exists, what type it is, when it expires and
+ * whether it has been scanned and verified: a person who can see the entity
+ * should be able to see that its tax clearance lapses in March, which is the
+ * whole point of the renewals list. What goes is the document's IDENTITY and
+ * the route to its contents — the number itself, where the paper is filed, the
+ * vault reference, and the hash that would confirm a copy is the same file.
+ */
+const DOCUMENT_CONFIDENTIAL_FIELDS = [
+  "document_number",
+  "issuing_authority",
+  "physical_ref",
+  "notes",
+  "rejection_reason",
+  "vault_id",
+  "storage_path",
+  "vault_hash",
+  "content_hash",
+];
+
+/** A document row reduced to what a non-governance caller may see. */
+function redactDocument(d) {
+  const out = { ...d };
+  for (const f of DOCUMENT_CONFIDENTIAL_FIELDS) delete out[f];
+  out.redacted = true;
+  return out;
+}
+
+/**
  * The letterhead source block: the fields a document header/footer is assembled
  * from, resolved once here so the client is not re-deriving "registered address
  * or the legacy free-text one" in three components.
@@ -190,6 +229,15 @@ async function dossier(c, id, { governance = false, financials = false } = {}) {
 
   const { people, contacts, addresses, registrations, establishments } = collections;
 
+  // Redacted ONCE, and the renewals list is computed from the redacted rows
+  // rather than the raw ones. Deriving renewals from the full set and returning
+  // the redacted set would put the document number back on the wire inside a
+  // renewal label — the same leak by a longer route. `renewals` reads title,
+  // type name, dates and lead days, all of which survive redaction; a document
+  // with neither title nor type degrades to "Document", which is the honest
+  // label for a row this caller is not allowed to identify.
+  const visibleDocuments = governance ? documents : documents.map(redactDocument);
+
   // Reconciled against the full people list regardless of visibility — the
   // TOTALS are not sensitive, the per-holder breakdown is. A caller without
   // governance still gets to know the cap table balances.
@@ -231,7 +279,7 @@ async function dossier(c, id, { governance = false, financials = false } = {}) {
       ? cap
       : { ...cap, findings: cap.findings.map((f) => ({ ...f, person_id: undefined })), redacted: true },
     usage,
-    documents,
+    documents: visibleDocuments,
     tax_registrations: taxRegistrations,
     tax_obligations: obligations,
     // The resolved inputs a document header/footer is built from, plus the
@@ -246,7 +294,7 @@ async function dossier(c, id, { governance = false, financials = false } = {}) {
       ),
       financials,
     ),
-    renewals: renewalRules.renewals({ documents, registrations, taxRegistrations }),
+    renewals: renewalRules.renewals({ documents: visibleDocuments, registrations, taxRegistrations }),
     readiness: rules.readiness(entity, { registrations, addresses, people }),
     expiring_registrations: expiringRegistrations,
     can_see_governance: governance,
@@ -278,6 +326,7 @@ function addDays(iso, days) {
 }
 
 module.exports = {
-  dossier, canSeeGovernance, canSeeFinancials, letterheadSource, redactPerson,
+  dossier, canSeeGovernance, canSeeFinancials, letterheadSource,
+  redactPerson, redactDocument, DOCUMENT_CONFIDENTIAL_FIELDS,
   maskEntityBank, maskPaymentBlock, isoDate,
 };

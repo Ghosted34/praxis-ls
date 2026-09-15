@@ -21,10 +21,31 @@ router.use(authMiddleware);
 router.get("/signature", requireFeature("mail.signatures"), c.me);
 router.put("/signature", requireFeature("mail.signatures"), v.profile, c.saveMe);
 router.get("/signature/preview", requireFeature("mail.signatures"), c.preview);
+router.get("/signature/card", requireFeature("mail.signatures"), c.card);
 router.post("/signature/png", requireFeature("mail.signatures"), v.png, c.png);
 router.get("/signature/png", requireFeature("mail.signatures"), c.png);
 
+// Generating other people's identity assets is brand governance, not a personal
+// preference, so the batch surfaces sit behind the same MOD-70 gate the template
+// admin does — unlike /signature/png, which renders only the caller's own.
+router.get("/signature/diagnose", requireFeature("mail.signatures"), requirePermission("MOD-70", "view"), c.diagnose);
+router.get("/signature/staff", requireFeature("mail.signatures"), requirePermission("MOD-70", "view"), c.staff);
+router.post("/signature/batch", requireFeature("mail.signatures"), requirePermission("MOD-70", "edit"), v.batch, c.batch);
+
+// The card's colour ROLES — which brand colour paints the name, the edges and
+// the accent marks. MOD-70 like the rest of template administration: the mapping
+// is on the template, so it moves everyone rendering with it. It is deliberately
+// NOT a colour picker — see the header on service.getPalette.
+router.get("/signature/palette", requireFeature("mail.signatures"), requirePermission("MOD-70", "view"), c.palette);
+router.put("/signature/templates/:id/palette", requireFeature("mail.signatures"), requirePermission("MOD-70", "edit"), v.palette, c.savePalette);
+
 router.get("/signature/templates", requireFeature("mail.signatures"), requirePermission("MOD-70", "view"), c.templates);
 router.patch("/signature/templates/:id", requireFeature("mail.signatures"), requirePermission("MOD-70", "edit"), v.templatePatch, c.updateTemplate);
+
+// The motto/slogan, read and written as a string per language rather than as a
+// slice of the template's copy blob. POST (not PATCH) because it replaces the
+// motto outright for the languages named, and clearing it is sending "".
+router.get("/signature/templates/:id/motto", requireFeature("mail.signatures"), requirePermission("MOD-70", "view"), c.motto);
+router.post("/signature/templates/:id/motto", requireFeature("mail.signatures"), requirePermission("MOD-70", "edit"), v.motto, c.saveMotto);
 
 module.exports = { basePath: "/mail", feature: null, router };

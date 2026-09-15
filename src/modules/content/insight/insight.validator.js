@@ -2,6 +2,7 @@
 
 const { z } = require("zod");
 const { AppError } = require("../../../utils/errors");
+const { KINDS } = require("./insight.kinds");
 
 /**
  * A slug is lowercase ASCII with single hyphens, or absent.
@@ -49,9 +50,38 @@ const base = {
   tags,
   author_user_id: z.string().uuid().optional().nullable(),
   sort_order: z.coerce.number().int().min(0).max(100000).optional(),
+  /* 13784. An enum rather than free text, and the list comes from
+     `insight.kinds` rather than being retyped here — `ck_insight_kind` is the
+     real authority and a second copy of two strings is a second place to
+     forget. `pinned_until` is deliberately NOT here: pinning has its own
+     endpoint, so an ordinary field edit cannot put a piece on the tenant's
+     front page. */
+  kind: z.enum(KINDS).optional(),
 };
 
+/**
+ * The cover upload.
+ *
+ * A data URL, capped well above the vault's own 10 MB so an oversized file is
+ * refused by the vault with a message about the file rather than here with a
+ * message about the string. `original_name` is carried for the vault's records
+ * and is never used to build a path — the storage key is the document id.
+ */
+const cover = z.object({
+  data_url: z.string().min(1).max(14_000_000),
+  original_name: z.string().trim().max(200).optional(),
+}).strict();
+
+/** The gallery order / removal write: the ids the article should carry, in
+ *  display order. The service ignores any id that was not already the
+ *  article's, so this cannot bind a foreign document to a public page. */
+const gallery = z.object({
+  ids: z.array(z.string().uuid()).max(12),
+}).strict();
+
 const schemas = {
+  cover,
+  gallery,
   // title_fr is the one thing an article cannot exist without: FR is the
   // default language and an untitled article has nothing to list.
   create: z.object({ ...base, title_fr: z.string().trim().min(1).max(200) }).strict(),
@@ -59,8 +89,19 @@ const schemas = {
   publish: z.object({ published: z.boolean() }).strict(),
   listQuery: z.object({
     tag: z.string().trim().max(40).optional(),
+    kind: z.enum(KINDS).optional(),
     page: z.coerce.number().int().min(1).max(1000).optional(),
     per_page: z.coerce.number().int().min(1).max(50).optional(),
+  }).strict(),
+  /**
+   * The pin. `pinned_until` is an ISO date-time or null, and null is how a pin
+   * is cleared — which is why the field is REQUIRED and nullable rather than
+   * optional: an empty body on this endpoint is a caller who has not decided,
+   * and silently reading that as "unpin" is how something falls off a homepage
+   * because a form serialised badly.
+   */
+  pin: z.object({
+    pinned_until: z.string().datetime({ offset: true }).nullable(),
   }).strict(),
 };
 
@@ -95,5 +136,8 @@ module.exports = {
   create: mw("create"),
   update: mw("update"),
   publish: mw("publish"),
+  cover: mw("cover"),
+  gallery: mw("gallery"),
+  pin: mw("pin"),
   listQuery: mw("listQuery", "query"),
 };

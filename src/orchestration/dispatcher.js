@@ -173,10 +173,9 @@ async function dispatchPending(client, { limit = 200, maxAttempts = MAX_ATTEMPTS
       // "gave up permanently", and nothing anywhere queried for DEAD rows.
       //
       // The handlers that die here are the cross-module money flows
-      // (costing-approved-draft-invoice, supplier-invoice-posted-cost-entry,
-      // receipt-posted-collected-signal). An approved costing that should
-      // generate a draft invoice simply never generated one — permanently,
-      // while the app returned 200s.
+      // (supplier-invoice-posted-cost-entry, receipt-posted-collected-signal).
+      // A posted supplier invoice that should have landed a dossier cost entry
+      // simply never landed one — permanently, while the app returned 200s.
       //
       // A retry that will be retried is `warn`. Giving up is `error` AND a
       // report, because at that point a business action has been silently

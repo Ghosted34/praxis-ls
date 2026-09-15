@@ -58,6 +58,23 @@ const SPEC = {
   // for a number would pass or fail on a guess. It is still settable through
   // the same console route, which does not consult the SPEC.
   "qes.signwell": { probe: probes.signwell, cfg: (value, secret) => ({ api_key: secret, base_url: value && value.base_url }) },
+  // Microsoft Entra app for mailbox OAuth. Deploy-wide on purpose: ONE
+  // multi-tenant registration serves every tenant, so the credential belongs
+  // here beside the other infra secrets rather than in each tenant's vault.
+  //
+  // The client secret is the SECRET — it is a bearer credential, and it also
+  // EXPIRES, which is the failure this row exists to make visible. When it
+  // lapses every connected Microsoft mailbox stops syncing at once and looks
+  // like a product bug; a Test button that says so in one click is the
+  // difference between an afternoon and a minute.
+  "mail.microsoft_graph": {
+    probe: probes.microsoftGraph,
+    cfg: (value, secret) => ({
+      client_id: value.client_id,
+      directory_id: value.directory_id,
+      client_secret: secret,
+    }),
+  },
 };
 const specKey = (section, key) => section + "." + key;
 

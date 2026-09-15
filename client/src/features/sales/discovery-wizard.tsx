@@ -32,6 +32,7 @@
 import * as React from "react";
 import { tr } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
+import { DateField } from "@/components/ui/date-field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Modal, Field, Select } from "@/components/ui/modal";
@@ -279,10 +280,9 @@ export function DiscoveryWizard({
             />
           </Field>
           <Field label="Meeting date">
-            <Input
-              type="date"
+            <DateField
               value={metOn}
-              onChange={(e) => setMetOn(e.target.value)}
+              onChange={setMetOn}
             />
           </Field>
           <Field label={tr("Location")}>

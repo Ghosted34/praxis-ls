@@ -395,6 +395,10 @@ const Schema = z.object({
   // warnings; the "lapsing soon" screen still answers the same question on
   // demand.
   CONTRACT_LAPSE_CRON: z.string().default("0 7 * * *"),
+  // Careers job alerts (13792). 09:00 rather than 07:00: this one writes to
+  // candidates, not to staff, and a job advert that lands at seven in the
+  // morning reads as a mass send. Empty disables the fan-out entirely.
+  CAREERS_ALERTS_CRON: z.string().default("0 9 * * *"),
   // Régie d'avance aging (KB §6.8 step 4): reclassify advances past their
   // policy window from 581 to a receivable on the holder (4211). 06:00 UTC —
   // it POSTS to the ledger, so it runs before the working day starts rather
@@ -478,6 +482,20 @@ const Schema = z.object({
   MAIL_DEFAULT_FROM: z.string().default("no-reply@praxisls.com"),
   MAIL_SUPPORT_FROM: z.string().default("support@praxisls.com"),
   MAIL_FALLBACK_FROM_NAME: z.string().default("Praxis"),
+  // The name this server announces in SMTP's HELO/EHLO greeting.
+  //
+  // Left unset, nodemailer offers the container's own hostname, and in a
+  // containerised deployment that resolves to a loopback literal — a real
+  // outbound message from this system was recorded arriving at the relay as
+  // `helo=[127.0.0.1]`. A localhost literal in HELO is a long-standing spam
+  // signal: it is checked by Microsoft 365 and Google, it cannot be
+  // forward-confirmed against the sending IP, and it costs reputation on every
+  // message. It was invisible for as long as delivery never left the building.
+  //
+  // Should be a real, resolvable name for the host that is sending. Empty means
+  // "keep nodemailer's default", so this can never break a working deployment
+  // by being unset.
+  MAIL_HELO_NAME: z.string().default(""),
 
   // Meta WhatsApp Cloud API (MOD-64 Smart Comms). Deploy-wide fallback only —
   // per-tenant creds are set + tested in Smart Comms (token encrypted in the

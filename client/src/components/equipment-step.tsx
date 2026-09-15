@@ -143,7 +143,7 @@ export function EquipmentStep({
         <p className="micro text-muted-foreground">
           {dossierId
             ? "Pre-filled from the file's equipment. One cost line per type."
-            : "No dossier on this document — pick the types this charge covers."}
+            : "No operations file on this document — pick the types this charge covers."}
         </p>
       </div>
 

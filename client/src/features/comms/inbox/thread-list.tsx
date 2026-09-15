@@ -18,6 +18,7 @@
  * silently dropped two is worse than one that says which two.
  */
 import { cn } from "@/lib/cn";
+import { INDEX_ROW_OPEN } from "@/components/ui/index-row";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Pill } from "@/components/ui/pill";
@@ -40,14 +41,18 @@ function Star({
     <button
       type="button"
       aria-pressed={on}
-      aria-label={on ? `${tr("Unstar")} ${subject}` : `${tr("Star")} ${subject}`}
+      aria-label={
+        on ? `${tr("Unstar")} ${subject}` : `${tr("Star")} ${subject}`
+      }
       onClick={(e) => {
         e.stopPropagation();
         onToggle();
       }}
       className={cn(
         "shrink-0 rounded p-0.5 text-base leading-none transition-colors",
-        on ? "text-warning" : "text-muted-foreground/40 hover:text-muted-foreground",
+        on
+          ? "text-warning"
+          : "text-muted-foreground/40 hover:text-muted-foreground",
       )}
     >
       {on ? "★" : "☆"}
@@ -101,18 +106,33 @@ export function ThreadRow({
     <li>
       <div
         className={cn(
-          "flex items-start gap-2 border-b border-border px-3 py-2.5 transition-colors",
-          active ? "bg-primary/10" : "hover:bg-muted/60",
+          "relative flex items-start gap-2 border-b border-border px-3 py-2.5 transition-colors",
+          // Flush list, so the rail sits on the row's very edge rather than
+          // inset the way `<IndexRow>`'s does on a rounded one. The colour is
+          // INDEX_ROW_OPEN either way — one meaning of "this is the open one".
+          "before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:transition-colors before:content-['']",
+          // `hover:bg-muted/60` here compiled to nothing for the same reason the
+          // open state did — see index-row.tsx. Dropped to the opacity-free
+          // utility so the row actually has a hover state.
+          active ? INDEX_ROW_OPEN : "before:bg-transparent hover:bg-muted",
         )}
       >
         <div className="pt-0.5">
           <Checkbox
             checked={selected}
             onCheckedChange={onSelect}
-            label={<span className="sr-only">{tr("Select")} {subject}</span>}
+            label={
+              <span className="sr-only">
+                {tr("Select")} {subject}
+              </span>
+            }
           />
         </div>
-        <Star on={thread.is_starred} onToggle={() => onStar(!thread.is_starred)} subject={subject} />
+        <Star
+          on={thread.is_starred}
+          onToggle={() => onStar(!thread.is_starred)}
+          subject={subject}
+        />
         <button
           type="button"
           onClick={onOpen}
@@ -123,7 +143,9 @@ export function ThreadRow({
             <span
               className={cn(
                 "truncate text-sm",
-                unread ? "font-semibold text-foreground" : "text-muted-foreground",
+                unread
+                  ? "font-semibold text-foreground"
+                  : "text-muted-foreground",
               )}
             >
               {counterparties(thread)}
@@ -136,7 +158,9 @@ export function ThreadRow({
             <span
               className={cn(
                 "truncate text-sm",
-                unread ? "font-medium text-foreground" : "text-muted-foreground",
+                unread
+                  ? "font-medium text-foreground"
+                  : "text-muted-foreground",
               )}
             >
               {subject}
@@ -152,7 +176,9 @@ export function ThreadRow({
           </p>
           <div className="mt-1 flex flex-wrap items-center gap-1">
             {thread.is_vip && <Pill tone="warn">VIP</Pill>}
-            {thread.has_attachment && <Pill tone="mute">{tr("Attachment")}</Pill>}
+            {thread.has_attachment && (
+              <Pill tone="mute">{tr("Attachment")}</Pill>
+            )}
             {thread.entity_ref && <Pill tone="blue">{thread.entity_ref}</Pill>}
             {/* The classifier's reason on hover: a verdict a person cannot
                 interrogate is one they will not trust. */}
@@ -226,7 +252,9 @@ export function ThreadList({
 }) {
   const allSelected = threads.length > 0 && selected.size === threads.length;
   const toggleAll = (on: boolean) =>
-    onSelectedChange(on ? new Set(threads.map((t) => t.email_thread_id)) : new Set());
+    onSelectedChange(
+      on ? new Set(threads.map((t) => t.email_thread_id)) : new Set(),
+    );
   const toggleOne = (id: string, on: boolean) => {
     const next = new Set(selected);
     if (on) next.add(id);
@@ -238,9 +266,13 @@ export function ThreadList({
     <div className="flex min-h-0 flex-col">
       <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
         <Checkbox
-          checked={allSelected ? true : selected.size > 0 ? "indeterminate" : false}
+          checked={
+            allSelected ? true : selected.size > 0 ? "indeterminate" : false
+          }
           onCheckedChange={toggleAll}
-          label={<span className="sr-only">{tr("Select all conversations")}</span>}
+          label={
+            <span className="sr-only">{tr("Select all conversations")}</span>
+          }
         />
         {selected.size > 0 ? (
           <>
@@ -277,21 +309,25 @@ export function ThreadList({
           <>
             <span className="num text-xs text-muted-foreground">
               {threads.length}
-              {hasMore ? "+" : ""} {threads.length === 1 ? tr("conversation") : tr("conversations")}
+              {hasMore ? "+" : ""}{" "}
+              {threads.length === 1 ? tr("conversation") : tr("conversations")}
             </span>
             {/* The "Empty Trash" the product did not have — `thread.service`'s
                 own words for the endpoint it shipped without a screen. */}
-            {onEmptyFolder && folder && DELETABLE.has(folder) && threads.length > 0 && (
-              <Button
-                size="sm"
-                variant="ghost"
-                className="ml-auto"
-                disabled={bulkBusy}
-                onClick={onEmptyFolder}
-              >
-                {folder === "TRASH" ? tr("Empty the bin") : tr("Empty spam")}
-              </Button>
-            )}
+            {onEmptyFolder &&
+              folder &&
+              DELETABLE.has(folder) &&
+              threads.length > 0 && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="ml-auto"
+                  disabled={bulkBusy}
+                  onClick={onEmptyFolder}
+                >
+                  {folder === "TRASH" ? tr("Empty the bin") : tr("Empty spam")}
+                </Button>
+              )}
           </>
         )}
       </div>
@@ -302,8 +338,10 @@ export function ThreadList({
           role="status"
           className="border-b border-border bg-warning/10 px-3 py-2 text-xs text-foreground"
         >
-          {bulkFailures.length} {bulkFailures.length === 1 ? tr("conversation") : tr("conversations")}{" "}
-          {tr("could not be updated:")} {bulkFailures.map((f) => f.error).join("; ")}
+          {bulkFailures.length}{" "}
+          {bulkFailures.length === 1 ? tr("conversation") : tr("conversations")}{" "}
+          {tr("could not be updated:")}{" "}
+          {bulkFailures.map((f) => f.error).join("; ")}
         </div>
       )}
 

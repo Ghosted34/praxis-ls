@@ -11,6 +11,7 @@ const crypto = require("crypto");
 const { audit } = require("../../shared/events/emit");
 const { AppError } = require("../../utils/errors");
 const storage = require("../../services/storage.service");
+const imagePipeline = require("../../services/image-pipeline.service");
 const repo = require("./branding.repo");
 
 const LOGO_EXT = {
@@ -117,7 +118,12 @@ async function uploadLogo({ dataUrl, slug }) {
   }
 
   const key = `tenant_${slug}/branding/logo_${crypto.randomBytes(6).toString("hex")}.${ext}`;
-  const stored = await storage.put(buffer, { key, contentType });
+  // 'brand' profile: downscale and re-encode, but never touch the colours — a
+  // tenant's logo green must come back the same green. See image-pipeline.
+  const stored = await imagePipeline.storeImage(
+    { buffer, mimetype: contentType, originalname: `logo.${ext}` },
+    { key, profile: "brand" },
+  );
   return { logoUrl: stored.public_url };
 }
 
@@ -188,7 +194,12 @@ async function uploadSiteHero({ dataUrl, slug }) {
     throw new AppError("IMAGE_TOO_LARGE", "The hero image must be 1 MB or smaller", 413);
   }
   const key = `tenant_${slug}/site/hero_${crypto.randomBytes(6).toString("hex")}.${ext}`;
-  const stored = await storage.put(buffer, { key, contentType });
+  // 'photo': a hero IS photography, so auto-level and white balance are wanted
+  // here — unlike the logo two functions up.
+  const stored = await imagePipeline.storeImage(
+    { buffer, mimetype: contentType, originalname: `hero.${ext}` },
+    { key, profile: "photo" },
+  );
   return { siteHeroUrl: stored.public_url };
 }
 
@@ -203,7 +214,10 @@ async function uploadLoginBackground({ dataUrl, slug }) {
     throw new AppError("IMAGE_TOO_LARGE", "Background must be 512 KB or smaller", 413);
   }
   const key = `tenant_${slug}/login/bg_${crypto.randomBytes(6).toString("hex")}.${ext}`;
-  const stored = await storage.put(buffer, { key, contentType });
+  const stored = await imagePipeline.storeImage(
+    { buffer, mimetype: contentType, originalname: `bg.${ext}` },
+    { key, profile: "photo" },
+  );
   return { backgroundUrl: stored.public_url };
 }
 
@@ -359,7 +373,13 @@ async function uploadAppIcon({ dataUrl, slug }) {
     throw new AppError("IMAGE_TOO_LARGE", "App icon must be 2 MB or smaller", 413);
   }
   const key = `tenant_${slug}/branding/appicon_${crypto.randomBytes(6).toString("hex")}.${ext}`;
-  const stored = await storage.put(buffer, { key, contentType });
+  // 'brand', for the same reason as the logo: the icon pipeline derives every
+  // PWA/apple-touch PNG from this master, so a colour shift here propagates to
+  // every installed home-screen icon.
+  const stored = await imagePipeline.storeImage(
+    { buffer, mimetype: contentType, originalname: `appicon.${ext}` },
+    { key, profile: "brand" },
+  );
   return { iconUrl: stored.public_url };
 }
 

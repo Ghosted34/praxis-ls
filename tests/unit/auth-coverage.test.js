@@ -40,11 +40,21 @@ const PUBLIC_BY_DESIGN = new Map([
     "Published marketing stories are intentionally public; responses are allow-listed, consent-aware and every route is limited.",
   ],
   [
+    "operations/corridors_public",
+    "The /public/corridors band on the tenant website. Anonymous by design (the public website is the feature); the single route is pinned to LIVE, rate-limited 120/15min and gated on the `website` package. It publishes no identifier from either side of its join — only a GROUP BY over closed itinerary legs, behind a k-anonymity floor (MIN_DOSSIERS x MIN_CLIENTS) that suppresses any corridor thin enough to name a client.",
+  ],
+  [
     "operations/service_type_web_public",
     "The /public/services tenant website. Anonymous by design (the public website is the feature); every route is pinned to LIVE, rate-limited 120/15min, the media route re-checks the allowlist before streaming, and the flag is FEATURE_DISABLED (403) when the website package is off. See SERVICE_TYPE_WEB_PROFILE_ENGINEERING_GUIDE §3.2 / §6.",
   ],
-  ["sales/public_intake", "Marketing website forms submit bounded, rate-limited CRM intake without accounts."],
-  ["operations/tracking_public", "Exact-reference shipment tracking is public, allow-listed and rate-limited against guessing."],
+  [
+    "sales/public_intake",
+    "Marketing website forms submit bounded, rate-limited CRM intake without accounts.",
+  ],
+  [
+    "operations/tracking_public",
+    "Exact-reference shipment tracking is public, allow-listed and rate-limited against guessing.",
+  ],
   [
     "operations/geo_place_public",
     "The quote wizard's place picker (WS2). Anonymous by design and rate-limited 60/15min. It opens NO tenant connection: answers come from Geoapify, never from the tenant's geo_place catalogue, which holds customer doors and would otherwise be enumerable three letters at a time.",

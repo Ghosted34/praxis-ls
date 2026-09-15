@@ -117,9 +117,16 @@ const replaceRelated = z.object({
   (v) => new Set(v.related_service_type_ids).size === v.related_service_type_ids.length,
   { message: "duplicate related service ids are not allowed", path: ["related_service_type_ids"] },
 );
+/* The cap is on the ENCODED string and sits above the 10 MB of image the slot
+   actually allows (base64 inflates by a third, so 10 MB of bytes is ~13.4 MB of
+   characters). Deliberately in that order: an oversized file is then refused by
+   `document_vault` with the slot's own number in the message — "File exceeds
+   10 MB" — rather than here with a message about the length of a string. Same
+   arrangement, and the same reason, as `siteMediaUpload` in packages/shared. */
+const MEDIA_DATA_URL_MAX = 14_500_000;
 const replaceMedia = z.object({
   role: z.enum(["COVER", "ICON", "GALLERY"]),
-  data_url: z.string().min(1),
+  data_url: z.string().min(1).max(MEDIA_DATA_URL_MAX),
   original_name: z.string().trim().min(1).max(255).optional(),
 }).strict();
 

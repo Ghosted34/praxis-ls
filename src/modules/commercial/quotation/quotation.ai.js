@@ -4,7 +4,7 @@ const validator = require("./quotation.validator");
 module.exports = {
   entity: "quotation", module_key: "MOD-27", screens: [],
   reads: [
-    { key: "list_quotations", service: (c, p) => service.list(c, p), permission: { module: "MOD-27", action: "view" }, describe: "List quotations (filter status/client/dossier)." },
+    { key: "list_quotations", service: (c, p) => service.list(c, p), permission: { module: "MOD-27", action: "view" }, describe: "List quotations (filter status/client/operations file)." },
     { key: "get_quotation", service: (c, p) => service.get(c, p.id || p), permission: { module: "MOD-27", action: "view" }, describe: "Get a quotation with lines + totals." },
   ],
   writes: [

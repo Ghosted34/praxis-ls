@@ -14,7 +14,7 @@
 import { useEffect, useState } from "react";
 import { errorsApi, LEVEL_STYLE, ago, type ErrorDetail, type TrendPoint } from "@/lib/errors-api";
 import { can } from "@/lib/api";
-import { fmtDateTime } from "@/lib/format";
+import { fmtDateDmy, fmtDateTime } from "@/lib/format";
 import { Button, Loading, Pill } from "@/components/ui";
 import { useToast } from "@/components/Toast";
 
@@ -328,7 +328,7 @@ function OccurrenceStrip({ points, level }: { points: TrendPoint[] | null; level
           return (
             <div
               key={p.bucket}
-              title={`${new Date(p.bucket).toLocaleDateString()} — ${p.occurrences} occurrence${p.occurrences === 1 ? "" : "s"}`}
+              title={`${fmtDateDmy(p.bucket)} — ${p.occurrences} occurrence${p.occurrences === 1 ? "" : "s"}`}
               style={{
                 flex: 1,
                 height: h,
@@ -342,7 +342,7 @@ function OccurrenceStrip({ points, level }: { points: TrendPoint[] | null; level
         })}
       </div>
       <div className="row between muted" style={{ fontSize: 10, marginTop: 3 }}>
-        <span>{new Date(points[0].bucket).toLocaleDateString()}</span>
+        <span>{fmtDateDmy(points[0].bucket)}</span>
         <span>peak {peak}/day</span>
         <span>today</span>
       </div>

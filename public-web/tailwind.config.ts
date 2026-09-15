@@ -143,7 +143,9 @@ export default {
       spacing: {
         // One vertical rhythm unit for the marketing sections, so "a bit more
         // air" is not re-decided per section.
-        band: "clamp(3.5rem, 8vw, 7.5rem)",
+        // The value lives in `index.css` as `--py-band`, because the portal
+        // mock's overlap has to measure against the same number.
+        band: "var(--py-band)",
         gutter: "clamp(1rem, 4vw, 2.5rem)",
       },
 

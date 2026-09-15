@@ -12,7 +12,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/modal";
+import { FilePicker } from "@/components/ui/image-upload";
+import { compressImage, fileToDataUrl } from "@/lib/image-compress";
 import { ErrorState } from "@/components/ui/states";
+import { Callout } from "@/components/ui/callout";
 import { PageHeader } from "@/components/data-list";
 import { HubCrumb } from "@/components/tabbed-hub";
 import { useResource, useList, errMsg } from "@/lib/use-resource";
@@ -34,14 +37,19 @@ const label = (t: Tpl["title"]) => t.en || t.fr || "";
 
 const Field = ({
   label: l,
+  hint,
   children,
 }: {
   label: string;
+  hint?: string;
   children: React.ReactNode;
 }) => (
   <label className="block">
     <span className="micro mb-1 block">{l}</span>
     {children}
+    {hint ? (
+      <span className="mt-1 block text-[11px] text-muted-foreground">{hint}</span>
+    ) : null}
   </label>
 );
 const Check = ({
@@ -74,6 +82,8 @@ export function TemplateStudioPage() {
   const [html, setHtml] = React.useState<string>("");
   const [busy, setBusy] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  /** The outcome of `generate()` — see the note there. */
+  const [notice, setNotice] = React.useState<string | null>(null);
   const [dirty, setDirty] = React.useState(false);
 
   const list = React.useMemo(() => templates.data || [], [templates.data]);
@@ -170,6 +180,7 @@ export function TemplateStudioPage() {
   async function generate() {
     setBusy("gen");
     setError(null);
+    setNotice(null);
     try {
       const out = await tenant<{ verify?: string }>(
         `/document-templates/${docType}/generate`,
@@ -181,12 +192,16 @@ export function TemplateStudioPage() {
           },
         },
       );
-      alert(
-        "PDF generated & vaulted." +
-          (out.verify ? `\nVerify: ${out.verify}` : ""),
+      // Both branches were `alert()`, so "it worked" and "it failed" arrived in
+      // the same unbranded OS box. The verdict now lands on the page: a Callout
+      // for the success — carrying the verification URL, which people copy and
+      // which was unselectable inside an alert — and the existing error state
+      // for the failure.
+      setNotice(
+        "PDF generated & vaulted." + (out.verify ? ` Verify: ${out.verify}` : ""),
       );
     } catch (e) {
-      alert(errMsg(e));
+      setError(errMsg(e));
     } finally {
       setBusy(null);
     }
@@ -221,6 +236,20 @@ export function TemplateStudioPage() {
       {error && (
         <div className="mb-3">
           <ErrorState message={error} />
+        </div>
+      )}
+      {notice && (
+        <div className="mb-3">
+          <Callout
+            tone="ok"
+            action={
+              <Button size="sm" variant="ghost" onClick={() => setNotice(null)}>
+                Dismiss
+              </Button>
+            }
+          >
+            {notice}
+          </Callout>
         </div>
       )}
 
@@ -296,12 +325,17 @@ export function TemplateStudioPage() {
                   className="h-9 w-full"
                 />
               </Field>
-              <Field label="Language">
+              <Field
+                label="Language"
+                hint={tr(
+                  "Documents print in one language per sheet. Leave unset to use the entity's default language.",
+                )}
+              >
                 <Select
-                  value={s(cfg.language, "bilingual")}
-                  onChange={(e) => set({ language: e.target.value })}
+                  value={s(cfg.language, "")}
+                  onChange={(e) => set({ language: e.target.value || null })}
                 >
-                  <option value="bilingual">Bilingual FR/EN</option>
+                  <option value="">{tr("Entity default")}</option>
                   <option value="fr">{tr("Français")}</option>
                   <option value="en">{tr("English")}</option>
                 </Select>
@@ -445,25 +479,31 @@ export function TemplateStudioPage() {
                       </Button>
                     </div>
                   ) : null}
-                  <input
-                    type="file"
+                  <FilePicker
                     accept="image/png,image/jpeg,image/webp,image/svg+xml"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
+                    hint="PNG with transparency reproduces best on a document."
+                    onPick={(files) => {
+                      const file = files?.[0];
                       if (!file) return;
-                      // Held as a data URI in the config, exactly like a small
-                      // inline logo: the renderer has no page origin, so a
-                      // relative URL would resolve in the preview iframe and
-                      // silently not in the PDF.
-                      const reader = new FileReader();
-                      reader.onload = () =>
-                        setNested("signature", {
-                          image_url: String(reader.result || ""),
-                        });
-                      reader.readAsDataURL(file);
-                      e.target.value = "";
+                      // NOT useUpload: this image is never uploaded. It is held
+                      // as a data URI in the config, exactly like a small inline
+                      // logo, because the renderer has no page origin — a
+                      // relative URL resolves in the preview iframe and silently
+                      // does not in the PDF. So there is no request to report a
+                      // percentage for, and showing one would be a lie.
+                      //
+                      // It still goes through the compressor, and that matters
+                      // more here than almost anywhere: this data URI is
+                      // embedded in the config and re-encoded into EVERY
+                      // rendered document, so an uncompressed 3 MB signature is
+                      // paid for on every invoice. "brand" keeps the mark's
+                      // colours and its transparency intact.
+                      void compressImage(file, "brand")
+                        .then((out) => fileToDataUrl(out.file))
+                        .then((dataUrl) =>
+                          setNested("signature", { image_url: dataUrl }),
+                        );
                     }}
-                    className="w-full rounded-lg border bg-background px-3 py-2 text-sm"
                   />
                   <p className="text-xs text-muted-foreground">
                     {tr(

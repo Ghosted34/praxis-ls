@@ -5,7 +5,13 @@
  * The AI action only appears when the tenant's AI is enabled.
  *
  * TOUCH ONLY, as of Phase 5 (audit F9). The cluster is `md:hidden`; on desktop
- * its job belongs to `<QuickActionsMenu>` in the top bar.
+ * the same list renders in `<IconRail>`'s tail.
+ *
+ * IT RENDERS ON EVERY TOUCH SCREEN, Smart Comms included. It used to be
+ * suppressed there because it covered the composer's send control, with a
+ * top-bar menu standing in; that menu is gone at every width, so suppressing it
+ * here would leave a phone on `/comms` with no quick actions at all. It clears
+ * the composer instead of hiding from it — see `--fab-floor` below.
  *
  * The audit's objection was not that a FAB is ugly. It is that this one sits at
  * `fixed bottom-24 right-5` — precisely where a list screen's last rows and its
@@ -190,10 +196,21 @@ export function FloatingActions({ badge = 0 }: { badge?: number }) {
       onMouseLeave={closeSoon}
       onFocus={openNow}
       onBlur={closeSoon}
-      // md:hidden is the Phase 5 change: on desktop this cluster covered the
-      // bottom-right of every table, and dragging it was the workaround rather
-      // than the fix. <QuickActionsMenu> in the top bar is the desktop home.
-      className="fixed bottom-24 right-5 z-50 flex flex-col items-end gap-3 md:hidden"
+      /*
+       * `md:hidden` is the Phase 5 change: on desktop this cluster covered the
+       * bottom-right of every table, and dragging it was the workaround rather
+       * than the fix. The icon rail's tail is the desktop home for the same
+       * list — see `quick-actions.tsx`.
+       *
+       * `--fab-floor` IS WHAT PUT THIS BACK ON THE CHAT SCREEN. 6rem clears the
+       * bottom nav, which is all there is to clear on a list screen. Smart
+       * Comms is the one screen with a second bottom-docked control — the chat
+       * composer, whose Send and mic buttons are in this exact corner — so the
+       * composer publishes the height it needs kept clear and this takes the
+       * larger of the two. Unset everywhere else, where `max()` falls through
+       * to the 6rem the cluster has always used.
+       */
+      className="fixed bottom-[max(6rem,var(--fab-floor,0px))] right-5 z-50 flex flex-col items-end gap-3 md:hidden"
     >
       {open && (
         <>
@@ -238,7 +255,7 @@ export function FloatingActions({ badge = 0 }: { badge?: number }) {
       >
         <BurstIcon />
         {badge > 0 && !open && (
-          <span className="absolute -right-1 -top-1 grid h-5 min-w-[20px] place-items-center rounded-full bg-brand-blue px-1 text-[10px] font-bold text-white ring-2 ring-background">
+          <span className="absolute -right-1 -top-1 grid h-5 min-w-[20px] place-items-center rounded-full bg-brand-blue-deep px-1 text-[10px] font-bold text-white ring-2 ring-background">
             {badge > 99 ? "99+" : badge}
           </span>
         )}

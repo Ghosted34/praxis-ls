@@ -321,9 +321,20 @@ export const StatusAndData = () => (
     <Row label="KpiRow — the slim strip above a list screen">
       <div className="w-full">
         <KpiRow>
-          <KpiTile label="Open dossiers" value="42" />
+          <KpiTile label="Open files" value="42" />
           <KpiTile label="In transit" value="17" tone="info" />
           <KpiTile label="Delayed" value="3" tone="warn" />
+        </KpiRow>
+      </div>
+    </Row>
+    <Row label="KpiRow stack — the 360 headline band, where the figures are money">
+      <div className="w-full">
+        <KpiRow stack>
+          <KpiTile label="Outstanding" value="0.00 XAF" />
+          <KpiTile label="Overdue" value="0.00 XAF" hint="oldest 12/03/2026" />
+          <KpiTile label="Credit available" value="30,000,000.00 XAF" />
+          <KpiTile label="YTD revenue" value="0.00 XAF" />
+          <KpiTile label="Files in progress" value="0" />
         </KpiRow>
       </div>
     </Row>
@@ -495,7 +506,7 @@ export const TabsStory = () => {
     <Tabs
       value={tab}
       onValueChange={setTab}
-      label="Dossier sections"
+      label="Operations file sections"
       tabs={[
         {
           value: "milestones",

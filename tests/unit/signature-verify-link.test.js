@@ -66,6 +66,17 @@ describe("the URL the QR encodes", () => {
     const fromCaller = await verifyLink.verifyContext(client, { code: "A4B7K92MXQ1P", slug: "smartls" });
     expect(fromCaller.url).toBe("https://smartls.praxisls.com/v/A4B7K92MXQ1P");
   });
+
+  test("a sandbox-signed code carries ?e=sandbox — live URLs stay bare", async () => {
+    // The env is baked into the printed URL, not sent as a client header, so a
+    // stranger scanning a test-environment document lands on a page that pins
+    // its own database read to sandbox rather than 404ing against live. A
+    // live URL is unchanged so nothing prints differently for real documents.
+    const live = await verifyLink.verifyContext(null, { code: "A4B7K92MXQ1P", slug: "smartls", env: "live" });
+    expect(live.url).toBe("https://smartls.praxisls.com/v/A4B7K92MXQ1P");
+    const sandbox = await verifyLink.verifyContext(null, { code: "A4B7K92MXQ1P", slug: "smartls", env: "sandbox" });
+    expect(sandbox.url).toBe("https://smartls.praxisls.com/v/A4B7K92MXQ1P?e=sandbox");
+  });
 });
 
 describe("the symbol itself", () => {
@@ -88,6 +99,16 @@ describe("the symbol itself", () => {
     // case the fleet can produce. If it ever stops fitting, the answer is the
     // dedicated short host §3.7 measured — not a smaller symbol.
     const worst = `https://a-fairly-long-tenant-slug.praxisls.com/v/A4B7K92MXQ1P`;
+    expect(22 / (await qr.moduleCount(worst))).toBeGreaterThan(0.5);
+  });
+
+  test("the sandbox variant survives the same 22mm budget", async () => {
+    // A sandbox-signed document adds `?e=sandbox` (10 chars). Measured on the
+    // same worst-case host: 41 modules, 0.537 mm/module at 22mm — above the
+    // 0.5mm phone-camera threshold in §3.7. A regression that pushes it past
+    // one more QR version cliff would silently make test documents unscannable
+    // in warehouse light, so it is a test.
+    const worst = `https://a-fairly-long-tenant-slug.praxisls.com/v/A4B7K92MXQ1P?e=sandbox`;
     expect(22 / (await qr.moduleCount(worst))).toBeGreaterThan(0.5);
   });
 

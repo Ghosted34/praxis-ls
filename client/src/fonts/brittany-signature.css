@@ -1,0 +1,30 @@
+/**
+ * Brittany Signature — the script face on the email signature card's motto pill.
+ *
+ * SELF-HOSTED, NOT @fontsource. Every other family in the library ships as an
+ * @fontsource package and is loaded by importing it; this one has no package,
+ * so the binary lives beside this file and is the single copy in the tree. The
+ * PNG renderer reads the SAME file from the server
+ * (src/modules/mail/signature/signature.fonts.js) rather than keeping a second
+ * one, for the reason client/eslint-local-rules is a single copy: a duplicated
+ * asset is an asset that drifts, and here a drift means the on-screen preview
+ * and the exported PNG disagree about the one thing the card is judged on.
+ *
+ * LICENCE. Brittany Signature is a commercial typeface, not OFL/Apache-2.0 like
+ * the rest of the library. It is vendored here on the tenant's instruction and
+ * on their licence; doc/TYPOGRAPHY.md's "confirm the family is OFL/Apache-2.0"
+ * step was consciously waived for it. Anyone re-licensing or white-labelling
+ * this product to a third party needs to re-check that this is still covered.
+ *
+ * `font-display: block` rather than `swap`: the motto is four words of display
+ * script on a fixed-height pill. Swapping in a fallback and then reflowing to
+ * the real face is more visible here than a brief blank, and the PNG renderer
+ * waits for `document.fonts.ready` before it screenshots either way.
+ */
+@font-face {
+  font-family: "Brittany Signature";
+  src: url("./brittany-signature.otf") format("opentype");
+  font-weight: normal;
+  font-style: normal;
+  font-display: block;
+}

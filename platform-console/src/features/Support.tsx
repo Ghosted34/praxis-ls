@@ -1,17 +1,25 @@
-import { useMemo, useState } from "react";
-import { platform } from "@/lib/api";
+import { useEffect, useMemo, useState } from "react";
+import { platform, can, fetchSupportAttachmentUrl } from "@/lib/api";
 import { ops, type SupportContext } from "@/lib/ops-api";
-import type { SupportTicket, TicketKind, TicketStatus } from "@/lib/types";
+import type { SupportAttachment, SupportTicket, TicketKind, TicketStatus } from "@/lib/types";
 import { useAsync } from "@/lib/useAsync";
 import { fmtDateTime, titleCase } from "@/lib/format";
 import { Button, Empty, Loading, Modal, PageHeader, Pill } from "@/components/ui";
+import { AttachmentPicker, type ConsoleUploadItem } from "@/components/ui/file-upload";
 import { useToast } from "@/components/Toast";
 
 const LANES: TicketStatus[] = ["NEW", "TRIAGED", "IN_PROGRESS", "SHIPPED", "DECLINED"];
-const KINDS: TicketKind[] = ["SUPPORT", "BUG", "FEATURE"];
+// The nine kinds (0105), in the tenant's dropdown order. The filter drives
+// triage here; the tenant side shows the same list from its own copy.
+const KINDS: TicketKind[] = [
+  "SUPPORT", "BUG", "FEATURE", "URGENT", "BILLING", "SECURITY", "DATA", "COMMS", "REQUEST",
+];
 
-function kindTone(k: TicketKind) {
-  return k === "BUG" ? "bad" : k === "FEATURE" ? "ok" : "info";
+function kindTone(k: TicketKind): "mute" | "warn" | "info" | "ok" | "bad" {
+  if (k === "BUG" || k === "URGENT") return "bad";
+  if (k === "FEATURE" || k === "DATA") return "ok";
+  if (k === "BILLING" || k === "SECURITY") return "warn";
+  return "info";
 }
 function statusTone(s: TicketStatus): "mute" | "warn" | "info" | "ok" | "bad" {
   return s === "NEW" ? "warn" : s === "TRIAGED" ? "info" : s === "IN_PROGRESS" ? "info" : s === "SHIPPED" ? "ok" : "bad";
@@ -91,9 +99,82 @@ export function Support() {
   );
 }
 
+/**
+ * One attached image, viewed from the console. Bytes are capability-gated
+ * (support.read) and carry the Bearer token, so they are fetched to an
+ * object URL rather than dropped in an `src` — the same rule as the tenant
+ * side and as this console's own authed reads.
+ */
+function AttachmentImage({ att }: { att: SupportAttachment }) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    const ctrl = new AbortController();
+    setUrl(null);
+    setFailed(false);
+    fetchSupportAttachmentUrl(att.attachment_id, ctrl.signal)
+      .then((u) => setUrl(u))
+      .catch(() => {
+        if (!ctrl.signal.aborted) setFailed(true);
+      });
+    return () => ctrl.abort();
+  }, [att.attachment_id]);
+
+  useEffect(() => () => {
+    if (url) URL.revokeObjectURL(url);
+  }, [url]);
+
+  if (failed) {
+    return <span className="muted" style={{ fontSize: 11 }}>image unavailable</span>;
+  }
+  if (!url) return null;
+  return (
+    <img
+      src={url}
+      alt={att.file_name}
+      title={att.file_name}
+      style={{ width: 110, height: 110, objectFit: "cover", borderRadius: 8, border: "1px solid var(--line)" }}
+    />
+  );
+}
+
+function AttachmentRow({ atts }: { atts: SupportAttachment[] | undefined }) {
+  if (!atts || atts.length === 0) return null;
+  return (
+    <div className="row wrap" style={{ gap: 8, marginTop: 8 }}>
+      {atts.map((a) => <AttachmentImage key={a.attachment_id} att={a} />)}
+    </div>
+  );
+}
+
+/**
+ * The ticket, opened. Everything the triager did before 0105 is still here —
+ * status moves, tenant telemetry, context — and the conversation is added
+ * where the answer belongs: on the ticket, not in a chat app nobody checks.
+ *
+ * A public reply also tells the tenant (in-app + email + push, per their
+ * own preferences) — that half happens in the service, so the screen just
+ * says "Sent" and moves on. An internal note is the "don't tell them yet"
+ * message: visible here, stripped server-side from everything the tenant
+ * ever reads.
+ */
 function TicketModal({ ticket, onClose, onChanged }: { ticket: SupportTicket; onClose: () => void; onChanged: () => void }) {
   const { toast, fail } = useToast();
   const [busy, setBusy] = useState<string | null>(null);
+  const [replyBody, setReplyBody] = useState("");
+  const [internal, setInternal] = useState(false);
+  const [replyImgs, setReplyImgs] = useState<ConsoleUploadItem<SupportAttachment>[]>([]);
+  const [sending, setSending] = useState(false);
+
+  // The list row has no thread; the detail fetch does. The row keeps
+  // rendering underneath while it loads, so opening a ticket never blanks.
+  const detail = useAsync<SupportTicket>(
+    () => platform.supportTicket(ticket.ticket_id) as Promise<SupportTicket>,
+    [ticket.ticket_id],
+  );
+  const t = detail.data || ticket;
+  const canWrite = can("support.write");
 
   const move = (status: TicketStatus) => {
     setBusy(status);
@@ -102,17 +183,40 @@ function TicketModal({ ticket, onClose, onChanged }: { ticket: SupportTicket; on
       .catch((e) => { fail(e); setBusy(null); });
   };
 
-  const ctx = ticket.context && Object.keys(ticket.context).length > 0 ? ticket.context : null;
+  const readyImgs = replyImgs.filter((r) => r.state === "done" && r.result);
+  const imgBusy = replyImgs.some((r) => r.state === "uploading");
+
+  const sendReply = () => {
+    setSending(true);
+    platform
+      .supportReply(t.ticket_id, {
+        body: replyBody.trim(),
+        internal,
+        attachment_ids: readyImgs.map((r) => r.result!.attachment_id),
+      })
+      .then(async () => {
+        toast(internal ? "Internal note added" : "Reply sent — the tenant is being notified");
+        setReplyBody("");
+        setInternal(false);
+        setReplyImgs([]);
+        detail.reload();
+        onChanged();
+      })
+      .catch((e) => fail(e))
+      .finally(() => setSending(false));
+  };
+
+  const ctx = t.context && Object.keys(t.context).length > 0 ? t.context : null;
 
   return (
     <Modal
-      title={<span className="row" style={{ gap: 8 }}><Pill tone={kindTone(ticket.kind)}>{titleCase(ticket.kind)}</Pill> Ticket</span>}
+      title={<span className="row" style={{ gap: 8 }}><Pill tone={kindTone(t.kind)}>{titleCase(t.kind)}</Pill> Ticket</span>}
       onClose={onClose}
-      maxWidth={560}
+      maxWidth={620}
       footer={
         <div className="row wrap" style={{ gap: 6, justifyContent: "flex-end", flex: 1 }}>
           <span className="muted" style={{ fontSize: 12, marginRight: "auto" }}>Move to:</span>
-          {LANES.filter((s) => s !== ticket.status).map((s) => (
+          {LANES.filter((s) => s !== t.status).map((s) => (
             <Button key={s} size="sm" variant={s === "DECLINED" ? "danger" : s === "SHIPPED" ? "primary" : "default"} loading={busy === s} onClick={() => move(s)}>
               {titleCase(s)}
             </Button>
@@ -122,25 +226,109 @@ function TicketModal({ ticket, onClose, onChanged }: { ticket: SupportTicket; on
     >
       <div className="stack" style={{ gap: 12 }}>
         <div>
-          <div style={{ fontWeight: 650, fontSize: 15 }}>{ticket.title}</div>
+          <div style={{ fontWeight: 650, fontSize: 15 }}>{t.title}</div>
           <div className="row" style={{ gap: 8, marginTop: 6 }}>
-            <Pill tone={statusTone(ticket.status)}>{titleCase(ticket.status)}</Pill>
-            <span className="mono muted" style={{ fontSize: 12 }}>{ticket.tenant_slug}</span>
-            {ticket.csat != null && <span className="muted" style={{ fontSize: 12 }}>CSAT ★ {ticket.csat}/5</span>}
+            <Pill tone={statusTone(t.status)}>{titleCase(t.status)}</Pill>
+            <span className="mono muted" style={{ fontSize: 12 }}>{t.tenant_slug}</span>
+            {t.csat != null && <span className="muted" style={{ fontSize: 12 }}>CSAT ★ {t.csat}/5</span>}
           </div>
         </div>
         <dl className="kv" style={{ gridTemplateColumns: "110px 1fr" }}>
-          <dt>Tenant</dt><dd>{ticket.tenant_name || ticket.tenant_slug}</dd>
-          <dt>Raised by</dt><dd>{ticket.raised_by_email || "—"}</dd>
-          <dt>Created</dt><dd>{fmtDateTime(ticket.created_at)}</dd>
-          <dt>Updated</dt><dd>{fmtDateTime(ticket.updated_at)}</dd>
+          <dt>Tenant</dt><dd>{t.tenant_name || t.tenant_slug}</dd>
+          <dt>Raised by</dt><dd>{t.raised_by_email || "—"}</dd>
+          <dt>Created</dt><dd>{fmtDateTime(t.created_at)}</dd>
+          <dt>Updated</dt><dd>{fmtDateTime(t.updated_at)}</dd>
         </dl>
-        {ticket.body && (
+        {t.body && (
           <div>
             <div className="f" style={{ marginBottom: 4 }}>Details</div>
-            <div style={{ fontSize: 13, whiteSpace: "pre-wrap", background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: 8, padding: "10px 12px" }}>{ticket.body}</div>
+            <div style={{ fontSize: 13, whiteSpace: "pre-wrap", background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: 8, padding: "10px 12px" }}>{t.body}</div>
+            <AttachmentRow atts={t.attachments} />
           </div>
         )}
+
+        {/* ── The conversation ─────────────────────────────────────────── */}
+        <div>
+          <div className="f" style={{ marginBottom: 4 }}>Thread</div>
+          {(t.replies || []).length === 0 ? (
+            <div className="muted" style={{ fontSize: 12 }}>No replies yet — the answer the tenant is waiting for goes below.</div>
+          ) : (
+            <div className="stack" style={{ gap: 8 }}>
+              {t.replies!.map((r) => (
+                <div key={r.reply_id} style={{ border: `1px ${r.is_internal ? "dashed" : "solid"} var(--line)`, borderRadius: 8, padding: "10px 12px", background: "var(--bg-2)" }}>
+                  <div className="row between" style={{ gap: 8 }}>
+                    <span style={{ fontSize: 12, fontWeight: 600 }}>
+                      {r.author_side === "PRAXIS" ? (r.author_label || "Praxis team") : (r.author_label || "Tenant")}
+                    </span>
+                    <span className="muted mono" style={{ fontSize: 11 }}>{fmtDateTime(r.created_at)}</span>
+                  </div>
+                  {r.is_internal && (
+                    <div style={{ marginTop: 6 }}>
+                      <Pill tone="warn">internal — not shown to the tenant</Pill>
+                    </div>
+                  )}
+                  <div style={{ fontSize: 13, whiteSpace: "pre-wrap", marginTop: 6 }}>{r.body}</div>
+                  <AttachmentRow atts={r.attachments} />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {canWrite ? (
+            <div className="stack" style={{ gap: 8, marginTop: 10 }}>
+              <textarea
+                rows={3}
+                placeholder="The answer, in the tenant's language — steps and button names in bold. Markdown is rendered on their side."
+                value={replyBody}
+                onChange={(e) => setReplyBody(e.target.value)}
+                style={{
+                  width: "100%",
+                  background: "var(--bg-2)",
+                  border: "1px solid var(--line)",
+                  borderRadius: 8,
+                  color: "var(--ink)",
+                  padding: "10px 12px",
+                  fontSize: 13,
+                  resize: "vertical",
+                  fontFamily: "inherit",
+                }}
+              />
+              <div className="row wrap" style={{ gap: 10, alignItems: "center" }}>
+                <AttachmentPicker<SupportAttachment>
+                  send={(f) => platform.uploadSupportAttachment(t.ticket_id, f)}
+                  maxBytes={10 * 1024 * 1024}
+                  max={5}
+                  label="Attach a screenshot"
+                  onItems={setReplyImgs}
+                />
+                <label className="row" style={{ gap: 6, fontSize: 12, color: "var(--ink-2)", cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={internal}
+                    onChange={(e) => setInternal(e.target.checked)}
+                  />
+                  Internal note — don't show it to the tenant
+                </label>
+              </div>
+              <div className="row" style={{ justifyContent: "flex-end" }}>
+                <Button
+                  size="sm"
+                  variant="primary"
+                  loading={sending}
+                  disabled={!replyBody.trim() || imgBusy || sending}
+                  onClick={sendReply}
+                >
+                  {internal ? "Add internal note" : "Send to tenant"}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="muted" style={{ fontSize: 12, marginTop: 10 }}>
+              Read-only — this role has support.read, not support.write.
+            </div>
+          )}
+        </div>
+
         <TenantTelemetry ticketId={ticket.ticket_id} />
         {ctx && (
           <div>

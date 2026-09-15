@@ -39,6 +39,7 @@ export function Popover({
   label,
   children,
   align = "end",
+  side = "bottom",
   open,
   onOpenChange,
   className,
@@ -48,6 +49,7 @@ export function Popover({
   label: string;
   children: React.ReactNode;
   align?: "start" | "center" | "end";
+  side?: "top" | "bottom" | "left" | "right";
   /** Controlled mode. Omit both for uncontrolled. */
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -60,6 +62,7 @@ export function Popover({
         <RadixPopover.Content
           aria-label={label}
           align={align}
+          side={side}
           sideOffset={8}
           collisionPadding={12}
           className={cn(

@@ -88,6 +88,41 @@ function assertWritable(keys, allow, table) {
  *  fully-defaulted row (`DEFAULT VALUES`) rather than emitting the invalid
  *  `() VALUES ()` — lets modules whose columns are all defaulted (e.g. an
  *  outbound order created in status CREATED) be opened with an empty body. */
+/**
+ * Encode the jsonb columns of a patch before it is bound as query parameters.
+ *
+ * WHY THIS HAS TO BE EXPLICIT. node-postgres serialises a JS object to JSON,
+ * but a JS ARRAY becomes a POSTGRES ARRAY LITERAL — `{"a","b"}` — which is not
+ * JSON. Bound to a jsonb column that raises 22P02, which the error handler
+ * turns into `400 INVALID_VALUE`, "One of the values is in the wrong format":
+ * no column named, no field named. It shipped twice, in
+ * `service_type_web_profile.highlights_*` and `service_type_field.options_json`,
+ * and in both cases it made a whole screen unsaveable while looking like a
+ * mysterious rejection of the user's text.
+ *
+ * `insertOne`/`updateOne` cannot infer this: they do not know the schema, and
+ * `uuid[]` columns need the raw array that jsonb must not get. So the caller,
+ * which does know its own table, names the jsonb columns here.
+ *
+ * ALWAYS stringifies rather than guessing whether a string is already JSON.
+ * The values arriving here are logical values off a validated request body —
+ * the string "FCL" is the JSON document `"FCL"`, and passing it through raw is
+ * a 22P02 of its own. `null`/`undefined` become SQL NULL; a NOT NULL column
+ * whose empty state is `[]` or `{}` must substitute that before calling.
+ *
+ * @param {object} data
+ * @param {Iterable<string>} columns jsonb column names on this table
+ */
+function jsonbFields(data, columns) {
+  const out = { ...data };
+  for (const col of columns) {
+    if (!Object.prototype.hasOwnProperty.call(out, col)) continue;
+    const v = out[col];
+    out[col] = v === null || v === undefined ? null : JSON.stringify(v);
+  }
+  return out;
+}
+
 async function insertOne(client, table, data, returning = "*", allow = null) {
   const keys = Object.keys(data);
   if (keys.length === 0) {
@@ -233,6 +268,7 @@ async function listComplete(client, sql, params = [], opts = {}) {
 }
 
 module.exports = {
+  jsonbFields,
   insertOne, updateOne, getById, page, TOTAL_COL, splitTotal, listComplete,
   ident, assertWritable, IDENT_RE,
 };

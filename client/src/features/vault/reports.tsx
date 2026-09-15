@@ -45,7 +45,7 @@ const PARAM_FIELDS: { key: string; label: string; placeholder: string }[] = [
   { key: "to", label: "To", placeholder: "2026-03-31" },
   { key: "as_of", label: "As of", placeholder: "2026-03-31" },
   { key: "period_code", label: "Period code", placeholder: "2026-Q1" },
-  { key: "dossier_id", label: "Dossier id", placeholder: "uuid (dossier_360)" },
+  { key: "dossier_id", label: "Operations file id", placeholder: "uuid (dossier_360)" },
 ];
 
 function RunReportModal({

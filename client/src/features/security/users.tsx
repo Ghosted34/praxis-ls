@@ -15,8 +15,16 @@ import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { Pill } from "@/components/ui/pill";
 import { useList, errMsg } from "@/lib/use-resource";
+import { useSearchParams } from "react-router-dom";
+import { Callout } from "@/components/ui/callout";
+import { Checkbox } from "@/components/ui/checkbox";
 import { num, dateFmt } from "@/lib/format";
 import { tenant, ApiError } from "@/lib/api-client";
+import { tokenStore } from "@/lib/token-store";
+import { EmployeeSelect } from "@/components/employee-select";
+import { type EmployeeOption } from "@/lib/employee-search";
+import { PasswordRules } from "@/components/password-rules";
+import { passwordMeetsPolicy } from "@/lib/password-policy";
 import { RowActions } from "@/components/ui/row-actions";
 import {
   type User,
@@ -26,34 +34,62 @@ import {
   shell,
 } from "./shared";
 
+/** What "Provision account" on an employee record hands over: the person to
+ *  create the login for, resolved server-side from their employee row. Passed as
+ *  props rather than read from the URL inside the form, so the form has one way
+ *  of being told who it is for. */
+export type ProvisionSeed = {
+  employee_id: string;
+  full_name: string;
+  email: string;
+};
+
 function UserForm({
   user,
   roles,
+  seed,
   onClose,
   onSaved,
 }: {
   user: User | null;
   roles: Role[];
+  /** Pre-fill for a login being provisioned from an employee record. */
+  seed?: ProvisionSeed | null;
   onClose: () => void;
   onSaved: () => void;
 }) {
   const editing = !!user;
-  const [email, setEmail] = React.useState(user?.email || "");
-  const [fullName, setFullName] = React.useState(user?.full_name || "");
+  const [email, setEmail] = React.useState(user?.email || seed?.email || "");
+  const [fullName, setFullName] = React.useState(
+    user?.full_name || seed?.full_name || "",
+  );
   const [username, setUsername] = React.useState(user?.username || "");
   const [password, setPassword] = React.useState("");
+  /*
+   * INVITING IS THE DEFAULT, and it is the default for a security reason
+   * rather than a convenience one. Typing a password for somebody means the
+   * credential is known to two people from the moment it exists, travels over
+   * WhatsApp or a sticky note to reach them, and is usually never changed by
+   * the person it belongs to. An invitation mails a single-use activation link
+   * to the address on the record and the administrator never learns the
+   * password at all.
+   */
+  const [invite, setInvite] = React.useState(true);
   const [status, setStatus] = React.useState(user?.status || "ACTIVE");
   const [roleIds, setRoleIds] = React.useState<string[]>([]);
   // Authority overlay (ISSUER/VALIDATOR/APPROVER/LINE_MANAGER) — layered on top of
   // roles and read by requireCapability() on high-authority routes (e.g. disburse).
   const allCaps = useList<Capability>("/capabilities");
   const [capIds, setCapIds] = React.useState<string[]>([]);
-  const [employeeId, setEmployeeId] = React.useState(user?.employee_id || "");
+  const [employeeId, setEmployeeId] = React.useState(
+    user?.employee_id || seed?.employee_id || "",
+  );
   // Live-schema employees only — app_user + its employee FK live in the live
   // schema, so linking must never offer sandbox employees (would 409/EMPLOYEE_NOT_FOUND).
-  const employees = useList<{ employee_id: string; full_name?: string }>(
-    "/users/employees",
-  );
+  // In Test mode that makes this list a different length from the staff roster
+  // on screen, which reads as a bug unless somebody says so: see `envNote`.
+  const employees = useList<EmployeeOption>("/users/employees");
+  const inSandbox = tokenStore.getEnv() !== "live";
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [hydrating, setHydrating] = React.useState(editing);
@@ -123,18 +159,38 @@ function UserForm({
           body: { capability_ids: capIds },
         });
       } else {
-        const created = await tenant<User>("/users", {
-          method: "POST",
-          body: {
-            email,
-            full_name: fullName,
-            password,
-            username: username || null,
-            employee_id: employeeId || null,
-            status,
-            role_ids: roleIds,
+        const created = await tenant<User & { invitation?: { sent?: boolean; error?: string } }>(
+          "/users",
+          {
+            method: "POST",
+            body: {
+              email,
+              full_name: fullName,
+              // Exactly one of the two reaches the API. Sending both would let
+              // a typed password ride along with an invitation and quietly
+              // become a second, unknown way in.
+              ...(invite ? { invite: true } : { password }),
+              username: username || null,
+              employee_id: employeeId || null,
+              status,
+              role_ids: roleIds,
+            },
           },
-        });
+        );
+        // The account is created either way; only the email may have failed.
+        // Saying so here is the difference between "they never got it" being
+        // discovered now and being discovered on their first day.
+        if (invite && created?.invitation && created.invitation.sent === false) {
+          setError(
+            created.invitation.error ||
+              "The account was created, but the invitation email could not be sent. Use Resend invitation.",
+          );
+          // The account EXISTS, so the list has to refresh — but the dialog
+          // stays open, because closing it would take the only notice that the
+          // invitation never went out off the screen with it.
+          onSaved();
+          return;
+        }
         // Assign capabilities only after the login exists (needs its user_id).
         if (created?.user_id && capIds.length) {
           await tenant(`/capabilities/users/${created.user_id}`, {
@@ -206,42 +262,86 @@ function UserForm({
           </Field>
           <Field
             label={tr("Employee")}
-            hint="Link this login to a staff record — picks up their name."
+            hint="Link this login to a staff record — picks up their name and work email."
             className="sm:col-span-2"
+            // The picker renders a trigger AND a note, so `Field` cannot label
+            // it by cloning; it is told the id the trigger carries instead.
+            htmlFor="user-employee-link"
           >
-            <Select
+            <EmployeeSelect
+              id="user-employee-link"
               value={employeeId}
-              onChange={(e) => {
-                const id = e.target.value;
-                setEmployeeId(id);
-                const emp = (employees.rows || []).find(
-                  (x) => x.employee_id === id,
-                );
-                if (emp && !fullName.trim()) setFullName(emp.full_name || "");
+              label={tr("Linked employee")}
+              emptyLabel="— No linked employee —"
+              searchPlaceholder="Search name, matricule or email…"
+              employees={employees.rows || []}
+              loading={employees.loading}
+              error={employees.error}
+              selectedLabel={user?.full_name || seed?.full_name || null}
+              note={
+                inSandbox
+                  ? tr(
+                      "You are in Test mode, but logins are always live — this is your LIVE staff list, not the sandbox roster the other screens show.",
+                    )
+                  : null
+              }
+              onChange={(emp) => {
+                setEmployeeId(emp ? emp.employee_id : "");
+                if (!emp) return;
+                // Only fills what is empty. Overwriting a name or an address
+                // somebody typed, because they then linked a record, is how a
+                // deliberate correction gets silently undone.
+                if (!fullName.trim()) setFullName(emp.full_name || "");
+                if (!email.trim())
+                  setEmail(emp.email || emp.personal_email || "");
               }}
-            >
-              <option value="">{tr("— No linked employee —")}</option>
-              {(employees.rows || []).map((emp) => (
-                <option key={emp.employee_id} value={emp.employee_id}>
-                  {emp.full_name || emp.employee_id.slice(0, 8)}
-                </option>
-              ))}
-            </Select>
+            />
+            {/* `app_user.employee_id` carries no unique constraint, so a second
+                login for the same person is one click away and nothing else
+                would say so. Warned rather than blocked: a shared operations
+                account beside a personal one is a real, if rare, arrangement. */}
+            {!editing &&
+              (employees.rows || []).some(
+                (e) => e.employee_id === employeeId && e.has_account,
+              ) && (
+                <p className="micro mt-1 text-[rgb(var(--warn))]">
+                  {tr(
+                    "This person already has a login. Creating a second one is allowed but rarely meant — check the list below first.",
+                  )}
+                </p>
+              )}
           </Field>
           {!editing && (
-            <Field
-              label={tr("Password")}
-              required
-              hint="Minimum 8 characters. The user should change it after first sign-in."
-              className="sm:col-span-2"
-            >
-              <Input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
+            <div className="space-y-3 sm:col-span-2">
+              <Checkbox
+                checked={invite}
+                onCheckedChange={setInvite}
+                label={tr("Email them an invitation to set their own password")}
+                hint={tr(
+                  "A single-use activation link, valid for 72 hours. Nobody but them ever knows the password.",
+                )}
               />
-            </Field>
+              {!invite && (
+                <div>
+                  <Field
+                    label={tr("Password")}
+                    required
+                    hint="The user should change it after first sign-in."
+                  >
+                    <Input
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="••••••••••••"
+                    />
+                  </Field>
+                  {/* Outside the Field on purpose: `Field` labels its child by
+                      cloning it, and a second child turns that into a group
+                      wrapper whose <label for> points at nothing. */}
+                  <PasswordRules value={password} />
+                </div>
+              )}
+            </div>
           )}
         </div>
 
@@ -316,7 +416,16 @@ function UserForm({
             type="submit"
             loading={busy}
             disabled={
-              busy || !email || !fullName || (!editing && password.length < 8)
+              busy ||
+              !email ||
+              !fullName ||
+              // Only when a password is actually being TYPED. This used to read
+              // `!editing && password.length < 8`, which is true for every
+              // invitation as well — the field is hidden on that path and the
+              // password is necessarily "", so the default way of creating a
+              // user could not be submitted at all. The length is the server's
+              // (12 + complexity), not a second opinion of it.
+              (!editing && !invite && !passwordMeetsPolicy(password))
             }
           >
             {editing ? "Save changes" : "Create user"}
@@ -366,14 +475,19 @@ function PasswordForm({ user, onClose }: { user: User; onClose: () => void }) {
         </div>
       ) : (
         <form className="space-y-4" onSubmit={submit}>
-          <Field label="New password" required hint="Minimum 8 characters.">
-            <Input
-              type="password"
-              value={pw}
-              onChange={(e) => setPw(e.target.value)}
-              placeholder="••••••••"
-            />
-          </Field>
+          <div>
+            <Field label="New password" required>
+              <Input
+                type="password"
+                value={pw}
+                onChange={(e) => setPw(e.target.value)}
+                placeholder="••••••••••••"
+              />
+            </Field>
+            {/* See the note in UserForm: a second child would cost the input
+                its label. */}
+            <PasswordRules value={pw} />
+          </div>
           {error && <ErrorState message={error} />}
           <div className="flex justify-end gap-2 pt-2">
             <Button
@@ -387,7 +501,7 @@ function PasswordForm({ user, onClose }: { user: User; onClose: () => void }) {
             <Button
               type="submit"
               loading={busy}
-              disabled={pw.length < 8 || busy}
+              disabled={!passwordMeetsPolicy(pw) || busy}
             >
               Set password
             </Button>
@@ -403,8 +517,80 @@ export function UsersPage() {
   const rolesQ = useList<Role>("/roles");
   const [q, setQ] = React.useState("");
   const [filter, setFilter] = React.useState<string>("ALL");
-  const [form, setForm] = React.useState<{ user: User | null } | null>(null);
+  const [form, setForm] = React.useState<{
+    user: User | null;
+    seed?: ProvisionSeed | null;
+  } | null>(null);
   const [pwTarget, setPwTarget] = React.useState<User | null>(null);
+  const [inviting, setInviting] = React.useState<string | null>(null);
+  const [notice, setNotice] = React.useState<string | null>(null);
+
+  /*
+   * ── THE DEEP LINK FROM AN EMPLOYEE RECORD ────────────────────────────────
+   *
+   * "Provision account" on somebody's HR dossier arrives here as
+   * `/security/users?provision=<employee_id>`, and this resolves it: it asks
+   * the employees API who that is and opens the New-user dialog with their name,
+   * email and employee link already filled in.
+   *
+   * Only the ID travels in the URL. Carrying the name and address as query
+   * parameters would mean the form trusts whatever the link says a person is
+   * called — the record is the source, and reading it here is one request.
+   *
+   * The parameter is then cleared with `replace`, so Back returns to the
+   * employee rather than re-opening this dialog, and a refresh does not
+   * resurrect a form the operator has already dealt with.
+   */
+  const [params, setParams] = useSearchParams();
+  const provisionFor = params.get("provision");
+  React.useEffect(() => {
+    if (!provisionFor) return;
+    let live = true;
+    tenant<{
+      provisioned: boolean;
+      accounts: { user_id: string }[];
+      suggested: ProvisionSeed | null;
+    }>(`/employees/${provisionFor}/account`)
+      .then((acc) => {
+        if (!live) return;
+        if (acc.suggested) setForm({ user: null, seed: acc.suggested });
+        else
+          setNotice(
+            "That employee already has a login — it is in the list below.",
+          );
+      })
+      .catch((err) => {
+        if (live) setNotice(errMsg(err));
+      })
+      .finally(() => {
+        if (!live) return;
+        setParams(
+          (prev) => {
+            const p = new URLSearchParams(prev);
+            p.delete("provision");
+            return p;
+          },
+          { replace: true },
+        );
+      });
+    return () => {
+      live = false;
+    };
+  }, [provisionFor, setParams]);
+
+  /** Re-send an activation link — the first one expired, or it bounced. */
+  async function resendInvite(u: User) {
+    setInviting(u.user_id);
+    setNotice(null);
+    try {
+      await tenant(`/users/${u.user_id}/invite`, { method: "POST", body: {} });
+      setNotice(`Invitation sent to ${u.email}.`);
+    } catch (err) {
+      setNotice(errMsg(err));
+    } finally {
+      setInviting(null);
+    }
+  }
 
   const all = React.useMemo(() => rows || [], [rows]);
   const list = all.filter((u) => {
@@ -454,6 +640,18 @@ export function UsersPage() {
       label: "",
       render: (r) => (
         <RowActions>
+          {/* Safer than handing out a password: they set their own, and the
+              administrator never sees it. Shown for everybody, because an
+              expired invitation and a forgotten password are the same errand. */}
+          <Button
+            size="sm"
+            variant="outline"
+            loading={inviting === r.user_id}
+            disabled={Boolean(inviting)}
+            onClick={() => resendInvite(r)}
+          >
+            Invite
+          </Button>
           <Button size="sm" variant="outline" onClick={() => setPwTarget(r)}>
             Password
           </Button>
@@ -485,6 +683,18 @@ export function UsersPage() {
         }
       />
       <HubTabs />
+      {notice && (
+        <Callout
+          tone="info"
+          action={
+            <Button size="sm" variant="ghost" onClick={() => setNotice(null)}>
+              Dismiss
+            </Button>
+          }
+        >
+          {notice}
+        </Callout>
+      )}
       <KpiRow>
         <KpiTile label={tr("Users")} value={num(all.length)} />
         <KpiTile label={tr("Active")} value={num(active)} />
@@ -535,6 +745,7 @@ export function UsersPage() {
       {form && (
         <UserForm
           user={form.user}
+          seed={form.seed}
           roles={rolesQ.rows || []}
           onClose={() => setForm(null)}
           onSaved={reload}

@@ -53,6 +53,37 @@ const DOC_TYPES = {
   TRANSIT_ORDER:         { label: "Transit order",            module: "operations/transit_order",      moduleKey: "MOD-30" },
   CASH_REQUEST:          { label: "Cash request",             module: "costing/cash_request",          moduleKey: "MOD-49" },
   /*
+   * The receipt for ONE instalment of a cash request (owner decision Q16 C).
+   *
+   * A separate doc type rather than a variant of CASH_REQUEST, because it is a
+   * different document about a different fact. The voucher says what was
+   * asked for and approved; the receipt says what was actually handed over, on
+   * a date, by one named person to another — and a request paid in three
+   * tranches produces three of them, each with its own balance still to run.
+   * One `entity_ref` per document is what the vault, the seals and the
+   * verification portal are all keyed on, so three receipts need three refs:
+   * `cash_request_payment:<id>`.
+   *
+   * MOD-49 with its parent: whoever may read the request may read the receipts
+   * raised against it.
+   */
+  CASH_PAYMENT_RECEIPT:  { label: "Cash payment receipt",     module: "costing/cash_request",          moduleKey: "MOD-49" },
+  /*
+   * The costing worksheet (12766). It has had a TEMPLATE since documents
+   * shipped and a `loadRecord` branch to build its payload — but it was never
+   * registered HERE, and `assertDocType` throws 422 UNKNOWN_DOC_TYPE on
+   * anything unregistered. So `document_vault.capture()` refused the one
+   * document the module produces: the sheet could be previewed and printed
+   * from the browser and could never be FILED, which is why no approved
+   * costing in any tenant has a vault copy of what was approved.
+   *
+   * MOD-46 rather than the MOD-49 its two neighbours carry: a costing is the
+   * operations officer's budget, and cash requests and régie advances are the
+   * finance officer's disbursements. Reading follows the module that owns the
+   * record, and these are two different desks.
+   */
+  COSTING:               { label: "Costing",                   module: "costing/costing",               moduleKey: "MOD-46" },
+  /*
    * The etat de rapprochement bancaire (MOD-09) and the petty-cash count sheet
    * that stands in for it where no institution issues a statement. Both are
    * signed control documents an auditor asks for by name, so both are captured
@@ -106,6 +137,29 @@ const DOC_TYPES = {
    */
   PARTNERSHIP_PROFILE:   { label: "Partnership corporate profile", module: "sales/partnership_request", moduleKey: "MOD-25" },
   SUCCESS_STORY_MEDIA:   { label: "Success story public image", module: "sales/success_story", moduleKey: "MOD-26" },
+  /*
+   * The two public-site media types, and they were BOTH missing.
+   *
+   * `SUCCESS_STORY_MEDIA` above has been here since its upload shipped;
+   * `INSIGHT_MEDIA` (12757 / 13773) and `SERVICE_TYPE_MEDIA` (12755) never
+   * were, though all three are the same thing — bytes a tenant uploads to put
+   * on their own public page. `createDocument` does not call `assertDocType`
+   * (only `capture` did), so an unregistered type passed silently and
+   * `moduleKeyForDocType` fell back to MOD-70.
+   *
+   * That fallback is the harm, and it is the same one PARTNERSHIP_PROFILE and
+   * EMPLOYMENT_CONTRACT above were registered to end: reading a vault document
+   * is gated on the owning module's grant, so an article cover and a service
+   * photograph have been gated on SETTINGS. The marketing writer who just
+   * uploaded the cover could not open it back unless they also administered the
+   * workspace, and anyone holding Settings could read both.
+   *
+   * Both are MOD-29 — insight and the service web profile share that key with
+   * `service_type` itself, which `service_type_web.events` states and
+   * `insight.events` matches.
+   */
+  INSIGHT_MEDIA:         { label: "Insight article public image", module: "content/insight", moduleKey: "MOD-29" },
+  SERVICE_TYPE_MEDIA:    { label: "Service profile public image", module: "operations/service_type_web", moduleKey: "MOD-29" },
   /*
    * Master-data scans — the file behind a register entry, not a document this
    * system issues. There is no template for these three and there never will
@@ -192,6 +246,39 @@ const SIGNATURE_CEILING = Object.assign(Object.create(null), {
    * is worth its cost.
    */
   EMPLOYMENT_CONTRACT: { signable: true, allowsQes: true,  allowsWet: false },
+  /*
+   * The costing worksheet: signable, but neither certifiable nor wet-signable.
+   *
+   * NOT CERTIFIED. Certification is bought per envelope from a third party and
+   * is for documents a stranger relies on — an invoice, a contract, an offer.
+   * A costing is an INTERNAL budget: it is never sent to the client, and the
+   * legacy system's own sheet says "estimate" on it. Paying a certification fee
+   * three times per file (issue, validate, approve) for a document nobody
+   * outside the building reads is a cost with no counterparty.
+   *
+   * NOT WET. The three seals exist to record WHO decided, and the wet path
+   * prints the page, collects an ink signature and scans it back — at which
+   * point the record says a scan was uploaded, not that the named validator
+   * decided. It also cannot be automatic, and these seals are applied by the
+   * transition itself so that no approval can be recorded without one.
+   */
+  COSTING:             { signable: true, allowsQes: false, allowsWet: false },
+  /*
+   * The cash request and its per-instalment receipt (owner decisions Q12, Q16).
+   *
+   * WET, where the costing is not. A costing never leaves the building — it is
+   * the operations officer's budget, read by two colleagues. These two do:
+   * money changes hands at a cash window, sometimes at 06:00 against a paper
+   * voucher, and the person taking it is not always at a screen. Refusing the
+   * paper path would not make the cash stay put; it would make the record of
+   * it live in a drawer.
+   *
+   * NOT CERTIFIED, for the costing's reason exactly: certification is bought
+   * per envelope from a third party and is for documents a stranger relies on.
+   * Both of these are internal treasury paper.
+   */
+  CASH_REQUEST:         { signable: true, allowsQes: false, allowsWet: true },
+  CASH_PAYMENT_RECEIPT: { signable: true, allowsQes: false, allowsWet: true },
 });
 
 const NOT_SIGNABLE = Object.freeze({ signable: false, allowsQes: false, allowsWet: false });

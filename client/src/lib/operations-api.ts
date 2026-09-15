@@ -2,7 +2,7 @@
  * Operations API helpers (typed) — dossiers (operation files), transit orders,
  * delivery notes, milestones. Routes mirror src/modules/operations/*.
  */
-import { tenant } from "./api-client";
+import { tenant, tenantWithProgress } from "./api-client";
 
 /* ── Operation files / dossiers(/operations) ── */
 export type Dossier = {
@@ -579,12 +579,31 @@ export const cancelDeliveryNote = (id: string, reason: string) =>
  * either. `has_active_template` is surfaced because a service type without one
  * silently yields dossiers with no milestones.
  */
+/**
+ * The shape of a public quote enquiry for a service.
+ *
+ * Kept in step with ENQUIRY_SHAPE in src/modules/operations/service_type/
+ * service_type.validator.js. It is AUTHORED here rather than derived from the
+ * key, unlike the transport mode: a mode decides a glyph, and this decides which
+ * fields a stranger must fill before a quote form will let them continue.
+ */
+export type EnquiryShape = "ROUTE" | "STORAGE" | "NONE";
+
+export const ENQUIRY_SHAPES: { value: EnquiryShape; label: string }[] = [
+  { value: "ROUTE", label: "From somewhere to somewhere" },
+  { value: "STORAGE", label: "A place and a duration" },
+  { value: "NONE", label: "No movement to describe" },
+];
+
 export type ServiceType = {
   service_type_id: string;
   key: string;
   name_fr: string;
   name_en?: string | null;
   territory?: string | null;
+  /** What a public quote enquiry must ask for this service (migration 12774).
+   *  ROUTE | STORAGE | NONE, defaulting to ROUTE server-side. */
+  enquiry_shape?: EnquiryShape | null;
   is_system?: boolean;
   is_active?: boolean;
   created_at?: string | null;
@@ -599,6 +618,7 @@ export type ServiceTypeInput = {
   name_fr?: string;
   name_en?: string | null;
   territory?: string | null;
+  enquiry_shape?: EnquiryShape;
   is_active?: boolean;
   ops_reference_code?: string;
 };
@@ -1294,12 +1314,40 @@ export const instantiateMilestones = (body: {
 
 export type OverviewPerson = { user_id: string; name?: string | null } | null;
 export type DossierOverview = {
+  /**
+   * The header the 360 renders itself from — ids AND the display fields they
+   * resolve to. The page variant is reachable from a pasted link with nothing
+   * but a uuid, so this response has to be able to NAME the file on its own.
+   */
   dossier: {
     dossier_id: string;
     ref: string;
     status: string;
     client_id?: string | null;
     service_type_id?: string | null;
+    title?: string | null;
+    incoterm?: string | null;
+    bl_mawb?: string | null;
+    vessel_flight?: string | null;
+    pol?: string | null;
+    pod?: string | null;
+    eta?: string | null;
+    ata?: string | null;
+    promised_delivery_date?: string | null;
+    created_at?: string | null;
+    client_name?: string | null;
+    service_key?: string | null;
+    service_name_en?: string | null;
+    service_name_fr?: string | null;
+    /** Does this file's service type carry containers? Gates the Containers tab. */
+    captures_containers?: boolean;
+    container_detail_mode?: "GROUPED" | "PER_BOX" | null;
+    /** Boxes on the file (sum of container-line quantities) — the tab's badge. */
+    container_boxes?: number | null;
+    rate_provider_name?: string | null;
+    milestone_total?: number | null;
+    milestone_done?: number | null;
+    current_milestone?: string | null;
   };
   /** Lifecycle readiness — powers the "ready to complete / fully collected" prompt. */
   readiness?: {
@@ -1307,7 +1355,21 @@ export type DossierOverview = {
     fully_collected: boolean;
     ready_to_complete: boolean;
   } | null;
-  costing: { count: number; planned_cost?: number | null };
+  /** 12766 — the file's live costing, so the 360 can name it, price it and
+   *  LINK to it. It carried a count and a number before, which made the one
+   *  screen that tells you a file has a costing the one place you could not
+   *  open it. `planned_cost` is XAF-normalised at each sheet's own rate. */
+  costing: {
+    count: number;
+    planned_cost?: number | null;
+    costing_id?: string | null;
+    doc_number?: string | null;
+    status?: string | null;
+    currency?: string | null;
+    total_ht?: number | null;
+    total_vat?: number | null;
+    total_ttc?: number | null;
+  };
   costs: { actual_cost?: number | null; gl_entries: number };
   invoicing: {
     count: number;
@@ -1345,10 +1407,17 @@ export type DossierOverview = {
   /** SoD chain on the latest costing + latest locked final invoice. */
   people?: {
     costing?: {
+      costing_id?: string | null;
       doc_number?: string | null;
       status?: string | null;
       validator: OverviewPerson;
+      /** 12766 — who ACTUALLY validated, as distinct from `validator`, who the
+       *  sheet was addressed to. They differ whenever somebody stands in, and
+       *  showing only the latter credited the wrong person. */
+      validated_by?: OverviewPerson;
+      validated_at?: string | null;
       approver: OverviewPerson;
+      approved_at?: string | null;
     } | null;
     invoice?: {
       doc_number?: string | null;
@@ -1360,7 +1429,15 @@ export type DossierOverview = {
   } | null;
   milestones: Record<string, number>;
   procurement: { po_count: number; po_total?: number | null };
-  documents: { transit_orders: number; delivery_notes: number };
+  documents: {
+    transit_orders: number;
+    delivery_notes: number;
+    /** True counts — `document_rows` below is capped at 20 and cannot be counted. */
+    vault?: number;
+    invoices?: number;
+  };
+  /** Q-tickets on this file: how many, and how many still unresolved. */
+  queries?: { count: number; open: number } | null;
   document_rows?: {
     invoices?: {
       invoice_id: string;
@@ -1878,6 +1955,16 @@ export type ServiceTypeWebReadiness = {
   missing: string[];
 };
 
+/**
+ * Which brand token tints the service's card on the public site.
+ *
+ * A token NAME, never a hex — the palette is tenant configuration, and a stored
+ * `#EE7D04` would bake one tenant's brand into another tenant's data. Mirrors
+ * the CHECK on `service_type_web_profile.accent` (migration 12755) and the
+ * `ServiceAccent` union `public-web` renders it with.
+ */
+export type ServiceTypeWebAccent = "PRIMARY" | "ACCENT" | "SUCCESS";
+
 export type ServiceTypeWebProfile = {
   service_type_id: string;
   short_description_fr?: string | null;
@@ -1906,6 +1993,45 @@ export type ServiceTypeWebProfile = {
   updated_at?: string | null;
   /** Server-side allowlist check, recomputed on every GET. */
   cover_allowed?: boolean;
+  /* ── The card (migration 12755) ──────────────────────────────────────────
+     The three fields the public services page renders around the teaser: which
+     pillar the card sits under, the line it closes on, and the brand token that
+     tints it. Null pillar is legitimate — it puts the service in the trailing
+     unnamed group, which still renders. */
+  group_id?: string | null;
+  claim_fr?: string | null;
+  claim_en?: string | null;
+  accent?: ServiceTypeWebAccent;
+};
+
+/**
+ * A pillar — the named section a services page is built from (`/services#freight`).
+ *
+ * Global to the tenant rather than per-service: the same three or four sections
+ * group every published service, which is why they are managed from a dialog
+ * rather than edited on one service's tab.
+ */
+export type ServiceTypeWebGroup = {
+  group_id: string;
+  /** The URL anchor a shared link lands on. Slug-shaped, unique, stable across renames. */
+  key: string;
+  name_fr: string;
+  name_en?: string | null;
+  /** Icon NAME, resolved by the renderer against its own set — never markup. */
+  icon?: string | null;
+  sort_order: number;
+  is_active: boolean;
+  /** How many services sit under it. Present on the list read only. */
+  service_count?: number;
+};
+
+export type ServiceTypeWebGroupPatch = {
+  key?: string;
+  name_fr?: string;
+  name_en?: string | null;
+  icon?: string | null;
+  sort_order?: number;
+  is_active?: boolean;
 };
 
 export type ServiceTypeWebFaqRow = {
@@ -1950,6 +2076,9 @@ export const SERVICE_TYPE_WEB_LIMITS = {
   HIGHLIGHTS_GUIDED_MIN: 4,
   GALLERY_MAX: 12,
   FAQ_MAX: 12,
+  /** One sentence, not a paragraph — the card closes on it (12755). */
+  CLAIM_MAX: 200,
+  GROUP_NAME_MAX: 80,
 } as const;
 
 /**
@@ -1976,7 +2105,39 @@ export type ServiceTypeWebProfilePatch = {
   gallery_vault_ids?: string[];
   video_url?: string | null;
   sort_order?: number;
+  group_id?: string | null;
+  claim_fr?: string | null;
+  claim_en?: string | null;
+  accent?: ServiceTypeWebAccent;
 };
+
+/* ── Pillars (12755) ───────────────────────────────────────────────────────
+   Tenant-wide, not per-service, so they hang off the collection rather than off
+   a `:id`. The list read INCLUDES inactive pillars — the manager has to be able
+   to see and reactivate what it switched off. */
+export const listServiceTypeWebGroups = () =>
+  tenant<ServiceTypeWebGroup[]>(`/service-types/web/groups`);
+
+export const createServiceTypeWebGroup = (body: ServiceTypeWebGroupPatch) =>
+  tenant<ServiceTypeWebGroup>(`/service-types/web/groups`, { method: "POST", body });
+
+export const updateServiceTypeWebGroup = (
+  groupId: string,
+  body: ServiceTypeWebGroupPatch,
+) =>
+  tenant<ServiceTypeWebGroup>(`/service-types/web/groups/${groupId}`, {
+    method: "PATCH",
+    body,
+  });
+
+/** Deleting a pillar never deletes its services — the FK is ON DELETE SET NULL,
+ *  so they fall back to the trailing unnamed group and keep rendering. The count
+ *  comes back so the caller can say what moved. */
+export const deleteServiceTypeWebGroup = (groupId: string) =>
+  tenant<{ deleted: boolean; released_services: number }>(
+    `/service-types/web/groups/${groupId}`,
+    { method: "DELETE" },
+  );
 
 /** GET always 200 for an existing service type (`profile: null` when absent). */
 export const getServiceTypeWeb = (serviceTypeId: string) =>
@@ -1990,6 +2151,78 @@ export const upsertServiceTypeWeb = (
   tenant<ServiceTypeWebTab>(`/service-types/${serviceTypeId}/web`, {
     method: "PUT",
     body: patch,
+  });
+
+/* ── AI drafting ──────────────────────────────────────────────────────────
+   The assistant that turns pasted prose into a page. It WRITES NOTHING: the
+   proposal comes back as a profile-shaped patch and the author accepts it field
+   by field in the review step. */
+
+export type ServiceTypeWebToneLevel = "off" | "light" | "strong";
+
+/** The five axes, in the order the wizard shows them. */
+export const SERVICE_TYPE_WEB_TONE_AXES = [
+  "operational",
+  "commercial",
+  "seo",
+  "corridor",
+  "plain",
+] as const;
+export type ServiceTypeWebToneAxis =
+  (typeof SERVICE_TYPE_WEB_TONE_AXES)[number];
+export type ServiceTypeWebTone = Record<
+  ServiceTypeWebToneAxis,
+  ServiceTypeWebToneLevel
+>;
+
+export const SERVICE_TYPE_WEB_TONE_DEFAULT: ServiceTypeWebTone = {
+  operational: "strong",
+  commercial: "light",
+  seo: "strong",
+  corridor: "light",
+  plain: "strong",
+};
+
+export type ServiceTypeWebAiRequest = {
+  source: "existing" | "scratch";
+  /** Required for `existing`; meaningless for `scratch`. */
+  licence?: "structure" | "tighten" | "rewrite";
+  language_mode?: "each" | "extend";
+  primary?: "en" | "fr";
+  tone?: ServiceTypeWebTone;
+  instructions?: string;
+};
+
+export type ServiceTypeWebAiResult = {
+  manual_required: boolean;
+  /** Present when the assistant could not be used or its answer was unusable. */
+  reason?: string;
+  provider?: string | null;
+  languages?: { lang: "en" | "fr"; ok: boolean }[];
+  /**
+   * True only when every language went down the structure path, where the
+   * author's own paragraphs were copied rather than regenerated. The review
+   * step says so, because it is the difference between "we added headings" and
+   * "we rewrote your page".
+   */
+  prose_preserved?: boolean;
+  proposal?: ServiceTypeWebProfilePatch;
+  /**
+   * Bilingual FAQ rows, ready for `replaceServiceTypeWebFaq`. Empty when only
+   * one language was drafted — a row needs both, so there is nothing to offer.
+   */
+  faq?: ServiceTypeWebFaqRow[];
+  /** Why the FAQ is absent, when copy came back but no pair could be built. */
+  faq_unavailable?: "single_language";
+};
+
+export const draftServiceTypeWebCopy = (
+  serviceTypeId: string,
+  body: ServiceTypeWebAiRequest,
+) =>
+  tenant<ServiceTypeWebAiResult>(`/service-types/${serviceTypeId}/web/ai-copy`, {
+    method: "POST",
+    body,
   });
 
 export const publishServiceTypeWeb = (serviceTypeId: string) =>
@@ -2011,11 +2244,18 @@ export const uploadServiceTypeWebMedia = (
     data_url: string;
     original_name?: string;
   },
+  onProgress?: (percent: number) => void,
 ) =>
-  tenant<ServiceTypeWebTab>(`/service-types/${serviceTypeId}/web/media`, {
-    method: "POST",
-    body,
-  });
+  onProgress
+    ? tenantWithProgress<ServiceTypeWebTab>(
+        `/service-types/${serviceTypeId}/web/media`,
+        body,
+        onProgress,
+      )
+    : tenant<ServiceTypeWebTab>(`/service-types/${serviceTypeId}/web/media`, {
+        method: "POST",
+        body,
+      });
 
 export const removeServiceTypeWebMedia = (
   serviceTypeId: string,

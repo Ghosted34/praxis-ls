@@ -1,15 +1,39 @@
+/**
+ * Date display for the console. ALL of it is day-first.
+ *
+ * `undefined` as the locale means "whatever this workstation is set to", which
+ * on a US-configured machine renders "Sep 11, 2026" and — where the format is
+ * all-numeric — "9/11/2026". Praxis is read day-first, and a support engineer
+ * reading an error's first-seen date as the 9th of November when it was the
+ * 11th of September is a wrong answer delivered confidently. en-GB is pinned
+ * for the same reason the tenant client pins it: the shape must not depend on
+ * who is looking. `scripts/check-date-format.js` fails the build on a
+ * locale-less date format anywhere in the tree.
+ */
+const DATE_LOCALE = "en-GB";
+
 export function fmtDate(v?: string | null): string {
   if (!v) return "—";
   const d = new Date(v);
   if (isNaN(d.getTime())) return String(v);
-  return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  return d.toLocaleDateString(DATE_LOCALE, { year: "numeric", month: "short", day: "numeric" });
 }
 
 export function fmtDateTime(v?: string | null): string {
   if (!v) return "—";
   const d = new Date(v);
   if (isNaN(d.getTime())) return String(v);
-  return d.toLocaleString(undefined, { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleString(DATE_LOCALE, { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+/** Strict numeric day-first: dd/mm/yyyy. Built by hand rather than by locale,
+ *  so it cannot flip to month-first however the workstation is configured. */
+export function fmtDateDmy(v?: string | null): string {
+  if (!v) return "—";
+  const d = new Date(v);
+  if (isNaN(d.getTime())) return String(v);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
 }
 
 export function titleCase(s?: string | null): string {

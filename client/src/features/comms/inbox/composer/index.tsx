@@ -29,6 +29,7 @@
  * this file. Editing another PR's JSX is what makes parallel work fail.
  */
 import * as React from "react";
+import { dateDmy, dateTimeFmt } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field, Select } from "@/components/ui/modal";
@@ -43,8 +44,10 @@ import { EditorSurface } from "./editor";
 import { ComposerToolbar, FontNote } from "./toolbar";
 import { SlashMenu } from "./slash-menu";
 import { AttachmentTray, AttachButton } from "./attachment-tray";
+import { UploadProgress } from "@/components/ui/upload-progress";
 import { RecipientField, type ExtraRecipient } from "./recipient-field";
 import { isAddress, parseAddresses } from "./addresses";
+import { useFromMailbox } from "./use-from-mailbox";
 import { UndoSendToast } from "./undo-toast";
 import { AssistToolbar } from "../work/assist";
 import { GuardrailBar } from "../work/guardrails";
@@ -54,6 +57,7 @@ import { useRecipientHealth } from "../work/use-recipient-health";
 import { SchedulePicker } from "../work/schedule";
 import { schedulePayload, type ScheduleChoice } from "../work/schedule-payload";
 import { newIdempotencyKey, rememberSend, forgetSend } from "./offline-queue";
+import { useConfirm } from "@/components/ui/use-confirm";
 
 /** PR-2..PR-5 register into these rather than editing the markup. */
 export type ComposerSlots = {
@@ -154,7 +158,11 @@ export function Composer({
   onClose,
   slots = {},
 }: ComposerProps) {
-  const [from, setFrom] = React.useState(draft?.email_connection_id || connectionId);
+  /* Seeded from the caller's decision and then owned here — but re-seeded when
+   * the CALLER decides differently, which is the whole of `use-from-mailbox`.
+   * A reopened draft's own mailbox wins: a draft written from billing@ must not
+   * reopen on the default because that is what the dialog was showing. */
+  const [from, setFrom] = useFromMailbox(draft?.email_connection_id || connectionId);
   const [to, setTo] = React.useState((draft?.to_address || initialTo).join(", "));
   const [cc, setCc] = React.useState((draft?.cc_address || initialCc).join(", "));
   const [showCc, setShowCc] = React.useState((draft?.cc_address || initialCc).length > 0);
@@ -171,6 +179,7 @@ export function Composer({
   const [tray, setTray] = React.useState<api.AttachmentTray | null>(null);
   const [warnings, setWarnings] = React.useState<string[]>([]);
   const [busy, setBusy] = React.useState(false);
+  const [confirm, confirmDialog] = useConfirm();
   const [error, setError] = React.useState<string | null>(null);
   const [savedAt, setSavedAt] = React.useState<string | null>(null);
 
@@ -302,6 +311,24 @@ export function Composer({
     touch();
   };
 
+  /**
+   * The autosaved draft agrees with what the send will actually use.
+   *
+   * `flush` reads `from` on its next save anyway, but only if something else
+   * made the draft dirty — a mailbox changed and nothing typed after it would
+   * otherwise leave the row pointing at the old one, and a draft that reopens
+   * on a different sender than it was left on is the same wrong-sender bug one
+   * step removed. Marking it here covers both the parent's decision and the
+   * composer's own From row.
+   */
+  const savedFrom = React.useRef(from);
+  React.useEffect(() => {
+    if (savedFrom.current === from || !from) return;
+    savedFrom.current = from;
+    dirtyRef.current.email_connection_id = from;
+    touch();
+  }, [from, touch]);
+
   /* ── Attachments ────────────────────────────────────────────────────────── */
 
   const reloadTray = React.useCallback(async (id: string) => {
@@ -382,20 +409,39 @@ export function Composer({
     touch();
   }, [editor, initialBodyText, setBodyText, touch]);
 
+  /** Which attachment is going up, and how far. */
+  const [attaching, setAttaching] = React.useState<{
+    name: string;
+    index: number;
+    of: number;
+  } | null>(null);
+  const [attachPercent, setAttachPercent] = React.useState<number | null>(null);
+
   async function attach(files: File[]) {
     if (!files.length) return;
     setBusy(true);
     setError(null);
     try {
       const id = await ensureDraft();
-      for (const file of files) {
+      // One at a time, each with its own percentage: attaching four scans and
+      // watching a single spinner tells you nothing about which one is slow, or
+      // whether anything is happening at all.
+      for (let i = 0; i < files.length; i += 1) {
+        const file = files[i];
+        setAttaching({ name: file.name, index: i + 1, of: files.length });
+        setAttachPercent(0);
          
-        await api.uploadAttachment({
-          email_draft_id: id, filename: file.name,
-           
-          data_url: await fileToDataUrl(file),
-        });
+        await api.uploadAttachment(
+          {
+            email_draft_id: id,
+            filename: file.name,
+             
+            data_url: await fileToDataUrl(file),
+          },
+          setAttachPercent,
+        );
       }
+      setAttachPercent(100);
       await reloadTray(id);
     } catch (err) {
       // Shown in the composer rather than the global banner: it is about the
@@ -403,6 +449,8 @@ export function Composer({
       setError((err as { message?: string })?.message || tr("That file could not be attached."));
     } finally {
       setBusy(false);
+      setAttaching(null);
+      setAttachPercent(null);
     }
   }
 
@@ -419,18 +467,37 @@ export function Composer({
    * Throw this draft away.
    *
    * Asked before, not undone after: `DELETE /mail/drafts/:id` takes the row and
-   * its attachments with it, and there is no restore. The autosave timer is
-   * cleared first — a pending flush landing after the delete would recreate the
-   * draft the person just discarded, which is the sort of thing that only shows
-   * up once somebody types fast and then changes their mind.
+   * its attachments with it, and there is no restore. A pending flush landing
+   * after the delete would recreate the draft the person just discarded, which
+   * is the sort of thing that only shows up once somebody types fast and then
+   * changes their mind.
+   *
+   * THE TIMER IS CLEARED BEFORE THE QUESTION, NOT AFTER IT. That ordering is
+   * load-bearing and it is the one thing the move off `window.confirm` had to
+   * get right here. The native confirm BLOCKED THE EVENT LOOP, so no autosave
+   * could fire while the question was on screen and clearing the timer
+   * afterwards was sufficient. An awaited dialog does not block anything: the
+   * 1500ms timer keeps running behind it, and a person who reads the sentence
+   * before answering is exactly the person who outlasts it. The flush that then
+   * fires is an UPSERT — `saveDraft` with no `email_draft_id` creates a row —
+   * so once `discard()` has nulled the id, a retry of that flush writes back a
+   * brand-new copy of the draft that was just thrown away.
+   *
+   * Clearing first closes the window. If they say "Keep editing", `touch()`
+   * re-arms it; a flush with nothing dirty returns immediately, so re-arming
+   * unconditionally is safe.
    */
   async function discard() {
     if (!draftId) { onClose?.(); return; }
-    const ok = window.confirm(
-      `${tr("Discard this draft?")}\n\n${tr("It is deleted, along with anything attached to it. This cannot be undone.")}`,
-    );
-    if (!ok) return;
     if (timer.current) clearTimeout(timer.current);
+    const ok = await confirm({
+      title: tr("Discard this draft?"),
+      body: tr("It is deleted, along with anything attached to it. This cannot be undone."),
+      confirmLabel: tr("Discard draft"),
+      cancelLabel: tr("Keep editing"),
+      destructive: true,
+    });
+    if (!ok) { touch(); return; }
     dirtyRef.current = {};
     setBusy(true);
     try {
@@ -519,7 +586,7 @@ export function Composer({
         .focus("end")
         .insertContent(
           `<p>${a.filename || tr("Document")}: <a href="${url}">${url}</a> ` +
-          `<em>(${tr("expires")} ${new Date(link.expires_at).toLocaleDateString()})</em></p>`,
+          `<em>(${tr("expires")} ${dateDmy(link.expires_at)})</em></p>`,
         )
         .run();
       await detach(a.email_attachment_id);
@@ -636,6 +703,7 @@ export function Composer({
       className="flex min-h-0 flex-col rounded-xl border border-border bg-card"
       aria-label={tr("Compose a message")}
     >
+      {confirmDialog}
       <header className="space-y-1.5 border-b border-border px-3 py-2">
         {mailboxes.length > 1 && (
           <Field label={tr("From")}>
@@ -840,6 +908,21 @@ export function Composer({
           {schedule.kind === "NOW" ? tr("Send") : tr("Schedule")}
         </Button>
         <AttachButton onFiles={attach} disabled={busy} />
+        {attaching && attachPercent !== null && (
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="micro max-w-[12rem] truncate text-muted-foreground">
+              {attaching.of > 1
+                ? `${attaching.name} (${attaching.index}/${attaching.of})`
+                : attaching.name}
+            </span>
+            <UploadProgress
+              className="w-40"
+              state={attachPercent >= 100 ? "success" : "uploading"}
+              percent={attachPercent}
+              error={null}
+            />
+          </span>
+        )}
         <SchedulePicker value={schedule} onChange={setSchedule} />
         {slots["composer.footer.left"]}
         <span className="ml-auto flex items-center gap-2">
@@ -876,7 +959,7 @@ export function Composer({
 
       {queued && queued.undo_seconds === 0 && (
         <div className="border-t border-border px-3 py-2 text-xs text-muted-foreground" role="status">
-          {`${tr("Scheduled for")} ${new Date(queued.release_at).toLocaleString()}. ${tr("You can cancel it from the outbox until then.")}`}
+          {`${tr("Scheduled for")} ${dateTimeFmt(queued.release_at)}. ${tr("You can cancel it from the outbox until then.")}`}
         </div>
       )}
     </section>

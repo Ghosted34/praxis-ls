@@ -2,12 +2,17 @@
   "_note": "Committed allow-list for scripts/check-response-contract.js. Add a field with a one-line reason in _reasons; remove it when the underlying source of truth is fixed.",
   "_reasons": {
     "actual_count": "financial_dictionary.rules spendSeries builds `row[`${lens}_count`]` from SPEND_LENSES at runtime — no literal key exists to find. Sibling of the already-listed estimated_count.",
+    "bank_account_number": "Form state, not a response field: employee_allowance/employee.bank_block is a jsonb blob, and EmployeeDraft flattens it into one input per key so the edit form has something to bind to. draftToPayload folds them back into bank_block on the way out.",
+    "bank_branch": "Form state, not a response field: employee_allowance/employee.bank_block is a jsonb blob, and EmployeeDraft flattens it into one input per key so the edit form has something to bind to. draftToPayload folds them back into bank_block on the way out.",
+    "bank_iban": "Form state, not a response field: employee_allowance/employee.bank_block is a jsonb blob, and EmployeeDraft flattens it into one input per key so the edit form has something to bind to. draftToPayload folds them back into bank_block on the way out.",
+    "bank_swift": "Form state, not a response field: employee_allowance/employee.bank_block is a jsonb blob, and EmployeeDraft flattens it into one input per key so the edit form has something to bind to. draftToPayload folds them back into bank_block on the way out.",
     "client_scoped": "DOCUMENT_TYPE config stored inside a dictionary_item jsonb blob, so it is not a column and never will be. Sibling of the already-listed client_visible.",
     "committed_count": "Same computed key as actual_count. Emitted, but only ever as a template literal.",
     "exclude_id": "Input, not output: read as req.body.exclude_id by master/_shared/actions.js. DedupeInput is a request shape.",
     "field_type": "Custom-field definitions live inside a `setting` jsonb blob (security/setting/setting.rules.js), so no column backs them.",
     "identity_from": "sendpoint.repo.listWithBindings emits this inside a json_build_object() aggregate so the admin screen gets a send point and its bindings in one query rather than N+1 over 22 rows. The scanner only recognises `SELECT ... AS alias`, so a key built by json_build_object is invisible to it. The field IS sent.",
-    "identity_name": "sendpoint.repo.listWithBindings emits this inside a json_build_object() aggregate so the admin screen gets a send point and its bindings in one query rather than N+1 over 22 rows. The scanner only recognises `SELECT ... AS alias`, so a key built by json_build_object is invisible to it. The field IS sent."
+    "identity_name": "sendpoint.repo.listWithBindings emits this inside a json_build_object() aggregate so the admin screen gets a send point and its bindings in one query rather than N+1 over 22 rows. The scanner only recognises `SELECT ... AS alias`, so a key built by json_build_object is invisible to it. The field IS sent.",
+    "vat_mode": "View-model state, not a response field: costing-model.LineDraft carries which of the two boxes a débours line's VAT is entered through (rate vs free-text amount). Derived from upstream_vat_rate_percent/amount on load; toPayload sends the rate and amount, never the mode."
   },
   "tables": [
     "ageing",
@@ -27,6 +32,10 @@
     "actor_email_snapshot",
     "actual_count",
     "advance_open",
+    "bank_account_number",
+    "bank_branch",
+    "bank_iban",
+    "bank_swift",
     "client_scoped",
     "client_visible",
     "coa_aux_account",
@@ -100,6 +109,7 @@
     "usage_total",
     "variance_committed_actual",
     "variance_estimated_actual",
+    "vat_mode",
     "vat_registered",
     "weighted_score",
     "withholding_rate"

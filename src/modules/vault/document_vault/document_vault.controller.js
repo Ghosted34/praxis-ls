@@ -2,6 +2,7 @@
 const path = require("path");
 const service = require("./document_vault.service");
 const { asyncHandler, AppError } = require("../../../utils/errors");
+const { readUpload } = require("../../../shared/http/upload.middleware");
 
 const MIME_BY_EXT = {
   pdf: "application/pdf",
@@ -98,11 +99,14 @@ module.exports = {
         if (!rows[0]) throw new AppError("UNKNOWN_DOC_TYPE", "That document type is not in the registry", 422);
         docType = rows[0].code;
       }
+      // One call for both transports: multipart lands on req.file, the legacy
+      // base64 body on req.body.data_url. See shared/http/upload.middleware.
+      const file = readUpload(req);
       return service.createDocument(c, {
-        entityRef: b.entity_ref, docType, dataUrl: b.data_url,
+        entityRef: b.entity_ref, docType, dataUrl: b.data_url, file,
         fileContext: b.file_context, folderRef: b.folder_ref, dossierId: b.dossier_id,
         docTypeRefId: b.doc_type_ref_id || null, clientId: b.client_id || null,
-        originalName: b.original_name || null,
+        originalName: b.original_name || (file && file.originalname) || null,
         // An upload attached to an operations file follows legacy's rules —
         // 5 MB, PDF/PNG/JPG, contents checked. Uploads elsewhere (HR files,
         // finance scans) keep the vault's wider defaults untouched.

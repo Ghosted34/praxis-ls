@@ -64,6 +64,24 @@ function money(value, currency) {
   return ccy ? `${grouped} ${ccy}` : grouped;
 }
 
+/**
+ * A costing's status, in words.
+ *
+ * Read from the costing rules rather than copied, because the screen, the
+ * printed sheet and this page must call the same state the same thing — and a
+ * second copy of a status vocabulary is a copy that goes stale on the next
+ * status. Required lazily: this file is loaded by the verification portal,
+ * which has no other reason to pull a costing module in.
+ *
+ * Falls back to the raw value, which is what the rules do for an unknown
+ * status: a sheet in a state nobody has named must still verify.
+ */
+function costingStatus(status, lang) {
+  const { statusWords } = require("../../modules/costing/costing/costing.rules");
+  const words = statusWords(status);
+  return lang === "en" ? words.en : words.fr;
+}
+
 const count = (v) => String(Array.isArray(v) ? v.length : 0);
 const partyName = (p) => str(p && p.name) || "—";
 const dash = (v) => (str(v).trim() || "—");
@@ -103,6 +121,25 @@ const CHANGED_FIELD = new Map(Object.entries({
   start_date:          { fr: "Date de début",       en: "Start date",       show: true },
   end_date:            { fr: "Date de fin",         en: "End date",         show: true },
   trial_period_months: { fr: "Période d'essai",     en: "Trial period",     show: true },
+  // A raw enum in the payload — a hash cannot depend on a display string — so
+  // the panel names the field rather than printing two enums at a reader. Only
+  // the COSTING payload carries one; a cash request's status deliberately does
+  // not (see canonical.js).
+  status:              { fr: "Statut",              en: "Status",           show: false },
+  // The cash request's own keys (12773).
+  category:            { fr: "Catégorie",           en: "Category",         show: true },
+  method:              { fr: "Mode de paiement",    en: "Payment method",   show: true },
+  costing_ref:         { fr: "Cotation",            en: "Costing",          show: true },
+  costing_revision:    { fr: "Révision (cotation)", en: "Costing revision", show: true },
+  amount:              { fr: "Montant",             en: "Amount",           show: true },
+  balance:             { fr: "Solde",               en: "Balance",          show: true },
+  request_number:      { fr: "Demande de fonds",    en: "Cash request",     show: true },
+  // Named only. A beneficiary, a cost centre and a treasury account are all
+  // disclosures a stranger holding the paper is not entitled to; that the
+  // field MOVED is what they need to know.
+  beneficiary:         { fr: "Bénéficiaire",        en: "Beneficiary",      show: false },
+  cost_center:         { fr: "Centre de coût",      en: "Cost centre",      show: false },
+  treasury_account:    { fr: "Compte",              en: "Account",          show: false },
   // Named only. See the block comment above.
   party:               { fr: "Partie",              en: "Counterparty",     show: false },
   lines:               { fr: "Lignes",              en: "Line items",       show: false },
@@ -236,6 +273,91 @@ const RESOLVERS = new Map(Object.entries({
       }
       : null,
   }),
+
+  /**
+   * The costing worksheet — and the only resolver here whose reader is us.
+   *
+   * WHO SCANS THIS. Not a client: a costing is an internal budget and never
+   * leaves the building. The person holding it is an operations officer, a
+   * validator or an auditor, and the question they have is "is this the sheet
+   * that was approved, and by whom?" — which the seal answers and this fills
+   * in around.
+   *
+   * WHAT IS NOT PUBLISHED, and why it still matters that a costing never
+   * travels. `total_ttc` IS shown: unlike a salary, it is the figure the
+   * signature is about, and a verification that will not tell you the amount
+   * cannot confirm a budget at all. The LINES are counted, not listed — a
+   * charge-by-charge breakdown of what a job costs us is the one thing on this
+   * document a competitor would want, and the count is what a holder needs to
+   * confirm the sheet in their hand is the sheet that was sealed.
+   *
+   * `status` is a raw enum in the payload — it has to be, a hash cannot depend
+   * on a display string — so it is said in words here, the same words the
+   * screen and the printed sheet use.
+   */
+  COSTING: (p, lang) => ({
+    title: { fr: "Cotation", en: "Costing" },
+    fields: [
+      f("number", "Référence", "Reference", dash(p.number)),
+      f("dossier_ref", "Dossier", "File", dash(p.dossier_ref)),
+      f("status", "Statut", "Status", costingStatus(p.status, lang)),
+      f("total_ttc", "Total estimé (TTC)", "Total estimate (TTC)",
+        money(p.totals && p.totals.total_ttc, p.currency)),
+      f("line_count", "Lignes", "Lines", count(p.lines)),
+    ],
+  }),
+
+  /**
+   * The cash request. The holder is confirming that the voucher in their hand
+   * is the voucher that was approved, so: its reference, the file it is spent
+   * against, where it had got to, and the figure the treasury was asked for.
+   *
+   * THE LINES ARE COUNTED, NOT LISTED. `count`, like every other resolver
+   * here, because a public URL printed on a voucher must not become a lookup
+   * of what a company is paying whom — the line labels are the file's costing
+   * broken out charge by charge. The holder already has them on their paper;
+   * a stranger who found the paper does not need them served over the web.
+   *
+   * NO BENEFICIARY for the same reason: naming who was paid is a disclosure,
+   * and recognising your own document does not need it.
+   */
+  CASH_REQUEST: (p) => ({
+    title: { fr: "Demande de fonds", en: "Cash request" },
+    fields: [
+      f("number", "Référence", "Reference", dash(p.number)),
+      f("dossier_ref", "Dossier", "File", dash(p.dossier_ref)),
+      // The COSTING this claim draws on, where the costing's own summary shows
+      // a status. There is no status to show: the voucher's payload does not
+      // carry one, deliberately — see canonical.js. Where the money came FROM
+      // is the fact a holder can check against their paper anyway.
+      f("costing_ref", "Cotation", "Costing", dash(p.costing_ref)),
+      f("total_payable", "Total à payer", "Total payable",
+        money(p.totals && p.totals.total_payable, p.currency)),
+      f("line_count", "Lignes", "Lines", count(p.lines)),
+    ],
+  }),
+
+  /**
+   * One instalment's receipt. The person holding it took the cash, so the
+   * facts they verify are: which receipt, against which request, how much
+   * changed hands, and what was still to run afterwards.
+   *
+   * The BALANCE is published where the voucher's line labels are not, and the
+   * distinction is the disclosure rule rather than an inconsistency: the
+   * balance is the single figure this document exists to state, it is printed
+   * on the holder's own copy in bold, and a receipt whose balance could not be
+   * checked against the paper would verify nothing worth verifying.
+   */
+  CASH_PAYMENT_RECEIPT: (p) => ({
+    title: { fr: "Reçu de décaissement", en: "Payment receipt" },
+    fields: [
+      f("number", "Référence", "Reference", dash(p.number)),
+      f("request_number", "Demande de fonds", "Cash request", dash(p.request_number)),
+      f("dossier_ref", "Dossier", "File", dash(p.dossier_ref)),
+      f("amount", "Montant décaissé", "Amount disbursed", money(p.amount, p.currency)),
+      f("balance", "Reste à décaisser", "Balance to disburse", money(p.balance, p.currency)),
+    ],
+  }),
 }));
 
 /** Doc types with a published summary. */
@@ -255,7 +377,21 @@ function summarise(docType, payload, language = "fr") {
   const resolve = typeof docType === "string" ? RESOLVERS.get(docType) : undefined;
   if (typeof resolve !== "function") return null;
   const lang = language === "en" ? "en" : "fr";
-  const out = resolve(payload && typeof payload === "object" ? payload : {});
+  /*
+   * The language is passed to the resolver as well as used below.
+   *
+   * The rule at the top of this file is that a resolver reads the STORED
+   * PAYLOAD and nothing else — no client, no query, no await. A language is
+   * none of those: it decides how a value is SAID, not which facts are
+   * available, so it cannot let a resolver answer with today's figures. Every
+   * resolver that does not need it simply ignores the second argument.
+   *
+   * It exists because a payload can hold a machine value that must be said out
+   * loud — a status enum, which a hash cannot afford to store as a display
+   * string. Without this the portal would print `APPROVED_LOCKED` at a reader
+   * in both languages, which is the defect §3.14 is about.
+   */
+  const out = resolve(payload && typeof payload === "object" ? payload : {}, lang);
   return {
     doc_type: docType,
     title: out.title[lang],

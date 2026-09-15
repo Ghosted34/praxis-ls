@@ -1,6 +1,6 @@
 import * as React from "react";
 import { useTranslation } from "react-i18next";
-import { getMode, setMode, type ThemeMode } from "@/lib/theme-mode";
+import { FORCE_DARK, getMode, setMode, type ThemeMode } from "@/lib/theme-mode";
 import { MoonIcon, SunIcon } from "@/components/ui/icons";
 
 /**
@@ -8,13 +8,25 @@ import { MoonIcon, SunIcon } from "@/components/ui/icons";
  *
  * `client`'s equivalent cycles light → dark → system, which is right for an app
  * somebody lives in for eight hours and wrong for a page somebody reads for two
- * minutes: a third state means a visitor cannot tell what they have selected, and
- * on this surface the OS default is already honoured before they touch anything
- * (see the `prefers-color-scheme` note in `index.css`).
+ * minutes: a third state means a visitor cannot tell what they have selected.
+ * (Unlocked, the two states default to DARK and only an explicit press writes
+ * light — the OS setting is not consulted.)
  *
- * There is no flash to fix here — `index.html`'s inline script has already read
- * the stored value before first paint, which is the only reason a pre-paint theme
- * script is allowed to exist in this repo.
+ * There is no flash to fix here — `index.html`'s inline script has already
+ * settled the mode before first paint, which is the only reason a pre-paint
+ * theme script is allowed to exist in this repo.
+ *
+ * ── CURRENTLY RENDERS NOTHING ──────────────────────────────────────────────
+ *
+ * `FORCE_DARK` in `lib/theme-mode.ts` is on, so this returns `null` and the app
+ * is dark for everybody. The component is kept rather than deleted, and the
+ * footer keeps calling it, because that makes restoring the toggle one boolean
+ * instead of a revert across four files.
+ *
+ * Returning `null` is what makes the guarantee hold end to end: `setMode` is
+ * already a no-op under the lock, so leaving a visible control would have meant
+ * a button that renders a sun, changes nothing when pressed, and reads as
+ * broken. No control, no dead affordance.
  */
 export function ThemeToggle({ onDark = false }: { onDark?: boolean }) {
   const { t } = useTranslation();
@@ -23,6 +35,11 @@ export function ThemeToggle({ onDark = false }: { onDark?: boolean }) {
   const Icon = mode === "dark" ? SunIcon : MoonIcon;
   const label =
     mode === "dark" ? t("site.chrome.themeLight") : t("site.chrome.themeDark");
+
+  // After the hooks, never before: an early return above `useTranslation` and
+  // `useState` would change the hook count between renders if the lock were
+  // ever flipped at runtime, and React counts hooks by call order.
+  if (FORCE_DARK) return null;
 
   return (
     <button

@@ -33,8 +33,10 @@
  */
 import * as React from "react";
 import { tr } from "@/lib/i18n";
+import { IndexRow } from "@/components/ui/index-row";
 import { ScreenAi } from "@/components/screen-ai";
 import { Button } from "@/components/ui/button";
+import { DateField } from "@/components/ui/date-field";
 import { FormButtons } from "@/components/ui/form-buttons";
 import { Input } from "@/components/ui/input";
 import { Pill } from "@/components/ui/pill";
@@ -414,10 +416,9 @@ function SetRateModal({
             />
           </Field>
           <Field label={tr("Effective from")} required>
-            <Input
-              type="date"
+            <DateField
               value={from}
-              onChange={(e) => setFrom(e.target.value)}
+              onChange={setFrom}
             />
           </Field>
           <Field label={tr("Note")}>
@@ -850,6 +851,8 @@ export function ExpenseRatesPage() {
           defaultSize={300}
           min={240}
           max={520}
+          activeKind={tr("Expense item")}
+          active={!!selected}
         >
           <div className="max-h-[70vh] space-y-1 overflow-auto rounded-lg border p-1">
             {list.loading ? (
@@ -858,10 +861,11 @@ export function ExpenseRatesPage() {
               <div className="px-3 py-4 micro">No items.</div>
             ) : (
               rows.map((r) => (
-                <button
+                <IndexRow
                   key={r.dictionary_item_id}
+                  selected={r.dictionary_item_id === selId}
                   onClick={() => setSelId(r.dictionary_item_id)}
-                  className={`flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors ${r.dictionary_item_id === selId ? "bg-primary/10 text-foreground" : "hover:bg-muted"}`}
+                  className="items-center justify-between gap-2"
                 >
                   <span className="min-w-0">
                     <span className="num text-xs font-semibold text-foreground">
@@ -878,7 +882,7 @@ export function ExpenseRatesPage() {
                       {dirLabel(r.direction)}
                     </Pill>
                   )}
-                </button>
+                </IndexRow>
               ))
             )}
           </div>

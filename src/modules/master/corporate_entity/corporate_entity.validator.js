@@ -25,6 +25,7 @@ const schemas = {
   setStructure: entityCommon.setStructure,
   logoUpload: entityCommon.logoUpload,
   letterhead: entityCommon.letterheadUpdate,
+  letterheadLine: entityCommon.letterheadLineSave,
   workingCalendar: entityCommon.workingCalendarSave,
   // Its own endpoint rather than a column on the PATCH body — the prefix is an
   // identifier clients see, and it is only changeable before any operation file
@@ -52,6 +53,7 @@ module.exports = {
   setStructure: mw("setStructure"),
   logoUpload: mw("logoUpload"),
   letterhead: mw("letterhead"),
+  letterheadLine: mw("letterheadLine"),
   workingCalendar: mw("workingCalendar"),
   opsReferencePrefix: mw("opsReferencePrefix"),
   schemas,

@@ -183,7 +183,7 @@ function assertRetirable(advance, { kind, amount, dossierId, proofVaultId }, opt
   if (kind === "RECEIPT" && !dossierId) {
     // 4731 is requires_analytic (9001:113) so the ledger trigger would refuse a
     // NULL dossier anyway; this is the readable error instead of a raw RAISE.
-    throw new AppError("DOSSIER_REQUIRED", "A receipt must be tagged to a dossier", 422);
+    throw new AppError("DOSSIER_REQUIRED", "A receipt must be tagged to an operations file", 422);
   }
   if (kind === "RECEIPT" && requireProofForReceipt && !proofVaultId) {
     throw new AppError(

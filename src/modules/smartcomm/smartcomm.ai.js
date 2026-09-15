@@ -9,7 +9,7 @@ module.exports = {
     { key: "search_comms", service: (c, p) => service.search(c, { actor: { user_id: p.user_id }, term: p.q }), permission: { module: "MOD-64", action: "view" }, describe: "Search messages across the user's channels." },
   ],
   writes: [
-    { key: "create_comms_channel", service: (c, p) => service.createChannel(c, { data: p, actor: { user_id: p.user_id } }), schema: validator.schemas.channel, permission: { module: "MOD-64", action: "create" }, confirm: true, describe: "Create a channel (department/project/dossier/direct/client)." },
+    { key: "create_comms_channel", service: (c, p) => service.createChannel(c, { data: p, actor: { user_id: p.user_id } }), schema: validator.schemas.channel, permission: { module: "MOD-64", action: "create" }, confirm: true, describe: "Create a channel (department/project/file/direct/client)." },
     { key: "post_comms_message", service: (c, p) => service.postMessage(c, { groupId: p.group_id, body: p.body, actor: { user_id: p.user_id } }), schema: validator.schemas.message, permission: { module: "MOD-64", action: "create" }, confirm: true, describe: "Post a message to a channel." },
   ],
 };

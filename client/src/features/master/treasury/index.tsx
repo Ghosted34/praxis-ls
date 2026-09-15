@@ -14,6 +14,7 @@
  */
 import * as React from "react";
 import { tr } from "@/lib/i18n";
+import { IndexRow } from "@/components/ui/index-row";
 import { useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -153,6 +154,8 @@ export function TreasuryMasterPage() {
           defaultSize={320}
           min={260}
           max={480}
+          activeKind={tr("Treasury account")}
+          active={!!selected}
         >
           <div className="space-y-2">
             <Input
@@ -179,10 +182,11 @@ export function TreasuryMasterPage() {
                   const id = a.treasury_account_id;
                   const sel = id === selId;
                   return (
-                    <button
+                    <IndexRow
                       key={id}
+                      selected={sel}
                       onClick={() => setSelId(id)}
-                      className={`flex w-full flex-col gap-1 rounded-md px-3 py-2 text-left text-sm transition-colors ${sel ? "bg-primary/10 text-foreground" : "hover:bg-muted"}`}
+                      className="flex-col gap-1"
                     >
                       <div className="flex items-center justify-between gap-2">
                         <span className="min-w-0 truncate font-medium">
@@ -211,7 +215,7 @@ export function TreasuryMasterPage() {
                           {cell(a.currency)}
                         </span>
                       </div>
-                    </button>
+                    </IndexRow>
                   );
                 })
               )}

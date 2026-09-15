@@ -6,6 +6,7 @@ import { pageShell } from "@/lib/layout";
 import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
+import { DateField } from "@/components/ui/date-field";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { Pill, type Tone } from "@/components/ui/pill";
@@ -117,17 +118,15 @@ function NewLicenceForm({
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Issued on">
-            <Input
-              type="date"
+            <DateField
               value={f.issued_on}
-              onChange={(e) => set("issued_on", e.target.value)}
+              onChange={(iso) => set("issued_on", iso)}
             />
           </Field>
           <Field label="Expires on">
-            <Input
-              type="date"
+            <DateField
               value={f.expires_on}
-              onChange={(e) => set("expires_on", e.target.value)}
+              onChange={(iso) => set("expires_on", iso)}
             />
           </Field>
         </div>
@@ -203,10 +202,9 @@ function RenewModal({
             row.expires_on ? `Current: ${dateFmt(row.expires_on)}` : undefined
           }
         >
-          <Input
-            type="date"
+          <DateField
             value={date}
-            onChange={(e) => setDate(e.target.value)}
+            onChange={setDate}
           />
         </Field>
         {error && <ErrorState message={error} />}

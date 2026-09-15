@@ -436,6 +436,77 @@ Block library, derived from their two pages:
 | `contact_block` | address, phone, WhatsApp, email, map coords |
 | `cta_band` | title + button |
 | `policies` | n × {title, rich text} → PDF |
+| `copy_overrides` | n × {dictionary key, bilingual text} — the app's OWN wording |
+
+### `copy_overrides`, and the half of the white-label problem the rest missed
+
+Every block above lets a tenant add content to a page. `copy_overrides` (13790)
+lets them change the content that is **already there**: the ~465 sentences in
+`public-web/src/lib/i18n-dict.ts` under `site.*` that the app prints around
+whatever the tenant authors — section headings, empty states, form labels,
+buttons, the legal line in the footer.
+
+Those were never neutral furniture. *"Success stories / Operations we have run,
+in our own words"* is the headline of the Our-work page and a claim about the
+tenant's business, in words nobody at the tenant chose. So is *"We publish case
+notes as work finishes"*, and the three promises on the contact page. A tenant
+who runs project cargo and would call that page "Reference projects" had two
+options — our sentence, or an empty page — and no way to discover the first one
+was not theirs.
+
+**The mechanism is an i18next resource bundle merged over the dictionary**, so
+it cost nothing at the call sites: every `t("site.…")` already reads through
+i18next, and a band written two years ago picks up a tenant's rewrite without
+being touched. `lib/site-copy.ts` applies the cached payload synchronously
+before first render — the overlay decides what the largest text on the page
+says, so a returning visitor must never watch our heading flip to theirs — and
+refreshes behind it. A first visit paints the dictionary and swaps, which is the
+trade `marketing-page.tsx` already documents: holding first paint here would
+blank the whole site for every tenant who has overridden nothing.
+
+**What may be overridden is generated, not hand-listed.**
+`scripts/gen/gen-site-copy-catalogue.js` derives
+`packages/shared/data/site-copy.generated.js` from the dictionary itself — key,
+section, a human label, both shipped defaults, and (from the `@/` and relative
+import graph out of `router.tsx`) the pages each section is actually read on. CI
+fails when the two drift, for the reason `generate-api-docs.js --check` exists:
+a hand-maintained allow-list means every new string is un-editable until
+somebody remembers, which is the original defect in instalments. An unknown key
+is a 422 at save time and is re-checked on read, so a key retired between
+deploys stops overriding rather than lingering invisibly.
+
+**What is deliberately NOT done:**
+
+- **No seed.** 9086 seeds the home bands with the dictionary's own words so that
+  publishing an unedited page is a no-op. Doing that here would be the opposite
+  of harmless: an override is stored verbatim, so seeding 465 of them freezes
+  every tenant's wording at this deploy and opts them out of every later
+  improvement to copy they never chose. The Wording screen creates its row on
+  the first save and the editor shows defaults as **placeholders**, never as
+  values, for the same reason.
+- **Nothing outside `site.*`.** `errors.*`, `states.*` and `portal.*` are the
+  failure sentences and the vocabulary the client portal shares with the ERP —
+  a milestone that reads one way on the public page and another once the client
+  signs in is the inconsistency those sections sit at the top level to prevent.
+  The catalogue holds only `site.` keys and `applySiteCopy` takes only the
+  `site` subtree: two locks, because the one that survives a mistake in the
+  other is the one that matters.
+- **No markup.** Overrides are `bi()` like every other field in the library.
+  A dictionary string reaches the same public HTML as a hero headline and is
+  allowed exactly what a hero headline is allowed.
+
+The block lives on a reserved page keyed `site-copy`, which is absent from the
+Pages list and cannot be renamed or deleted. Global wording has no page of its
+own — the footer's legal line, the 404 heading and the careers intro have
+nothing between them — and hanging it off `home` would take a tenant's entire
+site wording dark the day they unpublished their homepage to redo it. Its
+publish state is the wording's publish state, surfaced on the screen as a
+Live/Draft pill: **saved is not live**, and a tenant who edits forty sentences,
+saves, and sees no change on their site is the trap that notice closes.
+
+Edited at **Settings › Website › Wording** (`client/src/features/settings/
+website-copy.tsx`); served to visitors by `GET /public/site/copy` and to the
+editor by `GET /site/copy/catalogue`.
 
 **The differentiator, and the point of the whole project:** `stat_counters`
 binds to a **live ERP metric** instead of a literal. They hardcode `41850` CBM,

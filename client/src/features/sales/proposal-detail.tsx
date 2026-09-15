@@ -13,6 +13,7 @@ import { tenant } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { DocButton } from "@/components/doc-button";
 import { Modal, Field } from "@/components/ui/modal";
+import { Input } from "@/components/ui/input";
 import { LoadingRow, ErrorState } from "@/components/ui/states";
 import { errMsg, type Row } from "@/lib/use-resource";
 import { cell, money } from "@/lib/format";
@@ -91,12 +92,36 @@ export function ProposalDetail({
         body: { to, entity_id: entity },
       }),
     );
+  /**
+   * Four native prompts in a row, which is what this was, is not four questions
+   * — it is a FORM administered one line at a time, with no way back to a field
+   * already answered, no sight of what was typed two boxes ago, and a cancel on
+   * the fourth that silently discarded the first three. All four inputs go into
+   * the same request, so they belong on the same surface.
+   */
+  const [narrativeOpen, setNarrativeOpen] = React.useState(false);
+  const [narrative, setNarrative] = React.useState({
+    client_operations: "",
+    pain_points: "",
+    proposed_strategy: "",
+    tone: "Consultative and expert",
+  });
+  const setNarrativeField =
+    (k: keyof typeof narrative) =>
+    (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+      setNarrative((n) => ({ ...n, [k]: e.target.value }));
+
   async function generateNarrative() {
-    const client_operations=window.prompt("Client operations (leave blank to use meeting discovery)","")||"";
-    const pain_points=window.prompt("Pain points (leave blank to use meeting discovery)","")||"";
-    const proposed_strategy=window.prompt("Proposed strategy (leave blank to use meeting discovery)","")||"";
-    const tone=window.prompt("Tone","Consultative and expert")||"Consultative and expert";
-    await run(()=>tenant(`/proposals/${id}/generate`,{method:"POST",body:{client_operations,pain_points,proposed_strategy,tone}}));
+    setNarrativeOpen(false);
+    await run(() =>
+      tenant(`/proposals/${id}/generate`, {
+        method: "POST",
+        body: {
+          ...narrative,
+          tone: narrative.tone.trim() || "Consultative and expert",
+        },
+      }),
+    );
   }
   async function shareProposal(){setBusy(true);setError(null);try{const out=await tenant<{path:string}>(`/proposals/${id}/share`,{method:"POST",body:{expires_in_days:30}});const url=`${window.location.origin}/public/proposals/${out.path.split("/").pop()}`;setShareUrl(url);await navigator.clipboard?.writeText(url);setBusy(false);}catch(e){setError(errMsg(e));setBusy(false);}}
   const doAccept = () =>
@@ -288,7 +313,7 @@ export function ProposalDetail({
                 </Button>
                 {status === "DRAFT" && proposal && (
                   <>
-                    <Button variant="outline" loading={busy} onClick={()=>void generateNarrative()}>Generate bilingual narrative</Button>
+                    <Button variant="outline" loading={busy} onClick={() => setNarrativeOpen(true)}>Generate bilingual narrative</Button>
                     <Button
                       variant="outline"
                       onClick={() => onEdit(data ?? proposal)}
@@ -332,6 +357,59 @@ export function ProposalDetail({
           </>
         )}
       </div>
+
+      {/* The four questions the AI narrative needs, on one surface. Nested
+          inside this Modal in the source, but Radix portals it, so it opens
+          ABOVE the proposal rather than inside its scroll area. */}
+      <Modal
+        open={narrativeOpen}
+        onClose={() => setNarrativeOpen(false)}
+        title={tr("Generate the narrative")}
+        description={tr(
+          "Leave a field blank to let the AI use what the meeting discovery already recorded.",
+        )}
+        size="lg"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setNarrativeOpen(false)}>
+              {tr("Cancel")}
+            </Button>
+            <Button loading={busy} onClick={() => void generateNarrative()}>
+              {tr("Generate narrative")}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <Field label={tr("Client operations")} hint={tr("What the client actually does day to day.")}>
+            <textarea
+              rows={2}
+              value={narrative.client_operations}
+              onChange={setNarrativeField("client_operations")}
+              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            />
+          </Field>
+          <Field label={tr("Pain points")} hint={tr("What they told you is not working.")}>
+            <textarea
+              rows={2}
+              value={narrative.pain_points}
+              onChange={setNarrativeField("pain_points")}
+              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            />
+          </Field>
+          <Field label={tr("Proposed strategy")} hint={tr("The shape of the answer you are selling.")}>
+            <textarea
+              rows={2}
+              value={narrative.proposed_strategy}
+              onChange={setNarrativeField("proposed_strategy")}
+              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            />
+          </Field>
+          <Field label={tr("Tone")}>
+            <Input value={narrative.tone} onChange={setNarrativeField("tone")} />
+          </Field>
+        </div>
+      </Modal>
     </Modal>
   );
 }

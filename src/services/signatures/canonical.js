@@ -245,6 +245,191 @@ const BUILDER_SOURCE = Object.assign(Object.create(null), {
     trial_period_months: Number.isFinite(Number(d.trial_period_months)) ? Number(d.trial_period_months) : 0,
     clauses: (Array.isArray(d.clauses) ? d.clauses : []).map((c) => str(c && c.heading ? c.heading : c)),
   }),
+
+  /**
+   * The costing worksheet — the budget three people sign off in turn.
+   *
+   * WHAT IT ATTESTS TO, and what it deliberately does not.
+   *
+   * The FIGURES and the LINES that produce them, because that is what an
+   * approver approved: a line added or repriced after approval must invalidate
+   * the seal, which is the entire point of sealing a budget. `container_type`
+   * is part of a line's identity here for the same reason it is on screen — a
+   * charge priced per box is several lines that share a dictionary item and
+   * differ only by equipment, so without it two demurrage lines hash as one
+   * and swapping the 20' amount onto the 40' would go unnoticed.
+   *
+   * `is_disbursement` and `upstream_vat`, because a line's NATURE decides
+   * whether our VAT applies to it. Flipping a service line to pass-through
+   * after approval changes what the client owes without changing any amount on
+   * the page, and a payload that hashed only the amounts would call that
+   * document unchanged.
+   *
+   * The SHIPMENT, because a costing is a price FOR a shipment: the same
+   * charges against a different vessel, port or B/L are a different
+   * commitment, and 0661 snapshots those facts onto the sheet at approval
+   * precisely so they can be attested to.
+   *
+   * NOT the amendment summary. It describes the diff since the last approval,
+   * not the commitment, and it changes as the sheet is edited — hashing a
+   * derived view would make every seal read as amended the moment somebody
+   * touched a line, which is the opposite of what the status means.
+   *
+   * NOT the remarks. They are the pricer's note to the validator ("carrier
+   * rate valid 14 days"), not a term of the budget.
+   */
+  COSTING: (d) => ({
+    v: 1,
+    type: "COSTING",
+    number: str(d.number),
+    date: str(d.date),
+    status: str(d.status),
+    dossier_ref: str(d.dossier_ref),
+    currency: str(d.currency || "XAF"),
+    exchange_rate: num(d.exchange_rate, 8),
+    party: party(d.party),
+    shipment: {
+      bl_mawb: str(d.bl_mawb),
+      pol: str(d.pol),
+      pod: str(d.pod),
+      eta: str(d.eta),
+      incoterm: str(d.incoterm),
+      carrier: str(d.carrier),
+    },
+    lines: (Array.isArray(d.lines) ? d.lines : []).map((l) => ({
+      label: str(l.label),
+      container_type: str(l.container_type),
+      qty: qty(l.qty),
+      unit: money(l.unit),
+      tax: money(l.tax),
+      is_disbursement: l.is_disbursement === true,
+      upstream_vat: money(l.upstream_vat),
+      amount: money(l.amount !== undefined && l.amount !== null ? l.amount : Number(l.qty || 1) * Number(l.unit || 0)),
+    })),
+    totals: {
+      total_ht: money(d.totals && d.totals.total_ht),
+      vat_total: money(d.totals && d.totals.vat_total),
+      total_ttc: money(d.totals && d.totals.total_ttc),
+      disbursement_total: money(d.totals && d.totals.disbursement_total),
+      upstream_vat_total: money(d.totals && d.totals.upstream_vat_total),
+    },
+  }),
+
+  /**
+   * The cash request — the voucher three people sign in turn (owner Q12:
+   * the requestor, the approving authority, the disbursing authority).
+   *
+   * WHAT IT ATTESTS TO.
+   *
+   * The LINES and the TOTAL PAYABLE, because that is the claim: a line
+   * repriced after approval is a different amount of money leaving the
+   * treasury, and catching that is the whole reason a voucher is sealed.
+   *
+   * `costing_line_id` per line, because a cash request is a DRAW against a
+   * named budget line (12771). Re-pointing an approved claim at a different
+   * line of the sheet moves no figure on the page and changes which budget it
+   * consumes — a payload that hashed only labels and amounts would call that
+   * document unchanged, and the budget ledger would quietly disagree with the
+   * sealed paper.
+   *
+   * `justification_required`, because it is an OBLIGATION the signer accepts:
+   * whoever takes cash against a ticked line owes a receipt back, and clearing
+   * the tick after approval would erase a duty somebody signed for.
+   *
+   * `costing_id` and `costing_revision`, because "approved against budget X at
+   * revision N" is the fact the approving authority actually asserted.
+   *
+   * NOT the payments. They happen AFTER the voucher is approved and each one
+   * is attested by its own receipt below; hashing them here would make every
+   * instalment invalidate the approver's seal.
+   *
+   * NOT the budget control block. It is a live derivation — what the file has
+   * left changes as other requests are approved — and hashing a moving figure
+   * would report an untouched voucher as amended.
+   *
+   * AND NOT THE STATUS, WHERE THE COSTING HASHES ITS OWN.
+   *
+   * This is the one place the two documents must differ, and getting it wrong
+   * is silent. A costing ENDS at APPROVED_LOCKED: its last seal is applied on
+   * the transition into the state it stays in, so `status` in the payload is a
+   * fact that never moves again. A cash request does not end there — it goes on
+   * to PARTIALLY_DISBURSED, DISBURSED, JUSTIFIED, each step days or weeks after
+   * the approver signed. Hashing the status would mean every seal on every
+   * voucher in the product reads AMENDED the moment the first franc moves, and
+   * a portal that cries tampering on every document teaches its readers to
+   * ignore it. (Verified against a real database before this was written: with
+   * `status` in the payload all three seals went AMENDED on the second
+   * instalment; without it they verify.)
+   *
+   * Nothing is lost. What a signer attested to is the COMMITMENT — these lines,
+   * these totals, drawn on that budget — and where the request had got to is
+   * recorded by the seals themselves: each names its own decision and carries
+   * its own timestamp, which is a better record of the workflow than a single
+   * enum could be.
+   */
+  CASH_REQUEST: (d) => ({
+    v: 1,
+    type: "CASH_REQUEST",
+    number: str(d.number),
+    date: str(d.date),
+    dossier_ref: str(d.dossier_ref),
+    currency: str(d.currency || "XAF"),
+    category: str(d.category),
+    beneficiary: str(d.beneficiary),
+    cost_center: str(d.cost_center),
+    method: str(d.method),
+    costing_id: str(d.costing_id),
+    costing_ref: str(d.costing_ref),
+    costing_revision: num(d.costing_revision, 0),
+    party: party(d.party),
+    lines: (Array.isArray(d.lines) ? d.lines : []).map((l) => ({
+      label: str(l.label),
+      costing_line_id: str(l.costing_line_id),
+      qty: qty(l.qty),
+      unit: money(l.unit),
+      tax: money(l.tax),
+      justification_required: l.justification_required === true,
+      amount: money(l.amount !== undefined && l.amount !== null ? l.amount : Number(l.qty || 1) * Number(l.unit || 0)),
+    })),
+    totals: {
+      subtotal: money(d.totals && d.totals.subtotal),
+      vat_total: money(d.totals && d.totals.vat_total),
+      total_payable: money(d.totals && d.totals.total_payable),
+    },
+  }),
+
+  /**
+   * One instalment's receipt (owner Q16 C) — signed by TWO: the disbursing
+   * authority who released the cash, and the person who took it.
+   *
+   * WHAT IT ATTESTS TO: this movement of money, and where it leaves the
+   * request. The amount paid and the balance still to run are both hashed
+   * because a receipt whose balance could be restated afterwards is a receipt
+   * that proves nothing about what is still owed — and the balance is the one
+   * figure the holder reads before signing.
+   *
+   * `request_approved_at` rather than the whole voucher: the receipt cites the
+   * authority it was paid under, and re-hashing the voucher's lines here would
+   * make an unrelated amendment of a JUSTIFIED request invalidate a receipt
+   * for cash that has already changed hands.
+   */
+  CASH_PAYMENT_RECEIPT: (d) => ({
+    v: 1,
+    type: "CASH_PAYMENT_RECEIPT",
+    number: str(d.number),
+    date: str(d.date),
+    currency: str(d.currency || "XAF"),
+    dossier_ref: str(d.dossier_ref),
+    request_number: str(d.request_number),
+    request_approved_at: str(d.request_approved_at),
+    party: party(d.party),
+    amount: money(d.amount),
+    request_total: money(d.request_total),
+    paid_to_date: money(d.paid_to_date),
+    balance: money(d.balance),
+    method: str(d.method),
+    treasury_account: str(d.treasury_account),
+  }),
 });
 
 /** The only thing anything looks a builder up in. Insertion order preserved. */

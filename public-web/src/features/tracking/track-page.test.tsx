@@ -192,10 +192,17 @@ describe("a reference that resolves", () => {
 
   it("dates the last update from the API, not from now", async () => {
     await mount("?ref=SBL-OPS-2026-0142");
-    await waitFor(() =>
-      expect(screen.getByText(en.site.trackPage.lastUpdate)).toBeInTheDocument(),
-    );
-    const stamp = document.querySelector("time");
+    const label = await screen.findByText(en.site.trackPage.lastUpdate);
+    /*
+     * The `<time>` INSIDE THE LAST-UPDATE LINE, not the first one on the page.
+     *
+     * This was `document.querySelector("time")` and it stopped meaning what it
+     * said the moment §8.1's verdict plate added a second `<time>` above it for
+     * the scheduled date. It kept passing for a while by accident of ordering,
+     * which is the failure mode a positional locator always has: it asserts
+     * "some time element" while reading as "the last-update time".
+     */
+    const stamp = label.parentElement?.querySelector("time");
     expect(stamp).toHaveAttribute("dateTime", "2026-03-03T10:00:00.000Z");
   });
 
@@ -378,5 +385,226 @@ describe("the lookup failing", () => {
       expect(screen.getByText(en.site.track.notFound)).toBeInTheDocument(),
     );
     expect(screen.queryByText("req-99")).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * ── §8.1: THE ONE FACT FIRST ───────────────────────────────────────────────
+ *
+ * The guide's demand for this page is an ORDERING one — "status and ETA above
+ * everything, at display size, before the timeline" — and ordering is the kind
+ * of thing that reads as done in a screenshot and quietly reverts on the next
+ * refactor. Both halves are asserted here against the DOM's own document order
+ * rather than against a class name, because a class can be renamed and the
+ * question these tests protect is which of two facts a visitor meets first.
+ */
+describe("the answer comes before the record (§8.1)", () => {
+  it("puts the status above the reference in document order", async () => {
+    await mount("?ref=SBL-OPS-2026-0142");
+    const status = await screen.findByText(en.site.trackPage.verdictMoving);
+    const reference = screen.getByText("SBL-OPS-2026-0142");
+    // Node.compareDocumentPosition: FOLLOWING means `reference` comes after
+    // `status`. This is the inversion the section asks for — the old layout had
+    // the reference as the heading and the status as a pill beside it.
+    expect(
+      status.compareDocumentPosition(reference) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("puts the status above the timeline heading", async () => {
+    await mount("?ref=SBL-OPS-2026-0142");
+    const status = await screen.findByText(en.site.trackPage.verdictMoving);
+    const timeline = screen.getByRole("heading", {
+      name: en.site.trackPage.timeline,
+    });
+    expect(
+      status.compareDocumentPosition(timeline) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("states a scheduled date only where the desk entered one", async () => {
+    // The fixture's one outstanding due date is the CURRENT stage's, 2026-03-05.
+    await mount("?ref=SBL-OPS-2026-0142");
+    const label = await screen.findByText(en.site.trackPage.scheduled);
+    const when = label.parentElement?.querySelector("time");
+    expect(when).toHaveAttribute("dateTime", "2026-03-05T00:00:00.000Z");
+  });
+
+  it("INVENTS NO ETA when the desk has scheduled nothing", async () => {
+    /*
+     * The N12 case, and the reason this page states a scheduled date rather
+     * than an "estimated arrival". There is no feed behind this page: strip the
+     * due dates and there is nothing to derive an arrival from, so the page
+     * must say so rather than computing one from transit averages or from the
+     * remaining stage count.
+     */
+    vi.stubGlobal(
+      "fetch",
+      answer({
+        data: {
+          ...RESULT,
+          current_stage: null,
+          milestones: RESULT.milestones.map((m) => ({ ...m, due_date: null })),
+        },
+      }),
+    );
+    await mount("?ref=SBL-OPS-2026-0142");
+    expect(
+      await screen.findByText(en.site.trackPage.noSchedule),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(en.site.trackPage.scheduled)).toBeNull();
+  });
+});
+
+/**
+ * ── §8.1: THE TIMELINE AS A SPATIAL OBJECT ─────────────────────────────────
+ *
+ * Three states, three elevations, and the rail lit only where the cargo has
+ * been. The classes carry the geometry (`--lift`, `--depth`) so asserting on
+ * them is asserting on the depth model, not on decoration.
+ */
+describe("the timeline is spatial (§8.1)", () => {
+  it("gives each stage the elevation its state earns", async () => {
+    const { container } = await mount("?ref=SBL-OPS-2026-0142");
+    await screen.findByRole("heading", { name: en.site.trackPage.timeline });
+    expect(container.querySelectorAll(".track-stage-done")).toHaveLength(2);
+    expect(container.querySelectorAll(".track-stage-now")).toHaveLength(1);
+    expect(container.querySelectorAll(".track-stage-next")).toHaveLength(1);
+  });
+
+  it("lights the rail only on legs the cargo has completed", async () => {
+    const { container } = await mount("?ref=SBL-OPS-2026-0142");
+    await screen.findByRole("heading", { name: en.site.trackPage.timeline });
+    // Four stages → three rails. Two completed stages light their leg; the
+    // current one does not, because the cargo has not travelled it yet.
+    expect(container.querySelectorAll(".track-rail")).toHaveLength(3);
+    expect(container.querySelectorAll(".track-rail-lit")).toHaveLength(2);
+  });
+
+  it("carries the file's OWN mode colour, and none at all when unclassified", async () => {
+    const { container, unmount } = await mount("?ref=SBL-OPS-2026-0142");
+    const lit = container.querySelector(".track-verdict") as HTMLElement;
+    expect(lit.style.getPropertyValue("--mode")).toBe("var(--mode-sea)");
+    unmount();
+
+    /*
+     * An unclassified file leaves `--mode` UNSET rather than falling back to a
+     * mode. The CSS then reaches the tenant's own accent, which is the honest
+     * answer — a file the desk has not classified is not secretly a sea file,
+     * and a positional colour must never appear where the page states a fact
+     * about a specific shipment (`service-identity.ts`).
+     */
+    vi.stubGlobal("fetch", answer({ data: { ...RESULT, service_type: null } }));
+    const plain = await mount("?ref=SBL-OPS-2026-0142");
+    const unlit = plain.container.querySelector(".track-verdict") as HTMLElement;
+    expect(unlit.style.getPropertyValue("--mode")).toBe("");
+  });
+});
+
+/**
+ * ── §8.1: THE OUTCOMES ARE DESIGNED, NOT A SENTENCE ────────────────────────
+ *
+ * "A wrong reference is the most common outcome on this page and it currently
+ * gets the least design." What makes the new screen worth the change is not
+ * that it is bigger — it is that it echoes the reference back and says what the
+ * miss does NOT mean.
+ */
+describe("the not-found screen (§8.1)", () => {
+  const missing = () =>
+    vi.stubGlobal(
+      "fetch",
+      answer({ error: { code: "NOT_FOUND", message: "no" } }, 404),
+    );
+
+  it("echoes the reference that was actually tried", async () => {
+    missing();
+    await mount("?ref=SBL-OPS-2026-9999");
+    await screen.findByText(en.site.track.notFound);
+    // So somebody reading over a shoulder can spot the transposed digit.
+    expect(screen.getByText("SBL-OPS-2026-9999")).toBeInTheDocument();
+  });
+
+  it("says the miss is not a statement about the cargo", async () => {
+    missing();
+    await mount("?ref=SBL-OPS-2026-9999");
+    expect(
+      await screen.findByText(en.site.trackPage.notFoundNotLost),
+    ).toBeInTheDocument();
+  });
+
+  it("does not announce itself, unlike the failure", async () => {
+    /*
+     * `role="alert"` is assertive and interrupts whatever is being read. A
+     * wrong reference is an ANSWER the visitor asked for and will reach by
+     * reading on; a request that failed is not. Getting this backwards is how a
+     * screen reader becomes something people turn down.
+     */
+    missing();
+    await mount("?ref=SBL-OPS-2026-9999");
+    await screen.findByText(en.site.track.notFound);
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+});
+
+describe("the failure plate does not repeat itself", () => {
+  it("shows the server's sentence only when it adds something", async () => {
+    /*
+     * `messageFor` falls back to `errors.loadFailed` when the server sends no
+     * specific message. With that string ALSO as the plate's title, the screen
+     * read the identical sentence twice at two sizes — correct in each half,
+     * wrong as a composition, and invisible to every assertion that checked
+     * only that the message was present. Found in a screenshot.
+     */
+    vi.stubGlobal(
+      "fetch",
+      answer({ error: { code: "ERROR", message: "" } }, 500),
+    );
+    await mount("?ref=SBL-OPS-2026-0142");
+    await screen.findByText(en.site.trackPage.failedTitle);
+    // The generic sentence must not ALSO appear as the body.
+    expect(screen.queryAllByText(en.errors.loadFailed)).toHaveLength(0);
+  });
+
+  it("never prints a 500's server text to a stranger", async () => {
+    /*
+     * `PublicApiError.isPublicMessage` passes a server sentence through only
+     * for offline, not-found and rate-limited — each of which has its own
+     * screen. Everything else gets the dictionary's sentence and the detail
+     * goes to the console. This pins that: a server that leaks a stack trace,
+     * a table name or an internal path into `message` must not have it
+     * rendered on a public page.
+     */
+    vi.stubGlobal(
+      "fetch",
+      answer(
+        { error: { code: "ERROR", message: "relation \"insight_article\" does not exist" } },
+        500,
+      ),
+    );
+    await mount("?ref=SBL-OPS-2026-0142");
+    await screen.findByText(en.site.trackPage.failedTitle);
+    expect(screen.queryByText(/insight_article/)).toBeNull();
+  });
+});
+
+describe("the offline case, which is the one that DOES add a sentence", () => {
+  it("prints the offline message rather than the generic fallback", async () => {
+    /*
+     * `isPublicMessage` is true for status 0, and a network failure lands on
+     * the general failure plate rather than on not-found or rate-limited. It is
+     * the one failure where the body says something the title does not: the
+     * problem is the connection, not the reference the visitor typed.
+     */
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new TypeError("Failed to fetch");
+      }),
+    );
+    await mount("?ref=SBL-OPS-2026-0142");
+    await screen.findByText(en.site.trackPage.failedTitle);
+    expect(screen.getByText(en.errors.network)).toBeInTheDocument();
   });
 });

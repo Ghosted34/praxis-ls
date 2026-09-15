@@ -298,9 +298,27 @@ function PastApplicants() {
     {
       key: "from",
       label: "Applied for",
-      render: (r) => (
-        <span className="text-muted-foreground">{r.vacancy_title || "—"}</span>
-      ),
+      /*
+       * An OPEN application has no vacancy (13792): `vacancy_id` is NULL and the
+       * status is TALENT_POOL from the moment it arrives, so `searchPool`'s LEFT
+       * JOIN returns a null title and this cell used to read "—".
+       *
+       * That em-dash is the same glyph the Skills and AI-match columns use for
+       * "nothing recorded", which made a CV somebody deliberately sent on spec
+       * indistinguishable from an application whose vacancy row had been
+       * deleted. It is the opposite reading: the first is a person who wrote in
+       * cold, the second is a gap in the data.
+       *
+       * Keyed on `source` rather than on `vacancy_title` being null, because
+       * only `source` can tell those two apart — the careers page stamps
+       * `careers_open`, and nothing else writes it.
+       */
+      render: (r) =>
+        r.source === "careers_open" ? (
+          <Pill tone="mute">Open application</Pill>
+        ) : (
+          <span className="text-muted-foreground">{r.vacancy_title || "—"}</span>
+        ),
     },
     {
       key: "score",
@@ -342,7 +360,13 @@ function PastApplicants() {
                 kind: "applicant",
                 id: r.applicant_id,
                 name: r.full_name,
-                from: r.vacancy_title,
+                // Same distinction as the column above: "considered from an
+                // open application" is a different provenance from "considered
+                // from a vacancy nobody can name any more".
+                from:
+                  r.source === "careers_open"
+                    ? "Open application"
+                    : r.vacancy_title,
               })
             }
           >

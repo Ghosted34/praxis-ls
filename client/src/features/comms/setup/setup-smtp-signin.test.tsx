@@ -120,7 +120,7 @@ describe("reopening a mailbox that already sends through a relay", () => {
     await openEditor(RELAY_CONN);
     expect(await screen.findByText("Sending (SMTP) sign-in")).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: /Use different credentials/ })).toBeChecked();
-    expect(screen.getByDisplayValue("smtp2go-user")).toBeInTheDocument();
+    expect(await screen.findByDisplayValue("smtp2go-user")).toBeInTheDocument();
   });
 
   it("says a blank SMTP password keeps the stored one, and stays submittable", async () => {

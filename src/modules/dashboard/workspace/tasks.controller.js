@@ -60,7 +60,11 @@ const getBoard = asyncHandler(async (req, res) => {
   const out = await req.tenantDb((c) =>
     service.getBoard(c, ctxOf(req), { audience: req.query.audience, assigned_to: req.query.assigned_to }),
   );
-  res.json({ data: out.board, audience: out.audience, audiences: out.audiences });
+  // The board carries fields BESIDE the columns (which audiences this caller may
+  // pick, and which one the server actually honoured). They ride INSIDE `data`
+  // — the same shape as `/workspace/day` — because the client's `tenant()`
+  // helper returns only the `data` payload and would drop any sibling keys.
+  res.json({ data: { board: out.board, audience: out.audience, audiences: out.audiences } });
 });
 
 /**

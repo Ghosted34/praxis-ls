@@ -100,7 +100,7 @@ export function TasksPage() {
       ) : (
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
           <TaskBoard
-            board={q.data?.data}
+            board={q.data?.board}
             loading={q.isLoading}
             onOpen={setSelectedId}
             onCreate={() => setCreateOpen(true)}

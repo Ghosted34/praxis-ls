@@ -23,6 +23,10 @@ import { Chips } from "@/components/ui/chips";
 import { downloadVaultDoc } from "@/lib/vault-file";
 import { useUpload } from "@/lib/use-upload";
 import { FilePicker, UploadList } from "@/components/ui/image-upload";
+import {
+  VaultPreviewDialog,
+  type VaultPreviewDocument,
+} from "@/components/vault-preview-dialog";
 
 const FILE_CONTEXTS = [
   { value: "", label: "— none —" },
@@ -188,6 +192,12 @@ export function DocumentsPage() {
   const [q, setQ] = React.useState("");
   const [rowBusy, setRowBusy] = React.useState<string | null>(null);
   const [rowError, setRowError] = React.useState<string | null>(null);
+  // In-app preview — the same dialog the operations file's Documents tab uses,
+  // so a document can be looked at from the vault register without downloading
+  // it first. Null when nothing is open.
+  const [preview, setPreview] = React.useState<VaultPreviewDocument | null>(
+    null,
+  );
 
   async function withRow(id: string, fn: () => Promise<unknown>) {
     setRowBusy(id);
@@ -316,6 +326,27 @@ export function DocumentsPage() {
                     <div className="flex gap-2">
                       <Button
                         size="sm"
+                        variant="ghost"
+                        disabled={archived}
+                        onClick={() =>
+                          setPreview({
+                            doc_id: id,
+                            title: r.original_name
+                              ? String(r.original_name)
+                              : r.doc_type
+                                ? String(r.doc_type)
+                                : tr("Document"),
+                            filename:
+                              r.original_name == null
+                                ? null
+                                : String(r.original_name),
+                          })
+                        }
+                      >
+                        {tr("Preview")}
+                      </Button>
+                      <Button
+                        size="sm"
                         variant="outline"
                         loading={rowBusy === id}
                         onClick={() =>
@@ -353,6 +384,11 @@ export function DocumentsPage() {
         open={uploadOpen}
         onClose={() => setUploadOpen(false)}
         onSaved={reload}
+      />
+
+      <VaultPreviewDialog
+        document={preview}
+        onClose={() => setPreview(null)}
       />
     </section>
   );

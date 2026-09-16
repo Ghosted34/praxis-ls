@@ -44,6 +44,14 @@ Dates are ISO-8601, UTC.
 
 ### Fixed
 
+- **Vault → Documents register now previews in-app, like the operations file already did.** Bug #1 ("vault documents should be clickable so we preview") was implemented only on the operations file's Documents tab (`file-360.tsx` → "Vault documents"). The tenant-wide **Vault → Documents** screen — the natural place to look given the bug's wording — still offered only Download and Archive, so the fix appeared missing to anyone who went there. That screen (`features/vault/documents.tsx`) now carries a **Preview** button per row that opens the same `VaultPreviewDialog` (PDF/image/text inline, download for Office files), reusing the existing `fetchVaultDoc` plumbing. Archived rows keep Download only.
+
+### Changed
+
+- **Scheduled in-house messages now run in the Test environment, not only Live.** Smart Comms scheduled delivery was gated `env !== "live"` in `smartcomm.schedule.service.create`, and the flush job (`comms-send-flush`) and its scheduler (`comms-send-scheduler`) only ever enqueued a Live job — so a message scheduled while training on Test was accepted by the UI and silently never delivered. Training happens on Test, which is precisely where scheduling most needs to be rehearsable. The service now accepts `live` and `sandbox` (any other environment is still refused), the scheduler fans out one flush per environment the tenant has (same pattern as `attendance-reconcile-scheduler`, keyed `commsflush-<db>-<env>`), and each flush delivers only its own schema's due rows against its own data — a sandbox schedule can never leak into Live. The composer's schedule dialog copy no longer claims delivery is Live-only.
+
+### Fixed
+
 - **The marketing prefix is a per-host setting.** `/public` was typed into ninety-odd places, which made
   it a decision the whole fleet shared and nobody could revisit — and it is one a tenant has an opinion
   about, since the word is in every URL they print, email or hand to a search engine. Migration `0104` adds

@@ -206,3 +206,17 @@ describe("one folder's failure is isolated from its siblings", () => {
     expect(res.error).toBeUndefined();
   });
 });
+
+test("all folders failing returns an error, not Synced zero new", async () => {
+  mockFetchSince.mockRejectedValue(new Error("expired credentials"));
+  const res = await service.syncConnection(DB, "conn-1");
+  expect(res.error).toBe("expired credentials");
+  expect(threads.setFolderCursor).not.toHaveBeenCalled();
+});
+
+test.each(["ARCHIVED", "DISABLED"])("does not sync a %s mailbox", async (status) => {
+  repo.getConnection.mockResolvedValue({ ...CONN, status });
+  expect(await service.syncConnection(DB, "conn-1")).toEqual({ skipped: true });
+  expect(mockListFolders).not.toHaveBeenCalled();
+  expect(mockFetchSince).not.toHaveBeenCalled();
+});

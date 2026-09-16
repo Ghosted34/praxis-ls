@@ -1106,50 +1106,61 @@ export function ConnectionsTab({
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              {!c.is_default && (
+              {c.status === "ARCHIVED" ? (
+                <Button size="sm" onClick={() => {
+                  if (c.provider === "microsoft_graph") void connectMicrosoft();
+                  else if (c.provider === "google_gmail") {
+                    void api.startGoogle().then((r) => { window.location.href = r.url; }).catch(reportActionError);
+                  } else setImapOpen(true);
+                }}>
+                  {tr("Connect")}
+                </Button>
+              ) : (<>
+                {!c.is_default && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => makeDefault(c.email_connection_id)}
+                    disabled={busyId === c.email_connection_id}
+                  >
+                    {tr("Make default")}
+                  </Button>
+                )}
+                {c.provider === "imap_smtp" && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setEditConn(c)}
+                  >
+                    {tr("Edit")}
+                  </Button>
+                )}
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => makeDefault(c.email_connection_id)}
+                  onClick={() => test(c.email_connection_id)}
                   disabled={busyId === c.email_connection_id}
                 >
-                  {tr("Make default")}
+                  {tr("Test")}
                 </Button>
-              )}
-              {c.provider === "imap_smtp" && (
                 <Button
                   size="sm"
-                  variant="outline"
-                  onClick={() => setEditConn(c)}
+                  onClick={() => sync(c.email_connection_id)}
+                  loading={busyId === c.email_connection_id}
                 >
-                  {tr("Edit")}
+                  {tr("Sync now")}
                 </Button>
-              )}
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => test(c.email_connection_id)}
-                disabled={busyId === c.email_connection_id}
-              >
-                {tr("Test")}
-              </Button>
-              <Button
-                size="sm"
-                onClick={() => sync(c.email_connection_id)}
-                loading={busyId === c.email_connection_id}
-              >
-                {tr("Sync now")}
-              </Button>
-              {/* Last, and quiet. It is the one control here that cannot be
-                  undone by pressing it again. */}
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => setConfirmTarget(c)}
-                disabled={busyId === c.email_connection_id}
-              >
-                {tr("Disconnect")}
-              </Button>
+                {/* Last, and quiet. It is the one control here that cannot be
+                    undone by pressing it again. */}
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setConfirmTarget(c)}
+                  disabled={busyId === c.email_connection_id}
+                >
+                  {tr("Disconnect")}
+                </Button>
+              </>)}
             </div>
           </div>
         ))}

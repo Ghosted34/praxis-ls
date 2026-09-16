@@ -233,7 +233,7 @@ describe("the wording screen", () => {
     await userEvent.click(await screen.findByRole("button", { name: /Our work/i }));
 
     expect(await screen.findByDisplayValue("Nos références")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("Reference")).toBeInTheDocument();
+    expect(await screen.findByDisplayValue("Reference")).toBeInTheDocument();
   });
 
   it("finds a row by the sentence a tenant can actually see", async () => {

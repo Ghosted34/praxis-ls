@@ -105,7 +105,7 @@ export function CalendarGrid({
                   onSelectDay(iso);
                 }
               }}
-              aria-label={`${date.toDateString()} — ${dayEvents.length} event${dayEvents.length === 1 ? "" : "s"}`}
+              aria-label={`Schedule an event on ${date.toDateString()} — ${dayEvents.length} event${dayEvents.length === 1 ? "" : "s"}`}
               className={cn(
                 "min-h-[5.5rem] cursor-pointer border-b border-r p-1.5 align-top transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-[7rem]",
                 !inMonth && "bg-muted/20 opacity-50",

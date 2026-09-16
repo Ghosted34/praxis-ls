@@ -501,3 +501,32 @@ describe("reading the kind back off a state, for the return redirect", () => {
     expect(service.readOAuthStateKind(jwt.sign({ kind: "SHARED" }, "a-different-secret"))).toBeNull();
   });
 });
+
+describe("OAuth credential transaction", () => {
+  function transactionClient() {
+    return { query: jest.fn(async (sql) => {
+      if (sql === "SAVEPOINT praxis_tx_probe") throw Object.assign(new Error("no transaction"), { code: "25P01" });
+      return { rows: [{ state: "on" }] };
+    }) };
+  }
+
+  test.each(["vault", "link"])("rolls back when the %s write fails", async (stage) => {
+    const c = transactionClient();
+    const { url } = await service.startMicrosoftOAuth(c, START);
+    const settings = require("../../src/modules/security/setting/setting.service");
+    if (stage === "vault") settings.put.mockRejectedValueOnce(new Error("vault failed"));
+    else mailRepo.updateConnection.mockRejectedValueOnce(new Error("link failed"));
+    await expect(service.completeMicrosoftOAuth(c, { code: "c", state: stateFrom(url), slug: "smartls" })).rejects.toThrow(`${stage} failed`);
+    const sql = c.query.mock.calls.map(([q]) => q);
+    expect(sql).toContain("BEGIN");
+    expect(sql).toContain("ROLLBACK");
+    expect(sql).not.toContain("COMMIT");
+  });
+
+  test("commits the mailbox and credential together", async () => {
+    const c = transactionClient();
+    const { url } = await service.startMicrosoftOAuth(c, START);
+    await service.completeMicrosoftOAuth(c, { code: "c", state: stateFrom(url), slug: "smartls" });
+    expect(c.query.mock.calls.map(([q]) => q)).toContain("COMMIT");
+  });
+});

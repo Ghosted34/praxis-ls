@@ -37,8 +37,10 @@ function encryptSecret(value) {
     throw new AppError("BAD_SECRET", "integration_secret value must be an object containing a 'secret'", 422);
   }
   const secret = value.secret;
-  if (typeof secret !== "string" || secret.length < 1 || secret.length > 4000) {
-    throw new AppError("BAD_SECRET", "integration_secret.secret must be a string of 1–4000 characters", 422);
+  // OAuth bundles contain both an access JWT and a refresh token, not a password.
+  const maxLength = value.key_name === "MAIL_CONN" && ["microsoft_graph", "google_gmail"].includes(value.provider) ? 65536 : 4000;
+  if (typeof secret !== "string" || secret.length < 1 || secret.length > maxLength) {
+    throw new AppError("BAD_SECRET", `integration_secret.secret must be a string of 1–${maxLength} characters`, 422);
   }
   return {
     provider: value.provider ?? null,

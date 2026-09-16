@@ -9,6 +9,8 @@
  * as email_smtp_pass / whatsapp_token. Never stored on the connection row.
  */
 "use strict";
+
+const { atomically } = require("../../../shared/db/tx");
 const repo = require("./mail.repo");
 const events = require("./mail.events");
 const settings = require("../../security/setting/setting.service");
@@ -58,7 +60,7 @@ const OAUTH_STATE_TTL = "10m";
  *  scripts/handlers/unsafe schemes. Done once on ingest. */
 function cleanHtml(html) {
   if (!html) return null;
-   
+
   const sanitize = require("sanitize-html");
   return sanitize(html, {
     allowedTags: sanitize.defaults.allowedTags.concat(["img"]),
@@ -636,6 +638,7 @@ async function smtpAuthShape(client, id) {
 async function testConnection(client, id) {
   const conn = await repo.getConnection(client, id);
   if (!conn) throw new AppError("NOT_FOUND", "connection not found", 404);
+  if (conn.status === "ARCHIVED") throw new AppError("NOT_CONNECTED", "Reconnect this mailbox before testing it", 409);
   const separateSmtpCredentials = conn.provider === "imap_smtp"
     ? await repo.hasSmtpCredentials(client, id)
     : false;
@@ -776,7 +779,7 @@ async function ingestMessage(client, conn, m, { folder = "INBOX", providerPath =
 /** Pull new mail for one connection, folder by folder. */
 async function syncConnection(client, id, ctx = {}) {
   const conn = await repo.getConnection(client, id);
-  if (!conn) return { skipped: true };
+  if (!conn || conn.status === "ARCHIVED" || conn.status === "DISABLED") return { skipped: true };
   let adapter;
   try {
     adapter = await resolveAdapter(client, conn);
@@ -937,7 +940,9 @@ async function syncConnection(client, id, ctx = {}) {
   }
 
   if (inserted > 0 && ctx.slug) publishMailEvent(ctx.slug, { connection: conn.email_connection_id, inserted });
-  return { connection: conn.email_connection_id, fetched, inserted, attachments, folders: perFolder };
+  return { connection: conn.email_connection_id, fetched, inserted, attachments, folders: perFolder,
+    ...(!anyFolderSucceeded && lastError ? { error: lastError } : {}),
+  };
 }
 
 
@@ -1519,78 +1524,83 @@ async function completeOAuth(client, provider, { code, state, slug, webhookUrl }
   const kind = claims.kind === "SHARED" ? "SHARED" : "PERSONAL";
   const ownerUserId = kind === "SHARED" ? null : claims.user_id || null;
 
-  let conn = await repo.findByAddress(client, who.email, provider);
-  const isNew = !conn;
-  // Now that the address is known, the one-personal-mailbox rule can be applied
-  // the way it is meant to be: a NEW second mailbox is refused with a sentence
-  // naming the one already held, while re-consenting to a mailbox the person
-  // already owns — the only way to refresh a stale OAuth token — goes through.
-  // Without this the 23505 from `ux_email_connection_one_personal` reaches the
-  // browser as the error handler's generic "A record with these values already
-  // exists", on the far side of a redirect, naming nothing.
-  if (isNew && kind === "PERSONAL" && claims.user_id) {
-    await mailbox.assertNoPersonalMailbox(client, claims.user_id);
-  }
-  if (!conn) {
-    conn = await repo.insertConnection(client, {
-      email_address: who.email, provider, display_name: claims.display_name || null,
-      owner_user_id: ownerUserId,
-      // Stamped on the INSERT, not by `classify` a statement later. 10723 gives
-      // `kind` a DEFAULT of 'PERSONAL' and a partial unique index over it —
-      // UNIQUE (owner_user_id) WHERE kind = 'PERSONAL' AND status <> 'ARCHIVED'
-      // — so a row that arrives without its kind is momentarily a SECOND
-      // personal mailbox for whoever created it, and the index refuses it with
-      // a 23505 the error handler renders as "A record with these values
-      // already exists". That is the exact defect 82d02ec fixed on the password
-      // path (tests/unit/mail-shared-mailbox-kind.test.js); this path inserts
-      // its own row and never went through `connect()`, so it still had it.
-      kind,
-      status: "CONNECTED", token_expires_at: new Date(expires_at),
-    });
-  } else {
-    await repo.updateConnection(client, conn.email_connection_id, { status: "CONNECTED", last_error: null, token_expires_at: new Date(expires_at) });
-    // Never onto a team address: `owner_user_id` on a SHARED mailbox is what
-    // "this is one person's mailbox" means, and claiming operations@ for
-    // whoever happened to reconnect it is how a team address quietly becomes
-    // somebody's personal one.
-    if (kind !== "SHARED") await repo.claimConnectionIfUnowned(client, conn.email_connection_id, claims.user_id);
-  }
+  // Publish CONNECTED only with its encrypted credential and classification.
+  // Provider network calls stay outside this transaction.
+  const connected = await atomically(client, async () => {
+    let conn = await repo.findByAddress(client, who.email, provider);
+    const isNew = !conn;
+    // Now that the address is known, the one-personal-mailbox rule can be applied
+    // the way it is meant to be: a NEW second mailbox is refused with a sentence
+    // naming the one already held, while re-consenting to a mailbox the person
+    // already owns — the only way to refresh a stale OAuth token — goes through.
+    // Without this the 23505 from `ux_email_connection_one_personal` reaches the
+    // browser as the error handler's generic "A record with these values already
+    // exists", on the far side of a redirect, naming nothing.
+    if (isNew && kind === "PERSONAL" && claims.user_id) {
+      await mailbox.assertNoPersonalMailbox(client, claims.user_id);
+    }
+    if (!conn) {
+      conn = await repo.insertConnection(client, {
+        email_address: who.email, provider, display_name: claims.display_name || null,
+        owner_user_id: ownerUserId,
+        // Stamped on the INSERT, not by `classify` a statement later. 10723 gives
+        // `kind` a DEFAULT of 'PERSONAL' and a partial unique index over it —
+        // UNIQUE (owner_user_id) WHERE kind = 'PERSONAL' AND status <> 'ARCHIVED'
+        // — so a row that arrives without its kind is momentarily a SECOND
+        // personal mailbox for whoever created it, and the index refuses it with
+        // a 23505 the error handler renders as "A record with these values
+        // already exists". That is the exact defect 82d02ec fixed on the password
+        // path (tests/unit/mail-shared-mailbox-kind.test.js); this path inserts
+        // its own row and never went through `connect()`, so it still had it.
+        kind,
+        status: "CONNECTED", token_expires_at: new Date(expires_at),
+      });
+    } else {
+      await repo.updateConnection(client, conn.email_connection_id, { status: "CONNECTED", archived_at: null, last_error: null, token_expires_at: new Date(expires_at) });
+      // Never onto a team address: `owner_user_id` on a SHARED mailbox is what
+      // "this is one person's mailbox" means, and claiming operations@ for
+      // whoever happened to reconnect it is how a team address quietly becomes
+      // somebody's personal one.
+      if (kind !== "SHARED") await repo.claimConnectionIfUnowned(client, conn.email_connection_id, claims.user_id);
+    }
 
-  const secret_key = secretKeyFor(conn.email_connection_id);
-  await settings.put(client, {
-    section: settings.SECRET_SECTION, key: secret_key,
-    value: { provider, key_name: "MAIL_CONN", secret: JSON.stringify({ access_token: tokens.access_token, refresh_token: tokens.refresh_token, expires_at }) },
-    actor: { user_id: claims.user_id || null },
-  });
-  await repo.updateConnection(client, conn.email_connection_id, { secret_key });
-  // Stamp WHAT this mailbox is — the team slot it fills, its department, its
-  // visibility, and (for a shared one) the MANAGER grant that lets the person
-  // who just set it up add anybody else to it. `connect()` does exactly this
-  // for the password path; the OAuth path wrote a transport row and stopped,
-  // which is why a mailbox connected here never appeared against its catalogue
-  // slot and had no members at all.
-  //
-  // ON THE INSERT ONLY. A mailbox that already exists has already been
-  // classified, and re-stamping it here would let a RECONNECT rewrite what the
-  // mailbox IS: a personal mailbox reconnected through the shared chooser would
-  // silently become a team address (exposing one person's correspondence to
-  // whoever holds the slot), and a team address reconnected through the
-  // personal one would lose its catalogue slot and department. Converting a
-  // personal mailbox into a shared one is a deliberate, audited action —
-  // `mailbox.handover` — and must not be reachable by picking the other button.
-  if (isNew) {
-    await mailbox.classify(client, conn.email_connection_id, {
-      kind,
-      catalogueKey: kind === "SHARED" ? claims.catalogue_key || null : null,
-      department: kind === "SHARED" ? claims.department || null : null,
+    const secret_key = secretKeyFor(conn.email_connection_id);
+    await settings.put(client, {
+      section: settings.SECRET_SECTION, key: secret_key,
+      value: { provider, key_name: "MAIL_CONN", secret: JSON.stringify({ access_token: tokens.access_token, refresh_token: tokens.refresh_token, expires_at }) },
       actor: { user_id: claims.user_id || null },
     });
-  }
-  // "Which mailbox do I send from by default" is a question about a person's
-  // own mailboxes. A team address is not one of them.
-  if (kind !== "SHARED") await repo.ensureDefaultConnection(client, claims.user_id);
-  await setupPush(client, conn.email_connection_id, provider, { webhookUrl }).catch(() => { /* @silent:storage push optional; polling covers it */ });
-  return { email_connection_id: conn.email_connection_id, email_address: who.email, provider, status: "CONNECTED", kind };
+    await repo.updateConnection(client, conn.email_connection_id, { secret_key });
+    // Stamp WHAT this mailbox is — the team slot it fills, its department, its
+    // visibility, and (for a shared one) the MANAGER grant that lets the person
+    // who just set it up add anybody else to it. `connect()` does exactly this
+    // for the password path; the OAuth path wrote a transport row and stopped,
+    // which is why a mailbox connected here never appeared against its catalogue
+    // slot and had no members at all.
+    //
+    // ON THE INSERT ONLY. A mailbox that already exists has already been
+    // classified, and re-stamping it here would let a RECONNECT rewrite what the
+    // mailbox IS: a personal mailbox reconnected through the shared chooser would
+    // silently become a team address (exposing one person's correspondence to
+    // whoever holds the slot), and a team address reconnected through the
+    // personal one would lose its catalogue slot and department. Converting a
+    // personal mailbox into a shared one is a deliberate, audited action —
+    // `mailbox.handover` — and must not be reachable by picking the other button.
+    if (isNew) {
+      await mailbox.classify(client, conn.email_connection_id, {
+        kind,
+        catalogueKey: kind === "SHARED" ? claims.catalogue_key || null : null,
+        department: kind === "SHARED" ? claims.department || null : null,
+        actor: { user_id: claims.user_id || null },
+      });
+    }
+    // "Which mailbox do I send from by default" is a question about a person's
+    // own mailboxes. A team address is not one of them.
+    if (kind !== "SHARED") await repo.ensureDefaultConnection(client, claims.user_id);
+    return conn;
+  });
+  await setupPush(client, connected.email_connection_id, provider, { webhookUrl }).catch(() => { /* @silent:storage push optional; polling covers it */ });
+  return { email_connection_id: connected.email_connection_id, email_address: who.email, provider, status: "CONNECTED", kind };
 }
 
 /** Best-effort push registration after connect. Graph → change subscription to our
@@ -1616,11 +1626,11 @@ async function renewSubscriptions(client) {
   const results = [];
   for (const conn of due) {
     try {
-       
+
       const adapter = await resolveAdapter(client, conn);
-       
+
       const r = await adapter.renewSubscription(conn.push_subscription_id);
-       
+
       if (r && r.expiresAt) await repo.updateConnection(client, conn.email_connection_id, { push_expires_at: new Date(r.expiresAt) });
       results.push({ connection: conn.email_connection_id, ok: true });
     } catch (err) {

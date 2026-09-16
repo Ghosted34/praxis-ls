@@ -257,7 +257,7 @@ export const listTasks = (
     limit?: number;
     offset?: number;
   } = {},
-) => tenant<Task[]>(`/workspace/tasks${qs(params)}`);
+) => tenant<{ data: Task[] }>(`/workspace/tasks${qs(params)}`).then((r) => r.data);
 
 export const getTask = (id: string) =>
   tenant<{ data: Task }>(`/workspace/tasks/${id}`).then((r) => r.data);
@@ -309,7 +309,7 @@ export const removeWatcher = (taskId: string, userId: string) =>
 
 export const listEvents = (
   params: { from?: string; to?: string; event_type?: string; audience?: Audience } = {},
-) => tenant<CalendarEvent[]>(`/workspace/events${qs(params)}`);
+) => tenant<{ data: CalendarEvent[] }>(`/workspace/events${qs(params)}`).then((r) => r.data);
 
 export const getEvent = (id: string) =>
   tenant<{ data: CalendarEvent }>(`/workspace/events/${id}`).then((r) => r.data);

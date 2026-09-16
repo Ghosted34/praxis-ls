@@ -70,7 +70,9 @@ const participant = z
 const taskCreate = z
   .object({
     title: z.string().trim().min(1, "a task needs a title").max(300),
-    description: z.string().trim().max(4000).optional(),
+    // `.nullable()` because the dialog sends an explicit null for empty Notes,
+    // and optional alone 422s on a null that is present.
+    description: z.string().trim().max(4000).nullable().optional(),
     status: z.enum(STATUSES).optional(),
     priority: z.enum(PRIORITIES).optional(),
     assigned_to: z.string().uuid().nullable().optional(),
@@ -133,9 +135,13 @@ const boardQuery = strictQuery({
   audience: filters.enum(AUDIENCES),
 });
 
+// The window is OPTIONAL because the controller defaults it to today in the
+// tenant's own clock (tasks.controller.js, getDay). The Today page sends no
+// window on first load — a mandatory `from`/`to` would 422 the load before the
+// default the caller clearly meant ("today") could ever run.
 const dayQuery = strictQuery({
-  from: dt(DATETIME_MSG),
-  to: dt(DATETIME_MSG),
+  from: dt(DATETIME_MSG).optional(),
+  to: dt(DATETIME_MSG).optional(),
   audience: filters.enum(AUDIENCES),
 });
 
@@ -145,8 +151,10 @@ const eventCreate = z
   .object({
     title: z.string().trim().min(1, "an event needs a title").max(200),
     event_type: z.string().trim().min(1).max(40).optional(),
-    location: z.string().trim().max(300).optional(),
-    description: z.string().trim().max(2000).optional(),
+    // Both nullable: the dialog sends an explicit null for an empty Where or
+    // Notes, and optional alone 422s on a null that is present.
+    location: z.string().trim().max(300).nullable().optional(),
+    description: z.string().trim().max(2000).nullable().optional(),
     start_at: dt(DATETIME_MSG),
     end_at: dt(DATETIME_MSG),
     all_day: z.boolean().optional(),
@@ -194,9 +202,11 @@ const participantAdd = z
 
 const participantRespond = z.object({ status: z.enum(RESPONSES) }).strict();
 
+// Optional window, same reason as dayQuery: the controller defaults an
+// unbounded request to the current month (tasks.controller.js, listEvents).
 const eventListQuery = strictQuery({
-  from: dt(DATETIME_MSG),
-  to: dt(DATETIME_MSG),
+  from: dt(DATETIME_MSG).optional(),
+  to: dt(DATETIME_MSG).optional(),
   event_type: z.string().trim().max(40).optional(),
   audience: filters.enum(AUDIENCES),
 });

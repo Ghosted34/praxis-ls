@@ -89,31 +89,43 @@ export function CalendarGrid({
           const dayEvents = byDay.get(iso) ?? [];
           const isToday = iso === today;
           return (
+            // The whole cell is the hit area: a small date number reads as
+            // "not clickable", so the day is chosen from anywhere in the cell.
+            // A plain <div role="button"> rather than a <button>, because the
+            // cell also contains the event-chip buttons and a button inside a
+            // button is invalid HTML.
             <div
               key={iso}
+              role="button"
+              tabIndex={0}
+              onClick={() => onSelectDay(iso)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onSelectDay(iso);
+                }
+              }}
+              aria-label={`${date.toDateString()} — ${dayEvents.length} event${dayEvents.length === 1 ? "" : "s"}`}
               className={cn(
-                "min-h-[5.5rem] border-b border-r p-1.5 align-top sm:min-h-[7rem]",
+                "min-h-[5.5rem] cursor-pointer border-b border-r p-1.5 align-top transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-[7rem]",
                 !inMonth && "bg-muted/20 opacity-50",
               )}
             >
-              <button
-                type="button"
-                onClick={() => onSelectDay(iso)}
-                aria-label={`${date.toDateString()} — ${dayEvents.length} event${dayEvents.length === 1 ? "" : "s"}`}
+              <span
                 className={cn(
-                  "num mb-1 inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-xs transition-colors hover:bg-accent",
+                  "num mb-1 inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-xs",
                   isToday && "bg-primary font-semibold text-primary-foreground",
                 )}
               >
                 {date.getDate()}
-              </button>
+              </span>
 
               {loading ? (
                 <div className="h-3 w-3/4 animate-pulse rounded bg-muted" />
               ) : (
                 <ul className="space-y-0.5">
                   {/* On a phone the chips are too small to read, so a dot per
-                      event carries the count and the day button carries the
+                      event carries the count and the cell carries the
                       accessible label. */}
                   <li className="flex gap-1 sm:hidden">
                     {dayEvents.slice(0, MAX_CHIPS).map((e) => (
@@ -131,7 +143,12 @@ export function CalendarGrid({
                     <li key={e.calendar_event_id} className="hidden sm:block">
                       <button
                         type="button"
-                        onClick={() => onSelectEvent(e)}
+                        onClick={(ev) => {
+                          // The cell is clickable too: without this, choosing
+                          // an event would also open the new-event dialog.
+                          ev.stopPropagation();
+                          onSelectEvent(e);
+                        }}
                         title={`${e.title}${e.location ? ` · ${e.location}` : ""}`}
                         className="block w-full truncate rounded px-1 py-0.5 text-left text-xs transition-colors hover:bg-accent"
                       >

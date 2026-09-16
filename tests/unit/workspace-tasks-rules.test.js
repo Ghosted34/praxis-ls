@@ -244,3 +244,46 @@ describe("mergeTimeline — one day, in time order", () => {
     expect(service.mergeTimeline([], [])).toEqual([]);
   });
 });
+
+/* ── input schemas vs the payloads the dialogs actually send ──────────────── */
+/*
+ * These two classes of bug were both live in production: the list pages 422'd
+ * on first load because `from`/`to` were required while the client sends no
+ * window, and event creation 422'd because the dialog sends an explicit null
+ * for an empty field and the schema said `.optional()` but not `.nullable()`.
+ * The schemas and the client payloads were written against different
+ * assumptions and nothing compared them — so the payloads below are pinned to
+ * exactly what `event-dialog.tsx` and `task-dialog.tsx` build, and this file
+ * is the comparison.
+ */
+describe("input schemas — what the client sends must be what the server accepts", () => {
+  const v = require("../../src/modules/dashboard/workspace/tasks.validator").schemas;
+
+  it("dayQuery accepts no window (the controller defaults it to today)", () => {
+    expect(v.dayQuery.safeParse({}).success).toBe(true);
+  });
+
+  it("eventListQuery accepts no window (the controller defaults it to the month)", () => {
+    expect(v.eventListQuery.safeParse({}).success).toBe(true);
+  });
+
+  it("taskCreate accepts the dialog's payload with an empty Notes field", () => {
+    // task-dialog.tsx sends description: null, not description: omitted.
+    const r = v.taskCreate.safeParse({
+      title: "Chase the BOL", description: null,
+      due_at: null, reminder_minutes: null, is_personal: false,
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it("eventCreate accepts the dialog's payload with empty Where and Notes", () => {
+    // event-dialog.tsx sends location: null and description: null, not omitted.
+    const r = v.eventCreate.safeParse({
+      title: "Standup", event_type: "meeting",
+      location: null, description: null,
+      start_at: "2026-09-16T09:00", end_at: "2026-09-16T09:30",
+      all_day: false, reminder_minutes: null,
+    });
+    expect(r.success).toBe(true);
+  });
+});

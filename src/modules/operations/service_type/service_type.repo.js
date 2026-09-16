@@ -14,6 +14,8 @@
  */
 "use strict";
 const { makeRepo } = require("../../../shared/crud/resource");
+// Actual spend is NET of reconciliation reversals — see shared/finance/cost-entry-sql.
+const { netAmountSql } = require("../../../shared/finance/cost-entry-sql");
 
 const base = makeRepo({
   table: "service_type",
@@ -204,7 +206,7 @@ async function moneyRollup(client, serviceTypeId) {
   )).rows;
 
   const actuals = (await client.query(
-    "SELECT COALESCE(SUM(ce.amount), 0)::numeric AS actual_total " +
+    `SELECT COALESCE(${netAmountSql("ce")}, 0)::numeric AS actual_total ` +
       "FROM cost_entry ce JOIN dossier_visible d ON d.dossier_id = ce.dossier_id " +
       "WHERE d.service_type_id = $1",
     [serviceTypeId],

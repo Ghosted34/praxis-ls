@@ -21,7 +21,7 @@
  * user notices and stops trusting.
  */
 import * as React from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { pageShell } from "@/lib/layout";
 import { PageHeader } from "@/components/data-list";
 import { Panel } from "@/components/ui/panel";
@@ -30,17 +30,28 @@ import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { Button } from "@/components/ui/button";
 import { EmptyState, LoadingRow } from "@/components/ui/states";
 import { ScreenError } from "@/components/connection/screen-error";
-import { dateTimeFmt, num } from "@/lib/format";
-import { useDay } from "./hooks";
-import type { TimelineItem } from "./api";
+import { dateTimeFmt, money, num } from "@/lib/format";
+import { useDay, useReceiptsOwed } from "./hooks";
+import type { ReceiptOwed, TimelineItem } from "./api";
 import { PRIORITY_LABEL, PRIORITY_TONE, STATUS_LABEL, eventTypeTone, humanizeType } from "./labels";
 import { TaskDialog } from "./tasks/task-dialog";
 import { EventDialog } from "./calendar/event-dialog";
+
+/** Deep link to the line modal on the reconciliation sheet. The sheet route
+ *  reads `?line=` and opens the modal if present (the same convention every
+ *  other deep link in the app uses). */
+const reconLineLink = (r: ReceiptOwed) =>
+  `/costing/reconciliation/${r.dossier_id}?line=${r.costing_line_id}`;
 
 export function TodayPage() {
   const navigate = useNavigate();
   const q = useDay();
   const items = q.data?.items ?? [];
+  // "Cash to account for" (MOD-76, owner Q10) — its own fetch so it never
+  // gates the day timeline, and its own tile+panel below the day.
+  const owedQ = useReceiptsOwed();
+  const owed = owedQ.data ?? { count: 0, total_ttc: 0, items: [] };
+  const owedItems = owed.items ?? [];
   const [taskOpen, setTaskOpen] = React.useState(false);
   const [eventOpen, setEventOpen] = React.useState(false);
 
@@ -71,6 +82,11 @@ export function TodayPage() {
             <KpiTile label="Overdue" value={num(overdue.length)} />
             <KpiTile label="Tasks" value={num(dueToday.length)} />
             <KpiTile label="Appointments" value={num(events.length)} />
+            <KpiTile
+              label="Cash to account for"
+              value={num(owed.count || 0)}
+              hint={money(owed.total_ttc)}
+            />
           </KpiRow>
 
           <Panel
@@ -96,6 +112,49 @@ export function TodayPage() {
                   <TimelineRow key={`${item.kind}:${item.id}`} item={item} onOpen={navigate} />
                 ))}
               </ul>
+            )}
+          </Panel>
+
+          <Panel
+            title="Cash to account for"
+            subtitle="Money you've received that still needs a receipt."
+            className="mt-4"
+            action={
+              <Link
+                to="/costing/reconciliation"
+                className="text-sm text-muted-foreground transition-colors hover:text-primary-ink"
+              >
+                Open sheets →
+              </Link>
+            }
+          >
+            {owedQ.isLoading ? (
+              <LoadingRow label="Loading what you owe…" />
+            ) : owedItems.length ? (
+              <ul className="space-y-2">
+                {owedItems.slice(0, 8).map((it, i) => (
+                  <li
+                    key={it.costing_line_id + "-" + i}
+                    className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm"
+                  >
+                    <span className="min-w-0 truncate">
+                      <span className="font-medium">{it.dossier_ref || "—"}</span>
+                      <span className="text-muted-foreground"> · {it.line_label || "—"}</span>
+                    </span>
+                    <span className="flex shrink-0 items-center gap-3">
+                      <Link
+                        to={reconLineLink(it)}
+                        className="text-sm text-primary-ink transition-colors hover:underline"
+                      >
+                        Upload →
+                      </Link>
+                      <span className="num text-muted-foreground">{money(it.claimed_ttc)}</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="micro">No receipts owed. Any cash you take will show up here.</p>
             )}
           </Panel>
         </>

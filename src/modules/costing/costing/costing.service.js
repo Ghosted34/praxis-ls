@@ -580,6 +580,30 @@ async function setStatus(client, { id, to, actor = {}, viaChain = false }) {
     // after the carrier rolls the booking and ops updates the file. Never
     // throws — see shipment_details.snapshotOnto.
     await shipmentDetails.snapshotOnto(client, { table: "costing", id, dossierId: before.dossier_id });
+    // Budget Reconciliation (MOD-76, owner decision Q6). If the sheet was already
+    // settled, approving an amended costing re-opens it: the new line is
+    // automatically in the projected grid and any previously-typed values stay
+    // put, but the file is back on Operations' desk. guide §4.7.
+    //
+    // Best-effort: reopen() returns null when the sheet is not SETTLED (the
+    // common path), so no wrapping is needed for that. A genuine failure must
+    // not fail the approval — but it must not vanish either. A settled sheet
+    // that did not re-open is the living-sheet guarantee breaking, and this
+    // runs on the request's autocommit connection (req.tenantDb does not open a
+    // transaction — see registry.acquire), so the APPROVE above is already
+    // durable. Log it for us rather than swallowing it (doc/ERROR_HANDLING.md
+    // class D — tell engineering, not the approver).
+    if (before.dossier_id) {
+      try {
+        const recon = require("../dossier_reconciliation/dossier_reconciliation.service");
+        await recon.reopen(client, { dossierId: before.dossier_id, reason: "Costing amended and re-approved", actor });
+      } catch (err) {
+        logger.warn(
+          { err: err && err.message, dossier_id: before.dossier_id, costing_id: id },
+          "[costing] reconciliation reopen after costing re-approval failed (best-effort) — the settled sheet may not have re-opened",
+        );
+      }
+    }
     // Freeze the LINES too (12766), so the next amendment after an unlock can
     // show the approver what moved instead of fourteen unchanged rows.
     await snapshotApproval(client, { costing: row, actor });

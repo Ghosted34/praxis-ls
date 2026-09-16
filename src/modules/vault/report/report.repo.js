@@ -5,6 +5,8 @@
  */
 "use strict";
 const { insertOne, getById, page } = require("../../../shared/db/query-helpers");
+// Actual cost is NET of reconciliation reversals — see shared/finance/cost-entry-sql.
+const { netAmountSql } = require("../../../shared/finance/cost-entry-sql");
 
 // ── Cross-module read rollups ──
 /** Cash position: balance per class-5 treasury account (debit-positive). */
@@ -46,7 +48,7 @@ async function dossierMarginPortfolio(client, { limit = 50 } = {}) {
       "  (COALESCE(inv.billed,0) - COALESCE(ce.actual,0)) AS gross_margin " +
       "FROM dossier_visible d " +
       "LEFT JOIN (SELECT dossier_id, SUM(total_ttc) AS billed FROM invoice WHERE type='FINAL' AND status IN ('POSTED_LOCKED','APPROVED_LOCKED','ISSUED_LOCKED') GROUP BY dossier_id) inv ON inv.dossier_id = d.dossier_id " +
-      "LEFT JOIN (SELECT dossier_id, SUM(amount) AS actual FROM cost_entry GROUP BY dossier_id) ce ON ce.dossier_id = d.dossier_id " +
+      `LEFT JOIN (SELECT dossier_id, ${netAmountSql()} AS actual FROM cost_entry GROUP BY dossier_id) ce ON ce.dossier_id = d.dossier_id ` +
       "ORDER BY d.created_at DESC LIMIT $1",
     [Math.min(Math.max(parseInt(limit, 10) || 50, 1), 200)],
   );

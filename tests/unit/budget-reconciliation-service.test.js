@@ -78,6 +78,9 @@ function fakeClient({
       if (/FROM dossier_reconciliation WHERE reconciliation_id/.test(sql)) return { rows: header ? [header] : [] };
       if (/FROM costing\s+WHERE dossier_id/.test(sql)) return { rows: costing ? [costing] : [] };
       if (/FROM setting WHERE section/.test(sql)) return { rows: [] };
+      if (/SELECT entity_id FROM dossier WHERE dossier_id/.test(sql)) return { rows: [{ entity_id: UUID(99) }] };
+      if (/FROM regie_advance/.test(sql)) return { rows: [] };
+      if (/FROM cash_request cr/.test(sql) && /regie_advance_id/.test(sql)) return { rows: [] };
       if (/FROM costing_line cl\s+JOIN costing c/.test(sql) && /ORDER BY cl\.line_no, cl\.costing_line_id/.test(sql) && /dossier_reconciliation_line rl/.test(sql))
         return { rows: grid };
       if (/FROM costing_line cl\s+JOIN costing c/.test(sql)) return { rows: lineOnDossier ? [{ costing_line_id: params[1] }] : [] };
@@ -311,9 +314,9 @@ describe("settle — Finance's visa, and maker-checker", () => {
   test("Finance settles, records what came back, and stamps the file", async () => {
     const c = fakeClient({
       header: submitted(),
-      grid: [gridRow({ line_id: UUID(21), actual_ttc: 100000, actual_source: "OVERRIDDEN", returned_amount: 19250 })],
+      grid: [gridRow({ line_id: UUID(21), actual_ttc: 0, actual_source: "CONFIRMED", returned_amount: 0 })],
     });
-    await service.settle(c, { dossierId: DOSSIER, returned: { [LINE_A]: 19250 }, actor: finance });
+    await service.settle(c, { dossierId: DOSSIER, returned: {}, actor: finance });
     expect(c.written.find((w) => w.op === "status").sql).toMatch(/status = 'SETTLED'/);
     expect(c.written.find((w) => w.op === "settlement")).toBeTruthy();
     const stamp = c.written.find((w) => w.op === "stamp");

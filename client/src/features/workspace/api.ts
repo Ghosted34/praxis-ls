@@ -5,6 +5,17 @@
  * (FRONTEND_GUIDE §3.4), so that a route that moves is fixed in one file and
  * the compiler finds every caller.
  *
+ * ── `tenant()` ALREADY UNWRAPS THE `{ data }` ENVELOPE ──────────────────────
+ *
+ * Every endpoint here answers `{ data: ... }`, but `tenant()` (→ `api()` in
+ * lib/api-client.ts) returns the UNWRAPPED payload — the same contract every
+ * other feature relies on (e.g. `tenant<Payslip[]>("/payroll/mine")`). So a
+ * read is `tenant<DayTimeline>(...)`, NOT `tenant<{ data: DayTimeline }>(...)`
+ * followed by `.then((r) => r.data)`. Unwrapping a second time returns
+ * `undefined`, which is what React Query reports as "… data is undefined" and
+ * is why Today and the Calendar failed to load. The one endpoint that carries
+ * fields BESIDE the payload is the board (see `getBoard`).
+ *
  * ── TWO THINGS ABOUT THE CONTRACT THAT ARE EASY TO GET WRONG ───────────────
  *
  * 1. The board and the day are NOT paged. `board()` returns an object keyed by
@@ -239,11 +250,19 @@ function qs(params: Record<string, unknown>): string {
  * since the browser's zone is the laptop's, not the business's.
  */
 export const getDay = (params: { from?: string; to?: string; audience?: Audience } = {}) =>
-  tenant<{ data: DayTimeline }>(`/workspace/day${qs(params)}`).then((r) => r.data);
+  tenant<DayTimeline>(`/workspace/day${qs(params)}`);
 
 /* ── tasks ────────────────────────────────────────────────────────────────── */
 
-export type BoardResponse = { data: TaskBoard; audience: Audience; audiences: Audience[] };
+/**
+ * The board plus the audience metadata the switcher needs.
+ *
+ * This is the one read whose payload is an OBJECT rather than the bare columns:
+ * the server nests `{ board, audience, audiences }` inside `data` so the extra
+ * fields survive `tenant()`'s unwrap (see the file header). `board` is the
+ * status→tasks map the kanban draws.
+ */
+export type BoardResponse = { board: TaskBoard; audience: Audience; audiences: Audience[] };
 
 export const getBoard = (params: { assigned_to?: string; audience?: Audience } = {}) =>
   tenant<BoardResponse>(`/workspace/tasks/board${qs(params)}`);
@@ -257,50 +276,47 @@ export const listTasks = (
     limit?: number;
     offset?: number;
   } = {},
-) => tenant<{ data: Task[] }>(`/workspace/tasks${qs(params)}`).then((r) => r.data);
+) => tenant<Task[]>(`/workspace/tasks${qs(params)}`);
 
-export const getTask = (id: string) =>
-  tenant<{ data: Task }>(`/workspace/tasks/${id}`).then((r) => r.data);
+export const getTask = (id: string) => tenant<Task>(`/workspace/tasks/${id}`);
 
 export const createTask = (input: TaskInput) =>
-  tenant<{ data: Task }>("/workspace/tasks", { method: "POST", body: input }).then((r) => r.data);
+  tenant<Task>("/workspace/tasks", { method: "POST", body: input });
 
 export const updateTask = (id: string, input: Partial<TaskInput>) =>
-  tenant<{ data: Task }>(`/workspace/tasks/${id}`, { method: "PATCH", body: input }).then(
-    (r) => r.data,
-  );
+  tenant<Task>(`/workspace/tasks/${id}`, { method: "PATCH", body: input });
 
 /** Its own verb, not a field on update — the server treats a status change as a
  *  transition with consequences (completed_at, an event, the assignee's alert). */
 export const moveTask = (id: string, status: TaskStatus) =>
-  tenant<{ data: Task }>(`/workspace/tasks/${id}/status`, {
+  tenant<Task>(`/workspace/tasks/${id}/status`, {
     method: "POST",
     body: { status },
-  }).then((r) => r.data);
+  });
 
 export const deleteTask = (id: string) =>
   tenant<void>(`/workspace/tasks/${id}`, { method: "DELETE" });
 
 export const addSubtask = (taskId: string, title: string) =>
-  tenant<{ data: Subtask }>(`/workspace/tasks/${taskId}/subtasks`, {
+  tenant<Subtask>(`/workspace/tasks/${taskId}/subtasks`, {
     method: "POST",
     body: { title },
-  }).then((r) => r.data);
+  });
 
 export const toggleSubtask = (taskId: string, subtaskId: string, is_done: boolean) =>
-  tenant<{ data: Subtask }>(`/workspace/tasks/${taskId}/subtasks/${subtaskId}`, {
+  tenant<Subtask>(`/workspace/tasks/${taskId}/subtasks/${subtaskId}`, {
     method: "PATCH",
     body: { is_done },
-  }).then((r) => r.data);
+  });
 
 export const deleteSubtask = (taskId: string, subtaskId: string) =>
   tenant<void>(`/workspace/tasks/${taskId}/subtasks/${subtaskId}`, { method: "DELETE" });
 
 export const addWatcher = (taskId: string, user_id: string) =>
-  tenant<{ data: Watcher }>(`/workspace/tasks/${taskId}/watchers`, {
+  tenant<Watcher>(`/workspace/tasks/${taskId}/watchers`, {
     method: "POST",
     body: { user_id },
-  }).then((r) => r.data);
+  });
 
 export const removeWatcher = (taskId: string, userId: string) =>
   tenant<void>(`/workspace/tasks/${taskId}/watchers/${userId}`, { method: "DELETE" });
@@ -309,21 +325,18 @@ export const removeWatcher = (taskId: string, userId: string) =>
 
 export const listEvents = (
   params: { from?: string; to?: string; event_type?: string; audience?: Audience } = {},
-) => tenant<{ data: CalendarEvent[] }>(`/workspace/events${qs(params)}`).then((r) => r.data);
+) => tenant<CalendarEvent[]>(`/workspace/events${qs(params)}`);
 
-export const getEvent = (id: string) =>
-  tenant<{ data: CalendarEvent }>(`/workspace/events/${id}`).then((r) => r.data);
+export const getEvent = (id: string) => tenant<CalendarEvent>(`/workspace/events/${id}`);
 
 export const createEvent = (input: EventInput) =>
-  tenant<{ data: CalendarEvent }>("/workspace/events", { method: "POST", body: input }).then(
-    (r) => r.data,
-  );
+  tenant<CalendarEvent>("/workspace/events", { method: "POST", body: input });
 
 export const updateEvent = (id: string, input: Partial<EventInput>) =>
-  tenant<{ data: CalendarEvent }>(`/workspace/events/${id}`, {
+  tenant<CalendarEvent>(`/workspace/events/${id}`, {
     method: "PATCH",
     body: input,
-  }).then((r) => r.data);
+  });
 
 export const deleteEvent = (id: string) =>
   tenant<void>(`/workspace/events/${id}`, { method: "DELETE" });
@@ -332,16 +345,16 @@ export const addParticipant = (
   eventId: string,
   input: { user_id?: string; external_name?: string; is_organiser?: boolean },
 ) =>
-  tenant<{ data: Participant }>(`/workspace/events/${eventId}/participants`, {
+  tenant<Participant>(`/workspace/events/${eventId}/participants`, {
     method: "POST",
     body: input,
-  }).then((r) => r.data);
+  });
 
 export const respondParticipant = (eventId: string, participantId: string, status: ParticipantResponse) =>
-  tenant<{ data: Participant }>(
+  tenant<Participant>(
     `/workspace/events/${eventId}/participants/${participantId}/response`,
     { method: "PATCH", body: { status } },
-  ).then((r) => r.data);
+  );
 
 export const removeParticipant = (eventId: string, participantId: string) =>
   tenant<void>(`/workspace/events/${eventId}/participants/${participantId}`, {

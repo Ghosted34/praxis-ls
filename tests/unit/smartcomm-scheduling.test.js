@@ -24,10 +24,14 @@ describe("durable scheduled chat", () => {
     expect(() => schedule.validateTime({ send_at: future(), timezone: "not/a-zone" })).toThrow();
     expect(() => schedule.validateTime({ send_at: future(), timezone: "Africa/Lagos" })).not.toThrow();
   });
-  test("requires real membership and refuses sandbox delivery", async () => {
-    const args = { groupId: "group", actor, data: { body: "hello", send_at: future(), timezone: "UTC" }, env: "sandbox" };
-    await expect(schedule.create(client(), args)).rejects.toThrow(/LIVE/);
+  test("requires real membership and refuses only unknown environments", async () => {
+    const args = { groupId: "group", actor, data: { body: "hello", send_at: future(), timezone: "UTC" }, env: "preview" };
+    // An environment that is neither LIVE nor the sandbox Test schema is refused.
+    await expect(schedule.create(client(), args)).rejects.toThrow(/environment/);
+    // Sandbox (Test) IS allowed now — training rehearses there — so it fails on
+    // the next gate (membership) rather than being rejected outright.
     repo.findMember.mockResolvedValue(null);
+    await expect(schedule.create(client(), { ...args, env: "sandbox" })).rejects.toThrow(/member/);
     await expect(schedule.create(client(), { ...args, env: "live" })).rejects.toThrow(/member/);
     expect(queue.insert).not.toHaveBeenCalled();
   });

@@ -77,6 +77,8 @@ import { CommandPalette } from "@/components/command-palette";
 import { PraxisDrawer } from "@/components/praxis-drawer";
 import { FloatingActions } from "@/components/floating-actions";
 import { GlobalRaiseTicket } from "@/features/support/global-raise-ticket";
+import { SignOutDialog } from "@/app/layout/sign-out-dialog";
+import { forgetDeviceAccount } from "@/lib/device-account";
 import {
   DropdownMenu,
   DropdownItem,
@@ -729,6 +731,8 @@ function AppMark({ cfg }: { cfg: EffectivePwa }) {
 export function AppShell() {
   const { t } = useTranslation();
   const { user, logout } = useAuth();
+  /** The sign-out question — see `onLogout` and sign-out-dialog.tsx. */
+  const [signOutOpen, setSignOutOpen] = React.useState(false);
   // `pwa` is the resolved installed-app identity (icon, app name, title-bar
   // treatment); `branding` is the in-app token layer. The title bar uses the
   // former, the drawer's wordmark the latter — see AppMark.
@@ -820,8 +824,42 @@ export function AppShell() {
     setPaletteOpen(false);
   }, [location.pathname]);
 
+  /**
+   * Signing out is a two-answer question now, because the device REMEMBERS the
+   * account (see sign-out-dialog.tsx for why it is asked rather than assumed).
+   * `onLogout` opens it; the two handlers below are its answers.
+   */
   async function onLogout() {
+    setSignOutOpen(true);
+  }
+
+  async function finishSignOut() {
+    setSignOutOpen(false);
     await logout();
+    navigate("/login", { replace: true });
+  }
+
+  /**
+   * The other answer: sign out AND take this account off the device.
+   *
+   * The removal runs AFTER `logout()` deliberately. logout() wipes
+   * localStorage and then restores the DEVICE keys it carries across the wipe —
+   * last-session among them. Removing first would leave logout restoring a
+   * snapshot taken a moment before the removal, and the email would come back
+   * from that snapshot rather than from the store.
+   *
+   * WHAT GOES is `forgetDeviceAccount`'s job, not this function's — the set of
+   * stores that describe "this device belongs to someone" is defined in
+   * `lib/device-account.ts` and pinned by its test, so a refactor here cannot
+   * quietly drop one of them.
+   *
+   * `user.email` is captured before logout() for the obvious reason.
+   */
+  async function finishSignOutAndForget() {
+    const email = user?.email ?? "";
+    setSignOutOpen(false);
+    await logout();
+    forgetDeviceAccount(email);
     navigate("/login", { replace: true });
   }
 
@@ -1186,6 +1224,16 @@ export function AppShell() {
               Support page all open it through the same event, so it lives
               here with the other shell-level surfaces, not on the page. */}
           <GlobalRaiseTicket />
+          {/* Sign out asks before it releases the device — it is a shell-level
+              surface because both doors into it (the account menu, and whatever
+              else grows one) have to ask the same question. */}
+          <SignOutDialog
+            open={signOutOpen}
+            onClose={() => setSignOutOpen(false)}
+            onSignOut={finishSignOut}
+            onSignOutAndForget={finishSignOutAndForget}
+            email={user?.email ?? null}
+          />
           {/* ON EVERY TOUCH SCREEN, Smart Comms included.
 
               It used to be `!chatWorkstation &&`, because the cluster sits in

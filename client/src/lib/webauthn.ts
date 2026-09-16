@@ -10,6 +10,7 @@
 import { tenant } from "./api-client";
 import { tokenStore } from "./token-store";
 import { lastSessionStore } from "./last-session";
+import { passkeyDeviceStore } from "./passkey-devices";
 
 function b64urlToBuf(b64url: string): ArrayBuffer {
   const pad = "=".repeat((4 - (b64url.length % 4)) % 4);
@@ -127,6 +128,12 @@ export async function authenticateWithPasskey(email?: string): Promise<void> {
       localStorage.setItem("praxis.user", JSON.stringify(r.user));
     } catch { /* @silent:storage */ }
     lastSessionStore.fromUser(r.user);
+    // A ceremony that COMPLETED is the proof the sign-in screen needs: this
+    // device holds a credential for this account, so the identity-first screen
+    // may put the passkey in front of them next time. Recorded here rather than
+    // at the call site because every passkey sign-in goes through this function
+    // and the modal is not the only caller.
+    passkeyDeviceStore.set(r.user.email);
     // Also hit /auth/me to hydrate full profile (best-effort)
     try {
       const fresh = await tenant<any>("/auth/me");
@@ -141,8 +148,17 @@ export async function authenticateWithPasskey(email?: string): Promise<void> {
 /**
  * Register a new passkey (requires an authenticated session, like PIN).
  * Returns the new credential id.
+ *
+ * `email` is the account the credential is being added to. It is a parameter
+ * rather than a lookup so the device registry reflects the SESSION's identity —
+ * the caller knows whose session this is, and reading it back out of
+ * localStorage would silently record the credential against whoever signed in
+ * last on a shared browser.
  */
-export async function registerPasskey(label?: string | null): Promise<{ credential_id: string }> {
+export async function registerPasskey(
+  label?: string | null,
+  email?: string | null,
+): Promise<{ credential_id: string }> {
   if (!window.PublicKeyCredential) throw Object.assign(new Error("Passkeys aren't supported in this browser."), { code: "WEBAUTHN_NOT_SUPPORTED" });
 
   const options = await tenant<any>("/auth/passkey/register/options", {
@@ -168,6 +184,10 @@ export async function registerPasskey(label?: string | null): Promise<{ credenti
     method: "POST",
     body: { attestation, label: label ?? null, challengeToken: (options as any)._challengeToken, _challenge: (options as any)._challenge },
   });
+  // The device now holds a credential it did not a moment ago. Recorded only
+  // after the server has verified the attestation — a credential the server
+  // refused is not one this browser can sign in with.
+  if (email) passkeyDeviceStore.set(email);
   return r;
 }
 

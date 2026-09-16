@@ -20,6 +20,7 @@ import {
 } from "@/lib/api-client";
 import { tokenStore } from "@/lib/token-store";
 import { pinStore } from "@/lib/pin-store";
+import { passkeyDeviceStore } from "@/lib/passkey-devices";
 import { deviceIdStore } from "@/lib/device-id";
 import { lastSessionStore } from "@/lib/last-session";
 import { onReconnect, probeNow, reportUnreachable } from "@/lib/connection";
@@ -395,7 +396,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     tokenStore.clear();
     persistUser(null);
     // Clear all persisted client state on logout (until told otherwise): tokens,
-    // cached user, theme + env preferences. Two keys are DEVICE facts rather
+    // cached user, theme + env preferences. Three keys are DEVICE facts rather
     // than session state and are carried across the wipe:
     //   - pin devices: the whole point of Quick PIN is signing back in fast.
     //   - device id (0524): the time clock's register counts HARDWARE. Wiping
@@ -403,14 +404,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     //     produced a second PENDING hr_device row against the same employee —
     //     the clock asked a returning laptop to name itself again, and the
     //     label the employee had already given it stayed on the orphaned row.
+    //   - passkey devices: same reason as pin devices, and one more. The
+    //     sign-in screen reads it to decide whether this machine can offer a
+    //     passkey at all. Losing it on sign-out would make every sign-in a
+    //     password sign-in on a laptop that has a working Touch ID, which is
+    //     the exact guess the store exists to stop making.
     try {
       const pinSnap = pinStore.snapshot(); // trusted PIN devices survive sign-out
       const devSnap = deviceIdStore.snapshot();
       const lastSnap = lastSessionStore.snapshot();
+      const pkSnap = passkeyDeviceStore.snapshot();
       localStorage.clear();
       pinStore.restore(pinSnap);
       deviceIdStore.restore(devSnap);
       lastSessionStore.restore(lastSnap);
+      passkeyDeviceStore.restore(pkSnap);
     } catch {
       /* @silent:storage */
     }

@@ -36,6 +36,7 @@ import {
   isPasskeySupported,
   type PasskeyCredential,
 } from "@/lib/webauthn";
+import { passkeyDeviceStore } from "@/lib/passkey-devices";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/data-list";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
@@ -287,7 +288,9 @@ export function MySecurityPage() {
     setPkBusy(true);
     setPkMsg(null);
     try {
-      await registerPasskey(pkLabel.trim() || null);
+      // `user.email` — the device registry records which account this browser
+      // can now unlock, and only the authenticated session knows that.
+      await registerPasskey(pkLabel.trim() || null, user?.email);
       setPkLabel("");
       setPkMsg({ kind: "ok", text: "Passkey added. You can now use Face ID / Touch ID to sign in." });
       loadPasskeys();
@@ -304,6 +307,14 @@ export function MySecurityPage() {
   async function onDeletePasskey(id: string) {
     try {
       await deletePasskey(id);
+      // Removing the LAST credential for this account takes the device's claim
+      // with it. `passkeys` is read before the reload because that is the list
+      // as the user saw it: if the one they just removed was the only one, this
+      // browser can no longer answer the sign-in screen's "can this device do a
+      // passkey?" — and saying it can would put an unusable Face ID button in
+      // front of them on the next visit.
+      const wasLast = (passkeys?.length ?? 0) <= 1;
+      if (wasLast && user?.email) passkeyDeviceStore.remove(user.email);
       loadPasskeys();
       setPkMsg({ kind: "ok", text: "Passkey removed." });
     } catch (e) {

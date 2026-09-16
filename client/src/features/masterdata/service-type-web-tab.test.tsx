@@ -332,7 +332,7 @@ describe("ServiceTypeWebTab", () => {
     );
     await screen.findByTestId("web-unpublish");
     // Content still visible while published.
-    expect(screen.getByDisplayValue("Court FR")).toBeTruthy();
+    expect(await screen.findByDisplayValue("Court FR")).toBeTruthy();
     await user.click(screen.getByTestId("web-unpublish"));
     await waitFor(() =>
       expect(unpublishServiceTypeWeb).toHaveBeenCalledWith(ST_ID),
@@ -400,7 +400,7 @@ describe("ServiceTypeWebTab", () => {
     );
     await screen.findByTestId("web-profile-editor");
     // Short description stays editable.
-    const short = screen.getByDisplayValue("Court FR");
+    const short = await screen.findByDisplayValue("Court FR");
     expect(short).not.toBeDisabled();
     // Slug is locked while published.
     expect(screen.getByTestId("web-slug-fr")).toBeDisabled();
@@ -793,9 +793,12 @@ describe("ServiceTypeWebTab · the card (12755)", () => {
 
     async function typeLongBody() {
       await screen.findByTestId("web-profile-editor");
-      // Same handle the published-lock test uses — the label wraps the counter
-      // as well as the control, so it is the value that identifies the box.
-      const box = screen.getByDisplayValue("Long FR body") as HTMLTextAreaElement;
+      // findBy, not getBy: the editor mounts on the GET commit with EMPTY
+      // boxes, and the draft is seeded by an effect that lands on the NEXT
+      // commit. A loaded CI runner widens that gap enough that the mount query
+      // resolves in between, which is what broke the frontend job on
+      // 2026-09-16 with "Unable to find an element with the display value".
+      const box = (await screen.findByDisplayValue("Long FR body")) as HTMLTextAreaElement;
       fireEvent.change(box, { target: { value: LONG } });
       await waitFor(() => expect(box.value).toBe(LONG));
       return box;

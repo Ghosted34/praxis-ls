@@ -103,6 +103,13 @@ describe("send() queues rather than sending", () => {
     expect(res).toMatchObject({ email_send_queue_id: "q-1", status: "HELD", undo_seconds: 20 });
   });
 
+  test("sandbox schedules freeze a test-sink marker and label the response", async () => {
+    const res = await outbox.send({}, ME, { ...BASE, environment: "sandbox", send_at: new Date(Date.now() + 60000).toISOString() });
+    expect(repo.enqueue.mock.calls[0][1].payload.testMode).toBe(true);
+    expect(res).toMatchObject({ test_mode: true });
+    expect(res.test_note).toMatch(/never to the listed recipients/i);
+  });
+
   test("the response says when the message will actually go", async () => {
     const before = Date.now();
     const res = await outbox.send({}, ME, BASE);
@@ -486,6 +493,20 @@ describe("flushing", () => {
     expect(d.recordOutbound).toHaveBeenCalled();
     expect(repo.markSent).toHaveBeenCalledWith({}, "q-1", "msg-1");
     expect(res).toMatchObject({ status: "SENT", message_id: "msg-1" });
+  });
+
+  test("sandbox rows use the sink without resolving or touching a live transport", async () => {
+    const d = deps();
+    const res = await outbox.flushOne({}, queued({ payload: { ...queued().payload, testMode: true } }), d);
+    expect(d.resolveAdapter).not.toHaveBeenCalled();
+    expect(mockSendEmail).not.toHaveBeenCalled();
+    expect(mailbox.checkSendAllowance).not.toHaveBeenCalled();
+    expect(mailbox.recordSent).not.toHaveBeenCalled();
+    expect(d.recordOutbound).toHaveBeenCalledWith({}, expect.anything(), expect.objectContaining({
+      externalMessageId: "sandbox-sink:q-1",
+      subject: expect.stringMatching(/^\[TEST — NOT DELIVERED\]/),
+    }));
+    expect(res).toMatchObject({ status: "SENT", test_mode: true });
   });
 
   test("the send counter and the shared-mailbox audit both run", async () => {

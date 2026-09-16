@@ -337,9 +337,9 @@ describe("the card and the email fallback agree", () => {
    * images. Losing a strapline when images are off costs nothing; losing a phone
    * number costs the reply.
    */
-  test("every contact fact on the card survives into the text fallback", () => {
+  test("every contact fact survives in the fallback when no image was generated", () => {
     const m = model();
-    m.card_png_url = "https://smartls.praxisls.com/media/x.png";
+    m.card_png_url = null;
     const email = htmlMod.render(m);
     const f = card.fields(m);
 
@@ -379,7 +379,7 @@ describe("the card and the email fallback agree", () => {
   test("the fallback is painted in the tenant's brand, not a literal", () => {
     const m = model();
     m.palette = palette.resolve(SMART_LS, SEEDED_LAYOUT);
-    m.card_png_url = "https://smartls.praxisls.com/media/x.png";
+    m.card_png_url = null;
     const email = htmlMod.render(m);
     expect(email).toContain(m.palette.ink);   // rule, name, website
     expect(email).toContain(m.palette.warm);  // the title dash

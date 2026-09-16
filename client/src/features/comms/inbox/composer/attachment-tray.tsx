@@ -160,7 +160,7 @@ export function AttachButton({
   return (
     <FilePicker
       variant="inline"
-      accept="*/*"
+      accept="application/pdf,image/*,.doc,.docx,.xls,.xlsx,text/plain,text/csv"
       label={tr("Attach")}
       multiple
       disabled={disabled || working}

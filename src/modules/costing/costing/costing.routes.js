@@ -23,6 +23,7 @@ router.use(authMiddleware);
 // price itself. One call, gated on the module that owns the document.
 router.get("/suggest", requirePermission(MODULE, "view"), validator.suggestQuery, controller.suggest);
 router.get("/kpis", requirePermission(MODULE, "view"), validator.listQuery, controller.kpis);
+router.get("/validators", requirePermission(MODULE, "view"), controller.validators);
 router.get("/", requirePermission(MODULE, "view"), validator.listQuery, controller.list);
 // 12774 — the costing gate for one operations file. BEFORE "/:id", because
 // Express would otherwise match "gate" as a costing id and answer 404 for a

@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 5× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (553)
+## All codes (557)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -46,7 +46,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `ALREADY_DECLINED` | 409 | 1× | — |
 | `ALREADY_DELIVERED` | — | 1× | — |
 | `ALREADY_DISPOSED` | 422 | 1× | — |
-| `ALREADY_EXISTS` | 409 | 1× | — |
+| `ALREADY_EXISTS` | 409 | 2× | — |
 | `ALREADY_GRANTED` | 409 | 1× | — |
 | `ALREADY_INSTANTIATED` | 409 | 1× | — |
 | `ALREADY_MERGED` | 409 | 2× | — |
@@ -61,6 +61,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `APPROVAL_PENDING` | 422 | 1× | — |
 | `ARCHIVED_RETENTION` | 409 | 1× | — |
 | `ASSET_DISPOSED` | 422 | 1× | — |
+| `ASSIGNEE_UNAVAILABLE` | 422 | 1× | — |
 | `ATTACHMENT_TOO_LARGE` | — | 1× | — |
 | `AUDIO_TOO_LARGE` | 413 | 1× | — |
 | `AUTH_REQUIRED` | 401 | 15× | — |
@@ -133,6 +134,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `CATALOGUE_TAKEN` | 409 | 1× | — |
 | `CATEGORY_INACTIVE` | 422 | 1× | — |
 | `CERTIFIED_NOT_AVAILABLE` | — | 2× | — |
+| `CLASH_DETECTED` | 409 | 1× | — |
 | `CLASS_MISMATCH` | 422 | 1× | — |
 | `CLIENT_REQUIRED` | 422 | 12× | — |
 | `CLOSE_BLOCKED` | 422 | 1× | — |
@@ -246,6 +248,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `INVALID_SUBSCRIPTION` | 422 | 1× | — |
 | `INVALID_TOKEN` | 401 | 10× | — |
 | `INVALID_TRANSITION` | 422 | 23× | — |
+| `INVALID_VALUE` | 422 | 1× | — |
 | `INVOICE_POSTED` | 422 | 1× | — |
 | `IN_USE` | 409 | 2× | — |
 | `ISSUER_NOT_SIGNED` | 409 | 1× | — |
@@ -302,14 +305,14 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_CASH_ACCOUNT` | 422 | 1× | — |
 | `NOT_COMPLETED` | 409 | 1× | — |
 | `NOT_CONFIGURED` | 400 | 1× | — |
-| `NOT_CONNECTED` | 409 | 1× | — |
+| `NOT_CONNECTED` | 409 | 2× | — |
 | `NOT_DISPATCHABLE` | 409 | 1× | — |
 | `NOT_DOCUMENT` | 422 | 1× | — |
 | `NOT_DONE` | 422 | 1× | — |
 | `NOT_EDITABLE` | 400 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 3× | — |
-| `NOT_FOUND` | 404, 422 | 639× | — |
+| `NOT_FOUND` | 404, 422 | 647× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_OPEN` | 409, 422 | 3× | — |
 | `NOT_OPERATIONAL` | 422 | 1× | — |
@@ -569,6 +572,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `USE_APPROVE` | 422 | 1× | — |
 | `VACANCY_CLOSED` | — | 1× | — |
 | `VALIDATION_ERROR` | 422 | 263× | — |
+| `VALIDATOR_NOT_LINE_MANAGER` | — | 1× | — |
 | `VARIANCE_UNEXPLAINED` | 422 | 1× | — |
 | `VEHICLE_COMMITTED` | — | 1× | — |
 | `VEHICLE_NOT_FOUND` | 404 | 1× | — |

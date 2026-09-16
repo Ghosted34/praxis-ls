@@ -14,6 +14,7 @@ module.exports = {
   // The KPI strip, over the same filter the page used — so "Approved: 3" means
   // three matching costings, not three on this page.
   kpis: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.kpis(c, q(req))) })),
+  validators: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.validatorCandidates(c)) })),
   // Read-only: returns a PROPOSAL. Nothing is written until the person picks.
   suggest: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.suggestLines(c, q(req))) })),
   get: asyncHandler(async (req, res) => { const r = await req.tenantDb((c) => service.get(c, req.params.id, { lang: lang(req) })); if (!r) throw new AppError("NOT_FOUND", "Costing not found", 404); res.json({ data: r }); }),

@@ -195,11 +195,12 @@ async function hasSmtpCredentials(client, id) {
   return Boolean(rows[0] && rows[0].present);
 }
 
-/** Connections the sync worker should poll: any CONNECTED mailbox (IMAP polls,
- *  Graph/Gmail delta-poll — all provider-agnostic through the engine). */
+/** Retry ERROR mailboxes too: a transient failure must not permanently stop polling.
+ *  Archived/disabled mailboxes remain excluded. IMAP polls,
+ *  Graph/Gmail delta-poll — all provider-agnostic through the engine. */
 async function listSyncable(client) {
   return (await client.query(
-    "SELECT * FROM email_connection WHERE status = 'CONNECTED'",
+    "SELECT * FROM email_connection WHERE status IN ('CONNECTED', 'ERROR')",
   )).rows;
 }
 
@@ -228,7 +229,7 @@ async function setCursor(client, id, cursor) {
 }
 async function setError(client, id, message) {
   await client.query(
-    "UPDATE email_connection SET status = 'ERROR', last_error = $2 WHERE email_connection_id = $1",
+    "UPDATE email_connection SET status = 'ERROR', last_error = $2 WHERE email_connection_id = $1 AND status NOT IN ('ARCHIVED', 'DISABLED')",
     [id, String(message || "").slice(0, 2000)],
   );
 }

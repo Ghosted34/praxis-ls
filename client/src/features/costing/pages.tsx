@@ -115,7 +115,7 @@ function CostingForm({
     user_id: string;
     full_name?: string | null;
     email?: string;
-  }>("/users");
+  }>("/costings/validators");
   const currencies = useResource(() => listCurrencies(), []);
   const [dossierId, setDossierId] = React.useState("");
   const [currency, setCurrency] = React.useState("XAF");
@@ -1419,11 +1419,11 @@ function CashRequestForm({
   onCreated: (id: string, loadFailed: string | null) => void;
 }) {
   const { rows: dossiers } = useList<Dossier>("/operations");
-  const { rows: users } = useList<{
+  const { rows: validatorUsers } = useList<{
     user_id: string;
     full_name?: string | null;
     email?: string;
-  }>("/users");
+  }>("/costings/validators");
   const [dossierId, setDossierId] = React.useState("");
   // 10720: the legacy cash request carried beneficiary + an OPS/OVH context —
   // OPS requires an operations file, OVH requires a cost centre + justification.
@@ -1568,7 +1568,7 @@ function CashRequestForm({
                 dossierId={dossierId}
                 gate={gate}
                 busy={gateBusy}
-                users={users || []}
+                users={validatorUsers || []}
                 onChanged={loadGate}
               />
             </>

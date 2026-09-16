@@ -117,7 +117,7 @@ export type Connection = {
   email_address: string;
   provider: Provider;
   display_name?: string | null;
-  status: "PENDING" | "CONNECTED" | "ERROR" | "DISABLED";
+  status: "PENDING" | "CONNECTED" | "ERROR" | "DISABLED" | "ARCHIVED";
   last_sync_at?: string | null;
   last_error?: string | null;
   imap_host?: string | null;

@@ -33,6 +33,7 @@ const dispatcher = (req, client) => async ({ party, request, token, language }) 
   await mail.send(client, {
     to: party.email, subject, html, text,
     entityRef: request.entity_ref, sendPoint: "signature.request",
+    env: req.env || "live",
   });
 };
 
@@ -77,14 +78,25 @@ module.exports = {
 
   dispatch: asyncHandler(async (req, res) => {
     const data = await req.tenantDb(async (c) => {
-      const out = await service.dispatch(c, {
-        id: req.params.id, actor: req.user || {}, language: lang(req),
-        sendEmail: dispatcher(req, c),
-      });
-      // The plaintext token is NOT returned to the caller. It went into the
-      // email and nowhere else — a sender who could read it back could sign as
-      // the counterparty, which is the whole thing the peppered store prevents.
-      return { party: out.party };
+      // Keep token/status/event writes atomic with dispatch. Previously an SMTP
+      // error happened after party.status='SENT'; the UI truthfully showed the
+      // error, but retry was impossible because the unsent party no longer
+      // looked pending. The transaction also makes lockRequest's row lock real.
+      await c.query("BEGIN");
+      try {
+        const out = await service.dispatch(c, {
+          id: req.params.id, actor: req.user || {}, language: lang(req),
+          sendEmail: dispatcher(req, c),
+        });
+        await c.query("COMMIT");
+        // The plaintext token is NOT returned to the caller. It went into the
+        // email and nowhere else — a sender who could read it back could sign as
+        // the counterparty, which is the whole thing the peppered store prevents.
+        return { party: out.party };
+      } catch (err) {
+        await c.query("ROLLBACK");
+        throw err;
+      }
     });
     res.json({ data });
   }),

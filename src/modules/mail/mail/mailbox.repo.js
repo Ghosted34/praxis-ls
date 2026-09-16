@@ -207,9 +207,14 @@ const bumpSendWindow = (client, connectionId, windowStart, by = 1) =>
 /* ── Health book-keeping ─────────────────────────────────────────────────── */
 
 const clearFailures = (client, id) =>
-  updateOne(client, "email_connection", "email_connection_id", id, {
-    consecutive_failures: 0, last_success_at: new Date(), last_error: null,
-  });
+  client.query(
+    `UPDATE email_connection
+        SET consecutive_failures = 0, last_success_at = now(), last_sync_at = now(),
+            last_error = NULL, status = 'CONNECTED'
+      WHERE email_connection_id = $1 AND status IN ('CONNECTED', 'ERROR')
+      RETURNING *`,
+    [id],
+  ).then((r) => r.rows[0] || null);
 
 /**
  * Count a failed sync and, at the third in a row, flip a CONNECTED mailbox to

@@ -28,7 +28,16 @@ async function validateAttachments(c, groupId, attachments, replyTo) {
   }
 }
 async function create(c, { groupId, actor, data, env }) {
-  if (env !== "live") throw new AppError("VALIDATION_ERROR", "Scheduled delivery is available in LIVE only", 422);
+  // Scheduled delivery runs in LIVE and in the sandbox Test environment. Test is
+  // where tenants rehearse, so a training session that cannot schedule a message
+  // cannot rehearse the one thing scheduling is for. The row is written to
+  // whichever schema `withTenantConnection(meta, env)` selected, and the flush
+  // scheduler fans a job out per environment (comms-send-scheduler), so a
+  // sandbox schedule is delivered by a sandbox worker against sandbox data and
+  // never leaks into LIVE. Any env other than these two is still refused.
+  if (env !== "live" && env !== "sandbox") {
+    throw new AppError("VALIDATION_ERROR", "Scheduled delivery is not available in this environment", 422);
+  }
   await member(c, groupId, actor.user_id);
   // A retry after a lost response may arrive AFTER send_at. Recover its
   // original result before applying future-time validation to a new schedule.

@@ -60,6 +60,12 @@ const DETAIL = {
   // reads `?ticket=` as its initial selection. The ticket row has no path of
   // its own — the thread is a modal on the list, like the mail inbox.
   support_ticket: (id) => `/support?ticket=${encodeURIComponent(id)}`,
+  // My Workspace. Also a query rather than a path segment, for the same reason:
+  // a task opens in a panel ON the workspace, so the tab has to be named as
+  // well as the record. Both are read and then stripped by the page, so a
+  // refresh does not reopen what the user has since closed.
+  task: (id) => `/workspace?tab=tasks&task=${encodeURIComponent(id)}`,
+  calendar_event: (id) => `/workspace?tab=calendar&event=${encodeURIComponent(id)}`,
 };
 
 /**

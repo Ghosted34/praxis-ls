@@ -1,224 +1,98 @@
 /**
- * My workspace — the read-only personal overview (Overview area). Rolls up what's
- * on the signed-in user's desk from GET /workspace: approvals awaiting them,
- * unread notifications, and cash the caller took that still needs a receipt
- * (owner Q10, guide §6.5: "Cash to account for"). Composes the locked kit;
- * accents resolve to --primary.
+ * The old My workspace screen, kept as a redirect.
  *
- * WHAT MOVED. "Recent activity" (panel) and "Recent events" (KPI tile) lived
- * here on top of `event_log` and rendered raw humanised keys — "Auth token
- * refreshed · App user c2d39ee8" was the everyday appearance. Both moved to
- * the Control Tower as `<RecentActivity>`, backed by `/audit/my-feed` and a
- * proper humaniser (see `client/src/lib/audit-humanize.ts`). Workspace is the
- * queue-of-work surface now — nothing else.
+ * ── WHY THIS FILE STILL EXISTS ─────────────────────────────────────────────
+ *
+ * `/workspace` used to render a read-only roll-up of approvals awaiting the
+ * signed-in user and their unread alerts. Those two things grew real homes —
+ * `/approvals` and `/notifications`, each with their own permissions and their
+ * own list — and the surface itself became a hub with three sections
+ * (see `hub.tsx`).
+ *
+ * This component is what a bookmark, an emailed link or an open tab from
+ * before that change lands on. It sends them to Today, which is the section
+ * that answers the question this screen used to answer, and it keeps the two
+ * counts visible on the way through so nothing the old page told them is
+ * silently gone.
+ *
+ * It is not routed any more (`app.tsx` points `/workspace` at `WorkspaceHub`),
+ * so it exists for the deep links and for anyone reading the history of this
+ * folder. Deleting it is fine once you are confident nothing points here.
  */
+import { useEffect } from "react";
+import { useNavigate, Link } from "react-router-dom";
 import { pageShell } from "@/lib/layout";
-import { tr } from "@/lib/i18n";
-import { Panel } from "@/components/ui/panel";
-import { Link } from "react-router-dom";
 import { PageHeader } from "@/components/data-list";
+import { Panel } from "@/components/ui/panel";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
-import { Pill, type Tone } from "@/components/ui/pill";
-import { ErrorState } from "@/components/ui/states";
 import { useResource } from "@/lib/use-resource";
-import { money, num, dateFmt, humanizeRef } from "@/lib/format";
+import { num } from "@/lib/format";
 import { tenant } from "@/lib/api-client";
 
-type Approval = {
-  approval_task_id?: string;
-  id?: string;
-  entity_ref?: string | null;
-  step_kind?: string | null;
-  amount_xaf?: number | string | null;
-  status?: string | null;
-  created_at?: string | null;
-};
-type Note = {
-  notification_id?: string;
-  id?: string;
-  title?: string | null;
-  priority?: string | null;
-  event_type_key?: string | null;
-  created_at?: string | null;
-};
-type ReceiptOwed = {
-  dossier_id?: string;
-  dossier_ref?: string;
-  costing_line_id?: string;
-  line_label?: string;
-  owed_by_name?: string;
-  reconciliation_id?: string;
-  claimed_ttc?: number | string | null;
-};
 type Mine = {
-  approvals_awaiting_me?: Approval[];
-  unread_notifications?: Note[];
-  receipts_owed?: { count?: number; total_ttc?: number; items?: ReceiptOwed[] };
+  approvals_awaiting_me?: unknown[];
+  unread_notifications?: unknown[];
 };
-
-const prioTone = (p?: string | null): Tone => {
-  const u = String(p || "").toUpperCase();
-  if (u === "HIGH" || u === "CRITICAL") return "bad";
-  if (u === "MEDIUM") return "warn";
-  return "mute";
-};
-
-/** Deep link to the line modal on the reconciliation sheet. The sheet route
- *  reads `?line=` and opens the modal if present (same convention every other
- *  deep link in the app uses). */
-const reconLineLink = (r: ReceiptOwed) =>
-  `/costing/reconciliation/${r.dossier_id}?line=${r.costing_line_id}`;
 
 export function WorkspacePage() {
+  const navigate = useNavigate();
+  // Read the counts BEFORE navigating, so the frame the user sees for a moment
+  // is the page they asked for rather than a blank one.
   const r = useResource(() => tenant<Mine>("/workspace"), []);
-  const d = r.data;
-  const approvals = d?.approvals_awaiting_me || [];
-  const notes = d?.unread_notifications || [];
-  const owed = d?.receipts_owed || { count: 0, total_ttc: 0, items: [] };
-  const owedItems = owed.items || [];
+  const approvals = r.data?.approvals_awaiting_me?.length ?? 0;
+  const unread = r.data?.unread_notifications?.length ?? 0;
+
+  useEffect(() => {
+    const t = window.setTimeout(() => navigate("/workspace/today", { replace: true }), 1200);
+    return () => window.clearTimeout(t);
+  }, [navigate]);
 
   return (
     <section className={pageShell.wide}>
       <PageHeader
-        title="My workspace"
-        description="What's on your desk right now — approvals awaiting you, alerts you haven't opened, and cash you've received that still needs a receipt."
+        title="My workspace has moved"
+        description="Taking you to Today — your tasks and appointments, in one list."
       />
-      {r.loading ? (
-        <div className="py-10 text-center micro">{tr("Loading…")}</div>
-      ) : r.error ? (
-        <ErrorState message={r.error} />
-      ) : (
-        <>
-          <KpiRow>
-            <KpiTile
-              label="Awaiting my approval"
-              value={num(approvals.length)}
-            />
-            <KpiTile label="Unread alerts" value={num(notes.length)} />
-            <KpiTile
-              label="Cash to account for"
-              value={num(owed.count || 0)}
-              hint={money(owed.total_ttc)}
-            />
-          </KpiRow>
 
-          <div className="grid gap-4 lg:grid-cols-3">
-            <Panel
-              title="Awaiting me"
-              action={
-                <Link
-                  to="/approvals"
-                  className="text-sm text-muted-foreground transition-colors hover:text-primary-ink"
-                >
-                  Open queue →
-                </Link>
-              }
-            >
-              {approvals.length ? (
-                <ul className="space-y-2">
-                  {approvals.slice(0, 8).map((a, i) => (
-                    <li
-                      key={a.approval_task_id || a.id || i}
-                      className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm"
-                    >
-                      <span className="flex items-center gap-2">
-                        {a.step_kind && <Pill tone="blue">{a.step_kind}</Pill>}
-                        <span>{humanizeRef(a.entity_ref) || "—"}</span>
-                      </span>
-                      <span className="num text-muted-foreground">
-                        {money(a.amount_xaf)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="micro">
-                  Nothing awaiting your validation or approval.
-                </p>
-              )}
-            </Panel>
+      <KpiRow>
+        <KpiTile label="Awaiting my approval" value={num(approvals)} />
+        <KpiTile label="Unread alerts" value={num(unread)} />
+      </KpiRow>
 
-            <Panel
-              title="Unread alerts"
-              action={
-                <Link
-                  to="/notifications"
-                  className="text-sm text-muted-foreground transition-colors hover:text-primary-ink"
-                >
-                  All notifications →
-                </Link>
-              }
-            >
-              {notes.length ? (
-                <ul className="space-y-2">
-                  {notes.slice(0, 8).map((n, i) => (
-                    <li
-                      key={n.notification_id || n.id || i}
-                      className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2 text-sm"
-                    >
-                      <span className="flex items-center gap-2 truncate">
-                        <Pill tone={prioTone(n.priority)}>
-                          {n.priority || "INFO"}
-                        </Pill>
-                        <span className="truncate">
-                          {n.title || n.event_type_key || "Notification"}
-                        </span>
-                      </span>
-                      <span className="micro shrink-0">
-                        {dateFmt(n.created_at)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="micro">You're all caught up.</p>
-              )}
-            </Panel>
-
-            <Panel
-              title="Cash to account for"
-              subtitle="Money you've received that still needs a receipt."
-              action={
-                <Link
-                  to="/costing/reconciliation"
-                  className="text-sm text-muted-foreground transition-colors hover:text-primary-ink"
-                >
-                  Open sheets →
-                </Link>
-              }
-            >
-              {owedItems.length ? (
-                <ul className="space-y-2">
-                  {owedItems.slice(0, 8).map((it, i) => (
-                    <li
-                      key={it.costing_line_id + "-" + i}
-                      className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm"
-                    >
-                      <span className="truncate">
-                        <span className="font-medium">{it.dossier_ref || "—"}</span>
-                        <span className="text-muted-foreground"> · {it.line_label || "—"}</span>
-                      </span>
-                      <Link
-                        to={reconLineLink(it)}
-                        className="shrink-0 text-sm text-primary-ink transition-colors hover:underline"
-                      >
-                        Upload →
-                      </Link>
-                      <span className="num text-muted-foreground ml-3">
-                        {money(it.claimed_ttc)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="micro">
-                  No receipts owed. Any cash you take will show up here.
-                </p>
-              )}
-            </Panel>
-          </div>
-        </>
-      )}
+      <Panel title="Where things went" className="mt-4">
+        <ul className="space-y-2 text-sm">
+          <li>
+            <Link to="/workspace/today" className="text-primary-ink hover:underline">
+              Today
+            </Link>{" "}
+            — tasks and appointments in time order.
+          </li>
+          <li>
+            <Link to="/workspace/tasks" className="text-primary-ink hover:underline">
+              Tasks
+            </Link>{" "}
+            — the board.
+          </li>
+          <li>
+            <Link to="/workspace/calendar" className="text-primary-ink hover:underline">
+              Calendar
+            </Link>{" "}
+            — the month.
+          </li>
+          <li>
+            <Link to="/approvals" className="text-primary-ink hover:underline">
+              Approvals
+            </Link>{" "}
+            — the queue this page used to summarise.
+          </li>
+          <li>
+            <Link to="/notifications" className="text-primary-ink hover:underline">
+              Notifications
+            </Link>{" "}
+            — every alert, not just the unread ones.
+          </li>
+        </ul>
+      </Panel>
     </section>
   );
 }

@@ -13,6 +13,7 @@ const archive = require("./archive-chain");
 const secureLinks = require("./secure-link.service");
 const workflow = require("./workflow.service");
 const threadRepo = require("../mail/thread.repo");
+const mailNotify = require("../mail/mail-notify.service");
 // C-1/C-4. The four writes below (claim/assign/status/visibility) already did
 // their own `getThread` gate — the FN-2 lesson, applied to four of eleven
 // thread-scoped routes in this file. This is the same check, hoisted so the
@@ -64,6 +65,16 @@ router.post("/threads/:id/assign", requireFeature("mail.shared_inbox"), requireP
   body(z.object({ user_id: z.string().uuid() }).strict()),
   asyncHandler(async (req, res) => res.json({
     data: await req.identityDb(async (c) => {
+      // Assignment targets app users, while the UI searches employee records.
+      // Require an active linked login so the work cannot disappear onto an HR
+      // row that has no inbox, session or notification address.
+      const { rows: people } = await c.query(
+        "SELECT user_id, full_name, email FROM app_user WHERE user_id = $1 AND status = 'ACTIVE'",
+        [req.body.user_id],
+      );
+      if (!people[0]) {
+        throw new AppError("ASSIGNEE_UNAVAILABLE", "That colleague has no active app account and cannot receive assigned mail.", 422);
+      }
       const { rows } = await c.query(
         `UPDATE email_thread t SET assigned_user_id=$2, assigned_at=now()
            FROM email_connection c
@@ -72,6 +83,24 @@ router.post("/threads/:id/assign", requireFeature("mail.shared_inbox"), requireP
           RETURNING t.*, t.participants::text[] AS participants`,
         [req.params.id, req.body.user_id, actor(req).user_id],
       );
+      if (!rows[0]) throw new AppError("NOT_FOUND", "Conversation not found", 404);
+      const { rows: senders } = await c.query(
+        "SELECT full_name FROM app_user WHERE user_id = $1",
+        [actor(req).user_id],
+      );
+      await mailNotify.onAssignment(c, {
+        userId: req.body.user_id,
+        threadId: req.params.id,
+        subject: rows[0].subject,
+        assignedBy: senders[0] && senders[0].full_name,
+      });
+      await audit(c, {
+        actorUserId: actor(req).user_id,
+        action: "email.thread.assigned",
+        moduleKey: M,
+        entityRef: `email_thread:${req.params.id}`,
+        after: { assigned_user_id: req.body.user_id },
+      });
       return rows[0];
     }),
   })));

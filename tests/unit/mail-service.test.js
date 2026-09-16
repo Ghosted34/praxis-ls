@@ -389,7 +389,7 @@ test("one failing folder does not abort its siblings", async () => {
 test("records the error on the connection and does not throw", async () => {
   mockFetchSince.mockRejectedValue(new Error("IMAP auth failed"));
   const res = await service.syncConnection(DB, "conn-1", {});
-  expect(res.error).toBeUndefined(); // per-folder now, not per-connection
+  expect(res.error).toBe("IMAP auth failed"); // every folder failed; surface it to Sync now
   expect(res.folders).toEqual([{ folder: "INBOX", error: "IMAP auth failed" }]);
   expect(repo.setError).toHaveBeenCalledWith(DB, "conn-1", "IMAP auth failed");
 });

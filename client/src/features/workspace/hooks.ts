@@ -57,6 +57,17 @@ export function useDay(params: { from?: string; to?: string; audience?: Audience
   });
 }
 
+/** "Cash to account for" — receipts the caller personally owes (MOD-76, owner
+ *  Q10). Its own key under the workspace root, so a workspace write still
+ *  refreshes it, and its own request so it never gates the day timeline. */
+export function useReceiptsOwed() {
+  return useQuery<api.ReceiptsOwed>({
+    queryKey: [ROOT, "owed"],
+    queryFn: () => api.getReceiptsOwed(),
+    staleTime: 30_000,
+  });
+}
+
 export function useTaskBoard(params: { assigned_to?: string; audience?: Audience } = {}) {
   return useQuery<api.BoardResponse>({
     queryKey: [ROOT, "board", params],

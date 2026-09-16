@@ -85,6 +85,17 @@ describe("workspace api — reads return the unwrapped payload, not undefined", 
     expect(out.audience).toBe("team");
     expect(out.audiences).toEqual(["mine", "team"]);
   });
+
+  it("getReceiptsOwed reads the caller's own owed list from costing, unwrapped", async () => {
+    const owed = { count: 2, total_ttc: 350000, items: [{ costing_line_id: "cl1" }] };
+    mockTenant.mockResolvedValue(owed);
+
+    const out = await api.getReceiptsOwed();
+
+    expect(out).toBe(owed);
+    // The "Cash to account for" surface reads count/total_ttc/items directly.
+    expect(mockTenant).toHaveBeenCalledWith("/costing/reconciliations/owed");
+  });
 });
 
 describe("workspace api — writes return the created/updated record", () => {

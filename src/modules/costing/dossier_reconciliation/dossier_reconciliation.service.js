@@ -513,8 +513,6 @@ async function settle(client, { dossierId, returned = {}, actor = {}, ip = null 
       const net = Number(l.net) || 0;
       const ratio = grossTtc > 0 && net > 0 ? net / grossTtc : 1;
       const actualTtc = Number(l.actual_ttc) || 0;
-      const postedTtc = Number(l.posted_ttc) || 0;
-      const deltaTtc = rules.round2(actualTtc - postedTtc);
       const spentOn = l.spent_on || null;
 
       // The line's already-posted HT, taken from the grid.
@@ -532,13 +530,11 @@ async function settle(client, { dossierId, returned = {}, actor = {}, ip = null 
       // (earliest open date) rather than surfacing a raw journal-entry error.
       // We preflight here because journal_entry.buildAndInsert throws
       // PERIOD_NOT_OPEN and cannot name the offending line by itself (guide §4.3).
-      // eslint-disable-next-line no-await-in-loop
       const period = await journalEntry.getPeriodForDate(client, { entityId, date: spentOn });
       if (!period) {
         throw new AppError("NO_PERIOD", `No accounting period covers ${spentOn} (line "${l.label}")`, 422, { costing_line_id: l.costing_line_id, label: l.label, spent_on: spentOn });
       }
       if (period.status !== "OPEN") {
-        // eslint-disable-next-line no-await-in-loop
         const earliest = await journalEntry.earliestOpenPeriod(client, { entityId, onOrAfter: spentOn });
         throw new AppError("PERIOD_CLOSED",
           `Period ${period.code} (${period.status}) covers ${spentOn} on line "${l.label}". Pick the next open date or ask Finance to reopen.`,
@@ -555,7 +551,6 @@ async function settle(client, { dossierId, returned = {}, actor = {}, ip = null 
       // line's expense account and a debit back to treasury.
       if (deltaHt > 0) {
         // Forward posting: Dr expense/débours, Cr treasury.
-        // eslint-disable-next-line no-await-in-loop
         await costTracking.recordCostInner(client, {
           dossierId,
           dictionaryItemId: l.dictionary_item_id || null,
@@ -575,24 +570,23 @@ async function settle(client, { dossierId, returned = {}, actor = {}, ip = null 
         // recordCostInner always posts Dr expense / Cr treasury and refuses
         // amount <= 0, so for a negative delta we post the mirror directly
         // through journalEntry. The cost_entry still gets a POSITIVE amount
-        // (ch_cost_entry_amount_nonneg, 0497) and the SUM in posted_ht stays
-        // correct because this entry's journal lines move money the other way.
+        // (chk_cost_entry_amount_nonneg, 0497), stamped `reconciliation_reversal`
+        // so the posted_ht read SUBTRACTS it (POSTED_HT_SIGNED_SQL in the repo).
+        // That signed read — not this positive row on its own — is what keeps
+        // posted_ht equal to the net the journal holds; an unsigned SUM would
+        // read the correction as extra spend and compound it into the next delta.
         const reversalAmount = rules.round2(-deltaHt);
-        // eslint-disable-next-line no-await-in-loop
         const treasury = await accountFor(client, "treasury");
-        // eslint-disable-next-line no-await-in-loop
         const disb = await accountFor(client, "disbursement");
         let debitAccount;
         if (l.is_disbursement) {
           debitAccount = disb;
         } else {
-          // eslint-disable-next-line no-await-in-loop
           debitAccount = await costRepo.purchaseRuleAccount(client, l.dictionary_item_id);
         }
         if (!debitAccount) {
           throw new AppError("NO_EXPENSE_ACCOUNT", `No expense account maps to "${l.label}"`, 500, { costing_line_id: l.costing_line_id });
         }
-        // eslint-disable-next-line no-await-in-loop
         const { entry } = await journalEntry.buildAndInsert(client, {
           journalCode: "OD", entityId, entryDate: spentOn,
           description: `Operations file cost reversed — ${l.label} (settlement correction)`,
@@ -603,7 +597,6 @@ async function settle(client, { dossierId, returned = {}, actor = {}, ip = null 
           ],
           validate: true, actor, ip,
         });
-        // eslint-disable-next-line no-await-in-loop
         await costRepo.insertCostEntry(client, {
           dossier_id: dossierId, dictionary_item_id: l.dictionary_item_id || null,
           category: "reconciliation_reversal",
@@ -681,13 +674,42 @@ async function settle(client, { dossierId, returned = {}, actor = {}, ip = null 
         const returnTarget = Math.max(0, returnShares[i]);
         const returnDelta = rules.round2(Math.min(returnTarget - Number(adv.returned_amount), openAmount - receiptDelta));
 
+        // A re-settle can only ADD to what an advance has retired. If the sheet
+        // now accounts for LESS against this advance than is already retired —
+        // a downward correction after a prior settlement — there is no leg to
+        // post: retireCore has NO un-retire path (assertRetirable refuses
+        // amount <= 0, and retirementLines only ever posts Dr expense / Cr 581).
+        // The old code silently skipped the negative delta, which left 581
+        // over-retired and the advance's justified/returned totals standing
+        // above the truth — so the cost-entry reversal posted above (which DOES
+        // correct downward) and the régie legs here would disagree, and the
+        // 581 = 0 invariant the settlement is meant to guarantee would not hold.
+        // Refuse and roll the whole settlement back; Finance corrects the
+        // advance directly (query it — KB §6.8 step 5) before settling lower.
+        const receiptShort = rules.round2(receiptTarget - Number(adv.justified_amount));
+        const returnShort = rules.round2(returnTarget - Number(adv.returned_amount));
+        if (receiptShort < -0.005 || returnShort < -0.005) {
+          throw new AppError(
+            "REGIE_OVER_RETIRED",
+            `Settling this file lower would leave régie advance ${adv.cash_request_ref || adv.regie_advance_id} over-retired: it already holds ${rules.round2(Number(adv.justified_amount))} justified and ${rules.round2(Number(adv.returned_amount))} returned, but the sheet now accounts for only ${rules.round2(receiptTarget)} spent and ${rules.round2(returnTarget)} returned against it. A régie retirement cannot be un-posted automatically — query the advance and adjust it before settling the file lower.`,
+            422,
+            {
+              regie_advance_id: adv.regie_advance_id,
+              cash_request_ref: adv.cash_request_ref || null,
+              justified_amount: rules.round2(Number(adv.justified_amount)),
+              returned_amount: rules.round2(Number(adv.returned_amount)),
+              receipt_target: rules.round2(receiptTarget),
+              return_target: rules.round2(returnTarget),
+            },
+          );
+        }
+
         // RECEIPT leg (Dr 4731 / Cr 581) — per dossier, per KB §8.2.
         if (receiptDelta > 0.005) {
           // enforce proof on the régie policy only if the sheet has a doc — if
           // the submit gates already enforced proof on every line that needed
           // it, this will exist; if the policy allows no-proof receipts we
           // pass null and retireCore accepts it.
-          // eslint-disable-next-line no-await-in-loop
           await regie.retireCore(client, {
             advanceId: adv.regie_advance_id,
             kind: "RECEIPT",
@@ -702,7 +724,6 @@ async function settle(client, { dossierId, returned = {}, actor = {}, ip = null 
         }
         // CASH_RETURN leg (Dr 571 / Cr 581) — cash back to the vault.
         if (returnDelta > 0.005) {
-          // eslint-disable-next-line no-await-in-loop
           await regie.retireCore(client, {
             advanceId: adv.regie_advance_id,
             kind: "CASH_RETURN",
@@ -725,7 +746,6 @@ async function settle(client, { dossierId, returned = {}, actor = {}, ip = null 
         // No linked advance (bank, MoMo, cheque); mark JUSTIFIED outright —
         // there is no régie balance holding them open. Guard on status so we
         // do not touch requests already past this state.
-        // eslint-disable-next-line no-await-in-loop
         await client.query(
           "UPDATE cash_request SET status = 'JUSTIFIED' WHERE cash_request_id = $1 AND status IN ('DISBURSED','PARTIALLY_DISBURSED')",
           [cr.cash_request_id],
@@ -734,7 +754,6 @@ async function settle(client, { dossierId, returned = {}, actor = {}, ip = null 
       }
       // Read the advance fresh (after retirements above) and flip only when
       // its open balance is zero.
-      // eslint-disable-next-line no-await-in-loop
       const { rows: [advNow] } = await client.query(
         "SELECT amount, justified_amount, returned_amount FROM regie_advance WHERE regie_advance_id = $1",
         [cr.regie_advance_id],
@@ -742,7 +761,6 @@ async function settle(client, { dossierId, returned = {}, actor = {}, ip = null 
       if (advNow) {
         const open = rules.round2(Number(advNow.amount) - Number(advNow.justified_amount) - Number(advNow.returned_amount));
         if (open <= 0.005) {
-          // eslint-disable-next-line no-await-in-loop
           await client.query(
             "UPDATE cash_request SET status = 'JUSTIFIED' WHERE cash_request_id = $1 AND status IN ('DISBURSED','PARTIALLY_DISBURSED')",
             [cr.cash_request_id],

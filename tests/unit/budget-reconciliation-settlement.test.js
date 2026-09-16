@@ -192,6 +192,40 @@ describe("settlement posts the actuals — delta, never gross (Q3)", () => {
     expect(rev).toBeTruthy();
     // The treasury is DEBITED in a reversal (money back to cash).
     expect(rev.lines[0].debit).toBeGreaterThan(0);
+    // The cost_entry row is stamped `reconciliation_reversal` — the EXACT
+    // category the signed posted_ht read subtracts (see
+    // budget-reconciliation-posted-signed.test.js). If this string drifts, the
+    // read counts the reversal as spend and the delta arithmetic compounds.
+    const ce = c.written.find((w) => w.op === "costEntry");
+    expect(ce).toBeTruthy();
+    expect(ce.params).toContain("reconciliation_reversal");
+    // …and never a negative amount (chk_cost_entry_amount_nonneg).
+    expect(ce.params.every((p) => typeof p !== "number" || p >= 0)).toBe(true);
+  });
+
+  test("a downward re-settle that would over-retire a régie advance is refused, not silently skipped", async () => {
+    // The advance already holds 100 000 justified from a prior settlement. The
+    // sheet now accounts for only 50 000 against it — a downward correction.
+    // retireCore has no un-retire path, so the OLD code silently skipped the
+    // negative receipt delta and left 581 over-retired while the cost-entry
+    // side reversed. Now settle refuses and rolls the whole thing back.
+    const c = fakeClient({
+      header: submitted(),
+      grid: [gridRow({ actual_ttc: 50000, posted_ht: 0, posted_ttc: 0 })],
+      advances: [{
+        regie_advance_id: mockUUID(70), entity_id: ENTITY, amount: 119250,
+        justified_amount: 100000, returned_amount: 0, state: "PARTIALLY_JUSTIFIED",
+        holder_user_id: mockUUID(3), issued_on: "2026-07-07",
+        cash_request_id: mockUUID(71), cash_request_ref: "CR-1",
+      }],
+    });
+    await expect(service.settle(c, { dossierId: DOSSIER, actor: finance }))
+      .rejects.toMatchObject({
+        code: "REGIE_OVER_RETIRED",
+        details: expect.objectContaining({ cash_request_ref: "CR-1" }),
+      });
+    expect(c.queries.some((q) => /ROLLBACK/i.test(q.sql))).toBe(true);
+    expect(c.written.find((w) => w.op === "status")).toBeFalsy();
   });
 
   test("spent_on is used as the journal entry date (owner's Q3 question)", async () => {

@@ -23,8 +23,28 @@
 const costingRepo = require("../costing/costing.repo");
 
 /**
+ * Posted HT for a budget line, SIGNED by category.
+ *
+ * settle() posts a downward correction as a REVERSING entry whose `cost_entry`
+ * row still carries a POSITIVE `amount` — chk_cost_entry_amount_nonneg (0497)
+ * forbids a negative — under category `reconciliation_reversal`. The journal
+ * lines move the money the other way, but the row is positive, so an unsigned
+ * `SUM(ce.amount)` would read a correction DOWN as spend UP. That is not merely
+ * a display error: settle() computes each line's delta as `target − posted`, so
+ * a posted total inflated by a reversal feeds straight back into the next
+ * delta and the mistake COMPOUNDS into the ledger on every re-settle. Subtract
+ * the reversals so the read equals the economics the journal actually holds —
+ * this is the single definition both live reads (`postedTotalsByLine` and the
+ * `gridFor` LATERAL) use, and it must stay in step with the category the
+ * writer stamps in `dossier_reconciliation.service.settle()`.
+ */
+const POSTED_HT_SIGNED_SQL =
+  "SUM(CASE WHEN ce.category = 'reconciliation_reversal' THEN -ce.amount ELSE ce.amount END)";
+
+/**
  * HT already posted to THIS budget line — Σ cost_entry.amount (which is HT)
- * where costing_line_id matches. Used by settle() for the delta posting (guide
+ * where costing_line_id matches, with reversals subtracted (see
+ * `POSTED_HT_SIGNED_SQL`). Used by settle() for the delta posting (guide
  * §4.4 step 2): post (actual_ttc − already_posted_ttc converted to HT) rather
  * than re-posting the gross, and read it back so a re-settle after re-open
  * posts only the delta since last time (the re-open safeguard, PR 2).
@@ -32,7 +52,7 @@ const costingRepo = require("../costing/costing.repo");
 async function postedTotalsByLine(client, { reconciliationId, dossierId }) {
   const { rows } = await client.query(
     `SELECT ce.costing_line_id,
-            COALESCE(SUM(ce.amount), 0) AS posted_ht
+            COALESCE(${POSTED_HT_SIGNED_SQL}, 0) AS posted_ht
        FROM cost_entry ce
       WHERE ce.dossier_id = $1 AND ce.costing_line_id IS NOT NULL
       GROUP BY ce.costing_line_id`,
@@ -179,7 +199,10 @@ async function setStatus(client, id, { sql, params = [] }) {
  * the line's own VAT ratio, so the pre-fill rule (Q2 = C) can put the TTC
  * number in front of a person without mixing the two bases in one column. The
  * pre-fill is `COALESCE(posted_ttc, disbursed)` — once postings exist the
- * ledger knows, not the cash request.
+ * ledger knows, not the cash request. The SUM is SIGNED
+ * (`POSTED_HT_SIGNED_SQL`): a settlement reversal is a positive row that the
+ * ledger treats as a credit, so it must SUBTRACT here or a downward correction
+ * would read as extra spend and the pre-fill would show it.
  */
 async function gridFor(client, { dossierId, reconciliationId }) {
   const claims = costingRepo.claimsLateral({ committing: "$3", pending: "$4" });
@@ -215,13 +238,15 @@ async function gridFor(client, { dossierId, reconciliationId }) {
             AND cr.status <> 'REJECTED'
        ) just ON TRUE
        LEFT JOIN LATERAL (
-         SELECT COALESCE(SUM(ce.amount), 0) AS posted_ht,
+         -- SIGNED sum: a 'reconciliation_reversal' row is a positive amount the
+         -- ledger treats as a credit, so it subtracts (see POSTED_HT_SIGNED_SQL).
+         SELECT COALESCE(${POSTED_HT_SIGNED_SQL}, 0) AS posted_ht,
                 -- Gross HT back to TTC at the line's own VAT ratio. débours carry
                 -- their upstream_vat_amount explicitly rather than a percent, so
                 -- the ratio uses net + vat (the budget denominator) which works
                 -- for both shapes. If net + vat is zero (a zero line) we read HT
                 -- as TTC — there is no cash to mis-state.
-                ROUND(COALESCE(SUM(ce.amount), 0)
+                ROUND(COALESCE(${POSTED_HT_SIGNED_SQL}, 0)
                       * CASE WHEN (cl.qty * cl.unit_cost + ${vat}) > 0
                              THEN (cl.qty * cl.unit_cost + ${vat}) / NULLIF(cl.qty * cl.unit_cost, 0)
                              ELSE 1 END, 2) AS posted_ttc

@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 5× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (552)
+## All codes (553)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -462,6 +462,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `REF_IMMUTABLE` | 422 | 1× | — |
 | `REF_REQUIRED` | 422 | 2× | — |
 | `REF_WRITE_REQUIRED` | 500 | 1× | — |
+| `REGIE_OVER_RETIRED` | — | 1× | — |
 | `REJECTION_REASON_REQUIRED` | 422 | 1× | — |
 | `RELATED_IS_SELF` | 422 | 1× | — |
 | `REPORTING_CYCLE` | 422 | 2× | — |

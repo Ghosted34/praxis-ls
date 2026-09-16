@@ -988,13 +988,22 @@ async function disburse(client, { id, amount = null, entityId, entryDate, source
     // Budget Reconciliation (MOD-76, owner decision Q6, guide §4.7). If the
     // dossier's reconciliation was already settled, a new disbursement re-opens
     // it: more cash went out, so the cash-to-account math moved. Best-effort
-    // AFTER commit so the disbursement is durable even if the reopen fails
-    // (reopen is idempotent and can be retried).
+    // AFTER commit so the disbursement is durable even if the reopen fails —
+    // reopen is idempotent, so the next disbursement (or a manual reopen)
+    // recovers it. But a failure is NOT silent: a settled sheet that did not
+    // re-open is the living-sheet guarantee breaking, so log it for us rather
+    // than swallowing it (doc/ERROR_HANDLING.md class D — tell engineering,
+    // not the person who just disbursed).
     if (cr.dossier_id) {
       try {
         const recon = require("../dossier_reconciliation/dossier_reconciliation.service");
         await recon.reopen(client, { dossierId: cr.dossier_id, reason: "Further cash disbursed against the file", actor });
-      } catch (e) { /* best-effort */ }
+      } catch (err) {
+        logger.warn(
+          { err: err && err.message, dossier_id: cr.dossier_id, cash_request_id: cr.cash_request_id },
+          "[cash_request] reconciliation reopen after disbursement failed (best-effort) — the settled sheet may not have re-opened",
+        );
+      }
     }
 
     return { cash_request: updated, regie_advance_id: regieAdvanceId, payment, outstanding: Math.round((requested - paidNow) * 100) / 100 };

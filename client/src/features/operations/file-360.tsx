@@ -42,6 +42,7 @@ import { tr } from "@/lib/i18n";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { DocButton } from "@/components/doc-button";
+import { VaultPreviewDialog, type VaultPreviewDocument } from "@/components/vault-preview-dialog";
 import { Stat } from "@/components/ui/stat";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { Segmented } from "@/components/ui/segmented";
@@ -505,6 +506,7 @@ function PeopleTab({
 
 function DocumentsTab({ d }: { d: api.DossierOverview }) {
   const docs = d.document_rows;
+  const [preview, setPreview] = React.useState<VaultPreviewDocument | null>(null);
   return (
     <div className="space-y-5">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -521,7 +523,56 @@ function DocumentsTab({ d }: { d: api.DossierOverview }) {
           label={tr("Delivery notes")}
           value={num(d.documents.delivery_notes)}
         />
+        <Stat
+          label={tr("Planned services")}
+          value={money(d.money?.planned_service_cost)}
+        />
+        <Stat
+          label={tr("Planned disbursements")}
+          value={money(d.money?.planned_disbursement)}
+        />
       </div>
+
+      <DocGroup
+        title={tr("Costings")}
+        rows={docs?.costings || []}
+        empty="No costing documents on this file."
+        keyOf={(r) => r.costing_id}
+        render={(r) => (
+          <DocRow
+            label={
+              <Link className="num text-sm font-medium text-primary-ink underline underline-offset-2" to={`/costing/costing/${r.costing_id}`}>
+                {r.ref || r.costing_id.slice(0, 8)}
+              </Link>
+            }
+          >
+            <Pill tone={tone(r.status)}>{r.status ? statusLabel(r.status) : "—"}</Pill>
+            <span className="num micro">{money(r.total_ttc, r.currency || undefined)}</span>
+            <DocButton docType="COSTING" id={r.costing_id} title={r.ref || tr("Costing")} label={tr("View")} />
+          </DocRow>
+        )}
+      />
+      <DocGroup
+        title={tr("Cash requests")}
+        rows={docs?.cashRequests || []}
+        empty="No cash requests on this file."
+        keyOf={(r) => r.cash_request_id}
+        render={(r) => (
+          <DocRow
+            label={
+              <Link className="num text-sm font-medium text-primary-ink underline underline-offset-2" to={`/costing/cash-requests/${r.cash_request_id}`}>
+                {r.ref || r.cash_request_id.slice(0, 8)}
+              </Link>
+            }
+          >
+            <Pill tone={tone(r.status)}>{r.status || "—"}</Pill>
+            <span className="num micro">
+              {money(r.disbursed_amount, r.currency || undefined)} / {money(r.amount, r.currency || undefined)}
+            </span>
+            <DocButton docType="CASH_REQUEST" id={r.cash_request_id} title={r.ref || tr("Cash request")} label={tr("View")} />
+          </DocRow>
+        )}
+      />
 
       <DocGroup
         title={tr("Invoices")}
@@ -565,6 +616,18 @@ function DocumentsTab({ d }: { d: api.DossierOverview }) {
           >
             <span className="micro">{dateFmt(r.created_at)}</span>
             <Pill tone={tone(r.status)}>{r.status || "—"}</Pill>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => setPreview({
+                doc_id: r.doc_id,
+                title: r.original_name || (r.doc_type ? humanizeKey(r.doc_type) : tr("Document")),
+                filename: r.original_name,
+              })}
+            >
+              {tr("Preview")}
+            </Button>
           </DocRow>
         )}
       />
@@ -619,6 +682,7 @@ function DocumentsTab({ d }: { d: api.DossierOverview }) {
           </DocRow>
         )}
       />
+      <VaultPreviewDialog document={preview} onClose={() => setPreview(null)} />
     </div>
   );
 }

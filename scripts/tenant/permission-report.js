@@ -11,8 +11,8 @@
  * may have silently revoked grants they never touched. The screen is fixed
  * (`/permissions/matrix`), but existing damage is invisible until you look.
  *
- * The baseline is what `9021_seed_default_permissions.sql` + `9022` would grant
- * a fresh tenant. This reports:
+ * The baseline is what `9021_seed_default_permissions.sql`, `9022`, and the
+ * universal SmartComms grant in `9025` would grant a fresh tenant. This reports:
  *
  *   MISSING   a baseline grant the tenant no longer has  ← the suspicious ones
  *   REDUCED   the row exists but a baseline flag is now false
@@ -42,15 +42,19 @@ const a = Object.fromEntries(
 );
 
 const FLAGS = ["can_create", "can_read", "can_update", "can_delete", "can_approve"];
-const SEEDS = ["9021_seed_default_permissions.sql", "9022_seed_grant_gaps.sql"];
+const SEEDS = [
+  "9021_seed_default_permissions.sql",
+  "9022_seed_grant_gaps.sql",
+  "9025_seed_universal_smartcomm_permissions.sql",
+];
 
 /**
  * Parse the baseline out of the seed files.
  *
- * Both use the same shape — a VALUES list of (role_code, c, r, u, d, a) joined
- * to a CROSS JOIN VALUES list of module keys — so one parser covers them. 9022
- * also has plain `SELECT r.role_id, 'MOD-xx', false, true, ...  FROM role r`
- * (every role), handled separately.
+ * The role-specific seeds use a VALUES list of (role_code, c, r, u, d, a)
+ * joined to a CROSS JOIN VALUES list of module keys. The universal grants in
+ * 9022 and 9132 use plain `SELECT r.role_id, 'MOD-xx', ... FROM role r`; that
+ * every-role shape is handled separately.
  *
  * Parsing the seed rather than hardcoding it means this report can't drift from
  * what a fresh tenant actually gets.

@@ -29,10 +29,13 @@
  */
 import * as React from "react";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/modal";
-import { useResource } from "@/lib/use-resource";
+import { ErrorState } from "@/components/ui/states";
+import { useResource, errMsg } from "@/lib/use-resource";
 import {
   fetchScopeOptions,
+  createScope,
   buildScopeTree,
   type ScopeTreeNode,
 } from "@/lib/scope-api";
@@ -46,11 +49,14 @@ export function DepartmentSelect({
   value,
   onChange,
   placeholder = "— none —",
+  allowCreate = false,
   id,
 }: {
   value: DepartmentValue;
   onChange: (v: DepartmentValue) => void;
   placeholder?: string;
+  /** Offer inline scope creation. The API remains permission-gated. */
+  allowCreate?: boolean;
   /** The control's id, so a `Field` can point its label at it — this renders a
    *  control AND a line of guidance, which `Field` cannot label by cloning. */
   id?: string;
@@ -67,6 +73,12 @@ export function DepartmentSelect({
   const [typing, setTyping] = React.useState(
     Boolean(value.department && !value.scope_id),
   );
+  const [creating, setCreating] = React.useState(false);
+  const [newName, setNewName] = React.useState("");
+  const [newCode, setNewCode] = React.useState("");
+  const [parentId, setParentId] = React.useState("");
+  const [createBusy, setCreateBusy] = React.useState(false);
+  const [createError, setCreateError] = React.useState<string | null>(null);
 
   // Flattened depth-first so the dropdown reads as a tree.
   const nodes = React.useMemo(() => {
@@ -156,6 +168,79 @@ export function DepartmentSelect({
             Scopes and they appear here on every form that asks.
           </p>
         )
+      )}
+      {allowCreate && !creating && (
+        <p className="micro mt-1">
+          <button
+            type="button"
+            onClick={() => setCreating(true)}
+            className="text-primary-ink underline underline-offset-2"
+          >
+            Create a department here
+          </button>
+        </p>
+      )}
+      {allowCreate && creating && (
+        <div className="mt-2 space-y-2 rounded-lg border border-border bg-muted/30 p-3">
+          <p className="text-sm font-medium text-foreground">New department</p>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Input
+              value={newName}
+              aria-label="New department name"
+              placeholder="Operations"
+              onChange={(e) => {
+                const name = e.target.value;
+                setNewName(name);
+                setNewCode(name.trim().toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_|_$/g, "").slice(0, 40));
+              }}
+            />
+            <Input
+              value={newCode}
+              aria-label="New department code"
+              placeholder="OPERATIONS"
+              onChange={(e) => setNewCode(e.target.value.toUpperCase())}
+            />
+          </div>
+          <Select value={parentId} onChange={(e) => setParentId(e.target.value)} aria-label="Parent department">
+            <option value="">— top level —</option>
+            {nodes.map((n) => (
+              <option key={n.scope_id} value={n.scope_id}>{`${"  ".repeat(n.depth)}${n.name}`}</option>
+            ))}
+          </Select>
+          {createError && <ErrorState message={createError} />}
+          <div className="flex justify-end gap-2">
+            <Button type="button" size="sm" variant="outline" disabled={createBusy} onClick={() => setCreating(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              loading={createBusy}
+              disabled={createBusy || !newName.trim() || !newCode.trim()}
+              onClick={async () => {
+                setCreateBusy(true);
+                setCreateError(null);
+                try {
+                  const made = await createScope({
+                    code: newCode.trim(),
+                    name: newName.trim(),
+                    parent_scope_id: parentId || null,
+                    entity_id: null,
+                  });
+                  onChange({ scope_id: made.scope_id, department: made.name });
+                  setCreating(false);
+                  scopeQ.reload();
+                } catch (e) {
+                  setCreateError(errMsg(e));
+                } finally {
+                  setCreateBusy(false);
+                }
+              }}
+            >
+              Create and select
+            </Button>
+          </div>
+        </div>
       )}
       <p className="micro mt-1">
         <button

@@ -344,8 +344,21 @@ async function assertNoLiveCosting(client, dossierId) {
   }
 }
 
+async function assertValidator(client, userId) {
+  if (!userId) return;
+  if (!(await repo.isValidatorCandidate(client, userId))) {
+    throw new AppError(
+      "VALIDATOR_NOT_LINE_MANAGER",
+      "The costing validator must have an active role flagged as Line manager. Update the role under Security, then select the validator again.",
+      422,
+      { validator_id: ["Must hold a line-manager role"] },
+    );
+  }
+}
+
 async function createDraft(client, { data, actor = {} }) {
   await assertNoLiveCosting(client, data.dossier_id);
+  await assertValidator(client, data.validator_id);
   const rate = await resolveRate(client, {
     currencyCode: data.currency, explicit: data.exchange_rate_to_xaf,
   });
@@ -374,6 +387,7 @@ async function updateDraft(client, { id, patch = {}, lines = null, actor = {} })
   const before = await repo.get(client, id);
   if (!before) throw new AppError("NOT_FOUND", "Costing not found", 404);
   if (before.status !== "DRAFT") throw new AppError("LOCKED", "Only a DRAFT costing can be edited", 422);
+  if (patch.validator_id !== undefined) await assertValidator(client, patch.validator_id);
   await client.query("BEGIN");
   try {
     const fields = {};
@@ -952,4 +966,5 @@ async function nudge(client, { id, actor = {} }) {
 module.exports = {
   createDraft, updateDraft, setStatus, unlockTransition, get, budget,
   list, listPaged, kpis, suggestLines, gate, nudge,
+  validatorCandidates: (client) => repo.validatorCandidates(client),
 };

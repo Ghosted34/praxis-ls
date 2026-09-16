@@ -69,6 +69,7 @@ import {
 } from "@/lib/smtp-sign-in";
 import * as api from "@/lib/mail-api";
 import { HealthPill } from "./health-pill";
+import { MembersModal } from "./mailboxes";
 
 /* ── The three-step personal connect ─────────────────────────────────────── */
 
@@ -270,6 +271,7 @@ export function MyMailboxTab({ notice }: { notice?: React.ReactNode } = {}) {
    */
   const [chooser, setChooser] = React.useState(false);
   const [wizard, setWizard] = React.useState(false);
+  const [managedMailbox, setManagedMailbox] = React.useState<api.Mailbox | null>(null);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -393,12 +395,23 @@ export function MyMailboxTab({ notice }: { notice?: React.ReactNode } = {}) {
                   {m.access_role === "VIEWER" ? tr("Read only") : m.access_role === "MANAGER" ? tr("Manager") : tr("Can send")}
                 </Pill>
                 <HealthPill health={m.health} showReason />
+                {m.access_role === "MANAGER" && (
+                  <Button size="sm" variant="outline" className="ml-auto" onClick={() => setManagedMailbox(m)}>
+                    {tr("Manage members")}
+                  </Button>
+                )}
               </li>
             ))}
           </ul>
         </div>
       )}
 
+      {managedMailbox && (
+        <MembersModal
+          mailbox={managedMailbox}
+          onClose={() => { setManagedMailbox(null); mine.reload(); }}
+        />
+      )}
       <ConnectMethodModal
         open={chooser}
         scope={{ kind: "personal" }}

@@ -115,7 +115,7 @@ function otpEmail({ party, request, code, tenantName, language }) {
 }
 
 /** Send, through the tenant's documents identity, into the send log. */
-function send(client, { to, subject, html, text, entityRef, documentVaultId = null, sendPoint }) {
+function send(client, { to, subject, html, text, entityRef, documentVaultId = null, sendPoint, env = "live" }) {
   return emailService.send(client, {
     to, subject, html, text,
     purpose: "DOCUMENTS",
@@ -123,6 +123,7 @@ function send(client, { to, subject, html, text, entityRef, documentVaultId = nu
     entityRef,
     documentVaultId,
     sendPoint,
+    env,
   });
 }
 

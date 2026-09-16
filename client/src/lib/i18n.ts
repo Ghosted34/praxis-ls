@@ -1,10 +1,11 @@
 /**
  * i18n bootstrap (PRD §605/§617). react-i18next over i18next with two
  * built-in dictionaries (en / fr). Language resolution:
- *   1. `localStorage["praxis.lang"]` — the per-browser preference, set by the
- *      top-bar toggle (per-user in spirit; the staff app has no per-user
- *      language column yet, so the browser is the persistence boundary).
- *   2. fallback "en".
+ *   1. `localStorage["praxis.lang.<user_id>"]` — this account's explicit
+ *      top-bar choice on this browser.
+ *   2. fallback "en" before login and for every account with no saved choice.
+ * The user id is part of the key so a French-speaking colleague signing out on
+ * a shared workstation cannot silently switch the next fresh login to French.
  * The tenant's entity default_language (EN/FR, settings §12.2) could seed this
  * on first visit; it is read server-side for documents today. `import "./i18n"`
  * happens in main.tsx BEFORE the app renders so the first paint is correct.
@@ -15,15 +16,27 @@ import { initReactI18next } from "react-i18next";
 import { en, fr } from "./i18n-dict";
 
 export const LANG_KEY = "praxis.lang";
+let languageOwner: string | null = null;
+const keyFor = (userId: string) => `${LANG_KEY}.${userId}`;
 
+/** Before identity is known, never inherit the previous person's language. */
 export function detectLang(): string {
-  try {
-    const saved = window.localStorage.getItem(LANG_KEY);
-    if (saved === "fr" || saved === "en") return saved;
-  } catch {
-    /* storage unavailable — fall through */
-  }
   return "en";
+}
+
+/** Bind browser persistence to the authenticated account, not the device. */
+export function bindLanguageOwner(userId: string | null | undefined) {
+  languageOwner = userId || null;
+  let lang: "en" | "fr" = "en";
+  if (languageOwner) {
+    try {
+      const saved = window.localStorage.getItem(keyFor(languageOwner));
+      if (saved === "en" || saved === "fr") lang = saved;
+    } catch {
+      /* @silent:storage unavailable — English for this session */
+    }
+  }
+  void i18n.changeLanguage(lang);
 }
 
 i18n.use(initReactI18next).init({
@@ -39,9 +52,9 @@ i18n.use(initReactI18next).init({
 
 export function setLang(lang: "en" | "fr") {
   try {
-    window.localStorage.setItem(LANG_KEY, lang);
+    if (languageOwner) window.localStorage.setItem(keyFor(languageOwner), lang);
   } catch {
-    /* storage unavailable — session only */
+    /* @silent:storage unavailable — session only */
   }
   void i18n.changeLanguage(lang);
 }

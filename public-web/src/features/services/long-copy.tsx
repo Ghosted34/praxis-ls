@@ -173,9 +173,10 @@ export function LongCopy({ text }: { text: string }) {
     // rather than to where the collapsed summary used to be.
     window.requestAnimationFrame(() => {
       document.getElementById(id)?.scrollIntoView({
-        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
-          ? "auto"
-          : "smooth",
+        behavior: typeof window.matchMedia !== "function" ||
+          !window.matchMedia("(prefers-reduced-motion: reduce)").matches
+          ? "smooth"
+          : "auto",
         block: "start",
       });
     });

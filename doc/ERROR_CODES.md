@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 5× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (552)
+## All codes (554)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -61,6 +61,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `APPROVAL_PENDING` | 422 | 1× | — |
 | `ARCHIVED_RETENTION` | 409 | 1× | — |
 | `ASSET_DISPOSED` | 422 | 1× | — |
+| `ASSIGNEE_UNAVAILABLE` | 422 | 1× | — |
 | `ATTACHMENT_TOO_LARGE` | — | 1× | — |
 | `AUDIO_TOO_LARGE` | 413 | 1× | — |
 | `AUTH_REQUIRED` | 401 | 15× | — |
@@ -311,7 +312,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_EDITABLE` | 400 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 3× | — |
-| `NOT_FOUND` | 404, 422 | 646× | — |
+| `NOT_FOUND` | 404, 422 | 647× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_OPEN` | 409, 422 | 3× | — |
 | `NOT_OPERATIONAL` | 422 | 1× | — |
@@ -568,6 +569,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `USE_APPROVE` | 422 | 1× | — |
 | `VACANCY_CLOSED` | — | 1× | — |
 | `VALIDATION_ERROR` | 422 | 263× | — |
+| `VALIDATOR_NOT_LINE_MANAGER` | — | 1× | — |
 | `VARIANCE_UNEXPLAINED` | 422 | 1× | — |
 | `VEHICLE_COMMITTED` | — | 1× | — |
 | `VEHICLE_NOT_FOUND` | 404 | 1× | — |

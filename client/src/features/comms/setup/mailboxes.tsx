@@ -206,7 +206,7 @@ function CreateSharedModal({
 
 /* ── Members ─────────────────────────────────────────────────────────────── */
 
-function MembersModal({ mailbox, onClose }: { mailbox: api.Mailbox; onClose: () => void }) {
+export function MembersModal({ mailbox, onClose }: { mailbox: api.Mailbox; onClose: () => void }) {
   const members = useResource(() => api.listMembers(mailbox.email_connection_id), [mailbox.email_connection_id]);
   const [role, setRole] = React.useState<api.MemberRole>("AGENT");
   const [busy, setBusy] = React.useState(false);
@@ -253,8 +253,9 @@ function MembersModal({ mailbox, onClose }: { mailbox: api.Mailbox; onClose: () 
           label={tr("Add someone")}
           placeholder={tr("Search by name or job title…")}
           exclude={chosen}
+          requireAccount
           disabled={busy}
-          onPick={(e) => add(e.employee_id)}
+          onPick={(e) => e.account_user_id && add(e.account_user_id)}
         />
 
         {error != null && <ErrorState message={errMsg(error)} />}

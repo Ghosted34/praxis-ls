@@ -516,6 +516,7 @@ function EmploymentStep({
           <DepartmentSelect
             id="wizard-department"
             value={dept}
+            allowCreate
             onChange={setDept}
           />
         </Field>

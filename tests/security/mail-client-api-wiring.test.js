@@ -54,40 +54,40 @@ const API_FILES = [
  * which ones those are, which is what let three of them sit next to a UI that
  * claimed they ran.
  */
-const GRANDFATHERED = new Map(Object.entries({
-  /* Superseded by the 10731 thread model; the screens read threads. */
-  listInbox: "superseded by the thread list (10731)",
-  listSent: "superseded by the thread list (10731)",
-  linkThread: "superseded by binding/, which writes entity_ref on the thread",
-  clientTimeline: "superseded by the dossier drawer's Interactions tab",
-  /* Duplicates of a wrapper that IS used. */
-  microsoftStartUrl: "duplicate of startMicrosoft, which the setup screen uses",
-  googleStartUrl: "duplicate of startGoogle, which has no button yet — see below",
-  /* Microsoft's button is now on the setup screen, because for a Microsoft 365
-   * mailbox OAuth is the ONLY way in: Exchange Online removed Basic auth for
-   * IMAP/POP in 2022 and retired it for SMTP AUTH in April 2026. Google's is
-   * not, and this is the honest record of that: its restricted mail scopes
-   * need a security assessment that runs for weeks, and 12775 split the
-   * feature flags so waiting for Google no longer holds Microsoft back. The
-   * wrapper and the adapter stay tested; only the button is missing. */
-  startGoogle: "Google Workspace is not enabled yet — awaiting restricted-scope verification",
-  /* Endpoints ahead of their screen. */
-  getDraft: "the Drafts list opens the row it already has, so nothing re-fetches by id",
-  deleteLabel: "labels can be created and listed; no delete affordance yet",
-  putSetting: "generic settings writer, unused by the comms screens",
-  updateSender: "the senders tab is read-only today",
-  addCatalogueEntry: "the mailbox catalogue is read-only today",
-  toggleCatalogueEntry: "the mailbox catalogue is read-only today",
-  accessLog: "the delegated-mailbox audit trail has no screen",
-  deliverabilityHistory: "the health tab shows the current verdict, not a history",
-  previewSignature: "the signature screens render their own preview",
-  acceptSuggestionBatch: "the binding chip accepts one suggestion at a time",
-  breakglass: "CEO override is deliberately not a button; §5.9 is a ledgered API path",
-  cardReadiness: "action cards carry their readiness in the list payload",
-  createFollowup: "the triage bar offers snooze, which is the same row with a preset due date",
-  extractAttachment: "OCR is enqueued on ingest; no manual re-run affordance",
-  listPendingExtractions: "no extraction-queue screen",
-}));
+const GRANDFATHERED = new Map(
+  Object.entries({
+    /* Superseded by the 10731 thread model; the screens read threads. */
+    listInbox: "superseded by the thread list (10731)",
+    listSent: "superseded by the thread list (10731)",
+    linkThread: "superseded by binding/, which writes entity_ref on the thread",
+    clientTimeline: "superseded by the dossier drawer's Interactions tab",
+    /* Duplicates of a wrapper that IS used. */
+    microsoftStartUrl:
+      "duplicate of startMicrosoft, which the setup screen uses",
+    googleStartUrl:
+      "duplicate of startGoogle, which has no button yet — see below",
+    /* Endpoints ahead of their screen. */
+    getDraft:
+      "the Drafts list opens the row it already has, so nothing re-fetches by id",
+    deleteLabel: "labels can be created and listed; no delete affordance yet",
+    putSetting: "generic settings writer, unused by the comms screens",
+    updateSender: "the senders tab is read-only today",
+    addCatalogueEntry: "the mailbox catalogue is read-only today",
+    toggleCatalogueEntry: "the mailbox catalogue is read-only today",
+    accessLog: "the delegated-mailbox audit trail has no screen",
+    deliverabilityHistory:
+      "the health tab shows the current verdict, not a history",
+    previewSignature: "the signature screens render their own preview",
+    acceptSuggestionBatch: "the binding chip accepts one suggestion at a time",
+    breakglass:
+      "CEO override is deliberately not a button; §5.9 is a ledgered API path",
+    cardReadiness: "action cards carry their readiness in the list payload",
+    createFollowup:
+      "the triage bar offers snooze, which is the same row with a preset due date",
+    extractAttachment: "OCR is enqueued on ingest; no manual re-run affordance",
+    listPendingExtractions: "no extraction-queue screen",
+  }),
+);
 
 /** Files a caller may live in: a screen, not the API layer and not a test. */
 function screenFiles(dir, acc = []) {
@@ -114,8 +114,15 @@ function exportedValues(file) {
 }
 
 const CALLERS = screenFiles(CLIENT)
-  .filter((f) => !f.startsWith(path.join(CLIENT, "lib")) && !f.startsWith(path.join(CLIENT, "test")))
-  .map((f) => ({ file: path.relative(ROOT, f).replace(/\\/g, "/"), src: fs.readFileSync(f, "utf8") }));
+  .filter(
+    (f) =>
+      !f.startsWith(path.join(CLIENT, "lib")) &&
+      !f.startsWith(path.join(CLIENT, "test")),
+  )
+  .map((f) => ({
+    file: path.relative(ROOT, f).replace(/\\/g, "/"),
+    src: fs.readFileSync(f, "utf8"),
+  }));
 
 const calledSomewhere = (name) => {
   // `api.foo(`, `work.foo(`, `foo(` after a named import — any of them is a
@@ -141,7 +148,9 @@ describe("every mail endpoint with a client wrapper is reachable from a screen",
   });
 
   test("NO WRAPPER IS CALLED BY NOTHING", () => {
-    const unreached = ALL.filter((n) => !GRANDFATHERED.has(n) && !calledSomewhere(n));
+    const unreached = ALL.filter(
+      (n) => !GRANDFATHERED.has(n) && !calledSomewhere(n),
+    );
     expect(unreached).toEqual([]);
   });
 
@@ -153,16 +162,8 @@ describe("every mail endpoint with a client wrapper is reachable from a screen",
     // also WRONG, not merely stale — it read "superseded by the thread list",
     // and the queue is precisely the mail that is NOT in the thread list yet.
     //
-    // 21 -> 22, and this one is worth reading rather than waving through, since
-    // the ratchet exists to make growth uncomfortable. No wrapper was added and
-    // none was parked. `startGoogle` was ALREADY unwired; it counted as used
-    // only because a commented-out `api.startGoogle()` sat in mailboxes.tsx,
-    // and a commented call is a string this scanner cannot tell from a real
-    // one. Wiring Microsoft's button meant deleting that comment block, which
-    // removed the fake usage and left the truth behind. The number went up
-    // because the count got HONEST — the alternative was keeping dead code
-    // around purely to satisfy a gate, which is the failure mode this file is
-    // meant to prevent, not an example of it.
+    // 21 is the current allowance. It can only shrink as endpoint screens land;
+    // adding a new wrapper here is deliberately rejected by this ratchet.
     expect(GRANDFATHERED.size).toBeLessThanOrEqual(22);
   });
 
@@ -192,7 +193,9 @@ describe("§9.2 · the composer takes the soft lock", () => {
   test("the lock is taken for a thread and not for a brand-new message", () => {
     // A new message has no thread to lock, and a POST per composer-open on
     // nothing is a request that can only ever 404.
-    expect(composer).toMatch(/useThreadLock\(\{\s*threadId,\s*enabled:\s*!!threadId\s*\}\)/);
+    expect(composer).toMatch(
+      /useThreadLock\(\{\s*threadId,\s*enabled:\s*!!threadId\s*\}\)/,
+    );
   });
 
   test("the hook heartbeats inside the server's lease and releases on unmount", () => {
@@ -201,13 +204,16 @@ describe("§9.2 · the composer takes the soft lock", () => {
     expect(hook).toMatch(/releaseThreadLock\(/);
     // workflow.service's LOCK_SECONDS is 120. A heartbeat that does not divide
     // it several times over drops the lock between beats.
-    const ms = Number(/LOCK_HEARTBEAT_MS\s*=\s*([\d_]+)/.exec(hook)[1].replace(/_/g, ""));
+    const ms = Number(
+      /LOCK_HEARTBEAT_MS\s*=\s*([\d_]+)/.exec(hook)[1].replace(/_/g, ""),
+    );
     expect(ms).toBeLessThanOrEqual(40_000);
   });
 
   test("the server still speaks the shape the hook reads", () => {
     const service = fs.readFileSync(
-      path.join(ROOT, "src/modules/mail/triage/workflow.service.js"), "utf8",
+      path.join(ROOT, "src/modules/mail/triage/workflow.service.js"),
+      "utf8",
     );
     expect(service).toMatch(/held_by_other/);
     expect(service).toMatch(/locked_by_name/);
@@ -222,7 +228,9 @@ describe("§9.8 · the composer checks the recipients", () => {
   });
 
   test("it checks Cc as well as To — a bounce does not care which field it was in", () => {
-    expect(composer).toMatch(/splitAddresses\(to\), \.\.\.splitAddresses\(cc\)/);
+    expect(composer).toMatch(
+      /splitAddresses\(to\), \.\.\.splitAddresses\(cc\)/,
+    );
   });
 
   test("a hard bounce is named on screen and disables nothing", () => {
@@ -243,7 +251,8 @@ describe("§9.8 · the composer checks the recipients", () => {
 
   test("the server no longer answers a broken check with an empty list", () => {
     const service = fs.readFileSync(
-      path.join(ROOT, "src/modules/mail/triage/workflow.service.js"), "utf8",
+      path.join(ROOT, "src/modules/mail/triage/workflow.service.js"),
+      "utf8",
     );
     const fn = service.slice(service.indexOf("const addressStatus"));
     expect(fn.slice(0, 900)).not.toMatch(/\.catch\(\(\)\s*=>\s*\[\]\)/);
@@ -298,7 +307,9 @@ describe("every mail ROUTE has a client wrapper", () => {
   // (A line comment, not a block one: the shape contains a star and a slash,
   //  which would close a block comment early.)
   const shape = (basePath, routePath) =>
-    `${basePath}${routePath}`.replace(/:[A-Za-z0-9_]+/g, "*").replace(/\/+$/, "") || "/";
+    `${basePath}${routePath}`
+      .replace(/:[A-Za-z0-9_]+/g, "*")
+      .replace(/\/+$/, "") || "/";
 
   const declared = [];
   for (const file of routeFiles(ROUTE_DIR)) {
@@ -342,13 +353,15 @@ describe("every mail ROUTE has a client wrapper", () => {
         out += literal[i];
       }
     }
-    return out
-      .replace(/\?.*$/, "")            // a literal query string
-      // A trailing `*` NOT after a slash came from a query builder, not a path
-      // segment: `/mail/threads${qs(q)}` is the route `/mail/threads`, while
-      // `/mail/threads/${id}` is `/mail/threads/*`.
-      .replace(/([^/])\*$/, "$1")
-      .replace(/\/+$/, "");
+    return (
+      out
+        .replace(/\?.*$/, "") // a literal query string
+        // A trailing `*` NOT after a slash came from a query builder, not a path
+        // segment: `/mail/threads${qs(q)}` is the route `/mail/threads`, while
+        // `/mail/threads/${id}` is `/mail/threads/*`.
+        .replace(/([^/])\*$/, "$1")
+        .replace(/\/+$/, "")
+    );
   }
 
   const wrapperPaths = new Set();
@@ -373,12 +386,15 @@ describe("every mail ROUTE has a client wrapper", () => {
    */
   const NOT_FOR_THE_CLIENT = new Map(
     Object.entries({
-      "/mail/oauth/microsoft/callback": "the provider redirects the browser here; there is nothing to call",
+      "/mail/oauth/microsoft/callback":
+        "the provider redirects the browser here; there is nothing to call",
       "/mail/oauth/google/callback": "the provider redirects the browser here",
       "/mail/webhook/microsoft": "Microsoft Graph change notifications",
       "/mail/webhook/google": "Google Pub/Sub push",
-      "/public/secure/*": "the public secure-link page — served outside the app shell, to a recipient with no session",
-      "/public/secure/*/download": "the same page's download, opened as a plain link",
+      "/public/secure/*":
+        "the public secure-link page — served outside the app shell, to a recipient with no session",
+      "/public/secure/*/download":
+        "the same page's download, opened as a plain link",
     }),
   );
 
@@ -396,7 +412,8 @@ describe("every mail ROUTE has a client wrapper", () => {
       /* Q15's templates are admin-curated and seeded; the screen that edits a
        * template's department default has not been built. Read is wired
        * (`listSignatureTemplates`); only the PATCH is unreachable. */
-      "/mail/signature/templates/*": "no template-admin screen: templates are seeded, and only their department default is editable",
+      "/mail/signature/templates/*":
+        "no template-admin screen: templates are seeded, and only their department default is editable",
     }),
   );
 
@@ -411,7 +428,9 @@ describe("every mail ROUTE has a client wrapper", () => {
 
   test("NO ROUTE IS UNREACHABLE FROM THE CLIENT", () => {
     const orphans = declared
-      .filter((r) => !NOT_FOR_THE_CLIENT.has(r.path) && !NO_SCREEN_YET.has(r.path))
+      .filter(
+        (r) => !NOT_FOR_THE_CLIENT.has(r.path) && !NO_SCREEN_YET.has(r.path),
+      )
       .filter((r) => !wrapperPaths.has(r.path))
       .map((r) => `${r.method} ${r.path}  (${r.file})`);
 

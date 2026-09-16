@@ -2,6 +2,8 @@
 "use strict";
 const { insertOne, getById, page, TOTAL_COL, splitTotal, updateOne } = require("../../../shared/db/query-helpers");
 const { normaliseReference } = require("../../../services/documents/operation-reference");
+// Actual cost is NET of reconciliation reversals — see shared/finance/cost-entry-sql.
+const { netAmountSql } = require("../../../shared/finance/cost-entry-sql");
 
 /**
  * Every column of `dossier` a caller may write, and nothing else.
@@ -169,7 +171,7 @@ async function overview(client, dossierId) {
       "FROM costing c LEFT JOIN costing_line cl ON cl.costing_id = c.costing_id " +
       "WHERE c.dossier_id = $1 AND c.status <> 'REJECTED'",
   );
-  const [actual] = await q("SELECT COUNT(*)::int AS entries, COALESCE(SUM(amount), 0) AS actual_cost FROM cost_entry WHERE dossier_id = $1");
+  const [actual] = await q(`SELECT COUNT(*)::int AS entries, COALESCE(${netAmountSql()}, 0) AS actual_cost FROM cost_entry WHERE dossier_id = $1`);
   const [invoices] = await q(
     "SELECT COUNT(*)::int AS count, COALESCE(SUM(total_ttc), 0) AS invoiced_ttc, " +
       "COALESCE(SUM(total_ttc) FILTER (WHERE status IN ('POSTED_LOCKED','APPROVED_LOCKED','ISSUED_LOCKED')), 0) AS billed_ttc, " +

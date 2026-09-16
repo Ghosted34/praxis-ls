@@ -1,6 +1,8 @@
 "use strict";
 const { insertOne, updateOne, getById, page } = require("../../../shared/db/query-helpers");
 const { directionLetter, formatCode } = require("./financial_dictionary.rules");
+// Actual spend per item is NET of reconciliation reversals — see shared/finance/cost-entry-sql.
+const { netAmountSql } = require("../../../shared/finance/cost-entry-sql");
 
 /* ── item + posting rules ──────────────────────────────────────────────────── */
 const createItem = (c, d) => insertOne(c, "dictionary_item", d);
@@ -250,7 +252,7 @@ async function spendCommitted(c, id, from, to) {
 async function spendActual(c, id, from, to) {
   const { rows } = await c.query(
     `SELECT ${MONTH("COALESCE(je.entry_date, ce.created_at)")} AS month,
-            COALESCE(SUM(ce.amount), 0) AS amount,
+            COALESCE(${netAmountSql("ce")}, 0) AS amount,
             COUNT(*) AS count
        FROM cost_entry ce
        LEFT JOIN journal_entry je ON je.entry_id = ce.entry_id

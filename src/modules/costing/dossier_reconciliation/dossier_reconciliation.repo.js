@@ -21,6 +21,7 @@
 "use strict";
 
 const costingRepo = require("../costing/costing.repo");
+const { netAmountSql } = require("../../../shared/finance/cost-entry-sql");
 
 /**
  * Posted HT for a budget line, SIGNED by category.
@@ -33,13 +34,14 @@ const costingRepo = require("../costing/costing.repo");
  * a display error: settle() computes each line's delta as `target − posted`, so
  * a posted total inflated by a reversal feeds straight back into the next
  * delta and the mistake COMPOUNDS into the ledger on every re-settle. Subtract
- * the reversals so the read equals the economics the journal actually holds —
- * this is the single definition both live reads (`postedTotalsByLine` and the
- * `gridFor` LATERAL) use, and it must stay in step with the category the
- * writer stamps in `dossier_reconciliation.service.settle()`.
+ * the reversals so the read equals the economics the journal actually holds.
+ *
+ * The signed sum is `netAmountSql` from `shared/finance/cost-entry-sql` — the
+ * ONE definition every "net actual" read of `cost_entry` shares (the file 360,
+ * the margin report, the master-ledger matrix, …), so the read and the writer
+ * (`dossier_reconciliation.service.settle()`) cannot drift apart.
  */
-const POSTED_HT_SIGNED_SQL =
-  "SUM(CASE WHEN ce.category = 'reconciliation_reversal' THEN -ce.amount ELSE ce.amount END)";
+const POSTED_HT_SIGNED_SQL = netAmountSql("ce");
 
 /**
  * HT already posted to THIS budget line — Σ cost_entry.amount (which is HT)

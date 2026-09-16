@@ -42,6 +42,10 @@ Dates are ISO-8601, UTC.
   already answers, so the switch is a deliberate act rather than a side effect of building the image.
   Turning it off restores the ERP's own versions of those pages; no schema or data is involved.
 
+### Changed
+
+- **Scheduled in-house messages now run in the Test environment, not only Live.** Smart Comms scheduled delivery was gated `env !== "live"` in `smartcomm.schedule.service.create`, and the flush job (`comms-send-flush`) and its scheduler (`comms-send-scheduler`) only ever enqueued a Live job — so a message scheduled while training on Test was accepted by the UI and silently never delivered. Training happens on Test, which is precisely where scheduling most needs to be rehearsable. The service now accepts `live` and `sandbox` (any other environment is still refused), the scheduler fans out one flush per environment the tenant has (same pattern as `attendance-reconcile-scheduler`, keyed `commsflush-<db>-<env>`), and each flush delivers only its own schema's due rows against its own data — a sandbox schedule can never leak into Live. The composer's schedule dialog copy no longer claims delivery is Live-only.
+
 ### Fixed
 
 - **The marketing prefix is a per-host setting.** `/public` was typed into ninety-odd places, which made

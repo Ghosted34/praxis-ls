@@ -92,7 +92,7 @@ export function ScheduledMessages({
       }}
       title={tr("Scheduled messages")}
       description={tr(
-        "Server-delivered in LIVE, even when the app is closed. Delivery normally starts within 30 seconds of the chosen time; outages may delay it.",
+        "Delivered by the server even when the app is closed — in Live and in Test, so training can rehearse it. Delivery normally starts within 30 seconds of the chosen time; outages may delay it.",
       )}
     >
       <div className="space-y-4">

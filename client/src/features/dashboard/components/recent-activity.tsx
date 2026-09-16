@@ -195,7 +195,7 @@ function ActivityRow({
 
 // ── Widget ──────────────────────────────────────────────────────────────────
 
-export function RecentActivity() {
+export function RecentActivity({ tight = false }: { tight?: boolean }) {
   const [page, setPage] = React.useState(1);
   const [detail, setDetail] = React.useState<AuditFeedRow | null>(null);
 
@@ -221,8 +221,16 @@ export function RecentActivity() {
   const isInitialLoading = q.isLoading && !q.data;
 
   return (
-    <section aria-label={tr("Recent activity")} className="mb-5">
-      <div className="mb-3 mt-6 flex items-baseline justify-between gap-3">
+    // `tight` drops the vertical rhythm this widget carries for the wide
+    // Control-Tower layout, so it can sit flush in a narrower grid column
+    // (My Workspace → Today) beside the day list without a stray top gap.
+    <section aria-label={tr("Recent activity")} className={tight ? "" : "mb-5"}>
+      <div
+        className={cn(
+          "mb-3 flex items-baseline justify-between gap-3",
+          !tight && "mt-6",
+        )}
+      >
         <h2 className="text-title font-semibold tracking-tight">
           Recent activity
         </h2>

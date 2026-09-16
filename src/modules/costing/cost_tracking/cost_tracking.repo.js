@@ -1,6 +1,10 @@
 /** Cost tracking repository (MOD-47). cost_entry + budget/actual SQL lives here. */
 "use strict";
 const { insertOne, page } = require("../../../shared/db/query-helpers");
+// Net of reconciliation reversals — see shared/finance/cost-entry-sql. Every
+// "actual spend" read here subtracts `reconciliation_reversal` rows, which
+// settlement (MOD-76) posts as positive-amount credits.
+const { netAmountSql } = require("../../../shared/finance/cost-entry-sql");
 
 const insertCostEntry = (client, data) => insertOne(client, "cost_entry", data);
 
@@ -14,7 +18,7 @@ async function purchaseRuleAccount(client, dictionaryItemId) {
 }
 
 async function actualTotal(client, dossierId) {
-  const { rows } = await client.query("SELECT COALESCE(SUM(amount), 0) AS total FROM cost_entry WHERE dossier_id = $1", [dossierId]);
+  const { rows } = await client.query(`SELECT COALESCE(${netAmountSql()}, 0) AS total FROM cost_entry WHERE dossier_id = $1`, [dossierId]);
   return Number(rows[0].total);
 }
 
@@ -110,7 +114,7 @@ async function portfolio(client, q = {}) {
           WHERE cg.dossier_id = d.dossier_id AND cg.status = 'APPROVED_LOCKED'
        ) b ON true
        LEFT JOIN LATERAL (
-         SELECT SUM(ce.amount) AS total FROM cost_entry ce WHERE ce.dossier_id = d.dossier_id
+         SELECT ${netAmountSql("ce")} AS total FROM cost_entry ce WHERE ce.dossier_id = d.dossier_id
        ) a ON true
        LEFT JOIN LATERAL (
          SELECT SUM(av.amount) AS received, SUM(av.applied_amount) AS applied
@@ -143,7 +147,7 @@ async function matrixCells(client, q = {}) {
   const { rows } = await client.query(
     `SELECT d.dossier_id, ce.dictionary_item_id,
             di.code AS item_code, COALESCE(di.label_en, di.label_fr) AS item_label,
-            SUM(ce.amount) AS amount
+            ${netAmountSql("ce")} AS amount
        FROM cost_entry ce
        JOIN dossier_visible d ON d.dossier_id = ce.dossier_id
        LEFT JOIN dictionary_item di ON di.dictionary_item_id = ce.dictionary_item_id

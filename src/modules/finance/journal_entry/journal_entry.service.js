@@ -213,4 +213,18 @@ const listPaged = (client, query) => repo.listEntries(client, query);
 /** Bare array — kept for non-HTTP callers that expect a list, not an envelope. */
 const list = async (client, query) => (await repo.listEntries(client, query)).rows;
 
-module.exports = { post, reverse, get, list, listPaged, buildAndInsert };
+/** Earliest open accounting period on or after a date — used by Budget
+ *  Reconciliation settlement so a closed-period refusal can offer a concrete
+ *  alternative rather than just saying "no". */
+async function earliestOpenPeriod(client, { entityId, onOrAfter }) {
+  return repo.earliestOpenPeriod(client, { entityId, onOrAfter });
+}
+
+/** The period covering an (entityId, date) — surfaced so callers can preflight
+ *  the closed-period check and enrich the error with the line name, which
+ *  buildAndInsert itself cannot know. */
+async function getPeriodForDate(client, { entityId, date }) {
+  return repo.getPeriodForDate(client, { entityId, date });
+}
+
+module.exports = { post, reverse, get, list, listPaged, buildAndInsert, earliestOpenPeriod, getPeriodForDate };

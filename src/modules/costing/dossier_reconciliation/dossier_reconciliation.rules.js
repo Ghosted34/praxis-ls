@@ -60,23 +60,32 @@ function reasonRequired(line, allowance = DEFAULT_ALLOWANCE) {
 /**
  * One grid row, as the screen and the statement read it.
  *
- * PRE-FILL (Q2 = C). A line nobody has touched shows `disbursed` as its actual,
- * because that is the hypothesis worth putting in front of a person: "all of
- * the cash we gave you went on this". Confirming is one click; typing only
- * happens where the system is wrong. `actual_source` tells the two apart —
- * DERIVED is "nobody has looked", which is NOT the same as CONFIRMED.
+ * PRE-FILL (Q2 = C, owner answer). Pre-fill from what the system knows, and
+ * once postings exist that is `posted_ttc` (what the LEDGER holds for this
+ * line) rather than `disbursed` (what cash went out the door). Before the first
+ * settlement, nothing writes cost_entry.costing_line_id, so posted is zero and
+ * pre-fill falls back to disbursed — which is exactly the hypothesis worth
+ * putting in front of a person: "119 250 was disbursed — is that what you
+ * spent?". The owner's sentence, unchanged.
  *
- * A line that was budgeted and never funded pre-fills 0, not its budget: it is
- * unused budget, not a saving anybody achieved (Q14).
+ * HT/TTC (Q4). Posted is stored HT (cost_entry.amount); the grid is TTC end to
+ * end. The join grosses HT up using the line's own VAT ratio so both bases
+ * never meet in one column.
+ *
+ * A stored row exists — so a stored ZERO is a real answer, not an absent one,
+ * and must not fall back to the pre-fill.
+ *
+ * A line that was budgeted and never funded AND never posted pre-fills 0, not
+ * its budget: it is unused budget, not a saving anybody achieved (Q14).
  */
 function lineView(row, allowance = DEFAULT_ALLOWANCE) {
   const budget = round2(num(row.budget_ttc));
   const committed = round2(num(row.committed));
   const disbursed = round2(num(row.disbursed));
-  // A stored row exists — so a stored ZERO is a real answer, not an absent one,
-  // and must not fall back to the disbursed pre-fill.
+  const postedTtc = round2(num(row.posted_ttc));
   const touched = row.line_id !== null && row.line_id !== undefined;
-  const actual = touched ? round2(num(row.actual_ttc)) : disbursed;
+  const prefill = postedTtc > 0 ? postedTtc : disbursed;
+  const actual = touched ? round2(num(row.actual_ttc)) : prefill;
   const returned = round2(num(row.returned_amount));
   // Computed BEFORE the object literal rather than assigned onto it after.
   // Mutating a returned view hides the fields from every static reader — the
@@ -107,6 +116,8 @@ function lineView(row, allowance = DEFAULT_ALLOWANCE) {
     committed,
     pending: round2(num(row.pending)),
     disbursed,
+    posted_ht: round2(num(row.posted_ht)),
+    posted_ttc: postedTtc,
     actual_ttc: actual,
     actual_source: touched ? row.actual_source : "DERIVED",
     spent_on: row.spent_on || null,

@@ -252,6 +252,30 @@ function qs(params: Record<string, unknown>): string {
 export const getDay = (params: { from?: string; to?: string; audience?: Audience } = {}) =>
   tenant<DayTimeline>(`/workspace/day${qs(params)}`);
 
+/* ── cash to account for (MOD-76) ─────────────────────────────────────────── */
+
+/** One line the caller still owes a receipt on. */
+export type ReceiptOwed = {
+  dossier_id: string;
+  dossier_ref?: string | null;
+  costing_line_id: string;
+  line_label?: string | null;
+  owed_by_name?: string | null;
+  reconciliation_id?: string | null;
+  claimed_ttc?: number | string | null;
+};
+export type ReceiptsOwed = { count: number; total_ttc: number; items: ReceiptOwed[] };
+
+/**
+ * "Cash to account for" — receipts the signed-in user personally owes (owner
+ * Q10, guide §6.5). The endpoint lives under costing rather than /workspace,
+ * but the surface is a personal queue-of-work item, so it reads here beside the
+ * day. `/owed` is the CALLER'S own and ungated — a person may always see what
+ * they owe.
+ */
+export const getReceiptsOwed = () =>
+  tenant<ReceiptsOwed>("/costing/reconciliations/owed");
+
 /* ── tasks ────────────────────────────────────────────────────────────────── */
 
 /**

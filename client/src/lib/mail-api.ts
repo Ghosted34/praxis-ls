@@ -3,7 +3,7 @@
  * Notifications/Support) and the outbound send log. Each section sends from its
  * own verified identity; this surfaces what went out and its delivery state.
  */
-import { tenant, uploadFile } from "./api-client";
+import { tenant, tenantWithProgress } from "./api-client";
 // The workflow/security half of the mail API. Imported for the types the core
 // thread and message shapes reference; re-exported wholesale at the foot.
 import type { AuthVerdict, Visibility, WorkStatus } from "./mail-api-work";
@@ -1067,9 +1067,16 @@ export const uploadAttachment = (
     content_id?: string;
   },
   onProgress?: (percent: number) => void,
-) => uploadFile<
-  MailAttachment & { total_bytes: number; offer_secure_link: boolean }
->("/tenant/mail/attachments/upload", file, { fields, onProgress });
+) => {
+  const form = new FormData();
+  form.append("file", file, file.name);
+  form.append("email_draft_id", fields.email_draft_id);
+  if (fields.disposition) form.append("disposition", fields.disposition);
+  if (fields.content_id) form.append("content_id", fields.content_id);
+  return tenantWithProgress<
+    MailAttachment & { total_bytes: number; offer_secure_link: boolean }
+  >("/mail/attachments/upload", form, onProgress || (() => {}));
+};
 export const attachFromVault = (body: {
   email_draft_id: string;
   vault_id: string;

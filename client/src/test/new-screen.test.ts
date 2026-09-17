@@ -21,27 +21,54 @@
  * later in someone else's first hour.
  */
 import { describe, it, expect, afterAll, beforeAll } from "vitest";
-import { execFileSync } from "node:child_process";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { rmSync, existsSync, readFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
+
+const execFileAsync = promisify(execFile);
 
 const clientRoot = join(__dirname, "..", "..");
 const AREA = "__scaffold_check__";
 const areaDir = join(clientRoot, "src", "features", AREA);
 const file = join(areaDir, "widget-orders.tsx");
 
+/**
+ * Run a command ASYNCHRONOUSLY and await it — deliberately NOT `execFileSync`.
+ *
+ * This is the fix for a CI flake that reddened `main` with every test green
+ * (runs 1371 and 1387): the client suite exited 1 on a single unhandled error,
+ *
+ *   [vitest-worker]: Timeout calling "onTaskUpdate"
+ *
+ * Vitest's worker->main RPC (birpc) has a fixed 60s deadline (DEFAULT_TIMEOUT).
+ * The `tsc -b` below takes ~60s, and a SYNCHRONOUS `execFileSync` blocks the
+ * worker's event loop for the whole of it — so the ack for an in-flight
+ * `onTaskUpdate` can't be processed and that 60s RPC timer fires the instant
+ * the loop unfreezes. It was load-dependent (the build crossed 60s only under
+ * contention on the runner), which is why it flaked rather than failed every
+ * time, and why the run before and after this one were green.
+ *
+ * An AWAITED `execFile` yields to the event loop while the child runs, so the
+ * worker keeps answering RPC throughout the build and the deadline is never
+ * reached. The contract is otherwise identical: the promise still rejects on a
+ * non-zero exit and the rejection still carries stdout/stderr, so the
+ * assertions below change only by being awaited. `maxBuffer` is raised from the
+ * 1 MB default so a verbose failure surfaces as itself rather than as a
+ * truncated-output error.
+ */
 function run(cmd: string, args: string[]) {
-  return execFileSync(cmd, args, {
+  return execFileAsync(cmd, args, {
     cwd: clientRoot,
     encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
+    maxBuffer: 10_000_000,
   });
 }
 
 /**
  * Run a local dev tool through `node` rather than `npx`.
  *
- * `execFileSync` does not use a shell, so on Windows it cannot launch `npx` —
+ * `execFile` does not use a shell, so on Windows it cannot launch `npx` —
  * that is `npx.cmd`, and the lookup fails with ENOENT exactly as `mkdir` did
  * below. Adding `shell: true` would fix the launch and break the arguments:
  * `--name "Widget orders"` would be re-split on the space.
@@ -78,18 +105,18 @@ beforeAll(() => rmSync(areaDir, { recursive: true, force: true }));
 afterAll(() => rmSync(areaDir, { recursive: true, force: true }));
 
 describe("scripts/new-screen.mjs", () => {
-  it("generates a screen, and the generated screen compiles and lints clean", () => {
+  it("generates a screen, and the generated screen compiles and lints clean", async () => {
     // The generator refuses to write into an area that does not exist, which is
     // a real guard — so create it the way a real feature area is created.
     //
-    // `mkdirSync`, not `execFileSync("mkdir", ["-p", …])`. There is no mkdir
-    // BINARY on Windows — it is a cmd.exe builtin — and execFileSync does not
+    // `mkdirSync`, not `execFile("mkdir", ["-p", …])`. There is no mkdir
+    // BINARY on Windows — it is a cmd.exe builtin — and execFile does not
     // use a shell, so that line could only ever run on Linux and macOS. It
     // failed with `spawnSync mkdir ENOENT` for anyone developing on Windows,
     // and passed in CI, which is the worst combination: a test that is green on
     // the machine nobody reads and red on the machine everybody uses.
     mkdirSync(areaDir, { recursive: true });
-    run("node", [
+    await run("node", [
       "scripts/new-screen.mjs",
       "--area",
       AREA,
@@ -114,24 +141,26 @@ describe("scripts/new-screen.mjs", () => {
 
     // TYPECHECK. `tsc -b` covers src, so the generated file is in scope. This is
     // the assertion that catches a renamed prop on ListPage or a moved import.
-    expect(() => runTool("typescript/bin/tsc", ["-b"])).not.toThrow();
+    await expect(runTool("typescript/bin/tsc", ["-b"])).resolves.toBeDefined();
 
     // LINT, including jsx-a11y at error — the scaffold must not ship a
     // violation for someone to inherit.
-    expect(() =>
+    await expect(
       runTool("eslint/bin/eslint.js", [
         `src/features/${AREA}/widget-orders.tsx`,
       ]),
-    ).not.toThrow();
+    ).resolves.toBeDefined();
 
     // The palette gate scans untracked files too (Phase 4 fixed that), so a
     // scaffold that reached for a raw Tailwind colour would be caught here.
-    expect(() => run("node", ["scripts/check-palette.mjs"])).not.toThrow();
+    await expect(
+      run("node", ["scripts/check-palette.mjs"]),
+    ).resolves.toBeDefined();
   }, 180_000);
 
-  it("refuses to overwrite without --force, and rejects a bad width", () => {
+  it("refuses to overwrite without --force, and rejects a bad width", async () => {
     // A generator that silently clobbers work is one nobody runs twice.
-    expect(() =>
+    await expect(
       run("node", [
         "scripts/new-screen.mjs",
         "--area",
@@ -139,8 +168,8 @@ describe("scripts/new-screen.mjs", () => {
         "--name",
         "Widget orders",
       ]),
-    ).toThrow();
-    expect(() =>
+    ).rejects.toThrow();
+    await expect(
       run("node", [
         "scripts/new-screen.mjs",
         "--area",
@@ -150,11 +179,11 @@ describe("scripts/new-screen.mjs", () => {
         "--width",
         "enormous",
       ]),
-    ).toThrow();
+    ).rejects.toThrow();
   }, 60_000);
 
-  it("refuses an area that does not exist rather than inventing one", () => {
-    expect(() =>
+  it("refuses an area that does not exist rather than inventing one", async () => {
+    await expect(
       run("node", [
         "scripts/new-screen.mjs",
         "--area",
@@ -162,6 +191,6 @@ describe("scripts/new-screen.mjs", () => {
         "--name",
         "X",
       ]),
-    ).toThrow();
+    ).rejects.toThrow();
   }, 60_000);
 });

@@ -124,6 +124,7 @@ import { BOARD_COLUMNS } from "../api";
 import type { BoardColumn, Task, TaskBoard, TaskStatus } from "../api";
 import { useMoveTask } from "../hooks";
 import { COLUMN_LABEL, PRIORITY_LABEL, PRIORITY_TONE, STATUS_LABEL } from "../labels";
+import { describeRule } from "../repeat";
 
 /**
  * How long a finger must REST on a card before the card starts moving.
@@ -351,7 +352,15 @@ function TaskCard({
    * the grip. `undefined` when the card is not draggable, so the overlay copy
    * and a read-only board answer nothing.
    */
-  const holdToDrag = listeners?.onTouchStart as React.TouchEventHandler<HTMLDivElement> | undefined;
+  // ONE draggable, three surfaces, split by input. The MOUSE half lives on the
+  // whole card now — the 13840-era board kept it on an invisible 20px strip and
+  // a mouse that held anywhere did nothing, which is the "desktop is a mess"
+  // report. Touch keeps its hold-anywhere gesture and the keyboard keeps the
+  // grip as its focusable handle. Each sensor ignores the other inputs, so a
+  // mouse mousedown on the card can never hijack a touch scroll.
+  const mouseDown = listeners?.onMouseDown as React.MouseEventHandler<HTMLDivElement> | undefined;
+  const touchStart = listeners?.onTouchStart as React.TouchEventHandler<HTMLDivElement> | undefined;
+  const gripKeyDown = listeners?.onKeyDown as React.KeyboardEventHandler<HTMLDivElement> | undefined;
 
   const overdue =
     task.due_at && task.status !== "DONE" && task.status !== "CANCELLED" && new Date(task.due_at) < new Date();
@@ -392,9 +401,20 @@ function TaskCard({
         cancels the gesture the moment it does; on a desktop a reader keeps the
         ability to select what a card says.
       */}
+      {/* The pointer half of the drag. Not itself a focusable control: the
+          keyboard gets the same move through the grip's `role="button"` below
+          and through the card's own button + Move menu, so pointer and keyboard
+          stay at parity (FRONTEND_GUIDE §7.3). */}
+      {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions */}
       <div
-        onTouchStart={holdToDrag}
-        className="relative [-webkit-touch-callout:none] [@media(pointer:coarse)]:select-none"
+        onMouseDown={mouseDown}
+        onTouchStart={touchStart}
+        className={cn(
+          "relative [-webkit-touch-callout:none] [@media(pointer:coarse)]:select-none",
+          // While a mouse drag is live, stop the title text selecting — the
+          // drag owns the gesture and the selection is just noise.
+          isDragging && "select-none",
+        )}
       >
         {/*
           ONE BUTTON IS THE WHOLE CARD. Everything a reader might click — the
@@ -425,6 +445,7 @@ function TaskCard({
 
           <span className="mt-2 flex flex-wrap items-center gap-1.5">
             <Pill tone={PRIORITY_TONE[task.priority]}>{PRIORITY_LABEL[task.priority]}</Pill>
+            {task.recurrence_rule && <Pill tone="blue">{describeRule(task.recurrence_rule)}</Pill>}
             {task.due_at && (
               <span className={cn("num text-xs", overdue ? "text-destructive" : "text-muted-foreground")}>
                 {overdue ? "Overdue · " : ""}
@@ -457,12 +478,26 @@ function TaskCard({
           band across every card on the board.
         */}
         {live && onOpen && onMove && (
-          <div
-            {...listeners}
-            {...attributes}
-            aria-label={`Drag “${task.title}”`}
-            className="absolute left-3 right-3 top-3 h-5 cursor-grab active:cursor-grabbing"
-          />
+          <>
+            {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions --
+                role="button" arrives via {...attributes} (dnd-kit), which the rule
+                cannot see statically; the grip is the keyboard's drag handle and
+                a plain click opens the card, so it is reachable and operable. */}
+            <div
+              onKeyDown={gripKeyDown}
+              {...attributes}
+              onClick={onOpen}
+              aria-label={`Drag “${task.title}”`}
+              className="absolute left-3 right-3 top-3 flex h-5 cursor-grab items-center justify-center active:cursor-grabbing"
+            >
+              {/* The affordance the old board lacked: a visible grip so a mouse
+                  user can see what to grab, instead of a cursor change over an
+                  invisible band. */}
+              <span className="pointer-events-none select-none text-xs leading-none text-muted-foreground/70" aria-hidden>
+                ⠿
+              </span>
+            </div>
+          </>
         )}
       </div>
 

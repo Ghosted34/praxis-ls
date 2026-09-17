@@ -33,6 +33,7 @@ import type {
   Task,
   TaskBoard,
   TaskInput,
+  TaskPriority,
   TaskStatus,
 } from "./api";
 
@@ -85,6 +86,30 @@ export function useTaskList(
     // Only fires when something asks: a screen showing the board does not need
     // the flat list, and fetching it would be a second read of the same rows.
     enabled: Object.keys(params).length > 0,
+  });
+}
+
+/**
+ * The paginated list the List view draws. Unlike `useTaskList`, this carries the
+ * pre-LIMIT `total` from `X-Total-Count`, which is what makes a real pager
+ * possible past the board's 200-row cap. The key is separate so the board and the
+ * list never share (or fight over) a cache entry.
+ */
+export function useTaskListPaged(
+  params: {
+    status?: TaskStatus;
+    priority?: TaskPriority;
+    assigned_to?: string;
+    q?: string;
+    audience?: Audience;
+    sort?: string;
+    limit?: number;
+    offset?: number;
+  },
+) {
+  return useQuery({
+    queryKey: [ROOT, "tasks", "paged", params],
+    queryFn: () => api.listTasksPaged(params),
   });
 }
 

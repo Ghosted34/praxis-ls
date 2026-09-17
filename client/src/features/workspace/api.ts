@@ -31,7 +31,7 @@
  *    "help" by converting to UTC in the browser — the browser's zone is the
  *    user's laptop, which is not necessarily where the business is.
  */
-import { tenant } from "@/lib/api-client";
+import { tenant, tenantPaged } from "@/lib/api-client";
 
 /* ── vocabulary ───────────────────────────────────────────────────────────── */
 
@@ -51,6 +51,9 @@ export type TaskPriority = (typeof TASK_PRIORITIES)[number];
  *  about a task, and a column for it would be a place work goes to be hidden. */
 export const BOARD_COLUMNS = ["TO_DO", "IN_PROGRESS", "IN_REVIEW", "DONE"] as const;
 export type BoardColumn = (typeof BOARD_COLUMNS)[number];
+
+/** Whether an edit to a recurring row applies to one occurrence or the series. */
+export type RepeatScope = "this" | "series";
 
 export const PARTICIPANT_RESPONSES = [
   "INVITED",
@@ -103,6 +106,9 @@ export type Task = {
   scope_id: string | null;
   reminder_minutes: number | null;
   remind_at: string | null;
+  /** iCal RRULE when the task repeats; null/absent is a one-off (13840). */
+  recurrence_rule?: string | null;
+  recurrence_series_id?: string | null;
   entity_type: string | null;
   entity_id: string | null;
   /** Derived on read, never stored — see the service's header for why. */
@@ -141,6 +147,7 @@ export type CalendarEvent = {
   end_at: string;
   all_day: boolean;
   recurrence_rule: string | null;
+  recurrence_series_id?: string | null;
   reminder_minutes: number | null;
   remind_at: string | null;
   created_by: string | null;
@@ -209,6 +216,9 @@ export type TaskInput = {
   is_personal?: boolean;
   reminder_minutes?: number | null;
   remind_at?: string | null;
+  recurrence_rule?: string | null;
+  /** "series" applies an edit to every future occurrence, not just this one. */
+  series?: RepeatScope;
   subtasks?: { title: string; display_order?: number; due_at?: string | null }[];
 };
 
@@ -239,6 +249,8 @@ export type EventInput = {
   all_day?: boolean;
   reminder_minutes?: number | null;
   remind_at?: string | null;
+  recurrence_rule?: string | null;
+  series?: RepeatScope;
   entity_type?: string | null;
   entity_id?: string | null;
   participants?: { user_id?: string; external_name?: string; is_organiser?: boolean }[];
@@ -320,6 +332,19 @@ export const listTasks = (
     offset?: number;
   } = {},
 ) => tenant<Task[]>(`/workspace/tasks${qs(params)}`);
+
+/** The paginated, filterable list the List view draws — the board's cap-proof twin. */
+export const listTasksPaged = (
+  params: {
+    status?: TaskStatus;
+    priority?: TaskPriority;
+    assigned_to?: string;
+    q?: string;
+    audience?: Audience;
+    limit?: number;
+    offset?: number;
+  } = {},
+) => tenantPaged<Task[]>(`/workspace/tasks${qs(params)}`);
 
 export const getTask = (id: string) => tenant<Task>(`/workspace/tasks/${id}`);
 

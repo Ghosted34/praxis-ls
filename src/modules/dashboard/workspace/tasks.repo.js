@@ -99,10 +99,23 @@ const TASK_SELECT_PAGED = TASK_SELECT.replace(
  * a second `SELECT COUNT(*)` would duplicate this WHERE and the two copies
  * would drift (API F-26).
  */
-async function listTasks(client, { audience, userId, scopeIds, personalOnly, status, assignedTo, q, entity, limit = 50, offset = 0 }) {
+/**
+ * A safe ORDER BY, built from an allow-list rather than interpolated — a sort
+ * column taken from the query string and dropped into SQL is the one injection
+ * this endpoint would otherwise expose.
+ */
+const TASK_ORDER = {
+  due_asc: "ORDER BY (t.due_at IS NULL), t.due_at ASC NULLS LAST, t.created_at DESC",
+  due_desc: "ORDER BY t.due_at DESC NULLS LAST, t.created_at DESC",
+  created_desc: "ORDER BY t.created_at DESC",
+  priority_desc: "ORDER BY array_position(ARRAY['LOW','NORMAL','HIGH','URGENT'], t.priority) DESC, t.created_at DESC",
+};
+
+async function listTasks(client, { audience, userId, scopeIds, personalOnly, status, priority, assignedTo, q, entity, sort = "due_asc", limit = 50, offset = 0 }) {
   const params = [limit, offset];
   const where = ["t.is_deleted = false"];
   if (status) { params.push(status); where.push(`t.status = $${params.length}`); }
+  if (priority) { params.push(priority); where.push(`t.priority = $${params.length}`); }
   if (assignedTo) { params.push(assignedTo); where.push(`t.assigned_to = $${params.length}`); }
   if (q) { params.push(`%${q}%`); where.push(`t.title ILIKE $${params.length}`); }
   if (entity) {
@@ -113,10 +126,11 @@ async function listTasks(client, { audience, userId, scopeIds, personalOnly, sta
   params.push(...vis.params);
   where.push(...vis.sql);
 
+  const order = TASK_ORDER[sort] || TASK_ORDER.due_asc;
   const { rows } = await client.query(
     `${TASK_SELECT_PAGED}
       WHERE ${where.join(" AND ")}
-      ORDER BY (t.due_at IS NULL), t.due_at ASC NULLS LAST, t.created_at DESC
+      ${order}
       LIMIT $1 OFFSET $2`,
     params,
   );
@@ -203,14 +217,15 @@ async function insertTask(client, t) {
     `INSERT INTO task (
        title, description, status, priority, assigned_to, created_by, due_at,
        parent_task_id, entity_type, entity_id, is_personal, scope_id,
-       reminder_minutes, remind_at
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+       reminder_minutes, remind_at, recurrence_rule, recurrence_series_id
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
      RETURNING *`,
     [
       t.title, t.description ?? null, t.status || "TO_DO", t.priority || "NORMAL",
       t.assigned_to ?? null, t.created_by, t.due_at ?? null, t.parent_task_id ?? null,
       t.entity_type ?? null, t.entity_id ?? null, t.is_personal === true, t.scope_id ?? null,
       t.reminder_minutes ?? null, t.remind_at ?? null,
+      t.recurrence_rule ?? null, t.recurrence_series_id ?? null,
     ],
   );
   return rows[0];
@@ -232,13 +247,16 @@ async function findTask(client, id) {
  *
  * `remind_at` is NOT in the allow-list on purpose: it is derived, and letting a
  * caller set it directly would desynchronise it from `reminder_minutes`. The
- * service computes it and passes `rearm` when it changes.
+ * service computes it and passes `rearm` when it changes. `recurrence_cursor_at`
+ * is excluded for the same reason — it is the sweep's bookkeeping and is written
+ * only by `advanceTaskCursor`/`endTaskRecurrence`, never by a PATCH.
  */
 async function updateTask(client, id, patch, { rearm = false } = {}) {
   const sets = [];
   const params = [];
   for (const key of ["title", "description", "status", "priority", "assigned_to", "due_at",
-    "entity_type", "entity_id", "is_personal", "reminder_minutes", "remind_at"]) {
+    "entity_type", "entity_id", "is_personal", "reminder_minutes", "remind_at",
+    "recurrence_rule", "recurrence_series_id"]) {
     if (!(key in patch)) continue;
     params.push(patch[key] ?? null);
     sets.push(`${key} = $${params.length}`);
@@ -389,14 +407,15 @@ async function insertEvent(client, e) {
   const { rows } = await client.query(
     `INSERT INTO calendar_event (
        title, event_type, location, description, start_at, end_at, all_day,
-       recurrence_rule, created_by, reminder_minutes, remind_at, entity_type, entity_id
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+       recurrence_rule, recurrence_series_id, created_by, reminder_minutes,
+       remind_at, entity_type, entity_id
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
      RETURNING *`,
     [
       e.title, e.event_type || "other", e.location ?? null, e.description ?? null,
       e.start_at, e.end_at, e.all_day === true, e.recurrence_rule ?? null,
-      e.created_by ?? null, e.reminder_minutes ?? null, e.remind_at ?? null,
-      e.entity_type ?? null, e.entity_id ?? null,
+      e.recurrence_series_id ?? null, e.created_by ?? null, e.reminder_minutes ?? null,
+      e.remind_at ?? null, e.entity_type ?? null, e.entity_id ?? null,
     ],
   );
   return rows[0];
@@ -411,7 +430,8 @@ async function updateEvent(client, id, patch, { rearm = false } = {}) {
   const sets = [];
   const params = [];
   for (const key of ["title", "event_type", "location", "description", "start_at", "end_at",
-    "all_day", "recurrence_rule", "reminder_minutes", "remind_at", "entity_type", "entity_id"]) {
+    "all_day", "recurrence_rule", "recurrence_series_id", "reminder_minutes", "remind_at",
+    "entity_type", "entity_id"]) {
     if (!(key in patch)) continue;
     params.push(patch[key] ?? null);
     sets.push(`${key} = $${params.length}`);
@@ -552,6 +572,256 @@ async function markEventReminderSent(client, id, nowIso) {
   await client.query("UPDATE calendar_event SET reminder_sent_at = $2 WHERE calendar_event_id = $1", [id, nowIso]);
 }
 
+/* ═══════════════════════════ RECURRENCE (13840) ═════════════════════════ */
+
+/**
+ * Recurring rows whose next occurrence is due to be materialised.
+ *
+ * The predicate is `COALESCE(recurrence_cursor_at, due_at) <= now()` — a row
+ * that has never spawned anchors on its own due date, and one that has anchors
+ * on the occurrence it created. That single expression is the whole state
+ * machine; there is no "pending/running/done" column to get out of step.
+ *
+ * DELIBERATELY NOT FILTERED ON STATUS OR ON `reminder_sent_at`. A recurring
+ * filing that the accountant completes on the 10th still has to produce next
+ * month's row on the 14th, and `dueTaskReminders` above excludes DONE rows
+ * because reminding someone about finished work is noise. Coupling the two
+ * scans would stop every series whose owner is diligent — the exact opposite of
+ * the behaviour that earns a reminder system its keep.
+ */
+async function listSpawnDueTasks(client, nowIso, limit) {
+  const { rows } = await client.query(
+    `SELECT task_id, title, description, priority, assigned_to, created_by, due_at,
+            parent_task_id, entity_type, entity_id, is_personal, scope_id,
+            reminder_minutes, recurrence_rule, recurrence_series_id
+       FROM task
+      WHERE recurrence_rule IS NOT NULL AND is_deleted = false AND due_at IS NOT NULL
+        AND COALESCE(recurrence_cursor_at, due_at) <= $1
+      ORDER BY COALESCE(recurrence_cursor_at, due_at)
+      LIMIT $2`,
+    [nowIso, limit],
+  );
+  return rows;
+}
+
+async function listSpawnDueEvents(client, nowIso, limit) {
+  const { rows } = await client.query(
+    `SELECT calendar_event_id, title, event_type, location, description,
+            start_at, end_at, all_day, created_by, entity_type, entity_id,
+            reminder_minutes, recurrence_rule, recurrence_series_id
+       FROM calendar_event
+      WHERE recurrence_rule IS NOT NULL AND is_deleted = false
+        AND COALESCE(recurrence_cursor_at, start_at) <= $1
+      ORDER BY COALESCE(recurrence_cursor_at, start_at)
+      LIMIT $2`,
+    [nowIso, limit],
+  );
+  return rows;
+}
+
+/**
+ * How many rows a series already has — what makes `COUNT=5` mean five
+ * occurrences rather than five more. Counts soft-deleted rows too: deleting an
+ * occurrence should consume it, not buy the series another turn.
+ */
+async function countSeriesTasks(client, seriesId) {
+  const { rows } = await client.query(
+    "SELECT count(*)::int AS n FROM task WHERE recurrence_series_id = $1",
+    [seriesId],
+  );
+  return rows[0]?.n ?? 0;
+}
+
+async function countSeriesEvents(client, seriesId) {
+  const { rows } = await client.query(
+    "SELECT count(*)::int AS n FROM calendar_event WHERE recurrence_series_id = $1",
+    [seriesId],
+  );
+  return rows[0]?.n ?? 0;
+}
+
+/**
+ * Materialise the next occurrence of a task.
+ *
+ * `ON CONFLICT DO NOTHING` against `ux_task_series_occurrence` is what makes the
+ * sweep safe to run twice, and safe to race itself: two rows of one series come
+ * due in the same tick, both compute the same next date, and one insert wins.
+ * The loser returns null and still advances its cursor — see the migration's
+ * header for why NOT advancing it would wedge the scan.
+ */
+async function insertSpawnedTask(client, t) {
+  const { rows } = await client.query(
+    `INSERT INTO task (
+       title, description, status, priority, assigned_to, created_by, due_at,
+       parent_task_id, entity_type, entity_id, is_personal, scope_id,
+       reminder_minutes, remind_at, recurrence_rule, recurrence_series_id
+     ) VALUES ($1,$2,'TO_DO',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+     ON CONFLICT (recurrence_series_id, due_at)
+       WHERE recurrence_series_id IS NOT NULL AND due_at IS NOT NULL
+       DO NOTHING
+     RETURNING *`,
+    [
+      t.title, t.description ?? null, t.priority || "NORMAL", t.assigned_to ?? null,
+      t.created_by, t.due_at, t.parent_task_id ?? null, t.entity_type ?? null,
+      t.entity_id ?? null, t.is_personal === true, t.scope_id ?? null,
+      t.reminder_minutes ?? null, t.remind_at ?? null,
+      t.recurrence_rule ?? null, t.recurrence_series_id ?? null,
+    ],
+  );
+  return rows[0] || null;
+}
+
+async function insertSpawnedEvent(client, e) {
+  const { rows } = await client.query(
+    `INSERT INTO calendar_event (
+       title, event_type, location, description, start_at, end_at, all_day,
+       recurrence_rule, recurrence_series_id, created_by, reminder_minutes,
+       remind_at, entity_type, entity_id
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+     ON CONFLICT (recurrence_series_id, start_at)
+       WHERE recurrence_series_id IS NOT NULL
+       DO NOTHING
+     RETURNING *`,
+    [
+      e.title, e.event_type || "other", e.location ?? null, e.description ?? null,
+      e.start_at, e.end_at, e.all_day === true, e.recurrence_rule ?? null,
+      e.recurrence_series_id ?? null, e.created_by ?? null, e.reminder_minutes ?? null,
+      e.remind_at ?? null, e.entity_type ?? null, e.entity_id ?? null,
+    ],
+  );
+  return rows[0] || null;
+}
+
+/**
+ * Carry a task's steps into its next occurrence.
+ *
+ * TITLES AND ORDER ONLY, and never their `is_done`: "file the return, notify
+ * the director, archive the receipt" is the same checklist every month, and
+ * copying last month's ticks would hand the accountant a finished list. Deadlines
+ * are not copied either — a step due "the 14th" belongs to the occurrence it was
+ * written on, and a copied absolute date would be in the past.
+ */
+async function copySubtasks(client, fromTaskId, toTaskId) {
+  await client.query(
+    `INSERT INTO task_subtask (task_id, title, display_order)
+     SELECT $2, title, display_order FROM task_subtask WHERE task_id = $1`,
+    [fromTaskId, toTaskId],
+  );
+}
+
+/**
+ * Carry an event's invitees into its next occurrence.
+ *
+ * A monthly meeting that loses its attendees every month is a meeting nobody
+ * turns up to. Responses are NOT copied: "accepted" is an answer about one
+ * date, and September's yes is not October's. Everyone starts back at INVITED,
+ * which is the honest default the column already has.
+ */
+async function copyParticipants(client, fromEventId, toEventId) {
+  await client.query(
+    `INSERT INTO calendar_participant (calendar_event_id, user_id, external_name, is_organiser)
+     SELECT $2, user_id, external_name, is_organiser
+       FROM calendar_participant WHERE calendar_event_id = $1`,
+    [fromEventId, toEventId],
+  );
+}
+
+/**
+ * Record that this row has materialised `cursor`, so it leaves the spawn scan
+ * until that instant arrives.
+ *
+ * Called whether or not the insert won the race. A row that lost and did not
+ * advance would match the scan again next minute, forever, computing the same
+ * date and losing the same conflict — the exact wedge the reminder stamp exists
+ * to prevent, in the other half of the sweep.
+ */
+async function advanceTaskCursor(client, id, cursorIso) {
+  await client.query("UPDATE task SET recurrence_cursor_at = $2 WHERE task_id = $1", [id, cursorIso]);
+}
+
+async function advanceEventCursor(client, id, cursorIso) {
+  await client.query(
+    "UPDATE calendar_event SET recurrence_cursor_at = $2 WHERE calendar_event_id = $1",
+    [id, cursorIso],
+  );
+}
+
+/**
+ * A series that has reached its UNTIL or its COUNT stops repeating.
+ *
+ * The rule is cleared and the series id KEPT: the rows stay linked as the
+ * history of a series that ran, and the row leaves the spawn scan for good
+ * because the scan is predicated on the rule.
+ */
+async function endTaskRecurrence(client, id) {
+  await client.query(
+    "UPDATE task SET recurrence_rule = NULL, recurrence_cursor_at = NULL, updated_at = now() WHERE task_id = $1",
+    [id],
+  );
+}
+
+async function endEventRecurrence(client, id) {
+  await client.query(
+    "UPDATE calendar_event SET recurrence_rule = NULL, recurrence_cursor_at = NULL, updated_at = now()\n     WHERE calendar_event_id = $1",
+    [id],
+  );
+}
+
+/**
+ * Apply an edit to the rest of a series.
+ *
+ * Only rows that are NOT finished are touched. Editing "every month on the
+ * 14th" to "the 15th" is a statement about the future; rewriting a filing that
+ * was completed on the 14th of last month would falsify a record, and the
+ * immutable-ledger ethos of this product is that history is not edited.
+ *
+ * `exclude` is the row the user is looking at, which `updateTask` has already
+ * patched — so it is not written twice with two different `updated_at` values.
+ */
+async function updateSeriesTasks(client, seriesId, patch, { exclude, rearm = false } = {}) {
+  const sets = [];
+  const params = [];
+  for (const key of ["title", "description", "priority", "assigned_to", "due_at",
+    "entity_type", "entity_id", "is_personal", "reminder_minutes", "remind_at", "recurrence_rule"]) {
+    if (!(key in patch)) continue;
+    params.push(patch[key] ?? null);
+    sets.push(`${key} = $${params.length}`);
+  }
+  if (rearm) sets.push("reminder_sent_at = NULL");
+  if (!sets.length) return 0;
+  params.push(seriesId, exclude);
+  const { rowCount } = await client.query(
+    `UPDATE task SET ${sets.join(", ")}, updated_at = now()
+      WHERE recurrence_series_id = $${params.length - 1}
+        AND task_id <> $${params.length}
+        AND is_deleted = false AND status NOT IN ('DONE','CANCELLED')`,
+    params,
+  );
+  return rowCount || 0;
+}
+
+async function updateSeriesEvents(client, seriesId, patch, { exclude, rearm = false } = {}) {
+  const sets = [];
+  const params = [];
+  for (const key of ["title", "event_type", "location", "description", "start_at", "end_at",
+    "all_day", "reminder_minutes", "remind_at", "recurrence_rule"]) {
+    if (!(key in patch)) continue;
+    params.push(patch[key] ?? null);
+    sets.push(`${key} = $${params.length}`);
+  }
+  if (rearm) sets.push("reminder_sent_at = NULL");
+  if (!sets.length) return 0;
+  params.push(seriesId, exclude);
+  const { rowCount } = await client.query(
+    `UPDATE calendar_event SET ${sets.join(", ")}, updated_at = now()
+      WHERE recurrence_series_id = $${params.length - 1}
+        AND calendar_event_id <> $${params.length}
+        AND is_deleted = false`,
+    params,
+  );
+  return rowCount || 0;
+}
+
 module.exports = {
   visibleWhere,
   listTasks, boardTasks, tasksInRange, subtasksInRange, insertTask, findTask, updateTask, softDeleteTask,
@@ -560,4 +830,8 @@ module.exports = {
   listEvents, insertEvent, findEvent, updateEvent, softDeleteEvent, findEventClashes,
   listParticipants, insertParticipant, respondParticipant, removeParticipant,
   dueTaskReminders, dueEventReminders, markTaskReminderSent, markEventReminderSent,
+  listSpawnDueTasks, listSpawnDueEvents, countSeriesTasks, countSeriesEvents,
+  insertSpawnedTask, insertSpawnedEvent, copySubtasks, copyParticipants,
+  advanceTaskCursor, advanceEventCursor, endTaskRecurrence, endEventRecurrence,
+  updateSeriesTasks, updateSeriesEvents,
 };

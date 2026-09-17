@@ -34,6 +34,8 @@ import { TASK_PRIORITIES, TASK_STATUSES } from "../api";
 import type { Task, TaskInput, TaskPriority, TaskStatus } from "../api";
 import { useCreateTask, useUpdateTask } from "../hooks";
 import { PRIORITY_LABEL, REMINDER_PRESETS, STATUS_LABEL } from "../labels";
+import { RepeatField } from "../repeat-field";
+import type { RepeatScope } from "../api";
 
 /** The most a title can be. Mirrors the CHECK on the column, so the user is
  *  told here rather than by a 23514 from Postgres. */
@@ -64,6 +66,10 @@ export function TaskDialog({
   const [dueAt, setDueAt] = React.useState("");
   const [reminder, setReminder] = React.useState("");
   const [isPersonal, setIsPersonal] = React.useState(false);
+  const [repeatRule, setRepeatRule] = React.useState<string | null>(null);
+  // When the open task is one occurrence of a series, whether an edit rewrites
+  // just this row or every future one (13840).
+  const [seriesScope, setSeriesScope] = React.useState<RepeatScope>("this");
   // The `user_id` the task is handed to, plus the name to show for it. Held as a
   // pair because the picker searches employees but a task is assigned to a
   // LOGIN (`assigned_to` is an app_user id), and the panel needs a name to draw
@@ -84,6 +90,8 @@ export function TaskDialog({
     setDueAt(toLocalInput(task?.due_at ?? defaultDue ?? null));
     setReminder(fromReminder(task));
     setIsPersonal(task?.is_personal ?? false);
+    setRepeatRule(task?.recurrence_rule ?? null);
+    setSeriesScope("this");
     setAssignedTo(task?.assigned_to ?? null);
     setAssignedName(task?.assigned_to_name ?? null);
     setError(null);
@@ -105,10 +113,14 @@ export function TaskDialog({
       // editing a task REMOVES its reminder rather than leaving it behind.
       reminder_minutes: reminder === "" ? null : Number(reminder),
       is_personal: isPersonal,
+      recurrence_rule: repeatRule,
       // Explicit null when nobody is chosen, so EDITING a task can UNASSIGN it
       // rather than silently leaving the previous owner in place.
       assigned_to: assignedTo,
     };
+    // Only meaningful when the open task belongs to a series; otherwise the
+    // server ignores it (there is nothing else to rewrite).
+    if (editing && task?.recurrence_series_id) input.series = seriesScope;
     try {
       if (editing && task) await update.mutateAsync({ id: task.task_id, input });
       else await create.mutateAsync(input);
@@ -236,6 +248,26 @@ export function TaskDialog({
             </NativeSelect>
           </Field>
         </div>
+
+        <RepeatField
+          idPrefix="task"
+          value={repeatRule}
+          dueIso={dueAt || null}
+          onChange={setRepeatRule}
+        />
+
+        {editing && task?.recurrence_series_id && (
+          <Field label="Apply changes to" htmlFor="task-series-scope">
+            <NativeSelect
+              id="task-series-scope"
+              value={seriesScope}
+              onChange={(e) => setSeriesScope(e.target.value as RepeatScope)}
+            >
+              <option value="this">Just this one</option>
+              <option value="series">This and future occurrences</option>
+            </NativeSelect>
+          </Field>
+        )}
 
         {/* Who it is on. A task assigned to someone else is notified to them and
             lands in their board's "My work" — the meeting's "assign it so it

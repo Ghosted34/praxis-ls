@@ -32,10 +32,31 @@ const { entityRoute } = require("@praxis/shared");
 const repo = require("./tasks.repo");
 const events = require("./workspace.events");
 const { timezoneOf, toInstant } = require("./workspace.time");
+const recurrence = require("./recurrence");
 const { logger } = require("../../../config/logger");
 
 const VALID_STATUSES = ["TO_DO", "IN_PROGRESS", "IN_REVIEW", "DONE", "CANCELLED"];
 const DONE_STATUSES = new Set(["DONE", "CANCELLED"]);
+
+/**
+ * Turn the caller's repeat rule into the stored canonical form.
+ *
+ * `undefined` means "not in this PATCH" and must not touch the column; `null`
+ * means "stop repeating" and clears it. Anything else goes through the parser,
+ * which REJECTS rules this product does not implement — a 422 naming the field
+ * rather than a silently half-applied RRULE (recurrence.js header).
+ */
+function ruleOrThrow(input) {
+  if (input.recurrence_rule === undefined) return undefined;
+  if (input.recurrence_rule === null) return null;
+  try {
+    return recurrence.canonicalise(input.recurrence_rule);
+  } catch (err) {
+    throw new AppError("INVALID_VALUE", `Repeat rule: ${err.message}`, 422, {
+      recurrence_rule: [err.message],
+    });
+  }
+}
 
 /**
  * Actor attribution for an audit row, from the caller we already hold.
@@ -189,8 +210,13 @@ async function listTasks(client, ctx, q = {}) {
   const { rows, total } = await repo.listTasks(client, {
     ...visibilityOf(ctx, audience),
     status: q.status,
+    // The validator accepted `priority` from day one but the service dropped it,
+    // so the list could not actually be filtered by urgency — the column read as
+    // a filter and filtered nothing. Honour it.
+    priority: q.priority,
     assignedTo: q.assigned_to === "me" ? ctx.user.user_id : q.assigned_to,
     q: q.q,
+    sort: q.sort,
     limit: q.limit,
     offset: q.offset,
   });
@@ -234,12 +260,17 @@ async function createTask(client, ctx, input) {
     anchor: due_at,
     timeZone,
   });
+  const rule = ruleOrThrow(input);
   const task = await repo.insertTask(client, {
     ...input,
     due_at,
     created_by: ctx.user.user_id,
     remind_at,
+    recurrence_rule: rule,
   });
+  // The series id is the first occurrence's own id: one UPDATE after the INSERT
+  // makes the template discoverable by its descendants with no registry table.
+  if (rule) await repo.updateTask(client, task.task_id, { recurrence_series_id: task.task_id });
   if (input.subtasks && input.subtasks.length) {
     for (const [i, s] of input.subtasks.entries()) {
       await repo.insertSubtask(client, {
@@ -274,6 +305,8 @@ async function updateTask(client, ctx, id, input) {
   if ("due_at" in input) {
     patch.due_at = toInstant(input.due_at, { timeZone, dateOnlyTime: "17:00:00" });
   }
+  const rule = ruleOrThrow(input);
+  if (rule !== undefined) patch.recurrence_rule = rule;
 
   // Recompute the reminder when its INPUTS moved and the user did not pin an
   // exact instant. Without this, moving a due date leaves the reminder where
@@ -293,6 +326,15 @@ async function updateTask(client, ctx, id, input) {
   }
 
   const updated = await repo.updateTask(client, id, patch, { rearm });
+  // A "whole series" edit rewrites the FUTURE of the series, not just this row.
+  // `due_at` is deliberately not carried: each occurrence owns its date, and
+  // stamping every row with one would collapse the series onto a single day.
+  // Finished rows are excluded inside the repo, so history is never rewritten.
+  if (input.series === "series" && before.recurrence_series_id) {
+    const seriesPatch = { ...patch };
+    delete seriesPatch.due_at;
+    await repo.updateSeriesTasks(client, before.recurrence_series_id, seriesPatch, { exclude: id, rearm });
+  }
   await emitEvent(client, {
     eventTypeKey: events.TASK_UPDATED, moduleKey: events.MODULE,
     entityRef: `task:${id}`, actorUserId: ctx.user.user_id, payload: { fields: Object.keys(input) },
@@ -500,9 +542,12 @@ async function createEvent(client, ctx, input) {
     anchor: start_at,
     timeZone,
   });
+  const rule = ruleOrThrow(input);
   const event = await repo.insertEvent(client, {
     ...input, start_at, end_at, created_by: ctx.user.user_id, remind_at,
+    recurrence_rule: rule,
   });
+  if (rule) await repo.updateEvent(client, event.calendar_event_id, { recurrence_series_id: event.calendar_event_id });
   for (const p of input.participants || []) {
     await repo.insertParticipant(client, { calendar_event_id: event.calendar_event_id, ...p });
   }
@@ -524,6 +569,8 @@ async function updateEvent(client, ctx, id, input) {
   const patch = { ...input };
   if ("start_at" in input) patch.start_at = toInstant(input.start_at, { timeZone, dateOnlyTime: "00:00:00" });
   if ("end_at" in input) patch.end_at = toInstant(input.end_at, { timeZone, dateOnlyTime: "23:59:00" });
+  const rule = ruleOrThrow(input);
+  if (rule !== undefined) patch.recurrence_rule = rule;
 
   let rearm = false;
   if (input.remind_at !== undefined) {
@@ -538,6 +585,14 @@ async function updateEvent(client, ctx, id, input) {
     rearm = true;
   }
   await repo.updateEvent(client, id, patch, { rearm });
+  // Series scope mirrors updateTask, minus the per-occurrence start/end: every
+  // occurrence keeps its own slot in the diary.
+  if (input.series === "series" && before.recurrence_series_id) {
+    const seriesPatch = { ...patch };
+    delete seriesPatch.start_at;
+    delete seriesPatch.end_at;
+    await repo.updateSeriesEvents(client, before.recurrence_series_id, seriesPatch, { exclude: id, rearm });
+  }
   await emitEvent(client, {
     eventTypeKey: events.EVENT_UPDATED, moduleKey: events.MODULE,
     entityRef: `calendar_event:${id}`, actorUserId: ctx.user.user_id, payload: { fields: Object.keys(input) },
@@ -709,6 +764,75 @@ async function deadlinesInRange(client, ctx, { from, to, audience }) {
   return { items, audience: resolved, audiences: audiencesFor(ctx) };
 }
 
+/* ═══════════════════════ RECURRENCE SPAWN (13840) ═══════════════════════ */
+
+/**
+ * Materialise the occurrences that have come due — the spawn half of the sweep.
+ *
+ * This is the ONLY place occurrences are created, and it is designed to the same
+ * shape as the reminder sweep it rides beside: a bounded scan over armed rows,
+ * idempotent by construction (the unique series index makes a duplicate a no-op),
+ * and safe to run twice because every row advances its cursor whether or not it
+ * won the insert race. See the migration's header for the reasoning.
+ *
+ * Kept OUT of the reminder sweep's own loop so a series whose owner finished
+ * early still advances: the reminder scan skips DONE rows, the spawn scan does
+ * not, and coupling them would stop every series whose accountant is diligent.
+ */
+async function spawnDue(client, { now = new Date(), limit = 200 } = {}) {
+  const timeZone = await timezoneOf(client);
+  const nowIso = now.toISOString();
+  let tasks = 0;
+  let eventsFired = 0;
+
+  for (const row of await repo.listSpawnDueTasks(client, nowIso, limit)) {
+    const existingCount = row.recurrence_rule.includes("COUNT=")
+      ? await repo.countSeriesTasks(client, row.recurrence_series_id)
+      : null;
+    const next = recurrence.nextOccurrence(row.recurrence_rule, {
+      after: row.due_at, timeZone, existingCount,
+    });
+    if (!next) { await repo.endTaskRecurrence(client, row.task_id); continue; }
+    const spawned = await repo.insertSpawnedTask(client, {
+      title: row.title, description: row.description, priority: row.priority,
+      assigned_to: row.assigned_to, created_by: row.created_by, due_at: next,
+      parent_task_id: row.parent_task_id, entity_type: row.entity_type,
+      entity_id: row.entity_id, is_personal: row.is_personal, scope_id: row.scope_id,
+      reminder_minutes: row.reminder_minutes,
+      remind_at: resolveRemindAt({ reminder_minutes: row.reminder_minutes, anchor: next, timeZone }),
+      recurrence_rule: row.recurrence_rule, recurrence_series_id: row.recurrence_series_id,
+    });
+    if (spawned) { await repo.copySubtasks(client, row.task_id, spawned.task_id); tasks += 1; }
+    await repo.advanceTaskCursor(client, row.task_id, next);
+  }
+
+  for (const row of await repo.listSpawnDueEvents(client, nowIso, limit)) {
+    const existingCount = row.recurrence_rule.includes("COUNT=")
+      ? await repo.countSeriesEvents(client, row.recurrence_series_id)
+      : null;
+    const nextStart = recurrence.nextOccurrence(row.recurrence_rule, {
+      after: row.start_at, timeZone, existingCount,
+    });
+    if (!nextStart) { await repo.endEventRecurrence(client, row.calendar_event_id); continue; }
+    // The slot keeps its length: a one-hour meeting stays an hour, whatever day
+    // it lands on.
+    const durationMs = new Date(row.end_at) - new Date(row.start_at);
+    const nextEnd = new Date(new Date(nextStart).getTime() + durationMs).toISOString();
+    const spawned = await repo.insertSpawnedEvent(client, {
+      title: row.title, event_type: row.event_type, location: row.location,
+      description: row.description, start_at: nextStart, end_at: nextEnd,
+      all_day: row.all_day, created_by: row.created_by, entity_type: row.entity_type,
+      entity_id: row.entity_id, reminder_minutes: row.reminder_minutes,
+      remind_at: resolveRemindAt({ reminder_minutes: row.reminder_minutes, anchor: nextStart, timeZone }),
+      recurrence_rule: row.recurrence_rule, recurrence_series_id: row.recurrence_series_id,
+    });
+    if (spawned) { await repo.copyParticipants(client, row.calendar_event_id, spawned.calendar_event_id); eventsFired += 1; }
+    await repo.advanceEventCursor(client, row.calendar_event_id, nextStart);
+  }
+
+  return { tasks, events: eventsFired };
+}
+
 module.exports = {
   VALID_STATUSES, DONE_STATUSES,
   audiencesFor, resolveAudience, visibilityOf, resolveRemindAt, withLink, deriveLink, canSeeTask,
@@ -717,4 +841,5 @@ module.exports = {
   listEvents, getEvent, createEvent, updateEvent, deleteEvent,
   addParticipant, respondParticipant, removeParticipant,
   mergeTimeline, dayTimeline, deadlinesInRange,
+  spawnDue,
 };

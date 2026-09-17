@@ -248,7 +248,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `INVALID_SUBSCRIPTION` | 422 | 1× | — |
 | `INVALID_TOKEN` | 401 | 10× | — |
 | `INVALID_TRANSITION` | 422 | 23× | — |
-| `INVALID_VALUE` | 422 | 1× | — |
+| `INVALID_VALUE` | 422 | 2× | — |
 | `INVOICE_POSTED` | 422 | 1× | — |
 | `IN_USE` | 409 | 2× | — |
 | `ISSUER_NOT_SIGNED` | 409 | 1× | — |

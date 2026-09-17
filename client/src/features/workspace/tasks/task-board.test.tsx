@@ -338,6 +338,28 @@ describe("TaskBoard — moving a card", () => {
     });
     expect(onOpen).not.toHaveBeenCalled();
   });
+
+  it("moves the task when the mouse presses the card body and moves", async () => {
+    // The desktop fix (13840): the mouse sensor lives on the whole card, so a
+    // press-and-move ANYWHERE drags. Before it, the mousedown was only wired to
+    // an invisible 20px strip and holding anywhere did nothing.
+    showBoard();
+    const surface = touchSurface();
+
+    fireEvent(surface, mouse("mousedown", FROM));
+    fireEvent(surface, mouse("mousemove", { x: FROM.x + 20, y: FROM.y }));
+    fireEvent(surface, mouse("mousemove", TO));
+    fireEvent(surface, mouse("mouseup", TO, 0));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    expect(vi.mocked(apiClient.tenant)).toHaveBeenCalledWith("/workspace/tasks/t-1/status", {
+      method: "POST",
+      body: { status: "IN_REVIEW" },
+    });
+    expect(onOpen).not.toHaveBeenCalled();
+  });
 });
 
 describe("TaskBoard — the board's parts", () => {

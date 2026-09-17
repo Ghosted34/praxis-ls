@@ -366,7 +366,7 @@ function entityResourceSpecs() {
       seg: "people", table: "entity_person", pk: "person_id",
       create: entityCommon.personCreate, update: entityCommon.personUpdate, touch: true,
       writable: [
-        "role", "holder_type", "full_name", "title",
+        "role", "role_tags", "holder_type", "full_name", "title",
         "date_of_birth", "nationality", "country_of_residence", "id_type", "id_number",
         "company_registration_number", "company_country", "holder_entity_id",
         "email", "phone",

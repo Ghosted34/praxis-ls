@@ -9,7 +9,7 @@
  * Expand preview opens the same content in a dialog.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 const { getPage, destroy, loadPdfjs } = vi.hoisted(() => ({
@@ -140,5 +140,91 @@ describe("FileDrop preview", () => {
     expect(
       screen.getAllByRole("img", { name: /PDF preview/i }).length,
     ).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe("FileDrop paste", () => {
+  const clipboard = (...files: File[]) => ({
+    items: files.map((file) => ({
+      kind: "file",
+      type: file.type,
+      getAsFile: () => file,
+    })),
+    files,
+  });
+
+  it("renders the paste affordance by default", () => {
+    render(
+      <FileDrop
+        file={null}
+        onPick={vi.fn()}
+        accept="image/png"
+        label="Document file"
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "or paste an image" }),
+    ).toBeInTheDocument();
+  });
+
+  it("accepts a pasted PDF when the control accepts PDFs", () => {
+    const onPick = vi.fn();
+    render(
+      <FileDrop
+        file={null}
+        onPick={onPick}
+        accept="application/pdf"
+        label="Document file"
+      />,
+    );
+
+    fireEvent.paste(screen.getByLabelText("Document file"), {
+      clipboardData: clipboard(pdf()),
+    });
+
+    expect(onPick).toHaveBeenCalledWith(expect.objectContaining({ type: "application/pdf" }));
+  });
+
+  it("rejects a pasted image on a PDF-only control and shows the hint", async () => {
+    const onPick = vi.fn();
+    render(
+      <FileDrop
+        file={null}
+        onPick={onPick}
+        accept="application/pdf"
+        label="Document file"
+      />,
+    );
+
+    fireEvent.paste(screen.getByLabelText("Document file"), {
+      clipboardData: clipboard(png()),
+    });
+
+    await waitFor(() =>
+      expect(
+        screen.getByText("That file type isn't accepted here — choose a file instead."),
+      ).toBeInTheDocument(),
+    );
+    expect(onPick).not.toHaveBeenCalled();
+  });
+
+  it("does nothing on a text-only paste when the control was not armed", () => {
+    const onPick = vi.fn();
+    render(
+      <FileDrop
+        file={null}
+        onPick={onPick}
+        accept="application/pdf"
+        label="Document file"
+      />,
+    );
+
+    fireEvent.paste(screen.getByLabelText("Document file"), {
+      clipboardData: { items: [], files: [] },
+    });
+
+    expect(onPick).not.toHaveBeenCalled();
+    expect(screen.queryByText(/No file on the clipboard/)).toBeNull();
   });
 });

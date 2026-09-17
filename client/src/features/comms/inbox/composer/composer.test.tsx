@@ -15,7 +15,11 @@ import userEvent from "@testing-library/user-event";
 import { axe } from "jest-axe";
 import { SlashMenu } from "./slash-menu";
 import { UndoSendToast } from "./undo-toast";
-import { AttachmentTray, AttachButton } from "./attachment-tray";
+import {
+  AttachmentTray,
+  AttachButton,
+  MAIL_ATTACHMENT_ACCEPT,
+} from "./attachment-tray";
 import { FONTS } from "./fonts";
 import { newIdempotencyKey, replayPending } from "./offline-queue";
 import type { AttachmentTray as Tray, CommandDescriptor } from "@/lib/mail-api";
@@ -264,10 +268,11 @@ describe("the attachment tray", () => {
     const input = screen.getByLabelText("Attach");
     expect(input).toBeInTheDocument();
     expect(input).toHaveAttribute("type", "file");
+    expect(input).toHaveAttribute("accept", MAIL_ATTACHMENT_ACCEPT);
     // Visually hidden, but NOT hidden from the accessibility tree.
     expect(input).not.toHaveAttribute("aria-hidden");
     expect(input.tabIndex).not.toBe(-1);
-    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Paste a file" })).toBeInTheDocument();
   });
 
   it("has no accessibility violations", async () => {

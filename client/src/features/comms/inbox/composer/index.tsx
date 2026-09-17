@@ -43,8 +43,13 @@ import { useComposerEditor, type JSONContent } from "./use-editor";
 import { EditorSurface } from "./editor";
 import { ComposerToolbar, FontNote } from "./toolbar";
 import { SlashMenu } from "./slash-menu";
-import { AttachmentTray, AttachButton } from "./attachment-tray";
+import {
+  AttachmentTray,
+  AttachButton,
+  MAIL_ATTACHMENT_ACCEPT,
+} from "./attachment-tray";
 import { UploadProgress } from "@/components/ui/upload-progress";
+import { pasteFileFromEvent } from "@/components/ui/upload-paste";
 import { RecipientField, type ExtraRecipient } from "./recipient-field";
 import { isAddress, parseAddresses } from "./addresses";
 import { useFromMailbox } from "./use-from-mailbox";
@@ -199,6 +204,7 @@ export function Composer({
    * reads as the composer being broken rather than as a feature that is
    * missing. `dragging` only draws the ring; the drop handler does the work. */
   const [dragging, setDragging] = React.useState(false);
+  const [pasteMessage, setPasteMessage] = React.useState<string | null>(null);
 
   const [slash, setSlash] = React.useState<{ open: boolean; query: string }>({ open: false, query: "" });
   const commands = useResource(() => api.listCommands(), []);
@@ -412,6 +418,7 @@ export function Composer({
 
   async function attach(files: File[]) {
     if (!files.length) return;
+    setPasteMessage(null);
     setBusy(true);
     setError(null);
     try {
@@ -801,7 +808,23 @@ export function Composer({
           if (!files.length) return; // dragging text inside the editor: let it be
           e.preventDefault();
           setDragging(false);
+          setPasteMessage(null);
           void attach(files);
+        }}
+        onPaste={(e) => {
+          const result = pasteFileFromEvent(e, MAIL_ATTACHMENT_ACCEPT);
+          if (result.kind === "accepted") {
+            e.preventDefault();
+            setPasteMessage(null);
+            void attach([result.file]);
+            return;
+          }
+          if (result.kind === "rejected") {
+            e.preventDefault();
+            setPasteMessage(
+              tr("That file type isn't accepted here — choose a file instead."),
+            );
+          }
         }}
       >
         <EditorSurface editor={editor} />
@@ -825,6 +848,17 @@ export function Composer({
         )}
       </div>
       <FontNote />
+      <div className="px-3 pt-1">
+        {pasteMessage ? (
+          <p className="text-[0.6875rem] text-destructive" role="status">
+            {pasteMessage}
+          </p>
+        ) : (
+          <p className="text-[0.6875rem] text-muted-foreground">
+            {tr("Drop a file here or press Ctrl+V to attach it.")}
+          </p>
+        )}
+      </div>
 
       {/* §8. Everything it produces lands in THIS editor. Nothing is sent, and
           nothing is written to a record. */}

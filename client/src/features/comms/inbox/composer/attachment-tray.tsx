@@ -19,6 +19,9 @@ import type { AttachmentTray as Tray } from "@/lib/mail-api";
 
 const mb = (n: number) => `${(n / (1024 * 1024)).toFixed(1)} MB`;
 
+export const MAIL_ATTACHMENT_ACCEPT =
+  "application/pdf,image/*,.doc,.docx,.xls,.xlsx,text/plain,text/csv";
+
 export function AttachmentTray({
   tray,
   onRemove,
@@ -160,7 +163,7 @@ export function AttachButton({
   return (
     <FilePicker
       variant="inline"
-      accept="application/pdf,image/*,.doc,.docx,.xls,.xlsx,text/plain,text/csv"
+      accept={MAIL_ATTACHMENT_ACCEPT}
       label={tr("Attach")}
       multiple
       disabled={disabled || working}

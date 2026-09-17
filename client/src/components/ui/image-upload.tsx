@@ -31,6 +31,11 @@ import { UploadIcon, ClipboardIcon } from "@/components/ui/icons";
 import { UploadProgress, fileSize } from "@/components/ui/upload-progress";
 import { useUpload, type UploadItem } from "@/lib/use-upload";
 import type { UploadProfile } from "@/lib/image-compress";
+import {
+  acceptsOnlyImages,
+  pasteFileFromEvent,
+  pastedFileList,
+} from "./upload-paste";
 
 export type ImageUploadProps<T> = {
   /** What this picture IS. Drives compression and server-side treatment. */
@@ -167,36 +172,30 @@ export function UploadList<T>({
   );
 }
 
-const SCREENSHOT_TYPES: ReadonlySet<string> = new Set([
-  "image/png",
-  "image/jpeg",
-  "image/webp",
-  "image/gif",
-]);
-
 /**
- * Pull the pasted image out of the clipboard event's DataTransfer.
+ * The dropzone and the file input behind it.
  *
- * Prefers a `File` item (the both-screenshot-OSes case — that File is a real
- * PNG and uploads cleanly) before falling back to the `files` list. Only the
- * types the picker admits are accepted; a pasted image/x-png or TIFF is not, so
- * it is rejected at the same gate everything else passes, never silently
- * re-encoded. Returns the first candidate; the caller owns the count cap.
+ * This holds one of the only two real `<input type="file">` elements in the
+ * client (the other is FileDrop's). Everything else goes through here, which is
+ * what makes `praxis/no-raw-upload` enforceable rather than aspirational.
  */
-function extractClipboardImage(
-  dt: DataTransfer | null | undefined,
-): File | null {
-  if (!dt) return null;
-  for (const item of Array.from(dt.items)) {
-    if (item.kind === "file" && item.type === "image/png") {
-      const f = item.getAsFile();
-      if (f) return f;
-    }
-  }
-  for (const f of Array.from(dt.files || [])) {
-    if (f && SCREENSHOT_TYPES.has(f.type)) return f;
-  }
-  return null;
+function pasteControlCopy(
+  accept: string | undefined,
+  variant: "dropzone" | "inline",
+) {
+  const imageOnly = acceptsOnlyImages(accept);
+  return {
+    button: tr(imageOnly ? "Paste an image" : "Paste a file"),
+    idle:
+      variant === "dropzone"
+        ? tr(imageOnly ? "or paste an image" : "or paste a file")
+        : tr(imageOnly ? "Paste an image" : "Paste a file"),
+    empty: tr(
+      imageOnly
+        ? "No image on the clipboard — copy one with Ctrl+C first, or choose a file."
+        : "No file on the clipboard — copy one with Ctrl+C first, or choose a file.",
+    ),
+  };
 }
 
 /**
@@ -217,7 +216,7 @@ export function FilePicker({
   variant = "dropzone",
   trigger,
   className,
-  onPaste = false,
+  onPaste = true,
 }: {
   onPick: (files: FileList | null) => void;
   /** Lets an action menu open the engine picker without unmounting its input. */
@@ -244,6 +243,7 @@ export function FilePicker({
   className?: string;
 }) {
   const inputRef = React.useRef<HTMLInputElement>(null);
+  const surfaceRef = React.useRef<HTMLElement | null>(null);
   const [dragging, setDragging] = React.useState(false);
   const inputId = React.useId();
 
@@ -251,41 +251,61 @@ export function FilePicker({
   // also be reachable from the keyboard alone for AT users — so the armed
   // state is mirrored in the text ("Press Ctrl+V now") and the target keeps a
   // focusable, announced surface to Tab to and paste into.
-  const pasteTargetRef = React.useRef<HTMLDivElement>(null);
+  const pasteTargetRef = React.useRef<HTMLSpanElement>(null);
   const [pasteArmed, setPasteArmed] = React.useState(false);
   const [message, setMessage] = React.useState<string | null>(null);
+  const pasteCopy = React.useMemo(
+    () => pasteControlCopy(accept, variant),
+    [accept, variant],
+  );
 
   // ONE listener for the ONE clipboard: a capture-phase `paste` on window sees
-  // a paste into any focusable element and, when the clipboard holds an image,
-  // takes it before anything else can. Two handlers (one on keydown, one on the
-  // target) would fire for the same single paste, and a double-upload is
-  // exactly the kind of bug that only shows up after someone has already sent
-  // four screenshots. `Escape` is the way back out of the armed state.
+  // a paste into any focusable element and, when the clipboard holds a file the
+  // surface admits, takes it before anything else can. The focus/ownership gate
+  // below keeps multiple mounted pickers from all trying to claim the same one
+  // paste. `Escape` is the way back out of the armed state.
   React.useEffect(() => {
     if (!onPaste) return;
     const onPasteEvent = (e: ClipboardEvent) => {
-      if (disabled) return;
-      const f = extractClipboardImage(e.clipboardData);
-      if (f) {
+      if (e.defaultPrevented || disabled) return;
+      const surface = surfaceRef.current;
+      const target = e.target instanceof Node ? e.target : null;
+      const active = document.activeElement;
+      const targetInside = !!surface && !!target && surface.contains(target);
+      const focusInside = !!surface && !!active && surface.contains(active);
+      if (!targetInside && !focusInside) return;
+
+      const result = pasteFileFromEvent(e, accept);
+      if (result.kind === "accepted") {
         e.preventDefault();
-        onPick(Object.assign([f], { type: "file" }) as unknown as FileList);
+        onPick(pastedFileList(result.file));
         setPasteArmed(false);
         setMessage(null);
         pasteTargetRef.current?.blur();
-      } else if (pasteTargetRef.current === document.activeElement) {
-        // The user asked for the option, so a bare Ctrl+V with no image must
-        // not sit silent while the target is armed.
+        return;
+      }
+
+      if (result.kind === "rejected") {
         e.preventDefault();
         setPasteArmed(false);
         setMessage(
-          tr(
-            "No image on the clipboard — copy one with Ctrl+C first, or choose a file.",
-          ),
+          tr("That file type isn't accepted here — choose a file instead."),
         );
+        return;
+      }
+
+      if (pasteTargetRef.current === document.activeElement) {
+        // The user asked for the option, so a bare Ctrl+V with no file must not
+        // sit silent while the target is armed.
+        e.preventDefault();
+        setPasteArmed(false);
+        setMessage(pasteCopy.empty);
       }
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setPasteArmed(false);
+      if (e.key !== "Escape") return;
+      setPasteArmed(false);
+      pasteTargetRef.current?.blur();
     };
     window.addEventListener("paste", onPasteEvent, true);
     window.addEventListener("keydown", onKey);
@@ -293,7 +313,7 @@ export function FilePicker({
       window.removeEventListener("paste", onPasteEvent, true);
       window.removeEventListener("keydown", onKey);
     };
-  }, [onPaste, disabled, onPick]);
+  }, [accept, disabled, onPaste, onPick, pasteCopy.empty]);
 
   const open = () => {
     if (!disabled) inputRef.current?.click();
@@ -318,6 +338,8 @@ export function FilePicker({
       // about what is being replaced.
       aria-label={variant === "inline" ? label : undefined}
       onChange={(e) => {
+        setPasteArmed(false);
+        setMessage(null);
         onPick(e.target.files);
         // Reset so picking the SAME file twice still fires a change event —
         // which is exactly what happens after a failed upload and a re-pick.
@@ -326,23 +348,71 @@ export function FilePicker({
     />
   );
 
+  const pasteControl = onPaste ? (
+    <>
+      <button
+        type="button"
+        tabIndex={disabled ? -1 : 0}
+        aria-disabled={disabled || undefined}
+        onClick={() => {
+          if (disabled) return;
+          setPasteArmed(true);
+          setMessage(null);
+          pasteTargetRef.current?.focus();
+        }}
+        className="inline-flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-0.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-60"
+      >
+        <ClipboardIcon />
+        {pasteArmed ? tr("Press Ctrl+V now") : pasteCopy.idle}
+      </button>
+      <span
+        ref={pasteTargetRef}
+        role="textbox"
+        aria-label={pasteCopy.button}
+        className="sr-only"
+        tabIndex={disabled ? -1 : 0}
+        contentEditable
+        suppressContentEditableWarning
+      />
+    </>
+  ) : null;
+
   if (variant === "inline") {
     return (
-      <label
-        className={cn(
-          "cursor-pointer text-sm text-primary-ink underline underline-offset-2 hover:opacity-80",
-          disabled && "pointer-events-none opacity-50",
-          className,
+      <span className={cn("inline-flex flex-col items-start gap-1", className)}>
+        <span
+          ref={(node) => {
+            surfaceRef.current = node;
+          }}
+          className="inline-flex flex-wrap items-center gap-2"
+        >
+          <label
+            className={cn(
+              "cursor-pointer text-sm text-primary-ink underline underline-offset-2 hover:opacity-80",
+              disabled && "pointer-events-none opacity-50",
+            )}
+          >
+            {trigger ?? "Choose a file"}
+            {input}
+          </label>
+          {pasteControl}
+        </span>
+        {message && (
+          <span className="micro block text-destructive" role="status">
+            {message}
+          </span>
         )}
-      >
-        {trigger ?? "Choose a file"}
-        {input}
-      </label>
+      </span>
     );
   }
 
   return (
-    <div className={cn("space-y-2", className)}>
+    <div
+      ref={(node) => {
+        surfaceRef.current = node;
+      }}
+      className={cn("space-y-2", className)}
+    >
       {label && (
         <label htmlFor={inputId} className="block text-sm font-medium">
           {label}
@@ -367,7 +437,11 @@ export function FilePicker({
         onDrop={(e) => {
           e.preventDefault();
           setDragging(false);
-          if (!disabled) onPick(e.dataTransfer?.files ?? null);
+          if (!disabled) {
+            setPasteArmed(false);
+            setMessage(null);
+            onPick(e.dataTransfer?.files ?? null);
+          }
         }}
         className={cn(
           "flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-[10px] border border-dashed border-input px-4 py-6 text-center transition-colors",
@@ -387,34 +461,7 @@ export function FilePicker({
       </div>
 
       {input}
-      {onPaste && (
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            tabIndex={disabled ? -1 : 0}
-            aria-disabled={disabled || undefined}
-            onClick={() => {
-              if (disabled) return;
-              setPasteArmed(true);
-              setMessage(null);
-              pasteTargetRef.current?.focus();
-            }}
-            className="inline-flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-0.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-60"
-          >
-            <ClipboardIcon />
-            {pasteArmed ? tr("Press Ctrl+V now") : tr("or paste an image")}
-          </button>
-          <div
-            ref={pasteTargetRef}
-            role="textbox"
-            aria-label={tr("Paste an image")}
-            className="sr-only"
-            tabIndex={disabled ? -1 : 0}
-            contentEditable
-            suppressContentEditableWarning
-          />
-        </div>
-      )}
+      {pasteControl && <div className="flex items-center gap-2">{pasteControl}</div>}
       {message && (
         <p className="micro text-destructive" role="status">
           {message}

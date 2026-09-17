@@ -5,6 +5,7 @@ import * as React from "react";
 import type { Editor } from "@tiptap/react";
 import { Button } from "@/components/ui/button";
 import { FilePicker, UploadList } from "@/components/ui/image-upload";
+import { pasteFileFromEvent } from "@/components/ui/upload-paste";
 import { useToast } from "@/components/ui/toast";
 import { useUpload } from "@/lib/use-upload";
 import { useFabFloor } from "@/lib/fab-floor";
@@ -84,6 +85,7 @@ export function Composer({
     id: string;
   } | null>(null);
   const [draftReady, setDraftReady] = React.useState(false);
+  const [pasteMessage, setPasteMessage] = React.useState<string | null>(null);
 
   const upload = useUpload<UploadedAttachment>({
     profile: "photo",
@@ -170,6 +172,7 @@ export function Composer({
   }
   function changeText(value: string) {
     if (!editRef.current) untouched.current = false;
+    setPasteMessage(null);
     setText(value);
     scheduleRequest.current = null;
     onTyping?.();
@@ -383,7 +386,10 @@ export function Composer({
         <ComposerActions
           disabled={busy || !!editingMessage}
           onEmoji={(glyph) => insertText(glyph)}
-          onFile={() => fileOpenRef.current?.()}
+          onFile={() => {
+            setPasteMessage(null);
+            fileOpenRef.current?.();
+          }}
           onRecord={(card) => {
             scheduleRequest.current = null;
             setRecords((r) =>
@@ -404,29 +410,51 @@ export function Composer({
             disabled={busy}
             label={tr("Attach a file")}
             onPick={(files) => {
+              setPasteMessage(null);
               scheduleRequest.current = null;
               upload.pick(files);
             }}
           />
         </div>
-        <MessageEditor
-          reset={editorReset}
-          onChange={changeText}
-          onSend={() => {
-            void submit();
+        <div
+          className="min-w-0 flex-1"
+          onPaste={(e) => {
+            if (busy || editingMessage) return;
+            const result = pasteFileFromEvent(e, ACCEPT);
+            if (result.kind === "accepted") {
+              e.preventDefault();
+              setPasteMessage(null);
+              scheduleRequest.current = null;
+              void upload.pick([result.file]);
+              return;
+            }
+            if (result.kind === "rejected") {
+              e.preventDefault();
+              setPasteMessage(
+                tr("That file type isn't accepted here — choose a file instead."),
+              );
+            }
           }}
-          onEditLast={
-            !editingMessage &&
-            !ready.length &&
-            !records.length &&
-            !upload.items.length
-              ? onEditLast
-              : undefined
-          }
-          onCancel={editingMessage ? cancelEdit : undefined}
-          disabled={busy}
-          editorRef={editorRef}
-        />
+        >
+          <MessageEditor
+            reset={editorReset}
+            onChange={changeText}
+            onSend={() => {
+              void submit();
+            }}
+            onEditLast={
+              !editingMessage &&
+              !ready.length &&
+              !records.length &&
+              !upload.items.length
+                ? onEditLast
+                : undefined
+            }
+            onCancel={editingMessage ? cancelEdit : undefined}
+            disabled={busy}
+            editorRef={editorRef}
+          />
+        </div>
         {editingMessage ||
         text.trim() ||
         ready.length ||
@@ -448,8 +476,16 @@ export function Composer({
           <VoiceRecorder onRecorded={sendVoiceNote} disabled={busy} />
         )}
       </div>
-      <p className="px-14 pb-2 text-[10px] text-muted-foreground">
+      <p className="px-14 pb-1 text-[10px] text-muted-foreground">
         {tr("Enter to send · Shift + Enter for a new line")}
+      </p>
+      <p
+        className={`px-14 pb-2 text-[10px] ${
+          pasteMessage ? "text-destructive" : "text-muted-foreground"
+        }`}
+        role={pasteMessage ? "status" : undefined}
+      >
+        {pasteMessage || tr("Drop a file here or press Ctrl+V to attach it.")}
       </p>
       <ScheduledMessages
         channelId={channelId}

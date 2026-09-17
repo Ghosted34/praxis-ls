@@ -914,6 +914,48 @@ and an open button, so it is an `<li>` with three controls rather than one — i
 (a flush bordered list wants a different rail from a rounded one); the meaning of "this is
 the open one" is shared.
 
+### 3.15 The sign-in screen — the device remembers, and lets go
+
+`features/auth/login-modal.tsx` is the front door, and it is **identity-first**: once a
+device has signed somebody in, it greets them by name and opens on the fastest route *that
+device* can actually complete. Three device-bound stores decide what that is — none of them
+is session state, and all three survive sign-out on purpose:
+
+| Store | Answers |
+| --- | --- |
+| `lastSessionStore` | whose account this device belongs to. Turns the screen into a greeting and removes the email field entirely. |
+| `pinStore` | this browser holds a Quick PIN for that account. |
+| `passkeyDeviceStore` | this browser holds a passkey for that account. |
+
+Priority is **PIN → passkey → password**. The PIN leads when it exists because it is four
+taps and the passkey ceremony needs a tap to start at all; the orb sits above the boxes so
+the choice is visible; the password is a fallback link rather than an empty field competing
+with both, and it is the whole door when neither exists. A route is offered **only** when the
+device can complete it — a PIN that exists for the account on some *other* machine must not
+put boxes on this screen. That is exactly why the passkey record is local: the server will
+happily list a credential that this browser's authenticator cannot answer.
+
+**WebAuthn cannot auto-prompt.** `navigator.credentials.get()` is refused outside a user
+gesture, so "defaults to the passkey" can only ever mean *the ceremony is the most prominent
+thing on the card and exactly one tap away*. Never write an effect that calls it on mount.
+
+**The email field is absent, not read-only, while the device knows you.** That is what
+retired the old refill defect — a sync effect that could not tell "the user just deleted the
+last character" from "the prefill has not happened yet", and so re-filled the address the
+user was clearing. Changing account is `Not you? Switch account`, which clears
+`lastSessionStore` and hands over an empty, focused field.
+
+**Sign-out asks, because the answer differs by machine.** `<SignOutDialog>` offers a plain
+sign-out (keeps the identity; tomorrow's sign-in is fast) and "Sign out and remove this
+account" (clears the greeting, the PIN record and the passkey record). The removal is
+`forgetDeviceAccount()` in `lib/device-account.ts`, which owns that set so a refactor cannot
+drop one — a PIN left behind still opens the account from the sign-in screen's PIN tab, and
+nothing on screen would say so. Order matters: call it **after** `logout()`, which restores
+its own snapshot of the device keys as it wipes `localStorage`.
+
+`features/auth/login-modal.email.test.tsx` and `login-modal.identity.test.tsx` are the
+contracts for all of the above.
+
 ## 4. Accessibility — the floor, not the aspiration
 
 WCAG 2.1 AA is the minimum. `eslint-plugin-jsx-a11y` runs on every build and the primitives

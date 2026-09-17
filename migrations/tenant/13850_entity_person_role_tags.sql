@@ -44,10 +44,22 @@
 --
 -- ── SCOPE ───────────────────────────────────────────────────────────────────
 --
--- 0515 is baselined and frozen; this is an ALTER against it. The CHECK is added
--- in a DO block because Postgres has no ADD CONSTRAINT IF NOT EXISTS, and the
--- column with IF NOT EXISTS so a partial run re-runs clean. No backfill: '{}'
--- is the truthful value for every existing row, whose union is its `role`.
+-- 0515 is baselined and frozen; this is an ALTER against it, and the column is
+-- added with IF NOT EXISTS so a partial run re-runs clean. No backfill: '{}' is
+-- the truthful value for every existing row, whose union is its `role`.
+--
+-- NO CHECK CONSTRAINT, DELIBERATELY. A migration above 13791 may not constrain a
+-- table it did not create: provisioning migrates `live` and then `sandbox`, and
+-- 13791 mirrors live's constraints into sandbox by reading them back — so a
+-- CHECK added here would be re-read by 13791 in the sandbox pass before this
+-- file has run there, and abort provisioning on a column that does not exist yet
+-- (`tests/unit/migration-constraint-ordering.test.js`, whose header says the
+-- same). The closed list of eight roles is therefore enforced in the shared
+-- schema — `role_tags: z.array(requiredEnum(PERSON_ROLES, "Role"))`, the same
+-- vocabulary `role` is validated against — which is where a bad value becomes a
+-- 422 naming the field instead of a 23514 the operator cannot act on. That is
+-- also why the enum must be changed in `packages/shared/schemas/entity-common.js`
+-- FIRST if the vocabulary ever grows.
 -- ============================================================================
 
 ALTER TABLE entity_person
@@ -56,37 +68,8 @@ ALTER TABLE entity_person
 COMMENT ON COLUMN entity_person.role_tags IS
   'Additional roles held by the same person, beside the primary `role`. The effective set is role + role_tags (see entityCommon.personRoles). Empty on every row written before 13850.';
 
--- The values are the same eight 0515 allows for `role`, enforced the same way.
--- `<@` is "is contained by": every element of role_tags must be in the list.
--- An empty array is trivially contained, which is what makes the default valid.
---
--- The guard joins pg_class/pg_namespace and pins current_schema(): a tenant
--- database has both `live` and `sandbox`, and `conname` alone would let the
--- first-migrated schema's row satisfy the check for the second, silently
--- skipping its ADD (the 13791 defect — see check-constraint-guards.js).
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1
-      FROM pg_constraint c
-      JOIN pg_class t     ON t.oid = c.conrelid
-      JOIN pg_namespace n ON n.oid = t.relnamespace
-     WHERE c.conname = 'entity_person_role_tags_valid'
-       AND t.relname = 'entity_person'
-       AND n.nspname = current_schema()
-  ) THEN
-    ALTER TABLE entity_person ADD CONSTRAINT entity_person_role_tags_valid
-      CHECK (role_tags <@ ARRAY[
-        'SHAREHOLDER', 'DIRECTOR', 'OFFICER', 'LEGAL_REPRESENTATIVE',
-        'AUTHORISED_SIGNATORY', 'BENEFICIAL_OWNER', 'STATUTORY_AUDITOR',
-        'SECRETARY'
-      ]::text[]);
-  END IF;
-END $$;
-
 -- DOWN
 -- The column is additive and nothing reads it before this migration's code
 -- ships, so undoing is a drop. It takes the extra roles with it — rows keep
 -- their primary `role`, which is the whole state a pre-13850 database had.
--- ALTER TABLE entity_person DROP CONSTRAINT IF EXISTS entity_person_role_tags_valid;
 -- ALTER TABLE entity_person DROP COLUMN IF EXISTS role_tags;

@@ -23,7 +23,7 @@
  * 5. NO APPROVED COSTING IS A SENTENCE, NOT AN EMPTY TABLE.
  */
 import { describe, it, expect, vi } from "vitest";
-import { screen, within, waitFor } from "@testing-library/react";
+import { act, screen, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { apiClientMock, authContextMock, renderScreen } from "@/test/screen-harness";
@@ -131,7 +131,7 @@ const TIMELINE = {
   grades: null,
 };
 
-const routes = (s: unknown) => ({
+const routes = (s: unknown, extra: Record<string, unknown> = {}) => ({
   "/operations": [{ dossier_id: DOSSIER, ref: "SLAS-OPS-2026-0117" }],
   [`/costing/reconciliations/${DOSSIER}`]: s,
   [`/costing/reconciliations/${DOSSIER}/timeline`]: TIMELINE,
@@ -139,6 +139,7 @@ const routes = (s: unknown) => ({
     { user_id: "u-2", full_name: "Alice Ngo" },
     { user_id: "u-3", full_name: "Jean Mballa" },
   ],
+  ...extra,
 });
 
 describe("the sheet", () => {
@@ -168,6 +169,37 @@ describe("the sheet", () => {
       const foot = screen.getByText("Total").closest("tr")!;
       expect(within(foot).getByText(/131,250|131 250/)).toBeInTheDocument();
     });
+  });
+
+  it("a refetch on focus does not clobber a dirty actual (the b6294e1 lesson)", async () => {
+    // The named §9 regression. Type a new actual WITHOUT blurring (the server
+    // has not been told), then let the window-focus refetch fire against a
+    // route mock that still holds the ORIGINAL sheet — so the merge, not a
+    // changed server value, is what is under test. The typed value must
+    // survive, and the totals must keep reflecting it.
+    const user = userEvent.setup();
+    renderScreen(<ReconciliationPage />, { routes: routes(sheet()) });
+    await pickFile(user);
+
+    const input = within((await screen.findByText("Port Charges")).closest("tr")!)
+      .getByLabelText(/actual spent/i);
+    await user.clear(input);
+    await user.type(input, "131250");
+    // No blur — the draft is live state, keyed by line, independent of the
+    // resource underneath it.
+
+    // The established focus mechanism in this codebase (see
+    // app/layout/permission-resilience.test.tsx), not an invented one.
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"));
+    });
+
+    // A type="number" input reports its valueAsNumber — the typed figure, not
+    // the 119250 the refetched sheet carries.
+    expect(input).toHaveValue(131250);
+    // The footer still re-foots from the draft, not from the refetch.
+    const foot = screen.getByText("Total").closest("tr")!;
+    expect(within(foot).getByText(/131,250|131 250/)).toBeInTheDocument();
   });
 
   it("offers a + on a line that owes a receipt and has none", async () => {
@@ -243,6 +275,97 @@ describe("the sheet", () => {
   });
 });
 
+
+/**
+ * §8.1 — UNACCOUNTED SPEND (owner decision B, 17/09/2026). Spend the approved
+ * costing does not carry: the entry posted, the tray says so, and the file
+ * cannot go to Finance until each one is mapped to a line or the costing is
+ * amended. The tray renders ABOVE the grid, because it is not one of the
+ * grid's lines — it has no budget at all.
+ */
+const unaccounted = (over: Record<string, unknown> = {}) => ({
+  cost_entry_id: "ce-1",
+  amount: 198000,
+  category: "procurement",
+  spent_on: null,
+  created_at: "2026-09-10T09:00:00.000Z",
+  source_hint: "Supplier invoice · journal 00000070",
+  ...over,
+});
+
+describe("unaccounted spend — the tray above the grid (guide §8.1)", () => {
+  it("lists every unmapped entry, with a line picker, and says so in the TL;DR", async () => {
+    const user = userEvent.setup();
+    renderScreen(<ReconciliationPage />, {
+      routes: routes(sheet({ unaccounted: [unaccounted()] })),
+    });
+    await pickFile(user);
+
+    expect(await screen.findByText("Unaccounted spend")).toBeInTheDocument();
+    expect(screen.getByText(unaccounted().source_hint)).toBeInTheDocument();
+    // The amount is the ledger's, in the sheet's currency — once, on the row.
+    expect(screen.getByText(/198,000|198 000/)).toBeInTheDocument();
+    // The TL;DR block carries the attention row while the count is above zero.
+    expect(screen.getByText(/before this can go to finance/i)).toBeInTheDocument();
+    expect(screen.getByText(/must be mapped to a budget line/i)).toBeInTheDocument();
+    // The section sits ABOVE the grid, not inside it: document order.
+    const body = document.body.textContent ?? "";
+    expect(body.indexOf("Unaccounted spend")).toBeGreaterThanOrEqual(0);
+    expect(body.indexOf("Unaccounted spend")).toBeLessThan(body.indexOf("Every line on the approved costing"));
+  });
+
+  it("maps an entry to a budget line, and mapping the last one clears the gate", async () => {
+    const user = userEvent.setup();
+    const postSpy = vi.spyOn(apiClient, "tenant");
+    renderScreen(<ReconciliationPage />, {
+      routes: routes(
+        sheet({ unaccounted: [unaccounted()] }),
+        {
+          [`/costing/reconciliations/${DOSSIER}/unaccounted/ce-1/map`]: sheet({ unaccounted: [] }),
+        },
+      ),
+    });
+    await pickFile(user);
+    await screen.findByText("Unaccounted spend");
+
+    await user.selectOptions(screen.getByRole("combobox", { name: /map to line/i }), "cl-1");
+    await user.click(screen.getByRole("button", { name: "Map" }));
+
+    await waitFor(() => {
+      const call = postSpy.mock.calls.find(
+        ([p, o]) =>
+          String(p).endsWith(`/unaccounted/ce-1/map`) && (o as { method?: string })?.method === "POST",
+      );
+      expect(call).toBeTruthy();
+      expect(call?.[1]).toMatchObject({ body: { costing_line_id: "cl-1" } });
+    });
+
+    // The map returns the whole sheet with the tray empty: the section and
+    // its TL;DR row are gone — which is what re-enables submit.
+    await waitFor(() => expect(screen.queryByText("Unaccounted spend")).toBeNull());
+    expect(screen.queryByText(/unaccounted spend/i)).toBeNull();
+    postSpy.mockRestore();
+  });
+
+  it("shows nothing at all when there is nothing unaccounted — the common case", async () => {
+    const user = userEvent.setup();
+    renderScreen(<ReconciliationPage />, { routes: routes(sheet()) });
+    await pickFile(user);
+    await screen.findByText("Port Charges");
+    expect(screen.queryByText("Unaccounted spend")).toBeNull();
+  });
+
+  it("on a sheet that is not OPEN, the tray is readable but not mappable", async () => {
+    const user = userEvent.setup();
+    renderScreen(<ReconciliationPage />, {
+      routes: routes(sheet({ status: "SETTLED", reconciliation_id: "r-1", unaccounted: [unaccounted()] })),
+    });
+    await pickFile(user);
+    expect(await screen.findByText("Unaccounted spend")).toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: /map to line/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/settled — it re-opens when the facts change/i)).toBeInTheDocument();
+  });
+});
 
 /**
  * THE PICTURE (PR 3). The ConsumptionTrack is the one visual on the sheet;

@@ -21,4 +21,9 @@ module.exports = {
   // whose conversation is still open. An event — not a log line — because the
   // whole point of the warning is that it can be counted.
   SETTLEMENT_DUE: "reconciliation.settlement_due",
+  // §8.1, owner decision (17/09/2026, option B): an unaccounted spend entry
+  // was mapped to a budget line. An audit action, deliberately not on the
+  // notification allowlist — the mapping IS the fix, and there is nobody to
+  // tell until the sheet itself moves.
+  UNACCOUNTED_MAPPED: "reconciliation.unaccounted_mapped",
 };

@@ -34,11 +34,21 @@ import { Modal, Field, Select } from "@/components/ui/modal";
 import { Panel } from "@/components/ui/panel";
 import { ErrorState, EmptyState } from "@/components/ui/states";
 import { Pill, type Tone } from "@/components/ui/pill";
+import { FilePicker, UploadList } from "@/components/ui/image-upload";
+import { useUpload } from "@/lib/use-upload";
 import { useResource, useList, errMsg } from "@/lib/use-resource";
 import { money, num, dateFmt, todayISO } from "@/lib/format";
 import { tr } from "@/lib/i18n";
+import { uploadVaultFile } from "@/lib/masterdata-api";
 import type { Dossier } from "@/lib/operations-api";
 import * as api from "@/lib/costing-api";
+
+/** What a cost proof may be (Q8) — whatever the supplier actually sent. The
+ *  server sniffs the bytes; this is the courtesy that stops a slow upload of
+ *  something that was never going to be accepted. 15 MB, because a multi-page
+ *  colour scan of a customs file clears 5 MB routinely (13801). */
+const PROOF_ACCEPT = ".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.xls,.xlsx";
+const PROOF_MAX_BYTES = 15 * 1024 * 1024;
 
 const STATE_TONE: Record<string, Tone> = {
   ISSUED: "blue",
@@ -226,16 +236,61 @@ function RetireForm({
   const overRetired = f.amount !== "" && amt > open;
   const needsDossier = f.kind === "RECEIPT" && !f.dossier_id;
 
+  /**
+   * The proof is a document, not a uuid to paste — the last paste-a-uuid box
+   * in the finance domain, replaced by the engine (CLAUDE.md rule 3).
+   *
+   * `autoStart: false`: the upload goes out on Save, at which moment the
+   * form's own required Operations-file field is guaranteed set (Save is
+   * disabled without it), so `send` reads the CURRENT `f.dossier_id` — no
+   * stale closure, and there is no dossier-less path from this box. That
+   * dossier_id is what unlocks the server's COST_PROOF widening (15 MB,
+   * pdf/image/word/excel, sniffed — document_vault.controller.js).
+   *
+   * `profile: "document"` is required, not cosmetic: auto-levelling a customs
+   * scan makes it stop matching the paper, and document_signature takes its
+   * artifact_hash from the vault row's content_hash.
+   *
+   * The vault id lands on the form state exactly where `proof_vault_id`
+   * always flowed — the retire payload. The field stays OPTIONAL client-side
+   * (no `required`): whether an undocumented receipt is refused is the tenant
+   * setting `finance.regie.require_proof_for_receipt`, decided in regie.service
+   * — not here.
+   */
+  const upload = useUpload<{ doc_id: string }>({
+    profile: "document",
+    autoStart: false,
+    maxBytes: PROOF_MAX_BYTES,
+    send: (file, ctx) =>
+      uploadVaultFile(
+        file,
+        { dossier_id: f.dossier_id, doc_type: "COST_PROOF", original_name: file.name },
+        { onProgress: ctx.onProgress, signal: ctx.signal },
+      ),
+  });
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
     try {
+      // A picked file goes out FIRST: the proof_vault_id the retirement
+      // receives is the vault's answer, and a second Save after a failed
+      // upload is a no-op re-send of nothing (the item is already success).
+      let proofId = f.proof_vault_id;
+      if (f.kind === "RECEIPT" && upload.items.length > 0) {
+        const out = await upload.start();
+        if (!out.ok) throw new Error("The proof document did not upload — remove it or try again.");
+        if (out.results.length > 0) {
+          proofId = out.results[0].doc_id;
+          set("proof_vault_id", proofId);
+        }
+      }
       await api.retireRegie(advance.regie_advance_id, {
         kind: f.kind,
         amount: amt,
         dossier_id: f.kind === "RECEIPT" ? f.dossier_id : undefined,
-        proof_vault_id: f.proof_vault_id || undefined,
+        proof_vault_id: proofId || undefined,
         memo: f.memo || undefined,
         entry_date: f.entry_date,
       });
@@ -260,7 +315,12 @@ function RetireForm({
           <Field label={tr("Kind")} required>
             <Select
               value={f.kind}
-              onChange={(e) => set("kind", e.target.value)}
+              onChange={(e) => {
+                // A proof belongs to the RECEIPT leg only: switching to a cash
+                // return drops a pending one rather than carrying it along.
+                if (e.target.value !== "RECEIPT") upload.reset();
+                set("kind", e.target.value);
+              }}
             >
               <option value="RECEIPT">{KIND_LABEL.RECEIPT}</option>
               <option value="CASH_RETURN">{KIND_LABEL.CASH_RETURN}</option>
@@ -311,13 +371,20 @@ function RetireForm({
           </Field>
           {f.kind === "RECEIPT" && (
             <Field
-              label={tr("Proof document id")}
-              hint="Required unless the tenant has relaxed require_proof_for_receipt."
+              label={tr("Proof document")}
+              hint={tr(
+                "The receipt or invoice for this cash. Required unless the tenant has relaxed require_proof_for_receipt — the server decides, not this form.",
+              )}
             >
-              <Input
-                value={f.proof_vault_id}
-                onChange={(e) => set("proof_vault_id", e.target.value)}
-              />
+              <div className="space-y-2">
+                <FilePicker
+                  accept={PROOF_ACCEPT}
+                  onPick={(files) => void upload.pick(files)}
+                  label={tr("Attach the receipt or invoice")}
+                  hint={tr("PDF, image, Word or Excel — up to 15 MB. Uploaded when you record the retirement.")}
+                />
+                <UploadList items={upload.items} onRemove={upload.remove} onRetry={upload.retry} />
+              </div>
             </Field>
           )}
         </div>

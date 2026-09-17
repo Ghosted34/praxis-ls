@@ -14,6 +14,13 @@ const schemas = {
   idParam: z.object({ id: UUID }),
   lineParam: z.object({ dossierId: UUID, costingLineId: UUID }),
   docParam: z.object({ dossierId: UUID, costingLineId: UUID, docId: UUID }),
+  unaccountedParam: z.object({ dossierId: UUID, costEntryId: UUID }),
+
+  /** §8.1 (owner decision B): home an unaccounted spend entry on a budget
+   *  line. One line, by id — the tray row already says which entry. */
+  mapUnaccounted: z.object({
+    costing_line_id: UUID,
+  }).strict(),
 
   /**
    * Every field optional, and `.nullable()` on the ones a person can CLEAR.
@@ -81,6 +88,8 @@ module.exports = {
   idParam: mw("idParam", true),
   lineParam: mw("lineParam", true),
   docParam: mw("docParam", true),
+  unaccountedParam: mw("unaccountedParam", true),
+  mapUnaccounted: mw("mapUnaccounted"),
   patchLine: mw("patchLine"),
   applyReason: mw("applyReason"),
   attachDocument: mw("attachDocument"),

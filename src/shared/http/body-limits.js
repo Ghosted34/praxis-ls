@@ -40,8 +40,10 @@
  *      photograph is 2-5 MB, so this was not an edge case: the feature did not
  *      work for the files it exists to carry.
  *
- * Three times is a pattern, so the knowledge lives in one greppable place
- * rather than as a fourth block of prose in `server.js`. When a new route takes
+ * Mail exposed the same defect once more, but did not get another exemption:
+ * that endpoint now uses multipart/Multer, so the file is no longer JSON and
+ * never reaches this parser. Three base64 routes are enough of a pattern for
+ * the remaining knowledge to live in one greppable place. When a new route takes
  * a base64 body, it belongs here — and `tests/unit/body-limits.test.js` fails if
  * one of these limits stops covering the cap its feature advertises.
  *

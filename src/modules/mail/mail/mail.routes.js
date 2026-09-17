@@ -28,6 +28,7 @@ const { requirePermission } = require("../../../middleware/rbac");
 const { requireFeature } = require("../../../middleware/feature-gate");
 const c = require("./mail.controller");
 const v = require("./mail.validator");
+const { singleFile } = require("../../../shared/http/upload.middleware");
 
 const {
   requireVisibleThread,
@@ -309,7 +310,12 @@ router.post("/send/:id/retry", composer, requirePermission(M, "create"), c.retry
 // authorises them: the service checks the draft is the caller's before it will
 // list, add or remove anything.
 router.get("/drafts/:id/attachments", composer, requirePermission(M, "view"), c.draftAttachments);
-router.post("/attachments/upload", composer, requirePermission(M, "create"), v.attachmentUpload, c.uploadAttachment);
+// Parse only after the feature and permission gates: an unauthorised caller must
+// not be allowed to make the process buffer a 25 MB file. Multer must still run
+// before the validator, because multipart fields do not exist on req.body until
+// it has parsed the request.
+router.post("/attachments/upload", composer, requirePermission(M, "create"),
+  singleFile("file"), v.attachmentUpload, c.uploadAttachment);
 router.post("/attachments/from-vault", composer, requirePermission(M, "create"), v.attachmentFromVault, c.attachFromVault);
 router.delete("/drafts/:id/attachments/:attachmentId", composer, requirePermission(M, "edit"), c.removeAttachment);
 

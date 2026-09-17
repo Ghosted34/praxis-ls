@@ -3,10 +3,11 @@
 /**
  * The body-size exemptions, pinned.
  *
- * WHY THIS TEST EXISTS. The same defect has been found three times — a CV, a
- * staff file, and every picture on a tenant's website — and each time the
- * symptom was identical and useless: the feature simply did not work, with no
- * field to blame and no message the screen could show, because body-parser
+ * WHY THIS TEST EXISTS. The same defect remains on three JSON transports — a
+ * CV, a staff file, and every picture on a tenant's website. Mail hit it too,
+ * then moved to multipart/Multer instead of adding another exception. Each time
+ * the symptom was identical and useless: the feature simply did not work, with
+ * no field to blame and no message the screen could show, because body-parser
  * raises its 413 BEFORE any application code runs. Nothing failed while the
  * feature was being built, because the developer's test image was small.
  *
@@ -45,7 +46,6 @@ function appWithParsers() {
   app.use(express.json({ limit: DEFAULT_LIMIT }));
   // Answers only if the body parsed — which is the single fact under test.
   app.use((req, res) => res.status(200).json({ bytes: (req.body.data_url || "").length }));
-  // eslint-disable-next-line no-unused-vars
   app.use((err, _req, res, _next) => res.status(err.status || 500).json({ type: err.type }));
   return app;
 }

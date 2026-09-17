@@ -130,13 +130,6 @@ export type ComposerProps = {
  */
 const splitAddresses = parseAddresses;
 
-const fileToDataUrl = (file: File) => new Promise<string>((resolve, reject) => {
-  const r = new FileReader();
-  r.onload = () => resolve(String(r.result || ""));
-  r.onerror = () => reject(new Error(`${tr("Could not read")} ${file.name}`));
-  r.readAsDataURL(file);
-});
-
 export function Composer({
   connectionId,
   mailboxes = [],
@@ -432,12 +425,8 @@ export function Composer({
         setAttachPercent(0);
          
         await api.uploadAttachment(
-          {
-            email_draft_id: id,
-            filename: file.name,
-             
-            data_url: await fileToDataUrl(file),
-          },
+          file,
+          { email_draft_id: id },
           setAttachPercent,
         );
       }

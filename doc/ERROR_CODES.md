@@ -79,7 +79,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `BAD_CUSTOM_FIELD` | 422 | 5× | — |
 | `BAD_DECISION` | 422 | 2× | — |
 | `BAD_FEE_ACCOUNT` | 422 | 1× | — |
-| `BAD_FILE` | 400, 422 | 13× | — |
+| `BAD_FILE` | 400, 422 | 15× | — |
 | `BAD_FILE_TYPE` | 422 | 11× | — |
 | `BAD_FONT` | 422 | 3× | — |
 | `BAD_HEADERS` | 422 | 1× | — |

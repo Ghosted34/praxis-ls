@@ -46,7 +46,8 @@ Dates are ISO-8601, UTC.
 
 ### Fixed
 
-- **The Tasks board's detail is a pane beside the board, not a drawer over it — and a card opens from anywhere on the card.** Three defects behind one report. (1) The phone sheet was wrapped in `<div className="xl:hidden">`, which hides nothing: Radix renders a dialog through a portal into `<body>`, so the wrapper never becomes an ancestor of anything visible and the sheet opened at every width — over the board, next to the detail column it was supposed to fill. The branch is now made in JavaScript (`useIsWide()`), per guide §3.11. (2) The detail column was reserved permanently and held "Select a card to see its steps…", so a fifth of every wide screen was spent on a placeholder that squeezed the four kanban columns; the column now exists only while a task is open (`xl:grid-cols-[minmax(0,1fr)_22rem]`), is sticky with its own scroll so a long task stays reachable, and the board has the width the rest of the time. (3) Only the title line opened a task: the title, pills, date and assignee are now inside ONE `<button>` (the card *is* the target), with the drag grip as a SIBLING over the title strip rather than an ancestor of it — a `::after` stretched from the title would have put the grip's `touch-action: none` above the click target and stopped a phone scrolling the board, and a sibling also means the click a drag leaves behind lands on the grip and opens nothing. The open card wears `<IndexRow>`'s pair (`.index-row-open` + the rail + `aria-current`) so the board says which task the pane is showing, `TaskPanelEmpty` is gone with the reserved column, and the board's column headings are `<h2>` — they skipped a level under the page's `<h1>` and axe failed the screen on `heading-order`. Covered by `features/workspace/tasks/tasks-page.test.tsx` (pane-not-dialog on desktop, card-body click, no reserved column, `?task=` deep link, phone sheet, axe).
+- **Mail attachments now upload as multipart bytes, not base64 JSON.** The old transport expanded an ordinary 2 MiB Word document to about 2.7 MiB and then lost it to the API's 2 MiB JSON parser before the mail service saw it. The composer now posts the original `File` through `FormData`; Multer applies a 25 MiB per-file bound and hands the buffer to the existing vault content-sniffing path, while the service retains its stricter 25 MiB aggregate-per-message rule. The temporary 35 MB JSON exception is gone, and the endpoint explicitly refuses the old `data_url` shape rather than silently reintroducing the inflated transport.
+- **The Tasks board's detail is a pane beside the board, not a drawer over it — and a card opens from anywhere on the card.** Three defects behind one report. (1) The phone sheet was wrapped in `<div className="xl:hidden">`, which hides nothing: Radix renders a dialog through a portal into `<body>`, so the wrapper never becomes an ancestor of anything visible and the sheet opened at every width — over the board, next to the detail column it was supposed to fill. The branch is now made in JavaScript (`useIsWide()`), per guide §3.11. (2) The detail column was reserved permanently and held "Select a card to see its steps…", so a fifth of every wide screen was spent on a placeholder that squeezed the four kanban columns; the column now exists only while a task is open (`xl:grid-cols-[minmax(0,1fr)_22rem]`), is sticky with its own scroll so a long task stays reachable, and the board has the width the rest of the time. (3) Only the title line opened a task: the title, pills, date and assignee are now inside ONE `<button>` (the card _is_ the target), with the drag grip as a SIBLING over the title strip rather than an ancestor of it — a `::after` stretched from the title would have put the grip's `touch-action: none` above the click target and stopped a phone scrolling the board, and a sibling also means the click a drag leaves behind lands on the grip and opens nothing. The open card wears `<IndexRow>`'s pair (`.index-row-open` + the rail + `aria-current`) so the board says which task the pane is showing, `TaskPanelEmpty` is gone with the reserved column, and the board's column headings are `<h2>` — they skipped a level under the page's `<h1>` and axe failed the screen on `heading-order`. Covered by `features/workspace/tasks/tasks-page.test.tsx` (pane-not-dialog on desktop, card-body click, no reserved column, `?task=` deep link, phone sheet, axe).
 
 - **Vault document previews were CSP-blocked for PDFs and text files — `frame-src` is now explicit.** The preview dialog frames a membership-gated document as a `blob:` URL in an `<iframe>` (the bytes arrive via an authenticated fetch, exactly like chat attachments). `frame-src` was never set, so the browser fell back to `default-src 'self'` and refused every PDF/text preview — _"Framing 'blob:https://…' violates … 'default-src'. Note that 'frame-src' was not explicitly set"_ — while images in the same dialog kept working because `img-src` already said `blob:`. This is the same silent-fallback defect that once blocked every voice note (`media-src`, see `tests/unit/csp-blob-media.test.js`); the policy now sets `frame-src: 'self' blob:` and the blob-consumer test table gained the iframe row so the next forgotten directive fails a test instead of a user.
 
@@ -171,7 +172,7 @@ Dates are ISO-8601, UTC.
   reconciled status, so a Mon–Sat yard and a Mon–Fri office are counted differently; waived days are
   excluded from the count and stated rather than dropped. Migration `12746` adds `WEEKLY` to
   `hr_query.source` and a dedicated partial unique index `(employee_id, work_date) WHERE source =
-  'WEEKLY'` — the weekly row carries `hr_rule_id = NULL` so it stays OUT of 0704's daily index (where
+'WEEKLY'` — the weekly row carries `hr_rule_id = NULL` so it stays OUT of 0704's daily index (where
   a week-end date would collide with that day's own lateness query), and because a NULL is distinct
   from every other NULL in a unique index, that dedicated index is the entire deduplication story.
   The nightly reconcile job gained the step, gated on Monday in the workplace zone, running on its
@@ -222,7 +223,7 @@ Dates are ISO-8601, UTC.
   Express + CommonJS, Zod validators, `AppError` through one error handler, `src/modules/<area>/<module>/`
   with its five conventional files, the tenant/platform DB split — names the frameworks that are
   absent so the model stops reaching for them, and explains that a `ValidationError: VALIDATION_ERROR:
-  <fields>` report is SYNTHETIC (its only frame is the route, and the failing values are not in it).
+<fields>` report is SYNTHETIC (its only frame is the route, and the failing values are not in it).
   It also resolves the failing route to the directory that serves it, read from the module tree at
   runtime rather than from a hand-kept map — `POST /api/tenant/mail/send` →
   `src/modules/mail/mail/ — mail.routes.js, mail.controller.js, mail.validator.js, …`, with 95% of
@@ -304,8 +305,7 @@ Dates are ISO-8601, UTC.
   and the settlement cannot disagree. The attendance log and provisional
   absence now select punches by a **local-zone window** instead of the UTC
   date, so a 00:30 Douala punch stops landing on the previous day. Punches
-  also record **what the device presented** (`location_source`, migration
-  10740) separately from whether a worksite existed to judge it: "we never got
+  also record **what the device presented** (`location_source`, migration 10740) separately from whether a worksite existed to judge it: "we never got
   a fix" and "GPS arrived, but this tenant has drawn no geofence" were both
   painted "No fix", which taught people to ignore the one signal that matters.
   HR Today now shows No GPS / Off-site / On-site / No worksite as four
@@ -323,7 +323,7 @@ Dates are ISO-8601, UTC.
   nothing called it. Entity and category stay locked, because the CoA leaf is
   already minted under the category's parent; renaming the account still
   renames its leaf. Emptying a field now clears it rather than leaving the old
-  value behind, and editing a *verified* account warns that the verification
+  value behind, and editing a _verified_ account warns that the verification
   stamp is not cleared automatically.
 
 - **The employee 360° is now the full record (10708).** The profile grew
@@ -544,7 +544,7 @@ Dates are ISO-8601, UTC.
   HTML document), and the outbox's `if (!html && !text) throw` guard saw the
   shell and let it through; the IMAP/SMTP provider then dropped the empty
   `text` part (`""` collapses to `undefined` via `||`), so the recipient got a
-  subject with no content. The outbox now checks *visible* content (strip
+  subject with no content. The outbox now checks _visible_ content (strip
   `<style>` blocks, strip tags, collapse whitespace, allow a real `<img>`):
   a message with no visible text and no image is refused with 422 "a message
   needs a body" before it is queued. Quote-only replies and image-only

@@ -149,6 +149,14 @@ export const UploadIcon = (p: P) => (
     <path d="M12 15V3m0 0 4 4m-4-4-4 4M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4" />
   </svg>
 );
+/** Clipboard — the glyph on the paste-a-screenshot option, so a paste target
+ *  is not carried by the word "paste" alone for users scanning the screen. */
+export const ClipboardIcon = (p: P) => (
+  <svg {...base(p)}>
+    <rect x="8" y="2" width="8" height="4" rx="1" />
+    <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+  </svg>
+);
 /** Dictation. The mic is the one control in the app a user has met before —
  *  the legacy discovery modal uses exactly this glyph — so it carries its own
  *  meaning without a label beside it. */

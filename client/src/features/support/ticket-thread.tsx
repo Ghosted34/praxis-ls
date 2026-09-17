@@ -255,6 +255,7 @@ export function TicketThreadModal({
             hint={tr("Show the Praxis team what you are seeing.")}
             multiple
             disabled={upload.items.length >= MAX_REPLY_IMAGES}
+            onPaste
           />
           <UploadList
             items={upload.items}

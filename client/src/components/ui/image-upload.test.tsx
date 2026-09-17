@@ -7,9 +7,9 @@
  * later refactor makes either of those optional again, these fail.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, act } from "@testing-library/react";
+import { render, screen, waitFor, act, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { ImageUpload } from "@/components/ui/image-upload";
+import { ImageUpload, FilePicker } from "@/components/ui/image-upload";
 
 /** jsdom implements neither of these; the engine uses both. */
 beforeEach(() => {
@@ -145,5 +145,76 @@ describe("ImageUpload", () => {
 
     await user.click(screen.getByRole("button", { name: "Remove" }));
     expect(global.URL.revokeObjectURL).toHaveBeenCalledWith("blob:preview-1");
+  });
+});
+
+describe("FilePicker paste", () => {
+  /** The subset of a real clipboard the engine reads: an items list whose
+   *  file-kind entry answers `getAsFile()`, and no `files` list. jsdom ships
+   *  no DataTransfer, so this is the shape `fireEvent.paste` forwards straight
+   *  onto the event's `clipboardData`. */
+  const pngClipboard = () => {
+    const file = new File(
+      [new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])],
+      "clip.png",
+      { type: "image/png" },
+    );
+    return {
+      items: [{ kind: "file", type: "image/png", getAsFile: () => file }],
+      files: [],
+    };
+  };
+
+  it("offers a third option beside choose and drag", () => {
+    render(<FilePicker onPick={() => {}} onPaste />);
+    expect(
+      screen.getByRole("button", { name: "or paste an image" }),
+    ).toBeInTheDocument();
+  });
+
+  it("routes a pasted screenshot through onPick as one file", () => {
+    const onPick = vi.fn();
+    render(<FilePicker onPick={onPick} onPaste />);
+
+    fireEvent.paste(window, {
+      clipboardData: pngClipboard(),
+    });
+
+    expect(onPick).toHaveBeenCalledTimes(1);
+    const list = onPick.mock.calls[0][0] as unknown as File[];
+    expect(Array.from(list)).toHaveLength(1);
+    expect(Array.from(list)[0].type).toBe("image/png");
+  });
+
+  it("does not treat a text paste as an image", () => {
+    const onPick = vi.fn();
+    render(<FilePicker onPick={onPick} onPaste />);
+
+    fireEvent.paste(window, {
+      clipboardData: { items: [], files: [] },
+    });
+
+    expect(onPick).not.toHaveBeenCalled();
+  });
+
+  it("reports an empty clipboard on an armed paste target", async () => {
+    const onPick = vi.fn();
+    const user = userEvent.setup();
+    render(<FilePicker onPick={onPick} onPaste />);
+
+    await user.click(screen.getByRole("button", { name: "or paste an image" }));
+    expect(
+      screen.getByRole("button", { name: "Press Ctrl+V now" }),
+    ).toBeInTheDocument();
+
+    const target = screen.getByLabelText("Paste an image");
+    fireEvent.paste(target, { clipboardData: { items: [], files: [] } });
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(/No image on the clipboard/),
+      ).toBeInTheDocument(),
+    );
+    expect(onPick).not.toHaveBeenCalled();
   });
 });

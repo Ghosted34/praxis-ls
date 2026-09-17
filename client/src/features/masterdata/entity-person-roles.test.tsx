@@ -151,7 +151,7 @@ async function openPeopleTab(people: unknown[] = [OWNER_DIRECTOR, PLAIN_HOLDER])
 }
 
 /** The table a person's row sits in, found by its section heading. */
-function tableOf(section: string): HTMLElement {
+function tableOf(section: string | RegExp): HTMLElement {
   const heading = screen.getByRole("heading", { name: section });
   const sectionEl = heading.closest("section") as HTMLElement;
   return within(sectionEl).getByRole("table");

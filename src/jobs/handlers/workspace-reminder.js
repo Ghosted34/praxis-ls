@@ -47,6 +47,7 @@
 const registry = require("../../services/tenant/registry.service");
 const repo = require("../../modules/dashboard/workspace/tasks.repo");
 const events = require("../../modules/dashboard/workspace/workspace.events");
+const service = require("../../modules/dashboard/workspace/tasks.service");
 const { entityRoute } = require("@praxis/shared");
 const { logger } = require("../../config/logger");
 
@@ -164,10 +165,15 @@ module.exports = async function workspaceReminderSweep(job) {
   const out = await registry.withTenantConnection(tenantMeta, env, async (c) => {
     const { notify } = require("../../modules/notification/notification.service");
     const timeZone = await timezoneOf(c);
-    return sweep(c, { notify, timeZone, limit });
+    const reminders = await sweep(c, { notify, timeZone, limit });
+    // The spawn half rides beside the reminder sweep, after it: reminders fire
+    // for the occurrence that is here, then the series materialises its next one
+    // (13840). One connection, one tick, both halves of "recurring".
+    const spawned = await service.spawnDue(c, { limit });
+    return { ...reminders, spawnedTasks: spawned.tasks, spawnedEvents: spawned.events };
   });
-  if (out.tasks || out.events || out.failures) {
-    logger.info({ tenant: tenantMeta.slug, env, ...out }, "[workspace] reminders swept");
+  if (out.tasks || out.events || out.failures || out.spawnedTasks || out.spawnedEvents) {
+    logger.info({ tenant: tenantMeta.slug, env, ...out }, "[workspace] reminders swept, occurrences spawned");
   }
   return out;
 };

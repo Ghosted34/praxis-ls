@@ -44,6 +44,19 @@ const dt = (msg) =>
 
 const DATETIME_MSG = "expected YYYY-MM-DD, YYYY-MM-DDTHH:mm, or an ISO 8601 instant";
 
+/**
+ * An iCal RRULE, accepted as a free string. Meaning is NOT validated here — a
+ * RRULE is meaningful only against the tenant's clock, and resolving it needs a
+ * database read a Zod schema cannot await. The service parses it
+ * (recurrence.js) and returns a 422 naming the part when it is not one this
+ * product implements. Shape/length are still checked here so an absurd value is
+ * rejected before it touches a connection.
+ */
+const recurrenceRule = z.string().trim().min(1).max(500);
+
+/** Whether an edit applies to this one occurrence or the whole series (13840). */
+const SERIES_SCOPE = ["this", "series"];
+
 const subtask = z
   .object({
     title: z.string().trim().min(1, "a step needs a title").max(300),
@@ -91,6 +104,7 @@ const taskCreate = z
     reminder_minutes: z.number().int().min(0).max(525600).nullable().optional(),
     remind_at: dt(DATETIME_MSG).nullable().optional(),
     subtasks: z.array(subtask).max(50).optional(),
+    recurrence_rule: recurrenceRule.optional(),
   })
   .strict();
 
@@ -107,6 +121,8 @@ const taskUpdate = z
     is_personal: z.boolean().optional(),
     reminder_minutes: z.number().int().min(0).max(525600).nullable().optional(),
     remind_at: dt(DATETIME_MSG).nullable().optional(),
+    recurrence_rule: recurrenceRule.nullable().optional(),
+    series: z.enum(SERIES_SCOPE).optional(),
   })
   .strict()
   .refine((v) => Object.keys(v).length > 0, { message: "nothing to update" });
@@ -142,6 +158,8 @@ const taskListQuery = strictQuery({
   audience: filters.enum(AUDIENCES),
   entity_type: z.string().trim().max(40).optional(),
   entity_id: filters.uuid,
+  // An allow-list, not free text — it lands in an ORDER BY (tasks.repo.js).
+  sort: z.enum(["due_asc", "due_desc", "created_desc", "priority_desc"]).optional(),
 });
 
 const boardQuery = strictQuery({
@@ -207,6 +225,7 @@ const eventUpdate = z
     entity_id: z.string().uuid().nullable().optional(),
     reminder_minutes: z.number().int().min(0).max(525600).nullable().optional(),
     remind_at: dt(DATETIME_MSG).nullable().optional(),
+    series: z.enum(SERIES_SCOPE).optional(),
     force: z.boolean().optional(),
   })
   .strict()
@@ -258,6 +277,7 @@ module.exports = {
     taskCreate, taskUpdate, statusChange, subtaskAdd, subtaskPatch, watcherAdd,
     eventCreate, eventUpdate, participantAdd, participantRespond,
     taskListQuery, boardQuery, dayQuery, deadlineQuery, eventListQuery,
+    recurrenceRule, SERIES_SCOPE,
   },
   STATUSES, PRIORITIES, RESPONSES, AUDIENCES,
 };

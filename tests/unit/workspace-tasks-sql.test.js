@@ -146,8 +146,8 @@ describe("tasks.repo — placeholders match parameters", () => {
     });
     const { sql, params } = c.calls[0];
     expectBound(c.calls[0]);
-    expect(sql.match(/\$\d+/g)).toHaveLength(14);
-    expect(params).toHaveLength(14);
+    expect(sql.match(/\$\d+/g)).toHaveLength(16);
+    expect(params).toHaveLength(16);
   });
 
   it("updateTask re-arms the reminder only when asked", async () => {

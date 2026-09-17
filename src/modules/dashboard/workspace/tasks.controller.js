@@ -43,6 +43,7 @@ const listTasks = asyncHandler(async (req, res) => {
       priority: q.priority,
       assigned_to: q.assigned_to,
       q: q.q,
+      sort: q.sort,
       limit: q.limit,
       offset: q.offset,
       entity: q.entity_type && q.entity_id ? { entity_type: q.entity_type, entity_id: q.entity_id } : null,

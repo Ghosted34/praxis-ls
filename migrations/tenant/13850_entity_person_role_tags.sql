@@ -59,10 +59,21 @@ COMMENT ON COLUMN entity_person.role_tags IS
 -- The values are the same eight 0515 allows for `role`, enforced the same way.
 -- `<@` is "is contained by": every element of role_tags must be in the list.
 -- An empty array is trivially contained, which is what makes the default valid.
+--
+-- The guard joins pg_class/pg_namespace and pins current_schema(): a tenant
+-- database has both `live` and `sandbox`, and `conname` alone would let the
+-- first-migrated schema's row satisfy the check for the second, silently
+-- skipping its ADD (the 13791 defect — see check-constraint-guards.js).
 DO $$
 BEGIN
   IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'entity_person_role_tags_valid'
+    SELECT 1
+      FROM pg_constraint c
+      JOIN pg_class t     ON t.oid = c.conrelid
+      JOIN pg_namespace n ON n.oid = t.relnamespace
+     WHERE c.conname = 'entity_person_role_tags_valid'
+       AND t.relname = 'entity_person'
+       AND n.nspname = current_schema()
   ) THEN
     ALTER TABLE entity_person ADD CONSTRAINT entity_person_role_tags_valid
       CHECK (role_tags <@ ARRAY[

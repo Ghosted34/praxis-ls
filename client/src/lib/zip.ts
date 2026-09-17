@@ -74,8 +74,23 @@ export function crc32(bytes: Uint8Array): number {
  * extract on Windows at all.
  */
 export function zipSafeName(name: string, fallback = "document"): string {
-  const cleaned = name
-    .replace(/[\\/:*?"<>|\u0000-\u001f]/g, "-")
+  /**
+   * Character codes rather than a regex class.
+   *
+   * `/[\\/:*?"<>|\u0000-\u001f]/` is what this wants to be, and eslint's
+   * `no-control-regex` refuses it — with reason: a literal control character in
+   * a pattern is usually a mistake, and a reviewer cannot see the range it
+   * covers. Filtering by code says the same thing in a form that can be read,
+   * and C0 + DEL is exactly the set that breaks a filename on some filesystem
+   * or other.
+   */
+  const cleaned = Array.from(name)
+    .map((ch) => {
+      const code = ch.codePointAt(0) ?? 0;
+      const forbidden = '\\/:*?"<>|'.includes(ch);
+      return forbidden || code < 32 || code === 127 ? "-" : ch;
+    })
+    .join("")
     .replace(/^[\s.]+/, "")
     .trim();
   const safe = cleaned || fallback;

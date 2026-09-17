@@ -1085,6 +1085,9 @@ Undo window default **20 s**, user-configurable (off / 10 / 20 / 30) via `prefer
 
 #### 5.5.6 Attachments
 
+- Browser uploads use `multipart/form-data` (`file` + draft metadata), parsed by Multer with a
+  25 MiB per-file bound. They are not base64 JSON: that would add 33% on the wire and route the
+  bytes through the API's JSON body parser before the attachment service can apply its rules.
 - Upload → sniffed (`document_vault.sniffContentType`) → stored in the vault with
   `entityRef = 'email_draft:<id>'`, then re-pointed to `email_message:<id>` on send.
 - **Hard cap 25 MB** total per message, enforced server-side on the sum, not per file (Q9).

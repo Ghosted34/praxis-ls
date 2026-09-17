@@ -370,9 +370,9 @@ function buildApp() {
   /**
    * The routes allowed a bigger body than the global limit below, and why each
    * one needs it, are in `shared/http/body-limits` — it is one list because the
-   * same base64-inflation bug has now been found in four separate features
-   * (a CV, a staff file, website pictures, and mail attachments) and the fifth
-   * should be a line in that file rather than another block of prose here.
+   * same base64-inflation bug remains in three separate features (a CV, a staff
+   * file and website pictures). Mail attachments moved to multipart instead;
+   * the next JSON route should be a line in that file, not prose here.
    *
    * Mounted BEFORE the global parser, which is not a style choice: body-parser
    * sets `req._body` once it has parsed, and every downstream body parser bails

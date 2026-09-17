@@ -69,7 +69,7 @@ function singleFile(field = "file") {
             {
               user_message: `That file is larger than ${Math.round(
                 MAX_UPLOAD_BYTES / (1024 * 1024),
-              )} MB. Try a smaller image, or export it at a lower resolution.`,
+              )} MB. Choose a smaller file or compress it before uploading.`,
             },
           ),
         );

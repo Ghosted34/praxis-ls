@@ -491,14 +491,11 @@ const schemas = {
       path: ["send_at"],
     }),
 
+  // Multipart fields only. The file itself is req.file, bounded by Multer before
+  // this schema runs; accepting data_url here would quietly restore the base64
+  // transport and its 33% request inflation.
   attachmentUpload: z.object({
     email_draft_id: z.string().uuid(),
-    filename: z.string().trim().min(1).max(255),
-    // A base64 data URL. 25 MiB becomes 34,952,536 base64 characters before
-    // the short data-URL prefix, so 34,000,000 did not actually cover the cap
-    // this API promises. The real limit remains the decoded, aggregate byte
-    // check in outbox.assertRoomFor; this wire ceiling only bounds the JSON.
-    data_url: z.string().min(8).max(35_000_000),
     disposition: z.enum(["attachment", "inline"]).optional(),
     content_id: z.string().trim().max(128).nullable().optional(),
   }).strict(),
@@ -575,6 +572,14 @@ const mw = (k) => (req, _res, next) => {
   return next();
 };
 
+const attachmentFields = mw("attachmentUpload");
+const attachmentUpload = (req, res, next) => {
+  if (!req.file || !Buffer.isBuffer(req.file.buffer)) {
+    return next(new AppError("BAD_FILE", "Choose a file to attach", 400));
+  }
+  return attachmentFields(req, res, next);
+};
+
 module.exports = {
   connect: mw("connect"), connectPatch: mw("connectPatch"), reply: mw("reply"),
   sender: mw("sender"), senderPatch: mw("senderPatch"), threadLink: mw("threadLink"),
@@ -587,7 +592,7 @@ module.exports = {
   folderEmpty: mw("folderEmpty"),
   threadStream: mw("threadStream"), label: mw("label"), labelApply: mw("labelApply"),
   draft: mw("draft"), send: mw("send"),
-  attachmentUpload: mw("attachmentUpload"), attachmentFromVault: mw("attachmentFromVault"),
+  attachmentUpload, attachmentFromVault: mw("attachmentFromVault"),
   runCommand: mw("runCommand"),
   schemas,
 };

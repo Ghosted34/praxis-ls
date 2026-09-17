@@ -36,6 +36,11 @@ import {
 } from "@/lib/vault-file";
 import * as api from "@/lib/masterdata-api";
 import { ComposeIconButton as MailIconButton } from "@/features/comms/inbox/composer/compose-icon-button";
+import {
+  KpiDetailsModal,
+  type KpiDetailHeader,
+  type KpiDetailRow,
+} from "./kpi-details-modal";
 
 // Deep-link targets (§3.1) — the real hub-section routes confirmed in
 // src/app/app.tsx. A `focus` query hints the record to the destination list,
@@ -1096,156 +1101,8 @@ function PendingChangesCard({
   );
 }
 
-/* ── KPI drill-in modal (spec §3.1 second half — "click a number, see the rows") ──
- *
- * A KPI tile summarises rows that already ride on the 360 payload; the drill-in
- * turns each tile into a browsable list of those rows without a second request.
- * The list is paginated at 20 client-side — the underlying 360 collections are
- * capped at 25 by the API, so at most a second page appears; when the user
- * needs the full list the deep-link on any row jumps to that module's page.
- *
- * Each row is a plain button that navigates to the target module with a focus
- * hint (`?focus=<id>`, or for an operations file its own 360 route). The modal closes on navigation so the user
- * lands on the destination page rather than the drill-in stacked over it. */
-type KpiDetailRow = { id: string; href: string; cells: React.ReactNode[] };
-type KpiDetailHeader = { label: string; right?: boolean };
-const KPI_PAGE_SIZE = 20;
-
-function KpiDetailsModal({
-  open,
-  onClose,
-  title,
-  description,
-  headers,
-  rows,
-  emptyLabel,
-  moreHint,
-}: {
-  open: boolean;
-  onClose: () => void;
-  title: string;
-  description?: string;
-  headers: KpiDetailHeader[];
-  rows: KpiDetailRow[];
-  emptyLabel: string;
-  /** Optional note under the header — used to say "showing most recent 25". */
-  moreHint?: string;
-}) {
-  const navigate = useNavigate();
-  const [page, setPage] = React.useState(0);
-  // Reset the page cursor whenever the row set changes underneath — otherwise a
-  // filter that shortens the list would leave the modal stranded on page 3.
-  React.useEffect(() => {
-    setPage(0);
-  }, [rows.length, title]);
-
-  const total = rows.length;
-  const totalPages = Math.max(1, Math.ceil(total / KPI_PAGE_SIZE));
-  const start = page * KPI_PAGE_SIZE;
-  const pageRows = rows.slice(start, start + KPI_PAGE_SIZE);
-
-  function open_(href: string) {
-    onClose();
-    navigate(href);
-  }
-
-  return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      size="xl"
-      title={title}
-      description={description}
-    >
-      {moreHint && <p className="mb-2 micro">{moreHint}</p>}
-      {total === 0 ? (
-        <div className="rounded-lg border px-3 py-6 text-center micro">
-          {emptyLabel}
-        </div>
-      ) : (
-        <>
-          <div className="overflow-x-auto rounded-lg border">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/50 text-muted-foreground">
-                <tr>
-                  {headers.map((h, i) => (
-                    <Th key={i} r={h.right}>
-                      {h.label}
-                    </Th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {pageRows.map((r) => (
-                  // The row itself carries the pointer click (a `<tr onClick>`
-                  // is fine — it isn't one of the static elements the a11y rule
-                  // guards against). Keyboard reaches the row via the first
-                  // cell's `<button>`, the same row-activator pattern
-                  // data-list.tsx uses so a screen-reader user has one focus
-                  // stop per row rather than one per cell.
-                  <tr
-                    key={r.id}
-                    className="cursor-pointer transition-colors hover:bg-muted/60 focus-within:bg-muted/60"
-                    onClick={() => open_(r.href)}
-                  >
-                    {r.cells.map((c, i) => (
-                      <Td key={i} r={headers[i]?.right}>
-                        {i === 0 ? (
-                          <button
-                            type="button"
-                            className="text-left text-primary-ink underline underline-offset-2 hover:opacity-80 focus-visible:outline-none"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              open_(r.href);
-                            }}
-                          >
-                            {c}
-                          </button>
-                        ) : (
-                          c
-                        )}
-                      </Td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {total > KPI_PAGE_SIZE && (
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm">
-              <span className="micro">
-                Showing {start + 1}–{Math.min(start + KPI_PAGE_SIZE, total)} of{" "}
-                {total}
-              </span>
-              <div className="flex items-center gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={page === 0}
-                  onClick={() => setPage((p) => Math.max(0, p - 1))}
-                >
-                  Previous
-                </Button>
-                <span className="micro">
-                  Page {page + 1} / {totalPages}
-                </span>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={page >= totalPages - 1}
-                  onClick={() => setPage((p) => p + 1)}
-                >
-                  Next
-                </Button>
-              </div>
-            </div>
-          )}
-        </>
-      )}
-    </Modal>
-  );
-}
-
+/* The KPI drill-in dialog itself lives in ./kpi-details-modal — the entity
+ * dossier opens the same one. The row derivation below is party-specific. */
 /** Which KPI a click opened — one of the four tiles per party kind. The
  *  "Credit available" tile deliberately has no drill-in (there are no rows to
  *  list — the number is a limit minus a balance). */

@@ -47,7 +47,10 @@ import {
   SCAN_ACCEPT,
   scanFileProblem,
   readFileAsDataUrl,
+  fetchVaultDoc,
 } from "@/lib/vault-file";
+import { buildZip, saveZip, uniqueName, zipSafeName } from "@/lib/zip";
+import { NewMessageDialog } from "@/features/comms/inbox/composer/new-message";
 import { WorkingCalendarTab } from "./working-calendar-tab";
 import { EntityPublicStoryTab } from "./entity-public-story-tab";
 import { useResource, useList, errMsg } from "@/lib/use-resource";
@@ -56,6 +59,7 @@ import { reportActionError } from "@/lib/action-error";
 import { pageShell } from "@/lib/layout";
 import { entityCommon } from "@shared";
 import * as api from "@/lib/masterdata-api";
+import { EntityKpiDrill, type EntityKpiKind } from "./entity-kpi-drill";
 
 const LIFECYCLE_TONE: Record<string, Tone> = {
   DRAFT: "mute",
@@ -710,6 +714,27 @@ const personFields = (lk: Lookups): FieldSpec[] => [
     group: "Who",
   },
   {
+    /*
+     * The one control that makes "owner AND director" expressible (13850).
+     *
+     * `role` above answers "what is this row filed as" — it orders the
+     * collection and names the row in its own table. This answers "what else do
+     * they do", and a person ticked in both appears in the shareholding table
+     * AND in the directors' table, with the extra roles shown as pills. The
+     * alternative the schema could express is a second row per role, which is
+     * how the same human ends up with two names that disagree.
+     *
+     * Every role is offered, including the primary one: ticking it is harmless
+     * (the union de-duplicates) and hiding it would make the list change shape
+     * as the select above is used.
+     */
+    key: "role_tags",
+    label: "Also acts as",
+    type: "multiselect",
+    options: opts(entityCommon.PERSON_ROLES),
+    hint: "One person can hold several roles — tick the others here. The Role above stays their primary one.",
+  },
+  {
     key: "holder_type",
     label: "Holder type",
     type: "select",
@@ -1199,6 +1224,10 @@ export function EntityDossier({
   const [statusOpen, setStatusOpen] = React.useState(false);
   const [structureOpen, setStructureOpen] = React.useState(false);
   const [opsPrefixOpen, setOpsPrefixOpen] = React.useState(false);
+  // Which KPI tile's drill-in is open, if any. The dialog is mounted only while
+  // one is chosen, so the fetching kinds (employees, journal) do not issue a
+  // request for a list nobody asked to see.
+  const [drill, setDrill] = React.useState<EntityKpiKind | null>(null);
   // Blank means "today", which is what the /360 bundle already carries — so the
   // common case costs no extra request and only a deliberate date fetches.
   const [capAsOf, setCapAsOf] = React.useState("");
@@ -1310,8 +1339,23 @@ export function EntityDossier({
   const status =
     e.registration_status || (e.is_active ? "ACTIVE" : "DEACTIVATED");
   const currency = e.default_currency || "XAF";
-  const shareholders = people.filter((p) => p.role === "SHAREHOLDER");
-  const officers = people.filter((p) => p.role !== "SHAREHOLDER");
+  /*
+   * The two tables are filtered on the person's WHOLE role set (13850), not on
+   * the single `role` column: an owner who also runs the company belongs in the
+   * shareholding table AND in the directors' table, which is the entire point of
+   * the request that produced the "Also acts as" control. Neither table is a
+   * partition any more, and that is correct — they answer different questions
+   * about the same person.
+   *
+   * `entityCommon.personRoles` is the shared union, so the holder count on the
+   * KPI row and the totals under the cap table agree with these rows by
+   * construction rather than by two matching filters.
+   */
+  const rolesOf = (p: api.EntityPerson) => entityCommon.personRoles(p);
+  const shareholders = people.filter((p) => rolesOf(p).includes("SHAREHOLDER"));
+  const officers = people.filter((p) =>
+    rolesOf(p).some((r) => r !== "SHAREHOLDER"),
+  );
   // The KPI row above the tabs stays on today; only the sections with a date
   // picker follow it, so the headline figures do not silently become historical.
   const capView = (capAsOf && datedCap.data) || cap;
@@ -1394,20 +1438,40 @@ export function EntityDossier({
         </Callout>
       )}
 
+      {/* Four of the five tiles open the records behind the number, the way the
+          client and supplier 360s already work. "Ownership recorded" is a
+          figure, not a list, so it keeps its hint and stays inert. */}
       <KpiRow stack>
         <KpiTile
           label={tr("Shareholders")}
           value={num(gov ? shareholders.length : cap.holder_count)}
+          onClick={() => setDrill("shareholders")}
         />
         <KpiTile
           label="Ownership recorded"
           value={`${num(cap.total_percent)}%`}
           hint={cap.balanced ? "Balanced" : "Check the cap table"}
         />
-        <KpiTile label={tr("Employees")} value={num(usage.employees)} />
-        <KpiTile label="Subsidiaries" value={num(usage.subsidiaries)} />
-        <KpiTile label="Journal entries" value={num(usage.journal_entries)} />
+        <KpiTile
+          label={tr("Employees")}
+          value={num(usage.employees)}
+          onClick={() => setDrill("employees")}
+        />
+        <KpiTile
+          label="Subsidiaries"
+          value={num(usage.subsidiaries)}
+          onClick={() => setDrill("subsidiaries")}
+        />
+        <KpiTile
+          label="Journal entries"
+          value={num(usage.journal_entries)}
+          onClick={() => setDrill("journal")}
+        />
       </KpiRow>
+
+      {drill && (
+        <EntityKpiDrill kind={drill} data={d.data} onClose={() => setDrill(null)} />
+      )}
 
       <nav
         className="flex flex-wrap gap-1 border-b"
@@ -1696,6 +1760,7 @@ export function EntityDossier({
           )}
           <DocumentsTab
             entityId={entityId}
+            entityCode={e.code}
             documents={d.data.documents}
             establishments={establishments}
             onRemove={(id) => removeChild("documents", id)}
@@ -2134,6 +2199,20 @@ export function EntityDossier({
                           <Pill tone="mute">Not held on this date</Pill>
                         </>
                       )}
+                      {/* The other hats this holder wears (13850). Without these
+                          the row read as a shareholder who is not on the board,
+                          which is exactly the mistake the feature exists to
+                          stop. */}
+                      {rolesOf(p)
+                        .filter((r) => r !== "SHAREHOLDER")
+                        .map((r) => (
+                          <React.Fragment key={r}>
+                            {" "}
+                            <Pill tone={ROLE_TONE[r] || "mute"}>
+                              {enumLabel(r)}
+                            </Pill>
+                          </React.Fragment>
+                        ))}
                     </Td>
                     <Td>{p.share_class || "—"}</Td>
                     <Td r>
@@ -2159,6 +2238,22 @@ export function EntityDossier({
                       ) : null}
                     </Td>
                     <Td r>
+                      {/* The quick route the request asked for: this shareholder
+                          also runs the company, so tick the second role here
+                          instead of retyping them as a separate person. */}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() =>
+                          setEditing({
+                            seg: "people",
+                            title: `Also acts as — ${p.full_name}`,
+                            row: p as unknown as Record<string, unknown>,
+                          })
+                        }
+                      >
+                        Add role
+                      </Button>
                       <Button
                         size="sm"
                         variant="ghost"
@@ -2199,7 +2294,7 @@ export function EntityDossier({
 
           <Section
             title="Directors, officers and signatories"
-            description="One person can hold several roles — add a row per role."
+            description="One person can hold several roles — add them once and tick every role they hold, rather than adding a row per role."
             action={
               <Button
                 size="sm"
@@ -2245,9 +2340,17 @@ export function EntityDossier({
                     )}
                   </Td>
                   <Td>
-                    <Pill tone={ROLE_TONE[p.role] || "mute"}>
-                      {enumLabel(p.role)}
-                    </Pill>
+                    {/* EVERY role, not just the primary one (13850): a person
+                        filed as OFFICER who is also the legal representative
+                        has both facts recorded, and a single pill would hide the
+                        one that matters on a contract. */}
+                    <span className="inline-flex flex-wrap gap-1">
+                      {rolesOf(p).map((r) => (
+                        <Pill key={r} tone={ROLE_TONE[r] || "mute"}>
+                          {enumLabel(r)}
+                        </Pill>
+                      ))}
+                    </span>
                   </Td>
                   <Td>
                     {p.title || "—"}
@@ -2266,6 +2369,19 @@ export function EntityDossier({
                   <Td>{p.effective_from ? dateDmy(p.effective_from) : "—"}</Td>
                   <Td>{p.effective_to ? dateDmy(p.effective_to) : "—"}</Td>
                   <Td r>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() =>
+                        setEditing({
+                          seg: "people",
+                          title: `Also acts as — ${p.full_name}`,
+                          row: p as unknown as Record<string, unknown>,
+                        })
+                      }
+                    >
+                      Add role
+                    </Button>
                     <Button
                       size="sm"
                       variant="ghost"
@@ -2833,14 +2949,162 @@ export function EntityDossierPage() {
  * never sees: upload the file to the vault (MOD-64), then patch the returned id
  * onto the document.
  */
+/**
+ * The name a document goes out under, and the one the ZIP entry is built from.
+ *
+ * A title beats a type name beats the reference: the operator named it for a
+ * reason, and "RCCM" alone is not enough to tell two of them apart in a folder.
+ * The reference is the last resort because it always exists once the row is
+ * saved — a file called "Document" is the outcome that proves the ordering.
+ */
+const docLabel = (d: api.EntityDocument) =>
+  d.title || d.document_type_name || d.document_number || "Document";
+
+/** What the vault stored, mapped to the extension the download should carry. */
+const BLOB_EXT: Record<string, string> = {
+  "application/pdf": ".pdf",
+  "image/png": ".png",
+  "image/jpeg": ".jpg",
+  "image/webp": ".webp",
+};
+
+/**
+ * Share the selected documents — by email, or as one ZIP folder.
+ *
+ * WHY TWO ROUTES AND NOT ONE. A bank or a notary asks for "the statutes, the
+ * tax clearance and the RIB" and wants them as ATTACHMENTS on a message they
+ * can reply to; a colleague rebuilding a file wants them as files. Emailing a
+ * ZIP is not the same offer, and downloading four PDFs one at a time is not
+ * either — the request that produced this dialog named both, so both are here.
+ *
+ * The email route hands the vault ids to `NewMessageDialog`, the ONE compose
+ * wrapper in the product: the file is already in the vault, so the composer
+ * attaches it without re-uploading anything, and the draft, the undo window and
+ * the sent-folder behaviour are the ones every other message gets.
+ *
+ * The ZIP route fetches the same vaulted bytes and writes a stored (uncompressed)
+ * archive — see `lib/zip.ts` for why that is a real ZIP rather than a rename. A
+ * document with no scan is listed and named, never silently dropped: "I sent you
+ * the RCCM" about a row that was paper-only is the failure this prevents.
+ */
+function ShareDocumentsDialog({
+  documents,
+  entityCode,
+  onClose,
+  onEmail,
+}: {
+  documents: api.EntityDocument[];
+  entityCode?: string | null;
+  onClose: () => void;
+  /** Hand the selection to the composer; the caller swaps the dialogs. */
+  onEmail: () => void;
+}) {
+  const toast = useToast();
+  const [zipping, setZipping] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const shareable = documents.filter((d) => d.vault_id);
+  const archiveName = `${entityCode || "entity"}-documents.zip`;
+
+  async function downloadZip() {
+    setZipping(true);
+    setError(null);
+    try {
+      // Sequential, deliberately: a dozen awaited fetches in parallel against
+      // one API is how a browser opens twelve connections and the archive is no
+      // faster for it. The names are de-duplicated because two documents of the
+      // same type is the ordinary case, and a ZIP with duplicate entries
+      // extracts to one file in some tools.
+      const taken = new Set<string>();
+      const entries: { name: string; data: Blob }[] = [];
+      for (const d of shareable) {
+        const blob = await fetchVaultDoc(d.vault_id as string);
+        const name = uniqueName(
+          zipSafeName(`${docLabel(d)}${BLOB_EXT[blob.type] || ""}`),
+          taken,
+        );
+        taken.add(name);
+        entries.push({ name, data: blob });
+      }
+      saveZip(await buildZip(entries), archiveName);
+      toast.success(
+        `${entries.length} document${entries.length === 1 ? "" : "s"} downloaded as ${archiveName}.`,
+      );
+      onClose();
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setZipping(false);
+    }
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={tr("Share documents")}
+      description={`${documents.length} selected — send them by email, or download them together as a ZIP folder.`}
+    >
+      <div className="space-y-4">
+        {error && <ErrorState message={error} />}
+        <ul className="divide-y divide-border rounded-lg border">
+          {documents.map((d) => (
+            <li
+              key={d.document_id}
+              className="flex flex-wrap items-center justify-between gap-2 px-3 py-2"
+            >
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-medium text-foreground">
+                  {docLabel(d)}
+                </span>
+                <span className="block truncate micro">
+                  {[d.document_type_name, d.document_number]
+                    .filter(Boolean)
+                    .join(" · ") || "—"}
+                </span>
+              </span>
+              {!d.vault_id && <Pill tone="mute">{tr("No file")}</Pill>}
+            </li>
+          ))}
+        </ul>
+        {shareable.length < documents.length && (
+          <p className="micro">
+            {documents.length - shareable.length} of {documents.length} have no
+            scan on file and cannot be sent — the record stays, the paper does
+            not travel.
+          </p>
+        )}
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button variant="ghost" onClick={onClose} disabled={zipping}>
+            {tr("Cancel")}
+          </Button>
+          <Button
+            variant="outline"
+            loading={zipping}
+            disabled={shareable.length === 0}
+            onClick={() => void downloadZip()}
+          >
+            Download ZIP
+          </Button>
+          <Button disabled={shareable.length === 0} onClick={onEmail}>
+            Send by email
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function DocumentsTab({
   entityId,
+  entityCode,
   documents,
   establishments,
   onRemove,
   onSaved,
 }: {
   entityId: string;
+  /** Prefixed onto the ZIP the selection downloads as, e.g. `SLAS-documents.zip`. */
+  entityCode?: string | null;
   documents: api.EntityDocument[];
   establishments: api.EntityEstablishment[];
   onRemove: (id: string) => void;
@@ -2851,6 +3115,13 @@ function DocumentsTab({
   const [adding, setAdding] = React.useState<api.EntityDocument | "new" | null>(
     null,
   );
+  /*
+   * Selection is by document id, not by row index: the list is reloaded after
+   * every scan, verify and edit, and an index-keyed selection would silently
+   * move to whichever document took the old row's place.
+   */
+  const [selected, setSelected] = React.useState<string[]>([]);
+  const [sharing, setSharing] = React.useState<null | "options" | "mail">(null);
   const [attachError, setAttachError] = React.useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = React.useState<number | null>(
     null,
@@ -3009,10 +3280,19 @@ function DocumentsTab({
     }
   }
 
+  const selectedDocs = documents.filter((d) =>
+    selected.includes(d.document_id),
+  );
+  const allSelected = documents.length > 0 && selected.length === documents.length;
+  const toggleAll = () =>
+    setSelected(allSelected ? [] : documents.map((d) => d.document_id));
+  const toggleOne = (id: string) =>
+    setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+
   return (
     <Section
       title="Administrative documents"
-      description="Statutes, tax clearances, licences and insurance — add each one and upload its file. Anything with an expiry date feeds the Renewals tab. Uploading marks the scan as scanned; use Verify after checking the file against the original."
+      description="Statutes, tax clearances, licences and insurance — add each one and upload its file. Anything with an expiry date feeds the Renewals tab. Uploading marks the scan as scanned; use Verify after checking the file against the original. Tick documents to share them by email or download them together as a ZIP."
       action={
         <Button size="sm" onClick={() => setAdding("new")}>
           Add document
@@ -3021,10 +3301,42 @@ function DocumentsTab({
     >
       {types.error && <ErrorState message={errMsg(types.error)} />}
       {attachError && <ErrorState message={attachError} />}
+      {selected.length > 0 && (
+        /* The selection bar sits ABOVE the table rather than floating, so it is
+           in the reading order and a keyboard user reaches it by tabbing from
+           the header — a sticky bar that only appears on click is invisible to
+           anyone who cannot see it appear. */
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2">
+          <span className="text-sm text-foreground">
+            {selected.length} selected
+          </span>
+          <Button size="sm" onClick={() => setSharing("options")}>
+            Share
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setSelected([])}>
+            {tr("Clear")}
+          </Button>
+        </div>
+      )}
       <MiniTable
         empty={documents.length === 0}
         head={
           <>
+            <Th>
+              <input
+                type="checkbox"
+                className="h-4 w-4 accent-primary align-middle"
+                checked={allSelected}
+                aria-label={tr("Select all documents")}
+                ref={(el) => {
+                  // `indeterminate` has no HTML attribute — it is a property,
+                  // and this is the only way a partly-selected header can say
+                  // so rather than reading as "unchecked".
+                  if (el) el.indeterminate = selected.length > 0 && !allSelected;
+                }}
+                onChange={toggleAll}
+              />
+            </Th>
             <Th>Document</Th>
             <Th>{tr("Type")}</Th>
             <Th>{tr("Number")}</Th>
@@ -3041,6 +3353,15 @@ function DocumentsTab({
             key={doc.document_id}
             className={doc.is_active === false ? "opacity-60" : undefined}
           >
+            <Td>
+              <input
+                type="checkbox"
+                className="h-4 w-4 accent-primary align-middle"
+                checked={selected.includes(doc.document_id)}
+                aria-label={`${tr("Select")} ${docLabel(doc)}`}
+                onChange={() => toggleOne(doc.document_id)}
+              />
+            </Td>
             <Td>
               <span className="font-medium text-foreground">
                 {doc.title || doc.document_type_name || "Untitled"}
@@ -3143,6 +3464,45 @@ function DocumentsTab({
           uploadProgress={uploadProgress}
           uploadSuccess={uploadSuccess}
           allowAddAnother={adding === "new"}
+        />
+      )}
+
+      {sharing === "options" && (
+        <ShareDocumentsDialog
+          documents={selectedDocs}
+          entityCode={entityCode}
+          onClose={() => setSharing(null)}
+          onEmail={() => setSharing("mail")}
+        />
+      )}
+
+      {/*
+       * The composer is opened FROM the share dialog rather than beside it: two
+       * stacked Radix dialogs make Escape close the wrong one, and the operator
+       * ends up looking at a share sheet they already decided about. Closing
+       * this one first is also what makes "the mail went out" the end of the
+       * flow instead of a step back into a redundant question.
+       */}
+      {sharing === "mail" && (
+        <NewMessageDialog
+          open
+          title={tr("Send documents")}
+          onClose={() => setSharing(null)}
+          onSent={() =>
+            toast.success(
+              "Sent — it is in your Sent folder and on the entity's thread.",
+            )
+          }
+          subject={
+            entityCode
+              ? `${entityCode} — ${selectedDocs.length} document${selectedDocs.length === 1 ? "" : "s"}`
+              : undefined
+          }
+          vaultAttachments={selectedDocs
+            .filter((d) => d.vault_id)
+            .map((d) => ({ vault_id: d.vault_id as string, filename: docLabel(d) }))}
+          entityRef={`corporate_entity:${entityId}`}
+          languageNote={`${selectedDocs.length} document${selectedDocs.length === 1 ? "" : "s"} attached from the entity's file.`}
         />
       )}
     </Section>

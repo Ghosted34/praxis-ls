@@ -959,6 +959,9 @@ export type Employee = {
   base_salary?: number | string | null;
   is_active?: boolean | null;
   is_driver?: boolean | null;
+  /** Profile photo, a `/media/...` URL (0300). Rendered as the avatar wherever
+   *  this person is listed; absent means the initials disc. */
+  avatar_ref?: string | null;
 
   /* ── Civil identity (12763). Everything a work contract names somebody by.
    * `maiden_name` is asked for only when gender is FEMALE and the marital
@@ -1158,7 +1161,38 @@ export type EmployeeAccount = {
   }[];
   suggested: { full_name: string; email: string; employee_id: string } | null;
 };
-export const listEmployees = () => tenant<Employee[]>("/employees");
+/**
+ * The roster list.
+ *
+ * `entity_id` is what the corporate-entity dossier's Employees drill reads: the
+ * HR master already filtered by entity server-side (repo.list), the client just
+ * had no way to ask. `limit` is clamped to 200 by the shared `page()` helper —
+ * the drill asks for 200 and says so when it gets that many back.
+ */
+export type EmployeeListQuery = {
+  entity_id?: string;
+  scope_id?: string;
+  department?: string;
+  status?: string;
+  employment_type?: string;
+  q?: string;
+  active?: boolean;
+  limit?: number;
+};
+export const listEmployees = (params: EmployeeListQuery = {}) =>
+  tenant<Employee[]>(
+    "/employees" +
+      qs({
+        entity_id: params.entity_id,
+        scope_id: params.scope_id,
+        department: params.department,
+        status: params.status,
+        employment_type: params.employment_type,
+        q: params.q,
+        active: params.active === undefined ? undefined : String(params.active),
+        limit: params.limit === undefined ? undefined : String(params.limit),
+      }),
+  );
 export const getEmployee = (id: string) => tenant<Employee>(`/employees/${id}`);
 // `scope_id` is the department reference (0490); `department` is the display
 // snapshot the API keeps in step with it.

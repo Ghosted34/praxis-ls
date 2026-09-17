@@ -356,6 +356,11 @@ const Schema = z.object({
   GROQ_API_KEY: z.string().default(""),
   WHISPER_BASE_URL: z.string().default(""),
   AI_MONTHLY_CAP_XAF: int(0),
+  // Output-token ceiling for a chat completion. Without an explicit value the
+  // vendor's own (often short) default caps the reply, which is how a full memo
+  // or report "cuts off mid-sentence" (PRAXIS_AI_AUDIT.md B1). Sized for a long
+  // structured answer; the orchestrator can pass a smaller value for narration.
+  AI_MAX_TOKENS: int(4096),
 
   EMBEDDINGS_PROVIDER: z.string().default("openai"),
   EMBEDDINGS_MODEL: z.string().default("text-embedding-3-small"),

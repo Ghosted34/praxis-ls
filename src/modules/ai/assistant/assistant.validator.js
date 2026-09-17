@@ -24,6 +24,13 @@ const schemas = {
   ask: z.object({
     message: z.string().min(1).max(10000),
     conversation_id: z.string().uuid().optional(),
+    // The composer's posture (Ask/Draft/Analyse/Act) and the chosen Space. These
+    // were sent by the client and silently stripped, so all four modes behaved
+    // identically (audit D1/D5). Accepted here so the orchestrator can honour
+    // them. `scope` is an area key (or "all"); free-form-bounded, not enumerated,
+    // because the area list lives in the client.
+    mode: z.enum(["ask", "draft", "analyse", "act"]).optional(),
+    scope: z.string().max(64).optional(),
   }),
   // AI answer feedback (thumbs up/down). Bounded comment, required vote.
   feedback: z.object({

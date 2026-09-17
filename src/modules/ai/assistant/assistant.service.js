@@ -13,16 +13,16 @@ const { rowsToOptions } = require("../../../services/ai/action-fields");
 // as the catalogue sync.
 const registry = buildExecutorMap();
 
-const ask = (client, { user, message, conversationId, allowed }) =>
-  orchestrator.ask({ client, user, message, conversationId, allowed, registry });
+const ask = (client, { user, message, conversationId, allowed, mode, scope }) =>
+  orchestrator.ask({ client, user, message, conversationId, allowed, registry, mode, scope });
 
 /**
  * Streaming ask — returns an async generator of SSE events. The controller
  * pipes these to the response as `text/event-stream`. The registry is the same
  * shared executor map; nothing about streaming changes what can be executed.
  */
-const askStream = (client, { user, message, conversationId, allowed }) =>
-  orchestrator.askStream({ client, user, message, conversationId, allowed, registry });
+const askStream = (client, { user, message, conversationId, allowed, mode, scope }) =>
+  orchestrator.askStream({ client, user, message, conversationId, allowed, registry, mode, scope });
 
 const confirm = (client, { user, actionRunId, payload }) =>
   orchestrator.confirmAction({ client, user, actionRunId, registry, payload });

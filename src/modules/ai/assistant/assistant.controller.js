@@ -36,6 +36,8 @@ const ask = asyncHandler(async (req, res) => {
       message: req.body.message,
       conversationId: req.body.conversation_id,
       allowed: req.aiAllowed || ["normal"],
+      mode: req.body.mode,
+      scope: req.body.scope,
     }),
   );
   res.json({ data: out });
@@ -76,7 +78,7 @@ const askStream = async (req, res) => {
 
   // Heartbeat every 15s to prevent proxy/CDN idle timeouts.
   const heartbeat = setInterval(() => {
-    try { res.write(": heartbeat\n\n"); } catch { /* client gone */ }
+    try { res.write(": heartbeat\n\n"); } catch { /* @silent:teardown — client disconnected mid-stream; the heartbeat write is best-effort and the next `close` clears the interval. */ }
   }, 15000);
 
   // Detect client disconnect (browser tab closed, navigation).
@@ -102,6 +104,8 @@ const askStream = async (req, res) => {
         message: req.body.message,
         conversationId: req.body.conversation_id,
         allowed: req.aiAllowed || ["normal"],
+        mode: req.body.mode,
+        scope: req.body.scope,
       });
       for await (const event of stream) {
         if (aborted) break;
@@ -113,7 +117,7 @@ const askStream = async (req, res) => {
   } finally {
     clearInterval(heartbeat);
     if (!aborted) {
-      try { res.end(); } catch { /* already closed */ }
+      try { res.end(); } catch { /* @silent:teardown — the response was already closed by a client disconnect; ending it again is a no-op. */ }
     }
   }
 };

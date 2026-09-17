@@ -560,7 +560,32 @@ function whoIsAsking(user) {
   );
 }
 
-async function ask({ client, user, conversationId, message, allowed, registry, feature = "assistant" }) {
+/**
+ * Turn the composer's posture (Ask / Draft / Analyse / Act) into a one-line
+ * instruction the model can act on.
+ *
+ * These were sent by the client and dropped server-side, so all four produced
+ * the same answer (audit D5). Each now appends a short directive so the SHAPE of
+ * the reply matches the button the user pressed. None of them relaxes the
+ * write-confirm boundary — "Act" still only PROPOSES a write for a human to
+ * confirm, exactly as an unmoded turn does.
+ */
+function modeDirective(mode) {
+  switch (mode) {
+    case "draft":
+      return "\n\nMODE — DRAFT: the user wants you to WRITE something (a memo, letter, email, note). Produce the full drafted text as your answer, ready to use, in their real name — do not merely describe what you would write.";
+    case "analyse":
+      return "\n\nMODE — ANALYSE: the user wants figures and what they mean. Prefer a compact table of the relevant numbers, then a short read of the trend or variance. Show the actual values you grounded on; never state a number you did not read.";
+    case "act":
+      return "\n\nMODE — ACT: the user wants something DONE. As soon as you have the details, PROPOSE the appropriate write action (which they then confirm — you never execute without confirmation). If one required detail is missing, ask for that one thing in plain language rather than stalling.";
+    case "ask":
+      return "\n\nMODE — ASK: treat this as a question to answer from the records. Only propose a create/update/record action if the user explicitly asks to change something.";
+    default:
+      return "";
+  }
+}
+
+async function ask({ client, user, conversationId, message, allowed, registry, feature = "assistant", mode, scope }) {
   // Governance gate (AI_ARCHITECTURE §6): feature enabled + user granted + budget
   // not hard-capped. Nothing hits a model when the gate is closed.
   const gate = await governance.canUseFeature(client, { userId: user.user_id, featureKey: feature });
@@ -658,6 +683,7 @@ async function ask({ client, user, conversationId, message, allowed, registry, f
     patternBlock +
     feedbackBlock +
     prefsBlock +
+    modeDirective(mode) +
     "\n\nCONTEXT:\n" +
     redact(toContextBlock(hits));
 
@@ -700,7 +726,10 @@ async function ask({ client, user, conversationId, message, allowed, registry, f
 
   // Offer a focused, relevant slice of the catalogue (scored on this turn + the
   // replayed history), not all 150 tools — keeps weaker models from choking.
-  const contextText = [message, ...history.turns.map((m) => m.content || "")].join(" ");
+  // The chosen Space biases tool selection toward that area (audit D1): a scope
+  // word in the scoring text lifts its module's tools without the user naming
+  // them in the question. "all" adds nothing, as intended.
+  const contextText = [scope && scope !== "all" ? scope : "", message, ...history.turns.map((m) => m.content || "")].join(" ");
   const offered = selectTools(tools, contextText);
   let res = await llm.chat({ client, messages, tools: offered.map(toOpenAiTool) });
   await recordUsage(client, { user, conversationId: history.conversationId, res, feature });
@@ -1202,7 +1231,7 @@ async function recordUsage(client, { user, conversationId, res, feature, callTyp
  * complete). Only the INITIAL model call streams, because that is the one the
  * user stares at while waiting.
  */
-async function* askStream({ client, user, conversationId, message, allowed, registry, feature = "assistant" }) {
+async function* askStream({ client, user, conversationId, message, allowed, registry, feature = "assistant", mode, scope }) {
   const gate = await governance.canUseFeature(client, { userId: user.user_id, featureKey: feature });
   if (!gate.allowed) {
     yield { type: "error", message: `The AI assistant is unavailable: ${gate.reason}.` };
@@ -1288,6 +1317,7 @@ async function* askStream({ client, user, conversationId, message, allowed, regi
     patternBlock +
     feedbackBlock +
     prefsBlock +
+    modeDirective(mode) +
     "\n\nCONTEXT:\n" +
     redact(toContextBlock(hits));
 
@@ -1304,7 +1334,10 @@ async function* askStream({ client, user, conversationId, message, allowed, regi
     { role: "user", content: redact(message) },
   ];
 
-  const contextText = [message, ...history.turns.map((m) => m.content || "")].join(" ");
+  // The chosen Space biases tool selection toward that area (audit D1): a scope
+  // word in the scoring text lifts its module's tools without the user naming
+  // them in the question. "all" adds nothing, as intended.
+  const contextText = [scope && scope !== "all" ? scope : "", message, ...history.turns.map((m) => m.content || "")].join(" ");
   const offered = selectTools(tools, contextText);
 
   /**
@@ -1563,4 +1596,4 @@ async function* askStream({ client, user, conversationId, message, allowed, regi
   yield { type: "done", conversation_id: history.conversationId, provider };
 }
 
-module.exports = { ask, askStream, confirmAction, confirmBatch, loadTools };
+module.exports = { ask, askStream, confirmAction, confirmBatch, loadTools, modeDirective };

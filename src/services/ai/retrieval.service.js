@@ -76,7 +76,11 @@ async function retrieve(opts) {
  * a genuinely irrelevant OHADA chunk (sim=0.2) won't outrank a relevant
  * codebase chunk (sim=0.85).
  */
-const DOMAIN_KEYWORDS = /\b(ohada|syscohada|débours|disbursement|journal entry|posting|chart of accounts|VAT|TVA|tax declaration|withholding|précompte| acompte|IS\b|BIC|TVA|CNPS|NIU|patente|financial statement|bilan|compte de résultat|TAFIRE|GL|general ledger|double.entry|depreciation|amortissement)\b/i;
+// Bare two-letter tokens (`IS` for impôt sur les sociétés, `GL` for general
+// ledger) were in this list under the /i flag, so `\bIS\b` matched the English
+// word "is" and `\bGL\b`… — the boost fired on almost every question (audit A2).
+// They are spelled out here instead; the long forms below already cover them.
+const DOMAIN_KEYWORDS = /\b(ohada|syscohada|débours|disbursement|journal entry|posting|chart of accounts|VAT|TVA|tax declaration|withholding|précompte|acompte|impôt sur les sociétés|corporate income tax|BIC|CNPS|NIU|patente|financial statement|bilan|compte de résultat|TAFIRE|general ledger|double.entry|depreciation|amortissement)\b/i;
 const OHADA_REF = /ohada|OHADA_KB|Accounting.*KnowledgeBase|tax.*knowledge/i;
 
 function boostDomainHits(hits, query) {
@@ -96,4 +100,4 @@ function toContextBlock(hits) {
     .join("\n\n");
 }
 
-module.exports = { retrieve, toContextBlock };
+module.exports = { retrieve, toContextBlock, boostDomainHits };

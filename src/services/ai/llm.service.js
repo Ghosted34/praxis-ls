@@ -65,9 +65,12 @@ function extractInlineToolCalls(content) {
   return { toolCalls: calls, text };
 }
 
-async function callVendor(vendor, { messages, tools, temperature, responseFormat }) {
+async function callVendor(vendor, { messages, tools, temperature, responseFormat, maxTokens }) {
   const base = String(vendor.endpoint_url).replace(/\/$/, "");
   const body = { model: vendor.model, messages, temperature };
+  // Explicit output ceiling — without it the vendor default (often short) caps
+  // the reply mid-sentence (audit B1). See config.AI_MAX_TOKENS.
+  if (maxTokens) body.max_tokens = maxTokens;
   if (responseFormat) body.response_format = responseFormat;
   if (tools && tools.length) { body.tools = tools; body.tool_choice = "auto"; }
   const { data } = await axios.post(`${base}/chat/completions`, body, {
@@ -108,9 +111,13 @@ async function callVendor(vendor, { messages, tools, temperature, responseFormat
  * the complete text. The orchestrator treats this identically to a stream that
  * produced one delta.
  */
-async function* callVendorStream(vendor, { messages, tools, temperature }) {
+async function* callVendorStream(vendor, { messages, tools, temperature, maxTokens }) {
   const base = String(vendor.endpoint_url).replace(/\/$/, "");
-  const body = { model: vendor.model, messages, temperature, stream: true };
+  // `stream_options.include_usage` makes OpenAI-compatible vendors emit a final
+  // usage chunk on a stream; without it token usage is unknown for every
+  // streamed turn and the budget/spend ledger under-counts (audit B4).
+  const body = { model: vendor.model, messages, temperature, stream: true, stream_options: { include_usage: true } };
+  if (maxTokens) body.max_tokens = maxTokens;
   if (tools && tools.length) { body.tools = tools; body.tool_choice = "auto"; }
 
   let response;
@@ -123,7 +130,7 @@ async function* callVendorStream(vendor, { messages, tools, temperature }) {
   } catch (err) {
     // Stream not supported or network error — fall back to non-streaming.
     logger.warn({ err, vendor: vendor.vendor }, "streaming vendor call failed, falling back");
-    const result = await callVendor(vendor, { messages, tools, temperature });
+    const result = await callVendor(vendor, { messages, tools, temperature, maxTokens });
     yield { delta: result.text, done: true, toolCalls: result.toolCalls, text: result.text, usage: result.usage, provider: vendor.vendor, model: result.model || vendor.model || null };
     return;
   }
@@ -223,12 +230,12 @@ function classifyVendorError(err) {
   return "transient";
 }
 
-async function chat({ client, messages, tools, temperature = 0.2, vendorName = PRIMARY, responseFormat }) {
+async function chat({ client, messages, tools, temperature = 0.2, vendorName = PRIMARY, responseFormat, maxTokens = config.AI_MAX_TOKENS }) {
   for (const name of [vendorName, FALLBACK]) {
     const vendor = await resolveVendor(client, name);
     if (!vendor) continue;
     try {
-      return await callVendor(vendor, { messages, tools, temperature, responseFormat });
+      return await callVendor(vendor, { messages, tools, temperature, responseFormat, maxTokens });
     } catch (err) {
       const kind = classifyVendorError(err);
       if (kind === "config") {
@@ -256,12 +263,12 @@ async function chat({ client, messages, tools, temperature = 0.2, vendorName = P
  * the full text for conversation persistence. The generator also yields the
  * same data, so callers can use either interface.
  */
-async function* chatStream({ client, messages, tools, temperature = 0.2, vendorName = PRIMARY, onDelta }) {
+async function* chatStream({ client, messages, tools, temperature = 0.2, vendorName = PRIMARY, onDelta, maxTokens = config.AI_MAX_TOKENS }) {
   for (const name of [vendorName, FALLBACK]) {
     const vendor = await resolveVendor(client, name);
     if (!vendor) continue;
     try {
-      for await (const chunk of callVendorStream(vendor, { messages, tools, temperature })) {
+      for await (const chunk of callVendorStream(vendor, { messages, tools, temperature, maxTokens })) {
         if (!chunk.done && chunk.delta && onDelta) onDelta(chunk.delta);
         yield chunk;
       }

@@ -193,9 +193,19 @@ function paymentBlock(entity, treasuryAccounts = []) {
 
 const DEFAULT_CONFIG = {
   show_legal_form: true, show_share_capital: true, show_registered_address: true,
+  show_postal_address: true, show_po_box: true,
   show_registrations: true, show_contact: true, show_bank_block: true, show_establishment: false,
   logo_position: "LEFT", paper_size: "A4",
 };
+
+/** PO Box from the registered address, if any. */
+function poBox(entity, addresses = []) {
+  const active = (addresses || []).filter((a) => a && a.is_active !== false);
+  const reg = active.find((a) => a.type === "REGISTERED") || active.find((a) => a.is_primary) || active[0];
+  if (!reg) return null;
+  const pb = String(reg.po_box || "").trim();
+  return pb || null;
+}
 
 /**
  * Build the rendered letterhead for one entity in one language.
@@ -285,6 +295,6 @@ function render({ entity, config, addresses = [], registrations = [], taxRegistr
 }
 
 module.exports = {
-  render, registeredAddress, identifiers, paymentBlock, addressLine, addressLines, formatAmount,
+  render, registeredAddress, identifiers, paymentBlock, addressLine, addressLines, formatAmount, poBox,
   issuingEstablishment, establishmentLine, DEFAULT_CONFIG,
 };

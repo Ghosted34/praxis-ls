@@ -133,6 +133,25 @@ const CATALOGUE = [
     fallback: (b) => lines(String(b.entity.address || "").split(/\r?\n/)),
   },
   {
+    id: "po_box",
+    zone: "header",
+    label: { fr: "BP / Boîte postale", en: "PO Box" },
+    hint: { fr: "BP 5120 Douala — imprimée sur l'en-tête quand elle existe.", en: "PO Box 5120 Douala — printed on letterhead when present." },
+    source: { tab: "Contacts & addresses", field: "address_registered" },
+    toggle: ["show_po_box", "show_postal_address"],
+    derive: (b) => text(b.po_box_line),
+  },
+  {
+    id: "postal_address",
+    zone: "header",
+    label: { fr: "Adresse postale complète", en: "Postal address" },
+    hint: { fr: "Adresse + BP sur deux lignes — le bloc enveloppe.", en: "Address + PO Box on two lines — the envelope block." },
+    source: { tab: "Contacts & addresses", field: "address_registered" },
+    toggle: ["show_postal_address", "show_registered_address"],
+    derive: (b) => lines(b.entity.address_lines),
+    fallback: (b) => lines(String(b.entity.address || "").split(/\r?\n/)),
+  },
+  {
     id: "contact",
     zone: "header",
     label: { fr: "Téléphone, e-mail, site", en: "Phone, email, website" },
@@ -326,6 +345,8 @@ const TOKENS = {
   "entity.email": { label: { fr: "E-mail", en: "Email" }, get: (b) => b.entity.email },
   "entity.website": { label: { fr: "Site web", en: "Website" }, get: (b) => b.entity.website },
   "entity.address": { label: { fr: "Adresse (une ligne)", en: "Address (one line)" }, get: (b) => b.address_line },
+  "entity.po_box": { label: { fr: "BP / Boîte postale", en: "PO Box" }, get: (b) => b.po_box_line || b.entity.po_box || "" },
+  "entity.postal_address": { label: { fr: "Adresse postale", en: "Postal address" }, get: (b) => (b.entity.address_lines || []).join(", ") || b.address_line || "" },
   "entity.niu": { label: { fr: "NIU", en: "NIU" }, get: (b) => idOf(b, "NIU") },
   "entity.rccm": { label: { fr: "RCCM", en: "RCCM" }, get: (b) => idOf(b, "RCCM") },
   "entity.vat": { label: { fr: "N° de TVA", en: "VAT number" }, get: (b) => idOf(b, "VAT") },
@@ -400,6 +421,8 @@ const DEFAULT_LAYOUT = {
     { id: "company_name", row: 0, col: 5, span: 7, align: "right", size: 1, weight: "bold", transform: "upper" },
     { id: "company_line", row: 0, col: 5, span: 7, align: "right", size: 1, tone: "muted" },
     { id: "address", row: 0, col: 5, span: 7, align: "right", size: 1, tone: "muted" },
+    { id: "po_box", row: 0, col: 5, span: 7, align: "right", size: 1, tone: "muted" },
+    { id: "postal_address", row: 0, col: 5, span: 7, align: "right", size: 1, tone: "muted", visible: false },
     { id: "contact", row: 0, col: 5, span: 7, align: "right", size: 1, tone: "muted" },
     { id: "header_note", row: 1, col: 0, span: 12, align: "left", size: 1, tone: "muted" },
     { id: "rule", row: 2, col: 0, span: 12, align: "left", size: 1 },
@@ -567,12 +590,14 @@ function compose(input = {}, lang) {
   // The bundle every `derive` and every token reads. Assembled once: the
   // payment block and the address line are each a non-trivial precedence walk
   // and neither should run per block.
+  const poBoxRaw = lh.poBox ? lh.poBox(entity, addresses) : (entity.po_box || null);
   const bundle = {
     entity,
     config,
     language,
     logo_url: input.logo_url || entity.logo_light_ref || null,
     address_line: lh.registeredAddress(entity, addresses),
+    po_box_line: poBoxRaw ? `PO Box ${poBoxRaw}` : null,
     establishment_line: lh.establishmentLine(lh.issuingEstablishment(input.establishments || [])),
     payment: lh.paymentBlock(entity, input.treasuryAccounts || []),
     doc: input.doc || {},

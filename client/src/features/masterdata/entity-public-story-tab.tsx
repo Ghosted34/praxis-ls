@@ -61,9 +61,11 @@ function Fact({ label, value }: { label: string; value?: string | null }) {
 
 export function EntityPublicStoryTab({
   entity,
+  addresses,
   onSaved,
 }: {
   entity: Entity;
+  addresses?: { type?: string | null; line1?: string | null; line2?: string | null; city?: string | null; region?: string | null; postal_code?: string | null; country_code?: string | null; po_box?: string | null; is_primary?: boolean | null }[] | null;
   onSaved: () => void;
 }) {
   const entityId = entity.entity_id;
@@ -172,7 +174,17 @@ export function EntityPublicStoryTab({
           <Fact label={tr("Legal name")} value={entity.legal_name} />
           <Fact label={tr("Trading name")} value={entity.trading_name} />
           <Fact label={tr("Country")} value={entity.country_code} />
-          <Fact label={tr("Registered address")} value={entity.address} />
+          <Fact
+            label={tr("Registered address")}
+            value={(() => {
+              if (entity.address) return entity.address;
+              const list = addresses || [];
+              const reg = list.find((a) => a.type === "REGISTERED") || list.find((a) => a.is_primary) || list[0] || null;
+              if (!reg) return null;
+              const parts = [reg.line1, reg.line2, reg.po_box ? `PO Box ${reg.po_box}` : null, [reg.postal_code, reg.city].filter(Boolean).join(" "), reg.region, reg.country_code].filter(Boolean);
+              return parts.join(", ") || null;
+            })()}
+          />
           <Fact
             label={tr("Incorporated")}
             value={entity.incorporation_date ? dateDmy(entity.incorporation_date) : null}

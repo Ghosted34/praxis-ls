@@ -65,6 +65,14 @@ export const EMPTY_VALUES: EntityFormValues = {
   parent_entity_id: "",
   relationship_type: "",
   registration_status: "",
+  // Registered office at creation — creates an entity_address row after the entity itself.
+  address_line1: "",
+  address_line2: "",
+  address_city: "",
+  address_region: "",
+  address_postal_code: "",
+  address_country_code: "",
+  address_po_box: "",
 };
 
 /**

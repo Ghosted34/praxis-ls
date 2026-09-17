@@ -173,9 +173,11 @@ function letterheadSource(entity, { addresses, registrations }) {
     || addresses.find((a) => a.is_primary) || null;
 
   const composed = registered
-    ? [registered.line1, registered.line2, [registered.postal_code, registered.city].filter(Boolean).join(" "),
+    ? [registered.line1, registered.line2, registered.po_box ? `PO Box ${registered.po_box}` : null, [registered.postal_code, registered.city].filter(Boolean).join(" "),
        registered.region, registered.country_code].filter((s) => s && String(s).trim()).join(", ")
     : entity.address || null;
+
+  const poBox = registered ? (registered.po_box ? String(registered.po_box).trim() : null) : null;
 
   // Registrations win over the legacy niu/rccm columns when present — 0515
   // backfilled those columns into rows, so a divergence means someone edited the
@@ -190,6 +192,14 @@ function letterheadSource(entity, { addresses, registrations }) {
     share_capital: entity.share_capital ?? null,
     share_capital_currency: entity.share_capital_currency || entity.default_currency || null,
     registered_address: composed,
+    po_box: poBox,
+    // Structured lines for letterhead block that already prints PO Box
+    address_lines: registered
+      ? [
+          [registered.line1, registered.line2].filter(Boolean).join(", ") || null,
+          [registered.po_box ? `PO Box ${registered.po_box}` : null, [registered.postal_code, registered.city].filter(Boolean).join(" "), registered.region, registered.country_code].filter(Boolean).join(", ") || null,
+        ].filter(Boolean)
+      : entity.address ? String(entity.address).split(/\r?\n/).map((l) => l.trim()).filter(Boolean) : [],
     country_code: entity.country_code,
     niu: byKind.NIU || entity.niu || null,
     rccm: byKind.RCCM || entity.rccm || null,

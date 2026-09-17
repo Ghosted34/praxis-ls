@@ -35,6 +35,7 @@ const {
   blankToUndefined,
 } = require("./common");
 const legalForms = require("../data/legal-forms");
+const taxRegimes = require("../data/tax-regimes");
 
 const optionalCurrency = blankToUndefined(currency);
 const optionalAmount = blankToUndefined(amount);
@@ -564,6 +565,9 @@ const FILING_FREQUENCIES = [
   "BIMONTHLY",
   "ON_EVENT",
 ];
+// Cameroon tax regimes — the ONE list lives in data/tax-regimes.js, shared by
+// the picker, the API schema and the migration that adds the CHECK.
+const TAX_REGIMES = taxRegimes.TAX_REGIME_CODES;
 
 const taxRegistrationShape = {
   jurisdiction_id: nullableId("Must be a valid jurisdiction id."),
@@ -574,7 +578,22 @@ const taxRegistrationShape = {
     .toUpperCase(),
   tax_kind: requiredEnum(TAX_KINDS, "Tax").optional(),
   tax_number: nullableText,
-  regime: nullableText,
+  // Strict enum for known regimes, but allows a custom uppercase value so the
+  // inline \"Add\" UI works without a migration — format is enforced either way.
+  regime: blankToUndefined(
+    z
+      .string()
+      .trim()
+      .toUpperCase()
+      .min(2, "Use at least 2 characters.")
+      .max(30, "Use at most 30 characters.")
+      .regex(/^[A-Z0-9_]+$/, "Use uppercase letters, numbers and underscore, e.g. REEL"),
+  )
+    .nullable()
+    .refine(
+      (v) => !v || TAX_REGIMES.includes(v) || /^[A-Z0-9_]{2,30}$/.test(v),
+      { message: "Pick a regime from the list or enter a new uppercase code." },
+    ),
   filing_frequency: blankToUndefined(z.enum(FILING_FREQUENCIES)).nullable(),
   filing_due_day: blankToUndefined(
     amount.refine(
@@ -896,3 +915,4 @@ exports.ACCOUNTING_FRAMEWORKS = ACCOUNTING_FRAMEWORKS;
 exports.CONTACT_ROLE_TAGS = CONTACT_ROLE_TAGS;
 exports.TAX_KINDS = TAX_KINDS;
 exports.FILING_FREQUENCIES = FILING_FREQUENCIES;
+exports.TAX_REGIMES = TAX_REGIMES;

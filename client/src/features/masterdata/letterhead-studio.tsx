@@ -98,6 +98,8 @@ const TOGGLE_COLUMNS = [
   "show_legal_form",
   "show_share_capital",
   "show_registered_address",
+  "show_postal_address",
+  "show_po_box",
   "show_registrations",
   "show_contact",
   "show_bank_block",

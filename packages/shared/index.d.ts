@@ -692,6 +692,22 @@ export declare namespace legalForms {
   function isValidReference(reference: LegalFormReference): boolean;
 }
 
+export type TaxRegime = {
+  code: string;
+  label_fr: string;
+  label_en: string;
+  hint_fr: string;
+  hint_en: string;
+};
+
+export declare namespace taxRegimes {
+  const TAX_REGIMES: readonly TaxRegime[];
+  const TAX_REGIME_CODES: readonly string[];
+  function byCode(code: string): TaxRegime | null;
+  function labelFor(code: string, lang?: string): string;
+  function hintFor(code: string, lang?: string): string;
+}
+
 /**
  * Marks & Numbers — the FORMAT, not a shape.
  *

@@ -42,6 +42,7 @@ import { EmptyState, ErrorState, LoadingRow } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import { SmartCountryPicker } from "@/components/smart-country-picker";
 import { TimezonePicker } from "@/components/timezone-picker";
+import { RegimePicker } from "@/components/regime-picker";
 import { ScanAttachment } from "@/components/scan-attachment";
 import {
   SCAN_ACCEPT,
@@ -240,6 +241,7 @@ type FieldSpec = {
     | "email"
     | "country"
     | "timezone"
+    | "regime"
     | "checkbox"
     | "select"
     | "textarea"
@@ -521,6 +523,12 @@ function ChildModal({
                     <TimezonePicker
                       value={(values[f.key] as string) || ""}
                       onChange={(timezone) => set(f.key, timezone)}
+                      label={f.label}
+                    />
+                  ) : f.type === "regime" ? (
+                    <RegimePicker
+                      value={(values[f.key] as string) || ""}
+                      onChange={(v) => set(f.key, v || "")}
                       label={f.label}
                     />
                   ) : f.type === "select" ? (
@@ -977,7 +985,7 @@ const taxRegistrationFields = (lk: Lookups): FieldSpec[] => [
     ]),
   },
   { key: "tax_number", label: "Tax number", placeholder: "FR12345678901" },
-  { key: "regime", label: "Regime", placeholder: "RÉEL / NORMAL / SIMPLIFIÉ" },
+  { key: "regime", label: "Regime", type: "regime", hint: "Cameroon: REEL, SIMPLIFIE, LIBERATOIRE, FRANCHISE — type to add custom." },
   {
     key: "filing_frequency",
     label: "Filing frequency",
@@ -1637,14 +1645,14 @@ export function EntityDossier({
                   </p>
                 )}
                 <p className="text-muted-foreground">
-                  {addresses.find((a) => a.type === "REGISTERED")
-                    ? [
-                        addresses.find((a) => a.type === "REGISTERED")?.line1,
-                        addresses.find((a) => a.type === "REGISTERED")?.city,
-                      ]
-                        .filter(Boolean)
-                        .join(", ")
-                    : e.address || "No registered address"}
+                  {(() => {
+                    const reg = addresses.find((a) => a.type === "REGISTERED") || addresses.find((a) => a.is_primary) || null;
+                    if (reg) {
+                      const parts = [reg.line1, reg.line2, reg.po_box ? `PO Box ${reg.po_box}` : null, [reg.postal_code, reg.city].filter(Boolean).join(" "), reg.region, reg.country_code].filter(Boolean);
+                      return parts.join(", ") || "No registered address";
+                    }
+                    return e.address || "No registered address";
+                  })()}
                 </p>
                 <p className="num text-muted-foreground">
                   {registrations
@@ -1966,7 +1974,7 @@ export function EntityDossier({
 
       {tab === "Working calendar" && <WorkingCalendarTab entityId={entityId} />}
 
-      {tab === "Public story" && <EntityPublicStoryTab entity={e} onSaved={reload} />}
+      {tab === "Public story" && <EntityPublicStoryTab entity={e} addresses={addresses} onSaved={reload} />}
 
       {tab === "Renewals" && (
         <Section

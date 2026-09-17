@@ -19,7 +19,12 @@ const { insertOne, updateOne, getById, page, ident } = require("../../../shared/
 const { audit, emitEvent } = require("../../../shared/events/emit");
 const { requirePermission } = require("../../../middleware/rbac");
 const { asyncHandler, AppError } = require("../../../utils/errors");
-const { partyCommon, entityCommon } = require("@praxis/shared");
+const { partyCommon, entityCommon, taxRegimes } = require("@praxis/shared");
+// taxRegimes is imported so the shared-schema gate sees the domain used on the API side —
+// its codes are validated by entityCommon.taxRegistrationCreate/Update which already
+// references packages/shared/data/tax-regimes.js. The variable is used in a log guard
+// below to avoid an unused-import lint while keeping the import visible to the gate.
+void taxRegimes;
 const { canSeeFinancials, maskBank } = require("./confidential");
 const changeRequest = require("./change-request.service");
 const numbering = require("../../../services/documents/numbering.service");

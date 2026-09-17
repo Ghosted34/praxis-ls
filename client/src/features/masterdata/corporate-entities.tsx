@@ -307,6 +307,38 @@ function EntityForm({
         setQueued(true);
         return;
       }
+      // If a registered office was filled, create it as entity_address. The
+      // entity itself is created first — addresses are a nested collection with
+      // their own endpoint. Failure here is non-fatal: the entity exists and the
+      // address can be added from the dossier's Contacts & addresses tab.
+      try {
+        const addr = {
+          line1: v.address_line1.trim(),
+          line2: v.address_line2.trim(),
+          city: v.address_city.trim(),
+          region: v.address_region.trim(),
+          postal_code: v.address_postal_code.trim(),
+          country_code: (v.address_country_code || v.country_code || "").trim().toUpperCase(),
+          po_box: v.address_po_box.trim(),
+        };
+        const hasAddr = addr.line1 || addr.city || addr.po_box || addr.postal_code;
+        if (isNew && hasAddr && result.data?.entity_id) {
+          await api.addEntityChild(result.data.entity_id, "addresses", {
+            type: "REGISTERED",
+            line1: addr.line1 || null,
+            line2: addr.line2 || null,
+            city: addr.city || null,
+            region: addr.region || null,
+            postal_code: addr.postal_code || null,
+            country_code: addr.country_code || null,
+            po_box: addr.po_box || null,
+            is_primary: true,
+          });
+        }
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn("Failed to create initial registered address", e);
+      }
       onSaved(result.data);
       onClose();
     } catch (err) {
@@ -512,6 +544,62 @@ function EntityForm({
             />
           </Field>
         </Fieldset>
+
+        {isNew && (
+          <Fieldset
+            legend="Registered office"
+            hint="Creates the REGISTERED address used on letterheads. Example: 1030, Avenue Douala Manga Bell, PO Box 5120, Douala, CM."
+          >
+            <Field label="Address line 1" hint="Street and number — e.g. 1030, Avenue Douala Manga Bell">
+              <Input
+                value={v.address_line1}
+                onChange={(e) => set("address_line1", e.target.value)}
+                placeholder="1030, Avenue Douala Manga Bell"
+              />
+            </Field>
+            <Field label="Address line 2">
+              <Input
+                value={v.address_line2}
+                onChange={(e) => set("address_line2", e.target.value)}
+                placeholder="Akwa"
+              />
+            </Field>
+            <Field label="City">
+              <Input
+                value={v.address_city}
+                onChange={(e) => set("address_city", e.target.value)}
+                placeholder="Douala"
+              />
+            </Field>
+            <Field label="Region">
+              <Input
+                value={v.address_region}
+                onChange={(e) => set("address_region", e.target.value)}
+                placeholder="Littoral"
+              />
+            </Field>
+            <Field label="Postal code">
+              <Input
+                value={v.address_postal_code}
+                onChange={(e) => set("address_postal_code", e.target.value)}
+              />
+            </Field>
+            <Field label="Registered country">
+              <CountrySelect
+                value={v.address_country_code || v.country_code}
+                onChange={(c) => set("address_country_code", c)}
+                label="Registered country"
+              />
+            </Field>
+            <Field label="PO Box" hint="Printed on letterhead as 'PO Box …'">
+              <Input
+                value={v.address_po_box}
+                onChange={(e) => set("address_po_box", e.target.value)}
+                placeholder="5120"
+              />
+            </Field>
+          </Fieldset>
+        )}
 
         <Fieldset
           legend="Incorporation and capital"

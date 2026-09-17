@@ -23,6 +23,7 @@ const countries = require("./data/countries");
 const currencies = require("./data/currencies");
 const timezones = require("./data/timezones");
 const legalForms = require("./data/legal-forms");
+const taxRegimes = require("./data/tax-regimes");
 
 // Named `exports.x =` assignments, NOT `module.exports = { x }`.
 //
@@ -95,6 +96,9 @@ exports.timezones = timezones;
 // ISO 20275/GLEIF v1.6 plus the verified OHADA Phase-1 supplement. Country-aware
 // picker, API and persisted reference validation all consume this one catalogue.
 exports.legalForms = legalForms;
+// Cameroon tax regimes (REEL, SIMPLIFIE, LIBERATOIRE, FRANCHISE, NORMAL, FORFAIT) —
+// the picker, the API schema and the migration all read from one file.
+exports.taxRegimes = taxRegimes;
 // NOTE: expectedRegistrations() lives in ./data/registrations.js as a ready
 // module but is deliberately NOT re-exported here yet. `check:schemas` requires
 // every index export to be consumed by BOTH the API and the client; the two

@@ -27,6 +27,7 @@ import { DateTimeField } from "@/components/ui/datetime-field";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
+import { EmployeePicker } from "@/components/employee-picker";
 import { useToast } from "@/components/ui/toast";
 import { errMsg } from "@/lib/use-resource";
 import { TASK_PRIORITIES, TASK_STATUSES } from "../api";
@@ -63,6 +64,12 @@ export function TaskDialog({
   const [dueAt, setDueAt] = React.useState("");
   const [reminder, setReminder] = React.useState("");
   const [isPersonal, setIsPersonal] = React.useState(false);
+  // The `user_id` the task is handed to, plus the name to show for it. Held as a
+  // pair because the picker searches employees but a task is assigned to a
+  // LOGIN (`assigned_to` is an app_user id), and the panel needs a name to draw
+  // without a second lookup.
+  const [assignedTo, setAssignedTo] = React.useState<string | null>(null);
+  const [assignedName, setAssignedName] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
 
   // Reset on open rather than on unmount: the Dialog stays mounted and only
@@ -77,6 +84,8 @@ export function TaskDialog({
     setDueAt(toLocalInput(task?.due_at ?? defaultDue ?? null));
     setReminder(fromReminder(task));
     setIsPersonal(task?.is_personal ?? false);
+    setAssignedTo(task?.assigned_to ?? null);
+    setAssignedName(task?.assigned_to_name ?? null);
     setError(null);
   }, [open, task, defaultDue]);
 
@@ -96,6 +105,9 @@ export function TaskDialog({
       // editing a task REMOVES its reminder rather than leaving it behind.
       reminder_minutes: reminder === "" ? null : Number(reminder),
       is_personal: isPersonal,
+      // Explicit null when nobody is chosen, so EDITING a task can UNASSIGN it
+      // rather than silently leaving the previous owner in place.
+      assigned_to: assignedTo,
     };
     try {
       if (editing && task) await update.mutateAsync({ id: task.task_id, input });
@@ -225,9 +237,56 @@ export function TaskDialog({
           </Field>
         </div>
 
+        {/* Who it is on. A task assigned to someone else is notified to them and
+            lands in their board's "My work" — the meeting's "assign it so it
+            shows on their dashboard". Left empty, the task stays on the
+            creator's own list. Hidden for a personal task, which by definition
+            is nobody else's. */}
+        {!isPersonal &&
+          (assignedTo ? (
+            <Field label="Assigned to" htmlFor="task-assignee">
+              <div
+                id="task-assignee"
+                className="flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm"
+              >
+                <span className="min-w-0 truncate">{assignedName ?? "Selected employee"}</span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setAssignedTo(null);
+                    setAssignedName(null);
+                  }}
+                >
+                  Change
+                </Button>
+              </div>
+            </Field>
+          ) : (
+            <EmployeePicker
+              id="task-assignee"
+              label="Assign to"
+              placeholder="Search staff by name or job title…"
+              requireAccount
+              onPick={(e) => {
+                setAssignedTo(e.account_user_id ?? null);
+                setAssignedName(e.full_name ?? null);
+              }}
+            />
+          ))}
+
         <Checkbox
           checked={isPersonal}
-          onCheckedChange={setIsPersonal}
+          onCheckedChange={(checked) => {
+            setIsPersonal(checked);
+            // A personal task is nobody else's, so choosing it drops any pending
+            // assignee rather than sending a contradiction to the server.
+            if (checked) {
+              setAssignedTo(null);
+              setAssignedName(null);
+            }
+          }}
           label="Personal task"
           hint="Keeps it off your team's view even where your role would otherwise show them your work."
         />

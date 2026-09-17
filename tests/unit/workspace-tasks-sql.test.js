@@ -101,6 +101,28 @@ describe("tasks.repo — placeholders match parameters", () => {
     expectBound(c.calls[0]);
   });
 
+  it("boardTasks under 'mine' keeps a task the caller CREATED", async () => {
+    // The board the kanban draws is audience 'mine' with personalOnly layered
+    // on — the exact bundle behind "I made a task and it never showed on the
+    // board". A created task (created_by = me) must survive both clauses.
+    const c = mockClient([{ status: "TO_DO", task_id: "t1", created_by: "u1" }]);
+    const board = await repo.boardTasks(c, { audience: "mine", userId: "u1", personalOnly: true });
+    expectBound(c.calls[0]);
+    expect(c.calls[0].sql).toMatch(/t\.created_by = \$1/);
+    expect(board.TO_DO).toHaveLength(1);
+  });
+
+  it("boardTasks under 'mine' keeps a task ASSIGNED to the caller", async () => {
+    // The assignee side of the same rule: assign a task to a colleague and it
+    // has to land on THEIR board, which is also 'mine' + personalOnly. This is
+    // what makes "assign it so it shows on their dashboard" true.
+    const c = mockClient([{ status: "IN_PROGRESS", task_id: "t2", assigned_to: "u1" }]);
+    const board = await repo.boardTasks(c, { audience: "mine", userId: "u1", personalOnly: true });
+    expectBound(c.calls[0]);
+    expect(c.calls[0].sql).toMatch(/t\.assigned_to = \$1/);
+    expect(board.IN_PROGRESS).toHaveLength(1);
+  });
+
   it("boardTasks groups only the four real columns", async () => {
     const c = mockClient([
       { status: "TO_DO", task_id: "1" },
@@ -230,6 +252,17 @@ describe("tasks.repo — the visibility predicate", () => {
     const { sql, params } = repo.visibleWhere({ audience: "mine", userId: "u1" });
     expect(params).toEqual(["u1"]);
     expect(sql.join(" ")).toMatch(/assigned_to = \$1 OR t\.created_by = \$1/);
+  });
+
+  it("'mine' with the board's personal filter still shows the caller's own", () => {
+    // The board never asks for 'mine' alone — it always adds personalOnly. The
+    // two clauses together must not cancel out and hide a row the caller made
+    // or was handed, which would be an empty board for someone who has tasks.
+    const { sql, params } = repo.visibleWhere({ audience: "mine", userId: "u1", personalOnly: true });
+    const joined = sql.join(" AND ");
+    expect(joined).toMatch(/t\.assigned_to = \$1 OR t\.created_by = \$1/);
+    expect(joined).toMatch(/t\.is_personal = false OR t\.created_by = \$2 OR t\.assigned_to = \$2/);
+    expect(params).toEqual(["u1", "u1"]);
   });
 
   it("'team' adds the scope closure but keeps unscoped rows visible", async () => {

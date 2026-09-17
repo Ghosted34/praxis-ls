@@ -8,6 +8,40 @@
 
 ---
 
+## 0. Remediation progress
+
+_Last updated: 2026-09-17. Keep this section in step with `main` — when a PR merges, tick the findings it closed and link it here. Status legend: ✅ merged · 🟡 in progress · ⬜ not started._
+
+### By milestone
+
+| PR | Theme | Status | Landed via |
+| -- | ----- | ------ | ---------- |
+| PR 1 | Grounding integrity (A1–A4) | 🟡 partial | A2 done in [#404](https://github.com/tomblakeasaah196/praxis-ls/pull/404); A1/A3/A4 still open |
+| PR 2 | Completeness, model & no‑truncation (B1, B2, B4, B5) | 🟡 partial | B1 + B4 done in [#404](https://github.com/tomblakeasaah196/praxis-ls/pull/404); B2 (fallback vendor + health check) and B5 (shared cached prompt builder) still open |
+| PR 3 | "Create anything": one write contract (C1–C4) | ⬜ not started | — |
+| PR 4 | Steering, modes & context window (D1–D5, G1) | 🟡 partial | D5 (modes real) + D1 (scope steering) done in [#404](https://github.com/tomblakeasaah196/praxis-ls/pull/404); D2/D3/D4 + context‑window growth still open |
+| PR 5 | Reliability, timeouts & performance (E1–E4, G2) | ⬜ not started | — |
+| PR 6 | Conversation management & Spaces UX (J1–J5) | ⬜ not started | — |
+| PR 7 | Module → AI governance (I1–I4) | 🟡 partial | CLAUDE.md rule added in [#400](https://github.com/tomblakeasaah196/praxis-ls/pull/400) (I3 first step); coverage gate + missing manifests still open |
+| PR 8 | Evaluation, quality bar & observability (B6, H1, H2, …) | ⬜ not started | — |
+
+### By finding (what is actually closed on `main`)
+
+| Finding | Sev | Status | Notes |
+| ------- | --- | ------ | ----- |
+| A2 — OHADA boost mis‑fires on "is" | P1 | ✅ | Regex spelled out; `boostDomainHits` test added. [#404](https://github.com/tomblakeasaah196/praxis-ls/pull/404) |
+| B1 — answers truncated (no `max_tokens`) | P0/P1 | ✅ | `config.AI_MAX_TOKENS` (default 4096) sent on every completion. [#404](https://github.com/tomblakeasaah196/praxis-ls/pull/404) |
+| B4 — streamed usage counted as zero | P1 | ✅ | `stream_options.include_usage` set on streamed calls. [#404](https://github.com/tomblakeasaah196/praxis-ls/pull/404) |
+| D5 — Ask/Draft/Analyse/Act were identical | P1 | ✅ | Validator accepts `mode`/`scope`; each mode appends a real posture directive. Act still only *proposes*. [#404](https://github.com/tomblakeasaah196/praxis-ls/pull/404) |
+| D1 — `scope` ignored server‑side | P1 | ✅ | Chosen Space now biases tool selection/retrieval. [#404](https://github.com/tomblakeasaah196/praxis-ls/pull/404) |
+| I3 — CLAUDE.md never mentioned manifests | P0 | ✅ | "Wire every module to the AI" rule added. [#400](https://github.com/tomblakeasaah196/praxis-ls/pull/400) |
+| A1 — redaction blanks amounts/refs | P0 | ⬜ | **Deliberately deferred** to its own reviewed PR — touches PII policy (an existing test defends "account number → `[NUM]`") and `proposal.generator.js`. |
+| A3, A4, B2, B5, B6, C1–C4, D2–D4, E1–E4, F*, G*, H1–H2, I1–I2/I4, J1–J5 | — | ⬜ | Not started. |
+
+**Recommended next PR:** PR 3 (write contract) — it repairs writes that are currently broken end‑to‑end (`create_supplier` C1, `create_lead`/`create_opportunity` C2, `create_purchase_request` C3), which is the largest user‑visible gap now that truncation is fixed.
+
+---
+
 ## 1. Architecture as it stands (grounded)
 
 ```

@@ -160,15 +160,36 @@ function buildCspDirectives(defaults, scriptSrc) {
   return {
     ...defaults,
     /*
-     * BOTH of these carry `blob:` for one reason: a chat attachment is
-     * membership-gated, so its bytes arrive through an authenticated fetch and
-     * reach the element as a blob — a plain `src` cannot carry a Bearer token.
-     * An attachment kind whose directive omits `blob:` does not degrade, it is
-     * blocked outright, and the element reports that as an ordinary media
-     * error. See the note above the `app.use(helmet(...))` call.
+     * ALL of these carry `blob:` for one reason: a gated file (chat
+     * attachment, vault document) is membership-checked, so its bytes arrive
+     * through an authenticated fetch and reach the element as a blob — a
+     * plain `src` cannot carry a Bearer token. A consumer whose directive
+     * omits `blob:` does not degrade, it is blocked outright, and the element
+     * reports that as an ordinary media/load error. See the note above the
+     * `app.use(helmet(...))` call.
      */
     "img-src": ["'self'", "data:", "blob:", "https:"],
     "media-src": ["'self'", "blob:"],
+    /*
+     * `frame-src` — the same defect as `media-src` above, one consumer later.
+     * The vault preview dialog renders PDFs and text files in an
+     * `<iframe src={objectUrl}>`: the document is membership-gated, so its
+     * bytes arrive through an authenticated fetch carrying a Bearer token and
+     * reach the element as a `blob:` URL. `frame-src` was never set, CSP fell
+     * back to `default-src 'self'`, and every PDF/text preview was blocked
+     * outright:
+     *
+     *     Framing 'blob:https://…' violates the following Content Security
+     *     Policy directive: "default-src 'self'". Note that 'frame-src' was
+     *     not explicitly set, so 'default-src' is used as a fallback.
+     *
+     * Images in the same dialog kept working — `img-src` says `blob:` — which
+     * is exactly what hid it, again. `'self'` covers the sandboxed srcDoc
+     * iframes (document preview, template preview); `blob:` covers the vault
+     * viewer. Never a remote origin: the only documents this product frames
+     * are documents it fetched itself and holds in memory.
+     */
+    "frame-src": ["'self'", "blob:"],
     "script-src": scriptSrc,
   };
 }

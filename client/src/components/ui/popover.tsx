@@ -43,6 +43,9 @@ export function Popover({
   open,
   onOpenChange,
   className,
+  onOpenAutoFocus,
+  sideOffset = 8,
+  collisionPadding = 12,
 }: {
   trigger: React.ReactNode;
   /** Accessible name for the panel. Not rendered. */
@@ -54,6 +57,9 @@ export function Popover({
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   className?: string;
+  onOpenAutoFocus?: (event: Event) => void;
+  sideOffset?: number;
+  collisionPadding?: number;
 }) {
   return (
     <RadixPopover.Root open={open} onOpenChange={onOpenChange}>
@@ -63,8 +69,9 @@ export function Popover({
           aria-label={label}
           align={align}
           side={side}
-          sideOffset={8}
-          collisionPadding={12}
+          sideOffset={sideOffset}
+          collisionPadding={collisionPadding}
+          onOpenAutoFocus={onOpenAutoFocus}
           className={cn(
             "z-50 animate-fade-in overflow-hidden rounded-lg border bg-popover text-popover-foreground shadow-[var(--shadow-l)]",
             className,
@@ -78,3 +85,4 @@ export function Popover({
 }
 
 export const PopoverClose = RadixPopover.Close;
+export const PopoverAnchor = RadixPopover.Anchor;

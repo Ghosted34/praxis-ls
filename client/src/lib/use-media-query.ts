@@ -57,3 +57,25 @@ export function useMediaQuery(query: string, fallback = false): boolean {
 export const DESKTOP_QUERY = "(min-width: 1024px)";
 
 export const useIsDesktop = (): boolean => useMediaQuery(DESKTOP_QUERY, true);
+
+/**
+ * `xl` and up — matching tailwind.config.ts `xl: "1280px"` exactly, and the
+ * width at which the task board itself goes to four columns
+ * (`xl:grid-cols-4`).
+ *
+ * The breakpoint that decides between "a detail pane beside the content" and
+ * "a sheet over it" has to be the SAME number in the branch and in the layout,
+ * for the reason `useIsDesktop` states: a screen whose CSS splits at one width
+ * and whose JavaScript decides at another is a screen that renders the wrong
+ * shell in the gap between them.
+ *
+ * It also has to be decided in JavaScript at all, which is not obvious when the
+ * alternative is a `xl:hidden` wrapper. A component that renders through a
+ * PORTAL — every `<Dialog>`, every Radix surface — is not a descendant of that
+ * wrapper once it is mounted, so the media query hides nothing and the surface
+ * appears at every width. The Tasks board shipped that bug: the phone sheet
+ * opened over the board on desktop, next to the very pane it was meant to be.
+ */
+export const WIDE_QUERY = "(min-width: 1280px)";
+
+export const useIsWide = (): boolean => useMediaQuery(WIDE_QUERY, true);

@@ -238,5 +238,16 @@ CI is not. Running one file is never a substitute for the suite.
   *text* is `text-primary-ink`; `text-primary` is a fill.
 - **Silent catches carry a taxonomy marker** — see `doc/ERROR_HANDLING.md`.
 - **RBAC action is `edit`**, not `update` — the backend spells it that way.
+- **Wire every module to the AI.** When you add a module, or change a module's
+  reads/writes or their validators, update its `<module>.ai.js` manifest so
+  Praxis AI can see and act on it — the assistant's tool catalogue is derived
+  *only* from those manifests (`src/services/ai/action-registrar.js` →
+  `ai_action_catalogue`). A module with no manifest is invisible to the AI, and
+  a manifest that drifts from its service (wrong payload shape, a write that no
+  longer passes the actor) advertises a capability the runtime cannot honour.
+  See `doc/AI_ARCHITECTURE.md` §2 and the pre-PR checklist in
+  `doc/BUILD_CONVENTIONS.md`. A module that genuinely has no AI surface carries
+  an explicit `// ai:none` opt-out. (Full analysis + the coverage gate that will
+  enforce this: `doc/PRAXIS_AI_AUDIT.md`.)
 - PR titles must start with a Conventional Commits prefix; CI gates on it
   because the changelog is written from the title.

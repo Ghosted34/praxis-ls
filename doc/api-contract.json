@@ -2,11 +2,11 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 140,
-  "route_count": 1630,
+  "route_count": 1633,
   "tiers": {
     "public": 67,
     "self-scoped": 101,
-    "gated": 1462
+    "gated": 1465
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -1612,6 +1612,12 @@
       "tier": "gated"
     },
     "GET /api/tenant/costing/reconciliations/:dossierId/timeline": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/costing/reconciliations/:dossierId/unaccounted/:costEntryId": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -4821,6 +4827,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/workspace/deadlines": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/workspace/events/": {
       "auth": true,
       "rbac": true,
@@ -6676,6 +6688,12 @@
       "tier": "gated"
     },
     "POST /api/tenant/costing/reconciliations/:dossierId/submit": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/costing/reconciliations/:dossierId/unaccounted/:costEntryId/map": {
       "auth": true,
       "rbac": true,
       "validated": false,

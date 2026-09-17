@@ -77,13 +77,21 @@ const NOTIFIABLE = {
   "cash_request.rejected": { action: "view", title: "Cash request rejected", priority: "HIGH" },
 
   /**
-   * 13801 — Budget Reconciliation (MOD-76). Four keys, and no approval among
+   * 13801 — Budget Reconciliation (MOD-76). Five keys, and no approval among
    * them: Operations prepares, Finance settles, and the MD is TOLD rather than
    * asked (owner decision Q6). `proof_owed` is the one that reaches the person
    * who took the cash — it is the notification behind "Cash to account for".
+   *
+   * `reopened` is the one that arrived late: the constant and the emission
+   * shipped in PR 2, but this allowlist entry did not, so a settled sheet
+   * re-opening — new facts landing on a file Finance had marked done — was
+   * emitted, audited, and reached nobody. HIGH matches `rejected` /
+   * `proof_owed`: it is the non-routine reconciliation event, and the people
+   * who can settle are exactly the ones who need to see the file move.
    */
   "reconciliation.submitted": { action: "view", title: "Reconciliation submitted" },
   "reconciliation.settled": { action: "view", title: "File reconciled" },
+  "reconciliation.reopened": { action: "view", title: "Reconciliation re-opened", priority: "HIGH" },
   "reconciliation.rejected": { action: "view", title: "Reconciliation sent back", priority: "HIGH" },
   "reconciliation.proof_owed": { action: "view", title: "Receipt owed", priority: "HIGH" },
 

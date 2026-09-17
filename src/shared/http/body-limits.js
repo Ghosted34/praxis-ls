@@ -40,8 +40,14 @@
  *      photograph is 2-5 MB, so this was not an edge case: the feature did not
  *      work for the files it exists to carry.
  *
- * Three times is a pattern, so the knowledge lives in one greppable place
- * rather than as a fourth block of prose in `server.js`. When a new route takes
+ *   4. Mail attachments. The composer promises 25 MB across the message, but
+ *      its upload endpoint also receives each file as base64 JSON. With the
+ *      global parser still at 2 MB, an ordinary 2 MB Word document became a
+ *      roughly 2.7 MB request and was rejected before the mail service could
+ *      enforce (or explain) the real 25 MB aggregate limit.
+ *
+ * Four times is a pattern, so the knowledge lives in one greppable place
+ * rather than as another block of prose in `server.js`. When a new route takes
  * a base64 body, it belongs here — and `tests/unit/body-limits.test.js` fails if
  * one of these limits stops covering the cap its feature advertises.
  *
@@ -104,6 +110,19 @@ const RAISED = [
     limit: "12mb",
     advertises: 6 * 1024 * 1024,
     why: "Hiring submits ID card, CV and passport photograph in one call.",
+  },
+  {
+    name: "mail-attachments",
+    /* POST /api/tenant/mail/attachments/upload
+     *
+     * The 25 MB rule is an aggregate cap enforced on decoded bytes by
+     * outbox.assertRoomFor. This parser only makes the upload reachable after
+     * base64 has inflated one file by a third. `from-vault` carries an id rather
+     * than bytes and intentionally stays on the global limit. */
+    path: /^\/api\/(v\d+\/)?tenant\/mail\/attachments\/upload\/?$/,
+    limit: "35mb",
+    advertises: 25 * 1024 * 1024,
+    why: "A mail attachment, base64'd by the composer before upload.",
   },
   {
     name: "website-images",

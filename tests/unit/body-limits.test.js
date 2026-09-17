@@ -3,10 +3,10 @@
 /**
  * The body-size exemptions, pinned.
  *
- * WHY THIS TEST EXISTS. The same defect has been found three times — a CV, a
- * staff file, and every picture on a tenant's website — and each time the
- * symptom was identical and useless: the feature simply did not work, with no
- * field to blame and no message the screen could show, because body-parser
+ * WHY THIS TEST EXISTS. The same defect has been found four times — a CV, a
+ * staff file, every picture on a tenant's website, and a mail attachment — and
+ * each time the symptom was identical and useless: the feature simply did not
+ * work, with no field to blame and no message the screen could show, because body-parser
  * raises its 413 BEFORE any application code runs. Nothing failed while the
  * feature was being built, because the developer's test image was small.
  *
@@ -45,7 +45,6 @@ function appWithParsers() {
   app.use(express.json({ limit: DEFAULT_LIMIT }));
   // Answers only if the body parsed — which is the single fact under test.
   app.use((req, res) => res.status(200).json({ bytes: (req.body.data_url || "").length }));
-  // eslint-disable-next-line no-unused-vars
   app.use((err, _req, res, _next) => res.status(err.status || 500).json({ type: err.type }));
   return app;
 }
@@ -76,6 +75,28 @@ describe("raised body limits", () => {
     expect(parseLimit(images.limit)).toBeGreaterThanOrEqual(
       encodedSize(images.advertises),
     );
+  });
+});
+
+describe("mail attachment uploads", () => {
+  // The reported production failure: a roughly 2 MB Word document. Its base64
+  // representation is about 2.7 MB, so it used to fall through to the 2 MB
+  // global parser and die before mail's decoded 25 MB aggregate check ran.
+  const WORD_DOCUMENT = 2 * 1024 * 1024;
+
+  it.each([
+    "/api/tenant/mail/attachments/upload",
+    "/api/v1/tenant/mail/attachments/upload",
+  ])("accepts a 2 MB document on %s", async (path) => {
+    const res = await request(appWithParsers()).post(path).send(bodyFor(WORD_DOCUMENT));
+    expect(res.status).toBe(200);
+  });
+
+  it("does not raise the id-only from-vault endpoint", async () => {
+    const res = await request(appWithParsers())
+      .post("/api/tenant/mail/attachments/from-vault")
+      .send(bodyFor(WORD_DOCUMENT));
+    expect(res.status).toBe(413);
   });
 });
 

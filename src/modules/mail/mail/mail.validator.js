@@ -494,9 +494,11 @@ const schemas = {
   attachmentUpload: z.object({
     email_draft_id: z.string().uuid(),
     filename: z.string().trim().min(1).max(255),
-    // A base64 data URL. The 34 MB ceiling is base64's ~33% inflation over the
-    // 25 MB limit plus headroom; the real limit is enforced on decoded bytes.
-    data_url: z.string().min(8).max(34_000_000),
+    // A base64 data URL. 25 MiB becomes 34,952,536 base64 characters before
+    // the short data-URL prefix, so 34,000,000 did not actually cover the cap
+    // this API promises. The real limit remains the decoded, aggregate byte
+    // check in outbox.assertRoomFor; this wire ceiling only bounds the JSON.
+    data_url: z.string().min(8).max(35_000_000),
     disposition: z.enum(["attachment", "inline"]).optional(),
     content_id: z.string().trim().max(128).nullable().optional(),
   }).strict(),

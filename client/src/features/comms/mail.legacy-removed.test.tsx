@@ -42,13 +42,46 @@ const LEGACY_IMPORT =
 /** The legacy composer's send call — the new path is the send queue. */
 const SENDMAIL_CALL = /api\.sendMail|sendMail\(/;
 
+function isEnoent(err: unknown): boolean {
+  return (err as NodeJS.ErrnoException)?.code === "ENOENT";
+}
+
+/**
+ * Tolerate a path that vanishes mid-scan.
+ *
+ * This walk reads the WHOLE source tree, and it runs on a separate worker from
+ * new-screen.test.ts, which scaffolds a throwaway screen at
+ * `src/features/__scaffold_check__/widget-orders.tsx` and removes it again
+ * inside the same suite run. A file the walk listed can therefore be gone by
+ * the time it is read, and a directory can be gone before its own readdir — a
+ * plain TOCTOU between two parallel test files. A path that disappeared is not
+ * a source file to assert on, so skip it (ENOENT only; any other error still
+ * throws). The real source never vanishes, so the guard's reach is unchanged.
+ */
 function walk(dir: string, out: string[] = []): string[] {
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch (err) {
+    if (isEnoent(err)) return out;
+    throw err;
+  }
+  for (const entry of entries) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) walk(full, out);
     else if (/\.(ts|tsx)$/.test(entry.name)) out.push(full);
   }
   return out;
+}
+
+/** Read a file's lines, or null if it vanished since the walk listed it. */
+function readLines(file: string): string[] | null {
+  try {
+    return fs.readFileSync(file, "utf8").split("\n");
+  } catch (err) {
+    if (isEnoent(err)) return null;
+    throw err;
+  }
 }
 
 describe("the legacy mail composer is gone", () => {
@@ -68,7 +101,8 @@ describe("the legacy mail composer is gone", () => {
       // Test files may NAME the legacy surfaces in order to assert they are
       // gone (this one, and mail-tab.test.tsx) — naming is not surviving.
       if (/\.test\.(ts|tsx)$/.test(rel)) continue;
-      const lines = fs.readFileSync(file, "utf8").split("\n");
+      const lines = readLines(file);
+      if (!lines) continue;
       lines.forEach((line, i) => {
         for (const token of LEGACY_TOKENS) {
           if (line.includes(token) && !inComposerDir) {
@@ -94,7 +128,8 @@ describe("the legacy mail composer is gone", () => {
     const violations: string[] = [];
     for (const file of files) {
       const rel = path.relative(SRC_ROOT, file);
-      const lines = fs.readFileSync(file, "utf8").split("\n");
+      const lines = readLines(file);
+      if (!lines) continue;
       lines.forEach((line, i) => {
         if (LEGACY_IMPORT.test(line)) {
           violations.push(`${rel}:${i + 1} — ${line.trim()}`);
@@ -108,7 +143,8 @@ describe("the legacy mail composer is gone", () => {
     const violations: string[] = [];
     for (const file of files) {
       const rel = path.relative(SRC_ROOT, file);
-      const lines = fs.readFileSync(file, "utf8").split("\n");
+      const lines = readLines(file);
+      if (!lines) continue;
       lines.forEach((line, i) => {
         if (SENDMAIL_CALL.test(line)) {
           violations.push(`${rel}:${i + 1} — ${line.trim()}`);

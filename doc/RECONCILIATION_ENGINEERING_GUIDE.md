@@ -29,6 +29,17 @@ corrections were — so the next reader is not arguing with a plan nobody follow
 
 
 **What PR 3 changed about this guide.** Two things came out differently once the owner saw the\nshapes and the code was written. Recorded here for the same reason PR 1's and PR 2's corrections\nwere — so the next reader is not arguing with a plan nobody followed:\n\n| Guide said | Shipped | Why |\n| --- | --- | --- |\n| §6.6 — the 360 section is called **Cost proofs** | **Supporting Documents** | Owner decision: \"Cost Proofs\" read like an artefact category only auditors care about; \"Supporting Documents\" says what the section is for. The placement followed the guide's recommendation (a section inside the existing `documents` tab, not a ninth tab) because the owner did not choose the ninth tab. The `COST_PROOF` doc type and row labels are unchanged — only the section heading takes the owner's name. |\n| §6.4 — send *\"post into the file's channel, or direct-message a colleague\"*, implicitly one message | **Send is a channel conversation, and the PDF rides as a message attachment (`attachment_kind: VAULT`)** | Smart Comms' message model has no \"deliver a document\" primitive — the durable record IS a conversation. So `POST /:dossierId/statement/send` finds-or-creates the file's DOSSIER channel (or the DIRECT dedupe channel for a colleague), posts the note as the message body, and attaches the settled statement's vault document. The statement a colleague opens is the same bytes the settlement row points at — re-rendering at send time would let the record argue with itself. |\n\n**Module name:** **Budget Reconciliation** in the UI (Q21). Table and module names stay
+
+**What the leftover pack changed about this guide.** §8.1 was the one place this guide
+flagged *a decision, not a detail* — the owner was asked and answered 17/09/2026. Two
+smaller slips from PRs 1–3 closed in the same pass, recorded here for the same reason the
+earlier corrections were:
+
+| Guide said | Shipped | Why |
+| --- | --- | --- |
+| §8.1 — "flagged for the owner", between refuse-at-handler and refuse-at-settlement | **Option B won (owner, 17/09/2026): refuse at settlement, surface in between** | The five handlers keep posting — the ledger must record what happened — and the entries land in an **Unaccounted spend** tray on the sheet (`GET /:dossierId` gains `unaccounted: []`; one indexed read on `dossier_id` with the partial index `ix_cost_entry_unaccounted`, 13830; the journal link is fetched lazily, on tray expand). `POST /:dossierId/submit` is blocked with `UNACCOUNTED_SPEND` (422, every unmapped row in one list) until each entry is mapped to a budget line — `POST /:dossierId/unaccounted/:costEntryId/map` writes `cost_entry.costing_line_id`, the column 13801 created for exactly this — or the costing is amended to carry the spend, where the existing re-open hook does the rest. The alternative (refuse at the handler) was rejected because it lands the failure in accounts payable, where nobody can act. |
+| §6.5 — the four reconciliation keys | **Five keys — `reconciliation.reopened` added to the allowlist** | The constant and the emission shipped in PR 2, but the NOTIFIABLE entry did not, so a settled sheet re-opening — new facts landing on a file Finance thought done — was emitted, audited, and reached nobody. HIGH, on the `view` audience, matching `rejected` / `proof_owed`. The body is built from title + entityRef only; the re-open's `reopened_reason` lives in the audit (the emission passes no payload — rendering it into the body is a separate, deliberately out-of-scope change). |
+| §8.3 — "it is four lines, and it removes the last place a user is asked to paste a uuid", in the same pass | **The régie proof box is now the upload engine** | `regie-detail.tsx` still rendered "Proof document id" as a bare `<Input>` bound to `f.proof_vault_id` — the last paste-a-uuid proof capture in the finance domain. It is now `useUpload({ profile: "document", autoStart: false })` + `<FilePicker>` + `<UploadList>`, uploading on Save via `uploadVaultFile(file, { dossier_id, doc_type: "COST_PROOF" })`. A dossier is always in hand on this path (RECEIPT demands one — 4731 is analytic — and Save is disabled without it), so the 15 MB COST_PROOF widening applies cleanly. Proof stays optional client-side: `finance.regie.require_proof_for_receipt` decides server-side, not this form. |
 `dossier_reconciliation` so no route, migration or import moves. "OCR" is retired as a label — it
 already means optical character recognition one tab away (`bank_statement.ocr_used`, `10720`).
 
@@ -613,7 +624,9 @@ dossier. Each row deep-links to the line modal.
 Notifications: add to `NOTIFIABLE` in `shared/notifications/notify-events.js` —
 `reconciliation.submitted`, `reconciliation.settled`, `reconciliation.reopened`,
 `reconciliation.proof_owed` (the in-app + push the owner asked for). The allowlist is curated on
-purpose; four keys, each with a title and an action.
+purpose; five keys, each with a title and an action (`reconciliation.rejected` shipped as the
+fifth, and `reopened` joined the list in the leftover pack — its emission had shipped without its
+allowlist entry, so a re-open reached nobody).
 
 ### 6.6 Supporting documents on the Operations file 360 (Q8)
 
@@ -756,9 +769,32 @@ Two ways to honour the policy, and they are genuinely different:
   happened), lands in an **Unaccounted spend** tray on the sheet, and **submission is blocked** until
   each one is either mapped to a budget line or the costing is amended to carry it.
 
-I recommend the second. It does not permit off-budget spend — it refuses to let it hide, which is the
-same end with a route to fix it. **This is a decision, not a detail**, and it is not covered by any
-of the 21 answers; flagged for the owner.
+I recommended the second. It does not permit off-budget spend — it refuses to let it hide, which is
+the same end with a route to fix it. **This is a decision, not a detail**, and it is not covered by
+any of the 21 answers; flagged for the owner.
+
+**The owner's decision (asked and answered 17/09/2026): option B.** Refuse at settlement, surface in
+between — as shipped, and recorded in the correction table above. What that means in code:
+
+- The five handlers **keep posting**. That is the premise, not a gap: the ledger records what
+  happened, and each entry arrives with `costing_line_id` NULL, which is exactly what the tray
+  reads.
+- `GET /:dossierId` gains `unaccounted: [{ cost_entry_id, amount, category, spent_on, created_at,
+  source_hint }]` — one indexed read anchored on `dossier_id` (partial index
+  `ix_cost_entry_unaccounted`, 13830 — the existing `ix_cost_entry_costing_line` is the opposite
+  partial and cannot serve it). `cost_entry` has no currency column, so the amount is booked in the
+  ledger's currency and the sheet's single currency stays on the header; `source_hint` is derived
+  from the real columns (category, `source_ref` from 0463, the `entry_id` journal link) — the
+  journal entry's own details are fetched lazily, on tray expand, at
+  `GET /:dossierId/unaccounted/:costEntryId`, so the common empty-tray case costs ~nothing on the
+  sheet's hot path.
+- `POST /:dossierId/unaccounted/:costEntryId/map` (edit grant) writes `costing_line_id` — the column
+  13801 created for settlement to write — validating the line against the file's APPROVED_LOCKED
+  costing, refusing on a sheet that is not OPEN (re-open semantics, never a silent mutation), and
+  auditing the mapping. A double-map is a no-op, not an overwrite.
+- `POST /:dossierId/submit` fails `UNACCOUNTED_SPEND` (422) carrying **every** unmapped row in one
+  list — the one-list rule, §5. Mapping the last entry, or amending + re-approving the costing (the
+  re-open hook then handles the rest), is what re-enables it.
 
 ### 8.2 `cost_entry` cannot say when money was spent
 
@@ -845,3 +881,11 @@ My workspace.
 The chart library and the `<Chart>` wrapper; the consumption track and the *Full view* drawer; the
 PDF/xlsx statement and the Smart Comms send; supporting documents on the Operations file 360; the
 rename to Budget Reconciliation; the MOD-76 split; retiring the matcher.
+
+### Leftover pack — the three things the guide prescribed and the PRs did not ship · **shipped**
+§8.1's decision, answered by the owner 17/09/2026 and built as option B: the **Unaccounted spend**
+tray (the five handlers keep posting; `UNACCOUNTED_SPEND` gates submit; the mapping endpoint homes
+each entry on a budget line), the partial index 13830 behind it. §6.5's missing fifth key:
+`reconciliation.reopened` on the allowlist, so a re-open notifies the people who can settle.
+§8.3's slipped pass: the régie proof box is the upload engine, and the last paste-a-uuid in the
+finance domain is gone. The named §9 focus-refetch regression test now exists.

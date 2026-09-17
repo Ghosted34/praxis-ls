@@ -56,6 +56,24 @@ module.exports = {
       dossierId: req.params.dossierId, note: req.body.note, actor: actor(req), ip: ip(req),
     })) })),
 
+  // §8.1 (owner decision B): the tray row's journal link — the lazy read, hit
+  // when a row is expanded, never on the sheet GET.
+  unaccountedEntry: asyncHandler(async (req, res) =>
+    res.json({ data: await req.tenantDb((c) => service.unaccountedEntryFor(c, {
+      dossierId: req.params.dossierId, costEntryId: req.params.costEntryId,
+    })) })),
+
+  // Map the entry to a budget line: the fix that clears the tray. The service
+  // re-reads the sheet and returns it, so the caller's grid and tray update
+  // together.
+  mapUnaccounted: asyncHandler(async (req, res) =>
+    res.json({ data: await req.tenantDb((c) => service.mapUnaccounted(c, {
+      dossierId: req.params.dossierId,
+      costEntryId: req.params.costEntryId,
+      costingLineId: req.body.costing_line_id,
+      actor: actor(req), ip: ip(req),
+    })) })),
+
   reject: asyncHandler(async (req, res) =>
     res.json({ data: await req.tenantDb((c) => service.reject(c, {
       dossierId: req.params.dossierId, reason: req.body.reason, actor: actor(req), ip: ip(req),

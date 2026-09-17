@@ -589,6 +589,35 @@ export type ReconBlocker = {
 
 export type ReconStatus = "OPEN" | "SUBMITTED" | "SETTLED";
 
+/**
+ * One row of the "Unaccounted spend" tray (guide §8.1, owner decision B).
+ *
+ * A cost posted on the file that the approved costing does not carry — the
+ * five orchestration handlers' population. `source_hint` is derived server-side
+ * from the entry's category, its idempotency source_ref and its journal link;
+ * there is no such column. No currency per row on purpose: `cost_entry` has
+ * none, and the sheet's single currency is `currency` on the header.
+ * The amount is SIGNED — a settlement reversal reads negative.
+ */
+export type ReconUnaccounted = {
+  cost_entry_id: string;
+  amount: number;
+  category: string | null;
+  spent_on?: string | null;
+  created_at: string;
+  source_hint: string;
+};
+
+/** The tray row's journal link, fetched lazily when a row is expanded. */
+export type ReconUnaccountedDetail = ReconUnaccounted & {
+  journal: {
+    entry_id: string;
+    entry_date?: string | null;
+    description?: string | null;
+    status?: string | null;
+  } | null;
+};
+
 export type ReconSheet = {
   dossier_id: string;
   reconciliation_id: string | null;
@@ -613,6 +642,9 @@ export type ReconSheet = {
     budget_ttc: number; disbursed_ttc: number; actual_ttc: number; returned_ttc: number;
     settled_at?: string; settled_by?: string | null;
   }>;
+  /** §8.1 (owner decision B): spend the approved costing does not carry.
+   *  Submission is blocked until the list is empty. */
+  unaccounted?: ReconUnaccounted[];
   allowance: { amount: number; percent: number };
   blockers?: ReconBlocker[];
   totals: ReconTotals;
@@ -698,6 +730,19 @@ export const detachReconDocument = (
 
 export const submitReconciliation = (dossierId: string, note?: string) =>
   tenant<ReconSheet>(`${RECON}/${dossierId}/submit`, { method: "POST", body: { note } });
+
+/** §8.1 (owner decision B): one tray row's journal link — the lazy read, hit
+ *  when the row is expanded, never by the sheet itself. */
+export const getReconUnaccounted = (dossierId: string, costEntryId: string) =>
+  tenant<ReconUnaccountedDetail>(`${RECON}/${encodeURIComponent(dossierId)}/unaccounted/${costEntryId}`);
+
+/** Map an unaccounted spend entry to a budget line: the fix that clears the
+ *  tray. Returns the whole sheet — grid and tray together. */
+export const mapReconUnaccounted = (dossierId: string, costEntryId: string, costingLineId: string) =>
+  tenant<ReconSheet>(`${RECON}/${encodeURIComponent(dossierId)}/unaccounted/${costEntryId}/map`, {
+    method: "POST",
+    body: { costing_line_id: costingLineId },
+  });
 
 export const rejectReconciliation = (dossierId: string, reason: string) =>
   tenant<ReconSheet>(`${RECON}/${dossierId}/reject`, { method: "POST", body: { reason } });

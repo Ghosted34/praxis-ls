@@ -26,7 +26,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { DateField } from "@/components/ui/date-field";
-import { EmptyState, LoadingRow } from "@/components/ui/states";
+import { LoadingRow } from "@/components/ui/states";
 import { ScreenError } from "@/components/connection/screen-error";
 import { useConfirm } from "@/components/ui/use-confirm";
 import { useToast } from "@/components/ui/toast";
@@ -353,13 +353,9 @@ function dayInput(iso: string | null): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-/** The empty half of a master-detail split, so the panel's absence is
- *  explained rather than leaving a hole in the layout. */
-export function TaskPanelEmpty() {
-  return (
-    <EmptyState
-      title="No task selected"
-      hint="Pick a task to see its steps, who it belongs to, and the record it came from."
-    />
-  );
-}
+/*
+ * There is no `TaskPanelEmpty`. There used to be — an `<EmptyState>` for the
+ * reserved half of the split — and the reserved half is gone: the detail column
+ * exists only while a task is open, so the board has the width rather than a
+ * panel explaining that it has nothing to say (tasks-page.tsx).
+ */

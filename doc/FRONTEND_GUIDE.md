@@ -656,6 +656,17 @@ Four rules make it hold together:
    give a screen reader two of every heading. `lib/use-media-query.ts` opens with
    this reasoning. It answers `true` before `matchMedia` resolves, so the first
    frame is the desktop branch.
+
+   **A CSS wrapper does not hide a PORTAL, which is how this rule gets broken.**
+   `<div className="xl:hidden"><Dialog … /></div>` reads like a media query and
+   is not one: Radix renders the dialog into `<body>`, so the wrapper never
+   becomes an ancestor of anything the user sees and `display: none` on it hides
+   nothing. The Tasks board shipped exactly that — the phone sheet opened over
+   the board at every width, on top of the detail pane it was supposed to
+   replace, and no test in the tree could have caught it because the two were
+   never rendered together on purpose. Anything portalled — every `<Dialog>`,
+   every Radix surface — branches on a media query in JavaScript
+   (`useIsWide()` / `useIsDesktop()`), never on a class on a wrapper.
 2. **The body renders from the RESPONSE, never from a row the caller passed in.**
    A modal opened from a list has the row in hand; a page opened from a pasted
    link has a uuid and nothing else. If the detail endpoint returns ids only, add
@@ -912,7 +923,18 @@ component; a call site that restates them is the sixteen-copy problem starting a
 and an open button, so it is an `<li>` with three controls rather than one — imports
 `INDEX_ROW_OPEN` from the same module and positions the rail itself. The geometry is local
 (a flush bordered list wants a different rail from a rounded one); the meaning of "this is
-the open one" is shared.
+the open one" is shared. The task board's card does the same (`task-board.tsx`): it is not a
+row in an index rail, but the open card wears the same ground, the same 3px rail and
+`aria-current`, so "which task is the pane showing" is answered on both halves.
+
+**A pane that holds nothing is not reserved.** The board used to keep a permanent 22rem
+column holding "Select a card to see its steps…" — a fifth of every wide screen spent on a
+sentence, paid for out of the four kanban columns it squeezed. That is the `SplitPane`
+pattern's one bad bargain: `<SplitPane>` always renders both halves, so an empty detail side
+becomes a standing tax on the screen. Where the detail is optional rather than the default
+(a board you triage without opening anything), render the second column only while a record
+is open, give the body the width the rest of the time, and branch the phone's sheet in
+JavaScript so the sheet cannot appear beside the pane — `features/workspace/tasks/tasks-page.tsx`.
 
 ### 3.15 The sign-in screen — the device remembers, and lets go
 
@@ -1130,6 +1152,23 @@ Opt-in on `<DataList>` / `<ListPage>`, because each costs something:
   renders in `<IconRail>`'s tail. A fixed bottom-right cluster covers the last rows and
   the pager of every list screen, and making it draggable was the workaround, not the fix.
   Both surfaces read `useQuickActions()` so they cannot drift.
+- **A drag on a phone is a HOLD, and it may not take the scroll.** A touch screen has one
+  thumb, and on a kanban board the board itself is what that thumb scrolls — so a card
+  cannot claim the gesture at `touchstart`. `touch-action: none` on the card (the usual way
+  to make a drag "reliable") hands the whole column's scrolling to whichever card the thumb
+  lands on. The board instead runs THREE sensors side by side (`task-board.tsx`): the mouse
+  drags the grip at 8px, the finger picks a card up by holding it for `LONG_PRESS_MS`
+  anywhere on the card, the keyboard takes the grip with Space. The dwell is the grace
+  period — a finger that moves past `tolerance` before it elapses was scrolling, and the
+  pending drag is abandoned rather than fought for — and it is also what keeps a TAP a tap,
+  so opening a card and dragging a card are never the same event. Two corollaries: a
+  `MouseSensor` and NOT a `PointerSensor` (a finger fires `pointerdown` too, so a
+  pointer-driven 8px constraint reads the first eight pixels of a flick as a drag), and the
+  drag handle and the click target stay separate elements, because the pointerup that ends a
+  mouse drag has to land somewhere whose only listener is dnd-kit's. Covered end to end by
+  `features/workspace/tasks/task-board.test.tsx` — real `TouchEvent`s, real sensors, the
+  request asserted — including the flick that must scroll and the two-finger touch that
+  must do nothing.
 - **Nothing quick-action-shaped goes in the title bar.** It held a burst-icon menu once; the
   glyph named nothing in a strip where every other control says what it is, and it put
   Messages in the header while the rail already carried Messages — one destination with two

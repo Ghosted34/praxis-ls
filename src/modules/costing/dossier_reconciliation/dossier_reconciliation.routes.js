@@ -48,6 +48,16 @@ router.post("/:dossierId/lines/:costingLineId/documents", requirePermission(M, "
 router.delete("/:dossierId/lines/:costingLineId/documents/:docId", requirePermission(M, "edit"), v.docParam, c.detachDocument);
 router.post("/:dossierId/submit", requirePermission(M, "edit"), v.dossierParam, v.submit, c.submit);
 
+/**
+ * Unaccounted spend (guide §8.1, owner decision B, 17/09/2026). The journal
+ * link is a DETAIL read (`view` — a person may look at what posted on a file
+ * they can read); the mapping that clears the tray is Operations' work
+ * (`edit`, the same grant that types a line), because it is the line being
+ * accounted for, not a decision.
+ */
+router.get("/:dossierId/unaccounted/:costEntryId", requirePermission(M, "view"), v.unaccountedParam, c.unaccountedEntry);
+router.post("/:dossierId/unaccounted/:costEntryId/map", requirePermission(M, "edit"), v.unaccountedParam, v.mapUnaccounted, c.mapUnaccounted);
+
 // Finance's visa. `validate`, not `approve`: settling is not an approval, and
 // the MD is told rather than asked (Q6).
 router.post("/:dossierId/reject", requirePermission(M, "validate"), v.dossierParam, v.reject, c.reject);

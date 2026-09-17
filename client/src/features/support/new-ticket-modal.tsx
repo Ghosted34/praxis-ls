@@ -18,6 +18,11 @@
  * so the screen keeps matching the screen) to its own request, and the create
  * call links the ids. The picker is capped at five; a cancelled form leaves
  * orphans that the server reaps, not attachments on a stranger's ticket.
+ *
+ * The third way IN, beside choose and drag: `onPaste` on the FilePicker turns
+ * on "or paste an image" — click it and Ctrl+V lands the clipboard bitmap in
+ * the same `cappedPick` every other route uses, so the count cap holds for
+ * pastes too, not only for picks.
  */
 import * as React from "react";
 import { tr } from "@/lib/i18n";
@@ -190,6 +195,7 @@ export function NewTicketModal({
           hint={`Show us the screen — up to ${MAX_SCREENSHOTS} images, 10 MB each.`}
           multiple
           disabled={upload.items.length >= MAX_SCREENSHOTS}
+          onPaste
         />
         <UploadList
           items={upload.items}

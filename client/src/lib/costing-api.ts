@@ -2,7 +2,7 @@
  * Costing API helpers — costing sheets, cost tracking (actuals), cash requests,
  * régie d'avance. Routes mirror src/modules/costing/*.
  */
-import { tenant } from "./api-client";
+import { tenant, tenantDownload } from "./api-client";
 import type { ShipmentDetails } from "./operations-api";
 
 /* ── Costing sheets(/costings) ── */
@@ -711,6 +711,48 @@ export const settleReconciliation = (
 
 export const myReceiptsOwed = () => tenant<ReceiptsOwed>(`${RECON}/owed`);
 export const allReceiptsOwed = () => tenant<ReceiptsOwed>(`${RECON}/owed/all`);
+
+/* ══════════════════ The picture & the statement (PR 3) ══════════════════ */
+
+/** One day's net spend against the approved costing (TTC, per the line VAT
+ *  ratio). `day` is ISO — dd/mm/yyyy is the screen's job. */
+export type ReconTimelineDay = { day: string; actual_ttc: number };
+
+export type ReconTimeline = {
+  days: ReconTimelineDay[];
+  budget_ttc: number;
+  currency: string;
+  grades: ReconGrades | null;
+};
+
+/** Spend across the life of the file — the Full view's third chart (§6.2).
+ *  A separate GET from the sheet: the drawer asks for it when it opens. */
+export const getReconTimeline = (dossierId: string) =>
+  tenant<ReconTimeline>(`${RECON}/${encodeURIComponent(dossierId)}/timeline`);
+
+export type ReconSendResult = {
+  doc_id: string;
+  message_id: string;
+  target: "channel" | "direct";
+  group: { group_id: string; kind?: string; name?: string | null };
+};
+
+/** Download the statement, in the format the operator picks per download
+ *  (Q19). `export` grant, enforced server-side. */
+export const downloadReconStatement = (dossierId: string, format: "pdf" | "xlsx", filename: string) =>
+  tenantDownload(`/costing/reconciliations/${encodeURIComponent(dossierId)}/statement?format=${format}`, filename);
+
+/** Post the statement into the file's Smart Comms conversation — the dossier
+ *  thread by default, a DIRECT message when a person is picked. The
+ *  attachment is a vault ID, never bytes (Q19-C). */
+export const sendReconStatement = (
+  dossierId: string,
+  body: { target: "channel" | "direct"; user_id?: string; note?: string },
+) =>
+  tenant<ReconSendResult>(`${RECON}/${encodeURIComponent(dossierId)}/statement/send`, {
+    method: "POST",
+    body,
+  });
 
 /* ── The budget a costing authorises (/costings/:id/budget) ── */
 

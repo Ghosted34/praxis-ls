@@ -6,7 +6,7 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 1605 |
+| Routes | 1630 |
 | Modules mounted | 140 |
 | API version | v1 |
 
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 1605 mounted routes, grouped by path prefix.
+All 1630 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -591,7 +591,10 @@ All 1605 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/costing/reconciliations/:dossierId/reasons` | — |
 | POST | `/api/tenant/costing/reconciliations/:dossierId/reject` | — |
 | POST | `/api/tenant/costing/reconciliations/:dossierId/settle` | — |
+| GET | `/api/tenant/costing/reconciliations/:dossierId/statement` | — |
+| POST | `/api/tenant/costing/reconciliations/:dossierId/statement/send` | — |
 | POST | `/api/tenant/costing/reconciliations/:dossierId/submit` | — |
+| GET | `/api/tenant/costing/reconciliations/:dossierId/timeline` | — |
 | GET | `/api/tenant/costing/reconciliations/owed` | — |
 | GET | `/api/tenant/costing/reconciliations/owed/all` | — |
 
@@ -610,6 +613,7 @@ All 1605 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/costings/gate` | — |
 | GET | `/api/tenant/costings/kpis` | — |
 | GET | `/api/tenant/costings/suggest` | — |
+| GET | `/api/tenant/costings/validators` | — |
 
 ### `tenant/countries`
 
@@ -2344,4 +2348,25 @@ All 1605 mounted routes, grouped by path prefix.
 | Method | Path | Body validated |
 |---|---|---|
 | GET | `/api/tenant/workspace/` | — |
+| GET | `/api/tenant/workspace/day` | — |
+| GET | `/api/tenant/workspace/events/` | — |
+| POST | `/api/tenant/workspace/events/` | — |
+| DELETE | `/api/tenant/workspace/events/:id` | — |
+| GET | `/api/tenant/workspace/events/:id` | — |
+| PATCH | `/api/tenant/workspace/events/:id` | — |
+| POST | `/api/tenant/workspace/events/:id/participants` | — |
+| DELETE | `/api/tenant/workspace/events/:id/participants/:participantId` | — |
+| PATCH | `/api/tenant/workspace/events/:id/participants/:participantId/response` | — |
+| GET | `/api/tenant/workspace/tasks/` | — |
+| POST | `/api/tenant/workspace/tasks/` | — |
+| DELETE | `/api/tenant/workspace/tasks/:id` | — |
+| GET | `/api/tenant/workspace/tasks/:id` | — |
+| PATCH | `/api/tenant/workspace/tasks/:id` | — |
+| POST | `/api/tenant/workspace/tasks/:id/status` | — |
+| POST | `/api/tenant/workspace/tasks/:id/subtasks` | — |
+| DELETE | `/api/tenant/workspace/tasks/:id/subtasks/:subtaskId` | — |
+| PATCH | `/api/tenant/workspace/tasks/:id/subtasks/:subtaskId` | — |
+| POST | `/api/tenant/workspace/tasks/:id/watchers` | — |
+| DELETE | `/api/tenant/workspace/tasks/:id/watchers/:userId` | — |
+| GET | `/api/tenant/workspace/tasks/board` | — |
 

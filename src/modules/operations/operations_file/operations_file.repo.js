@@ -268,12 +268,38 @@ async function overview(client, dossierId) {
       "WHERE dossier_id = $1 ORDER BY created_at DESC LIMIT 50",
   );
 
+  /*
+   * THE SUPPORTING DOCUMENTS — the reconciliation's proof vault read BY LINE
+   * (MOD-76 Q8/Q19 §6.6, owner naming: "Supporting documents").
+   *
+   * These same rows also surface inside the Vault group as COST_PROOF entries
+   * — that view answers "what documents live on this file", this one answers
+ "what proves what was spent on THIS budget line". The join to
+   * costing_line gives every document its line's name, so the 360 never has
+   * to ask a second question before it can group them.
+   */
+  const supportingDocRows = await q(
+    "SELECT d.recon_document_id, d.note, d.uploaded_at, " +
+      "rl.costing_line_id, cl.label AS line_label, cl.line_no, " +
+      "v.doc_id, v.doc_type, v.original_name, v.status AS doc_status, v.storage_path, " +
+      "u.full_name AS uploaded_by_name " +
+      "FROM dossier_reconciliation_document d " +
+      "JOIN dossier_reconciliation_line rl ON rl.line_id = d.line_id " +
+      "JOIN dossier_reconciliation r ON r.reconciliation_id = rl.reconciliation_id " +
+      "JOIN costing_line cl ON cl.costing_line_id = rl.costing_line_id " +
+      "JOIN document_vault v ON v.doc_id = d.doc_id " +
+      "LEFT JOIN app_user u ON u.user_id = d.uploaded_by " +
+      "WHERE r.dossier_id = $1 AND v.status <> 'ARCHIVED' " +
+      "ORDER BY cl.line_no, d.uploaded_at LIMIT 100",
+  );
+
   return {
     costing, actual, invoices, outstanding, milestones, procurement, transit, delivery, vault, queries,
     people: { costing: costingPeople || null, invoice: invoicePeople || null },
     documentRows: {
       invoices: invoiceRows, transit: transitRows, delivery: deliveryRows, vault: vaultRows,
       costings: costingRows, cashRequests: cashRequestRows,
+      supportingDocs: supportingDocRows,
     },
   };
 }

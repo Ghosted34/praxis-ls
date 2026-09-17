@@ -2152,6 +2152,12 @@ function contractArticles(bodyMd) {
 module.exports = {
   // Exported for the test that pins it — see tests/unit/contract-draft.
   contractArticles, list, getConfig, setConfig, records, preview, generate, renderPdfFromData, send, composePrefill,
+  // resolveCfg + watermark: the documents everything-on-the-letterhead seam.
+  // renderPdfFromData stamps a timestamped entity_ref, built for one-shot
+  // contract PDFs; the reconciliation statement (MOD-76) vaults under a
+  // STABLE ref so a re-render re-ups the same row instead of cloning the
+  // vault, and it composes the same kit itself. Same seam, chosen ref.
+  resolveCfg,
   // Exported for document_signature.service, which needs the SAME record shape
   // the templates render from — hashing anything else would attest to a
   // projection of the document rather than the document (guide §3.6).

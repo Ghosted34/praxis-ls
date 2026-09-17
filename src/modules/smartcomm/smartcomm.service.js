@@ -534,8 +534,11 @@ async function certifiedExport(client, { groupId, actor = {} }) {
   return { group_id: groupId, message_count: messages.length, content_hash: contentHash, doc_id: doc ? doc.doc_id : null };
 }
 
+// The reconciliation statement (MOD-76/Q19) posts into the file's own thread.
+const findDossierChannel = (client, { dossierId }) => repo.findDossierChannel(client, dossierId);
+
 module.exports = {
-  listChannels, getChannel, createChannel, setArchived,
+  listChannels, getChannel, createChannel, setArchived, findDossierChannel,
   addMember, removeMember, listMembers, setPinned, setMuted,
   postMessage, editMessage, deleteMessage, thread,
   react, star, starred, search, markRead, unread,

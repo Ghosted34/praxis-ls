@@ -27,7 +27,33 @@ const TENANT_HOST = process.env.VITE_TENANT_HOST || "smartls.praxisls.com";
  * Rollup then places it, and Rollup's own chunking never produces a cycle. It
  * is ADDING a bucket that is forbidden (see the note on `build` below).
  */
-const ROUTE_LOCAL_VENDOR = ["world-atlas", "topojson-client", "pdfjs-dist"];
+const ROUTE_LOCAL_VENDOR = [
+  "world-atlas",
+  "topojson-client",
+  "pdfjs-dist",
+  // Charts (MOD-76 Budget Reconciliation, and the Reporting Module after it).
+  // Recharts renders SVG, so series colours are CSS custom properties and a
+  // tenant's brand re-tints the charts natively — a canvas library would need
+  // a second source of truth for colour, which is what check:palette exists to
+  // prevent. Kept out of `vendor` so only the screens that chart pay for it.
+  // The sub-package list was verified against package-lock.json on install:
+  // recharts pulls victory-vendor and a set of d3-* packages, each of which
+  // would otherwise land in the always-loaded vendor bucket.
+  "recharts",
+  "recharts-scale",
+  "victory-vendor",
+  "d3-array",
+  "d3-color",
+  "d3-ease",
+  "d3-format",
+  "d3-interpolate",
+  "d3-path",
+  "d3-scale",
+  "d3-shape",
+  "d3-time",
+  "d3-time-format",
+  "d3-timer",
+];
 
 /**
  * TipTap and ProseMirror, kept OUT of the always-loaded vendor bucket.

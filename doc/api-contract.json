@@ -2,11 +2,11 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 140,
-  "route_count": 1605,
+  "route_count": 1630,
   "tiers": {
     "public": 67,
     "self-scoped": 101,
-    "gated": 1437
+    "gated": 1462
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -718,6 +718,36 @@
       "tier": "gated"
     },
     "DELETE /api/tenant/workflows/:id/steps/:stepId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "DELETE /api/tenant/workspace/events/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "DELETE /api/tenant/workspace/events/:id/participants/:participantId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "DELETE /api/tenant/workspace/tasks/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "DELETE /api/tenant/workspace/tasks/:id/subtasks/:subtaskId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "DELETE /api/tenant/workspace/tasks/:id/watchers/:userId": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -1575,6 +1605,18 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/costing/reconciliations/:dossierId/statement": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/costing/reconciliations/:dossierId/timeline": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/costing/reconciliations/owed": {
       "auth": true,
       "rbac": false,
@@ -1618,6 +1660,12 @@
       "tier": "gated"
     },
     "GET /api/tenant/costings/suggest": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/costings/validators": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -4767,6 +4815,42 @@
       "validated": false,
       "tier": "self-scoped"
     },
+    "GET /api/tenant/workspace/day": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/workspace/events/": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/workspace/events/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/workspace/tasks/": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/workspace/tasks/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/workspace/tasks/board": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "PATCH /api/platform/escalation/rules/:id": {
       "auth": true,
       "rbac": true,
@@ -5632,6 +5716,30 @@
       "tier": "gated"
     },
     "PATCH /api/tenant/workflows/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PATCH /api/tenant/workspace/events/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PATCH /api/tenant/workspace/events/:id/participants/:participantId/response": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PATCH /api/tenant/workspace/tasks/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PATCH /api/tenant/workspace/tasks/:id/subtasks/:subtaskId": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -6556,6 +6664,12 @@
       "tier": "gated"
     },
     "POST /api/tenant/costing/reconciliations/:dossierId/settle": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/costing/reconciliations/:dossierId/statement/send": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -9334,6 +9448,42 @@
       "tier": "gated"
     },
     "POST /api/tenant/workflows/:id/steps": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/workspace/events/": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/workspace/events/:id/participants": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/workspace/tasks/": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/workspace/tasks/:id/status": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/workspace/tasks/:id/subtasks": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/workspace/tasks/:id/watchers": {
       "auth": true,
       "rbac": true,
       "validated": false,

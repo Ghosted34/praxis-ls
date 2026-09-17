@@ -24,6 +24,11 @@ const { categoryFor } = require("./categories");
 const NOTIFIABLE = {
   // ── Finance ──
   "payment.received": { action: "view", title: "Payment received" },
+  /* MOD-76/Q18 (warn-default gate): a final invoice was drafted while the
+   * file's reconciliation is still open. Audiences the people who CAN settle
+   * it (the `validate` column), priority HIGH, because "nobody was told" is
+   * exactly the complaint this event exists to make impossible. */
+  "reconciliation.settlement_due": { action: "validate", title: "Final invoice drafted on an unreconciled file", priority: "HIGH" },
   "invoice.posted": { action: "view", title: "Invoice posted" },
   "invoice.issued": { action: "view", title: "Invoice issued" },
   "credit_note.posted": { action: "view", title: "Credit note posted" },

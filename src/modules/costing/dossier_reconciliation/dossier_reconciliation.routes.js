@@ -53,4 +53,14 @@ router.post("/:dossierId/submit", requirePermission(M, "edit"), v.dossierParam, 
 router.post("/:dossierId/reject", requirePermission(M, "validate"), v.dossierParam, v.reject, c.reject);
 router.post("/:dossierId/settle", requirePermission(M, "validate"), v.dossierParam, v.settle, c.settle);
 
+/**
+ * The picture and the paper (PR 3). All three read `view`/`export` — the
+ * timeline is just a different projection of the sheet (`view`), and a print
+ * or a post is a publish (`export`, Q19), never `validate`: Finance's visa
+ * settles a file, it does not gate whether the settled file can be shown.
+ */
+router.get("/:dossierId/timeline", requirePermission(M, "view"), v.dossierParam, c.timeline);
+router.get("/:dossierId/statement", requirePermission(M, "export"), v.dossierParam, v.statementQuery, c.statement);
+router.post("/:dossierId/statement/send", requirePermission(M, "export"), v.dossierParam, v.sendStatement, c.sendStatement);
+
 module.exports = { basePath: "/costing/reconciliations", feature: null, router };

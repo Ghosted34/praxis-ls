@@ -31,7 +31,8 @@ import { DateField } from "@/components/ui/date-field";
 import { Callout } from "@/components/ui/callout";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
-import { MeterGroup } from "@/components/ui/meter";
+import { ConsumptionTrack } from "@/components/ui/chart";
+import { FullViewDrawer, GradesStrip } from "./reconciliation-full-view";
 import { Panel } from "@/components/ui/panel";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { SearchSelect } from "@/components/ui/search-select";
@@ -42,6 +43,7 @@ import { useConfirm } from "@/components/ui/use-confirm";
 import { useResource, errMsg } from "@/lib/use-resource";
 import { cell, dateFmt, money } from "@/lib/format";
 import { uploadVaultFile } from "@/lib/masterdata-api";
+import { listColleagues } from "@/lib/smartcomm-api";
 import * as api from "@/lib/costing-api";
 
 /** Signed money, sign carrying the verdict: positive is under budget. */
@@ -480,6 +482,9 @@ export function ReconciliationPage() {
   const [reasonLine, setReasonLine] = React.useState<string | null>(null);
   const [rejectOpen, setRejectOpen] = React.useState(false);
   const [settleOpen, setSettleOpen] = React.useState(false);
+  const [fullViewOpen, setFullViewOpen] = React.useState(false);
+  const [exportOpen, setExportOpen] = React.useState(false);
+  const [sendOpen, setSendOpen] = React.useState(false);
   const toast = useToast();
   const navigate = useNavigate();
 
@@ -642,7 +647,30 @@ export function ReconciliationPage() {
                     : tr("Prepared by Operations, settled by Finance.")
             }
             action={
-              <div className="flex gap-2">
+              <div className="flex flex-wrap justify-end gap-2">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setFullViewOpen(true)}
+                >
+                  {tr("Full view")}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() => setExportOpen(true)}
+                >
+                  {tr("Statement…")}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() => setSendOpen(true)}
+                >
+                  {tr("Send…")}
+                </Button>
                 {s.status === "OPEN" && (
                   <Button
                     loading={busy}
@@ -683,25 +711,31 @@ export function ReconciliationPage() {
             </KpiRow>
 
             {/*
-              Budget · Disbursed · Actual on ONE shared scale, so Actual is read
-              AGAINST the budget rather than stretched to fill its own track.
-              Redrawn on every keystroke from `live`. The richer interactive
-              charts land with the chart library in PR 3.
+              Budget · Disbursed · Actual on ONE shared track with the budget
+              as the denominator (§6.2): an over-run draws past the far edge
+              rather than wrapping the bar — that having the same shape as
+              an under-run is exactly the kind of lie a chart's there to
+              stop. Redrawn on every keystroke from `live`. MeterGroup stays
+              in the kit: it is what a screen wants when it means three
+              separate gauges on one scale; this one wants ONE track.
             */}
             <div className="mt-4">
-              <MeterGroup
-                ariaLabel={`${tr("Budget")} ${live.budget}, ${tr("disbursed")} ${live.disbursed}, ${tr("actual")} ${live.actual}`}
-                rows={[
-                  { label: tr("Budget"), value: live.budget, display: money(live.budget), tone: "neutral" as const },
-                  { label: tr("Disbursed"), value: live.disbursed, display: money(live.disbursed), tone: "accent" as const },
-                  {
-                    label: tr("Actual"),
-                    value: live.actual,
-                    display: money(live.actual),
-                    tone: live.variance < 0 ? ("bad" as const) : ("ok" as const),
-                    hint: live.variance < 0 ? tr("over budget") : tr("within budget"),
-                  },
-                ]}
+              <ConsumptionTrack
+                budget={live.budget}
+                disbursed={live.disbursed}
+                actual={live.actual}
+                labels={{ budget: tr("Budget"), disbursed: tr("Disbursed"), actual: tr("Actual") }}
+                values={{ budget: money(live.budget), disbursed: money(live.disbursed), actual: money(live.actual) }}
+              />
+            </div>
+
+            {/* The three grades, THREE verdicts with their questions (Q17) —
+                this is the one place on the sheet where the numbers stop
+                speaking for themselves. */}
+            <div className="mt-4">
+              <GradesStrip
+                grades={s.grades}
+                totals={s.totals}
               />
             </div>
           </Panel>
@@ -819,7 +853,209 @@ export function ReconciliationPage() {
           }}
         />
       )}
+      {s && (
+        <FullViewDrawer
+          open={fullViewOpen}
+          onClose={() => setFullViewOpen(false)}
+          sheet={s}
+          dossierLabel={dossierLabel}
+        />
+      )}
+      {exportOpen && s && (
+        <ExportStatementModal
+          dossierId={dossierId}
+          dossierLabel={dossierLabel}
+          revision={s.revision ?? 1}
+          onClose={() => setExportOpen(false)}
+        />
+      )}
+      {sendOpen && s && (
+        <SendStatementModal
+          dossierId={dossierId}
+          dossierLabel={dossierLabel}
+          onClose={() => setSendOpen(false)}
+        />
+      )}
     </section>
+  );
+}
+
+/**
+ * The statement's format picker (Q19): the operator picks the shape of THIS
+ * download — PDF to show a person, xlsx for the part of the audit done in
+ * Excel — and both are the server rendering the same numbers (statementData),
+ * so a "the spreadsheet disagrees with the PDF" bug cannot exist.
+ */
+function ExportStatementModal({
+  dossierId,
+  dossierLabel,
+  revision,
+  onClose,
+}: {
+  dossierId: string;
+  dossierLabel: string | null;
+  revision: number;
+  onClose: () => void;
+}) {
+  const toast = useToast();
+  const [busy, setBusy] = React.useState<"pdf" | "xlsx" | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+  const base = `reconciliation-${(dossierLabel || "file").replace(/[^A-Za-z0-9._-]+/g, "-")}-r${revision}`;
+
+  async function download(format: "pdf" | "xlsx") {
+    setBusy(format);
+    setError(null);
+    try {
+      await api.downloadReconStatement(dossierId, format, `${base}.${format}`);
+      toast.success(tr("Statement downloaded"));
+      onClose();
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={tr("The reconciliation statement")}
+      description={tr("The closed conversation, rendered for who reads it. Both shapes carry the variance reasons and the proof list.")}
+    >
+      <div className="space-y-3">
+        {error && <Callout tone="bad">{error}</Callout>}
+        <p className="text-sm text-muted-foreground">
+          {tr("One file, two shapes. PDF is what a person signs; the spreadsheet is what an auditor sums.")}
+        </p>
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="outline" onClick={onClose} disabled={busy !== null}>
+            {tr("Cancel")}
+          </Button>
+          <Button variant="outline" onClick={() => download("xlsx")} loading={busy === "xlsx"} disabled={busy !== null}>
+            {tr("Excel (audit)")}
+          </Button>
+          <Button onClick={() => download("pdf")} loading={busy === "pdf"} disabled={busy !== null}>
+            {tr("PDF (print)")}
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/**
+ * Post the statement into the file's Smart Comms conversation (Q19-C). The
+ * in-house channel, never an email to the client: the vault attachment is a
+ * POINTER, and a pointer is secure exactly because it resolves through the
+ * permission gate on every read.
+ */
+function SendStatementModal({
+  dossierId,
+  dossierLabel,
+  onClose,
+}: {
+  dossierId: string;
+  dossierLabel: string | null;
+  onClose: () => void;
+}) {
+  const toast = useToast();
+  const [target, setTarget] = React.useState<"channel" | "direct">("channel");
+  const [userId, setUserId] = React.useState("");
+  const [note, setNote] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const colleagues = useResource(() => listColleagues(), []);
+
+  async function send() {
+    setBusy(true);
+    setError(null);
+    try {
+      const out = await api.sendReconStatement(dossierId, {
+        target,
+        user_id: target === "direct" ? userId : undefined,
+        note: note.trim() || undefined,
+      });
+      toast.success(target === "direct" ? tr("Statement sent") : tr("Posted to the file's channel"));
+      void out;
+      onClose();
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={tr("Send the statement")}
+      description={tr("Goes to Smart Comm, in-house — the vault attachment resolves through the permission gate for every reader.")}
+    >
+      <div className="space-y-4">
+        {error && <Callout tone="bad">{error}</Callout>}
+        <Field label={tr("Where to")}>
+          <div className="space-y-2">
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                type="radio"
+                name="recon-send-target"
+                className="mt-1"
+                checked={target === "channel"}
+                onChange={() => setTarget("channel")}
+              />
+              <span>
+                <span className="block text-foreground">{tr("The file's channel")}</span>
+                <span className="micro">{dossierLabel ? `${tr("File")} ${dossierLabel}` : tr("The dossier conversation is found or created.")}</span>
+              </span>
+            </label>
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                type="radio"
+                name="recon-send-target"
+                className="mt-1"
+                checked={target === "direct"}
+                onChange={() => setTarget("direct")}
+              />
+              <span>
+                <span className="block text-foreground">{tr("Direct message")}</span>
+                <span className="micro">{tr("To one person — whoever needs the picture, not the whole room.")}</span>
+              </span>
+            </label>
+          </div>
+        </Field>
+
+        {target === "direct" && (
+          <Field label={tr("To")} required>
+            <select
+              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+              value={userId}
+              onChange={(e) => setUserId(e.target.value)}
+              disabled={colleagues.loading}
+            >
+              <option value="">{colleagues.loading ? tr("Loading…") : tr("Pick a person…")}</option>
+              {(colleagues.data || []).map((c) => (
+                <option key={c.user_id} value={c.user_id}>{c.full_name}</option>
+              ))}
+            </select>
+          </Field>
+        )}
+
+        <Field label={tr("Note")} hint={tr("Optional — goes on the message above the attachment.")}>
+          <Textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} />
+        </Field>
+
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="outline" onClick={onClose} disabled={busy}>
+            {tr("Cancel")}
+          </Button>
+          <Button onClick={send} loading={busy} disabled={busy || (target === "direct" && !userId)}>
+            {tr("Send")}
+          </Button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 

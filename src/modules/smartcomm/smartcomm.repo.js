@@ -67,6 +67,12 @@ async function findCustomerThread(client, clientId) {
   const { rows } = await client.query("SELECT * FROM comms_group WHERE kind = 'CLIENT' AND client_id = $1 AND status = 'ACTIVE' ORDER BY created_at DESC LIMIT 1", [clientId]);
   return rows[0] || null;
 }
+// The dossier channel (statement send, Q19) — ONE active thread per file, the
+// newest set so a reopened conversation wins over a stale one.
+async function findDossierChannel(client, dossierId) {
+  const { rows } = await client.query("SELECT * FROM comms_group WHERE kind = 'DOSSIER' AND dossier_id = $1 AND status = 'ACTIVE' ORDER BY created_at DESC LIMIT 1", [dossierId]);
+  return rows[0] || null;
+}
 async function updateChannel(client, id, fields) {
   // PERF S19/S20: was a hand-rolled SET builder, which bypassed the
   // identifier validation and allow-list in query-helpers.
@@ -345,7 +351,7 @@ async function listColleagues(client, q = {}) {
 }
 
 module.exports = {
-  insertChannel, getChannel, getChannelEnriched, listChannelsForUser, findDirectChannel, findCustomerThread, updateChannel,
+  insertChannel, getChannel, getChannelEnriched, listChannelsForUser, findDirectChannel, findCustomerThread, findDossierChannel, updateChannel,
   addMember, removeMember, listMembers, findMember, setMemberFlag, touchPresence,
   insertMessage, getMessage, editMessage, softDeleteMessage, setDelivery, listMessages,
   toggleReaction, listReactions, toggleStar, listStarredForUser, searchMessages,

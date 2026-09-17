@@ -102,6 +102,21 @@ export function Dialog({
           ? "max-w-2xl"
           : "max-w-lg";
 
+  /* The drawer has its own width grammar — slimmer by default at every size,
+   * because it is attached to an edge rather than floating in a field of
+   * content: `max-w-sm` is its md default; the chart drawers of the
+   * reconciliation sheet (MOD-76 §6.2) are the first callers to want more,
+   * and previously pinning `max-w-sm` regardless of `size` was a bug they
+   * would have had to hack around. Additive: the old call owes nothing. */
+  const drawerWidth =
+    size === "wide"
+      ? "max-w-4xl"
+      : size === "xl"
+        ? "max-w-3xl"
+        : size === "lg"
+          ? "max-w-2xl"
+          : "max-w-sm";
+
   /**
    * Explicit focus restoration.
    *
@@ -142,7 +157,7 @@ export function Dialog({
           className={cn(
             "fixed z-50 flex w-full flex-col overflow-hidden border bg-background shadow-[var(--shadow-l)]",
             placement === "right"
-              ? "right-0 top-0 h-dvh max-w-sm"
+              ? cn("right-0 top-0 h-dvh", drawerWidth)
               : "left-1/2 -translate-x-1/2 bottom-0 max-h-[92vh] rounded-t-2xl sm:bottom-auto sm:top-1/2 sm:max-h-[calc(100vh-4rem)] sm:-translate-y-1/2 sm:rounded-lg",
             placement === "center" && width,
           )}

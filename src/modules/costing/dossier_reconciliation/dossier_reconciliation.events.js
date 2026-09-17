@@ -13,4 +13,12 @@ module.exports = {
   SETTLED: "reconciliation.settled",
   REOPENED: "reconciliation.reopened",
   PROOF_OWED: "reconciliation.proof_owed",
+  // The statement left the building (PR 3, Q19): posted to a channel or a
+  // person, with the vault id of what was attached. Answers "was it sent" in
+  // the audit without opening Smart Comms.
+  STATEMENT_SENT: "reconciliation.statement_sent",
+  // Q18, wire warn-default: someone drafted a final invoice against a file
+  // whose conversation is still open. An event — not a log line — because the
+  // whole point of the warning is that it can be counted.
+  SETTLEMENT_DUE: "reconciliation.settlement_due",
 };

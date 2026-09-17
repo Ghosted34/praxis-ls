@@ -631,6 +631,74 @@ function DocumentsTab({ d }: { d: api.DossierOverview }) {
           </DocRow>
         )}
       />
+      {/*
+       * SUPPORTING DOCUMENTS (MOD-76 Q8, owner naming — "Supporting
+       * documents", NOT "Cost proofs"). Section inside the Documents tab per
+       * the guide's recommended placement; the correction table upstream
+       * records the owner picked the name over the guide's "Cost Proofs".
+       *
+       * Grouped BY BUDGET LINE, because the question asked of this section
+       * is "what proves what was spent on THIS line" — the Vault group above
+       * answers "what documents live on the file".
+       */}
+      {(() => {
+        const rows = docs?.supportingDocs || [];
+        // First-seen order of line_no (the server sorts it) — a document is
+        // attached to ONE line, so partition by the line's label.
+        const groups = new Map<string, typeof rows>();
+        for (const r of rows) {
+          const key = r.line_label || tr("Not assigned to a line");
+          const g = groups.get(key) || [];
+          g.push(r);
+          groups.set(key, g);
+        }
+        return (
+          <div>
+            <div className="micro mb-2">{tr("Supporting documents")}</div>
+            {rows.length ? (
+              <div className="space-y-3">
+                {[...groups.entries()].map(([lineLabel, g]) => (
+                  <div key={lineLabel}>
+                    <div className="text-micro uppercase text-muted-foreground">{lineLabel}</div>
+                    <ul className="mt-1 space-y-1.5">
+                      {g.map((r) => (
+                        <li key={r.recon_document_id}>
+                          <DocRow
+                            label={
+                              <span className="text-sm text-foreground">
+                                {r.note || r.original_name || humanizeKey(r.doc_type || "Document")}
+                              </span>
+                            }
+                          >
+                            {r.doc_status && <Pill tone={tone(r.doc_status)}>{r.doc_status}</Pill>}
+                            {r.uploaded_by_name && <span className="micro">{r.uploaded_by_name}</span>}
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => setPreview({
+                                doc_id: r.doc_id,
+                                title: r.note || r.original_name || tr("Supporting document"),
+                                filename: r.original_name,
+                              })}
+                            >
+                              {tr("Preview")}
+                            </Button>
+                          </DocRow>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="micro text-muted-foreground">
+                {tr("No supporting documents on this file yet — receipts attached on the reconciliation sheet land here, on their budget line.")}
+              </p>
+            )}
+          </div>
+        );
+      })()}
       <DocGroup
         title={tr("Transit orders")}
         rows={docs?.transit || []}

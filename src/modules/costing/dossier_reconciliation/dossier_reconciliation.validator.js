@@ -42,15 +42,36 @@ const schemas = {
   reject: z.object({ reason: z.string().trim().min(3).max(2000) }),
   // A map of costing_line_id → amount returned to the vault.
   settle: z.object({ returned: z.record(UUID, MONEY).optional() }),
+
+  /**
+   * The statement's format (Q19): the operator picks per download. Default
+   * applied HERE, not in the controller — what the "default" is belongs in
+   * the contract, where a reader of the routes can see it.
+   */
+  statementQuery: z.object({
+    format: z.enum(["pdf", "xlsx"]).default("pdf"),
+  }).strict(),
+
+  /**
+   * Where the statement goes in Smart Comms. `channel` (default) is the file's
+   * own DOSSIER thread; `direct` needs the person. `note` overrides the
+   * generated caption. `user_id` is only meaningful on a direct target.
+   */
+  sendStatement: z.object({
+    target: z.enum(["channel", "direct"]).default("channel"),
+    user_id: UUID.optional(),
+    note: z.string().trim().max(2000).optional(),
+  }).strict(),
 };
 
-const mw = (key, fromParams = false) => (req, _res, next) => {
-  const source = fromParams ? req.params : req.body;
+const mw = (key, fromParams = false, fromQuery = false) => (req, _res, next) => {
+  const source = fromParams ? req.params : fromQuery ? req.query : req.body;
   const parsed = schemas[key].safeParse(source);
   if (!parsed.success) {
     return next(new AppError("VALIDATION_ERROR", "Invalid request", 422, parsed.error.flatten().fieldErrors));
   }
   if (fromParams) req.params = { ...req.params, ...parsed.data };
+  else if (fromQuery) req.query = parsed.data;
   else req.body = parsed.data;
   return next();
 };
@@ -66,5 +87,7 @@ module.exports = {
   submit: mw("submit"),
   reject: mw("reject"),
   settle: mw("settle"),
+  statementQuery: mw("statementQuery", false, true),
+  sendStatement: mw("sendStatement"),
   schemas,
 };

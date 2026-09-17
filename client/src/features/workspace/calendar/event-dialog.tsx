@@ -30,9 +30,11 @@ import { useToast } from "@/components/ui/toast";
 import { ApiError } from "@/lib/api-client";
 import { errMsg } from "@/lib/use-resource";
 import { dateTimeFmt } from "@/lib/format";
-import type { CalendarEvent, EventInput } from "../api";
-import { useCreateEvent, useUpdateEvent } from "../hooks";
+import { useConfirm } from "@/components/ui/use-confirm";
+import type { CalendarEvent, EventInput, RepeatScope } from "../api";
+import { useCreateEvent, useDeleteEvent, useUpdateEvent } from "../hooks";
 import { EVENT_TYPE_OPTIONS, REMINDER_PRESETS, humanizeType } from "../labels";
+import { RepeatField } from "../repeat-field";
 
 const TITLE_MAX = 200;
 const LOCATION_MAX = 300;
@@ -61,6 +63,8 @@ export function EventDialog({
   const toast = useToast();
   const create = useCreateEvent();
   const update = useUpdateEvent();
+  const del = useDeleteEvent();
+  const [confirm, confirmDialog] = useConfirm();
   const editing = !!event;
 
   const [title, setTitle] = React.useState("");
@@ -71,6 +75,8 @@ export function EventDialog({
   const [endAt, setEndAt] = React.useState("");
   const [allDay, setAllDay] = React.useState(false);
   const [reminder, setReminder] = React.useState("");
+  const [repeatRule, setRepeatRule] = React.useState<string | null>(null);
+  const [seriesScope, setSeriesScope] = React.useState<RepeatScope>("this");
   const [error, setError] = React.useState<string | null>(null);
   const [clashes, setClashes] = React.useState<Clash[]>([]);
 
@@ -84,6 +90,8 @@ export function EventDialog({
     setEndAt(event ? toLocalInput(event.end_at) : dayToInput(defaultDay, "10:00"));
     setAllDay(event?.all_day ?? false);
     setReminder(event?.reminder_minutes == null ? "" : String(event.reminder_minutes));
+    setRepeatRule(event?.recurrence_rule ?? null);
+    setSeriesScope("this");
     setError(null);
     setClashes([]);
   }, [open, event, defaultDay]);
@@ -97,7 +105,7 @@ export function EventDialog({
   }
 
   function buildInput(force = false): EventInput {
-    return {
+    const input: EventInput = {
       title: title.trim(),
       event_type: eventType,
       location: location.trim() ? location.trim() : null,
@@ -106,8 +114,13 @@ export function EventDialog({
       end_at: endAt,
       all_day: allDay,
       reminder_minutes: reminder === "" ? null : Number(reminder),
+      recurrence_rule: repeatRule,
       force,
     };
+    // Only meaningful for a row that is one occurrence of a series; the server
+    // ignores it otherwise.
+    if (editing && event?.recurrence_series_id) input.series = seriesScope;
+    return input;
   }
 
   async function submit(force = false) {
@@ -145,7 +158,28 @@ export function EventDialog({
     }
   }
 
-  const busy = create.isPending || update.isPending;
+  async function remove() {
+    if (!event) return;
+    const ok = await confirm({
+      title: "Delete this event?",
+      body: event.recurrence_series_id
+        ? "The event is removed from the calendar. Occurrences already spawned stay in the history of their series."
+        : "It is removed from the calendar. This cannot be undone from here.",
+      confirmLabel: "Delete event",
+      cancelLabel: "Keep it",
+      destructive: true,
+    });
+    if (!ok) return;
+    try {
+      await del.mutateAsync(event.calendar_event_id);
+      toast.success("Event deleted");
+      onClose();
+    } catch (err) {
+      toast.error(errMsg(err));
+    }
+  }
+
+  const busy = create.isPending || update.isPending || del.isPending;
 
   return (
     <Dialog
@@ -155,6 +189,11 @@ export function EventDialog({
       size="lg"
       footer={
         <>
+          {editing && (
+            <Button variant="ghost" onClick={() => void remove()} disabled={busy} className="mr-auto text-destructive">
+              Delete
+            </Button>
+          )}
           <Button variant="ghost" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
@@ -165,6 +204,7 @@ export function EventDialog({
       }
     >
       <div className="space-y-4">
+        {confirmDialog}
         {error && <Callout tone={clashes.length ? "warn" : "bad"} title={clashes.length ? "Something is already booked" : undefined}>{error}</Callout>}
 
         {clashes.length > 0 && (
@@ -269,6 +309,26 @@ export function EventDialog({
             />
           </div>
         </div>
+
+        <RepeatField
+          idPrefix="event"
+          value={repeatRule}
+          dueIso={startAt || null}
+          onChange={setRepeatRule}
+        />
+
+        {editing && event?.recurrence_series_id && (
+          <Field label="Apply changes to" htmlFor="event-series-scope">
+            <NativeSelect
+              id="event-series-scope"
+              value={seriesScope}
+              onChange={(e) => setSeriesScope(e.target.value as RepeatScope)}
+            >
+              <option value="this">Just this one</option>
+              <option value="series">This and future occurrences</option>
+            </NativeSelect>
+          </Field>
+        )}
 
         <Field label="Notes" htmlFor="event-description">
           <Textarea

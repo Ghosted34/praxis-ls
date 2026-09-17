@@ -106,9 +106,9 @@ export type Task = {
   scope_id: string | null;
   reminder_minutes: number | null;
   remind_at: string | null;
-  /** iCal RRULE when the task repeats; null is a one-off (13840). */
-  recurrence_rule: string | null;
-  recurrence_series_id: string | null;
+  /** iCal RRULE when the task repeats; null/absent is a one-off (13840). */
+  recurrence_rule?: string | null;
+  recurrence_series_id?: string | null;
   entity_type: string | null;
   entity_id: string | null;
   /** Derived on read, never stored — see the service's header for why. */
@@ -147,7 +147,7 @@ export type CalendarEvent = {
   end_at: string;
   all_day: boolean;
   recurrence_rule: string | null;
-  recurrence_series_id: string | null;
+  recurrence_series_id?: string | null;
   reminder_minutes: number | null;
   remind_at: string | null;
   created_by: string | null;

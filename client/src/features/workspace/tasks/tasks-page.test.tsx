@@ -126,18 +126,20 @@ describe("Tasks — the open task", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
-  it("does not open the task from the drag grip", async () => {
+  it("opens the task from the drag grip on a plain click", async () => {
     const user = userEvent.setup();
     renderScreen(<TasksPage />, { routes: ROUTES });
 
-    // The grip sits ON the title strip and is a sibling of the card's button —
-    // not an ancestor of it. That is what keeps a drag from ending in a click
-    // that opens the task: the pointerup lands on the grip, whose only listener
-    // is dnd-kit's.
+    // 13840 changed the desktop contract: the grip is a VISIBLE handle, and a
+    // PLAIN click on it opens the card (it is no longer a dead zone). A click
+    // that becomes a drag is swallowed by dnd-kit's post-drag click stopper, so
+    // opening on click and dragging on move cannot collide — the board's test
+    // pins that half.
     await user.click(await screen.findByRole("button", { name: /^Drag “Hold the meeting/ }));
 
-    expect(screen.queryByRole("heading", { level: 2, name: TASK.title })).toBeNull();
-    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(
+      await screen.findByRole("heading", { level: 2, name: TASK.title }),
+    ).toBeInTheDocument();
   });
 
   it("spends no column on a placeholder while nothing is open", async () => {

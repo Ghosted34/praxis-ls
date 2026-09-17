@@ -54,6 +54,7 @@ import type { Audience } from "../api";
 import { AUDIENCE_LABEL } from "../labels";
 import { TaskBoard } from "./task-board";
 import { TaskDialog } from "./task-dialog";
+import { TaskList } from "./task-list";
 import { TaskPanel } from "./task-panel";
 
 export function TasksPage() {
@@ -63,6 +64,8 @@ export function TasksPage() {
   const [audience, setAudience] = React.useState<Audience>(
     (params.get("audience") as Audience) || "mine",
   );
+  // Board is the default; the List view is the cap-proof shape for >100 tasks.
+  const view: "board" | "list" = params.get("view") === "list" ? "list" : "board";
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const [createOpen, setCreateOpen] = React.useState(false);
 
@@ -95,6 +98,12 @@ export function TasksPage() {
     setParams(params, { replace: true });
   }
 
+  function chooseView(next: "board" | "list") {
+    if (next === "list") params.set("view", "list");
+    else params.delete("view");
+    setParams(params, { replace: true });
+  }
+
   const closeTask = React.useCallback(() => setSelectedId(null), []);
 
   return (
@@ -106,6 +115,15 @@ export function TasksPage() {
       />
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
+        <Segmented
+          label="Tasks layout"
+          value={view}
+          onChange={(v) => chooseView(v as "board" | "list")}
+          options={[
+            { value: "board", label: "Board" },
+            { value: "list", label: "List" },
+          ]}
+        />
         {offered.length > 1 && (
           <Segmented
             label="Whose work to show"
@@ -137,13 +155,22 @@ export function TasksPage() {
             isWide && selectedId && "xl:grid-cols-[minmax(0,1fr)_22rem]",
           )}
         >
-          <TaskBoard
-            board={q.data?.board}
-            loading={q.isLoading}
-            selectedId={selectedId}
-            onOpen={setSelectedId}
-            onCreate={() => setCreateOpen(true)}
-          />
+          {view === "board" ? (
+            <TaskBoard
+              board={q.data?.board}
+              loading={q.isLoading}
+              selectedId={selectedId}
+              onOpen={setSelectedId}
+              onCreate={() => setCreateOpen(true)}
+            />
+          ) : (
+            <TaskList
+              audience={effective}
+              selectedId={selectedId}
+              onOpen={setSelectedId}
+              onCreate={() => setCreateOpen(true)}
+            />
+          )}
 
           {/*
             THE detail column. Only while a task is open (see the header), and

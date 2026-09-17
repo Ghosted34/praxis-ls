@@ -149,24 +149,26 @@ describe("ImageUpload", () => {
 });
 
 describe("FilePicker paste", () => {
-  /** The subset of a real clipboard the engine reads: an items list whose
-   *  file-kind entry answers `getAsFile()`, and no `files` list. jsdom ships
-   *  no DataTransfer, so this is the shape `fireEvent.paste` forwards straight
-   *  onto the event's `clipboardData`. */
-  const pngClipboard = () => {
-    const file = new File(
-      [new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])],
-      "clip.png",
-      { type: "image/png" },
-    );
-    return {
-      items: [{ kind: "file", type: "image/png", getAsFile: () => file }],
-      files: [],
-    };
-  };
+  const pdf = () =>
+    new File([new Uint8Array([0x25, 0x50, 0x44, 0x46])], "clip.pdf", {
+      type: "application/pdf",
+    });
 
-  it("offers a third option beside choose and drag", () => {
-    render(<FilePicker onPick={() => {}} onPaste />);
+  /** The subset of a real clipboard the engine reads: an items list whose
+   *  file-kind entry answers `getAsFile()`, and a `files` list. jsdom ships no
+   *  DataTransfer, so this is the shape `fireEvent.paste` forwards onto the
+   *  event's `clipboardData`. */
+  const clipboard = (...files: File[]) => ({
+    items: files.map((file) => ({
+      kind: "file",
+      type: file.type,
+      getAsFile: () => file,
+    })),
+    files,
+  });
+
+  it("renders the third option by default", () => {
+    render(<FilePicker onPick={() => {}} />);
     expect(
       screen.getByRole("button", { name: "or paste an image" }),
     ).toBeInTheDocument();
@@ -174,10 +176,12 @@ describe("FilePicker paste", () => {
 
   it("routes a pasted screenshot through onPick as one file", () => {
     const onPick = vi.fn();
-    render(<FilePicker onPick={onPick} onPaste />);
+    render(<FilePicker onPick={onPick} />);
 
-    fireEvent.paste(window, {
-      clipboardData: pngClipboard(),
+    const surface = screen.getByRole("button", { name: /choose a file/i });
+    surface.focus();
+    fireEvent.paste(surface, {
+      clipboardData: clipboard(png()),
     });
 
     expect(onPick).toHaveBeenCalledTimes(1);
@@ -186,21 +190,57 @@ describe("FilePicker paste", () => {
     expect(Array.from(list)[0].type).toBe("image/png");
   });
 
-  it("does not treat a text paste as an image", () => {
+  it("accepts a pasted PDF when the picker accepts PDFs", () => {
     const onPick = vi.fn();
-    render(<FilePicker onPick={onPick} onPaste />);
+    render(<FilePicker onPick={onPick} accept="application/pdf" label="Contract" />);
 
-    fireEvent.paste(window, {
+    const surface = screen.getByRole("button", { name: /choose a file/i });
+    surface.focus();
+    fireEvent.paste(surface, {
+      clipboardData: clipboard(pdf()),
+    });
+
+    expect(onPick).toHaveBeenCalledTimes(1);
+    const list = onPick.mock.calls[0][0] as unknown as File[];
+    expect(Array.from(list)[0].type).toBe("application/pdf");
+  });
+
+  it("rejects a pasted image on a PDF-only picker and shows the hint", async () => {
+    const onPick = vi.fn();
+    render(<FilePicker onPick={onPick} accept="application/pdf" label="Contract" />);
+
+    const surface = screen.getByRole("button", { name: /choose a file/i });
+    surface.focus();
+    fireEvent.paste(surface, {
+      clipboardData: clipboard(png()),
+    });
+
+    await waitFor(() =>
+      expect(
+        screen.getByText("That file type isn't accepted here — choose a file instead."),
+      ).toBeInTheDocument(),
+    );
+    expect(onPick).not.toHaveBeenCalled();
+  });
+
+  it("does not treat a text paste as a file or show a hint when unarmed", () => {
+    const onPick = vi.fn();
+    render(<FilePicker onPick={onPick} />);
+
+    const surface = screen.getByRole("button", { name: /choose a file/i });
+    surface.focus();
+    fireEvent.paste(surface, {
       clipboardData: { items: [], files: [] },
     });
 
     expect(onPick).not.toHaveBeenCalled();
+    expect(screen.queryByText(/No image on the clipboard/)).toBeNull();
   });
 
   it("reports an empty clipboard on an armed paste target", async () => {
     const onPick = vi.fn();
     const user = userEvent.setup();
-    render(<FilePicker onPick={onPick} onPaste />);
+    render(<FilePicker onPick={onPick} />);
 
     await user.click(screen.getByRole("button", { name: "or paste an image" }));
     expect(
@@ -216,5 +256,26 @@ describe("FilePicker paste", () => {
       ).toBeInTheDocument(),
     );
     expect(onPick).not.toHaveBeenCalled();
+  });
+
+  it("shows a paste affordance on the inline variant and routes a pasted file", async () => {
+    const onPick = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <FilePicker
+        variant="inline"
+        accept="application/pdf"
+        label="Attach a contract"
+        onPick={onPick}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Paste a file" }));
+    const target = screen.getByLabelText("Paste a file");
+    fireEvent.paste(target, { clipboardData: clipboard(pdf()) });
+
+    expect(onPick).toHaveBeenCalledTimes(1);
+    const list = onPick.mock.calls[0][0] as unknown as File[];
+    expect(Array.from(list)[0].type).toBe("application/pdf");
   });
 });

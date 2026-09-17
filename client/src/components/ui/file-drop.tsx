@@ -18,10 +18,12 @@
  */
 import * as React from "react";
 import { cn } from "@/lib/cn";
+import { tr } from "@/lib/i18n";
 import type { UploadItem } from "@/lib/use-upload";
-import { UploadIcon } from "@/components/ui/icons";
+import { UploadIcon, ClipboardIcon } from "@/components/ui/icons";
 import { Modal } from "@/components/ui/modal";
 import { PdfPreview } from "@/components/ui/pdf-preview";
+import { acceptsOnlyImages, pasteFileFromEvent } from "@/components/ui/upload-paste";
 
 /** Compact human file size for the chosen-file chip. */
 function fileSize(bytes: number): string {
@@ -71,9 +73,27 @@ export function FileDrop({
 }) {
   const [previewOpen, setPreviewOpen] = React.useState(false);
   const [imageUrl, setImageUrl] = React.useState<string | null>(null);
+  const inputRef = React.useRef<HTMLInputElement>(null);
+  const surfaceRef = React.useRef<HTMLDivElement | null>(null);
+  const pasteTargetRef = React.useRef<HTMLDivElement>(null);
+  const [pasteArmed, setPasteArmed] = React.useState(false);
+  const [pasteMessage, setPasteMessage] = React.useState<string | null>(null);
 
   const isImage = !!file && isImageFile(file);
   const isPdf = !!file && isPdfFile(file);
+  const imageOnly = acceptsOnlyImages(accept);
+  const pasteCopy = React.useMemo(
+    () => ({
+      button: tr(imageOnly ? "Paste an image" : "Paste a file"),
+      idle: tr(imageOnly ? "or paste an image" : "or paste a file"),
+      empty: tr(
+        imageOnly
+          ? "No image on the clipboard — copy one with Ctrl+C first, or choose a file."
+          : "No file on the clipboard — copy one with Ctrl+C first, or choose a file.",
+      ),
+    }),
+    [imageOnly],
+  );
 
   React.useEffect(() => {
     setPreviewOpen(false);
@@ -98,6 +118,52 @@ export function FileDrop({
       reader.abort();
     };
   }, [file, isImage]);
+
+  React.useEffect(() => {
+    const onPasteEvent = (e: ClipboardEvent) => {
+      if (e.defaultPrevented || disabled) return;
+      const surface = surfaceRef.current;
+      const target = e.target instanceof Node ? e.target : null;
+      const active = document.activeElement;
+      const targetInside = !!surface && !!target && surface.contains(target);
+      const focusInside = !!surface && !!active && surface.contains(active);
+      if (!targetInside && !focusInside) return;
+
+      const result = pasteFileFromEvent(e, accept);
+      if (result.kind === "accepted") {
+        e.preventDefault();
+        onPick(result.file);
+        setPasteArmed(false);
+        setPasteMessage(null);
+        pasteTargetRef.current?.blur();
+        return;
+      }
+      if (result.kind === "rejected") {
+        e.preventDefault();
+        setPasteArmed(false);
+        setPasteMessage(
+          tr("That file type isn't accepted here — choose a file instead."),
+        );
+        return;
+      }
+      if (pasteTargetRef.current === document.activeElement) {
+        e.preventDefault();
+        setPasteArmed(false);
+        setPasteMessage(pasteCopy.empty);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      setPasteArmed(false);
+      pasteTargetRef.current?.blur();
+    };
+    window.addEventListener("paste", onPasteEvent, true);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("paste", onPasteEvent, true);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [accept, disabled, onPick, pasteCopy.empty]);
 
   const canPreview = isImage || isPdf;
   const percent =
@@ -129,7 +195,7 @@ export function FileDrop({
   }
 
   return (
-    <div className="space-y-1.5">
+    <div ref={surfaceRef} className="space-y-1.5">
       {label && (
         <span className="block text-sm font-medium text-foreground">
           {label}
@@ -143,11 +209,20 @@ export function FileDrop({
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => {
           e.preventDefault();
+          setPasteArmed(false);
+          setPasteMessage(null);
           onPick(e.dataTransfer.files?.[0] ?? null);
         }}
+        onKeyDown={(e) => {
+          if (e.key !== "Enter" && e.key !== " ") return;
+          e.preventDefault();
+          if (!disabled) inputRef.current?.click();
+        }}
+        tabIndex={disabled ? -1 : 0}
+        aria-disabled={disabled || undefined}
         className={cn(
           // `relative` IS LOAD-BEARING — see the note above the <input>.
-          "relative flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-[10px] border border-dashed border-input px-4 py-6 text-center transition-colors hover:border-[color-mix(in_srgb,var(--primary)_50%,transparent)] hover:bg-accent/40",
+          "relative flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-[10px] border border-dashed border-input px-4 py-6 text-center transition-colors hover:border-[color-mix(in_srgb,var(--primary)_50%,transparent)] hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
           disabled && "pointer-events-none opacity-60",
         )}
       >
@@ -204,6 +279,7 @@ export function FileDrop({
          * something else absolutely positioned without re-reading this.
          */}
         <input
+          ref={inputRef}
           type="file"
           className="sr-only"
           accept={accept}
@@ -212,10 +288,38 @@ export function FileDrop({
           onChange={(e) => {
             const f = e.target.files?.[0] ?? null;
             e.target.value = "";
+            setPasteArmed(false);
+            setPasteMessage(null);
             onPick(f);
           }}
         />
       </label>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          tabIndex={disabled ? -1 : 0}
+          aria-disabled={disabled || undefined}
+          onClick={() => {
+            if (disabled) return;
+            setPasteArmed(true);
+            setPasteMessage(null);
+            pasteTargetRef.current?.focus();
+          }}
+          className="inline-flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-0.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-60"
+        >
+          <ClipboardIcon />
+          {pasteArmed ? tr("Press Ctrl+V now") : pasteCopy.idle}
+        </button>
+        <div
+          ref={pasteTargetRef}
+          role="textbox"
+          aria-label={pasteCopy.button}
+          className="sr-only"
+          tabIndex={disabled ? -1 : 0}
+          contentEditable
+          suppressContentEditableWarning
+        />
+      </div>
       {file && canPreview && (
         <div className="rounded-lg border bg-muted/20 p-2">
           <div className="mb-2 flex items-center justify-between gap-2">
@@ -266,7 +370,11 @@ export function FileDrop({
           Remove file
         </button>
       )}
-      {error && <p className="text-xs text-destructive">{error}</p>}
+      {(pasteMessage || error) && (
+        <p className="text-xs text-destructive" role={pasteMessage ? "status" : undefined}>
+          {pasteMessage || error}
+        </p>
+      )}
       {previewOpen && file && canPreview && (
         <Modal
           open
@@ -308,6 +416,7 @@ export function FileDrop({
  * spread nor an explicit `uploadProgress`, so the two-of-ten outcome cannot
  * happen again quietly.
  */
+// eslint-disable-next-line react-refresh/only-export-components -- shared prop adapter for FileDrop call sites
 export function fileDropProps<T>(item: UploadItem<T> | null | undefined): {
   file: File | null;
   uploadProgress: number | null;

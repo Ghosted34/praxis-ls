@@ -1,5 +1,9 @@
 "use strict";
 const service = require("./dossier_reconciliation.service");
+const statement = require("./dossier_reconciliation.statement");
+const vault = require("../../vault/document_vault/document_vault.service");
+const { fileMeta } = require("../../vault/document_vault/document_vault.controller");
+const { exportFilename } = require("../../../services/spreadsheet");
 const { asyncHandler } = require("../../../utils/errors");
 
 const actor = (req) => req.user || { user_id: null };
@@ -69,4 +73,76 @@ module.exports = {
 
   owedAll: asyncHandler(async (req, res) =>
     res.json({ data: await req.tenantDb((c) => service.receiptsOwed(c, { userId: null })) })),
+
+  /**
+   * THE STATEMENT DOWNLOAD (Q19). The operator picks the shape; both are
+   * rendered from the same `statementData`, so the PDF the client is shown
+   * and the spreadsheet the auditor works from cannot disagree on a number
+   * — one model, two renderings, which is precisely where the legacy's
+   * print-versus-email-body divergence lived.
+   *
+   * · pdf — through the documents kit: tenant letterhead, dd/mm/yyyy dates,
+   *   the variance reasons and the proofs ON the page, and a vault capture
+   *   under a stable ref (the first render of a settled round becomes the
+   *   row `settlement.statement_doc_id` points at).
+   * · xlsx — the same rows tabulated through services/spreadsheet, for the
+   *   part of the audit that is done in Excel rather than on paper.
+   *
+   * Gated on `export` (Q19): a print is a publish.
+   */
+  statement: asyncHandler(async (req, res) => {
+    const out = await req.tenantDb(async (c) => {
+      if (req.query.format === "xlsx") {
+        const x = await statement.statementXlsx(c, { dossierId: req.params.dossierId });
+        return {
+          buffer: x.buffer,
+          filename: exportFilename({ base: x.filenameBase, env: req.env, extension: "xlsx" }),
+          contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        };
+      }
+      const data = await statement.statementData(c, { dossierId: req.params.dossierId });
+      // When the settled round already has its render, serve THAT row — the
+      // PDF of record, hash and all. Check the vault's own access rule FIRST
+      // (401/403/404 with their honest statuses — a doc the caller may not
+      // read must not become a 409 from fetchBytes' pending-row guard), then
+      // reuse the bytes. Anything else renders fresh.
+      if (data.statement_doc_id) {
+        const identity = req.identityDb ? await req.identityDb((i) => i) : null;
+        await vault.assertDocumentAccess(c, identity || c, data.statement_doc_id, req.user, "view");
+        const { doc, buffer } = await vault.fetchBytes(c, data.statement_doc_id);
+        const meta = fileMeta(doc);
+        return { buffer, filename: meta.filename, contentType: meta.contentType };
+      }
+      const doc = await statement.statementPdf(c, { dossierId: req.params.dossierId, actor: actor(req) });
+      const { buffer } = await vault.fetchBytes(c, doc.doc_id);
+      return { buffer, filename: `${data.number}.pdf`, contentType: "application/pdf" };
+    });
+    res.setHeader("Content-Type", out.contentType);
+    res.setHeader("Content-Disposition", `attachment; filename="${out.filename}"`);
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Content-Length", out.buffer.length);
+    res.send(out.buffer);
+  }),
+
+  /** Post to the file's Smart Comms conversation (Q19-C). In-house only:
+   *  the dossier thread or a direct message, never an email to the client —
+   *  the vault attachment is a POINTER, and a pointer is secure exactly
+   *  because it resolves back through the permission gate on every read. */
+  sendStatement: asyncHandler(async (req, res) =>
+    res.status(201).json({ data: await req.tenantDb((c) => statement.sendStatement(c, {
+      dossierId: req.params.dossierId,
+      target: req.body.target || "channel",
+      userId: req.body.user_id || null,
+      note: req.body.note || null,
+      actor: actor(req), ip: ip(req),
+    })) })),
+
+  /**
+   * Spend over the life of the file — the third chart of the Full view. A
+   * separate endpoint rather than folded into the sheet: the sheet is read
+   * constantly, this is read when the drawer opens, and the two never have
+   * to race (drawer lazy-loads, §6.3).
+   */
+  timeline: asyncHandler(async (req, res) =>
+    res.json({ data: await req.tenantDb((c) => service.timeline(c, { dossierId: req.params.dossierId })) })),
 };

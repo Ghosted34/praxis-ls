@@ -1,6 +1,6 @@
 # Budget Reconciliation — engineering guide
 
-**Status:** PRs 1 and 2 shipped; PR 3 outstanding. Every decision here cites its question in
+**Status:** PRs 1, 2 and 3 shipped. Every decision here cites its question in
 `doc/RECONCILIATION_PROGRAMME_QUESTIONNAIRE.md` §10 (answered 15/09/2026). Where this guide and the
 questionnaire disagree, this guide is newer and wins; where this guide is silent, the questionnaire's
 recommendation stands.
@@ -28,7 +28,7 @@ corrections were — so the next reader is not arguing with a plan nobody follow
 | §4.3 did not name a concrete refusal shape | **`PERIOD_CLOSED` names the period, the line, and offers the earliest open date** | `spent_on` is typed reality and stays as typed even when the period is closed; the error carries `earliest_open_date` so the UI can offer a concrete alternative rather than a bare "no".
 
 
-**Module name:** **Budget Reconciliation** in the UI (Q21). Table and module names stay
+**What PR 3 changed about this guide.** Two things came out differently once the owner saw the\nshapes and the code was written. Recorded here for the same reason PR 1's and PR 2's corrections\nwere — so the next reader is not arguing with a plan nobody followed:\n\n| Guide said | Shipped | Why |\n| --- | --- | --- |\n| §6.6 — the 360 section is called **Cost proofs** | **Supporting Documents** | Owner decision: \"Cost Proofs\" read like an artefact category only auditors care about; \"Supporting Documents\" says what the section is for. The placement followed the guide's recommendation (a section inside the existing `documents` tab, not a ninth tab) because the owner did not choose the ninth tab. The `COST_PROOF` doc type and row labels are unchanged — only the section heading takes the owner's name. |\n| §6.4 — send *\"post into the file's channel, or direct-message a colleague\"*, implicitly one message | **Send is a channel conversation, and the PDF rides as a message attachment (`attachment_kind: VAULT`)** | Smart Comms' message model has no \"deliver a document\" primitive — the durable record IS a conversation. So `POST /:dossierId/statement/send` finds-or-creates the file's DOSSIER channel (or the DIRECT dedupe channel for a colleague), posts the note as the message body, and attaches the settled statement's vault document. The statement a colleague opens is the same bytes the settlement row points at — re-rendering at send time would let the record argue with itself. |\n\n**Module name:** **Budget Reconciliation** in the UI (Q21). Table and module names stay
 `dossier_reconciliation` so no route, migration or import moves. "OCR" is retired as a label — it
 already means optical character recognition one tab away (`bank_statement.ocr_used`, `10720`).
 
@@ -841,7 +841,7 @@ shape (§7.4), and the orphan-sweep gate taught that a dropped table is not an o
 settlement history; re-opening on costing amendment; the MD notification; "Cash to account for" on
 My workspace.
 
-### PR 3 — `feat(reconciliation): the picture, the statement, and the file's proofs`
+### PR 3 — `feat(reconciliation): the picture, the statement, and the file's proofs` · **shipped**
 The chart library and the `<Chart>` wrapper; the consumption track and the *Full view* drawer; the
-PDF/xlsx statement and the Smart Comms send; cost proofs on the Operations file 360; the rename to
-Budget Reconciliation; the MOD-76 split; retiring the matcher.
+PDF/xlsx statement and the Smart Comms send; supporting documents on the Operations file 360; the
+rename to Budget Reconciliation; the MOD-76 split; retiring the matcher.

@@ -32,6 +32,7 @@ const costRepo = require("../cost_tracking/cost_tracking.repo");
 const { emitEvent, audit, resolveActorId } = require("../../../shared/events/emit");
 const { getSetting } = require("../../../shared/config/settings");
 const { AppError } = require("../../../utils/errors");
+const { logger } = require("../../../config/logger");
 const { accountFor } = require("../../../shared/config/finance-accounts");
 const costTracking = require("../cost_tracking/cost_tracking.service");
 const regie = require("../regie/regie.service");
@@ -815,7 +816,89 @@ async function settle(client, { dossierId, returned = {}, actor = {}, ip = null 
     await client.query("COMMIT");
   } catch (err) { await client.query("ROLLBACK"); throw err; }
 
+  /* THE STATEMENT, made of the round that just closed (Q19/PR 3) — AFTER the
+   * commit, always. A hiccup in the paper must not roll back the posting
+   * (ERROR_HANDLING: a class-F mutation commits first; a consequence of it
+   * is best-effort, warned about, and a refused render leaves the sheet
+   * settled and the settlement row's statement_doc_id NULL — the next export
+   * or send simply renders again). */
+  try {
+    await require("./dossier_reconciliation.statement").statementForSettlement(client, { dossierId, actor });
+  } catch (statementErr) {
+    // @silent:consequence — a render failure after a committed settle must
+    // warn, never fail the settle; recovering it is one click on Export.
+    logger.warn({ err: statementErr, dossierId }, "[reconciliation] settled; statement render failed (recoverable on next export)");
+  }
+
   return sheetFor(client, { dossierId });
+}
+
+/**
+ * Spend across the life of the file — the Full view's third chart (PR 3).
+ *
+ * A separate endpoint from sheetFor on purpose: the sheet is the sheet,
+ * read on every line edit; the timeline is a drawer projection, read when
+ * somebody opens the picture. Folding the two would make every line edit
+ * pay for a projection nobody looked at.
+ */
+async function timeline(client, { dossierId }) {
+  const sheet = await sheetFor(client, { dossierId });
+  if (!sheet.can_reconcile) return { days: [], budget_ttc: 0, currency: sheet.currency || "XAF", grades: null };
+  const days = await repo.spendTimeline(client, { dossierId });
+  return {
+    days: days.map((d) => ({ day: String(d.day).slice(0, 10), actual_ttc: Number(d.actual_ttc) || 0 })),
+    budget_ttc: sheet.totals.budget_ttc,
+    currency: sheet.currency || "XAF",
+    // The grades ride along because the drawer shows them anyway — three
+    // labelled verdicts, never one number claiming to be the file (Q17).
+    grades: sheet.grades,
+  };
+}
+
+/**
+ * THE INVOICE GATE (Q18, owner decision: WARN by default).
+ *
+ * One setting, two behaviours, both reading the same key the admin page
+ * edits — finance / reconciliation / block_final_invoice (seeded false):
+ *   · `true` — settled-or-nothing: drafting a final invoice against an
+ *     unreconciled file fails with RECONCILIATION_UNSETTLED, naming the
+ *     status in plain words.
+ *   · anything else — the draft goes through, but loudly: an event notifies
+ *     the people who CAN settle (the MOD-76 `validate` audience) and the
+ *     audit line is stamped, so "the warning was silent" is never a finding
+ *     an auditor can make.
+ */
+async function invoiceGateFor(client, { dossierId, actor = {}, once = true }) {
+  const header = await repo.forDossier(client, dossierId);
+  const status = header ? header.status : "OPEN";
+  if (status === "SETTLED") return { gated: false, status, warned: false };
+  const setting = await getSetting(client, "finance", "reconciliation", null);
+  if (setting && setting.block_final_invoice === true) {
+    throw new AppError(
+      "RECONCILIATION_UNSETTLED",
+      `This file's reconciliation is ${status === "SUBMITTED" ? "submitted and awaiting settlement" : "still open"} — settle it before issuing the final invoice, or switch off block_final_invoice in Settings → Finance.`,
+      422,
+      { status, setting: "finance.reconciliation.block_final_invoice" },
+    );
+  }
+  // WARN. The audit stamps every passage; the notification fires at the
+  // act of drafting (invoice === null at the caller) — a per-edit warning on
+  // every lines patch would teach people to ignore exactly the person the
+  // owner wants to read it (Q18).
+  await audit(client, {
+    actorUserId: actor.user_id || null, action: events.SETTLEMENT_DUE, moduleKey: MODULE,
+    entityRef: ref((header && header.reconciliation_id) || "dossier:" + dossierId),
+    after: { status, gated: "warn" },
+  });
+  if (once) {
+    await emitEvent(client, {
+      eventTypeKey: events.SETTLEMENT_DUE, moduleKey: MODULE,
+      actorUserId: actor.user_id || null,
+      entityRef: ref((header && header.reconciliation_id) || "dossier:" + dossierId),
+      payload: { status },
+    });
+  }
+  return { gated: "warned", status, warned: once };
 }
 
 /**
@@ -876,4 +959,5 @@ module.exports = {
   patchLine, applyReason, attachDocument, detachDocument,
   submit, reject, settle, reopen,
   receiptsOwed,
+  timeline, invoiceGateFor,
 };

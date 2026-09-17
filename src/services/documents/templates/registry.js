@@ -1688,6 +1688,128 @@ const TEMPLATES = {
     },
   },
 
+  /**
+   * The Budget Reconciliation statement (MOD-76, owner decision Q19).
+   *
+   * What the legacy print engine could never carry, and what this MUST carry:
+   * the variance REASONS and the proof documents per line. A statement showing
+   * −12 000 with no sentence explaining it is the document that generates the
+   * email asking why — so the reason is a column, and the proofs are named.
+   *
+   * The grades line (Q17) follows the same rule: three verdicts, each labelled
+   * with its question, because a file executed well against a budget quoted
+   * too cheap is WITHIN_BUDGET and a commercial loss at once, and one number
+   * would tell somebody something untrue.
+   *
+   * Signatures print the chain Q6 defined — Operations PREPARED, Finance
+   * SETTLED — with the dates they did it, so the paper reads the same
+   * separation of duties the screen does.
+   */
+  RECONCILIATION_STATEMENT: {
+    docType: "RECONCILIATION_STATEMENT",
+    title: { fr: "Réconciliation budgétaire", en: "Budget reconciliation statement" },
+    module: "costing/dossier_reconciliation",
+    fields: ["variance reasons", "proof list per line", "prepared/settled signatures"],
+    build: (data, cfg, entity, verify) => {
+      const lang = cfg.language;
+      const ccy = data.currency || cfg.base_currency || "XAF";
+      const t = data.totals || {};
+      const signed = (v) => `${v > 0 ? "+" : ""}${k.money(v, ccy, cfg)}`;
+
+      const meta = [
+        [{ fr: "Dossier", en: "File" }, data.dossier_ref],
+        [{ fr: "Statut", en: "Status" }, data.status_words ? k.t(data.status_words, lang) : data.status],
+        data.revision > 1 ? [{ fr: "Révision", en: "Revision" }, String(data.revision)] : null,
+        [{ fr: "Date d'édition", en: "Generated" }, k.dateFmt(data.date)],
+        data.settled_at ? [{ fr: "Soldée le", en: "Settled" }, k.dateFmt(data.settled_at)] : null,
+      ].filter((m) => m && m[1]);
+
+      const cols = [
+        { key: "label", label: { fr: "Ligne", en: "Line" } },
+        { key: "budget", label: { fr: "Budget", en: "Budget" }, num: true },
+        { key: "disbursed", label: { fr: "Décaissé", en: "Disbursed" }, num: true },
+        { key: "actual", label: { fr: "Réel", en: "Actual" }, num: true },
+        { key: "variance", label: { fr: "Écart", en: "Variance" }, num: true },
+        { key: "detail", label: { fr: "Raison & justificatifs", en: "Reason & proofs" } },
+      ];
+      const rows = (data.lines || []).map((l) => ({
+        label: [l.item_code ? `${l.item_code} · ` : "", l.label].join(""),
+        budget: k.money(l.budget_ttc, ccy, cfg),
+        disbursed: k.money(l.disbursed, ccy, cfg),
+        actual: k.money(l.actual_ttc, ccy, cfg),
+        variance: signed(Number(l.variance) || 0),
+        // The cell a bare −12 000 used to leave empty: why it moved, and what
+        // proves it. Both, because a reason with no paper is a claim and a
+        // paper with no reason is an attachment.
+        detail: [
+          l.variance_reason || "",
+          (l.proofs || []).length
+            ? k.t({ fr: "Justificatifs : ", en: "Proofs: " }, lang) + l.proofs.join(" · ")
+            : l.justification_required && Number(l.actual_ttc) > 0
+              ? k.t({ fr: "justificatif manquant", en: "proof missing" }, lang)
+              : "",
+        ].filter(Boolean).join(" — "),
+      }));
+
+      const totalsRows = [
+        [{ fr: "Budget (TTC)", en: "Budget (TTC)" }, k.money(t.budget_ttc, ccy, cfg)],
+        [{ fr: "Décaissé", en: "Disbursed" }, k.money(t.disbursed, ccy, cfg)],
+        [{ fr: "Réel (TTC)", en: "Actual (TTC)" }, k.money(t.actual_ttc, ccy, cfg), { grand: true }],
+        [{ fr: "Écart", en: "Variance" }, signed(Number(t.variance) || 0)],
+        has(t.returned) && Number(t.returned) > 0
+          ? [{ fr: "Restitué à la caisse", en: "Returned to the vault" }, k.money(t.returned, ccy, cfg)]
+          : null,
+        has(t.outstanding) && Number(t.outstanding) > 0
+          ? [{ fr: "Reste à justifier", en: "Cash to account for" }, k.money(t.outstanding, ccy, cfg)]
+          : null,
+      ];
+
+      // The three grades, each labelled with its QUESTION (Q17) — never one
+      // number claiming to be the file.
+      const g = data.grades || {};
+      const gradeLines = data.grade_sentences || [];
+      const gradesHtml = gradeLines.length
+        ? k.section({ fr: "Lecture du dossier", en: "How the file reads" },
+          `<div class="box">${gradeLines.map((s) => `<div>${k.esc(s)}</div>`).join("")}</div>`, cfg)
+        : "";
+
+      const body = [
+        k.standardHead(entity, cfg, { title: TEMPLATES.RECONCILIATION_STATEMENT.title, number: data.number, meta }),
+        k.parties([{ label: { fr: "Client", en: "Client" }, name: data.party && data.party.name, lines: (data.party && data.party.lines) || [] }], cfg),
+        k.lineTable(cols, rows, cfg),
+        k.totals(totalsRows, cfg),
+        gradesHtml,
+        data.note ? k.section({ fr: "Note", en: "Note" }, `<div class="box">${k.esc(data.note)}</div>`, cfg) : "",
+        k.signerBlock([
+          { label: { fr: "Préparé par (Opérations)", en: "Prepared by (Operations)" }, name: data.prepared_by_name, title: data.prepared_at ? k.dateFmt(data.prepared_at) : null },
+          { label: { fr: "Soldé par (Finance)", en: "Settled by (Finance)" }, name: data.settled_by_name, title: data.settled_at ? k.dateFmt(data.settled_at) : null },
+        ], cfg),
+        k.standardFoot(entity, cfg, verify),
+      ].join("");
+      return k.shell(k.t(TEMPLATES.RECONCILIATION_STATEMENT.title, lang) + " " + (data.number || ""), body, cfg);
+    },
+    sampleData: {
+      number: "REC-SBX-2026-0001-r1", date: "2026-07-31", dossier_ref: "SBX-2026-0001",
+      status: "SETTLED", status_words: { fr: "Soldée", en: "Settled" }, revision: 1,
+      currency: "XAF",
+      party: { name: "CIMENCAM SA", lines: ["NIU P012345678"] },
+      lines: [
+        { item_code: "PORT", label: "Port charges", budget_ttc: 150000, disbursed: 150000, actual_ttc: 162000, variance: -12000, variance_reason: "Network outage at customs held the container an extra day.", proofs: ["port-invoice.pdf", "receipt-scan.jpg"], justification_required: true },
+        { item_code: "CUST", label: "Customs duties", budget_ttc: 2500000, disbursed: 2500000, actual_ttc: 2480000, variance: 20000, variance_reason: null, proofs: ["customs-receipt.pdf"], justification_required: true },
+        { item_code: "DEM", label: "Demurrage 2d", budget_ttc: 160000, disbursed: 160000, actual_ttc: 80000, variance: 80000, variance_reason: null, proofs: [], justification_required: false },
+      ],
+      totals: { budget_ttc: 2810000, disbursed: 2810000, actual_ttc: 2722000, variance: 88000, returned: 88000, outstanding: 0 },
+      grades: { execution: { key: "OVER_BUDGET", label: "Over budget", percent: 0.4 }, accountability: { key: "ACCOUNTED", label: "Fully accounted for", amount: 0 }, commercial: { key: "NO_QUOTE", label: "No accepted quotation", percent: null } },
+      grade_sentences: [
+        "Did we execute to plan? Over budget — 12 000 past the allowance, reason on file.",
+        "Is the cash accounted for? Yes — everything not spent came back to the vault.",
+        "Did the file make money? No accepted quotation on file, so the margin question does not arise.",
+      ],
+      prepared_by_name: "Jean Mballa", prepared_at: "2026-07-30",
+      settled_by_name: "Alice Ngo", settled_at: "2026-07-31",
+    },
+  },
+
   REGIE_ADVANCE: {
     docType: "REGIE_ADVANCE", title: { fr: "Régie d'avances", en: "Cash advance (régie)" }, module: "costing/regie", fields: ["float ledger"],
     build: (data, cfg, entity, verify) => {

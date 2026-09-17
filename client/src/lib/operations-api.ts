@@ -1493,6 +1493,24 @@ export type DossierOverview = {
       original_name?: string | null;
       created_at?: string;
     }[];
+    /** The reconciliation's proof vault, read BY BUDGET LINE (MOD-76 Q8,
+     *  owner naming: "Supporting documents"). The same COST_PROOF rows also
+     *  surface inside `vault` above — that group answers "what documents live
+     *  on the file", this one answers "what proves what THIS line spent". */
+    supportingDocs?: {
+      recon_document_id: string;
+      note?: string | null;
+      uploaded_at?: string | null;
+      costing_line_id: string;
+      line_label?: string | null;
+      line_no?: number | null;
+      doc_id: string;
+      doc_type?: string | null;
+      original_name?: string | null;
+      doc_status?: string | null;
+      storage_path?: string | null;
+      uploaded_by_name?: string | null;
+    }[];
   } | null;
 };
 /** 360° rollup for one operation file; money fields are role-masked server-side. */

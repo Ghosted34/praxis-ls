@@ -72,6 +72,11 @@ const DOC_TYPES = {
   // on. Read under MOD-76, because the person who needs to open it is the one
   // reconciling the file, not whoever happens to hold a Settings grant.
   COST_PROOF:            { label: "Cost proof",                module: "costing/dossier_reconciliation", moduleKey: "MOD-76" },
+
+  // The closed conversation itself (Q19, PR 3): rendered by the statement
+  // generator, vault-captured under a stable entity_ref, and what the
+  // settlement row's statement_doc_id points at.
+  RECONCILIATION_STATEMENT: { label: "Reconciliation statement", module: "costing/dossier_reconciliation", moduleKey: "MOD-76" },
   /*
    * The costing worksheet (12766). It has had a TEMPLATE since documents
    * shipped and a `loadRecord` branch to build its payload — but it was never

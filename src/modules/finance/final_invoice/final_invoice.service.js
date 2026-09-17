@@ -10,6 +10,7 @@
 "use strict";
 
 const repo = require("./final_invoice.repo");
+const reconciliation = require("../../costing/dossier_reconciliation/dossier_reconciliation.service");
 const events = require("./final_invoice.events");
 const { reconcileAgainstQuotation } = require("./final_invoice.rules");
 const { getRule } = require("../../../shared/config/settings");
@@ -86,10 +87,21 @@ async function pricingPolicy(client) {
  * against a silent endpoint is how an afternoon disappears.
  */
 async function assertPricedSource(client, { invoice, dossierId, lines, override = null, actor = {} }) {
+  const dossier = dossierId || (invoice && invoice.dossier_id) || null;
+  /* MOD-76/Q18, owner decision (warn by default, guide's default): before
+   * any pricing question is asked, the file's reconciliation gate. Runs even
+   * under FREE pricing — the gate asks "is this file settled", not "how is
+   * it priced" — and only when there IS a dossier: an invoice with no file
+   * behind it has no reconciliation to obey. `once` distinguishes the act
+   * of drafting (invoice === null — warn loudly, notify the validators)
+   * from later line edits (audit only, so Finance is not pinged per saved
+   * typo). When block_final_invoice is on this THROWS 422 instead (same
+   * throw shape as the pricing failures below). */
+  if (dossier) await reconciliation.invoiceGateFor(client, { dossierId: dossier, actor, once: !invoice });
+
   const policy = await pricingPolicy(client);
   if (policy.mode === "FREE" || !Array.isArray(lines) || !lines.length) return null;
 
-  const dossier = dossierId || (invoice && invoice.dossier_id) || null;
   const quotation = await repo.acceptedQuotationFor(client, dossier);
 
   const reason = override && String(override.reason || "").trim();

@@ -506,13 +506,95 @@ async function receiptsOwed(client, { userId = null } = {}) {
   return rows;
 }
 
+/* ═════════════════════ Statement & timeline reads (PR 3) ══════════════════ */
+
+/**
+ * The header of the STATEMENT: which file this was, for which client, under
+ * which entity's letterhead. The reconciliation sheet itself never joins the
+ * dossier its header belongs to — it renders lines off the costing — so this
+ * is the one place the paper gets a dossier ref, a client name and a service
+ * label to print under the title.
+ */
+async function dossierHeader(client, dossierId) {
+  const { rows } = await client.query(
+    `SELECT d.dossier_id, d.ref, d.title, d.entity_id, d.client_id,
+            cm.name AS client_name, cm.niu AS client_niu, cm.rccm AS client_rccm,
+            st.name_en AS service_en, st.name_fr AS service_fr
+       FROM dossier d
+       LEFT JOIN client_master cm ON cm.client_id = d.client_id
+       LEFT JOIN service_type st ON st.service_type_id = d.service_type_id
+      WHERE d.dossier_id = $1`,
+    [dossierId],
+  );
+  return rows[0] || null;
+}
+
+/** Map of user_id → full_name for the people the statement names. */
+async function userNames(client, ids = []) {
+  const wanted = [...new Set(ids.filter(Boolean))];
+  if (!wanted.length) return new Map();
+  const { rows } = await client.query(
+    `SELECT user_id, full_name FROM app_user WHERE user_id = ANY($1::uuid[])`,
+    [wanted],
+  );
+  return new Map(rows.map((r) => [r.user_id, r.full_name]));
+}
+
+/**
+ * Point the settlement row at its statement PDF — write-once, and narrow on
+ * purpose. The render happens AFTER the settle commit (posting money is the
+ * transaction; making paper out of it is a consequence), so this is a plain
+ * UPDATE outside the transaction, and it refuses to replace a recorded
+ * statement: the settled render is the history, a later re-download is a
+ * view of it, and blurring the two would blur what was sent.
+ */
+async function bindSettlementStatement(client, { reconciliationId, revision, docId }) {
+  const { rows } = await client.query(
+    `UPDATE dossier_reconciliation_settlement
+        SET statement_doc_id = $3
+      WHERE reconciliation_id = $1 AND revision = $2 AND statement_doc_id IS NULL
+      RETURNING settlement_id`,
+    [reconciliationId, revision, docId],
+  );
+  return rows[0] || null;
+}
+
+/**
+ * Spend over the life of the file — the third chart of the Full view.
+ *
+ * Bucketed by the day the money was SPENT FOR (`cost_entry.spent_on`, PR 2),
+ * falling back to the entry day for rows that predate the column, grossed
+ * from HT to the line's own TTC so the benchmark — the budget — compares
+ * like with like. Read through netAmountSql (reversals are positive rows
+ * that subtract; the one rule for every SUM of cost_entry.amount).
+ */
+async function spendTimeline(client, { dossierId }) {
+  const posted = netAmountSql("ce");
+  const { rows } = await client.query(
+    `SELECT day, SUM(ttc) AS actual_ttc FROM (
+        SELECT COALESCE(ce.spent_on, ce.created_at::date) AS day,
+               (${posted}) * COALESCE((cl.qty * cl.unit_cost + ${costingRepo.LINE_VAT_SQL})
+                                      / NULLIF(cl.qty * cl.unit_cost, 0), 1) AS ttc
+          FROM cost_entry ce
+          JOIN costing_line cl ON cl.costing_line_id = ce.costing_line_id
+          LEFT JOIN tax_code tc ON tc.tax_code_id = cl.tax_code_id
+          JOIN costing ct ON ct.costing_id = cl.costing_id
+         WHERE ct.dossier_id = $1 AND ct.status = 'APPROVED_LOCKED'
+     ) s
+     GROUP BY day ORDER BY day`,
+    [dossierId],
+  );
+  return rows;
+}
+
 module.exports = {
   get, forDossier, open, setStatus,
   gridFor, approvedCosting,
   upsertLine, clearLineFields, lineFor, costingLineOnDossier, applyReasonToLines,
   attachDocument, detachDocument, documentsFor,
-  insertSettlement, settlements, stampDossier,
+  insertSettlement, settlements, stampDossier, bindSettlementStatement,
   receiptsOwed,
+  dossierHeader, userNames, spendTimeline,
   postedTotalsByLine, fundingAdvancesForDossier, disbursedCashRequests,
   dossierEntityId, earliestSpentOn,
 };

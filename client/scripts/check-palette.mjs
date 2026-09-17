@@ -140,6 +140,10 @@ const GUIDANCE = {
   zinc: "--muted-foreground / --border / --card",
   neutral: "--muted-foreground / --border / --card",
   stone: "--muted-foreground / --border / --card",
+  // The two chart rules (see CHART FILE RULES below): not palette families but
+  // the same defect class — colour with no token behind it.
+  "chart-hex": "a SERIES tone from components/ui/chart.tsx (var(--primary) & friends)",
+  "chart-import": "components/ui/chart.tsx — screens never import recharts",
 };
 
 /**
@@ -231,7 +235,8 @@ function sources() {
 }
 
 const violations = [];
-for (const file of sources()) {
+const allSources = sources();
+for (const file of allSources) {
   const rel = relative(APP, file).replace(/\\/g, "/");
   if (ALLOW.includes(rel)) continue;
 
@@ -245,6 +250,65 @@ for (const file of sources()) {
         line: i + 1,
         token: hit[0],
         family,
+        src: line.trim(),
+      });
+    }
+  });
+}
+
+/*
+ * ── CHART FILE RULES (MOD-76, RECONCILIATION_ENGINEERING_GUIDE §6.1) ────────
+ *
+ * The regex above catches palette colours written as Tailwind utilities. It
+ * cannot see either of the two ways a chart breaks white-labelling, because
+ * both are plain JS:
+ *
+ *   1. A hex literal handed to a chart prop (`fill="#F5821F"`) — colour with
+ *      no token behind it. Recharts was chosen BECAUSE it renders SVG and a
+ *      series colour can be `var(--primary)`, re-tinting with the tenant's
+ *      brand; the first raw hex in a hurry is what opens the second source
+ *      of truth this whole gate exists to prevent.
+ *   2. A screen importing `recharts` directly — the wrapper in
+ *      `components/ui/chart.tsx` is what guarantees the SVG comes from the
+ *      SERIES token map and is lazily bundled; an unwrapped import defeats
+ *      both, so only the one implementation module may name the library.
+ *
+ * A hex INSIDE the wrapper's own test fixtures would be a real violation too
+ * (it would be asserting a literal), so there is no allowlist here at all.
+ */
+const CHART_IMPL = "src/components/ui/chart-impl.tsx";
+const isChartFile = (rel) =>
+  /^src\/components\/ui\/chart.*\.tsx$/.test(rel);
+const RECHARTS_IMPORT = /from\s+["']recharts["']/;
+const HEX_LITERAL = /#[0-9a-fA-F]{3,4}\b|#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{8}\b/;
+
+for (const file of allSources) {
+  const rel = relative(APP, file).replace(/\\/g, "/");
+  if (ALLOW.includes(rel)) continue;
+  if (!/\.tsx?$/.test(file)) continue;
+
+  const text = stripComments(readFileSync(join(repoRoot, file), "utf8"));
+  const importsRecharts = RECHARTS_IMPORT.test(text);
+
+  if (importsRecharts && rel !== CHART_IMPL) {
+    violations.push({
+      file: rel,
+      line: 1 + text.slice(0, text.search(RECHARTS_IMPORT)).split("\n").length - 1,
+      token: "recharts",
+      family: "chart-import",
+      src: 'Only components/ui/chart.tsx may wire recharts — screens take <Chart> and the SERIES token map.',
+    });
+  }
+
+  if (!isChartFile(rel) && !importsRecharts) continue;
+  const lines = text.split("\n");
+  lines.forEach((line, i) => {
+    for (const hit of line.matchAll(new RegExp(HEX_LITERAL, "g"))) {
+      violations.push({
+        file: rel,
+        line: i + 1,
+        token: hit[0],
+        family: "chart-hex",
         src: line.trim(),
       });
     }

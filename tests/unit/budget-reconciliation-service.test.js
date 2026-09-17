@@ -65,6 +65,12 @@ function fakeClient({
   costing = { costing_id: UUID(5), doc_number: "CST-2026-0043", status: "APPROVED_LOCKED", currency: "XAF", exchange_rate_to_xaf: 1 },
   storedLine = null,
   lineOnDossier = true,
+  /** §8.1 tray: cost_entry rows on this dossier with costing_line_id NULL. */
+  unaccounted = [],
+  /** One tray row with its journal join (the lazy detail read). */
+  unaccountedDetail = null,
+  /** Whether the map UPDATE finds a row (true) or the entry is already mapped (false). */
+  unaccountedMaps = true,
 } = {}) {
   const queries = [];
   const c = {
@@ -88,6 +94,19 @@ function fakeClient({
       if (/FROM dossier_reconciliation_settlement/.test(sql)) return { rows: [] };
       if (/FROM dossier_reconciliation_line\s+WHERE reconciliation_id = \$1 AND costing_line_id/.test(sql))
         return { rows: storedLine ? [storedLine] : [] };
+      // §8.1 — the tray's lazy journal detail (LEFT JOIN journal_entry).
+      if (/FROM cost_entry ce/.test(sql) && /LEFT JOIN journal_entry je/.test(sql))
+        return { rows: unaccountedDetail ? [unaccountedDetail] : [] };
+      // §8.1 — the tray itself: one indexed read, the NOT NULL index's opposite.
+      if (/FROM cost_entry ce/.test(sql) && /costing_line_id IS NULL/.test(sql)) return { rows: unaccounted };
+      if (/UPDATE cost_entry\s+SET costing_line_id/.test(sql)) {
+        c.written.push({ op: "mapUnaccounted", sql, params });
+        return {
+          rows: unaccountedMaps
+            ? [{ cost_entry_id: params[1], costing_line_id: params[0], dossier_id: params[2] }]
+            : [],
+        };
+      }
 
       if (/INSERT INTO dossier_reconciliation \(/.test(sql)) {
         c.written.push({ op: "open", params });
@@ -441,5 +460,205 @@ describe("the rules the migration could not make constraints", () => {
     await expect(
       service.patchLine(c, { dossierId: DOSSIER, costingLineId: LINE_B, fields: { actual_ttc: 1 }, actor: ops }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+});
+
+/**
+ * §8.1 — UNACCOUNTED SPEND (owner decision, 17/09/2026: option B, "refuse at
+ * settlement, surface in between").
+ *
+ * Five shipped orchestration handlers post a cost_entry on the dossier with no
+ * costing line and no cash request. Option B's premise, pinned here so it
+ * cannot be "fixed" away silently: the entry POSTS (the ledger records what
+ * happened), it lands in the sheet's tray, and submission is blocked until
+ * each one is mapped to a budget line — or the costing is amended to carry it.
+ */
+const unaccountedRow = (over = {}) => ({
+  cost_entry_id: UUID(60),
+  amount: 198000,
+  category: "procurement",
+  spent_on: null,
+  created_at: new Date("2026-09-10T09:00:00Z").toISOString(),
+  source_ref: null,
+  entry_id: UUID(70),
+  ...over,
+});
+
+describe("the unaccounted spend tray (guide §8.1, option B)", () => {
+  test("the sheet carries the tray: one row per unmapped entry, no per-row currency, a derived source_hint", async () => {
+    const c = fakeClient({
+      header: openHeader(),
+      unaccounted: [
+        unaccountedRow(),
+        unaccountedRow({ cost_entry_id: UUID(61), amount: 4250, category: "fuel", source_ref: "fuel_log:" + UUID(71), entry_id: null }),
+      ],
+    });
+    const sheet = await service.sheetFor(c, { dossierId: DOSSIER });
+    expect(sheet.unaccounted).toHaveLength(2);
+    const [a, b] = sheet.unaccounted;
+    expect(a.cost_entry_id).toBe(UUID(60));
+    expect(a.amount).toBe(198000);
+    expect(a).toHaveProperty("spent_on");
+    expect(a).toHaveProperty("created_at");
+    // Derived from the columns that exist — category, source_ref, the journal
+    // link. There is no source_hint column, and no currency column on the row.
+    expect(a.source_hint).toMatch(/journal/);
+    expect(a.source_hint).not.toMatch(/currency/i);
+    expect(b.source_hint).toMatch(/Fuel/);
+    expect(b.source_hint).not.toContain("null");
+    // The currency lives on the header, once — never per row.
+    expect(sheet).toHaveProperty("currency");
+    expect(a).not.toHaveProperty("currency");
+  });
+
+  test("a settlement reversal reads NEGATIVE in the tray — the signed-sum discipline, per row", async () => {
+    const c = fakeClient({
+      header: openHeader(),
+      // The repo returns the SIGNED amount; the service passes it through.
+      unaccounted: [unaccountedRow({ amount: -12000, category: "reconciliation_reversal" })],
+    });
+    const sheet = await service.sheetFor(c, { dossierId: DOSSIER });
+    expect(sheet.unaccounted[0].amount).toBe(-12000);
+  });
+
+  test("an empty tray is the common case and costs the sheet nothing visible", async () => {
+    const c = fakeClient({ header: openHeader() });
+    const sheet = await service.sheetFor(c, { dossierId: DOSSIER });
+    expect(sheet.unaccounted).toEqual([]);
+  });
+
+  test("the tray rides along even when the file has no approved costing to reconcile against", async () => {
+    const c = fakeClient({ header: openHeader(), costing: null, unaccounted: [unaccountedRow()] });
+    const sheet = await service.sheetFor(c, { dossierId: DOSSIER });
+    expect(sheet.can_reconcile).toBe(false);
+    expect(sheet.unaccounted).toHaveLength(1);
+  });
+
+  test("mapping the last entry is what re-enables submit", async () => {
+    const c = fakeClient({ header: openHeader(), unaccounted: [unaccountedRow()] });
+    await expect(service.submit(c, { dossierId: DOSSIER, actor: ops }))
+      .rejects.toMatchObject({ code: "UNACCOUNTED_SPEND" });
+    // After the map, the tray is empty and the same sheet goes through.
+    const c2 = fakeClient({ header: openHeader(), unaccounted: [] });
+    await service.submit(c2, { dossierId: DOSSIER, actor: ops });
+    expect(c2.written.find((w) => w.op === "status").sql).toMatch(/status = 'SUBMITTED'/);
+  });
+});
+
+describe("submit — unaccounted spend is a gate, with the ONE-list rule", () => {
+  test("every unmapped row is named in ONE error, not one 422 per entry", async () => {
+    const c = fakeClient({
+      header: openHeader(),
+      unaccounted: [
+        unaccountedRow(),
+        unaccountedRow({ cost_entry_id: UUID(61), category: "handling", source_ref: "outbound_order:" + UUID(71) }),
+        unaccountedRow({ cost_entry_id: UUID(62), category: "driver_labour", source_ref: "fleet_dispatch:" + UUID(72) }),
+      ],
+    });
+    await expect(service.submit(c, { dossierId: DOSSIER, actor: ops })).rejects.toMatchObject({
+      code: "UNACCOUNTED_SPEND",
+      status: 422,
+      details: {
+        unaccounted: expect.arrayContaining([
+          expect.objectContaining({ cost_entry_id: UUID(60) }),
+          expect.objectContaining({ cost_entry_id: UUID(61) }),
+          expect.objectContaining({ cost_entry_id: UUID(62) }),
+        ]),
+      },
+    });
+  });
+
+  test("the refusal names both routes out: map it, or carry it in the costing", async () => {
+    const c = fakeClient({ header: openHeader(), unaccounted: [unaccountedRow()] });
+    await expect(service.submit(c, { dossierId: DOSSIER, actor: ops }))
+      .rejects.toMatchObject({ code: "UNACCOUNTED_SPEND" });
+    // The message carries the two ways out, so a 422 is not a dead end.
+    const err = await service.submit(c, { dossierId: DOSSIER, actor: ops }).catch((e) => e);
+    expect(err.message).toMatch(/map each one to a budget line/i);
+    expect(err.message).toMatch(/costing/i);
+  });
+});
+
+describe("mapping an unaccounted entry to a budget line", () => {
+  const ENTRY = UUID(60);
+
+  test("the happy path: the ledger row is re-homed in place, and the audit says so", async () => {
+    const emit = require("../../src/shared/events/emit");
+    const c = fakeClient({ header: openHeader() });
+    await service.mapUnaccounted(c, { dossierId: DOSSIER, costEntryId: ENTRY, costingLineId: LINE_A, actor: ops });
+    const write = c.written.find((w) => w.op === "mapUnaccounted");
+    expect(write.params[0]).toBe(LINE_A);
+    expect(write.params[1]).toBe(ENTRY);
+    expect(write.params[2]).toBe(DOSSIER);
+    // In place — the WHERE carries the guard, so a stale double-map is a no-op.
+    expect(write.sql).toMatch(/costing_line_id IS NULL/);
+    // audit(client, payload) — the client is the first argument, the record the second.
+    expect(emit.audit).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ action: "reconciliation.unaccounted_mapped", moduleKey: "MOD-76" }),
+    );
+  });
+
+  test("a line that is not on this file's approved costing is refused", async () => {
+    const c = fakeClient({ header: openHeader(), lineOnDossier: false });
+    await expect(service.mapUnaccounted(c, { dossierId: DOSSIER, costEntryId: ENTRY, costingLineId: LINE_B, actor: ops }))
+      .rejects.toMatchObject({ code: "NOT_FOUND" });
+    expect(c.written.find((w) => w.op === "mapUnaccounted")).toBeUndefined();
+  });
+
+  test("an entry that is not on this file (or already mapped) is a 404, not an overwrite", async () => {
+    const c = fakeClient({ header: openHeader(), unaccountedMaps: false });
+    await expect(service.mapUnaccounted(c, { dossierId: DOSSIER, costEntryId: ENTRY, costingLineId: LINE_A, actor: ops }))
+      .rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
+  test("a SETTLED sheet is refused — re-open semantics, never a silent mutation under Finance", async () => {
+    const c = fakeClient({ header: openHeader({ status: "SETTLED", revision: 2 }) });
+    await expect(service.mapUnaccounted(c, { dossierId: DOSSIER, costEntryId: ENTRY, costingLineId: LINE_A, actor: ops }))
+      .rejects.toMatchObject({ code: "BAD_STATE", details: { status: "SETTLED" } });
+  });
+
+  test("a SUBMITTED sheet is refused — it is with Finance, and the figures must not shift", async () => {
+    const c = fakeClient({ header: openHeader({ status: "SUBMITTED" }) });
+    await expect(service.mapUnaccounted(c, { dossierId: DOSSIER, costEntryId: ENTRY, costingLineId: LINE_A, actor: ops }))
+      .rejects.toMatchObject({ code: "BAD_STATE", details: { status: "SUBMITTED" } });
+  });
+});
+
+describe("the tray row's journal link — fetched lazily, never on the sheet", () => {
+  test("the detail read joins the journal entry", async () => {
+    const c = fakeClient({
+      header: openHeader(),
+      unaccountedDetail: {
+        ...unaccountedRow(),
+        entry_date: "2026-09-10",
+        description: "Supplier invoice 4711",
+        status: "validated",
+      },
+    });
+    const row = await service.unaccountedEntryFor(c, { dossierId: DOSSIER, costEntryId: UUID(60) });
+    expect(row.cost_entry_id).toBe(UUID(60));
+    expect(row.journal).toEqual({
+      entry_id: UUID(70),
+      entry_date: "2026-09-10",
+      description: "Supplier invoice 4711",
+      status: "validated",
+    });
+  });
+
+  test("an entry without a journal link returns journal: null", async () => {
+    const c = fakeClient({
+      header: openHeader(),
+      unaccountedDetail: { ...unaccountedRow({ entry_id: null }), entry_date: null, description: null, status: null },
+    });
+    const row = await service.unaccountedEntryFor(c, { dossierId: DOSSIER, costEntryId: UUID(60) });
+    expect(row.journal).toBeNull();
+    expect(row.source_hint).toMatch(/Fuel|journal|Warehouse handling|Supplier invoice|Maintenance|Driver labour|cost/);
+  });
+
+  test("an entry that is not unaccounted on this file 404s honestly", async () => {
+    const c = fakeClient({ header: openHeader() });
+    await expect(service.unaccountedEntryFor(c, { dossierId: DOSSIER, costEntryId: UUID(60) }))
+      .rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 });

@@ -42,6 +42,53 @@ const crypto = require("crypto");
 const MODULE = events.MODULE;
 const ref = (id) => "dossier_reconciliation:" + id;
 
+/* ═══════════════════ Unaccounted spend (guide §8.1) ══════════════════════ */
+
+/**
+ * What the five orchestration handlers post — a cost on the file the approved
+ * costing does not carry. Owner decision (17/09/2026, option B): the entry
+ * posts (the ledger must record what happened), lands in this tray, and the
+ * file cannot be submitted until each entry is mapped to a budget line or the
+ * costing is amended to carry the spend.
+ */
+const UNACCOUNTED_LABEL = {
+  procurement: "Supplier invoice",
+  fuel: "Fuel",
+  handling: "Warehouse handling",
+  maintenance: "Maintenance",
+  driver_labour: "Driver labour",
+};
+
+/**
+ * One tray row, as the sheet reads it.
+ *
+ * `source_hint` is DERIVED, not a column — `cost_entry` has neither a
+ * source_hint nor a currency column, and inventing either would fail the
+ * query-columns gate and lie about the ledger. The hint is composed from the
+ * columns that do exist: the category that posted it, the source_ref the
+ * handler stamped for idempotency (0463), and the journal link when there is
+ * one. The journal entry's own details (date, description) are fetched
+ * LAZILY, on tray expand — never on the sheet GET.
+ *
+ * The currency is deliberately NOT per row: `cost_entry.amount` is booked in
+ * the ledger's currency and the sheet's single currency lives on the header.
+ */
+function unaccountedView(r) {
+  const short = (x) => String(x).slice(0, 8);
+  const label = UNACCOUNTED_LABEL[r.category] || String(r.category || "cost").replace(/_/g, " ");
+  let hint = label;
+  if (r.source_ref) hint += ` · ${short(String(r.source_ref).replace(/^[a-z_]+:/, ""))}`;
+  else if (r.entry_id) hint += ` · journal ${short(r.entry_id)}`;
+  return {
+    cost_entry_id: r.cost_entry_id,
+    amount: Number(r.amount),
+    category: r.category || null,
+    spent_on: r.spent_on || null,
+    created_at: r.created_at,
+    source_hint: hint,
+  };
+}
+
 /* ═══════════════════════════ Reading the sheet ═══════════════════════════ */
 
 /**
@@ -64,7 +111,11 @@ async function sheetFor(client, { dossierId }) {
   // No approved costing means no budget, and owner decision Q11 is that no
   // spend happens on an operations file without one. So the sheet does not
   // improvise a grid — it says what is missing and points at the costing.
+  // The unaccounted tray still rides along: spend posted without a costing to
+  // carry it is exactly what §8.1 exists to surface, and it is more visible
+  // on the sheet that says "there is no budget", not less.
   if (!costing || costing.status !== "APPROVED_LOCKED") {
+    const unaccounted = (await repo.unaccountedFor(client, { dossierId })).map(unaccountedView);
     return {
       dossier_id: dossierId,
       reconciliation_id: header ? header.reconciliation_id : null,
@@ -76,6 +127,7 @@ async function sheetFor(client, { dossierId }) {
         : "This file has no costing yet. The costing is the budget, so there is nothing to reconcile against.",
       lines: [],
       documents: [],
+      unaccounted,
       allowance,
       ...rules.summarise([]),
     };
@@ -90,6 +142,10 @@ async function sheetFor(client, { dossierId }) {
   const [documents, settlements] = header
     ? await Promise.all([repo.documentsFor(client, header.reconciliation_id), repo.settlements(client, header.reconciliation_id)])
     : [[], []];
+  // Independent of the header: spend posted without anything recorded on the
+  // sheet is the case the tray matters most. One indexed read (13830) — about
+  // nothing when the tray is empty.
+  const unaccounted = (await repo.unaccountedFor(client, { dossierId })).map(unaccountedView);
 
   // Group the documents onto their lines so the grid, the line modal and the
   // file's 360 all read one shape.
@@ -122,6 +178,7 @@ async function sheetFor(client, { dossierId }) {
     lines,
     documents,
     settlements,
+    unaccounted,
     allowance,
     blockers: rules.submissionBlockers(lines),
     ...summary,
@@ -310,6 +367,69 @@ async function applyReason(client, { dossierId, reason, costingLineIds = [], act
   return sheetFor(client, { dossierId });
 }
 
+/**
+ * Map one unaccounted spend entry to a budget line (guide §8.1, owner
+ * decision B — 17/09/2026).
+ *
+ * The entry has already posted — the ledger records what happened, and that
+ * is option B's premise, so there is nothing to refuse here. What it owes is
+ * a HOME: a line on the file's approved costing, so settlement can post the
+ * delta against it and the tray clears. The other route out — amending the
+ * costing to carry the spend — needs no endpoint at all: the re-open hook
+ * then handles the rest.
+ *
+ * Refuses on a sheet that is not OPEN, the same rule as every other write on
+ * this module. A SETTLED sheet has no editor: it re-opens on its own when the
+ * facts move, and the mapping happens once it is back on Operations' desk —
+ * re-open semantics, never a silent mutation under Finance.
+ */
+async function mapUnaccounted(client, { dossierId, costEntryId, costingLineId, actor = {}, ip = null }) {
+  const header = await repo.forDossier(client, dossierId);
+  if (header && header.status !== "OPEN") {
+    throw new AppError(
+      "BAD_STATE",
+      header.status === "SETTLED"
+        ? "This reconciliation is settled. It re-opens on its own when the costing changes or more cash goes out — map the spend once it is back on Operations' desk."
+        : "This reconciliation is with Finance. Ask them to send it back before mapping spend onto it.",
+      422,
+      { status: header.status },
+    );
+  }
+  if (!(await repo.costingLineOnDossier(client, { dossierId, costingLineId }))) {
+    throw new AppError("NOT_FOUND", "That budget line is not on this file's approved costing", 404, { costing_line_id: costingLineId });
+  }
+  const mapped = await repo.mapUnaccountedEntry(client, { costEntryId, costingLineId, dossierId });
+  if (!mapped) {
+    throw new AppError("NOT_FOUND", "That cost entry is not on this file, or it has already been mapped", 404, { cost_entry_id: costEntryId });
+  }
+  await audit(client, {
+    actorUserId: actor.user_id || null, action: events.UNACCOUNTED_MAPPED, moduleKey: MODULE,
+    entityRef: ref(header ? header.reconciliation_id : "dossier:" + dossierId),
+    before: { costing_line_id: null },
+    after: { cost_entry_id: costEntryId, costing_line_id: costingLineId },
+    ip,
+  });
+  return sheetFor(client, { dossierId });
+}
+
+/**
+ * One tray row's detail — the journal link, fetched LAZILY (the tray's own
+ * GET, hit when a row is expanded). The sheet GET never pays for this: the
+ * tray rides on every read, and the common case is an empty tray.
+ */
+async function unaccountedEntryFor(client, { dossierId, costEntryId }) {
+  const row = await repo.unaccountedEntry(client, { dossierId, costEntryId });
+  if (!row) {
+    throw new AppError("NOT_FOUND", "That cost entry is not unaccounted on this file", 404, { cost_entry_id: costEntryId });
+  }
+  return {
+    ...unaccountedView(row),
+    journal: row.entry_id
+      ? { entry_id: row.entry_id, entry_date: row.entry_date || null, description: row.description || null, status: row.status || null }
+      : null,
+  };
+}
+
 /* ═══════════════════════════ Documents ═══════════════════════════════════ */
 
 /**
@@ -387,6 +507,18 @@ async function submit(client, { dossierId, note = null, actor = {}, ip = null })
   const sheet = await sheetFor(client, { dossierId });
   if (!sheet.lines.length) {
     throw new AppError("EMPTY_RECONCILIATION", "This file's costing has no lines to reconcile", 422);
+  }
+  // §8.1, owner decision (option B): spend the costing does not carry cannot
+  // go to Finance unexplained. Every unmapped entry is named in ONE list —
+  // the one-list rule, §5 — rather than one 422 per entry, and the message
+  // says both routes out: map it to a line, or carry it in the costing.
+  if (sheet.unaccounted.length) {
+    throw new AppError(
+      "UNACCOUNTED_SPEND",
+      `${sheet.unaccounted.length} cost(s) posted on this file are not on its approved costing — map each one to a budget line, or add it to the costing and re-approve.`,
+      422,
+      { unaccounted: sheet.unaccounted },
+    );
   }
   if (sheet.blockers.length) {
     const reasons = sheet.blockers.filter((b) => b.kind === "REASON").length;
@@ -960,4 +1092,5 @@ module.exports = {
   submit, reject, settle, reopen,
   receiptsOwed,
   timeline, invoiceGateFor,
+  mapUnaccounted, unaccountedEntryFor,
 };

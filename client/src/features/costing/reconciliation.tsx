@@ -530,6 +530,18 @@ export function ReconciliationPage() {
   const lines = React.useMemo(() => s?.lines ?? [], [s]);
   const editable = s?.status === "OPEN" && s?.can_reconcile === true;
 
+  /**
+   * §8.1 (owner decision B) — the Unaccounted spend tray.
+   *
+   * A cost posted on the file that the approved costing does not carry: the
+   * entry posted (the ledger records what happened), and this is where it must
+   * find a home — a budget line to be mapped onto, or the costing amended to
+   * carry it. Submit stays blocked while the tray is not empty, and the
+   * server's UNACCOUNTED_SPEND error carries the whole list, one list, §5.
+   */
+  const unaccounted = s?.unaccounted ?? [];
+  const [unaccountedPick, setUnaccountedPick] = React.useState<Record<string, string>>({});
+
   /** Totals recomputed from the drafts, so the footer moves with the typing. */
   const live = React.useMemo(() => {
     const actual = lines.reduce((sum, l) => {
@@ -572,6 +584,18 @@ export function ReconciliationPage() {
     });
     if (value === line.actual_ttc && line.actual_source !== "DERIVED") return;
     await run(() => api.patchReconLine(dossierId, line.costing_line_id, { actual_ttc: value }));
+  }
+
+  /** Map one unaccounted entry to the picked budget line. The server returns
+   *  the whole sheet, so the tray and the grid update together — and mapping
+   *  the LAST entry is what re-enables submit (the 422 can no longer fire). */
+  async function mapUnaccounted(costEntryId: string, costingLineId: string) {
+    if (await run(() => api.mapReconUnaccounted(dossierId, costEntryId, costingLineId))) {
+      setUnaccountedPick((p) => {
+        const { [costEntryId]: _drop, ...rest } = p;
+        return rest;
+      });
+    }
   }
 
   const current = lines.find((l) => l.costing_line_id === openLine) || null;
@@ -742,17 +766,90 @@ export function ReconciliationPage() {
 
           {actionError && <ErrorState message={actionError} />}
 
-          {editable && (s.totals.reasons_missing > 0 || s.totals.proofs_missing > 0) && (
-            <Callout tone="warn" title={tr("Before this can go to Finance")}>
-              <ul className="list-disc pl-5">
-                {s.totals.reasons_missing > 0 && (
-                  <li>{`${s.totals.reasons_missing} ${tr("line(s) are over budget and need a reason")}`}</li>
-                )}
-                {s.totals.proofs_missing > 0 && (
-                  <li>{`${s.totals.proofs_missing} ${tr("line(s) need a supporting document")}`}</li>
-                )}
+          {editable &&
+            (s.totals.reasons_missing > 0 || s.totals.proofs_missing > 0 || unaccounted.length > 0) && (
+              <Callout tone="warn" title={tr("Before this can go to Finance")}>
+                <ul className="list-disc pl-5">
+                  {unaccounted.length > 0 && (
+                    <li>
+                      {`${unaccounted.length} ${tr(
+                        "unaccounted spend cost(s) must be mapped to a budget line, or added to the costing and re-approved",
+                      )}`}
+                    </li>
+                  )}
+                  {s.totals.reasons_missing > 0 && (
+                    <li>{`${s.totals.reasons_missing} ${tr("line(s) are over budget and need a reason")}`}</li>
+                  )}
+                  {s.totals.proofs_missing > 0 && (
+                    <li>{`${s.totals.proofs_missing} ${tr("line(s) need a supporting document")}`}</li>
+                  )}
+                </ul>
+              </Callout>
+            )}
+
+          {/* §8.1 (owner decision B) — spend the approved costing does not
+              carry. Above the grid, because it is not one of the grid's lines:
+              it has no budget at all, which is why it cannot sit in a row. */}
+          {unaccounted.length > 0 && (
+            <Panel
+              title={tr("Unaccounted spend")}
+              subtitle={tr(
+                "Costs posted on this file that its approved costing does not carry. Map each one to a line — or add it to the costing and re-approve — and the sheet can go to Finance.",
+              )}
+            >
+              <ul className="space-y-2">
+                {unaccounted.map((u) => (
+                  <li
+                    key={u.cost_entry_id}
+                    className="flex flex-wrap items-center gap-3 rounded-md border border-border px-3 py-2"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm text-foreground">{cell(u.source_hint)}</div>
+                      <span className="micro text-muted-foreground">
+                        {u.spent_on ? `${dateFmt(u.spent_on)} · ` : ""}
+                        {tr("recorded")} {dateFmt(u.created_at)}
+                      </span>
+                    </div>
+                    <span className="num text-sm tabular-nums text-foreground">
+                      {money(u.amount, s.currency)}
+                    </span>
+                    {editable ? (
+                      <div className="flex items-center gap-2">
+                        <select
+                          className="max-w-[14rem] rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+                          value={unaccountedPick[u.cost_entry_id] || ""}
+                          onChange={(e) =>
+                            setUnaccountedPick((p) => ({ ...p, [u.cost_entry_id]: e.target.value }))
+                          }
+                          aria-label={`${tr("Map to line")} — ${u.source_hint}`}
+                        >
+                          <option value="">{tr("Pick a budget line…")}</option>
+                          {lines.map((l) => (
+                            <option key={l.costing_line_id} value={l.costing_line_id}>
+                              {cell(l.label)}
+                            </option>
+                          ))}
+                        </select>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={busy || !unaccountedPick[u.cost_entry_id]}
+                          onClick={() => void mapUnaccounted(u.cost_entry_id, unaccountedPick[u.cost_entry_id])}
+                        >
+                          {tr("Map")}
+                        </Button>
+                      </div>
+                    ) : (
+                      <span className="micro text-muted-foreground">
+                        {s.status === "SETTLED"
+                          ? tr("Settled — it re-opens when the facts change.")
+                          : tr("With Finance — send it back to map this.")}
+                      </span>
+                    )}
+                  </li>
+                ))}
               </ul>
-            </Callout>
+            </Panel>
           )}
 
           <Panel

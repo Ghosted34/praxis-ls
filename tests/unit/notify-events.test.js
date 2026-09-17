@@ -71,6 +71,40 @@ test("missing module key is a no-op", async () => {
   expect(repo.recipientsWithPermission).not.toHaveBeenCalled();
 });
 
+/**
+ * MOD-76, guide §6.5: a settled sheet re-opening means new facts landed on a
+ * file Finance thought done — the event is emitted at reopen() with actor and
+ * audit, and the allowlist entry is what actually tells the people who can
+ * settle. PR 2 shipped the emission; this entry is the half that made it
+ * reachable. HIGH matches rejected / proof_owed.
+ */
+test("reconciliation.reopened is allowlisted, HIGH, on the view audience", () => {
+  const cfg = ne.NOTIFIABLE["reconciliation.reopened"];
+  expect(cfg).toBeDefined();
+  expect(cfg.action).toBe("view");
+  expect(cfg.title).toBe("Reconciliation re-opened");
+  expect(cfg.priority).toBe("HIGH");
+});
+
+test("reconciliation.reopened notifies the module audience like any allowlisted event", async () => {
+  repo.recipientsWithPermission.mockResolvedValue(["ops1", "fin1", "actor"]);
+  const sent = await ne.onEvent(client, {
+    eventTypeKey: "reconciliation.reopened",
+    moduleKey: "MOD-76",
+    entityRef: "dossier_reconciliation:00000001-0000-4000-8000-000000000000",
+    actorUserId: "actor",
+  });
+  expect(sent).toBe(2);
+  expect(repo.recipientsWithPermission).toHaveBeenCalledWith(client, "MOD-76", "view");
+  expect(service.notifyMany.mock.calls[0][2]).toMatchObject({
+    title: "Reconciliation re-opened",
+    priority: "HIGH",
+  });
+  // The body is built from title + entityRef only — the emission passes no
+  // payload, so the reason re-opened it is in the audit, not in the body.
+  expect(service.notifyMany.mock.calls[0][2].body).toMatch(/Reconciliation re-opened/);
+});
+
 test("is best-effort: a producer failure is swallowed", async () => {
   repo.recipientsWithPermission.mockResolvedValue(["fin1"]);
   service.notifyMany.mockRejectedValue(new Error("boom"));

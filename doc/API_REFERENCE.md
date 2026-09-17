@@ -6,7 +6,7 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 1630 |
+| Routes | 1633 |
 | Modules mounted | 140 |
 | API version | v1 |
 
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 1630 mounted routes, grouped by path prefix.
+All 1633 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -595,6 +595,8 @@ All 1630 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/costing/reconciliations/:dossierId/statement/send` | — |
 | POST | `/api/tenant/costing/reconciliations/:dossierId/submit` | — |
 | GET | `/api/tenant/costing/reconciliations/:dossierId/timeline` | — |
+| GET | `/api/tenant/costing/reconciliations/:dossierId/unaccounted/:costEntryId` | — |
+| POST | `/api/tenant/costing/reconciliations/:dossierId/unaccounted/:costEntryId/map` | — |
 | GET | `/api/tenant/costing/reconciliations/owed` | — |
 | GET | `/api/tenant/costing/reconciliations/owed/all` | — |
 
@@ -2349,6 +2351,7 @@ All 1630 mounted routes, grouped by path prefix.
 |---|---|---|
 | GET | `/api/tenant/workspace/` | — |
 | GET | `/api/tenant/workspace/day` | — |
+| GET | `/api/tenant/workspace/deadlines` | — |
 | GET | `/api/tenant/workspace/events/` | — |
 | POST | `/api/tenant/workspace/events/` | — |
 | DELETE | `/api/tenant/workspace/events/:id` | — |

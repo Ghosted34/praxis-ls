@@ -21,7 +21,7 @@
 "use strict";
 
 const costingRepo = require("../costing/costing.repo");
-const { netAmountSql } = require("../../../shared/finance/cost-entry-sql");
+const { netAmountSql, REVERSAL_CATEGORY } = require("../../../shared/finance/cost-entry-sql");
 
 /**
  * Posted HT for a budget line, SIGNED by category.
@@ -63,6 +63,98 @@ async function postedTotalsByLine(client, { reconciliationId, dossierId }) {
   const map = new Map();
   for (const r of rows) map.set(r.costing_line_id, Number(r.posted_ht));
   return map;
+}
+
+/* ═══════════════ Unaccounted spend (guide §8.1, owner decision B) ═════════ */
+
+/**
+ * The tray: every cost posted to this file that the approved costing does not
+ * carry — `costing_line_id` still NULL.
+ *
+ * One indexed read, anchored on `dossier_id` with the partial index
+ * `ix_cost_entry_unaccounted` (13830): the common "nothing unaccounted" case
+ * is an empty index range, not a scan. The only other index the read could
+ * reach is the wrong way around — `ix_cost_entry_costing_line` (13801) is
+ * PARTIAL on `costing_line_id IS NOT NULL`, the opposite of this filter.
+ *
+ * `cost_entry` has NO currency column — the amount is booked in the ledger's
+ * currency, and the sheet's single currency lives on the reconciliation header
+ * (`dossier_reconciliation.currency`, 13801). So nothing per-row here: the
+ * header surfaces the currency once.
+ *
+ * The amount comes back SIGNED, with the discipline of every other net-actual
+ * read (shared/finance/cost-entry-sql): a `reconciliation_reversal` row is a
+ * positive amount the ledger treats as a credit, so it must read negative or
+ * the tray would show a correction DOWN as spend UP.
+ */
+async function unaccountedFor(client, { dossierId }) {
+  const { rows } = await client.query(
+    `SELECT ce.cost_entry_id,
+            CASE WHEN ce.category = '${REVERSAL_CATEGORY}' THEN -ce.amount ELSE ce.amount END AS amount,
+            ce.category, ce.spent_on, ce.created_at, ce.source_ref, ce.entry_id
+       FROM cost_entry ce
+      WHERE ce.dossier_id = $1 AND ce.costing_line_id IS NULL
+      ORDER BY ce.created_at, ce.cost_entry_id`,
+    [dossierId],
+  );
+  return rows;
+}
+
+/**
+ * One tray row with its journal link, fetched LAZILY (the tray's own detail
+ * endpoint).
+ *
+ * The sheet GET carries only the derived source_hint — category, source_ref,
+ * the entry_id link — because the tray rides on EVERY read of the sheet. The
+ * journal entry itself — when it posted, what it says, its status — is a
+ * detail a person asks for by expanding one row, so it is its own query and
+ * costs nothing until it is asked.
+ *
+ * Returns null for an entry that is not this dossier's, or that has since
+ * been mapped: the caller 404s those honestly rather than showing a row that
+ * is no longer unaccounted.
+ */
+async function unaccountedEntry(client, { dossierId, costEntryId }) {
+  const { rows } = await client.query(
+    `SELECT ce.cost_entry_id,
+            CASE WHEN ce.category = '${REVERSAL_CATEGORY}' THEN -ce.amount ELSE ce.amount END AS amount,
+            ce.category, ce.spent_on, ce.created_at, ce.source_ref, ce.entry_id,
+            je.entry_date, je.description, je.status
+       FROM cost_entry ce
+       LEFT JOIN journal_entry je ON je.entry_id = ce.entry_id
+      WHERE ce.cost_entry_id = $2
+        AND ce.dossier_id = $1
+        AND ce.costing_line_id IS NULL`,
+    [dossierId, costEntryId],
+  );
+  return rows[0] || null;
+}
+
+/**
+ * Map one unaccounted entry to a budget line — the fix that clears the tray
+ * (owner decision B).
+ *
+ * `costing_line_id` has existed since 13801 for exactly this: settlement
+ * writes it, and this is the second, human, writer. Updating the ledger row
+ * in place (never inserting a twin) is what keeps settle()'s delta arithmetic
+ * honest — the line's posted total moves, and the next settlement sees the
+ * spend where it belongs.
+ *
+ * `AND costing_line_id IS NULL` makes a double-map a no-op rather than an
+ * overwrite: an entry mapped between the read and the write cannot be
+ * re-homed by a stale click.
+ */
+async function mapUnaccountedEntry(client, { costEntryId, costingLineId, dossierId }) {
+  const { rows } = await client.query(
+    `UPDATE cost_entry
+        SET costing_line_id = $1
+      WHERE cost_entry_id = $2
+        AND dossier_id = $3
+        AND costing_line_id IS NULL
+      RETURNING cost_entry_id, costing_line_id, dossier_id`,
+    [costingLineId, costEntryId, dossierId],
+  );
+  return rows[0] || null;
 }
 
 /**
@@ -597,4 +689,5 @@ module.exports = {
   dossierHeader, userNames, spendTimeline,
   postedTotalsByLine, fundingAdvancesForDossier, disbursedCashRequests,
   dossierEntityId, earliestSpentOn,
+  unaccountedFor, unaccountedEntry, mapUnaccountedEntry,
 };

@@ -12,13 +12,15 @@
 
 _Last updated: 2026-09-17. Keep this section in step with `main` — when a PR merges, tick the findings it closed and link it here. Status legend: ✅ merged · 🟡 in progress · ⬜ not started._
 
+**Next up for another engineer:** PR 4 (steering D2–D4 + context window), then PR 5 (timeouts), PR 6 (conversation management/Spaces), the PR 7 coverage gate + remaining manifests, PR 1 redaction (A1), and PR 2's fallback vendor (B2). The write-contract backlog (154 writes) lives in `src/services/ai/write-contract-baseline.json` and is chipped away in any PR.
+
 ### By milestone
 
 | PR | Theme | Status | Landed via |
 | -- | ----- | ------ | ---------- |
 | PR 1 | Grounding integrity (A1–A4) | 🟡 partial | A2 done in [#404](https://github.com/tomblakeasaah196/praxis-ls/pull/404); A1/A3/A4 still open |
 | PR 2 | Completeness, model & no‑truncation (B1, B2, B4, B5) | 🟡 partial | B1 + B4 done in [#404](https://github.com/tomblakeasaah196/praxis-ls/pull/404); B2 (fallback vendor + health check) and B5 (shared cached prompt builder) still open |
-| PR 3 | "Create anything": one write contract (C1–C4) | ⬜ not started | — |
+| PR 3 | "Create anything": one write contract (C1–C4) | 🟡 partial | Contract + gate + the named creates + 31 create actions done in [#406](https://github.com/tomblakeasaah196/praxis-ls/pull/406); 154 pre-contract writes inventoried for follow-up |
 | PR 4 | Steering, modes & context window (D1–D5, G1) | 🟡 partial | D5 (modes real) + D1 (scope steering) done in [#404](https://github.com/tomblakeasaah196/praxis-ls/pull/404); D2/D3/D4 + context‑window growth still open |
 | PR 5 | Reliability, timeouts & performance (E1–E4, G2) | ⬜ not started | — |
 | PR 6 | Conversation management & Spaces UX (J1–J5) | ⬜ not started | — |
@@ -35,6 +37,10 @@ _Last updated: 2026-09-17. Keep this section in step with `main` — when a PR m
 | D5 — Ask/Draft/Analyse/Act were identical | P1 | ✅ | Validator accepts `mode`/`scope`; each mode appends a real posture directive. Act still only *proposes*. [#404](https://github.com/tomblakeasaah196/praxis-ls/pull/404) |
 | D1 — `scope` ignored server‑side | P1 | ✅ | Chosen Space now biases tool selection/retrieval. [#404](https://github.com/tomblakeasaah196/praxis-ls/pull/404) |
 | I3 — CLAUDE.md never mentioned manifests | P0 | ✅ | "Wire every module to the AI" rule added. [#400](https://github.com/tomblakeasaah196/praxis-ls/pull/400) |
+| C1 — `create_supplier` threw (bare ref) | P0 | ✅ | Write contract + fix; proven at runtime. [#406](https://github.com/tomblakeasaah196/praxis-ls/pull/406) |
+| C2 — `create_lead`/`create_opportunity` dropped the actor | P0 | ✅ | Contract forwards the full actor. [#406](https://github.com/tomblakeasaah196/praxis-ls/pull/406) |
+| C3 — `create_purchase_request` snake→camel mismatch | P1 | ✅ | Manifest maps fields + forwards actor. [#406](https://github.com/tomblakeasaah196/praxis-ls/pull/406) |
+| C4 — no test that a write is executable | P1 | ✅ | `ai-write-contract` gate: runtime proof + ratchet baseline. [#406](https://github.com/tomblakeasaah196/praxis-ls/pull/406) |
 | A1 — redaction blanks amounts/refs | P0 | ⬜ | **Deliberately deferred** to its own reviewed PR — touches PII policy (an existing test defends "account number → `[NUM]`") and `proposal.generator.js`. |
 | A3, A4, B2, B5, B6, C1–C4, D2–D4, E1–E4, F*, G*, H1–H2, I1–I2/I4, J1–J5 | — | ⬜ | Not started. |
 
@@ -250,7 +256,9 @@ Guarantee "everything is connected to AI" and keep it that way.
 
 ## Appendix A — write‑executability matrix (to be filled by PR 3's gate)
 
-For every `ai_enabled` write in `ai_action_catalogue`: does an executor resolve? Is the payload shape correct? Is the actor passed? Does a smoke create succeed? Spot‑checks already confirmed: `create_client` ✅ (vetted), `draft_purchase_order` ✅ (vetted), `create_supplier` ❌ (C1), `create_lead` ⚠️ actor dropped (C2), `create_purchase_request` ⚠️ field‑shape + actor (C3), `create_opportunity` ⚠️ actor dropped (C2). The remaining ~65 writes are unverified and are the reason the gate is part of the deliverable, not a one‑off script.
+For every `ai_enabled` write in `ai_action_catalogue`: does an executor resolve? Is the payload shape correct? Is the actor passed? Does a smoke create succeed?
+
+**Status after PR 3 ([#406](https://github.com/tomblakeasaah196/praxis-ls/pull/406)):** the write contract is defined (`service(client, payload, actor)`, full actor forwarded — `action-registrar.writeAdapter` + `doc/AI_ARCHITECTURE.md` §2) and enforced by `tests/unit/ai-write-contract.test.js` (`services/ai/write-contract.js`). The confirmed-broken writes are fixed and proven at runtime: `create_client` ✅, `create_supplier` ✅ (was C1 — threw), `create_lead` ✅ (was C2 — actor dropped), `create_opportunity` ✅ (was C2), `create_purchase_request` ✅ (was C3 — field-shape + actor), `draft_purchase_order` ✅. In the same pass, **31 create actions** were migrated to the contract (every `{ data, actor }`-shaped create across fleet, HR, master, sales, finance, WMS, procurement — so "create anything" holds for the create surface). The remaining **154 writes** (updates, transitions, status/settle actions, and camelCase-mapped creates) are inventoried in `src/services/ai/write-contract-baseline.json`; the ratchet forbids new non-conforming writes and shrinks as each is migrated (PR 4+). Those 154 still execute — the ones that map fields work; the actor-dropping subset mis-attributes until migrated.
 
 ## Appendix B — configuration checklist (no code, but required for the above to hold)
 

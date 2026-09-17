@@ -48,7 +48,10 @@ module.exports = {
   writes: [
     {
       key: "raise_final_invoice",
-      service: service.create,
+      // WRITE CONTRACT: `(client, payload, actor) => …`. Map the AI's snake_case
+      // payload to the service's real argument shape and forward the FULL actor.
+      // A bare `service.create` ref is NOT allowed for a write (see below).
+      service: (c, p, actor) => service.create(c, { data: p, actor }),
       schema: validator.schemas.create, // becomes payload_schema
       permission: "finance.create", // checked against the caller's RBAC
       confirm: true,
@@ -58,6 +61,27 @@ module.exports = {
   ],
 };
 ```
+
+**The write-execution contract.** The generic write adapter invokes a manifest
+write as `service(client, payload, actor)`, where `payload` is the AI's
+snake_case object and `actor` is the **full authenticated user**. A write
+therefore MUST be an inline wrapper that (a) maps that payload to the service's
+real argument shape and (b) forwards the actor — e.g.
+`(c, p, actor) => service.create(c, { data: p, actor })`, or the field mapping a
+camelCase service needs: `(c, p, actor) => service.createDraft(c, { requestedBy: p.requested_by, …, actor })`.
+A **bare service reference cannot conform**: its second parameter is
+`{ data, actor }` (or camelCase args), so the flat payload lands in the wrong
+slot and the actor is silently dropped — the audit filed these as C1–C3
+(`create_supplier` threw, `create_lead`/`create_opportunity` lost attribution).
+Reads are unaffected (they take `(client, payload)` and a read that depends on
+the caller receives `{ user_id }` as a third argument).
+
+This is enforced by `tests/unit/ai-write-contract.test.js` via
+`services/ai/write-contract.js`: it proves the named create actions run with the
+actor, and a **ratchet** fails the build if a new write does not forward the
+actor (unless grandfathered in `write-contract-baseline.json`, whose backlog only
+shrinks). Hand-vetted executors in `action-registry.js` bridge the payload
+themselves and always pass `actor: user`, so they conform by construction.
 
 **Registrar (boot / `ai:sync-actions`):** walk every `*.ai.js`, upsert `ai_action_catalogue` rows (`action_key`, `is_write`, `payload_schema` from the Zod schema, `required_permission`, `requires_confirmation`, `ai_enabled`), and build an in-memory `{ action_key → { service, schema, permission } }` map. Adding/removing a module updates the catalogue automatically → no drift. Sensitive writes (accounting postings, payroll) may hand-tune their Zod/business-rule layer while still being auto-registered.
 

@@ -10,7 +10,7 @@ module.exports = {
     { key: "get_opportunity", service: (c, p) => service.get(c, p.id || p), permission: { module: "MOD-24", action: "view" }, describe: "Get an opportunity by id." },
   ],
   writes: [
-    { key: "create_opportunity", service: (c, p) => service.create(c, { data: p }), schema: validator.schemas.create, permission: { module: "MOD-24", action: "create" }, confirm: true, describe: "Create a pipeline opportunity. Lands in the first open stage and inherits that stage's probability unless one is given." },
+    { key: "create_opportunity", service: (c, p, actor) => service.create(c, { data: p, actor }), schema: validator.schemas.create, permission: { module: "MOD-24", action: "create" }, confirm: true, describe: "Create a pipeline opportunity. Lands in the first open stage and inherits that stage's probability unless one is given." },
     { key: "move_opportunity", service: (c, p) => service.moveStage(c, { id: p.opportunity_id, pipelineStageId: p.pipeline_stage_id }), schema: validator.schemas.aiMove, permission: { module: "MOD-24", action: "edit" }, confirm: true, describe: "Move an opportunity (by id) to a pipeline stage. A settled opportunity refuses to move." },
     { key: "win_opportunity", service: (c, p) => service.win(c, { id: p.opportunity_id, createDossier: p.create_dossier, entityId: p.entity_id, serviceTypeId: p.service_type_id }), schema: validator.schemas.aiWin, permission: { module: "MOD-24", action: "edit" }, confirm: true, describe: "Mark an opportunity (by id) won (optionally open the delivery file)." },
   ],

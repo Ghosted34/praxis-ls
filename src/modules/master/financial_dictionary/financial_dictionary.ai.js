@@ -8,7 +8,7 @@ module.exports = {
     { key: "get_dictionary_item", service: service.get, permission: { module: "MOD-05", action: "view" }, describe: "Get a dictionary item with its posting rules." },
   ],
   writes: [
-    { key: "create_dictionary_item", service: service.create, schema: validator.schemas.create, permission: { module: "MOD-05", action: "create" }, confirm: true, describe: "Create a dictionary item with ≥1 posting rule (KB §4)." },
+    { key: "create_dictionary_item", service: (c, p, actor) => service.create(c, { data: p, actor }), schema: validator.schemas.create, permission: { module: "MOD-05", action: "create" }, confirm: true, describe: "Create a dictionary item with ≥1 posting rule (KB §4)." },
     { key: "update_dictionary_item", service: service.update, schema: validator.schemas.update, permission: { module: "MOD-05", action: "edit" }, confirm: true, describe: "Edit a dictionary item and (optionally) replace its posting rules." },
   ],
 };

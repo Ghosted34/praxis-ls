@@ -17,7 +17,7 @@ module.exports = {
   writes: [
     {
       key: "create_dispatch",
-      service: service.create,
+      service: (c, p, actor) => service.create(c, { data: p, actor }),
       schema: validator.schemas.create,
       permission: { module: "MOD-42", action: "create" },
       confirm: true,

@@ -18,7 +18,7 @@ module.exports = {
   writes: [
     {
       key: "create_driver",
-      service: service.create,
+      service: (c, p, actor) => service.create(c, { data: p, actor }),
       schema: validator.schemas.create,
       permission: { module: "MOD-44", action: "create" },
       confirm: true,

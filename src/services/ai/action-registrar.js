@@ -151,9 +151,20 @@ function readAdapter(action, service) {
   };
 }
 
+// THE AI WRITE CONTRACT (AI_ARCHITECTURE §2). A manifest write's `service` is
+// invoked as `service(client, payload, actor)`: the tenant client, the AI's
+// snake_case payload, and the FULL authenticated user as the actor. The manifest
+// owns the mapping from that snake_case payload to the service's real argument
+// shape and MUST forward the actor — so `created_by`/attribution and any
+// actor-gated rule are honoured. Passing the whole user (not a thin
+// `{ user_id }`) mirrors the vetted registry, which always passes `actor: user`;
+// services read `actor.user_id`, so this is a superset and never regresses a
+// call that only reads the id. A bare service reference cannot satisfy this
+// contract (its second parameter is `{ data, actor }` or camelCase, not the flat
+// payload), which is why the write-contract gate requires an inline wrapper.
 function writeAdapter(service) {
   return async ({ client, user, payload = {} }) => {
-    const result = await service(client, payload, { user_id: user && user.user_id });
+    const result = await service(client, payload, user || {});
     if (result && result.entity_ref) return result;
     // Derive a reference from the returned row (first *_id column, or id/ref) so
     // the ledger + the conversation "✓ Executed" note can name what was created.

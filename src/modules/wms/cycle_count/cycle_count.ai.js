@@ -17,7 +17,7 @@ module.exports = {
   writes: [
     {
       key: "create_cycle_count",
-      service: service.create,
+      service: (c, p, actor) => service.create(c, { data: p, actor }),
       schema: validator.schemas.create,
       permission: { module: "MOD-38", action: "create" },
       confirm: true,

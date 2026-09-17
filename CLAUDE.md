@@ -249,5 +249,15 @@ CI is not. Running one file is never a substitute for the suite.
   `doc/BUILD_CONVENTIONS.md`. A module that genuinely has no AI surface carries
   an explicit `// ai:none` opt-out. (Full analysis + the coverage gate that will
   enforce this: `doc/PRAXIS_AI_AUDIT.md`.)
+- **An AI write follows the write contract.** A manifest `write` runs as
+  `service(client, payload, actor)` — an inline wrapper that maps the AI's
+  snake_case payload to the service's real argument shape *and forwards the full
+  actor*: `(c, p, actor) => service.create(c, { data: p, actor })` (or the
+  camelCase mapping a service needs). A bare `service.create` reference is not
+  allowed for a write — the flat payload lands in the wrong parameter and the
+  actor is dropped (audit C1–C3). `tests/unit/ai-write-contract.test.js` enforces
+  this and ratchets `src/services/ai/write-contract-baseline.json` (the backlog of
+  pre-contract writes) downward only — migrate a write, then delete its key from
+  that file. Reads are unaffected.
 - PR titles must start with a Conventional Commits prefix; CI gates on it
   because the changelog is written from the title.

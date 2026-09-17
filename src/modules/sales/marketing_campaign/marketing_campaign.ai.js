@@ -26,7 +26,7 @@ module.exports = {
     { key: "list_subscribers", service: (c, p) => service.subscribers(c, p), permission: { module: "MOD-22", action: "view" }, describe: "List active newsletter subscribers." },
   ],
   writes: [
-    { key: "create_campaign", service: (c, p) => service.create(c, { data: p }), schema: validator.schemas.create, permission: { module: "MOD-22", action: "create" }, confirm: true, describe: "Create a marketing campaign in DRAFT with its budget and targets." },
+    { key: "create_campaign", service: (c, p, actor) => service.create(c, { data: p, actor }), schema: validator.schemas.create, permission: { module: "MOD-22", action: "create" }, confirm: true, describe: "Create a marketing campaign in DRAFT with its budget and targets." },
     { key: "transition_campaign", service: (c, p) => service.transition(c, { id: p.campaign_id, to: p.to }), schema: validator.schemas.aiTransition, permission: { module: "MOD-22", action: "edit" }, confirm: true, describe: "Submit a campaign for approval, or pause, resume or end a running one. Cannot approve — that is a deliberate act on the campaign itself." },
     { key: "record_campaign_actuals", service: (c, p) => service.update(c, { id: p.campaign_id, patch: p }), schema: validator.schemas.aiRecordActuals, permission: { module: "MOD-22", action: "edit" }, confirm: true, describe: "Record the hand-entered leads, opportunities and deals won from an external ad-manager report. Only accepted once the campaign is running." },
   ],

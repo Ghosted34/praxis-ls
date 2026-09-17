@@ -186,7 +186,9 @@ module.exports = {
   // ── PR-1B: attachments on a draft ──
   draftAttachments: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => attachments.list(c, actor(req), req.params.id)) })),
   uploadAttachment: asyncHandler(async (req, res) => res.status(201).json({
-    data: await req.identityDb((c) => attachments.upload(c, actor(req), { ...req.body, slug: req.tenant && req.tenant.slug })),
+    data: await req.identityDb((c) => attachments.upload(c, actor(req), {
+      ...req.body, file: req.file, slug: req.tenant && req.tenant.slug,
+    })),
   })),
   attachFromVault: asyncHandler(async (req, res) => res.status(201).json({
     data: await req.identityDb((c) => attachments.fromVault(c, actor(req), req.body || {})),

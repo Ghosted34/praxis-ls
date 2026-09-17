@@ -28,7 +28,6 @@ const outbox = require("./outbox.service");
 const documentVault = require("../../vault/document_vault/document_vault.service");
 const { AppError } = require("../../../utils/errors");
 const { emitEvent, resolveActorId } = require("../../../shared/events/emit");
-const { parseDataUrl } = require("../../../utils/data-url");
 
 const MODULE = "MOD-72";
 
@@ -69,19 +68,26 @@ const newContentId = () =>
 async function upload(client, actor, input = {}) {
   const draft = await assertOwnDraft(client, actor, input.email_draft_id);
 
-  const parsed = parseDataUrl(input.data_url);
-  if (!parsed) throw new AppError("BAD_FILE", "Expected a base64 data URL", 400);
-  if (!parsed.buffer.length) throw new AppError("EMPTY_FILE", "That file is empty", 422);
+  const file = input.file;
+  if (!file || !Buffer.isBuffer(file.buffer)) {
+    throw new AppError("BAD_FILE", "Choose a file to attach", 400);
+  }
+  if (!file.buffer.length) throw new AppError("EMPTY_FILE", "That file is empty", 422);
+  const filename = String(file.originalname || "").trim();
+  if (!filename || filename.length > 255) {
+    throw new AppError("BAD_FILE", "The attachment filename must be between 1 and 255 characters", 422);
+  }
+  const contentType = String(file.mimetype || "application/octet-stream").toLowerCase();
 
   // Before the vault write, so a refused upload leaves nothing behind.
-  const room = await outbox.assertRoomFor(client, draft.email_draft_id, parsed.buffer.length);
+  const room = await outbox.assertRoomFor(client, draft.email_draft_id, file.buffer.length);
 
   const doc = await documentVault.createDocument(client, {
-    dataUrl: input.data_url,
+    file,
     slug: input.slug,
     entityRef: `email_draft:${draft.email_draft_id}`,
     docType: null,
-    originalName: input.filename,
+    originalName: filename,
     maxBytes: outbox.ATTACH_MAX_BYTES,
     sniff: true,
     actor,
@@ -91,9 +97,9 @@ async function upload(client, actor, input = {}) {
   const row = await repo.addAttachment(client, {
     email_draft_id: draft.email_draft_id,
     vault_id: doc.doc_id,
-    filename: input.filename,
-    content_type: parsed.mimeType,
-    size_bytes: parsed.buffer.length,
+    filename,
+    content_type: contentType,
+    size_bytes: file.buffer.length,
     direction: "OUT",
     disposition: inline ? "inline" : "attachment",
     content_id: inline ? (input.content_id || newContentId()) : null,
@@ -103,7 +109,7 @@ async function upload(client, actor, input = {}) {
   await emitEvent(client, {
     eventTypeKey: "email.attachment.added", moduleKey: MODULE,
     entityRef: `email_draft:${draft.email_draft_id}`, actorUserId: actor.user_id || null,
-    payload: { filename: input.filename, bytes: parsed.buffer.length, source: "upload" },
+    payload: { filename, bytes: file.buffer.length, source: "upload" },
   }).catch(() => { /* @silent:storage the attachment row is the outcome */ });
 
   return { ...row, total_bytes: room.total_bytes, offer_secure_link: room.offer_secure_link };

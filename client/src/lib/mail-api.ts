@@ -1060,22 +1060,23 @@ export const discardDraft = (id: string) =>
 export const draftAttachments = (draftId: string) =>
   tenant<AttachmentTray>(`/mail/drafts/${draftId}/attachments`);
 export const uploadAttachment = (
-  body: {
+  file: File,
+  fields: {
     email_draft_id: string;
-    filename: string;
-    data_url: string;
     disposition?: "attachment" | "inline";
     content_id?: string;
   },
   onProgress?: (percent: number) => void,
-) =>
-  onProgress
-    ? tenantWithProgress<
-        MailAttachment & { total_bytes: number; offer_secure_link: boolean }
-      >("/mail/attachments/upload", body, onProgress)
-    : tenant<
-        MailAttachment & { total_bytes: number; offer_secure_link: boolean }
-      >("/mail/attachments/upload", { method: "POST", body });
+) => {
+  const form = new FormData();
+  form.append("file", file, file.name);
+  form.append("email_draft_id", fields.email_draft_id);
+  if (fields.disposition) form.append("disposition", fields.disposition);
+  if (fields.content_id) form.append("content_id", fields.content_id);
+  return tenantWithProgress<
+    MailAttachment & { total_bytes: number; offer_secure_link: boolean }
+  >("/mail/attachments/upload", form, onProgress || (() => {}));
+};
 export const attachFromVault = (body: {
   email_draft_id: string;
   vault_id: string;

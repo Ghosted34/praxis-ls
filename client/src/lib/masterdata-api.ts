@@ -300,17 +300,26 @@ export type EntityInput = Partial<Omit<Entity, "entity_id" | "is_active">> & {
 };
 
 /* Nested collections owned by an entity. */
+/** The eight roles 0515 allows on an entity person, named once for the union. */
+export type EntityPersonRole =
+  | "SHAREHOLDER"
+  | "DIRECTOR"
+  | "OFFICER"
+  | "LEGAL_REPRESENTATIVE"
+  | "AUTHORISED_SIGNATORY"
+  | "BENEFICIAL_OWNER"
+  | "STATUTORY_AUDITOR"
+  | "SECRETARY";
+
 export type EntityPerson = {
   person_id: string;
-  role:
-    | "SHAREHOLDER"
-    | "DIRECTOR"
-    | "OFFICER"
-    | "LEGAL_REPRESENTATIVE"
-    | "AUTHORISED_SIGNATORY"
-    | "BENEFICIAL_OWNER"
-    | "STATUTORY_AUDITOR"
-    | "SECRETARY";
+  role: EntityPersonRole;
+  /**
+   * The OTHER roles this person holds (13850). `role` is the primary one; the
+   * effective set is the union — see `entityCommon.personRoles`, which is what
+   * the dossier filters its two tables with.
+   */
+  role_tags?: EntityPersonRole[] | null;
   holder_type?: "PERSON" | "COMPANY";
   full_name: string;
   title?: string | null;

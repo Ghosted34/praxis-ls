@@ -523,12 +523,27 @@ export type ProformaRow = {
 export const listProformas = () => tenant<ProformaRow[]>("/proformas/advances");
 export type JournalRow = {
   entry_id: string;
+  entry_no?: number | null;
   entry_date?: string | null;
+  description?: string | null;
   source_doc_ref?: string | null;
   status: string;
   source?: string | null;
 };
-export const listJournals = () => tenant<JournalRow[]>("/journal-entries");
+/** One page of ledger entries. `entity_id` (filter added server-side for the
+ *  corporate-entity dossier's Journal drill) is the only filter here besides the
+ *  module's own `q`; the shared `page()` helper caps `limit` at 200. */
+export const listJournals = (
+  params: { entity_id?: string; q?: string; status?: string; limit?: number } = {},
+) => {
+  const p = new URLSearchParams();
+  if (params.entity_id) p.set("entity_id", params.entity_id);
+  if (params.q) p.set("q", params.q);
+  if (params.status) p.set("status", params.status);
+  if (params.limit) p.set("limit", String(params.limit));
+  const qs = p.toString();
+  return tenant<JournalRow[]>("/journal-entries" + (qs ? `?${qs}` : ""));
+};
 
 /* treasury accounts — for the cash-position donut (kind → coa_code → balance) */
 export type TreasuryAccount = {

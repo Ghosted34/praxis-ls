@@ -158,6 +158,19 @@ const CONTACT_ROLE_TAGS = [
 // a delete-and-recreate under a different endpoint.
 const personShape = {
   role: requiredEnum(PERSON_ROLES, "Role"),
+  /**
+   * The OTHER roles this person holds (13850).
+   *
+   * `role` stays the required primary one; this is additive, so the effective
+   * role set is the union. The owner who also runs the company is one row with
+   * `role: "SHAREHOLDER", role_tags: ["DIRECTOR"]` rather than two rows that
+   * have to be kept in step — which is what 0515's own header asked for and
+   * what the row-level CHECK could not express.
+   *
+   * Not nullable: the column is NOT NULL DEFAULT '{}', and clearing is `[]`.
+   * A null here would reach Postgres and come back a 500; the schema says 422.
+   */
+  role_tags: z.array(requiredEnum(PERSON_ROLES, "Role")).optional(),
   holder_type: requiredEnum(HOLDER_TYPES, "Holder type").optional(),
   full_name: requiredText("Name"),
   title: nullableText,
@@ -238,6 +251,30 @@ const withPersonRules = (schema) =>
 
 exports.personCreate = withPersonRules(z.object(personShape));
 exports.personUpdate = withPersonRules(patchOf(personShape));
+
+/**
+ * Every role one `entity_person` row holds: the primary `role` first, then the
+ * extras from `role_tags` (13850), de-duplicated.
+ *
+ * ONE definition, on purpose. Two questions are asked of a person's roles and
+ * both must agree: "is this row a shareholder" decides who appears in the
+ * shareholding table AND who counts in `reconcileCapTable`, and "which roles
+ * does this row hold" is what the officer table renders as pills. A second copy
+ * of the union in either place is how the cap table and the totals beside it
+ * come to disagree about the same person.
+ *
+ * Tolerant of a row that predates 13850 (no `role_tags` key at all) and of one
+ * written by hand with a null — both mean "just the primary role".
+ *
+ * @param {{role?: string|null, role_tags?: string[]|null}} person
+ * @returns {string[]}
+ */
+function personRoles(person) {
+  const p = person || {};
+  const tags = Array.isArray(p.role_tags) ? p.role_tags : [];
+  return [...new Set([p.role, ...tags].filter(Boolean))];
+}
+exports.personRoles = personRoles;
 
 // ── Contact ────────────────────────────────────────────────────────────────
 const contactShape = {

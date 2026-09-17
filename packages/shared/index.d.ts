@@ -524,6 +524,15 @@ export declare namespace entityCommon {
   const setStatus: z.ZodObject<Record<string, z.ZodTypeAny>>;
   const setStructure: z.ZodObject<Record<string, z.ZodTypeAny>>;
   const PERSON_ROLES: readonly string[];
+  /**
+   * Every role one person holds — the primary `role` plus the extras in
+   * `role_tags` (13850). The single definition both the cap table and the
+   * dossier's role pills are built from.
+   */
+  const personRoles: (person: {
+    role?: string | null;
+    role_tags?: string[] | null;
+  }) => string[];
   const HOLDER_TYPES: readonly string[];
   const ADDRESS_TYPES: readonly string[];
   const ESTABLISHMENT_KINDS: readonly string[];

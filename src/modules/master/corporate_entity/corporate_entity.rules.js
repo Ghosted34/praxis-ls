@@ -10,6 +10,17 @@
  */
 "use strict";
 const { AppError } = require("../../../utils/errors");
+const { entityCommon } = require("@praxis/shared");
+
+/**
+ * Every role a person row holds — `role` plus the extras in `role_tags` (13850).
+ *
+ * Re-exported from the shared schema rather than re-derived here: the client's
+ * two tables ask the same question of the same rows, and a local copy of the
+ * union is precisely how "the cap table says 100% but the holder list is empty"
+ * becomes possible.
+ */
+const { personRoles } = entityCommon;
 
 const LIFECYCLE = ["DRAFT", "PENDING_REVIEW", "ACTIVE", "SUSPENDED", "DEACTIVATED", "ARCHIVED"];
 
@@ -130,7 +141,11 @@ function reconcileCapTable(people, entity, asOf = null) {
   const iso = (d) => (d instanceof Date ? d.toISOString().slice(0, 10) : d ? String(d).slice(0, 10) : null);
 
   const holders = (people || []).filter((p) => {
-    if (p.role !== "SHAREHOLDER") return false;
+    // The UNION of role and role_tags (13850). A director who owns the company
+    // is a shareholder for every figure on this table, and testing `p.role`
+    // alone would have dropped the owner from the cap table the moment somebody
+    // recorded them by their executive role first.
+    if (!personRoles(p).includes("SHAREHOLDER")) return false;
     const from = iso(p.effective_from);
     const to = iso(p.effective_to);
     if (from && from > on) return false;
@@ -222,7 +237,15 @@ function readiness(entity, children) {
   if (!has(e.email) && !has(e.phone)) missing.push({ field: "contact", label: "A public email or phone" });
   if (!registrations.length) missing.push({ field: "registrations", label: "At least one tax/trade registration" });
   if (!addresses.some((a) => a.type === "REGISTERED")) missing.push({ field: "address", label: "A registered office address" });
-  if (!people.some((p) => ["DIRECTOR", "LEGAL_REPRESENTATIVE"].includes(p.role))) {
+  // Against the whole role set (13850), for the same reason the cap table is:
+  // an owner who is the acting director satisfies this checklist, and reading
+  // `p.role` alone reported the entity incomplete while its own people table
+  // showed the person wearing exactly that role.
+  if (
+    !people.some((p) =>
+      personRoles(p).some((r) => ["DIRECTOR", "LEGAL_REPRESENTATIVE"].includes(r)),
+    )
+  ) {
     missing.push({ field: "people", label: "A director or legal representative" });
   }
 

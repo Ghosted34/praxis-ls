@@ -72,6 +72,11 @@ async function listLines(client, entryId) {
  * Journals tab filters on, previously done in the browser over a set already
  * clamped to 50.
  *
+ * `entity_id` scopes the page to one legal entity. Added for the corporate-entity
+ * dossier, whose Journal tile counts `journal_entry WHERE entity_id = $1`: the
+ * drill-in that opens from that tile has to read the same set the number was
+ * computed from, and it could not ask for it.
+ *
  * The limit/offset clamp now comes from the shared `page()` rather than a
  * hand-copied pair of Math.min/Math.max lines that had drifted here.
  *
@@ -81,6 +86,10 @@ async function listEntries(client, q = {}) {
   const { limit, offset } = page(q);
   const wh = [];
   const params = [limit, offset];
+  // One legal entity's ledger (the corporate-entity dossier's Journal drill).
+  // `entity_id` is NOT NULL on journal_entry (0220_ledger.sql), so this is an
+  // equality on an indexed column and never has to reason about a NULL bucket.
+  if (q.entity_id) { params.push(q.entity_id); wh.push("entity_id = $" + params.length); }
   if (q.journal_id) { params.push(q.journal_id); wh.push("journal_id = $" + params.length); }
   if (q.period_id) { params.push(q.period_id); wh.push("period_id = $" + params.length); }
   if (q.status) { params.push(q.status); wh.push("status = $" + params.length); }

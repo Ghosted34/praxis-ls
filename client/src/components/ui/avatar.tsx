@@ -1,9 +1,14 @@
 /**
  * Avatar — initials disc for a person or organisation.
  *
- * Relocated from `features/sales/ui.tsx:135` (audit A2). No image variant: the
- * product has no avatar upload, so a placeholder `<img>` would only add a
- * broken-image path.
+ * Relocated from `features/sales/ui.tsx:135` (audit A2).
+ *
+ * A PHOTO IS USED WHEN ONE EXISTS. The note that used to sit here said the
+ * product has no avatar upload — true of employees until GET /employees began
+ * returning `avatar_ref`, which the app_user profile picture (and every screen
+ * that shows a colleague: the team chat, the mail signature) already uses. The
+ * initials disc is now the FALLBACK for a person with no photo rather than the
+ * only thing this component can draw.
  *
  * ACCESSIBILITY. The initials are decorative — they are a compressed form of a
  * name that is essentially always rendered next to the avatar, so announcing
@@ -31,16 +36,36 @@ export function initials(name: string): string {
 
 export function Avatar({
   name,
+  src,
   size = "md",
   title,
   className,
 }: {
   name: string;
+  /** Photo URL (`avatar_ref`, a `/media/...` path). Falls back to initials. */
+  src?: string | null;
   size?: "sm" | "md";
   /** Accessible name. Pass this when no visible name sits next to the avatar. */
   title?: string;
   className?: string;
 }) {
+  if (src) {
+    return (
+      // Same accessibility contract as the disc below: the photo is decorative
+      // beside a visible name (alt=""), and carries the name itself when it is
+      // used standalone (title → alt).
+      <img
+        src={src}
+        alt={title || ""}
+        className={cn(
+          "shrink-0 rounded-full object-cover",
+          size === "sm" ? "h-7 w-7" : "h-9 w-9",
+          className,
+        )}
+        {...(title ? {} : { "aria-hidden": true })}
+      />
+    );
+  }
   return (
     <span
       // --primary-ink for the initials: they are type, and the raw brand orange

@@ -27,9 +27,9 @@ jest.mock("../../src/shared/events/emit", () => ({
   emitEvent: jest.fn(async () => {}),
   resolveActorId: jest.fn(async (_c, id) => id),
 }));
-const DOC_UUID = "00000700-0000-4000-8000-000000000000";
+const mockDOC_UUID = "00000700-0000-4000-8000-000000000000";
 jest.mock("../../src/services/pdf.service", () => ({
-  renderAndStore: jest.fn(async () => ({ doc_id: DOC_UUID, content_hash: "h123", key: "k", public_url: null })),
+  renderAndStore: jest.fn(async () => ({ doc_id: mockDOC_UUID, content_hash: "h123", key: "k", public_url: null })),
 }));
 jest.mock("../../src/modules/documents/template/template.service", () => ({
   resolveCfg: jest.fn(async () => ({ cfg: { language: "en", watermark: null }, entity: {} })),
@@ -172,12 +172,12 @@ describe("statementData — one model, two renderings", () => {
     expect(pdf.renderAndStore.mock.calls[0][1].entityRef).toBe(`reconciliation_statement:${RECON}:rev1`);
     const bind = c.queries.find((q) => /SET statement_doc_id/.test(q.sql));
     expect(bind).toBeTruthy();
-    expect(bind.params).toEqual([RECON, 1, DOC_UUID]);
+    expect(bind.params).toEqual([RECON, 1, mockDOC_UUID]);
   });
 });
 
 describe("sendStatement — in-house, and the vault is a pointer", () => {
-  const settled = [{ revision: 1, statement_doc_id: DOC_UUID, settled_at: "2026-09-06T08:00:00Z" }];
+  const settled = [{ revision: 1, statement_doc_id: mockDOC_UUID, settled_at: "2026-09-06T08:00:00Z" }];
 
   it("posts to the file's DOSSIER thread by default with the vault id, not bytes", async () => {
     const c = fakeClient({ settlements: settled });
@@ -190,9 +190,9 @@ describe("sendStatement — in-house, and the vault is a pointer", () => {
     const msg = smartcomm.postMessage.mock.calls.at(-1)[1];
     expect(msg.groupId).toBe("grp-dossier");
     expect(msg.attachments).toEqual([expect.objectContaining({
-      attachment_kind: "VAULT", vault_id: DOC_UUID, content_type: "application/pdf",
+      attachment_kind: "VAULT", vault_id: mockDOC_UUID, content_type: "application/pdf",
     })]);
-    expect(out.doc_id).toBe(DOC_UUID);
+    expect(out.doc_id).toBe(mockDOC_UUID);
   });
 
   it("direct target: the OTHER person is the channel (actor is enrolled as OWNER by the service)", async () => {
@@ -214,7 +214,7 @@ describe("sendStatement — in-house, and the vault is a pointer", () => {
       dossierId: DOSSIER, actor: { user_id: UUID(80) }, ip: null, target: "channel",
     });
     expect(pdf.renderAndStore).toHaveBeenCalledTimes(1);
-    expect(out.doc_id).toBe(DOC_UUID);
+    expect(out.doc_id).toBe(mockDOC_UUID);
   });
 
   it("refuses a direct with no person", async () => {

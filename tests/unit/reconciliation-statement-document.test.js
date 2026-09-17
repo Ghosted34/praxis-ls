@@ -42,7 +42,7 @@ const ENTITY = {
 const cfgFor = (language, extra = {}) => kit.mergeCfg({}, { language, ...extra });
 const dataWith = (patch = {}) => ({ ...JSON.parse(JSON.stringify(TPL.sampleData)), ...patch });
 const body = (html) => String(html).replace(/<style>[\s\S]*?<\/style>/g, "");
-const norm = (html) => String(html).replace(/[   ]/g, " ");
+const norm = (html) => String(html).replace(/[\u00A0\u202F\u2007]/g, " ");
 const render = (patch = {}, language = "en") =>
   norm(body(TPL.build(dataWith(patch), cfgFor(language), ENTITY, null)));
 

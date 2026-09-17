@@ -143,7 +143,7 @@ async function statementData(client, { dossierId, dossierHeader = null }) {
       returned: sheet.totals.returned,
       outstanding: sheet.totals.outstanding,
       margin_ht: sheet.totals.margin_ht,
-      quoted_ht: sheet.costing && sheet.costing.quoted_ht != null ? Number(sheet.costing.quoted_ht) : null,
+      quoted_ht: sheet.costing && sheet.costing.quoted_ht !== null ? Number(sheet.costing.quoted_ht) : null,
     },
     grades: g,
     grade_sentences,
@@ -311,7 +311,7 @@ async function statementForSettlement(client, { dossierId, actor = {} }) {
   // — two settlements of the same revision can't both win a ref the history
   // has already taken (write-once, see the repo's comment).
   const sheet = await service.sheetFor(client, { dossierId });
-  if (sheet.reconciliation_id == null) return doc;
+  if (sheet.reconciliation_id === null || sheet.reconciliation_id === undefined) return doc;
   await repo.bindSettlementStatement(client, {
     reconciliationId: sheet.reconciliation_id,
     revision: sheet.revision,

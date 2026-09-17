@@ -25,14 +25,24 @@ import { Pill } from "@/components/ui/pill";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { DateField } from "@/components/ui/date-field";
 import { EmptyState, LoadingRow } from "@/components/ui/states";
 import { ScreenError } from "@/components/connection/screen-error";
 import { useConfirm } from "@/components/ui/use-confirm";
 import { useToast } from "@/components/ui/toast";
 import { errMsg } from "@/lib/use-resource";
 import { dateTimeFmt, fmtRelative } from "@/lib/format";
+import type { Subtask } from "../api";
 import { BOARD_COLUMNS } from "../api";
-import { useDeleteSubtask, useDeleteTask, useTask, useToggleSubtask, useUpdateTask, useAddSubtask } from "../hooks";
+import {
+  useDeleteSubtask,
+  useDeleteTask,
+  useTask,
+  useToggleSubtask,
+  useUpdateTask,
+  useAddSubtask,
+  useSetSubtaskDeadline,
+} from "../hooks";
 import { PRIORITY_LABEL, PRIORITY_TONE, STATUS_LABEL } from "../labels";
 import { TaskDialog } from "./task-dialog";
 
@@ -52,8 +62,10 @@ export function TaskPanel({
   const del = useDeleteTask();
   const delStep = useDeleteSubtask();
   const update = useUpdateTask();
+  const setStepDeadline = useSetSubtaskDeadline();
   const [editing, setEditing] = React.useState(false);
   const [draft, setDraft] = React.useState("");
+  const [draftDue, setDraftDue] = React.useState("");
 
   const task = q.data;
 
@@ -80,8 +92,9 @@ export function TaskPanel({
     const title = draft.trim();
     if (!title || !task) return;
     try {
-      await addStep.mutateAsync({ taskId: task.task_id, title });
+      await addStep.mutateAsync({ taskId: task.task_id, title, dueAt: draftDue || null });
       setDraft("");
+      setDraftDue("");
     } catch (err) {
       toast.error(errMsg(err));
     }
@@ -192,53 +205,66 @@ export function TaskPanel({
             </h3>
 
             {task.subtasks && task.subtasks.length > 0 ? (
-              <ul className="space-y-1">
+              <ul className="space-y-1.5">
                 {task.subtasks.map((s) => (
-                  <li key={s.task_subtask_id} className="flex items-center gap-2">
-                    <Checkbox
-                      checked={s.is_done}
-                      label={s.title}
-                      onCheckedChange={(checked) =>
-                        void toggle
-                          .mutateAsync({ taskId: task.task_id, subtaskId: s.task_subtask_id, isDone: checked })
-                          .catch((err) => toast.error(errMsg(err)))
-                      }
-                    />
-                    <button
-                      type="button"
-                      className="micro shrink-0 text-muted-foreground hover:text-destructive"
-                      onClick={() =>
-                        void delStep
-                          .mutateAsync({ taskId: task.task_id, subtaskId: s.task_subtask_id })
-                          .catch((err) => toast.error(errMsg(err)))
-                      }
-                    >
-                      Remove
-                    </button>
-                  </li>
+                  <SubtaskRow
+                    key={s.task_subtask_id}
+                    subtask={s}
+                    onToggle={(checked) =>
+                      void toggle
+                        .mutateAsync({ taskId: task.task_id, subtaskId: s.task_subtask_id, isDone: checked })
+                        .catch((err) => toast.error(errMsg(err)))
+                    }
+                    onSetDeadline={(iso) =>
+                      void setStepDeadline
+                        .mutateAsync({ taskId: task.task_id, subtaskId: s.task_subtask_id, dueAt: iso })
+                        .catch((err) => toast.error(errMsg(err)))
+                    }
+                    onRemove={() =>
+                      void delStep
+                        .mutateAsync({ taskId: task.task_id, subtaskId: s.task_subtask_id })
+                        .catch((err) => toast.error(errMsg(err)))
+                    }
+                  />
                 ))}
               </ul>
             ) : (
               <p className="micro">No steps yet.</p>
             )}
 
-            <div className="mt-2 flex gap-2">
-              <Input
-                value={draft}
-                placeholder="Add a step"
-                aria-label="New step"
-                onChange={(e) => setDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    void submitStep();
-                  }
-                  if (e.key === "Escape") setDraft("");
-                }}
-              />
-              <Button size="sm" variant="outline" onClick={() => void submitStep()} disabled={!draft.trim()}>
-                Add
-              </Button>
+            {/* A step can be added with its own deadline — the "milestones with
+                their own dates" the calendar then shows alongside the task. */}
+            <div className="mt-2 space-y-2">
+              <div className="flex gap-2">
+                <Input
+                  value={draft}
+                  placeholder="Add a step"
+                  aria-label="New step"
+                  onChange={(e) => setDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void submitStep();
+                    }
+                    if (e.key === "Escape") {
+                      setDraft("");
+                      setDraftDue("");
+                    }
+                  }}
+                />
+                <Button size="sm" variant="outline" onClick={() => void submitStep()} disabled={!draft.trim()}>
+                  Add
+                </Button>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="micro shrink-0">Due (optional)</span>
+                <DateField
+                  value={draftDue}
+                  onChange={setDraftDue}
+                  aria-label="New step deadline"
+                  className="max-w-[10rem]"
+                />
+              </div>
             </div>
           </section>
 
@@ -262,6 +288,69 @@ export function TaskPanel({
       <TaskDialog open={editing} onClose={() => setEditing(false)} task={task} />
     </>
   );
+}
+
+/**
+ * One step row: tick it done, see and change its own deadline, remove it.
+ *
+ * The deadline commits on BLUR rather than on every keystroke: `DateField`
+ * emits "" while a date is half-typed, and firing a save on that would clear
+ * the step's date the moment the operator started editing it. A local draft
+ * held here, re-synced when the stored value changes from a save, keeps the
+ * field responsive while only writing a finished value.
+ */
+function SubtaskRow({
+  subtask,
+  onToggle,
+  onSetDeadline,
+  onRemove,
+}: {
+  subtask: Subtask;
+  onToggle: (checked: boolean) => void;
+  onSetDeadline: (iso: string | null) => void;
+  onRemove: () => void;
+}) {
+  const stored = dayInput(subtask.due_at);
+  const [due, setDue] = React.useState(stored);
+  React.useEffect(() => setDue(dayInput(subtask.due_at)), [subtask.due_at]);
+
+  const overdue =
+    !subtask.is_done && Boolean(subtask.due_at) && new Date(subtask.due_at as string) < new Date();
+
+  return (
+    <li className="flex flex-wrap items-center gap-x-2 gap-y-1">
+      <Checkbox checked={subtask.is_done} label={subtask.title} onCheckedChange={onToggle} />
+      <div className="ml-auto flex items-center gap-1.5">
+        <DateField
+          value={due}
+          onChange={setDue}
+          onBlur={() => {
+            if (due !== stored) onSetDeadline(due || null);
+          }}
+          aria-label={`Deadline for “${subtask.title}”`}
+          className="max-w-[8.5rem]"
+        />
+        {overdue && <span className="shrink-0 text-xs text-destructive">Overdue</span>}
+        <button
+          type="button"
+          className="micro shrink-0 text-muted-foreground hover:text-destructive"
+          onClick={onRemove}
+        >
+          Remove
+        </button>
+      </div>
+    </li>
+  );
+}
+
+/** An ISO instant back to the field's `YYYY-MM-DD` in the browser's zone — the
+ *  same read-side convention `task-dialog` uses for the parent's due date. */
+function dayInput(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
 /** The empty half of a master-detail split, so the panel's absence is

@@ -79,6 +79,8 @@ export type Subtask = {
   title: string;
   is_done: boolean;
   display_order: number;
+  /** A step's own deadline, independent of the parent task's. */
+  due_at: string | null;
   completed_at: string | null;
   created_at: string;
 };
@@ -207,8 +209,25 @@ export type TaskInput = {
   is_personal?: boolean;
   reminder_minutes?: number | null;
   remind_at?: string | null;
-  subtasks?: { title: string; display_order?: number }[];
+  subtasks?: { title: string; display_order?: number; due_at?: string | null }[];
 };
+
+/** One due date on the calendar's deadline overlay — a task's or a step's. */
+export type Deadline = {
+  kind: "task" | "subtask";
+  task_id: string;
+  subtask_id: string | null;
+  title: string;
+  /** For a subtask, the parent task's title; null for a task row. */
+  task_title: string | null;
+  at: string;
+  status: TaskStatus;
+  priority: TaskPriority;
+  is_done: boolean;
+  is_overdue: boolean;
+};
+
+export type Deadlines = { items: Deadline[]; audience: Audience; audiences: Audience[] };
 
 export type EventInput = {
   title: string;
@@ -321,17 +340,25 @@ export const moveTask = (id: string, status: TaskStatus) =>
 export const deleteTask = (id: string) =>
   tenant<void>(`/workspace/tasks/${id}`, { method: "DELETE" });
 
-export const addSubtask = (taskId: string, title: string) =>
+export const addSubtask = (taskId: string, title: string, due_at?: string | null) =>
   tenant<Subtask>(`/workspace/tasks/${taskId}/subtasks`, {
     method: "POST",
-    body: { title },
+    body: { title, due_at: due_at || null },
+  });
+
+/** One PATCH for a step's edits — tick it done and/or move its deadline. */
+export const patchSubtask = (
+  taskId: string,
+  subtaskId: string,
+  patch: { is_done?: boolean; due_at?: string | null },
+) =>
+  tenant<Subtask>(`/workspace/tasks/${taskId}/subtasks/${subtaskId}`, {
+    method: "PATCH",
+    body: patch,
   });
 
 export const toggleSubtask = (taskId: string, subtaskId: string, is_done: boolean) =>
-  tenant<Subtask>(`/workspace/tasks/${taskId}/subtasks/${subtaskId}`, {
-    method: "PATCH",
-    body: { is_done },
-  });
+  patchSubtask(taskId, subtaskId, { is_done });
 
 export const deleteSubtask = (taskId: string, subtaskId: string) =>
   tenant<void>(`/workspace/tasks/${taskId}/subtasks/${subtaskId}`, { method: "DELETE" });
@@ -350,6 +377,15 @@ export const removeWatcher = (taskId: string, userId: string) =>
 export const listEvents = (
   params: { from?: string; to?: string; event_type?: string; audience?: Audience } = {},
 ) => tenant<CalendarEvent[]>(`/workspace/events${qs(params)}`);
+
+/**
+ * Task + subtask deadlines in a window, for the calendar's overlay.
+ *
+ * Sibling fields ride inside `data` (like the board), so this goes through
+ * `tenant()`; the server defaults an unbounded request to the current month.
+ */
+export const getDeadlines = (params: { from?: string; to?: string; audience?: Audience } = {}) =>
+  tenant<Deadlines>(`/workspace/deadlines${qs(params)}`);
 
 export const getEvent = (id: string) => tenant<CalendarEvent>(`/workspace/events/${id}`);
 

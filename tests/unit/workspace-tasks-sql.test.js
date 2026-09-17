@@ -183,15 +183,56 @@ describe("tasks.repo — placeholders match parameters", () => {
     expect(c.calls.some((call) => /\bUPDATE task\b/.test(call.sql))).toBe(false);
   });
 
-  it("setSubtaskDone is one valid UPDATE … RETURNING", async () => {
+  it("insertSubtask binds a step's four columns, deadline included", async () => {
+    const c = mockClient([{ task_subtask_id: "s1" }]);
+    await repo.insertSubtask(c, { task_id: "t1", title: "step", display_order: 2, due_at: "2026-09-20T16:00:00Z" });
+    const { sql, params } = c.calls[0];
+    expectBound(c.calls[0]);
+    expect(sql).toMatch(/INSERT INTO task_subtask \(task_id, title, display_order, due_at\)/);
+    expect(params).toEqual(["t1", "step", 2, "2026-09-20T16:00:00Z"]);
+  });
+
+  it("updateSubtask ticks a step done, stamping completed_at in the same UPDATE", async () => {
     const c = mockClient([{ task_subtask_id: "s1", is_done: true }]);
-    await repo.setSubtaskDone(c, "s1", true);
+    await repo.updateSubtask(c, "s1", { is_done: true });
     const { sql, params } = c.calls[0];
     expectBound(c.calls[0]);
     expect(sql).toMatch(/^UPDATE task_subtask/);
+    expect(sql).toMatch(/completed_at = CASE WHEN \$1 THEN now\(\) ELSE NULL END/);
     expect(sql).toMatch(/RETURNING \*/);
     expect(sql).not.toMatch(/RETURNING \* FROM/);
-    expect(params).toEqual(["s1", true]);
+    expect(params).toEqual([true, "s1"]);
+  });
+
+  it("updateSubtask moves a step's deadline without touching its done flag", async () => {
+    const c = mockClient([{ task_subtask_id: "s1" }]);
+    await repo.updateSubtask(c, "s1", { due_at: "2026-09-20T17:00:00Z" });
+    const { sql, params } = c.calls[0];
+    expectBound(c.calls[0]);
+    expect(sql).toMatch(/due_at = \$1/);
+    expect(sql).not.toMatch(/completed_at/);
+    expect(params).toEqual(["2026-09-20T17:00:00Z", "s1"]);
+  });
+
+  it("updateSubtask with an empty patch re-reads rather than issuing UPDATE", async () => {
+    const c = mockClient([{ task_subtask_id: "s1" }]);
+    await repo.updateSubtask(c, "s1", {});
+    expect(c.calls[0].sql.trim()).toMatch(/^SELECT/);
+    expect(c.calls.some((call) => /\bUPDATE task_subtask\b/.test(call.sql))).toBe(false);
+  });
+
+  it("subtasksInRange joins the parent so task visibility hides its steps", async () => {
+    const c = mockClient([]);
+    await repo.subtasksInRange(c, {
+      from: "2026-09-01", to: "2026-10-01",
+      visibility: { audience: "mine", userId: "u1", personalOnly: true },
+    });
+    const { sql } = c.calls[0];
+    expectBound(c.calls[0]);
+    expect(sql).toMatch(/JOIN task t ON t\.task_id = s\.task_id/);
+    expect(sql).toMatch(/s\.due_at >= \$1 AND s\.due_at < \$2/);
+    // the visibility predicate is written against the parent alias
+    expect(sql).toMatch(/t\.assigned_to = \$3 OR t\.created_by = \$3/);
   });
 
   it("findEventClashes uses the overlap test and can exclude one event", async () => {

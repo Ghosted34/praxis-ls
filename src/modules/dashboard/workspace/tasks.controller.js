@@ -88,6 +88,23 @@ const getTask = asyncHandler(async (req, res) => {
   res.json({ data: await req.tenantDb((c) => service.getTask(c, ctxOf(req), req.params.id)) });
 });
 
+/**
+ * Deadlines (task + subtask due dates) in a window — the calendar's overlay.
+ *
+ * Defaults an unbounded request to the current month, the same way `listEvents`
+ * does, so the grid can ask without computing a fallback the server already
+ * owns.
+ */
+const getDeadlines = asyncHandler(async (req, res) => {
+  const from = req.query.from || startOfMonthUtc();
+  const to = req.query.to || endOfMonthUtc();
+  res.json({
+    data: await req.tenantDb((c) =>
+      service.deadlinesInRange(c, ctxOf(req), { from, to, audience: req.query.audience }),
+    ),
+  });
+});
+
 const createTask = asyncHandler(async (req, res) => {
   res.status(201).json({ data: await req.tenantDb((c) => service.createTask(c, ctxOf(req), req.body)) });
 });
@@ -113,10 +130,10 @@ const addSubtask = asyncHandler(async (req, res) => {
   });
 });
 
-const setSubtaskDone = asyncHandler(async (req, res) => {
+const patchSubtask = asyncHandler(async (req, res) => {
   res.json({
     data: await req.tenantDb((c) =>
-      service.setSubtaskDone(c, ctxOf(req), req.params.id, req.params.subtaskId, req.body.is_done),
+      service.patchSubtask(c, ctxOf(req), req.params.id, req.params.subtaskId, req.body),
     ),
   });
 });
@@ -227,8 +244,8 @@ function endOfMonthUtc() {
 }
 
 module.exports = {
-  listTasks, getBoard, getDay, getTask, createTask, updateTask, changeStatus, deleteTask,
-  addSubtask, setSubtaskDone, deleteSubtask, addWatcher, removeWatcher,
+  listTasks, getBoard, getDay, getDeadlines, getTask, createTask, updateTask, changeStatus, deleteTask,
+  addSubtask, patchSubtask, deleteSubtask, addWatcher, removeWatcher,
   listEvents, getEvent, createEvent, updateEvent, deleteEvent,
   addParticipant, respondParticipant, removeParticipant,
 };

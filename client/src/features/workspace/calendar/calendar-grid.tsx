@@ -26,48 +26,43 @@ import * as React from "react";
 import { cn } from "@/lib/cn";
 import { Pill } from "@/components/ui/pill";
 import { todayISO } from "@/lib/format";
-import type { CalendarEvent } from "../api";
+import type { CalendarEvent, Deadline } from "../api";
 import { eventTypeTone, humanizeType } from "../labels";
-import { DAY_LABELS, isoDay, monthCells } from "./dates";
-
-/** Events by local day, so the grid is one Map lookup per cell. */
-function indexByDay(events: CalendarEvent[]): Map<string, CalendarEvent[]> {
-  const out = new Map<string, CalendarEvent[]>();
-  for (const e of events) {
-    const start = new Date(e.start_at);
-    const end = new Date(e.end_at);
-    // Walk the days it spans rather than filing it under its start alone.
-    for (let d = new Date(start.getFullYear(), start.getMonth(), start.getDate()); d <= end; d.setDate(d.getDate() + 1)) {
-      const key = isoDay(d);
-      const list = out.get(key);
-      if (list) list.push(e);
-      else out.set(key, [e]);
-    }
-  }
-  for (const list of out.values()) list.sort((a, b) => a.start_at.localeCompare(b.start_at));
-  return out;
-}
+import { DAY_LABELS, isoDay, monthCells, indexEventsByDay, indexDeadlinesByDay } from "./dates";
 
 /** Chips shown before "+N more". Three is what fits a cell without the grid
  *  becoming taller than it is wide on a phone. */
 const MAX_CHIPS = 3;
+/** Deadlines sit under the events, so they get a smaller share of the cell. */
+const MAX_DUE_CHIPS = 2;
+
+/** A stable key for a deadline — a task or one of its steps. */
+const dueKey = (d: Deadline) => `${d.kind}:${d.subtask_id ?? d.task_id}`;
+/** A step names its parent so the chip reads "Bank file · Documents to bank". */
+const dueTitle = (d: Deadline) => (d.task_title ? `${d.task_title} · ${d.title}` : d.title);
 
 export function CalendarGrid({
   year,
   month,
   events,
+  deadlines = [],
   loading,
   onSelectDay,
   onSelectEvent,
+  onSelectDeadline,
 }: {
   year: number;
   month: number;
   events: CalendarEvent[];
+  /** Task + subtask due dates laid over the events as chips. */
+  deadlines?: Deadline[];
   loading: boolean;
   onSelectDay: (iso: string) => void;
   onSelectEvent: (event: CalendarEvent) => void;
+  onSelectDeadline?: (deadline: Deadline) => void;
 }) {
-  const byDay = React.useMemo(() => indexByDay(events), [events]);
+  const byDay = React.useMemo(() => indexEventsByDay(events), [events]);
+  const dueByDay = React.useMemo(() => indexDeadlinesByDay(deadlines), [deadlines]);
   const today = todayISO();
   const cells = React.useMemo(() => monthCells(year, month), [year, month]);
 
@@ -87,6 +82,7 @@ export function CalendarGrid({
           const iso = isoDay(date);
           const inMonth = date.getMonth() === month;
           const dayEvents = byDay.get(iso) ?? [];
+          const dayDue = dueByDay.get(iso) ?? [];
           const isToday = iso === today;
           return (
             // The whole cell is the hit area: a small date number reads as
@@ -105,7 +101,7 @@ export function CalendarGrid({
                   onSelectDay(iso);
                 }
               }}
-              aria-label={`Schedule an event on ${date.toDateString()} — ${dayEvents.length} event${dayEvents.length === 1 ? "" : "s"}`}
+              aria-label={`Schedule an event on ${date.toDateString()} — ${dayEvents.length} event${dayEvents.length === 1 ? "" : "s"}${dayDue.length ? `, ${dayDue.length} deadline${dayDue.length === 1 ? "" : "s"}` : ""}`}
               className={cn(
                 "min-h-[5.5rem] cursor-pointer border-b border-r p-1.5 align-top transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-[7rem]",
                 !inMonth && "bg-muted/20 opacity-50",
@@ -125,19 +121,30 @@ export function CalendarGrid({
               ) : (
                 <ul className="space-y-0.5">
                   {/* On a phone the chips are too small to read, so a dot per
-                      event carries the count and the cell carries the
-                      accessible label. */}
-                  <li className="flex gap-1 sm:hidden">
-                    {dayEvents.slice(0, MAX_CHIPS).map((e) => (
-                      <span
-                        key={e.calendar_event_id}
-                        className={cn(
-                          "h-1.5 w-1.5 rounded-full",
-                          e.event_type === "deadline" ? "bg-destructive" : "bg-primary",
-                        )}
-                      />
-                    ))}
-                  </li>
+                      item carries the count and the cell carries the accessible
+                      label — events and deadlines together. */}
+                  {(dayEvents.length > 0 || dayDue.length > 0) && (
+                    <li className="flex flex-wrap gap-1 sm:hidden">
+                      {dayEvents.slice(0, MAX_CHIPS).map((e) => (
+                        <span
+                          key={e.calendar_event_id}
+                          className={cn(
+                            "h-1.5 w-1.5 rounded-full",
+                            e.event_type === "deadline" ? "bg-destructive" : "bg-primary",
+                          )}
+                        />
+                      ))}
+                      {dayDue.slice(0, MAX_CHIPS).map((d) => (
+                        <span
+                          key={dueKey(d)}
+                          className={cn(
+                            "h-1.5 w-1.5 rounded-full ring-1 ring-inset ring-border",
+                            d.is_overdue ? "bg-destructive" : "bg-muted-foreground",
+                          )}
+                        />
+                      ))}
+                    </li>
+                  )}
 
                   {dayEvents.slice(0, MAX_CHIPS).map((e) => (
                     <li key={e.calendar_event_id} className="hidden sm:block">
@@ -161,6 +168,33 @@ export function CalendarGrid({
                   {dayEvents.length > MAX_CHIPS && (
                     <li className="hidden px-1 text-xs text-muted-foreground sm:block">
                       +{dayEvents.length - MAX_CHIPS} more
+                    </li>
+                  )}
+
+                  {/* Deadlines: task and subtask due dates, laid under the
+                      events. A due date opens its task rather than an event. */}
+                  {dayDue.slice(0, MAX_DUE_CHIPS).map((d) => (
+                    <li key={dueKey(d)} className="hidden sm:block">
+                      <button
+                        type="button"
+                        onClick={(ev) => {
+                          ev.stopPropagation();
+                          onSelectDeadline?.(d);
+                        }}
+                        title={`Due — ${dueTitle(d)}`}
+                        className="block w-full truncate rounded px-1 py-0.5 text-left text-xs transition-colors hover:bg-accent"
+                      >
+                        <Pill tone={d.is_overdue ? "bad" : "warn"}>Due</Pill>{" "}
+                        <span className={cn("truncate", d.is_done && "line-through opacity-60")}>
+                          {d.title}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+
+                  {dayDue.length > MAX_DUE_CHIPS && (
+                    <li className="hidden px-1 text-xs text-muted-foreground sm:block">
+                      +{dayDue.length - MAX_DUE_CHIPS} due
                     </li>
                   )}
                 </ul>

@@ -37,6 +37,22 @@ const { logger } = require("../../../config/logger");
 const VALID_STATUSES = ["TO_DO", "IN_PROGRESS", "IN_REVIEW", "DONE", "CANCELLED"];
 const DONE_STATUSES = new Set(["DONE", "CANCELLED"]);
 
+/**
+ * Actor attribution for an audit row, from the caller we already hold.
+ *
+ * `audit()` snapshots `actor_name_snapshot` from what it is GIVEN and stores
+ * NULL otherwise (shared/events/emit.js) — and a null name renders as a raw
+ * UUID in the tenant-wide Audit Terminal, which is the "actors show as
+ * identifiers" report. `req.user` already carries the name and email, so
+ * stamping them here needs no extra query and makes a task/event row read as a
+ * person rather than an id.
+ */
+const actorOf = (ctx) => ({
+  actorUserId: ctx.user.user_id,
+  actorName: ctx.user.display_name || ctx.user.email || null,
+  actorEmail: ctx.user.email || null,
+});
+
 /* ── audience ─────────────────────────────────────────────────────────────── */
 
 /**
@@ -226,7 +242,14 @@ async function createTask(client, ctx, input) {
   });
   if (input.subtasks && input.subtasks.length) {
     for (const [i, s] of input.subtasks.entries()) {
-      await repo.insertSubtask(client, { task_id: task.task_id, title: s.title, display_order: s.display_order ?? i + 1 });
+      await repo.insertSubtask(client, {
+        task_id: task.task_id,
+        title: s.title,
+        display_order: s.display_order ?? i + 1,
+        // A step's deadline resolves on the tenant clock exactly as the parent's
+        // does — a bare date is end of the working day, not midnight.
+        due_at: toInstant(s.due_at, { timeZone, dateOnlyTime: "17:00:00" }),
+      });
     }
   }
   await emitEvent(client, {
@@ -235,7 +258,7 @@ async function createTask(client, ctx, input) {
     payload: { status: task.status, priority: task.priority },
   });
   await audit(client, {
-    actorUserId: ctx.user.user_id, action: events.TASK_CREATED, moduleKey: events.MODULE,
+    ...actorOf(ctx), action: events.TASK_CREATED, moduleKey: events.MODULE,
     entityRef: `task:${task.task_id}`, after: { title: task.title, status: task.status, priority: task.priority },
   });
   const created = await getTask(client, ctx, task.task_id, ctx.audience);
@@ -275,7 +298,7 @@ async function updateTask(client, ctx, id, input) {
     entityRef: `task:${id}`, actorUserId: ctx.user.user_id, payload: { fields: Object.keys(input) },
   });
   await audit(client, {
-    actorUserId: ctx.user.user_id, action: events.TASK_UPDATED, moduleKey: events.MODULE,
+    ...actorOf(ctx), action: events.TASK_UPDATED, moduleKey: events.MODULE,
     entityRef: `task:${id}`,
     before: { status: before.status, priority: before.priority, due_at: before.due_at },
     after: { status: updated.status, priority: updated.priority, due_at: updated.due_at },
@@ -303,7 +326,7 @@ async function changeStatus(client, ctx, id, status) {
     payload: { from: before.status, to: status },
   });
   await audit(client, {
-    actorUserId: ctx.user.user_id, action: events.TASK_STATUS_CHANGED, moduleKey: events.MODULE,
+    ...actorOf(ctx), action: events.TASK_STATUS_CHANGED, moduleKey: events.MODULE,
     entityRef: `task:${id}`, before: { status: before.status }, after: { status },
   });
   return getTask(client, ctx, id);
@@ -317,7 +340,7 @@ async function deleteTask(client, ctx, id) {
     entityRef: `task:${id}`, actorUserId: ctx.user.user_id,
   });
   await audit(client, {
-    actorUserId: ctx.user.user_id, action: events.TASK_DELETED, moduleKey: events.MODULE,
+    ...actorOf(ctx), action: events.TASK_DELETED, moduleKey: events.MODULE,
     entityRef: `task:${id}`, before: { title: before.title }, isSensitive: false,
   });
   return { deleted: true };
@@ -327,17 +350,36 @@ async function deleteTask(client, ctx, id) {
 
 async function addSubtask(client, ctx, taskId, input) {
   await getTask(client, ctx, taskId); // existence + visibility, one check
-  const row = await repo.insertSubtask(client, { task_id: taskId, ...input });
+  const timeZone = await timezoneOf(client);
+  const row = await repo.insertSubtask(client, {
+    task_id: taskId,
+    title: input.title,
+    display_order: input.display_order,
+    due_at: toInstant(input.due_at, { timeZone, dateOnlyTime: "17:00:00" }),
+  });
   await audit(client, {
-    actorUserId: ctx.user.user_id, action: events.TASK_UPDATED, moduleKey: events.MODULE,
+    ...actorOf(ctx), action: events.TASK_UPDATED, moduleKey: events.MODULE,
     entityRef: `task:${taskId}`, after: { subtask: row.title },
   });
   return row;
 }
 
-async function setSubtaskDone(client, ctx, taskId, subtaskId, isDone) {
+/**
+ * Patch a step — tick it done, move its deadline, or both.
+ *
+ * `due_at` resolves on the tenant clock like every other deadline here; only
+ * the keys the caller sent are touched, so setting a date does not un-tick a
+ * done step and vice versa.
+ */
+async function patchSubtask(client, ctx, taskId, subtaskId, input) {
   await getTask(client, ctx, taskId);
-  const row = await repo.setSubtaskDone(client, subtaskId, isDone);
+  const patch = {};
+  if ("is_done" in input) patch.is_done = input.is_done;
+  if ("due_at" in input) {
+    const timeZone = await timezoneOf(client);
+    patch.due_at = toInstant(input.due_at, { timeZone, dateOnlyTime: "17:00:00" });
+  }
+  const row = await repo.updateSubtask(client, subtaskId, patch);
   if (!row || row.task_id !== taskId) throw new AppError("NOT_FOUND", "Subtask not found", 404);
   return row;
 }
@@ -469,7 +511,7 @@ async function createEvent(client, ctx, input) {
     entityRef: `calendar_event:${event.calendar_event_id}`, actorUserId: ctx.user.user_id,
   });
   await audit(client, {
-    actorUserId: ctx.user.user_id, action: events.EVENT_CREATED, moduleKey: events.MODULE,
+    ...actorOf(ctx), action: events.EVENT_CREATED, moduleKey: events.MODULE,
     entityRef: `calendar_event:${event.calendar_event_id}`,
     after: { title: event.title, start_at: event.start_at, end_at: event.end_at },
   });
@@ -501,7 +543,7 @@ async function updateEvent(client, ctx, id, input) {
     entityRef: `calendar_event:${id}`, actorUserId: ctx.user.user_id, payload: { fields: Object.keys(input) },
   });
   await audit(client, {
-    actorUserId: ctx.user.user_id, action: events.EVENT_UPDATED, moduleKey: events.MODULE,
+    ...actorOf(ctx), action: events.EVENT_UPDATED, moduleKey: events.MODULE,
     entityRef: `calendar_event:${id}`,
     before: { start_at: before.start_at, end_at: before.end_at },
     after: { start_at: patch.start_at ?? before.start_at, end_at: patch.end_at ?? before.end_at },
@@ -517,7 +559,7 @@ async function deleteEvent(client, ctx, id) {
     entityRef: `calendar_event:${id}`, actorUserId: ctx.user.user_id,
   });
   await audit(client, {
-    actorUserId: ctx.user.user_id, action: events.EVENT_DELETED, moduleKey: events.MODULE,
+    ...actorOf(ctx), action: events.EVENT_DELETED, moduleKey: events.MODULE,
     entityRef: `calendar_event:${id}`, before: { title: before.title },
   });
   return { deleted: true };
@@ -626,12 +668,53 @@ async function dayTimeline(client, ctx, { from, to, audience }) {
   return { items, audience: resolved, audiences: audiencesFor(ctx), tasks: tasks.length, events: eventsRows.length };
 }
 
+/**
+ * Every deadline in a window — task due dates AND subtask due dates — for the
+ * calendar's overlay.
+ *
+ * This is the "deadlines appear on the calendar" surface: the month grid draws
+ * events from `/workspace/events` and lays these on top as due-date chips. Kept
+ * SEPARATE from `listEvents` because a deadline is not an appointment — it has
+ * no duration, it opens the task rather than an event dialog, and folding it
+ * into the events list would make it editable as one. Both halves go through the
+ * same `visibilityOf`, so a deadline chip can never show for a task the caller
+ * could not open.
+ */
+async function deadlinesInRange(client, ctx, { from, to, audience }) {
+  const resolved = resolveAudience(ctx, audience);
+  const vis = visibilityOf(ctx, resolved);
+  const [tasks, subtasks] = await Promise.all([
+    repo.tasksInRange(client, { from, to, visibility: vis }),
+    repo.subtasksInRange(client, { from, to, visibility: vis }),
+  ]);
+  const now = Date.now();
+  const items = [
+    ...tasks
+      .filter((t) => t.status !== "CANCELLED")
+      .map((t) => ({
+        kind: "task", task_id: t.task_id, subtask_id: null,
+        title: t.title, task_title: null, at: t.due_at,
+        status: t.status, priority: t.priority, is_done: t.status === "DONE",
+        is_overdue: t.status !== "DONE" && Boolean(t.due_at) && new Date(t.due_at).getTime() < now,
+      })),
+    ...subtasks
+      .filter((s) => s.task_status !== "CANCELLED")
+      .map((s) => ({
+        kind: "subtask", task_id: s.task_id, subtask_id: s.task_subtask_id,
+        title: s.title, task_title: s.task_title, at: s.due_at,
+        status: s.task_status, priority: s.task_priority, is_done: s.is_done,
+        is_overdue: !s.is_done && Boolean(s.due_at) && new Date(s.due_at).getTime() < now,
+      })),
+  ].sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
+  return { items, audience: resolved, audiences: audiencesFor(ctx) };
+}
+
 module.exports = {
   VALID_STATUSES, DONE_STATUSES,
   audiencesFor, resolveAudience, visibilityOf, resolveRemindAt, withLink, deriveLink, canSeeTask,
   listTasks, getBoard, getTask, createTask, updateTask, changeStatus, deleteTask,
-  addSubtask, setSubtaskDone, deleteSubtask, addWatcher, removeWatcher, notifyAssignee,
+  addSubtask, patchSubtask, deleteSubtask, addWatcher, removeWatcher, notifyAssignee,
   listEvents, getEvent, createEvent, updateEvent, deleteEvent,
   addParticipant, respondParticipant, removeParticipant,
-  mergeTimeline, dayTimeline,
+  mergeTimeline, dayTimeline, deadlinesInRange,
 };

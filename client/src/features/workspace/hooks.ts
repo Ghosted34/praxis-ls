@@ -96,6 +96,15 @@ export function useTask(id: string | null) {
   });
 }
 
+/** Task + subtask deadlines in a window — the calendar's due-date overlay. */
+export function useDeadlines(params: { from?: string; to?: string; audience?: Audience } = {}) {
+  return useQuery<api.Deadlines>({
+    queryKey: [ROOT, "deadlines", params],
+    queryFn: () => api.getDeadlines(params),
+    staleTime: 30_000,
+  });
+}
+
 export function useEvents(params: { from?: string; to?: string; event_type?: string; audience?: Audience } = {}) {
   return useQuery<CalendarEvent[]>({
     queryKey: [ROOT, "events", params],
@@ -143,13 +152,19 @@ export const useMoveTask = () =>
 export const useDeleteTask = () => useWorkspaceMutation((id: string) => api.deleteTask(id));
 
 export const useAddSubtask = () =>
-  useWorkspaceMutation(({ taskId, title }: { taskId: string; title: string }) =>
-    api.addSubtask(taskId, title),
+  useWorkspaceMutation(
+    ({ taskId, title, dueAt }: { taskId: string; title: string; dueAt?: string | null }) =>
+      api.addSubtask(taskId, title, dueAt),
   );
 export const useToggleSubtask = () =>
   useWorkspaceMutation(
     ({ taskId, subtaskId, isDone }: { taskId: string; subtaskId: string; isDone: boolean }) =>
       api.toggleSubtask(taskId, subtaskId, isDone),
+  );
+export const useSetSubtaskDeadline = () =>
+  useWorkspaceMutation(
+    ({ taskId, subtaskId, dueAt }: { taskId: string; subtaskId: string; dueAt: string | null }) =>
+      api.patchSubtask(taskId, subtaskId, { due_at: dueAt }),
   );
 export const useDeleteSubtask = () =>
   useWorkspaceMutation(({ taskId, subtaskId }: { taskId: string; subtaskId: string }) =>

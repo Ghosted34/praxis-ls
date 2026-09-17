@@ -47,7 +47,8 @@ tasks.post("/:id/status", can("edit"), v.statusChange, t.changeStatus);
 tasks.delete("/:id", can("delete"), t.deleteTask);
 
 tasks.post("/:id/subtasks", can("edit"), v.subtaskAdd, t.addSubtask);
-tasks.patch("/:id/subtasks/:subtaskId", can("edit"), v.subtaskToggle, t.setSubtaskDone);
+// One PATCH for both a step's edits — tick it done and/or move its deadline.
+tasks.patch("/:id/subtasks/:subtaskId", can("edit"), v.subtaskPatch, t.patchSubtask);
 tasks.delete("/:id/subtasks/:subtaskId", can("edit"), t.deleteSubtask);
 
 tasks.post("/:id/watchers", can("edit"), v.watcherAdd, t.addWatcher);
@@ -72,6 +73,9 @@ router.get("/", c.mine);
 // Tasks and events interleaved by time — the Today surface, and the reason the
 // two modules share a page rather than sitting side by side.
 router.get("/day", can("view"), v.dayQuery, t.getDay);
+// Task + subtask due dates for the calendar's deadline overlay — a read, laid
+// over the events grid, that opens the task rather than an event dialog.
+router.get("/deadlines", can("view"), v.deadlineQuery, t.getDeadlines);
 router.use("/tasks", tasks);
 router.use("/events", events);
 

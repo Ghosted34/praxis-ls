@@ -8,6 +8,7 @@
  * two functions are also exactly the part worth unit-testing on their own, and
  * a test cannot import from a component file without dragging React in.
  */
+import type { CalendarEvent, Deadline } from "../api";
 
 /** `YYYY-MM-DD` in LOCAL time.
  *
@@ -37,3 +38,46 @@ export function monthCells(year: number, month: number): Date[] {
 }
 
 export const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+/** The seven days of the week `date` falls in, Sunday first. */
+export function weekCells(date: Date): Date[] {
+  const start = new Date(date.getFullYear(), date.getMonth(), date.getDate() - date.getDay());
+  return Array.from(
+    { length: 7 },
+    (_, i) => new Date(start.getFullYear(), start.getMonth(), start.getDate() + i),
+  );
+}
+
+/**
+ * Events by local day. An event is filed under EVERY day it spans, not just its
+ * start, so a multi-day delivery is not invisible on days two and three — the
+ * same reason the server query is `start < to AND end >= from`.
+ */
+export function indexEventsByDay(events: CalendarEvent[]): Map<string, CalendarEvent[]> {
+  const out = new Map<string, CalendarEvent[]>();
+  for (const e of events) {
+    const start = new Date(e.start_at);
+    const end = new Date(e.end_at);
+    for (let d = new Date(start.getFullYear(), start.getMonth(), start.getDate()); d <= end; d.setDate(d.getDate() + 1)) {
+      const key = isoDay(d);
+      const list = out.get(key);
+      if (list) list.push(e);
+      else out.set(key, [e]);
+    }
+  }
+  for (const list of out.values()) list.sort((a, b) => a.start_at.localeCompare(b.start_at));
+  return out;
+}
+
+/** Deadlines by local day — a due date is one instant, so one cell each. */
+export function indexDeadlinesByDay(deadlines: Deadline[]): Map<string, Deadline[]> {
+  const out = new Map<string, Deadline[]>();
+  for (const d of deadlines) {
+    const key = isoDay(new Date(d.at));
+    const list = out.get(key);
+    if (list) list.push(d);
+    else out.set(key, [d]);
+  }
+  for (const list of out.values()) list.sort((a, b) => a.at.localeCompare(b.at));
+  return out;
+}

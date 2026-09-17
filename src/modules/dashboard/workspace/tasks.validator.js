@@ -48,6 +48,9 @@ const subtask = z
   .object({
     title: z.string().trim().min(1, "a step needs a title").max(300),
     display_order: z.number().int().min(0).max(32000).optional(),
+    // A step (milestone) may carry its own deadline. Nullable so an empty date
+    // clears it; resolved to an instant on the tenant's clock by the service.
+    due_at: dt(DATETIME_MSG).nullable().optional(),
   })
   .strict();
 
@@ -114,10 +117,21 @@ const subtaskAdd = z
   .object({
     title: z.string().trim().min(1, "a step needs a title").max(300),
     display_order: z.number().int().min(0).max(32000).optional(),
+    due_at: dt(DATETIME_MSG).nullable().optional(),
   })
   .strict();
 
-const subtaskToggle = z.object({ is_done: z.boolean() }).strict();
+// One PATCH covers both edits a step takes: ticking it done and moving its
+// deadline. Kept as one schema (rather than a toggle plus a separate date
+// route) because the panel does both from the same row, and `at least one
+// field` mirrors taskUpdate so an empty body is a 422 naming the problem.
+const subtaskPatch = z
+  .object({
+    is_done: z.boolean().optional(),
+    due_at: dt(DATETIME_MSG).nullable().optional(),
+  })
+  .strict()
+  .refine((v) => Object.keys(v).length > 0, { message: "nothing to update" });
 
 const watcherAdd = z.object({ user_id: z.string().uuid() }).strict();
 
@@ -140,6 +154,15 @@ const boardQuery = strictQuery({
 // window on first load — a mandatory `from`/`to` would 422 the load before the
 // default the caller clearly meant ("today") could ever run.
 const dayQuery = strictQuery({
+  from: dt(DATETIME_MSG).optional(),
+  to: dt(DATETIME_MSG).optional(),
+  audience: filters.enum(AUDIENCES),
+});
+
+// The calendar's deadline overlay: task AND subtask due dates in a window. Same
+// optional-window shape as dayQuery — the controller defaults it — so the month
+// grid can ask without computing a fallback the server already knows.
+const deadlineQuery = strictQuery({
   from: dt(DATETIME_MSG).optional(),
   to: dt(DATETIME_MSG).optional(),
   audience: filters.enum(AUDIENCES),
@@ -217,7 +240,7 @@ module.exports = {
   taskUpdate: body(taskUpdate),
   statusChange: body(statusChange),
   subtaskAdd: body(subtaskAdd),
-  subtaskToggle: body(subtaskToggle),
+  subtaskPatch: body(subtaskPatch),
   watcherAdd: body(watcherAdd),
   eventCreate: body(eventCreate),
   eventUpdate: body(eventUpdate),
@@ -228,12 +251,13 @@ module.exports = {
   taskListQuery: query(taskListQuery),
   boardQuery: query(boardQuery),
   dayQuery: query(dayQuery),
+  deadlineQuery: query(deadlineQuery),
   eventListQuery: query(eventListQuery),
   // Exposed for tests and for the client's shared-schema gate.
   schemas: {
-    taskCreate, taskUpdate, statusChange, subtaskAdd, subtaskToggle, watcherAdd,
+    taskCreate, taskUpdate, statusChange, subtaskAdd, subtaskPatch, watcherAdd,
     eventCreate, eventUpdate, participantAdd, participantRespond,
-    taskListQuery, boardQuery, dayQuery, eventListQuery,
+    taskListQuery, boardQuery, dayQuery, deadlineQuery, eventListQuery,
   },
   STATUSES, PRIORITIES, RESPONSES, AUDIENCES,
 };

@@ -171,6 +171,33 @@ async function tasksInRange(client, { from, to, visibility }) {
   return rows;
 }
 
+/**
+ * Subtask deadlines falling in a range, with the parent they belong to.
+ *
+ * Joined to `task` so the SAME visibility rule that hides a task hides its
+ * steps — a step you cannot see the task for is a leak. `visibleWhere` writes
+ * its predicate against `t.`, which is why the parent is aliased `t` here.
+ */
+async function subtasksInRange(client, { from, to, visibility }) {
+  const params = [from, to];
+  const where = ["t.is_deleted = false", "s.due_at >= $1", "s.due_at < $2"];
+  const vis = visibleWhere(visibility, params.length + 1);
+  params.push(...vis.params);
+  where.push(...vis.sql);
+  const { rows } = await client.query(
+    `SELECT s.task_subtask_id, s.task_id, s.title, s.due_at, s.is_done,
+            t.title AS task_title, t.status AS task_status, t.priority AS task_priority,
+            t.entity_type, t.entity_id
+       FROM task_subtask s
+       JOIN task t ON t.task_id = s.task_id
+      WHERE ${where.join(" AND ")}
+      ORDER BY s.due_at ASC NULLS LAST
+      LIMIT 200`,
+    params,
+  );
+  return rows;
+}
+
 async function insertTask(client, t) {
   const { rows } = await client.query(
     `INSERT INTO task (
@@ -253,24 +280,45 @@ async function listSubtasks(client, taskId) {
   return rows;
 }
 
-async function insertSubtask(client, { task_id, title, display_order }) {
+async function insertSubtask(client, { task_id, title, display_order, due_at }) {
   const { rows } = await client.query(
-    `INSERT INTO task_subtask (task_id, title, display_order)
-     VALUES ($1,$2,COALESCE($3, (SELECT COALESCE(max(display_order),0)+1 FROM task_subtask WHERE task_id = $1)))
+    `INSERT INTO task_subtask (task_id, title, display_order, due_at)
+     VALUES ($1,$2,COALESCE($3, (SELECT COALESCE(max(display_order),0)+1 FROM task_subtask WHERE task_id = $1)),$4)
      RETURNING *`,
-    [task_id, title, display_order ?? null],
+    [task_id, title, display_order ?? null, due_at ?? null],
   );
   return rows[0];
 }
 
-async function setSubtaskDone(client, subtaskId, isDone) {
+/**
+ * Patch a step: tick it done, move its deadline, or both.
+ *
+ * `completed_at` rides with `is_done` in the SAME statement — stamped on the way
+ * to done, cleared on the way back — so a step and its completion time can never
+ * disagree. An empty patch re-reads rather than issuing `UPDATE … SET `, the
+ * same guard `updateTask` makes.
+ */
+async function updateSubtask(client, subtaskId, patch) {
+  const sets = [];
+  const params = [];
+  if ("due_at" in patch) {
+    params.push(patch.due_at ?? null);
+    sets.push(`due_at = $${params.length}`);
+  }
+  if ("is_done" in patch) {
+    params.push(patch.is_done === true);
+    const i = params.length;
+    sets.push(`is_done = $${i}`);
+    sets.push(`completed_at = CASE WHEN $${i} THEN now() ELSE NULL END`);
+  }
+  if (!sets.length) {
+    const { rows } = await client.query("SELECT * FROM task_subtask WHERE task_subtask_id = $1", [subtaskId]);
+    return rows[0] || null;
+  }
+  params.push(subtaskId);
   const { rows } = await client.query(
-    `UPDATE task_subtask
-        SET is_done = $2,
-            completed_at = CASE WHEN $2 THEN now() ELSE NULL END
-      WHERE task_subtask_id = $1
-      RETURNING *`,
-    [subtaskId, isDone === true],
+    `UPDATE task_subtask SET ${sets.join(", ")} WHERE task_subtask_id = $${params.length} RETURNING *`,
+    params,
   );
   return rows[0] || null;
 }
@@ -506,8 +554,8 @@ async function markEventReminderSent(client, id, nowIso) {
 
 module.exports = {
   visibleWhere,
-  listTasks, boardTasks, tasksInRange, insertTask, findTask, updateTask, softDeleteTask,
-  listSubtasks, insertSubtask, setSubtaskDone, deleteSubtask,
+  listTasks, boardTasks, tasksInRange, subtasksInRange, insertTask, findTask, updateTask, softDeleteTask,
+  listSubtasks, insertSubtask, updateSubtask, deleteSubtask,
   listWatchers, addWatcher, removeWatcher,
   listEvents, insertEvent, findEvent, updateEvent, softDeleteEvent, findEventClashes,
   listParticipants, insertParticipant, respondParticipant, removeParticipant,

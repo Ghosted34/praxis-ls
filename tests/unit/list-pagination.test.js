@@ -113,6 +113,27 @@ describe("the other three hub lists", () => {
     expect(out.total).toBe(7);
   });
 
+  test("journals scope to one entity when asked", async () => {
+    // The corporate-entity dossier's Journal tile counts
+    // `journal_entry WHERE entity_id = $1`; the drill-in that opens from that
+    // tile has to read the same set, and before this filter existed it could
+    // only ask for the tenant's whole ledger and hope.
+    const c = fakeClient([{ entry_id: "e", _total: "3" }]);
+    await journalRepo.listEntries(c, { entity_id: "ent-1" });
+    const { sql, params } = c.calls[0];
+    expect(sql).toContain("entity_id = $3");
+    expect(params).toEqual([50, 0, "ent-1"]);
+  });
+
+  test("journals combine the entity filter with the text search", async () => {
+    const c = fakeClient([]);
+    await journalRepo.listEntries(c, { entity_id: "ent-1", q: "FUEL" });
+    const { sql, params } = c.calls[0];
+    expect(sql).toContain("entity_id = $3");
+    expect(sql).toMatch(/source_doc_ref ILIKE \$4/);
+    expect(params).toEqual([50, 0, "ent-1", "%FUEL%"]);
+  });
+
   test("receipts search client name and no longer take limit raw", async () => {
     const c = fakeClient([{ receipt_id: "r", _total: "12" }]);
     const out = await receiptRepo.listReceipts(c, { q: "Acme", limit: "9999" });

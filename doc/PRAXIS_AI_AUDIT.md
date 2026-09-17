@@ -12,7 +12,7 @@
 
 _Last updated: 2026-09-17. Keep this section in step with `main` — when a PR merges, tick the findings it closed and link it here. Status legend: ✅ merged · 🟡 in progress · ⬜ not started._
 
-**Next up for another engineer:** PR 4 (steering D2–D4 + context window), then PR 5 (timeouts), PR 6 (conversation management/Spaces), the PR 7 coverage gate + remaining manifests, PR 1 redaction (A1), and PR 2's fallback vendor (B2). The write-contract backlog (154 writes) lives in `src/services/ai/write-contract-baseline.json` and is chipped away in any PR.
+**Next up for another engineer:** **PR 4 is being picked up in a separate session** — its remaining scope is D2 (scope the learning signals to the caller, not the whole tenant), D3 (grow the replay/context window + structured summary) and D4 (token-boundary tool scoring); D1, D5 and G1 already shipped in [#404](https://github.com/tomblakeasaah196/praxis-ls/pull/404). After PR 4: PR 5 (timeouts E1–E4), PR 6 (conversation management/Spaces J1–J5), the PR 7 coverage gate + remaining manifests, PR 1 redaction (A1), PR 2's fallback vendor (B2). The write-contract backlog (154 writes) lives in `src/services/ai/write-contract-baseline.json` and is chipped away in any PR. **Whoever closes a milestone updates this section** (the milestone row, the finding rows, and Appendix A where relevant).
 
 ### By milestone
 

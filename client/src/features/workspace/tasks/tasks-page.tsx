@@ -1,5 +1,34 @@
 /**
- * Tasks — the board, with a detail panel beside it on a wide screen.
+ * Tasks — the board, with the open task in a column beside it.
+ *
+ * ── THE DETAIL GOES IN THE LAYOUT, NOT OVER IT ─────────────────────────────
+ *
+ * A board is a surface you keep working on: triage, drag, re-read. A drawer
+ * that slides over it and scrims everything behind it takes the board away for
+ * as long as the detail is open — and it covers exactly the region the board
+ * occupies, so opening a card to read one line costs the whole view. Where
+ * there is room for both, there is no reason to choose: the detail is an
+ * `<aside>` beside the columns, with no scrim, no focus trap, and the next card
+ * one click away instead of one close-and-reopen away.
+ *
+ * ── THE PANE IS NOT RESERVED WHILE IT IS EMPTY ─────────────────────────────
+ *
+ * It used to be a permanent 22rem column holding "Select a card to see its
+ * steps…": a fifth of every wide screen spent on a sentence about a pane, paid
+ * for by the four kanban columns it squeezed — on the screen whose entire point
+ * is the cards. The column now exists while there is a task in it, and the board
+ * has the width at every other moment. Below `xl`, where a side-by-side split
+ * would be two unreadable columns, the same panel opens as a `<Dialog>` sheet.
+ *
+ * ── WHY THE BRANCH IS IN JAVASCRIPT ────────────────────────────────────────
+ *
+ * `xl:hidden` around the sheet read correctly and hid nothing: Radix renders the
+ * dialog through a PORTAL into `<body>`, so the wrapper never becomes an
+ * ancestor of anything visible and `display: none` on it takes no effect. The
+ * sheet therefore opened over the board at every width, on top of the reserved
+ * column it was supposed to replace. A CSS media query cannot branch a portalled
+ * component; `useIsWide` decides in JavaScript, which is also the rule for the
+ * 360 screens (guide §3.11).
  *
  * ── THE AUDIENCE SWITCH OFFERS ONLY WHAT THE SERVER WILL HONOUR ────────────
  *
@@ -9,19 +38,13 @@
  * always showing "Everyone" and letting the server narrow it — is a control
  * that appears to do something and does not, which is worse than not offering
  * it, because the user concludes they have no team rather than no permission.
- *
- * ── MASTER-DETAIL ──────────────────────────────────────────────────────────
- *
- * `<SplitPane>` rather than a hand-rolled grid, per FRONTEND_GUIDE §3.14: the
- * open record has to stay visible next to the list, and the split is
- * keyboard-resizable. Below `lg` the panel becomes a Dialog, because a
- * side-by-side split on a phone is two unusable columns.
  */
 import * as React from "react";
 import { useSearchParams } from "react-router-dom";
+import { cn } from "@/lib/cn";
 import { pageShell } from "@/lib/layout";
+import { useIsWide } from "@/lib/use-media-query";
 import { PageHeader } from "@/components/data-list";
-import { Panel } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Segmented } from "@/components/ui/segmented";
@@ -35,6 +58,7 @@ import { TaskPanel } from "./task-panel";
 
 export function TasksPage() {
   const [params, setParams] = useSearchParams();
+  const isWide = useIsWide();
 
   const [audience, setAudience] = React.useState<Audience>(
     (params.get("audience") as Audience) || "mine",
@@ -71,6 +95,8 @@ export function TasksPage() {
     setParams(params, { replace: true });
   }
 
+  const closeTask = React.useCallback(() => setSelectedId(null), []);
+
   return (
     <section className={pageShell.wide}>
       <PageHeader
@@ -98,44 +124,64 @@ export function TasksPage() {
       {q.error ? (
         <ScreenError message={q.error.message} what="Your tasks" onRetry={() => void q.refetch()} />
       ) : (
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
+        /*
+          `items-start` so the detail column is its natural height and can stick
+          — a stretched grid item is as tall as the board and has nothing to
+          stick to. The template only gains its second column while a task is
+          open, and `xl:` is the same number as `useIsWide`, so the CSS and the
+          branch agree at every width by construction.
+        */
+        <div
+          className={cn(
+            "grid items-start gap-4",
+            isWide && selectedId && "xl:grid-cols-[minmax(0,1fr)_22rem]",
+          )}
+        >
           <TaskBoard
             board={q.data?.board}
             loading={q.isLoading}
+            selectedId={selectedId}
             onOpen={setSelectedId}
             onCreate={() => setCreateOpen(true)}
           />
 
-          {/* The detail column. `xl` and up only: below that the panel opens
-              as a Dialog, because a split on a phone is two narrow columns
-              that are each too small to read. */}
-          <div className="hidden xl:block">
-            {selectedId ? (
-              <TaskPanel taskId={selectedId} onClose={() => setSelectedId(null)} />
-            ) : (
-              <Panel title="Task">
-                <p className="micro">
-                  Select a card to see its steps, who it belongs to, and the record it points at.
-                </p>
-              </Panel>
-            )}
-          </div>
+          {/*
+            THE detail column. Only while a task is open (see the header), and
+            `sticky` because a board with a few cards in it is taller than the
+            viewport: a panel that scrolls away is a panel the user has to
+            scroll back to, and the task they just opened is the thing they are
+            reading. Its own `max-h` + scroll is what keeps a long task (thirty
+            steps, a paragraph of description) reachable at the bottom.
+          */}
+          {isWide && selectedId && (
+            <aside
+              aria-label="Task"
+              className="min-w-0 xl:sticky xl:top-6 xl:max-h-[calc(100dvh-7rem)] xl:overflow-y-auto"
+            >
+              <TaskPanel taskId={selectedId} onClose={closeTask} />
+            </aside>
+          )}
         </div>
       )}
 
-      {/* The same panel, as a sheet, where there is no room to sit it beside
-          the board. One component, two placements — so the two cannot drift. */}
-      <div className="xl:hidden">
+      {/*
+        The same panel, as a sheet, where there is no room to sit it beside the
+        board. One component, two placements — so the two cannot drift. Rendered
+        only below `xl`, and that is a JavaScript branch rather than a CSS one
+        for the portal reason in the header: a `<Dialog>` hidden by a wrapper's
+        breakpoint is not hidden at all.
+      */}
+      {!isWide && (
         <Dialog
           open={!!selectedId}
-          onClose={() => setSelectedId(null)}
+          onClose={closeTask}
           title="Task"
           placement="right"
           bodyClassName="p-0"
         >
-          {selectedId && <TaskPanel taskId={selectedId} onClose={() => setSelectedId(null)} />}
+          {selectedId && <TaskPanel taskId={selectedId} onClose={closeTask} />}
         </Dialog>
-      </div>
+      )}
 
       <TaskDialog open={createOpen} onClose={() => setCreateOpen(false)} />
     </section>

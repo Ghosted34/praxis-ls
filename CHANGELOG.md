@@ -44,6 +44,8 @@ Dates are ISO-8601, UTC.
 
 ### Fixed
 
+- **Vault document previews were CSP-blocked for PDFs and text files — `frame-src` is now explicit.** The preview dialog frames a membership-gated document as a `blob:` URL in an `<iframe>` (the bytes arrive via an authenticated fetch, exactly like chat attachments). `frame-src` was never set, so the browser fell back to `default-src 'self'` and refused every PDF/text preview — _"Framing 'blob:https://…' violates … 'default-src'. Note that 'frame-src' was not explicitly set"_ — while images in the same dialog kept working because `img-src` already said `blob:`. This is the same silent-fallback defect that once blocked every voice note (`media-src`, see `tests/unit/csp-blob-media.test.js`); the policy now sets `frame-src: 'self' blob:` and the blob-consumer test table gained the iframe row so the next forgotten directive fails a test instead of a user.
+
 - **Vault → Documents register now previews in-app, like the operations file already did.** Bug #1 ("vault documents should be clickable so we preview") was implemented only on the operations file's Documents tab (`file-360.tsx` → "Vault documents"). The tenant-wide **Vault → Documents** screen — the natural place to look given the bug's wording — still offered only Download and Archive, so the fix appeared missing to anyone who went there. That screen (`features/vault/documents.tsx`) now carries a **Preview** button per row that opens the same `VaultPreviewDialog` (PDF/image/text inline, download for Office files), reusing the existing `fetchVaultDoc` plumbing. Archived rows keep Download only.
 
 ### Changed

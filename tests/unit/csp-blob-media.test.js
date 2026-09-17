@@ -48,6 +48,7 @@ const BLOB_CONSUMERS = [
   { element: "<img> — chat photos, lightbox", directive: "img-src" },
   { element: "<audio> — voice notes", directive: "media-src" },
   { element: "<video> — video attachments", directive: "media-src" },
+  { element: "<iframe> — vault document preview (PDF/text)", directive: "frame-src" },
 ];
 
 const directives = () =>
@@ -77,6 +78,12 @@ describe("CSP permits the blob: URLs this client actually creates", () => {
    *  in memory — never a remote origin, never a data: URL. */
   it("keeps media-src to same-origin and blobs", () => {
     expect(directives()["media-src"]).toEqual(["'self'", "blob:"]);
+  });
+
+  /** Same discipline for frames: `'self'` for the sandboxed srcDoc previews,
+   *  `blob:` for the vault document viewer — never a remote origin. */
+  it("keeps frame-src to same-origin and blobs", () => {
+    expect(directives()["frame-src"]).toEqual(["'self'", "blob:"]);
   });
 
   it("keeps the script-src the caller computed, hashes and all", () => {

@@ -12,18 +12,28 @@
  *
  * ── THREE INPUTS, THREE GESTURES, ONE DRAG ─────────────────────────────────
  *
- * A MOUSE picks a card up by its grip (`MouseSensor`, 8px — see the section
- * below). A FINGER picks a card up by HOLDING IT ANYWHERE (`TouchSensor`,
- * `LONG_PRESS_MS`): the long press is the one gesture a phone has left that the
- * board's own scrolling has not already claimed, and it is what makes "click
- * and hold, then drag it into another stage" true on glass. A KEYBOARD picks
- * the grip up with Space and drops it with Space (`KeyboardSensor`).
+ * A MOUSE picks a card up by pressing ANYWHERE on it and moving 8px
+ * (`MousePointerSensor` — see the section below), and puts it down the moment
+ * the button is RELEASED: the drag's whole life sits inside one pointer
+ * gesture, from `pointerdown` to `pointerup`, with `pointercancel` as the
+ * safety net that abandons it. A FINGER picks a card up by HOLDING IT ANYWHERE
+ * (`TouchSensor`, `LONG_PRESS_MS`): the long press is the one gesture a phone
+ * has left that the board's own scrolling has not already claimed, and it is
+ * what makes "click and hold, then drag it into another stage" true on glass.
+ * A KEYBOARD picks the grip up with Space and drops it with Space
+ * (`KeyboardSensor`).
  *
- * WHY `MouseSensor` AND NOT `PointerSensor`: a finger fires `pointerdown` too,
- * so a pointer sensor with an 8px constraint reads the first eight pixels of a
- * scroll flick as a drag — on the very surface, and at the very moment, that
- * the reader is trying to scroll a column. Each sensor ignores the other's
- * input type, and the hold is what separates a touch drag from a touch scroll.
+ * WHY A POINTER SENSOR FOR THE MOUSE, AND WHY IT REFUSES TOUCH: the mouse's
+ * old `MouseSensor` listened for `mouseup` alone, so any ending it did not hear
+ * left the drag with no way home: the copy kept following the pointer and
+ * only Escape ended it. The pointer sensor ends on `pointerup` AND
+ * `pointercancel` — the release, and the browser taking the gesture back — so
+ * every ending the platform reports closes the drag, and no ending strands
+ * the copy on the pointer. And a finger fires `pointerdown` too — but on a
+ * phone that gesture is a scroll until the hold says otherwise, so the
+ * sensor's activator turns touch away and lets the `TouchSensor` own it. The
+ * hold is still what separates a touch drag from a touch scroll;
+ * touch never meets this sensor at all.
  *
  * ── WHY `activationConstraint.distance` IS SET ─────────────────────────────
  *
@@ -67,11 +77,39 @@
  * only listener is dnd-kit's, so the click a mouse drag would otherwise leave
  * behind opens nothing. That is a structural fix rather than a timing one, and
  * it is why the grip survived the arrival of the long press rather than being
- * folded into it: on a desktop the grip is still the thing you grab.
+ * folded into it: it is still the keyboard's handle, and the mouse's hint.
+ *
+ * The grip's dots are HOVER-ONLY. They used to sit permanently over the title,
+ * hiding the first thing a reader looks at; now the strip is transparent until
+ * the card is hovered or focused, and the dots fade in. The strip itself still
+ * answers a plain click by opening the card, so the overlay it forms over the
+ * title costs nothing.
  *
  * The card's touch surface is the wrapper around the button AND the grip, so a
  * hold anywhere on the card picks it up; the Move menu is deliberately OUTSIDE
  * that wrapper, because holding its button is a request for the menu.
+ *
+ * ── WHERE A DROP LANDS: THE POINTER FIRST, THE CARD SECOND ─────────────────
+ *
+ * `boardCollision` reads the pointer first (`pointerWithin`): dropping "into"
+ * a stage means the pointer is inside that column, which is the intent no
+ * rectangle arithmetic should overrule. When the pointer is in no column — the
+ * gutter between two of them, most often — it falls back to `rectIntersection`,
+ * the card's own overlap. The fallback is also the whole of the keyboard path:
+ * a keyboard drag has no pointer coordinates at all, so `pointerWithin` always
+ * abstains and the rect decides, exactly as it did before.
+ *
+ * ── THE OVERLAY IS A PICTURE, NOT A SECOND DRAGGABLE ───────────────────────
+ *
+ * The copy that follows the pointer (`DragOverlay`) must never call
+ * `useDraggable`, even disabled. The hook registers its id in dnd-kit's map on
+ * mount — disabled only withholds the listeners — so a `useDraggable` in the
+ * overlay OVERWRITES the live card's entry with one whose node is null, and on
+ * unmount it deletes the id outright. The live card never re-registers (its
+ * effect deps are unchanged), so after the first drop the card answers no
+ * sensor: mousedown finds no draggable and the drag never starts. "Drag works
+ * once, then never again" is exactly what that looks like from the outside.
+ * `TaskCardOverlay` is therefore plain JSX sharing only the card's face.
  *
  * ── THE OPEN CARD IS MARKED, AND THE PANE IS ITS OTHER HALF ────────────────
  *
@@ -102,14 +140,18 @@ import {
   DndContext,
   DragOverlay,
   KeyboardSensor,
-  MouseSensor,
   TouchSensor,
+  PointerSensor as DndPointerSensor,
+  pointerWithin,
+  rectIntersection,
   useDraggable,
   useDroppable,
   useSensor,
   useSensors,
+  type CollisionDetection,
   type DragEndEvent,
   type DragStartEvent,
+  type PointerSensorOptions,
 } from "@dnd-kit/core";
 import { cn } from "@/lib/cn";
 import { Pill } from "@/components/ui/pill";
@@ -146,6 +188,49 @@ export const LONG_PRESS_MS = 250;
  */
 const LONG_PRESS_TOLERANCE = 8;
 
+/**
+ * Where a dropped card lands — see the header. The pointer's column when the
+ * pointer is inside one, otherwise whichever column the card itself overlaps
+ * most. A module constant rather than an inline prop so the `DndContext` keeps
+ * a stable reference across renders.
+ */
+const boardCollision: CollisionDetection = (args) => {
+  const pointed = pointerWithin(args);
+  if (pointed.length > 0) return pointed;
+  return rectIntersection(args);
+};
+
+/**
+ * The mouse's half of the drag: dnd-kit's `PointerSensor` with a bouncer.
+ *
+ * The base sensor is kept for its ENDINGS — `pointerup` drops the card and
+ * `pointercancel` abandons the drag, so every ending the platform reports
+ * closes the gesture and the copy can never keep following the pointer past
+ * its release. What changes is the BEGINNING: the stock `PointerSensor`
+ * activates on any `pointerdown`, and a finger fires one on its way into a
+ * scroll. The activator below turns away every touch pointer, so a touch
+ * gesture never even reaches the pending
+ * state here and the `TouchSensor` next to it owns the hold, the scroll and
+ * the tap exactly as it always has. Anything that is NOT touch — mouse, pen,
+ * or a device that declines to say — is this sensor's.
+ */
+class MousePointerSensor extends DndPointerSensor {
+  static activators = [
+    {
+      eventName: "onPointerDown" as const,
+      handler: (
+        { nativeEvent: event }: React.PointerEvent,
+        { onActivation }: PointerSensorOptions,
+      ) => {
+        if (!event.isPrimary || event.button !== 0) return false;
+        if (event.pointerType === "touch") return false;
+        onActivation?.({ event });
+        return true;
+      },
+    },
+  ];
+}
+
 export function TaskBoard({
   board,
   loading,
@@ -165,8 +250,9 @@ export function TaskBoard({
   const [activeId, setActiveId] = React.useState<string | null>(null);
 
   const sensors = useSensors(
-    // The mouse, on the grip: 8px of travel is a drag, a click is a click.
-    useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
+    // The mouse, anywhere on the card: 8px of travel is a drag, a click is a
+    // click, and the release always ends it — see `MousePointerSensor`.
+    useSensor(MousePointerSensor, { activationConstraint: { distance: 8 } }),
     // The finger, anywhere on the card: hold to pick it up, move first to
     // scroll instead. See the header — the delay IS the scroll's grace period.
     useSensor(TouchSensor, {
@@ -191,8 +277,8 @@ export function TaskBoard({
     try {
       await move.mutateAsync({ id: task.task_id, status: over as TaskStatus });
     } catch (err) {
-      // The board re-reads from the server on success; on failure the card is
-      // simply still where it was, and the user is told why it did not move.
+      // The move is optimistic — the card already jumped columns, and the
+      // mutation rolled it back. What is left is telling the user why.
       toast.error(errMsg(err));
     }
   }
@@ -214,7 +300,13 @@ export function TaskBoard({
   const total = BOARD_COLUMNS.reduce((n, c) => n + (board?.[c]?.length ?? 0), 0);
 
   return (
-    <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd} onDragCancel={() => setActiveId(null)}>
+    <DndContext
+      sensors={sensors}
+      collisionDetection={boardCollision}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      onDragCancel={() => setActiveId(null)}
+    >
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {BOARD_COLUMNS.map((column) => (
           <Column
@@ -334,42 +426,57 @@ function TaskCard({
   selected?: boolean;
   onOpen?: () => void;
   onMove?: (id: string, status: TaskStatus) => Promise<void>;
-  /** The copy that follows the pointer. Not interactive, not draggable. */
+  /** The copy that follows the pointer. A picture, never a draggable. */
   overlay?: boolean;
+  dimmed?: boolean;
+}) {
+  // Two components rather than one with branches, because the difference is a
+  // HOOK: the live card calls `useDraggable` and the overlay must not (see the
+  // header — a `useDraggable` in the overlay unregisters the live card). A
+  // conditional hook call is not an option, so the branch is here, before any.
+  if (overlay) return <TaskCardOverlay task={task} />;
+  return <TaskCardLive task={task} selected={selected} onOpen={onOpen} onMove={onMove} dimmed={dimmed} />;
+}
+
+/**
+ * The card on the board: opens on click, drags on press-and-move, moves on
+ * menu. The only `useDraggable` on this task's id — the overlay shares the
+ * face below and nothing else.
+ */
+function TaskCardLive({
+  task,
+  selected = false,
+  onOpen,
+  onMove,
+  dimmed = false,
+}: {
+  task: Task;
+  selected?: boolean;
+  onOpen?: () => void;
+  onMove?: (id: string, status: TaskStatus) => Promise<void>;
   dimmed?: boolean;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: task.task_id,
-    // The overlay copy is not itself draggable — dragging the drag is a loop.
-    disabled: overlay || !onMove,
+    disabled: !onMove,
   });
 
-  /**
-   * The card's half of the touch gesture: `TouchSensor`'s own activator,
-   * borrowed from the listener map the grip spreads in full. ONLY the touch
-   * half — the card body must not answer a mousedown, or the button inside it
-   * could never be clicked, which is the whole reason the mouse sensor lives on
-   * the grip. `undefined` when the card is not draggable, so the overlay copy
-   * and a read-only board answer nothing.
-   */
   // ONE draggable, three surfaces, split by input. The MOUSE half lives on the
-  // whole card now — the 13840-era board kept it on an invisible 20px strip and
+  // whole card — the 13840-era board kept it on an invisible 20px strip and
   // a mouse that held anywhere did nothing, which is the "desktop is a mess"
   // report. Touch keeps its hold-anywhere gesture and the keyboard keeps the
-  // grip as its focusable handle. Each sensor ignores the other inputs, so a
-  // mouse mousedown on the card can never hijack a touch scroll.
-  const mouseDown = listeners?.onMouseDown as React.MouseEventHandler<HTMLDivElement> | undefined;
+  // grip as its focusable handle. The pointer listener is the mouse's only:
+  // `MousePointerSensor` turns touch away at the activator, so a finger's
+  // `pointerdown` never reaches a pending drag and can never hijack a touch
+  // scroll. `undefined` when the card is not draggable, so a read-only board
+  // answers nothing.
+  const pointerDown = listeners?.onPointerDown as React.PointerEventHandler<HTMLDivElement> | undefined;
   const touchStart = listeners?.onTouchStart as React.TouchEventHandler<HTMLDivElement> | undefined;
   const gripKeyDown = listeners?.onKeyDown as React.KeyboardEventHandler<HTMLDivElement> | undefined;
 
-  const overdue =
-    task.due_at && task.status !== "DONE" && task.status !== "CANCELLED" && new Date(task.due_at) < new Date();
-
-  const live = !overlay;
-
   return (
     <article
-      ref={overlay ? undefined : setNodeRef}
+      ref={setNodeRef}
       className={cn(
         "group relative rounded-md border shadow-sm transition-opacity",
         selected
@@ -381,20 +488,21 @@ function TaskCard({
               "before:absolute before:inset-y-2 before:left-1 before:w-[3px] before:rounded-full before:content-['']",
             )
           : "bg-card",
-        isDragging && live && "opacity-40",
-        dimmed && live && "opacity-60",
-        overlay && "rotate-1 shadow-lg ring-1 ring-primary",
+        isDragging && "opacity-40",
+        dimmed && "opacity-60",
       )}
     >
       {/*
-        THE WRAPPER IS THE TOUCH SURFACE, AND IT HOLDS NO GESTURE BUT THE HOLD.
-
-        `onTouchStart` alone: no `touch-action`, no `preventDefault`, nothing
-        that would take the board's scrolling away from the thumb that is
-        scrolling it. Two things live inside — the card's button and the grip —
-        because a hold on either is a hold on the card. The Move menu is below,
-        deliberately outside: pressing and holding ITS button is a request for
-        the menu, not a request to move the card.
+        THE WRAPPER IS THE CARD'S POINTER SURFACE: `onPointerDown` AND
+        `onTouchStart`, AND NOTHING ELSE. No `touch-action`, no
+        `preventDefault`, nothing that would take the board's scrolling away
+        from the thumb that is scrolling it — the pointer half turns touch away
+        at the sensor (see `MousePointerSensor`), so a finger's `pointerdown`
+        passes straight through to the hold below it. Two things live inside —
+        the card's button and the grip — because a hold on either is a hold on
+        the card. The Move menu is below, deliberately outside: pressing and
+        holding ITS button is a request for the menu, not a request to move the
+        card.
 
         `-webkit-touch-callout` off, and selection off for coarse pointers only:
         on a phone a hold must not begin selecting the title's text, because iOS
@@ -405,14 +513,16 @@ function TaskCard({
           keyboard gets the same move through the grip's `role="button"` below
           and through the card's own button + Move menu, so pointer and keyboard
           stay at parity (FRONTEND_GUIDE §7.3). */}
-      {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions */}
       <div
-        onMouseDown={mouseDown}
+        onPointerDown={pointerDown}
         onTouchStart={touchStart}
         className={cn(
           "relative [-webkit-touch-callout:none] [@media(pointer:coarse)]:select-none",
-          // While a mouse drag is live, stop the title text selecting — the
-          // drag owns the gesture and the selection is just noise.
+          // While a mouse drag is live, the gesture belongs to dnd-kit: stop
+          // the title text selecting under the pointer. Gated to the live
+          // drag so the resting card keeps selecting as it always did — and
+          // deliberately NOT `touch-none`: touch owns its own gesture through
+          // the hold, and nothing here takes the board's scrolling away.
           isDragging && "select-none",
         )}
       >
@@ -435,49 +545,27 @@ function TaskCard({
             "block w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             // The Move menu sits below the button in the flow; the button gives
             // back the bottom padding the row would otherwise double.
-            live && onMove ? "px-3 pt-3 pb-2" : "p-3",
-            live && onOpen && "cursor-pointer",
+            onMove ? "px-3 pt-3 pb-2" : "p-3",
+            onOpen && "cursor-pointer",
           )}
         >
-          <span className={cn("block truncate text-sm font-medium", live && onOpen && "group-hover:text-primary-ink")}>
-            {task.title}
-          </span>
-
-          <span className="mt-2 flex flex-wrap items-center gap-1.5">
-            <Pill tone={PRIORITY_TONE[task.priority]}>{PRIORITY_LABEL[task.priority]}</Pill>
-            {task.recurrence_rule && <Pill tone="blue">{describeRule(task.recurrence_rule)}</Pill>}
-            {task.due_at && (
-              <span className={cn("num text-xs", overdue ? "text-destructive" : "text-muted-foreground")}>
-                {overdue ? "Overdue · " : ""}
-                {dateFmt(task.due_at)}
-              </span>
-            )}
-            {task.subtask_count > 0 && (
-              <span className="num text-xs text-muted-foreground">
-                {task.subtask_done_count}/{task.subtask_count}
-              </span>
-            )}
-            {task.assigned_to_name && (
-              <span className="truncate text-xs text-muted-foreground">{task.assigned_to_name}</span>
-            )}
-            {task.entity_label && <Pill tone="blue">{task.entity_label}</Pill>}
-          </span>
+          <TaskCardFace task={task} hoverTitle={!!onOpen} />
         </button>
 
         {/*
-          The grip, over the title strip: the MOUSE and KEYBOARD handle, and
-          the element that carries dnd-kit's `attributes` — the role, the name
-          of the drag, the instructions a screen reader reads, the `tabIndex`
-          Space works from. A sibling of the button and never an ancestor of it:
-          the mouseup that ends a drag lands on the grip, whose only listener is
-          dnd-kit's, so the click a mouse drag would otherwise leave behind opens
-          nothing.
+          The grip, over the title strip: the KEYBOARD handle, the mouse's
+          hint, and the element that carries dnd-kit's `attributes` — the role,
+          the name of the drag, the instructions a screen reader reads, the
+          `tabIndex` Space works from. A sibling of the button and never an
+          ancestor of it: the pointerup that ends a mouse drag lands on the grip, whose
+          only listener is dnd-kit's, so the click a mouse drag would otherwise
+          leave behind opens nothing.
 
           It is no longer `touch-none`. A touch drag is started by the HOLD, on
           the wrapper, and a title strip that refused to scroll would be a dead
           band across every card on the board.
         */}
-        {live && onOpen && onMove && (
+        {onOpen && onMove && (
           <>
             {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions --
                 role="button" arrives via {...attributes} (dnd-kit), which the rule
@@ -488,12 +576,16 @@ function TaskCard({
               {...attributes}
               onClick={onOpen}
               aria-label={`Drag “${task.title}”`}
-              className="absolute left-3 right-3 top-3 flex h-5 cursor-grab items-center justify-center active:cursor-grabbing"
+              className="absolute left-3 right-3 top-3 flex h-5 cursor-grab items-center justify-center rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing"
             >
-              {/* The affordance the old board lacked: a visible grip so a mouse
-                  user can see what to grab, instead of a cursor change over an
-                  invisible band. */}
-              <span className="pointer-events-none select-none text-xs leading-none text-muted-foreground/70" aria-hidden>
+              {/* Hover-only dots: the strip is transparent until the card is
+                  hovered or focused, so the dots never sit on the title a
+                  reader is trying to read. `focus-within` keeps them visible
+                  for the keyboard reader holding the grip. */}
+              <span
+                className="pointer-events-none select-none text-xs leading-none text-muted-foreground/70 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
+                aria-hidden
+              >
                 ⠿
               </span>
             </div>
@@ -504,7 +596,7 @@ function TaskCard({
       {/* The keyboard route. A real menu rather than a hover affordance,
           because a control that only appears on pointer-hover does not exist
           for a keyboard user (FRONTEND_GUIDE §7.3). */}
-      {live && onMove && (
+      {onMove && (
         <div className="flex justify-end px-3 pb-3">
           <DropdownMenu
             align="end"
@@ -523,6 +615,57 @@ function TaskCard({
         </div>
       )}
     </article>
+  );
+}
+
+/**
+ * The copy that follows the pointer. Deliberately NOT a `TaskCardLive` and
+ * deliberately hook-free: no `useDraggable` (see the header), no listeners, no
+ * menu — paint only, sharing the face so the copy and the card cannot drift.
+ */
+function TaskCardOverlay({ task }: { task: Task }) {
+  return (
+    <article className="group relative rounded-md border bg-card shadow-sm transition-opacity rotate-1 shadow-lg ring-1 ring-primary">
+      <div className="block w-full p-3 text-left">
+        <TaskCardFace task={task} hoverTitle={false} />
+      </div>
+    </article>
+  );
+}
+
+/**
+ * The card's face: title plus the meta row. One component so the board card
+ * and the drag copy render the same words in the same order.
+ */
+function TaskCardFace({ task, hoverTitle }: { task: Task; hoverTitle: boolean }) {
+  const overdue =
+    task.due_at && task.status !== "DONE" && task.status !== "CANCELLED" && new Date(task.due_at) < new Date();
+  return (
+    <>
+      <span className={cn("block truncate text-sm font-medium", hoverTitle && "group-hover:text-primary-ink")}>
+        {task.title}
+      </span>
+
+      <span className="mt-2 flex flex-wrap items-center gap-1.5">
+        <Pill tone={PRIORITY_TONE[task.priority]}>{PRIORITY_LABEL[task.priority]}</Pill>
+        {task.recurrence_rule && <Pill tone="blue">{describeRule(task.recurrence_rule)}</Pill>}
+        {task.due_at && (
+          <span className={cn("num text-xs", overdue ? "text-destructive" : "text-muted-foreground")}>
+            {overdue ? "Overdue · " : ""}
+            {dateFmt(task.due_at)}
+          </span>
+        )}
+        {task.subtask_count > 0 && (
+          <span className="num text-xs text-muted-foreground">
+            {task.subtask_done_count}/{task.subtask_count}
+          </span>
+        )}
+        {task.assigned_to_name && (
+          <span className="truncate text-xs text-muted-foreground">{task.assigned_to_name}</span>
+        )}
+        {task.entity_label && <Pill tone="blue">{task.entity_label}</Pill>}
+      </span>
+    </>
   );
 }
 

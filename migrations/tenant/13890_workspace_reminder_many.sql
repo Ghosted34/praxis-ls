@@ -225,13 +225,19 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_workspace_reminder_series_slot
 -- single pair is what 13810 supported).
 -- ============================================================================
 
--- Tasks with an armed one-column reminder.
+-- Legacy relative reminders carry BOTH the preset and its resolved instant.
+-- The new representation stores only the preset for relative reminders; the
+-- resolved instant belongs only to absolute reminders. Normalize on import so
+-- valid 13810 pairs satisfy the new exactly-one-non-null CHECK (including 0).
+-- Tasks with an armed reminder.
 INSERT INTO workspace_reminder (
   owner_type, owner_id, reminder_minutes, remind_at, reminder_sent_at,
   ordinal, scope, email, is_deleted, created_by, updated_by, created_at, updated_at
 )
 SELECT
-  'task', t.task_id, t.reminder_minutes, t.remind_at, t.reminder_sent_at,
+  'task', t.task_id, t.reminder_minutes,
+  CASE WHEN t.reminder_minutes IS NULL THEN t.remind_at ELSE NULL END,
+  t.reminder_sent_at,
   1, CASE WHEN t.reminder_minutes IS NOT NULL THEN 'series' ELSE 'this' END,
   false, t.is_deleted, t.created_by, t.created_by, t.created_at, t.updated_at
 FROM task t
@@ -250,7 +256,8 @@ INSERT INTO workspace_reminder (
   ordinal, scope, email, is_deleted, created_by, updated_by, created_at, updated_at
 )
 SELECT
-  'calendar_event', e.calendar_event_id, e.reminder_minutes, e.remind_at,
+  'calendar_event', e.calendar_event_id, e.reminder_minutes,
+  CASE WHEN e.reminder_minutes IS NULL THEN e.remind_at ELSE NULL END,
   e.reminder_sent_at,
   1, CASE WHEN e.reminder_minutes IS NOT NULL THEN 'series' ELSE 'this' END,
   false, e.is_deleted, e.created_by, e.created_by, e.created_at, e.updated_at

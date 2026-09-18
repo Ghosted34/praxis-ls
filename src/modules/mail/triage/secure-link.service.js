@@ -23,6 +23,7 @@
 
 const { AppError } = require("../../../utils/errors");
 const { emitEvent } = require("../../../shared/events/emit");
+const { contentTypeForPath } = require("../../vault/document_vault/document_vault.mime");
 const { logger } = require("../../../config/logger");
 const token = require("./secure-link");
 
@@ -216,7 +217,15 @@ async function fetchTarget(client, row) {
     return {
       kind: "VAULT_DOC",
       filename: doc.original_name || doc.filename || row.label || "document",
-      content_type: doc.content_type || "application/octet-stream",
+      // From the STORAGE KEY's extension, which is the extension the upload
+      // service itself chose — not from `doc.content_type`, which this line
+      // used to read. `document_vault` has no `content_type` column (0340
+      // creates the table without one and no later migration adds it), so that
+      // expression was `undefined || "application/octet-stream"` on every row
+      // in the product: every secure-link recipient has been told the file is
+      // an unnamed binary, whatever it actually was. Shared with the vault's
+      // own download route so the two can never drift again.
+      content_type: contentTypeForPath(doc.storage_path),
       size_bytes: doc.size_bytes || (buffer && buffer.length) || null,
       buffer,
       doc_id: doc.doc_id,

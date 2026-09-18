@@ -82,6 +82,12 @@ const base = {
   niu: optionalText,
   rccm: optionalText,
   email,
+  // Review #26 — company-level phone (13900). Shape only, like everything here:
+  // whether it is MANDATORY is per-tenant policy in party_field_config, where
+  // 13900 seeds it required. E.164 preferred but not forced — a legacy row
+  // carries what it carries, and refusing to save an edit over an old number
+  // format would lock the record.
+  phone: optionalText,
   // 0480 — the bill-to address. Required on an OHADA-compliant invoice.
   address: optionalText,
   city: optionalText,

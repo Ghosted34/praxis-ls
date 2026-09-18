@@ -1,12 +1,12 @@
 {
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
-  "modules_mounted": 140,
-  "route_count": 1644,
+  "modules_mounted": 141,
+  "route_count": 1650,
   "tiers": {
     "public": 68,
     "self-scoped": 103,
-    "gated": 1473
+    "gated": 1479
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -422,6 +422,12 @@
       "rbac": false,
       "validated": false,
       "tier": "self-scoped"
+    },
+    "DELETE /api/tenant/office-expenses/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/onboarding/templates/items/:itemId": {
       "auth": true,
@@ -3021,6 +3027,24 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/office-expenses/": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/office-expenses/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/office-expenses/totals": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/onboarding/": {
       "auth": true,
       "rbac": true,
@@ -5409,6 +5433,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "PATCH /api/tenant/office-expenses/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "PATCH /api/tenant/onboarding/items/:itemId": {
       "auth": true,
       "rbac": true,
@@ -7623,12 +7653,6 @@
       "validated": false,
       "tier": "gated"
     },
-    "POST /api/tenant/mail/senders/:id/archive": {
-      "auth": true,
-      "rbac": true,
-      "validated": false,
-      "tier": "gated"
-    },
     "POST /api/tenant/mail/signature/batch": {
       "auth": true,
       "rbac": true,
@@ -7946,6 +7970,18 @@
       "rbac": false,
       "validated": false,
       "tier": "self-scoped"
+    },
+    "POST /api/tenant/office-expenses/": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/office-expenses/:id/post": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/onboarding/": {
       "auth": true,

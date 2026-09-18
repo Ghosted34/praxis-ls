@@ -398,6 +398,20 @@ const Schema = z.object({
   // (the heartbeat/disconnect govern the body).
   AI_REQUEST_TIMEOUT_MS: int(120_000),
   AI_STREAM_TIMEOUT_MS: int(300_000),
+  /**
+   * The budget for the rolling-summary call, which is NOT on the answer's
+   * critical path (review 16 Sep 2026 #17 — "memory timeouts").
+   *
+   * `history_.condense` runs BEFORE the model sees the user's question, so that
+   * every answer benefits from the summary just written. Inheriting the
+   * 120 s default meant a slow or hung summariser could spend 120 s on the
+   * primary vendor and 120 s more on the fallback — four minutes — before the
+   * question was even sent, and the user experienced it as the assistant
+   * hanging on a conversation that had simply grown long. Since the summary is
+   * best-effort and retries on the next turn (`summary_through` only advances
+   * on success), a much tighter budget costs nothing and bounds the stall.
+   */
+  AI_SUMMARY_TIMEOUT_MS: int(20_000),
 
   EMBEDDINGS_PROVIDER: z.string().default("openai"),
   EMBEDDINGS_MODEL: z.string().default("text-embedding-3-small"),

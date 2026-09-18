@@ -99,12 +99,32 @@ function buildFieldMeta(schema, availableReads) {
     } else if (prop.type === "boolean") {
       meta[key] = { ...base, widget: "boolean" };
     } else if (prop.type === "number" || prop.type === "integer") {
-      meta[key] = { ...base, widget: "number" };
+      // Bounds ride along so the input can enforce them before submit rather
+      // than letting the server be the first thing that says no.
+      meta[key] = {
+        ...base,
+        widget: "number",
+        ...(typeof prop.minimum === "number" ? { min: prop.minimum } : {}),
+        ...(typeof prop.maximum === "number" ? { max: prop.maximum } : {}),
+        ...(prop.type === "integer" ? { step: 1 } : {}),
+      };
     } else if (isRefField(key)) {
       const ref = resolveRef(key, availableReads);
       meta[key] = ref ? { ...base, widget: "select", ref } : { ...base, widget: "text" };
+    } else if (prop.format === "date" || prop.format === "date-time") {
+      // A real date input, now that the schema says so. Previously every date
+      // was a free-text box the user could type anything into — and the model's
+      // pre-fill was the only thing keeping the format plausible.
+      meta[key] = { ...base, widget: prop.format === "date" ? "date" : "datetime" };
     } else {
-      meta[key] = { ...base, widget: "text" };
+      meta[key] = {
+        ...base,
+        widget: "text",
+        // `format` reaches the client so an email/url field can use the right
+        // input type and the browser's own validation; `maxLength` caps the box.
+        ...(prop.format ? { format: prop.format } : {}),
+        ...(typeof prop.maxLength === "number" ? { maxLength: prop.maxLength } : {}),
+      };
     }
   }
   return meta;

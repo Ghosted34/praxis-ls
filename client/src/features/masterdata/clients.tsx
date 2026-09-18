@@ -88,6 +88,7 @@ export function ClientForm({
       trading_name: row?.trading_name ?? "",
       entity_id: row?.entity_id ?? "",
       email: row?.email ?? "",
+      phone: row?.phone ?? "",
       country_code: row?.country_code ?? "CM",
       payment_terms_days:
         row?.payment_terms_days != null ? String(row.payment_terms_days) : "",
@@ -362,6 +363,26 @@ export function ClientForm({
               <Input
                 type="email"
                 placeholder="ap@client.cm"
+                {...field}
+                value={String(field.value ?? "")}
+              />
+            )}
+          </FormField>
+          {/* Review #26 — the COMPANY's phone, not a contact's. Required by
+              the seeded tenant policy (13900); the server's enforceRequired
+              answers 422 naming this field if it is skipped, so the asterisk
+              here is the same rule said earlier. */}
+          <FormField
+            form={form}
+            name="phone"
+            label={tr("Phone")}
+            required
+            hint="The company's own number — contacts carry theirs separately"
+          >
+            {(field) => (
+              <Input
+                type="tel"
+                placeholder="+237 6 99 00 00 00"
                 {...field}
                 value={String(field.value ?? "")}
               />

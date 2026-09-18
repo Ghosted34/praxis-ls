@@ -204,6 +204,7 @@ export const AREAS: Area[] = [
       { key: "tax", label: "Tax center" },
       { key: "assets", label: "Assets" },
       { key: "debt", label: "Financing" },
+      { key: "office-expenses", label: "Office expenses" },
     ],
   },
   {

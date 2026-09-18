@@ -20,6 +20,8 @@ export type Client = {
   niu?: string | null;
   rccm?: string | null;
   email?: string | null;
+  /** Review #26 (13900) — the company's own phone, mandatory on creation. */
+  phone?: string | null;
   // 0480 — bill-to address. Neither master had one before, so the counterparty
   // side of an invoice could only carry a name and a tax number.
   address?: string | null;
@@ -63,6 +65,7 @@ export type ClientInput = {
   primary_contact?: PartyContactInput;
   primary_address?: PartyAddressInput;
   email?: string;
+  phone?: string;
   address?: string;
   city?: string;
   country_code?: string;
@@ -160,6 +163,8 @@ export type Supplier = {
   city?: string | null;
   country_code?: string | null;
   payment_method?: string | null;
+  /** Review #29 (13900) — every accepted method; payment_method mirrors [0]. */
+  payment_methods?: string[] | null;
   momo_network?: string | null;
   momo_number?: string | null;
   is_non_resident?: boolean;
@@ -168,6 +173,7 @@ export type Supplier = {
   registration_status?: string | null;
   verification_status?: string | null;
   avl_status?: string | null;
+  supplier_type_id?: string | null;
 };
 export type SupplierInput = {
   name: string;
@@ -184,6 +190,10 @@ export type SupplierInput = {
   country_code?: string;
   payment_method?:
     "BANK" | "CASH" | "MOBILE_MONEY" | "CHEQUE" | "BANK_TRANSFER";
+  /** Review #29 — the canonical multi-select; the scalar becomes a mirror. */
+  payment_methods?: (
+    "BANK" | "CASH" | "MOBILE_MONEY" | "CHEQUE" | "BANK_TRANSFER"
+  )[];
   momo_network?: string;
   momo_number?: string;
   is_non_resident?: boolean;

@@ -64,10 +64,17 @@ export function WorkRail({
   thread,
   onChanged,
   language = "en",
+  onCollapse,
 }: {
   thread: WorkRailThread;
   onChanged: () => void;
   language?: "en" | "fr";
+  /**
+   * Hide the whole rail (review #22). Absent = not offered, which is how the
+   * rail renders anywhere it is not the collapsible column — the control
+   * belongs to whoever owns the layout, not to the rail.
+   */
+  onCollapse?: () => void;
 }) {
   const [open, setOpen] = React.useState<Section | null>(null);
   const [converting, setConverting] = React.useState(false);
@@ -80,7 +87,29 @@ export function WorkRail({
   React.useEffect(() => { setOpen(null); setConverting(false); }, [id]);
 
   return (
-    <aside className="flex min-h-0 w-full flex-col gap-3 overflow-y-auto border-l border-border p-3 text-sm">
+    <aside
+      id="mail-work-rail"
+      className="flex min-h-0 w-full flex-col gap-3 overflow-y-auto border-l border-border p-3 text-sm"
+    >
+      {/* The way back out. At the TOP because that is where the reader's eye
+          already is when they decide the rail is in the way, and because the
+          rail scrolls — a control at the bottom of a long panel is a control
+          you have to go looking for. */}
+      {onCollapse && (
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={onCollapse}
+            aria-expanded
+            aria-controls="mail-work-rail"
+            title={tr("Hide the work panel")}
+            className="-mr-1 -mt-1 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            <span aria-hidden>›</span> {tr("Hide")}
+          </button>
+        </div>
+      )}
+
       <TriageBar thread={thread} onChanged={onChanged} />
 
       <ThreadSummary threadId={id} />

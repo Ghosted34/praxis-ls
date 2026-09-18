@@ -2,24 +2,83 @@
  * Retrieval — embed a query and vector-search BOTH corpora (tenant ∪ global),
  * then apply the caller's field-confidentiality to the tenant hits. Cosine
  * distance via pgvector's <=> operator. See doc/AI_KNOWLEDGE.md §3.
+ *
+ * ── THREE POOLS WITH SEPARATE BUDGETS (audit A3, A4) ────────────────────────
+ *
+ * This used to be one number. `k` defaulted to 6, was used as the LIMIT on each
+ * corpus, and was then used AGAIN to truncate the merged list — so the whole
+ * grounding block was six chunks, and the global corpus (which is mostly this
+ * repository's own source code) competed with the tenant's own records for
+ * those six slots. A question about receivables could be grounded on four
+ * chunks of JavaScript.
+ *
+ * So hits are now drawn into three pools, each with its own budget:
+ *
+ *   knowledge  the OHADA KB, the PRD and the rest of `doc/` (global kind `doc`).
+ *              Holds a small RESERVED allocation, because it is the only place
+ *              the model can learn SYSCOHADA rules it does not know natively,
+ *              and a tenant corpus of a thousand entity cards will outrank it
+ *              on cosine similarity every time.
+ *
+ *   tenant     the caller's own records, confidentiality-filtered. Gets every
+ *              slot the other two do not take — it is what a tenant question is
+ *              about.
+ *
+ *   codebase   source, UI and platform-schema chunks. EXCLUDED BY DEFAULT
+ *              (audit A4): feeding raw code and schema to the assistant is a
+ *              large part of why it drifts into snake_case, UUIDs and "database
+ *              language" in answers meant for an operator. A caller that really
+ *              wants them — a "how does Praxis work" surface — passes
+ *              `includeCodebase: true` and gets a hard-capped allocation.
+ *
+ * An unfilled budget is not wasted: knowledge and tenant backfill each other by
+ * similarity, so a tenant with no `doc/` hits above the floor still gets `k`
+ * chunks. Codebase does not take part in backfill — its budget is a ceiling,
+ * not a reservation.
  */
 "use strict";
 
 const platformDb = require("../platform/db");
 const embeddings = require("./embeddings.service");
+const { config } = require("../../config/env");
 
 const toVec = (arr) => `[${arr.join(",")}]`;
+const bySim = (a, b) => b.sim - a.sim;
+
+/** Global-corpus kinds that are DOMAIN KNOWLEDGE rather than this repo's guts. */
+const KNOWLEDGE_KINDS = ["doc", "other"];
+
+/**
+ * Drop hits that the vector index returned only because something had to come
+ * back. Deliberately low — this is a junk filter, not a relevance opinion.
+ */
+const SIM_FLOOR = 0.15;
+
+/** Hard ceiling on codebase chunks when a caller opts into them. */
+const CODEBASE_BUDGET = 2;
+
+/** Over-fetch per corpus so the floor and the budgets have something to choose from. */
+const fetchWidth = (k) => Math.min(60, Math.max(k, 12) * 2);
 
 /**
  * @param {object}   opts
  * @param {string}   opts.query              natural-language query
  * @param {object}   [opts.tenantClient]     connection bound to the tenant schema
  * @param {string[]} [opts.allowed]          confidentiality tags the caller may see
- * @param {number}   [opts.k]                top-k per corpus (default 6)
+ * @param {number}   [opts.k]                total chunks returned (default AI_RETRIEVAL_K)
+ * @param {number}   [opts.kbBudget]         slots reserved for domain knowledge
+ * @param {boolean}  [opts.includeCodebase]  include source/schema chunks (default false)
+ * @param {number}   [opts.minSim]           similarity floor
  */
 async function retrieve(opts) {
-  const k = opts.k || 6;
+  const k = opts.k || config.AI_RETRIEVAL_K;
   const allowed = opts.allowed || ["normal"];
+  const includeCodebase = opts.includeCodebase === true;
+  const minSim = opts.minSim === undefined ? SIM_FLOOR : opts.minSim;
+  // Never reserve more for the KB than the answer has room for.
+  const kbBudget = Math.max(0, Math.min(opts.kbBudget === undefined ? config.AI_RETRIEVAL_KB_K : opts.kbBudget, k));
+  const codeBudget = includeCodebase ? Math.min(CODEBASE_BUDGET, k) : 0;
+  const width = fetchWidth(k);
 
   // Embed the query. When embeddings are unavailable (no vendor configured, or an
   // auth/network error) the service logs "skipping vectors" and returns []/undefined
@@ -31,17 +90,36 @@ async function retrieve(opts) {
 
   const hits = [];
 
-  // Global corpus (codebase, docs, platform schema) — always visible.
+  // Global corpus — domain knowledge (docs). Filtered in SQL rather than after
+  // the fact, so a corpus dominated by source files cannot starve the KB out of
+  // its own budget before the budget is ever applied.
   const g = await platformDb.query(
     `SELECT d.kind, d.ref, d.title, c.content, 1 - (c.embedding <=> $1::vector) AS sim
        FROM platform.ai_chunk c
        JOIN platform.ai_document d ON d.ai_document_id = c.ai_document_id
       WHERE c.embedding IS NOT NULL
+        AND d.kind = ANY($3)
       ORDER BY c.embedding <=> $1::vector
       LIMIT $2`,
-    [qvec, k],
+    [qvec, width, KNOWLEDGE_KINDS],
   );
-  for (const r of g.rows) hits.push({ scope: "global", ...r });
+  for (const r of g.rows) hits.push({ scope: "global", pool: "knowledge", ...r });
+
+  // Global corpus — this repository. Only when the caller asked for it (A4), and
+  // only ever a couple of chunks.
+  if (codeBudget > 0) {
+    const c = await platformDb.query(
+      `SELECT d.kind, d.ref, d.title, c.content, 1 - (c.embedding <=> $1::vector) AS sim
+         FROM platform.ai_chunk c
+         JOIN platform.ai_document d ON d.ai_document_id = c.ai_document_id
+        WHERE c.embedding IS NOT NULL
+          AND NOT (d.kind = ANY($3))
+        ORDER BY c.embedding <=> $1::vector
+        LIMIT $2`,
+      [qvec, width, KNOWLEDGE_KINDS],
+    );
+    for (const r of c.rows) hits.push({ scope: "global", pool: "codebase", ...r });
+  }
 
   // Tenant corpus — filtered by confidentiality the caller may see.
   if (opts.tenantClient) {
@@ -54,14 +132,37 @@ async function retrieve(opts) {
           AND d.confidentiality = ANY($3)
         ORDER BY c.embedding <=> $1::vector
         LIMIT $2`,
-      [qvec, k, allowed],
+      [qvec, width, allowed],
     );
-    for (const r of t.rows) hits.push({ scope: "tenant", ...r });
+    for (const r of t.rows) hits.push({ scope: "tenant", pool: "tenant", ...r });
   }
 
-  hits.sort((a, b) => b.sim - a.sim);
-  const ranked = boostDomainHits(hits, opts.query || "");
-  return ranked.slice(0, k);
+  const ranked = boostDomainHits(hits, opts.query || "").filter((h) => Number(h.sim) >= minSim);
+  return compose(ranked, { k, kbBudget, codeBudget });
+}
+
+/**
+ * Fill the answer from the three pools: knowledge takes its reservation first
+ * (it is the pool that gets crowded out), codebase takes its hard cap, and the
+ * tenant takes everything left. Knowledge and tenant then backfill each other
+ * by similarity so an empty pool costs nobody a slot.
+ */
+function compose(ranked, { k, kbBudget, codeBudget }) {
+  const pools = { knowledge: [], tenant: [], codebase: [] };
+  for (const h of ranked) (pools[h.pool] || pools.tenant).push(h);
+  for (const p of Object.values(pools)) p.sort(bySim);
+
+  const picked = [];
+  const take = (pool, n) => {
+    for (let i = 0; i < n && pool.length; i++) picked.push(pool.shift());
+  };
+
+  take(pools.knowledge, kbBudget);
+  take(pools.codebase, codeBudget);
+  take(pools.tenant, k - picked.length);
+  take([...pools.knowledge, ...pools.tenant].sort(bySim), k - picked.length);
+
+  return picked.sort(bySim).slice(0, k);
 }
 
 /**
@@ -100,4 +201,4 @@ function toContextBlock(hits) {
     .join("\n\n");
 }
 
-module.exports = { retrieve, toContextBlock, boostDomainHits };
+module.exports = { retrieve, toContextBlock, boostDomainHits, compose };

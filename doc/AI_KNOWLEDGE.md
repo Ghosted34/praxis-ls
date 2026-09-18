@@ -40,7 +40,7 @@ Ingestion is a worker with four triggers:
 
 - **EMV toggle:** the whole surface is gated by `feature_state` — `ai.assistant` (UI), `ai.assistant.backend` (server actions), `ai.vectorization` (recall). Off → nothing runs.
 - **The AI never exceeds the user:** recall filters by the caller's field-confidentiality; actions run with the caller's RBAC and are Zod-gated (≤2 self-correct → manual form). Human confirmation before anything writes/sends.
-- **Redaction before egress:** PII/financial fields are masked before any text is sent to an external model or embedded.
+- **Redaction before egress, in two classes:** text that is persisted, indexed or client-facing (the summariser, the embeddings vendor, the proposal generator) is strictly masked; the caller's own authorised data on its way into one prompt keeps its amounts, references and contact details, because a model asked to report a figure it was never shown will invent one. Payment instruments and government identity numbers are masked on both. See `doc/AI_ARCHITECTURE.md` §6 (audit A1/F3).
 - **Everything logged:** prompts/metadata/cost → `ai_usage_ledger`; executed actions → `immutable_ledger`. Per-tenant spend caps (`ai_budget_period`).
 - **Provider routing:** DeepSeek (reasoning/agent) primary → Gemini fallback; OpenAI-compatible embeddings; Whisper/Groq for voice. Keys per tenant where billing separates.
 
@@ -55,7 +55,7 @@ src/services/ai/knowledge/schema-introspect.js   DB → schema cards
 src/services/ai/knowledge/codebase.js        repo/docs → chunks
 src/services/ai/knowledge/entity-cards.js    tenant rows → cards
 src/services/ai/ingest.service.js            embed + upsert (tenant | global), idempotent
-src/services/ai/retrieval.service.js         query → vector search (tenant ∪ global) + filter
+src/services/ai/retrieval.service.js         query → vector search (tenant ∪ global) + filter; three pools (knowledge / tenant / codebase) with separate budgets, codebase off by default
 src/services/ai/orchestrator.service.js      recall + function-calling + Zod gate + execute + log
 scripts/ai/reindex.js                        self-learn backfill CLI
 ```

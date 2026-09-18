@@ -44,12 +44,27 @@ const { logger } = require("../../../config/logger");
 const hrQuery = require("./attendance.query");
 const calendar = require("./attendance.calendar");
 
+const { isValidTimeZone } = require("../../dashboard/workspace/workspace.time");
+
 const MODULE = "MOD-14";
 
-/** The tenant's workplace clock. Douala unless told otherwise (0697). */
+/** The tenant's workplace clock. Douala unless told otherwise (0697).
+ *
+ *  Mirrors workspace.time.timezoneOf, and hardened the same way: an invalid
+ *  `hr.timezone` would raise `RangeError` out of `reconcileDate` the moment a
+ *  reusable reconciler ran, so the same read-side fallback and the same warning
+ *  guard it rather than trusting the type. The two readers share one rule. */
 async function timezoneOf(client) {
   const v = await getSetting(client, "hr", "timezone", "Africa/Douala");
-  return typeof v === "string" && v.trim() ? v.trim() : "Africa/Douala";
+  const value = typeof v === "string" ? v.trim() : "";
+  if (value && isValidTimeZone(value)) return value;
+  if (value) {
+    logger.warn(
+      { setting: "hr.timezone", value },
+      "[attendance] hr.timezone is not a valid IANA timezone — using Africa/Douala",
+    );
+  }
+  return "Africa/Douala";
 }
 
 /** The active rule of a kind, or null. First by code, so the choice is stable. */

@@ -1215,6 +1215,9 @@ async function updateSeriesEvents(client, seriesId, patch, { exclude, rearm = fa
  * Day keys use `AT TIME ZONE $tz` so a bar labelled "15 September" is the
  * tenant's 15 September, matching Today and the Calendar. The zone arrives as
  * a parameter from `workspace.time.timezoneOf()`; it is never the server's.
+ * `timezoneOf` validates the setting against the runtime's tzdb and falls back
+ * to Douala, so a bad `hr.timezone` value cannot reach Postgres as SQLSTATE
+ * 22023 ("invalid value for parameter 'TimeZone'").
  *
  * ── THIS IS OPERATIONAL DATA AND NOTHING ELSE ──────────────────────────────
  *

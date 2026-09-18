@@ -41,20 +41,17 @@ vi.mock("@/lib/api-client", async () => {
 });
 
 /**
- * The day timeline is not what these tests are about — pin it to "nothing".
- * Partial mock again: the task and event dialogs, which TodayPage mounts
- * closed, take their mutations from this same module.
+ * The day timeline is not what these tests are about — pin it to a controllable
+ * impl so a test can make it succeed or fail. The task and event dialogs, which
+ * TodayPage mounts closed, take their mutations from this same module, so the
+ * mock is partial rather than a whole-module stub.
  */
+const useDayMock = vi.fn();
 vi.mock("./hooks", async () => {
   const actual = await vi.importActual<typeof import("./hooks")>("./hooks");
   return {
     ...actual,
-    useDay: () => ({
-      data: { items: [], audience: "mine", audiences: ["mine"], tasks: 0, events: 0 },
-      error: null,
-      isLoading: false,
-      refetch: vi.fn(),
-    }),
+    useDay: (args: unknown) => useDayMock(args),
   };
 });
 
@@ -137,6 +134,22 @@ const OWED = {
   ],
 };
 
+/** A healthy day timeline — the panel Today does not blank the hub for. */
+const DAY_OK = {
+  data: { items: [], audience: "mine", audiences: ["mine"], tasks: 0, events: 0 },
+  error: null,
+  isLoading: false,
+  refetch: vi.fn(),
+};
+
+/** The panel failing the way it did live: a 500 from the day query. */
+const DAY_FAIL = {
+  data: undefined,
+  error: Object.assign(new Error("Something went wrong on our side — please try again."), { code: "INTERNAL_ERROR" }),
+  isLoading: false,
+  refetch: vi.fn(),
+};
+
 beforeEach(() => {
   tenant.mockReset();
   tenant.mockImplementation((p: string) => {
@@ -148,6 +161,8 @@ beforeEach(() => {
   });
   apiPaged.mockReset();
   apiPaged.mockResolvedValue(EMPTY_FEED);
+  useDayMock.mockReset();
+  useDayMock.mockReturnValue(DAY_OK);
 });
 
 describe("Today — the approvals and alerts roll-up", () => {
@@ -247,5 +262,35 @@ describe("Today — the approvals and alerts roll-up", () => {
     expect(
       await screen.findByText("Nothing awaiting your validation or approval."),
     ).toBeTruthy();
+  });
+});
+
+/* A 500 from one panel must not blank the hub.
+ *
+ * Production on 18 September 2026: `GET /workspace/day` answered 500 while
+ * every other Today panel (`/approvals`, `/alerts`, the owed-receipts read)
+ * kept rendering. The screenshot showed the day panel dead and the rest fine.
+ * That isolation is deliberate — the panels are independent queries, each
+ * with its own error branch and retry — and the point of this test is to pin
+ * it so a refactor that makes the day gate the rest of the page is caught,
+ * not merged. */
+describe("Today — one panel's failure stays one panel's failure", () => {
+  it("shows the day panel unavailable while approvals, alerts, activity and receipts still render", async () => {
+    useDayMock.mockReturnValue(DAY_FAIL);
+    /* The default `beforeEach` tenant mock answers every focused read, so by
+       the time this overrides only `useDay` the sibling panels have the data
+       they need. The day is the one that failed; the rest answer for
+       themselves — and that is the whole point. */
+    view();
+
+    expect(await screen.findByText(/Something went wrong on our side/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Retry/ })).toBeTruthy();
+    expect(await screen.findByText("Purchase request PR-1042")).toBeTruthy();
+    expect(screen.getByText("Container left the yard")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Recent activity" })).toBeTruthy();
+    expect(screen.getByText("DOSS-9")).toBeTruthy();
+
+    // The hub did not crash: the header and the other panels are still on the page.
+    expect(screen.getByRole("heading", { name: "Today" })).toBeTruthy();
   });
 });

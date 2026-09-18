@@ -39,12 +39,17 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-DROP TRIGGER IF EXISTS trg_client_sync_active ON client_master;
-CREATE TRIGGER trg_client_sync_active
+CREATE OR REPLACE TRIGGER trg_client_sync_active
 BEFORE INSERT OR UPDATE ON client_master
 FOR EACH ROW EXECUTE FUNCTION party_sync_active();
 
-DROP TRIGGER IF EXISTS trg_supplier_sync_active ON supplier_master;
-CREATE TRIGGER trg_supplier_sync_active
+CREATE OR REPLACE TRIGGER trg_supplier_sync_active
 BEFORE INSERT OR UPDATE ON supplier_master
 FOR EACH ROW EXECUTE FUNCTION party_sync_active();
+
+-- DOWN
+-- DROP TRIGGER IF EXISTS trg_client_sync_active ON client_master;
+-- DROP TRIGGER IF EXISTS trg_supplier_sync_active ON supplier_master;
+-- DROP FUNCTION IF EXISTS party_sync_active();
+-- (The is_active backfill is not reversible — pre-trigger values were the
+--  buggy DEFAULT true and are not worth restoring.)

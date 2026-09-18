@@ -127,7 +127,12 @@ const taskUpdate = z
   .strict()
   .refine((v) => Object.keys(v).length > 0, { message: "nothing to update" });
 
-const statusChange = z.object({ status: z.enum(STATUSES) }).strict();
+// The effective audience rides on the body so a Team/All card moved from the
+// board reaches the server with the reach the board was rendered at (B-03).
+// It is a REQUEST, never authority: `resolveAudience` narrows it server-side.
+const statusChange = z
+  .object({ status: z.enum(STATUSES), audience: z.enum(AUDIENCES).optional() })
+  .strict();
 
 const subtaskAdd = z
   .object({
@@ -151,6 +156,70 @@ const subtaskPatch = z
 
 const watcherAdd = z.object({ user_id: z.string().uuid() }).strict();
 
+/* ── hierarchy, dependencies and collaboration (PR 2) ────────────────────── */
+
+/**
+ * A child task. The same fields as a top-level one MINUS the structural ones.
+ *
+ * `parent_task_id` is absent because it is the route (`/tasks/:id/children`) —
+ * accepting it in the body as well would let the two disagree, and the answer
+ * to "which wins" is a bug whichever way it is decided. `is_personal` is
+ * absent because a child of shared work is not a private note, and
+ * `recurrence_rule` is absent because a child of a repeating parent is a
+ * one-off: a series per child multiplies the board by the recurrence count.
+ */
+const childCreate = z
+  .object({
+    title: z.string().trim().min(1, "a task needs a title").max(300),
+    description: z.string().trim().max(4000).nullable().optional(),
+    status: z.enum(STATUSES).optional(),
+    priority: z.enum(PRIORITIES).optional(),
+    assigned_to: z.string().uuid().nullable().optional(),
+    due_at: dt(DATETIME_MSG).nullable().optional(),
+    // Omit both and the child inherits the parent's operations-file link; send
+    // them to point the child at a different record.
+    entity_type: z.string().trim().max(40).nullable().optional(),
+    entity_id: z.string().uuid().nullable().optional(),
+    reminder_minutes: z.number().int().min(0).max(525600).nullable().optional(),
+    remind_at: dt(DATETIME_MSG).nullable().optional(),
+    subtasks: z.array(subtask).max(50).optional(),
+  })
+  .strict();
+
+/** One blocked-by edge. The blocked task is the route; this names the other end. */
+const dependencyAdd = z
+  .object({ depends_on_task_id: z.string().uuid() })
+  .strict();
+
+/**
+ * "Proceed anyway", or withdraw it.
+ *
+ * The reason is optional on purpose: a required justification field produces
+ * "n/a" and teaches people the form is theatre. `overridden` is explicit rather
+ * than a toggle-by-presence so withdrawing an override is the same call.
+ */
+const dependencyOverride = z
+  .object({
+    overridden: z.boolean(),
+    reason: z.string().trim().max(500).nullable().optional(),
+  })
+  .strict();
+
+/**
+ * A manual ping.
+ *
+ * `user_ids` is OPTIONAL and means "everyone already on this task". The
+ * service refuses any id that is not the assignee, the creator or a watcher —
+ * a task panel is not a general messaging channel, and the validator cannot
+ * know who is connected to the task, so the narrowing happens there.
+ */
+const taskPing = z
+  .object({
+    user_ids: z.array(z.string().uuid()).max(50).optional(),
+    message: z.string().trim().max(500).nullable().optional(),
+  })
+  .strict();
+
 const taskListQuery = strictQuery({
   status: filters.enum(STATUSES),
   priority: filters.enum(PRIORITIES),
@@ -165,6 +234,28 @@ const taskListQuery = strictQuery({
 const boardQuery = strictQuery({
   assigned_to: z.string().trim().max(64).optional(),
   audience: filters.enum(AUDIENCES),
+});
+
+/** The detail read carries the audience the list/board was rendered at (B-03). */
+const taskDetailQuery = strictQuery({ audience: filters.enum(AUDIENCES) });
+
+/**
+ * The Analytics window and its bounded filters.
+ *
+ * Strict, like every other query here, so a filter that does nothing is a 422
+ * rather than a parameter the server silently ignores while the chart claims
+ * to honour it. The WINDOW is optional — the service defaults and clamps it
+ * (tasks.service.resolveAnalyticsWindow), because an unbounded aggregate over
+ * a tenant's whole history is a table scan reachable from a URL.
+ */
+const analyticsQuery = strictQuery({
+  from: dt(DATETIME_MSG).optional(),
+  to: dt(DATETIME_MSG).optional(),
+  audience: filters.enum(AUDIENCES),
+  status: filters.enum(STATUSES),
+  priority: filters.enum(PRIORITIES),
+  assigned_to: z.string().trim().max(64).optional(), // a uuid, or the literal "me"
+  scope_id: filters.uuid,
 });
 
 // The window is OPTIONAL because the controller defaults it to today in the
@@ -263,6 +354,10 @@ module.exports = {
   subtaskAdd: body(subtaskAdd),
   subtaskPatch: body(subtaskPatch),
   watcherAdd: body(watcherAdd),
+  childCreate: body(childCreate),
+  dependencyAdd: body(dependencyAdd),
+  dependencyOverride: body(dependencyOverride),
+  taskPing: body(taskPing),
   eventCreate: body(eventCreate),
   eventUpdate: body(eventUpdate),
   participantAdd: body(participantAdd),
@@ -271,12 +366,16 @@ module.exports = {
   // silently ignored parameter that makes a list look complete when it is not.
   taskListQuery: query(taskListQuery),
   boardQuery: query(boardQuery),
+  taskDetailQuery: query(taskDetailQuery),
+  analyticsQuery: query(analyticsQuery),
   dayQuery: query(dayQuery),
   deadlineQuery: query(deadlineQuery),
   eventListQuery: query(eventListQuery),
   // Exposed for tests and for the client's shared-schema gate.
   schemas: {
     taskCreate, taskUpdate, statusChange, subtaskAdd, subtaskPatch, watcherAdd,
+    childCreate, dependencyAdd, dependencyOverride, taskPing,
+    taskDetailQuery, analyticsQuery,
     eventCreate, eventUpdate, participantAdd, participantRespond,
     taskListQuery, boardQuery, dayQuery, deadlineQuery, eventListQuery,
     recurrenceRule, SERIES_SCOPE,

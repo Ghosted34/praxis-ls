@@ -142,11 +142,31 @@ export function useTaskListPaged(
   });
 }
 
-export function useTask(id: string | null) {
+/**
+ * One task, read at the audience the board or list is showing (B-03).
+ *
+ * The audience is part of the KEY as well as the request: two panels opened at
+ * different audiences are two different authorised answers, and sharing one
+ * cache entry between them would show a manager the "mine" reading of a card
+ * they opened from Everyone.
+ */
+export function useTask(id: string | null, audience?: Audience) {
   return useQuery<Task>({
-    queryKey: [ROOT, "task", id],
-    queryFn: () => api.getTask(id as string),
+    queryKey: [ROOT, "task", id, audience ?? "mine"],
+    queryFn: () => api.getTask(id as string, audience),
     enabled: !!id,
+  });
+}
+
+/** The operational dashboard. One read, one window, one authorised population. */
+export function useWorkspaceAnalytics(params: api.AnalyticsParams = {}) {
+  return useQuery<api.AnalyticsResponse>({
+    queryKey: [ROOT, "analytics", params],
+    queryFn: () => api.getAnalytics(params),
+    // An aggregate is expensive and does not move by the second. A minute is
+    // fresh enough for a dashboard and stops a filter flick refetching six
+    // aggregates per keystroke.
+    staleTime: 60_000,
   });
 }
 
@@ -200,8 +220,8 @@ export const useUpdateTask = () =>
     api.updateTask(id, input),
   );
 export const useMoveTask = () =>
-  useWorkspaceMutation(({ id, status }: { id: string; status: TaskStatus }) =>
-    api.moveTask(id, status),
+  useWorkspaceMutation(({ id, status, audience }: { id: string; status: TaskStatus; audience?: Audience }) =>
+    api.moveTask(id, status, audience),
   );
 export const useDeleteTask = () => useWorkspaceMutation((id: string) => api.deleteTask(id));
 
@@ -223,6 +243,68 @@ export const useSetSubtaskDeadline = () =>
 export const useDeleteSubtask = () =>
   useWorkspaceMutation(({ taskId, subtaskId }: { taskId: string; subtaskId: string }) =>
     api.deleteSubtask(taskId, subtaskId),
+  );
+
+/* ── hierarchy, dependencies and collaboration (PR 2) ─────────────────────── */
+
+export const useAddChildTask = () =>
+  useWorkspaceMutation(
+    ({ parentId, input, audience }: { parentId: string; input: api.ChildTaskInput; audience?: Audience }) =>
+      api.addChildTask(parentId, input, audience),
+  );
+
+export const useAddDependency = () =>
+  useWorkspaceMutation(
+    ({ taskId, dependsOnTaskId, audience }: { taskId: string; dependsOnTaskId: string; audience?: Audience }) =>
+      api.addDependency(taskId, dependsOnTaskId, audience),
+  );
+
+export const useRemoveDependency = () =>
+  useWorkspaceMutation(
+    ({ taskId, dependencyId, audience }: { taskId: string; dependencyId: string; audience?: Audience }) =>
+      api.removeDependency(taskId, dependencyId, audience),
+  );
+
+export const useOverrideDependency = () =>
+  useWorkspaceMutation(
+    ({
+      taskId,
+      dependencyId,
+      overridden,
+      reason,
+      audience,
+    }: {
+      taskId: string;
+      dependencyId: string;
+      overridden: boolean;
+      reason?: string | null;
+      audience?: Audience;
+    }) => api.overrideDependency(taskId, dependencyId, overridden, reason, audience),
+  );
+
+export const usePingTask = () =>
+  useWorkspaceMutation(
+    ({
+      taskId,
+      userIds,
+      message,
+      audience,
+    }: {
+      taskId: string;
+      userIds?: string[];
+      message?: string | null;
+      audience?: Audience;
+    }) => api.pingTask(taskId, { user_ids: userIds, message }, audience),
+  );
+
+export const useAddWatcher = () =>
+  useWorkspaceMutation(({ taskId, userId }: { taskId: string; userId: string }) =>
+    api.addWatcher(taskId, userId),
+  );
+
+export const useRemoveWatcher = () =>
+  useWorkspaceMutation(({ taskId, userId }: { taskId: string; userId: string }) =>
+    api.removeWatcher(taskId, userId),
   );
 
 export const useCreateEvent = () => useWorkspaceMutation((input: EventInput) => api.createEvent(input));

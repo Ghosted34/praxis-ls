@@ -114,6 +114,7 @@ import {
 import { cn } from "@/lib/cn";
 import { Pill } from "@/components/ui/pill";
 import { EmptyState, LoadingRow } from "@/components/ui/states";
+import { Callout } from "@/components/ui/callout";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownItem } from "@/components/ui/dropdown-menu";
 import { INDEX_ROW_OPEN } from "@/components/ui/index-row";
@@ -121,7 +122,7 @@ import { useToast } from "@/components/ui/toast";
 import { errMsg } from "@/lib/use-resource";
 import { dateFmt } from "@/lib/format";
 import { BOARD_COLUMNS } from "../api";
-import type { BoardColumn, Task, TaskBoard, TaskStatus } from "../api";
+import type { Audience, BoardColumn, BoardCompleteness, Task, TaskBoard, TaskStatus } from "../api";
 import { useMoveTask } from "../hooks";
 import { COLUMN_LABEL, PRIORITY_LABEL, PRIORITY_TONE, STATUS_LABEL } from "../labels";
 import { describeRule } from "../repeat";
@@ -152,6 +153,13 @@ export function TaskBoard({
   selectedId,
   onOpen,
   onCreate,
+  /** The reach the board was rendered at. Travels with every move so the
+   *  server authorises the transition the same way it authorised the card. */
+  audience,
+  /** How much of the board this is, so truncation can be said rather than hidden. */
+  completeness,
+  /** Switch to the paged List view — the honest shape past the board's cap. */
+  onShowList,
 }: {
   board: TaskBoard | undefined;
   loading: boolean;
@@ -159,6 +167,9 @@ export function TaskBoard({
   selectedId: string | null;
   onOpen: (taskId: string) => void;
   onCreate: () => void;
+  audience?: Audience;
+  completeness?: BoardCompleteness;
+  onShowList?: () => void;
 }) {
   const move = useMoveTask();
   const toast = useToast();
@@ -189,7 +200,7 @@ export function TaskBoard({
     const task = findTask(board, String(e.active.id));
     if (!task || !over || over === task.status) return;
     try {
-      await move.mutateAsync({ id: task.task_id, status: over as TaskStatus });
+      await move.mutateAsync({ id: task.task_id, status: over as TaskStatus, audience });
     } catch (err) {
       // The board re-reads from the server on success; on failure the card is
       // simply still where it was, and the user is told why it did not move.
@@ -225,7 +236,7 @@ export function TaskBoard({
             onOpen={onOpen}
             onMove={async (id, status) => {
               try {
-                await move.mutateAsync({ id, status });
+                await move.mutateAsync({ id, status, audience });
               } catch (err) {
                 toast.error(errMsg(err));
               }
@@ -234,6 +245,31 @@ export function TaskBoard({
           />
         ))}
       </div>
+
+      {/*
+        THE BOARD SAYS HOW MUCH OF ITSELF IT IS.
+
+        The endpoint has always been capped, and 200 cards look exactly like
+        all of them — a manager scrolls four full columns and concludes they
+        have seen their team's work. The count comes from the same query as the
+        rows, and the List view beside it is the shape that is actually
+        complete for the declared filters.
+      */}
+      {completeness?.truncated && (
+        <Callout tone="warn" className="mt-4">
+          <span className="num">{completeness.shown}</span> of{" "}
+          <span className="num">{completeness.total}</span> open tasks fit on the
+          board.{" "}
+          {onShowList ? (
+            <button type="button" className="underline" onClick={onShowList}>
+              Open the List view
+            </button>
+          ) : (
+            "Use the List view"
+          )}{" "}
+          to page through all of them.
+        </Callout>
+      )}
 
       {/* The moving copy. The source card stays where it is and dims, so the
           user never loses track of where the task came from. */}
@@ -454,8 +490,24 @@ function TaskCard({
             )}
             {task.subtask_count > 0 && (
               <span className="num text-xs text-muted-foreground">
-                {task.subtask_done_count}/{task.subtask_count}
+                {task.subtask_done_count}/{task.subtask_count} steps
               </span>
+            )}
+            {/* A child roll-up and a checklist count are different units of
+                work, so they are two badges rather than one number — see the
+                service's `childRollup` for why they are never averaged. */}
+            {(task.child_count ?? 0) > 0 && (
+              <span className="num text-xs text-muted-foreground">
+                {task.child_done_count ?? 0}/{task.child_count} child tasks
+              </span>
+            )}
+            {/* Blocked is a STATE, so it wears a label and not only a colour.
+                The count includes prerequisites this reader may not be allowed
+                to see: work blocked by something hidden is still blocked. */}
+            {task.is_blocked && (
+              <Pill tone="warn">
+                Blocked by {task.blocking_count}
+              </Pill>
             )}
             {task.assigned_to_name && (
               <span className="truncate text-xs text-muted-foreground">{task.assigned_to_name}</span>

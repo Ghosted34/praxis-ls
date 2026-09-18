@@ -70,6 +70,11 @@ export function TasksPage() {
   const [createOpen, setCreateOpen] = React.useState(false);
 
   const q = useTaskBoard({ audience });
+  const showList = React.useCallback(() => {
+    const next = new URLSearchParams(params);
+    next.set("view", "list");
+    setParams(next, { replace: true });
+  }, [params, setParams]);
   // Memoised: the effect below depends on it, and a fresh array per render
   // would run that effect on every render.
   const offered = React.useMemo<Audience[]>(() => q.data?.audiences ?? ["mine"], [q.data]);
@@ -162,6 +167,12 @@ export function TasksPage() {
               selectedId={selectedId}
               onOpen={setSelectedId}
               onCreate={() => setCreateOpen(true)}
+              // The reach the cards were rendered at travels with every move
+              // and into the detail read, so a Team or All card opens and
+              // mutates as the same task the board showed (B-03).
+              audience={effective}
+              completeness={q.data?.completeness}
+              onShowList={showList}
             />
           ) : (
             <TaskList
@@ -185,7 +196,7 @@ export function TasksPage() {
               aria-label="Task"
               className="min-w-0 xl:sticky xl:top-6 xl:max-h-[calc(100dvh-7rem)] xl:overflow-y-auto"
             >
-              <TaskPanel taskId={selectedId} onClose={closeTask} />
+              <TaskPanel taskId={selectedId} onClose={closeTask} audience={effective} />
             </aside>
           )}
         </div>
@@ -206,7 +217,7 @@ export function TasksPage() {
           placement="right"
           bodyClassName="p-0"
         >
-          {selectedId && <TaskPanel taskId={selectedId} onClose={closeTask} />}
+          {selectedId && <TaskPanel taskId={selectedId} onClose={closeTask} audience={effective} />}
         </Dialog>
       )}
 

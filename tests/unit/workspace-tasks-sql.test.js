@@ -121,7 +121,7 @@ describe("tasks.repo — placeholders match parameters", () => {
     const c = mockClient([
       { status: "TO_DO", task_id: "t1", created_by: "u1" },
     ]);
-    const board = await repo.boardTasks(c, {
+    const { board } = await repo.boardTasks(c, {
       audience: "mine",
       userId: "u1",
       personalOnly: true,
@@ -138,7 +138,7 @@ describe("tasks.repo — placeholders match parameters", () => {
     const c = mockClient([
       { status: "IN_PROGRESS", task_id: "t2", assigned_to: "u1" },
     ]);
-    const board = await repo.boardTasks(c, {
+    const { board } = await repo.boardTasks(c, {
       audience: "mine",
       userId: "u1",
       personalOnly: true,
@@ -154,7 +154,7 @@ describe("tasks.repo — placeholders match parameters", () => {
       { status: "DONE", task_id: "2" },
       { status: "WIBBLE", task_id: "3" }, // a value the CHECK should forbid
     ]);
-    const board = await repo.boardTasks(c, { audience: "all", userId: "u1" });
+    const { board } = await repo.boardTasks(c, { audience: "all", userId: "u1" });
     expect(Object.keys(board).sort()).toEqual([
       "DONE",
       "IN_PROGRESS",

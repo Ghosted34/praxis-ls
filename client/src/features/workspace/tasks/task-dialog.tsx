@@ -32,7 +32,7 @@ import { useToast } from "@/components/ui/toast";
 import { errMsg } from "@/lib/use-resource";
 import { TASK_PRIORITIES, TASK_STATUSES } from "../api";
 import type { Task, TaskInput, TaskPriority, TaskStatus } from "../api";
-import { useCreateTask, useUpdateTask } from "../hooks";
+import { useAddChildTask, useCreateTask, useUpdateTask } from "../hooks";
 import { PRIORITY_LABEL, REMINDER_PRESETS, STATUS_LABEL } from "../labels";
 import { RepeatField } from "../repeat-field";
 import type { RepeatScope } from "../api";
@@ -40,6 +40,16 @@ import type { RepeatScope } from "../api";
 /** The most a title can be. Mirrors the CHECK on the column, so the user is
  *  told here rather than by a 23514 from Postgres. */
 const TITLE_MAX = 300;
+/**
+ * The reminder select's escape hatch.
+ *
+ * A sentinel rather than a second control, because "1 hour before" and
+ * "Friday at 09:00" are answers to the SAME question and belong in one field.
+ * The value is a string no preset uses, and it is never sent — the submit
+ * translates it into `remind_at` with `reminder_minutes: null`, which is how
+ * the server distinguishes an absolute instant from a relative offset.
+ */
+const CUSTOM_REMINDER = "custom";
 const DESCRIPTION_MAX = 4000;
 
 export function TaskDialog({
@@ -52,6 +62,17 @@ export function TaskDialog({
   initial,
   /** Receives the created task's id on POST, so callers can link back to it. */
   onSaved,
+  /**
+   * Open in CHILD mode, under this parent.
+   *
+   * The same component rather than a second dialog, for the reason in the
+   * header: two forms drift on the first field one of them grows, and the
+   * drift shows up as "I can set a reminder on a task but not on a child task"
+   * — a bug nobody reports because it reads as a missing feature. Child mode
+   * hides the fields that are structurally meaningless on a child (personal,
+   * repeat) rather than offering controls the server would refuse.
+   */
+  parent,
 }: {
   open: boolean;
   onClose: () => void;
@@ -59,11 +80,14 @@ export function TaskDialog({
   defaultDue?: string | null;
   initial?: { title?: string | null; description?: string | null } | null;
   onSaved?: (id?: string | null) => void;
+  parent?: Task | null;
 }) {
   const toast = useToast();
   const create = useCreateTask();
   const update = useUpdateTask();
+  const addChild = useAddChildTask();
   const editing = !!task;
+  const childMode = !editing && !!parent;
 
   const [title, setTitle] = React.useState("");
   const [description, setDescription] = React.useState("");
@@ -71,6 +95,10 @@ export function TaskDialog({
   const [priority, setPriority] = React.useState<TaskPriority>("NORMAL");
   const [dueAt, setDueAt] = React.useState("");
   const [reminder, setReminder] = React.useState("");
+  // An exact instant the user picked, which beats the relative preset. Held
+  // separately because the two are different intents: "an hour before" MOVES
+  // with the due date, "Friday at 09:00" does not.
+  const [remindAt, setRemindAt] = React.useState("");
   const [isPersonal, setIsPersonal] = React.useState(false);
   const [repeatRule, setRepeatRule] = React.useState<string | null>(null);
   // When the open task is one occurrence of a series, whether an edit rewrites
@@ -95,6 +123,9 @@ export function TaskDialog({
     setPriority(task?.priority ?? "NORMAL");
     setDueAt(toLocalInput(task?.due_at ?? defaultDue ?? null));
     setReminder(fromReminder(task));
+    setRemindAt(task?.reminder_minutes === null || task?.reminder_minutes === undefined
+      ? toLocalInput(task?.remind_at ?? null)
+      : "");
     setIsPersonal(task?.is_personal ?? false);
     setRepeatRule(task?.recurrence_rule ?? null);
     setSeriesScope("this");
@@ -111,6 +142,17 @@ export function TaskDialog({
       setError("A task needs a title.");
       return;
     }
+    // The server refuses this too — a repeat with no anchor never spawns, and
+    // the failure is silent and discovered weeks later by its absence. Saying
+    // it here means the user is told at the field instead of by a 422.
+    if (repeatRule && !dueAt) {
+      setError("A repeating task needs a due date to repeat from.");
+      return;
+    }
+    if (reminder === CUSTOM_REMINDER && !remindAt) {
+      setError("Pick the date and time the reminder should arrive.");
+      return;
+    }
     const input: TaskInput = {
       title: trimmed,
       description: description.trim() ? description.trim() : null,
@@ -119,7 +161,11 @@ export function TaskDialog({
       due_at: dueAt || null,
       // An empty preset means "no reminder" — sent as an explicit null so
       // editing a task REMOVES its reminder rather than leaving it behind.
-      reminder_minutes: reminder === "" ? null : Number(reminder),
+      reminder_minutes: reminder === CUSTOM_REMINDER ? null : reminder === "" ? null : Number(reminder),
+      // Explicit null when the user is on a preset, so switching back from a
+      // custom time CLEARS the pinned instant rather than leaving it to win
+      // silently over the preset the form is now showing.
+      remind_at: reminder === CUSTOM_REMINDER ? remindAt || null : null,
       is_personal: isPersonal,
       recurrence_rule: repeatRule,
       // Explicit null when nobody is chosen, so EDITING a task can UNASSIGN it
@@ -130,7 +176,14 @@ export function TaskDialog({
     // server ignores it (there is nothing else to rewrite).
     if (editing && task?.recurrence_series_id) input.series = seriesScope;
     try {
-      if (editing && task) {
+      if (childMode && parent) {
+        // ONE endpoint under the parent, shared with the inline quick-add row:
+        // the child inherits the parent's operations-file link server-side, so
+        // the two entry points cannot disagree about what a child is.
+        const { is_personal: _ignoredPersonal, recurrence_rule: _ignoredRule, ...childInput } = input;
+        const created = await addChild.mutateAsync({ parentId: parent.task_id, input: childInput });
+        onSaved?.(created?.task_id ?? null);
+      } else if (editing && task) {
         await update.mutateAsync({ id: task.task_id, input });
         onSaved?.(task.task_id);
       } else {
@@ -148,18 +201,20 @@ export function TaskDialog({
     }
   }
 
-  const busy = create.isPending || update.isPending;
+  const busy = create.isPending || update.isPending || addChild.isPending;
   const titleTooLong = title.length > TITLE_MAX;
 
   return (
     <Dialog
       open={open}
       onClose={onClose}
-      title={editing ? "Edit task" : "New task"}
+      title={editing ? "Edit task" : childMode ? "New child task" : "New task"}
       description={
         editing
           ? undefined
-          : "What has to happen, and by when. Leave the date off and it stays on your list without a deadline."
+          : childMode
+            ? `A separately assigned piece of “${parent?.title}”. It inherits the parent's linked record unless you change it, and it carries its own owner, deadline and reminder.`
+            : "What has to happen, and by when. Leave the date off and it stays on your list without a deadline."
       }
       footer={
         <>
@@ -167,7 +222,7 @@ export function TaskDialog({
             Cancel
           </Button>
           <Button onClick={submit} disabled={busy || titleTooLong}>
-            {editing ? "Save changes" : "Add task"}
+            {editing ? "Save changes" : childMode ? "Add child task" : "Add task"}
           </Button>
         </>
       }
@@ -245,29 +300,53 @@ export function TaskDialog({
           <Field
             label="Remind me"
             htmlFor="task-reminder"
-            hint={dueAt ? undefined : "Set a due date and the reminder moves with it."}
+            hint={
+              reminder === CUSTOM_REMINDER
+                ? "An exact time stays where you put it, even if the due date moves."
+                : dueAt
+                  ? "A preset moves with the due date."
+                  : "Set a due date, or pick an exact time below."
+            }
           >
             <NativeSelect
               id="task-reminder"
               value={reminder}
               onChange={(e) => setReminder(e.target.value)}
-              disabled={!dueAt}
+              // A relative preset needs an anchor to be relative TO. An exact
+              // time does not, so the control stays usable without a due date
+              // rather than being disabled outright as it used to be.
+              disabled={!dueAt && reminder !== CUSTOM_REMINDER}
             >
               {REMINDER_PRESETS.map((p) => (
                 <option key={p.value} value={p.value}>
                   {p.label}
                 </option>
               ))}
+              <option value={CUSTOM_REMINDER}>At an exact time…</option>
             </NativeSelect>
           </Field>
         </div>
 
+        {/* The exact-time reminder. Written as a zoneless wall clock and read
+            by the server on the TENANT's workplace clock, exactly like the due
+            date above — the browser must not substitute the laptop's zone. */}
+        {reminder === CUSTOM_REMINDER && (
+          <Field label="Remind me at" htmlFor="task-remind-at">
+            <DateTimeField id="task-remind-at" value={remindAt} onChange={setRemindAt} />
+          </Field>
+        )}
+
+        {/* A child task is a one-off piece of a parent's work. A repeat here
+            would spawn a new child per occurrence and multiply the board by
+            the recurrence count, so child mode does not offer it. */}
+        {!childMode && (
         <RepeatField
           idPrefix="task"
           value={repeatRule}
           dueIso={dueAt || null}
           onChange={setRepeatRule}
         />
+        )}
 
         {editing && task?.recurrence_series_id && (
           <Field label="Apply changes to" htmlFor="task-series-scope">
@@ -321,6 +400,8 @@ export function TaskDialog({
             />
           ))}
 
+        {/* A child of shared work is not a private note. */}
+        {!childMode && (
         <Checkbox
           checked={isPersonal}
           onCheckedChange={(checked) => {
@@ -335,6 +416,7 @@ export function TaskDialog({
           label="Personal task"
           hint="Keeps it off your team's view even where your role would otherwise show them your work."
         />
+        )}
       </div>
     </Dialog>
   );

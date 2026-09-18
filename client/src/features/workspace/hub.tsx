@@ -1,5 +1,5 @@
 /**
- * My workspace — one hub, three deep-linkable sections.
+ * My workspace — one hub, four deep-linkable sections.
  *
  * Mirrors HrHub / FleetHub / WarehouseHub: `<TabbedHub>` zips the section list
  * from `app/layout/areas.ts` with the page components, so the tab strip and the
@@ -7,9 +7,13 @@
  * discipline. `areas.test.ts` fails the build if a hub grows a page the list
  * does not know about.
  *
- * ── WHY THESE THREE AND NOT MORE ───────────────────────────────────────────
+ * ── WHY THESE FOUR AND NOT MORE ────────────────────────────────────────────
  *
- * Today, Tasks and Calendar are three VIEWS of one queue, not three features.
+ * Today, Tasks and Calendar are three VIEWS of one queue, not three features,
+ * and Analytics is that same queue counted. It earns a section rather than a
+ * panel inside Tasks because it answers a different question — how work is
+ * MOVING rather than what is next — and because the aggregate needs its own
+ * bounded window and its own registry entry to be permission-filtered at all.
  * Approvals and notifications — the other two things this page used to show —
  * are their own screens (`/approvals`, `/notifications`) with their own
  * permissions, and duplicating them here would give the same list two homes
@@ -21,6 +25,7 @@ import { hubTabs } from "@/app/layout/areas";
 import { TodayPage } from "./today";
 import { TasksPage } from "./tasks/tasks-page";
 import { CalendarPage } from "./calendar/calendar-page";
+import { AnalyticsPage } from "./analytics/analytics-page";
 
 export function WorkspaceHub() {
   return (
@@ -31,6 +36,7 @@ export function WorkspaceHub() {
         today: TodayPage,
         tasks: TasksPage,
         calendar: CalendarPage,
+        analytics: AnalyticsPage,
       })}
     />
   );

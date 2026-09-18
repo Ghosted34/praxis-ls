@@ -119,11 +119,100 @@ export type Task = {
   subtask_done_count: number;
   created_at: string;
   updated_at: string;
+  /** 13810's one level of nesting: a separately-assigned operational child. */
+  parent_task_id?: string | null;
   subtasks?: Subtask[];
   watchers?: Watcher[];
+
+  /* ── PR 2: hierarchy, dependencies and roll-up ─────────────────────────── */
+
+  /** Unresolved prerequisites, counted over ALL edges — including ones this
+   *  caller may not see. Work blocked by something hidden is still blocked. */
+  blocking_count?: number;
+  is_blocked?: boolean;
+  blocked_since?: string | null;
+  dependencies?: Dependency[];
+  /** Children the caller may open. `rollup` counts every child, visible or not. */
+  children?: Task[];
+  hidden_child_count?: number;
+  child_count?: number;
+  child_done_count?: number;
+  rollup?: TaskRollup;
+  parent?: TaskParentRef | null;
+};
+
+/**
+ * One blocked-by edge, as the server chose to describe it to THIS caller.
+ *
+ * When `is_visible` is false the prerequisite's identity is replaced rather
+ * than omitted — `depends_on_task_id` is null and the title is a sentence —
+ * because a missing key reads as a client bug while an explicit flag reads as
+ * a decision. `is_resolved` is still answered either way: whether the thing
+ * you are waiting for has finished is what "am I blocked" MEANS, and it
+ * discloses nothing about what that thing is.
+ */
+export type Dependency = {
+  task_dependency_id: string;
+  task_id: string;
+  is_visible: boolean;
+  is_resolved: boolean;
+  is_cancelled: boolean;
+  is_overridden: boolean;
+  overridden_at: string | null;
+  override_reason: string | null;
+  overridden_by_name: string | null;
+  created_at: string;
+  depends_on_task_id: string | null;
+  depends_on_title: string;
+  depends_on_status: TaskStatus | null;
+  depends_on_due_at: string | null;
+  depends_on_assigned_to_name: string | null;
+  link_url: string | null;
+};
+
+/**
+ * Progress across a parent's children and checklist steps.
+ *
+ * Two denominators rather than one percentage: a child task and a checklist
+ * step are different units of work, and averaging them invents a weighting
+ * nobody chose. `progress_ratio` is null when there is nothing to do yet —
+ * "0%" would read as "nothing done".
+ */
+export type TaskRollup = {
+  child_count: number;
+  child_done_count: number;
+  child_cancelled_count: number;
+  child_open_count: number;
+  step_count: number;
+  step_done_count: number;
+  progress_done: number;
+  progress_total: number;
+  progress_ratio: number | null;
+};
+
+/** The parent of a child task. `task_id` is null when it is not the caller's to see. */
+export type TaskParentRef = {
+  task_id: string | null;
+  title: string;
+  status: TaskStatus | null;
+  link_url: string | null;
 };
 
 export type TaskBoard = Record<BoardColumn, Task[]>;
+
+/**
+ * How much of the board this is.
+ *
+ * The board endpoint has always been capped; what it did not do was say so,
+ * and 200 cards look exactly like all of them. `truncated` is what lets the
+ * page point at the List view instead of leaving the gap invisible.
+ */
+export type BoardCompleteness = {
+  total: number;
+  shown: number;
+  limit: number;
+  truncated: boolean;
+};
 
 export type Participant = {
   calendar_participant_id: string;
@@ -366,7 +455,12 @@ export const getReceiptsOwed = () =>
  * fields survive `tenant()`'s unwrap (see the file header). `board` is the
  * status→tasks map the kanban draws.
  */
-export type BoardResponse = { board: TaskBoard; audience: Audience; audiences: Audience[] };
+export type BoardResponse = {
+  board: TaskBoard;
+  audience: Audience;
+  audiences: Audience[];
+  completeness: BoardCompleteness;
+};
 
 export const getBoard = (params: { assigned_to?: string; audience?: Audience } = {}) =>
   tenant<BoardResponse>(`/workspace/tasks/board${qs(params)}`);
@@ -395,7 +489,16 @@ export const listTasksPaged = (
   } = {},
 ) => tenantPaged<Task[]>(`/workspace/tasks${qs(params)}`);
 
-export const getTask = (id: string) => tenant<Task>(`/workspace/tasks/${id}`);
+/**
+ * One task, read at the audience the list or board was rendered at (B-03).
+ *
+ * Without the parameter the server defaults to "mine", so a Team or All card a
+ * manager could see on the board answered NOT FOUND when they clicked it. The
+ * value is a request, not a grant: the server narrows it against real grants
+ * before it decides.
+ */
+export const getTask = (id: string, audience?: Audience) =>
+  tenant<Task>(`/workspace/tasks/${id}${qs({ audience })}`);
 
 export const createTask = (input: TaskInput) =>
   tenant<Task>("/workspace/tasks", { method: "POST", body: input });
@@ -405,10 +508,19 @@ export const updateTask = (id: string, input: Partial<TaskInput>) =>
 
 /** Its own verb, not a field on update — the server treats a status change as a
  *  transition with consequences (completed_at, an event, the assignee's alert). */
-export const moveTask = (id: string, status: TaskStatus) =>
+/**
+ * THE status path.
+ *
+ * Its own verb, not a field on update — the server treats a status change as a
+ * transition with consequences (completed_at, an event, the assignee's alert,
+ * the watchers'). Board drag, Move menu, keyboard drop, the panel's select and
+ * the edit dialog all end here, so one gesture cannot produce a different
+ * history from another (B-04).
+ */
+export const moveTask = (id: string, status: TaskStatus, audience?: Audience) =>
   tenant<Task>(`/workspace/tasks/${id}/status`, {
     method: "POST",
-    body: { status },
+    body: audience ? { status, audience } : { status },
   });
 
 export const deleteTask = (id: string) =>
@@ -445,6 +557,146 @@ export const addWatcher = (taskId: string, user_id: string) =>
 
 export const removeWatcher = (taskId: string, userId: string) =>
   tenant<void>(`/workspace/tasks/${taskId}/watchers/${userId}`, { method: "DELETE" });
+
+/* ── hierarchy, dependencies, pings (PR 2) ────────────────────────────────── */
+
+/** A child task. Inherits the parent's operations-file link unless overridden. */
+export type ChildTaskInput = {
+  title: string;
+  description?: string | null;
+  status?: TaskStatus;
+  priority?: TaskPriority;
+  assigned_to?: string | null;
+  due_at?: string | null;
+  entity_type?: string | null;
+  entity_id?: string | null;
+  reminder_minutes?: number | null;
+  remind_at?: string | null;
+};
+
+export const addChildTask = (parentId: string, input: ChildTaskInput, audience?: Audience) =>
+  tenant<Task>(`/workspace/tasks/${parentId}/children${qs({ audience })}`, {
+    method: "POST",
+    body: input,
+  });
+
+/**
+ * Every dependency call answers with the WHOLE refreshed task.
+ *
+ * An edge changes `is_blocked`, `blocking_count` and the list the panel draws,
+ * so returning the edge alone would force a refetch the client could forget —
+ * and a client that forgot would show a task claiming to be blocked beside an
+ * empty dependency list.
+ */
+export const addDependency = (taskId: string, dependsOnTaskId: string, audience?: Audience) =>
+  tenant<Task>(`/workspace/tasks/${taskId}/dependencies${qs({ audience })}`, {
+    method: "POST",
+    body: { depends_on_task_id: dependsOnTaskId },
+  });
+
+export const removeDependency = (taskId: string, dependencyId: string, audience?: Audience) =>
+  tenant<Task>(`/workspace/tasks/${taskId}/dependencies/${dependencyId}${qs({ audience })}`, {
+    method: "DELETE",
+  });
+
+/** "Proceed anyway", or withdraw it. A cancelled prerequisite never satisfies
+ *  an edge on its own — somebody has to say so, and it is recorded who. */
+export const overrideDependency = (
+  taskId: string,
+  dependencyId: string,
+  overridden: boolean,
+  reason?: string | null,
+  audience?: Audience,
+) =>
+  tenant<Task>(`/workspace/tasks/${taskId}/dependencies/${dependencyId}/override${qs({ audience })}`, {
+    method: "PATCH",
+    body: { overridden, reason: reason || null },
+  });
+
+/** Nudge the people already on this task. The server refuses anybody who is
+ *  not its assignee, creator or watcher — a task is not a messaging channel. */
+export const pingTask = (
+  taskId: string,
+  body: { user_ids?: string[]; message?: string | null } = {},
+  audience?: Audience,
+) =>
+  tenant<{ pinged: number; user_ids: string[] }>(`/workspace/tasks/${taskId}/ping${qs({ audience })}`, {
+    method: "POST",
+    body,
+  });
+
+/* ── analytics (PR 2) ─────────────────────────────────────────────────────── */
+
+export type AnalyticsBucket = { bucket: string; tasks: number; avg_days?: number };
+
+export type AnalyticsResponse = {
+  /** Resolved, defaulted and CLAMPED server-side — `clamped` says when the
+   *  window the URL asked for was wider than the aggregate will honour. */
+  window: { from: string; to: string; timezone: string; clamped: boolean; max_days: number };
+  audience: Audience;
+  audiences: Audience[];
+  filters: {
+    status: TaskStatus | null;
+    priority: TaskPriority | null;
+    assigned_to: string | null;
+    scope_id: string | null;
+  };
+  summary: {
+    open: number;
+    overdue: number;
+    blocked: number;
+    completed: number;
+    cancelled: number;
+    total: number;
+  };
+  throughput: { day: string; completed: number }[];
+  overdue_aging: AnalyticsBucket[];
+  workload: {
+    user_id: string | null;
+    assignee_name: string;
+    open_tasks: number;
+    overdue_tasks: number;
+    blocked_tasks: number;
+  }[];
+  cycle_time: { buckets: AnalyticsBucket[]; median_days: number | null };
+  blocked: {
+    task_id: string;
+    title: string;
+    status: TaskStatus;
+    priority: TaskPriority;
+    due_at: string | null;
+    assigned_to_name: string | null;
+    blocking_count: number;
+    blocked_since: string | null;
+    link_url: string | null;
+  }[];
+  burndown: {
+    open_at_start: number;
+    days: { day: string; created: number; completed: number; open: number }[];
+  };
+  composition: { status: TaskStatus; priority: TaskPriority; tasks: number }[];
+};
+
+export type AnalyticsParams = {
+  from?: string;
+  to?: string;
+  audience?: Audience;
+  status?: TaskStatus;
+  priority?: TaskPriority;
+  assigned_to?: string;
+  scope_id?: string;
+};
+
+/**
+ * The whole operational dashboard in one authorised read.
+ *
+ * One request rather than six, because the panels must describe the same
+ * population at the same instant: six requests resolving "now" six times can
+ * show a summary saying 42 open beside a workload table adding to 43, and the
+ * reader has no way to know which is right.
+ */
+export const getAnalytics = (params: AnalyticsParams = {}) =>
+  tenant<AnalyticsResponse>(`/workspace/analytics${qs(params)}`);
 
 /* ── calendar ─────────────────────────────────────────────────────────────── */
 

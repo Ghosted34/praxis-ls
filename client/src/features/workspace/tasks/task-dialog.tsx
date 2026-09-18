@@ -101,7 +101,9 @@ export function TaskDialog({
     setAssignedTo(task?.assigned_to ?? null);
     setAssignedName(task?.assigned_to_name ?? null);
     setError(null);
-  }, [open, task, defaultDue]);
+    // `initial` is a dep like the rest: the mail conversion page memoises it,
+    // so this re-seeds only when the seed itself changes, not on every render.
+  }, [open, task, defaultDue, initial]);
 
   async function submit() {
     const trimmed = title.trim();

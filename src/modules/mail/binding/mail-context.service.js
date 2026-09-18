@@ -258,14 +258,12 @@ async function labelForRefs(client, refs, user) {
     byKind.get(m[1]).set(m[2], r);
   }
   for (const [kind, ids] of byKind) {
-    // eslint-disable-next-line no-await-in-loop
     if (!(await maySeeLabel(client, kind, user))) continue;
     const spec = LABEL_COLUMN[kind];
     try {
       // Table, pk and column are allow-listed constants, never caller input.
       // `::text` on the pk compares uniformly whether the key is a uuid or a
       // code, and the ids themselves stay bound parameters.
-      // eslint-disable-next-line no-await-in-loop
       const { rows } = await client.query(
         `SELECT ${spec.pk}::text AS id, ${spec.col} AS label FROM ${spec.table} WHERE ${spec.pk}::text = ANY($1)`,
         [[...ids.keys()]],

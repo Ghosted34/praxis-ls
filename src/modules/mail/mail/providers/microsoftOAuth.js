@@ -132,6 +132,11 @@ async function tokenRequest(c, extra) {
 function classifyProviderError({ error, description, subcode, httpStatus } = {}) {
   const e = String(error || "");
   const desc = String(description || "");
+  // Lowercased once for the substring checks below. Deliberately `includes`,
+  // not `/expired.*secret/`: the description arrives over HTTP (untrusted
+  // input), and a `.*` between two literals is a polynomial-backtracking
+  // shape on adversarial strings — CodeQL flags it, correctly.
+  const lower = desc.toLowerCase();
   const aadsts = (/AADSTS(\d+)/i.exec(desc) || [])[1] || "";
   const short = desc ? desc.replace(/\s+/g, " ").trim().slice(0, 240) : "";
 
@@ -141,7 +146,8 @@ function classifyProviderError({ error, description, subcode, httpStatus } = {})
   if (
     e === "invalid_client"
     || ["700016", "7000215", "7000216", "7000222"].includes(aadsts)
-    || /invalid client secret|expired.*secret|secret.*expired/i.test(desc)
+    || lower.includes("invalid client secret")
+    || (lower.includes("expired") && lower.includes("secret"))
   ) {
     return new AppError(
       "MS_BAD_SECRET",

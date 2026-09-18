@@ -18,6 +18,11 @@
  *
  * Opened directly (no query string) a page is simply a deep-linkable create
  * form for its module — a coherent thing to bookmark, not an error.
+ *
+ * The `initial` objects are memoised on the query values, not rebuilt inline:
+ * the forms re-seed whenever `initial` changes identity, and an inline literal
+ * would be a new identity on every parent render — wiping what the operator
+ * typed each time anything above re-rendered (the shell polls around them).
  */
 
 import * as React from "react";
@@ -38,6 +43,8 @@ function useMailSeed() {
     const v = params.get(k);
     return v === null || v === "" ? null : v;
   };
+  // Plain strings, read fresh per render: cheap, and stable as values for as
+  // long as the location does not change — which is what the memos below key on.
   return {
     fromMail: params.get("from_mail") === "1",
     threadId: get("mail_thread"),
@@ -101,20 +108,18 @@ function NewShell({
 export function LeadNewPage() {
   const seed = useMailSeed();
   const { close, saved } = useConvertSave("lead", seed.threadId, "/sales/leads");
+  const initial = React.useMemo(
+    () => ({
+      company_name: seed.companyName,
+      contact_name: seed.contactName,
+      email: seed.email,
+      service_interest: seed.subject,
+    }),
+    [seed.companyName, seed.contactName, seed.email, seed.subject],
+  );
   return (
     <NewShell title={tr("New lead")} fromMail={seed.fromMail}>
-      <LeadForm
-        open
-        editing={null}
-        initial={{
-          company_name: seed.companyName,
-          contact_name: seed.contactName,
-          email: seed.email,
-          service_interest: seed.subject,
-        }}
-        onClose={close}
-        onSaved={saved}
-      />
+      <LeadForm open editing={null} initial={initial} onClose={close} onSaved={saved} />
     </NewShell>
   );
 }
@@ -122,20 +127,18 @@ export function LeadNewPage() {
 export function QuoteRequestNewPage() {
   const seed = useMailSeed();
   const { close, saved } = useConvertSave("quote_request", seed.threadId, "/sales/quote-requests");
+  const initial = React.useMemo(
+    () => ({
+      requester_name: seed.contactName,
+      requester_company: seed.companyName,
+      requester_email: seed.email,
+      cargo_description: seed.details,
+    }),
+    [seed.contactName, seed.companyName, seed.email, seed.details],
+  );
   return (
     <NewShell title={tr("New quote request")} fromMail={seed.fromMail}>
-      <QuoteRequestForm
-        open
-        editing={null}
-        initial={{
-          requester_name: seed.contactName,
-          requester_company: seed.companyName,
-          requester_email: seed.email,
-          cargo_description: seed.details,
-        }}
-        onClose={close}
-        onSaved={saved}
-      />
+      <QuoteRequestForm open editing={null} initial={initial} onClose={close} onSaved={saved} />
     </NewShell>
   );
 }
@@ -143,20 +146,19 @@ export function QuoteRequestNewPage() {
 export function EnquiryNewPage() {
   const seed = useMailSeed();
   const { close, saved } = useConvertSave("enquiry", seed.threadId, "/sales/enquiries");
+  const initial = React.useMemo(
+    () => ({
+      name: seed.contactName,
+      email: seed.email,
+      company_name: seed.companyName,
+      subject: seed.subject,
+      message: seed.details,
+    }),
+    [seed.contactName, seed.email, seed.companyName, seed.subject, seed.details],
+  );
   return (
     <NewShell title={tr("New enquiry")} fromMail={seed.fromMail}>
-      <EnquiryCreateForm
-        open
-        initial={{
-          name: seed.contactName,
-          email: seed.email,
-          company_name: seed.companyName,
-          subject: seed.subject,
-          message: seed.details,
-        }}
-        onClose={close}
-        onSaved={saved}
-      />
+      <EnquiryCreateForm open initial={initial} onClose={close} onSaved={saved} />
     </NewShell>
   );
 }
@@ -164,13 +166,13 @@ export function EnquiryNewPage() {
 export function TicketNewPage() {
   const seed = useMailSeed();
   const { close, saved } = useConvertSave("ticket", seed.threadId, "/support");
+  const initial = React.useMemo(
+    () => ({ title: seed.subject, body: seed.details }),
+    [seed.subject, seed.details],
+  );
   return (
     <NewShell title={tr("New support ticket")} fromMail={seed.fromMail}>
-      <NewTicketModal
-        initial={{ title: seed.subject, body: seed.details }}
-        onClose={close}
-        onCreated={saved}
-      />
+      <NewTicketModal initial={initial} onClose={close} onCreated={saved} />
     </NewShell>
   );
 }
@@ -178,14 +180,13 @@ export function TicketNewPage() {
 export function TaskNewPage() {
   const seed = useMailSeed();
   const { close, saved } = useConvertSave("task", seed.threadId, "/workspace/tasks");
+  const initial = React.useMemo(
+    () => ({ title: seed.subject, description: seed.details }),
+    [seed.subject, seed.details],
+  );
   return (
     <NewShell title={tr("New task")} fromMail={seed.fromMail}>
-      <TaskDialog
-        open
-        initial={{ title: seed.subject, description: seed.details }}
-        onClose={close}
-        onSaved={saved}
-      />
+      <TaskDialog open initial={initial} onClose={close} onSaved={saved} />
     </NewShell>
   );
 }
@@ -197,13 +198,13 @@ export function PurchaseRequisitionNewPage() {
     seed.threadId,
     "/procurement/purchase-requests",
   );
+  const initial = React.useMemo(
+    () => ({ justification: seed.subject }),
+    [seed.subject],
+  );
   return (
     <NewShell title={tr("New purchase request")} fromMail={seed.fromMail}>
-      <PrForm
-        initial={{ justification: seed.subject }}
-        onClose={close}
-        onSaved={saved}
-      />
+      <PrForm initial={initial} onClose={close} onSaved={saved} />
     </NewShell>
   );
 }

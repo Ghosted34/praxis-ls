@@ -26,7 +26,7 @@ import {
 } from "./country-registration-fields";
 import { DedupeHint } from "./dedupe-hint";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
-import { Pill, ActivePill } from "@/components/ui/pill";
+import { Pill } from "@/components/ui/pill";
 import { useList } from "@/lib/use-resource";
 import { money, num, enumLabel } from "@/lib/format";
 import * as api from "@/lib/masterdata-api";

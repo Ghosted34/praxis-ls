@@ -361,6 +361,19 @@ const Schema = z.object({
   // or report "cuts off mid-sentence" (PRAXIS_AI_AUDIT.md B1). Sized for a long
   // structured answer; the orchestrator can pass a smaller value for narration.
   AI_MAX_TOKENS: int(4096),
+  // How many past turns (user/assistant messages) are REPLAYED verbatim to the
+  // model each turn (PRAXIS_AI_AUDIT.md D3). Stored history is unbounded — this
+  // only caps what is re-sent, so per-call cost stays flat however long the
+  // thread grows. The old value was 20 (≈10 exchanges), sized for cost control;
+  // 40 gives a long working session real recall. Prompt caching (audit B5) will
+  // make an even larger window cheap; until then this is the sensible default.
+  AI_HISTORY_TURNS: int(40),
+  // Word ceiling on the rolling summary of everything older than the replay
+  // window (PRAXIS_AI_AUDIT.md D3). The summary is now STRUCTURED (decisions /
+  // figures / records / open threads), which needs more room than the old
+  // 200-word prose blurb; it is still the thing that bounds cost, so it is
+  // still capped.
+  AI_SUMMARY_WORDS: int(400),
 
   EMBEDDINGS_PROVIDER: z.string().default("openai"),
   EMBEDDINGS_MODEL: z.string().default("text-embedding-3-small"),

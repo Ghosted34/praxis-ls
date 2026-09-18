@@ -12,7 +12,7 @@
 
 _Last updated: 2026-09-17. Keep this section in step with `main` — when a PR merges, tick the findings it closed and link it here. Status legend: ✅ merged · 🟡 in progress · ⬜ not started._
 
-**Next up for another engineer:** **PR 4 is being picked up in a separate session** — its remaining scope is D2 (scope the learning signals to the caller, not the whole tenant), D3 (grow the replay/context window + structured summary) and D4 (token-boundary tool scoring); D1, D5 and G1 already shipped in [#404](https://github.com/tomblakeasaah196/praxis-ls/pull/404). After PR 4: PR 5 (timeouts E1–E4), PR 6 (conversation management/Spaces J1–J5), the PR 7 coverage gate + remaining manifests, PR 1 redaction (A1), PR 2's fallback vendor (B2). The write-contract backlog (154 writes) lives in `src/services/ai/write-contract-baseline.json` and is chipped away in any PR. **Whoever closes a milestone updates this section** (the milestone row, the finding rows, and Appendix A where relevant).
+**Next up for another engineer:** PR 5 (reliability/timeouts E1–E4, G2), then PR 6 (conversation management/Spaces), the PR 7 coverage gate + remaining manifests, PR 1 redaction (A1), PR 2's fallback vendor (B2) + shared cached prompt builder (B5), and PR 8 (eval harness/observability). The write-contract backlog (154 writes) lives in `src/services/ai/write-contract-baseline.json` and is chipped away in any PR. NOTE for PR 5/B5: the two system-prompt copies (`ask`/`askStream`) still drift by hand — they were touched again in PR 4 for D2's per-user blocks, so the shared-builder dedupe (B5) is now more overdue. **Whoever closes a milestone updates this section** (the milestone row, the finding rows, and Appendix A where relevant).
 
 ### By milestone
 
@@ -21,7 +21,7 @@ _Last updated: 2026-09-17. Keep this section in step with `main` — when a PR m
 | PR 1 | Grounding integrity (A1–A4) | 🟡 partial | A2 done in [#404](https://github.com/tomblakeasaah196/praxis-ls/pull/404); A1/A3/A4 still open |
 | PR 2 | Completeness, model & no‑truncation (B1, B2, B4, B5) | 🟡 partial | B1 + B4 done in [#404](https://github.com/tomblakeasaah196/praxis-ls/pull/404); B2 (fallback vendor + health check) and B5 (shared cached prompt builder) still open |
 | PR 3 | "Create anything": one write contract (C1–C4) | 🟡 partial | Contract + gate + the named creates + 31 create actions done in [#406](https://github.com/tomblakeasaah196/praxis-ls/pull/406); 154 pre-contract writes inventoried for follow-up |
-| PR 4 | Steering, modes & context window (D1–D5, G1) | 🟡 partial | D5 (modes real) + D1 (scope steering) done in [#404](https://github.com/tomblakeasaah196/praxis-ls/pull/404); D2/D3/D4 + context‑window growth still open |
+| PR 4 | Steering, modes & context window (D1–D5, G1) | ✅ merged | D5 + D1 in [#404](https://github.com/tomblakeasaah196/praxis-ls/pull/404); D2/D3/D4 (per‑user steering, wider configurable context window, token‑boundary tool scoring) in [#410](https://github.com/tomblakeasaah196/praxis-ls/pull/410) |
 | PR 5 | Reliability, timeouts & performance (E1–E4, G2) | ⬜ not started | — |
 | PR 6 | Conversation management & Spaces UX (J1–J5) | ⬜ not started | — |
 | PR 7 | Module → AI governance (I1–I4) | 🟡 partial | CLAUDE.md rule added in [#400](https://github.com/tomblakeasaah196/praxis-ls/pull/400) (I3 first step); coverage gate + missing manifests still open |
@@ -36,15 +36,19 @@ _Last updated: 2026-09-17. Keep this section in step with `main` — when a PR m
 | B4 — streamed usage counted as zero | P1 | ✅ | `stream_options.include_usage` set on streamed calls. [#404](https://github.com/tomblakeasaah196/praxis-ls/pull/404) |
 | D5 — Ask/Draft/Analyse/Act were identical | P1 | ✅ | Validator accepts `mode`/`scope`; each mode appends a real posture directive. Act still only *proposes*. [#404](https://github.com/tomblakeasaah196/praxis-ls/pull/404) |
 | D1 — `scope` ignored server‑side | P1 | ✅ | Chosen Space now biases tool selection/retrieval. [#404](https://github.com/tomblakeasaah196/praxis-ls/pull/404) |
+| D2 — learning signals tenant‑wide | P1 | ✅ | `recentPatterns`/`recentNegativeFeedback` now filter by `user_id` (no tenant fallback — that was the leak), capped + de‑duplicated. [#410](https://github.com/tomblakeasaah196/praxis-ls/pull/410) |
+| D3 — thin replay window + prose summary | P2 | ✅ | Window is `AI_HISTORY_TURNS` (40, configurable); window/summary gap closed via `REPLAY_TURNS`; summary is now STRUCTURED (decisions/figures/records/open, verbatim). [#410](https://github.com/tomblakeasaah196/praxis-ls/pull/410) |
+| D4 — crude substring tool scoring | P2 | ✅ | `selectTools` scores by token‑set membership ("add" no longer matches "address"); CORE widened per major module. [#410](https://github.com/tomblakeasaah196/praxis-ls/pull/410) |
+| F2 — cross‑user prompt contamination | P2 | ✅ | Closed by D2 — no other user's actions/feedback reach a caller's prompt. [#410](https://github.com/tomblakeasaah196/praxis-ls/pull/410) |
 | I3 — CLAUDE.md never mentioned manifests | P0 | ✅ | "Wire every module to the AI" rule added. [#400](https://github.com/tomblakeasaah196/praxis-ls/pull/400) |
 | C1 — `create_supplier` threw (bare ref) | P0 | ✅ | Write contract + fix; proven at runtime. [#406](https://github.com/tomblakeasaah196/praxis-ls/pull/406) |
 | C2 — `create_lead`/`create_opportunity` dropped the actor | P0 | ✅ | Contract forwards the full actor. [#406](https://github.com/tomblakeasaah196/praxis-ls/pull/406) |
 | C3 — `create_purchase_request` snake→camel mismatch | P1 | ✅ | Manifest maps fields + forwards actor. [#406](https://github.com/tomblakeasaah196/praxis-ls/pull/406) |
 | C4 — no test that a write is executable | P1 | ✅ | `ai-write-contract` gate: runtime proof + ratchet baseline. [#406](https://github.com/tomblakeasaah196/praxis-ls/pull/406) |
 | A1 — redaction blanks amounts/refs | P0 | ⬜ | **Deliberately deferred** to its own reviewed PR — touches PII policy (an existing test defends "account number → `[NUM]`") and `proposal.generator.js`. |
-| A3, A4, B2, B5, B6, C1–C4, D2–D4, E1–E4, F*, G*, H1–H2, I1–I2/I4, J1–J5 | — | ⬜ | Not started. |
+| A3, A4, B2, B5, B6, E1–E4, F3, G2–G4, H1–H2, I1–I2/I4, J1–J5 | — | ⬜ | Not started. (F1 is "good, preserve" — not a remediation item; G1 done with D1 in [#404](https://github.com/tomblakeasaah196/praxis-ls/pull/404).) |
 
-**Recommended next PR:** PR 3 (write contract) — it repairs writes that are currently broken end‑to‑end (`create_supplier` C1, `create_lead`/`create_opportunity` C2, `create_purchase_request` C3), which is the largest user‑visible gap now that truncation is fixed.
+**Recommended next PR:** PR 5 (reliability, timeouts & performance — E1–E4, G2). With grounding (PR 1 partial), truncation (PR 2 partial), the write contract (PR 3), and steering + context window (PR 4) landed, the next user‑visible lever is "no timeouts": streaming as the primary path, generous caps, and making post‑confirm auto‑continue cheap. B5's shared cached prompt builder is a natural companion — the `ask`/`askStream` system prompt is now duplicated in two places that must be kept in step by hand.
 
 ---
 

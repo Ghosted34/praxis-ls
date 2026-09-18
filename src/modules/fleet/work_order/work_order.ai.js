@@ -17,7 +17,7 @@ module.exports = {
   writes: [
     {
       key: "create_work_order",
-      service: service.create,
+      service: (c, p, actor) => service.create(c, { data: p, actor }),
       schema: validator.schemas.create,
       permission: { module: "MOD-41", action: "create" },
       confirm: true,
@@ -25,16 +25,16 @@ module.exports = {
     },
     {
       key: "update_work_order",
-      service: service.update,
-      schema: validator.schemas.update,
+      service: (c, p, actor) => (({ work_order_id, ...patch }) => service.update(c, { id: work_order_id, patch, actor }))(p),
+      schema: validator.schemas.aiUpdate,
       permission: { module: "MOD-41", action: "edit" },
       confirm: true,
       describe: "Update a work order (description, cost, linked operations file).",
     },
     {
       key: "set_work_order_status",
-      service: service.setStatus,
-      schema: validator.schemas.status,
+      service: (c, p, actor) => service.setStatus(c, { id: p.work_order_id, status: p.status, actor }),
+      schema: validator.schemas.aiStatus,
       permission: { module: "MOD-41", action: "edit" },
       confirm: true,
       describe: "Advance a work order (OPEN → IN_PROGRESS → DONE, or CANCELLED).",

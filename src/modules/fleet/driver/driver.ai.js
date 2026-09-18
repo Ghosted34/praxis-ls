@@ -26,8 +26,8 @@ module.exports = {
     },
     {
       key: "update_driver",
-      service: service.update,
-      schema: validator.schemas.update,
+      service: (c, p, actor) => (({ driver_license_id, ...patch }) => service.update(c, { id: driver_license_id, patch, actor }))(p),
+      schema: validator.schemas.aiUpdate,
       permission: { module: "MOD-44", action: "edit" },
       confirm: true,
       describe: "Update a driver licence (class, expiry, certification).",

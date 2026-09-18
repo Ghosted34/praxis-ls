@@ -8,7 +8,7 @@ module.exports = {
     { key: "compliance_rules", service: () => service.catalogue(), permission: { module: "MOD-65", action: "view" }, describe: "The compliance rule catalogue + severities." },
   ],
   writes: [
-    { key: "run_compliance_check", service: service.run, schema: validator.schemas.run, permission: { module: "MOD-65", action: "edit" }, confirm: true, describe: "Run the compliance checker (all rules or a subset)." },
-    { key: "resolve_compliance_flag", service: (c, p) => service.resolve(c, { id: p.id }), schema: validator.schemas.run, permission: { module: "MOD-65", action: "edit" }, confirm: true, describe: "Mark a compliance flag resolved." },
+    { key: "run_compliance_check", service: (c, p, actor) => service.run(c, { rules: p.rules || null, actor }), schema: validator.schemas.run, permission: { module: "MOD-65", action: "edit" }, confirm: true, describe: "Run the compliance checker (all rules or a subset)." },
+    { key: "resolve_compliance_flag", service: (c, p, actor) => service.resolve(c, { id: p.id, actor }), schema: validator.schemas.run, permission: { module: "MOD-65", action: "edit" }, confirm: true, describe: "Mark a compliance flag resolved." },
   ],
 };

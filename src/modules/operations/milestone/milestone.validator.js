@@ -95,7 +95,9 @@ const publicDetails = z.object({
   public_progress_note: z.string().max(1000).nullable().optional(),
 }).strict().refine((value) => Object.keys(value).length > 0, "at least one public field is required");
 
-const schemas = { publishTemplate, instantiate, advance, reopen, addStage, recalculate, saveAssumptions, publicDetails };
+// AI-facing: the stage instance is in the URL for HTTP, in the payload for the copilot.
+const aiAdvance = advance.extend({ milestone_instance_id: z.string().uuid() });
+const schemas = { publishTemplate, instantiate, advance, aiAdvance, reopen, addStage, recalculate, saveAssumptions, publicDetails };
 const mw = (k) => (req, _res, next) => { const p = schemas[k].safeParse(req.body); if (!p.success) return next(new AppError("VALIDATION_ERROR", "Invalid body", 422, p.error.flatten().fieldErrors)); req.body = p.data; return next(); };
 module.exports = {
   publishTemplate: mw("publishTemplate"),

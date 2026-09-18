@@ -70,18 +70,15 @@ const requirement = z.object({
   is_active: z.boolean().optional(),
 });
 
-const schemas = {
-  create,
-  update: create.partial(),
-  status,
-  attendee,
-  attendeeUpdate: attendee.partial(),
-  presence,
-  note,
-  dictate,
-  requirement,
-  requirementUpdate: requirement.partial(),
-};
+const update = create.partial();
+const attendeeUpdate = attendee.partial();
+const requirementUpdate = requirement.partial();
+// AI-facing: the record id travels IN the payload — the copilot has no route param.
+const aiUpdate = update.extend({ training_id: z.string().uuid() });
+const aiStatus = status.extend({ training_id: z.string().uuid() });
+const aiAttendee = attendee.extend({ training_id: z.string().uuid() });
+const aiAttendeeUpdate = attendeeUpdate.extend({ training_id: z.string().uuid(), training_attendance_id: z.string().uuid() });
+const schemas = { create, update, status, attendee, attendeeUpdate, presence, note, dictate, requirement, requirementUpdate, aiUpdate, aiStatus, aiAttendee, aiAttendeeUpdate };
 
 const mw = (k) => (req, _res, next) => {
   const p = schemas[k].safeParse(req.body);

@@ -13,8 +13,8 @@ module.exports = {
   ],
   writes: [
     { key: "create_asset", service: (c, p, actor) => service.create(c, { data: p, actor }), schema: validator.schemas.create, permission: { module: "MOD-54", action: "create" }, confirm: true, describe: "Register a fixed asset; generates the depreciation schedule (KB §11)." },
-    { key: "update_asset", service: (c, p) => (({ asset_id, ...patch }) => service.update(c, { id: asset_id, patch }))(p), schema: validator.schemas.aiUpdate, permission: { module: "MOD-54", action: "edit" }, confirm: true, describe: "Update asset metadata by id (label, tag, COA accounts)." },
-    { key: "depreciate_asset", service: (c, p) => service.depreciate(c, { id: p.asset_id, period_code: p.period_code }), schema: validator.schemas.aiDepreciate, permission: { module: "MOD-54", action: "edit" }, confirm: true, describe: "Post one period's depreciation for an asset (by id) to the ledger." },
-    { key: "dispose_asset", service: (c, p) => service.dispose(c, { id: p.asset_id, disposed_on: p.disposed_on, proceeds: p.proceeds }), schema: validator.schemas.aiDispose, permission: { module: "MOD-54", action: "approve" }, confirm: true, describe: "Dispose an asset (by id) and recognise gain/loss vs net book value." },
+    { key: "update_asset", service: (c, p, actor) => (({ asset_id, ...patch }) => service.update(c, { id: asset_id, patch, actor }))(p), schema: validator.schemas.aiUpdate, permission: { module: "MOD-54", action: "edit" }, confirm: true, describe: "Update asset metadata by id (label, tag, COA accounts)." },
+    { key: "depreciate_asset", service: (c, p, actor) => service.depreciate(c, { id: p.asset_id, period_code: p.period_code, actor }), schema: validator.schemas.aiDepreciate, permission: { module: "MOD-54", action: "edit" }, confirm: true, describe: "Post one period's depreciation for an asset (by id) to the ledger." },
+    { key: "dispose_asset", service: (c, p, actor) => service.dispose(c, { id: p.asset_id, disposed_on: p.disposed_on, proceeds: p.proceeds, actor }), schema: validator.schemas.aiDispose, permission: { module: "MOD-54", action: "approve" }, confirm: true, describe: "Dispose an asset (by id) and recognise gain/loss vs net book value." },
   ],
 };

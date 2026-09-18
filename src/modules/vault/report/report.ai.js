@@ -10,7 +10,7 @@ module.exports = {
     { key: "dashboard_tiles", service: (c, p) => service.listTiles(c, { user_id: p.user_id }), permission: { module: "MOD-63", action: "view" }, describe: "The user's dashboard tile layout." },
   ],
   writes: [
-    { key: "save_report", service: service.saveReport, schema: validator.schemas.save, permission: { module: "MOD-63", action: "create" }, confirm: true, describe: "Save a report configuration." },
-    { key: "set_dashboard_tile", service: service.setTile, schema: validator.schemas.setTile, permission: { module: "MOD-63", action: "edit" }, confirm: true, describe: "Add/update a dashboard tile." },
+    { key: "save_report", service: (c, p, actor) => service.saveReport(c, { name: p.name, reportKey: p.report_key, params: p.params, isShared: p.is_shared, actor }), schema: validator.schemas.save, permission: { module: "MOD-63", action: "create" }, confirm: true, describe: "Save a report configuration." },
+    { key: "set_dashboard_tile", service: (c, p, actor) => service.setTile(c, { tileKey: p.tile_key, position: p.position, isVisible: p.is_visible, config: p.config, actor }), schema: validator.schemas.setTile, permission: { module: "MOD-63", action: "edit" }, confirm: true, describe: "Add/update a dashboard tile." },
   ],
 };

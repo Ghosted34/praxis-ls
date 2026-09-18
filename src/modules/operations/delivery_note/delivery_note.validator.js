@@ -89,6 +89,11 @@ const schemas = {
   }),
 };
 
+// AI-facing: the note is in the URL for the HTTP routes, but an assistant call
+// has no URL — it passes one flat object, so the id must be IN the schema.
+schemas.aiIssue = z.object({ delivery_note_id: z.string().uuid() });
+schemas.aiDeliver = schemas.deliver.extend({ delivery_note_id: z.string().uuid() });
+
 const mw = (k) => (req, _res, next) => {
   const p = schemas[k].safeParse(req.body);
   if (!p.success) return next(new AppError("VALIDATION_ERROR", "Invalid body", 422, p.error.flatten().fieldErrors));

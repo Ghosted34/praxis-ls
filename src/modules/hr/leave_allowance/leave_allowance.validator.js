@@ -72,16 +72,12 @@ const adjust = z.object({
  *  caller (forced in the service), so the body must not name one. */
 const mineCreate = create.omit({ employee_id: true });
 
-const schemas = {
-  create,
-  mineCreate,
-  update: create.partial(),
-  decision,
-  leaveType,
-  leaveTypeUpdate: leaveType.partial().omit({ code: true }),
-  holiday,
-  adjust,
-};
+const update = create.partial();
+const leaveTypeUpdate = leaveType.partial().omit({ code: true });
+// AI-facing: the record id travels IN the payload — the copilot has no route param.
+const aiUpdate = update.extend({ leave_request_id: z.string().uuid() });
+const aiDecision = decision.extend({ leave_request_id: z.string().uuid() });
+const schemas = { create, mineCreate, update, decision, leaveType, leaveTypeUpdate, holiday, adjust, aiUpdate, aiDecision };
 
 const mw = (k) => (req, _res, next) => {
   const p = schemas[k].safeParse(req.body);

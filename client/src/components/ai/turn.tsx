@@ -287,14 +287,29 @@ function AssistantTurn({
           />
         )}
         {turn.failed && onRetry && (
-          <button
-            type="button"
-            onClick={() => onRetry(turn)}
-            disabled={busy}
-            className="mt-1.5 inline-flex items-center gap-1.5 text-micro font-medium text-primary-ink hover:underline disabled:opacity-50"
-          >
-            <RetryIcon width={12} height={12} /> Try again
-          </button>
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+            <button
+              type="button"
+              onClick={() => onRetry(turn)}
+              disabled={busy}
+              className="inline-flex items-center gap-1.5 text-micro font-medium text-primary-ink hover:underline disabled:opacity-50"
+            >
+              <RetryIcon width={12} height={12} /> Try again
+            </button>
+            {/* A misconfigured vendor chain and a dropped connection look the
+                same from here — an error and a retry button — and they are not
+                the same at all: retrying fixes one and can never fix the other.
+                The button stays on both (a credential lookup can hiccup, and
+                taking away the only control is its own insult); this line is
+                what stops somebody pressing it twenty times for a credential
+                only an administrator can change. Audit G4. */}
+            {turn.failureKind === "provider" && (
+              <span className="text-micro text-muted-foreground">
+                Retrying will not help until an administrator fixes the vendor
+                credentials in AI Control → Vendors.
+              </span>
+            )}
+          </div>
         )}
       </div>
     </div>

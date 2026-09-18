@@ -385,3 +385,121 @@ export function ManageEnquiryModal({
     </Modal>
   );
 }
+
+/**
+ * LOGGING AN ENQUIRY BY HAND.
+ *
+ * Enquiries arrive on their own — website form, email — so staff never had a
+ * create surface, only the Manage drawer above. Mail conversion needs one: "turn
+ * this email into an enquiry" opens a form, not a drawer for a record that does
+ * not exist yet. Posts the same `POST /intake/enquiries` the website uses, with
+ * `source` saying MAIL, under MOD-25 `create` like every other write here.
+ */
+export function EnquiryCreateForm({
+  open,
+  initial,
+  onClose,
+  onSaved,
+}: {
+  open: boolean;
+  /** Seed (mail conversion). */
+  initial?: {
+    name?: string | null;
+    email?: string | null;
+    phone?: string | null;
+    company_name?: string | null;
+    subject?: string | null;
+    message?: string | null;
+  } | null;
+  onClose: () => void;
+  /** Receives the created enquiry's id, so callers can link back to it. */
+  onSaved: (id?: string | null) => void;
+}) {
+  const [name, setName] = React.useState("");
+  const [email, setEmail] = React.useState("");
+  const [phone, setPhone] = React.useState("");
+  const [company, setCompany] = React.useState("");
+  const [subject, setSubject] = React.useState("");
+  const [message, setMessage] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!open) return;
+    setName(initial?.name || "");
+    setEmail(initial?.email || "");
+    setPhone(initial?.phone || "");
+    setCompany(initial?.company_name || "");
+    setSubject(initial?.subject || "");
+    setMessage(initial?.message || "");
+    setError(null);
+  }, [open, initial]);
+
+  async function submit() {
+    setBusy(true);
+    setError(null);
+    try {
+      const created = (await tenant("/intake/enquiries", {
+        method: "POST",
+        body: {
+          name: name.trim() || undefined,
+          email: email.trim() || undefined,
+          phone: phone.trim() || undefined,
+          company_name: company.trim() || undefined,
+          subject: subject.trim() || undefined,
+          message: message.trim() || undefined,
+          source: "MAIL",
+        },
+      })) as Row | null;
+      onSaved(created?.contact_enquiry_id ? String(created.contact_enquiry_id) : null);
+      onClose();
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={tr("Log an enquiry")}
+      description={tr("Record an enquiry that arrived by another channel.")}
+      size="lg"
+    >
+      <div className="space-y-4">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label={tr("Name")}>
+            <Input value={name} onChange={(e) => setName(e.target.value)} maxLength={255} />
+          </Field>
+          <Field label={tr("Company")}>
+            <Input value={company} onChange={(e) => setCompany(e.target.value)} maxLength={255} />
+          </Field>
+          <Field label={tr("Email")}>
+            <Input value={email} onChange={(e) => setEmail(e.target.value)} maxLength={255} />
+          </Field>
+          <Field label={tr("Phone")}>
+            <Input value={phone} onChange={(e) => setPhone(e.target.value)} maxLength={255} />
+          </Field>
+          <Field label={tr("Subject")} className="sm:col-span-2">
+            <Input value={subject} onChange={(e) => setSubject(e.target.value)} maxLength={255} />
+          </Field>
+          <Field label={tr("Message")} className="sm:col-span-2">
+            <Textarea
+              className="min-h-[110px]"
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              maxLength={20000}
+            />
+          </Field>
+        </div>
+        {error && <ErrorState message={error} />}
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" onClick={onClose}>{tr("Cancel")}</Button>
+          <Button loading={busy} disabled={busy} onClick={submit}>{tr("Log enquiry")}</Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}

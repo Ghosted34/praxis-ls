@@ -92,7 +92,7 @@ export function useComposerEditor({
       onUpdate: ({ editor }) => changeRef.current?.(editor.getJSON()),
       editorProps: {
         attributes: {
-          class: "prose prose-sm max-w-none min-h-[12rem] px-3 py-2 focus:outline-none",
+          class: "prose prose-sm max-w-none min-h-[14.4rem] px-3 py-2 focus:outline-none",
           // Announced as what it is. A contenteditable div with no role is a
           // black hole to a screen reader.
           role: "textbox",

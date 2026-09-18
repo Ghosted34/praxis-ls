@@ -145,7 +145,10 @@ export function TriageBar({
           whoever went on leave. */}
       {handOverOpen && (
         <form
-          className="flex items-center gap-2"
+          // Stacked, not side by side: this bar lives in a ~300px rail, and a
+          // row layout pushed the Assign button off the visible edge. The
+          // button sits below the search field, full width, impossible to miss.
+          className="flex flex-col gap-2"
           onSubmit={(e) => {
             e.preventDefault();
             const uid = assignee.trim();
@@ -157,7 +160,7 @@ export function TriageBar({
             });
           }}
         >
-          <div className="min-w-72 flex-1">
+          <div className="w-full">
             <EmployeePicker
               id="mail-thread-assignee"
               label={tr("Hand this conversation to")}
@@ -175,7 +178,7 @@ export function TriageBar({
               </p>
             )}
           </div>
-          <Button size="sm" type="submit" disabled={busy !== null || !assignee.trim()}>
+          <Button size="sm" type="submit" className="w-full" disabled={busy !== null || !assignee.trim()}>
             {tr("Assign")}
           </Button>
         </form>

@@ -24,16 +24,28 @@ import { SearchSelect } from "@/components/ui/search-select";
 
 const LEAD_SOURCES = ["MANUAL", "WEBSITE", "REFERRAL", "CAMPAIGN"];
 
+export type LeadInitial = {
+  company_name?: string | null;
+  contact_name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  service_interest?: string | null;
+};
+
 export function LeadForm({
   open,
   editing,
+  initial,
   onClose,
   onSaved,
 }: {
   open: boolean;
   editing: Row | null;
+  /** Seed for a NEW lead (mail conversion). Ignored when `editing` is set. */
+  initial?: LeadInitial | null;
   onClose: () => void;
-  onSaved: () => void;
+  /** Receives the created lead's id on POST, so callers can link back to it. */
+  onSaved: (id?: string | null) => void;
 }) {
   const [company, setCompany] = React.useState("");
   const [contact, setContact] = React.useState("");
@@ -46,16 +58,16 @@ export function LeadForm({
 
   React.useEffect(() => {
     if (!open) return;
-    setCompany(editing?.company_name ? String(editing.company_name) : "");
-    setContact(editing?.contact_name ? String(editing.contact_name) : "");
-    setEmail(editing?.email ? String(editing.email) : "");
-    setPhone(editing?.phone ? String(editing.phone) : "");
+    const seed = (v: unknown, fb: unknown) =>
+      v !== null && v !== undefined && v !== "" ? String(v) : fb !== null && fb !== undefined && fb !== "" ? String(fb) : "";
+    setCompany(seed(editing?.company_name, initial?.company_name));
+    setContact(seed(editing?.contact_name, initial?.contact_name));
+    setEmail(seed(editing?.email, initial?.email));
+    setPhone(seed(editing?.phone, initial?.phone));
     setSource(editing?.source ? String(editing.source) : "MANUAL");
-    setInterest(
-      editing?.service_interest ? String(editing.service_interest) : "",
-    );
+    setInterest(seed(editing?.service_interest, initial?.service_interest));
     setError(null);
-  }, [open, editing]);
+  }, [open, editing, initial]);
 
   const canSubmit = !!company.trim() && !busy;
 
@@ -71,13 +83,16 @@ export function LeadForm({
       service_interest: interest.trim() || undefined,
     };
     try {
-      if (editing)
+      if (editing) {
         await tenant(`/leads/${String(editing.lead_id)}`, {
           method: "PATCH",
           body,
         });
-      else await tenant("/leads", { method: "POST", body });
-      onSaved();
+        onSaved(editing.lead_id ? String(editing.lead_id) : null);
+      } else {
+        const created = (await tenant("/leads", { method: "POST", body })) as Row | null;
+        onSaved(created?.lead_id ? String(created.lead_id) : null);
+      }
       onClose();
     } catch (e) {
       setError(errMsg(e));

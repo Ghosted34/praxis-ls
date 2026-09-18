@@ -78,6 +78,12 @@ const VerifyPage = lazyNamed(() => import("@/features/public/verify-page"), "Ver
 // The public signing page. `/sign/:token`, and short for the same reason `/v`
 // is: the link is read off a phone screen and occasionally typed.
 const SignPage = lazyNamed(() => import("@/features/public/sign-page"), "SignPage");
+// The secure-link viewer. `/s/:token` is minted by `POST /mail/secure-links`
+// and pasted into email; short for the same reason as the two above.
+const SecureLinkPage = lazyNamed(
+  () => import("@/features/public/secure-link-page"),
+  "SecureLinkPage",
+);
 const PortalAccessPage = lazyNamed(
   () => import("@/features/portal/pages"),
   "PortalAccessPage",
@@ -151,6 +157,31 @@ const LeadDossierPage = lazyNamed(
 const IntakeDossierPage = lazyNamed(
   () => import("@/features/sales/sales-360"),
   "IntakeDossierPage",
+);
+// Mail conversion landings (§7.7) — one module, so the six share a chunk.
+const LeadNewPage = lazyNamed(
+  () => import("@/features/comms/inbox/work/convert-pages"),
+  "LeadNewPage",
+);
+const QuoteRequestNewPage = lazyNamed(
+  () => import("@/features/comms/inbox/work/convert-pages"),
+  "QuoteRequestNewPage",
+);
+const EnquiryNewPage = lazyNamed(
+  () => import("@/features/comms/inbox/work/convert-pages"),
+  "EnquiryNewPage",
+);
+const TicketNewPage = lazyNamed(
+  () => import("@/features/comms/inbox/work/convert-pages"),
+  "TicketNewPage",
+);
+const TaskNewPage = lazyNamed(
+  () => import("@/features/comms/inbox/work/convert-pages"),
+  "TaskNewPage",
+);
+const PurchaseRequisitionNewPage = lazyNamed(
+  () => import("@/features/comms/inbox/work/convert-pages"),
+  "PurchaseRequisitionNewPage",
 );
 const CommercialHub = lazyNamed(
   () => import("@/features/commercial/hub"),
@@ -504,6 +535,13 @@ export function App() {
             every internal identifier a signing credential. */}
             <Route path="/sign/:token" element={<SignPage />} />
 
+            {/* The secure-link viewer. Outside RequireAuth and outside AppShell
+            for the same reason as the signing page: the opener is a stranger
+            with no account, and the token in the URL is the ONLY credential the
+            endpoint accepts. Without this route every `/s/:token` fell through
+            to the catch-all, landed on `/`, and met a sign-in screen. */}
+            <Route path="/s/:token" element={<SecureLinkPage />} />
+
             {/* The old public slugs (/track, /portfolio, /proposal/:token,
             /careers, /client-portal/*) are redirected by public-web's router now,
             which is also what answers the paths they redirect TO. Keeping a second
@@ -564,8 +602,15 @@ export function App() {
                   the tab strip are the same list. */}
               <Route path="workspace" element={<WorkspaceHub />} />
               <Route path="workspace/:section" element={<WorkspaceHub />} />
+              {/* Mail conversion landings (§7.7): where "create a new one" opens
+              the owning module's form with the email's details filled in. Static
+              segments, so they outrank the `:section`/`:leadId` params beside
+              them — `sales/leads/new` is a form, not the dossier for a lead
+              called "new". */}
+              <Route path="workspace/tasks/new" element={<TaskNewPage />} />
               <Route path="help" element={<HelpPage />} />
               <Route path="support" element={<SupportPage />} />
+              <Route path="support/tickets/new" element={<TicketNewPage />} />
               <Route path="godmode" element={<GodModePage />} />
               {/* Praxis AI — the assistant's workspace. Sits in Overview beside the
             Control Tower, NOT under AI Control: this is where you USE the
@@ -596,6 +641,14 @@ export function App() {
                 path="sales/quote-requests/:quoteRequestId"
                 element={<IntakeDossierPage />}
               />
+              {/* Mail conversion landings (§7.7) — see the note above the task
+              one. Ranked above the dossier params by specificity. */}
+              <Route path="sales/leads/new" element={<LeadNewPage />} />
+              <Route
+                path="sales/quote-requests/new"
+                element={<QuoteRequestNewPage />}
+              />
+              <Route path="sales/enquiries/new" element={<EnquiryNewPage />} />
               <Route path="sales/:section" element={<SalesHub />} />
               {/* Operations — hub */}
               <Route path="operations" element={<OperationsHub />} />
@@ -620,6 +673,11 @@ export function App() {
               {/* Procurement — hub */}
               <Route path="procurement" element={<ProcurementHub />} />
               <Route path="procurement/:section" element={<ProcurementHub />} />
+              {/* Mail conversion landing (§7.7) — see the note above the task one. */}
+              <Route
+                path="procurement/purchase-requests/new"
+                element={<PurchaseRequisitionNewPage />}
+              />
               {/* Costing — hub */}
               <Route path="costing" element={<CostingHub />} />
               {/* The worksheet is a full route for the same reason the file 360

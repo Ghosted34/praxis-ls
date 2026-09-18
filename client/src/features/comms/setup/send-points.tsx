@@ -71,6 +71,14 @@ function BindModal({
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<unknown>(null);
 
+  /* Only a CONNECTED mailbox can actually send — the same rule the compose
+   * dialog's From picker applies. Offering a disconnected, broken or retired
+   * address here routes a send point at a sender whose mail will fail at the
+   * flush, and the failure lands in the outbox hours after the choice looked
+   * fine. Management lists elsewhere keep showing every state with its health
+   * pill; this is a SENDER picker, so it shows senders. */
+  const sendable = mailboxes.filter((m) => m.status === "CONNECTED");
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true); setError(null);
@@ -110,9 +118,9 @@ function BindModal({
                 ))}
               </optgroup>
             )}
-            {mailboxes.length > 0 && (
+            {sendable.length > 0 && (
               <optgroup label={tr("Connected mailboxes")}>
-                {mailboxes.map((m) => (
+                {sendable.map((m) => (
                   <option key={m.email_connection_id} value={`mailbox:${m.email_connection_id}`}>
                     {m.email_address}
                     {m.catalogue_label ? ` (${m.catalogue_label})` : ""}

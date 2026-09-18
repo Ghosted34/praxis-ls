@@ -48,11 +48,17 @@ export function TaskDialog({
   task,
   /** Pre-filled due date when the form is opened from a day on the calendar. */
   defaultDue,
+  /** Seed for a NEW task (mail conversion). Ignored when `task` is set. */
+  initial,
+  /** Receives the created task's id on POST, so callers can link back to it. */
+  onSaved,
 }: {
   open: boolean;
   onClose: () => void;
   task?: Task | null;
   defaultDue?: string | null;
+  initial?: { title?: string | null; description?: string | null } | null;
+  onSaved?: (id?: string | null) => void;
 }) {
   const toast = useToast();
   const create = useCreateTask();
@@ -83,8 +89,8 @@ export function TaskDialog({
   // task the user edited.
   React.useEffect(() => {
     if (!open) return;
-    setTitle(task?.title ?? "");
-    setDescription(task?.description ?? "");
+    setTitle(task?.title ?? initial?.title ?? "");
+    setDescription(task?.description ?? initial?.description ?? "");
     setStatus(task?.status ?? "TO_DO");
     setPriority(task?.priority ?? "NORMAL");
     setDueAt(toLocalInput(task?.due_at ?? defaultDue ?? null));
@@ -95,7 +101,9 @@ export function TaskDialog({
     setAssignedTo(task?.assigned_to ?? null);
     setAssignedName(task?.assigned_to_name ?? null);
     setError(null);
-  }, [open, task, defaultDue]);
+    // `initial` is a dep like the rest: the mail conversion page memoises it,
+    // so this re-seeds only when the seed itself changes, not on every render.
+  }, [open, task, defaultDue, initial]);
 
   async function submit() {
     const trimmed = title.trim();
@@ -122,8 +130,13 @@ export function TaskDialog({
     // server ignores it (there is nothing else to rewrite).
     if (editing && task?.recurrence_series_id) input.series = seriesScope;
     try {
-      if (editing && task) await update.mutateAsync({ id: task.task_id, input });
-      else await create.mutateAsync(input);
+      if (editing && task) {
+        await update.mutateAsync({ id: task.task_id, input });
+        onSaved?.(task.task_id);
+      } else {
+        const created = await create.mutateAsync(input);
+        onSaved?.(created?.task_id ?? null);
+      }
       toast.success(editing ? "Task updated" : "Task added");
       onClose();
     } catch (err) {

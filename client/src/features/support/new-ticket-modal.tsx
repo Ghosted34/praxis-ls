@@ -88,13 +88,19 @@ const MAX_SCREENSHOT_BYTES = 10 * 1024 * 1024;
 export function NewTicketModal({
   onClose,
   onCreated,
+  initial,
 }: {
   onClose: () => void;
-  onCreated?: () => void;
+  /** Receives the created ticket's id, so callers can link back to it. */
+  onCreated?: (id?: string | null) => void;
+  /** Seed for the summary/details (mail conversion). */
+  initial?: { title?: string | null; body?: string | null } | null;
 }) {
   const [kind, setKind] = React.useState<TicketKind>("SUPPORT");
-  const [title, setTitle] = React.useState("");
-  const [body, setBody] = React.useState("");
+  // The modal mounts fresh on every open (parents render null when closed),
+  // so initial state is the seed — no reset effect needed.
+  const [title, setTitle] = React.useState(initial?.title || "");
+  const [body, setBody] = React.useState(initial?.body || "");
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -131,7 +137,7 @@ export function NewTicketModal({
     setBusy(true);
     setError(null);
     try {
-      await createTicket({
+      const created = await createTicket({
         kind,
         title: title.trim(),
         body: body.trim(),
@@ -142,7 +148,7 @@ export function NewTicketModal({
         context: buildTicketContext(),
         attachmentIds,
       });
-      onCreated?.();
+      onCreated?.(created?.ticket_id || null);
       onClose();
     } catch (err) {
       setError(errMsg(err));

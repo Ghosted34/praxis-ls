@@ -71,11 +71,14 @@ const signalText = (s: string) =>
 export function BindingChip({
   threadId,
   entityRef,
+  entityLabel,
   onChanged,
   onOpenRecord,
 }: {
   threadId: string;
   entityRef: string | null;
+  /** Display name for the bound record, when the server resolved one. */
+  entityLabel?: string | null;
   onChanged: () => void;
   /** Opens the dossier drawer. Only offered once something is bound. */
   onOpenRecord: (ref: string) => void;
@@ -107,9 +110,10 @@ export function BindingChip({
           <button
             type="button"
             onClick={() => onOpenRecord(entityRef)}
+            title={entityRef}
             className="rounded-md border border-border bg-card px-2 py-1 text-xs font-medium hover:border-primary"
           >
-            {humanizeRef(entityRef)}
+            {entityLabel || humanizeRef(entityRef)}
           </button>
           <Button
             size="sm"

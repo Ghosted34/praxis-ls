@@ -115,6 +115,10 @@ async function search(client, { query, userId, user = null, limit = 10 } = {}) {
     tenantClient: client,
     allowed: ["normal", "restricted"],
     k: Math.min(60, limit * 3),
+    // This search keeps only `email_thread:` refs, so a slot spent on an OHADA
+    // doc is a slot spent on a hit this function is about to throw away. The
+    // knowledge reservation exists for the assistant's grounding block, not here.
+    kbBudget: 0,
   });
 
   const ids = [];

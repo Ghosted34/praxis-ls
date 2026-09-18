@@ -219,11 +219,100 @@ export const useUpdateTask = () =>
   useWorkspaceMutation(({ id, input }: { id: string; input: Partial<TaskInput> }) =>
     api.updateTask(id, input),
   );
-export const useMoveTask = () =>
-  useWorkspaceMutation(({ id, status, audience }: { id: string; status: TaskStatus; audience?: Audience }) =>
-    api.moveTask(id, status, audience),
-  );
-export const useDeleteTask = () => useWorkspaceMutation((id: string) => api.deleteTask(id));
+/**
+ * Move a task to another column — optimistically, at a stated reach.
+ *
+ * A drag that ends with the card snapping BACK, then jumping forward a beat
+ * later when the refetch lands, reads as a failed drop even when the server
+ * said yes. So the card jumps on release: every cached board moves the row
+ * immediately, the detail panel's copy follows, and the invalidation on settle
+ * reconciles all of it with the server. On failure the snapshots below put
+ * every cache back where it was, and the caller (`TaskBoard`) explains why.
+ *
+ * Only the board and the single task are patched. The day timeline and the
+ * flat lists carry the same row in shapes that are not worth rewriting by hand;
+ * they refresh from the server on settle, a fraction of a second later.
+ *
+ * ── THE AUDIENCE TRAVELS WITH THE MOVE ─────────────────────────────────────
+ *
+ * The reach the board was READ at is the reach the move must be authorised at
+ * (B-03). A card shown on a Team board belongs to a population the caller's
+ * default reach may not contain, so a move that dropped the audience would be
+ * refused for a task the user is looking at — a 404 on a card that is plainly
+ * on screen, and unreproducible for anybody whose default is wider.
+ */
+export function useMoveTask() {
+  const qc = useQueryClient();
+  return useMutation<
+    Task,
+    Error,
+    { id: string; status: TaskStatus; audience?: Audience },
+    { boards: Array<[readonly unknown[], api.BoardResponse | undefined]>; tasks: Array<[readonly unknown[], Task | undefined]> }
+  >({
+    // The audience is passed only when there IS one, rather than as a trailing
+    // `undefined`. A move from a screen with no wider reach to name is the same
+    // request it has always been, so the default path keeps its exact shape.
+    mutationFn: ({ id, status, audience }) =>
+      audience ? api.moveTask(id, status, audience) : api.moveTask(id, status),
+    onMutate: async ({ id, status }) => {
+      await qc.cancelQueries({ queryKey: [ROOT, "board"] });
+      const boards = qc.getQueriesData<api.BoardResponse>({ queryKey: [ROOT, "board"] });
+      for (const [key, data] of boards) {
+        const next = data ? optimisticBoard(data.board, id, status) : null;
+        if (next) qc.setQueryData(key, { ...data, board: next });
+      }
+      /**
+       * EVERY cached copy of this task, not one exact key.
+       *
+       * `useTask` keys on the audience it read at, so the same task can sit in
+       * the cache under `[…, id, "mine"]` and `[…, id, "team"]` at once. An
+       * exact-key patch would update whichever one the writer happened to name
+       * and leave the OTHER showing the old status until the settle — which is
+       * the copy the open detail pane is most likely rendering, because the
+       * pane is what the board handed its own reach to.
+       */
+      await qc.cancelQueries({ queryKey: [ROOT, "task", id] });
+      const tasks = qc.getQueriesData<Task>({ queryKey: [ROOT, "task", id] });
+      for (const [key, task] of tasks) {
+        if (task && task.status !== status) qc.setQueryData<Task>(key, { ...task, status });
+      }
+      return { boards, tasks };
+    },
+    onError: (_err, _vars, context) => {
+      if (!context) return;
+      for (const [key, data] of context.boards) qc.setQueryData(key, data);
+      for (const [key, task] of context.tasks) qc.setQueryData(key, task);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: [ROOT] }),
+  });
+}
+
+/**
+ * The board with one task relocated, or null when there is nothing to do —
+ * the task is in no cached column (a board read under another audience), it is
+ * already there, or the target is not a column at all (CANCELLED has no
+ * column; a stray key would render nowhere and corrupt the counts).
+ */
+function optimisticBoard(board: TaskBoard, id: string, status: TaskStatus): TaskBoard | null {
+  if (!(status in board)) return null;
+  const target = status as api.BoardColumn;
+  let from: api.BoardColumn | null = null;
+  let found: Task | null = null;
+  for (const column of api.BOARD_COLUMNS) {
+    const hit = board[column]?.find((t) => t.task_id === id);
+    if (hit) {
+      from = column;
+      found = hit;
+      break;
+    }
+  }
+  if (!found || !from || from === target) return null;
+  return {
+    ...board,
+    [from]: board[from].filter((t) => t.task_id !== id),
+    [target]: [...board[target], { ...found, status: target }],
+  };
+}export const useDeleteTask = () => useWorkspaceMutation((id: string) => api.deleteTask(id));
 
 export const useAddSubtask = () =>
   useWorkspaceMutation(

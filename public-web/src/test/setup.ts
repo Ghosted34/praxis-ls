@@ -15,3 +15,28 @@ afterEach(() => {
   document.documentElement.classList.remove("dark");
   localStorage.clear();
 });
+
+/**
+ * jsdom implements no layout, so it has no element scrolling — the same gap
+ * `client/src/test/setup.ts` already shims, which this app never picked up.
+ *
+ * WHY IT SURFACED AS AN INTERMITTENT FAILURE, WHICH IS THE PART WORTH KEEPING.
+ *
+ * `LongCopy.jump()` defers its scroll into `requestAnimationFrame`, so the page
+ * scrolls to the section's EXPANDED position rather than to where the collapsed
+ * summary used to be. That is correct behaviour, and it puts the call in a
+ * callback no test awaits — which makes it a race against the `cleanup()` above:
+ *
+ *   callback fires AFTER cleanup  → the node is gone, `getElementById` returns
+ *                                   null, `?.` short-circuits, nothing happens.
+ *   callback fires BEFORE cleanup → the node exists, `.scrollIntoView` is
+ *                                   undefined, and it throws where nothing can
+ *                                   catch it.
+ *
+ * Runner timing decides which. On a contended CI runner it landed first and
+ * failed the job with a `TypeError` while all 428 tests passed — a red build
+ * with a green test report, on a PR that had not touched this app at all.
+ */
+if (!Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = () => {};
+}

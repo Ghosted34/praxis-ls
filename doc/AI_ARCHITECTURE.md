@@ -133,7 +133,30 @@ Multi-step reads chain freely; **no write executes without confirmation.**
   on file leaves `cost_xaf` at 0 with the true figure preserved in
   `cost_native` — never the raw foreign amount passed through, which would
   understate spend by the size of the rate.
-- **PII/financial redaction** before any external model call or embed.
+- **PII/financial redaction, in two classes** (`services/ai/redact.js`, audit A1/F3).
+  A single blanket scrub used to guard every path, and its catch-all
+  `\b\d{9,}\b → [NUM]` hid every amount from 100,000,000 XAF up from the model —
+  so the assistant was asked to report figures it had never been shown. The two
+  paths are now separated by what happens to the text:
+  - `redactForReasoning()` — the caller's OWN authorised data going into a prompt
+    and nowhere else (tool results, the tenant context block, replayed history,
+    the live question). The caller is authenticated, their RBAC chose the tools,
+    and retrieval already filtered the corpus by confidentiality tag. Amounts,
+    ERP references, contact data and the NIU arrive intact.
+  - `redactExternal()` — text that is PERSISTED, INDEXED or becomes client-facing:
+    the conversation summariser, the embeddings vendor (masked at
+    `embeddings.embedBatch`, so corpus and query are scrubbed identically and
+    recall is preserved), and the proposal generator. Additionally masks contact
+    data and the NIU. Exported as plain `redact` too, so a caller that has not
+    thought about which class it is in gets the strict one.
+
+  Both paths mask payment instruments (IBAN, RIB, card PAN) and individual
+  government identity numbers (CNPS/SSN, passport) — those are high-harm and are
+  never the answer to a question. Number handling is **structural**: a digit run
+  is masked because an account label precedes it or because it is long enough
+  (13+) that no plausible figure reaches it, never because it crossed nine
+  digits. The passport pattern is anchored to a passport context, because its
+  bare shape (`AB1234567`) is also the shape of half the references in this ERP.
 - **Provider routing**: DeepSeek → Gemini fallback; Gemini for vision; Groq for voice; embeddings via OpenAI-compatible endpoint. Keys per tenant where billing separates; discovery keys treated as compromised and rotated.
 - **Auditability**: every executed AI write is on the immutable ledger with `source = ai.action.<key>`; every call is on the usage ledger.
 
@@ -147,7 +170,7 @@ src/services/ai/retrieval.service.js            vector search tenant ∪ global 
 src/services/ai/ingest.service.js               embed + upsert; event-driven re-embed handler
 src/services/ai/llm.service.js                  DeepSeek→Gemini chat + function-calling
 src/services/ai/embeddings.service.js           OpenAI-compatible embeddings
-src/services/ai/redact.js                       PII/financial redaction
+src/services/ai/redact.js                       PII/financial redaction — redactForReasoning vs redactExternal (§6)
 src/workers/ai/                                 worker-ai: ingest/embed, transcribe (voice), vision (doc)
 src/modules/ai/assistant/                        the /api/tenant/ai HTTP surface (ask + confirm + batch)
 migrations/tenant/04xx_ai_batch.sql             adds ai_action_run.batch_id

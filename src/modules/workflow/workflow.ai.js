@@ -11,7 +11,7 @@ module.exports = {
   ],
   writes: [
     { key: "create_workflow", service: (c, p, actor) => service.createWorkflow(c, { data: p, actor }), schema: validator.schemas.createWorkflow, permission: { module: "MOD-67", action: "create" }, confirm: true, describe: "Create an approval workflow bound to an approvable event type." },
-    { key: "add_workflow_step", service: (c, p) => service.addStep(c, { workflowId: p.workflow_id, data: p }), schema: validator.schemas.addStep, permission: { module: "MOD-67", action: "edit" }, confirm: true, describe: "Add a validate/approve step (role/capability/scope + amount threshold)." },
-    { key: "act_approval", service: (c, p) => service.actApproval(c, p), schema: validator.schemas.actApproval, permission: { module: "MOD-67", action: "approve" }, confirm: true, describe: "Validate/approve/reject an approval task." },
+    { key: "add_workflow_step", service: (c, p, actor) => service.addStep(c, { workflowId: p.workflow_id, data: p, actor }), schema: validator.schemas.addStep, permission: { module: "MOD-67", action: "edit" }, confirm: true, describe: "Add a validate/approve step (role/capability/scope + amount threshold)." },
+    { key: "act_approval", service: (c, p, actor) => service.actApproval(c, { approvalTaskId: p.approval_task_id, action: p.action, note: p.note, actor }), schema: validator.schemas.aiActApproval, permission: { module: "MOD-67", action: "approve" }, confirm: true, describe: "Validate/approve/reject an approval task." },
   ],
 };

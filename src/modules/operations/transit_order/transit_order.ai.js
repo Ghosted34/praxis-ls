@@ -28,8 +28,7 @@ module.exports = {
   writes: [
     {
       key: "create_transit_order",
-      service: (c, p) => service.create(c, {
-        entityId: p.entity_id, dossierId: p.dossier_id,
+      service: (c, p, actor) => service.create(c, { entityId: p.entity_id, dossierId: p.dossier_id,
         customsRegime: p.customs_regime, customsRegimeOther: p.customs_regime_other,
         serviceDirection: p.service_direction, declaredValue: p.declared_value,
         // No declaredFxToXaf: the rate is derived from the currency master and
@@ -38,8 +37,7 @@ module.exports = {
         insuranceType: p.insurance_type, surveyorParty: p.surveyor_party,
         departureDate: p.departure_date, instructions: p.instructions,
         submittedDocs: p.submitted_docs, lines: p.lines,
-        allowDuplicate: p.allow_duplicate === true,
-      }),
+        allowDuplicate: p.allow_duplicate === true, actor }),
       schema: validator.schemas.aiCreate,
       permission: { module: "MOD-30", action: "create" },
       confirm: true,
@@ -47,7 +45,7 @@ module.exports = {
     },
     {
       key: "update_transit_order_docs",
-      service: (c, p) => service.updateDocs(c, { transitOrderId: p.transit_order_id, submittedDocs: p.submitted_docs }),
+      service: (c, p, actor) => service.updateDocs(c, { transitOrderId: p.transit_order_id, submittedDocs: p.submitted_docs, actor }),
       schema: validator.schemas.aiUpdate,
       permission: { module: "MOD-30", action: "edit" },
       confirm: true,
@@ -55,7 +53,7 @@ module.exports = {
     },
     {
       key: "issue_transit_order",
-      service: (c, p) => service.issue(c, { id: p.transit_order_id, date: p.date }),
+      service: (c, p, actor) => service.issue(c, { id: p.transit_order_id, date: p.date, actor }),
       schema: validator.schemas.aiIssue,
       permission: { module: "MOD-30", action: "create" },
       confirm: true,
@@ -63,7 +61,7 @@ module.exports = {
     },
     {
       key: "lodge_transit_order",
-      service: (c, p) => service.lodge(c, { id: p.transit_order_id, declarationRef: p.declaration_ref }),
+      service: (c, p, actor) => service.lodge(c, { id: p.transit_order_id, declarationRef: p.declaration_ref, actor }),
       schema: validator.schemas.aiLodge,
       permission: { module: "MOD-30", action: "edit" },
       confirm: true,

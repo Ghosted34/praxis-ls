@@ -61,7 +61,11 @@ const renew = z.object({
   end_on: d.optional(),
 });
 
-const schemas = { create, update: create.partial(), status, draft, renew };
+const update = create.partial();
+// AI-facing: the record id travels IN the payload — the copilot has no route param.
+const aiUpdate = update.extend({ hr_contract_id: z.string().uuid() });
+const aiStatus = status.extend({ hr_contract_id: z.string().uuid() });
+const schemas = { create, update, status, draft, renew, aiUpdate, aiStatus };
 
 const mw = (k) => (req, _res, next) => {
   const p = schemas[k].safeParse(req.body);

@@ -34,7 +34,7 @@ module.exports = {
   writes: [
     {
       key: "transition_enquiry",
-      service: (c, p) => service.transition(c, { id: p.contact_enquiry_id, to: p.to }),
+      service: (c, p, actor) => service.transition(c, { id: p.contact_enquiry_id, to: p.to, actor }),
       schema: validator.schemas.aiTransition,
       permission: { module: "MOD-25", action: "edit" },
       confirm: true,
@@ -42,7 +42,7 @@ module.exports = {
     },
     {
       key: "respond_to_enquiry",
-      service: (c, p) => service.respond(c, { id: p.contact_enquiry_id, body: p.body, subject: p.subject || null }),
+      service: (c, p, actor) => service.respond(c, { id: p.contact_enquiry_id, body: p.body, subject: p.subject || null, actor }),
       schema: validator.schemas.aiRespond,
       permission: { module: "MOD-25", action: "edit" },
       confirm: true,
@@ -50,7 +50,7 @@ module.exports = {
     },
     {
       key: "triage_enquiry",
-      service: (c, p) => service.triageEnquiry(c, { id: p.contact_enquiry_id, toLead: p.to_lead === true, toPartnership: p.to_partnership === true, close: p.close === true }),
+      service: (c, p, actor) => service.triageEnquiry(c, { id: p.contact_enquiry_id, toLead: p.to_lead === true, toPartnership: p.to_partnership === true, close: p.close === true, actor }),
       schema: validator.schemas.aiTriage,
       permission: { module: "MOD-25", action: "edit" },
       confirm: true,

@@ -8,6 +8,6 @@ module.exports = {
     { key: "get_settings_section", service: (c, p) => service.section(c, p.section), permission: { module: "MOD-70", action: "view" }, describe: "All settings in a section (numbering, finance, email, …)." },
   ],
   writes: [
-    { key: "set_setting", service: (c, p) => service.put(c, p), schema: validator.schemas.put, permission: { module: "MOD-70", action: "edit" }, confirm: true, describe: "Upsert one (section,key) setting value (version-bumped, audited)." },
+    { key: "set_setting", service: (c, p, actor) => service.put(c, { section: p.section, key: p.key, value: p.value, actor }), schema: validator.schemas.aiPut, permission: { module: "MOD-70", action: "edit" }, confirm: true, describe: "Upsert one (section,key) setting value (version-bumped, audited)." },
   ],
 };

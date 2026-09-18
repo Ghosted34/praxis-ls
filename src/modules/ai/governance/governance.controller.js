@@ -1,3 +1,4 @@
+// ai:none — the AI's own governance (flags, grants, budgets, vendor keys). The layer that decides what the AI may do is not a thing the AI may do.
 "use strict";
 const service = require("./governance.service");
 const { asyncHandler } = require("../../../utils/errors");

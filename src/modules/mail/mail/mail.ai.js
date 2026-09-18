@@ -20,7 +20,7 @@ module.exports = {
   ],
   writes: [
     {
-      key: "send_mail", service: service.send, schema: validator.schemas.send,
+      key: "send_mail", service: (c, p, actor) => service.send(c, { ...p, actor }), schema: validator.schemas.send,
       // H-4. This declared MOD-64 create while the HTTP send path requires
       // MOD-72 create, and the orchestrator enforces exactly what is declared —
       // so the two send paths checked DIFFERENT MODULES. A chat-permitted user
@@ -32,7 +32,7 @@ module.exports = {
       describe: "Send an email from a connected mailbox (connectionId, to, subject, html/text).",
     },
     {
-      key: "reply_mail", service: service.reply, schema: validator.schemas.aiReply,
+      key: "reply_mail", service: (c, p, actor) => service.reply(c, { ...p, actor }), schema: validator.schemas.aiReply,
       permission: { module: "MOD-72", action: "create" }, confirm: true,
       describe: "Reply in-thread to a received message (connectionId, inboundId, html/text) — keeps provider threading.",
     },

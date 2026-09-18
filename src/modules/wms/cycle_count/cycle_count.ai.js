@@ -25,8 +25,8 @@ module.exports = {
     },
     {
       key: "update_cycle_count",
-      service: service.update,
-      schema: validator.schemas.update,
+      service: (c, p, actor) => (({ cycle_count_id, ...patch }) => service.update(c, { id: cycle_count_id, patch, actor }))(p),
+      schema: validator.schemas.aiUpdate,
       permission: { module: "MOD-38", action: "edit" },
       confirm: true,
       describe: "Update a cycle count (discrepancy, certified report).",

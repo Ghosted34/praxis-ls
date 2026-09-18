@@ -32,6 +32,8 @@ const schemas = {
     data_url: z.string().min(1),
     original_name: z.string().trim().min(1).max(255).optional(),
   }).strict(),
+  // AI-facing: the story is in the URL for HTTP, in the payload for the copilot.
+  aiPublish: z.object({ success_story_id: z.string().uuid() }).strict(),
 };
 
 const generatedDraft = z.object({

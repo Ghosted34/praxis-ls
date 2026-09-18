@@ -27,6 +27,9 @@ const mw = (k, fromParams = false) => (req, _res, next) => {
 };
 
 module.exports = {
+  // AI-facing: the raw shapes, so audit_room.ai.js can declare payload schemas.
+  // The request is in the URL for the HTTP routes; a copilot call has no URL.
+  schemas,
   create: mw("create"),
   id: mw("id", true),
   attach: mw("attach"),

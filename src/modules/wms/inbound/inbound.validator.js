@@ -12,7 +12,11 @@ const qa = z.object({
   qa_status: z.enum(["PASSED", "REJECTED"]),
   putaway_location: z.string().uuid().optional(),
 });
-const schemas = { create, update: create.partial(), qa };
+const update = create.partial();
+// AI-facing: the record id travels IN the payload — the copilot has no route param.
+const aiUpdate = update.extend({ grn_inbound_id: z.string().uuid() });
+const aiQa = qa.extend({ grn_inbound_id: z.string().uuid() });
+const schemas = { create, update, qa, aiUpdate, aiQa };
 
 const mw = (k) => (req, _res, next) => {
   const p = schemas[k].safeParse(req.body);

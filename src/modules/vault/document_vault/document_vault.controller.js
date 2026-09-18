@@ -11,18 +11,11 @@ const service = require("./document_vault.service");
 const { asyncHandler, AppError } = require("../../../utils/errors");
 const { readUpload } = require("../../../shared/http/upload.middleware");
 
-const MIME_BY_EXT = {
-  pdf: "application/pdf",
-  png: "image/png",
-  jpg: "image/jpeg",
-  jpeg: "image/jpeg",
-  webp: "image/webp",
-  txt: "text/plain",
-  csv: "text/csv",
-  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-};
-const EXT_BY_MIME = Object.fromEntries(Object.entries(MIME_BY_EXT).map(([ext, mime]) => [mime, ext === "jpeg" ? "jpg" : ext]));
+// Moved to `document_vault.mime.js` so the public secure-link route can read
+// the same table — a controller cannot be required by a service without a
+// cycle, and the copy that route kept instead was wrong. Re-exported below,
+// because `fileMeta` is already imported by two other controllers.
+const { EXT_BY_MIME, contentTypeForPath } = require("./document_vault.mime");
 
 /**
  * Uploaded scans are not all PDFs. Vault rows keep the extension selected by
@@ -65,7 +58,7 @@ function safe(part) {
 
 function fileMeta(doc) {
   const pathExt = path.extname(String(doc.storage_path || "")).slice(1).toLowerCase();
-  const contentType = MIME_BY_EXT[pathExt] || "application/octet-stream";
+  const contentType = contentTypeForPath(doc.storage_path);
   const extension = EXT_BY_MIME[contentType] || pathExt || "bin";
   const typeWords = safe(String(doc.doc_type || "document").replace(/_/g, " "));
   const stem = typeWords ? typeWords.charAt(0).toUpperCase() + typeWords.slice(1).toLowerCase() : "Document";

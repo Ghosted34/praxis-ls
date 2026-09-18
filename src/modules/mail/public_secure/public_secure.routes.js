@@ -50,6 +50,39 @@ function publicHeaders(res) {
 const gone = () => new AppError("NOT_FOUND", "This link has expired or been revoked.", 404);
 
 /**
+ * WHAT A STRANGER'S BROWSER IS ALLOWED TO RENDER IN PLACE (review #24).
+ *
+ * The preview on the viewer page is served by the SAME route as the download,
+ * switched by `?disposition=inline`, and this map is the only thing standing
+ * between that and a stored-XSS delivery service on the app's own origin.
+ *
+ * PDF and raster images only, and deliberately NOT the two the internal
+ * `VaultPreviewDialog` accepts:
+ *
+ *   · `text/html` — not uploadable today, but if it ever became so, framing it
+ *     same-origin hands its author script execution against this origin.
+ *   · `text/plain` and `text/csv` — inert by name, but some browsers will still
+ *     content-sniff a `text/*` body into markup. The internal dialog can afford
+ *     them because its reader is an authenticated colleague inside a session;
+ *     an anonymous link is reachable by anyone the URL is forwarded to, so the
+ *     blast radius differs and so does the answer. Download serves them intact.
+ *
+ * `image/svg+xml` is absent from the vault's type map entirely, which is the
+ * right layer for it — an SVG is a script container wearing a picture's
+ * extension.
+ *
+ * The VALUE is how the page must render it, decided here rather than in the
+ * browser, because the two are rendered by very different mechanisms and only
+ * one of them tolerates a sandbox (see the download handler).
+ */
+const PREVIEW_KIND = new Map([
+  ["application/pdf", "pdf"],
+  ["image/png", "image"],
+  ["image/jpeg", "image"],
+  ["image/webp", "image"],
+]);
+
+/**
  * The caller's address, for the view record.
  *
  * `req.ip` respects the app's trust-proxy setting; the raw socket address is
@@ -85,9 +118,15 @@ router.get("/:token", limit, asyncHandler(async (req, res) => {
       content_type: target.content_type || null,
       size_bytes: target.size_bytes || null,
       download_path: `/public/secure/${req.params.token}/download`,
+      // Whether the viewer page may show this, and HOW, decided here rather
+      // than in the page. The client re-deriving it from `content_type` would
+      // be a second copy of a security rule, and the copy that drifts is always
+      // the one in the browser. `null` means download only.
+      preview_kind: PREVIEW_KIND.get(target.content_type || "") || null,
     },
   });
 }));
+
 
 /**
  * The bytes.
@@ -95,6 +134,11 @@ router.get("/:token", limit, asyncHandler(async (req, res) => {
  * Sent as an attachment under the original filename, sanitised first — a name
  * arriving from a vault row is not hostile today, but a response header is the
  * wrong place to find out otherwise.
+ *
+ * `?disposition=inline` asks for the preview instead. It is a REQUEST, not an
+ * instruction: the type must be in `PREVIEW_KIND`, and anything else falls back
+ * to `attachment` rather than erroring, so a recipient whose document cannot be
+ * previewed still gets their file from the same URL.
  */
 router.get("/:token/download", limit, asyncHandler(async (req, res) => {
   publicHeaders(res);
@@ -107,9 +151,42 @@ router.get("/:token/download", limit, asyncHandler(async (req, res) => {
   if (!target.buffer) throw gone();
 
   const safe = String(target.filename || "document").replace(/[^\w. -]+/g, "_").slice(0, 120);
-  res.set("Content-Type", target.content_type || "application/octet-stream");
-  res.set("Content-Disposition", `attachment; filename="${safe}"`);
+  const type = target.content_type || "application/octet-stream";
+  const kind = PREVIEW_KIND.get(type) || null;
+  const inline = req.query.disposition === "inline" && kind !== null;
+
+  res.set("Content-Type", type);
+  res.set("Content-Disposition", `${inline ? "inline" : "attachment"}; filename="${safe}"`);
   res.set("Content-Length", String(target.buffer.length));
+  // `nosniff` is the load-bearing one: it stops a browser second-guessing the
+  // declared type, which is the exact manoeuvre that turns an inert upload into
+  // an executable one. It applies to every response from this route.
+  res.set("X-Content-Type-Options", "nosniff");
+
+  /*
+   * THE RESPONSE CSP, AND WHY IT IS NOT THE SAME FOR BOTH KINDS.
+   *
+   * `sandbox` in a response CSP puts the document in an opaque origin, which is
+   * exactly right for an image and FATAL for a PDF: Chromium will not
+   * instantiate its built-in PDF viewer in a sandboxed frame, so the recipient
+   * gets a blank pane or a browser block page instead of their invoice — and
+   * `object-src 'none'` closes the usual `<embed>` fallback too. Shipping that
+   * would replace "download to find out what it is" with "a grey rectangle",
+   * which is not an improvement.
+   *
+   * So the PDF keeps every restriction that does not break the viewer — no
+   * subresources, no plugins, no framing by anyone else — and drops only the
+   * `sandbox` token. The viewer itself runs out-of-process and is one of the
+   * most hardened surfaces in the browser; the page-side iframe carries no
+   * `allow-scripts` either way. Images, which need no viewer, keep the full
+   * sandbox.
+   */
+  res.set(
+    "Content-Security-Policy",
+    kind === "pdf"
+      ? "default-src 'none'; object-src 'none'; frame-ancestors 'self'"
+      : "default-src 'none'; object-src 'none'; frame-ancestors 'self'; sandbox",
+  );
   return res.send(target.buffer);
 }));
 

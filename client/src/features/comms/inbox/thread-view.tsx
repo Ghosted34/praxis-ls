@@ -47,6 +47,33 @@ const Composer = React.lazy(() => import("./composer"));
 
 const MOVE_TO: MailFolder[] = ["INBOX", "ARCHIVE", "SPAM", "TRASH"];
 
+/** Where the work rail's open/closed preference lives. Sibling of
+ *  `comms:info-open`, which the chat's info panel already uses. */
+const RAIL_PREF = "comms:work-rail-open";
+
+/**
+ * What a COLLAPSED rail still has to say.
+ *
+ * Collapsing the panel must not collapse the two facts an operator scans a
+ * thread for. An overdue first reply is the one with a deadline attached, so it
+ * wins; an unbound thread is the one where everything downstream — the dossier,
+ * the action cards, the 360 timeline — is empty until somebody says what this
+ * is about (§7.1). Either way the mark is a glyph rather than a count: there is
+ * no number here, and a "1" would invite the reader to look for a list.
+ *
+ * Returns null when the thread is bound and on time — a badge that is always
+ * present is not a signal.
+ */
+function railAttention(thread: ThreadDetail): { mark: string; tone: "bad" | "info"; label: string } | null {
+  if (thread.sla_breached) {
+    return { mark: "!", tone: "bad", label: tr("A first reply is overdue") };
+  }
+  if (!thread.entity_ref) {
+    return { mark: "?", tone: "info", label: tr("Not linked to a client or a file yet") };
+  }
+  return null;
+}
+
 /** PR-0 origin tag → what to actually show a person. */
 function originNote(m: Message): string | null {
   if (m.direction !== "OUT") return null;
@@ -381,6 +408,33 @@ export function ThreadView({
   const [replying, setReplying] = React.useState<null | "REPLY" | "REPLY_ALL" | "FORWARD">(null);
   React.useEffect(() => { setReplying(null); }, [thread?.email_thread_id]);
 
+  /* ── THE WORK RAIL COLLAPSES AS A WHOLE (review 16 Sep 2026 #22) ───────────
+   *
+   * The rail's SECTIONS already collapse — it is an accordion and opens closed.
+   * The rail itself did not, so 22rem of every wide screen was spent on triage
+   * controls whether or not the reader was triaging, and the correspondence —
+   * the thing they opened the thread for — got what was left.
+   *
+   * DEFAULT COLLAPSED, as asked. Reading is the common case and the rail's
+   * contents are an action, not context.
+   *
+   * The choice is a PREFERENCE, not per-thread state: someone who works the
+   * queue wants it open on every thread, and someone who reads wants it shut on
+   * every thread. It is therefore NOT reset when the thread changes (unlike
+   * `replying` above, which must be) and it is remembered across sessions in
+   * localStorage, beside `comms:info-open` which the chat's info panel already
+   * uses. A storage failure costs the preference for this visit and nothing
+   * else — never the panel.
+   */
+  const [railOpen, setRailOpen] = React.useState(() => {
+    try { return localStorage.getItem(RAIL_PREF) === "true"; }
+    catch { return false; /* @silent:storage — default collapsed, as specified */ }
+  });
+  React.useEffect(() => {
+    try { localStorage.setItem(RAIL_PREF, String(railOpen)); }
+    catch { /* @silent:storage — the toggle still works for this visit */ }
+  }, [railOpen]);
+
   if (error) return <ErrorState message={error} />;
   if (loading && !thread) return <LoadingRow label={tr("Opening conversation…")} />;
   if (!thread) {
@@ -395,6 +449,8 @@ export function ThreadView({
 
   const messages = thread.messages || [];
   const lastIndex = messages.length - 1;
+  // Computed after the null-guard above, so the collapsed spine can carry it.
+  const railBadge = railAttention(thread);
 
   // Who a reply goes to: the last INBOUND sender, not simply the last message.
   // Replying to your own last message would address the mail to yourself.
@@ -539,9 +595,53 @@ export function ThreadView({
             />
           ))}
         </div>
-        <div className="min-h-0 shrink-0 xl:w-[22rem]">
-          <WorkRail thread={thread} onChanged={onWorkChanged || (() => {})} />
-        </div>
+        {railOpen ? (
+          <div className="min-h-0 shrink-0 xl:w-[22rem]">
+            <WorkRail
+              thread={thread}
+              onChanged={onWorkChanged || (() => {})}
+              onCollapse={() => setRailOpen(false)}
+            />
+          </div>
+        ) : (
+          /* COLLAPSED: a full-height spine on wide screens, a plain bar when
+             the layout has already stacked. Never nothing — a rail that can be
+             hidden with no way back is a feature people lose, and the binding
+             chip inside it is the most consequential control in the mailbox. */
+          <div className="shrink-0 border-t border-border xl:border-l xl:border-t-0">
+            <button
+              type="button"
+              onClick={() => setRailOpen(true)}
+              aria-expanded={false}
+              aria-controls="mail-work-rail"
+              title={tr("Show the work panel")}
+              className="flex w-full items-center justify-center gap-2 px-3 py-2 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground xl:h-full xl:w-11 xl:flex-col xl:py-4"
+            >
+              <span aria-hidden className="text-sm leading-none">‹</span>
+              {/* Vertical on the desktop spine, horizontal in the stacked bar.
+                  `writing-mode` rather than a rotate: a rotated element keeps
+                  its original box, so the spine would reserve a full label's
+                  width and the reading pane would not get the space back. */}
+              <span className="xl:[writing-mode:vertical-rl]">{tr("Work panel")}</span>
+              {/* Unread work is visible from the collapsed state. Hiding the
+                  rail must not hide that the thread is unbound or overdue —
+                  those are the two facts an operator is scanning for. */}
+              {railBadge && (
+                <span
+                  className={cn(
+                    "grid h-4 min-w-4 place-items-center rounded-full px-1 text-[10px] font-bold",
+                    railBadge.tone === "bad"
+                      ? "bg-[rgb(var(--bad))] text-white"
+                      : "bg-primary text-primary-foreground",
+                  )}
+                  title={railBadge.label}
+                >
+                  {railBadge.mark}
+                </span>
+              )}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* The composer, when the reader opens it. Lazily: TipTap and ProseMirror

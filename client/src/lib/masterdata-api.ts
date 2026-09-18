@@ -29,6 +29,8 @@ export type Client = {
   credit_limit?: number | null;
   is_withholding_agent?: boolean;
   is_active: boolean;
+  registration_status?: string | null;
+  verification_status?: string | null;
 };
 // Country-first form blocks (PR3-B §2) — the service persists these as their
 // own rows (party_registration / *_contact / *_address) in the create tx.

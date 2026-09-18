@@ -28,8 +28,18 @@ import {
 import { DedupeHint } from "./dedupe-hint";
 import { Pill } from "@/components/ui/pill";
 import { useResource, errMsg } from "@/lib/use-resource";
+import { enumLabel } from "@/lib/format";
 import * as api from "@/lib/masterdata-api";
 import { shell } from "./shared";
+
+const STATUS_TONE: Record<string, "ok" | "mute" | "blue" | "orange" | "warn"> = {
+  ACTIVE: "ok",
+  PENDING_REVIEW: "blue",
+  DRAFT: "mute",
+  SUSPENDED: "orange",
+  DEACTIVATED: "mute",
+  ARCHIVED: "mute",
+};
 import { PartyDossier } from "./party-360";
 import { MasterDataSettings } from "./master-data-settings";
 
@@ -355,19 +365,23 @@ export function SuppliersPage() {
               ) : filtered.length === 0 ? (
                 <div className="px-3 py-4 micro">No suppliers.</div>
               ) : (
-                filtered.map((s) => (
-                  <IndexRow
-                    key={s.supplier_id}
-                    selected={s.supplier_id === selId}
-                    onClick={() => setSelId(s.supplier_id)}
-                    className="items-center justify-between gap-2"
-                  >
-                    <span className="truncate font-medium">{s.name}</span>
-                    <Pill tone={s.is_active ? "ok" : "mute"}>
-                      {s.is_active ? "Active" : "Off"}
-                    </Pill>
-                  </IndexRow>
-                ))
+                filtered.map((s) => {
+                  // Bug #10: prefer the lifecycle ladder over the boolean.
+                  const status = s.registration_status || (s.is_active ? "ACTIVE" : "DEACTIVATED");
+                  return (
+                    <IndexRow
+                      key={s.supplier_id}
+                      selected={s.supplier_id === selId}
+                      onClick={() => setSelId(s.supplier_id)}
+                      className="items-center justify-between gap-2"
+                    >
+                      <span className="truncate font-medium">{s.name}</span>
+                      <Pill tone={STATUS_TONE[status] || "mute"}>
+                        {enumLabel(status)}
+                      </Pill>
+                    </IndexRow>
+                  );
+                })
               )}
             </div>
           </div>

@@ -727,7 +727,81 @@ function modeDirective(mode) {
   }
 }
 
-async function ask({ client, user, conversationId, message, allowed, registry, feature = "assistant", mode, scope }) {
+/**
+ * The static rules prefix of the system prompt — the large, INVARIANT block that
+ * is byte-for-byte identical on every turn. It lived inline in both ask() and
+ * askStream() and drifted by hand (audit B5); it is one constant now, which both
+ * paths share via buildSystemPrompt(). Being invariant is also what lets a
+ * provider cache it (llm.service marks it as the message `cachePrefix`), so the
+ * ~2–3 KB is not re-read on every question.
+ */
+const SYSTEM_RULES =
+  "You are Praxis LS, an OHADA-aware logistics ERP assistant. Ground answers in the CONTEXT. " +
+  "Only call a function when the user asks to DO something; never invent data. " +
+  "A question or request to SEE/LIST/COUNT/CHECK/SUMMARISE data is a READ — use a list_/get_ action (or just " +
+  "answer); NEVER a create_/update_/record_ write. Propose a write ONLY when the user explicitly asks to create, " +
+  "change, advance, record, or post something. 'How many X are there' means list_X, not create_X. " +
+  "When filtering or fetching a record, use its internal id (the UUID from a previous read), NOT a human " +
+  "reference like a vehicle registration, ref, or code — those won't match an id filter. " +
+  "You act with the user's permissions and cannot exceed them. " +
+  "Speak in plain business language. Refer to records by their name or human reference " +
+  "(a dossier by its ref e.g. SBX-2026-0001, a client or lead by its name), and use natural " +
+  "field names (\"payment terms\", not \"payment_terms_days\"). NEVER show the user raw database " +
+  "identifiers (UUIDs like d69be65d-…), internal id columns, or snake_case field names unless they " +
+  "explicitly ask for an ID. When confirming an action you took, name the record, not its UUID. " +
+  "When a task needs several actions, propose the FIRST action and wait for the user to " +
+  "confirm it. Once it is confirmed, IMMEDIATELY propose the next step — do not ask 'shall I " +
+  "proceed?' or 'would you like me to continue?'. Just do it. The user confirmed once, which " +
+  "means they want the task done. " +
+  "When the user asks you to 'draft and execute', 'create and submit', 'prepare and send' or " +
+  "any combination of writing something AND recording it: first write the document as your " +
+  "answer text, then IMMEDIATELY call the appropriate write function with the details from " +
+  "your draft. Do not stop after drafting to ask 'shall I also create this?' — the user " +
+  "already asked you to. " +
+  "CRUCIAL: the moment you decide to act (and the user has given the go-ahead), CALL the function in that SAME " +
+  "reply. Never end your turn with only a statement of intent like 'let me do that now' or 'one moment' and then " +
+  "stop — if you say you will do it, do it in the same response. The user must never have to ask you to proceed " +
+  "with an action you already announced. " +
+  "For a status change, move ONE valid step along the lifecycle described in the action (e.g. a DRAFT proposal goes " +
+  "to IN_REVIEW before SENT); never skip states — if unsure of the current state, read it first." +
+  "LANGUAGE RULES — these are absolute: " +
+  "• NEVER show snake_case field names (say 'payment terms' not 'payment_terms_days'). " +
+  "• NEVER show UUIDs, internal IDs, or database column names. " +
+  "• NEVER say 'I cannot find' or 'missing field X' — if a value is unclear, ask the user " +
+  "  in plain language ('which client is this for?') instead of reporting a technical error. " +
+  "• When ALL the information the user provided is sufficient, USE IT — do not claim fields " +
+  "  are missing when the user has already told you the values. Map what they said to the " +
+  "  action's fields. " +
+  "• If an action fails because of a field mapping issue, try to FIX the mapping yourself " +
+  "  (e.g. look up the client by name to get their ID) before telling the user it failed. ";
+
+/**
+ * The ONE builder both ask() and askStream() use (audit B5), so the two paths
+ * can never drift. It returns the invariant `staticPrefix` (SYSTEM_RULES), the
+ * per-turn `dynamic` tail (who is asking, the learned pattern/feedback/preference
+ * blocks, the mode directive, and the retrieved CONTEXT), and the concatenated
+ * `full` string. The caller sends `full` as the system message and passes
+ * `staticPrefix` to llm as the cacheable prefix.
+ */
+function buildSystemPrompt({ user, patternBlock = "", feedbackBlock = "", prefsBlock = "", mode, hits = [] }) {
+  const dynamic =
+    whoIsAsking(user) +
+    patternBlock +
+    feedbackBlock +
+    prefsBlock +
+    modeDirective(mode) +
+    "\n\nCONTEXT:\n" +
+    // REASONING-class redaction (audit A1): the CONTEXT is the caller's own
+    // authorised data — retrieval already filtered it by the confidentiality
+    // tags their RBAC allows — and it goes into this one prompt and nowhere
+    // else, so amounts and ERP references reach the model intact while payment
+    // instruments and government IDs stay masked. The strict `redactExternal`
+    // is used only where output is persisted (the summariser).
+    redactForReasoning(toContextBlock(hits));
+  return { staticPrefix: SYSTEM_RULES, dynamic, full: SYSTEM_RULES + dynamic };
+}
+
+async function ask({ client, user, conversationId, message, allowed, registry, feature = "assistant", mode, scope, skipRetrieval = false }) {
   // Governance gate (AI_ARCHITECTURE §6): feature enabled + user granted + budget
   // not hard-capped. Nothing hits a model when the gate is closed.
   const gate = await governance.canUseFeature(client, { userId: user.user_id, featureKey: feature });
@@ -738,7 +812,13 @@ async function ask({ client, user, conversationId, message, allowed, registry, f
   // with the knowledge base holding its own reserved slots, and NO codebase chunks
   // — an operator asking about their receivables should not be grounded on this
   // repository's source, which is where the snake_case/UUID drift came from.
-  const hits = await retrieve({ query: message, tenantClient: client, allowed, includeCodebase: false });
+  //
+  // `skipRetrieval` (audit E2): the post-confirm auto-continue calls ask() again
+  // milliseconds after the turn that just ran, to propose the next step. That
+  // follow-up is driven by the conversation and the tools, not by fresh
+  // knowledge-base recall, so it skips the embed + vector search here (and the
+  // condense below) — the expensive parts — rather than paying for them twice.
+  const hits = skipRetrieval ? [] : await retrieve({ query: message, tenantClient: client, allowed, includeCodebase: false });
   const tools = await loadTools(client);
   // Self-learning: recent successful execution patterns for the model to reference.
   const patterns = await recentPatterns(client, user.user_id);
@@ -761,83 +841,12 @@ async function ask({ client, user, conversationId, message, allowed, registry, f
       Object.entries(prefs).map(([k, v]) => `  • ${k}: ${v}`).join("\n")
     : "";
 
-  const system =
-    "You are Praxis LS, an OHADA-aware logistics ERP assistant. Ground answers in the CONTEXT. " +
-    "Only call a function when the user asks to DO something; never invent data. " +
-    // Reads vs writes: a question is never a create.
-    "A question or request to SEE/LIST/COUNT/CHECK/SUMMARISE data is a READ — use a list_/get_ action (or just " +
-    "answer); NEVER a create_/update_/record_ write. Propose a write ONLY when the user explicitly asks to create, " +
-    "change, advance, record, or post something. 'How many X are there' means list_X, not create_X. " +
-    // Filter/fetch by the internal id, not a human label.
-    "When filtering or fetching a record, use its internal id (the UUID from a previous read), NOT a human " +
-    "reference like a vehicle registration, ref, or code — those won't match an id filter. " +
-    "You act with the user's permissions and cannot exceed them. " +
-    // Speak business language, not database language. Users identify records by
-    // name/reference, not internal keys — surfacing a UUID reads as a leak.
-    "Speak in plain business language. Refer to records by their name or human reference " +
-    "(a dossier by its ref e.g. SBX-2026-0001, a client or lead by its name), and use natural " +
-    "field names (\"payment terms\", not \"payment_terms_days\"). NEVER show the user raw database " +
-    "identifiers (UUIDs like d69be65d-…), internal id columns, or snake_case field names unless they " +
-    "explicitly ask for an ID. When confirming an action you took, name the record, not its UUID. " +
-    // One step at a time: propose a single action, let the human confirm it, then
-    // (a recap is generated automatically) wait before the next.
-    // ── KEY CHANGE: auto-continue after each step, no waiting for go-ahead ──
-    // The old prompt said "wait for their go-ahead before proposing the next"
-    // which created the snooze loop: propose → confirm → "shall I proceed?" →
-    // user says "yes" → propose → confirm → … Every cycle wasted a user turn
-    // on "yes". Now: after proposing an action you WAIT for confirmation (that's
-    // the safety property), but once confirmed the NEXT step is proposed in the
-    // SAME reply. The user confirmed once, which means they want the task done.
-    "When a task needs several actions, propose the FIRST action and wait for the user to " +
-    "confirm it. Once it is confirmed, IMMEDIATELY propose the next step — do not ask 'shall I " +
-    "proceed?' or 'would you like me to continue?'. Just do it. The user confirmed once, which " +
-    "means they want the task done. " +
-    // ── Draft → execute in one flow ──
-    // When the user says "draft and execute", "create and submit", "prepare and send" — they
-    // want BOTH steps, not a draft followed by a question. Draft the document as prose, then
-    // IMMEDIATELY propose the corresponding write action with all the details from your draft
-    // already filled in. The user sees the draft AND the action card together.
-    "When the user asks you to 'draft and execute', 'create and submit', 'prepare and send' or " +
-    "any combination of writing something AND recording it: first write the document as your " +
-    "answer text, then IMMEDIATELY call the appropriate write function with the details from " +
-    "your draft. Do not stop after drafting to ask 'shall I also create this?' — the user " +
-    "already asked you to. " +
-    // The stall to kill: the model saying "let me do that now" WITHOUT emitting the
-    // tool call, forcing the user to prod it. Announce and act in the same turn.
-    "CRUCIAL: the moment you decide to act (and the user has given the go-ahead), CALL the function in that SAME " +
-    "reply. Never end your turn with only a statement of intent like 'let me do that now' or 'one moment' and then " +
-    "stop — if you say you will do it, do it in the same response. The user must never have to ask you to proceed " +
-    "with an action you already announced. " +
-    // Status machines: a record usually can't jump straight to a terminal state.
-    "For a status change, move ONE valid step along the lifecycle described in the action (e.g. a DRAFT proposal goes " +
-    "to IN_REVIEW before SENT); never skip states — if unsure of the current state, read it first." +
-    // ── Human-readable rule (strengthened) ──
-    // The user consistently reports that raw database language is unacceptable.
-    // Every field name, column name, table name and internal identifier must be
-    // translated to business language before it reaches the user.
-    "LANGUAGE RULES — these are absolute: " +
-    "• NEVER show snake_case field names (say 'payment terms' not 'payment_terms_days'). " +
-    "• NEVER show UUIDs, internal IDs, or database column names. " +
-    "• NEVER say 'I cannot find' or 'missing field X' — if a value is unclear, ask the user " +
-    "  in plain language ('which client is this for?') instead of reporting a technical error. " +
-    "• When ALL the information the user provided is sufficient, USE IT — do not claim fields " +
-    "  are missing when the user has already told you the values. Map what they said to the " +
-    "  action's fields. " +
-    "• If an action fails because of a field mapping issue, try to FIX the mapping yourself " +
-    "  (e.g. look up the client by name to get their ID) before telling the user it failed. " +
-    whoIsAsking(user) +
-    patternBlock +
-    feedbackBlock +
-    prefsBlock +
-    modeDirective(mode) +
-    "\n\nCONTEXT:\n" +
-    // REASONING-class redaction (audit A1): this block is the caller's own
-    // authorised data — retrieval already filtered it by the confidentiality
-    // tags their RBAC allows — and it goes into this one prompt and nowhere
-    // else. Amounts, ERP references and contact details reach the model intact;
-    // payment instruments and government ID numbers are still masked. The
-    // strict variant is `redactExternal`, used only where output is persisted.
-    redactForReasoning(toContextBlock(hits));
+  // One shared builder for both ask() and askStream() (audit B5) — see
+  // buildSystemPrompt / SYSTEM_RULES above. `full` is the system message;
+  // `staticPrefix` is the cacheable rules block passed to llm as `cachePrefix`.
+  // The CONTEXT inside it is redacted REASONING-class (audit A1) — see the note
+  // on buildSystemPrompt.
+  const prompt = buildSystemPrompt({ user, patternBlock, feedbackBlock, prefsBlock, mode, hits });
 
   // ── Conversation memory ──────────────────────────────────────────────────
   // Until 2026-08-01 this array was just [system, user] on every call, so the
@@ -856,12 +865,14 @@ async function ask({ client, user, conversationId, message, allowed, registry, f
   // gets `redactForReasoning`, not the strict summariser/embeddings scrub.
   // Fold anything that has scrolled out of the window into the rolling summary
   // first, so THIS answer sees it (0481). Best-effort — never blocks the answer.
+  // Skipped on the cheap auto-continue follow-up (audit E2): the turn that
+  // triggered it just condensed this same conversation moments ago.
   const resolvedId = conversationId || (await history_.currentId(client, user));
-  await history_.condense(client, { user, conversationId: resolvedId, feature });
+  if (!skipRetrieval) await history_.condense(client, { user, conversationId: resolvedId, feature });
 
   const history = await history_.load(client, { user, conversationId: resolvedId });
   const messages = [
-    { role: "system", content: system },
+    { role: "system", content: prompt.full, cachePrefix: prompt.staticPrefix },
     // The summary rides as a system message rather than a fake assistant turn:
     // it is context about the conversation, not something anyone actually said,
     // and labelling it honestly stops the model quoting it back as its own words.
@@ -1149,7 +1160,7 @@ async function ask({ client, user, conversationId, message, allowed, registry, f
  * Execute a confirmed action via the whitelisted registry, with the user's
  * permissions. Logs to the immutable ledger. Registry maps action_key → fn.
  */
-async function confirmAction({ client, user, actionRunId, registry, payload: edited }) {
+async function confirmAction({ client, user, actionRunId, registry, payload: edited, allowed }) {
   const { rows } = await client.query(
     "SELECT * FROM ai_action_run WHERE action_run_id=$1 AND user_id=$2",
     [actionRunId, user.user_id],
@@ -1298,7 +1309,11 @@ async function confirmAction({ client, user, actionRunId, registry, payload: edi
       // follow-up ask with a synthetic message that tells the model to propose
       // whatever comes next. This eliminates the snooze loop entirely.
       const autoMsg = "The previous action was just executed successfully. If there is a clear next step in this task, propose it now as an action. If the task is complete, just say so briefly.";
-      const followUp = await ask({ client, user, conversationId: run.conversation_id, message: autoMsg, allowed: undefined, registry, feature: "assistant" });
+      // Pass the caller's confidentiality tags through (audit E2 — this used to
+      // send `allowed: undefined`, silently dropping them), and skip retrieval +
+      // condense on this follow-up so auto-continue costs a model call, not a
+      // second full recall pass.
+      const followUp = await ask({ client, user, conversationId: run.conversation_id, message: autoMsg, allowed, registry, feature: "assistant", skipRetrieval: true });
       if (followUp.actions && followUp.actions.length) {
         nextActions = followUp.actions;
         // The follow-up's answer text rides with the narration.
@@ -1324,7 +1339,7 @@ async function confirmAction({ client, user, actionRunId, registry, payload: edi
  * own transactions — cross-module atomicity is a later design (§8) — so this is
  * "grouped + halt-on-failure", not a single distributed transaction.
  */
-async function confirmBatch({ client, user, batchId, registry }) {
+async function confirmBatch({ client, user, batchId, registry, allowed }) {
   const gate = await governance.canUseFeature(client, { userId: user.user_id, featureKey: "assistant" });
   if (!gate.allowed) throw new Error(`AI action blocked: ${gate.reason}`);
 
@@ -1337,7 +1352,7 @@ async function confirmBatch({ client, user, batchId, registry }) {
     let res;
     try {
        
-      res = await confirmAction({ client, user, actionRunId: r.action_run_id, registry });
+      res = await confirmAction({ client, user, actionRunId: r.action_run_id, registry, allowed });
     } catch (err) {
       results.push({ action_run_id: r.action_run_id, ok: false, error: err.message });
       return { batch_id: batchId, halted: true, executed: results.filter((x) => x.ok).length, results };
@@ -1419,71 +1434,17 @@ async function* askStream({ client, user, conversationId, message, allowed, regi
       Object.entries(prefs).map(([k, v]) => `  • ${k}: ${v}`).join("\n")
     : "";
 
-  const system =
-    "You are Praxis LS, an OHADA-aware logistics ERP assistant. Ground answers in the CONTEXT. " +
-    "Only call a function when the user asks to DO something; never invent data. " +
-    "A question or request to SEE/LIST/COUNT/CHECK/SUMMARISE data is a READ — use a list_/get_ action (or just " +
-    "answer); NEVER a create_/update_/record_ write. Propose a write ONLY when the user explicitly asks to create, " +
-    "change, advance, record, or post something. 'How many X are there' means list_X, not create_X. " +
-    "When filtering or fetching a record, use its internal id (the UUID from a previous read), NOT a human " +
-    "reference like a vehicle registration, ref, or code — those won't match an id filter. " +
-    "You act with the user's permissions and cannot exceed them. " +
-    "Speak in plain business language. Refer to records by their name or human reference " +
-    "(a dossier by its ref e.g. SBX-2026-0001, a client or lead by its name), and use natural " +
-    "field names (\"payment terms\", not \"payment_terms_days\"). NEVER show the user raw database " +
-    "identifiers (UUIDs like d69be65d-…), internal id columns, or snake_case field names unless they " +
-    "explicitly ask for an ID. When confirming an action you took, name the record, not its UUID. " +
-    // ── KEY CHANGE: auto-continue after each step, no waiting for go-ahead ──
-    // The old prompt said "wait for their go-ahead before proposing the next" which
-    // created the snooze loop: propose → confirm → "shall I proceed?" → user says
-    // "yes" → propose → confirm → … Every cycle wasted a user turn on "yes".
-    // Now: after proposing an action you WAIT for confirmation (that's the safety
-    // property), but once confirmed the NEXT step is proposed in the SAME reply.
-    "When a task needs several actions, propose the FIRST action and wait for the user to " +
-    "confirm it. Once it is confirmed, IMMEDIATELY propose the next step — do not ask 'shall I " +
-    "proceed?' or 'would you like me to continue?'. Just do it. The user confirmed once, which " +
-    "means they want the task done. " +
-    // ── Draft → execute in one flow ──
-    // When the user says "draft and execute", "create and submit", "prepare and send" — they
-    // want BOTH steps, not a draft followed by a question. Draft the document as prose, then
-    // IMMEDIATELY propose the corresponding write action with all the details from your draft
-    // already filled in. The user sees the draft AND the action card together.
-    "When the user asks you to 'draft and execute', 'create and submit', 'prepare and send' or " +
-    "any combination of writing something AND recording it: first write the document as your " +
-    "answer text, then IMMEDIATELY call the appropriate write function with the details from " +
-    "your draft. Do not stop after drafting to ask 'shall I also create this?' — the user " +
-    "already asked you to. " +
-    "CRUCIAL: the moment you decide to act (and the user has given the go-ahead), CALL the function in that SAME " +
-    "reply. Never end your turn with only a statement of intent like 'let me do that now' or 'one moment' and then " +
-    "stop — if you say you will do it, do it in the same response. The user must never have to ask you to proceed " +
-    "with an action you already announced. " +
-    "For a status change, move ONE valid step along the lifecycle described in the action (e.g. a DRAFT proposal goes " +
-    "to IN_REVIEW before SENT); never skip states — if unsure of the current state, read it first." +
-    // ── Human-readable rule (strengthened) ──
-    "LANGUAGE RULES — these are absolute: " +
-    "• NEVER show snake_case field names (say 'payment terms' not 'payment_terms_days'). " +
-    "• NEVER show UUIDs, internal IDs, or database column names. " +
-    "• NEVER say 'I cannot find' or 'missing field X' — if a value is unclear, ask the user " +
-    "  in plain language ('which client is this for?') instead of reporting a technical error. " +
-    "• When ALL the information the user provided is sufficient, USE IT — do not claim fields " +
-    "  are missing when the user has already told you the values. Map what they said to the " +
-    "  action's fields. " +
-    "• If an action fails because of a field mapping issue, try to FIX the mapping yourself " +
-    "  (e.g. look up the client by name to get their ID) before telling the user it failed. " +
-    whoIsAsking(user) +
-    patternBlock +
-    feedbackBlock +
-    prefsBlock +
-    modeDirective(mode) +
-    "\n\nCONTEXT:\n" +
-    redactForReasoning(toContextBlock(hits));
+  // Same shared builder as ask() (audit B5) — no second copy of the rules to
+  // drift, the static prefix is cacheable via `cachePrefix` below, and the
+  // CONTEXT is redacted REASONING-class (audit A1) inside buildSystemPrompt.
+  const prompt = buildSystemPrompt({ user, patternBlock, feedbackBlock, prefsBlock, mode, hits });
 
   // ── Conversation memory (same as non-streaming) ──
   const resolvedId = conversationId || (await history_.currentId(client, user));
   await history_.condense(client, { user, conversationId: resolvedId, feature });
   const history = await history_.load(client, { user, conversationId: resolvedId });
   const messages = [
-    { role: "system", content: system },
+    { role: "system", content: prompt.full, cachePrefix: prompt.staticPrefix },
     ...(history.summary
       ? [{ role: "system", content: "EARLIER IN THIS CONVERSATION (summary of turns no longer replayed in full):\n" + redactForReasoning(history.summary) }]
       : []),
@@ -1768,4 +1729,8 @@ module.exports = {
   selectTools,
   tokenize,
   summarySystemPrompt,
+  // Exported for the B5 dedupe test: both ask()/askStream() build from the ONE
+  // shared prompt, and its static prefix is the single SYSTEM_RULES constant.
+  buildSystemPrompt,
+  SYSTEM_RULES,
 };

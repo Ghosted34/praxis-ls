@@ -123,7 +123,14 @@ const askStream = async (req, res) => {
 };
 const confirm = asyncHandler(async (req, res) => {
   const out = await req.tenantDb((client) =>
-    service.confirm(client, { user: user(req), actionRunId: req.params.id, payload: req.body && req.body.payload }),
+    service.confirm(client, {
+      user: user(req),
+      actionRunId: req.params.id,
+      payload: req.body && req.body.payload,
+      // Carry the caller's confidentiality tags into the post-confirm
+      // auto-continue (audit E2), same as ask()/askStream().
+      allowed: req.aiAllowed || ["normal"],
+    }),
   );
   res.json({ data: out });
 });
@@ -135,7 +142,11 @@ const options = asyncHandler(async (req, res) => {
 });
 const confirmBatch = asyncHandler(async (req, res) => {
   const out = await req.tenantDb((client) =>
-    service.confirmBatch(client, { user: user(req), batchId: req.params.batchId }),
+    service.confirmBatch(client, {
+      user: user(req),
+      batchId: req.params.batchId,
+      allowed: req.aiAllowed || ["normal"],
+    }),
   );
   res.json({ data: out });
 });

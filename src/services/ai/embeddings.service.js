@@ -58,4 +58,31 @@ async function embedBatch(client, texts) {
 
 const embedOne = async (client, text) => (await embedBatch(client, [text]))[0];
 
-module.exports = { embedBatch, embedOne, dim: config.EMBEDDINGS_DIM };
+/**
+ * Resolution-only health of the embeddings vendor (audit E4). `retrieve()`
+ * returns [] when no embeddings vendor is configured, so the assistant silently
+ * runs with ZERO knowledge-base grounding (tool reads only) and nothing says so.
+ * This makes that state legible — surfaced at boot (a one-time WARN) and
+ * available to a future AI Control panel. No external call: it only checks that a
+ * usable credential + endpoint resolve, mirroring the chat-vendor health check.
+ */
+async function checkEmbeddingsHealth(client) {
+  let vendor = null;
+  try {
+    vendor = await resolveVendor(client);
+  } catch {
+    /* @silent:boot — platform DB may not answer yet; report unresolved. */
+    vendor = null;
+  }
+  const resolved = Boolean(vendor && vendor.api_key && vendor.endpoint_url);
+  return {
+    // ok === grounding is available; when false, the assistant answers from tool
+    // reads alone, with no knowledge-base recall.
+    ok: resolved,
+    groundingEnabled: resolved,
+    model: (vendor && vendor.model) || config.EMBEDDINGS_MODEL || null,
+    checkedAt: new Date().toISOString(),
+  };
+}
+
+module.exports = { embedBatch, embedOne, checkEmbeddingsHealth, dim: config.EMBEDDINGS_DIM };

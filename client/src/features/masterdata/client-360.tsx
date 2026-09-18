@@ -19,6 +19,7 @@ import { SplitPane } from "@/components/ui/split-pane";
 import { PageHeader } from "@/components/data-list";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { useResource } from "@/lib/use-resource";
+import { enumLabel } from "@/lib/format";
 import * as api from "@/lib/masterdata-api";
 import { ClientForm } from "./clients";
 import { PartyDossier } from "./party-360";
@@ -100,19 +101,23 @@ export function ClientsPage() {
               ) : filtered.length === 0 ? (
                 <div className="px-3 py-4 micro">No clients.</div>
               ) : (
-                filtered.map((c) => (
-                  <IndexRow
-                    key={c.client_id}
-                    selected={c.client_id === selId}
-                    onClick={() => select(c)}
-                    className="items-center justify-between gap-2"
-                  >
-                    <span className="truncate font-medium">{c.name}</span>
-                    <Pill tone={c.is_active ? "ok" : "mute"}>
-                      {c.is_active ? "Active" : "Off"}
-                    </Pill>
-                  </IndexRow>
-                ))
+                filtered.map((c) => {
+                  // Bug #10: prefer the lifecycle ladder over the boolean.
+                  const status = c.registration_status || (c.is_active ? "ACTIVE" : "DEACTIVATED");
+                  const tone = status === "ACTIVE" ? "ok" : status === "PENDING_REVIEW" ? "blue" : "mute";
+                  const label = enumLabel(status);
+                  return (
+                    <IndexRow
+                      key={c.client_id}
+                      selected={c.client_id === selId}
+                      onClick={() => select(c)}
+                      className="items-center justify-between gap-2"
+                    >
+                      <span className="truncate font-medium">{c.name}</span>
+                      <Pill tone={tone}>{label}</Pill>
+                    </IndexRow>
+                  );
+                })
               )}
             </div>
           </div>

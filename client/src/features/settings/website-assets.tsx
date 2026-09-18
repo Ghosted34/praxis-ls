@@ -96,12 +96,13 @@ const kb = (bytes: number) => Math.round(bytes / 1024);
 /** The constraint line, assembled from the shared register. */
 function constraintHint(slot: api.AssetSlot): string {
   const spec = api.ASSET_SLOTS[slot];
-  const parts = [
-    tr("PNG, JPEG or WebP"),
-    `${tr("at least")} ${spec.minWidth} px ${tr("wide")}`,
-    `${tr("around")} ${spec.aspect}`,
-    `${tr("up to")} ${kb(spec.maxBytes)} KB`,
-  ];
+  const parts = [tr("PNG, JPEG or WebP")];
+  // Bug #16: slots with minWidth <= 1 accept any size (cover photos). The
+  // "at least N px wide" hint only makes sense for slots that genuinely enforce
+  // a minimum (partner-mark / credential-mark).
+  if (spec.minWidth > 1) parts.push(`${tr("at least")} ${spec.minWidth} px ${tr("wide")}`);
+  parts.push(`${tr("around")} ${spec.aspect}`);
+  parts.push(`${tr("up to")} ${kb(spec.maxBytes)} KB`);
   return parts.join(" · ");
 }
 

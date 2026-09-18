@@ -385,6 +385,19 @@ const Schema = z.object({
   // model loses the only SYSCOHADA reference it has. Unused slots fall back to
   // tenant hits, so this costs nothing when there is no relevant doc.
   AI_RETRIEVAL_KB_K: int(4),
+  // Hard per-call timeouts on the model HTTP request (PRAXIS_AI_AUDIT.md E1).
+  // The old values were baked in at 60s (non-stream) / 120s (stream), and a
+  // non-stream `ask` makes SEVERAL sequential calls (initial + one per tool
+  // round + a final pass), each under its own cap — so a slow model on a
+  // genuine multi-hop chain tripped a 60s call, which was then misread as a
+  // transient failure and fell through to the fallback vendor. Generous by
+  // design: the SSE path additionally sends a 15s heartbeat and aborts on client
+  // disconnect, so a long-but-live turn is never cut off, while a truly hung
+  // socket still fails rather than hanging forever. Non-stream is the ceiling on
+  // ONE model call; stream is the ceiling on time-to-first-response for a stream
+  // (the heartbeat/disconnect govern the body).
+  AI_REQUEST_TIMEOUT_MS: int(120_000),
+  AI_STREAM_TIMEOUT_MS: int(300_000),
 
   EMBEDDINGS_PROVIDER: z.string().default("openai"),
   EMBEDDINGS_MODEL: z.string().default("text-embedding-3-small"),

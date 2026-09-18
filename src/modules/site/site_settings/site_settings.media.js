@@ -233,7 +233,14 @@ async function assertUsable(buffer, slot, spec) {
   }
 
   const width = meta.width || 0;
-  if (width < spec.minWidth) {
+  // Bug #16: entity-cover (and every slot with minWidth <= 1 after the fix)
+  // accepts any image width. The renderer uses `object-fit: cover` to fill the
+  // slot, and `writeVariants` never produces a rung wider than the source, so
+  // a smaller source simply results in fewer derivatives. Previously a 1200 px
+  // floor rejected legitimate photos outright; keeping the floor only for slots
+  // that genuinely need it (portrait/partner-mark) gives a clear error while
+  // letting cover-style slots accept any size.
+  if (spec.minWidth > 1 && width < spec.minWidth) {
     throw new AppError(
       "VALIDATION_ERROR",
       `This slot needs an image at least ${spec.minWidth} px wide; that one is ${width} px.`,

@@ -179,7 +179,11 @@ export function ThreadRow({
             {thread.has_attachment && (
               <Pill tone="mute">{tr("Attachment")}</Pill>
             )}
-            {thread.entity_ref && <Pill tone="blue">{thread.entity_ref}</Pill>}
+            {thread.entity_ref && (
+              <span title={thread.entity_ref}>
+                <Pill tone="blue">{thread.entity_label || thread.entity_ref}</Pill>
+              </span>
+            )}
             {/* The classifier's reason on hover: a verdict a person cannot
                 interrogate is one they will not trust. */}
             {thread.stream === "SYSTEM" && (

@@ -319,6 +319,8 @@ describe("the rail reaches both", () => {
       />,
       {},
     );
+    // The "Not sent yet" section starts shut: open it first, as the operator would.
+    await userEvent.click(screen.getByRole("button", { name: "Not sent yet" }));
     const nav = screen.getByRole("navigation", { name: "Mail folders" });
     expect(within(nav).getByRole("button", { name: "My drafts" })).toBeInTheDocument();
     expect(within(nav).getByRole("button", { name: "Outbox" })).toBeInTheDocument();

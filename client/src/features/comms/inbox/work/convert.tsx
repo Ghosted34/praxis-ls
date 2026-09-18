@@ -49,13 +49,17 @@ const TARGETS: { value: api.ConvertTarget; label: string }[] = [
 ];
 
 /** Where the operator lands to actually create it, carrying the prefill. */
-function createHref(preview: api.ConvertPreview): string {
+function createHref(threadId: string, preview: api.ConvertPreview): string {
   const q = new URLSearchParams();
   for (const [k, v] of Object.entries(preview.prefill || {})) {
     if (v === null || v === undefined || v === "") continue;
     q.set(k, String(v));
   }
   q.set("from_mail", "1");
+  // The thread the record comes from: the create page posts it back to
+  // `recordConverted` after saving, which is what tells the thread what it
+  // became. Without it the record exists but the email never learns.
+  q.set("mail_thread", threadId);
   const sep = preview.target_route.includes("?") ? "&" : "?";
   return `${preview.target_route}${sep}${q.toString()}`;
 }
@@ -98,12 +102,16 @@ export function ConvertDialog({
   }
 
   const attachFirst = preview?.primary_action === "ATTACH_EXISTING";
+  // A malformed preview must degrade to "no duplicates", never to the error
+  // boundary: `.map` on a non-array is what used to throw "Something went
+  // wrong" over this whole dialog.
+  const dups = Array.isArray(preview?.duplicates) ? preview.duplicates : [];
 
   // The thread learns what it became when the target module reports back.
   // Recording it optimistically here would leave a thread claiming a lead that
   // the operator abandoned on the next screen.
   const createButton = preview ? (
-    <Link to={createHref(preview)} onClick={onClose}>
+    <Link to={createHref(threadId, preview)} onClick={onClose}>
       <Button size="sm" variant={attachFirst ? "outline" : "default"}>
         {tr("Create a new one")}
       </Button>
@@ -140,21 +148,21 @@ export function ConvertDialog({
 
             {/* Duplicates FIRST when the server says so. The order is the
                 control — see the header. */}
-            {attachFirst && preview.duplicates.length > 0 && (
+            {attachFirst && dups.length > 0 && (
               <Callout tone="warn" title={tr("This may already exist.")}>
                 {preview.hint || tr("Attach this email to the existing record instead of making another.")}
               </Callout>
             )}
 
-            {preview.duplicates.length > 0 && (
+            {dups.length > 0 && (
               <ul className="space-y-1">
-                {preview.duplicates.map((d) => (
+                {dups.map((d) => (
                   <li
                     key={d.id}
                     className="flex items-center justify-between gap-2 rounded-lg border border-border bg-card/40 px-3 py-2"
                   >
                     <span className="flex items-center gap-2 text-sm">
-                      {d.name || d.id}
+                      {d.name || (typeof d.ref === "string" && d.ref) || d.id}
                       {typeof d.score === "number" && (
                         <Pill tone={d.score >= 85 ? "ok" : "warn"}>{`${Math.round(d.score)}% ${tr("match")}`}</Pill>
                       )}

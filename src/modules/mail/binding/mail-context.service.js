@@ -207,4 +207,79 @@ async function tab(client, entityRef, tabName, opts = {}) {
   return { ...data, cached: false };
 }
 
-module.exports = { overview, tab, tabQuery, parseRef, maySeeFinancials, assertEntityAccess, invalidate: cache.invalidate };
+/**
+ * Display names for bound threads: `client:<uuid>` → "Camrail SARL".
+ *
+ * The thread list and view rendered the raw `entity_ref`, so a bound customer
+ * showed as a UUID. Resolving it HERE — beside the drawer, which already owns
+ * the kind→table knowledge — rather than in the thread service keeps that
+ * mapping in one file.
+ *
+ * Permission-safe by construction: a label is returned only for a kind whose
+ * owning module the caller may read (the same rule as `assertEntityAccess`,
+ * fail-soft instead of throwing). An operator who cannot read a dossier gets
+ * no label for it, and the UI falls back to the ref it already had — never a
+ * name they have no right to see, and never an error that breaks the list.
+ *
+ * Batched by kind (one grant check + one query per kind present), so a list of
+ * fifty threads costs at most a handful of statements however many are bound.
+ */
+const LABEL_MODULE = Object.freeze({ client: "MOD-03", supplier: "MOD-04", dossier: "MOD-29", lead: "MOD-26" });
+const LABEL_COLUMN = Object.freeze({
+  client: { table: "client_master", pk: "client_id", col: "name" },
+  supplier: { table: "supplier_master", pk: "supplier_id", col: "name" },
+  dossier: { table: "dossier_visible", pk: "dossier_id", col: "ref" },
+  lead: { table: "lead", pk: "lead_id", col: "COALESCE(company_name, contact_name)" },
+});
+
+async function maySeeLabel(client, kind, user) {
+  if (user && user.is_ceo === true) return true;
+  const moduleKey = LABEL_MODULE[kind];
+  if (!moduleKey || !user) return false;
+  try {
+    const grants = await identityCache.getGrants(client, {
+      role_ids: user.role_ids || [], module: moduleKey,
+    });
+    return grants.some((g) => g.can_read === true);
+  } catch {
+    return false;
+  }
+}
+
+async function labelForRefs(client, refs, user) {
+  const out = {};
+  const wanted = [...new Set((refs || []).filter(Boolean))];
+  if (!wanted.length) return out;
+  const byKind = new Map();
+  for (const r of wanted) {
+    const m = String(r).match(/^([a-z_]+):([A-Za-z0-9-]+)$/);
+    if (!m || !LABEL_COLUMN[m[1]]) continue;
+    if (!byKind.has(m[1])) byKind.set(m[1], new Map());
+    byKind.get(m[1]).set(m[2], r);
+  }
+  for (const [kind, ids] of byKind) {
+    // eslint-disable-next-line no-await-in-loop
+    if (!(await maySeeLabel(client, kind, user))) continue;
+    const spec = LABEL_COLUMN[kind];
+    try {
+      // Table, pk and column are allow-listed constants, never caller input.
+      // `::text` on the pk compares uniformly whether the key is a uuid or a
+      // code, and the ids themselves stay bound parameters.
+      // eslint-disable-next-line no-await-in-loop
+      const { rows } = await client.query(
+        `SELECT ${spec.pk}::text AS id, ${spec.col} AS label FROM ${spec.table} WHERE ${spec.pk}::text = ANY($1)`,
+        [[...ids.keys()]],
+      );
+      for (const row of rows) {
+        const ref = ids.get(String(row.id));
+        if (ref && row.label) out[ref] = String(row.label);
+      }
+    } catch {
+      /* @silent:storage a label that cannot be read is simply absent — the
+         caller keeps the ref it already had rather than failing the list */
+    }
+  }
+  return out;
+}
+
+module.exports = { overview, tab, tabQuery, parseRef, maySeeFinancials, assertEntityAccess, labelForRefs, invalidate: cache.invalidate };

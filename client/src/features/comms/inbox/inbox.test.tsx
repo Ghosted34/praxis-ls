@@ -12,7 +12,7 @@
  *      two is the failure the per-id result shape exists to prevent.
  */
 import * as React from "react";
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { axe } from "jest-axe";
@@ -446,15 +446,58 @@ function RailHarness({
 }
 
 describe("the folder rail", () => {
+  // The rail remembers open sections in localStorage: clear it so each test
+  // starts from the default — everything shut except the folders.
+  beforeEach(() => window.localStorage.clear());
+
   it("puts triage above the folders, because it is the decision that matters", () => {
     render(<RailHarness folders={[folder()]} />);
     const nav = screen.getByRole("navigation", { name: "Mail folders" });
     const text = nav.textContent || "";
-    expect(text.indexOf("People")).toBeLessThan(text.indexOf("Inbox"));
+    expect(text.indexOf("Triage")).toBeLessThan(text.indexOf("Folders"));
   });
 
-  it("shows the caller's unread counts on both streams", () => {
+  it("starts with every section shut except the folders", () => {
     render(<RailHarness folders={[folder()]} />);
+    expect(screen.getByRole("button", { name: "Triage" })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByRole("button", { name: "Views" })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByRole("button", { name: "Not sent yet" })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByRole("button", { name: "Folders" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.queryByRole("button", { name: /People/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Starred/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /My drafts/ })).toBeNull();
+    expect(screen.getByRole("button", { name: /Inbox/ })).toBeInTheDocument();
+  });
+
+  it("opens a shut section from its header", async () => {
+    render(<RailHarness folders={[folder()]} />);
+    expect(screen.queryByRole("button", { name: /Notices/ })).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Triage" }));
+    expect(screen.getByRole("button", { name: /Notices/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Triage" })).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("names the current selection on a shut section that holds it", () => {
+    // The default selection is Triage's People, and Triage starts shut — the
+    // header says where you are rather than leaving the rail with nothing
+    // visibly active.
+    render(<RailHarness folders={[folder()]} />);
+    const nav = screen.getByRole("navigation", { name: "Mail folders" });
+    expect(nav.textContent || "").toContain("People");
+  });
+
+  it("remembers open sections across visits", async () => {
+    const { unmount } = render(<RailHarness folders={[folder()]} />);
+    await userEvent.click(screen.getByRole("button", { name: "Triage" }));
+    unmount();
+    render(<RailHarness folders={[folder()]} />);
+    expect(screen.getByRole("button", { name: "Triage" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: /People/ })).toBeInTheDocument();
+  });
+
+  it("shows the caller's unread counts on both streams", async () => {
+    render(<RailHarness folders={[folder()]} />);
+    await userEvent.click(screen.getByRole("button", { name: "Triage" }));
     const people = screen.getByRole("button", { name: /People/ });
     expect(people).toHaveTextContent("4");
     expect(screen.getByRole("button", { name: /Notices/ })).toHaveTextContent("11");
@@ -506,6 +549,7 @@ describe("the folder rail", () => {
 
   it("marks the selected entry for assistive technology, not just visually", async () => {
     render(<RailHarness folders={[folder()]} />);
+    await userEvent.click(screen.getByRole("button", { name: "Triage" }));
     expect(screen.getByRole("button", { name: /People/ })).toHaveAttribute("aria-current", "true");
     await userEvent.click(screen.getByRole("button", { name: /Notices/ }));
     expect(screen.getByRole("button", { name: /Notices/ })).toHaveAttribute("aria-current", "true");

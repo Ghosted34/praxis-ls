@@ -1497,6 +1497,40 @@ function readOAuthStateKind(state) {
   }
 }
 
+/**
+ * Step 0 for organisations that need it: the Entra admin-consent URL.
+ *
+ * When a customer's Microsoft 365 tenant forbids user consent, the ordinary
+ * flow dies at Microsoft with AADSTS65001/90094 (`MS_CONSENT_REQUIRED`), and no
+ * amount of retrying by the operator changes that — only their M365
+ * administrator pressing Accept can. This mints the v2 adminconsent URL for
+ * them to open; Entra records tenant-wide consent for the app in THEIR
+ * directory, then returns to our dedicated callback, which carries only a
+ * yes/no — there is no code to exchange on this flow.
+ *
+ * The state carries its own purpose (`ms_adminconsent`), so it can neither be
+ * replayed into a mailbox connection nor confused with one.
+ */
+async function microsoftAdminConsent(client, { slug, redirectUri, actor = {} }) {
+  await assertProviderEnabled(client, "microsoft_graph");
+  const creds = await msOAuth.credentials();
+  if (!creds.client_id || !creds.client_secret) {
+    throw new AppError("NOT_CONFIGURED", "microsoft_graph OAuth is not configured", 400);
+  }
+  if (!slug || !redirectUri) throw new AppError("VALIDATION_ERROR", "slug and redirectUri are required", 422);
+  assertRedirectUriIsCallback("microsoft_graph", redirectUri, "/oauth/microsoft/admin-consent/callback");
+  const state = jwt.sign(
+    { purpose: "ms_adminconsent", provider: "microsoft_graph", slug, user_id: actor.user_id || null, redirectUri },
+    config.JWT_ACCESS_SECRET,
+    { expiresIn: OAUTH_STATE_TTL },
+  );
+  return {
+    url: msOAuth.adminConsentUrl({
+      tenant: creds.tenant, clientId: creds.client_id, redirectUri, scopes: creds.scopes, state,
+    }),
+  };
+}
+
 /** Step 2: exchange the code, resolve the mailbox, upsert the connection, store
  *  the token bundle in the vault. Runs on the tenant DB resolved from the host. */
 async function completeOAuth(client, provider, { code, state, slug, webhookUrl }) {
@@ -1765,7 +1799,7 @@ module.exports = {
   listConnections, setDefaultMailbox, connect, updateImapConnection, testConnection, syncConnection, send, reply, listThread, getMessage, markRead, listAttachments,
   clientTimeline, linkEntity, autodiscover, searchRecipients, allowedRecipientSources,
   listConnectMethods, readOAuthStateKind,
-  startMicrosoftOAuth, completeMicrosoftOAuth, handleGraphNotification,
+  startMicrosoftOAuth, completeMicrosoftOAuth, microsoftAdminConsent, handleGraphNotification,
   startGoogleOAuth, completeGoogleOAuth, handleGmailNotification, renewSubscriptions,
   // Exported for the send-queue flusher, which injects them rather than
   // importing this module — outbox.service must stay loadable, and testable,

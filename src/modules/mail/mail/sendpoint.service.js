@@ -36,6 +36,7 @@
 "use strict";
 
 const repo = require("./sendpoint.repo");
+const mailboxRepo = require("./mailbox.repo");
 const { AppError } = require("../../../utils/errors");
 const { audit, emitEvent, resolveActorId } = require("../../../shared/events/emit");
 
@@ -156,6 +157,19 @@ async function bind(client, { sendPointKey, entityId = null, identityId = null, 
   }
   if (identityId && connectionId) {
     throw new AppError("VALIDATION_ERROR", "A send point sends from one place — choose either a sender identity or a mailbox, not both.", 422);
+  }
+  // A retired mailbox cannot send — `outbox.validateSend` refuses it with
+  // MAILBOX_ARCHIVED — so binding a send point to one only moves the failure
+  // from this screen to the flush, hours later. Refused here instead, with the
+  // same sentence the send path would have used. The picker already hides
+  // these; this is the backstop for an API caller and for a mailbox retired
+  // after the dialog opened.
+  if (connectionId) {
+    const conn = await mailboxRepo.getConnection(client, connectionId);
+    if (!conn) throw new AppError("NOT_FOUND", "mailbox not found", 404);
+    if (conn.status === "ARCHIVED") {
+      throw new AppError("MAILBOX_ARCHIVED", `${conn.email_address} has been retired and cannot send.`, 422);
+    }
   }
   const before = await repo.bindingFor(client, sendPointKey, entityId);
   const row = await repo.upsertBinding(client, {

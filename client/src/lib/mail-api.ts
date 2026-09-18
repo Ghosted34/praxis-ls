@@ -311,6 +311,15 @@ export const startMicrosoftShared = (opts: {
 export const startGoogle = () =>
   tenant<{ url: string }>("/mail/oauth/google/start");
 
+/**
+ * The Entra admin-consent URL, fetched after an MS_CONSENT_REQUIRED refusal.
+ * Opened in a new tab for the organisation's M365 administrator — the consent
+ * is recorded in THEIR directory when they press Accept, and they need no
+ * Praxis account. MOD-72 `edit`, like the connect it rescues.
+ */
+export const microsoftAdminConsent = () =>
+  tenant<{ url: string }>("/mail/oauth/microsoft/admin-consent");
+
 // Messages
 export const listMsgAttachments = (id: string) =>
   tenant<Attachment[]>(`/mail/thread/${id}/attachments`);
@@ -699,6 +708,12 @@ export type Thread = {
   stream_reason?: string | null;
   is_vip: boolean;
   entity_ref?: string | null;
+  /**
+   * Display name for the bound record ("Camrail SARL"), resolved server-side.
+   * Null when unbound, when the record is gone, or when the caller may not read
+   * that module — in which case the UI falls back to the ref, never to nothing.
+   */
+  entity_label?: string | null;
   first_message_at?: string | null;
   last_message_at?: string | null;
   mailbox_address?: string | null;

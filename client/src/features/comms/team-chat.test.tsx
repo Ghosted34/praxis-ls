@@ -8,7 +8,10 @@ const fixture = vi.hoisted(() => ({
   messages: [{ message_id: "m1", body: "Hello" }],
 }));
 vi.mock("@/app/auth/auth-context", () => ({ useAuth: () => ({ user: { id: "me" } }) }));
-vi.mock("@/lib/comms-socket", () => ({ useCommsChannel: () => ({ setTyping: vi.fn() }) }));
+vi.mock("@/lib/comms-socket", () => ({
+  useCommsChannel: () => ({ setTyping: vi.fn() }),
+  getCommsSocket: () => ({ connected: false, on: vi.fn(), off: vi.fn(), emit: vi.fn() }),
+}));
 vi.mock("@/lib/smartcomm-api", () => ({
   listChannels: () => [fixture.channel], listColleagues: () => [],
   getChannel: () => fixture.channel, getThread: () => ({ messages: fixture.messages }),

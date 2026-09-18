@@ -31,6 +31,16 @@ const msRedirect = async (req) => {
   const { redirect_uri: fromStore } = await msOAuth.credentials();
   return fromStore || `${req.protocol}://${req.get("host")}${req.baseUrl}/oauth/microsoft/callback`;
 };
+// The admin-consent flow's return address: the vault holds the ONE canonical
+// callback, so the consent callback is the same origin with its own path —
+// Entra matches exactly, and registering both URIs on the app is part of
+// standing the flow up. Falls back to the request host only when nothing is
+// stored, with the same caveat as above.
+const msAdminConsentRedirect = async (req) => {
+  const { redirect_uri: fromStore } = await msOAuth.credentials();
+  if (fromStore) return fromStore.replace(/\/oauth\/microsoft\/callback\/?$/, "/oauth/microsoft/admin-consent/callback");
+  return `${req.protocol}://${req.get("host")}${req.baseUrl}/oauth/microsoft/admin-consent/callback`;
+};
 const ggRedirect = (req) => config.GOOGLE_REDIRECT_URI || `${req.protocol}://${req.get("host")}${req.baseUrl}/oauth/google/callback`;
 const { URLSearchParams } = require('url');
 
@@ -374,8 +384,53 @@ module.exports = {
       })),
     });
   }),
-  msOAuthCallback: asyncHandler((req, res) => finishOAuth(req, res, "microsoft", (c) =>
-    service.completeMicrosoftOAuth(c, { code: req.query.code, state: req.query.state, slug: slugOf(req), webhookUrl: msWebhook(req) }))),
+  msOAuthCallback: asyncHandler((req, res) => finishOAuth(req, res, "microsoft", (c) => {
+    // Entra's error redirect — the user pressed Back, or their organisation
+    // blocks user consent — arrives WITHOUT a code. Exchanging `undefined`
+    // would die at the token endpoint as a generic failure; classify what
+    // Entra actually said instead, so the setup page can answer it (a cancel
+    // reads as a cancel, AADSTS65001/90094 as "ask your administrator").
+    if (req.query.error) {
+      throw msOAuth.classifyProviderError({
+        error: req.query.error,
+        description: req.query.error_description,
+        subcode: req.query.error_subcode,
+      });
+    }
+    return service.completeMicrosoftOAuth(c, { code: req.query.code, state: req.query.state, slug: slugOf(req), webhookUrl: msWebhook(req) });
+  })),
+  /* Mint the Entra admin-consent URL for the organisation's M365 administrator
+   * to open (see `microsoftAdminConsent`). Gated on `edit` like the personal
+   * connect it rescues: whoever was refused for lack of consent may fetch the
+   * link to hand to their administrator. */
+  msAdminConsentStart: asyncHandler(async (req, res) => {
+    const redirectUri = await msAdminConsentRedirect(req);
+    return res.json({
+      data: await req.identityDb((c) => service.microsoftAdminConsent(c, {
+        slug: slugOf(req), redirectUri, actor: actor(req),
+      })),
+    });
+  }),
+  /* Where the admin-consent flow returns: Entra records the consent when the
+   * administrator presses Accept, and this redirect is only the notification —
+   * `admin_consent=True&tenant=<their directory>` on success, `error=…` on
+   * refusal. Pre-auth like the OAuth callback; the signed state is the auth. */
+  msAdminConsentCallback: asyncHandler(async (req, res) => {
+    let tab = "mine";
+    try {
+      tab = tabForKind(service.readOAuthStateKind(req.query.state));
+    } catch { /* @silent:parse unreadable state keeps the default tab */ }
+    if (req.query.error || req.query.admin_consent !== "True") {
+      return res.redirect(302, mailPageUrl(req, {
+        mail_adminconsent: "denied",
+        mail_tab: tab,
+      }));
+    }
+    return res.redirect(302, mailPageUrl(req, {
+      mail_adminconsent: "granted",
+      mail_tab: tab,
+    }));
+  }),
   msWebhook: asyncHandler(async (req, res) => {
     if (req.query && req.query.validationToken) return res.type("text/plain").status(200).send(req.query.validationToken);
     const data = await req.identityDb((c) => service.handleGraphNotification(c, req.body, { slug: slugOf(req) }));

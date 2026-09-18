@@ -21,7 +21,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `BAD_AMOUNT` | `INVALID_AMOUNT` | 14× |
 | `BAD_STATE` | `BAD_STATUS` | 39× |
 | `EMPLOYEE_NOT_FOUND` | `NOT_FOUND` | 3× |
-| `FORBIDDEN` | `PERMISSION_DENIED` | 6× |
+| `FORBIDDEN` | `PERMISSION_DENIED` | 7× |
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 5× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
@@ -204,7 +204,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `FEATURE_DISABLED` | 403 | 3× | — |
 | `FIELD_NOT_WRITABLE` | — | 2× | — |
 | `FILE_TOO_LARGE` | 413 | 3× | — |
-| `FORBIDDEN` | 403 | 6× | `PERMISSION_DENIED` |
+| `FORBIDDEN` | 403 | 7× | `PERMISSION_DENIED` |
 | `FULLY_DISBURSED` | 422 | 1× | — |
 | `FULLY_PAID` | 422 | 2× | — |
 | `FX_NOT_HERE` | — | 1× | — |
@@ -249,7 +249,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `INVALID_SUBSCRIPTION` | 422 | 1× | — |
 | `INVALID_TOKEN` | 401 | 10× | — |
 | `INVALID_TRANSITION` | 422 | 23× | — |
-| `INVALID_VALUE` | 422 | 3× | — |
+| `INVALID_VALUE` | 409, 422 | 10× | — |
 | `INVOICE_POSTED` | 422 | 1× | — |
 | `IN_USE` | 409 | 2× | — |
 | `ISSUER_NOT_SIGNED` | 409 | 1× | — |
@@ -317,7 +317,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_EDITABLE` | 400 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 3× | — |
-| `NOT_FOUND` | 404, 422 | 658× | — |
+| `NOT_FOUND` | 404, 422 | 660× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_OPEN` | 409, 422 | 3× | — |
 | `NOT_OPERATIONAL` | 422 | 1× | — |

@@ -59,6 +59,32 @@ function ruleOrThrow(input) {
 }
 
 /**
+ * A repeat needs something to repeat FROM.
+ *
+ * ── WHY THIS IS A REFUSAL AND NOT A DEFAULT ────────────────────────────────
+ *
+ * `recurrence.js` computes each next occurrence from the current one's due
+ * date. A rule with no due date therefore has no cursor: the sweep has nothing
+ * to advance, the series never spawns, and the user is left with a task that
+ * says "Repeats weekly" on its face and has never once repeated. That failure
+ * is silent and it is discovered weeks later, by its absence.
+ *
+ * Defaulting the anchor to "now" would be worse, not better — it invents a
+ * schedule the user did not choose and then honours it. So the rule is
+ * refused, at the field, with the sentence that says what to do about it.
+ */
+function assertRecurrenceAnchored(rule, dueAt) {
+  if (!rule) return;
+  if (dueAt) return;
+  throw new AppError(
+    "INVALID_VALUE",
+    "A repeating task needs a due date to repeat from. Set one, or turn the repeat off.",
+    422,
+    { due_at: ["a recurring task must have a due date"] },
+  );
+}
+
+/**
  * Actor attribution for an audit row, from the caller we already hold.
  *
  * `audit()` snapshots `actor_name_snapshot` from what it is GIVEN and stores
@@ -269,19 +295,86 @@ async function listTasks(client, ctx, q = {}) {
     limit: q.limit,
     offset: q.offset,
   });
-  return { rows: rows.map(withLink), total, audience, audiences: audiencesFor(ctx) };
+  const [blockedRows, childRows] = await Promise.all([
+    repo.blockedCountsFor(client, rows.map((r) => r.task_id)),
+    repo.childCountsFor(client, rows.map((r) => r.task_id)),
+  ]);
+  return { rows: rows.map(decorator(blockedRows, childRows)), total, audience, audiences: audiencesFor(ctx) };
 }
 
+/**
+ * The kanban board, and an honest statement about how much of it this is.
+ *
+ * The board endpoint is capped (200 open rows) and always has been. What it did
+ * not do was SAY so: four columns of the first two hundred cards look exactly
+ * like four columns of everything, and the user concludes they have seen their
+ * team's work. `total`/`shown`/`truncated` come from the same query as the rows
+ * (a window function, not a second count), and the page turns them into "showing
+ * 200 of 612 — open the List view" rather than leaving the gap invisible.
+ *
+ * Blocked and child counts are batched over the rendered ids, so a board of 200
+ * cards costs two extra queries rather than four hundred.
+ */
 async function getBoard(client, ctx, q = {}) {
   const audience = resolveAudience(ctx, q.audience);
-  const board = await repo.boardTasks(client, {
+  const { board, total, shown, limit, truncated } = await repo.boardTasks(client, {
     ...visibilityOf(ctx, audience),
     assignedTo: q.assigned_to === "me" ? ctx.user.user_id : q.assigned_to,
   });
-  for (const k of Object.keys(board)) board[k] = board[k].map(withLink);
-  return { board, audience, audiences: audiencesFor(ctx) };
+  const ids = Object.values(board).flat().map((t) => t.task_id);
+  const [blockedRows, childRows] = await Promise.all([
+    repo.blockedCountsFor(client, ids),
+    repo.childCountsFor(client, ids),
+  ]);
+  const decorate = decorator(blockedRows, childRows);
+  for (const k of Object.keys(board)) board[k] = board[k].map(decorate);
+  return {
+    board,
+    audience,
+    audiences: audiencesFor(ctx),
+    // The board's own completeness, named rather than implied.
+    completeness: { total, shown, limit, truncated },
+  };
 }
 
+/**
+ * Stamp blocked/child metadata onto list and board cards.
+ *
+ * Built once from two batched reads rather than queried per card: the
+ * alternative is the N+1 that turns a 200-card board into 401 round trips, and
+ * it is invisible in development where a board holds four cards.
+ */
+function decorator(blockedRows = [], childRows = []) {
+  const blocked = new Map(blockedRows.map((r) => [r.task_id, r]));
+  const kids = new Map(childRows.map((r) => [r.parent_task_id, r]));
+  return (row) => {
+    const b = blocked.get(row.task_id);
+    const c = kids.get(row.task_id);
+    const card = withLink(row);
+    return {
+      ...card,
+      blocking_count: b ? b.blocking_count : 0,
+      is_blocked: Boolean(b) && !DONE_STATUSES.has(row.status),
+      blocked_since: b ? b.blocked_since : null,
+      child_count: c ? c.child_count : 0,
+      child_done_count: c ? c.child_done_count : 0,
+    };
+  };
+}
+
+/**
+ * One task, in full.
+ *
+ * ── THE AUDIENCE TRAVELS (B-03) ────────────────────────────────────────────
+ *
+ * `audience` is a parameter and not an assumption. The board can legitimately
+ * show a caller a Team or All card, and a detail read that quietly defaulted to
+ * "mine" answered NOT FOUND for a card the same server had just rendered — the
+ * defect the guide records as B-03. So every caller passes the EFFECTIVE
+ * audience through, and `resolveAudience` narrows it against the caller's real
+ * grants before `canSeeTask` uses it. The query parameter is never authority;
+ * it is a request that the server re-decides.
+ */
 async function getTask(client, ctx, id, audience) {
   const resolved = resolveAudience(ctx, audience ?? ctx.audience);
   const task = await repo.findTask(client, id);
@@ -290,15 +383,61 @@ async function getTask(client, ctx, id, audience) {
   if (!task || !canSeeTask(task, ctx, resolved)) {
     throw new AppError("NOT_FOUND", "Task not found", 404);
   }
-  const [subtasks, watchers] = await Promise.all([
+  const [subtasks, watchers, dependencyRows, children, parent] = await Promise.all([
     repo.listSubtasks(client, id),
     repo.listWatchers(client, id),
+    repo.listDependencies(client, id),
+    // Only a parent can have children, and asking for the children of a child
+    // is a guaranteed-empty query on every child task read.
+    task.parent_task_id ? Promise.resolve([]) : repo.listChildTasks(client, id),
+    task.parent_task_id ? repo.findTask(client, task.parent_task_id) : Promise.resolve(null),
   ]);
-  return { ...withLink(task), subtasks, watchers };
+
+  const dependencies = dependencyRows.map((row) =>
+    redactDependency(
+      row,
+      canSeeTask(
+        {
+          task_id: row.depends_on_task_id,
+          assigned_to: row.depends_on_assigned_to,
+          created_by: row.depends_on_created_by,
+          is_personal: row.depends_on_is_personal,
+          scope_id: row.depends_on_scope_id,
+        },
+        ctx,
+        resolved,
+      ),
+    ),
+  );
+  // Counted over the RAW edges: work blocked by something the reader cannot
+  // see is still blocked, and a count that dropped hidden edges would tell a
+  // manager their task is ready when it is not.
+  const blocking = blockingCount(dependencyRows);
+
+  return {
+    ...withLink(task),
+    subtasks,
+    watchers,
+    dependencies,
+    blocking_count: blocking,
+    is_blocked: blocking > 0 && !DONE_STATUSES.has(task.status),
+    // The roll-up counts EVERY child (an honest denominator) while the rendered
+    // list carries only the ones this caller may open — see `listChildTasks`.
+    children: children.filter((c) => canSeeTask(c, ctx, resolved)).map(withLink),
+    hidden_child_count: children.filter((c) => !canSeeTask(c, ctx, resolved)).length,
+    rollup: childRollup(children, subtasks),
+    parent:
+      parent && canSeeTask(parent, ctx, resolved)
+        ? { task_id: parent.task_id, title: parent.title, status: parent.status, link_url: entityRouteFor(parent.task_id) }
+        : parent
+          ? { task_id: null, title: "A task you cannot view", status: null, link_url: null }
+          : null,
+  };
 }
 
 async function createTask(client, ctx, input) {
   const timeZone = await timezoneOf(client);
+  assertRecurrenceAnchored(input.recurrence_rule, input.due_at);
   // A task due "15/09" is wanted by the end of the working day, not at
   // midnight: 00:00 would make it overdue the moment it is written and sort it
   // above everything else on the day it was created.
@@ -344,12 +483,37 @@ async function createTask(client, ctx, input) {
   const created = await getTask(client, ctx, task.task_id, ctx.audience);
   await notifyAssignee(client, created);
   return created;
+
 }
 
+/**
+ * Edit a task.
+ *
+ * ── STATUS IS NOT EDITED HERE, IT IS TRANSITIONED (B-04) ───────────────────
+ *
+ * The edit form carries a Status field, so a PATCH can legitimately arrive
+ * carrying one — and until now that wrote the column directly, producing a
+ * `task.updated` audit row where the very same user action from the board
+ * produced `task.status_changed`, with a different notification and a
+ * different completion-timestamp path. One action, two histories, and an audit
+ * trail that cannot answer "when did this task move".
+ *
+ * So a status in the body is SPLIT OUT and replayed through `changeStatus`
+ * after the rest of the edit lands. Every gesture in the product — board drag,
+ * Move menu, keyboard drop, the panel's select, this form — now ends in the
+ * same function, with the same event, the same audit row, the same
+ * `completed_at` rule and the same watcher notification.
+ */
 async function updateTask(client, ctx, id, input) {
   const before = await getTask(client, ctx, id, ctx.audience);
   const timeZone = await timezoneOf(client);
+  const { status: requestedStatus, ...rest } = input;
+  input = rest;
   const patch = { ...input };
+  assertRecurrenceAnchored(
+    "recurrence_rule" in input ? input.recurrence_rule : before.recurrence_rule,
+    "due_at" in input ? input.due_at : before.due_at,
+  );
 
   if ("due_at" in input) {
     patch.due_at = toInstant(input.due_at, { timeZone, dateOnlyTime: "17:00:00" });
@@ -394,8 +558,14 @@ async function updateTask(client, ctx, id, input) {
     before: { status: before.status, priority: before.priority, due_at: before.due_at },
     after: { status: updated.status, priority: updated.priority, due_at: updated.due_at },
   });
-  const after = await getTask(client, ctx, id, ctx.audience);
+  let after = await getTask(client, ctx, id, ctx.audience);
   if (input.assigned_to && input.assigned_to !== before.assigned_to) await notifyAssignee(client, after);
+  // The one status path. Replayed AFTER the field edits so the transition sees
+  // the task as the user left it (a due date moved in the same save is already
+  // stored when the completion stamp is written).
+  if (requestedStatus && requestedStatus !== before.status) {
+    after = await changeStatus(client, ctx, id, requestedStatus, ctx.audience);
+  }
   return after;
 }
 
@@ -407,9 +577,33 @@ async function updateTask(client, ctx, id, input) {
  * notifications), and giving it a verb keeps that logic in one place instead
  * of scattered across "what changed?" checks.
  */
-async function changeStatus(client, ctx, id, status) {
-  const before = await getTask(client, ctx, id, ctx.audience);
+async function changeStatus(client, ctx, id, status, audience) {
+  const resolved = resolveAudience(ctx, audience ?? ctx.audience);
+  const before = await getTask(client, ctx, id, resolved);
   if (before.status === status) return before;
+
+  // ── THE BLOCKED RULE, ENFORCED ONCE ──────────────────────────────────────
+  //
+  // Because every gesture now arrives here, this is the only place the rule
+  // has to be written: unresolved prerequisites refuse COMPLETION, and nothing
+  // else. Starting blocked work is a legitimate thing to do — people begin
+  // preparing before the thing they are waiting on lands — so IN_PROGRESS is
+  // not policed. Marking it DONE while its precondition has not happened is
+  // the "silently mark unresolved work complete" the guide forbids.
+  //
+  // CANCELLED is allowed through: calling off blocked work is exactly what a
+  // person does about a dead end, and refusing it would trap the task.
+  if (status === "DONE" && before.is_blocked) {
+    throw new AppError(
+      "INVALID_VALUE",
+      before.blocking_count === 1
+        ? "This task is still waiting on another task. Finish it, or override the dependency first."
+        : `This task is still waiting on ${before.blocking_count} other tasks. Finish them, or override the dependencies first.`,
+      422,
+      { status: ["this task is blocked by an unresolved dependency"] },
+    );
+  }
+
   await repo.updateTask(client, id, { status });
   await emitEvent(client, {
     eventTypeKey: events.TASK_STATUS_CHANGED, moduleKey: events.MODULE,
@@ -420,7 +614,11 @@ async function changeStatus(client, ctx, id, status) {
     ...actorOf(ctx), action: events.TASK_STATUS_CHANGED, moduleKey: events.MODULE,
     entityRef: `task:${id}`, before: { status: before.status }, after: { status },
   });
-  return getTask(client, ctx, id);
+  const after = await getTask(client, ctx, id, resolved);
+  await notifyStatusWatchers(client, ctx, after, after.watchers || [], {
+    from: before.status, to: status,
+  });
+  return after;
 }
 
 async function deleteTask(client, ctx, id) {
@@ -482,18 +680,513 @@ async function deleteSubtask(client, ctx, taskId, subtaskId) {
   return { deleted: true };
 }
 
-/* ── watchers ───────────────────────────────────────────────────────────── */
 
-async function addWatcher(client, ctx, taskId, userId) {
-  await getTask(client, ctx, taskId);
-  return repo.addWatcher(client, taskId, userId);
+/* ── hierarchy, dependencies, and the blocked rule ──────────────────────── */
+
+/**
+ * ONE LEVEL, AND THE SCHEMA ALREADY SAID SO.
+ *
+ * 13810 gave `task.parent_task_id` a comment declaring the nesting
+ * deliberately shallow: a checklist parent with separately-assigned children,
+ * and `task_subtask` for the lightweight steps inside either. A tree deeper
+ * than two is a project, which is a different product. This function is where
+ * that sentence becomes enforceable rather than aspirational — a child may not
+ * itself have children, so the roll-up is one query and a reader can hold the
+ * whole structure in their head.
+ */
+function assertParentable(parent) {
+  if (parent.parent_task_id) {
+    throw new AppError(
+      "INVALID_VALUE",
+      "That task is already a child task. Work breaks down one level: add this step to its parent, or add a checklist step instead.",
+      422,
+      { parent_task_id: ["a child task cannot itself have children"] },
+    );
+  }
 }
 
-async function removeWatcher(client, ctx, taskId, userId) {
-  await getTask(client, ctx, taskId);
+/**
+ * Progress across a parent's children and checklist steps.
+ *
+ * ── WHY TWO DENOMINATORS AND NOT ONE PERCENTAGE ────────────────────────────
+ *
+ * A child task and a checklist step are not the same unit of work — one has an
+ * owner, a status and a reminder, the other is a line somebody ticks — so
+ * averaging them into a single number invents a weighting nobody chose. The
+ * roll-up reports both and lets the panel say "2 of 3 child tasks, 4 of 6
+ * steps", which is the sentence a manager actually needs.
+ *
+ * CANCELLED children are counted as SETTLED but not as DONE: work that was
+ * called off is no longer outstanding, and leaving it in the denominator means
+ * a parent whose last child was cancelled can never read as complete. It is
+ * reported separately so "3 of 4, one cancelled" stays honest.
+ *
+ * Nothing here WRITES. The parent's own status is the parent's own
+ * statement — the guide is explicit that a roll-up must not falsify historical
+ * status or completion timestamps, so this is a read-side derivation and the
+ * parent is never auto-completed behind its owner's back.
+ */
+function childRollup(children = [], subtasks = []) {
+  const child_count = children.length;
+  const child_done_count = children.filter((c) => c.status === "DONE").length;
+  const child_cancelled_count = children.filter((c) => c.status === "CANCELLED").length;
+  const child_open_count = child_count - child_done_count - child_cancelled_count;
+  const step_count = subtasks.length;
+  const step_done_count = subtasks.filter((s) => s.is_done).length;
+
+  // The denominator excludes cancelled children for the reason above. A parent
+  // with no children and no steps has no progress to report — `null` rather
+  // than 0, because "0%" reads as "nothing done" and the truth is "nothing to
+  // do yet".
+  const settled = child_done_count + step_done_count;
+  const outstanding = child_open_count + (step_count - step_done_count);
+  const denominator = settled + outstanding;
+  return {
+    child_count,
+    child_done_count,
+    child_cancelled_count,
+    child_open_count,
+    step_count,
+    step_done_count,
+    progress_done: settled,
+    progress_total: denominator,
+    progress_ratio: denominator > 0 ? Number((settled / denominator).toFixed(4)) : null,
+  };
+}
+
+/**
+ * What a caller may be told about a task they cannot see.
+ *
+ * The guide's rule is precise and worth restating: a blocked indicator MAY be
+ * shown without disclosing an unauthorised dependency's title or owner. So the
+ * edge survives — the reader learns their work is waiting, which is true and
+ * is the thing they need — and every identifying field is replaced rather than
+ * omitted. Replaced, not omitted, because a missing key reads as a bug in the
+ * client and an explicit `is_visible: false` reads as a decision.
+ *
+ * `depends_on_task_id` is withheld too. It is the one field that would let a
+ * caller confirm a task exists by trying to open it.
+ */
+function redactDependency(row, visible) {
+  const base = {
+    task_dependency_id: row.task_dependency_id,
+    task_id: row.task_id,
+    is_visible: visible,
+    is_overridden: Boolean(row.overridden_at),
+    overridden_at: row.overridden_at || null,
+    override_reason: visible ? row.override_reason || null : null,
+    overridden_by_name: visible ? row.overridden_by_name || null : null,
+    created_at: row.created_at,
+    // Resolution state is NOT identity. Whether the thing you are waiting for
+    // is finished is exactly what "am I blocked" means, so it is safe — and
+    // necessary — to answer even when the prerequisite itself is hidden.
+    is_resolved: row.depends_on_status === "DONE",
+    is_cancelled: row.depends_on_status === "CANCELLED",
+  };
+  if (!visible) {
+    return {
+      ...base,
+      depends_on_task_id: null,
+      depends_on_title: "A task you cannot view",
+      depends_on_status: null,
+      depends_on_due_at: null,
+      depends_on_assigned_to_name: null,
+      link_url: null,
+    };
+  }
+  return {
+    ...base,
+    depends_on_task_id: row.depends_on_task_id,
+    depends_on_title: row.depends_on_title,
+    depends_on_status: row.depends_on_status,
+    depends_on_due_at: row.depends_on_due_at,
+    depends_on_assigned_to_name: row.depends_on_assigned_to_name || null,
+    link_url: entityRouteFor(row.depends_on_task_id),
+  };
+}
+
+/** The canonical Workspace link for a task id, through the shared map. */
+function entityRouteFor(taskId) {
+  if (!taskId) return null;
+  try {
+    return entityRoute.urlFor(`task:${taskId}`) || null;
+  } catch (err) {
+    logger.debug({ err, taskId }, "no route for task");
+    return null;
+  }
+}
+
+/**
+ * Is this edge still holding the blocked task up?
+ *
+ * The whole rule, in one place, so the panel, the board badge, the status
+ * guard and Analytics cannot answer it three different ways:
+ *
+ *   DONE          resolved. The precondition happened.
+ *   overridden    resolved BY DECISION, and the decision is attributed.
+ *   CANCELLED     STILL BLOCKING. Abandoned is not finished — the recorded
+ *                 product decision — so it needs an explicit override, which
+ *                 is a person saying "proceed anyway" rather than the system
+ *                 inferring it.
+ *   anything else blocking.
+ */
+function dependencyBlocks(row) {
+  if (!row) return false;
+  if (row.overridden_at) return false;
+  return row.depends_on_status !== "DONE";
+}
+
+/**
+ * The dependencies of one task, authorised and shaped for the panel.
+ *
+ * Visibility is the INTERSECTION the guide specifies: the caller already
+ * passed the check for the blocked task (they are holding it), and each
+ * prerequisite is re-tested against the same predicate on its own merits.
+ * Passing one does not imply passing the other, which is exactly the leak the
+ * intersection rule exists to close.
+ */
+async function dependenciesFor(client, ctx, taskId, audience) {
+  const rows = await repo.listDependencies(client, taskId);
+  return rows.map((row) => {
+    const prerequisite = {
+      task_id: row.depends_on_task_id,
+      assigned_to: row.depends_on_assigned_to,
+      created_by: row.depends_on_created_by,
+      is_personal: row.depends_on_is_personal,
+      scope_id: row.depends_on_scope_id,
+    };
+    return redactDependency(row, canSeeTask(prerequisite, ctx, audience));
+  });
+}
+
+/** How many unresolved prerequisites a task has, ignoring authorisation.
+ *
+ *  Deliberately counted over the RAW edges rather than the redacted ones: a
+ *  task is blocked by work the reader cannot see just as surely as by work
+ *  they can, and a count that quietly dropped the hidden edges would tell a
+ *  manager their task is ready to start when it is not. */
+const blockingCount = (rows = []) => rows.filter((r) => dependencyBlocks(r)).length;
+
+/**
+ * Add a blocked-by edge.
+ *
+ * Four refusals, in the order that gives the clearest message, all BEFORE the
+ * insert so a rejected edge never reaches the table:
+ *
+ *   1. the caller must be able to see BOTH tasks (the intersection rule — you
+ *      cannot sequence work you cannot see, and an error that distinguished
+ *      "no such task" from "not yours" would be a probe);
+ *   2. self-reference (the DB also holds this; saying it here names the field);
+ *   3. duplicate (the unique index holds it; this turns a 23505 into English);
+ *   4. cycle (the DB deliberately does NOT hold this — 13870's header).
+ *
+ * Cross-branch edges between a parent's children, or between tasks in
+ * different families entirely, are ALLOWED. Sequence and breakdown are
+ * different relationships: "the declaration waits on the BL release" is true
+ * whether or not those two sit under one file.
+ */
+async function addDependency(client, ctx, taskId, { depends_on_task_id }, audience) {
+  const resolved = resolveAudience(ctx, audience ?? ctx.audience);
+  // Authorises the blocked task, and 404s identically for missing and hidden.
+  await getTask(client, ctx, taskId, resolved);
+
+  if (depends_on_task_id === taskId) {
+    throw new AppError("INVALID_VALUE", "A task cannot wait for itself.", 422, {
+      depends_on_task_id: ["a task cannot depend on itself"],
+    });
+  }
+  // The prerequisite gets its OWN visibility check. Same 404 shape.
+  await getTask(client, ctx, depends_on_task_id, resolved);
+
+  if (await repo.dependencyWouldCycle(client, taskId, depends_on_task_id)) {
+    throw new AppError(
+      "INVALID_VALUE",
+      "That would make the two tasks wait for each other, so neither could ever start.",
+      422,
+      { depends_on_task_id: ["this dependency would create a cycle"] },
+    );
+  }
+
+  const row = await repo.insertDependency(client, {
+    task_id: taskId,
+    depends_on_task_id,
+    created_by: ctx.user.user_id,
+  });
+  if (!row) {
+    throw new AppError("INVALID_VALUE", "That dependency is already recorded.", 409, {
+      depends_on_task_id: ["this dependency already exists"],
+    });
+  }
+
+  await emitEvent(client, {
+    eventTypeKey: events.TASK_DEPENDENCY_ADDED, moduleKey: events.MODULE,
+    entityRef: `task:${taskId}`, actorUserId: ctx.user.user_id,
+    payload: { depends_on_task_id },
+  });
+  await audit(client, {
+    ...actorOf(ctx), action: events.TASK_DEPENDENCY_ADDED, moduleKey: events.MODULE,
+    entityRef: `task:${taskId}`, after: { depends_on_task_id },
+  });
+  return getTask(client, ctx, taskId, resolved);
+}
+
+async function removeDependency(client, ctx, taskId, dependencyId, audience) {
+  const resolved = resolveAudience(ctx, audience ?? ctx.audience);
+  await getTask(client, ctx, taskId, resolved);
+  const row = await repo.findDependency(client, dependencyId);
+  // `row.task_id !== taskId` matters: without it, an authorised caller could
+  // delete an edge belonging to a task they cannot see by guessing its id.
+  if (!row || row.task_id !== taskId) {
+    throw new AppError("NOT_FOUND", "Dependency not found", 404);
+  }
+  await repo.deleteDependency(client, dependencyId);
+  await emitEvent(client, {
+    eventTypeKey: events.TASK_DEPENDENCY_REMOVED, moduleKey: events.MODULE,
+    entityRef: `task:${taskId}`, actorUserId: ctx.user.user_id,
+    payload: { depends_on_task_id: row.depends_on_task_id },
+  });
+  await audit(client, {
+    ...actorOf(ctx), action: events.TASK_DEPENDENCY_REMOVED, moduleKey: events.MODULE,
+    entityRef: `task:${taskId}`, before: { depends_on_task_id: row.depends_on_task_id },
+  });
+  return getTask(client, ctx, taskId, resolved);
+}
+
+/**
+ * "Proceed anyway", or withdraw that decision.
+ *
+ * This is the escape hatch the CANCELLED rule requires, and it is deliberately
+ * an explicit, attributed, reversible ACT rather than an inference. The reason
+ * is optional — forcing prose produces "n/a" — but the actor and the moment
+ * are not, because unblocking work whose precondition never happened is a
+ * judgement somebody should be able to be asked about.
+ */
+async function setDependencyOverride(client, ctx, taskId, dependencyId, { overridden, reason }, audience) {
+  const resolved = resolveAudience(ctx, audience ?? ctx.audience);
+  await getTask(client, ctx, taskId, resolved);
+  const row = await repo.findDependency(client, dependencyId);
+  if (!row || row.task_id !== taskId) {
+    throw new AppError("NOT_FOUND", "Dependency not found", 404);
+  }
+  if (overridden) {
+    await repo.overrideDependency(client, dependencyId, { userId: ctx.user.user_id, reason });
+  } else {
+    await repo.clearDependencyOverride(client, dependencyId);
+  }
+  await emitEvent(client, {
+    eventTypeKey: events.TASK_DEPENDENCY_OVERRIDDEN, moduleKey: events.MODULE,
+    entityRef: `task:${taskId}`, actorUserId: ctx.user.user_id,
+    payload: { dependency_id: dependencyId, overridden: Boolean(overridden) },
+  });
+  await audit(client, {
+    ...actorOf(ctx), action: events.TASK_DEPENDENCY_OVERRIDDEN, moduleKey: events.MODULE,
+    entityRef: `task:${taskId}`,
+    before: { overridden: Boolean(row.overridden_at) },
+    after: { overridden: Boolean(overridden), reason: reason || null },
+  });
+  return getTask(client, ctx, taskId, resolved);
+}
+
+/**
+ * Create a child task under a parent.
+ *
+ * Children INHERIT the parent's operations-file link by default — that is the
+ * whole point of splitting a file's work among people, and re-picking the same
+ * dossier on every child is the kind of friction that ends with half the
+ * children unlinked. `entity_type`/`entity_id` in the body still win, so a
+ * child about a different record is expressible.
+ *
+ * What is NOT inherited: the assignee (a child exists to be given to somebody
+ * else), the status, the reminder and the recurrence rule. A child of a
+ * repeating parent is a one-off piece of work, not a second series — spawning
+ * children per occurrence would multiply the board by the recurrence count.
+ *
+ * Authorisation is NOT inherited either: `createTask` re-runs the same scope
+ * and personal-task checks it runs for a top-level task, so being able to see
+ * a parent is not authority to place work in somebody else's scope.
+ */
+async function addChildTask(client, ctx, parentTaskId, input, audience) {
+  const resolved = resolveAudience(ctx, audience ?? ctx.audience);
+  const parent = await getTask(client, ctx, parentTaskId, resolved);
+  assertParentable(parent);
+  if (parent.is_personal && parent.created_by !== ctx.user.user_id) {
+    // Unreachable through `getTask` today, and kept as a belt: a personal task
+    // is its creator's alone, and giving it children would put other people's
+    // work inside a private record.
+    throw new AppError("FORBIDDEN", "That personal task is not yours to break down.", 403);
+  }
+  const child = await createTask(client, ctx, {
+    ...input,
+    parent_task_id: parentTaskId,
+    entity_type: input.entity_type !== undefined ? input.entity_type : parent.entity_type,
+    entity_id: input.entity_id !== undefined ? input.entity_id : parent.entity_id,
+  });
+  await audit(client, {
+    ...actorOf(ctx), action: events.TASK_UPDATED, moduleKey: events.MODULE,
+    entityRef: `task:${parentTaskId}`, after: { child_task_id: child.task_id, child_title: child.title },
+  });
+  return child;
+}
+
+/** A parent's children, each re-checked against the caller's own reach. */
+async function childrenFor(client, ctx, parentTaskId, audience) {
+  const rows = await repo.listChildTasks(client, parentTaskId);
+  return rows.filter((r) => canSeeTask(r, ctx, audience)).map(withLink);
+}
+
+/* ── collaboration: watchers, pings, and who hears about what ───────────── */
+
+/**
+ * Everyone who should hear that something happened to this task.
+ *
+ * Creator, assignee and watchers, deduplicated, minus the person who did it —
+ * nobody needs to be told about their own action, and a notification that
+ * arrives because you clicked something teaches people to ignore the bell.
+ *
+ * Returned as an array of ids rather than as a fan-out, because the CALLER
+ * decides what to say; this only decides who is listening.
+ */
+function recipientsOf(task, watchers = [], { exclude } = {}) {
+  const ids = new Set();
+  if (task.created_by) ids.add(task.created_by);
+  if (task.assigned_to) ids.add(task.assigned_to);
+  for (const w of watchers) if (w.user_id) ids.add(w.user_id);
+  if (exclude) ids.delete(exclude);
+  return [...ids];
+}
+
+/**
+ * Send one notification per recipient, with a RECIPIENT-SPECIFIC dedupe key.
+ *
+ * ── THE BUG THIS SHAPE EXISTS TO AVOID ─────────────────────────────────────
+ *
+ * `notification.service.notify()` claims a dedupe key globally for its process
+ * or Redis window. A key like `task-ping:<task id>` therefore means the FIRST
+ * recipient suppresses every later one: four watchers, one delivery, three
+ * people who never learn anything happened and no error anywhere. The key must
+ * carry the recipient, and that is why every call below appends the user id.
+ *
+ * Never throws, for the same reason `notifyAssignee` does not: the task is the
+ * record and the notification is a courtesy about it. A ping that fails to
+ * deliver must not roll back the ping's audit row.
+ */
+async function notifyEach(client, userIds, build) {
+  const { notify } = require("../../notification/notification.service");
+  const results = [];
+  for (const userId of userIds) {
+    try {
+      results.push(await notify(client, { ...build(userId), userId }));
+    } catch (err) {
+      logger.error({ err, userId }, "workspace task notification failed");
+      results.push(null);
+    }
+  }
+  return results;
+}
+
+async function addWatcher(client, ctx, taskId, userId, audience) {
+  const resolved = resolveAudience(ctx, audience ?? ctx.audience);
+  await getTask(client, ctx, taskId, resolved);
+  const row = await repo.addWatcher(client, taskId, userId);
+  await audit(client, {
+    ...actorOf(ctx), action: events.TASK_WATCHER_ADDED, moduleKey: events.MODULE,
+    entityRef: `task:${taskId}`, after: { watcher_user_id: userId },
+  });
+  return row;
+}
+
+async function removeWatcher(client, ctx, taskId, userId, audience) {
+  const resolved = resolveAudience(ctx, audience ?? ctx.audience);
+  await getTask(client, ctx, taskId, resolved);
   const ok = await repo.removeWatcher(client, taskId, userId);
   if (!ok) throw new AppError("NOT_FOUND", "Watcher not found", 404);
+  await audit(client, {
+    ...actorOf(ctx), action: events.TASK_WATCHER_REMOVED, moduleKey: events.MODULE,
+    entityRef: `task:${taskId}`, before: { watcher_user_id: userId },
+  });
   return { deleted: true };
+}
+
+/**
+ * Ping somebody about this task — the meeting's "notify them from the task".
+ *
+ * ── WHY THE RECIPIENTS ARE NOT FREE ────────────────────────────────────────
+ *
+ * A ping can only reach people already connected to the task: its assignee,
+ * its creator, or a watcher. Anything wider is an unaudited message channel
+ * bolted to a to-do list, and "notify any user id" is how a task panel becomes
+ * a way to bypass Smart Comms. Adding somebody to the conversation is
+ * therefore an explicit act — make them a watcher — which is visible on the
+ * task rather than invisible in a delivery log.
+ *
+ * ── WHY THE DEDUPE KEY CARRIES A TIMESTAMP ─────────────────────────────────
+ *
+ * A ping is a deliberate, repeatable act: "any news?" on Tuesday and again on
+ * Thursday are two messages, not one retried. Task-and-recipient alone would
+ * silently swallow the second. The minute bucket keeps a double-click idempotent
+ * while letting a genuine second ping through.
+ */
+async function pingTask(client, ctx, taskId, { user_ids, message }, audience) {
+  const resolved = resolveAudience(ctx, audience ?? ctx.audience);
+  const task = await getTask(client, ctx, taskId, resolved);
+  const allowed = new Set(recipientsOf(task, task.watchers || []));
+  const targets = (user_ids && user_ids.length ? user_ids : [...allowed])
+    .filter((id) => allowed.has(id) && id !== ctx.user.user_id);
+
+  if (!targets.length) {
+    throw new AppError(
+      "INVALID_VALUE",
+      "There is nobody to ping. Assign the task or add a watcher first.",
+      422,
+      { user_ids: ["no eligible recipient on this task"] },
+    );
+  }
+
+  const from = ctx.user.display_name || ctx.user.email || "A colleague";
+  const minute = new Date().toISOString().slice(0, 16);
+  await notifyEach(client, targets, (userId) => ({
+    eventTypeKey: events.TASK_PINGED,
+    title: `${from} pinged you about a task`,
+    body: message ? `${task.title} — ${message}` : task.title,
+    entityRef: `task:${taskId}`,
+    priority: task.priority === "URGENT" ? "HIGH" : "NORMAL",
+    url: entityRouteFor(taskId),
+    dedupeKey: `task-ping:${taskId}:${userId}:${minute}`,
+  }));
+
+  await emitEvent(client, {
+    eventTypeKey: events.TASK_PINGED, moduleKey: events.MODULE,
+    entityRef: `task:${taskId}`, actorUserId: ctx.user.user_id,
+    payload: { recipients: targets.length },
+  });
+  await audit(client, {
+    ...actorOf(ctx), action: events.TASK_PINGED, moduleKey: events.MODULE,
+    entityRef: `task:${taskId}`, after: { recipients: targets, has_message: Boolean(message) },
+  });
+  return { pinged: targets.length, user_ids: targets };
+}
+
+/**
+ * Tell the watchers a task moved.
+ *
+ * Separate from `notifyAssignee`, which announces OWNERSHIP ("this is yours
+ * now") — a different sentence to a different audience, and one that should
+ * still fire when nobody is watching. This is the "something you follow
+ * changed" message, and its dedupe key carries both the recipient and the
+ * target status so two distinct moves are two notifications.
+ */
+async function notifyStatusWatchers(client, ctx, task, watchers, { from, to }) {
+  const targets = recipientsOf(task, watchers, { exclude: ctx.user.user_id });
+  if (!targets.length) return [];
+  return notifyEach(client, targets, (userId) => ({
+    eventTypeKey: events.TASK_STATUS_CHANGED,
+    title: "A task you follow moved",
+    body: `${task.title}: ${from} → ${to}`,
+    entityRef: `task:${task.task_id}`,
+    priority: "NORMAL",
+    url: entityRouteFor(task.task_id),
+    dedupeKey: `task-status:${task.task_id}:${to}:${userId}`,
+  }));
 }
 
 /* ── notifications ──────────────────────────────────────────────────────── */
@@ -969,6 +1662,199 @@ async function spawnDue(client, { now = new Date(), limit = 200 } = {}) {
   return { tasks, events: eventsFired };
 }
 
+
+/* ══════════════════════════════ ANALYTICS ════════════════════════════════ */
+/**
+ * `/workspace/analytics` — authorised operational metrics over the SAME task
+ * population Tasks and Today show.
+ *
+ * ── THE RECONCILIATION PROMISE ─────────────────────────────────────────────
+ *
+ * Every figure this section returns is produced by `visibleWhere` — the exact
+ * predicate the list and the board filter on — so a user who reads "17
+ * overdue" can open the list, filter the same way, and count seventeen rows.
+ * That is not a nice property, it is the acceptance criterion: a dashboard
+ * that disagrees with the screen underneath it is worse than no dashboard,
+ * because it is believed.
+ *
+ * ── AND WHAT IT IS NOT ─────────────────────────────────────────────────────
+ *
+ * "Performance" here means work moving through a process: how much, how late,
+ * how long, how stuck. It is NOT an appraisal score, not a compensation input
+ * and not an employee KPI rating — those live in Empower HR behind their own
+ * module, their own grants and their own retention rules. Nothing in this file
+ * reads any of those tables, and a future metric that wants to must go and get
+ * its own permission rather than borrowing MOD-00A's.
+ *
+ * ── BOUNDED BY CONSTRUCTION ────────────────────────────────────────────────
+ *
+ * The window is resolved and CLAMPED before any query runs: an unbounded
+ * aggregate over a tenant's whole history is a table scan a user can trigger
+ * from a URL. A too-wide range is narrowed and SAID SO in the response rather
+ * than being silently obeyed or refused.
+ */
+
+/** The widest window an aggregate will honour, in days. */
+const ANALYTICS_MAX_DAYS = 370;
+/** What a caller who names no window gets. */
+const ANALYTICS_DEFAULT_DAYS = 30;
+
+/**
+ * Resolve, default and clamp the analytics window on the tenant's clock.
+ *
+ * Returns the clamp decision alongside the window so the screen can say "showing
+ * the last 370 days" instead of quietly answering a different question from the
+ * one the URL asked.
+ */
+async function resolveAnalyticsWindow(client, { from, to }) {
+  const timeZone = await timezoneOf(client);
+  const now = new Date();
+  const toAt = toInstant(to, { timeZone, dateOnlyTime: "00:00:00" }) || now.toISOString();
+  const defaultFrom = new Date(new Date(toAt).getTime() - ANALYTICS_DEFAULT_DAYS * 86400000).toISOString();
+  let fromAt = toInstant(from, { timeZone, dateOnlyTime: "00:00:00" }) || defaultFrom;
+
+  let clamped = false;
+  if (new Date(fromAt).getTime() >= new Date(toAt).getTime()) {
+    // An inverted or empty range is a typo, not a request for no data.
+    fromAt = defaultFrom;
+    clamped = true;
+  }
+  const maxMs = ANALYTICS_MAX_DAYS * 86400000;
+  if (new Date(toAt).getTime() - new Date(fromAt).getTime() > maxMs) {
+    fromAt = new Date(new Date(toAt).getTime() - maxMs).toISOString();
+    clamped = true;
+  }
+  return { from: fromAt, to: toAt, timeZone, clamped, max_days: ANALYTICS_MAX_DAYS };
+}
+
+/**
+ * The whole dashboard in one authorised read.
+ *
+ * ONE endpoint rather than seven, because the six panels must describe the
+ * same population at the same instant: seven requests resolving `now` seven
+ * times can show a summary saying 42 open beside a workload table adding to
+ * 43, and the user has no way to know which is right. One window, one `now`,
+ * one predicate, one answer.
+ */
+async function analytics(client, ctx, q = {}) {
+  const audience = resolveAudience(ctx, q.audience);
+  const visibility = visibilityOf(ctx, audience);
+  const window = await resolveAnalyticsWindow(client, q);
+  const nowIso = new Date().toISOString();
+  const filters = {
+    from: window.from,
+    to: window.to,
+    status: q.status || null,
+    priority: q.priority || null,
+    // `assigned_to=me` is resolved here, exactly as the list resolves it, so
+    // the drill-down link can carry the same parameter through unchanged.
+    assignedTo: q.assigned_to === "me" ? ctx.user.user_id : q.assigned_to || null,
+    scopeId: q.scope_id || null,
+  };
+  const args = { visibility, filters, nowIso, timeZone: window.timeZone };
+
+  const [summary, throughput, overdueAging, workload, cycleTime, blocked, burndown, composition] =
+    await Promise.all([
+      repo.analyticsSummary(client, args),
+      repo.analyticsThroughput(client, args),
+      repo.analyticsOverdueAging(client, args),
+      repo.analyticsWorkload(client, args),
+      repo.analyticsCycleTime(client, args),
+      repo.analyticsBlocked(client, args),
+      repo.analyticsBurndown(client, args),
+      repo.analyticsComposition(client, args),
+    ]);
+
+  return {
+    window: {
+      from: window.from, to: window.to, timezone: window.timeZone,
+      clamped: window.clamped, max_days: window.max_days,
+    },
+    audience,
+    audiences: audiencesFor(ctx),
+    filters: {
+      status: filters.status, priority: filters.priority,
+      assigned_to: q.assigned_to || null, scope_id: filters.scopeId,
+    },
+    summary: {
+      open: summary.open_count,
+      overdue: summary.overdue_count,
+      blocked: summary.blocked_count,
+      completed: summary.completed_count,
+      cancelled: summary.cancelled_count,
+      total: summary.total_count,
+    },
+    throughput: throughput.map((r) => ({ day: r.day, completed: r.completed })),
+    overdue_aging: fillBuckets(overdueAging, AGE_BUCKETS),
+    workload: workload.map((r) => ({
+      user_id: r.user_id,
+      // Not a raw id in user-facing copy: an unassigned group is a sentence.
+      assignee_name: r.assignee_name || (r.user_id ? "Unnamed user" : "Unassigned"),
+      open_tasks: r.open_tasks,
+      overdue_tasks: r.overdue_tasks,
+      blocked_tasks: r.blocked_tasks,
+    })),
+    cycle_time: {
+      buckets: fillBuckets(cycleTime.buckets, AGE_BUCKETS),
+      median_days: cycleTime.median_days === null ? null : Number(cycleTime.median_days),
+    },
+    blocked: blocked.map((r) => ({
+      task_id: r.task_id,
+      title: r.title,
+      status: r.status,
+      priority: r.priority,
+      due_at: r.due_at,
+      assigned_to_name: r.assigned_to_name,
+      blocking_count: r.blocking_count,
+      blocked_since: r.blocked_since,
+      link_url: entityRouteFor(r.task_id),
+    })),
+    burndown: burndownSeries(burndown),
+    composition: composition.map((r) => ({ status: r.status, priority: r.priority, tasks: r.tasks })),
+  };
+}
+
+/** The aging/cycle bands, in the order a person reads them. */
+const AGE_BUCKETS = ["<1", "1-2", "3-7", "8-30", "30+"];
+
+/**
+ * Every band, in order, including the empty ones.
+ *
+ * A chart whose x-axis changes shape as data arrives is unreadable: "3-7 days"
+ * sitting where "30+" was last week makes two screenshots incomparable. Absent
+ * bands are zero, not missing.
+ */
+function fillBuckets(rows, order) {
+  const by = new Map(rows.map((r) => [r.bucket, r]));
+  return order.map((bucket) => {
+    const hit = by.get(bucket);
+    return {
+      bucket,
+      tasks: hit ? hit.tasks : 0,
+      ...(hit && hit.avg_days !== undefined ? { avg_days: Number(hit.avg_days) } : {}),
+    };
+  });
+}
+
+/**
+ * Turn per-day created/completed counts into the open-backlog line.
+ *
+ * Derived HERE rather than in the client so the chart and its accessible table
+ * are one calculation. Two implementations of a running total is two chances
+ * to be off by one day, and the table is the version a screen-reader user
+ * gets — it must not be the version that is wrong.
+ */
+function burndownSeries({ days, open_at_start }) {
+  let open = open_at_start || 0;
+  return {
+    open_at_start: open_at_start || 0,
+    days: days.map((d) => {
+      open = open + d.created - d.completed;
+      return { day: d.day, created: d.created, completed: d.completed, open };
+    }),
+  };
+}
+
 module.exports = {
   VALID_STATUSES, DONE_STATUSES,
   audiencesFor, resolveAudience, visibilityOf, eventVisibilityOf, resolveRemindAt, withLink, deriveLink,
@@ -979,4 +1865,12 @@ module.exports = {
   addParticipant, respondParticipant, removeParticipant,
   mergeTimeline, dayTimeline, deadlinesInRange,
   spawnDue,
+  // PR 2 — hierarchy, dependencies, collaboration and operational Analytics.
+  assertParentable, assertRecurrenceAnchored, childRollup, redactDependency, dependencyBlocks,
+  blockingCount, entityRouteFor, recipientsOf, decorator,
+  addChildTask, childrenFor, dependenciesFor,
+  addDependency, removeDependency, setDependencyOverride,
+  pingTask, notifyStatusWatchers,
+  analytics, resolveAnalyticsWindow, burndownSeries, fillBuckets,
+  ANALYTICS_MAX_DAYS, ANALYTICS_DEFAULT_DAYS, AGE_BUCKETS,
 };

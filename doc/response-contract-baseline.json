@@ -12,6 +12,7 @@
     "field_type": "Custom-field definitions live inside a `setting` jsonb blob (security/setting/setting.rules.js), so no column backs them.",
     "identity_from": "sendpoint.repo.listWithBindings emits this inside a json_build_object() aggregate so the admin screen gets a send point and its bindings in one query rather than N+1 over 22 rows. The scanner only recognises `SELECT ... AS alias`, so a key built by json_build_object is invisible to it. The field IS sent.",
     "identity_name": "sendpoint.repo.listWithBindings emits this inside a json_build_object() aggregate so the admin screen gets a send point and its bindings in one query rather than N+1 over 22 rows. The scanner only recognises `SELECT ... AS alias`, so a key built by json_build_object is invisible to it. The field IS sent.",
+    "reach": "Not a table: the recursive CTE in tasks.repo.dependencyWouldCycle() that walks the blocked-by graph to refuse a dependency cycle (migrations/tenant/13870). The scanner reads `JOIN reach r` as a table reference.",
     "vat_mode": "View-model state, not a response field: costing-model.LineDraft carries which of the two boxes a débours line's VAT is entered through (rate vs free-text amount). Derived from upstream_vat_rate_percent/amount on load; toPayload sends the rate and amount, never the mode."
   },
   "tables": [
@@ -25,6 +26,7 @@
     "hits",
     "jsonb_to_recordset",
     "patch",
+    "reach",
     "span",
     "unlinked_credit"
   ],

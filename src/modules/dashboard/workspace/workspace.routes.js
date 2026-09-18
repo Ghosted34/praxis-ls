@@ -37,7 +37,10 @@ const can = (action) => requirePermission(MODULE, action);
 const tasks = express.Router();
 tasks.get("/", can("view"), v.taskListQuery, t.listTasks);
 tasks.get("/board", can("view"), v.boardQuery, t.getBoard);
-tasks.get("/:id", can("view"), t.getTask);
+// The audience travels to the detail read as well (B-03): a Team or All card
+// the board legitimately rendered must open, and the server re-decides the
+// request rather than trusting it.
+tasks.get("/:id", can("view"), v.taskDetailQuery, t.getTask);
 tasks.post("/", can("create"), v.taskCreate, t.createTask);
 tasks.patch("/:id", can("edit"), v.taskUpdate, t.updateTask);
 // Its own verb rather than a field on PATCH: a status change carries
@@ -53,6 +56,25 @@ tasks.delete("/:id/subtasks/:subtaskId", can("edit"), t.deleteSubtask);
 
 tasks.post("/:id/watchers", can("edit"), v.watcherAdd, t.addWatcher);
 tasks.delete("/:id/watchers/:userId", can("edit"), t.removeWatcher);
+// Nudge the people already on this task. `edit` rather than `create`: a ping
+// is an action ON a task, not a new record, and the service refuses anybody
+// who is not its assignee, creator or watcher.
+tasks.post("/:id/ping", can("edit"), v.taskPing, t.pingTask);
+
+// A separately-assigned child. `create`, because it IS a task — the parent in
+// the path is the only thing that distinguishes it from POST /tasks.
+tasks.post("/:id/children", can("create"), v.childCreate, t.addChildTask);
+
+// Blocked-by edges (13870). Adding one is `edit` on the blocked task rather
+// than `create`: an edge is a statement about a task the caller already holds,
+// and gating it on create would let somebody with create-only rights sequence
+// work they cannot change.
+tasks.post("/:id/dependencies", can("edit"), v.dependencyAdd, t.addDependency);
+tasks.delete("/:id/dependencies/:dependencyId", can("edit"), t.removeDependency);
+// "Proceed anyway" is its own verb rather than a field, for the same reason
+// status is: it carries an attribution and an audit consequence that a generic
+// patch should not have to reason about.
+tasks.patch("/:id/dependencies/:dependencyId/override", can("edit"), v.dependencyOverride, t.overrideDependency);
 
 /* ── /workspace/events ──────────────────────────────────────────────────── */
 const events = express.Router();
@@ -82,6 +104,12 @@ router.get("/day", can("view"), v.dayQuery, t.getDay);
 // Task + subtask due dates for the calendar's deadline overlay — a read, laid
 // over the events grid, that opens the task rather than an event dialog.
 router.get("/deadlines", can("view"), v.deadlineQuery, t.getDeadlines);
+// Operational Analytics — the fourth Workspace section. Gated on `view` like
+// every other read here, and scoped by the SAME audience rules, so an
+// aggregate can never total rows the caller could not have listed. It is
+// deliberately NOT under /tasks: it reports on tasks but it is its own screen,
+// its own registry entry and its own permission line.
+router.get("/analytics", can("view"), v.analyticsQuery, t.getAnalytics);
 router.use("/tasks", tasks);
 router.use("/events", events);
 

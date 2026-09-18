@@ -85,11 +85,24 @@ export function Chart({
   height = 240,
   children,
   className,
+  titleAs: Title = "h4",
 }: {
   title: string;
   description?: string;
   /** One sentence naming what the chart shows. Required, not optional. */
   ariaLabel: string;
+  /**
+   * The heading level of the chart's own title.
+   *
+   * `h4` by default, which is right for the common case — a chart inside a
+   * `<Panel>` (`h2`) inside a section that already has an `h3`. A chart sitting
+   * DIRECTLY in a panel skips a level at `h4`, and axe is correct to call that
+   * out: a screen-reader user navigating by heading hears a level that implies
+   * a subsection that does not exist. The level is a property of where the
+   * chart sits, so the caller states it; the default keeps every existing call
+   * site rendering exactly what it rendered before.
+   */
+  titleAs?: "h3" | "h4" | "h5";
   height?: number;
   children: React.ReactNode;
   className?: string;
@@ -97,7 +110,7 @@ export function Chart({
   return (
     <figure className={cn("space-y-2", className)}>
       <div>
-        <h4 className="text-sm font-medium text-foreground">{title}</h4>
+        <Title className="text-sm font-medium text-foreground">{title}</Title>
         {description && <p className="micro">{description}</p>}
       </div>
       <div role="img" aria-label={ariaLabel} style={{ height }} className="w-full min-w-0">

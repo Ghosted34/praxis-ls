@@ -177,7 +177,9 @@ async function listTasks(client, { audience, userId, scopeIds, personalOnly, sta
  * Ordered urgent-first then soonest-due, so a column reads as a work queue
  * rather than as a list in the order things happened to be written.
  */
-async function boardTasks(client, { audience, userId, scopeIds, personalOnly, assignedTo }) {
+const BOARD_LIMIT = 200;
+
+async function boardTasks(client, { audience, userId, scopeIds, personalOnly, assignedTo, limit = BOARD_LIMIT }) {
   const params = [];
   const where = ["t.is_deleted = false", "t.status <> 'CANCELLED'"];
   if (assignedTo) { params.push(assignedTo); where.push(`t.assigned_to = $${params.length}`); }
@@ -185,17 +187,32 @@ async function boardTasks(client, { audience, userId, scopeIds, personalOnly, as
   params.push(...vis.params);
   where.push(...vis.sql);
 
+  // `COUNT(*) OVER()` gives the pre-LIMIT total in the SAME query and against
+  // the SAME predicate — the only way the board can honestly say "showing 200
+  // of 612" rather than presenting a truncated wall of cards as the whole
+  // truth. A second `SELECT COUNT(*)` would duplicate this WHERE and the two
+  // copies would drift (API F-26, the reason `TASK_SELECT_PAGED` exists).
+  const limitParam = params.length + 1;
+  params.push(limit);
   const { rows } = await client.query(
-    `${TASK_SELECT}
+    `${TASK_SELECT_PAGED}
       WHERE ${where.join(" AND ")}
       ORDER BY CASE t.priority WHEN 'URGENT' THEN 0 WHEN 'HIGH' THEN 1 WHEN 'NORMAL' THEN 2 ELSE 3 END,
                (t.due_at IS NULL), t.due_at ASC NULLS LAST, t.created_at DESC
-      LIMIT 200`,
+      LIMIT $${limitParam}`,
     params,
   );
   const board = { TO_DO: [], IN_PROGRESS: [], IN_REVIEW: [], DONE: [] };
-  for (const r of rows) if (board[r.status]) board[r.status].push(r);
-  return board;
+  // `_total` is the window function's bookkeeping, not a field of a task. It is
+  // dropped from every card so the board payload stays the shape the client's
+  // `Task` type declares rather than leaking a column named like a private.
+  for (const r of rows) {
+    if (!board[r.status]) continue;
+    const { _total, ...card } = r;
+    board[r.status].push(card);
+  }
+  const total = rows.length ? Number(rows[0]._total) : 0;
+  return { board, total, shown: rows.length, limit, truncated: total > rows.length };
 }
 
 /**
@@ -489,6 +506,226 @@ const removeWatcher = async (client, taskId, userId) => {
   );
   return rowCount > 0;
 };
+
+
+/* ── children ───────────────────────────────────────────────────────────── */
+
+/**
+ * The separately-assigned operational children of one task (13810's
+ * `parent_task_id`).
+ *
+ * NOT visibility filtered, and that is deliberate rather than an oversight: the
+ * service needs the WHOLE child set to compute an honest roll-up, and a parent
+ * whose progress read "2 of 2" because the reader could not see the third child
+ * would be a lie with a number on it. The service redacts the rows it RENDERS
+ * and counts the rows it COUNTS separately — see `childRollup` there.
+ *
+ * Soft-deleted children are excluded: a deleted child is not outstanding work.
+ */
+async function listChildTasks(client, parentTaskId) {
+  const { rows } = await client.query(
+    `${TASK_SELECT} WHERE t.parent_task_id = $1 AND t.is_deleted = false
+      ORDER BY (t.due_at IS NULL), t.due_at ASC NULLS LAST, t.created_at ASC`,
+    [parentTaskId],
+  );
+  return rows;
+}
+
+/**
+ * Child counts for a set of parents, for the list and board roll-up badges.
+ *
+ * Batched over an array so a board of 200 cards costs one query rather than
+ * 200 — the same reason `blockedCountsFor` below takes a set.
+ */
+async function childCountsFor(client, parentIds) {
+  if (!parentIds || !parentIds.length) return [];
+  const { rows } = await client.query(
+    `SELECT parent_task_id,
+            count(*)::int                                     AS child_count,
+            count(*) FILTER (WHERE status = 'DONE')::int      AS child_done_count,
+            count(*) FILTER (WHERE status = 'CANCELLED')::int AS child_cancelled_count
+       FROM task
+      WHERE parent_task_id = ANY($1::uuid[]) AND is_deleted = false
+      GROUP BY parent_task_id`,
+    [parentIds],
+  );
+  return rows;
+}
+
+/* ── dependencies (13870) ───────────────────────────────────────────────── */
+
+/**
+ * What this task is waiting for, with enough of the prerequisite to decide
+ * whether it still blocks — and enough identity for the SERVICE to decide
+ * whether the caller may be told what it is.
+ *
+ * The title and owner ride along ON PURPOSE. Redaction is an authorisation
+ * decision and belongs where the audience rules live; doing it here would mean
+ * this query needed the caller's scope closure, which is how a repo function
+ * ends up holding a second copy of a visibility rule (13810's header).
+ */
+async function listDependencies(client, taskId) {
+  const { rows } = await client.query(
+    `SELECT d.task_dependency_id, d.task_id, d.depends_on_task_id,
+            d.overridden_at, d.overridden_by, d.override_reason, d.created_at,
+            o.full_name    AS overridden_by_name,
+            p.title        AS depends_on_title,
+            p.status       AS depends_on_status,
+            p.due_at       AS depends_on_due_at,
+            p.assigned_to  AS depends_on_assigned_to,
+            p.created_by   AS depends_on_created_by,
+            p.is_personal  AS depends_on_is_personal,
+            p.scope_id     AS depends_on_scope_id,
+            p.entity_type  AS depends_on_entity_type,
+            p.entity_id    AS depends_on_entity_id
+       FROM task_dependency d
+       JOIN task p ON p.task_id = d.depends_on_task_id AND p.is_deleted = false
+       LEFT JOIN app_user o ON o.user_id = d.overridden_by
+      WHERE d.task_id = $1
+      ORDER BY d.created_at`,
+    [taskId],
+  );
+  return rows;
+}
+
+/** The reverse read: what this task is holding up. Same redaction contract. */
+async function listDependents(client, taskId) {
+  const { rows } = await client.query(
+    `SELECT d.task_dependency_id, d.task_id, d.depends_on_task_id, d.overridden_at,
+            b.title       AS blocked_title,
+            b.status      AS blocked_status,
+            b.assigned_to AS blocked_assigned_to,
+            b.created_by  AS blocked_created_by,
+            b.is_personal AS blocked_is_personal,
+            b.scope_id    AS blocked_scope_id
+       FROM task_dependency d
+       JOIN task b ON b.task_id = d.task_id AND b.is_deleted = false
+      WHERE d.depends_on_task_id = $1
+      ORDER BY d.created_at`,
+    [taskId],
+  );
+  return rows;
+}
+
+/**
+ * Would adding "taskId is blocked by dependsOnTaskId" close a loop?
+ *
+ * Walks the blocked-by graph forward from the PROPOSED PREREQUISITE: if the
+ * task that would become blocked is already reachable among that
+ * prerequisite's own transitive prerequisites, the new edge completes a cycle
+ * and nothing in the loop could ever start.
+ *
+ * `UNION` rather than `UNION ALL` is load-bearing: it dedupes the frontier, so
+ * a graph that ALREADY contains a cycle (rows written before this check
+ * existed, or by a direct SQL fix) terminates instead of spinning. The depth
+ * cap is the second belt for a very wide graph — 64 is far past any real chain
+ * of work, and reaching it refuses the edge rather than hanging the request.
+ *
+ * The database does NOT hold this rule; 13870's header says why, and this is
+ * the function that header points at.
+ */
+async function dependencyWouldCycle(client, taskId, dependsOnTaskId) {
+  const { rows } = await client.query(
+    `WITH RECURSIVE reach(task_id, depth) AS (
+       SELECT $2::uuid, 0
+       UNION
+       SELECT d.depends_on_task_id, r.depth + 1
+         FROM task_dependency d
+         JOIN reach r ON r.task_id = d.task_id
+        WHERE r.depth < 64
+     )
+     SELECT 1 FROM reach WHERE task_id = $1::uuid LIMIT 1`,
+    [taskId, dependsOnTaskId],
+  );
+  return rows.length > 0;
+}
+
+async function findDependency(client, dependencyId) {
+  const { rows } = await client.query(
+    "SELECT * FROM task_dependency WHERE task_dependency_id = $1",
+    [dependencyId],
+  );
+  return rows[0] || null;
+}
+
+/**
+ * Add an edge.
+ *
+ * `ON CONFLICT DO NOTHING` returns no row for a duplicate, which the service
+ * turns into an honest sentence rather than a 23505 the user has never heard
+ * of. The unique index is still what makes the duplicate impossible; this only
+ * decides how it is REPORTED.
+ */
+async function insertDependency(client, { task_id, depends_on_task_id, created_by }) {
+  const { rows } = await client.query(
+    `INSERT INTO task_dependency (task_id, depends_on_task_id, created_by)
+     VALUES ($1,$2,$3)
+     ON CONFLICT (task_id, depends_on_task_id) DO NOTHING
+     RETURNING *`,
+    [task_id, depends_on_task_id, created_by ?? null],
+  );
+  return rows[0] || null;
+}
+
+/** Record the "proceed anyway" decision, attributably (13870). */
+async function overrideDependency(client, dependencyId, { userId, reason }) {
+  const { rows } = await client.query(
+    `UPDATE task_dependency
+        SET overridden_at = now(), overridden_by = $2, override_reason = $3
+      WHERE task_dependency_id = $1
+      RETURNING *`,
+    [dependencyId, userId ?? null, reason ?? null],
+  );
+  return rows[0] || null;
+}
+
+/** Withdraw an override — the edge blocks again. */
+async function clearDependencyOverride(client, dependencyId) {
+  const { rows } = await client.query(
+    `UPDATE task_dependency
+        SET overridden_at = NULL, overridden_by = NULL, override_reason = NULL
+      WHERE task_dependency_id = $1
+      RETURNING *`,
+    [dependencyId],
+  );
+  return rows[0] || null;
+}
+
+async function deleteDependency(client, dependencyId) {
+  const { rowCount } = await client.query(
+    "DELETE FROM task_dependency WHERE task_dependency_id = $1",
+    [dependencyId],
+  );
+  return rowCount > 0;
+}
+
+/**
+ * Which of these tasks are blocked, and by how many unresolved prerequisites.
+ *
+ * "Unresolved" is the whole semantic in one predicate: not DONE, not
+ * overridden, not soft-deleted. CANCELLED is deliberately NOT treated as
+ * resolved — an abandoned prerequisite is not a finished one, and it keeps
+ * blocking until somebody overrides the edge. That is the recorded decision,
+ * and it is the reason `overridden_at` exists at all.
+ *
+ * Batched over an array so a board of 200 cards is one query, not 200.
+ */
+async function blockedCountsFor(client, taskIds) {
+  if (!taskIds || !taskIds.length) return [];
+  const { rows } = await client.query(
+    `SELECT d.task_id,
+            count(*)::int     AS blocking_count,
+            min(d.created_at) AS blocked_since
+       FROM task_dependency d
+       JOIN task p ON p.task_id = d.depends_on_task_id AND p.is_deleted = false
+      WHERE d.task_id = ANY($1::uuid[])
+        AND d.overridden_at IS NULL
+        AND p.status <> 'DONE'
+      GROUP BY d.task_id`,
+    [taskIds],
+  );
+  return rows;
+}
 
 /* ════════════════════════════ CALENDAR EVENTS ════════════════════════════ */
 
@@ -951,11 +1188,333 @@ async function updateSeriesEvents(client, seriesId, patch, { exclude, rearm = fa
   return rowCount || 0;
 }
 
+
+/* ══════════════════════════════ ANALYTICS ════════════════════════════════ */
+/**
+ * Operational aggregations for `/workspace/analytics`.
+ *
+ * ── ONE POPULATION, COUNTED SIX WAYS ───────────────────────────────────────
+ *
+ * Every query below reuses `visibleWhere` — the SAME predicate the Tasks list,
+ * the board and Today filter on. That is the whole reason Analytics can be
+ * trusted: a metric built from its own bespoke WHERE clause would eventually
+ * disagree with the list a user can open, and the user would be right and the
+ * chart wrong. A total here is, by construction, the count of rows the caller
+ * could have paged through themselves.
+ *
+ * ── WHY THE BUCKETS ARE COMPUTED IN SQL ────────────────────────────────────
+ *
+ * Aging bands, day keys and cycle times are `date_trunc`/`width_bucket`
+ * expressions rather than post-processing in JavaScript, because the
+ * alternative is shipping every row to the API process to count it — which
+ * reintroduces the cap the aggregate exists to avoid, and makes "500 open
+ * tasks" a 500-row response.
+ *
+ * ── TENANT TIME ────────────────────────────────────────────────────────────
+ *
+ * Day keys use `AT TIME ZONE $tz` so a bar labelled "15 September" is the
+ * tenant's 15 September, matching Today and the Calendar. The zone arrives as
+ * a parameter from `workspace.time.timezoneOf()`; it is never the server's.
+ *
+ * ── THIS IS OPERATIONAL DATA AND NOTHING ELSE ──────────────────────────────
+ *
+ * There is no join to appraisal, KPI rating, payroll or contract anywhere in
+ * this section, and there must not be. "Workload by assignee" is how much work
+ * is open on somebody's desk; it is not a score, and the Empower HR surfaces
+ * that DO hold ratings have their own module and their own grants.
+ */
+
+/** The shared FROM/WHERE for every aggregate: one authorised task population. */
+function analyticsScope(v, { from, to, status, priority, assignedTo, scopeId }, start = 1) {
+  const params = [];
+  const where = ["t.is_deleted = false"];
+  if (status) { params.push(status); where.push(`t.status = $${start + params.length - 1}`); }
+  if (priority) { params.push(priority); where.push(`t.priority = $${start + params.length - 1}`); }
+  if (assignedTo) { params.push(assignedTo); where.push(`t.assigned_to = $${start + params.length - 1}`); }
+  if (scopeId) { params.push(scopeId); where.push(`t.scope_id = $${start + params.length - 1}`); }
+  const vis = visibleWhere(v, start + params.length);
+  params.push(...vis.params);
+  where.push(...vis.sql);
+  return { where, params, next: start + params.length, from, to };
+}
+
+/**
+ * The headline counts: open, overdue, blocked, completed in the window.
+ *
+ * All four in ONE pass over the population rather than four round trips, and
+ * all four from the same predicate — which is what makes "open 42" here and a
+ * list showing 42 rows the same statement rather than two coincidences.
+ */
+async function analyticsSummary(client, { visibility, filters, nowIso }) {
+  const s = analyticsScope(visibility, filters, 3);
+  const params = [filters.from, filters.to, ...s.params];
+  const nowParam = params.push(nowIso);
+  const { rows } = await client.query(
+    `SELECT
+       count(*) FILTER (WHERE t.status NOT IN ('DONE','CANCELLED'))::int AS open_count,
+       count(*) FILTER (WHERE t.status NOT IN ('DONE','CANCELLED')
+                          AND t.due_at IS NOT NULL AND t.due_at < $${nowParam})::int AS overdue_count,
+       count(*) FILTER (WHERE t.status = 'DONE'
+                          AND t.completed_at >= $1 AND t.completed_at < $2)::int AS completed_count,
+       count(*) FILTER (WHERE t.status = 'CANCELLED')::int AS cancelled_count,
+       count(*) FILTER (WHERE t.status NOT IN ('DONE','CANCELLED') AND EXISTS (
+         SELECT 1 FROM task_dependency d
+           JOIN task p ON p.task_id = d.depends_on_task_id AND p.is_deleted = false
+          WHERE d.task_id = t.task_id AND d.overridden_at IS NULL AND p.status <> 'DONE'
+       ))::int AS blocked_count,
+       count(*)::int AS total_count
+     FROM task t
+     WHERE ${s.where.join(" AND ")}`,
+    params,
+  );
+  return rows[0];
+}
+
+/**
+ * Throughput — tasks completed per tenant-local day in the window.
+ *
+ * Completion is `completed_at`, which `updateTask` stamps on the transition to
+ * DONE and clears on the way back, so a task re-opened and finished again
+ * counts on the day it was ACTUALLY finished rather than on both.
+ */
+async function analyticsThroughput(client, { visibility, filters, timeZone }) {
+  const s = analyticsScope(visibility, filters, 4);
+  const params = [filters.from, filters.to, timeZone, ...s.params];
+  const { rows } = await client.query(
+    `SELECT to_char(date_trunc('day', t.completed_at AT TIME ZONE $3), 'YYYY-MM-DD') AS day,
+            count(*)::int AS completed
+       FROM task t
+      WHERE ${s.where.join(" AND ")}
+        AND t.status = 'DONE'
+        AND t.completed_at >= $1 AND t.completed_at < $2
+      GROUP BY 1
+      ORDER BY 1`,
+    params,
+  );
+  return rows;
+}
+
+/**
+ * Overdue aging — how long open work has been late, in bands.
+ *
+ * Bands rather than a mean: one task 200 days late and nine a day late average
+ * to "21 days late", which describes none of them. The bands are the shape an
+ * operations manager actually triages by.
+ */
+async function analyticsOverdueAging(client, { visibility, filters, nowIso }) {
+  const s = analyticsScope(visibility, filters, 2);
+  const params = [nowIso, ...s.params];
+  const { rows } = await client.query(
+    `SELECT CASE
+              WHEN age_days < 1  THEN '<1'
+              WHEN age_days < 3  THEN '1-2'
+              WHEN age_days < 8  THEN '3-7'
+              WHEN age_days < 31 THEN '8-30'
+              ELSE '30+'
+            END AS bucket,
+            count(*)::int AS tasks
+       FROM (
+         SELECT EXTRACT(EPOCH FROM ($1::timestamptz - t.due_at)) / 86400.0 AS age_days
+           FROM task t
+          WHERE ${s.where.join(" AND ")}
+            AND t.status NOT IN ('DONE','CANCELLED')
+            AND t.due_at IS NOT NULL AND t.due_at < $1
+       ) aged
+      GROUP BY 1`,
+    params,
+  );
+  return rows;
+}
+
+/**
+ * Workload — open work per assignee, with the overdue and blocked slice.
+ *
+ * Unassigned rows are kept as a NULL group rather than dropped: "nobody owns
+ * eleven of these" is the most actionable line on the chart, and hiding it
+ * makes the totals disagree with the summary.
+ */
+async function analyticsWorkload(client, { visibility, filters, nowIso, limit = 25 }) {
+  const s = analyticsScope(visibility, filters, 2);
+  const params = [nowIso, ...s.params];
+  const limitParam = params.push(limit);
+  const { rows } = await client.query(
+    `SELECT t.assigned_to AS user_id,
+            a.full_name   AS assignee_name,
+            count(*)::int AS open_tasks,
+            count(*) FILTER (WHERE t.due_at IS NOT NULL AND t.due_at < $1)::int AS overdue_tasks,
+            count(*) FILTER (WHERE EXISTS (
+              SELECT 1 FROM task_dependency d
+                JOIN task p ON p.task_id = d.depends_on_task_id AND p.is_deleted = false
+               WHERE d.task_id = t.task_id AND d.overridden_at IS NULL AND p.status <> 'DONE'
+            ))::int AS blocked_tasks
+       FROM task t
+       LEFT JOIN app_user a ON a.user_id = t.assigned_to
+      WHERE ${s.where.join(" AND ")}
+        AND t.status NOT IN ('DONE','CANCELLED')
+      GROUP BY t.assigned_to, a.full_name
+      ORDER BY open_tasks DESC, assignee_name NULLS LAST
+      LIMIT $${limitParam}`,
+    params,
+  );
+  return rows;
+}
+
+/**
+ * Cycle time — creation to completion, for work finished in the window.
+ *
+ * Reported as a distribution (bands) plus the median, not a mean. A single
+ * task that sat open for a year drags a mean past every real value; the median
+ * is what "how long does this usually take" means.
+ */
+async function analyticsCycleTime(client, { visibility, filters }) {
+  const s = analyticsScope(visibility, filters, 3);
+  const params = [filters.from, filters.to, ...s.params];
+  const { rows } = await client.query(
+    `SELECT CASE
+              WHEN days < 1  THEN '<1'
+              WHEN days < 3  THEN '1-2'
+              WHEN days < 8  THEN '3-7'
+              WHEN days < 31 THEN '8-30'
+              ELSE '30+'
+            END AS bucket,
+            count(*)::int AS tasks,
+            round(avg(days)::numeric, 2) AS avg_days
+       FROM (
+         SELECT EXTRACT(EPOCH FROM (t.completed_at - t.created_at)) / 86400.0 AS days
+           FROM task t
+          WHERE ${s.where.join(" AND ")}
+            AND t.status = 'DONE'
+            AND t.completed_at IS NOT NULL
+            AND t.completed_at >= $1 AND t.completed_at < $2
+       ) c
+      GROUP BY 1`,
+    params,
+  );
+  const [{ median_days = null } = {}] = (
+    await client.query(
+      `SELECT round(percentile_cont(0.5) WITHIN GROUP (
+                ORDER BY EXTRACT(EPOCH FROM (t.completed_at - t.created_at)) / 86400.0
+              )::numeric, 2) AS median_days
+         FROM task t
+        WHERE ${s.where.join(" AND ")}
+          AND t.status = 'DONE'
+          AND t.completed_at IS NOT NULL
+          AND t.completed_at >= $1 AND t.completed_at < $2`,
+      params,
+    )
+  ).rows;
+  return { buckets: rows, median_days };
+}
+
+/**
+ * Blocked work — open tasks with an unresolved prerequisite, oldest edge first.
+ *
+ * The prerequisite's TITLE is not selected. A blocked task may be visible to
+ * the caller while the thing blocking it is not, and the table's job is to say
+ * "this is waiting", not to disclose what on. The detail panel resolves the
+ * prerequisite through the same intersection rule and redacts there.
+ */
+async function analyticsBlocked(client, { visibility, filters, limit = 50 }) {
+  const s = analyticsScope(visibility, filters, 1);
+  const params = [...s.params];
+  const limitParam = params.push(limit);
+  const { rows } = await client.query(
+    `SELECT t.task_id, t.title, t.status, t.priority, t.due_at,
+            t.assigned_to, a.full_name AS assigned_to_name,
+            t.entity_type, t.entity_id,
+            blocking.blocking_count,
+            blocking.blocked_since
+       FROM task t
+       LEFT JOIN app_user a ON a.user_id = t.assigned_to
+       JOIN LATERAL (
+         SELECT count(*)::int AS blocking_count, min(d.created_at) AS blocked_since
+           FROM task_dependency d
+           JOIN task p ON p.task_id = d.depends_on_task_id AND p.is_deleted = false
+          WHERE d.task_id = t.task_id AND d.overridden_at IS NULL AND p.status <> 'DONE'
+       ) blocking ON blocking.blocking_count > 0
+      WHERE ${s.where.join(" AND ")}
+        AND t.status NOT IN ('DONE','CANCELLED')
+      ORDER BY blocking.blocked_since ASC
+      LIMIT $${limitParam}`,
+    params,
+  );
+  return rows;
+}
+
+/**
+ * Burn-down — how the open backlog moved across the window.
+ *
+ * WORK VOLUME, not money: this is the operational burn-down the guide names,
+ * and it has nothing to do with cash. Each tenant-local day carries what was
+ * CREATED and what was COMPLETED that day; the running open balance is derived
+ * in the service from the opening backlog, so the chart and its table are one
+ * calculation rather than two.
+ */
+async function analyticsBurndown(client, { visibility, filters, timeZone }) {
+  const s = analyticsScope(visibility, filters, 4);
+  const params = [filters.from, filters.to, timeZone, ...s.params];
+  const { rows } = await client.query(
+    `WITH scoped AS (
+       SELECT t.task_id, t.created_at, t.completed_at, t.status
+         FROM task t
+        WHERE ${s.where.join(" AND ")}
+     ),
+     created AS (
+       SELECT to_char(date_trunc('day', created_at AT TIME ZONE $3), 'YYYY-MM-DD') AS day,
+              count(*)::int AS n
+         FROM scoped WHERE created_at >= $1 AND created_at < $2 GROUP BY 1
+     ),
+     closed AS (
+       SELECT to_char(date_trunc('day', completed_at AT TIME ZONE $3), 'YYYY-MM-DD') AS day,
+              count(*)::int AS n
+         FROM scoped
+        WHERE status = 'DONE' AND completed_at >= $1 AND completed_at < $2 GROUP BY 1
+     )
+     SELECT COALESCE(created.day, closed.day) AS day,
+            COALESCE(created.n, 0) AS created,
+            COALESCE(closed.n, 0)  AS completed
+       FROM created FULL OUTER JOIN closed ON created.day = closed.day
+      ORDER BY 1`,
+    params,
+  );
+  // The backlog as it stood the instant the window opened. Without it the line
+  // starts at zero and reads as "we had no work", which is never true.
+  const { rows: opening } = await client.query(
+    `SELECT count(*)::int AS open_at_start
+       FROM task t
+      WHERE ${s.where.join(" AND ")}
+        AND t.created_at < $1
+        AND (t.completed_at IS NULL OR t.completed_at >= $1)
+        AND t.status <> 'CANCELLED'`,
+    params,
+  );
+  return { days: rows, open_at_start: opening[0] ? opening[0].open_at_start : 0 };
+}
+
+/** Open work by status and by priority — the two composition reads. */
+async function analyticsComposition(client, { visibility, filters }) {
+  const s = analyticsScope(visibility, filters, 1);
+  const { rows } = await client.query(
+    `SELECT t.status, t.priority, count(*)::int AS tasks
+       FROM task t
+      WHERE ${s.where.join(" AND ")}
+      GROUP BY t.status, t.priority`,
+    s.params,
+  );
+  return rows;
+}
+
 module.exports = {
   visibleWhere,
   listTasks, boardTasks, tasksInRange, subtasksInRange, dayTasks, daySubtasks, insertTask, findTask, updateTask, softDeleteTask,
   listSubtasks, insertSubtask, updateSubtask, deleteSubtask,
   listWatchers, addWatcher, removeWatcher,
+  listChildTasks, childCountsFor,
+  listDependencies, listDependents, dependencyWouldCycle, findDependency, insertDependency,
+  overrideDependency, clearDependencyOverride, deleteDependency, blockedCountsFor,
+  analyticsScope, analyticsSummary, analyticsThroughput, analyticsOverdueAging,
+  analyticsWorkload, analyticsCycleTime, analyticsBlocked, analyticsBurndown,
+  analyticsComposition,
   eventVisibleWhere, listEventsWindow, listEvents, insertEvent, findEvent, updateEvent, softDeleteEvent, findEventClashes,
   listParticipants, insertParticipant, respondParticipant, removeParticipant,
   dueTaskReminders, dueEventReminders, markTaskReminderSent, markEventReminderSent,

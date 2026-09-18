@@ -122,7 +122,7 @@ describe("a bad hr.timezone leaves Workspace answering, not erroring", () => {
     // A tenant-facing PersistenceFailure is not the assertion here — the zone
     // never reached Intl was. Anything at the database layer beyond that is
     // mock theatre; the statement-level guard below is the one that matters.
-    expect(insertError == null || /NOT_FOUND|Task not found/.test(String(insertError.message))).toBe(true);
+    expect(insertError === null || /NOT_FOUND|Task not found/.test(String(insertError.message))).toBe(true);
 
     // No statement parameter may carry the raw setting.
     for (const { params } of client.calls) {

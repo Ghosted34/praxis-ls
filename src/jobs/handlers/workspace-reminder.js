@@ -1,11 +1,14 @@
 /**
- * Worker job: fire the workspace reminders whose time has come (13810).
+ * Worker job: fire the workspace reminders whose time has come (13810), now
+ * with the several-reminders, author-override and per-recipient dedupe of
+ * PR 3 (13880).
  *
  * ── THE TABLE IS THE QUEUE ─────────────────────────────────────────────────
  *
  * There is no scheduled-job registry, no in-memory timer and nothing to
- * reconstruct after a restart. A reminder is a pair of columns — `remind_at`
- * (when) and `reminder_sent_at` (whether) — and this job is a scan:
+ * reconstruct after a restart. A reminder is a ROW of `workspace_reminder`
+ * (`remind_at` = when, `reminder_sent_at` = whether), not a column of its
+ * owner, and this job is a scan:
  *
  *     WHERE remind_at <= now() AND reminder_sent_at IS NULL
  *
@@ -13,32 +16,43 @@
  * being engineered: a restart loses nothing because nothing was held; two
  * workers racing cannot double-fire because the row stops matching the
  * predicate the moment it is stamped; and moving a due date RE-ARMS the
- * reminder with a single UPDATE that clears the stamp.
+ * reminders of the task it moved.
  *
  * ── WHY A FAILED DELIVERY STILL STAMPS THE ROW ─────────────────────────────
  *
- * `markReminderSent` runs even when `notify` threw. That is deliberate and it
- * is the single most important line in this file. The alternative — leave the
- * row armed so it retries next minute — means one undeliverable reminder is
- * re-selected forever, and since the sweep takes the oldest 200 rows first, a
- * handful of poison rows permanently occupy the batch and NO reminder in the
- * tenant ever fires again. That failure is silent, total and tenant-wide.
+ * `markReminderSent` runs even when `notify` threw. The alternative — leave
+ * the row armed so it retries next minute — means one undeliverable row is
+ * re-selected forever, and since the sweep takes the oldest 200 rows first,
+ * a handful of poison rows permanently occupy the batch and NO reminder in
+ * the tenant ever fires again. That failure is silent, total and
+ * tenant-wide. Losing one notification is recoverable: the task is still on
+ * the person's desk, still showing its due date. A wedged queue is not.
  *
- * Losing one notification is recoverable: the task is still on the person's
- * desk, still showing its due date. A wedged queue is not.
+ * ── WHY THE DEDUPE KEY CARRIES THE RECIPIENT ───────────────────────────────
  *
- * ── WHY IT NOTIFIES RATHER THAN EMITTING ───────────────────────────────────
+ * A row carries ONE reminder for ONE owner, and the dedupeKey is the row's
+ * own identity (`task-reminder:<reminder-id>:<user-id>`). A shared per-record
+ * key applied across recipients — the 13810 handler's
+ * `event-reminder:<event-id>` — claimed the dedupe with the first recipient
+ * and silently suppressed every later recipient the same row had to reach.
+ * That was the actual bug: invited participants were never told, because the
+ * organiser's notify claimed the key first. The row's id stamps the claim so
+ * a retried job does not double-send, and the recipient's id distinguishes
+ * fan-out from re-attempt.
  *
- * Unlike contract-lapse, which emits an event for a tenant's watchers to pick
- * up, a reminder has a specific, known audience: the person the task is
- * assigned to, or the people in the meeting. `notify` reaches exactly them,
- * through the channel each of them chose, and respects their per-category
- * preferences. Emitting instead would make "your task is due" a broadcast
- * whose audience is whoever happens to watch MOD-00A.
+ * ── THE AUTHOR'S EMAIL OVERRIDE ────────────────────────────────────────────
  *
- * `notify` writes to `event_log` through its own path, so a tenant watching for
- * reminders still sees them; this file does not emit separately, because a
- * second event for one reminder is two rows saying the same thing.
+ * A row with `email: true` asks for email on top of the recipient's ordinary
+ * preference, and `forceEmail` is how the sweep says so to notify() — one
+ * named author, one named deadline, one reminder row. The row's own `email`
+ * flag is the only place the choice lives, so the sweep doesn't invent the
+ * policy per tick: it reads the row, passes the truth forward, and the
+ * notification service spends the preference's carve-outs (security,
+ * silence routing) on top.
+ *
+ * `notify` writes to `event_log` through its own path, so a tenant watching
+ * for reminders still sees them; this file does not emit separately, because
+ * a second event for one reminder is two rows saying the same thing.
  *
  * Job data: { tenantMeta, env, limit? }.
  */
@@ -112,7 +126,11 @@ async function sweep(client, { notify, timeZone, now = new Date(), limit = BATCH
           entityRef: `task:${row.task_id}`,
           priority: row.priority === "URGENT" ? "HIGH" : "NORMAL",
           url: linkFor(row.entity_type, row.entity_id),
-          dedupeKey: `task-reminder:${row.task_id}`,
+          // Per-reminder AND per-recipient: a retried job does not re-tell
+          // this person about this reminder, and a sibling reminder on the
+          // same task still reaches them.
+          dedupeKey: `task-reminder:${row.workspace_reminder_id}:${recipient}`,
+          forceEmail: row.email === true,
         });
         // Counted only when something was actually sent. Counting the ROW
         // instead made the log line claim a reminder nobody received, which is
@@ -121,16 +139,18 @@ async function sweep(client, { notify, timeZone, now = new Date(), limit = BATCH
       }
     } catch (err) {
       failures += 1;
-      logger.error({ err, task_id: row.task_id }, "task reminder delivery failed — row will still be disarmed");
+      logger.error({ err, task_id: row.task_id, workspace_reminder_id: row.workspace_reminder_id }, "task reminder delivery failed — row will still be disarmed");
     }
     // Unconditional. See the header: this is what keeps one bad row from
     // occupying the batch forever.
-    await repo.markTaskReminderSent(client, row.task_id, nowIso);
+    await repo.markReminderSent(client, row.workspace_reminder_id, nowIso);
   }
 
   for (const row of await repo.dueEventReminders(client, nowIso, limit)) {
     // The organiser plus everybody invited. A Set, because the organiser is
-    // usually also a participant and should not be told twice.
+    // usually also a participant and should not be told twice — but the
+    // dedupe per recipient is the load-bearing guard, since the same user
+    // could arrive by ownership OR by invitation on two rows of one sweep.
     const recipients = new Set([row.created_by, ...(row.participant_user_ids || [])].filter(Boolean));
     const when = fmtWhen(row.start_at, timeZone);
     const where = row.location ? ` · ${row.location}` : "";
@@ -144,15 +164,16 @@ async function sweep(client, { notify, timeZone, now = new Date(), limit = BATCH
           entityRef: `calendar_event:${row.calendar_event_id}`,
           priority: "NORMAL",
           url: linkFor(row.entity_type, row.entity_id),
-          dedupeKey: `event-reminder:${row.calendar_event_id}`,
+          dedupeKey: `event-reminder:${row.workspace_reminder_id}:${userId}`,
+          forceEmail: row.email === true,
         });
         eventsFired += 1;
       } catch (err) {
         failures += 1;
-        logger.error({ err, calendar_event_id: row.calendar_event_id }, "event reminder delivery failed — row will still be disarmed");
+        logger.error({ err, calendar_event_id: row.calendar_event_id, workspace_reminder_id: row.workspace_reminder_id }, "event reminder delivery failed — row will still be disarmed");
       }
     }
-    await repo.markEventReminderSent(client, row.calendar_event_id, nowIso);
+    await repo.markReminderSent(client, row.workspace_reminder_id, nowIso);
   }
 
   return { tasks, events: eventsFired, failures };

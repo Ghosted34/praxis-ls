@@ -184,28 +184,119 @@ const withLink = (row) => {
 };
 
 /**
- * Resolve when a reminder should fire.
+ * Normalise one reminder entry as the client sent it, into the row shape the
+ * repo stores. Shared by the task and event writers; the two differ only in
+ * which of the anchors (`due_at`, `start_at`) feeds a relative row, which is
+ * what `anchor` carries.
  *
- * An explicit `remind_at` wins — the user picked a moment and we do not
- * second-guess it. Otherwise it is `anchor - reminder_minutes`, so the reminder
- * is expressed RELATIVE to the thing it is about and moves with it. Returning
- * null clears it, which is a real outcome ("no reminder"), not an absence of
- * one.
+ * ── WHY THE RESOLUTION HAPPENS HERE AND NOT IN THE REPO ────────────────────
  *
- * Every branch goes through `toInstant`, so "17:00 with no offset" means the
- * same wall clock here as it does on the task's own due date. Deriving the
- * reminder in a different zone from its anchor would put it an hour out and
- * nothing would report it.
+ * The repo's job is to store rows and the sweep's job is to read them; which
+ * of a relative/absolute pair a user asked for, what the tenant clock is,
+ * and what happens when a relative reminder has an owner with no date are
+ * shaping, not storage. Doing it here keeps one procedure ("what time does
+ * this row fire") out of two surfaces, and keeps the sweep's relation pinned
+ * on `remind_at <= now()` alone.
  */
-function resolveRemindAt({ remind_at, reminder_minutes, anchor, timeZone }) {
-  if (remind_at !== undefined && remind_at !== null) {
-    return toInstant(remind_at, { timeZone, dateOnlyTime: "09:00:00" });
+function resolveReminderRows({ reminders, anchor, timeZone }) {
+  const rows = [];
+  (reminders || []).forEach((raw, idx) => {
+    const ordinal = idx + 1; // the third slot on a record is the product's cap
+    if (ordinal > 3) throw new AppError("BAD_VALUE", "At most three reminders per record.", 400);
+    const email = raw && raw.email === true;
+    const label = raw && raw.label ? String(raw.label).trim().slice(0, 80) || null : null;
+    const scope = raw && raw.scope === "series" ? "series" : "this";
+    const minutesRaw = raw && raw.reminder_minutes;
+    const hasRelative = minutesRaw !== null && minutesRaw !== undefined;
+    const remindAtRaw = raw && raw.remind_at;
+    const hasAbsolute = remindAtRaw !== null && remindAtRaw !== undefined && remindAtRaw !== "";
+    if (hasRelative && hasAbsolute) {
+      throw new AppError("BAD_VALUE", "A reminder is relative OR at a time, never both.", 400);
+    }
+    if (!hasRelative && !hasAbsolute) {
+      throw new AppError("BAD_VALUE", "A reminder needs minutes-before or a time; an empty one is not armed.", 400);
+    }
+    if (hasRelative) {
+      const n = Number(minutesRaw);
+      if (!Number.isInteger(n) || n < 0) throw new AppError("BAD_VALUE", "Minutes-before must be a whole number, zero or more.", 400);
+      const anchorAt = anchor ? toInstant(anchor, { timeZone, dateOnlyTime: "17:00:00" }) : null;
+      if (anchorAt === null) {
+        throw new AppError("BAD_VALUE", "The record needs a date for a relative reminder to hang off.", 400);
+      }
+      rows.push({ reminderMinutes: n, remindAt: null, ordinal, label, email, scope });
+    } else {
+      const remindAt = toInstant(remindAtRaw, { timeZone, dateOnlyTime: "09:00:00" });
+      if (remindAt === null) {
+        throw new AppError("BAD_VALUE", "The reminder's exact time is not a readable moment.", 400);
+      }
+      rows.push({ reminderMinutes: null, remindAt, ordinal, label, email, scope });
+    }
+  });
+  return rows;
+}
+
+/**
+ * Backward-compat single-reminder shaper: a client that still speaks the
+ * 13810 vocabulary (`reminder_minutes` alone, or `remind_at` with no list)
+ * produces one row, same conversion, same slot.
+ */
+function legacyReminderRow({ reminder_minutes, remind_at, timeZone, anchor }) {
+  if (remind_at !== undefined && remind_at !== null && remind_at !== "") {
+    const remindAt = toInstant(remind_at, { timeZone, dateOnlyTime: "09:00:00" });
+    if (remindAt === null) throw new AppError("BAD_VALUE", "The reminder's exact time is not a readable moment.", 400);
+    return [{ reminderMinutes: null, remindAt, ordinal: 1, label: null, email: false, scope: "this" }];
   }
-  if (reminder_minutes === null || reminder_minutes === undefined) return null;
-  if (!anchor) return null;
-  const anchorAt = toInstant(anchor, { timeZone, dateOnlyTime: "17:00:00" });
-  if (!anchorAt) return null;
-  return new Date(new Date(anchorAt).getTime() - reminder_minutes * 60000).toISOString();
+  if (reminder_minutes === null || reminder_minutes === undefined) return [];
+  const n = Number(reminder_minutes);
+  if (!Number.isInteger(n) || n < 0) throw new AppError("BAD_VALUE", "Minutes-before must be a whole number, zero or more.", 400);
+  const anchorAt = anchor ? toInstant(anchor, { timeZone, dateOnlyTime: "17:00:00" }) : null;
+  if (anchorAt === null) {
+    throw new AppError("BAD_VALUE", "The record needs a date for a relative reminder to hang off.", 400);
+  }
+  return [{ reminderMinutes: n, remindAt: null, ordinal: 1, label: null, email: false, scope: "this" }];
+}
+
+/**
+ * Write the reminders for one record — replacing the previous set, so an
+ * update that re-specifies rows never adds a duplicate of a now-replaced
+ * slot's entry. Runs alongside the parent-row mutation on the caller's
+ * connection, inside the same transaction when there is one.
+ *
+ * ── WHICH SET, LEGACY OR LIST ───────────────────────────────────────────────
+ *
+ * A caller may present either the shape `reminders: [ ... ]` (PR 3's several
+ * reminder rows) or the 13810 `reminder_minutes`/`remind_at` pair; both are
+ * still accepted, and the pair is the one the older client speaks. The list
+ * is the newer vocabulary and supersedes: if a client sends both, the list is
+ * authoritative (it is the full set, the pair is one slot of it) — the pair
+ * only wins when NO list is sent, so a caller editing one reminder cannot
+ * silently drop the other two because their form happened to declare a
+ * `reminder_minutes` field they meant to leave alone.
+ */
+async function writeReminders(client, { ownerType, ownerId, input, anchor, timeZone, actor }) {
+  let rows;
+  if (Array.isArray(input && input.reminders) && (input.reminders.length || "reminders" in (input || {}))) {
+    rows = resolveReminderRows({ reminders: input.reminders, anchor, timeZone });
+  } else {
+    rows = legacyReminderRow({
+      reminder_minutes: input ? input.reminder_minutes : undefined,
+      remind_at: input ? input.remind_at : undefined,
+      timeZone,
+      anchor,
+    });
+  }
+  if (!rows.length) {
+    // An explicit "none" — a caller that names reminders: [] clears the set,
+    // which is what an update that removes the last reminder must be able to
+    // do. A caller that sends NO reminder keys says nothing and the lines
+    // below are not reached.
+    await repo.replaceReminders(client, { ownerType, ownerId, rows: [], actor });
+    await repo.syncParentReminderColumns(client, ownerType, ownerId);
+    return { changed: true, cleared: true, rows };
+  }
+  await repo.replaceReminders(client, { ownerType, ownerId, rows, actor });
+  await repo.syncParentReminderColumns(client, ownerType, ownerId);
+  return { changed: true, cleared: false, rows };
 }
 
 /* ══════════════════════════════════ TASKS ════════════════════════════════ */
@@ -383,7 +474,7 @@ async function getTask(client, ctx, id, audience) {
   if (!task || !canSeeTask(task, ctx, resolved)) {
     throw new AppError("NOT_FOUND", "Task not found", 404);
   }
-  const [subtasks, watchers, dependencyRows, children, parent] = await Promise.all([
+  const [subtasks, watchers, dependencyRows, children, parent, reminders] = await Promise.all([
     repo.listSubtasks(client, id),
     repo.listWatchers(client, id),
     repo.listDependencies(client, id),
@@ -391,6 +482,7 @@ async function getTask(client, ctx, id, audience) {
     // is a guaranteed-empty query on every child task read.
     task.parent_task_id ? Promise.resolve([]) : repo.listChildTasks(client, id),
     task.parent_task_id ? repo.findTask(client, task.parent_task_id) : Promise.resolve(null),
+    repo.listReminders(client, "task", id),
   ]);
 
   const dependencies = dependencyRows.map((row) =>
@@ -419,6 +511,7 @@ async function getTask(client, ctx, id, audience) {
     subtasks,
     watchers,
     dependencies,
+    reminders,
     blocking_count: blocking,
     is_blocked: blocking > 0 && !DONE_STATUSES.has(task.status),
     // The roll-up counts EVERY child (an honest denominator) while the rendered
@@ -442,23 +535,26 @@ async function createTask(client, ctx, input) {
   // midnight: 00:00 would make it overdue the moment it is written and sort it
   // above everything else on the day it was created.
   const due_at = toInstant(input.due_at, { timeZone, dateOnlyTime: "17:00:00" });
-  const remind_at = resolveRemindAt({
-    remind_at: input.remind_at,
-    reminder_minutes: input.reminder_minutes,
-    anchor: due_at,
-    timeZone,
-  });
   const rule = ruleOrThrow(input);
   const task = await repo.insertTask(client, {
     ...input,
     due_at,
     created_by: ctx.user.user_id,
-    remind_at,
     recurrence_rule: rule,
   });
   // The series id is the first occurrence's own id: one UPDATE after the INSERT
   // makes the template discoverable by its descendants with no registry table.
   if (rule) await repo.updateTask(client, task.task_id, { recurrence_series_id: task.task_id });
+  // Reminders outlive the columns: a create declares them in 13810's pair
+  // vocabulary or PR 3's list of up to three, and they land in
+  // workspace_reminder on this same transaction so a committed task has its
+  // armed rows with it, not eventually.
+  if ("reminders" in input || "reminder_minutes" in input || "remind_at" in input) {
+    await writeReminders(client, {
+      ownerType: "task", ownerId: task.task_id, input, anchor: due_at, timeZone,
+      actor: { user_id: ctx.user.user_id },
+    });
+  }
   if (input.subtasks && input.subtasks.length) {
     for (const [i, s] of input.subtasks.entries()) {
       await repo.insertSubtask(client, {
@@ -521,24 +617,28 @@ async function updateTask(client, ctx, id, input) {
   const rule = ruleOrThrow(input);
   if (rule !== undefined) patch.recurrence_rule = rule;
 
-  // Recompute the reminder when its INPUTS moved and the user did not pin an
-  // exact instant. Without this, moving a due date leaves the reminder where
-  // it was — an alert for a deadline that is no longer the deadline.
-  const anchorChanged = "due_at" in input || "reminder_minutes" in input;
-  let rearm = false;
-  if (input.remind_at !== undefined) {
-    patch.remind_at = toInstant(input.remind_at, { timeZone, dateOnlyTime: "09:00:00" });
-    rearm = patch.remind_at !== before.remind_at;
-  } else if (anchorChanged) {
-    patch.remind_at = resolveRemindAt({
-      reminder_minutes: "reminder_minutes" in input ? input.reminder_minutes : before.reminder_minutes,
-      anchor: patch.due_at !== undefined ? patch.due_at : before.due_at,
-      timeZone,
-    });
-    rearm = patch.remind_at !== (before.remind_at ? new Date(before.remind_at).toISOString() : null);
-  }
+  // Reminder inputs are consumed by writeReminders below, not by
+  // updateTask's column allow-list — the parent columns are now a read-only
+  // projection of the workspace_reminder rows.
+  const reminderTouched = "reminders" in input || "reminder_minutes" in input || "remind_at" in input;
+  delete patch.reminders;
+  delete patch.reminder_minutes;
+  delete patch.remind_at;
 
-  const updated = await repo.updateTask(client, id, patch, { rearm });
+  const updated = await repo.updateTask(client, id, patch);
+  if (reminderTouched) {
+    await writeReminders(client, {
+      ownerType: "task", ownerId: id, input,
+      anchor: patch.due_at !== undefined ? patch.due_at : before.due_at,
+      timeZone, actor: { user_id: ctx.user.user_id },
+    });
+  } else if ("due_at" in input) {
+    // Moving a reminder's anchor re-arms what has fired — the same contract
+    // 13810 pinned a single reminder to — applied to the whole armed set, so
+    // a rescheduled task does not keep stamps for a date that is no longer
+    // the deadline.
+    await repo.rearmOwnerReminders(client, "task", id);
+  }
   // A "whole series" edit rewrites the FUTURE of the series, not just this row.
   // `due_at` is deliberately not carried: each occurrence owns its date, and
   // stamping every row with one would collapse the series onto a single day.
@@ -546,7 +646,7 @@ async function updateTask(client, ctx, id, input) {
   if (input.series === "series" && before.recurrence_series_id) {
     const seriesPatch = { ...patch };
     delete seriesPatch.due_at;
-    await repo.updateSeriesTasks(client, before.recurrence_series_id, seriesPatch, { exclude: id, rearm });
+    await repo.updateSeriesTasks(client, before.recurrence_series_id, seriesPatch, { exclude: id });
   }
   await emitEvent(client, {
     eventTypeKey: events.TASK_UPDATED, moduleKey: events.MODULE,
@@ -605,6 +705,13 @@ async function changeStatus(client, ctx, id, status, audience) {
   }
 
   await repo.updateTask(client, id, { status });
+  // A finished task does not owe another alert. Sealed reminders are stamped
+  // (not disarmed into silence) so the record of what was armed reflects what
+  // happened: DONE ended them. The sweep skips DONE regardless; this just
+  // stops a stampless row from being the record's quiet lie.
+  if (DONE_STATUSES.has(status)) {
+    await repo.settleRemindersForDoneTask(client, id, new Date().toISOString());
+  }
   await emitEvent(client, {
     eventTypeKey: events.TASK_STATUS_CHANGED, moduleKey: events.MODULE,
     entityRef: `task:${id}`, actorUserId: ctx.user.user_id,
@@ -1254,8 +1361,11 @@ async function listEvents(client, ctx, q = {}) {
 async function readEvent(client, id) {
   const event = await repo.findEvent(client, id);
   if (!event) return null;
-  const participants = await repo.listParticipants(client, id);
-  return { ...withLink(event), participants };
+  const [participants, reminders] = await Promise.all([
+    repo.listParticipants(client, id),
+    repo.listReminders(client, "calendar_event", id),
+  ]);
+  return { ...withLink(event), participants, reminders };
 }
 
 async function getEvent(client, ctx, id) {
@@ -1306,20 +1416,24 @@ async function createEvent(client, ctx, input) {
       );
     }
   }
-  const remind_at = resolveRemindAt({
-    remind_at: input.remind_at,
-    reminder_minutes: input.reminder_minutes,
-    anchor: start_at,
-    timeZone,
-  });
   const rule = ruleOrThrow(input);
   const event = await repo.insertEvent(client, {
-    ...input, start_at, end_at, created_by: ctx.user.user_id, remind_at,
+    ...input, start_at, end_at, created_by: ctx.user.user_id,
     recurrence_rule: rule,
   });
   if (rule) await repo.updateEvent(client, event.calendar_event_id, { recurrence_series_id: event.calendar_event_id });
+  if ("reminders" in input || "reminder_minutes" in input || "remind_at" in input) {
+    await writeReminders(client, {
+      ownerType: "calendar_event", ownerId: event.calendar_event_id, input, anchor: start_at, timeZone,
+      actor: { user_id: ctx.user.user_id },
+    });
+  }
   for (const p of input.participants || []) {
-    await repo.insertParticipant(client, { calendar_event_id: event.calendar_event_id, ...p });
+    const row = await repo.insertParticipant(client, { calendar_event_id: event.calendar_event_id, ...p });
+    // An event written with its guests already on it owes them their invites
+    // just as an add does — the create form and the add endpoint are one
+    // promise, or the "you're invited" depends on WHICH button you pressed.
+    if (row) await notifyInvitation(client, event, row, ctx.user.user_id);
   }
   await emitEvent(client, {
     eventTypeKey: events.EVENT_CREATED, moduleKey: events.MODULE,
@@ -1359,29 +1473,33 @@ async function updateEvent(client, ctx, id, input) {
       );
     }
   }
+  const reminderTouched = "reminders" in input || "reminder_minutes" in input || "remind_at" in input;
+  delete patch.reminders;
+  delete patch.reminder_minutes;
+  delete patch.remind_at;
   const rule = ruleOrThrow(input);
   if (rule !== undefined) patch.recurrence_rule = rule;
 
-  let rearm = false;
-  if (input.remind_at !== undefined) {
-    patch.remind_at = toInstant(input.remind_at, { timeZone, dateOnlyTime: "09:00:00" });
-    rearm = true;
-  } else if ("start_at" in input || "reminder_minutes" in input) {
-    patch.remind_at = resolveRemindAt({
-      reminder_minutes: "reminder_minutes" in input ? input.reminder_minutes : before.reminder_minutes,
+  await repo.updateEvent(client, id, patch);
+  if (reminderTouched) {
+    await writeReminders(client, {
+      ownerType: "calendar_event", ownerId: id, input,
       anchor: patch.start_at !== undefined ? patch.start_at : before.start_at,
-      timeZone,
+      timeZone, actor: { user_id: ctx.user.user_id },
     });
-    rearm = true;
+  } else if ("start_at" in input) {
+    // A moved slot re-arms the whole armed set — same reason a moved task
+    // re-arms its reminders; a stamp on a date that moved would silence the
+    // later alerts the record still owes.
+    await repo.rearmOwnerReminders(client, "calendar_event", id);
   }
-  await repo.updateEvent(client, id, patch, { rearm });
   // Series scope mirrors updateTask, minus the per-occurrence start/end: every
   // occurrence keeps its own slot in the diary.
   if (input.series === "series" && before.recurrence_series_id) {
     const seriesPatch = { ...patch };
     delete seriesPatch.start_at;
     delete seriesPatch.end_at;
-    await repo.updateSeriesEvents(client, before.recurrence_series_id, seriesPatch, { exclude: id, rearm });
+    await repo.updateSeriesEvents(client, before.recurrence_series_id, seriesPatch, { exclude: id });
   }
   await emitEvent(client, {
     eventTypeKey: events.EVENT_UPDATED, moduleKey: events.MODULE,
@@ -1412,10 +1530,56 @@ async function deleteEvent(client, ctx, id) {
 
 /* ── participants ───────────────────────────────────────────────────────── */
 
+/**
+ * Tell the invitee. Names the event and its time, so the notification is the
+ * invite, not a pointer at one. Never throws — the participant row is the
+ * thing of record; a missed push is rescued by the reminder the invited row
+ * also fans out to. Dedupe is per (event, person): re-adding the same guest
+ * after a remove is a fresh INVITED row, which gets its own key from the
+ * participant id and so does tell them again — deliberately.
+ */
+async function notifyInvitation(client, event, row, actorId) {
+  if (!row || !row.user_id || row.user_id === actorId) return null;
+  try {
+    const { notify } = require("../../notification/notification.service");
+    const timeZone = await timezoneOf(client);
+    const when = fmtParticipantWhen(event.start_at, timeZone);
+    return await notify(client, {
+      userId: row.user_id,
+      eventTypeKey: events.EVENT_PARTICIPANT_INVITED,
+      title: "You're invited",
+      body: when ? `“${event.title}” — ${when}${event.location ? ` · ${event.location}` : ""}.` : `You're invited to “${event.title}”.`,
+      entityRef: `calendar_event:${event.calendar_event_id}`,
+      priority: "NORMAL",
+      url: `/workspace/calendar?event=${event.calendar_event_id}`,
+      dedupeKey: `event-invite:${row.calendar_participant_id}`,
+    });
+  } catch (err) {
+    logger.error({ err, calendar_event_id: event.calendar_event_id }, "invitation notification failed");
+    return null;
+  }
+}
+
+/** The when of an invite in the reader's idiom — same contract as the sweep's fmtWhen. */
+function fmtParticipantWhen(value, timeZone) {
+  const d = value ? new Date(value) : null;
+  if (!d || Number.isNaN(d.getTime())) return null;
+  return new Intl.DateTimeFormat("en-GB", {
+    weekday: "short", day: "numeric", month: "short",
+    hour: "2-digit", minute: "2-digit", hour12: false, timeZone,
+  }).format(d);
+}
+
 async function addParticipant(client, ctx, eventId, input) {
-  await getManageableEvent(client, ctx, eventId);
+  const event = await getManageableEvent(client, ctx, eventId);
   const row = await repo.insertParticipant(client, { calendar_event_id: eventId, ...input });
   if (!row) throw new AppError("ALREADY_EXISTS", "That person is already on this event", 409);
+  await notifyInvitation(client, event, row, ctx.user.user_id);
+  await emitEvent(client, {
+    eventTypeKey: events.EVENT_PARTICIPANT_INVITED, moduleKey: events.MODULE,
+    entityRef: `calendar_event:${eventId}`, actorUserId: ctx.user.user_id,
+    payload: { user_id: row.user_id, external: Boolean(row.external_name) },
+  });
   return row;
 }
 
@@ -1433,6 +1597,31 @@ async function respondParticipant(client, ctx, eventId, participantId, status) {
   }
   const row = await repo.respondParticipant(client, participantId, status);
   if (!row || row.calendar_event_id !== eventId) throw new AppError("NOT_FOUND", "Participant not found", 404);
+  await emitEvent(client, {
+    eventTypeKey: events.EVENT_PARTICIPANT_RESPONDED, moduleKey: events.MODULE,
+    entityRef: `calendar_event:${eventId}`, actorUserId: ctx.user.user_id,
+    payload: { user_id: row.user_id, status },
+  });
+  // The organiser watches their own party: a yes/no is told to them, in the
+  // respondent's name, never to themselves. A status-named dedupe so a
+  // changed mind lands once per answer, not once per click.
+  if (row.user_id && event.created_by && row.user_id !== event.created_by) {
+    try {
+      const { notify } = require("../../notification/notification.service");
+      const who = event.participants.find((p) => p.calendar_participant_id === participantId);
+      const whoName = who?.user_name ?? who?.external_name ?? "An invitee";
+      await notify(client, {
+        userId: event.created_by,
+        eventTypeKey: events.EVENT_PARTICIPANT_RESPONDED,
+        title: `${whoName} ${status === "ACCEPTED" ? "accepted" : status === "DECLINED" ? "declined" : "answered maybe to"} “${event.title}”`,
+        entityRef: `calendar_event:${eventId}`,
+        url: `/workspace/calendar?event=${eventId}`,
+        dedupeKey: `event-response:${participantId}:${status}`,
+      });
+    } catch (err) {
+      logger.error({ err, calendar_event_id: eventId }, "response notification failed");
+    }
+  }
   return row;
 }
 
@@ -1627,11 +1816,23 @@ async function spawnDue(client, { now = new Date(), limit = 200 } = {}) {
       assigned_to: row.assigned_to, created_by: row.created_by, due_at: next,
       parent_task_id: row.parent_task_id, entity_type: row.entity_type,
       entity_id: row.entity_id, is_personal: row.is_personal, scope_id: row.scope_id,
-      reminder_minutes: row.reminder_minutes,
-      remind_at: resolveRemindAt({ reminder_minutes: row.reminder_minutes, anchor: next, timeZone }),
       recurrence_rule: row.recurrence_rule, recurrence_series_id: row.recurrence_series_id,
     });
-    if (spawned) { await repo.copySubtasks(client, row.task_id, spawned.task_id); tasks += 1; }
+    if (spawned) {
+      await repo.copySubtasks(client, row.task_id, spawned.task_id);
+      // Series-level relative reminders re-materialise per occurrence: the
+      // template stays on the parent (scope=series), and this row is the one
+      // fresh, armed, per-occurrence copy — computed from THIS occurrence's
+      // date, which is exactly what "the morning of every Monday" means.
+      const templates = await repo.listReminderTemplates(client, "task", [row.task_id]);
+      if (templates.length) {
+        await repo.materialiseReminders(client, {
+          ownerType: "task", ownerId: spawned.task_id, anchorIso: next, templates,
+        });
+        await repo.syncParentReminderColumns(client, "task", spawned.task_id);
+      }
+      tasks += 1;
+    }
     await repo.advanceTaskCursor(client, row.task_id, next);
   }
 
@@ -1651,11 +1852,20 @@ async function spawnDue(client, { now = new Date(), limit = 200 } = {}) {
       title: row.title, event_type: row.event_type, location: row.location,
       description: row.description, start_at: nextStart, end_at: nextEnd,
       all_day: row.all_day, created_by: row.created_by, entity_type: row.entity_type,
-      entity_id: row.entity_id, scope_id: row.scope_id, reminder_minutes: row.reminder_minutes,
-      remind_at: resolveRemindAt({ reminder_minutes: row.reminder_minutes, anchor: nextStart, timeZone }),
+      entity_id: row.entity_id, scope_id: row.scope_id,
       recurrence_rule: row.recurrence_rule, recurrence_series_id: row.recurrence_series_id,
     });
-    if (spawned) { await repo.copyParticipants(client, row.calendar_event_id, spawned.calendar_event_id); eventsFired += 1; }
+    if (spawned) {
+      await repo.copyParticipants(client, row.calendar_event_id, spawned.calendar_event_id);
+      const templates = await repo.listReminderTemplates(client, "calendar_event", [row.calendar_event_id]);
+      if (templates.length) {
+        await repo.materialiseReminders(client, {
+          ownerType: "calendar_event", ownerId: spawned.calendar_event_id, anchorIso: nextStart, templates,
+        });
+        await repo.syncParentReminderColumns(client, "calendar_event", spawned.calendar_event_id);
+      }
+      eventsFired += 1;
+    }
     await repo.advanceEventCursor(client, row.calendar_event_id, nextStart);
   }
 
@@ -1857,7 +2067,7 @@ function burndownSeries({ days, open_at_start }) {
 
 module.exports = {
   VALID_STATUSES, DONE_STATUSES,
-  audiencesFor, resolveAudience, visibilityOf, eventVisibilityOf, resolveRemindAt, withLink, deriveLink,
+  audiencesFor, resolveAudience, visibilityOf, eventVisibilityOf, resolveReminderRows, writeReminders, withLink, deriveLink,
   canSeeTask, canSeeEvent, canManageEvent,
   listTasks, getBoard, getTask, createTask, updateTask, changeStatus, deleteTask,
   addSubtask, patchSubtask, deleteSubtask, addWatcher, removeWatcher, notifyAssignee,

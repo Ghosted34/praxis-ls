@@ -2,11 +2,11 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 140,
-  "route_count": 1635,
+  "route_count": 1644,
   "tiers": {
     "public": 68,
-    "self-scoped": 101,
-    "gated": 1466
+    "self-scoped": 103,
+    "gated": 1473
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -736,6 +736,12 @@
       "tier": "gated"
     },
     "DELETE /api/tenant/workspace/tasks/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "DELETE /api/tenant/workspace/tasks/:id/dependencies/:dependencyId": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -4833,6 +4839,30 @@
       "validated": false,
       "tier": "self-scoped"
     },
+    "GET /api/tenant/workspace/alerts": {
+      "auth": true,
+      "rbac": false,
+      "validated": false,
+      "tier": "self-scoped"
+    },
+    "GET /api/tenant/workspace/analytics": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/workspace/approvals": {
+      "auth": true,
+      "rbac": false,
+      "validated": false,
+      "tier": "self-scoped"
+    },
+    "GET /api/tenant/workspace/context": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/workspace/day": {
       "auth": true,
       "rbac": true,
@@ -5758,6 +5788,12 @@
       "tier": "gated"
     },
     "PATCH /api/tenant/workspace/tasks/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PATCH /api/tenant/workspace/tasks/:id/dependencies/:dependencyId/override": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -9496,6 +9532,24 @@
       "tier": "gated"
     },
     "POST /api/tenant/workspace/tasks/": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/workspace/tasks/:id/children": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/workspace/tasks/:id/dependencies": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/workspace/tasks/:id/ping": {
       "auth": true,
       "rbac": true,
       "validated": false,

@@ -6,7 +6,7 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 1635 |
+| Routes | 1644 |
 | Modules mounted | 140 |
 | API version | v1 |
 
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 1635 mounted routes, grouped by path prefix.
+All 1644 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -2352,6 +2352,10 @@ All 1635 mounted routes, grouped by path prefix.
 | Method | Path | Body validated |
 |---|---|---|
 | GET | `/api/tenant/workspace/` | — |
+| GET | `/api/tenant/workspace/alerts` | — |
+| GET | `/api/tenant/workspace/analytics` | — |
+| GET | `/api/tenant/workspace/approvals` | — |
+| GET | `/api/tenant/workspace/context` | — |
 | GET | `/api/tenant/workspace/day` | — |
 | GET | `/api/tenant/workspace/deadlines` | — |
 | GET | `/api/tenant/workspace/events/` | — |
@@ -2367,6 +2371,11 @@ All 1635 mounted routes, grouped by path prefix.
 | DELETE | `/api/tenant/workspace/tasks/:id` | — |
 | GET | `/api/tenant/workspace/tasks/:id` | — |
 | PATCH | `/api/tenant/workspace/tasks/:id` | — |
+| POST | `/api/tenant/workspace/tasks/:id/children` | — |
+| POST | `/api/tenant/workspace/tasks/:id/dependencies` | — |
+| DELETE | `/api/tenant/workspace/tasks/:id/dependencies/:dependencyId` | — |
+| PATCH | `/api/tenant/workspace/tasks/:id/dependencies/:dependencyId/override` | — |
+| POST | `/api/tenant/workspace/tasks/:id/ping` | — |
 | POST | `/api/tenant/workspace/tasks/:id/status` | — |
 | POST | `/api/tenant/workspace/tasks/:id/subtasks` | — |
 | DELETE | `/api/tenant/workspace/tasks/:id/subtasks/:subtaskId` | — |

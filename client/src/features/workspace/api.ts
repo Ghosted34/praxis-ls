@@ -123,6 +123,10 @@ export type Task = {
   parent_task_id?: string | null;
   subtasks?: Subtask[];
   watchers?: Watcher[];
+  /** The up-to-three reminders of 13880, present on the detail read. The
+   *  legacy pair above is a projection of the first row, kept for the board's
+   *  badge; the form edits THIS list. */
+  reminders?: Reminder[];
 
   /* ── PR 2: hierarchy, dependencies and roll-up ─────────────────────────── */
 
@@ -226,6 +230,38 @@ export type Participant = {
   is_organiser: boolean;
 };
 
+/**
+ * One reminder of the up-to-three a record can carry (13880).
+ *
+ * `reminder_minutes` set = relative to the record's own date and RE-MOVES
+ * with it (and, on a series, re-materialises per occurrence when scope is
+ * "series"); `remind_at` set = one fixed instant. `reminder_sent_at` is the
+ * sweep's stamp: null means ARMED, so a row with a stamp has fired — the
+ * dialog renders that rather than offering it as a choice it can still make.
+ */
+export type Reminder = {
+  workspace_reminder_id: string;
+  owner_type: "task" | "calendar_event";
+  owner_id: string;
+  reminder_minutes: number | null;
+  remind_at: string | null;
+  reminder_sent_at: string | null;
+  ordinal: number;
+  email: boolean;
+  scope: RepeatScope;
+  label: string | null;
+};
+
+/** One row as the write forms send it. Relative XOR absolute is the API's
+ *  refine, not the form's own grammar, so the type only admits the two fields. */
+export type ReminderInput = {
+  reminder_minutes?: number | null;
+  remind_at?: string | null;
+  email?: boolean;
+  scope?: RepeatScope;
+  label?: string | null;
+};
+
 export type CalendarEvent = {
   calendar_event_id: string;
   title: string;
@@ -251,6 +287,8 @@ export type CalendarEvent = {
   created_at: string;
   updated_at: string;
   participants?: Participant[];
+  /** The event's up-to-three reminders, on the detail read. */
+  reminders?: Reminder[];
 };
 
 /** One row of the merged Today list. A discriminated union on `kind`, because
@@ -343,6 +381,9 @@ export type TaskInput = {
   is_personal?: boolean;
   reminder_minutes?: number | null;
   remind_at?: string | null;
+  /** PR 3's several reminders — supersedes the pair when present (the pair is
+   *  13810's one-reminder vocabulary, kept for the older client). Up to 3. */
+  reminders?: ReminderInput[];
   recurrence_rule?: string | null;
   /** "series" applies an edit to every future occurrence, not just this one. */
   series?: RepeatScope;
@@ -376,6 +417,8 @@ export type EventInput = {
   all_day?: boolean;
   reminder_minutes?: number | null;
   remind_at?: string | null;
+  /** Several reminders per event (up to 3) — supersedes the pair when present. */
+  reminders?: ReminderInput[];
   recurrence_rule?: string | null;
   series?: RepeatScope;
   entity_type?: string | null;

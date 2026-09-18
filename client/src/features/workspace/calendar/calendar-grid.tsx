@@ -48,6 +48,17 @@ const dueKey = (d: Deadline) => `${d.kind}:${d.subtask_id ?? d.task_id}`;
 const dueTitle = (d: Deadline) =>
   d.task_title ? `${d.task_title} · ${d.title}` : d.title;
 
+/** "Tuesday 15 September 2026" — the day a screen-reader names, in the
+ *  product's own date vocabulary rather than the runtime's `toDateString()`,
+ *  whose month-first shape is what the date gate rules out everywhere else. */
+const DAY_VOICE = new Intl.DateTimeFormat("en-GB", {
+  weekday: "long",
+  day: "numeric",
+  month: "long",
+  year: "numeric",
+});
+const readableDay = (d: Date) => DAY_VOICE.format(d);
+
 export function CalendarGrid({
   year,
   month,
@@ -83,7 +94,7 @@ export function CalendarGrid({
 
   return (
     <div className="overflow-hidden rounded-lg border">
-      <div className="grid grid-cols-7 border-b bg-muted/30" role="row">
+      <div className="grid grid-cols-7 border-b bg-muted/30">
         {DAY_LABELS.map((d) => (
           <div key={d} className="px-2 py-1.5 text-center micro" aria-hidden>
             <span className="hidden sm:inline">{d}</span>
@@ -100,36 +111,30 @@ export function CalendarGrid({
           const dayDue = dueByDay.get(iso) ?? [];
           const isToday = iso === today;
           return (
-            // The whole cell is the hit area: a small date number reads as
-            // "not clickable", so the day is chosen from anywhere in the cell.
-            // A plain <div role="button"> rather than a <button>, because the
-            // cell also contains the event-chip buttons and a button inside a
-            // button is invalid HTML.
+            // The day number is the button, and the cell is a plain container:
+            // chips are buttons too, and a button inside a button (or a fake
+            // role="button" wrapping real ones) is the nested-interaction trap
+            // that leaves a screen reader announcing "a day button" over the
+            // guest list. The day button opens the day's own agenda;
+            // everything inside the cell is one honest control at a time.
             <div
               key={iso}
-              role="button"
-              tabIndex={0}
-              onClick={() => onSelectDay(iso)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  onSelectDay(iso);
-                }
-              }}
-              aria-label={`Schedule an event on ${date.toDateString()} — ${dayEvents.length} event${dayEvents.length === 1 ? "" : "s"}${dayDue.length ? `, ${dayDue.length} deadline${dayDue.length === 1 ? "" : "s"}` : ""}`}
               className={cn(
-                "min-h-[5.5rem] cursor-pointer border-b border-r p-1.5 align-top transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-[7rem]",
+                "min-h-[5.5rem] border-b border-r p-1.5 align-top transition-colors hover:bg-accent/40 sm:min-h-[7rem]",
                 !inMonth && "bg-muted/20 opacity-50",
               )}
             >
-              <span
+              <button
+                type="button"
+                onClick={() => onSelectDay(iso)}
+                aria-label={`Open ${readableDay(date)} — ${dayEvents.length} event${dayEvents.length === 1 ? "" : "s"}${dayDue.length ? `, ${dayDue.length} deadline${dayDue.length === 1 ? "" : "s"}` : ""}`}
                 className={cn(
-                  "num mb-1 inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-xs",
-                  isToday && "bg-primary font-semibold text-primary-foreground",
+                  "num mb-1 inline-flex h-7 min-w-7 items-center justify-center rounded-full px-1 text-xs transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  isToday && "bg-primary font-semibold text-primary-foreground hover:bg-primary/90",
                 )}
               >
                 {date.getDate()}
-              </span>
+              </button>
 
               {loading ? (
                 <div className="h-3 w-3/4 animate-pulse rounded bg-muted" />

@@ -39,8 +39,12 @@ import {
   useWorkspaceContext,
 } from "../hooks";
 import { addWallMinutes, tenantDateTimeFmt, tenantWallInput } from "../time";
-import { EVENT_TYPE_OPTIONS, REMINDER_PRESETS, humanizeType } from "../labels";
+import { EVENT_TYPE_OPTIONS, humanizeType } from "../labels";
 import { RepeatField } from "../repeat-field";
+import { RemindersField } from "../reminders-field";
+import { draftsToInput, fromLegacyReminder, toReminderDrafts } from "../reminder-drafts";
+import type { ReminderDraft } from "../reminder-drafts";
+import { ParticipantsSection } from "./participants-section";
 
 const TITLE_MAX = 200;
 const LOCATION_MAX = 300;
@@ -83,7 +87,9 @@ export function EventDialog({
   const [startAt, setStartAt] = React.useState("");
   const [endAt, setEndAt] = React.useState("");
   const [allDay, setAllDay] = React.useState(false);
-  const [reminder, setReminder] = React.useState("");
+  // The up-to-three reminders of 13880, edited as rows rather than as the
+  // single preset of 13810.
+  const [reminders, setReminders] = React.useState<ReminderDraft[]>([]);
   const [repeatRule, setRepeatRule] = React.useState<string | null>(null);
   const [seriesScope, setSeriesScope] = React.useState<RepeatScope>("this");
   const [error, setError] = React.useState<string | null>(null);
@@ -113,8 +119,12 @@ export function EventDialog({
         : dayToInput(defaultDay, "10:00"),
     );
     setAllDay(event?.all_day ?? false);
-    setReminder(
-      event?.reminder_minutes == null ? "" : String(event.reminder_minutes),
+    setReminders(
+      event
+        ? event.reminders && event.reminders.length
+          ? toReminderDrafts(event.reminders, timeZone)
+          : fromLegacyReminder(event.reminder_minutes, event.remind_at, timeZone)
+        : [],
     );
     setRepeatRule(event?.recurrence_rule ?? null);
     setSeriesScope("this");
@@ -127,7 +137,9 @@ export function EventDialog({
     return addWallMinutes(start, 60);
   }
 
-  function buildInput(force = false): EventInput {
+  function buildInput(force = false): EventInput | { error: string } {
+    const built = draftsToInput(reminders);
+    if ("error" in built) return built;
     const input: EventInput = {
       title: title.trim(),
       event_type: eventType,
@@ -136,7 +148,9 @@ export function EventDialog({
       start_at: startAt,
       end_at: endAt,
       all_day: allDay,
-      reminder_minutes: reminder === "" ? null : Number(reminder),
+      // PR 3's list supersedes the 13810 pair server-side; an empty list
+      // disarms. See the task dialog for the same payload contract.
+      reminders: built.input,
       recurrence_rule: repeatRule,
       force,
     };
@@ -159,7 +173,12 @@ export function EventDialog({
       setError("The event has to end after it starts.");
       return;
     }
-    const input = buildInput(force);
+    const built = buildInput(force);
+    if ("error" in built) {
+      setError(built.error);
+      return;
+    }
+    const input = built;
     try {
       if (editing && event)
         await update.mutateAsync({ id: event.calendar_event_id, input });
@@ -357,19 +376,12 @@ export function EventDialog({
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Remind me" htmlFor="event-reminder">
-            <NativeSelect
-              id="event-reminder"
-              value={reminder}
-              onChange={(e) => setReminder(e.target.value)}
-            >
-              {REMINDER_PRESETS.map((p) => (
-                <option key={p.value} value={p.value}>
-                  {p.label}
-                </option>
-              ))}
-            </NativeSelect>
-          </Field>
+          <RemindersField
+            rows={reminders}
+            onChange={setReminders}
+            recurring={Boolean(repeatRule) || Boolean(event?.recurrence_series_id)}
+            idPrefix="event"
+          />
 
           <div className="flex items-end">
             <Checkbox
@@ -388,6 +400,14 @@ export function EventDialog({
             />
           </div>
         </div>
+
+        {/* Who is coming — the participants live on the SAVED event, so this
+            section answers only in edit mode; a brand-new event gains invitees
+            the moment it exists, and offering the editor here would write
+            invitations against an id that is not yet one. */}
+        {editing && event && (
+          <ParticipantsSection event={event} timeZone={timeZone ?? "Africa/Douala"} />
+        )}
 
         <RepeatField
           idPrefix="event"

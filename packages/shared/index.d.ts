@@ -361,6 +361,8 @@ type ClientBaseShape = {
   niu: Blankable<string>;
   rccm: Blankable<string>;
   email: Blankable<string>;
+  /** Review #26 (13900) — company-level phone; requiredness is tenant policy. */
+  phone: Blankable<string>;
   address: Blankable<string>;
   city: Blankable<string>;
   country_code: Blankable<string>;
@@ -436,6 +438,8 @@ type SupplierBaseShape = {
   preferred_channel: Blankable<string>;
   relationship_manager_user_id: Blankable<string>;
   payment_method: Blankable<string>;
+  /** Review #29 (13900) — every accepted method; payment_method mirrors [0]. */
+  payment_methods: z.ZodOptional<z.ZodType<string[]>>;
   momo_network: Blankable<string>;
   momo_number: Blankable<string>;
   is_non_resident: z.ZodOptional<z.ZodBoolean>;

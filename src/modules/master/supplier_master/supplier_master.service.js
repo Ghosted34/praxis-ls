@@ -14,8 +14,25 @@ const changeRequest = require("../_shared/change-request.service");
 const { emitEvent, audit } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
 
+/**
+ * Review #29 — `payment_methods` (the list) is canonical; `payment_method`
+ * (the scalar) is the legacy mirror every existing reader still consumes
+ * (WHT reports, mail binding context, the 360). One writer keeps them in
+ * step in BOTH directions, so an old caller sending only the scalar and a
+ * new form sending only the list both leave a consistent row.
+ */
+function syncPaymentMethods(patch) {
+  if (Array.isArray(patch.payment_methods)) {
+    patch.payment_method = patch.payment_methods[0] || null;
+  } else if (patch.payment_method !== undefined && patch.payment_methods === undefined) {
+    patch.payment_methods = patch.payment_method ? [patch.payment_method] : null;
+  }
+  return patch;
+}
+
 async function create(client, { data, actor = {} }) {
   const { registrations, primary_contact, primary_address, ...masterData } = data;
+  syncPaymentMethods(masterData);
   await client.query("BEGIN");
   try {
     partyWrite.validateRegistrations({ registrations, country: masterData.country_code, kind: "supplier", category: null });
@@ -43,6 +60,7 @@ async function update(client, { id, patch, actor = {}, env }) {
   const before = await repo.get(client, id);
   if (!before) throw new AppError("NOT_FOUND", "Supplier not found", 404);
   const masterPatch = { ...patch };
+  syncPaymentMethods(masterPatch);
   const { registrations } = masterPatch;
   delete masterPatch.registrations; delete masterPatch.primary_contact; delete masterPatch.primary_address;
   // Sensitive-field maker-checker (§8) — see the client master for the rationale.

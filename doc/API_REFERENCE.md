@@ -6,8 +6,8 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 1644 |
-| Modules mounted | 140 |
+| Routes | 1650 |
+| Modules mounted | 141 |
 | API version | v1 |
 
 ## The out-of-band request contract
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 1644 mounted routes, grouped by path prefix.
+All 1650 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -1202,7 +1202,6 @@ All 1644 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/mail/senders` | — |
 | POST | `/api/tenant/mail/senders` | — |
 | PATCH | `/api/tenant/mail/senders/:id` | — |
-| POST | `/api/tenant/mail/senders/:id/archive` | — |
 | GET | `/api/tenant/mail/sent` | — |
 | GET | `/api/tenant/mail/signature` | — |
 | PUT | `/api/tenant/mail/signature` | — |
@@ -1361,6 +1360,18 @@ All 1644 mounted routes, grouped by path prefix.
 |---|---|---|
 | GET | `/api/tenant/numbering-schemes/:moduleKey` | — |
 | PUT | `/api/tenant/numbering-schemes/:moduleKey` | — |
+
+### `tenant/office-expenses`
+
+| Method | Path | Body validated |
+|---|---|---|
+| GET | `/api/tenant/office-expenses/` | — |
+| POST | `/api/tenant/office-expenses/` | — |
+| DELETE | `/api/tenant/office-expenses/:id` | — |
+| GET | `/api/tenant/office-expenses/:id` | — |
+| PATCH | `/api/tenant/office-expenses/:id` | — |
+| POST | `/api/tenant/office-expenses/:id/post` | — |
+| GET | `/api/tenant/office-expenses/totals` | — |
 
 ### `tenant/onboarding`
 

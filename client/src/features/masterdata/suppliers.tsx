@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { FormButtons } from "@/components/ui/form-buttons";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
+import { usePrompt } from "@/components/ui/use-prompt";
 import { EmptyState, ErrorState, LoadingRow } from "@/components/ui/states";
 import { SplitPane } from "@/components/ui/split-pane";
 import { PageHeader } from "@/components/data-list";
@@ -60,9 +61,28 @@ function SupplierForm({
     row?.legal_name ?? row?.name ?? "",
   );
   const [tradingName, setTradingName] = React.useState(row?.trading_name ?? "");
-  const [type, setType] = React.useState(row?.supplier_type ?? "");
+  /**
+   * Review #28 — the category is the supplier_type REGISTRY, not free text.
+   * `supplier_type_id` is the canonical FK (the shared schema says so); the
+   * legacy free-text `supplier_type` column is left alone on rows that carry
+   * one. The select offers the registry's active rows plus an inline
+   * "Add a category…" path, so a category the tenant has not seeded yet costs
+   * one prompt rather than a trip to Settings.
+   */
+  const [typeId, setTypeId] = React.useState(row?.supplier_type_id ?? "");
   const [email, setEmail] = React.useState(row?.email ?? "");
-  const [method, setMethod] = React.useState(row?.payment_method ?? "");
+  /**
+   * Review #29 — payment methods are a SET. A vendor paid by bank transfer
+   * for invoices and mobile money for small disbursements records both; the
+   * server mirrors the first entry onto the legacy scalar for old readers.
+   */
+  const [methods, setMethods] = React.useState<string[]>(() =>
+    row?.payment_methods?.length
+      ? row.payment_methods
+      : row?.payment_method
+        ? [row.payment_method]
+        : [],
+  );
   const [rating, setRating] = React.useState(
     row?.rating != null ? String(row.rating) : "",
   );
@@ -72,6 +92,40 @@ function SupplierForm({
   const [active, setActive] = React.useState(row?.is_active ?? true);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+
+  // #28 — the registry the category picker offers. Loaded here (not globally):
+  // the list is tiny and the form is the only consumer on this screen.
+  const types = useResource(() => api.listSupplierTypes(), []);
+  const supplierTypes = (types.data || []).filter(
+    (t) => t.is_active !== false || t.supplier_type_id === typeId,
+  );
+  const [promptFor, promptDialog] = usePrompt();
+
+  /** Inline "Add a category…" — create in the registry, then select it. */
+  async function addCategory() {
+    const name = await promptFor({
+      title: tr("Add a supplier category"),
+      label: tr("Category name"),
+      hint: tr("Appears in this picker for every supplier from now on."),
+      placeholder: tr("Customs broker"),
+    });
+    if (!name || !name.trim()) return;
+    try {
+      const created = await api.createSupplierType({
+        code: name
+          .trim()
+          .toUpperCase()
+          .replace(/[^A-Z0-9]+/g, "_")
+          .replace(/^_+|_+$/g, "")
+          .slice(0, 40),
+        name: name.trim(),
+      });
+      types.reload();
+      setTypeId(created.supplier_type_id);
+    } catch (err) {
+      setError(errMsg(err));
+    }
+  }
 
   // Country drives the dynamic tax/legal IDs (§2.2); registrations + primary
   // contact/address are collected here and written as their own rows on save.
@@ -106,11 +160,13 @@ function SupplierForm({
       name,
       legal_name: legalName.trim() || undefined,
       trading_name: tradingName.trim() || undefined,
-      supplier_type: type || undefined,
+      supplier_type_id: typeId || undefined,
       email: email || undefined,
       country_code: countryCode || undefined,
-      payment_method: (method ||
-        undefined) as api.SupplierInput["payment_method"],
+      // The list is canonical; the server mirrors [0] onto the legacy scalar.
+      payment_methods: methods.length
+        ? (methods as api.SupplierInput["payment_methods"])
+        : undefined,
       rating: rating === "" ? undefined : Number(rating),
       is_non_resident: nonResident,
       registrations: toRegistrationsPayload(reqs, regs, countryCode),
@@ -187,25 +243,59 @@ function SupplierForm({
             ].filter((r) => r.number)}
           />
 
-          <Field label={tr("Category")}>
-            <Input
-              value={type}
-              onChange={(e) => setType(e.target.value)}
-              placeholder="Carrier, agent, utility…"
-            />
+          {/* #28 — a searchable registry picker, not free text. The registry
+              is small (a tenant curates it), so a native select stays the
+              right control; SearchSelect earns its keep past ~20 rows. */}
+          <Field
+            label={tr("Category")}
+            hint={tr("From the supplier categories registry — add one inline if it is missing.")}
+          >
+            <div className="flex items-center gap-2">
+              <Select
+                value={typeId}
+                onChange={(e) => setTypeId(e.target.value)}
+                aria-label={tr("Category")}
+              >
+                <option value="">—</option>
+                {supplierTypes.map((t) => (
+                  <option key={t.supplier_type_id} value={t.supplier_type_id}>
+                    {t.name}
+                  </option>
+                ))}
+              </Select>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={addCategory}
+                title={tr("Add a category")}
+              >
+                +
+              </Button>
+            </div>
           </Field>
-          <Field label="Payment method">
-            <Select
-              value={method ?? ""}
-              onChange={(e) => setMethod(e.target.value)}
-            >
-              <option value="">—</option>
-              {["BANK", "CASH", "MOBILE_MONEY", "CHEQUE"].map((m) => (
-                <option key={m} value={m}>
-                  {m}
-                </option>
+          {/* #29 — every method the vendor accepts, not one. Checkboxes rather
+              than a multi-select listbox: four known options, and a control
+              where the current state is readable without opening anything. */}
+          <Field label={tr("Payment methods")} hint={tr("Tick every method this vendor accepts.")}>
+            <div className="flex flex-wrap gap-x-4 gap-y-1.5 pt-1">
+              {(["BANK", "CHEQUE", "CASH", "MOBILE_MONEY"] as const).map((m) => (
+                <label key={m} className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={methods.includes(m)}
+                    onChange={(e) =>
+                      setMethods((prev) =>
+                        e.target.checked
+                          ? [...prev, m]
+                          : prev.filter((x) => x !== m),
+                      )
+                    }
+                  />
+                  {enumLabel(m)}
+                </label>
               ))}
-            </Select>
+            </div>
           </Field>
 
           {/* 3 · Primary contact + address (new-supplier only). */}
@@ -303,6 +393,7 @@ function SupplierForm({
           saveLabel={isNew ? "Create supplier" : "Save changes"}
         />
       </form>
+      {promptDialog}
     </Modal>
   );
 }

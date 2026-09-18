@@ -3,23 +3,39 @@
 const { partyConfig } = require("@praxis/shared");
 
 describe("defaultsFor", () => {
-  it("seeds `name` as the one required field on each side", () => {
-    for (const side of ["CLIENT", "SUPPLIER"]) {
-      const cfg = partyConfig.defaultsFor(side);
-      const required = cfg.filter((c) => c.is_required).map((c) => c.field_key);
-      expect(required).toEqual(["name"]);
-    }
+  it("seeds `name` (+ the client phone, review #26) as the required set", () => {
+    // Review #26 / migration 13900: a client must carry a company-level phone
+    // by default. Suppliers are unchanged — the ask was client creation.
+    const clientRequired = partyConfig
+      .defaultsFor("CLIENT")
+      .filter((c) => c.is_required)
+      .map((c) => c.field_key);
+    expect(clientRequired).toEqual(["name", "phone"]);
+
+    const supplierRequired = partyConfig
+      .defaultsFor("SUPPLIER")
+      .filter((c) => c.is_required)
+      .map((c) => c.field_key);
+    expect(supplierRequired).toEqual(["name"]);
   });
 });
 
 describe("checkRequired", () => {
-  it("passes the seeded default when only name is provided (no setup needed — gate 7)", () => {
+  it("passes the seeded default when name + phone are provided (no setup needed — gate 7)", () => {
     expect(
       partyConfig.checkRequired(
-        { name: "Acme" },
+        { name: "Acme", phone: "+237 699 00 00 00" },
         partyConfig.defaultsFor("CLIENT"),
       ),
     ).toEqual({ ok: true, missing: [] });
+  });
+  it("flags the missing client phone (review #26)", () => {
+    const r = partyConfig.checkRequired(
+      { name: "Acme" },
+      partyConfig.defaultsFor("CLIENT"),
+    );
+    expect(r.ok).toBe(false);
+    expect(r.missing).toEqual(["phone"]);
   });
   it("flags a blank required field", () => {
     const r = partyConfig.checkRequired(

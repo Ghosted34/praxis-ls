@@ -55,6 +55,24 @@ const paymentMethod = blankToUndefined(
     .transform((v) => (v === "BANK_TRANSFER" ? "BANK" : v)),
 );
 
+/**
+ * Review #29 — a supplier accepts SEVERAL methods (bank transfer for invoices,
+ * mobile money for small disbursements), so the canonical field is a list.
+ * Normalised the same way as the scalar and de-duplicated, because a form
+ * sending ["BANK_TRANSFER","BANK"] means one method, not two. The enum lives
+ * HERE rather than as a DB CHECK per the 13791 rule (see migration 13900).
+ * `payment_method` stays as the legacy mirror of the first entry — the service
+ * keeps it in step so every existing reader is untouched.
+ */
+const paymentMethods = z
+  .array(
+    z
+      .enum(["BANK", "BANK_TRANSFER", "CASH", "MOBILE_MONEY", "CHEQUE"])
+      .transform((v) => (v === "BANK_TRANSFER" ? "BANK" : v)),
+  )
+  .transform((arr) => [...new Set(arr)])
+  .optional();
+
 const base = {
   entity_id: blankToUndefined(uuid),
   name: requiredText("Supplier name"),
@@ -83,6 +101,7 @@ const base = {
   preferred_channel: optionalText,
   relationship_manager_user_id: blankToUndefined(uuid),
   payment_method: paymentMethod,
+  payment_methods: paymentMethods,
   momo_network: optionalText,
   momo_number: optionalText,
   is_non_resident: z.boolean().optional(),

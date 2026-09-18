@@ -85,10 +85,11 @@ export const upsertSender = (body: {
   sections?: string[];
 }) => tenant<Sender>("/mail/senders", { method: "POST", body });
 
-export const archiveSender = (id: string) =>
-  tenant<{ email_identity_id: string }>(`/mail/senders/${id}/archive`, {
-    method: "POST",
-  });
+// `archiveSender` was removed with the Section-senders table (review #25) —
+// the Send points tab manages bindings and never archives an identity. The
+// server route survives for API callers; a screen that needs archiving again
+// re-adds the wrapper alongside its caller (tests/security/mail-client-api-wiring
+// fails on any wrapper no screen calls).
 
 /* ─────────────────────────────────────────────────────────────────────────
  * Provider-agnostic email engine (Phase 1–3): connections, threads, send/reply.

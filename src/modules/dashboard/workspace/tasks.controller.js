@@ -97,8 +97,12 @@ const getTask = asyncHandler(async (req, res) => {
  * owns.
  */
 const getDeadlines = asyncHandler(async (req, res) => {
-  const from = req.query.from || startOfMonthUtc();
-  const to = req.query.to || endOfMonthUtc();
+  let { from, to } = req.query;
+  if (!from || !to) {
+    const defaults = await req.tenantDb((c) => tenantMonthWindow(c));
+    from ||= defaults.from;
+    to ||= defaults.to;
+  }
   res.json({
     data: await req.tenantDb((c) =>
       service.deadlinesInRange(c, ctxOf(req), { from, to, audience: req.query.audience }),
@@ -165,8 +169,12 @@ const listEvents = asyncHandler(async (req, res) => {
   // unbounded request defaults to the current month rather than refusing: the
   // calendar grid always asks for a month anyway, and a default beats a 422
   // the user cannot act on.
-  const from = q.from || startOfMonthUtc();
-  const to = q.to || endOfMonthUtc();
+  let { from, to } = q;
+  if (!from || !to) {
+    const defaults = await req.tenantDb((c) => tenantMonthWindow(c));
+    from ||= defaults.from;
+    to ||= defaults.to;
+  }
   res.json({ data: await req.tenantDb((c) => service.listEvents(c, ctxOf(req), { ...q, from, to })) });
 });
 
@@ -217,31 +225,48 @@ const removeParticipant = asyncHandler(async (req, res) => {
  * spelled out in workspace.time.js: a UTC day and a Douala day are not the
  * same 24 hours, and getting this wrong shows yesterday's events at 23:00.
  */
-async function startOfToday(client) {
-  const { timezoneOf, toInstant } = require("./workspace.time");
+async function tenantTodayParts(client) {
+  const { timezoneOf } = require("./workspace.time");
   const tz = await timezoneOf(client);
-  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" })
-    .format(new Date()); // en-CA renders YYYY-MM-DD
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  return { tz, parts };
+}
+
+async function startOfToday(client) {
+  const { toInstant } = require("./workspace.time");
+  const { tz, parts } = await tenantTodayParts(client);
   return toInstant(`${parts}T00:00`, { timeZone: tz });
 }
 
 async function endOfToday(client) {
-  const { timezoneOf, toInstant } = require("./workspace.time");
-  const tz = await timezoneOf(client);
-  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" })
-    .format(new Date());
-  return toInstant(`${parts}T23:59:59`, { timeZone: tz });
+  const { toInstant } = require("./workspace.time");
+  const { tz, parts } = await tenantTodayParts(client);
+  // All Workspace windows are half-open. The end is the first instant of the
+  // following tenant-local day, not 23:59:59, so fractional-second records do
+  // not fall through the boundary.
+  const [year, month, day] = parts.split("-").map(Number);
+  const next = new Date(Date.UTC(year, month - 1, day + 1));
+  const nextParts = next.toISOString().slice(0, 10);
+  return toInstant(`${nextParts}T00:00`, { timeZone: tz });
 }
 
-/** Current calendar month in UTC — a bound, not a statement about the user. */
-function startOfMonthUtc() {
-  const n = new Date();
-  return new Date(Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), 1)).toISOString();
-}
-
-function endOfMonthUtc() {
-  const n = new Date();
-  return new Date(Date.UTC(n.getUTCFullYear(), n.getUTCMonth() + 1, 1)).toISOString();
+/** The default Calendar window is the current month on the tenant clock. */
+async function tenantMonthWindow(client) {
+  const { toInstant } = require("./workspace.time");
+  const { tz, parts } = await tenantTodayParts(client);
+  const [year, month] = parts.split("-").map(Number);
+  const pad = (n) => String(n).padStart(2, "0");
+  const first = `${year}-${pad(month)}-01T00:00`;
+  const next = new Date(Date.UTC(year, month, 1)).toISOString().slice(0, 10);
+  return {
+    from: toInstant(first, { timeZone: tz }),
+    to: toInstant(`${next}T00:00`, { timeZone: tz }),
+  };
 }
 
 module.exports = {

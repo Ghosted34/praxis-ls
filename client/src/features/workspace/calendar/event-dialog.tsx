@@ -26,13 +26,19 @@ import { DateTimeField } from "@/components/ui/datetime-field";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
+import { ErrorState, LoadingRow } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import { ApiError } from "@/lib/api-client";
 import { errMsg } from "@/lib/use-resource";
-import { dateTimeFmt } from "@/lib/format";
 import { useConfirm } from "@/components/ui/use-confirm";
 import type { CalendarEvent, EventInput, RepeatScope } from "../api";
-import { useCreateEvent, useDeleteEvent, useUpdateEvent } from "../hooks";
+import {
+  useCreateEvent,
+  useDeleteEvent,
+  useUpdateEvent,
+  useWorkspaceContext,
+} from "../hooks";
+import { addWallMinutes, tenantDateTimeFmt, tenantWallInput } from "../time";
 import { EVENT_TYPE_OPTIONS, REMINDER_PRESETS, humanizeType } from "../labels";
 import { RepeatField } from "../repeat-field";
 
@@ -64,8 +70,11 @@ export function EventDialog({
   const create = useCreateEvent();
   const update = useUpdateEvent();
   const del = useDeleteEvent();
+  const contextQ = useWorkspaceContext();
+  const timeZone = contextQ.data?.timeZone;
   const [confirm, confirmDialog] = useConfirm();
   const editing = !!event;
+  const initialised = React.useRef<string | null>(null);
 
   const [title, setTitle] = React.useState("");
   const [eventType, setEventType] = React.useState<string>("meeting");
@@ -81,27 +90,41 @@ export function EventDialog({
   const [clashes, setClashes] = React.useState<Clash[]>([]);
 
   React.useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      initialised.current = null;
+      return;
+    }
+    if (!timeZone) return;
+    const key = `${event?.calendar_event_id ?? "new"}:${defaultDay ?? ""}:${timeZone}`;
+    if (initialised.current === key) return;
+    initialised.current = key;
     setTitle(event?.title ?? "");
     setEventType(event?.event_type ?? "meeting");
     setLocation(event?.location ?? "");
     setDescription(event?.description ?? "");
-    setStartAt(event ? toLocalInput(event.start_at) : dayToInput(defaultDay, "09:00"));
-    setEndAt(event ? toLocalInput(event.end_at) : dayToInput(defaultDay, "10:00"));
+    setStartAt(
+      event
+        ? tenantWallInput(event.start_at, timeZone)
+        : dayToInput(defaultDay, "09:00"),
+    );
+    setEndAt(
+      event
+        ? tenantWallInput(event.end_at, timeZone)
+        : dayToInput(defaultDay, "10:00"),
+    );
     setAllDay(event?.all_day ?? false);
-    setReminder(event?.reminder_minutes == null ? "" : String(event.reminder_minutes));
+    setReminder(
+      event?.reminder_minutes == null ? "" : String(event.reminder_minutes),
+    );
     setRepeatRule(event?.recurrence_rule ?? null);
     setSeriesScope("this");
     setError(null);
     setClashes([]);
-  }, [open, event, defaultDay]);
+  }, [defaultDay, event, open, timeZone]);
 
-  /** One hour after start, in the field's own string shape. */
+  /** One hour after start, in the tenant wall-clock field's string shape. */
   function defaultEnd(start: string): string {
-    const d = new Date(start);
-    if (Number.isNaN(d.getTime())) return "";
-    d.setHours(d.getHours() + 1);
-    return toLocalInput(d.toISOString());
+    return addWallMinutes(start, 60);
   }
 
   function buildInput(force = false): EventInput {
@@ -138,7 +161,8 @@ export function EventDialog({
     }
     const input = buildInput(force);
     try {
-      if (editing && event) await update.mutateAsync({ id: event.calendar_event_id, input });
+      if (editing && event)
+        await update.mutateAsync({ id: event.calendar_event_id, input });
       else await create.mutateAsync(input);
       toast.success(editing ? "Event updated" : "Event added");
       onClose();
@@ -148,7 +172,9 @@ export function EventDialog({
         // The server puts `AppError.details` on the wire as `fields`, so the
         // rows are at `fields.clashes` and not at `fields` itself.
         const payload = err.fields as { clashes?: Clash[] } | undefined;
-        setClashes(Array.isArray(payload?.clashes) ? (payload?.clashes as Clash[]) : []);
+        setClashes(
+          Array.isArray(payload?.clashes) ? (payload?.clashes as Clash[]) : [],
+        );
         setError(err.message);
         return;
       }
@@ -190,35 +216,76 @@ export function EventDialog({
       footer={
         <>
           {editing && (
-            <Button variant="ghost" onClick={() => void remove()} disabled={busy} className="mr-auto text-destructive">
+            <Button
+              variant="ghost"
+              onClick={() => void remove()}
+              disabled={busy}
+              className="mr-auto text-destructive"
+            >
               Delete
             </Button>
           )}
           <Button variant="ghost" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
-          <Button onClick={() => void submit(false)} disabled={busy}>
+          <Button
+            onClick={() => void submit(false)}
+            disabled={busy || !timeZone}
+          >
             {editing ? "Save changes" : "Add event"}
           </Button>
         </>
       }
     >
       <div className="space-y-4">
+        {contextQ.isLoading && <LoadingRow label="Loading the tenant clock…" />}
+        {contextQ.error && (
+          <ErrorState
+            message={contextQ.error.message}
+            action={
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void contextQ.refetch()}
+              >
+                Retry
+              </Button>
+            }
+          />
+        )}
         {confirmDialog}
-        {error && <Callout tone={clashes.length ? "warn" : "bad"} title={clashes.length ? "Something is already booked" : undefined}>{error}</Callout>}
+        {error && (
+          <Callout
+            tone={clashes.length ? "warn" : "bad"}
+            title={clashes.length ? "Something is already booked" : undefined}
+          >
+            {error}
+          </Callout>
+        )}
 
         {clashes.length > 0 && (
           <div className="space-y-2">
             <ul className="space-y-1 rounded-md border p-3 text-sm">
               {clashes.map((c) => (
-                <li key={c.calendar_event_id} className="flex flex-wrap gap-x-2">
-                  <span className="num">{dateTimeFmt(c.start_at)}</span>
+                <li
+                  key={c.calendar_event_id}
+                  className="flex flex-wrap gap-x-2"
+                >
+                  <span className="num">
+                    {tenantDateTimeFmt(c.start_at, timeZone ?? "Africa/Douala")}
+                  </span>
                   <span className="font-medium">{c.title}</span>
-                  {c.location && <span className="text-muted-foreground">{c.location}</span>}
+                  {c.location && (
+                    <span className="text-muted-foreground">{c.location}</span>
+                  )}
                 </li>
               ))}
             </ul>
-            <Button variant="outline" onClick={() => void submit(true)} disabled={busy}>
+            <Button
+              variant="outline"
+              onClick={() => void submit(true)}
+              disabled={busy}
+            >
               Book it anyway
             </Button>
           </div>
@@ -238,12 +305,16 @@ export function EventDialog({
 
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Type" htmlFor="event-type">
-            <NativeSelect id="event-type" value={eventType} onChange={(e) => setEventType(e.target.value)}>
+            <NativeSelect
+              id="event-type"
+              value={eventType}
+              onChange={(e) => setEventType(e.target.value)}
+            >
               {/* A type written by another client that is not in the list still
                   has to be selectable, or editing would silently change it. */}
-              {!EVENT_TYPE_OPTIONS.includes(eventType as (typeof EVENT_TYPE_OPTIONS)[number]) && (
-                <option value={eventType}>{humanizeType(eventType)}</option>
-              )}
+              {!EVENT_TYPE_OPTIONS.includes(
+                eventType as (typeof EVENT_TYPE_OPTIONS)[number],
+              ) && <option value={eventType}>{humanizeType(eventType)}</option>}
               {EVENT_TYPE_OPTIONS.map((t) => (
                 <option key={t} value={t}>
                   {humanizeType(t)}
@@ -252,7 +323,11 @@ export function EventDialog({
             </NativeSelect>
           </Field>
 
-          <Field label="Where" htmlFor="event-location" hint="Two events in the same place at the same time will warn you.">
+          <Field
+            label="Where"
+            htmlFor="event-location"
+            hint="Two events in the same place at the same time will warn you."
+          >
             <Input
               id="event-location"
               value={location}
@@ -283,7 +358,11 @@ export function EventDialog({
 
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Remind me" htmlFor="event-reminder">
-            <NativeSelect id="event-reminder" value={reminder} onChange={(e) => setReminder(e.target.value)}>
+            <NativeSelect
+              id="event-reminder"
+              value={reminder}
+              onChange={(e) => setReminder(e.target.value)}
+            >
               {REMINDER_PRESETS.map((p) => (
                 <option key={p.value} value={p.value}>
                   {p.label}
@@ -344,16 +423,7 @@ export function EventDialog({
   );
 }
 
-/** An instant into the field's `YYYY-MM-DDTHH:mm` shape. */
-function toLocalInput(iso: string | null): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-/** A day cell's `YYYY-MM-DD` plus a time of day, in the field's shape. */
+/** A tenant-local day cell's `YYYY-MM-DD` plus a time of day. */
 function dayToInput(day: string | null | undefined, time: string): string {
   return day ? `${day}T${time}` : "";
 }

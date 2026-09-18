@@ -70,6 +70,12 @@ events.delete("/:id/participants/:participantId", can("edit"), t.removeParticipa
 const router = express.Router();
 router.use(authMiddleware);
 router.get("/", c.mine);
+// Focused reads keep Today panels independently retryable and make a database
+// failure visible instead of turning it into an empty queue.
+router.get("/approvals", c.approvals);
+router.get("/alerts", c.alerts);
+// Tenant-local display and wall-clock serialization contract for Workspace UI.
+router.get("/context", can("view"), c.context);
 // Tasks and events interleaved by time — the Today surface, and the reason the
 // two modules share a page rather than sitting side by side.
 router.get("/day", can("view"), v.dayQuery, t.getDay);

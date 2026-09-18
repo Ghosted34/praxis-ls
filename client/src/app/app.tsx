@@ -120,6 +120,10 @@ const WorkspaceHub = lazyNamed(
   () => import("@/features/workspace/hub"),
   "WorkspaceHub",
 );
+const WorkspaceEntry = lazyNamed(
+  () => import("@/features/workspace/legacy-route"),
+  "WorkspaceEntry",
+);
 const Planned = lazyNamed(
   () => import("@/features/scaffold/screen-scaffold"),
   "Planned",
@@ -600,7 +604,7 @@ export function App() {
               {/* My workspace — one hub, deep-linkable sections (Today / Tasks /
                   Calendar). Mirrors the other hubs so the ribbon's second row and
                   the tab strip are the same list. */}
-              <Route path="workspace" element={<WorkspaceHub />} />
+              <Route path="workspace" element={<WorkspaceEntry />} />
               <Route path="workspace/:section" element={<WorkspaceHub />} />
               {/* Mail conversion landings (§7.7): where "create a new one" opens
               the owning module's form with the email's details filled in. Static

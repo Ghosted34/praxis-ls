@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 5× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (564)
+## All codes (567)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -134,7 +134,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `CATALOGUE_TAKEN` | 409 | 1× | — |
 | `CATEGORY_INACTIVE` | 422 | 1× | — |
 | `CERTIFIED_NOT_AVAILABLE` | — | 2× | — |
-| `CLASH_DETECTED` | 409 | 1× | — |
+| `CLASH_DETECTED` | 409 | 2× | — |
 | `CLASS_MISMATCH` | 422 | 1× | — |
 | `CLIENT_REQUIRED` | 422 | 12× | — |
 | `CLOSE_BLOCKED` | 422 | 1× | — |
@@ -198,6 +198,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `ENTITY_NOT_IN_IDENTITY_SCHEMA` | — | 1× | — |
 | `ENTITY_REQUIRED` | 422 | 12× | — |
 | `ENVELOPE_IN_FLIGHT` | 409 | 1× | — |
+| `EVENT_FORBIDDEN` | 403 | 1× | — |
 | `EVERY_LINE_NEEDS_BUDGET` | — | 1× | — |
 | `EXISTS` | 409 | 3× | — |
 | `FEATURE_DISABLED` | 403 | 3× | — |
@@ -248,7 +249,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `INVALID_SUBSCRIPTION` | 422 | 1× | — |
 | `INVALID_TOKEN` | 401 | 10× | — |
 | `INVALID_TRANSITION` | 422 | 23× | — |
-| `INVALID_VALUE` | 422 | 2× | — |
+| `INVALID_VALUE` | 422 | 3× | — |
 | `INVOICE_POSTED` | 422 | 1× | — |
 | `IN_USE` | 409 | 2× | — |
 | `ISSUER_NOT_SIGNED` | 409 | 1× | — |
@@ -316,7 +317,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_EDITABLE` | 400 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 3× | — |
-| `NOT_FOUND` | 404, 422 | 653× | — |
+| `NOT_FOUND` | 404, 422 | 658× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_OPEN` | 409, 422 | 3× | — |
 | `NOT_OPERATIONAL` | 422 | 1× | — |
@@ -424,6 +425,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `OVER_PAID` | 422 | 2× | — |
 | `OVER_RETIRED` | 422 | 2× | — |
 | `PARENT_POSTABLE` | 422 | 2× | — |
+| `PARTICIPANT_FORBIDDEN` | 403 | 1× | — |
 | `PASSKEY_NOT_FOUND` | 404 | 1× | — |
 | `PASSWORD_REQUIRED` | — | 1× | — |
 | `PERIOD_CLOSED` | 422 | 1× | — |
@@ -496,6 +498,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `SCAN_REQUIRED` | 422 | 3× | — |
 | `SCAN_UNREADABLE` | — | 1× | — |
 | `SCOPE_CYCLE` | 422 | 2× | — |
+| `SCOPE_FORBIDDEN` | 403 | 1× | — |
 | `SCORING_UNAVAILABLE` | 502 | 1× | — |
 | `SELF_APPROVAL` | 403 | 2× | — |
 | `SELF_APPROVE` | 422 | 1× | — |

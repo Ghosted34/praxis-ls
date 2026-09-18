@@ -9,6 +9,7 @@
  * a test cannot import from a component file without dragging React in.
  */
 import type { CalendarEvent, Deadline } from "../api";
+import { addTenantDays, tenantDay } from "../time";
 
 /** `YYYY-MM-DD` in LOCAL time.
  *
@@ -33,7 +34,8 @@ export function monthCells(year: number, month: number): Date[] {
   const start = new Date(year, month, 1 - first.getDay());
   return Array.from(
     { length: CELLS },
-    (_, i) => new Date(start.getFullYear(), start.getMonth(), start.getDate() + i),
+    (_, i) =>
+      new Date(start.getFullYear(), start.getMonth(), start.getDate() + i),
   );
 }
 
@@ -41,10 +43,15 @@ export const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 /** The seven days of the week `date` falls in, Sunday first. */
 export function weekCells(date: Date): Date[] {
-  const start = new Date(date.getFullYear(), date.getMonth(), date.getDate() - date.getDay());
+  const start = new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate() - date.getDay(),
+  );
   return Array.from(
     { length: 7 },
-    (_, i) => new Date(start.getFullYear(), start.getMonth(), start.getDate() + i),
+    (_, i) =>
+      new Date(start.getFullYear(), start.getMonth(), start.getDate() + i),
   );
 }
 
@@ -53,31 +60,48 @@ export function weekCells(date: Date): Date[] {
  * start, so a multi-day delivery is not invisible on days two and three — the
  * same reason the server query is `start < to AND end >= from`.
  */
-export function indexEventsByDay(events: CalendarEvent[]): Map<string, CalendarEvent[]> {
+export function indexEventsByDay(
+  events: CalendarEvent[],
+  timeZone = "Africa/Douala",
+): Map<string, CalendarEvent[]> {
   const out = new Map<string, CalendarEvent[]>();
   for (const e of events) {
-    const start = new Date(e.start_at);
-    const end = new Date(e.end_at);
-    for (let d = new Date(start.getFullYear(), start.getMonth(), start.getDate()); d <= end; d.setDate(d.getDate() + 1)) {
-      const key = isoDay(d);
+    const start = tenantDay(e.start_at, timeZone);
+    const end = tenantDay(e.end_at, timeZone);
+    if (!start || !end) continue;
+    // The server already bounds the query to the visible window. Indexing by
+    // tenant day here keeps an event spanning midnight in the right cells even
+    // when the browser is in another timezone.
+    const last = end < start ? start : end;
+    for (
+      let key = start, steps = 0;
+      key && steps < 3700;
+      steps += 1, key = key === last ? "" : addTenantDays(key, 1)
+    ) {
       const list = out.get(key);
       if (list) list.push(e);
       else out.set(key, [e]);
     }
   }
-  for (const list of out.values()) list.sort((a, b) => a.start_at.localeCompare(b.start_at));
+  for (const list of out.values())
+    list.sort((a, b) => a.start_at.localeCompare(b.start_at));
   return out;
 }
 
-/** Deadlines by local day — a due date is one instant, so one cell each. */
-export function indexDeadlinesByDay(deadlines: Deadline[]): Map<string, Deadline[]> {
+/** Deadlines by tenant-local day — a due date is one instant, so one cell each. */
+export function indexDeadlinesByDay(
+  deadlines: Deadline[],
+  timeZone = "Africa/Douala",
+): Map<string, Deadline[]> {
   const out = new Map<string, Deadline[]>();
   for (const d of deadlines) {
-    const key = isoDay(new Date(d.at));
+    const key = tenantDay(d.at, timeZone);
+    if (!key) continue;
     const list = out.get(key);
     if (list) list.push(d);
     else out.set(key, [d]);
   }
-  for (const list of out.values()) list.sort((a, b) => a.at.localeCompare(b.at));
+  for (const list of out.values())
+    list.sort((a, b) => a.at.localeCompare(b.at));
   return out;
 }

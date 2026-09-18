@@ -205,6 +205,55 @@ function canSeeTask(task, ctx, audience) {
   return true; // "all"
 }
 
+/** Does the caller have a visible relationship with this event? */
+function canSeeEvent(event, ctx, audience, participants = []) {
+  if (!event || !ctx || !ctx.user) return false;
+  const me = ctx.user.user_id;
+  if (event.created_by === me || participants.some((p) => p.user_id === me)) return true;
+  if (audience === "all" && ctx.permission_scope === "all") return true;
+  if (audience === "team" && ctx.scope_ids && ctx.scope_ids.length) {
+    return !event.scope_id || ctx.scope_ids.includes(event.scope_id);
+  }
+  return false;
+}
+
+/** Event writes belong to the creator/organiser or an explicit tenant-wide manager. */
+function canManageEvent(event, ctx, participants = []) {
+  if (!event || !ctx || !ctx.user) return false;
+  if (ctx.permission_scope === "all") return true;
+  const me = ctx.user.user_id;
+  return event.created_by === me || participants.some((p) => p.user_id === me && p.is_organiser === true);
+}
+
+function assertEventScope(ctx, scopeId) {
+  if (!scopeId || ctx.permission_scope === "all") return;
+  if (!ctx.scope_ids || !ctx.scope_ids.includes(scopeId)) {
+    throw new AppError("SCOPE_FORBIDDEN", "You cannot place this event in that scope", 403);
+  }
+}
+
+const eventVisibilityOf = (ctx, audience) => ({
+  audience,
+  userId: ctx.user.user_id,
+  scopeIds: ctx.scope_ids || null,
+  permissionScope: ctx.permission_scope || "scoped",
+});
+
+/**
+ * Query windows are user-facing wall-clock values just like write fields. A
+ * caller may send a bare date or `YYYY-MM-DDTHH:mm`; resolve it on the tenant
+ * clock before PostgreSQL compares it with timestamptz columns. Offset-bearing
+ * values remain the instant the caller supplied.
+ */
+async function resolveWindow(client, { from, to }) {
+  const timeZone = await timezoneOf(client);
+  return {
+    from: toInstant(from, { timeZone, dateOnlyTime: "00:00:00" }) || from,
+    to: toInstant(to, { timeZone, dateOnlyTime: "00:00:00" }) || to,
+    timeZone,
+  };
+}
+
 async function listTasks(client, ctx, q = {}) {
   const audience = resolveAudience(ctx, q.audience);
   const { rows, total } = await repo.listTasks(client, {
@@ -489,35 +538,71 @@ async function notifyAssignee(client, task) {
  *
  * `mine` is the default and it is not the same question as the task audience:
  * an event is an appointment in a diary, and "show me the team's diary" is a
- * different product (a shared resource calendar) that nobody has asked for.
- * `audience=all` is honoured only for a caller whose grants make them
- * tenant-wide, and even then it means "everything", not "my team's" — because
- * `calendar_event` carries no scope_id to narrow by, and inventing a team
- * filter on a table that cannot express it would silently return the wrong set.
+ * different product (a shared resource calendar). Invited internal users are
+ * still included in `mine`, because an appointment they were asked to attend
+ * is actionable work even when they did not create it. `audience=all` is
+ * honoured only for a caller whose grants make them tenant-wide; `team` uses
+ * the event's nullable organisational scope.
  */
 async function listEvents(client, ctx, q = {}) {
-  const seeAll = q.audience === "all" && ctx.permission_scope === "all";
+  const audience = resolveAudience(ctx, q.audience);
+  const window = await resolveWindow(client, q);
   const rows = await repo.listEvents(client, {
-    from: q.from, to: q.to, eventType: q.event_type,
-    userId: ctx.user.user_id, mine: !seeAll,
+    from: window.from, to: window.to, eventType: q.event_type,
+    visibility: eventVisibilityOf(ctx, audience),
   });
-  return rows.map(withLink);
+  return rows.map((row) => {
+    const event = { ...row };
+    delete event._total;
+    return withLink(event);
+  });
 }
 
-async function getEvent(client, ctx, id) {
+async function readEvent(client, id) {
   const event = await repo.findEvent(client, id);
-  if (!event) throw new AppError("NOT_FOUND", "Event not found", 404);
+  if (!event) return null;
   const participants = await repo.listParticipants(client, id);
   return { ...withLink(event), participants };
 }
 
+async function getEvent(client, ctx, id) {
+  const event = await readEvent(client, id);
+  if (!event) throw new AppError("NOT_FOUND", "Event not found", 404);
+  const audience = resolveAudience(ctx, ctx.audience);
+  if (!canSeeEvent(event, ctx, audience, event.participants)) {
+    throw new AppError("NOT_FOUND", "Event not found", 404);
+  }
+  return event;
+}
+
+async function getManageableEvent(client, ctx, id) {
+  const event = await readEvent(client, id);
+  if (!event) throw new AppError("NOT_FOUND", "Event not found", 404);
+  if (!canManageEvent(event, ctx, event.participants)) {
+    const audience = resolveAudience(ctx, ctx.audience);
+    if (!canSeeEvent(event, ctx, audience, event.participants)) {
+      throw new AppError("NOT_FOUND", "Event not found", 404);
+    }
+    throw new AppError("EVENT_FORBIDDEN", "Only the organiser or an authorised manager can change this event", 403);
+  }
+  return event;
+}
+
 async function createEvent(client, ctx, input) {
-  // Clash detection is advisory and OPT-OUT (`force`), not a hard block: two
-  // things genuinely can happen in one room, and a calendar that refuses is a
-  // calendar people work around by not booking rooms.
+  assertEventScope(ctx, input.scope_id);
+  const timeZone = await timezoneOf(client);
+  // An event ON a bare date starts at midnight — that is what "all day" means,
+  // and it is deliberately not the 17:00 a bare DUE date gets.
+  const start_at = toInstant(input.start_at, { timeZone, dateOnlyTime: "00:00:00" });
+  const end_at = toInstant(input.end_at, { timeZone, dateOnlyTime: "23:59:00" });
+  if (start_at && end_at && end_at < start_at) {
+    throw new AppError("INVALID_VALUE", "The event must end after it starts", 422, { end_at: ["must be at or after the start"] });
+  }
+  // Compare converted instants, not the browser's zoneless wall-clock strings.
+  // Clash detection is advisory and OPT-OUT (`force`), not a hard block.
   if (input.location && !input.force) {
     const clashes = await repo.findEventClashes(client, {
-      location: input.location, start_at: input.start_at, end_at: input.end_at,
+      location: input.location, start_at, end_at,
     });
     if (clashes.length) {
       throw new AppError(
@@ -527,14 +612,6 @@ async function createEvent(client, ctx, input) {
         { clashes },
       );
     }
-  }
-  const timeZone = await timezoneOf(client);
-  // An event ON a bare date starts at midnight — that is what "all day" means,
-  // and it is deliberately not the 17:00 a bare DUE date gets.
-  const start_at = toInstant(input.start_at, { timeZone, dateOnlyTime: "00:00:00" });
-  const end_at = toInstant(input.end_at, { timeZone, dateOnlyTime: "23:59:00" });
-  if (start_at && end_at && end_at < start_at) {
-    throw new AppError("INVALID_VALUE", "The event must end after it starts", 422, { end_at: ["must be at or after the start"] });
   }
   const remind_at = resolveRemindAt({
     remind_at: input.remind_at,
@@ -564,11 +641,31 @@ async function createEvent(client, ctx, input) {
 }
 
 async function updateEvent(client, ctx, id, input) {
-  const before = await getEvent(client, ctx, id);
+  const before = await getManageableEvent(client, ctx, id);
+  assertEventScope(ctx, input.scope_id);
   const timeZone = await timezoneOf(client);
   const patch = { ...input };
   if ("start_at" in input) patch.start_at = toInstant(input.start_at, { timeZone, dateOnlyTime: "00:00:00" });
   if ("end_at" in input) patch.end_at = toInstant(input.end_at, { timeZone, dateOnlyTime: "23:59:00" });
+  const nextStart = patch.start_at ?? before.start_at;
+  const nextEnd = patch.end_at ?? before.end_at;
+  if (nextStart && nextEnd && nextEnd < nextStart) {
+    throw new AppError("INVALID_VALUE", "The event must end after it starts", 422, { end_at: ["must be at or after the start"] });
+  }
+  const nextLocation = "location" in patch ? patch.location : before.location;
+  if (nextLocation && !input.force && ("location" in input || "start_at" in input || "end_at" in input)) {
+    const clashes = await repo.findEventClashes(client, {
+      location: nextLocation, start_at: nextStart, end_at: nextEnd, excludeId: id,
+    });
+    if (clashes.length) {
+      throw new AppError(
+        "CLASH_DETECTED",
+        `${clashes.length} event${clashes.length > 1 ? "s are" : " is"} already booked at ${nextLocation} during this time. Save again to book it anyway.`,
+        409,
+        { clashes },
+      );
+    }
+  }
   const rule = ruleOrThrow(input);
   if (rule !== undefined) patch.recurrence_rule = rule;
 
@@ -607,7 +704,7 @@ async function updateEvent(client, ctx, id, input) {
 }
 
 async function deleteEvent(client, ctx, id) {
-  const before = await getEvent(client, ctx, id);
+  const before = await getManageableEvent(client, ctx, id);
   await repo.softDeleteEvent(client, id);
   await emitEvent(client, {
     eventTypeKey: events.EVENT_DELETED, moduleKey: events.MODULE,
@@ -623,21 +720,31 @@ async function deleteEvent(client, ctx, id) {
 /* ── participants ───────────────────────────────────────────────────────── */
 
 async function addParticipant(client, ctx, eventId, input) {
-  await getEvent(client, ctx, eventId);
+  await getManageableEvent(client, ctx, eventId);
   const row = await repo.insertParticipant(client, { calendar_event_id: eventId, ...input });
   if (!row) throw new AppError("ALREADY_EXISTS", "That person is already on this event", 409);
   return row;
 }
 
 async function respondParticipant(client, ctx, eventId, participantId, status) {
-  await getEvent(client, ctx, eventId);
+  const event = await readEvent(client, eventId);
+  if (!event) throw new AppError("NOT_FOUND", "Event not found", 404);
+  const audience = resolveAudience(ctx, ctx.audience);
+  const canManage = canManageEvent(event, ctx, event.participants);
+  if (!canManage && !canSeeEvent(event, ctx, audience, event.participants)) {
+    throw new AppError("NOT_FOUND", "Event not found", 404);
+  }
+  const participant = event.participants.find((p) => p.calendar_participant_id === participantId);
+  if (!participant || (!canManage && participant.user_id !== ctx.user.user_id)) {
+    throw new AppError("PARTICIPANT_FORBIDDEN", "You can respond only to your own invitation", 403);
+  }
   const row = await repo.respondParticipant(client, participantId, status);
   if (!row || row.calendar_event_id !== eventId) throw new AppError("NOT_FOUND", "Participant not found", 404);
   return row;
 }
 
 async function removeParticipant(client, ctx, eventId, participantId) {
-  await getEvent(client, ctx, eventId);
+  await getManageableEvent(client, ctx, eventId);
   const ok = await repo.removeParticipant(client, participantId);
   if (!ok) throw new AppError("NOT_FOUND", "Participant not found", 404);
   return { deleted: true };
@@ -668,7 +775,7 @@ async function removeParticipant(client, ctx, eventId, participantId) {
  * appointment); a UNION would mean casting both into a lowest-common-denominator
  * row and throwing the detail away.
  */
-function mergeTimeline(tasks, eventsRows) {
+function mergeTimeline(tasks, eventsRows, subtasksRows = []) {
   const items = [
     ...(tasks || []).map((t) => ({
       kind: "task", at: t.due_at, id: t.task_id, title: t.title,
@@ -678,6 +785,13 @@ function mergeTimeline(tasks, eventsRows) {
       subtask_done_count: t.subtask_done_count,
       is_overdue: t.status !== "DONE" && t.status !== "CANCELLED"
         && Boolean(t.due_at) && new Date(t.due_at) < new Date(),
+    })),
+    ...(subtasksRows || []).map((s) => ({
+      kind: "subtask", at: s.due_at, id: s.task_subtask_id,
+      task_id: s.task_id, title: s.title, task_title: s.task_title,
+      status: s.task_status, priority: s.task_priority,
+      link_url: null, entity_type: s.entity_type, entity_id: s.entity_id,
+      is_overdue: Boolean(s.due_at) && new Date(s.due_at) < new Date(),
     })),
     ...(eventsRows || []).map((e) => ({
       kind: "event", at: e.start_at, id: e.calendar_event_id,
@@ -715,12 +829,33 @@ function mergeTimeline(tasks, eventsRows) {
 async function dayTimeline(client, ctx, { from, to, audience }) {
   const resolved = resolveAudience(ctx, audience);
   const vis = visibilityOf(ctx, resolved);
-  const [tasks, eventsRows] = await Promise.all([
-    repo.tasksInRange(client, { from, to, visibility: vis }),
-    repo.listEvents(client, { from, to, mine: true, userId: ctx.user.user_id }),
+  const eventVis = eventVisibilityOf(ctx, resolved);
+  const window = await resolveWindow(client, { from, to });
+  const [tasksOut, subtasksOut, eventsOut] = await Promise.all([
+    repo.dayTasks(client, { from: window.from, to: window.to, visibility: vis }),
+    repo.daySubtasks(client, { from: window.from, to: window.to, visibility: vis }),
+    repo.listEventsWindow(client, { from: window.from, to: window.to, visibility: eventVis }),
   ]);
-  const items = mergeTimeline(tasks, eventsRows);
-  return { items, audience: resolved, audiences: audiencesFor(ctx), tasks: tasks.length, events: eventsRows.length };
+  const items = mergeTimeline(tasksOut.rows, eventsOut.rows, subtasksOut.rows);
+  return {
+    items,
+    audience: resolved,
+    audiences: audiencesFor(ctx),
+    timezone: window.timeZone,
+    tasks: tasksOut.rows.length,
+    events: eventsOut.rows.length,
+    deadlines: subtasksOut.rows.length,
+    counts: {
+      tasks: tasksOut.total,
+      events: eventsOut.total,
+      deadlines: subtasksOut.total,
+    },
+    truncated: {
+      tasks: tasksOut.truncated,
+      events: eventsOut.truncated,
+      deadlines: subtasksOut.truncated,
+    },
+  };
 }
 
 /**
@@ -738,9 +873,10 @@ async function dayTimeline(client, ctx, { from, to, audience }) {
 async function deadlinesInRange(client, ctx, { from, to, audience }) {
   const resolved = resolveAudience(ctx, audience);
   const vis = visibilityOf(ctx, resolved);
+  const window = await resolveWindow(client, { from, to });
   const [tasks, subtasks] = await Promise.all([
-    repo.tasksInRange(client, { from, to, visibility: vis }),
-    repo.subtasksInRange(client, { from, to, visibility: vis }),
+    repo.tasksInRange(client, { from: window.from, to: window.to, visibility: vis }),
+    repo.subtasksInRange(client, { from: window.from, to: window.to, visibility: vis }),
   ]);
   const now = Date.now();
   const items = [
@@ -822,7 +958,7 @@ async function spawnDue(client, { now = new Date(), limit = 200 } = {}) {
       title: row.title, event_type: row.event_type, location: row.location,
       description: row.description, start_at: nextStart, end_at: nextEnd,
       all_day: row.all_day, created_by: row.created_by, entity_type: row.entity_type,
-      entity_id: row.entity_id, reminder_minutes: row.reminder_minutes,
+      entity_id: row.entity_id, scope_id: row.scope_id, reminder_minutes: row.reminder_minutes,
       remind_at: resolveRemindAt({ reminder_minutes: row.reminder_minutes, anchor: nextStart, timeZone }),
       recurrence_rule: row.recurrence_rule, recurrence_series_id: row.recurrence_series_id,
     });
@@ -835,7 +971,8 @@ async function spawnDue(client, { now = new Date(), limit = 200 } = {}) {
 
 module.exports = {
   VALID_STATUSES, DONE_STATUSES,
-  audiencesFor, resolveAudience, visibilityOf, resolveRemindAt, withLink, deriveLink, canSeeTask,
+  audiencesFor, resolveAudience, visibilityOf, eventVisibilityOf, resolveRemindAt, withLink, deriveLink,
+  canSeeTask, canSeeEvent, canManageEvent,
   listTasks, getBoard, getTask, createTask, updateTask, changeStatus, deleteTask,
   addSubtask, patchSubtask, deleteSubtask, addWatcher, removeWatcher, notifyAssignee,
   listEvents, getEvent, createEvent, updateEvent, deleteEvent,

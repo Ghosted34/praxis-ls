@@ -801,7 +801,7 @@ function buildSystemPrompt({ user, patternBlock = "", feedbackBlock = "", prefsB
   return { staticPrefix: SYSTEM_RULES, dynamic, full: SYSTEM_RULES + dynamic };
 }
 
-async function ask({ client, user, conversationId, message, allowed, registry, feature = "assistant", mode, scope }) {
+async function ask({ client, user, conversationId, message, allowed, registry, feature = "assistant", mode, scope, skipRetrieval = false }) {
   // Governance gate (AI_ARCHITECTURE §6): feature enabled + user granted + budget
   // not hard-capped. Nothing hits a model when the gate is closed.
   const gate = await governance.canUseFeature(client, { userId: user.user_id, featureKey: feature });
@@ -812,7 +812,13 @@ async function ask({ client, user, conversationId, message, allowed, registry, f
   // with the knowledge base holding its own reserved slots, and NO codebase chunks
   // — an operator asking about their receivables should not be grounded on this
   // repository's source, which is where the snake_case/UUID drift came from.
-  const hits = await retrieve({ query: message, tenantClient: client, allowed, includeCodebase: false });
+  //
+  // `skipRetrieval` (audit E2): the post-confirm auto-continue calls ask() again
+  // milliseconds after the turn that just ran, to propose the next step. That
+  // follow-up is driven by the conversation and the tools, not by fresh
+  // knowledge-base recall, so it skips the embed + vector search here (and the
+  // condense below) — the expensive parts — rather than paying for them twice.
+  const hits = skipRetrieval ? [] : await retrieve({ query: message, tenantClient: client, allowed, includeCodebase: false });
   const tools = await loadTools(client);
   // Self-learning: recent successful execution patterns for the model to reference.
   const patterns = await recentPatterns(client, user.user_id);
@@ -859,8 +865,10 @@ async function ask({ client, user, conversationId, message, allowed, registry, f
   // gets `redactForReasoning`, not the strict summariser/embeddings scrub.
   // Fold anything that has scrolled out of the window into the rolling summary
   // first, so THIS answer sees it (0481). Best-effort — never blocks the answer.
+  // Skipped on the cheap auto-continue follow-up (audit E2): the turn that
+  // triggered it just condensed this same conversation moments ago.
   const resolvedId = conversationId || (await history_.currentId(client, user));
-  await history_.condense(client, { user, conversationId: resolvedId, feature });
+  if (!skipRetrieval) await history_.condense(client, { user, conversationId: resolvedId, feature });
 
   const history = await history_.load(client, { user, conversationId: resolvedId });
   const messages = [
@@ -1152,7 +1160,7 @@ async function ask({ client, user, conversationId, message, allowed, registry, f
  * Execute a confirmed action via the whitelisted registry, with the user's
  * permissions. Logs to the immutable ledger. Registry maps action_key → fn.
  */
-async function confirmAction({ client, user, actionRunId, registry, payload: edited }) {
+async function confirmAction({ client, user, actionRunId, registry, payload: edited, allowed }) {
   const { rows } = await client.query(
     "SELECT * FROM ai_action_run WHERE action_run_id=$1 AND user_id=$2",
     [actionRunId, user.user_id],
@@ -1301,7 +1309,11 @@ async function confirmAction({ client, user, actionRunId, registry, payload: edi
       // follow-up ask with a synthetic message that tells the model to propose
       // whatever comes next. This eliminates the snooze loop entirely.
       const autoMsg = "The previous action was just executed successfully. If there is a clear next step in this task, propose it now as an action. If the task is complete, just say so briefly.";
-      const followUp = await ask({ client, user, conversationId: run.conversation_id, message: autoMsg, allowed: undefined, registry, feature: "assistant" });
+      // Pass the caller's confidentiality tags through (audit E2 — this used to
+      // send `allowed: undefined`, silently dropping them), and skip retrieval +
+      // condense on this follow-up so auto-continue costs a model call, not a
+      // second full recall pass.
+      const followUp = await ask({ client, user, conversationId: run.conversation_id, message: autoMsg, allowed, registry, feature: "assistant", skipRetrieval: true });
       if (followUp.actions && followUp.actions.length) {
         nextActions = followUp.actions;
         // The follow-up's answer text rides with the narration.
@@ -1327,7 +1339,7 @@ async function confirmAction({ client, user, actionRunId, registry, payload: edi
  * own transactions — cross-module atomicity is a later design (§8) — so this is
  * "grouped + halt-on-failure", not a single distributed transaction.
  */
-async function confirmBatch({ client, user, batchId, registry }) {
+async function confirmBatch({ client, user, batchId, registry, allowed }) {
   const gate = await governance.canUseFeature(client, { userId: user.user_id, featureKey: "assistant" });
   if (!gate.allowed) throw new Error(`AI action blocked: ${gate.reason}`);
 
@@ -1340,7 +1352,7 @@ async function confirmBatch({ client, user, batchId, registry }) {
     let res;
     try {
        
-      res = await confirmAction({ client, user, actionRunId: r.action_run_id, registry });
+      res = await confirmAction({ client, user, actionRunId: r.action_run_id, registry, allowed });
     } catch (err) {
       results.push({ action_run_id: r.action_run_id, ok: false, error: err.message });
       return { batch_id: batchId, halted: true, executed: results.filter((x) => x.ok).length, results };

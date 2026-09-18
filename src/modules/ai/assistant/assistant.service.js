@@ -24,8 +24,8 @@ const ask = (client, { user, message, conversationId, allowed, mode, scope }) =>
 const askStream = (client, { user, message, conversationId, allowed, mode, scope }) =>
   orchestrator.askStream({ client, user, message, conversationId, allowed, registry, mode, scope });
 
-const confirm = (client, { user, actionRunId, payload }) =>
-  orchestrator.confirmAction({ client, user, actionRunId, registry, payload });
+const confirm = (client, { user, actionRunId, payload, allowed }) =>
+  orchestrator.confirmAction({ client, user, actionRunId, registry, payload, allowed });
 
 /**
  * Options for an interactive form's reference dropdown. `ref` must be an
@@ -46,8 +46,8 @@ async function options(client, { user, ref, q, limit }) {
   return rowsToOptions(out && out.data !== undefined ? out.data : out, Math.min(limit || 100, 500));
 }
 
-const confirmBatch = (client, { user, batchId }) =>
-  orchestrator.confirmBatch({ client, user, batchId, registry });
+const confirmBatch = (client, { user, batchId, allowed }) =>
+  orchestrator.confirmBatch({ client, user, batchId, registry, allowed });
 
 /**
  * The signed-in user's thread, for the copilot to render when it opens.

@@ -162,7 +162,10 @@ async function callVendor(vendor, { messages, tools, temperature, responseFormat
   if (tools && tools.length) { body.tools = tools; body.tool_choice = "auto"; }
   const { data } = await axios.post(`${base}/chat/completions`, body, {
     headers: { Authorization: `Bearer ${vendor.api_key}`, "Content-Type": "application/json" },
-    timeout: 60000,
+    // Generous + configurable (audit E1): an `ask` makes several sequential
+    // calls, so a tight cap trips a slow multi-hop turn and is misread as a
+    // transient failure.
+    timeout: config.AI_REQUEST_TIMEOUT_MS,
   });
   const msg = (data.choices && data.choices[0] && data.choices[0].message) || {};
   let toolCalls = Array.isArray(msg.tool_calls) ? msg.tool_calls : [];
@@ -211,7 +214,10 @@ async function* callVendorStream(vendor, { messages, tools, temperature, maxToke
   try {
     response = await axios.post(`${base}/chat/completions`, body, {
       headers: { Authorization: `Bearer ${vendor.api_key}`, "Content-Type": "application/json" },
-      timeout: 120000,
+      // Time-to-first-response ceiling for the stream (audit E1); once bytes
+      // flow, the SSE heartbeat and client-disconnect abort govern the body, so
+      // a long-but-live answer is never cut off.
+      timeout: config.AI_STREAM_TIMEOUT_MS,
       responseType: "stream",
     });
   } catch (err) {

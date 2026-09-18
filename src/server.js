@@ -901,14 +901,38 @@ async function checkAiVendorHealth() {
   }
 }
 
+/**
+ * Audit E4 — embeddings are a silent hard dependency for grounding. With no
+ * embeddings vendor configured, retrieval returns no vectors, so the assistant
+ * answers from live tool reads alone with NO knowledge-base recall — and nothing
+ * said so. Surface it once at boot (and via the health function for AI Control).
+ * WARN, not ERROR: it degrades the assistant, it does not break it, and a non-AI
+ * deployment legitimately has no embeddings vendor. Resolution-only, best-effort.
+ */
+async function checkAiEmbeddingsHealth() {
+  const embeddings = require("./services/ai/embeddings.service");
+  const health = await embeddings.checkEmbeddingsHealth();
+  if (health.groundingEnabled) {
+    logger.info({ model: health.model }, "AI embeddings health OK — knowledge-base grounding is enabled");
+  } else {
+    logger.warn(
+      { health },
+      "AI GROUNDING LIMITED — no embeddings vendor resolves, so the assistant answers from live tool reads " +
+        "only, with no knowledge-base recall. Configure the 'embeddings' vendor (AI Control > Vendors) or " +
+        "OPENAI_API_KEY/OPENAI_BASE_URL. See audit E4.",
+    );
+  }
+}
+
 function start() {
   installProcessGuards();
   // Not awaited: it reads the platform DB, and boot must not block on a warning.
   // A rejection here would be an unhandled rejection over a log line, so it is
   // caught and dropped — the check is best-effort by design.
   warnIfUnmonitored().catch(() => {});
-  // Same posture: best-effort, never blocks or fails boot (audit B2).
+  // Same posture: best-effort, never blocks or fails boot (audit B2 + E4).
   checkAiVendorHealth().catch((err) => logger.debug({ err }, "AI vendor health check could not run at boot"));
+  checkAiEmbeddingsHealth().catch((err) => logger.debug({ err }, "AI embeddings health check could not run at boot"));
   checkConnectionBudget().catch((err) => {
     if (err && err.code === "DB_BUDGET_EXCEEDED") {
       // Enforce mode. Exit rather than serve on a budget that cannot be met —

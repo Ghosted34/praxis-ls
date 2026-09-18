@@ -8,7 +8,10 @@ const create = z.object({
   expires_on: z.string().optional(), // ISO date — alert engine fires before lapse
   document_vault_id: z.string().uuid().optional(),
 });
-const schemas = { create, update: create.partial() };
+const update = create.partial();
+// AI-facing: the record id travels IN the payload — the copilot has no route param.
+const aiUpdate = update.extend({ compliance_id: z.string().uuid() });
+const schemas = { create, update, aiUpdate };
 
 const mw = (k) => (req, _res, next) => {
   const p = schemas[k].safeParse(req.body);

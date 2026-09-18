@@ -10,7 +10,11 @@ const create = z.object({
   severity: z.enum(["MINOR", "MAJOR", "TOTAL"]).optional(),
 });
 const status = z.object({ status: z.enum(["OPEN", "UNDER_REVIEW", "CLOSED"]) });
-const schemas = { create, update: create.partial(), status };
+const update = create.partial();
+// AI-facing: the record id travels IN the payload — the copilot has no route param.
+const aiUpdate = update.extend({ fleet_incident_id: z.string().uuid() });
+const aiStatus = status.extend({ fleet_incident_id: z.string().uuid() });
+const schemas = { create, update, status, aiUpdate, aiStatus };
 
 const mw = (k) => (req, _res, next) => {
   const p = schemas[k].safeParse(req.body);

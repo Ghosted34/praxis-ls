@@ -25,8 +25,8 @@ module.exports = {
     },
     {
       key: "update_appraisal",
-      service: service.update,
-      schema: validator.schemas.update,
+      service: (c, p, actor) => (({ appraisal_id, ...patch }) => service.update(c, { id: appraisal_id, patch, actor }))(p),
+      schema: validator.schemas.aiUpdate,
       permission: { module: "MOD-13", action: "edit" },
       confirm: true,
       describe: "Update an appraisal (actual value, rating, comments).",

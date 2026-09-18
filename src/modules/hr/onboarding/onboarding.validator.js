@@ -61,10 +61,21 @@ const templateItem = z.object({
   sort_order: z.number().int().min(0).max(100000).optional(),
 });
 
+// AI-facing: the checklist or item is in the URL for the HTTP routes, but a
+// copilot call has no URL — it passes one flat object, so the id must be IN the
+// schema.
+const checklistId = z.string().uuid();
+const aiAddItem = item.extend({ onboarding_checklist_id: checklistId });
+const aiItemUpdate = itemUpdate.extend({ onboarding_item_id: z.string().uuid() });
+const aiToggle = toggle.extend({ onboarding_item_id: z.string().uuid() });
+const aiReschedule = reschedule.extend({ onboarding_checklist_id: checklistId });
+const aiComplete = z.object({ onboarding_checklist_id: checklistId });
+
 const schemas = {
   create, addItem: item, itemUpdate, toggle, reschedule,
   template, templateUpdate: template.partial(),
   templateItem, templateItemUpdate: templateItem.partial(),
+  aiAddItem, aiItemUpdate, aiToggle, aiReschedule, aiComplete,
 };
 
 const mw = (k) => (req, _res, next) => {

@@ -25,8 +25,8 @@ module.exports = {
     },
     {
       key: "update_talent",
-      service: service.update,
-      schema: validator.schemas.update,
+      service: (c, p, actor) => (({ talent_pool_id, ...patch }) => service.update(c, { id: talent_pool_id, patch, actor }))(p),
+      schema: validator.schemas.aiUpdate,
       permission: { module: "MOD-19", action: "edit" },
       confirm: true,
       describe: "Update a talent-pool entry (skills, notes).",

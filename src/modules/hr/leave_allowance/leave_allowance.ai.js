@@ -17,7 +17,7 @@ module.exports = {
   writes: [
     {
       key: "create_leave",
-      service: service.create,
+      service: (c, p, actor) => service.create(c, { data: p, actor }),
       schema: validator.schemas.create,
       permission: { module: "MOD-15", action: "create" },
       confirm: true,
@@ -25,16 +25,16 @@ module.exports = {
     },
     {
       key: "update_leave",
-      service: service.update,
-      schema: validator.schemas.update,
+      service: (c, p, actor) => (({ leave_request_id, ...patch }) => service.update(c, { id: leave_request_id, patch, actor }))(p),
+      schema: validator.schemas.aiUpdate,
       permission: { module: "MOD-15", action: "edit" },
       confirm: true,
       describe: "Update a request before it is decided.",
     },
     {
       key: "decide_leave",
-      service: service.decide,
-      schema: validator.schemas.decision,
+      service: (c, p, actor) => service.decide(c, { id: p.leave_request_id, status: p.status, actor }),
+      schema: validator.schemas.aiDecision,
       permission: { module: "MOD-15", action: "approve" },
       confirm: true,
       describe: "Approve or reject a leave / allowance request.",

@@ -1,3 +1,4 @@
+// ai:none — the RBAC grant table. The AI never exceeds the calling user (AI_ARCHITECTURE §1), so granting permissions cannot be one of its tools.
 "use strict";
 const { asyncHandler } = require("../../../utils/errors");
 const { makeController } = require("../../../shared/crud/resource");

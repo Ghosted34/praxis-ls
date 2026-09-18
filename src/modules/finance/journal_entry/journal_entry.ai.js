@@ -27,7 +27,7 @@ module.exports = {
   writes: [
     {
       key: "post_journal_entry",
-      service: service.post,
+      service: (c, p, actor) => service.post(c, { journalCode: p.journal_code, journalId: p.journal_id, entityId: p.entity_id, entryDate: p.entry_date, description: p.description, sourceDocRef: p.source_doc_ref, source: p.source, validate: p.validate, lines: p.lines, actor }),
       schema: validator.schemas.post, // -> payload_schema (JSON Schema at registration)
       permission: { module: "MOD-55", action: "create" },
       confirm: true,
@@ -35,8 +35,8 @@ module.exports = {
     },
     {
       key: "reverse_journal_entry",
-      service: service.reverse,
-      schema: validator.schemas.reverse,
+      service: (c, p, actor) => service.reverse(c, { entryId: p.entry_id, reason: p.reason, entryDate: p.entry_date, actor }),
+      schema: validator.schemas.aiReverse,
       permission: { module: "MOD-55", action: "approve" },
       confirm: true,
       describe: "Reverse a validated entry with a linked contra entry (never edit in place, KB §23.16).",

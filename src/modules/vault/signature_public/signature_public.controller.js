@@ -1,3 +1,4 @@
+// ai:none — the unauthenticated public signing page for an external counterparty. Same reason as qes_public.
 "use strict";
 
 const service = require("./signature_public.service");

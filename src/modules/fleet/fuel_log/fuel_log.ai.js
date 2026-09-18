@@ -25,8 +25,8 @@ module.exports = {
     },
     {
       key: "update_fuel",
-      service: service.update,
-      schema: validator.schemas.update,
+      service: (c, p, actor) => (({ fuel_log_id, ...patch }) => service.update(c, { id: fuel_log_id, patch, actor }))(p),
+      schema: validator.schemas.aiUpdate,
       permission: { module: "MOD-43", action: "edit" },
       confirm: true,
       describe: "Update a fuel log entry.",

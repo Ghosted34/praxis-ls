@@ -13,7 +13,11 @@ const status = z.object({
   status: z.enum(["ASSIGNED", "OUT", "RETURNED", "CANCELLED"]),
   odometer: z.number().int().nonnegative().optional(),
 });
-const schemas = { create, update: create.partial(), status };
+const update = create.partial();
+// AI-facing: the record id travels IN the payload — the copilot has no route param.
+const aiUpdate = update.extend({ fleet_dispatch_id: z.string().uuid() });
+const aiStatus = status.extend({ fleet_dispatch_id: z.string().uuid() });
+const schemas = { create, update, status, aiUpdate, aiStatus };
 
 const mw = (k) => (req, _res, next) => {
   const p = schemas[k].safeParse(req.body);

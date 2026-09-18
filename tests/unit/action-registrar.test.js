@@ -20,9 +20,15 @@ describe("AI action registrar", () => {
     // to be one `action-authz` can map to a grant column — a verb it cannot map
     // is denied at execution, so advertising one is advertising a dead action.
     // `validate` and `disburse` joined the vocabulary in 12771.
+    //
+    // The optional trailing letter is part of the key format, not a typo:
+    // My Workspace and the dashboard are MOD-00A, which is what their routes
+    // gate on and what 13810/13870 wrote into the event catalogue. The pattern
+    // was `MOD-\d+` until those modules got manifests, at which point it was
+    // rejecting a module key the rest of the product already used.
     expect(
       writes.every((r) =>
-        /^MOD-\d+:(create|edit|approve|view|delete|export|validate|disburse)$/.test(
+        /^MOD-\d+[A-Z]?:(create|edit|approve|view|delete|export|validate|disburse)$/.test(
           r.required_permission || "",
         ),
       ),

@@ -59,6 +59,16 @@ export type AskResult = {
   /** Thread the turn was recorded against — resolved server-side. */
   conversation_id?: string | null;
   /**
+   * Which vendor answered, or NULL when none did.
+   *
+   * The server has always sent this (`orchestrator.service.js` returns
+   * `provider: res.provider`); the type simply did not carry it, so the one
+   * signal that separates "the model answered" from "the provider chain was
+   * exhausted" was invisible to the client. `classifyAiFailure` reads it — see
+   * there for why the answer TEXT is not a reliable substitute.
+   */
+  provider?: string | null;
+  /**
    * OPTIONAL GROUNDING, and optional on purpose.
    *
    * Both are derived server-side from the read actions the orchestrator actually
@@ -138,20 +148,123 @@ export const clearAiHistory = () =>
  */
 export type AskOptions = { scope?: string; mode?: string };
 
-export const askPraxis = (
+/**
+ * How long a NON-STREAMING ask may take before the client gives up (audit G2).
+ *
+ * `tenant()` sets no timeout at all, which is right for an ordinary list — a
+ * request that never answers is the browser's problem and its own default is
+ * fine. It is wrong here. A single `/ai/ask` turn is several sequential model
+ * calls (initial + one per tool round + a final pass), and the server now
+ * allows each of them up to `AI_REQUEST_TIMEOUT_MS` (120s, audit E1). So the
+ * ceiling on the round trip is minutes, and with no client bound a stalled turn
+ * renders as a spinner that never resolves — indistinguishable from a frozen
+ * screen, which is how people end up asking the same thing three times.
+ *
+ * 180s is deliberately GENEROUS and deliberately finite: longer than the
+ * server's own per-call cap so a legitimately slow multi-hop answer is never cut
+ * off by us, short enough that a request which is never coming back says so.
+ * The streaming path does not need this — its heartbeat is the liveness signal —
+ * which is the other half of why streaming is the path to prefer.
+ */
+export const AI_ASK_TIMEOUT_MS = 180_000;
+
+/**
+ * A signal that aborts on the caller's request OR after `ms`, whichever first.
+ *
+ * Hand-rolled rather than `AbortSignal.any([...])`: that composes exactly this
+ * in two lines, and is missing from the jsdom environment the component tests
+ * run in, so using it would make every test that exercises an ask throw on a
+ * shape that works perfectly in a browser.
+ */
+function withTimeout(ms: number, signal?: AbortSignal) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(
+    () => ctrl.abort(new DOMException("The assistant took too long to answer.", "TimeoutError")),
+    ms,
+  );
+  if (signal) {
+    if (signal.aborted) ctrl.abort(signal.reason);
+    else signal.addEventListener("abort", () => ctrl.abort(signal.reason), { once: true });
+  }
+  return { signal: ctrl.signal, done: () => clearTimeout(timer) };
+}
+
+export const askPraxis = async (
   message: string,
   conversationId?: string,
   opts?: AskOptions,
-) =>
-  tenant<AskResult>("/ai/ask", {
-    method: "POST",
-    body: {
-      message,
-      conversation_id: conversationId,
-      scope: opts?.scope,
-      mode: opts?.mode,
-    },
-  });
+  signal?: AbortSignal,
+) => {
+  const bounded = withTimeout(AI_ASK_TIMEOUT_MS, signal);
+  try {
+    return await tenant<AskResult>("/ai/ask", {
+      method: "POST",
+      signal: bounded.signal,
+      body: {
+        message,
+        conversation_id: conversationId,
+        scope: opts?.scope,
+        mode: opts?.mode,
+      },
+    });
+  } finally {
+    bounded.done();
+  }
+};
+
+/**
+ * What kind of failure this was, and therefore what the person should be told.
+ *
+ * TWO KINDS, and they want different words (audit G4). A TRANSIENT failure — a
+ * dropped connection, a 5xx, a turn that timed out — is worth trying again, and
+ * that is the whole advice. A PROVIDER failure is not: the vendor chain is
+ * misconfigured (audit B2 — a primary whose credential is wrong and a fallback
+ * that cannot answer), and no amount of retrying by this person fixes a
+ * credential. They still get the retry button, because a credential lookup can
+ * itself hiccup and because taking the only control away from somebody staring
+ * at a broken feature is its own insult — but the message names where the fix
+ * lives so they can ask the right person instead of trying six more times.
+ *
+ * READ FROM `provider`, NOT FROM THE ANSWER TEXT. When the chain is exhausted
+ * the server returns a normal, successful turn whose text explains the problem
+ * in prose — so the failure arrives looking exactly like a good answer, and the
+ * only machine-readable trace of it is that no vendor is named. Matching the
+ * prose instead would break the first time somebody improved the wording, and
+ * would mistake an ANSWER about configuration for a configuration failure.
+ *
+ * Returns null when nothing went wrong.
+ */
+export type AiFailure = { kind: "provider" | "transient"; message: string };
+
+const PROVIDER_ADVICE =
+  "The AI has no working chat provider right now — an administrator can check the credentials under AI Control → Vendors.";
+
+export function classifyAiFailure(input: {
+  /** The vendor that answered, from the `done` event or `AskResult`. */
+  provider?: string | null;
+  /** True when governance refused the turn — already explained in the answer. */
+  blocked?: boolean;
+  /** An error thrown or an `error` event, when the turn did not complete. */
+  error?: unknown;
+  /** True once the turn completed, so a null provider is meaningful. */
+  completed?: boolean;
+}): AiFailure | null {
+  if (input.error !== undefined && input.error !== null) {
+    const message =
+      input.error instanceof DOMException && input.error.name === "TimeoutError"
+        ? "The assistant took too long to answer."
+        : input.error instanceof Error
+          ? input.error.message
+          : String(input.error);
+    return { kind: "transient", message };
+  }
+  // A governance refusal is a decision, not a fault: the answer already says so.
+  if (input.blocked) return null;
+  if (input.completed && !input.provider) {
+    return { kind: "provider", message: PROVIDER_ADVICE };
+  }
+  return null;
+}
 
 /**
  * One event in the SSE stream from `/ai/ask/stream`.
@@ -231,7 +344,7 @@ export async function* askPraxisStream(
   } catch {
     // Network error or abort — fall back to non-streaming.
     if (signal?.aborted) return;
-    const result = await askPraxis(message, conversationId, opts);
+    const result = await askPraxis(message, conversationId, opts, signal);
     yield { type: "answer", text: result.answer };
     if (result.actions?.length)
       yield {
@@ -242,14 +355,18 @@ export async function* askPraxisStream(
     if (result.sources?.length)
       yield { type: "sources", sources: result.sources };
     if (result.trace?.length) yield { type: "trace", trace: result.trace };
-    yield { type: "done", conversation_id: result.conversation_id };
+    yield {
+      type: "done",
+      conversation_id: result.conversation_id,
+      provider: result.provider ?? null,
+    };
     return;
   }
 
   if (!response.ok || !response.body) {
     // Server returned an error or doesn't support streaming — fall back.
     if (response.status === 404 || response.status === 501) {
-      const result = await askPraxis(message, conversationId, opts);
+      const result = await askPraxis(message, conversationId, opts, signal);
       yield { type: "answer", text: result.answer };
       if (result.actions?.length)
         yield {
@@ -260,7 +377,11 @@ export async function* askPraxisStream(
       if (result.sources?.length)
         yield { type: "sources", sources: result.sources };
       if (result.trace?.length) yield { type: "trace", trace: result.trace };
-      yield { type: "done", conversation_id: result.conversation_id };
+      yield {
+        type: "done",
+        conversation_id: result.conversation_id,
+        provider: result.provider ?? null,
+      };
       return;
     }
     const text = await response.text().catch(() => "Request failed");

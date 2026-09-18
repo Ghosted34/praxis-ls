@@ -199,10 +199,77 @@ export const useUpdateTask = () =>
   useWorkspaceMutation(({ id, input }: { id: string; input: Partial<TaskInput> }) =>
     api.updateTask(id, input),
   );
-export const useMoveTask = () =>
-  useWorkspaceMutation(({ id, status }: { id: string; status: TaskStatus }) =>
-    api.moveTask(id, status),
-  );
+
+/**
+ * Move a task to another column — optimistically.
+ *
+ * A drag that ends with the card snapping BACK, then jumping forward a beat
+ * later when the refetch lands, reads as a failed drop even when the server
+ * said yes. So the card jumps on release: every cached board moves the row
+ * immediately, the detail panel's copy follows, and the invalidation on settle
+ * reconciles all of it with the server. On failure the snapshots below put
+ * every cache back where it was, and the caller (`TaskBoard`) explains why.
+ *
+ * Only the board and the single task are patched. The day timeline and the
+ * flat lists carry the same row in shapes that are not worth rewriting by hand;
+ * they refresh from the server on settle, a fraction of a second later.
+ */
+export function useMoveTask() {
+  const qc = useQueryClient();
+  return useMutation<
+    Task,
+    Error,
+    { id: string; status: TaskStatus },
+    { boards: Array<[readonly unknown[], api.BoardResponse | undefined]>; task: Task | undefined }
+  >({
+    mutationFn: ({ id, status }) => api.moveTask(id, status),
+    onMutate: async ({ id, status }) => {
+      await qc.cancelQueries({ queryKey: [ROOT, "board"] });
+      const boards = qc.getQueriesData<api.BoardResponse>({ queryKey: [ROOT, "board"] });
+      for (const [key, data] of boards) {
+        const next = data ? optimisticBoard(data.board, id, status) : null;
+        if (next) qc.setQueryData(key, { ...data, board: next });
+      }
+      const taskKey = [ROOT, "task", id];
+      const task = qc.getQueryData<Task>(taskKey);
+      if (task && task.status !== status) qc.setQueryData<Task>(taskKey, { ...task, status });
+      return { boards, task };
+    },
+    onError: (_err, { id }, context) => {
+      if (!context) return;
+      for (const [key, data] of context.boards) qc.setQueryData(key, data);
+      if (context.task) qc.setQueryData([ROOT, "task", id], context.task);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: [ROOT] }),
+  });
+}
+
+/**
+ * The board with one task relocated, or null when there is nothing to do —
+ * the task is in no cached column (a board read under another audience), it is
+ * already there, or the target is not a column at all (CANCELLED has no
+ * column; a stray key would render nowhere and corrupt the counts).
+ */
+function optimisticBoard(board: TaskBoard, id: string, status: TaskStatus): TaskBoard | null {
+  if (!(status in board)) return null;
+  const target = status as api.BoardColumn;
+  let from: api.BoardColumn | null = null;
+  let found: Task | null = null;
+  for (const column of api.BOARD_COLUMNS) {
+    const hit = board[column]?.find((t) => t.task_id === id);
+    if (hit) {
+      from = column;
+      found = hit;
+      break;
+    }
+  }
+  if (!found || !from || from === target) return null;
+  return {
+    ...board,
+    [from]: board[from].filter((t) => t.task_id !== id),
+    [target]: [...board[target], { ...found, status: target }],
+  };
+}
 export const useDeleteTask = () => useWorkspaceMutation((id: string) => api.deleteTask(id));
 
 export const useAddSubtask = () =>

@@ -16,10 +16,23 @@ const { logger } = require("../../config/logger");
 const PRIMARY = "deepseek";
 const FALLBACK = "gemini";
 
+// Gemini speaks the OpenAI /chat/completions shape ONLY through Google's
+// compatibility gateway, never its native endpoint (audit B2 — the native API
+// is a different shape, so a fallback pointed there resolves but every call
+// fails). This is the compat base for the .env fallback; a
+// platform.ai_vendor_credential row for "gemini" (the intended source) overrides
+// it when ops configure one.
+const GEMINI_OPENAI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai";
+
 // .env fallback vendors (OpenAI-compatible endpoints only).
 const ENV_VENDORS = {
   deepseek: { vendor: "deepseek", api_key: config.DEEPSEEK_API_KEY, endpoint_url: config.DEEPSEEK_BASE_URL, model: config.DEEPSEEK_MODEL },
   openai: { vendor: "openai", api_key: config.OPENAI_API_KEY, endpoint_url: config.OPENAI_BASE_URL, model: config.OPENAI_MODEL },
+  // FALLBACK (audit B2). Before this entry existed resolveVendor("gemini")
+  // returned null — so a primary outage degraded straight to the stub instead of
+  // to a working fallback. Reuses the existing GEMINI_API_KEY / GEMINI_MODEL
+  // against the OpenAI-compat gateway above (no new env knobs).
+  gemini: { vendor: "gemini", api_key: config.GEMINI_API_KEY, endpoint_url: GEMINI_OPENAI_BASE_URL, model: config.GEMINI_MODEL },
 };
 
 /** Platform-first, env-fallback vendor config for a chat vendor, or null. Keys
@@ -31,6 +44,80 @@ async function resolveVendor(client, name) {
   const env = ENV_VENDORS[name];
   if (env && env.api_key && env.endpoint_url) return env;
   return null;
+}
+
+/**
+ * Prompt caching (audit B5). The orchestrator marks the first system message
+ * with `cachePrefix` — the large, STABLE rules block that repeats verbatim every
+ * turn — so a provider can cache it instead of re-reading 2–3 KB on every call.
+ * How that is expressed depends on the vendor, and an unknown request field 400s
+ * some of them, so we check support first and degrade cleanly:
+ *   · "explicit" — Anthropic-style: the prefix becomes its own content part with
+ *     a `cache_control` breakpoint; the dynamic tail is a second, uncached part.
+ *   · "auto"     — OpenAI, DeepSeek (context cache on disk), the Gemini gateway:
+ *     no request flag exists — the provider caches a stable PREFIX on its own, so
+ *     we simply keep sending the plain string with the rules first.
+ *   · "none"     — unknown vendor: send plain, rely on nothing.
+ */
+const PROMPT_CACHE_STYLE = { anthropic: "explicit", openai: "auto", deepseek: "auto", gemini: "auto" };
+function promptCacheStyle(vendorName) {
+  return PROMPT_CACHE_STYLE[String(vendorName || "").toLowerCase()] || "none";
+}
+function supportsPromptCache(vendorName) {
+  return promptCacheStyle(vendorName) !== "none";
+}
+
+/** Drop the internal cache hints so they never reach the vendor over the wire. */
+function stripCacheHints(m) {
+  if (!("cache" in m) && !("cachePrefix" in m)) return m;
+  const copy = { ...m };
+  delete copy.cache;
+  delete copy.cachePrefix;
+  return copy;
+}
+
+/**
+ * Apply a message's `cachePrefix` hint for this vendor's caching style, and
+ * ALWAYS strip the hint. Only an explicit-style vendor whose string content
+ * actually begins with the prefix is rewritten into cached + uncached parts;
+ * every other case sends the plain string unchanged (identical bytes to before
+ * caching existed), so correctness never depends on cache support.
+ */
+function prepareMessages(vendor, messages) {
+  const style = promptCacheStyle(vendor && vendor.vendor);
+  return messages.map((m) => {
+    const canSplit = m.cachePrefix && typeof m.content === "string" && m.content.startsWith(m.cachePrefix);
+    if (style !== "explicit" || !canSplit) return stripCacheHints(m);
+    const base = stripCacheHints(m);
+    const rest = m.content.slice(m.cachePrefix.length);
+    const content = [{ type: "text", text: m.cachePrefix, cache_control: { type: "ephemeral" } }];
+    if (rest) content.push({ type: "text", text: rest });
+    return { ...base, content };
+  });
+}
+
+/**
+ * A resolved endpoint that is Gemini's NATIVE API rather than its OpenAI-compat
+ * gateway (audit B2). The native host does not speak /chat/completions, so a
+ * "gemini" vendor pointed there resolves but every call fails — the health check
+ * flags it so the misconfig is visible before the first request.
+ *
+ * Parses the URL and matches the HOST exactly (not a substring of the whole URL
+ * string): a substring check would both miss a legitimately different host and
+ * mis-flag a look-alike like `generativelanguage.googleapis.com.example.com`
+ * (CodeQL js/incomplete-url-substring-sanitization). The OpenAI-compat gateway
+ * is the same host under a `/…/openai` path, so the path decides compat.
+ */
+function looksLikeNativeGemini(url) {
+  let parsed;
+  try {
+    parsed = new URL(String(url || ""));
+  } catch {
+    return false; // not a parseable URL — nothing to flag
+  }
+  const isGoogleGenAiHost = parsed.hostname.toLowerCase() === "generativelanguage.googleapis.com";
+  const hasOpenAiCompatPath = /(^|\/)openai(\/|$)/i.test(parsed.pathname);
+  return isGoogleGenAiHost && !hasOpenAiCompatPath;
 }
 
 // Some models (notably DeepSeek, esp. when handed a large tool list) emit their
@@ -67,7 +154,7 @@ function extractInlineToolCalls(content) {
 
 async function callVendor(vendor, { messages, tools, temperature, responseFormat, maxTokens }) {
   const base = String(vendor.endpoint_url).replace(/\/$/, "");
-  const body = { model: vendor.model, messages, temperature };
+  const body = { model: vendor.model, messages: prepareMessages(vendor, messages), temperature };
   // Explicit output ceiling — without it the vendor default (often short) caps
   // the reply mid-sentence (audit B1). See config.AI_MAX_TOKENS.
   if (maxTokens) body.max_tokens = maxTokens;
@@ -116,7 +203,7 @@ async function* callVendorStream(vendor, { messages, tools, temperature, maxToke
   // `stream_options.include_usage` makes OpenAI-compatible vendors emit a final
   // usage chunk on a stream; without it token usage is unknown for every
   // streamed turn and the budget/spend ledger under-counts (audit B4).
-  const body = { model: vendor.model, messages, temperature, stream: true, stream_options: { include_usage: true } };
+  const body = { model: vendor.model, messages: prepareMessages(vendor, messages), temperature, stream: true, stream_options: { include_usage: true } };
   if (maxTokens) body.max_tokens = maxTokens;
   if (tools && tools.length) { body.tools = tools; body.tool_choice = "auto"; }
 
@@ -231,7 +318,9 @@ function classifyVendorError(err) {
 }
 
 async function chat({ client, messages, tools, temperature = 0.2, vendorName = PRIMARY, responseFormat, maxTokens = config.AI_MAX_TOKENS }) {
-  for (const name of [vendorName, FALLBACK]) {
+  const chain = [...new Set([vendorName, FALLBACK])];
+  let configError = null;
+  for (const name of chain) {
     const vendor = await resolveVendor(client, name);
     if (!vendor) continue;
     try {
@@ -239,17 +328,26 @@ async function chat({ client, messages, tools, temperature = 0.2, vendorName = P
     } catch (err) {
       const kind = classifyVendorError(err);
       if (kind === "config") {
-        // Configuration error — log as ERROR (not warn), do NOT silently fall
-        // back. The operator needs to know the key is broken. Return the stub
-        // so the user sees a clear message rather than a silent wrong answer.
+        // A bad key/endpoint must be LOUD (audit 3.6 — the operator has to know),
+        // but it must NOT strand the turn on the stub while a working fallback
+        // exists (audit B2 — "killing the primary key degrades to a WORKING
+        // fallback, not the stub"). So log at ERROR and fall THROUGH to the next
+        // vendor; visibility comes from this log + the startup health check, not
+        // from denying the user an answer.
         logger.error({ err, vendor: name, errorKind: kind },
-          "LLM vendor CONFIGURATION ERROR — API key or endpoint is invalid. " +
-          "Fix in AI Control > Vendors. Not falling back to hide this.");
-        return { ...STUB, text: `AI provider "${name}" has a configuration error (${err.response ? err.response.status : "connection"}). An administrator should check the vendor settings.`, provider: null };
+          `LLM vendor "${name}" CONFIGURATION ERROR (${err.response ? err.response.status : "connection"}) — API key or endpoint is invalid. ` +
+          "Fix in AI Control > Vendors. Trying the fallback so the turn still answers.");
+        configError = name;
+        continue;
       }
       // Transient or rate-limited — fallback is appropriate.
       logger.warn({ err, vendor: name, errorKind: kind }, "LLM vendor failed, trying fallback");
     }
+  }
+  // The whole chain is exhausted. If the failures were configuration errors, say
+  // so in the stub rather than the generic "no provider configured" message.
+  if (configError) {
+    return { ...STUB, provider: null, text: `The AI providers are unavailable — the "${configError}" credential has a configuration error and no fallback answered. An administrator should check AI Control > Vendors.` };
   }
   return STUB;
 }
@@ -264,7 +362,9 @@ async function chat({ client, messages, tools, temperature = 0.2, vendorName = P
  * same data, so callers can use either interface.
  */
 async function* chatStream({ client, messages, tools, temperature = 0.2, vendorName = PRIMARY, onDelta, maxTokens = config.AI_MAX_TOKENS }) {
-  for (const name of [vendorName, FALLBACK]) {
+  const chain = [...new Set([vendorName, FALLBACK])];
+  let configError = null;
+  for (const name of chain) {
     const vendor = await resolveVendor(client, name);
     if (!vendor) continue;
     try {
@@ -276,17 +376,93 @@ async function* chatStream({ client, messages, tools, temperature = 0.2, vendorN
     } catch (err) {
       const kind = classifyVendorError(err);
       if (kind === "config") {
+        // Loud, but fall THROUGH to the fallback — same reasoning as chat()
+        // (audit 3.6 visibility + audit B2 working fallback, not the stub).
         logger.error({ err, vendor: name, errorKind: kind },
-          "LLM streaming vendor CONFIGURATION ERROR — not falling back.");
-        const msg = `AI provider "${name}" has a configuration error. An administrator should check the vendor settings.`;
-        yield { delta: msg, done: true, toolCalls: [], text: msg, usage: {}, provider: null };
-        return;
+          `LLM streaming vendor "${name}" CONFIGURATION ERROR — trying the fallback so the turn still answers.`);
+        configError = name;
+        continue;
       }
       logger.warn({ err, vendor: name, errorKind: kind }, "LLM streaming vendor failed, trying fallback");
     }
   }
-  // No vendor — emit stub as a single chunk.
-  yield { delta: STUB.text, done: true, toolCalls: [], text: STUB.text, usage: {}, provider: null };
+  // Chain exhausted — emit a single terminal chunk. A configuration error gets a
+  // clearer message than the generic "no provider configured" stub.
+  const text = configError
+    ? `The AI providers are unavailable — the "${configError}" credential has a configuration error and no fallback answered. An administrator should check AI Control > Vendors.`
+    : STUB.text;
+  yield { delta: text, done: true, toolCalls: [], text, usage: {}, provider: null };
 }
 
-module.exports = { chat, chatStream, resolveVendor, PRIMARY, FALLBACK };
+/**
+ * Resolve one role's vendor for the health check WITHOUT throwing, returning
+ * diagnostics rather than just the config. Mirrors resolveVendor's precedence
+ * (platform credential first, then the .env fallback) so it reports exactly what
+ * the runtime would use, and it survives an unreachable platform DB at boot
+ * (`lookupError`) instead of masquerading a transient outage as "unconfigured".
+ */
+async function inspectVendor(client, role, name) {
+  let db = null;
+  let lookupError = false;
+  try {
+    db = await platformVendors.getConfig(name);
+  } catch {
+    /* @silent:boot — platform DB may not answer yet; fall through to .env. */
+    lookupError = true;
+  }
+  let source = null;
+  let cfg = null;
+  if (db && db.is_active !== false && db.api_key && db.endpoint_url) { source = "platform"; cfg = db; }
+  else {
+    const env = ENV_VENDORS[name];
+    if (env && env.api_key && env.endpoint_url) { source = "env"; cfg = env; }
+  }
+  const endpoint = (cfg && cfg.endpoint_url) || null;
+  return {
+    role,
+    name,
+    resolved: Boolean(cfg),
+    source, // "platform" | "env" | null
+    hasKey: Boolean(cfg && cfg.api_key),
+    endpoint,
+    model: (cfg && cfg.model) || null,
+    // false ONLY when a resolved endpoint looks like Gemini's native API.
+    openaiCompatible: endpoint ? !looksLikeNativeGemini(endpoint) : null,
+    // Only meaningful when it PREVENTED resolution — a platform hiccup, not a
+    // definite "not configured".
+    lookupError: lookupError && !cfg,
+  };
+}
+
+/**
+ * Startup / on-demand health of the AI chat provider chain (audit B2).
+ *
+ * The declared PRIMARY and FALLBACK must BOTH resolve to a usable, OpenAI-
+ * /chat/completions-compatible vendor, or a primary outage degrades to "AI has
+ * no provider configured". This reports resolution ONLY (no external call, so it
+ * is safe to run at boot), and flags the three ways the chain is silently broken:
+ * a vendor that does not resolve, a "gemini" pointed at its native (non-compat)
+ * endpoint, and a primary that equals the fallback (no distinct provider to fall
+ * back to). `ok` is false on any DEFINITE problem; `inconclusive` marks the case
+ * where a platform-DB hiccup left resolution unknown so a caller can log softly.
+ */
+async function checkVendorHealth({ client } = {}) {
+  const primary = await inspectVendor(client, "primary", PRIMARY);
+  const fallback = await inspectVendor(client, "fallback", FALLBACK);
+  const distinct = PRIMARY !== FALLBACK;
+  const issues = [];
+  for (const v of [primary, fallback]) {
+    if (v.resolved) {
+      if (v.openaiCompatible === false) {
+        issues.push(`${v.role} chat vendor "${v.name}" endpoint (${v.endpoint}) looks like Gemini's NATIVE API, which is not OpenAI /chat/completions-shaped — point it at the OpenAI-compatible gateway (…/v1beta/openai) or every call will fail.`);
+      }
+    } else if (!v.lookupError) {
+      issues.push(`${v.role} chat vendor "${v.name}" is not configured — no active credential in platform.ai_vendor_credential and no usable .env fallback (needs a key + endpoint).`);
+    }
+  }
+  if (!distinct) issues.push(`primary and fallback are both "${PRIMARY}" — a primary failure has no distinct provider to fall back to.`);
+  const inconclusive = (primary.lookupError || fallback.lookupError) && issues.length === 0;
+  return { ok: issues.length === 0, inconclusive, distinct, primary, fallback, issues, checkedAt: new Date().toISOString() };
+}
+
+module.exports = { chat, chatStream, resolveVendor, checkVendorHealth, supportsPromptCache, PRIMARY, FALLBACK };

@@ -861,12 +861,54 @@ async function checkConnectionBudget() {
   await budget.check(platformDb);
 }
 
+/**
+ * Audit B2 — the AI's declared PRIMARY and FALLBACK chat vendors must BOTH
+ * resolve to a usable, OpenAI-/chat/completions-compatible provider, or a
+ * primary outage degrades to "AI has no provider configured" with nobody told.
+ *
+ * Resolution-only (no external call), best-effort, and NEVER fatal — AI is a
+ * gated feature, so a misconfig must not stop the whole API booting; it must be
+ * impossible to miss in the log instead. Severity is calibrated the way
+ * warnIfUnmonitored is: a PARTIAL config (a primary that resolves but a fallback
+ * that does not — the exact B2 bug) is a real operational error and logs at
+ * ERROR; a deployment with no AI vendors at all is expected on a non-AI install
+ * and logs at WARN, so the check never cries wolf on every boot of a deployment
+ * that never turns AI on. An unreadable platform DB leaves it inconclusive.
+ */
+async function checkAiVendorHealth() {
+  const llm = require("./services/ai/llm.service");
+  const health = await llm.checkVendorHealth();
+  if (health.ok) {
+    logger.info(
+      { primary: health.primary.name, fallback: health.fallback.name },
+      "AI chat vendor health OK — primary and fallback both resolve to a usable provider",
+    );
+    return;
+  }
+  if (health.inconclusive) {
+    logger.debug({ health }, "AI chat vendor health could not be determined (platform DB unavailable at boot)");
+    return;
+  }
+  const line =
+    "AI CHAT VENDOR MISCONFIGURED — " + health.issues.join(" ") +
+    " Fix in the platform console (AI Control > Vendors / platform.ai_vendor_credential). See audit B2.";
+  if (health.primary.resolved || health.fallback.resolved) {
+    // At least one vendor is set, so AI is in use and this is a real error.
+    logger.error({ health }, line);
+  } else {
+    // Nothing configured — expected on a deployment that does not use AI.
+    logger.warn({ health }, "AI chat is not configured — " + health.issues.join(" "));
+  }
+}
+
 function start() {
   installProcessGuards();
   // Not awaited: it reads the platform DB, and boot must not block on a warning.
   // A rejection here would be an unhandled rejection over a log line, so it is
   // caught and dropped — the check is best-effort by design.
   warnIfUnmonitored().catch(() => {});
+  // Same posture: best-effort, never blocks or fails boot (audit B2).
+  checkAiVendorHealth().catch((err) => logger.debug({ err }, "AI vendor health check could not run at boot"));
   checkConnectionBudget().catch((err) => {
     if (err && err.code === "DB_BUDGET_EXCEEDED") {
       // Enforce mode. Exit rather than serve on a budget that cannot be met —

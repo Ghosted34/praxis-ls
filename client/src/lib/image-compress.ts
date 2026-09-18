@@ -34,7 +34,7 @@
 export type UploadProfile = "photo" | "document" | "brand" | "avatar";
 
 /** Longest edge, per profile, matching src/services/image-pipeline.service.js. */
-const MAX_EDGE: Record<UploadProfile, number> = {
+export const MAX_EDGE: Record<UploadProfile, number> = {
   photo: 2400,
   document: 2600,
   brand: 1024,
@@ -71,6 +71,42 @@ export type CompressResult = {
   originalBytes: number;
   bytes: number;
 };
+
+/**
+ * Calculate a downscale without crossing a server-side dimension floor.
+ *
+ * `maxEdge` is a client optimisation cap, not permission to make an image
+ * invalid. A caller can provide minimum dimensions when the API has a hard
+ * requirement (for example, the entity-cover slot requires 1200 px of width).
+ * The floor wins over the cap, and a source that is already below the floor is
+ * never enlarged — it must reach the server unchanged so the server can report
+ * the real source dimensions.
+ */
+export function resizeDimensions(
+  sourceWidth: number,
+  sourceHeight: number,
+  maxEdge: number,
+  minimumWidth = 0,
+  minimumHeight = 0,
+): { width: number; height: number } {
+  const width = Math.max(1, Math.round(sourceWidth));
+  const height = Math.max(1, Math.round(sourceHeight));
+  const edge = Math.max(1, Math.round(maxEdge));
+  const minWidth = Math.max(0, Number(minimumWidth) || 0);
+  const minHeight = Math.max(0, Number(minimumHeight) || 0);
+  const longest = Math.max(width, height);
+  if (longest <= edge) return { width, height };
+
+  const capScale = edge / longest;
+  const floorScale = Math.max(minWidth / width, minHeight / height);
+  // Never enlarge a source that is already below a required floor. The server
+  // owns the rejection and needs to inspect the original dimensions.
+  const scale = Math.min(1, Math.max(capScale, floorScale));
+  return {
+    width: Math.max(1, Math.round(width * scale)),
+    height: Math.max(1, Math.round(height * scale)),
+  };
+}
 
 function passthrough(file: File): CompressResult {
   return {
@@ -119,6 +155,7 @@ function toBlob(
 export async function compressImage(
   file: File,
   profile: UploadProfile = "document",
+  options: { minimumWidth?: number; minimumHeight?: number } = {},
 ): Promise<CompressResult> {
   if (!file || !file.size) return passthrough(file);
   if (!RE_ENCODABLE.has(file.type)) return passthrough(file);
@@ -136,13 +173,13 @@ export async function compressImage(
   }
 
   try {
-    const maxEdge = MAX_EDGE[profile];
-    const longest = Math.max(bitmap.width, bitmap.height);
-    // Never enlarge: a 400px image resized "up" to 2400 is the same picture in
-    // nine times the bytes.
-    const scale = longest > maxEdge ? maxEdge / longest : 1;
-    const width = Math.max(1, Math.round(bitmap.width * scale));
-    const height = Math.max(1, Math.round(bitmap.height * scale));
+    const { width, height } = resizeDimensions(
+      bitmap.width,
+      bitmap.height,
+      MAX_EDGE[profile],
+      options.minimumWidth,
+      options.minimumHeight,
+    );
 
     const canvas = document.createElement("canvas");
     canvas.width = width;

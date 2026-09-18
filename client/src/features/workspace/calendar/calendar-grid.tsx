@@ -25,10 +25,16 @@
 import * as React from "react";
 import { cn } from "@/lib/cn";
 import { Pill } from "@/components/ui/pill";
-import { todayISO } from "@/lib/format";
 import type { CalendarEvent, Deadline } from "../api";
+import { tenantToday } from "../time";
 import { eventTypeTone, humanizeType } from "../labels";
-import { DAY_LABELS, isoDay, monthCells, indexEventsByDay, indexDeadlinesByDay } from "./dates";
+import {
+  DAY_LABELS,
+  isoDay,
+  monthCells,
+  indexEventsByDay,
+  indexDeadlinesByDay,
+} from "./dates";
 
 /** Chips shown before "+N more". Three is what fits a cell without the grid
  *  becoming taller than it is wide on a phone. */
@@ -39,13 +45,15 @@ const MAX_DUE_CHIPS = 2;
 /** A stable key for a deadline — a task or one of its steps. */
 const dueKey = (d: Deadline) => `${d.kind}:${d.subtask_id ?? d.task_id}`;
 /** A step names its parent so the chip reads "Bank file · Documents to bank". */
-const dueTitle = (d: Deadline) => (d.task_title ? `${d.task_title} · ${d.title}` : d.title);
+const dueTitle = (d: Deadline) =>
+  d.task_title ? `${d.task_title} · ${d.title}` : d.title;
 
 export function CalendarGrid({
   year,
   month,
   events,
   deadlines = [],
+  timeZone = "Africa/Douala",
   loading,
   onSelectDay,
   onSelectEvent,
@@ -56,14 +64,21 @@ export function CalendarGrid({
   events: CalendarEvent[];
   /** Task + subtask due dates laid over the events as chips. */
   deadlines?: Deadline[];
+  timeZone?: string;
   loading: boolean;
   onSelectDay: (iso: string) => void;
   onSelectEvent: (event: CalendarEvent) => void;
   onSelectDeadline?: (deadline: Deadline) => void;
 }) {
-  const byDay = React.useMemo(() => indexEventsByDay(events), [events]);
-  const dueByDay = React.useMemo(() => indexDeadlinesByDay(deadlines), [deadlines]);
-  const today = todayISO();
+  const byDay = React.useMemo(
+    () => indexEventsByDay(events, timeZone),
+    [events, timeZone],
+  );
+  const dueByDay = React.useMemo(
+    () => indexDeadlinesByDay(deadlines, timeZone),
+    [deadlines, timeZone],
+  );
+  const today = tenantToday(timeZone);
   const cells = React.useMemo(() => monthCells(year, month), [year, month]);
 
   return (
@@ -130,7 +145,9 @@ export function CalendarGrid({
                           key={e.calendar_event_id}
                           className={cn(
                             "h-1.5 w-1.5 rounded-full",
-                            e.event_type === "deadline" ? "bg-destructive" : "bg-primary",
+                            e.event_type === "deadline"
+                              ? "bg-destructive"
+                              : "bg-primary",
                           )}
                         />
                       ))}
@@ -139,7 +156,9 @@ export function CalendarGrid({
                           key={dueKey(d)}
                           className={cn(
                             "h-1.5 w-1.5 rounded-full ring-1 ring-inset ring-border",
-                            d.is_overdue ? "bg-destructive" : "bg-muted-foreground",
+                            d.is_overdue
+                              ? "bg-destructive"
+                              : "bg-muted-foreground",
                           )}
                         />
                       ))}
@@ -159,7 +178,9 @@ export function CalendarGrid({
                         title={`${e.title}${e.location ? ` · ${e.location}` : ""}`}
                         className="block w-full truncate rounded px-1 py-0.5 text-left text-xs transition-colors hover:bg-accent"
                       >
-                        <Pill tone={eventTypeTone(e.event_type)}>{humanizeType(e.event_type)}</Pill>{" "}
+                        <Pill tone={eventTypeTone(e.event_type)}>
+                          {humanizeType(e.event_type)}
+                        </Pill>{" "}
                         <span className="truncate">{e.title}</span>
                       </button>
                     </li>
@@ -185,7 +206,12 @@ export function CalendarGrid({
                         className="block w-full truncate rounded px-1 py-0.5 text-left text-xs transition-colors hover:bg-accent"
                       >
                         <Pill tone={d.is_overdue ? "bad" : "warn"}>Due</Pill>{" "}
-                        <span className={cn("truncate", d.is_done && "line-through opacity-60")}>
+                        <span
+                          className={cn(
+                            "truncate",
+                            d.is_done && "line-through opacity-60",
+                          )}
+                        >
                           {d.title}
                         </span>
                       </button>

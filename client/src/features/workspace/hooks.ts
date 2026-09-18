@@ -35,6 +35,9 @@ import type {
   TaskInput,
   TaskPriority,
   TaskStatus,
+  WorkspaceContext,
+  WorkspaceApproval,
+  WorkspaceAlert,
 } from "./api";
 
 const ROOT = "workspace" as const;
@@ -46,6 +49,32 @@ export function useInvalidateWorkspace() {
 }
 
 /* ── reads ────────────────────────────────────────────────────────────────── */
+
+/** The tenant-local contract shared by Today, Calendar, and task forms. */
+export function useWorkspaceContext() {
+  return useQuery<WorkspaceContext>({
+    queryKey: [ROOT, "context"],
+    queryFn: () => api.getWorkspaceContext(),
+    staleTime: 5 * 60_000,
+  });
+}
+
+/** Focused Today queue reads. A failure in one panel must not hide the other. */
+export function useApprovals() {
+  return useQuery<WorkspaceApproval[]>({
+    queryKey: [ROOT, "approvals"],
+    queryFn: () => api.getApprovals(),
+    staleTime: 30_000,
+  });
+}
+
+export function useUnreadAlerts() {
+  return useQuery<WorkspaceAlert[]>({
+    queryKey: [ROOT, "alerts"],
+    queryFn: () => api.getAlerts(),
+    staleTime: 30_000,
+  });
+}
 
 /** The merged day. `window` narrows it; omit it for today on the tenant clock. */
 export function useDay(params: { from?: string; to?: string; audience?: Audience } = {}) {

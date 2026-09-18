@@ -62,6 +62,36 @@ function visibleWhere(v = {}, start = 1) {
   return { sql, params: p, next: start + p.length };
 }
 
+/**
+ * Event visibility uses the same audience vocabulary as Tasks, with one
+ * additional personal relationship: an invited internal participant can see
+ * the event even when they did not create it.
+ *
+ * `calendar_event.scope_id` is deliberately nullable. An unscoped event is
+ * visible to an authorised team read, while a scoped event requires the
+ * caller's organigramme closure.
+ */
+function eventVisibleWhere(v = {}, start = 1) {
+  const p = [];
+  const sql = [];
+  if (!v.userId) return { sql: ["FALSE"], params: p, next: start };
+
+  p.push(v.userId);
+  const userParam = start;
+  const participant = `EXISTS (SELECT 1 FROM calendar_participant pv WHERE pv.calendar_event_id = e.calendar_event_id AND pv.user_id = $${userParam})`;
+
+  if (v.audience === "all" && v.permissionScope === "all") {
+    return { sql, params: p.slice(0, 0), next: start };
+  }
+  if (v.audience === "team" && v.scopeIds && v.scopeIds.length) {
+    p.push(v.scopeIds);
+    sql.push(`(e.created_by = $${userParam} OR ${participant} OR e.scope_id IS NULL OR e.scope_id = ANY($${start + 1}::uuid[]))`);
+  } else {
+    sql.push(`(e.created_by = $${userParam} OR ${participant})`);
+  }
+  return { sql, params: p, next: start + p.length };
+}
+
 /** Subtask progress, as two correlated counts rather than a join+group. */
 const SUBTASK_COUNTS = `
   (SELECT count(*)::int FROM task_subtask s WHERE s.task_id = t.task_id) AS subtask_count,
@@ -210,6 +240,91 @@ async function subtasksInRange(client, { from, to, visibility }) {
     params,
   );
   return rows;
+}
+
+const DAY_TASK_LIMIT = 200;
+const DAY_SUBTASK_LIMIT = 200;
+
+/** One segment of actionable task deadlines for Today. */
+async function dayTaskSegment(client, { from, to, visibility, overdue, limit = DAY_TASK_LIMIT }) {
+  const params = [from, to];
+  const where = [
+    "t.is_deleted = false",
+    "t.status NOT IN ('DONE','CANCELLED')",
+    overdue ? "t.due_at < $1" : "t.due_at >= $1 AND t.due_at < $2",
+  ];
+  const vis = visibleWhere(visibility, params.length + 1);
+  params.push(...vis.params);
+  where.push(...vis.sql);
+  const limitParam = params.length + 1;
+  params.push(limit);
+  const { rows } = await client.query(
+    `${TASK_SELECT.replace("SELECT t.*,", "SELECT t.*, COUNT(*) OVER() AS _total,")}
+      WHERE ${where.join(" AND ")}
+      ORDER BY t.due_at ${overdue ? "DESC" : "ASC"} NULLS LAST
+      LIMIT $${limitParam}`,
+    params,
+  );
+  const total = rows.length ? Number(rows[0]._total) : 0;
+  return { rows, total, truncated: total > rows.length };
+}
+
+/**
+ * Today includes the current tenant-local window and the most recent overdue
+ * carry-over. Keeping the two segments separate lets the response advertise a
+ * cap without allowing a large historical overdue queue to crowd out today's
+ * work.
+ */
+async function dayTasks(client, { from, to, visibility, limit = DAY_TASK_LIMIT }) {
+  const [current, overdue] = await Promise.all([
+    dayTaskSegment(client, { from, to, visibility, overdue: false, limit }),
+    dayTaskSegment(client, { from, to, visibility, overdue: true, limit }),
+  ]);
+  return {
+    rows: [...current.rows, ...overdue.rows],
+    total: current.total + overdue.total,
+    truncated: current.truncated || overdue.truncated,
+  };
+}
+
+async function daySubtaskSegment(client, { from, to, visibility, overdue, limit = DAY_SUBTASK_LIMIT }) {
+  const params = [from, to];
+  const where = [
+    "t.is_deleted = false",
+    "t.status NOT IN ('DONE','CANCELLED')",
+    "s.is_done = false",
+    overdue ? "s.due_at < $1" : "s.due_at >= $1 AND s.due_at < $2",
+  ];
+  const vis = visibleWhere(visibility, params.length + 1);
+  params.push(...vis.params);
+  where.push(...vis.sql);
+  const limitParam = params.length + 1;
+  params.push(limit);
+  const { rows } = await client.query(
+    `SELECT s.task_subtask_id, s.task_id, s.title, s.due_at, s.is_done,
+            t.title AS task_title, t.status AS task_status, t.priority AS task_priority,
+            t.entity_type, t.entity_id, COUNT(*) OVER() AS _total
+       FROM task_subtask s
+       JOIN task t ON t.task_id = s.task_id
+      WHERE ${where.join(" AND ")}
+      ORDER BY s.due_at ${overdue ? "DESC" : "ASC"} NULLS LAST
+      LIMIT $${limitParam}`,
+    params,
+  );
+  const total = rows.length ? Number(rows[0]._total) : 0;
+  return { rows, total, truncated: total > rows.length };
+}
+
+async function daySubtasks(client, { from, to, visibility, limit = DAY_SUBTASK_LIMIT }) {
+  const [current, overdue] = await Promise.all([
+    daySubtaskSegment(client, { from, to, visibility, overdue: false, limit }),
+    daySubtaskSegment(client, { from, to, visibility, overdue: true, limit }),
+  ]);
+  return {
+    rows: [...current.rows, ...overdue.rows],
+    total: current.total + overdue.total,
+    truncated: current.truncated || overdue.truncated,
+  };
 }
 
 async function insertTask(client, t) {
@@ -391,16 +506,30 @@ const EVENT_SELECT = `
  * naive `start_at BETWEEN from AND to` hides it on days two and three, which
  * is the classic empty-calendar bug.
  */
-async function listEvents(client, { from, to, eventType, userId, mine }) {
+async function listEventsWindow(client, { from, to, eventType, visibility, userId, mine, limit = 500 }) {
   const params = [from, to];
   const where = ["e.is_deleted = false", "e.start_at < $2", "e.end_at >= $1"];
   if (eventType) { params.push(eventType); where.push(`e.event_type = $${params.length}`); }
-  if (mine && userId) { params.push(userId); where.push(`e.created_by = $${params.length}`); }
+  const v = visibility || {
+    audience: mine ? "mine" : "all",
+    permissionScope: mine ? "scoped" : "all",
+    userId,
+  };
+  const visible = eventVisibleWhere(v, params.length + 1);
+  params.push(...visible.params);
+  where.push(...visible.sql);
+  const limitParam = params.length + 1;
+  params.push(limit);
   const { rows } = await client.query(
-    `${EVENT_SELECT} WHERE ${where.join(" AND ")} ORDER BY e.start_at ASC LIMIT 500`,
+    `${EVENT_SELECT.replace("SELECT e.*,", "SELECT e.*, COUNT(*) OVER() AS _total,")} WHERE ${where.join(" AND ")} ORDER BY e.start_at ASC LIMIT $${limitParam}`,
     params,
   );
-  return rows;
+  const total = rows.length ? Number(rows[0]._total) : 0;
+  return { rows, total, truncated: total > rows.length };
+}
+
+async function listEvents(client, options) {
+  return (await listEventsWindow(client, options)).rows;
 }
 
 async function insertEvent(client, e) {
@@ -408,14 +537,14 @@ async function insertEvent(client, e) {
     `INSERT INTO calendar_event (
        title, event_type, location, description, start_at, end_at, all_day,
        recurrence_rule, recurrence_series_id, created_by, reminder_minutes,
-       remind_at, entity_type, entity_id
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+       remind_at, entity_type, entity_id, scope_id
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
      RETURNING *`,
     [
       e.title, e.event_type || "other", e.location ?? null, e.description ?? null,
       e.start_at, e.end_at, e.all_day === true, e.recurrence_rule ?? null,
       e.recurrence_series_id ?? null, e.created_by ?? null, e.reminder_minutes ?? null,
-      e.remind_at ?? null, e.entity_type ?? null, e.entity_id ?? null,
+      e.remind_at ?? null, e.entity_type ?? null, e.entity_id ?? null, e.scope_id ?? null,
     ],
   );
   return rows[0];
@@ -431,7 +560,7 @@ async function updateEvent(client, id, patch, { rearm = false } = {}) {
   const params = [];
   for (const key of ["title", "event_type", "location", "description", "start_at", "end_at",
     "all_day", "recurrence_rule", "recurrence_series_id", "reminder_minutes", "remind_at",
-    "entity_type", "entity_id"]) {
+    "entity_type", "entity_id", "scope_id"]) {
     if (!(key in patch)) continue;
     params.push(patch[key] ?? null);
     sets.push(`${key} = $${params.length}`);
@@ -607,7 +736,7 @@ async function listSpawnDueTasks(client, nowIso, limit) {
 async function listSpawnDueEvents(client, nowIso, limit) {
   const { rows } = await client.query(
     `SELECT calendar_event_id, title, event_type, location, description,
-            start_at, end_at, all_day, created_by, entity_type, entity_id,
+            start_at, end_at, all_day, created_by, entity_type, entity_id, scope_id,
             reminder_minutes, recurrence_rule, recurrence_series_id
        FROM calendar_event
       WHERE recurrence_rule IS NOT NULL AND is_deleted = false
@@ -676,8 +805,8 @@ async function insertSpawnedEvent(client, e) {
     `INSERT INTO calendar_event (
        title, event_type, location, description, start_at, end_at, all_day,
        recurrence_rule, recurrence_series_id, created_by, reminder_minutes,
-       remind_at, entity_type, entity_id
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+       remind_at, entity_type, entity_id, scope_id
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
      ON CONFLICT (recurrence_series_id, start_at)
        WHERE recurrence_series_id IS NOT NULL
        DO NOTHING
@@ -686,7 +815,7 @@ async function insertSpawnedEvent(client, e) {
       e.title, e.event_type || "other", e.location ?? null, e.description ?? null,
       e.start_at, e.end_at, e.all_day === true, e.recurrence_rule ?? null,
       e.recurrence_series_id ?? null, e.created_by ?? null, e.reminder_minutes ?? null,
-      e.remind_at ?? null, e.entity_type ?? null, e.entity_id ?? null,
+      e.remind_at ?? null, e.entity_type ?? null, e.entity_id ?? null, e.scope_id ?? null,
     ],
   );
   return rows[0] || null;
@@ -804,7 +933,7 @@ async function updateSeriesEvents(client, seriesId, patch, { exclude, rearm = fa
   const sets = [];
   const params = [];
   for (const key of ["title", "event_type", "location", "description", "start_at", "end_at",
-    "all_day", "reminder_minutes", "remind_at", "recurrence_rule"]) {
+    "all_day", "reminder_minutes", "remind_at", "recurrence_rule", "scope_id"]) {
     if (!(key in patch)) continue;
     params.push(patch[key] ?? null);
     sets.push(`${key} = $${params.length}`);
@@ -824,10 +953,10 @@ async function updateSeriesEvents(client, seriesId, patch, { exclude, rearm = fa
 
 module.exports = {
   visibleWhere,
-  listTasks, boardTasks, tasksInRange, subtasksInRange, insertTask, findTask, updateTask, softDeleteTask,
+  listTasks, boardTasks, tasksInRange, subtasksInRange, dayTasks, daySubtasks, insertTask, findTask, updateTask, softDeleteTask,
   listSubtasks, insertSubtask, updateSubtask, deleteSubtask,
   listWatchers, addWatcher, removeWatcher,
-  listEvents, insertEvent, findEvent, updateEvent, softDeleteEvent, findEventClashes,
+  eventVisibleWhere, listEventsWindow, listEvents, insertEvent, findEvent, updateEvent, softDeleteEvent, findEventClashes,
   listParticipants, insertParticipant, respondParticipant, removeParticipant,
   dueTaskReminders, dueEventReminders, markTaskReminderSent, markEventReminderSent,
   listSpawnDueTasks, listSpawnDueEvents, countSeriesTasks, countSeriesEvents,

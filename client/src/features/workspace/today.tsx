@@ -36,52 +36,29 @@ import { PageHeader } from "@/components/data-list";
 import { Panel } from "@/components/ui/panel";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { Button } from "@/components/ui/button";
-import { EmptyState, LoadingRow } from "@/components/ui/states";
-import { ScreenError } from "@/components/connection/screen-error";
-import { dateFmt, dateTimeFmt, humanizeRef, money, num } from "@/lib/format";
-import { useResource } from "@/lib/use-resource";
-import { tenant } from "@/lib/api-client";
+import { EmptyState, ErrorState, LoadingRow } from "@/components/ui/states";
+import { dateFmt, humanizeRef, money, num } from "@/lib/format";
 import { RecentActivity } from "@/features/dashboard/components/recent-activity";
-import { useDay, useReceiptsOwed } from "./hooks";
+import {
+  useApprovals,
+  useDay,
+  useReceiptsOwed,
+  useUnreadAlerts,
+  useWorkspaceContext,
+} from "./hooks";
 import type { ReceiptOwed, TimelineItem } from "./api";
-import { PRIORITY_LABEL, PRIORITY_TONE, STATUS_LABEL, eventTypeTone, humanizeType } from "./labels";
+import { tenantDateTimeFmt } from "./time";
+import {
+  PRIORITY_LABEL,
+  PRIORITY_TONE,
+  STATUS_LABEL,
+  eventTypeTone,
+  humanizeType,
+} from "./labels";
 import { TaskDialog } from "./tasks/task-dialog";
 import { EventDialog } from "./calendar/event-dialog";
 
-/* ── the approvals / alerts roll-up (`GET /workspace`) ────────────────────── */
-
-/**
- * One row of `GET /workspace`'s roll-up. The fields are the COLUMNS of the two
- * tables behind it — `approval_task` and `notification` — because the repo
- * answers both with `SELECT *` (workspace.repo.js). Every field is optional for
- * the same reason: that query runs through `safe()`, which turns a failed read
- * into an empty list, so a row here is a best-effort shape, not a promise.
- *
- * Note what is NOT here: `step_kind` (VALIDATE / APPROVE) belongs to
- * `workflow_step`, not `approval_task`, so this endpoint cannot supply it. The
- * queue at `/approvals` can, because it joins the step.
- */
-type Approval = {
-  approval_task_id?: string;
-  id?: string;
-  entity_ref?: string | null;
-  amount_xaf?: number | string | null;
-  created_at?: string | null;
-};
-
-type Note = {
-  notification_id?: string;
-  id?: string;
-  title?: string | null;
-  priority?: string | null;
-  event_type_key?: string | null;
-  created_at?: string | null;
-};
-
-type Mine = {
-  approvals_awaiting_me?: Approval[];
-  unread_notifications?: Note[];
-};
+/* ── focused Today panel reads ──────────────────────────────────────────── */
 
 /**
  * `notification.priority` is CHECK-constrained to NORMAL | HIGH
@@ -102,13 +79,16 @@ export function TodayPage() {
   const q = useDay();
   const items = q.data?.items ?? [];
 
-  // Approvals awaiting this person and alerts they have not opened. One
-  // request, `GET /workspace`, answers both — and unlike the task and event
-  // routes it carries no permission gate (workspace.routes.js), so it cannot
-  // 403 a user who is entitled to their own queue.
-  const mine = useResource(() => tenant<Mine>("/workspace"), []);
-  const approvals = mine.data?.approvals_awaiting_me ?? [];
-  const notes = mine.data?.unread_notifications ?? [];
+  // Focused reads keep approvals and alerts independently retryable. The old
+  // `/workspace` facade remains for compatibility, but Today does not depend on
+  // one combined request.
+  const approvalsQ = useApprovals();
+  const alertsQ = useUnreadAlerts();
+  const approvals = approvalsQ.data ?? [];
+  const notes = alertsQ.data ?? [];
+  const contextQ = useWorkspaceContext();
+  const tenantTimeZone =
+    contextQ.data?.timeZone ?? q.data?.timezone ?? "Africa/Douala";
 
   // "Cash to account for" (MOD-76, owner Q10) — its own fetch so it never gates
   // the day timeline, and its own panel below the day.
@@ -134,165 +114,247 @@ export function TodayPage() {
         }
       />
 
-      {q.error ? (
-        <ScreenError message={q.error.message} what="Your day" onRetry={() => void q.refetch()} />
-      ) : (
-        <>
-          <div className="grid gap-4 lg:grid-cols-2">
-            <Panel
-              title="Awaiting me"
-              action={
-                <Link
-                  to="/approvals"
-                  className="text-sm text-muted-foreground transition-colors hover:text-primary-ink"
-                >
-                  Open queue →
-                </Link>
-              }
-            >
-              {mine.loading ? (
-                <LoadingRow label="Loading your queue…" />
-              ) : approvals.length ? (
-                <ul className="space-y-2">
-                  {approvals.slice(0, 8).map((a, i) => (
-                    <li
-                      key={a.approval_task_id || a.id || i}
-                      className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2 text-sm"
-                    >
-                      <span className="min-w-0 flex-1 truncate">
-                        {humanizeRef(a.entity_ref) || "—"}
-                      </span>
-                      <span className="num shrink-0 text-muted-foreground">
-                        {money(a.amount_xaf)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="micro">Nothing awaiting your validation or approval.</p>
-              )}
-            </Panel>
-
-            <Panel
-              title="Unread alerts"
-              action={
-                <Link
-                  to="/notifications"
-                  className="text-sm text-muted-foreground transition-colors hover:text-primary-ink"
-                >
-                  All notifications →
-                </Link>
-              }
-            >
-              {mine.loading ? (
-                <LoadingRow label="Loading your alerts…" />
-              ) : notes.length ? (
-                <ul className="space-y-2">
-                  {notes.slice(0, 8).map((n, i) => (
-                    <li
-                      key={n.notification_id || n.id || i}
-                      className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2 text-sm"
-                    >
-                      <span className="flex min-w-0 flex-1 items-center gap-2">
-                        <Pill tone={prioTone(n.priority)}>{n.priority || "NORMAL"}</Pill>
-                        <span className="truncate">
-                          {n.title || n.event_type_key || "Notification"}
-                        </span>
-                      </span>
-                      <span className="micro num shrink-0">{dateFmt(n.created_at)}</span>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="micro">You're all caught up.</p>
-              )}
-            </Panel>
-          </div>
-
-          <div className="mt-4 grid items-start gap-4 lg:grid-cols-3">
-            <Panel
-              title="The day"
-              subtitle={
-                q.data
-                  ? `${q.data.tasks} task${q.data.tasks === 1 ? "" : "s"} · ${q.data.events} event${q.data.events === 1 ? "" : "s"}`
-                  : undefined
-              }
-              className="lg:col-span-2"
-            >
-              {q.isLoading ? (
-                <LoadingRow label="Loading your day…" />
-              ) : items.length === 0 ? (
-                <EmptyState
-                  title="Nothing due today"
-                  hint="Add a task with a date, or put an appointment in the diary, and it will appear here in time order."
-                  action={<Button onClick={() => setTaskOpen(true)}>New task</Button>}
-                />
-              ) : (
-                <ul className="divide-y">
-                  {items.map((item) => (
-                    <TimelineRow key={`${item.kind}:${item.id}`} item={item} onOpen={navigate} />
-                  ))}
-                </ul>
-              )}
-            </Panel>
-
-            <div className="lg:col-span-1">
-              {/* Self-scoped (`/audit/my-feed`) — the person's own recent
-                  actions, the same widget the Control Tower renders, reused
-                  rather than rebuilt. `tight` drops the margins it carries for
-                  the wide tower layout so it aligns with the day Panel. */}
-              <RecentActivity tight />
-            </div>
-          </div>
-
+      <>
+        <div className="grid gap-4 lg:grid-cols-2">
           <Panel
-            title="Cash to account for"
-            subtitle={
-              owedQ.isLoading
-                ? "Money you've received that still needs a receipt."
-                : `Money you've received that still needs a receipt · ${num(owed.count)} for ${money(owed.total_ttc)}.`
-            }
-            className="mt-4"
+            title="Awaiting me"
             action={
               <Link
-                to="/costing/reconciliation"
+                to="/approvals"
                 className="text-sm text-muted-foreground transition-colors hover:text-primary-ink"
               >
-                Open sheets →
+                Open queue →
               </Link>
             }
           >
-            {owedQ.isLoading ? (
-              <LoadingRow label="Loading what you owe…" />
-            ) : owedItems.length ? (
-              <ul className="space-y-2">
-                {owedItems.slice(0, 8).map((it, i) => (
-                  <li
-                    key={it.costing_line_id + "-" + i}
-                    className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm"
+            {approvalsQ.isLoading ? (
+              <LoadingRow label="Loading your queue…" />
+            ) : approvalsQ.error ? (
+              <ErrorState
+                message={approvalsQ.error.message}
+                action={
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void approvalsQ.refetch()}
                   >
-                    <span className="min-w-0 truncate">
-                      <span className="font-medium">{it.dossier_ref || "—"}</span>
-                      <span className="text-muted-foreground"> · {it.line_label || "—"}</span>
+                    Retry
+                  </Button>
+                }
+              />
+            ) : approvals.length ? (
+              <ul className="space-y-2">
+                {approvals.slice(0, 8).map((a, i) => (
+                  <li
+                    key={a.approval_task_id || a.id || i}
+                    className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2 text-sm"
+                  >
+                    <span className="min-w-0 flex-1 truncate">
+                      {humanizeRef(a.entity_ref) || "—"}
                     </span>
-                    <span className="flex shrink-0 items-center gap-3">
-                      <Link
-                        to={reconLineLink(it)}
-                        className="text-sm text-primary-ink transition-colors hover:underline"
-                      >
-                        Upload →
-                      </Link>
-                      <span className="num text-muted-foreground">{money(it.claimed_ttc)}</span>
+                    <span className="num shrink-0 text-muted-foreground">
+                      {money(a.amount_xaf)}
                     </span>
                   </li>
                 ))}
               </ul>
             ) : (
-              <p className="micro">No receipts owed. Any cash you take will show up here.</p>
+              <p className="micro">
+                Nothing awaiting your validation or approval.
+              </p>
             )}
           </Panel>
-        </>
-      )}
+
+          <Panel
+            title="Unread alerts"
+            action={
+              <Link
+                to="/notifications"
+                className="text-sm text-muted-foreground transition-colors hover:text-primary-ink"
+              >
+                All notifications →
+              </Link>
+            }
+          >
+            {alertsQ.isLoading ? (
+              <LoadingRow label="Loading your alerts…" />
+            ) : alertsQ.error ? (
+              <ErrorState
+                message={alertsQ.error.message}
+                action={
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void alertsQ.refetch()}
+                  >
+                    Retry
+                  </Button>
+                }
+              />
+            ) : notes.length ? (
+              <ul className="space-y-2">
+                {notes.slice(0, 8).map((n, i) => (
+                  <li
+                    key={n.notification_id || n.id || i}
+                    className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2 text-sm"
+                  >
+                    <span className="flex min-w-0 flex-1 items-center gap-2">
+                      <Pill tone={prioTone(n.priority)}>
+                        {n.priority || "NORMAL"}
+                      </Pill>
+                      <span className="truncate">
+                        {n.title || n.event_type_key || "Notification"}
+                      </span>
+                    </span>
+                    <span className="micro num shrink-0">
+                      {dateFmt(n.created_at)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="micro">You're all caught up.</p>
+            )}
+          </Panel>
+        </div>
+
+        <div className="mt-4 grid items-start gap-4 lg:grid-cols-3">
+          <Panel
+            title="The day"
+            subtitle={
+              q.data
+                ? (() => {
+                    const counts = q.data.counts ?? {
+                      tasks: q.data.tasks,
+                      events: q.data.events,
+                      deadlines: q.data.deadlines ?? 0,
+                    };
+                    return `${counts.tasks} task deadline${counts.tasks === 1 ? "" : "s"} · ${counts.deadlines} step deadline${counts.deadlines === 1 ? "" : "s"} · ${counts.events} event${counts.events === 1 ? "" : "s"}`;
+                  })()
+                : undefined
+            }
+            className="lg:col-span-2"
+          >
+            {q.isLoading ? (
+              <LoadingRow label="Loading your day…" />
+            ) : q.error ? (
+              <ErrorState
+                message={q.error.message}
+                action={
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void q.refetch()}
+                  >
+                    Retry
+                  </Button>
+                }
+              />
+            ) : items.length === 0 ? (
+              <EmptyState
+                title="Nothing due today"
+                hint="Add a task with a date, or put an appointment in the diary, and it will appear here in time order."
+                action={
+                  <Button onClick={() => setTaskOpen(true)}>New task</Button>
+                }
+              />
+            ) : (
+              <ul className="divide-y">
+                {items.map((item) => (
+                  <TimelineRow
+                    key={`${item.kind}:${item.id}`}
+                    item={item}
+                    onOpen={navigate}
+                    timeZone={tenantTimeZone}
+                  />
+                ))}
+              </ul>
+            )}
+            {q.data?.truncated &&
+              Object.values(q.data.truncated).some(Boolean) && (
+                <p className="mt-3 rounded-md border border-dashed border-border p-3 text-sm text-muted-foreground">
+                  This day is showing the most relevant results within the
+                  Workspace limit. Open Tasks or Calendar for the complete set.
+                </p>
+              )}
+          </Panel>
+
+          <div className="lg:col-span-1">
+            {/* Self-scoped (`/audit/my-feed`) — the person's own recent
+                  actions, the same widget the Control Tower renders, reused
+                  rather than rebuilt. `tight` drops the margins it carries for
+                  the wide tower layout so it aligns with the day Panel. */}
+            <RecentActivity tight />
+          </div>
+        </div>
+
+        <Panel
+          title="Cash to account for"
+          subtitle={
+            owedQ.isLoading
+              ? "Money you've received that still needs a receipt."
+              : `Money you've received that still needs a receipt · ${num(owed.count)} for ${money(owed.total_ttc)}.`
+          }
+          className="mt-4"
+          action={
+            <Link
+              to="/costing/reconciliation"
+              className="text-sm text-muted-foreground transition-colors hover:text-primary-ink"
+            >
+              Open sheets →
+            </Link>
+          }
+        >
+          {owedQ.isLoading ? (
+            <LoadingRow label="Loading what you owe…" />
+          ) : owedQ.error ? (
+            <ErrorState
+              message={owedQ.error.message}
+              action={
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void owedQ.refetch()}
+                >
+                  Retry
+                </Button>
+              }
+            />
+          ) : owedItems.length ? (
+            <ul className="space-y-2">
+              {owedItems.slice(0, 8).map((it, i) => (
+                <li
+                  key={it.costing_line_id + "-" + i}
+                  className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm"
+                >
+                  <span className="min-w-0 truncate">
+                    <span className="font-medium">{it.dossier_ref || "—"}</span>
+                    <span className="text-muted-foreground">
+                      {" "}
+                      · {it.line_label || "—"}
+                    </span>
+                  </span>
+                  <span className="flex shrink-0 items-center gap-3">
+                    <Link
+                      to={reconLineLink(it)}
+                      className="text-sm text-primary-ink transition-colors hover:underline"
+                    >
+                      Upload →
+                    </Link>
+                    <span className="num text-muted-foreground">
+                      {money(it.claimed_ttc)}
+                    </span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="micro">
+              No receipts owed. Any cash you take will show up here.
+            </p>
+          )}
+        </Panel>
+      </>
 
       <TaskDialog open={taskOpen} onClose={() => setTaskOpen(false)} />
       <EventDialog open={eventOpen} onClose={() => setEventOpen(false)} />
@@ -303,19 +365,23 @@ export function TodayPage() {
 function TimelineRow({
   item,
   onOpen,
+  timeZone,
 }: {
   item: TimelineItem;
   onOpen: (path: string) => void;
+  timeZone: string;
 }) {
   const open = () => {
     // A record link goes to the record; otherwise the item opens in its own
     // surface. A row with nowhere to go is still a row — it just is not a link.
     if (item.link_url) onOpen(item.link_url);
     else if (item.kind === "task") onOpen(`/workspace/tasks?task=${item.id}`);
+    else if (item.kind === "subtask")
+      onOpen(`/workspace/tasks?task=${item.task_id}`);
     else onOpen(`/workspace/calendar?event=${item.id}`);
-  }
+  };
 
-  const time = item.at ? dateTimeFmt(item.at) : "No deadline";
+  const time = item.at ? tenantDateTimeFmt(item.at, timeZone) : "No deadline";
 
   return (
     <li>
@@ -335,17 +401,33 @@ function TimelineRow({
           }`}
         />
 
-        <span className="num w-32 shrink-0 text-sm text-muted-foreground">{time}</span>
+        <span className="num w-32 shrink-0 text-sm text-muted-foreground">
+          {time}
+        </span>
 
         <span className="min-w-0 flex-1 truncate text-sm">
           {item.kind === "event" ? (
             <>
-              <Pill tone={eventTypeTone(item.event_type)}>{humanizeType(item.event_type)}</Pill>{" "}
+              <Pill tone={eventTypeTone(item.event_type)}>
+                {humanizeType(item.event_type)}
+              </Pill>{" "}
               {item.title}
+            </>
+          ) : item.kind === "subtask" ? (
+            <>
+              <Pill tone="mute">Step</Pill> {item.title}
+              {item.task_title && (
+                <span className="text-muted-foreground">
+                  {" "}
+                  · {item.task_title}
+                </span>
+              )}
             </>
           ) : (
             <>
-              <Pill tone={PRIORITY_TONE[item.priority]}>{PRIORITY_LABEL[item.priority]}</Pill>{" "}
+              <Pill tone={PRIORITY_TONE[item.priority]}>
+                {PRIORITY_LABEL[item.priority]}
+              </Pill>{" "}
               {item.title}
             </>
           )}
@@ -354,7 +436,9 @@ function TimelineRow({
         {item.kind === "task" ? (
           <span className="flex shrink-0 items-center gap-2">
             {item.is_overdue && <Pill tone="bad">Overdue</Pill>}
-            <Pill tone={item.status === "DONE" ? "ok" : "mute"}>{STATUS_LABEL[item.status]}</Pill>
+            <Pill tone={item.status === "DONE" ? "ok" : "mute"}>
+              {STATUS_LABEL[item.status]}
+            </Pill>
             {item.subtask_count > 0 && (
               <span className="num micro">
                 {item.subtask_done_count}/{item.subtask_count}
@@ -366,6 +450,11 @@ function TimelineRow({
               </span>
             )}
           </span>
+        ) : item.kind === "subtask" ? (
+          <span className="flex shrink-0 items-center gap-2">
+            {item.is_overdue && <Pill tone="bad">Overdue</Pill>}
+            <Pill tone="mute">Open</Pill>
+          </span>
         ) : (
           <span className="flex shrink-0 items-center gap-2">
             {item.all_day && <Pill tone="mute">All day</Pill>}
@@ -375,7 +464,9 @@ function TimelineRow({
               </span>
             )}
             {item.participant_count > 0 && (
-              <span className="num micro">{item.participant_count} invited</span>
+              <span className="num micro">
+                {item.participant_count} invited
+              </span>
             )}
           </span>
         )}

@@ -140,7 +140,9 @@ const OWED = {
 beforeEach(() => {
   tenant.mockReset();
   tenant.mockImplementation((p: string) => {
-    if (p === "/workspace") return Promise.resolve(MINE);
+    if (p === "/workspace/approvals") return Promise.resolve(MINE.approvals_awaiting_me);
+    if (p === "/workspace/alerts") return Promise.resolve(MINE.unread_notifications);
+    if (p === "/workspace/context") return Promise.resolve({ timeZone: "Africa/Douala" });
     if (p === "/costing/reconciliations/owed") return Promise.resolve(OWED);
     return Promise.resolve({});
   });
@@ -149,10 +151,11 @@ beforeEach(() => {
 });
 
 describe("Today — the approvals and alerts roll-up", () => {
-  it("reads the roll-up off GET /workspace", async () => {
+  it("reads approvals and alerts through focused Today endpoints", async () => {
     view();
     await screen.findByText("Purchase request PR-1042");
-    expect(tenant).toHaveBeenCalledWith("/workspace");
+    expect(tenant).toHaveBeenCalledWith("/workspace/approvals");
+    expect(tenant).toHaveBeenCalledWith("/workspace/alerts");
   });
 
   it("mounts the self-scoped Recent activity widget beside the day", async () => {
@@ -177,11 +180,12 @@ describe("Today — the approvals and alerts roll-up", () => {
   });
 
   it("says so when nothing is owed", async () => {
-    tenant.mockImplementation((p: string) =>
-      p === "/workspace"
-        ? Promise.resolve(MINE)
-        : Promise.resolve({ count: 0, total_ttc: 0, items: [] }),
-    );
+    tenant.mockImplementation((p: string) => {
+      if (p === "/workspace/approvals") return Promise.resolve(MINE.approvals_awaiting_me);
+      if (p === "/workspace/alerts") return Promise.resolve(MINE.unread_notifications);
+      if (p === "/workspace/context") return Promise.resolve({ timeZone: "Africa/Douala" });
+      return Promise.resolve({ count: 0, total_ttc: 0, items: [] });
+    });
     view();
 
     expect(await screen.findByText(/No receipts owed/)).toBeTruthy();

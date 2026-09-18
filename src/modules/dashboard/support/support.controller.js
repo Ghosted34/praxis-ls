@@ -1,3 +1,4 @@
+// ai:none — tenant→Praxis support tickets live in the CENTRAL platform DB (platform.support_ticket, keyed by tenant_id), and this service is addressed by `(tenantId, email)` rather than by a tenant connection. The AI toolbox runs every tool on the caller's tenant client, which cannot reach that table, and the actor carries no tenant_id — so wiring it needs the actor widened at every AI entry point first. Tracked in doc/PRAXIS_AI_AUDIT.md §0.
 /**
  * Tenant-side Support & Feedback controller — thin. Tickets are scoped to the
  *  caller's tenant (req.tenant.tenant_id) and stamped with their email.

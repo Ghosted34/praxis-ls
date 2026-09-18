@@ -10,7 +10,10 @@ const create = z.object({
   due_at: z.string().optional().nullable(),
 });
 const respond = z.object({ response: z.string().min(1).max(5000) });
-const schemas = { create, update: create.partial(), respond };
+const update = create.partial();
+// AI-facing: the record id travels IN the payload — the copilot has no route param.
+const aiUpdate = update.extend({ hr_query_id: z.string().uuid() });
+const schemas = { create, update, respond, aiUpdate };
 
 const mw = (k) => (req, _res, next) => {
   const p = schemas[k].safeParse(req.body);

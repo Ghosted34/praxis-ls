@@ -35,7 +35,13 @@ const composePrefill = z.object({
   entity_id: z.string().uuid().nullish(),
   language: docLanguage,
 });
-const schemas = { setConfig, preview, sendDoc, composePrefill };
+// AI-facing: the doc type is in the URL for the HTTP routes, but a copilot call
+// has no URL — it passes one flat object, so it must be IN the schema.
+const docType = z.string().min(1).max(64);
+const aiGetConfig = z.object({ doc_type: docType, entity_id: z.string().uuid().nullish() });
+const aiSetConfig = setConfig.extend({ doc_type: docType });
+
+const schemas = { setConfig, preview, sendDoc, composePrefill, aiGetConfig, aiSetConfig };
 
 const mw = (k) => (req, _res, next) => {
   const p = schemas[k].safeParse(req.body);

@@ -5,13 +5,14 @@ const { body, query } = require("../../../shared/http/validate");
 
 const dataUrl = z.string().min(20).max(40_000_000).refine((v) => /^data:[^;]+;base64,/i.test(v), "Expected a base64 data URL");
 
-const issue = body(z.object({
+const issueShape = z.object({
   request_id: z.string().uuid().optional().nullable(),
   party_id: z.string().uuid().optional().nullable(),
   entity_ref: z.string().min(1).max(200),
   doc_type: z.string().min(1).max(80),
   document_vault_id: z.string().uuid().optional().nullable(),
-}).strict());
+}).strict();
+const issue = body(issueShape);
 
 const ingest = body(z.object({
   source: z.enum(["UPLOAD", "EMAIL", "MOBILE"]).default("UPLOAD"),
@@ -33,8 +34,17 @@ const reject = body(z.object({
   reason: z.string().min(1).max(500).optional().nullable(),
 }).strict());
 
-const listQuery = query(z.object({
+const listQueryShape = z.object({
   limit: z.coerce.number().int().min(1).max(500).optional(),
-}).strict());
+}).strict();
+const listQuery = query(listQueryShape);
 
-module.exports = { issue, ingest, decode, bind, reject, listQuery, empty };
+// AI-facing: the raw shapes, so <module>.ai.js can declare payload schemas.
+// The print job is in the URL for the HTTP routes; a copilot call has no URL.
+const schemas = {
+  issue: issueShape,
+  listQuery: listQueryShape,
+  aiPrinted: z.object({ print_job_id: z.string().uuid() }),
+};
+
+module.exports = { issue, ingest, decode, bind, reject, listQuery, empty, schemas };

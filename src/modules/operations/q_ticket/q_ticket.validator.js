@@ -17,7 +17,12 @@ const reply = z.object({
 });
 const resolve = z.object({}).passthrough();
 
-const schemas = { raise, reply, resolve };
+// AI-facing: the ticket is in the URL for the HTTP routes, but a copilot call
+// has no URL — it passes one flat object, so the id must be IN the schema.
+const aiReply = reply.extend({ q_ticket_id: z.string().uuid() });
+const aiResolve = z.object({ q_ticket_id: z.string().uuid() });
+
+const schemas = { raise, reply, resolve, aiReply, aiResolve };
 const mw = (k) => (req, _res, next) => {
   const p = schemas[k].safeParse(req.body);
   if (!p.success) return next(new AppError("VALIDATION_ERROR", "Invalid body", 422, p.error.flatten().fieldErrors));

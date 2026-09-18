@@ -1,3 +1,4 @@
+// ai:none — white-label appearance. A tenant's colours, logo and fonts are theirs to choose in the appearance screen; nothing is gained by asking a model to repaint the product.
 /**
  * BRANDING RESOLUTION: LIVE IS THE BASE, SANDBOX MAY OVERRIDE — 2026-08-01.
  *

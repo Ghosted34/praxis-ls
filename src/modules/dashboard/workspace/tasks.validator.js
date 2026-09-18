@@ -108,7 +108,7 @@ const taskCreate = z
   })
   .strict();
 
-const taskUpdate = z
+const taskUpdateShape = z
   .object({
     title: z.string().trim().min(1).max(300).optional(),
     description: z.string().trim().max(4000).nullable().optional(),
@@ -124,8 +124,9 @@ const taskUpdate = z
     recurrence_rule: recurrenceRule.nullable().optional(),
     series: z.enum(SERIES_SCOPE).optional(),
   })
-  .strict()
-  .refine((v) => Object.keys(v).length > 0, { message: "nothing to update" });
+  .strict();
+const NOTHING_TO_UPDATE = { message: "nothing to update" };
+const taskUpdate = taskUpdateShape.refine((v) => Object.keys(v).length > 0, NOTHING_TO_UPDATE);
 
 // The effective audience rides on the body so a Team/All card moved from the
 // board reaches the server with the reach the board was rendered at (B-03).
@@ -303,7 +304,7 @@ const eventCreate = z
   })
   .strict();
 
-const eventUpdate = z
+const eventUpdateShape = z
   .object({
     title: z.string().trim().min(1).max(200).optional(),
     event_type: z.string().trim().min(1).max(40).optional(),
@@ -321,8 +322,8 @@ const eventUpdate = z
     series: z.enum(SERIES_SCOPE).optional(),
     force: z.boolean().optional(),
   })
-  .strict()
-  .refine((v) => Object.keys(v).length > 0, { message: "nothing to update" });
+  .strict();
+const eventUpdate = eventUpdateShape.refine((v) => Object.keys(v).length > 0, NOTHING_TO_UPDATE);
 
 const participantAdd = z
   .object({
@@ -373,6 +374,16 @@ module.exports = {
   eventListQuery: query(eventListQuery),
   // Exposed for tests and for the client's shared-schema gate.
   schemas: {
+    // AI-facing: the task or event is in the URL for the HTTP routes, but a
+    // copilot call has no URL — it passes one flat object, so the id must be IN
+    // the schema. `nothing to update` becomes "nothing BUT the id".
+    aiTaskUpdate: taskUpdateShape
+      .extend({ task_id: z.string().uuid() })
+      .refine((v) => Object.keys(v).length > 1, NOTHING_TO_UPDATE),
+    aiStatusChange: statusChange.extend({ task_id: z.string().uuid() }),
+    aiEventUpdate: eventUpdateShape
+      .extend({ event_id: z.string().uuid() })
+      .refine((v) => Object.keys(v).length > 1, NOTHING_TO_UPDATE),
     taskCreate, taskUpdate, statusChange, subtaskAdd, subtaskPatch, watcherAdd,
     childCreate, dependencyAdd, dependencyOverride, taskPing,
     taskDetailQuery, analyticsQuery,

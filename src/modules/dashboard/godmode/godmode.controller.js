@@ -1,3 +1,4 @@
+// ai:none — the Praxis-side cross-tenant admin console. A tenant's copilot must not be able to see, let alone act, across tenants.
 "use strict";
 const service = require("./godmode.service");
 const { asyncHandler } = require("../../../utils/errors");

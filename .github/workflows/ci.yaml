@@ -421,6 +421,31 @@ jobs:
         # a `writable` allow-list is mass assignment waiting to happen.
         run: node scripts/check-write-route-validators.js
 
+      - name: AI manifest coverage
+        # Audit I3: 38 of 119 modules with a controller had NO `<module>.ai.js`,
+        # several of them built after Praxis AI shipped. The assistant could not
+        # see, answer about, or act on any of them — so AI_ARCHITECTURE §0's
+        # "AI capability always equals app capability" was simply untrue, and
+        # nothing in the repository could tell you.
+        #
+        # Every module with a public controller now either declares its AI
+        # surface or carries an `// ai:none <reason>` opt-out in its controller.
+        # The reason is required: a bare marker records no decision.
+        run: node scripts/check-ai-manifest-coverage.js
+
+      - name: AI catalogue drift
+        # Audit I2: `AI_ARCHITECTURE.md` claimed the catalogue updates
+        # automatically with zero drift. It does not — it is as fresh as the
+        # last `sync-actions` run, and nothing checked that the manifests behind
+        # it were consistent. This is the half that needs no database: keys are
+        # unique, every ai_enabled action resolves to an executor, every write
+        # declares a schema and a permission verb `action-authz` can map.
+        #
+        # The other half (the diff against a tenant's real `ai_action_catalogue`
+        # rows, in BOTH live and sandbox — audit I4) runs in the migrations job,
+        # which is the one that has a provisioned tenant.
+        run: node scripts/ai/sync-actions.js --check
+
       - name: API contract
         # Audit API F-30: nothing would catch a contract regression. No
         # versioning to roll behind, no trustworthy spec to diff, and zero tests
@@ -599,6 +624,27 @@ jobs:
         # so no static gate can see it. It runs here because this job already
         # provisions a tenant from nothing.
         run: node scripts/db/check-schema-parity.js --slug=citenant
+
+      - name: AI catalogue syncs to live AND sandbox
+        # Audit I4. Nothing calls `syncCatalogue` on provision — the only caller
+        # in the tree is this script — so a freshly provisioned tenant carries
+        # whatever the seed put in `ai_action_catalogue`, in both schemas. That
+        # is exactly the "it works in live but not in test" report: sandbox is
+        # never reached unless somebody runs the sync pointing at it.
+        #
+        # Two commands on purpose, and the ORDER is what makes it a test rather
+        # than a repair. The sync writes both schemas; the check then re-derives
+        # the catalogue and diffs it against the rows in EACH of them. A second
+        # pass finding nothing to change is the assertion: the sync is complete
+        # (nothing missing), idempotent (nothing changed), and reaches sandbox
+        # (which the check reads separately). If sandbox were skipped again, the
+        # second command fails naming every action missing from it.
+        #
+        # The manifest-side half of this check runs in build-test, where it
+        # needs no database.
+        run: |
+          node scripts/ai/sync-actions.js --tenant=citenant
+          node scripts/ai/sync-actions.js --check --tenant=citenant
 
       - name: Probe the constraints that cannot be NOT VALID
         # 0498's unique doc_number indexes either build or fail the migration.

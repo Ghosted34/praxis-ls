@@ -9,38 +9,90 @@
 const crypto = require("crypto");
 const llm = require("./llm.service");
 const { retrieve, toContextBlock } = require("./retrieval.service");
-const { redact } = require("./redact");
+const { redactExternal, redactForReasoning } = require("./redact");
 const governance = require("../../modules/ai/governance/governance.service");
 const convo = require("../../modules/ai/assistant/assistant.repo");
 const { buildFieldMeta } = require("./action-fields");
 const { logger } = require("../../config/logger");
 const actionAuthz = require("./action-authz");
 const { buildSources, buildTrace } = require("./answer-sources");
+const { config } = require("../../config/env");
 
 /**
  * How many past turns are replayed to the model. Stored history is unbounded —
  * this only caps what is re-sent, so cost per call stays flat however long the
- * thread grows. 20 messages ≈ 10 question/answer exchanges.
+ * thread grows. Configurable (audit D3): the old value was a fixed 20 (≈10
+ * exchanges), sized purely for cost control against a hard-capped budget; the
+ * default is now `AI_HISTORY_TURNS` (40), a real working-session window. Prompt
+ * caching (audit B5) will make an even larger window cheap.
  */
-const HISTORY_TURNS = 20;
+const HISTORY_TURNS = config.AI_HISTORY_TURNS;
 
 /**
- * How many messages must fall out of the replay window before the summary is
+ * How many messages must fall out of the summarised region before the summary is
  * regenerated (0481).
  *
  * The trade-off this number encodes: regenerating on every turn would mean a
  * second model call per question — roughly doubling the cost of a long thread,
  * against a budget that is hard-capped per tenant. Batching makes it one extra
- * call per ten turns. The price is a **gap**: up to `SUMMARY_BATCH - 1` messages
- * can sit outside both the replay window and the summary, so a detail mentioned
- * exactly there is briefly unavailable until the next batch absorbs it. Bounded,
- * self-correcting, and much cheaper than the alternative — but real, so it is
- * written down rather than discovered.
+ * call per ten turns.
+ *
+ * This used to open a **gap**: up to `SUMMARY_BATCH - 1` messages could sit
+ * outside BOTH the replay window and the summary, so a detail mentioned exactly
+ * there was briefly unavailable until the next batch absorbed it. That gap is
+ * now closed (audit D3) — see `REPLAY_TURNS`.
  */
 const SUMMARY_BATCH = 10;
 
+/**
+ * What `load` actually fetches, versus what `condense` summarises.
+ *
+ * CLOSING THE WINDOW/SUMMARY GAP (audit D3). `condense` summarises messages that
+ * have scrolled past `HISTORY_TURNS`, but only in batches of `SUMMARY_BATCH`, so
+ * between batches up to `SUMMARY_BATCH - 1` messages had scrolled out of a
+ * replay window of exactly `HISTORY_TURNS` while not yet being in the summary —
+ * a hole in the middle of the conversation.
+ *
+ * The fix is to replay a little further back than the summariser's boundary:
+ * `load` fetches the most recent `HISTORY_TURNS + SUMMARY_BATCH` messages, while
+ * `condense` keeps summarising everything older than `HISTORY_TURNS`. Any
+ * not-yet-summarised message therefore still sits inside the replayed set, so
+ * nothing is ever in neither place. The cost is a *bounded, temporary overlap*
+ * (at most `SUMMARY_BATCH` messages briefly appear both verbatim and inside the
+ * freshly-written summary) — and a message told twice is strictly better than a
+ * message lost, which is what the gap did.
+ */
+const REPLAY_TURNS = HISTORY_TURNS + SUMMARY_BATCH;
+
 /** Cap on the summary itself, so the thing that bounds cost cannot grow unbounded. */
-const SUMMARY_WORDS = 200;
+const SUMMARY_WORDS = config.AI_SUMMARY_WORDS;
+
+/**
+ * The summariser's system prompt (audit D3).
+ *
+ * STRUCTURED, not prose. A narrative blurb of a long thread loses exactly the
+ * things a later turn needs to reach back for — the amount that was quoted, the
+ * dossier a decision was about, the thing the user asked to be remembered. Fixed
+ * headings force those to survive, and force figures and record references to be
+ * copied verbatim rather than paraphrased into uselessness. Empty headings are
+ * dropped so a short thread does not carry four blank labels.
+ *
+ * A pure function of the word cap so it can be unit-tested without a model call.
+ */
+function summarySystemPrompt(maxWords = SUMMARY_WORDS) {
+  return (
+    "You maintain a running STRUCTURED summary of an ERP assistant conversation, so a later " +
+    "turn can reach back to what was decided and quoted earlier. Merge the existing summary and " +
+    `the new exchanges into ONE summary of at most ${maxWords} words, under exactly these ` +
+    "headings, each on its own line, in this order:\n" +
+    "DECISIONS: what was decided or agreed, and anything the user asked to be remembered.\n" +
+    "FIGURES: amounts, dates, quantities and rates that were stated — copy them EXACTLY, never round or paraphrase a number.\n" +
+    "RECORDS: the specific records in play — dossiers, invoices, clients, leads, suppliers — by their human reference or name, EXACTLY as written.\n" +
+    "OPEN: what is still in progress or unresolved — the next step, a question awaiting an answer.\n" +
+    "Omit any heading that would be empty. Drop pleasantries and anything already superseded. " +
+    "Preserve references and figures verbatim; do not invent any. No preamble, no closing remark."
+  );
+}
 
 /**
  * Narration uses a SMALLER replay window than the main ask (audit 3.8).
@@ -160,7 +212,10 @@ const history_ = {
       const state = await convo.conversationSummary(client, id);
       return {
         conversationId: id,
-        turns: await convo.recentMessages(client, id, HISTORY_TURNS),
+        // REPLAY_TURNS, not HISTORY_TURNS: the extra `SUMMARY_BATCH` messages are
+        // what close the window/summary gap (audit D3) — they cover anything that
+        // has scrolled past the summariser's boundary but is not yet summarised.
+        turns: await convo.recentMessages(client, id, REPLAY_TURNS),
         summary: state.summary || null,
       };
     } catch (err) {
@@ -210,7 +265,10 @@ const history_ = {
    *
    * Runs BEFORE the model call, not after, so the current question benefits from
    * the summary that was just written rather than the next one. Batched (see
-   * SUMMARY_BATCH) so the extra call is amortised over ten turns.
+   * SUMMARY_BATCH) so the extra call is amortised over ten turns. Summarises
+   * everything past `HISTORY_TURNS`; `load` replays `REPLAY_TURNS` (=
+   * HISTORY_TURNS + SUMMARY_BATCH), so the messages this batch has not caught up
+   * to yet are still replayed verbatim — no gap (audit D3).
    *
    * Best-effort throughout: a summariser that throws must never cost the user an
    * answer, and a failed batch simply retries on the next turn — `summary_through`
@@ -226,22 +284,19 @@ const history_ = {
       });
       if (pending.length < SUMMARY_BATCH) return;
 
-      // Redacted on the way IN, like every other egress path — the summariser is
-      // a model call, so PII/financial scrubbing applies before the text leaves.
-      const transcript = pending.map((m) => `${m.role}: ${redact(m.content)}`).join("\n");
-      const prior = state.summary ? `EXISTING SUMMARY:\n${redact(state.summary)}\n\n` : "";
+      // STRICT redaction on the way IN (audit A1). This is the one model call in
+      // `ask` whose OUTPUT is persisted and replayed into later turns, so it is
+      // external egress rather than reasoning over the caller's own data: contact
+      // details and the tax ID are masked here and nowhere else in this file.
+      // Amounts and ERP references still survive — the summary's FIGURES heading
+      // asks for them "copied EXACTLY", which `[NUM]` made impossible (D3).
+      const transcript = pending.map((m) => `${m.role}: ${redactExternal(m.content)}`).join("\n");
+      const prior = state.summary ? `EXISTING SUMMARY:\n${redactExternal(state.summary)}\n\n` : "";
       const res = await llm.chat({
         client,
         temperature: 0,
         messages: [
-          {
-            role: "system",
-            content:
-              "You maintain a running summary of an ERP assistant conversation. " +
-              `Rewrite the existing summary and the new exchanges into ONE summary of at most ${SUMMARY_WORDS} words. ` +
-              "Keep decisions, figures, record references and anything the user asked to be remembered. " +
-              "Drop pleasantries and anything already superseded. Write plain prose, no preamble.",
-          },
+          { role: "system", content: summarySystemPrompt() },
           { role: "user", content: `${prior}NEW EXCHANGES:\n${transcript}` },
         ],
       });
@@ -271,32 +326,60 @@ async function loadTools(client) {
   return rows;
 }
 
+/** How many distinct executed-action patterns to inject (after de-duplication). */
+const PATTERN_LIMIT = 8;
+/** How many distinct negative-feedback comments to inject (after de-duplication). */
+const FEEDBACK_LIMIT = 5;
+
 /**
- * Self-learning: recent successful action patterns.
+ * Self-learning: recent successful action patterns, SCOPED TO THE CALLER.
  *
  * THE LEARNING FIX. The assistant used to have no memory of what it had
- * successfully done before. This function pulls the last 10 successfully
- * executed actions with their payloads, so the system prompt can include them
- * as "PATTERNS YOU HAVE SUCCESSFULLY EXECUTED" — the model can reference them
- * when the user asks for similar actions.
+ * successfully done before. This pulls recent successfully-executed actions
+ * with their payload shapes, so the system prompt can include them as "PATTERNS
+ * YOU HAVE SUCCESSFULLY EXECUTED" — the model references them when the user asks
+ * for something similar.
+ *
+ * PER-USER, not tenant-wide (audit D2 / privacy F2). It previously took the last
+ * N rows across the WHOLE tenant with no user filter, so one user's actions —
+ * and the record references they touched — leaked into another user's prompt.
+ * Both signals here (`ai_action_run.user_id`, and the feedback below) carry a
+ * `user_id`, so there is a genuine per-user signal to scope to; we filter on it
+ * and deliberately do NOT fall back to tenant-wide when a user has none of their
+ * own yet, because that fallback is exactly the leak D2/F2 is about. A caller
+ * with no id (best-effort/unauthenticated paths) gets nothing rather than
+ * everyone's.
+ *
+ * Capped and de-duplicated: identical action+field-shape rows collapse to one
+ * template (the point is the SHAPE, not every instance), then the most recent
+ * `PATTERN_LIMIT` distinct shapes are kept — bounded prompt growth.
  *
  * Best-effort: a failure here never blocks the answer.
  */
-async function recentPatterns(client) {
+async function recentPatterns(client, userId) {
+  if (!userId) return [];
   try {
     const { rows } = await client.query(
       `SELECT action_key, proposed_payload, executed_entity_ref
          FROM ai_action_run
         WHERE status = 'EXECUTED'
           AND proposed_payload IS NOT NULL
+          AND user_id = $1
         ORDER BY created_at DESC
-        LIMIT 10`,
+        LIMIT 24`,
+      [userId],
     );
-    return rows.map((r) => ({
-      action: r.action_key,
-      fields: Object.keys(r.proposed_payload || {}).slice(0, 8),
-      ref: r.executed_entity_ref,
-    }));
+    const seen = new Set();
+    const out = [];
+    for (const r of rows) {
+      const fields = Object.keys(r.proposed_payload || {}).slice(0, 8);
+      const key = `${r.action_key}|${fields.join(",")}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ action: r.action_key, fields, ref: r.executed_entity_ref });
+      if (out.length >= PATTERN_LIMIT) break;
+    }
+    return out;
   } catch {
     return [];
   }
@@ -315,27 +398,48 @@ async function recentPatterns(client) {
  * just telling the model "last time you did X, the user said Y — don't
  * do that again."
  *
+ * PER-USER, not tenant-wide (audit D2 / privacy F2). It previously took the last
+ * N down-votes across the whole tenant, so one user's complaint — which may name
+ * their records ("wrong account number for SODECOTON") — was injected into
+ * another user's prompt: noise, and a privacy leak. `ai_answer_feedback` carries
+ * a `user_id`, so we scope to the caller and, as with the patterns above, do NOT
+ * fall back to tenant-wide (that fallback is the leak). A user's own past
+ * complaints are also the right signal — it is their preference the model is
+ * being steered by.
+ *
+ * Capped and de-duplicated: the same complaint left twice is one line, then the
+ * most recent `FEEDBACK_LIMIT` distinct comments.
+ *
  * Best-effort: a failure here never blocks the answer.
  */
-async function recentNegativeFeedback(client) {
+async function recentNegativeFeedback(client, userId) {
+  if (!userId) return [];
   try {
     const { rows } = await client.query(
       // action_keys is citext[], which node-postgres cannot parse — without the
       // cast this arrives as the string "{a,b}" and `actions` becomes a string
       // where every consumer expects a list. Caught by check-citext-arrays.js.
-      `SELECT answer_text, comment, action_keys::text[] AS action_keys
+      `SELECT comment, action_keys::text[] AS action_keys
          FROM ai_answer_feedback
         WHERE vote = 'down'
           AND comment IS NOT NULL
           AND comment <> ''
+          AND user_id = $1
           AND created_at > now() - interval '30 days'
         ORDER BY created_at DESC
-        LIMIT 5`,
+        LIMIT 15`,
+      [userId],
     );
-    return rows.map((r) => ({
-      comment: r.comment,
-      actions: r.action_keys || [],
-    }));
+    const seen = new Set();
+    const out = [];
+    for (const r of rows) {
+      const norm = (r.comment || "").trim().toLowerCase();
+      if (!norm || seen.has(norm)) continue;
+      seen.add(norm);
+      out.push({ comment: r.comment, actions: r.action_keys || [] });
+      if (out.length >= FEEDBACK_LIMIT) break;
+    }
+    return out;
   } catch {
     return [];
   }
@@ -395,9 +499,17 @@ function isStall(text) {
   return !!text && STALL_ANNOUNCE.test(text) && STALL_ACTION.test(text);
 }
 const TOOL_LIMIT = 64;
+// Always-retained tools (scored +100 below), so a turn never loses the actions
+// it is most often about. Kept deliberately small — every pinned slot is one
+// fewer for query-relevant tools — but with token-boundary scoring now stricter
+// (audit D4), the set is widened by one primary list read per MAJOR module
+// (suppliers, POs, HR, fleet, WMS, costing) so a cross-module question surfaces
+// the right area even when the user never names the module. All keys verified
+// present in the manifests.
 const CORE_TOOLS = new Set([
   "create_client", "open_dossier", "list_dossiers", "list_clients", "list_leads",
   "list_opportunities", "list_quotations", "list_final_invoices", "receivables_ageing", "get_trial_balance",
+  "list_suppliers", "list_purchase_orders", "list_employees", "list_vehicles", "list_inventory", "list_costings",
 ]);
 
 // ── Domain synonyms for tool scoping ──
@@ -427,23 +539,53 @@ const SYNONYMS = {
   compliance: "compliance_flag", document: "document_vault",
 };
 
+// Fold a naive English plural so a singular query token still matches a plural
+// tool token and vice versa ("invoice" ↔ "invoices", "client" ↔ "clients").
+// Conservative on purpose: only words of 4+ letters that end in a single "s"
+// are folded, so "address" (ends in "ss") is left whole and never folds toward
+// "add", and short words like "is" are untouched. Applied to BOTH sides, so
+// matching stays consistent even for a word it folds oddly ("status" → "statu").
+const singularize = (w) => (w.length >= 4 && w.endsWith("s") && !w.endsWith("ss") ? w.slice(0, -1) : w);
+
+// Plain content tokens: lowercase words split on non-letters (so a snake_case
+// key like `draft_purchase_order` splits into its parts), each folded to a
+// naive singular. This is the HAYSTACK tokeniser — no synonym expansion, so a
+// tool is scored on the words it actually carries.
+const wordsOf = (s) => {
+  const out = new Set();
+  for (const w of (s || "").toLowerCase().match(/[a-z]{2,}/g) || []) out.add(singularize(w));
+  return out;
+};
+
+// QUERY tokens: the content tokens PLUS domain-synonym expansions, so "PO"
+// reaches `purchase_order`'s tools even though the user never typed the full
+// word. A synonym target may be multi-word (`purchase_order`), so it is split
+// into parts — the haystack is tokenised the same way, so `draft_purchase_order`
+// is {draft, purchase, order} and the split parts land on it.
 const tokenize = (s) => {
   const words = (s || "").toLowerCase().match(/[a-z]{2,}/g) || [];
-  // Expand synonyms so "PO" matches "purchase_order" in tool keys.
-  const expanded = new Set(words);
+  const out = new Set();
+  const add = (w) => { const t = singularize(w); if (t.length >= 2) out.add(t); };
   for (const w of words) {
-    if (SYNONYMS[w]) expanded.add(SYNONYMS[w]);
+    add(w);
+    const syn = SYNONYMS[w] || SYNONYMS[singularize(w)];
+    if (syn) for (const part of syn.split(/[^a-z]+/)) add(part);
   }
-  return expanded;
+  return out;
 };
 
 function selectTools(tools, contextText, limit = TOOL_LIMIT) {
   if (tools.length <= limit) return tools;
-  const q = tokenize(contextText); // already a Set with domain synonyms expanded
+  const q = tokenize(contextText); // Set of normalised query tokens (+ synonyms)
   const scored = tools.map((t) => {
-    const hay = `${t.action_key} ${t.title} ${t.description || ""}`.toLowerCase();
+    // Score by TOKEN-SET MEMBERSHIP, not substring (audit D4). The old
+    // `hay.includes(word)` matched any substring, so "add" scored on "address"
+    // and "is" on "list" — spurious hits that pushed genuinely relevant tools
+    // out of the offered set. Tokenising the haystack the same way as the query
+    // makes a hit mean "they share a whole word", which is what was intended.
+    const hay = wordsOf(`${t.action_key} ${t.title} ${t.description || ""}`);
     let s = 0;
-    for (const w of q) if (hay.includes(w)) s += 1;
+    for (const w of q) if (hay.has(w)) s += 1;
     if (CORE_TOOLS.has(t.action_key)) s += 100; // core is always retained
     if (!t.is_write) s += 0.5; // gentle tie-break toward reads (answering needs them)
     return { t, s };
@@ -592,17 +734,21 @@ async function ask({ client, user, conversationId, message, allowed, registry, f
   if (!gate.allowed) {
     return { answer: `The AI assistant is unavailable: ${gate.reason}.`, actions: [], blocked: true, gate };
   }
-  const hits = await retrieve({ query: message, tenantClient: client, allowed, k: 6 });
+  // Tenant-facing grounding (audit A3/A4): a wider block than the old six chunks,
+  // with the knowledge base holding its own reserved slots, and NO codebase chunks
+  // — an operator asking about their receivables should not be grounded on this
+  // repository's source, which is where the snake_case/UUID drift came from.
+  const hits = await retrieve({ query: message, tenantClient: client, allowed, includeCodebase: false });
   const tools = await loadTools(client);
   // Self-learning: recent successful execution patterns for the model to reference.
-  const patterns = await recentPatterns(client);
+  const patterns = await recentPatterns(client, user.user_id);
   const patternBlock = patterns.length
     ? "\n\nPATTERNS YOU HAVE SUCCESSFULLY EXECUTED (use these as templates when the user asks for something similar):\n" +
       patterns.map((p, i) => `  ${i + 1}. ${p.action} → fields: ${p.fields.join(", ")}${p.ref ? ` (${p.ref})` : ""}`).join("\n")
     : "";
 
   // ── Self-improvement: recent negative feedback ──
-  const feedback = await recentNegativeFeedback(client);
+  const feedback = await recentNegativeFeedback(client, user.user_id);
   const feedbackBlock = feedback.length
     ? "\n\nPATTERNS USERS DISLIKED (avoid these mistakes — users left specific feedback):\n" +
       feedback.map((f, i) => `  ${i + 1}. User said: "${f.comment}"${f.actions.length ? ` (on actions: ${f.actions.join(", ")})` : ""}`).join("\n")
@@ -685,7 +831,13 @@ async function ask({ client, user, conversationId, message, allowed, registry, f
     prefsBlock +
     modeDirective(mode) +
     "\n\nCONTEXT:\n" +
-    redact(toContextBlock(hits));
+    // REASONING-class redaction (audit A1): this block is the caller's own
+    // authorised data — retrieval already filtered it by the confidentiality
+    // tags their RBAC allows — and it goes into this one prompt and nowhere
+    // else. Amounts, ERP references and contact details reach the model intact;
+    // payment instruments and government ID numbers are still masked. The
+    // strict variant is `redactExternal`, used only where output is persisted.
+    redactForReasoning(toContextBlock(hits));
 
   // ── Conversation memory ──────────────────────────────────────────────────
   // Until 2026-08-01 this array was just [system, user] on every call, so the
@@ -699,8 +851,9 @@ async function ask({ client, user, conversationId, message, allowed, registry, f
   // (governance.canUseFeature hard-blocks on the cap) — an unbounded transcript
   // would make each successive question in a long thread cost more than the last.
   //
-  // Redaction applies to history too: PII/financial scrubbing has to hold for
-  // replayed turns exactly as it does for the live question.
+  // Redaction applies to history too, in the same class as the live question:
+  // a replayed turn is the caller reading back their own conversation, so it
+  // gets `redactForReasoning`, not the strict summariser/embeddings scrub.
   // Fold anything that has scrolled out of the window into the rolling summary
   // first, so THIS answer sees it (0481). Best-effort — never blocks the answer.
   const resolvedId = conversationId || (await history_.currentId(client, user));
@@ -717,11 +870,11 @@ async function ask({ client, user, conversationId, message, allowed, registry, f
           role: "system",
           content:
             "EARLIER IN THIS CONVERSATION (summary of turns no longer replayed in full):\n" +
-            redact(history.summary),
+            redactForReasoning(history.summary),
         }]
       : []),
-    ...history.turns.map((m) => ({ role: m.role, content: redact(m.content) })),
-    { role: "user", content: redact(message) },
+    ...history.turns.map((m) => ({ role: m.role, content: redactForReasoning(m.content) })),
+    { role: "user", content: redactForReasoning(message) },
   ];
 
   // Offer a focused, relevant slice of the catalogue (scored on this turn + the
@@ -872,7 +1025,7 @@ async function ask({ client, user, conversationId, message, allowed, registry, f
       }
       readTrace.push(step);
       // Cap + redact so a big list can't blow the context or leak sensitive text.
-      toolMsgs.push({ role: "tool", tool_call_id: call.id, content: redact(content).slice(0, 6000) });
+      toolMsgs.push({ role: "tool", tool_call_id: call.id, content: redactForReasoning(content).slice(0, 6000) });
     }
 
     // The assistant message lists only the READ calls, because only those have
@@ -1133,7 +1286,7 @@ async function confirmAction({ client, user, actionRunId, registry, payload: edi
         temperature: 0.3,
         messages: [
           { role: "system", content: sys },
-          ...hist.map((m) => ({ role: m.role, content: redact(m.content) })),
+          ...hist.map((m) => ({ role: m.role, content: redactForReasoning(m.content) })),
         ],
       });
       message = nar.text || null;
@@ -1239,17 +1392,21 @@ async function* askStream({ client, user, conversationId, message, allowed, regi
     return;
   }
 
-  const hits = await retrieve({ query: message, tenantClient: client, allowed, k: 6 });
+  // Tenant-facing grounding (audit A3/A4): a wider block than the old six chunks,
+  // with the knowledge base holding its own reserved slots, and NO codebase chunks
+  // — an operator asking about their receivables should not be grounded on this
+  // repository's source, which is where the snake_case/UUID drift came from.
+  const hits = await retrieve({ query: message, tenantClient: client, allowed, includeCodebase: false });
   const tools = await loadTools(client);
   // Self-learning: recent successful execution patterns.
-  const patterns = await recentPatterns(client);
+  const patterns = await recentPatterns(client, user.user_id);
   const patternBlock = patterns.length
     ? "\n\nPATTERNS YOU HAVE SUCCESSFULLY EXECUTED (use these as templates when the user asks for something similar):\n" +
       patterns.map((p, i) => `  ${i + 1}. ${p.action} → fields: ${p.fields.join(", ")}${p.ref ? ` (${p.ref})` : ""}`).join("\n")
     : "";
 
   // ── Self-improvement: recent negative feedback ──
-  const feedback = await recentNegativeFeedback(client);
+  const feedback = await recentNegativeFeedback(client, user.user_id);
   const feedbackBlock = feedback.length
     ? "\n\nPATTERNS USERS DISLIKED (avoid these mistakes — users left specific feedback):\n" +
       feedback.map((f, i) => `  ${i + 1}. User said: "${f.comment}"${f.actions.length ? ` (on actions: ${f.actions.join(", ")})` : ""}`).join("\n")
@@ -1319,7 +1476,7 @@ async function* askStream({ client, user, conversationId, message, allowed, regi
     prefsBlock +
     modeDirective(mode) +
     "\n\nCONTEXT:\n" +
-    redact(toContextBlock(hits));
+    redactForReasoning(toContextBlock(hits));
 
   // ── Conversation memory (same as non-streaming) ──
   const resolvedId = conversationId || (await history_.currentId(client, user));
@@ -1328,10 +1485,10 @@ async function* askStream({ client, user, conversationId, message, allowed, regi
   const messages = [
     { role: "system", content: system },
     ...(history.summary
-      ? [{ role: "system", content: "EARLIER IN THIS CONVERSATION (summary of turns no longer replayed in full):\n" + redact(history.summary) }]
+      ? [{ role: "system", content: "EARLIER IN THIS CONVERSATION (summary of turns no longer replayed in full):\n" + redactForReasoning(history.summary) }]
       : []),
-    ...history.turns.map((m) => ({ role: m.role, content: redact(m.content) })),
-    { role: "user", content: redact(message) },
+    ...history.turns.map((m) => ({ role: m.role, content: redactForReasoning(m.content) })),
+    { role: "user", content: redactForReasoning(message) },
   ];
 
   // The chosen Space biases tool selection toward that area (audit D1): a scope
@@ -1477,7 +1634,7 @@ async function* askStream({ client, user, conversationId, message, allowed, regi
         content = JSON.stringify({ error: err.message });
       }
       readTrace.push(step);
-      toolMsgs.push({ role: "tool", tool_call_id: call.id, content: redact(content).slice(0, 6000) });
+      toolMsgs.push({ role: "tool", tool_call_id: call.id, content: redactForReasoning(content).slice(0, 6000) });
     }
 
     convo.push(
@@ -1596,4 +1753,19 @@ async function* askStream({ client, user, conversationId, message, allowed, regi
   yield { type: "done", conversation_id: history.conversationId, provider };
 }
 
-module.exports = { ask, askStream, confirmAction, confirmBatch, loadTools, modeDirective };
+module.exports = {
+  ask,
+  askStream,
+  confirmAction,
+  confirmBatch,
+  loadTools,
+  modeDirective,
+  // Exported for unit tests (audit D2/D3/D4): per-user learning-signal scoping,
+  // the structured-summary prompt, and token-boundary tool selection are
+  // behaviours worth pinning directly.
+  recentPatterns,
+  recentNegativeFeedback,
+  selectTools,
+  tokenize,
+  summarySystemPrompt,
+};

@@ -46,8 +46,12 @@ const TARGETS = {
   quote_request: { module: "MOD-25", route: "/sales/quote-requests/new", party: "client", label_en: "Quote request", label_fr: "Demande de devis" },
   enquiry: { module: "MOD-25", route: "/sales/enquiries/new", party: "client", label_en: "Contact enquiry", label_fr: "Demande de contact" },
   ticket: { module: "MOD-25", route: "/support/tickets/new", party: null, label_en: "Support ticket", label_fr: "Ticket" },
-  task: { module: "MOD-72", route: "/workflow/tasks/new", party: null, label_en: "Task", label_fr: "Tâche" },
-  purchase_requisition: { module: "MOD-56", route: "/procurement/requisitions/new", party: "supplier", label_en: "Purchase requisition", label_fr: "Demande d'achat" },
+  // Tasks live in the workspace hub (`/workspace/tasks`) — there is no
+  // `/workflow` route, so the old path fell through to the catch-all and home.
+  task: { module: "MOD-72", route: "/workspace/tasks/new", party: null, label_en: "Task", label_fr: "Tâche" },
+  // Named for the hub tab that owns the list (`purchase-requests`), for the
+  // same reason: `/procurement/requisitions/new` matched nothing.
+  purchase_requisition: { module: "MOD-56", route: "/procurement/purchase-requests/new", party: "supplier", label_en: "Purchase requisition", label_fr: "Demande d'achat" },
 };
 
 /** "Camrail SARL" is a company; "Thierry Mbarga" is not. */
@@ -112,14 +116,21 @@ async function preview(client, threadId, target) {
 
   const facts = await threadFacts(client, threadId);
 
-  const duplicates = spec.party
+  // `findDuplicates` answers `{ candidates: [...] }`, not an array — every
+  // other caller unwraps it (`party-360` destructures, the master-data action
+  // passes the envelope through as `data`). This one used to treat the envelope
+  // AS the array, so `duplicates.length` was undefined, `primary_action` never
+  // fired, and the dialog's `.map` threw the preview into the error boundary —
+  // "Something went wrong" on exactly the four targets that dedup.
+  const found = spec.party
     ? await dedup.findDuplicates(client, {
       kind: spec.party,
       input: { name: facts.company_name || facts.contact_name, email: facts.email },
       min: 55,
       cap: 5,
-    }).catch(() => [])
-    : [];
+    }).catch(() => null)
+    : null;
+  const duplicates = found && Array.isArray(found.candidates) ? found.candidates : [];
 
   return {
     target,

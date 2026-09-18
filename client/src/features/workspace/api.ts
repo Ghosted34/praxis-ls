@@ -19,9 +19,9 @@
  * ── TWO THINGS ABOUT THE CONTRACT THAT ARE EASY TO GET WRONG ───────────────
  *
  * 1. The board and the day are NOT paged. `board()` returns an object keyed by
- *    status and `day()` returns `{ items, audience, audiences }`, so they go
- *    through `tenant()` and not `tenantPaged()`. Only `listTasks()` is a real
- *    list, and it is capped at 50 rows server-side like every other list here —
+ *    status and `day()` returns `{ items, audience, audiences, timezone, counts,
+ *    truncated }`, so they go through `tenant()` and not `tenantPaged()`. Only
+ *    `listTasks()` is a real list, and it is capped at 50 rows server-side like every other list here —
  *    which is why the board exists: a kanban over a truncated page would show
  *    four columns of the wrong rows.
  *
@@ -154,6 +154,7 @@ export type CalendarEvent = {
   created_by_name: string | null;
   entity_type: string | null;
   entity_id: string | null;
+  scope_id: string | null;
   link_url: string | null;
   entity_label: string | null;
   has_link: boolean;
@@ -194,14 +195,51 @@ export type TimelineItem =
       entity_type: string | null;
       entity_id: string | null;
       participant_count: number;
+    }
+  | {
+      kind: "subtask";
+      at: string | null;
+      id: string;
+      task_id: string;
+      title: string;
+      task_title: string | null;
+      status: TaskStatus;
+      priority: TaskPriority;
+      link_url: string | null;
+      entity_type: string | null;
+      entity_id: string | null;
+      is_overdue: boolean;
     };
 
 export type DayTimeline = {
   items: TimelineItem[];
   audience: Audience;
   audiences: Audience[];
+  timezone: string;
   tasks: number;
   events: number;
+  deadlines: number;
+  counts: { tasks: number; events: number; deadlines: number };
+  truncated: { tasks: boolean; events: boolean; deadlines: boolean };
+};
+
+export type WorkspaceContext = { timeZone: string };
+
+export type WorkspaceApproval = {
+  approval_task_id?: string;
+  id?: string;
+  entity_ref?: string | null;
+  amount_xaf?: number | string | null;
+  created_at?: string | null;
+};
+
+export type WorkspaceAlert = {
+  notification_id?: string;
+  id?: string;
+  title?: string | null;
+  priority?: string | null;
+  event_type_key?: string | null;
+  created_at?: string | null;
 };
 
 export type TaskInput = {
@@ -253,6 +291,7 @@ export type EventInput = {
   series?: RepeatScope;
   entity_type?: string | null;
   entity_id?: string | null;
+  scope_id?: string | null;
   participants?: { user_id?: string; external_name?: string; is_organiser?: boolean }[];
   /** Book it anyway, past the clash warning. */
   force?: boolean;
@@ -282,6 +321,16 @@ function qs(params: Record<string, unknown>): string {
  */
 export const getDay = (params: { from?: string; to?: string; audience?: Audience } = {}) =>
   tenant<DayTimeline>(`/workspace/day${qs(params)}`);
+
+/** Tenant-local display and wall-clock serialization context. */
+export const getWorkspaceContext = () =>
+  tenant<WorkspaceContext>("/workspace/context");
+
+export const getApprovals = () =>
+  tenant<WorkspaceApproval[]>("/workspace/approvals");
+
+export const getAlerts = () =>
+  tenant<WorkspaceAlert[]>("/workspace/alerts");
 
 /* ── cash to account for (MOD-76) ─────────────────────────────────────────── */
 

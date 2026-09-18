@@ -20,7 +20,9 @@ jest.mock("../../src/shared/events/emit", () => ({
   audit: jest.fn(async () => ({})),
 }));
 jest.mock("../../src/modules/master/_shared/dedup.service", () => ({
-  findDuplicates: jest.fn(async () => []),
+  // The real module answers `{ candidates: [...] }`, not an array — the mock
+  // mirrors the envelope, or the tests bless a shape production never sends.
+  findDuplicates: jest.fn(async () => ({ candidates: [] })),
 }));
 
 const fs = require("fs");
@@ -56,7 +58,7 @@ const thread = (over = {}) => ([{
 const ME = { user_id: "u-me" };
 beforeEach(() => {
   jest.clearAllMocks();
-  dedup.findDuplicates.mockResolvedValue([]);
+  dedup.findDuplicates.mockResolvedValue({ candidates: [] });
 });
 
 /* ── It previews ──────────────────────────────────────────────────────────── */
@@ -167,7 +169,7 @@ describe("duplicates are found by the shared detector, not by string equality", 
   });
 
   test("a match makes ATTACHING the primary action", async () => {
-    dedup.findDuplicates.mockResolvedValue([{ id: "l-9", name: "Camrail", score: 90 }]);
+    dedup.findDuplicates.mockResolvedValue({ candidates: [{ id: "l-9", name: "Camrail", score: 90 }] });
     const out = await convert.preview(fakeClient(thread()), "t-1", "lead");
     // §7.7: the dialog "leads with 'already a lead — attach this email to it?'
     // and makes Create new the SECONDARY action".

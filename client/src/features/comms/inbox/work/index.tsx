@@ -49,6 +49,7 @@ const SECTIONS: { key: Section; label: string; needsBinding: boolean }[] = [
 export type WorkRailThread = {
   email_thread_id: string;
   entity_ref?: string | null;
+  entity_label?: string | null;
   assigned_to?: string | null;
   assigned_to_name?: string | null;
   work_status?: WorkStatus | null;
@@ -87,6 +88,7 @@ export function WorkRail({
       <BindingChip
         threadId={id}
         entityRef={bound}
+        entityLabel={thread.entity_label}
         onChanged={onChanged}
         onOpenRecord={() => setOpen("record")}
       />

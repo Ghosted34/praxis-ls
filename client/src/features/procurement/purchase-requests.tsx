@@ -43,12 +43,16 @@ const blankPrLine = (): PrLine => ({
   unit_price: "",
 });
 
-function PrForm({
+export function PrForm({
   onClose,
   onSaved,
+  initial,
 }: {
   onClose: () => void;
-  onSaved: () => void;
+  /** Receives the created request's id, so callers can link back to it. */
+  onSaved: (id?: string | null) => void;
+  /** Seed for the justification (mail conversion). */
+  initial?: { justification?: string | null } | null;
 }) {
   // Department is a scope (0490) — carries both the reference and the display
   // snapshot the API stores beside it.
@@ -56,7 +60,8 @@ function PrForm({
     scope_id: null,
     department: null,
   });
-  const [justification, setJustification] = React.useState("");
+  // The form mounts fresh on every open, so initial state is the seed.
+  const [justification, setJustification] = React.useState(initial?.justification || "");
   const [lines, setLines] = React.useState<PrLine[]>([blankPrLine()]);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -75,13 +80,13 @@ function PrForm({
           qty: Number(l.qty) || 1,
           unit_price: Number(l.unit_price) || 0,
         }));
-      await api.createPurchaseRequest({
+      const created = await api.createPurchaseRequest({
         scope_id: dept.scope_id || undefined,
         department: dept.department || undefined,
         justification: justification || undefined,
         lines: cleaned.length ? cleaned : undefined,
       });
-      onSaved();
+      onSaved(created?.pr_id || null);
       onClose();
     } catch (err) {
       setError(errMsg(err));

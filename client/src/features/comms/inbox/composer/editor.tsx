@@ -11,7 +11,7 @@ import type { Editor } from "@tiptap/react";
 
 export function EditorSurface({ editor }: { editor: Editor | null }) {
   return (
-    <div className="min-h-[12rem] rounded-lg border border-border bg-background">
+    <div className="min-h-[14.4rem] rounded-lg border border-border bg-background">
       <EditorContent editor={editor} />
     </div>
   );

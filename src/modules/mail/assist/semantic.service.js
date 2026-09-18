@@ -40,6 +40,7 @@
 const ingest = require("../../../services/ai/ingest.service");
 const retrieval = require("../../../services/ai/retrieval.service");
 const visibility = require("../triage/visibility");
+const context = require("../binding/mail-context.service");
 const { logger } = require("../../../config/logger");
 
 const REF = (threadId) => `email_thread:${threadId}`;
@@ -106,7 +107,7 @@ async function onThreadUpdated(client, threadId) {
  * feature does not work, when what happened is that eight hits belonged to
  * other people's private threads.
  */
-async function search(client, { query, userId, limit = 10 } = {}) {
+async function search(client, { query, userId, user = null, limit = 10 } = {}) {
   if (!query || !String(query).trim()) return { hits: [], query: query || "" };
 
   const hits = await retrieval.retrieve({
@@ -114,6 +115,10 @@ async function search(client, { query, userId, limit = 10 } = {}) {
     tenantClient: client,
     allowed: ["normal", "restricted"],
     k: Math.min(60, limit * 3),
+    // This search keeps only `email_thread:` refs, so a slot spent on an OHADA
+    // doc is a slot spent on a hit this function is about to throw away. The
+    // knowledge reservation exists for the assistant's grounding block, not here.
+    kbBudget: 0,
   });
 
   const ids = [];
@@ -136,12 +141,24 @@ async function search(client, { query, userId, limit = 10 } = {}) {
     [ids, userId],
   );
 
+  // Display names for bound hits, as on the thread list — a hit about Camrail
+  // says Camrail rather than `client:3f9a…`. Fail-soft: without a caller the
+  // labels stay null and the UI falls back to the ref.
+  const refs = [...new Set(rows.map((r) => r.entity_ref).filter(Boolean))];
+  const labels = refs.length && user
+    ? await context.labelForRefs(client, refs, user).catch(() => ({}))
+    : {};
+
   return {
     query: String(query),
     // Ordered by MEANING, not by the database's row order — the re-filter is a
     // permission check and must not be allowed to re-rank the results.
     hits: rows
-      .map((r) => ({ ...r, similarity: sim.get(r.email_thread_id) || 0 }))
+      .map((r) => ({
+        ...r,
+        similarity: sim.get(r.email_thread_id) || 0,
+        entity_label: (r.entity_ref && labels[r.entity_ref]) || null,
+      }))
       .sort((a, b) => b.similarity - a.similarity)
       .slice(0, limit),
     searched: hits.length,

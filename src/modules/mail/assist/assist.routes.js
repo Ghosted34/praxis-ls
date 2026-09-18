@@ -270,6 +270,7 @@ router.post("/assist/search", requireAi, requirePermission("MOD-72", "view"),
     data: await req.identityDb((c) => semantic.search(c, {
       query: req.body.query,
       userId: req.user && req.user.user_id,
+      user: req.user || null,
       limit: req.body.limit || 10,
     })),
   })));

@@ -517,7 +517,11 @@ export function ThreadView({
               ))}
             </Select>
           )}
-          {thread.entity_ref && <Pill tone="blue">{thread.entity_ref}</Pill>}
+          {thread.entity_ref && (
+            <span title={thread.entity_ref}>
+              <Pill tone="blue">{thread.entity_label || thread.entity_ref}</Pill>
+            </span>
+          )}
         </div>
       </header>
 

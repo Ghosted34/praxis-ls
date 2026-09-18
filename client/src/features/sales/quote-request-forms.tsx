@@ -57,16 +57,28 @@ const WAREHOUSE_DURATIONS = [
   { value: "UNKNOWN", label: "Unknown" },
 ];
 
+export type QuoteRequestInitial = {
+  requester_name?: string | null;
+  requester_company?: string | null;
+  requester_email?: string | null;
+  requester_phone?: string | null;
+  cargo_description?: string | null;
+};
+
 export function QuoteRequestForm({
   open,
   editing,
+  initial,
   onClose,
   onSaved,
 }: {
   open: boolean;
   editing: Row | null;
+  /** Seed for a NEW request (mail conversion). Ignored when `editing` is set. */
+  initial?: QuoteRequestInitial | null;
   onClose: () => void;
-  onSaved: () => void;
+  /** Receives the created request's id on POST, so callers can link back to it. */
+  onSaved: (id?: string | null) => void;
 }) {
   const [requesterName, setRequesterName] = React.useState("");
   const [requesterCompany, setRequesterCompany] = React.useState("");
@@ -88,10 +100,12 @@ export function QuoteRequestForm({
 
   React.useEffect(() => {
     if (!open) return;
-    setRequesterName(editing?.requester_name ? String(editing.requester_name) : "");
-    setRequesterCompany(editing?.requester_company ? String(editing.requester_company) : "");
-    setRequesterEmail(editing?.requester_email ? String(editing.requester_email) : "");
-    setRequesterPhone(editing?.requester_phone ? String(editing.requester_phone) : "");
+    const seed = (v: unknown, fb: unknown) =>
+      v !== null && v !== undefined && v !== "" ? String(v) : fb !== null && fb !== undefined && fb !== "" ? String(fb) : "";
+    setRequesterName(seed(editing?.requester_name, initial?.requester_name));
+    setRequesterCompany(seed(editing?.requester_company, initial?.requester_company));
+    setRequesterEmail(seed(editing?.requester_email, initial?.requester_email));
+    setRequesterPhone(seed(editing?.requester_phone, initial?.requester_phone));
     setIntakeChannel(editing?.intake_channel ? String(editing.intake_channel) : "MANUAL");
     setServiceCategory(editing?.service_category ? String(editing.service_category) : "");
     setServiceType(editing?.service_type ? String(editing.service_type) : "");
@@ -101,10 +115,10 @@ export function QuoteRequestForm({
     setWarehouseDuration(editing?.warehouse_duration ? String(editing.warehouse_duration) : "");
     setWeight(editing?.estimated_weight != null ? String(editing.estimated_weight) : "");
     setProjectCargo(Boolean(editing?.project_cargo_flag));
-    setCargo(editing?.cargo_description ? String(editing.cargo_description) : "");
+    setCargo(seed(editing?.cargo_description, initial?.cargo_description));
     setIncoterm(editing?.incoterm ? String(editing.incoterm) : "FOB");
     setError(null);
-  }, [open, editing]);
+  }, [open, editing, initial]);
 
   async function save() {
     if (!incoterm.trim()) {

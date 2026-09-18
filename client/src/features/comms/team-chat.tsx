@@ -18,7 +18,7 @@ import { useAuth } from "@/app/auth/auth-context";
 import { cn } from "@/lib/cn";
 import { PlusIcon } from "@/components/ui/icons";
 import * as api from "@/lib/smartcomm-api";
-import { useCommsChannel } from "@/lib/comms-socket";
+import { getCommsSocket, useCommsChannel } from "@/lib/comms-socket";
 import { NewMessageDialog } from "./inbox/composer/new-message";
 import { Composer } from "./chat/composer";
 import { MessageBubble } from "./chat/message-bubble";
@@ -319,16 +319,44 @@ function MuteIcon() {
   );
 }
 
+/**
+ * What the channel row previews: the words when there are words, otherwise what
+ * the message carries. A media-only message has `body = NULL`, so reading the
+ * body alone left a voice note previewing as "No messages yet".
+ */
+function channelPreview(c: api.Channel): string {
+  const lm = c.last_message;
+  if (!lm) return "No messages yet";
+  if (lm.body) return lm.body;
+  if (lm.has_voice_note) return tr("Voice note");
+  if (lm.has_erp) return tr("Shared a record");
+  if (lm.first_media_kind === "IMAGE") {
+    return (lm.attachment_count || 1) > 1 ? tr("Photos") : tr("Photo");
+  }
+  if (lm.first_media_kind === "VIDEO") return tr("Video");
+  if ((lm.attachment_count || 0) > 0) return tr("Attachment");
+  if (lm.media_vault_id) return tr("Attachment");
+  return "No messages yet";
+}
+
 function ChannelRow({
   c,
   active,
+  senderName,
   onClick,
 }: {
   c: api.Channel;
   active: boolean;
+  /** Display name of the last message's sender, "You" when it was the viewer. */
+  senderName?: string | null;
   onClick: () => void;
 }) {
   const unread = c.unread || 0;
+  /* Who said it, on group channels: in a DIRECT conversation there are two
+   * people and the avatar already says which half is which, but "Voice note"
+   * under "Ops Task Force" is useless without a name on it. */
+  const showSender = c.kind !== "DIRECT" && !!c.last_message && !!senderName;
+  const preview = showSender ? `${senderName}: ${channelPreview(c)}` : channelPreview(c);
   return (
     <button
       type="button"
@@ -382,7 +410,7 @@ function ChannelRow({
               unread > 0 ? "text-foreground" : "text-muted-foreground",
             )}
           >
-            {c.last_message?.body || "No messages yet"}
+            {preview}
           </span>
           {unread > 0 && (
             <span
@@ -491,12 +519,51 @@ export function TeamChatPage() {
 
   const all = channels.data || [];
   const unreadTotal = all.reduce((s, c) => s + (c.unread || 0), 0);
+
+  /* ── LIVE UNREAD, AT THE LIST LEVEL ───────────────────────────────────────
+   *
+   * The server publishes `comms:message` to the channel's room only, and the
+   * open thread is the sole joiner — so without this, a message arriving in
+   * any channel the reader is NOT viewing never moves this list's badges, and
+   * the Ops Task Force counter sits stale until something is sent from here.
+   * Join every member channel (membership-checked server-side, idempotent with
+   * the thread's own join) and reload the list on arrival. The 15s interval is
+   * the reconciler for a socket that was down when the message landed — the
+   * same live-plus-poll bargain the thread itself already makes.
+   *
+   * Keyed on the joined id string, not the array: a reload returns a fresh
+   * array with the same membership, and re-joining every room on each of those
+   * would churn the socket for nothing. */
+  const reloadRef = React.useRef(() => {});
+  reloadRef.current = () => channels.reload();
+  const channelKey = all.map((c) => c.group_id).join(",");
+  React.useEffect(() => {
+    const ids = channelKey ? channelKey.split(",") : [];
+    if (!ids.length) return;
+    const s = getCommsSocket();
+    const onMessage = () => reloadRef.current();
+    const join = () => {
+      for (const id of ids) s.emit("channel:join", id);
+    };
+    s.on("comms:message", onMessage);
+    if (s.connected) join();
+    s.on("connect", join);
+    return () => {
+      s.off("comms:message", onMessage);
+      s.off("connect", join);
+      for (const id of ids) s.emit("channel:leave", id);
+    };
+  }, [channelKey]);
+  React.useEffect(() => {
+    const t = window.setInterval(() => reloadRef.current(), 15000);
+    return () => window.clearInterval(t);
+  }, []);
   const filtered = all.filter((c) => {
     if (filter === "unread" && !c.unread) return false;
     if (filter === "inhouse" && c.kind !== "DIRECT") return false;
     if (filter === "groups" && c.kind === "DIRECT") return false;
     if (q.trim()) {
-      const hay = `${c.name} ${c.last_message?.body || ""}`.toLowerCase();
+      const hay = `${c.name} ${channelPreview(c)}`.toLowerCase();
       if (!hay.includes(q.trim().toLowerCase())) return false;
     }
     return true;
@@ -583,14 +650,21 @@ export function TeamChatPage() {
               </div>
             ) : filtered.length ? (
               <div className="space-y-px">
-                {filtered.map((c) => (
-                  <ChannelRow
-                    key={c.group_id}
-                    c={c}
-                    active={activeId === c.group_id}
-                    onClick={() => select(c.group_id)}
-                  />
-                ))}
+                {filtered.map((c) => {
+                  const senderId = c.last_message?.sender_user_id || null;
+                  const isMine = !!meId && !!senderId && senderId === meId;
+                  return (
+                    <ChannelRow
+                      key={c.group_id}
+                      c={c}
+                      active={activeId === c.group_id}
+                      senderName={
+                        isMine ? tr("You") : senderId ? nameOf[senderId] || null : null
+                      }
+                      onClick={() => select(c.group_id)}
+                    />
+                  );
+                })}
               </div>
             ) : (
               <div className="space-y-2 px-4 py-12 text-center micro">
@@ -753,11 +827,22 @@ function Thread({
     },
   });
 
+  /* Through a ref, not the prop: `onSent` is an inline arrow in the parent, so
+   * depending on it would re-mark-read on every parent render, and the reload
+   * it triggers IS a parent render. */
+  const onSentRef = React.useRef(onSent);
+  onSentRef.current = onSent;
   React.useEffect(() => {
-    api.markRead(channelId).catch(() => {
-      /* @silent:storage — an unsent read marker costs a stale unread badge until
-         the next open, never a message */
-    });
+    api
+      .markRead(channelId)
+      /* …and then say so upstairs. Marking read without reloading the list
+         left the channel's own badge standing after the messages had been
+         read — the second half of the stale-counter complaint. */
+      .then(() => onSentRef.current())
+      .catch(() => {
+        /* @silent:storage — an unsent read marker costs a stale unread badge until
+           the next open, never a message */
+      });
   }, [channelId, msgs.length]);
 
   /**

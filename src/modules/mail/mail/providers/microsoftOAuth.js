@@ -9,6 +9,7 @@
 const axios = require("axios");
 const qs = require("querystring");
 const { config } = require("../../../../config/env");
+const { AppError } = require("../../../../utils/errors");
 
 const platformSettings = require("../../../../services/platform/settings.service");
 
@@ -96,11 +97,124 @@ async function tokenRequest(c, extra) {
     client_secret: c.client_secret,
     ...extra,
   });
-  const r = await axios.post(`${authBase(c.tenant)}/token`, body, {
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-  });
-  // { access_token, refresh_token?, expires_in, token_type, scope }
-  return r.data;
+  try {
+    const r = await axios.post(`${authBase(c.tenant)}/token`, body, {
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    });
+    // { access_token, refresh_token?, expires_in, token_type, scope }
+    return r.data;
+  } catch (err) {
+    throw classifyProviderError({
+      error: err && err.response && err.response.data && err.response.data.error,
+      description: err && err.response && err.response.data && err.response.data.error_description,
+      subcode: err && err.response && err.response.data && err.response.data.error_subcode,
+      httpStatus: err && err.response && err.response.status,
+    });
+  }
 }
 
-module.exports = { isConfigured, authorizeUrl, exchangeCode, refresh, credentials };
+/**
+ * WHAT ENTRA ACTUALLY SAID, IN OUR VOCABULARY.
+ *
+ * The token endpoint answers `{ error, error_description, error_subcode }`,
+ * and `error_description` carries an `AADSTSnnnnn` code plus a paragraph aimed
+ * at an Entra administrator. Left untranslated, the consent round trip lands on
+ * the setup page as `mail_error=OAUTH_FAILED` — or as an axios dump — and the
+ * operator cannot tell "your organisation needs admin approval" from "the
+ * platform secret expired", two failures with different owners and different
+ * remedies. The mapping below names the three the setup page can act on; the
+ * raw description is trimmed into the message so the logs still carry it.
+ *
+ * Used twice: here, for token-endpoint failures, and by the OAuth callback for
+ * Entra's error redirect (`?error=access_denied&error_description=…`), which is
+ * the same vocabulary arriving over GET.
+ */
+function classifyProviderError({ error, description, subcode, httpStatus } = {}) {
+  const e = String(error || "");
+  const desc = String(description || "");
+  // Lowercased once for the substring checks below. Deliberately `includes`,
+  // not `/expired.*secret/`: the description arrives over HTTP (untrusted
+  // input), and a `.*` between two literals is a polynomial-backtracking
+  // shape on adversarial strings — CodeQL flags it, correctly.
+  const lower = desc.toLowerCase();
+  const aadsts = (/AADSTS(\d+)/i.exec(desc) || [])[1] || "";
+  const short = desc ? desc.replace(/\s+/g, " ").trim().slice(0, 240) : "";
+
+  // A bad, expired or unknown client secret — AADSTS700016 (unknown app),
+  // 7000215 (bad secret), 7000222 (expired secret). Owner: whoever holds the
+  // platform vault, not the operator connecting their mailbox.
+  if (
+    e === "invalid_client"
+    || ["700016", "7000215", "7000216", "7000222"].includes(aadsts)
+    || lower.includes("invalid client secret")
+    || (lower.includes("expired") && lower.includes("secret"))
+  ) {
+    return new AppError(
+      "MS_BAD_SECRET",
+      `Microsoft rejected the platform's app credentials${short ? `: ${short}` : ""} (HTTP ${httpStatus || "?"})`,
+      502,
+    );
+  }
+  // The organisation requires an administrator's consent before anyone may use
+  // the app — AADSTS65001 (consent required), AADSTS90094 (admin consent
+  // required). Remedy: the admin-consent flow, which the setup page offers.
+  if (
+    e === "consent_required"
+    || e === "interaction_required"
+    || ["65001", "90094"].includes(aadsts)
+    || /admin consent|need admin approval|approval required/i.test(desc)
+  ) {
+    return new AppError(
+      "MS_CONSENT_REQUIRED",
+      `Microsoft requires an administrator's consent for this organisation${short ? `: ${short}` : ""}`,
+      502,
+    );
+  }
+  // The redirect URI we sent is not registered on the app — AADSTS50011.
+  // Owner: the app registration, i.e. the platform vault's redirect_uri field
+  // or the Entra app's Redirect URIs list.
+  if (aadsts === "50011" || /redirect_uri|redirect uri|reply url/i.test(desc)) {
+    return new AppError(
+      "MS_REDIRECT_MISMATCH",
+      `Microsoft rejected the redirect URI${short ? `: ${short}` : ""}`,
+      502,
+    );
+  }
+  // The person pressed Back or cancelled at Microsoft's own screen — not a
+  // failure, and the setup page says so rather than crying error.
+  if (e === "access_denied" && (/cancel/i.test(String(subcode || "")) || !desc)) {
+    return new AppError("OAUTH_CANCELLED", "The connection was cancelled at Microsoft's sign-in screen.", 400);
+  }
+  return new AppError(
+    "MS_AUTH_FAILED",
+    `Microsoft refused the sign-in${e ? ` (${e})` : ""}${short ? `: ${short}` : ""}`,
+    502,
+  );
+}
+
+/**
+ * The v2 admin-consent URL: an M365 administrator opens it, signs in, and
+ * presses Accept, which records tenant-wide consent for the app in THEIR
+ * directory. The `tenant` segment is the configured sign-in audience, except a
+ * multi-tenant keyword is swapped for `organizations` — consent is an act of an
+ * organisation, and a personal account can neither give it nor need it.
+ */
+function adminConsentUrl({ tenant, clientId, redirectUri, scopes, state }) {
+  const audience = /^(common|organizations|consumers)$/i.test(String(tenant || ""))
+    ? "organizations"
+    : String(tenant || "organizations");
+  return (
+    `https://login.microsoftonline.com/${encodeURIComponent(audience)}/v2.0/adminconsent?`
+    + qs.stringify({ client_id: clientId, redirect_uri: redirectUri, scope: scopes, state })
+  );
+}
+
+module.exports = {
+  isConfigured,
+  authorizeUrl,
+  exchangeCode,
+  refresh,
+  credentials,
+  classifyProviderError,
+  adminConsentUrl,
+};

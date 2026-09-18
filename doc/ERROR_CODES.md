@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 5× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (559)
+## All codes (567)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -134,7 +134,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `CATALOGUE_TAKEN` | 409 | 1× | — |
 | `CATEGORY_INACTIVE` | 422 | 1× | — |
 | `CERTIFIED_NOT_AVAILABLE` | — | 2× | — |
-| `CLASH_DETECTED` | 409 | 1× | — |
+| `CLASH_DETECTED` | 409 | 2× | — |
 | `CLASS_MISMATCH` | 422 | 1× | — |
 | `CLIENT_REQUIRED` | 422 | 12× | — |
 | `CLOSE_BLOCKED` | 422 | 1× | — |
@@ -198,6 +198,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `ENTITY_NOT_IN_IDENTITY_SCHEMA` | — | 1× | — |
 | `ENTITY_REQUIRED` | 422 | 12× | — |
 | `ENVELOPE_IN_FLIGHT` | 409 | 1× | — |
+| `EVENT_FORBIDDEN` | 403 | 1× | — |
 | `EVERY_LINE_NEEDS_BUDGET` | — | 1× | — |
 | `EXISTS` | 409 | 3× | — |
 | `FEATURE_DISABLED` | 403 | 3× | — |
@@ -248,7 +249,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `INVALID_SUBSCRIPTION` | 422 | 1× | — |
 | `INVALID_TOKEN` | 401 | 10× | — |
 | `INVALID_TRANSITION` | 422 | 23× | — |
-| `INVALID_VALUE` | 422 | 2× | — |
+| `INVALID_VALUE` | 422 | 3× | — |
 | `INVOICE_POSTED` | 422 | 1× | — |
 | `IN_USE` | 409 | 2× | — |
 | `ISSUER_NOT_SIGNED` | 409 | 1× | — |
@@ -275,7 +276,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `LOGIN_THROTTLED` | 429 | 1× | — |
 | `LOW_MARGIN_JUSTIFICATION_REQUIRED` | 422 | 1× | — |
 | `MAILBOX_ADDRESS_IN_USE` | — | 1× | — |
-| `MAILBOX_ARCHIVED` | 422 | 2× | — |
+| `MAILBOX_ARCHIVED` | 422 | 3× | — |
 | `MAILBOX_AUTH_FAILED` | — | 1× | — |
 | `MAILBOX_FORBIDDEN` | 403 | 2× | — |
 | `MAILBOX_OAUTH_REQUIRED` | — | 1× | — |
@@ -290,6 +291,10 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `MILESTONE_MISMATCH` | 422 | 1× | — |
 | `MISSING_FIELDS` | 422 | 1× | — |
 | `MISSING_REQUIRED_FIELDS` | — | 1× | — |
+| `MS_AUTH_FAILED` | 502 | 1× | — |
+| `MS_BAD_SECRET` | 502 | 1× | — |
+| `MS_CONSENT_REQUIRED` | 502 | 1× | — |
+| `MS_REDIRECT_MISMATCH` | 502 | 1× | — |
 | `NEEDS_MAPPING` | 409 | 1× | — |
 | `NEGATIVE_STOCK` | 422 | 1× | — |
 | `NOTHING_TO_DISPATCH` | 409 | 1× | — |
@@ -304,7 +309,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_BINDABLE` | 409 | 1× | — |
 | `NOT_CASH_ACCOUNT` | 422 | 1× | — |
 | `NOT_COMPLETED` | 409 | 1× | — |
-| `NOT_CONFIGURED` | 400 | 1× | — |
+| `NOT_CONFIGURED` | 400 | 2× | — |
 | `NOT_CONNECTED` | 409 | 2× | — |
 | `NOT_DISPATCHABLE` | 409 | 1× | — |
 | `NOT_DOCUMENT` | 422 | 1× | — |
@@ -312,7 +317,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_EDITABLE` | 400 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 3× | — |
-| `NOT_FOUND` | 404, 422 | 652× | — |
+| `NOT_FOUND` | 404, 422 | 658× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_OPEN` | 409, 422 | 3× | — |
 | `NOT_OPERATIONAL` | 422 | 1× | — |
@@ -393,6 +398,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NO_VAT_ACCOUNT` | 422 | 2× | — |
 | `NO_WORKING_DAYS` | 422 | 1× | — |
 | `NUDGE_QUOTA_EXHAUSTED` | 429 | 1× | — |
+| `OAUTH_CANCELLED` | 400 | 1× | — |
 | `OAUTH_PROBE_FAILED` | 502 | 1× | — |
 | `OAUTH_REDIRECT_MISCONFIGURED` | — | 1× | — |
 | `ODOMETER_BACKWARDS` | 422 | 1× | — |
@@ -419,6 +425,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `OVER_PAID` | 422 | 2× | — |
 | `OVER_RETIRED` | 422 | 2× | — |
 | `PARENT_POSTABLE` | 422 | 2× | — |
+| `PARTICIPANT_FORBIDDEN` | 403 | 1× | — |
 | `PASSKEY_NOT_FOUND` | 404 | 1× | — |
 | `PASSWORD_REQUIRED` | — | 1× | — |
 | `PERIOD_CLOSED` | 422 | 1× | — |
@@ -491,6 +498,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `SCAN_REQUIRED` | 422 | 3× | — |
 | `SCAN_UNREADABLE` | — | 1× | — |
 | `SCOPE_CYCLE` | 422 | 2× | — |
+| `SCOPE_FORBIDDEN` | 403 | 1× | — |
 | `SCORING_UNAVAILABLE` | 502 | 1× | — |
 | `SELF_APPROVAL` | 403 | 2× | — |
 | `SELF_APPROVE` | 422 | 1× | — |
@@ -573,7 +581,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `USER_NOT_ACTIVE` | 422 | 1× | — |
 | `USE_APPROVE` | 422 | 1× | — |
 | `VACANCY_CLOSED` | — | 1× | — |
-| `VALIDATION_ERROR` | 422 | 264× | — |
+| `VALIDATION_ERROR` | 422 | 265× | — |
 | `VALIDATOR_NOT_LINE_MANAGER` | — | 1× | — |
 | `VARIANCE_UNEXPLAINED` | 422 | 1× | — |
 | `VEHICLE_COMMITTED` | — | 1× | — |

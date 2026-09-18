@@ -119,13 +119,14 @@ export function CommsSetupPage() {
    * success banner for a mailbox connected ten minutes ago.
    */
   const [oauthNote, setOauthNote] = React.useState<
-    { ok: boolean; text: string } | null
+    { ok: boolean; tone?: "warn" | "info"; text: string; code?: string | null } | null
   >(null);
   React.useEffect(() => {
     const p = new URLSearchParams(window.location.search);
     const ok = p.get("mail_connected");
     const bad = p.get("mail_error");
-    if (!ok && !bad) return;
+    const consent = p.get("mail_adminconsent");
+    if (!ok && !bad && !consent) return;
     const who = (ok || p.get("provider")) === "google" ? "Google" : "Microsoft";
     if (ok) {
       const email = p.get("email");
@@ -133,15 +134,76 @@ export function CommsSetupPage() {
         ok: true,
         text: `${tr("Connected to")} ${who}${email ? ` — ${email}` : ""}. ${tr("Mail starts arriving within a minute or two.")}`,
       });
-    } else {
+    } else if (consent === "granted") {
+      // The administrator pressed Accept in Entra: consent is recorded in
+      // THEIR directory, and the mailbox that was refused can now connect.
+      setOauthNote({
+        ok: true,
+        text: tr("Admin consent recorded in Microsoft 365. Connect the mailbox again — it should go through now."),
+      });
+    } else if (consent === "denied") {
       setOauthNote({
         ok: false,
-        text: `${who} ${tr("did not connect the mailbox")} (${bad}). ${tr("Nothing was changed — try again, or connect it with its own server settings instead.")}`,
+        tone: "warn",
+        code: "MS_CONSENT_DENIED",
+        text: tr("The administrator did not grant consent, so Microsoft mailboxes from that organisation still cannot connect. Nothing was changed."),
+      });
+    } else {
+      // Named failures carry their remedy; unknown codes keep the old generic
+      // wording with the code in parens for support. A cancel is not an error.
+      const guidance: Record<string, { tone?: "warn" | "info"; text: string }> = {
+        OAUTH_CANCELLED: {
+          tone: "info",
+          text: tr("The connection was cancelled at Microsoft's sign-in screen. Nothing was changed — try again whenever you are ready."),
+        },
+        MS_CONSENT_REQUIRED: {
+          tone: "warn",
+          text: tr("Your organisation requires an administrator's approval before anyone may connect a mailbox. Ask your Microsoft 365 administrator to open the consent link below (or grant it in Entra → Enterprise applications → Permissions), then connect again."),
+        },
+        MS_BAD_SECRET: {
+          text: tr("Microsoft rejected the platform's app credentials — the client secret is wrong or has expired. This is not something retrying fixes: an administrator needs to check Platform Console → Integrations → Microsoft 365."),
+        },
+        MS_REDIRECT_MISMATCH: {
+          text: tr("Microsoft rejected the return address for this sign-in. An administrator needs to check that the Redirect URI registered on the Entra app matches Platform Console → Integrations → Microsoft 365."),
+        },
+        MS_AUTH_FAILED: {
+          text: tr("Microsoft refused the sign-in. Try again; if it keeps failing, note the time and ask an administrator to check the mail logs."),
+        },
+      };
+      const g = bad ? guidance[bad] : undefined;
+      setOauthNote({
+        ok: false,
+        tone: g?.tone,
+        code: bad,
+        text: g
+          ? g.text
+          : `${who} ${tr("did not connect the mailbox")} (${bad}). ${tr("Nothing was changed — try again, or connect it with its own server settings instead.")}`,
       });
     }
     const wanted = p.get("mail_tab");
     if (wanted === "mailboxes" || wanted === "mine") setPendingTab(wanted);
     window.history.replaceState({}, "", window.location.pathname);
+  }, []);
+
+  // The consent link opens in a NEW tab: it is for the organisation's M365
+  // administrator, who may be a different person on this same machine, and
+  // navigating this page away would strand the operator mid-setup.
+  const [consentBusy, setConsentBusy] = React.useState(false);
+  const openAdminConsent = React.useCallback(() => {
+    setConsentBusy(true);
+    api
+      .microsoftAdminConsent()
+      .then((r) => {
+        window.open(r.url, "_blank", "noopener,noreferrer");
+      })
+      .catch(() => {
+        setOauthNote({
+          ok: false,
+          code: "MS_CONSENT_REQUIRED",
+          text: tr("Could not build the consent link — try again in a moment. Your administrator can also grant consent directly in Entra → Enterprise applications → Permissions."),
+        });
+      })
+      .finally(() => setConsentBusy(false));
   }, []);
 
   /**
@@ -173,15 +235,30 @@ export function CommsSetupPage() {
    */
   const notice = oauthNote ? (
     <Callout
-      tone={oauthNote.ok ? "ok" : "bad"}
+      tone={oauthNote.ok ? "ok" : oauthNote.tone || "bad"}
       action={
-        <button
-          type="button"
-          className="underline underline-offset-2"
-          onClick={() => setOauthNote(null)}
-        >
-          {tr("Dismiss")}
-        </button>
+        <span className="flex items-center gap-3">
+          {/* Only on the failure this button can fix: an admin-consent link
+              next to any other error would send the administrator to approve
+              something that was never the problem. */}
+          {oauthNote.code === "MS_CONSENT_REQUIRED" && (
+            <button
+              type="button"
+              className="font-medium underline underline-offset-2"
+              disabled={consentBusy}
+              onClick={openAdminConsent}
+            >
+              {consentBusy ? tr("Opening…") : tr("Open admin consent")}
+            </button>
+          )}
+          <button
+            type="button"
+            className="underline underline-offset-2"
+            onClick={() => setOauthNote(null)}
+          >
+            {tr("Dismiss")}
+          </button>
+        </span>
       }
     >
       {oauthNote.text}

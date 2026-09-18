@@ -25,7 +25,19 @@ async function listChannelsForUser(client, userId, q = {}) {
       "  (SELECT COUNT(*)::int FROM comms_message x WHERE x.group_id = g.group_id AND x.deleted_at IS NULL " +
       "     AND (m.last_read_at IS NULL OR x.created_at > m.last_read_at) AND x.sender_user_id <> $1) AS unread, " +
       "  " + PARTNER_AVATAR_SQL + ", " +
-      "  (SELECT row_to_json(lm) FROM (SELECT x.* FROM comms_message x " +
+      // The attachment flags ride on the last-message JSON so the channel list can
+      // preview a voice note, a photo or a record card. Without them the client
+      // saw only `body`, which is NULL for every media-only message, and the
+      // row read "No messages yet" over a channel that had just spoken.
+      "  (SELECT row_to_json(lm) FROM (SELECT x.*, " +
+      "     (SELECT COUNT(*)::int FROM comms_attachment a WHERE a.message_id = x.message_id) AS attachment_count, " +
+      "     (SELECT COALESCE(BOOL_OR(m.is_voice_note), false) FROM comms_attachment a " +
+      "        LEFT JOIN comms_media m ON m.media_id = a.media_id WHERE a.message_id = x.message_id) AS has_voice_note, " +
+      "     (SELECT COALESCE(BOOL_OR(a.attachment_kind = 'ERP'), false) FROM comms_attachment a " +
+      "       WHERE a.message_id = x.message_id) AS has_erp, " +
+      "     (SELECT m.kind FROM comms_attachment a JOIN comms_media m ON m.media_id = a.media_id " +
+      "       WHERE a.message_id = x.message_id ORDER BY a.created_at LIMIT 1) AS first_media_kind " +
+      "     FROM comms_message x " +
       "     WHERE x.group_id = g.group_id AND x.deleted_at IS NULL " +
       "     ORDER BY x.created_at DESC LIMIT 1) lm) AS last_message " +
       "FROM comms_group g JOIN comms_member m ON m.group_id = g.group_id AND m.user_id = $1 " +

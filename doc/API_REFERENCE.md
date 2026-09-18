@@ -6,7 +6,7 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 1633 |
+| Routes | 1635 |
 | Modules mounted | 140 |
 | API version | v1 |
 
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 1633 mounted routes, grouped by path prefix.
+All 1635 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -1182,6 +1182,8 @@ All 1633 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/mail/messages/:id/extractions` | — |
 | GET | `/api/tenant/mail/oauth/google/callback` | — |
 | GET | `/api/tenant/mail/oauth/google/start` | — |
+| GET | `/api/tenant/mail/oauth/microsoft/admin-consent` | — |
+| GET | `/api/tenant/mail/oauth/microsoft/admin-consent/callback` | — |
 | GET | `/api/tenant/mail/oauth/microsoft/callback` | — |
 | GET | `/api/tenant/mail/oauth/microsoft/start` | — |
 | GET | `/api/tenant/mail/oauth/microsoft/start/shared` | — |

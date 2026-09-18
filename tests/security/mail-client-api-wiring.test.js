@@ -388,6 +388,8 @@ describe("every mail ROUTE has a client wrapper", () => {
     Object.entries({
       "/mail/oauth/microsoft/callback":
         "the provider redirects the browser here; there is nothing to call",
+      "/mail/oauth/microsoft/admin-consent/callback":
+        "Entra redirects the administrator's browser here after Accept/decline; there is nothing to call",
       "/mail/oauth/google/callback": "the provider redirects the browser here",
       "/mail/webhook/microsoft": "Microsoft Graph change notifications",
       "/mail/webhook/google": "Google Pub/Sub push",

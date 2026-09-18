@@ -355,6 +355,7 @@ export type SemanticHit = {
   email_thread_id: string;
   subject?: string | null;
   entity_ref?: string | null;
+  entity_label?: string | null;
   last_message_at?: string | null;
   similarity: number;
 };

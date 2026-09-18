@@ -581,7 +581,9 @@ export function Composer({
         ?.chain()
         .focus("end")
         .insertContent(
-          `<p>${a.filename || tr("Document")}: <a href="${url}">${url}</a> ` +
+          // `target="_blank"`: the link opens a fresh browser tab, never
+          // inside whatever embedded view the recipient reads mail in.
+          `<p>${a.filename || tr("Document")}: <a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a> ` +
           `<em>(${tr("expires")} ${dateDmy(link.expires_at)})</em></p>`,
         )
         .run();
@@ -708,9 +710,17 @@ export function Composer({
               onChange={(e) => setField("email_connection_id", e.target.value, setFrom as never)}
               className="h-8 text-xs"
             >
-              {mailboxes.map((m) => (
-                <option key={m.email_connection_id} value={m.email_connection_id}>{m.email_address}</option>
-              ))}
+              {/* Senders only: a disconnected or retired mailbox cannot send,
+                  so it is not offered as a From — except the one already
+                  chosen, which stays visible so a draft written from a mailbox
+                  that has since been retired still shows where it was going
+                  from instead of a blank row. The send itself is still refused
+                  server-side with MAILBOX_ARCHIVED. */}
+              {mailboxes
+                .filter((m) => m.status === "CONNECTED" || m.email_connection_id === from)
+                .map((m) => (
+                  <option key={m.email_connection_id} value={m.email_connection_id}>{m.email_address}</option>
+                ))}
             </Select>
           </Field>
         )}

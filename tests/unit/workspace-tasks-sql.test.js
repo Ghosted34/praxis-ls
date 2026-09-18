@@ -40,7 +40,9 @@ function maxPlaceholder(sql) {
 
 /** Every `$n` referenced, so a skipped number is visible. */
 function placeholders(sql) {
-  return [...new Set([...sql.matchAll(/\$(\d+)/g)].map((m) => Number(m[1])))].sort((a, b) => a - b);
+  return [
+    ...new Set([...sql.matchAll(/\$(\d+)/g)].map((m) => Number(m[1]))),
+  ].sort((a, b) => a - b);
 }
 
 /**
@@ -61,7 +63,12 @@ function expectBound({ sql, params }) {
 describe("tasks.repo — placeholders match parameters", () => {
   it("listTasks with no filters", async () => {
     const c = mockClient();
-    await repo.listTasks(c, { audience: "mine", userId: "u1", limit: 50, offset: 0 });
+    await repo.listTasks(c, {
+      audience: "mine",
+      userId: "u1",
+      limit: 50,
+      offset: 0,
+    });
     expect(c.calls).toHaveLength(1);
     expectBound(c.calls[0]);
   });
@@ -69,10 +76,16 @@ describe("tasks.repo — placeholders match parameters", () => {
   it("listTasks with every filter at once", async () => {
     const c = mockClient();
     await repo.listTasks(c, {
-      audience: "team", userId: "u1", scopeIds: ["s1", "s2"], personalOnly: true,
-      status: "TO_DO", assignedTo: "u2", q: "invoice",
+      audience: "team",
+      userId: "u1",
+      scopeIds: ["s1", "s2"],
+      personalOnly: true,
+      status: "TO_DO",
+      assignedTo: "u2",
+      q: "invoice",
       entity: { entity_type: "costing", entity_id: "e1" },
-      limit: 25, offset: 50,
+      limit: 25,
+      offset: 50,
     });
     const { sql, params } = c.calls[0];
     expectBound(c.calls[0]);
@@ -105,8 +118,14 @@ describe("tasks.repo — placeholders match parameters", () => {
     // The board the kanban draws is audience 'mine' with personalOnly layered
     // on — the exact bundle behind "I made a task and it never showed on the
     // board". A created task (created_by = me) must survive both clauses.
-    const c = mockClient([{ status: "TO_DO", task_id: "t1", created_by: "u1" }]);
-    const board = await repo.boardTasks(c, { audience: "mine", userId: "u1", personalOnly: true });
+    const c = mockClient([
+      { status: "TO_DO", task_id: "t1", created_by: "u1" },
+    ]);
+    const board = await repo.boardTasks(c, {
+      audience: "mine",
+      userId: "u1",
+      personalOnly: true,
+    });
     expectBound(c.calls[0]);
     expect(c.calls[0].sql).toMatch(/t\.created_by = \$1/);
     expect(board.TO_DO).toHaveLength(1);
@@ -116,8 +135,14 @@ describe("tasks.repo — placeholders match parameters", () => {
     // The assignee side of the same rule: assign a task to a colleague and it
     // has to land on THEIR board, which is also 'mine' + personalOnly. This is
     // what makes "assign it so it shows on their dashboard" true.
-    const c = mockClient([{ status: "IN_PROGRESS", task_id: "t2", assigned_to: "u1" }]);
-    const board = await repo.boardTasks(c, { audience: "mine", userId: "u1", personalOnly: true });
+    const c = mockClient([
+      { status: "IN_PROGRESS", task_id: "t2", assigned_to: "u1" },
+    ]);
+    const board = await repo.boardTasks(c, {
+      audience: "mine",
+      userId: "u1",
+      personalOnly: true,
+    });
     expectBound(c.calls[0]);
     expect(c.calls[0].sql).toMatch(/t\.assigned_to = \$1/);
     expect(board.IN_PROGRESS).toHaveLength(1);
@@ -130,7 +155,12 @@ describe("tasks.repo — placeholders match parameters", () => {
       { status: "WIBBLE", task_id: "3" }, // a value the CHECK should forbid
     ]);
     const board = await repo.boardTasks(c, { audience: "all", userId: "u1" });
-    expect(Object.keys(board).sort()).toEqual(["DONE", "IN_PROGRESS", "IN_REVIEW", "TO_DO"]);
+    expect(Object.keys(board).sort()).toEqual([
+      "DONE",
+      "IN_PROGRESS",
+      "IN_REVIEW",
+      "TO_DO",
+    ]);
     expect(board.TO_DO).toHaveLength(1);
     // An impossible status is dropped, not filed under a phantom column.
     expect(board.TO_DO[0].task_id).toBe("1");
@@ -139,10 +169,20 @@ describe("tasks.repo — placeholders match parameters", () => {
   it("insertTask binds one parameter per column", async () => {
     const c = mockClient([{ task_id: "t1" }]);
     await repo.insertTask(c, {
-      title: "x", description: "d", status: "TO_DO", priority: "HIGH",
-      assigned_to: "u1", created_by: "u2", due_at: "2026-09-15T16:00:00Z",
-      parent_task_id: null, entity_type: "costing", entity_id: "e1",
-      is_personal: true, scope_id: "s1", reminder_minutes: 60, remind_at: "2026-09-15T15:00:00Z",
+      title: "x",
+      description: "d",
+      status: "TO_DO",
+      priority: "HIGH",
+      assigned_to: "u1",
+      created_by: "u2",
+      due_at: "2026-09-15T16:00:00Z",
+      parent_task_id: null,
+      entity_type: "costing",
+      entity_id: "e1",
+      is_personal: true,
+      scope_id: "s1",
+      reminder_minutes: 60,
+      remind_at: "2026-09-15T15:00:00Z",
     });
     const { sql, params } = c.calls[0];
     expectBound(c.calls[0]);
@@ -180,15 +220,24 @@ describe("tasks.repo — placeholders match parameters", () => {
     // (Trimmed because the select is a template literal and starts with a
     // newline, which a `/^SELECT/` anchor cannot see past.)
     expect(c.calls[0].sql.trim()).toMatch(/^SELECT/);
-    expect(c.calls.some((call) => /\bUPDATE task\b/.test(call.sql))).toBe(false);
+    expect(c.calls.some((call) => /\bUPDATE task\b/.test(call.sql))).toBe(
+      false,
+    );
   });
 
   it("insertSubtask binds a step's four columns, deadline included", async () => {
     const c = mockClient([{ task_subtask_id: "s1" }]);
-    await repo.insertSubtask(c, { task_id: "t1", title: "step", display_order: 2, due_at: "2026-09-20T16:00:00Z" });
+    await repo.insertSubtask(c, {
+      task_id: "t1",
+      title: "step",
+      display_order: 2,
+      due_at: "2026-09-20T16:00:00Z",
+    });
     const { sql, params } = c.calls[0];
     expectBound(c.calls[0]);
-    expect(sql).toMatch(/INSERT INTO task_subtask \(task_id, title, display_order, due_at\)/);
+    expect(sql).toMatch(
+      /INSERT INTO task_subtask \(task_id, title, display_order, due_at\)/,
+    );
     expect(params).toEqual(["t1", "step", 2, "2026-09-20T16:00:00Z"]);
   });
 
@@ -198,7 +247,9 @@ describe("tasks.repo — placeholders match parameters", () => {
     const { sql, params } = c.calls[0];
     expectBound(c.calls[0]);
     expect(sql).toMatch(/^UPDATE task_subtask/);
-    expect(sql).toMatch(/completed_at = CASE WHEN \$1 THEN now\(\) ELSE NULL END/);
+    expect(sql).toMatch(
+      /completed_at = CASE WHEN \$1 THEN now\(\) ELSE NULL END/,
+    );
     expect(sql).toMatch(/RETURNING \*/);
     expect(sql).not.toMatch(/RETURNING \* FROM/);
     expect(params).toEqual([true, "s1"]);
@@ -218,13 +269,16 @@ describe("tasks.repo — placeholders match parameters", () => {
     const c = mockClient([{ task_subtask_id: "s1" }]);
     await repo.updateSubtask(c, "s1", {});
     expect(c.calls[0].sql.trim()).toMatch(/^SELECT/);
-    expect(c.calls.some((call) => /\bUPDATE task_subtask\b/.test(call.sql))).toBe(false);
+    expect(
+      c.calls.some((call) => /\bUPDATE task_subtask\b/.test(call.sql)),
+    ).toBe(false);
   });
 
   it("subtasksInRange joins the parent so task visibility hides its steps", async () => {
     const c = mockClient([]);
     await repo.subtasksInRange(c, {
-      from: "2026-09-01", to: "2026-10-01",
+      from: "2026-09-01",
+      to: "2026-10-01",
       visibility: { audience: "mine", userId: "u1", personalOnly: true },
     });
     const { sql } = c.calls[0];
@@ -238,8 +292,10 @@ describe("tasks.repo — placeholders match parameters", () => {
   it("findEventClashes uses the overlap test and can exclude one event", async () => {
     const c = mockClient([]);
     await repo.findEventClashes(c, {
-      location: "Lekki showroom", start_at: "2026-09-15T10:00:00Z",
-      end_at: "2026-09-15T11:00:00Z", excludeId: "e9",
+      location: "Lekki showroom",
+      start_at: "2026-09-15T10:00:00Z",
+      end_at: "2026-09-15T11:00:00Z",
+      excludeId: "e9",
     });
     const { sql } = c.calls[0];
     expectBound(c.calls[0]);
@@ -252,11 +308,50 @@ describe("tasks.repo — placeholders match parameters", () => {
 
   it("listEvents uses a half-open overlap so multi-day events show on every day", async () => {
     const c = mockClient([]);
-    await repo.listEvents(c, { from: "2026-09-01", to: "2026-10-01", mine: true, userId: "u1" });
+    await repo.listEvents(c, {
+      from: "2026-09-01",
+      to: "2026-10-01",
+      mine: true,
+      userId: "u1",
+    });
     const { sql } = c.calls[0];
     expectBound(c.calls[0]);
     expect(sql).toMatch(/e\.start_at < \$2/);
     expect(sql).toMatch(/e\.end_at >= \$1/);
+  });
+
+  it("event visibility includes invited users and scoped team rows", async () => {
+    const c = mockClient([]);
+    await repo.listEventsWindow(c, {
+      from: "2026-09-01",
+      to: "2026-10-01",
+      visibility: {
+        audience: "team",
+        permissionScope: "scoped",
+        userId: "u1",
+        scopeIds: ["s1"],
+      },
+    });
+    const { sql, params } = c.calls[0];
+    expectBound(c.calls[0]);
+    expect(sql).toMatch(/calendar_participant pv/);
+    expect(sql).toMatch(/e\.scope_id IS NULL/);
+    expect(sql).toMatch(/e\.scope_id = ANY\(\$4::uuid\[\]\)/);
+    expect(params).toEqual(["2026-09-01", "2026-10-01", "u1", ["s1"], 500]);
+  });
+
+  it("day task and subtask segments exclude finished work and expose a cap", async () => {
+    const c = mockClient([{ _total: "201", task_id: "t1" }]);
+    const out = await repo.dayTasks(c, {
+      from: "2026-09-01",
+      to: "2026-10-01",
+      visibility: { audience: "mine", userId: "u1", personalOnly: true },
+      limit: 200,
+    });
+    expect(c.calls).toHaveLength(2);
+    expect(c.calls[0].sql).toMatch(/status NOT IN \('DONE','CANCELLED'\)/);
+    expect(c.calls.some((call) => /t\.due_at < \$1/.test(call.sql))).toBe(true);
+    expect(out.truncated).toBe(true);
   });
 
   it("dueTaskReminders reads only armed rows and skips finished work", async () => {
@@ -281,7 +376,11 @@ describe("tasks.repo — placeholders match parameters", () => {
 
   it("never interpolates a caller's value into SQL", async () => {
     const c = mockClient();
-    await repo.listTasks(c, { audience: "mine", userId: "u1", q: "'; DROP TABLE task; --" });
+    await repo.listTasks(c, {
+      audience: "mine",
+      userId: "u1",
+      q: "'; DROP TABLE task; --",
+    });
     // The search term must arrive as a parameter, not inside the statement.
     expect(c.calls[0].sql).not.toMatch(/DROP TABLE/);
     expect(c.calls[0].params).toContain("%'; DROP TABLE task; --%");
@@ -290,7 +389,10 @@ describe("tasks.repo — placeholders match parameters", () => {
 
 describe("tasks.repo — the visibility predicate", () => {
   it("'mine' is the caller's own or their creator's, on one placeholder", async () => {
-    const { sql, params } = repo.visibleWhere({ audience: "mine", userId: "u1" });
+    const { sql, params } = repo.visibleWhere({
+      audience: "mine",
+      userId: "u1",
+    });
     expect(params).toEqual(["u1"]);
     expect(sql.join(" ")).toMatch(/assigned_to = \$1 OR t\.created_by = \$1/);
   });
@@ -299,36 +401,59 @@ describe("tasks.repo — the visibility predicate", () => {
     // The board never asks for 'mine' alone — it always adds personalOnly. The
     // two clauses together must not cancel out and hide a row the caller made
     // or was handed, which would be an empty board for someone who has tasks.
-    const { sql, params } = repo.visibleWhere({ audience: "mine", userId: "u1", personalOnly: true });
+    const { sql, params } = repo.visibleWhere({
+      audience: "mine",
+      userId: "u1",
+      personalOnly: true,
+    });
     const joined = sql.join(" AND ");
     expect(joined).toMatch(/t\.assigned_to = \$1 OR t\.created_by = \$1/);
-    expect(joined).toMatch(/t\.is_personal = false OR t\.created_by = \$2 OR t\.assigned_to = \$2/);
+    expect(joined).toMatch(
+      /t\.is_personal = false OR t\.created_by = \$2 OR t\.assigned_to = \$2/,
+    );
     expect(params).toEqual(["u1", "u1"]);
   });
 
   it("'team' adds the scope closure but keeps unscoped rows visible", async () => {
-    const { sql, params } = repo.visibleWhere({ audience: "team", userId: "u1", scopeIds: ["s1"] });
+    const { sql, params } = repo.visibleWhere({
+      audience: "team",
+      userId: "u1",
+      scopeIds: ["s1"],
+    });
     expect(params).toEqual(["u1", ["s1"]]);
     const joined = sql.join(" ");
-    expect(joined).toMatch(/t\.scope_id IS NULL OR t\.scope_id = ANY\(\$2::uuid\[\]\)/);
+    expect(joined).toMatch(
+      /t\.scope_id IS NULL OR t\.scope_id = ANY\(\$2::uuid\[\]\)/,
+    );
   });
 
   it("'team' with no closure degrades to 'mine' rather than to the tenant", async () => {
     // The dangerous default would be "no scopes means no filter". Showing
     // less is the smaller lie for a surface labelled "my team".
-    const { sql, params } = repo.visibleWhere({ audience: "team", userId: "u1", scopeIds: null });
+    const { sql, params } = repo.visibleWhere({
+      audience: "team",
+      userId: "u1",
+      scopeIds: null,
+    });
     expect(params).toEqual(["u1"]);
     expect(sql.join(" ")).not.toMatch(/scope_id/);
   });
 
   it("'all' adds no predicate at all", async () => {
-    const { sql, params } = repo.visibleWhere({ audience: "all", userId: "u1" });
+    const { sql, params } = repo.visibleWhere({
+      audience: "all",
+      userId: "u1",
+    });
     expect(sql).toEqual([]);
     expect(params).toEqual([]);
   });
 
   it("hides a personal task from everyone but its creator and assignee", async () => {
-    const { sql } = repo.visibleWhere({ audience: "all", userId: "u1", personalOnly: true });
+    const { sql } = repo.visibleWhere({
+      audience: "all",
+      userId: "u1",
+      personalOnly: true,
+    });
     expect(sql.join(" ")).toMatch(
       /t\.is_personal = false OR t\.created_by = \$1 OR t\.assigned_to = \$1/,
     );
@@ -336,7 +461,10 @@ describe("tasks.repo — the visibility predicate", () => {
 
   it("numbers its placeholders from where the caller left off", async () => {
     // A caller that already used $1..$3 must not collide with the predicate.
-    const { sql, params, next } = repo.visibleWhere({ audience: "mine", userId: "u1" }, 4);
+    const { sql, params, next } = repo.visibleWhere(
+      { audience: "mine", userId: "u1" },
+      4,
+    );
     expect(sql.join(" ")).toMatch(/\$4/);
     expect(sql.join(" ")).not.toMatch(/\$1\b/);
     expect(params).toEqual(["u1"]);

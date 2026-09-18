@@ -69,6 +69,11 @@ const composer = requireFeature("mail.composer");
 // tenantContext; CSRF + user identity ride in the signed OAuth `state`, and the
 // webhook echoes Graph's validationToken. Declared BEFORE authMiddleware.
 router.get("/oauth/microsoft/callback", c.msOAuthCallback);
+// The admin-consent flow's return leg: Entra redirects the administrator's
+// browser here after Accept/decline. Pre-auth like the consent callback — the
+// signed `ms_adminconsent` state is the auth — and declared before it for the
+// same reason.
+router.get("/oauth/microsoft/admin-consent/callback", c.msAdminConsentCallback);
 // Graph's subscription-reachability test POSTs an EMPTY body with the token in
 // the query string. Echo it back BEFORE the body validator runs — otherwise the
 // `value`-requiring msWebhook schema 422s the test and the subscription never
@@ -97,6 +102,10 @@ router.use(authMiddleware);
 // anyone who may connect their own mailbox stand up `operations@` as well.
 router.get("/oauth/microsoft/start", requirePermission(M, "edit"), c.msOAuthStart);
 router.get("/oauth/microsoft/start/shared", requirePermission(M, "create"), c.msOAuthStartShared);
+// Mint the admin-consent URL after an MS_CONSENT_REQUIRED refusal: whoever was
+// refused may fetch the link to hand to their M365 administrator, so `edit`
+// like the connect it rescues — the consent itself is given in Entra, not here.
+router.get("/oauth/microsoft/admin-consent", requirePermission(M, "edit"), c.msAdminConsentStart);
 router.get("/oauth/google/start", requirePermission(M, "edit"), c.ggOAuthStart);
 
 // Read-only view (original)

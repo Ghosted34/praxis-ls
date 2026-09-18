@@ -206,9 +206,19 @@ describe("every <module>.ai.js manifest is well-formed", () => {
     // Allowance: a few id-suffixed fields are legitimately free text (external
     // references, provider-side ids). Listed rather than pattern-matched, so
     // adding one is a deliberate act with a name on it.
+    //
+    // `provider_place_id` is the geocoder's own handle for a suggestion —
+    // `geoapify.service.js` reads it straight off `hit.place_id` and caps it at
+    // 300 chars, the column is `text` (0674), and the validator says
+    // `z.string().trim().min(1).max(300)`. Advertising `format: "uuid"` on it
+    // would be the INVERSE of the bug this rule exists to catch: the contract
+    // would promise a shape the validator does not want and the provider does
+    // not issue, and a model that obediently invented a uuid would be refused
+    // by the service's own `results.find(c => c.provider_place_id === id)`.
     const FREE_TEXT_IDS = new Set([
       "external_id", "external_message_id", "message_id", "thread_id",
-      "provider_id", "tx_id", "transaction_id", "reference_id", "batch_id",
+      "provider_id", "provider_place_id", "tx_id", "transaction_id",
+      "reference_id", "batch_id",
     ]);
     const offenders = [];
     for (const row of registrar.buildCatalogue()) {

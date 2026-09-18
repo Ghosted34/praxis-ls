@@ -123,7 +123,7 @@ export type Task = {
   parent_task_id?: string | null;
   subtasks?: Subtask[];
   watchers?: Watcher[];
-  /** The up-to-three reminders of 13880, present on the detail read. The
+  /** The up-to-three reminders of 13890, present on the detail read. The
    *  legacy pair above is a projection of the first row, kept for the board's
    *  badge; the form edits THIS list. */
   reminders?: Reminder[];
@@ -231,7 +231,7 @@ export type Participant = {
 };
 
 /**
- * One reminder of the up-to-three a record can carry (13880).
+ * One reminder of the up-to-three a record can carry (13890).
  *
  * `reminder_minutes` set = relative to the record's own date and RE-MOVES
  * with it (and, on a series, re-materialises per occurrence when scope is

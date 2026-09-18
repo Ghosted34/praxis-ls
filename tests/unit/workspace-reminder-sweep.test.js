@@ -20,7 +20,7 @@ const NOW = new Date("2026-09-15T12:00:00Z");
 /**
  * A client that answers the sweep's two reads with fixtures and records
  * every statement, so the test can assert on what was written as well as
- * what was read. The reads are now against workspace_reminder (13880): the
+ * what was read. The reads are now against workspace_reminder (13890): the
  * sweep no longer reads task.task or calendar_event.calendar_event directly,
  * so a fixture without a reminder row fires nothing — which is the point.
  */

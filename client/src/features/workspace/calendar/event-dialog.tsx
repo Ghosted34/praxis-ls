@@ -87,7 +87,7 @@ export function EventDialog({
   const [startAt, setStartAt] = React.useState("");
   const [endAt, setEndAt] = React.useState("");
   const [allDay, setAllDay] = React.useState(false);
-  // The up-to-three reminders of 13880, edited as rows rather than as the
+  // The up-to-three reminders of 13890, edited as rows rather than as the
   // single preset of 13810.
   const [reminders, setReminders] = React.useState<ReminderDraft[]>([]);
   const [repeatRule, setRepeatRule] = React.useState<string | null>(null);

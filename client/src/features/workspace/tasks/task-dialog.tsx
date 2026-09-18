@@ -96,7 +96,7 @@ export function TaskDialog({
   const [status, setStatus] = React.useState<TaskStatus>("TO_DO");
   const [priority, setPriority] = React.useState<TaskPriority>("NORMAL");
   const [dueAt, setDueAt] = React.useState("");
-  // The up-to-three reminder rows of 13880. A relative row re-moves with the
+  // The up-to-three reminder rows of 13890. A relative row re-moves with the
   // due date; an absolute one stays where it is put.
   const [reminders, setReminders] = React.useState<ReminderDraft[]>([]);
   const [isPersonal, setIsPersonal] = React.useState(false);
@@ -307,7 +307,7 @@ export function TaskDialog({
 
         </div>
 
-        {/* The several reminders of 13880. A relative row rides the due date;
+        {/* The several reminders of 13890. A relative row rides the due date;
             an absolute one is written as a zoneless wall clock and read by the
             server on the TENANT's workplace clock, exactly like the due date
             above — the browser must not substitute the laptop's zone. */}

@@ -82,7 +82,7 @@ const participant = z
   });
 
 /**
- * One reminder row as the dialog sends it (13880). Relative or absolute is
+ * One reminder row as the dialog sends it (13890). Relative or absolute is
  * decided HERE — never both, never neither — so the table's own CHECK
  * (`num_nulls(reminder_minutes, remind_at) = 1`) is a belt, not the user's
  * first grammar lesson. `email` is opt-in per row and `scope: 'series'` is

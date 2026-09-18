@@ -189,7 +189,7 @@ describe("tasks.repo — placeholders match parameters", () => {
   });
 
   it("updateTask never touches a reminder column; re-arm has its own statement", async () => {
-    // 13880 moved the armed-set to workspace_reminder: the parent's UPDATE
+    // 13890 moved the armed-set to workspace_reminder: the parent's UPDATE
     // must not carry reminder_sent_at at all, and re-arming after a moved due
     // date is a deliberate, named statement against the rows — not a side
     // effect of writing the parent.

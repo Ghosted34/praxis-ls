@@ -1,4 +1,4 @@
--- TENANT DB — 13880 One record, several reminders.
+-- TENANT DB — 13890 One record, several reminders.
 --
 -- ── THE LIMITATION THIS UPGRADE REMOVES ─────────────────────────────────────
 --
@@ -93,7 +93,7 @@
 -- deprecated ancestor's best-effort projection.
 --
 -- DOWN carries armed reminders BACK to the parent rows when no prior
--- reminder relation existed, so the reader of a pre-13880 deployment sees the
+-- reminder relation existed, so the reader of a pre-13890 deployment sees the
 -- same promise the armed row made — it does not revert the table, because
 -- the table itself is a data structure and not behavior.
 
@@ -174,7 +174,7 @@ CREATE TABLE IF NOT EXISTS workspace_reminder (
 );
 
 COMMENT ON TABLE workspace_reminder IS
-  'One per (task|calendar_event, ordinal), max 3 per owner. Sweep reads rows WHERE remind_at <= now() AND reminder_sent_at IS NULL AND is_deleted = false. Relations and series-spawned rows share the table by owner_type so one index serves both. 13880.';
+  'One per (task|calendar_event, ordinal), max 3 per owner. Sweep reads rows WHERE remind_at <= now() AND reminder_sent_at IS NULL AND is_deleted = false. Relations and series-spawned rows share the table by owner_type so one index serves both. 13890.';
 COMMENT ON COLUMN workspace_reminder.owner_type IS
   'task = a Workspace task; calendar_event = a Workspace event. Not a free-text entity_type: the sweep joins with per-owner rules.';
 COMMENT ON COLUMN workspace_reminder.reminder_minutes IS
@@ -282,7 +282,7 @@ ON CONFLICT (key) DO NOTHING;
 --   -- both-set and both-null reminders are refused
 --   INSERT INTO workspace_reminder (owner_type, owner_id, ordinal, scope)
 --     VALUES ('task', gen_random_uuid(), 1, 'this');  -- 23514 num_nulls CHECK
---   -- 13880 rows for every previously armed task/event, scoped by the parent
+--   -- 13890 rows for every previously armed task/event, scoped by the parent
 --   SELECT owner_type, count(*), count(*) FILTER (WHERE scope = 'series')
 --     FROM workspace_reminder GROUP BY owner_type;
 --

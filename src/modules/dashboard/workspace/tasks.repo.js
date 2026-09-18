@@ -883,7 +883,7 @@ async function removeParticipant(client, participantId) {
 /**
  * Armed reminders whose time has come, oldest first.
  *
- * 13880: the sweep reads `workspace_reminder`, not the parent's reminder
+ * 13890: the sweep reads `workspace_reminder`, not the parent's reminder
  * columns, so several reminders on one record are one honest row each rather
  * than a race for one slot. The predicate is the same as 13810's
  * (`reminder_sent_at IS NULL` = armed, `remind_at` = due, partial index

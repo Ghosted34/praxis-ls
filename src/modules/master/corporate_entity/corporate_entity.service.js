@@ -16,7 +16,8 @@ const repo = require("./corporate_entity.repo");
 const events = require("./corporate_entity.events");
 const rules = require("./corporate_entity.rules");
 const renewalRules = require("./corporate_entity.renewals");
-const letterheadService = require("../entity-letterhead.service");
+const lh = require("../entity-letterhead.service");
+const letterheadService = lh;
 const letterheadBlocks = require("../../../services/documents/templates/letterhead-blocks");
 const dossierService = require("../entity-360.service");
 const { maskBank } = require("../_shared/confidential");
@@ -362,20 +363,22 @@ async function letterhead(client, id, lang = null, { financials = false } = {}) 
   const { addresses, registrations, establishments } = await repo.collections(client, id);
   const { tax_registrations: taxRegistrations, letterhead: config } = await repo.documentsAndTax(client, id);
   const treasuryAccounts = await repo.treasuryAccounts(client, id);
+
+  // Bug #14: registerdAddress() / identifiers() / paymentBlock() inside the
+  // block composer read both top-level entity columns (address_line1..city) and
+  // the structured children. When an entity has its registered address stored
+  // only as a child entity_address row (or its NIU/RCCM only as registrations),
+  // the top-level columns are null and the composer falls back through the
+  // children. The composer already does that walk; what WAS missing was the
+  // `establishments` and `treasuryAccounts` collections being forwarded to
+  // compose() — they were pulled above but never passed, which is why the
+  // "Legal form & capital" / "Bank" blocks printed empty even when data
+  // existed. Passing them through is the fix.
+
   const input = { entity, config, addresses, registrations, taxRegistrations, treasuryAccounts, establishments };
   // Same confidentiality rule as the dossier: the payment block and the account
   // list both carry the number, and this route is MOD-01 `view`.
   const mask = (p) => dossierService.maskPaymentBlock(p, financials);
-  /*
-   * The COMPOSED blocks — what the editor drags and what the renderer prints.
-   *
-   * `preview` below is the older, flatter shape: named header/footer strings
-   * the previous designer hand-drew from. It stays because the entity 360
-   * summary and the AI entity cards read it, and because a flat shape is the
-   * right one for "tell me this entity's address line". `blocks` is the one the
-   * editor works in, and the one `template.service` folds into every render, so
-   * the sheet on screen and the sheet that prints are the same composition.
-   */
   const customLines = await repo.letterheadLines(client, id);
   const composeInput = {
     entity, config, addresses, establishments, treasuryAccounts, customLines,

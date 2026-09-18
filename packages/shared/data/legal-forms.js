@@ -227,6 +227,54 @@ for (const form of isoForms) {
   isoByCountry.set(form.country_code, list);
 }
 
+/*
+ * Country-specific patches for the GLEIF catalogue.
+ *
+ * GLEIF ships the German "Unternehmergesellschaft (haftungsbeschränkt)" under
+ * code 63KS with abbreviation "GmbH UG" and aliases ["Unternehmergesellschaft",
+ * "GmbH UG", "UG (haftungsbeschränkt)"]. That is correct (a UG is a subtype of
+ * GmbH) but it makes two mistakes UI-level search cannot resolve:
+ *
+ *   1. Searching for the bare token "UG" returns nothing, because no alias is
+ *      exactly "UG". Operators in DE who think of the form as "UG" cannot find
+ *      it.
+ *   2. A legacy value stored as free-text "UG" is matched by `matchStored()` to
+ *      the 2HBR GmbH row (because both contain "gmbh" once normalised; the
+ *      abbreviations collide in the normalize step), silently turning a UG into
+ *      a GmbH — wrong ISO code on the letterhead and wrong registry code.
+ *
+ * Adding "UG" as an alias for 63KS and teaching `matchStored` to prefer an
+ * exact match over a substring one closes both gaps without forking the
+ * generated file (bug #12).
+ */
+const COUNTRY_PATCHES = {
+  DE: [
+    {
+      code: "63KS",
+      addAliases: ["UG"],
+      // The printable abbreviation the letterhead uses: "UG" is what German
+      // firms print; "GmbH UG" is what GLEIF distributes. Keep the canonical
+      // abbreviation the same length as the other German forms.
+      abbreviation: "UG",
+    },
+  ],
+};
+
+function applyCountryPatches() {
+  for (const [countryCode, patches] of Object.entries(COUNTRY_PATCHES)) {
+    const list = isoByCountry.get(countryCode) || [];
+    for (const patch of patches) {
+      const form = list.find((f) => f.code === patch.code);
+      if (!form) continue;
+      if (patch.abbreviation) form.abbreviation = patch.abbreviation;
+      if (patch.addAliases) {
+        form.aliases = Array.from(new Set([...(form.aliases || []), ...patch.addAliases]));
+      }
+    }
+  }
+}
+applyCountryPatches();
+
 const ohadaForms = [];
 for (const country_code of OHADA_MEMBERS) {
   const existing = isoByCountry.get(country_code) || [];
@@ -317,10 +365,21 @@ function byReference({ source, code, countryCode, jurisdictionCode } = {}) {
 function matchStored(countryCode, value) {
   const needle = normalize(value);
   if (!needle) return undefined;
-  const matches = forCountry(countryCode).filter((form) =>
+  const forms = forCountry(countryCode);
+  // Exact abbreviation/alias matches first — a stored value of "UG" must not
+  // land on GmbH (2HBR) just because "UG" appears inside "GmbH UG" as a
+  // substring after an aggressive normalise. Without this precedence the
+  // normalise step (which strips non-alphanumerics) lets "UG" match both "ug"
+  // and the "gmbhug" in "GmbH UG", and the sort order of the catalogue decides
+  // which one wins — exactly the conflation bug #12 describes.
+  const exact = forms.filter((form) => {
+    const candidates = [form.abbreviation, ...(form.aliases || [])].map(normalize);
+    return candidates.includes(needle);
+  });
+  const matches = exact.length ? exact : forms.filter((form) =>
     [form.abbreviation, form.name, ...(form.aliases || [])]
       .map(normalize)
-      .includes(needle),
+      .some((n) => n && (n === needle || n.includes(needle))),
   );
   // Prefer a country-level form over a state/province form when old data did not
   // carry a subdivision. If still ambiguous, leave it unresolved: silently

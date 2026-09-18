@@ -26,11 +26,20 @@ import {
 } from "./country-registration-fields";
 import { DedupeHint } from "./dedupe-hint";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
-import { Pill, ActivePill } from "@/components/ui/pill";
+import { Pill } from "@/components/ui/pill";
 import { useList } from "@/lib/use-resource";
-import { money, num } from "@/lib/format";
+import { money, num, enumLabel } from "@/lib/format";
 import * as api from "@/lib/masterdata-api";
 import { shell } from "./shared";
+
+const STATUS_TONE: Record<string, "ok" | "mute" | "blue" | "orange" | "warn"> = {
+  ACTIVE: "ok",
+  PENDING_REVIEW: "blue",
+  DRAFT: "mute",
+  SUSPENDED: "orange",
+  DEACTIVATED: "mute",
+  ARCHIVED: "mute",
+};
 
 /* ══════════════════════════════ Clients ═════════════════════════ */
 
@@ -420,6 +429,14 @@ export function ClientsPage() {
     },
     { key: "niu", label: "NIU" },
     {
+      key: "address",
+      label: "Registered address",
+      render: (r) => {
+        const parts = [r.address, r.city].filter(Boolean).join(", ");
+        return parts || <span className="text-muted-foreground">—</span>;
+      },
+    },
+    {
       key: "payment_terms_days",
       label: "Terms",
       render: (r) =>
@@ -442,9 +459,20 @@ export function ClientsPage() {
         ),
     },
     {
-      key: "is_active",
+      key: "registration_status",
       label: "Status",
-      render: (r) => <ActivePill active={r.is_active} />,
+      render: (r) => {
+        // Prefer the lifecycle ladder (DRAFT/PENDING_REVIEW/ACTIVE/…) over the
+        // legacy boolean when available (bug #10). `is_active` alone cannot
+        // tell a DRAFT from an ACTIVE record — both read true before the
+        // trg_client_sync_active migration lands.
+        const status = r.registration_status || (r.is_active ? "ACTIVE" : "DEACTIVATED");
+        return (
+          <Pill tone={STATUS_TONE[status] || "mute"}>
+            {enumLabel(status)}
+          </Pill>
+        );
+      },
     },
   ];
 
@@ -459,7 +487,7 @@ export function ClientsPage() {
         <KpiTile label={tr("Clients")} value={num(clients.length)} />
         <KpiTile
           label={tr("Active")}
-          value={num(clients.filter((c) => c.is_active).length)}
+          value={num(clients.filter((c) => (c.registration_status || (c.is_active ? "ACTIVE" : "DEACTIVATED")) === "ACTIVE").length)}
         />
         <KpiTile
           label="WHT agents"

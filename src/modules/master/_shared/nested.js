@@ -222,6 +222,13 @@ function buildResource(cfg) {
         const row = await insertOne(c, table, provided({ ...insertData, [parentCol]: parentId }), "*", insertAllow);
         await demoteOtherPrimaries(c, row, data.is_primary === true);
         await audit(c, { actorUserId: actor.user_id || null, action: `${label}.created`, moduleKey, entityRef: `${label}:${row[pk]}`, after: row });
+        // Bug #13: afterWrite is the hook that advances a document's
+        // scan_status from PENDING → SCANNED when a vault_id arrives, and it
+        // must fire on CREATE too (when a file is attached in the same step as
+        // the row, the vault_id is part of the insert payload). It already
+        // fired on every UPDATE, so an operator attaching from the row worked;
+        // attaching while creating silently left the document at PENDING
+        // forever.
         await afterWrite(c, { op: "create", row, actor });
         await c.query("COMMIT");
         return row;

@@ -335,7 +335,13 @@ const SITE_MEDIA_SLOTS = {
     evidence: true,
     transparent: false,
     maxBytes: 8 * 1024 * 1024,
-    minWidth: 1200,
+    // Bug #16: the cover is rendered inside a CSS `object-fit: cover` slot that
+    // is at most ~1600 px wide on the largest viewport. The previous 1200 px
+    // floor rejected genuine photos taken on older phones and screenshots, and
+    // the renderer already scales smaller images up to fill the slot. A cover
+    // only needs to be an image (any size); derivatives are produced at widths
+    // the source actually supports.
+    minWidth: 1,
     aspect: "16:9",
   },
 };

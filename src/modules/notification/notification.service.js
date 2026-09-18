@@ -591,7 +591,7 @@ async function notify(client, {
   userId, eventTypeKey = null, title, body = null, entityRef = null, priority = "NORMAL",
   category = null, dedupeKey = null,
   url = null, pushTag = undefined, renotify = false, requireInteraction = false,
-  urgency = "normal", pushData = null, actions = null, emailFallback = false, ctx = {},
+  urgency = "normal", pushData = null, actions = null, emailFallback = false, forceEmail = false, ctx = {},
 } = {}) {
   if (!userId || !title) return null;
   const cat = category || categoryFor(eventTypeKey);
@@ -619,7 +619,19 @@ async function notify(client, {
   // EMAIL fan-out honours its own preference (checked inside deliverOutbound
   // via the `email` flag below); PUSH mirrors the in-app decision, since a user
   // who silenced a category in the product has not asked for it on a phone.
-  const wantsEmail = isSecurity || (await repo.isChannelEnabled(client, userId, "EMAIL", cat, false));
+  //
+  // `forceEmail` is the ONE-recorded exception, and it is deliberately narrow:
+  // a reminder's author can tick "email me/them about this one" (PR 3). The
+  // recipient has not silenced the CATEGORY — if they had, `inApp` is null and
+  // push never went out — they only never asked for this kind of alert on
+  // email, and one named person with context overrode that for one deadline.
+  // It is narrow on purpose: it does not authorise broadcast, it does not
+  // re-engage a silenced channel, and it is recorded against the reminder at
+  // write, so "who asked" is answerable from the row.
+  const wantsEmail =
+    isSecurity ||
+    forceEmail === true ||
+    (await repo.isChannelEnabled(client, userId, "EMAIL", cat, false));
   // `null` as the default rather than a boolean: "no row" must reach
   // `interruptFor` as absent so it computes the default, and a boolean default
   // here would silently pin every user to it.

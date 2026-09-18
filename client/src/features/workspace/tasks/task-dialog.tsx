@@ -32,24 +32,21 @@ import { useToast } from "@/components/ui/toast";
 import { errMsg } from "@/lib/use-resource";
 import { TASK_PRIORITIES, TASK_STATUSES } from "../api";
 import type { Task, TaskInput, TaskPriority, TaskStatus } from "../api";
-import { useAddChildTask, useCreateTask, useUpdateTask } from "../hooks";
-import { PRIORITY_LABEL, REMINDER_PRESETS, STATUS_LABEL } from "../labels";
+import { useAddChildTask, useCreateTask, useUpdateTask, useWorkspaceContext } from "../hooks";
+import { PRIORITY_LABEL, STATUS_LABEL } from "../labels";
 import { RepeatField } from "../repeat-field";
+import { RemindersField } from "../reminders-field";
+import {
+  draftsToInput,
+  fromLegacyReminder,
+  toReminderDrafts,
+} from "../reminder-drafts";
+import type { ReminderDraft } from "../reminder-drafts";
 import type { RepeatScope } from "../api";
 
 /** The most a title can be. Mirrors the CHECK on the column, so the user is
  *  told here rather than by a 23514 from Postgres. */
 const TITLE_MAX = 300;
-/**
- * The reminder select's escape hatch.
- *
- * A sentinel rather than a second control, because "1 hour before" and
- * "Friday at 09:00" are answers to the SAME question and belong in one field.
- * The value is a string no preset uses, and it is never sent — the submit
- * translates it into `remind_at` with `reminder_minutes: null`, which is how
- * the server distinguishes an absolute instant from a relative offset.
- */
-const CUSTOM_REMINDER = "custom";
 const DESCRIPTION_MAX = 4000;
 
 export function TaskDialog({
@@ -88,17 +85,20 @@ export function TaskDialog({
   const addChild = useAddChildTask();
   const editing = !!task;
   const childMode = !editing && !!parent;
+  // The tenant clock, for echoing an absolute reminder instant back in the
+  // zone the business reads rather than the laptop's — same contract as the
+  // event dialog.
+  const contextQ = useWorkspaceContext();
+  const timeZone = contextQ.data?.timeZone;
 
   const [title, setTitle] = React.useState("");
   const [description, setDescription] = React.useState("");
   const [status, setStatus] = React.useState<TaskStatus>("TO_DO");
   const [priority, setPriority] = React.useState<TaskPriority>("NORMAL");
   const [dueAt, setDueAt] = React.useState("");
-  const [reminder, setReminder] = React.useState("");
-  // An exact instant the user picked, which beats the relative preset. Held
-  // separately because the two are different intents: "an hour before" MOVES
-  // with the due date, "Friday at 09:00" does not.
-  const [remindAt, setRemindAt] = React.useState("");
+  // The up-to-three reminder rows of 13890. A relative row re-moves with the
+  // due date; an absolute one stays where it is put.
+  const [reminders, setReminders] = React.useState<ReminderDraft[]>([]);
   const [isPersonal, setIsPersonal] = React.useState(false);
   const [repeatRule, setRepeatRule] = React.useState<string | null>(null);
   // When the open task is one occurrence of a series, whether an edit rewrites
@@ -114,18 +114,23 @@ export function TaskDialog({
 
   // Reset on open rather than on unmount: the Dialog stays mounted and only
   // `open` flips, so a stale form would otherwise reopen showing the last
-  // task the user edited.
+  // task the user edited. The tenant clock gates the seed so an absolute
+  // reminder instant echoes back as the time the business means, not the
+  // laptop's — the same reason the event dialog waits for `timeZone`.
   React.useEffect(() => {
-    if (!open) return;
+    if (!open || !timeZone) return;
     setTitle(task?.title ?? initial?.title ?? "");
     setDescription(task?.description ?? initial?.description ?? "");
     setStatus(task?.status ?? "TO_DO");
     setPriority(task?.priority ?? "NORMAL");
     setDueAt(toLocalInput(task?.due_at ?? defaultDue ?? null));
-    setReminder(fromReminder(task));
-    setRemindAt(task?.reminder_minutes === null || task?.reminder_minutes === undefined
-      ? toLocalInput(task?.remind_at ?? null)
-      : "");
+    setReminders(
+      task
+        ? task.reminders && task.reminders.length
+          ? toReminderDrafts(task.reminders, timeZone)
+          : fromLegacyReminder(task.reminder_minutes, task.remind_at, timeZone)
+        : [],
+    );
     setIsPersonal(task?.is_personal ?? false);
     setRepeatRule(task?.recurrence_rule ?? null);
     setSeriesScope("this");
@@ -134,7 +139,7 @@ export function TaskDialog({
     setError(null);
     // `initial` is a dep like the rest: the mail conversion page memoises it,
     // so this re-seeds only when the seed itself changes, not on every render.
-  }, [open, task, defaultDue, initial]);
+  }, [open, task, defaultDue, initial, timeZone]);
 
   async function submit() {
     const trimmed = title.trim();
@@ -149,8 +154,15 @@ export function TaskDialog({
       setError("A repeating task needs a due date to repeat from.");
       return;
     }
-    if (reminder === CUSTOM_REMINDER && !remindAt) {
-      setError("Pick the date and time the reminder should arrive.");
+    const built = draftsToInput(reminders);
+    if ("error" in built) {
+      setError(built.error);
+      return;
+    }
+    // A reminder relative to the due date needs the task to HAVE one — the
+    // server's 400 would say so, and it is better said here, at the field.
+    if (!dueAt && built.input.some((r) => r.reminder_minutes != null)) {
+      setError("A reminder before the due date needs the task to have one — set the date, or make this reminder an exact time.");
       return;
     }
     const input: TaskInput = {
@@ -159,13 +171,9 @@ export function TaskDialog({
       status,
       priority,
       due_at: dueAt || null,
-      // An empty preset means "no reminder" — sent as an explicit null so
-      // editing a task REMOVES its reminder rather than leaving it behind.
-      reminder_minutes: reminder === CUSTOM_REMINDER ? null : reminder === "" ? null : Number(reminder),
-      // Explicit null when the user is on a preset, so switching back from a
-      // custom time CLEARS the pinned instant rather than leaving it to win
-      // silently over the preset the form is now showing.
-      remind_at: reminder === CUSTOM_REMINDER ? remindAt || null : null,
+      // PR 3's list supersedes the 13810 pair server-side. An EMPTY list is a
+      // real statement ("no reminders"), so editing a task can disarm it.
+      reminders: built.input,
       is_personal: isPersonal,
       recurrence_rule: repeatRule,
       // Explicit null when nobody is chosen, so EDITING a task can UNASSIGN it
@@ -297,44 +305,18 @@ export function TaskDialog({
             <DateTimeField id="task-due" value={dueAt} onChange={setDueAt} />
           </Field>
 
-          <Field
-            label="Remind me"
-            htmlFor="task-reminder"
-            hint={
-              reminder === CUSTOM_REMINDER
-                ? "An exact time stays where you put it, even if the due date moves."
-                : dueAt
-                  ? "A preset moves with the due date."
-                  : "Set a due date, or pick an exact time below."
-            }
-          >
-            <NativeSelect
-              id="task-reminder"
-              value={reminder}
-              onChange={(e) => setReminder(e.target.value)}
-              // A relative preset needs an anchor to be relative TO. An exact
-              // time does not, so the control stays usable without a due date
-              // rather than being disabled outright as it used to be.
-              disabled={!dueAt && reminder !== CUSTOM_REMINDER}
-            >
-              {REMINDER_PRESETS.map((p) => (
-                <option key={p.value} value={p.value}>
-                  {p.label}
-                </option>
-              ))}
-              <option value={CUSTOM_REMINDER}>At an exact time…</option>
-            </NativeSelect>
-          </Field>
         </div>
 
-        {/* The exact-time reminder. Written as a zoneless wall clock and read
-            by the server on the TENANT's workplace clock, exactly like the due
-            date above — the browser must not substitute the laptop's zone. */}
-        {reminder === CUSTOM_REMINDER && (
-          <Field label="Remind me at" htmlFor="task-remind-at">
-            <DateTimeField id="task-remind-at" value={remindAt} onChange={setRemindAt} />
-          </Field>
-        )}
+        {/* The several reminders of 13890. A relative row rides the due date;
+            an absolute one is written as a zoneless wall clock and read by the
+            server on the TENANT's workplace clock, exactly like the due date
+            above — the browser must not substitute the laptop's zone. */}
+        <RemindersField
+          rows={reminders}
+          onChange={setReminders}
+          recurring={Boolean(repeatRule) || Boolean(task?.recurrence_series_id)}
+          idPrefix="task"
+        />
 
         {/* A child task is a one-off piece of a parent's work. A repeat here
             would spawn a new child per occurrence and multiply the board by
@@ -439,16 +421,4 @@ function toLocalInput(iso: string | null): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-/**
- * Which preset a stored reminder corresponds to, or "" when there is none.
- *
- * A value outside the offered list is still echoed back as the select's value,
- * which renders as a blank option rather than as "No reminder". Snapping it to
- * the nearest preset would be worse: the user would open a task that reminds
- * them 45 minutes ahead, see "1 hour before", save, and silently change it.
- */
-function fromReminder(task: Task | null | undefined): string {
-  const minutes = task?.reminder_minutes;
-  if (minutes === null || minutes === undefined) return "";
-  return String(minutes);
-}
+

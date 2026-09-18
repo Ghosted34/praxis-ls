@@ -37,4 +37,10 @@ module.exports = {
   EVENT_UPDATED: "calendar_event.updated",
   EVENT_DELETED: "calendar_event.deleted",
   EVENT_REMINDER_DUE: "calendar_event.reminder_due",
+  // PR 3 (13890) — an invitation is a message to a named person, and a
+  // response is news the organiser asked for; both are their own keys rather
+  // than folded into calendar_event.updated, because workflow hooks on "the
+  // invite went out" should not fire for every title edit.
+  EVENT_PARTICIPANT_INVITED: "calendar_event.participant_invited",
+  EVENT_PARTICIPANT_RESPONDED: "calendar_event.participant_responded",
 };

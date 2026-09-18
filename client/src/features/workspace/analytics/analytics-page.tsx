@@ -203,11 +203,26 @@ export function AnalyticsPage() {
       </div>
 
       {q.error ? (
-        <ScreenError
-          message={q.error.message}
-          what="Your analytics"
-          onRetry={() => void q.refetch()}
-        />
+        /* One read was the deliberate PR 2 choice — one instant, one predicate,
+           panels cannot disagree — and its failure story is the whole screen,
+           not six inline gaps the reader has to assemble. So the error NAMES
+           the read that failed and states what each panel underneath was about
+           to show, rather than leaving "Something went wrong" to stand for all
+           of them. `ScreenError` is the right primitive (it handles the offline /
+           retry states for free), but the shared `message` alone cannot say
+           which of the six panels was the casualty, because they share one
+           endpoint. The `Panel` copy does that explicitly. */
+        <Panel title="Analytics">
+          <ScreenError
+            message={
+              "The analytics read — the one authorised query that feeds all six panels " +
+              "(open, overdue, blocked, throughput, cycle time and workload) — could not be answered. " +
+              q.error.message
+            }
+            what="Your analytics"
+            onRetry={() => void q.refetch()}
+          />
+        </Panel>
       ) : q.isLoading || !data ? (
         <Panel title="Analytics">
           <LoadingRow label="Counting your work…" />

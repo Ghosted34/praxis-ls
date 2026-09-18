@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 5× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (567)
+## All codes (568)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -120,11 +120,12 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `BAD_TARGET` | 422 | 1× | — |
 | `BAD_TEMPLATE` | 422 | 5× | — |
 | `BAD_THEME` | 422 | 1× | — |
+| `BAD_TIMEZONE` | — | 2× | — |
 | `BAD_TOKEN` | 500 | 1× | — |
 | `BAD_TOTALS` | 422 | 1× | — |
 | `BAD_TRAINING_MODE` | — | 1× | — |
 | `BAD_TRANSITION` | 422 | 3× | — |
-| `BAD_VALUE` | 422 | 1× | — |
+| `BAD_VALUE` | 400, 422 | 10× | — |
 | `BAD_WINDOW` | 422 | 2× | — |
 | `BASE_CURRENCY` | 409, 422 | 2× | — |
 | `BREACHED_PASSWORD` | 422 | 1× | — |

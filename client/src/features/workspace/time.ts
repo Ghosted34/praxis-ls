@@ -117,6 +117,21 @@ export function tenantWallInput(
     : "";
 }
 
+/** Just the clock, on the tenant's zone — a chip's worth of "17:30". */
+export function tenantTimeFmt(
+  value: string | Date | null | undefined,
+  timeZone: string,
+): string {
+  if (!value) return "—";
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
 export function tenantDateTimeFmt(
   value: string | Date | null | undefined,
   timeZone: string,

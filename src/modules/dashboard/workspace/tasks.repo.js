@@ -35,6 +35,8 @@
  * than per query is the point: a rule that lives in six WHERE clauses drifts,
  * and the drift is invisible because each query still returns rows.
  */
+const { atomically } = require("../../../shared/db/tx");
+
 function visibleWhere(v = {}, start = 1) {
   const p = [];
   const sql = [];
@@ -349,14 +351,13 @@ async function insertTask(client, t) {
     `INSERT INTO task (
        title, description, status, priority, assigned_to, created_by, due_at,
        parent_task_id, entity_type, entity_id, is_personal, scope_id,
-       reminder_minutes, remind_at, recurrence_rule, recurrence_series_id
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+       recurrence_rule, recurrence_series_id
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
      RETURNING *`,
     [
       t.title, t.description ?? null, t.status || "TO_DO", t.priority || "NORMAL",
       t.assigned_to ?? null, t.created_by, t.due_at ?? null, t.parent_task_id ?? null,
       t.entity_type ?? null, t.entity_id ?? null, t.is_personal === true, t.scope_id ?? null,
-      t.reminder_minutes ?? null, t.remind_at ?? null,
       t.recurrence_rule ?? null, t.recurrence_series_id ?? null,
     ],
   );
@@ -383,20 +384,15 @@ async function findTask(client, id) {
  * is excluded for the same reason — it is the sweep's bookkeeping and is written
  * only by `advanceTaskCursor`/`endTaskRecurrence`, never by a PATCH.
  */
-async function updateTask(client, id, patch, { rearm = false } = {}) {
+async function updateTask(client, id, patch) {
   const sets = [];
   const params = [];
   for (const key of ["title", "description", "status", "priority", "assigned_to", "due_at",
-    "entity_type", "entity_id", "is_personal", "reminder_minutes", "remind_at",
+    "entity_type", "entity_id", "is_personal",
     "recurrence_rule", "recurrence_series_id"]) {
     if (!(key in patch)) continue;
     params.push(patch[key] ?? null);
     sets.push(`${key} = $${params.length}`);
-  }
-  if (rearm) {
-    // Moving a reminder re-arms it. Without this a rescheduled task would keep
-    // its fired stamp and never remind anyone again — silently.
-    sets.push("reminder_sent_at = NULL");
   }
   if (patch.status === "DONE") {
     sets.push("completed_at = now()");
@@ -773,15 +769,15 @@ async function insertEvent(client, e) {
   const { rows } = await client.query(
     `INSERT INTO calendar_event (
        title, event_type, location, description, start_at, end_at, all_day,
-       recurrence_rule, recurrence_series_id, created_by, reminder_minutes,
-       remind_at, entity_type, entity_id, scope_id
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+       recurrence_rule, recurrence_series_id, created_by,
+       entity_type, entity_id, scope_id
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
      RETURNING *`,
     [
       e.title, e.event_type || "other", e.location ?? null, e.description ?? null,
       e.start_at, e.end_at, e.all_day === true, e.recurrence_rule ?? null,
-      e.recurrence_series_id ?? null, e.created_by ?? null, e.reminder_minutes ?? null,
-      e.remind_at ?? null, e.entity_type ?? null, e.entity_id ?? null, e.scope_id ?? null,
+      e.recurrence_series_id ?? null, e.created_by ?? null,
+      e.entity_type ?? null, e.entity_id ?? null, e.scope_id ?? null,
     ],
   );
   return rows[0];
@@ -792,17 +788,16 @@ async function findEvent(client, id) {
   return rows[0] || null;
 }
 
-async function updateEvent(client, id, patch, { rearm = false } = {}) {
+async function updateEvent(client, id, patch) {
   const sets = [];
   const params = [];
   for (const key of ["title", "event_type", "location", "description", "start_at", "end_at",
-    "all_day", "recurrence_rule", "recurrence_series_id", "reminder_minutes", "remind_at",
+    "all_day", "recurrence_rule", "recurrence_series_id",
     "entity_type", "entity_id", "scope_id"]) {
     if (!(key in patch)) continue;
     params.push(patch[key] ?? null);
     sets.push(`${key} = $${params.length}`);
   }
-  if (rearm) sets.push("reminder_sent_at = NULL");
   if (!sets.length) return findEvent(client, id);
   params.push(id);
   const { rows } = await client.query(
@@ -888,18 +883,33 @@ async function removeParticipant(client, participantId) {
 /**
  * Armed reminders whose time has come, oldest first.
  *
- * Reads the partial index (13810): `reminder_sent_at IS NULL` is IN the index
- * predicate, so in a tenant where almost everything has already fired this
- * scans almost nothing. Tasks exclude DONE/CANCELLED — reminding someone about
- * work that is finished is how an alert gets filtered forever.
+ * 13890: the sweep reads `workspace_reminder`, not the parent's reminder
+ * columns, so several reminders on one record are one honest row each rather
+ * than a race for one slot. The predicate is the same as 13810's
+ * (`reminder_sent_at IS NULL` = armed, `remind_at` = due, partial index
+ * keeps it compact); what changed is WHERE those columns live. Relative
+ * reminders arrive here by re-materialisation, not by read: a series-level
+ * row is inserted per occurrence with its `remind_at` pre-computed from the
+ * occurrence's own anchor, so the row the sweep sees is always the one whose
+ * alarm time is literally set. Tasks exclude DONE/CANCELLED — reminding
+ * someone about work that is finished is how an alert gets filtered forever.
+ *
+ * One query per owner, not a union: the two shapes differ in their sweep rule
+ * (task: assignee-or-creator and not finished; event: organiser + invited
+ * participants) and folding them into one SELECT would copy the distinction
+ * the table's owner_type is there to make possible without re-inventing.
  */
 async function dueTaskReminders(client, nowIso, limit) {
   const { rows } = await client.query(
-    `SELECT task_id, title, due_at, assigned_to, created_by, priority, entity_type, entity_id
-       FROM task
-      WHERE remind_at <= $1 AND reminder_sent_at IS NULL AND is_deleted = false
-        AND status NOT IN ('DONE','CANCELLED')
-      ORDER BY remind_at
+    `SELECT r.workspace_reminder_id, r.owner_id AS task_id, r.reminder_minutes, r.remind_at, r.email, r.label, r.ordinal,
+            t.title, t.due_at, t.assigned_to, t.created_by, t.priority, t.entity_type, t.entity_id
+       FROM workspace_reminder r
+       JOIN task t ON t.task_id = r.owner_id AND t.is_deleted = false
+      WHERE r.owner_type = 'task' AND r.is_deleted = false
+        AND r.reminder_sent_at IS NULL
+        AND r.remind_at <= $1
+        AND t.status NOT IN ('DONE','CANCELLED')
+      ORDER BY r.remind_at
       LIMIT $2`,
     [nowIso, limit],
   );
@@ -908,34 +918,246 @@ async function dueTaskReminders(client, nowIso, limit) {
 
 async function dueEventReminders(client, nowIso, limit) {
   const { rows } = await client.query(
-    `SELECT e.calendar_event_id, e.title, e.start_at, e.location, e.created_by, e.entity_type, e.entity_id,
+    `SELECT r.workspace_reminder_id, r.owner_id AS calendar_event_id, r.reminder_minutes, r.remind_at, r.email, r.label, r.ordinal,
+            e.title, e.start_at, e.location, e.created_by, e.entity_type, e.entity_id,
             COALESCE(array_agg(DISTINCT p.user_id) FILTER (WHERE p.user_id IS NOT NULL), '{}') AS participant_user_ids
-       FROM calendar_event e
+       FROM workspace_reminder r
+       JOIN calendar_event e ON e.calendar_event_id = r.owner_id AND e.is_deleted = false
        LEFT JOIN calendar_participant p ON p.calendar_event_id = e.calendar_event_id
-      WHERE e.remind_at <= $1 AND e.reminder_sent_at IS NULL AND e.is_deleted = false
-      GROUP BY e.calendar_event_id
-      ORDER BY e.remind_at
+      WHERE r.owner_type = 'calendar_event' AND r.is_deleted = false
+        AND r.reminder_sent_at IS NULL
+        AND r.remind_at <= $1
+      GROUP BY r.workspace_reminder_id, e.calendar_event_id
+      ORDER BY r.remind_at
       LIMIT $2`,
     [nowIso, limit],
   );
   return rows;
 }
 
+/* ── read-side: the several reminders a record carries, in display order ── */
+
 /**
- * Stamp a reminder as fired.
+ * Reminders for one record, ordered for the dialog.
  *
- * The sweep calls this EVEN WHEN DELIVERY FAILED. Losing one notification is
- * recoverable — the user sees the task on their desk. A row that never gets
- * stamped is re-selected every minute forever, and one bad row then consumes
- * the batch and stops every other reminder in the tenant from firing. That is
- * the wedge this prevents, and it is why the stamp is not conditional.
+ * Any reader is reading them before deciding which edits to offer which is
+ * the same query for the detail read and the form's seed — never two
+ * orderings re-derived by two callers.
  */
-async function markTaskReminderSent(client, id, nowIso) {
-  await client.query("UPDATE task SET reminder_sent_at = $2 WHERE task_id = $1", [id, nowIso]);
+async function listReminders(client, ownerType, ownerId) {
+  const { rows } = await client.query(
+    `SELECT workspace_reminder_id, owner_type, owner_id, reminder_minutes, remind_at,
+            reminder_sent_at, ordinal, email, scope, created_at, updated_at
+       FROM workspace_reminder
+      WHERE owner_type = $1 AND owner_id = $2 AND is_deleted = false
+      ORDER BY ordinal`,
+    [ownerType, ownerId],
+  );
+  return rows;
 }
 
-async function markEventReminderSent(client, id, nowIso) {
-  await client.query("UPDATE calendar_event SET reminder_sent_at = $2 WHERE calendar_event_id = $1", [id, nowIso]);
+/**
+ * Delete a row without making what was armed look like what was never there.
+ * Soft-delete rather than CASCADE-only: the sweep's armed set is a partial
+ * index, and a hard deletion would make the armed reminder invisible from
+ * what was never armed — which is exactly the failure it was built to avoid.
+ */
+async function deleteReminder(client, workspaceReminderId, ownerType, ownerId) {
+  const { rows } = await client.query(
+    `UPDATE workspace_reminder
+        SET is_deleted = true, updated_at = now()
+      WHERE workspace_reminder_id = $1 AND owner_type = $2 AND owner_id = $3 AND is_deleted = false
+      RETURNING workspace_reminder_id`,
+    [workspaceReminderId, ownerType, ownerId],
+  );
+  return Boolean(rows[0]);
+}
+
+/* ── write-side: replacing the whole reminder set of a record ───────────── */
+
+/**
+ * Insert one row of a record's reminder set, ordered callers may rewrite.
+ *
+ * The variant placeholder is `remind_at` for an absolute row and null for a
+ * relative one; `reminder_minutes` for a relative row and null for an
+ * absolute. Both-null is the CHECK's own refusal (num_nulls = 1), both-set is
+ * the other — a row the service computed is one of the two, never both, by
+ * the time this is called. `email` is opt-in per row, never inherited —
+ * ticking the box on one row does not say it for the others.
+ */
+async function insertReminder(client, { ownerType, ownerId, reminderMinutes = null, remindAt = null, ordinal, label = null, email = false, scope = "this", actor = {} }) {
+  const { rows } = await client.query(
+    `INSERT INTO workspace_reminder (
+       owner_type, owner_id, reminder_minutes, remind_at, ordinal, label, email, scope, created_by, updated_by
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+     RETURNING *`,
+    [ownerType, ownerId, reminderMinutes ?? null, remindAt ?? null, ordinal, label ?? null, email === true, scope, actor.user_id ?? null, actor.user_id ?? null],
+  );
+  return rows[0];
+}
+
+/**
+ * Rewrite the reminder set for one record, in one transaction.
+ *
+ * The previous set is soft-deleted before the new rows insert, so a row
+ * number (`ordinal`) that already existed is never double-armed for the same
+ * (owner, ordinal) and the sweep's armed set does not see the old and new
+ * values together in one tick. A failed second row then leaves the first as
+ * never-armed rather than as set replacement that was half-written. Callers
+ * pass raw `remindAt` from workspace.time.toInstant — a computed conditioned
+ * on the owner's due/start — so there is only one conversion per instant
+ * rather than one per row.
+ */
+async function replaceReminders(client, { ownerType, ownerId, rows, actor = {} }) {
+  // `atomically` rather than a raw BEGIN: the join may arrive on a caller's
+  // already-open transaction, in which case we chain on it and commit nothing
+  // of theirs. See shared/db/tx.js's header for the whole rule.
+  return atomically(client, async () => {
+    await client.query(
+      `UPDATE workspace_reminder
+          SET is_deleted = true, updated_at = now()
+        WHERE owner_type = $1 AND owner_id = $2 AND is_deleted = false`,
+      [ownerType, ownerId],
+    );
+    const out = [];
+    for (const row of rows) {
+      out.push(await insertReminder(client, { ownerType, ownerId, actor, ...row }));
+    }
+    return out;
+  });
+}
+
+/**
+ * SERIES reminders for the rows the spawn sweep is about to materialise, in
+ * one read rather than one query per row's occurrence.
+ *
+ * The service walks the spawn list, asks which owners have a SERIES row and
+ * in what shape (the reminder_minutes preset only — an absolute row on a
+ * series is a "01 March at 09:00" that belongs to the template's date, not
+ * each occurrence), and then materialises one fresh, per-occurrence row per
+ * (owner, ordinal) at the newly-created row's anchor. The join on
+ * `owner_id` keeps it one query for a batch, so a 200-row tick does not
+ * re-read every series' reminders per occurrence.
+ */
+async function listReminderTemplates(client, ownerType, ownerIds) {
+  if (!ownerIds || !ownerIds.length) return [];
+  const { rows } = await client.query(
+    `SELECT workspace_reminder_id, owner_type, owner_id, reminder_minutes, ordinal, label, email
+       FROM workspace_reminder
+      WHERE owner_type = $1 AND owner_id = ANY($2::uuid[])
+        AND is_deleted = false AND scope = 'series' AND reminder_minutes IS NOT NULL
+      ORDER BY owner_type, owner_id, ordinal`,
+    [ownerType, ownerIds],
+  );
+  return rows;
+}
+
+/**
+ * Materialise the per-occurrence reminders for one spawned row.
+ *
+ * One fresh row per series template, with its `remind_at` pre-computed from
+ * `anchor` (a due date or an event start, already a UTC instant) minus the
+ * preset's `reminder_minutes`. This is insert-only: the sweep writes the
+ * occurrence and then adds its reminders, and the template itself carries
+ * nothing for this occurrence — a per-occurrence row is its own reality
+ * rather than the series' memory of one, and it does not get the per-
+ * occurrence anchor's date back when it is edited.
+ */
+async function materialiseReminders(client, { ownerType, ownerId, anchorIso, templates }) {
+  let n = 0;
+  for (const t of templates) {
+    const remindAt = new Date(new Date(anchorIso).getTime() - Number(t.reminder_minutes) * 60000).toISOString();
+    const { rows: tpl } = await client.query(
+      "SELECT created_by FROM workspace_reminder WHERE workspace_reminder_id = $1",
+      [t.workspace_reminder_id],
+    );
+    const createdBy = tpl[0]?.created_by ?? null;
+    await client.query(
+      `INSERT INTO workspace_reminder (
+         owner_type, owner_id, reminder_minutes, remind_at, ordinal, label, email, scope, created_by, updated_by
+       ) VALUES ($1,$2,NULL,$3,$4,$5,$6,'this',$7,$7)`,
+      [ownerType, ownerId, remindAt, t.ordinal, t.label ?? null, t.email === true, createdBy],
+    );
+    n += 1;
+  }
+  return n;
+}
+
+/**
+ * Stamp a reminder as fired — workspace_reminder's own row, not its parent.
+ *
+ * The sweep calls this EVEN WHEN DELIVERY FAILED. Losing one notification
+ * is recoverable — the task is on the desk, the record renders the date. A
+ * row that never gets stamped is re-selected every minute forever, and one
+ * bad row then eats the batch and stops every reminder in the tenant from
+ * firing. That is the wedge this prevents, and it is why the stamp is not
+ * conditional.
+ */
+async function markReminderSent(client, id, nowIso) {
+  await client.query(
+    "UPDATE workspace_reminder SET reminder_sent_at = $2, updated_at = now() WHERE workspace_reminder_id = $1",
+    [id, nowIso],
+  );
+}
+
+/** Stamp every armed reminder of a now-DONE owner — completion quiets the rest. */
+async function settleRemindersForDoneTask(client, ownerId, nowIso) {
+  await client.query(
+    `UPDATE workspace_reminder
+        SET reminder_sent_at = $2, updated_at = now()
+      WHERE owner_type = 'task' AND owner_id = $1 AND is_deleted = false
+        AND reminder_sent_at IS NULL`,
+    [ownerId, nowIso],
+  );
+}
+
+/**
+ * Re-arm every armed reminder of an owner whose date basis moved.
+ *
+ * A moved due date re-arms the record's reminders — the 13810 contract that
+ * the captured stamp means stale, not done — deliberately applied to the
+ * whole set, not one row: moving ONE reminder's arming would forget the
+ * others, and a stamp that refers to a date that no longer exists is
+ * precisely the alarm-clock-for-a-date-that-is-no-longer-Thursday failure
+ * the sweep is meant to avoid.
+ */
+async function rearmOwnerReminders(client, ownerType, ownerId) {
+  await client.query(
+    `UPDATE workspace_reminder
+        SET reminder_sent_at = NULL, updated_at = now()
+      WHERE owner_type = $1 AND owner_id = $2 AND is_deleted = false
+        AND reminder_sent_at IS NOT NULL`,
+    [ownerType, ownerId],
+  );
+}
+
+/** Project a single-reminder owner's state onto the parent columns. */
+async function syncParentReminderColumns(client, ownerType, ownerId) {
+  const table = ownerType === "task" ? "task" : "calendar_event";
+  const idColumn = ownerType === "task" ? "task_id" : "calendar_event_id";
+  const { rows } = await client.query(
+    `SELECT
+       (SELECT reminder_minutes FROM workspace_reminder
+         WHERE owner_type = $1 AND owner_id = $2 AND is_deleted = false ORDER BY ordinal LIMIT 1) AS reminder_minutes,
+       (SELECT remind_at FROM workspace_reminder
+         WHERE owner_type = $1 AND owner_id = $2 AND is_deleted = false ORDER BY ordinal LIMIT 1) AS remind_at`,
+    [ownerType, ownerId],
+  );
+  const { reminder_minutes = null, remind_at = null } = rows[0] || {};
+  await client.query(
+    `UPDATE ${table}
+        SET reminder_minutes = $2, remind_at = $3,
+            reminder_sent_at = CASE
+              WHEN $2 IS NULL AND $3 IS NULL THEN reminder_sent_at
+              ELSE (
+                SELECT reminder_sent_at FROM workspace_reminder
+                 WHERE owner_type = $1 AND owner_id = $2 AND is_deleted = false ORDER BY ordinal LIMIT 1
+              )
+            END,
+            updated_at = now()
+      WHERE ${idColumn} = $1`,
+    [ownerId, reminder_minutes, remind_at],
+  );
 }
 
 /* ═══════════════════════════ RECURRENCE (13840) ═════════════════════════ */
@@ -959,7 +1181,7 @@ async function listSpawnDueTasks(client, nowIso, limit) {
   const { rows } = await client.query(
     `SELECT task_id, title, description, priority, assigned_to, created_by, due_at,
             parent_task_id, entity_type, entity_id, is_personal, scope_id,
-            reminder_minutes, recurrence_rule, recurrence_series_id
+            recurrence_rule, recurrence_series_id
        FROM task
       WHERE recurrence_rule IS NOT NULL AND is_deleted = false AND due_at IS NOT NULL
         AND COALESCE(recurrence_cursor_at, due_at) <= $1
@@ -974,7 +1196,7 @@ async function listSpawnDueEvents(client, nowIso, limit) {
   const { rows } = await client.query(
     `SELECT calendar_event_id, title, event_type, location, description,
             start_at, end_at, all_day, created_by, entity_type, entity_id, scope_id,
-            reminder_minutes, recurrence_rule, recurrence_series_id
+            recurrence_rule, recurrence_series_id
        FROM calendar_event
       WHERE recurrence_rule IS NOT NULL AND is_deleted = false
         AND COALESCE(recurrence_cursor_at, start_at) <= $1
@@ -1020,8 +1242,8 @@ async function insertSpawnedTask(client, t) {
     `INSERT INTO task (
        title, description, status, priority, assigned_to, created_by, due_at,
        parent_task_id, entity_type, entity_id, is_personal, scope_id,
-       reminder_minutes, remind_at, recurrence_rule, recurrence_series_id
-     ) VALUES ($1,$2,'TO_DO',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+       recurrence_rule, recurrence_series_id
+     ) VALUES ($1,$2,'TO_DO',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
      ON CONFLICT (recurrence_series_id, due_at)
        WHERE recurrence_series_id IS NOT NULL AND due_at IS NOT NULL
        DO NOTHING
@@ -1030,7 +1252,6 @@ async function insertSpawnedTask(client, t) {
       t.title, t.description ?? null, t.priority || "NORMAL", t.assigned_to ?? null,
       t.created_by, t.due_at, t.parent_task_id ?? null, t.entity_type ?? null,
       t.entity_id ?? null, t.is_personal === true, t.scope_id ?? null,
-      t.reminder_minutes ?? null, t.remind_at ?? null,
       t.recurrence_rule ?? null, t.recurrence_series_id ?? null,
     ],
   );
@@ -1041,9 +1262,9 @@ async function insertSpawnedEvent(client, e) {
   const { rows } = await client.query(
     `INSERT INTO calendar_event (
        title, event_type, location, description, start_at, end_at, all_day,
-       recurrence_rule, recurrence_series_id, created_by, reminder_minutes,
-       remind_at, entity_type, entity_id, scope_id
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+       recurrence_rule, recurrence_series_id, created_by,
+       entity_type, entity_id, scope_id
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
      ON CONFLICT (recurrence_series_id, start_at)
        WHERE recurrence_series_id IS NOT NULL
        DO NOTHING
@@ -1051,8 +1272,8 @@ async function insertSpawnedEvent(client, e) {
     [
       e.title, e.event_type || "other", e.location ?? null, e.description ?? null,
       e.start_at, e.end_at, e.all_day === true, e.recurrence_rule ?? null,
-      e.recurrence_series_id ?? null, e.created_by ?? null, e.reminder_minutes ?? null,
-      e.remind_at ?? null, e.entity_type ?? null, e.entity_id ?? null, e.scope_id ?? null,
+      e.recurrence_series_id ?? null, e.created_by ?? null,
+      e.entity_type ?? null, e.entity_id ?? null, e.scope_id ?? null,
     ],
   );
   return rows[0] || null;
@@ -1144,16 +1365,15 @@ async function endEventRecurrence(client, id) {
  * `exclude` is the row the user is looking at, which `updateTask` has already
  * patched — so it is not written twice with two different `updated_at` values.
  */
-async function updateSeriesTasks(client, seriesId, patch, { exclude, rearm = false } = {}) {
+async function updateSeriesTasks(client, seriesId, patch, { exclude } = {}) {
   const sets = [];
   const params = [];
   for (const key of ["title", "description", "priority", "assigned_to", "due_at",
-    "entity_type", "entity_id", "is_personal", "reminder_minutes", "remind_at", "recurrence_rule"]) {
+    "entity_type", "entity_id", "is_personal", "recurrence_rule"]) {
     if (!(key in patch)) continue;
     params.push(patch[key] ?? null);
     sets.push(`${key} = $${params.length}`);
   }
-  if (rearm) sets.push("reminder_sent_at = NULL");
   if (!sets.length) return 0;
   params.push(seriesId, exclude);
   const { rowCount } = await client.query(
@@ -1166,16 +1386,15 @@ async function updateSeriesTasks(client, seriesId, patch, { exclude, rearm = fal
   return rowCount || 0;
 }
 
-async function updateSeriesEvents(client, seriesId, patch, { exclude, rearm = false } = {}) {
+async function updateSeriesEvents(client, seriesId, patch, { exclude } = {}) {
   const sets = [];
   const params = [];
   for (const key of ["title", "event_type", "location", "description", "start_at", "end_at",
-    "all_day", "reminder_minutes", "remind_at", "recurrence_rule", "scope_id"]) {
+    "all_day", "recurrence_rule", "scope_id"]) {
     if (!(key in patch)) continue;
     params.push(patch[key] ?? null);
     sets.push(`${key} = $${params.length}`);
   }
-  if (rearm) sets.push("reminder_sent_at = NULL");
   if (!sets.length) return 0;
   params.push(seriesId, exclude);
   const { rowCount } = await client.query(
@@ -1215,6 +1434,9 @@ async function updateSeriesEvents(client, seriesId, patch, { exclude, rearm = fa
  * Day keys use `AT TIME ZONE $tz` so a bar labelled "15 September" is the
  * tenant's 15 September, matching Today and the Calendar. The zone arrives as
  * a parameter from `workspace.time.timezoneOf()`; it is never the server's.
+ * `timezoneOf` validates the setting against the runtime's tzdb and falls back
+ * to Douala, so a bad `hr.timezone` value cannot reach Postgres as SQLSTATE
+ * 22023 ("invalid value for parameter 'TimeZone'").
  *
  * ── THIS IS OPERATIONAL DATA AND NOTHING ELSE ──────────────────────────────
  *
@@ -1517,7 +1739,10 @@ module.exports = {
   analyticsComposition,
   eventVisibleWhere, listEventsWindow, listEvents, insertEvent, findEvent, updateEvent, softDeleteEvent, findEventClashes,
   listParticipants, insertParticipant, respondParticipant, removeParticipant,
-  dueTaskReminders, dueEventReminders, markTaskReminderSent, markEventReminderSent,
+  dueTaskReminders, dueEventReminders, markReminderSent,
+  listReminders, insertReminder, replaceReminders, deleteReminder,
+  listReminderTemplates, materialiseReminders, settleRemindersForDoneTask,
+  rearmOwnerReminders, syncParentReminderColumns,
   listSpawnDueTasks, listSpawnDueEvents, countSeriesTasks, countSeriesEvents,
   insertSpawnedTask, insertSpawnedEvent, copySubtasks, copyParticipants,
   advanceTaskCursor, advanceEventCursor, endTaskRecurrence, endEventRecurrence,

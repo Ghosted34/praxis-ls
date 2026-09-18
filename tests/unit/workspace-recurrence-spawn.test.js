@@ -95,7 +95,10 @@ describe("spawnDue — tasks", () => {
     // params[5] is due_at: the 14th of October at the same Douala wall clock.
     expect(inserts[0].params[5]).toBe("2026-10-14T16:00:00.000Z");
     // The spawned row carries the series so it can spawn its own successor.
-    expect(inserts[0].params[14]).toBe("t1");
+    // (Reminders no longer ride the INSERT — the per-occurrence rows come from
+    // the series' reminder templates after it lands, so the insert has no
+    // reminder params.)
+    expect(inserts[0].params[12]).toBe("t1");
   });
 
   it("carries the checklist but not its ticks", async () => {

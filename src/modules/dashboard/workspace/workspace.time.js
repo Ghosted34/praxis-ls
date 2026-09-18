@@ -31,11 +31,53 @@
  */
 
 const { getSetting } = require("../../../shared/config/settings");
+const { logger } = require("../../../config/logger");
 
-/** The tenant's workplace clock. Douala unless told otherwise — see 0697. */
+/** The workplace clock's default and last-resort zone — see 0697. */
+const DEFAULT_TZ = "Africa/Douala";
+
+/**
+ * Is this string a timezone the RUNTIME will honour?
+ *
+ * A value is a fact, not a string: `Intl.DateTimeFormat` is the authority
+ * (`timezones.isValid` in packages/shared is a static catalogue and misses a
+ * case-insensitive host), because the consumers below are Intl and Postgres's
+ * own tzdb. The try/catch is the point, not a workaround.
+ */
+function isValidTimeZone(value) {
+  if (typeof value !== "string" || !value.trim()) return false;
+  try {
+    new Intl.DateTimeFormat("en-GB", { timeZone: value.trim() });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The tenant's workplace clock. Douala unless told otherwise — see 0697.
+ *
+ * THE VALUE, NOT JUST THE TYPE: guarding "is a string" and trusting it is what
+ * took `/workspace/day` and `/workspace/analytics` down together in September
+ * 2026. A tenant admin typed `WAT` into Settings, every read of this function
+ * returned it, and the first `Intl.DateTimeFormat` on each path — and the
+ * first `AT TIME ZONE` in each aggregate — raised `RangeError: Invalid time
+ * zone`, surfacing as a blank-screen 500 with `INTERNAL_ERROR`. Read-side
+ * hardening is the fix: an invalid setting degrades to Douala, it is named in
+ * a warning so the record can be corrected, and the sweeping write-side rule
+ * lives in `setting.rules.js` (`hr.timezone` rejected at write, MOD-70).
+ */
 async function timezoneOf(client) {
-  const v = await getSetting(client, "hr", "timezone", "Africa/Douala");
-  return typeof v === "string" && v.trim() ? v.trim() : "Africa/Douala";
+  const v = await getSetting(client, "hr", "timezone", DEFAULT_TZ);
+  const value = typeof v === "string" ? v.trim() : "";
+  if (value && isValidTimeZone(value)) return value;
+  if (value) {
+    logger.warn(
+      { setting: "hr.timezone", value },
+      "[workspace] hr.timezone is not a valid IANA timezone — using Africa/Douala",
+    );
+  }
+  return DEFAULT_TZ;
 }
 
 /**
@@ -130,4 +172,4 @@ function toInstant(value, { timeZone, dateOnlyTime = null } = {}) {
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 
-module.exports = { timezoneOf, toInstant, zonedWallClockToUtc };
+module.exports = { timezoneOf, toInstant, zonedWallClockToUtc, isValidTimeZone, DEFAULT_TZ };

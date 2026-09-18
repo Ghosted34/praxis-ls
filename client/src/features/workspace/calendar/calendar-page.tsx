@@ -28,6 +28,7 @@ import { PageHeader } from "@/components/data-list";
 import { Panel } from "@/components/ui/panel";
 import { Pill } from "@/components/ui/pill";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
 import { EmptyState, LoadingRow } from "@/components/ui/states";
 import { ScreenError } from "@/components/connection/screen-error";
@@ -48,6 +49,7 @@ import {
 } from "../time";
 import { CalendarGrid } from "./calendar-grid";
 import { WeekView } from "./week-view";
+import { DayAgenda } from "./day-agenda";
 import { isoDay, monthCells, weekCells } from "./dates";
 import { EventDialog } from "./event-dialog";
 
@@ -101,6 +103,13 @@ export function CalendarPage() {
   const [selected, setSelected] = React.useState<CalendarEvent | null>(null);
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [defaultDay, setDefaultDay] = React.useState<string | null>(null);
+  // The day's own sheet — what the tap on a cell means now, on every viewport:
+  // the events and deadlines of that day, plus its quick capture. "Create"
+  // stays one more, explicitly named, step away.
+  const [agendaDay, setAgendaDay] = React.useState<string | null>(null);
+  // Client-side filter over the already-fetched window — never a second
+  // request, per the recorded scope ("no new search endpoint").
+  const [filter, setFilter] = React.useState("");
 
   const year = cursor.getFullYear();
   const month = cursor.getMonth();
@@ -118,8 +127,25 @@ export function CalendarPage() {
   // Deadlines (task + subtask) are a separate read: a slow or failed overlay
   // must not hide the calendar's event list, and vice versa.
   const dq = useDeadlines({ from, to });
-  const deadlines = React.useMemo(() => dq.data?.items ?? [], [dq.data]);
-  const events = React.useMemo(() => q.data ?? [], [q.data]);
+  const allDeadlines = React.useMemo(() => dq.data?.items ?? [], [dq.data]);
+  const allEvents = React.useMemo(() => q.data ?? [], [q.data]);
+
+  // The filter narrows the visible set, never the query: the window the page
+  // fetched stays the truth, and clearing the box restores it whole. Matched
+  // on the words a person would type — title, the kind, the room.
+  const needle = filter.trim().toLowerCase();
+  const events = React.useMemo(() => {
+    if (!needle) return allEvents;
+    return allEvents.filter((e) =>
+      [e.title, e.event_type, e.location ?? ""].join(" ").toLowerCase().includes(needle),
+    );
+  }, [allEvents, needle]);
+  const deadlines = React.useMemo(() => {
+    if (!needle) return allDeadlines;
+    return allDeadlines.filter((d) =>
+      [d.title, d.task_title ?? ""].join(" ").toLowerCase().includes(needle),
+    );
+  }, [allDeadlines, needle]);
 
   // A deep link (`?event=<id>`) selects from the visible range or fetches the
   // record directly when it is outside that range, then is stripped so a
@@ -179,6 +205,17 @@ export function CalendarPage() {
     setDefaultDay(day ?? tenantToday(timeZone));
     setSelected(null);
     setDialogOpen(true);
+  }
+
+  /**
+   * A tap on a day — all viewports. The day's own sheet answers first ("what's
+   * on"), and nothing is created until a control that names creation is
+   * pressed. On a phone this is what stops a dot-sized target from opening the
+   * write form over an existing meeting; on the desktop it is also the a11y
+   * fix: chips stop being buttons inside a cell-sized role="button".
+   */
+  function openDayAgenda(day: string) {
+    setAgendaDay(day);
   }
 
   return (
@@ -243,6 +280,21 @@ export function CalendarPage() {
               {view === "week" ? "This week" : "This month"}
             </Button>
           </div>
+          <div className="flex items-center gap-2">
+            <Input
+              aria-label="Filter the visible calendar"
+              placeholder="Filter this view…"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              className="w-40 sm:w-52"
+            />
+            {needle && (
+              <span className="micro">
+                {events.length} event{events.length === 1 ? "" : "s"}, {deadlines.length} deadline
+                {deadlines.length === 1 ? "" : "s"} match
+              </span>
+            )}
+          </div>
           <Segmented
             label="Calendar view"
             value={view}
@@ -261,7 +313,7 @@ export function CalendarPage() {
             deadlines={deadlines}
             timeZone={timeZone}
             loading={q.isLoading || dq.isLoading}
-            onSelectDay={(day) => openNew(day)}
+            onSelectDay={openDayAgenda}
             onSelectEvent={setSelected}
             onSelectDeadline={(d) =>
               navigate(`/workspace/tasks?task=${d.task_id}`)
@@ -276,7 +328,7 @@ export function CalendarPage() {
               deadlines={deadlines}
               timeZone={timeZone}
               loading={q.isLoading || dq.isLoading}
-              onSelectDay={(day) => openNew(day)}
+              onSelectDay={openDayAgenda}
               onSelectEvent={setSelected}
               onSelectDeadline={(d) =>
                 navigate(`/workspace/tasks?task=${d.task_id}`)
@@ -342,6 +394,23 @@ export function CalendarPage() {
         }}
         event={selected}
         defaultDay={defaultDay}
+      />
+
+      <DayAgenda
+        day={agendaDay}
+        onClose={() => setAgendaDay(null)}
+        events={events}
+        deadlines={deadlines}
+        timeZone={timeZone}
+        onOpenEvent={(e) => {
+          setAgendaDay(null);
+          setSelected(e);
+        }}
+        onOpenDeadline={(d) => navigate(`/workspace/tasks?task=${d.task_id}`)}
+        onNewEvent={(day) => {
+          setAgendaDay(null);
+          openNew(day);
+        }}
       />
     </section>
   );

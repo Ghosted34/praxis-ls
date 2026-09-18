@@ -207,71 +207,78 @@ describe("calendar event visibility — list and detail agree", () => {
   });
 });
 
-describe("resolveRemindAt — when the reminder fires", () => {
+describe("resolveReminderRows — the several reminders a record carries", () => {
   const tz = "UTC";
 
-  it("lets an explicit instant win over the relative minutes", () => {
-    expect(
-      service.resolveRemindAt({
-        remind_at: "2026-09-15T09:00:00Z",
-        reminder_minutes: 60,
+  it("resolves a relative row from the anchor, one hour earlier", () => {
+    const rows = service.resolveReminderRows({
+      reminders: [{ reminder_minutes: 60 }],
+      anchor: "2026-09-15T17:00:00Z",
+      timeZone: tz,
+    });
+    expect(rows).toEqual([
+      { reminderMinutes: 60, remindAt: null, ordinal: 1, label: null, email: false, scope: "this" },
+    ]);
+  });
+
+  it("resolves an explicit instant and keeps both kinds in one set", () => {
+    const rows = service.resolveReminderRows({
+      reminders: [
+        { reminder_minutes: 1440, email: true, label: "the day before", scope: "series" },
+        { remind_at: "2026-09-15T09:00:00Z" },
+      ],
+      anchor: "2026-09-15T17:00:00Z",
+      timeZone: tz,
+    });
+    expect(rows[0]).toMatchObject({ reminderMinutes: 1440, remindAt: null, ordinal: 1, email: true, scope: "series", label: "the day before" });
+    expect(rows[1]).toMatchObject({ reminderMinutes: null, remindAt: "2026-09-15T09:00:00.000Z", ordinal: 2, email: false, scope: "this" });
+  });
+
+  it("refuses a fourth reminder — the cap is a rule of the record, not its form", () => {
+    expect(() =>
+      service.resolveReminderRows({
+        reminders: [
+          { reminder_minutes: 5 }, { reminder_minutes: 30 }, { reminder_minutes: 60 }, { reminder_minutes: 1440 },
+        ],
         anchor: "2026-09-15T17:00:00Z",
         timeZone: tz,
       }),
-    ).toBe("2026-09-15T09:00:00.000Z");
+    ).toThrow(/at most three/i);
   });
 
-  it("derives from the anchor when only minutes are given", () => {
-    expect(
-      service.resolveRemindAt({
-        reminder_minutes: 60,
+  it("refuses a row that is both relative and absolute — the two are one alarm", () => {
+    expect(() =>
+      service.resolveReminderRows({
+        reminders: [{ reminder_minutes: 60, remind_at: "2026-09-15T09:00:00Z" }],
         anchor: "2026-09-15T17:00:00Z",
         timeZone: tz,
       }),
-    ).toBe("2026-09-15T16:00:00.000Z");
+    ).toThrow(/relative or at a time/i);
   });
 
-  it("derives a day-ahead reminder across midnight", () => {
-    expect(
-      service.resolveRemindAt({
-        reminder_minutes: 1440,
-        anchor: "2026-09-15T09:00:00Z",
-        timeZone: tz,
-      }),
-    ).toBe("2026-09-14T09:00:00.000Z");
+  it("refuses an empty row, because it is not armed", () => {
+    expect(() =>
+      service.resolveReminderRows({ reminders: [{}], anchor: "2026-09-15T17:00:00Z", timeZone: tz }),
+    ).toThrow(/minutes-before or a time/i);
   });
 
-  it("returns null for 'no reminder', which is a real outcome", () => {
-    expect(
-      service.resolveRemindAt({
-        reminder_minutes: null,
-        anchor: "2026-09-15T17:00:00Z",
-        timeZone: tz,
-      }),
-    ).toBeNull();
+  it("refuses a relative row with no anchor — a reminder for no date is not one", () => {
+    expect(() =>
+      service.resolveReminderRows({ reminders: [{ reminder_minutes: 60 }], anchor: null, timeZone: tz }),
+    ).toThrow(/needs a date/i);
   });
 
-  it("returns null when there is nothing to be relative to", () => {
-    // Minutes with no due date cannot resolve; storing a wrong instant would be
-    // worse than storing none, because it would fire.
-    expect(
-      service.resolveRemindAt({
-        reminder_minutes: 60,
-        anchor: null,
-        timeZone: tz,
-      }),
-    ).toBeNull();
-  });
-
-  it("resolves a zoneless explicit time on the tenant's clock", () => {
-    expect(
-      service.resolveRemindAt({
-        remind_at: "2026-09-15T09:00",
-        reminder_minutes: null,
-        anchor: null,
-        timeZone: "Africa/Douala",
-      }),
-    ).toBe("2026-09-15T08:00:00.000Z");
+  it("keeps scope, email and label opt-in per row, never inherited", () => {
+    const rows = service.resolveReminderRows({
+      reminders: [
+        { reminder_minutes: 60 },
+        { reminder_minutes: 60, email: true, scope: "series", label: "  board morning  " },
+      ],
+      anchor: "2026-09-15T17:00:00Z",
+      timeZone: tz,
+    });
+    expect(rows[0].email).toBe(false);
+    expect(rows[1]).toMatchObject({ email: true, scope: "series", label: "board morning" });
   });
 });
 

@@ -9,7 +9,73 @@
  */
 "use strict";
 
-const { toInstant, zonedWallClockToUtc } = require("../../src/modules/dashboard/workspace/workspace.time");
+const { timezoneOf, toInstant, zonedWallClockToUtc, isValidTimeZone, DEFAULT_TZ } =
+  require("../../src/modules/dashboard/workspace/workspace.time");
+
+/**
+ * timezoneOf — the value, not just the type.
+ *
+ * In September 2026 a tenant's `hr.timezone` held a non-IANA string ("WAT"),
+ * and every consumer that trusted it — `/workspace/day`'s `Intl.DateTimeFormat`
+ * and `/workspace/analytics`' `AT TIME ZONE` — raised `RangeError`, surfacing
+ * as a blank-screen 500 on the two sections an operations day runs on. The
+ * guard below is what makes that impossible rather than merely reproducible.
+ * A mock client answers the `setting` read; nothing else is touched, because
+ * that is the point — the validation happens before any SQL is built.
+ */
+function clientWithSetting(value) {
+  return {
+    query: async (sql) =>
+      /FROM setting/i.test(sql)
+        ? value === undefined
+          ? { rows: [], rowCount: 0 }
+          : { rows: [{ value }], rowCount: 1 }
+        : { rows: [], rowCount: 0 },
+  };
+}
+
+describe("timezoneOf — an invalid tenant timezone degrades, it does not 500", () => {
+  it.each([
+    "WAT",
+    "GMT+1",
+    "UTC+01:00",
+    "Central Africa Time",
+    "Africa/ Douala",
+  ])("falls back to Africa/Douala for %s", async (bad) => {
+    await expect(timezoneOf(clientWithSetting(bad))).resolves.toBe("Africa/Douala");
+  });
+
+  it("treats an unset or empty setting as the default", async () => {
+    await expect(timezoneOf(clientWithSetting(undefined))).resolves.toBe(DEFAULT_TZ);
+    await expect(timezoneOf(clientWithSetting(""))).resolves.toBe(DEFAULT_TZ);
+    await expect(timezoneOf(clientWithSetting(null))).resolves.toBe(DEFAULT_TZ);
+  });
+
+  it("keeps a valid setting, including a case the host normalises", async () => {
+    await expect(timezoneOf(clientWithSetting("Europe/Paris"))).resolves.toBe("Europe/Paris");
+    // A case-insensitive tzdb resolves `africa/douala`; falling back here would
+    // silently move a correctly-configured tenant one hour.
+    await expect(timezoneOf(clientWithSetting("africa/douala"))).resolves.toBe("africa/douala");
+  });
+
+  it("trims edge whitespace but not a zone that would break", async () => {
+    await expect(timezoneOf(clientWithSetting("  Africa/Douala  "))).resolves.toBe("Africa/Douala");
+    await expect(timezoneOf(clientWithSetting("  WAT  "))).resolves.toBe(DEFAULT_TZ);
+  });
+});
+
+describe("isValidTimeZone — the authority is Intl, not a catalogue copy", () => {
+  it("accepts IANA names and rejects free text", () => {
+    expect(isValidTimeZone("Africa/Douala")).toBe(true);
+    expect(isValidTimeZone("Europe/Kiev")).toBe(true);
+    expect(isValidTimeZone("UTC")).toBe(true);
+    expect(isValidTimeZone("WAT")).toBe(false);
+    expect(isValidTimeZone("GMT+1")).toBe(false);
+    expect(isValidTimeZone("")).toBe(false);
+    expect(isValidTimeZone(null)).toBe(false);
+    expect(isValidTimeZone(undefined)).toBe(false);
+  });
+});
 
 describe("toInstant — a datetime with an offset is already an instant", () => {
   it("passes a Zulu instant through untouched", () => {

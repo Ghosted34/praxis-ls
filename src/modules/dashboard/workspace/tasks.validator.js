@@ -81,6 +81,32 @@ const participant = z
     message: "invite a user OR name an external attendee, not both and not neither",
   });
 
+/**
+ * One reminder row as the dialog sends it (13890). Relative or absolute is
+ * decided HERE — never both, never neither — so the table's own CHECK
+ * (`num_nulls(reminder_minutes, remind_at) = 1`) is a belt, not the user's
+ * first grammar lesson. `email` is opt-in per row and `scope: 'series'` is
+ * the re-materialise-per-occurrence choice; both ride the row so a reminder
+ * remembers its own intent rather than the parent's.
+ */
+const reminder = z
+  .object({
+    reminder_minutes: z.number().int().min(0).max(525600).nullable().optional(),
+    remind_at: dt(DATETIME_MSG).nullable().optional(),
+    email: z.boolean().optional(),
+    scope: z.enum(SERIES_SCOPE).optional(),
+    label: z.string().trim().max(80).nullable().optional(),
+  })
+  .strict()
+  .refine((r) => {
+    const hasRelative = r.reminder_minutes !== null && r.reminder_minutes !== undefined;
+    const hasAbsolute = r.remind_at !== null && r.remind_at !== undefined && r.remind_at !== "";
+    return hasRelative !== hasAbsolute;
+  }, { message: "a reminder is minutes-before OR at a time, not both and not neither" });
+
+/** PR 3's several-reminders vocabulary: at most three per record. */
+const reminders = z.array(reminder).max(3, "at most three reminders per record");
+
 /* ══════════════════════════════════ TASKS ════════════════════════════════ */
 
 const taskCreate = z
@@ -100,9 +126,12 @@ const taskCreate = z
     // `reminder_minutes` is RELATIVE (before the due date) and `remind_at` is
     // ABSOLUTE. Sending both is allowed — the absolute one wins — because the
     // reminder picker needs to say "1 day before, at 09:00", which is a
-    // relative intent with an absolute answer.
+    // relative intent with an absolute answer. `reminders` is PR 3's several
+    // rows (up to three per record, email/scope/label per row); the pair is
+    // 13810's vocabulary, kept so the older client still arms one reminder.
     reminder_minutes: z.number().int().min(0).max(525600).nullable().optional(),
     remind_at: dt(DATETIME_MSG).nullable().optional(),
+    reminders: reminders.optional(),
     subtasks: z.array(subtask).max(50).optional(),
     recurrence_rule: recurrenceRule.optional(),
   })
@@ -121,6 +150,7 @@ const taskUpdate = z
     is_personal: z.boolean().optional(),
     reminder_minutes: z.number().int().min(0).max(525600).nullable().optional(),
     remind_at: dt(DATETIME_MSG).nullable().optional(),
+    reminders: reminders.optional(),
     recurrence_rule: recurrenceRule.nullable().optional(),
     series: z.enum(SERIES_SCOPE).optional(),
   })
@@ -182,6 +212,7 @@ const childCreate = z
     entity_id: z.string().uuid().nullable().optional(),
     reminder_minutes: z.number().int().min(0).max(525600).nullable().optional(),
     remind_at: dt(DATETIME_MSG).nullable().optional(),
+    reminders: reminders.optional(),
     subtasks: z.array(subtask).max(50).optional(),
   })
   .strict();
@@ -296,6 +327,7 @@ const eventCreate = z
     scope_id: z.string().uuid().nullable().optional(),
     reminder_minutes: z.number().int().min(0).max(525600).nullable().optional(),
     remind_at: dt(DATETIME_MSG).nullable().optional(),
+    reminders: reminders.optional(),
     participants: z.array(participant).max(50).optional(),
     // Book it anyway, past the clash warning. A boolean rather than a
     // permission: overriding your own double-booking is not an authority.
@@ -318,6 +350,7 @@ const eventUpdate = z
     scope_id: z.string().uuid().nullable().optional(),
     reminder_minutes: z.number().int().min(0).max(525600).nullable().optional(),
     remind_at: dt(DATETIME_MSG).nullable().optional(),
+    reminders: reminders.optional(),
     series: z.enum(SERIES_SCOPE).optional(),
     force: z.boolean().optional(),
   })

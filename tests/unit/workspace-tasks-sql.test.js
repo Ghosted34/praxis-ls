@@ -181,25 +181,29 @@ describe("tasks.repo — placeholders match parameters", () => {
       entity_id: "e1",
       is_personal: true,
       scope_id: "s1",
-      reminder_minutes: 60,
-      remind_at: "2026-09-15T15:00:00Z",
     });
     const { sql, params } = c.calls[0];
     expectBound(c.calls[0]);
-    expect(sql.match(/\$\d+/g)).toHaveLength(16);
-    expect(params).toHaveLength(16);
+    expect(sql.match(/\$\d+/g)).toHaveLength(14);
+    expect(params).toHaveLength(14);
   });
 
-  it("updateTask re-arms the reminder only when asked", async () => {
-    const rearmed = mockClient([{ task_id: "t1" }]);
-    await repo.updateTask(rearmed, "t1", { title: "new" }, { rearm: true });
-    expect(rearmed.calls[0].sql).toMatch(/reminder_sent_at = NULL/);
-    expectBound(rearmed.calls[0]);
-
+  it("updateTask never touches a reminder column; re-arm has its own statement", async () => {
+    // 13890 moved the armed-set to workspace_reminder: the parent's UPDATE
+    // must not carry reminder_sent_at at all, and re-arming after a moved due
+    // date is a deliberate, named statement against the rows — not a side
+    // effect of writing the parent.
     const plain = mockClient([{ task_id: "t1" }]);
     await repo.updateTask(plain, "t1", { title: "new" });
     expect(plain.calls[0].sql).not.toMatch(/reminder_sent_at/);
+    expect(plain.calls[0].sql).not.toMatch(/reminder_minutes/);
     expectBound(plain.calls[0]);
+
+    const rearm = mockClient();
+    await repo.rearmOwnerReminders(rearm, "task", "t1");
+    expect(rearm.calls[0].sql).toMatch(/UPDATE workspace_reminder/);
+    expect(rearm.calls[0].sql).toMatch(/reminder_sent_at = NULL/);
+    expect(rearm.calls[0].params).toEqual(["task", "t1"]);
   });
 
   it("updateTask stamps completed_at on the way in and clears it on the way out", async () => {
@@ -371,7 +375,9 @@ describe("tasks.repo — placeholders match parameters", () => {
     const { sql } = c.calls[0];
     expectBound(c.calls[0]);
     expect(sql).toMatch(/array_agg\(DISTINCT p\.user_id\)/);
-    expect(sql).toMatch(/GROUP BY e\.calendar_event_id/);
+    // GROUP BY pins the reminder row AND its event, so a fan-out row per
+    // participant does not multiply the sweep's armed set.
+    expect(sql).toMatch(/GROUP BY r\.workspace_reminder_id, e\.calendar_event_id/);
   });
 
   it("never interpolates a caller's value into SQL", async () => {

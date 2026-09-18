@@ -9,7 +9,7 @@ const { AppError } = require("../../../utils/errors");
 
 const KNOWN_SECTIONS = [
   "appearance", "legal", "finance", "comms", "email", "fx", "workflow",
-  "numbering", "commercial", "procurement", "security", "ai",
+  "numbering", "commercial", "procurement", "security", "ai", "hr",
   // Pixie-parity gap-fixes hosted in the generic setting store:
   "document_template", "custom_field", "integration_secret", "email_signature",
 ];
@@ -21,6 +21,30 @@ const TEMPLATE_STATUS = ["draft", "published", "archived"];
 const FIELD_TYPES = ["text", "number", "boolean", "date", "select", "multiselect"];
 
 function assertValue(section, key, value) {
+  /* hr.timezone is one of the few scalar settings the hub accepts, and its
+   * value must be a real IANA name BEFORE anything else about it is checked.
+   * It is read by Workspace and Attendance through `Intl.DateTimeFormat` and
+   * `AT TIME ZONE`, and an arbitrary string (the production value was "WAT")
+   * raised `RangeError: Invalid time zone` on every reader — a blank-screen
+   * 500 on two sections, surfaced as `INTERNAL_ERROR`. Rejecting it at write
+   * time is the half of the fix that stops the input; the read-side fallback
+   * is in workspace.time.js, and a deprecated IANA link is left to
+   * `timezones.normalize` upstream. The runtime check is the authority rather
+   * than a static catalogue, because a case-insensitive host resolves names
+   * the catalogue does not. */
+  if (section === "hr" && key === "timezone") {
+    if (typeof value !== "string" || !value.trim()) {
+      throw new AppError("BAD_TIMEZONE", "hr.timezone must be an IANA timezone name, e.g. Africa/Douala", 422);
+    }
+    const zoned = String(value).trim();
+    try {
+      new Intl.DateTimeFormat("en-GB", { timeZone: zoned });
+    } catch {
+      throw new AppError("BAD_TIMEZONE", "hr.timezone must be an IANA timezone name, e.g. Africa/Douala — '" + zoned + "' is not one this server recognises", 422);
+    }
+    return true;
+  }
+
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     // arrays are allowed for a few list-style settings (e.g. dunning policy)
     // and for custom_field, whose value is an array of field definitions.
@@ -89,6 +113,7 @@ function assertValue(section, key, value) {
       }
     }
   }
+
   return true;
 }
 

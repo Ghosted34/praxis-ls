@@ -83,7 +83,7 @@ export function WeekView({
               type="button"
               onClick={() => onSelectDay(iso)}
               className="flex shrink-0 items-center gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:w-40"
-              aria-label={`Schedule an event on ${day.toDateString()}`}
+              aria-label={`Open the agenda for ${day.toDateString()}`}
             >
               <span
                 className={cn(
@@ -107,7 +107,7 @@ export function WeekView({
                   onClick={() => onSelectDay(iso)}
                   className="micro text-muted-foreground hover:text-primary-ink"
                 >
-                  Nothing — click to add
+                  Nothing — open the day
                 </button>
               ) : (
                 <>

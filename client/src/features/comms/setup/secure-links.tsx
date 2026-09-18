@@ -135,6 +135,17 @@ function MintDialog({ onClose, onMinted }: { onClose: () => void; onMinted: () =
             >
               {copied ? tr("Copied") : tr("Copy")}
             </Button>
+            {/* Opens outside this window: navigating the PWA itself to the link
+                would drop the operator's workspace for a page meant for a
+                stranger, and on some platforms the app scope would capture it
+                anyway. A blank tab shows exactly what the recipient will see. */}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => window.open(url, "_blank", "noopener,noreferrer")}
+            >
+              {tr("Open")}
+            </Button>
           </div>
           <p className="text-xs text-muted-foreground">
             {tr("Expires")} {dateTimeFmt(minted.expires_at)}. {tr("You can revoke it before then from the list.")}

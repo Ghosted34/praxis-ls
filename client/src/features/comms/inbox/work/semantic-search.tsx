@@ -91,7 +91,7 @@ export function SemanticResults({
                     {h.subject || tr("(no subject)")}
                   </span>
                   <span className="block truncate text-xs text-muted-foreground">
-                    {h.entity_ref ? `${humanizeRef(h.entity_ref)} · ` : ""}
+                    {h.entity_ref ? `${h.entity_label || humanizeRef(h.entity_ref)} · ` : ""}
                     {dateTimeFmt(h.last_message_at)}
                   </span>
                 </span>

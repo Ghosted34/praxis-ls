@@ -98,6 +98,18 @@ export type CommMessage = {
   group_id: string;
   sender_user_id?: string | null;
   body?: string | null;
+  /**
+   * Channel-list preview flags, present on `Channel.last_message` only.
+   *
+   * The list row used to read `body` alone, which is NULL for every media-only
+   * message — so a voice note left the preview saying "No messages yet". These
+   * say what the message carries instead, and the row renders accordingly. The
+   * thread read does not send them: there the attachments themselves arrive.
+   */
+  attachment_count?: number | null;
+  has_voice_note?: boolean | null;
+  has_erp?: boolean | null;
+  first_media_kind?: MediaKind | null;
   media_vault_id?: string | null;
   reply_to_message_id?: string | null;
   edited_at?: string | null;

@@ -19,6 +19,7 @@
 "use strict";
 
 const repo = require("./thread.repo");
+const context = require("../binding/mail-context.service");
 const mailRepo = require("./mail.repo");
 const access = require("./access");
 const search = require("./search");
@@ -56,12 +57,31 @@ function queryFrom(q = {}) {
   };
 }
 
-const list = (client, actor, q = {}) => repo.listThreads(client, actor.user_id, queryFrom(q));
+/**
+ * Attach display names to bound threads (`entity_label`), so a thread about
+ * Camrail says Camrail rather than `client:3f9a…`.
+ *
+ * Resolution lives in the dossier aggregator, which already owns the kind→table
+ * knowledge and the per-module read rule; this only fans the answer onto the
+ * rows. Fail-soft throughout: a label the caller may not see, or that cannot be
+ * read, is `null`, and the UI falls back to the ref — the list never breaks
+ * for the sake of a nicer pill.
+ */
+async function attachLabels(client, actor, rows) {
+  const refs = [...new Set(rows.map((r) => r.entity_ref).filter(Boolean))];
+  if (!refs.length) return rows;
+  const labels = await context.labelForRefs(client, refs, actor).catch(() => ({}));
+  return rows.map((r) => ({ ...r, entity_label: (r.entity_ref && labels[r.entity_ref]) || null }));
+}
+
+const list = async (client, actor, q = {}) =>
+  attachLabels(client, actor, await repo.listThreads(client, actor.user_id, queryFrom(q)));
 
 async function get(client, actor, threadId) {
   const t = await repo.getThread(client, actor.user_id, threadId);
   if (!t) throw new AppError("NOT_FOUND", "conversation not found", 404);
-  return t;
+  const [withLabel] = await attachLabels(client, actor, [t]);
+  return withLabel;
 }
 
 /**

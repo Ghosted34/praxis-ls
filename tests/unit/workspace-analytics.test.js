@@ -199,16 +199,47 @@ describe("every panel answers for the SAME population", () => {
     }
   });
 
-  it("binds every placeholder it references, in every aggregate", async () => {
+  /**
+   * The parameter array and the statement are the SAME set — 1..params.length,
+   * no gaps in either direction.
+   *
+   * The bound this replaces (`max <= params.length`) is satisfied by a
+   * statement that binds $1, $4 and $5 — which is exactly the shape that
+   * shipped: `analyticsBurndown`'s opening-backlog read reused the day series'
+   * WHERE clause and its parameter array, so `$2` (the window's `to`) and `$3`
+   * (the tenant zone) were bound but mentioned nowhere. Postgres cannot infer a
+   * type for a parameter a statement never uses: SQLSTATE 42P18, on every
+   * request, and because the dashboard's eight reads share one `Promise.all`,
+   * the failure was the entire screen — "the analytics read could not be
+   * answered" — rather than one blank panel.
+   */
+  it("binds every placeholder, and references every parameter, in every aggregate", async () => {
     for (const panel of panels) {
       const client = mockClient(() => []);
       await repo[panel](client, args);
       for (const { sql, params } of client.calls) {
-        let max = 0;
-        for (const m of sql.matchAll(/\$(\d+)/g)) max = Math.max(max, Number(m[1]));
-        expect(max).toBeLessThanOrEqual(params.length);
+        const used = [...new Set([...sql.matchAll(/\$(\d+)/g)].map((m) => Number(m[1])))].sort(
+          (a, b) => a - b,
+        );
+        expect(used).toEqual(params.map((_, i) => i + 1));
       }
     }
+  });
+
+  it("keeps the burn-down's opening read on its own window bound", async () => {
+    // The two reads are different statements and get different arrays. The
+    // series buckets days, so it reads BOTH ends of the window and the tenant
+    // zone; the opening backlog is a single `created_at < from` count, so it
+    // reads neither of the other two — and being handed them anyway is what
+    // 500'd the dashboard (see the parameter test above).
+    const client = mockClient(() => []);
+    await repo.analyticsBurndown(client, args);
+    const [series, opening] = client.calls;
+    expect(series.params).toHaveLength(opening.params.length + 2);
+    expect(opening.sql).toMatch(/created_at < \$1/);
+    expect(opening.sql).not.toMatch(/AT TIME ZONE/);
+    expect(opening.params).not.toContain(args.filters.to);
+    expect(opening.params).not.toContain(args.timeZone);
   });
 
   it("buckets days on the tenant's clock, not the database's", async () => {

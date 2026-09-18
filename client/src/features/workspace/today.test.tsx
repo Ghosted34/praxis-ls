@@ -265,6 +265,58 @@ describe("Today — the approvals and alerts roll-up", () => {
   });
 });
 
+/* ── the phone truncates, it does not clip ───────────────────────────────────
+ *
+ * `truncate` is `white-space: nowrap`, so the element wearing it has a
+ * min-content width of the WHOLE string — and an element's automatic minimum
+ * size is its min-content width. A title span without `min-w-0` therefore
+ * cannot shrink: it widens its row, its panel, and (the panel being a grid
+ * item, whose automatic minimum is likewise its min-content width) the grid
+ * track they share. Both boxes in the row then run past the right edge of a
+ * 390px phone, where the shell's `overflow-x-hidden` — the main scroll region
+ * is `overflow-y-auto overflow-x-hidden` — clips them. That is the report this
+ * pins: "Awaiting me" and "Unread alerts" cut off together on the right, with
+ * a long alert subject the thing that triggers it.
+ *
+ * jsdom has no layout engine, so what is asserted here is the PAIR of classes
+ * that makes shrinking possible: the mechanism, not the pixels. The pixels are
+ * `e2e/layout.spec.ts`'s job — and note that its phone block's
+ * `hasHorizontalScroll(page) === false` could never have caught this, because
+ * the shell hides horizontal overflow: a clipped box does not scroll, it just
+ * disappears. A gate for this class has to measure each box against the
+ * viewport, which is what the class assertions below stand in for until then.
+ */
+describe("Today — a long line truncates rather than widening the boxes", () => {
+  it("gives the alert title both `truncate` and `min-w-0`", async () => {
+    view();
+    const title = await screen.findByText("Container left the yard");
+
+    expect(title.className).toContain("truncate");
+    expect(title.className).toContain("min-w-0");
+  });
+
+  it("gives the approval row's own cell a shrinkable minimum", async () => {
+    view();
+    const ref = await screen.findByText("Purchase request PR-1042");
+
+    expect(ref.className).toContain("truncate");
+    expect(ref.className).toContain("min-w-0");
+  });
+
+  it("keeps both top panels shrinkable as grid items", async () => {
+    // The inner fix is the row; this is the boundary that stops the NEXT row
+    // from dragging the pair out of the phone again.
+    view();
+    await screen.findByText("Container left the yard");
+
+    for (const name of ["Awaiting me", "Unread alerts"]) {
+      const card = screen.getByRole("heading", { name }).closest(".bg-card");
+      expect(card, `${name} panel`).toBeTruthy();
+      expect(card!.className).toContain("min-w-0");
+    }
+  });
+});
+
 /* A 500 from one panel must not blank the hub.
  *
  * Production on 18 September 2026: `GET /workspace/day` answered 500 while

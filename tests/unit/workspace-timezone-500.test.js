@@ -145,8 +145,17 @@ describe("the aggregates bind the fallback zone as the parameter, never the sett
     for (const panel of ["analyticsThroughput", "analyticsBurndown"]) {
       const client = mockClient(BAD_TZ);
       await repo[panel](client, Object.assign({}, args, { timeZone: tz }));
-      for (const { params } of client.calls) {
-        expect(params).toContain(FALLBACK);
+      for (const { sql, params } of client.calls) {
+        // SCOPE: the fallback must reach every statement that actually buckets
+        // on a zone. It must NOT be asserted of a statement that has no
+        // `AT TIME ZONE` — this assertion used to be unscoped, and that is how
+        // it read as green while `analyticsBurndown` was passing the zone (and
+        // the window's `to`) into its opening-backlog read, which mentions
+        // neither. Postgres refuses a bound parameter it cannot type: 42P18,
+        // and the whole dashboard 500'd. A test that demands a parameter be
+        // carried "for symmetry" is a test that asks for the bug.
+        expect(params).not.toContain(BAD_TZ);
+        if (/AT TIME ZONE/i.test(sql)) expect(params).toContain(FALLBACK);
       }
       // And nothing else from the setting line reached a statement.
       for (const { sql } of client.calls) {

@@ -710,7 +710,7 @@ function TaskCardFace({ task, hoverTitle }: { task: Task; hoverTitle: boolean })
             that said nothing. */}
         {task.is_blocked && <Pill tone="warn">Blocked by {task.blocking_count}</Pill>}
         {task.assigned_to_name && (
-          <span className="truncate text-xs text-muted-foreground">{task.assigned_to_name}</span>
+          <span className="min-w-0 truncate text-xs text-muted-foreground">{task.assigned_to_name}</span>
         )}
         {task.entity_label && <Pill tone="blue">{task.entity_label}</Pill>}
       </span>

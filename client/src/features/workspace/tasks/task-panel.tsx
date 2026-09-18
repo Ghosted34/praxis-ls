@@ -505,7 +505,7 @@ function ChildTasksSection({
           <DateField value={dueAt} onChange={setDueAt} aria-label="New child task deadline" className="max-w-[10rem]" />
           {assignedTo ? (
             <span className="flex items-center gap-1.5 text-sm">
-              <span className="truncate">{assignedName ?? "Selected employee"}</span>
+              <span className="min-w-0 truncate">{assignedName ?? "Selected employee"}</span>
               <button
                 type="button"
                 className="micro text-muted-foreground hover:text-destructive"

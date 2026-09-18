@@ -166,7 +166,7 @@ export function DayAgenda({
                   <Pill tone={eventTypeTone(e.event_type)}>{humanizeType(e.event_type)}</Pill>
                   <span className="min-w-0 flex-1 truncate text-sm">{e.title}</span>
                   {e.location && (
-                    <span className="truncate text-sm text-muted-foreground">{e.location}</span>
+                    <span className="min-w-0 truncate text-sm text-muted-foreground">{e.location}</span>
                   )}
                 </button>
               </li>

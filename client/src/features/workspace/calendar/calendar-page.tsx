@@ -367,7 +367,7 @@ export function CalendarPage() {
                           {e.title}
                         </span>
                         {e.location && (
-                          <span className="truncate text-sm text-muted-foreground">
+                          <span className="min-w-0 truncate text-sm text-muted-foreground">
                             {e.location}
                           </span>
                         )}

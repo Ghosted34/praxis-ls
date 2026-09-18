@@ -115,9 +115,20 @@ export function TodayPage() {
       />
 
       <>
+        {/*
+          `min-w-0` on each panel, and not for tidiness. A grid item's automatic
+          minimum is its MIN-CONTENT width, so one row with a long unbreakable
+          string does not overflow its own panel — it widens the shared column,
+          which drags BOTH boxes in this row past the right edge of the phone,
+          where the shell's `overflow-x-hidden` clips them. That is the report:
+          "Awaiting me" and "Unread alerts" cut off to the right, together.
+          The inner fix is the `min-w-0` on the alert title below; this is the
+          boundary that stops any future row doing the same thing to the pair.
+        */}
         <div className="grid gap-4 lg:grid-cols-2">
           <Panel
             title="Awaiting me"
+            className="min-w-0"
             action={
               <Link
                 to="/approvals"
@@ -167,6 +178,7 @@ export function TodayPage() {
 
           <Panel
             title="Unread alerts"
+            className="min-w-0"
             action={
               <Link
                 to="/notifications"
@@ -202,7 +214,15 @@ export function TodayPage() {
                       <Pill tone={prioTone(n.priority)}>
                         {n.priority || "NORMAL"}
                       </Pill>
-                      <span className="truncate">
+                      {/* `min-w-0` beside `truncate`, because `truncate` is
+                          `white-space: nowrap` — which makes this span's
+                          min-content width the WHOLE title, and a flex item's
+                          default minimum is its min-content width. Without it
+                          the title cannot shrink, the ellipsis never appears,
+                          and the text is laid out past the panel's right edge
+                          and clipped by the shell. A long subject line is the
+                          normal case here, not an edge case. */}
+                      <span className="min-w-0 truncate">
                         {n.title || n.event_type_key || "Notification"}
                       </span>
                     </span>
@@ -233,7 +253,7 @@ export function TodayPage() {
                   })()
                 : undefined
             }
-            className="lg:col-span-2"
+            className="min-w-0 lg:col-span-2"
           >
             {q.isLoading ? (
               <LoadingRow label="Loading your day…" />
@@ -279,7 +299,7 @@ export function TodayPage() {
               )}
           </Panel>
 
-          <div className="lg:col-span-1">
+          <div className="min-w-0 lg:col-span-1">
             {/* Self-scoped (`/audit/my-feed`) — the person's own recent
                   actions, the same widget the Control Tower renders, reused
                   rather than rebuilt. `tight` drops the margins it carries for

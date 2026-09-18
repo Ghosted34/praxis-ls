@@ -188,7 +188,7 @@ export function TaskList({
                   aria-current={task.task_id === selectedId ? "true" : undefined}
                 >
                   <span className="flex flex-wrap items-center gap-2">
-                    <span className="truncate text-sm font-medium">{task.title}</span>
+                    <span className="min-w-0 truncate text-sm font-medium">{task.title}</span>
                     {task.recurrence_rule && <Pill tone="blue">{describeRule(task.recurrence_rule)}</Pill>}
                   </span>
                   <span className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">

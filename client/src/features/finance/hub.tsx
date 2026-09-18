@@ -31,6 +31,7 @@ import { TaxCenterPage } from "./tax-center";
 import { AssetsPage } from "./assets";
 import { ReceivablesPage } from "./receivables";
 import { DebtPage } from "./debt";
+import { OfficeExpensesPage } from "./office-expenses";
 import { ChartOfAccountsPage } from "./chart-of-accounts";
 import { hubTabs } from "@/app/layout/areas";
 import { useRibbonCommands } from "@/app/layout/ribbon-commands";
@@ -77,6 +78,7 @@ const SECTIONS = hubTabs("/finance", {
   tax: TaxCenterPage,
   assets: AssetsPage,
   debt: DebtPage,
+  "office-expenses": OfficeExpensesPage,
 });
 const DEEP: Record<string, React.ComponentType> = Object.fromEntries(
   SECTIONS.map((s) => [s.key, s.Component]),

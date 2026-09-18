@@ -832,6 +832,20 @@
       ]
     },
     {
+      "id": "fin_office_expenses",
+      "title": "Office expenses",
+      "route": "/finance/office-expenses",
+      "area": "finance",
+      "module_key": "MOD-77",
+      "purpose": "The office's own running costs — rent, utilities, supplies, connectivity — recorded as drafts and posted to the GL (Dr expense / Cr treasury or cash).",
+      "actions": [
+        "list_office_expenses",
+        "get_office_expense",
+        "create_office_expense",
+        "post_office_expense"
+      ]
+    },
+    {
       "id": "fin_receivables",
       "title": "Receivables",
       "route": "/finance/receivables",

@@ -38,6 +38,10 @@ const DEFAULT_ROWS = [
   ["CLIENT", "registrations", "COMPLIANCE", false],
   ["CLIENT", "beneficial_owners", "COMPLIANCE", false],
   ["CLIENT", "documents", "COMPLIANCE", false],
+  // Review #26 (13900): a client the company cannot phone is not a client
+  // anyone can serve. Required by default; a tenant that disagrees toggles it
+  // off in Settings → Master Data like any other rule.
+  ["CLIENT", "phone", "CONTACT", true],
   ["CLIENT", "contacts.billing", "CONTACT", false],
   ["CLIENT", "addresses.registered", "ADDRESS", false],
   ["CLIENT", "bank_accounts", "BANK", false],

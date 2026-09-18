@@ -84,6 +84,7 @@ const HUB_COMPONENT_KEYS: Record<string, string[]> = {
     "tax",
     "assets",
     "debt",
+    "office-expenses",
   ],
   "/costing": ["costing", "cost-tracking", "reconciliation", "cash-requests", "regie"],
   "/hr": [

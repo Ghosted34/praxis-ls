@@ -140,10 +140,13 @@ async function convert(client, { id, clientData = {}, actor = {} }) {
       );
     }
 
-    // Likewise `phone`: there is no phone column on client_master. The number
-    // belongs on the party's primary contact, which party-write.writeChildren
-    // creates in the same transaction — so it is kept rather than dropped, and
-    // it lands where the 360 and the portal already look for it.
+    // Likewise `phone`: it feeds the party's primary contact, which
+    // party-write.writeChildren creates in the same transaction — so it is
+    // kept rather than dropped, and it lands where the 360 and the portal
+    // already look for it. Since review #26 (13900) client_master ALSO
+    // carries a company-level `phone` that tenant policy requires on create,
+    // so the same number is written there too — a converted lead must not be
+    // the one path that trips REQUIRED_FIELDS_MISSING.
     const contactName = clientData.contact_name || lead.contact_name || null;
     const contactPhone = clientData.phone || lead.phone || null;
     const contactEmail = clientData.email || lead.email || null;
@@ -171,6 +174,7 @@ async function convert(client, { id, clientData = {}, actor = {} }) {
         legal_name: clientData.legal_name || lead.company_name,
         country_code: country,
         email: contactEmail || undefined,
+        phone: contactPhone || undefined,
         address: clientData.address || lead.address || undefined,
         client_type_id: clientTypeId,
         payment_terms_days: paymentTerms,

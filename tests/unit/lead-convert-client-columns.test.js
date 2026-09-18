@@ -7,8 +7,9 @@
  * to invent a client type or payment terms. It mocks `clientMaster.create`, so
  * it says nothing about whether the payload handed over can actually be
  * written — and it could not be. The convert path passed `client_type` and
- * `phone`, `client_master` has neither column (it has `client_type_id`, and no
- * phone at all), and `insertOne` is called with a null allow-list, which puts
+ * `phone`, `client_master` had neither column at the time (it has
+ * `client_type_id`; a company-level `phone` arrived later, in 13900 for
+ * review #26), and `insertOne` is called with a null allow-list, which puts
  * every key straight into the INSERT column list. Postgres answered 42703 and
  * conversion failed for every lead, with a green test suite.
  *
@@ -61,9 +62,11 @@ describe("the client_master column list this test reads", () => {
     }
   });
 
-  test("the two columns the convert path invented do not exist", () => {
+  test("the column the convert path invented does not exist", () => {
     expect(COLUMNS.has("client_type")).toBe(false);
-    expect(COLUMNS.has("phone")).toBe(false);
+    // `phone` used to be in this list — 13900 (review #26) added the real
+    // column, so it is now a KNOWN column the convert payload may carry.
+    expect(COLUMNS.has("phone")).toBe(true);
   });
 });
 
@@ -151,9 +154,11 @@ describe("lead convert -> client_master payload", () => {
     expect(clientMaster.create).not.toHaveBeenCalled();
   });
 
-  test("the phone is kept - on the primary contact, where there IS a column for it", async () => {
+  test("the phone lands in BOTH places — the company column (13900, review #26) and the primary contact", async () => {
     await service.convert(client, { id: LEAD_ID, clientData: {}, actor: {} });
-    expect(payload()).not.toHaveProperty("phone");
+    // Since 13900 client_master has a company-level `phone` that tenant policy
+    // requires on create — the convert path must satisfy it, not trip 422.
+    expect(payload().phone).toBe("+237600000000");
     expect(payload().primary_contact).toMatchObject({ name: "A. Njoya", phone: "+237600000000" });
   });
 

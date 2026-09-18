@@ -119,7 +119,12 @@ router.get("/sent", core, requirePermission(M, "view"), c.sent);
 router.get("/inbox", core, requirePermission(M, "view"), c.inbox);
 router.patch("/senders/:id", requirePermission(M, "edit"), v.senderPatch, c.updateSender);
 router.post("/senders", requirePermission(M, "create"), v.sender, c.upsertSender);
-router.post("/senders/:id/archive", requirePermission(M, "edit"), c.archiveSender);
+/* POST /senders/:id/archive was removed with the Section-senders table
+ * (review #25). The Send points tab binds and unbinds identities but never
+ * archives one, so the route had no reachable caller — and a mounted route no
+ * screen can reach is exactly what tests/security/mail-client-api-wiring
+ * exists to flag. `service.archiveIdentity` survives; a future admin surface
+ * remounts this beside its wrapper. */
 
 // Engine: connections
 /* Which connect methods this tenant may use. A read about configuration, not

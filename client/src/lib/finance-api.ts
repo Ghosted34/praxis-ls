@@ -457,6 +457,78 @@ export const repayDebt = (
   },
 ) => tenant<DebtEngagement>(`/financing/${id}/repay`, { method: "POST", body });
 
+/* ══════════ Office expenses (MOD-77) — record drafts, post to the GL ══════════ */
+/** Analytics vocabulary — mirrors office_expense.validator.js (app-side enum). */
+export const OFFICE_EXPENSE_CATEGORIES = [
+  "RENT",
+  "UTILITIES",
+  "SUPPLIES",
+  "CONNECTIVITY",
+  "MAINTENANCE",
+  "CLEANING",
+  "OTHER",
+] as const;
+export type OfficeExpenseCategory = (typeof OFFICE_EXPENSE_CATEGORIES)[number];
+export type OfficeExpense = {
+  office_expense_id: string;
+  entity_id: string;
+  category: string;
+  label: string;
+  supplier_id?: string | null;
+  expense_date: string;
+  amount: number | string;
+  currency?: string | null;
+  expense_coa: string;
+  status: "DRAFT" | "POSTED";
+  entry_id?: string | null;
+  notes?: string | null;
+  created_at?: string;
+};
+export type OfficeExpenseInput = {
+  entity_id: string;
+  category: OfficeExpenseCategory;
+  label: string;
+  supplier_id?: string;
+  expense_date?: string;
+  amount: number;
+  currency?: string;
+  expense_coa: string;
+  notes?: string;
+};
+export type OfficeExpenseTotals = {
+  mtd: number;
+  ytd: number;
+  draft_count: number;
+};
+
+export const listOfficeExpenses = () =>
+  tenant<OfficeExpense[]>("/office-expenses");
+export const officeExpenseTotals = () =>
+  tenant<OfficeExpenseTotals>("/office-expenses/totals");
+export const getOfficeExpense = (id: string) =>
+  tenant<OfficeExpense>(`/office-expenses/${id}`);
+export const createOfficeExpense = (body: OfficeExpenseInput) =>
+  tenant<OfficeExpense>("/office-expenses", { method: "POST", body });
+export const updateOfficeExpense = (
+  id: string,
+  body: Partial<OfficeExpenseInput>,
+) => tenant<OfficeExpense>(`/office-expenses/${id}`, { method: "PATCH", body });
+export const postOfficeExpense = (
+  id: string,
+  body: {
+    entry_date?: string;
+    paid_via?: "BANK" | "CASH";
+    credit_coa?: string;
+    source_doc_ref?: string;
+  },
+) =>
+  tenant<{ expense: OfficeExpense }>(`/office-expenses/${id}/post`, {
+    method: "POST",
+    body,
+  });
+export const deleteOfficeExpense = (id: string) =>
+  tenant<{ deleted: boolean }>(`/office-expenses/${id}`, { method: "DELETE" });
+
 /* ══════════════ Chart of accounts (MOD-58) — SYSCOHADA/OHADA ══════════════ */
 export type Account = {
   code: string;

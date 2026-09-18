@@ -21,10 +21,32 @@ jest.mock("../../src/shared/events/emit", () => ({
   emitEvent: jest.fn(async () => ({})),
   audit: jest.fn(async () => ({})),
 }));
+/**
+ * The vault row is mocked as the REAL TABLE SHAPE, which is the whole point of
+ * this fixture having changed.
+ *
+ * It used to carry `content_type: "application/pdf"`, and the service read
+ * `doc.content_type` — so this suite passed on a column that does not exist.
+ * `document_vault` is created by migration 0340 without one; 0669 adds
+ * `original_name`, `client_id`, `doc_type_ref_id`, `uploaded_by`; 10702 adds
+ * only the `public_media_*` set. Nothing adds `content_type`. In production
+ * that read was `undefined` on every row, so every secure-link recipient was
+ * told the document was `application/octet-stream` whatever it really was —
+ * and the test that should have caught it was asserting against its own
+ * invention.
+ *
+ * A mock that supplies a field the schema lacks does not test the code; it
+ * tests the mock. `storage_path` is what the service now derives the type from,
+ * and it is a real column with a real value.
+ */
 jest.mock("../../src/modules/vault/document_vault/document_vault.service", () => ({
   assertDocumentAccess: jest.fn(async () => ({ doc_id: "v-1" })),
   fetchBytes: jest.fn(async () => ({
-    doc: { doc_id: "v-1", original_name: "Invoice INV-2026-0311.pdf", content_type: "application/pdf" },
+    doc: {
+      doc_id: "v-1",
+      original_name: "Invoice INV-2026-0311.pdf",
+      storage_path: "tenant_demo/vault/doc_9f3c1a2b.pdf",
+    },
     buffer: Buffer.from("%PDF-1.4 pretend"),
   })),
 }));

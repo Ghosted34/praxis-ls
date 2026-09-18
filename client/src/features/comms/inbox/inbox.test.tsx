@@ -399,6 +399,123 @@ describe("the conversation view", () => {
     const { container } = renderView(<ThreadView thread={detail()} {...props} />);
     expect(await axe(container)).toHaveNoViolations();
   });
+
+  /* ── THE WORK RAIL IS COLLAPSIBLE (review §2 #22) ───────────────────────────
+   *
+   * The rail was a fixed 22rem column that nothing could shut. On a 1280px
+   * laptop — what the operations desk actually runs — that is a third of the
+   * pane permanently spent, and long quoted correspondence became a column of
+   * six words. The fix has to hold four things at once, and each is a way the
+   * obvious implementation goes wrong:
+   *
+   *   1. There is ALWAYS A WAY BACK. Hiding a panel with no affordance to
+   *      restore it is how a feature gets lost; the binding chip lives in this
+   *      rail and it is the most consequential control in the mailbox.
+   *   2. COLLAPSED STILL SPEAKS. Unbound and overdue are what an operator scans
+   *      for, so they survive the collapse as a badge. Hiding the panel must
+   *      not hide the queue.
+   *   3. IT IS A PREFERENCE, NOT PER-THREAD STATE. Reset it on thread change
+   *      and someone reading forty threads re-collapses it forty times.
+   *   4. THE PANEL OUTLIVES A BROKEN localStorage. Safari's private mode throws
+   *      on `setItem`; a toggle that throws is worse than one that forgets.
+   */
+  describe("collapsing the work rail", () => {
+    beforeEach(() => localStorage.clear());
+
+    it("starts collapsed, so the reading pane gets the width by default", () => {
+      renderView(<ThreadView thread={detail()} {...props} />);
+      // The rail's own landmark is absent, not merely narrow.
+      expect(document.getElementById("mail-work-rail")).toBeNull();
+      expect(screen.getByRole("button", { expanded: false, name: /Work panel/ })).toBeInTheDocument();
+    });
+
+    it("OPENS AND SHUTS AGAIN — the way back is on screen in both states", async () => {
+      renderView(<ThreadView thread={detail()} {...props} />);
+
+      await userEvent.click(screen.getByRole("button", { name: /Work panel/ }));
+      expect(document.getElementById("mail-work-rail")).not.toBeNull();
+
+      // …and the open rail carries its own collapse control. A panel you can
+      // only shut from outside itself is one people shut by reloading.
+      await userEvent.click(screen.getByRole("button", { name: /Hide/ }));
+      expect(document.getElementById("mail-work-rail")).toBeNull();
+      expect(screen.getByRole("button", { name: /Work panel/ })).toBeInTheDocument();
+    });
+
+    it("REMEMBERS THE CHOICE ACROSS THREADS, because it is a preference", async () => {
+      const { unmount } = renderView(<ThreadView thread={detail()} {...props} />);
+      await userEvent.click(screen.getByRole("button", { name: /Work panel/ }));
+      expect(localStorage.getItem("comms:work-rail-open")).toBe("true");
+      unmount();
+
+      // A different thread, freshly mounted — the rail is still open. This is
+      // the assertion that fails if someone "tidies up" by resetting the state
+      // in the thread-change effect next to `replying`.
+      renderView(<ThreadView thread={detail({ email_thread_id: "t1", subject: "Another" })} {...props} />);
+      expect(document.getElementById("mail-work-rail")).not.toBeNull();
+    });
+
+    it("says, while collapsed, that the thread is not bound to anything", () => {
+      renderView(<ThreadView thread={detail({ entity_ref: null })} {...props} />);
+      expect(screen.getByTitle("Not linked to a client or a file yet")).toBeInTheDocument();
+    });
+
+    it("lets an overdue reply outrank the unbound mark", () => {
+      // Both conditions at once: a deadline beats a classification, because a
+      // deadline is the one with a consequence attached to the clock.
+      renderView(<ThreadView thread={detail({ entity_ref: null, sla_breached: true })} {...props} />);
+      expect(screen.getByTitle("A first reply is overdue")).toBeInTheDocument();
+      expect(screen.queryByTitle("Not linked to a client or a file yet")).toBeNull();
+    });
+
+    it("shows NO badge when the thread is bound and on time", () => {
+      // A badge that is always there is not a signal.
+      renderView(<ThreadView thread={detail({ entity_ref: "CLI-1", sla_breached: false })} {...props} />);
+      expect(screen.queryByTitle(/overdue|Not linked/)).toBeNull();
+    });
+
+    it("still toggles when localStorage is unavailable", async () => {
+      // Safari private mode, and any browser with site data blocked. The
+      // preference is expendable; the panel is not.
+      //
+      // Scoped to THIS key rather than the whole Storage prototype: a blanket
+      // throw also takes out `token-store`, and the test would then be proving
+      // that an unauthenticated screen fails to render.
+      const realGet = Storage.prototype.getItem;
+      const realSet = Storage.prototype.setItem;
+      const denied = (k: string) => k === "comms:work-rail-open";
+      const setItem = vi
+        .spyOn(Storage.prototype, "setItem")
+        .mockImplementation(function (this: Storage, k: string, v: string) {
+          if (denied(k)) throw new Error("QuotaExceededError");
+          return realSet.call(this, k, v);
+        });
+      const getItem = vi
+        .spyOn(Storage.prototype, "getItem")
+        .mockImplementation(function (this: Storage, k: string) {
+          if (denied(k)) throw new Error("SecurityError");
+          return realGet.call(this, k);
+        });
+      try {
+        renderView(<ThreadView thread={detail()} {...props} />);
+        await userEvent.click(screen.getByRole("button", { name: /Work panel/ }));
+        expect(document.getElementById("mail-work-rail")).not.toBeNull();
+      } finally {
+        setItem.mockRestore();
+        getItem.mockRestore();
+      }
+    });
+
+    it("has no accessibility violations in either state", async () => {
+      const { container, unmount } = renderView(<ThreadView thread={detail()} {...props} />);
+      expect(await axe(container)).toHaveNoViolations();
+      // `aria-controls` points at an element that only exists when open, which
+      // is exactly why the collapsed button carries `aria-expanded={false}`.
+      await userEvent.click(screen.getByRole("button", { name: /Work panel/ }));
+      expect(await axe(container)).toHaveNoViolations();
+      unmount();
+    });
+  });
 });
 
 const folder = (over: Partial<Folder> = {}): Folder => ({

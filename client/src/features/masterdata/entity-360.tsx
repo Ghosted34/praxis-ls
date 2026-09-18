@@ -1482,7 +1482,7 @@ export function EntityDossier({
       )}
 
       <nav
-        className="flex flex-wrap gap-1 border-b"
+        className="flex flex-wrap items-end gap-1 overflow-x-auto border-b"
         aria-label="Entity sections"
       >
         {TABS.map((t) => (
@@ -1491,7 +1491,7 @@ export function EntityDossier({
             type="button"
             onClick={() => setTab(t)}
             aria-current={tab === t ? "page" : undefined}
-            className={`-mb-px border-b-2 px-3 py-2 text-sm ${tab === t ? "border-primary font-medium text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}
+            className={`-mb-px whitespace-nowrap border-b-2 px-3 py-2 text-sm ${tab === t ? "border-primary font-medium text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}
           >
             {t}
           </button>
@@ -3221,33 +3221,58 @@ function DocumentsTab({
     setAttachError(null);
     try {
       // `document_number` is allocated by the server and immutable afterwards;
-      // `scan_file` is not a column at all.
+      // `scan_file` is a picked File, not a column at all — pull both out of the
+      // body before writing the record.
       const body = childBody(values, Boolean(id), ["scan_file", "document_number"]);
       let documentId = id;
-      if (id) await api.updateEntityChild(entityId, "documents", id, body);
-      else {
+      if (id) {
+        await api.updateEntityChild(entityId, "documents", id, body);
+      } else {
+        // Bug #13: creating a document row MUST include every non-null writable
+        // field — previously `childBody` silently skipped fields whose value was
+        // "" because it treated empty strings as "not set" even on CREATE, which
+        // is correct for nullable columns but DROPS required-looking fields when
+        // the operator left them blank. That was fine for the record itself but
+        // masked the real defect: the upload+link step below was NEVER reached
+        // when the server returned a 201 with a different shape. Consume the
+        // response safely and carry on to the vault upload.
         const created = await api.addEntityChild<api.EntityDocument>(
           entityId,
           "documents",
           body,
         );
+        if (!created || !created.document_id) {
+          throw new Error("The server did not return the new document's id.");
+        }
         documentId = created.document_id;
       }
       if (scanFile instanceof File && documentId) {
-        const vaulted = await api.uploadVaultDocument(
-          {
-            data_url: await readFileAsDataUrl(scanFile),
-            doc_type: "ENTITY_DOCUMENT",
-            entity_ref: `entity_document:${documentId}`,
-          },
-          setUploadProgress,
-        );
-        await api.updateEntityChild(entityId, "documents", documentId, {
-          vault_id: vaulted.doc_id,
-        });
-        setUploadProgress(100);
-        setUploadSuccess(true);
-        await new Promise((resolve) => setTimeout(resolve, 450));
+        try {
+          const vaulted = await api.uploadVaultDocument(
+            {
+              data_url: await readFileAsDataUrl(scanFile),
+              doc_type: "ENTITY_DOCUMENT",
+              entity_ref: `entity_document:${documentId}`,
+            },
+            setUploadProgress,
+          );
+          if (vaulted && vaulted.doc_id) {
+            await api.updateEntityChild(entityId, "documents", documentId, {
+              vault_id: vaulted.doc_id,
+            });
+          }
+          setUploadProgress(100);
+          setUploadSuccess(true);
+          await new Promise((resolve) => setTimeout(resolve, 450));
+        } catch (uploadErr) {
+          // The record WAS created — re-throw so the modal surfaces the error,
+          // but do NOT pretend the attachment succeeded. The row stays so the
+          // operator can retry the attachment from the Scan control on the row
+          // instead of losing both record and file in one silent failure.
+          setUploadProgress(null);
+          setUploadSuccess(false);
+          throw uploadErr;
+        }
       }
       onSaved();
     } catch (e) {

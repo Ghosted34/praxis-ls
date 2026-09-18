@@ -155,6 +155,54 @@ async function convert(c, { fromKind, sourceId, actor = {} }) {
          FROM party_registration WHERE ${from.pk} = $2`,
       [draft[to.pk], sourceId],
     );
+    // Re-mirror NIU / RCCM from the copied registrations onto the new master, so
+    // invoices/statements reading the legacy columns see the IDs (bug #11). The
+    // mirror is derived from the registration rows because a source may have
+    // been edited through the registrations tab without the master columns being
+    // refreshed — the registrations are the source of truth.
+    const { rows: regs } = await c.query(
+      `SELECT kind, number FROM party_registration WHERE ${to.pk} = $1`,
+      [draft[to.pk]],
+    );
+    const mirror = {};
+    for (const r of regs) {
+      const k = String(r.kind || "").toUpperCase();
+      if (k === "NIU" && r.number) mirror.niu = r.number;
+      if (k === "RCCM" && r.number) mirror.rccm = r.number;
+    }
+    // If the registration rows carried nothing, fall back to the source's own
+    // legacy columns — some legacy clients were created before registrations
+    // were split out, and their niu/rccm live only on the master.
+    if (!mirror.niu && source.niu) mirror.niu = source.niu;
+    if (!mirror.rccm && source.rccm) mirror.rccm = source.rccm;
+    if (Object.keys(mirror).length) {
+      const sets = Object.keys(mirror).map((k, i) => `${k} = $${i + 2}`).join(", ");
+      const params = [draft[to.pk], ...Object.values(mirror)];
+      await c.query(`UPDATE ${to.table} SET ${sets} WHERE ${to.pk} = $1`, params);
+    }
+    // Copy compliance/KYC document references (not the vault bytes) re-keyed to
+    // the new party. The bytes live once in document_vault; copying the row is
+    // what keeps a converted supplier from losing access to the statutes / tax
+    // certificate that were already on file for the client. Verification state
+    // is reset to PENDING so a human re-checks the copy (Hard Rule 9). Only
+    // carry documents that are not already REJECTED/EXPIRED — a dead KYC scan
+    // has no business following the party.
+    const srcDocTable = from.table === "client_master" ? "client_document" : "supplier_document";
+    const tgtDocTable = to.table === "client_master" ? "client_document" : "supplier_document";
+    await c.query(
+      `INSERT INTO ${tgtDocTable}
+              (${to.pk}, document_type_id, document_number, issuing_authority,
+               issued_on, expires_on, physical_ref, vault_id,
+               scan_status, verification_status)
+       SELECT $1, document_type_id, document_number, issuing_authority,
+              issued_on, expires_on, physical_ref, vault_id,
+              CASE WHEN vault_id IS NOT NULL THEN 'SCANNED' ELSE 'PENDING' END,
+              'PENDING'
+         FROM ${srcDocTable}
+        WHERE ${from.pk} = $2
+          AND scan_status NOT IN ('REJECTED','EXPIRED')`,
+      [draft[to.pk], sourceId],
+    );
     await audit(c, {
       actorUserId: actor.user_id || null, action: `${toKind}.converted_from_${fromKind}`,
       moduleKey: to.moduleKey, entityRef: `${toKind}:${draft[to.pk]}`, after: { from: `${fromKind}:${sourceId}` },

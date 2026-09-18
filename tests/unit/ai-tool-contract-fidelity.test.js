@@ -22,6 +22,13 @@
  *
  * `create_lead` is exercised through the REAL manifest rather than a fixture,
  * because the whole failure was that the real one disagreed with itself.
+ *
+ * THE CATALOGUE-WIDE SWEEP — "every uuid-ish field in every shipped manifest
+ * declares its format" — lives in `ai-readiness.test.js`, which already
+ * requires every `*.ai.js` in the repo. Running it from here loaded that
+ * ~1820-module set a second time, and under `--coverage` two workers doing
+ * that concurrently hit the OOM killer on GitHub's runner. Same assertion,
+ * one copy of the fixture.
  */
 "use strict";
 
@@ -115,32 +122,5 @@ describe("Zod → JSON Schema keeps the constraints the validator enforces", () 
     // The required set is unchanged — this fix adds fidelity, it does not make
     // previously-optional fields mandatory.
     expect(js.required).toEqual(["company_name"]);
-  });
-
-  test("every uuid-ish field in the live catalogue declares its format", () => {
-    // The generalisation of the bug: if ANY shipped manifest still advertises a
-    // bare string where the validator wants a uuid, the model can be misled the
-    // same way on that action. `_id` fields typed as plain strings with no
-    // format are exactly that shape.
-    //
-    // Allowance: a few id-suffixed fields are legitimately free text (external
-    // references, provider-side ids). They are listed rather than pattern-
-    // matched, so adding one is a deliberate act with a name on it.
-    const FREE_TEXT_IDS = new Set([
-      "external_id", "external_message_id", "message_id", "thread_id",
-      "provider_id", "tx_id", "transaction_id", "reference_id", "batch_id",
-    ]);
-    const offenders = [];
-    for (const row of registrar.buildCatalogue()) {
-      const props = (row.payload_schema && row.payload_schema.properties) || {};
-      for (const [key, prop] of Object.entries(props)) {
-        if (!key.endsWith("_id") || FREE_TEXT_IDS.has(key)) continue;
-        if (prop.type === "string" && !prop.format && !prop.pattern && !prop.enum) {
-          offenders.push(`${row.action_key}.${key}`);
-        }
-      }
-    }
-    // Reported in full: a count tells whoever broke it nothing about where.
-    expect(offenders).toEqual([]);
   });
 });

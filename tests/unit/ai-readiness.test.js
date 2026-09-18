@@ -172,4 +172,55 @@ describe("every <module>.ai.js manifest is well-formed", () => {
       expect(typeof w.confirm).toBe("boolean");
     }
   });
+
+  /**
+   * EVERY UUID-ISH FIELD IN THE LIVE CATALOGUE DECLARES ITS FORMAT.
+   * Review 16 Sep 2026 #17, generalised.
+   *
+   * The specific bug — `owner_user_id: z.string().uuid()` reaching the model as
+   * a bare `{ type: "string" }`, so it sent a person's name and the rejection
+   * landed after the user had confirmed — is pinned against `create_lead` in
+   * `ai-tool-contract-fidelity.test.js`. THIS is the sweep: if any shipped
+   * manifest still advertises a bare string where the validator wants a uuid,
+   * the model can be misled the same way on that action.
+   *
+   * ── WHY IT LIVES HERE AND NOT BESIDE ITS SIBLINGS ───────────────────────────
+   *
+   * `registrar.buildCatalogue()` requires every `*.ai.js` in the repo —
+   * ~1820 modules, ~50 MB retained. This file ALREADY walks and requires that
+   * same set, so running the sweep here costs one extra pass over an
+   * in-memory catalogue. Run from its own suite it is a second full load in a
+   * second worker, and under `--coverage` (which instruments all 1820) two
+   * workers doing it concurrently is what killed CI:
+   *
+   *     A jest worker process was terminated by another process:
+   *     signal=SIGKILL — i.e. the OOM killer, on GitHub's 7 GB runner.
+   *
+   * Note the shape of that failure: the suite it killed was this one, which had
+   * not changed. `maxWorkers: 2` above is already there for memory pressure on
+   * small runners; this keeps the heaviest fixture in the product to a single
+   * copy rather than raising that ceiling again.
+   */
+  it("every uuid-ish field in the live catalogue declares its format", () => {
+    const registrar = require("../../src/services/ai/action-registrar");
+    // Allowance: a few id-suffixed fields are legitimately free text (external
+    // references, provider-side ids). Listed rather than pattern-matched, so
+    // adding one is a deliberate act with a name on it.
+    const FREE_TEXT_IDS = new Set([
+      "external_id", "external_message_id", "message_id", "thread_id",
+      "provider_id", "tx_id", "transaction_id", "reference_id", "batch_id",
+    ]);
+    const offenders = [];
+    for (const row of registrar.buildCatalogue()) {
+      const props = (row.payload_schema && row.payload_schema.properties) || {};
+      for (const [key, prop] of Object.entries(props)) {
+        if (!key.endsWith("_id") || FREE_TEXT_IDS.has(key)) continue;
+        if (prop.type === "string" && !prop.format && !prop.pattern && !prop.enum) {
+          offenders.push(`${row.action_key}.${key}`);
+        }
+      }
+    }
+    // Reported in full: a count tells whoever broke it nothing about where.
+    expect(offenders).toEqual([]);
+  });
 });

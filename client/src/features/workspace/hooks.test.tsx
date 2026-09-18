@@ -171,3 +171,98 @@ describe("useMoveTask", () => {
     expect(vi.mocked(moveTask)).toHaveBeenCalledWith("t-1", "IN_REVIEW");
   });
 });
+
+/**
+ * The reach a board was READ at has to survive the move (B-03), and it has to
+ * do so without disturbing the optimistic machinery above.
+ *
+ * These two properties meet in one function and are easy to break in opposite
+ * directions: threading the audience through can leave a trailing `undefined`
+ * on every ordinary move, and keying the cache patch on one exact key can miss
+ * the copy the open detail pane is rendering — because `useTask` keys on the
+ * audience it read at, so the same task legitimately sits in the cache twice.
+ */
+describe("useMoveTask — the audience it was read at", () => {
+  it("sends the reach with the move when the caller states one", async () => {
+    const { wrapper } = setup();
+    vi.mocked(moveTask).mockResolvedValueOnce({ ...TASK, status: "IN_REVIEW" });
+
+    const { result } = renderHook(() => useMoveTask(), { wrapper });
+    act(() => {
+      result.current.mutate({ id: "t-1", status: "IN_REVIEW", audience: "team" });
+    });
+    await vi.waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    // A card shown on a Team board belongs to a population the caller's
+    // default reach may not contain: dropping the audience would 404 a task
+    // that is plainly on screen.
+    expect(vi.mocked(moveTask)).toHaveBeenCalledWith("t-1", "IN_REVIEW", "team");
+  });
+
+  it("sends no audience argument at all when there is none to state", async () => {
+    const { wrapper } = setup();
+    vi.mocked(moveTask).mockResolvedValueOnce({ ...TASK, status: "IN_REVIEW" });
+
+    const { result } = renderHook(() => useMoveTask(), { wrapper });
+    act(() => {
+      result.current.mutate({ id: "t-1", status: "IN_REVIEW" });
+    });
+    await vi.waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    // Not `("t-1", "IN_REVIEW", undefined)`. A move from a screen with no wider
+    // reach is the same request it has always been.
+    expect(vi.mocked(moveTask).mock.calls[0]).toEqual(["t-1", "IN_REVIEW"]);
+  });
+
+  it("patches EVERY cached copy of the task, not one audience's", async () => {
+    const { client, wrapper } = setup();
+    // The same task, read at two reaches — exactly what happens when a Team
+    // board hands its own reach to the detail pane it opens.
+    const teamKey = ["workspace", "task", "t-1", "team"];
+    client.setQueryData(teamKey, TASK);
+    client.setQueryData(["workspace", "task", "t-1", "mine"], TASK);
+
+    let resolvePost!: (task: Task) => void;
+    vi.mocked(moveTask).mockReturnValueOnce(
+      new Promise<Task>((resolve) => {
+        resolvePost = resolve;
+      }),
+    );
+
+    const { result } = renderHook(() => useMoveTask(), { wrapper });
+    act(() => {
+      result.current.mutate({ id: "t-1", status: "IN_REVIEW", audience: "team" });
+    });
+    await act(async () => {});
+
+    // An exact-key patch would update one of these and leave the other showing
+    // the old status until the settle — and the stale one is the copy the open
+    // pane is most likely rendering.
+    expect((client.getQueryData(teamKey) as Task).status).toBe("IN_REVIEW");
+    expect((client.getQueryData(["workspace", "task", "t-1", "mine"]) as Task).status).toBe(
+      "IN_REVIEW",
+    );
+
+    resolvePost({ ...TASK, status: "IN_REVIEW" });
+    await vi.waitFor(() => expect(result.current.isSuccess).toBe(true));
+  });
+
+  it("rolls every cached copy back when the server refuses", async () => {
+    const { client, wrapper } = setup();
+    const teamKey = ["workspace", "task", "t-1", "team"];
+    client.setQueryData(teamKey, TASK);
+    vi.mocked(moveTask).mockRejectedValueOnce(new Error("That task is blocked."));
+
+    const { result } = renderHook(() => useMoveTask(), { wrapper });
+    act(() => {
+      result.current.mutate({ id: "t-1", status: "DONE", audience: "team" });
+    });
+    await vi.waitFor(() => expect(result.current.isError).toBe(true));
+
+    // A refused move must not leave ANY cache claiming a state the database
+    // does not hold — a blocked task that still reads DONE in one copy is a
+    // lie that survives until the next refetch.
+    expect((client.getQueryData(teamKey) as Task).status).toBe("TO_DO");
+    expect(boardOf(client).TO_DO.map((t) => t.task_id)).toEqual(["t-1"]);
+  });
+});

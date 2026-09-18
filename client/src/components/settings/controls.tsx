@@ -256,6 +256,8 @@ export function ImageField({
   onChange,
   soon,
   maxBytes = 512_000,
+  minimumWidth,
+  minimumHeight,
   hint,
   shape = "logo",
   upload,
@@ -266,6 +268,9 @@ export function ImageField({
   onChange: (url: string) => void;
   soon?: boolean;
   maxBytes?: number;
+  /** Minimum source dimensions required by the receiving endpoint. */
+  minimumWidth?: number;
+  minimumHeight?: number;
   hint?: string;
   shape?: "logo" | "square" | "wide";
   /**
@@ -305,6 +310,8 @@ export function ImageField({
   const uploader = useUpload<string>({
     profile,
     maxBytes,
+    minimumWidth,
+    minimumHeight,
     send: async (file, ctx) => {
       const dataUrl = await fileToDataUrl(file);
       return upload

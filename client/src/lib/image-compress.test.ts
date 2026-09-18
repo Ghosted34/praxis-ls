@@ -9,7 +9,11 @@
  * where `data:text/html` IS reachable.
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { previewUrlFor, isPreviewableImage } from "@/lib/image-compress";
+import {
+  previewUrlFor,
+  isPreviewableImage,
+  resizeDimensions,
+} from "@/lib/image-compress";
 
 const png = () =>
   new File([new Uint8Array([137, 80, 78, 71])], "scan.png", {
@@ -66,5 +70,34 @@ describe("isPreviewableImage", () => {
       ),
     ).toBe(false);
     expect(isPreviewableImage(null)).toBe(false);
+  });
+});
+
+describe("resizeDimensions", () => {
+  it("lets a required width win over a smaller optimisation cap", () => {
+    // A 1200px cover must not become 1024px just because a brand profile was
+    // selected by a caller.
+    expect(resizeDimensions(1200, 800, 1024, 1200)).toEqual({
+      width: 1200,
+      height: 800,
+    });
+  });
+
+  it("preserves width for a tall source while still avoiding enlargement", () => {
+    expect(resizeDimensions(1300, 5000, 1024, 1200)).toEqual({
+      width: 1200,
+      height: 4615,
+    });
+    expect(resizeDimensions(800, 5000, 1024, 1200)).toEqual({
+      width: 800,
+      height: 5000,
+    });
+  });
+
+  it("can preserve both dimensions for a square icon floor", () => {
+    expect(resizeDimensions(512, 2048, 1024, 512, 512)).toEqual({
+      width: 512,
+      height: 2048,
+    });
   });
 });

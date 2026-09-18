@@ -56,7 +56,7 @@ import * as api from "@/lib/site-settings-api";
 import { FilePicker } from "@/components/ui/image-upload";
 import { UploadProgress } from "@/components/ui/upload-progress";
 import { useUpload } from "@/lib/use-upload";
-import { fileToDataUrl } from "@/lib/image-compress";
+import { fileToDataUrl, type UploadProfile } from "@/lib/image-compress";
 
 /**
  * What each slot is called, in words a marketing administrator recognises.
@@ -78,6 +78,18 @@ const EVIDENCE_NOTE = () =>
   tr(
     "This image sits beside a named person or company, so a visitor reads it as a photograph of your own operation. It must be one — generated imagery is not accepted here.",
   );
+
+/**
+ * Photos need the photo profile's 2400 px ceiling. Brand marks keep the brand
+ * profile because it preserves their source format and avoids needlessly
+ * sending a large raster. This distinction is important for the entity cover:
+ * its server minimum is 1200 px, while the brand profile tops out at 1024 px.
+ */
+export function uploadProfileForSlot(slot: api.AssetSlot): UploadProfile {
+  return slot === "entity-cover" || slot === "leader-portrait"
+    ? "photo"
+    : "brand";
+}
 
 const kb = (bytes: number) => Math.round(bytes / 1024);
 
@@ -128,15 +140,17 @@ export function AssetSlotField({
   const inputId = React.useId();
 
   /**
-   * Through the upload engine. `profile="brand"` for two reasons: these are
-   * marks and wordmarks whose colours must come back unchanged, and the profile
-   * keeps the SOURCE format — which matters here more than anywhere, because
-   * several slots require a transparent background and are refused server-side
-   * without one.
+   * Through the upload engine. Brand marks keep their source format and use the
+   * smaller brand profile; photographs use the photo profile so client-side
+   * compression never shrinks a valid cover or portrait below the server's
+   * minimum width. In particular, an entity cover must remain at least 1200 px
+   * wide — the brand profile's 1024 px ceiling would turn a valid 1200 px cover
+   * into an invalid upload before the request reached the API.
    */
   const upload = useUpload<{ doc_id: string }>({
-    profile: "brand",
+    profile: uploadProfileForSlot(slot),
     maxBytes: spec.maxBytes,
+    minimumWidth: spec.minWidth,
     send: async (file, ctx) =>
       api.uploadAsset(
         {

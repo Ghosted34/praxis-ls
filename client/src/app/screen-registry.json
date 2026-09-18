@@ -1528,6 +1528,18 @@
       ]
     },
     {
+      "id": "workspace_analytics",
+      "title": "Analytics",
+      "route": "/workspace/analytics",
+      "area": "home",
+      "module_key": "MOD-00A",
+      "purpose": "Operational analysis of the SAME authorised task population Tasks and Today show: open work and its composition, overdue aging, throughput, cycle time, workload by assignee, blocked work and the backlog burn-down. Every figure reconciles with the Tasks list because it is produced by the same visibility predicate, every chart has a table beside it, and every drill-down opens the list filtered the same way. Deliberately operational — it carries no appraisal score, compensation input or employee KPI rating, which remain in Empower HR under their own permissions.",
+      "actions": [
+        "filter analytics",
+        "drill down to tasks"
+      ]
+    },
+    {
       "id": "ai_workspace",
       "title": "Praxis AI",
       "route": "/ai",

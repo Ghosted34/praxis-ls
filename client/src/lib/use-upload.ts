@@ -73,6 +73,14 @@ export type UseUploadOptions<T> = {
   profile?: UploadProfile;
   /** Reject anything larger than this, before compression. */
   maxBytes?: number;
+  /**
+   * Optional source-dimension floors enforced by the receiving endpoint. The
+   * compressor will not trade these floors for its profile's max-edge cap; a
+   * source already below one is sent without enlargement so the server can
+   * report the actual dimensions.
+   */
+  minimumWidth?: number;
+  minimumHeight?: number;
   /** Allow more than one file at a time. */
   multiple?: boolean;
   /**
@@ -105,6 +113,8 @@ function humanSize(bytes: number): string {
 export function useUpload<T = unknown>({
   profile = "document",
   maxBytes,
+  minimumWidth,
+  minimumHeight,
   multiple = false,
   autoStart = true,
   send,
@@ -171,7 +181,10 @@ export function useUpload<T = unknown>({
         let toSend = item.prepared;
         if (!toSend) {
           patch(item.id, { state: "compressing", percent: 0 });
-          const out = await compressImage(item.file, profile);
+          const out = await compressImage(item.file, profile, {
+            minimumWidth,
+            minimumHeight,
+          });
           toSend = out.file;
           patch(item.id, { prepared: out.file, bytes: out.bytes });
         }
@@ -221,7 +234,7 @@ export function useUpload<T = unknown>({
         controllers.current.delete(item.id);
       }
     },
-    [patch, profile],
+    [minimumHeight, minimumWidth, patch, profile],
   );
 
   /** Add files and immediately begin compressing + uploading them. */

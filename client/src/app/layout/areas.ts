@@ -61,14 +61,22 @@ export const AREAS: Area[] = [
     key: "workspace",
     label: "My workspace",
     basePath: "/workspace",
-    // Three views of one queue. "Today" is the landing because it is the answer
+    // Four views of one queue. "Today" is the landing because it is the answer
     // to the question the page exists for — what wants me, and when — and it is
     // the only one that puts tasks and appointments in the SAME list, which is
     // the point of them sharing a surface rather than being two screens.
+    //
+    // Analytics is LAST and it is deliberately not first: it reports on the
+    // other three, and a hub that opens on a dashboard asks the reader to
+    // interpret before it lets them act. It is the same authorised task
+    // population the other three draw, counted — never an HR appraisal, a KPI
+    // rating or a compensation input, which live in Empower behind their own
+    // module and their own grants.
     sections: [
       { key: "today", label: "Today" },
       { key: "tasks", label: "Tasks" },
       { key: "calendar", label: "Calendar" },
+      { key: "analytics", label: "Analytics" },
     ],
   },
   /**

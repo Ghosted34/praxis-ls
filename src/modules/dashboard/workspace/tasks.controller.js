@@ -85,8 +85,19 @@ const getDay = asyncHandler(async (req, res) => {
   });
 });
 
+/**
+ * One task.
+ *
+ * The audience travels on the query string (B-03): the board can show a
+ * manager a Team card, and a detail read that defaulted to "mine" answered
+ * NOT FOUND for a card the same server had just rendered. `ctxOf` already
+ * picks `req.query.audience` up, and the service narrows it against the
+ * caller's real grants — the parameter asks, it never authorises.
+ */
 const getTask = asyncHandler(async (req, res) => {
-  res.json({ data: await req.tenantDb((c) => service.getTask(c, ctxOf(req), req.params.id)) });
+  res.json({
+    data: await req.tenantDb((c) => service.getTask(c, ctxOf(req), req.params.id, req.query.audience)),
+  });
 });
 
 /**
@@ -118,8 +129,19 @@ const updateTask = asyncHandler(async (req, res) => {
   res.json({ data: await req.tenantDb((c) => service.updateTask(c, ctxOf(req), req.params.id, req.body)) });
 });
 
+/**
+ * THE status path. Board drag, Move menu, keyboard drop, the detail panel's
+ * select and the edit dialog all arrive here — the dialog by way of
+ * `service.updateTask`, which splits a status out of a PATCH and replays it
+ * through the same transition (B-04). One event, one audit row, one
+ * completion-timestamp rule, one notification.
+ */
 const changeStatus = asyncHandler(async (req, res) => {
-  res.json({ data: await req.tenantDb((c) => service.changeStatus(c, ctxOf(req), req.params.id, req.body.status)) });
+  res.json({
+    data: await req.tenantDb((c) =>
+      service.changeStatus(c, ctxOf(req), req.params.id, req.body.status, req.body.audience),
+    ),
+  });
 });
 
 const deleteTask = asyncHandler(async (req, res) => {
@@ -148,17 +170,87 @@ const deleteSubtask = asyncHandler(async (req, res) => {
   res.status(204).end();
 });
 
-/* ── watchers ───────────────────────────────────────────────────────────── */
+/* ── children ───────────────────────────────────────────────────────────── */
+
+const addChildTask = asyncHandler(async (req, res) => {
+  res.status(201).json({
+    data: await req.tenantDb((c) =>
+      service.addChildTask(c, ctxOf(req), req.params.id, req.body, req.query.audience),
+    ),
+  });
+});
+
+/* ── dependencies ───────────────────────────────────────────────────────── */
+//
+// Every one of these answers with the WHOLE refreshed task rather than the
+// edge it touched. A dependency changes `is_blocked`, `blocking_count` and the
+// list the panel draws, so returning the edge alone would force the client to
+// refetch anyway — and a client that forgot would render a task that says it
+// is blocked beside a list with nothing in it.
+
+const addDependency = asyncHandler(async (req, res) => {
+  res.status(201).json({
+    data: await req.tenantDb((c) =>
+      service.addDependency(c, ctxOf(req), req.params.id, req.body, req.query.audience),
+    ),
+  });
+});
+
+const removeDependency = asyncHandler(async (req, res) => {
+  res.json({
+    data: await req.tenantDb((c) =>
+      service.removeDependency(c, ctxOf(req), req.params.id, req.params.dependencyId, req.query.audience),
+    ),
+  });
+});
+
+const overrideDependency = asyncHandler(async (req, res) => {
+  res.json({
+    data: await req.tenantDb((c) =>
+      service.setDependencyOverride(
+        c, ctxOf(req), req.params.id, req.params.dependencyId, req.body, req.query.audience,
+      ),
+    ),
+  });
+});
+
+/* ── watchers and pings ─────────────────────────────────────────────────── */
 
 const addWatcher = asyncHandler(async (req, res) => {
   res.status(201).json({
-    data: await req.tenantDb((c) => service.addWatcher(c, ctxOf(req), req.params.id, req.body.user_id)),
+    data: await req.tenantDb((c) =>
+      service.addWatcher(c, ctxOf(req), req.params.id, req.body.user_id, req.query.audience),
+    ),
   });
 });
 
 const removeWatcher = asyncHandler(async (req, res) => {
-  await req.tenantDb((c) => service.removeWatcher(c, ctxOf(req), req.params.id, req.params.userId));
+  await req.tenantDb((c) =>
+    service.removeWatcher(c, ctxOf(req), req.params.id, req.params.userId, req.query.audience),
+  );
   res.status(204).end();
+});
+
+const pingTask = asyncHandler(async (req, res) => {
+  res.json({
+    data: await req.tenantDb((c) =>
+      service.pingTask(c, ctxOf(req), req.params.id, req.body, req.query.audience),
+    ),
+  });
+});
+
+/* ── analytics ──────────────────────────────────────────────────────────── */
+
+/**
+ * The whole operational dashboard in one authorised read.
+ *
+ * One request rather than six, because the panels must describe the same
+ * population at the same instant — see the service's header. The audience the
+ * server actually honoured rides in the body beside the figures, so the screen
+ * can say whose work it is showing rather than echoing what was asked for.
+ */
+const getAnalytics = asyncHandler(async (req, res) => {
+  res.json({ data: await req.tenantDb((c) => service.analytics(c, ctxOf(req), req.query)) });
 });
 
 /* ════════════════════════════ CALENDAR EVENTS ═══════════════════════════ */
@@ -272,6 +364,7 @@ async function tenantMonthWindow(client) {
 module.exports = {
   listTasks, getBoard, getDay, getDeadlines, getTask, createTask, updateTask, changeStatus, deleteTask,
   addSubtask, patchSubtask, deleteSubtask, addWatcher, removeWatcher,
+  addChildTask, addDependency, removeDependency, overrideDependency, pingTask, getAnalytics,
   listEvents, getEvent, createEvent, updateEvent, deleteEvent,
   addParticipant, respondParticipant, removeParticipant,
 };

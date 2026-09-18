@@ -142,11 +142,31 @@ export function useTaskListPaged(
   });
 }
 
-export function useTask(id: string | null) {
+/**
+ * One task, read at the audience the board or list is showing (B-03).
+ *
+ * The audience is part of the KEY as well as the request: two panels opened at
+ * different audiences are two different authorised answers, and sharing one
+ * cache entry between them would show a manager the "mine" reading of a card
+ * they opened from Everyone.
+ */
+export function useTask(id: string | null, audience?: Audience) {
   return useQuery<Task>({
-    queryKey: [ROOT, "task", id],
-    queryFn: () => api.getTask(id as string),
+    queryKey: [ROOT, "task", id, audience ?? "mine"],
+    queryFn: () => api.getTask(id as string, audience),
     enabled: !!id,
+  });
+}
+
+/** The operational dashboard. One read, one window, one authorised population. */
+export function useWorkspaceAnalytics(params: api.AnalyticsParams = {}) {
+  return useQuery<api.AnalyticsResponse>({
+    queryKey: [ROOT, "analytics", params],
+    queryFn: () => api.getAnalytics(params),
+    // An aggregate is expensive and does not move by the second. A minute is
+    // fresh enough for a dashboard and stops a filter flick refetching six
+    // aggregates per keystroke.
+    staleTime: 60_000,
   });
 }
 
@@ -199,9 +219,8 @@ export const useUpdateTask = () =>
   useWorkspaceMutation(({ id, input }: { id: string; input: Partial<TaskInput> }) =>
     api.updateTask(id, input),
   );
-
 /**
- * Move a task to another column — optimistically.
+ * Move a task to another column — optimistically, at a stated reach.
  *
  * A drag that ends with the card snapping BACK, then jumping forward a beat
  * later when the refetch lands, reads as a failed drop even when the server
@@ -213,16 +232,28 @@ export const useUpdateTask = () =>
  * Only the board and the single task are patched. The day timeline and the
  * flat lists carry the same row in shapes that are not worth rewriting by hand;
  * they refresh from the server on settle, a fraction of a second later.
+ *
+ * ── THE AUDIENCE TRAVELS WITH THE MOVE ─────────────────────────────────────
+ *
+ * The reach the board was READ at is the reach the move must be authorised at
+ * (B-03). A card shown on a Team board belongs to a population the caller's
+ * default reach may not contain, so a move that dropped the audience would be
+ * refused for a task the user is looking at — a 404 on a card that is plainly
+ * on screen, and unreproducible for anybody whose default is wider.
  */
 export function useMoveTask() {
   const qc = useQueryClient();
   return useMutation<
     Task,
     Error,
-    { id: string; status: TaskStatus },
-    { boards: Array<[readonly unknown[], api.BoardResponse | undefined]>; task: Task | undefined }
+    { id: string; status: TaskStatus; audience?: Audience },
+    { boards: Array<[readonly unknown[], api.BoardResponse | undefined]>; tasks: Array<[readonly unknown[], Task | undefined]> }
   >({
-    mutationFn: ({ id, status }) => api.moveTask(id, status),
+    // The audience is passed only when there IS one, rather than as a trailing
+    // `undefined`. A move from a screen with no wider reach to name is the same
+    // request it has always been, so the default path keeps its exact shape.
+    mutationFn: ({ id, status, audience }) =>
+      audience ? api.moveTask(id, status, audience) : api.moveTask(id, status),
     onMutate: async ({ id, status }) => {
       await qc.cancelQueries({ queryKey: [ROOT, "board"] });
       const boards = qc.getQueriesData<api.BoardResponse>({ queryKey: [ROOT, "board"] });
@@ -230,15 +261,27 @@ export function useMoveTask() {
         const next = data ? optimisticBoard(data.board, id, status) : null;
         if (next) qc.setQueryData(key, { ...data, board: next });
       }
-      const taskKey = [ROOT, "task", id];
-      const task = qc.getQueryData<Task>(taskKey);
-      if (task && task.status !== status) qc.setQueryData<Task>(taskKey, { ...task, status });
-      return { boards, task };
+      /**
+       * EVERY cached copy of this task, not one exact key.
+       *
+       * `useTask` keys on the audience it read at, so the same task can sit in
+       * the cache under `[…, id, "mine"]` and `[…, id, "team"]` at once. An
+       * exact-key patch would update whichever one the writer happened to name
+       * and leave the OTHER showing the old status until the settle — which is
+       * the copy the open detail pane is most likely rendering, because the
+       * pane is what the board handed its own reach to.
+       */
+      await qc.cancelQueries({ queryKey: [ROOT, "task", id] });
+      const tasks = qc.getQueriesData<Task>({ queryKey: [ROOT, "task", id] });
+      for (const [key, task] of tasks) {
+        if (task && task.status !== status) qc.setQueryData<Task>(key, { ...task, status });
+      }
+      return { boards, tasks };
     },
-    onError: (_err, { id }, context) => {
+    onError: (_err, _vars, context) => {
       if (!context) return;
       for (const [key, data] of context.boards) qc.setQueryData(key, data);
-      if (context.task) qc.setQueryData([ROOT, "task", id], context.task);
+      for (const [key, task] of context.tasks) qc.setQueryData(key, task);
     },
     onSettled: () => qc.invalidateQueries({ queryKey: [ROOT] }),
   });
@@ -269,8 +312,7 @@ function optimisticBoard(board: TaskBoard, id: string, status: TaskStatus): Task
     [from]: board[from].filter((t) => t.task_id !== id),
     [target]: [...board[target], { ...found, status: target }],
   };
-}
-export const useDeleteTask = () => useWorkspaceMutation((id: string) => api.deleteTask(id));
+}export const useDeleteTask = () => useWorkspaceMutation((id: string) => api.deleteTask(id));
 
 export const useAddSubtask = () =>
   useWorkspaceMutation(
@@ -290,6 +332,68 @@ export const useSetSubtaskDeadline = () =>
 export const useDeleteSubtask = () =>
   useWorkspaceMutation(({ taskId, subtaskId }: { taskId: string; subtaskId: string }) =>
     api.deleteSubtask(taskId, subtaskId),
+  );
+
+/* ── hierarchy, dependencies and collaboration (PR 2) ─────────────────────── */
+
+export const useAddChildTask = () =>
+  useWorkspaceMutation(
+    ({ parentId, input, audience }: { parentId: string; input: api.ChildTaskInput; audience?: Audience }) =>
+      api.addChildTask(parentId, input, audience),
+  );
+
+export const useAddDependency = () =>
+  useWorkspaceMutation(
+    ({ taskId, dependsOnTaskId, audience }: { taskId: string; dependsOnTaskId: string; audience?: Audience }) =>
+      api.addDependency(taskId, dependsOnTaskId, audience),
+  );
+
+export const useRemoveDependency = () =>
+  useWorkspaceMutation(
+    ({ taskId, dependencyId, audience }: { taskId: string; dependencyId: string; audience?: Audience }) =>
+      api.removeDependency(taskId, dependencyId, audience),
+  );
+
+export const useOverrideDependency = () =>
+  useWorkspaceMutation(
+    ({
+      taskId,
+      dependencyId,
+      overridden,
+      reason,
+      audience,
+    }: {
+      taskId: string;
+      dependencyId: string;
+      overridden: boolean;
+      reason?: string | null;
+      audience?: Audience;
+    }) => api.overrideDependency(taskId, dependencyId, overridden, reason, audience),
+  );
+
+export const usePingTask = () =>
+  useWorkspaceMutation(
+    ({
+      taskId,
+      userIds,
+      message,
+      audience,
+    }: {
+      taskId: string;
+      userIds?: string[];
+      message?: string | null;
+      audience?: Audience;
+    }) => api.pingTask(taskId, { user_ids: userIds, message }, audience),
+  );
+
+export const useAddWatcher = () =>
+  useWorkspaceMutation(({ taskId, userId }: { taskId: string; userId: string }) =>
+    api.addWatcher(taskId, userId),
+  );
+
+export const useRemoveWatcher = () =>
+  useWorkspaceMutation(({ taskId, userId }: { taskId: string; userId: string }) =>
+    api.removeWatcher(taskId, userId),
   );
 
 export const useCreateEvent = () => useWorkspaceMutation((input: EventInput) => api.createEvent(input));

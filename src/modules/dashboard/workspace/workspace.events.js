@@ -23,6 +23,16 @@ module.exports = {
   TASK_DELETED: "task.deleted",
   TASK_REMINDER_DUE: "task.reminder_due",
 
+  // PR 2 (13870). Hierarchy needs no key of its own — a child task IS a task
+  // and emits `task.created` — but an edge, a watcher and a ping are actions
+  // on a task that no existing key describes.
+  TASK_DEPENDENCY_ADDED: "task.dependency_added",
+  TASK_DEPENDENCY_REMOVED: "task.dependency_removed",
+  TASK_DEPENDENCY_OVERRIDDEN: "task.dependency_overridden",
+  TASK_WATCHER_ADDED: "task.watcher_added",
+  TASK_WATCHER_REMOVED: "task.watcher_removed",
+  TASK_PINGED: "task.pinged",
+
   EVENT_CREATED: "calendar_event.created",
   EVENT_UPDATED: "calendar_event.updated",
   EVENT_DELETED: "calendar_event.deleted",

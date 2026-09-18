@@ -281,6 +281,8 @@ export function PwaPage() {
             onChange={(url) => set("iconUrl", url || null)}
             shape="square"
             maxBytes={2_000_000}
+            minimumWidth={512}
+            minimumHeight={512}
             // Profile defaults to "brand": the icon pipeline derives every
             // PWA/apple-touch PNG from this master, so a colour shift here
             // would propagate to every installed home-screen icon.

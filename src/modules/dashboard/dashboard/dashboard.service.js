@@ -233,7 +233,41 @@ async function withItineraries(client, shipments) {
   return shipments.map((s) => ({ ...s, legs: byDossier.get(s.dossier_id) || [] }));
 }
 
+/**
+ * Sanitise a control-tower query into the options the repo accepts.
+ *
+ * Lifted out of the controller (it was inline there) so the AI manifest runs the
+ * SAME enumeration rather than a second copy of it. Mode, layer, verification
+ * and date field all end up in a SQL predicate, and the rule is that an
+ * unrecognised value means "no filter" — it must never reach the repo. A second
+ * copy of that rule is a second place for it to rot.
+ */
+const CT_DATE_FIELDS = new Set(["created", "updated", "arrival", "delivery"]);
+const CT_MODES = new Set(["AIR", "SEA", "LAND", "RAIL", "OTHER"]);
+const CT_LAYERS = new Set(["MOVEMENT", "ACTIVITY"]);
+const CT_VERIFICATIONS = new Set(["VERIFIED", "UNVERIFIED"]);
+const ctPick = (value, set) => {
+  const v = value ? String(value).toUpperCase() : null;
+  return v && set.has(v) ? v : null;
+};
+function controlTowerOptions(q = {}) {
+  return {
+    limit: Math.max(1, Math.min(Number(q.limit) || 50, 100)),
+    cursor: q.cursor || null,
+    serviceTypeId: q.service_type_id || null,
+    territory: q.territory || null,
+    mode: ctPick(q.mode, CT_MODES),
+    layer: ctPick(q.layer, CT_LAYERS),
+    verified: ctPick(q.verified, CT_VERIFICATIONS),
+    dateField: CT_DATE_FIELDS.has(q.date_field) ? q.date_field : "created",
+    from: q.from || null,
+    to: q.to || null,
+    includeCompleted: q.include_completed === "true" || q.include_completed === true,
+  };
+}
+
 module.exports = {
+  controlTowerOptions,
   kpis: (client) => repo.kpis(client),
   bandIdentity,
   kpiBand,

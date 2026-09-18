@@ -24,6 +24,9 @@ const schemas = {
     // without this the vault cannot answer "where is the one I uploaded".
     original_name: z.string().max(255).optional().nullable(),
   }),
+  // AI-facing: the document is in the URL for the HTTP routes, but a copilot
+  // call has no URL — it passes one flat object, so the id must be IN the schema.
+  aiArchive: z.object({ document_vault_id: z.string().uuid() }),
 };
 const mw = (k) => (req, _res, next) => {
   const p = schemas[k].safeParse(req.body ?? {});

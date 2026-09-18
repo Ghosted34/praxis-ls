@@ -20,7 +20,10 @@
       "area": "home",
       "module_key": "MOD-00A",
       "purpose": "Landing overview / KPIs for the signed-in user.",
-      "actions": []
+      "actions": [
+        "tenant_kpis",
+        "control_tower"
+      ]
     },
     {
       "id": "security_users",
@@ -316,7 +319,11 @@
         "get_expense_rate",
         "resolve_expense_rate",
         "create_expense_rate",
-        "update_expense_rate"
+        "update_expense_rate",
+        "list_rate_providers",
+        "get_rate_provider",
+        "create_rate_provider",
+        "update_rate_provider"
       ]
     },
     {
@@ -703,7 +710,17 @@
         "list_sops",
         "get_sop",
         "create_sop",
-        "update_sop"
+        "update_sop",
+        "list_onboarding_checklists",
+        "get_onboarding_checklist",
+        "outstanding_onboarding_items",
+        "list_onboarding_templates",
+        "create_onboarding_checklist",
+        "add_onboarding_item",
+        "update_onboarding_item",
+        "toggle_onboarding_item",
+        "reschedule_onboarding_checklist",
+        "complete_onboarding_checklist"
       ]
     },
     {
@@ -735,7 +752,11 @@
         "list_talent",
         "get_talent",
         "create_talent",
-        "update_talent"
+        "update_talent",
+        "list_succession_plans",
+        "get_succession_plan",
+        "create_succession_plan",
+        "update_succession_plan"
       ]
     },
     {
@@ -814,7 +835,13 @@
       "area": "finance",
       "module_key": "MOD-51",
       "purpose": "Reverse a finalised invoice — draft then post the contra entry.",
-      "actions": []
+      "actions": [
+        "list_credit_notes",
+        "get_credit_note",
+        "draft_credit_note",
+        "update_credit_note",
+        "post_credit_note"
+      ]
     },
     {
       "id": "fin_financing",
@@ -1095,7 +1122,12 @@
       "area": "hr",
       "module_key": "MOD-71",
       "purpose": "Disciplinary queries issued to an employee.",
-      "actions": []
+      "actions": [
+        "list_hr_queries",
+        "get_hr_query",
+        "create_hr_query",
+        "update_hr_query"
+      ]
     },
     {
       "id": "hr_sanctions",
@@ -1104,7 +1136,13 @@
       "area": "hr",
       "module_key": "MOD-71",
       "purpose": "Disciplinary outcomes and their lifting.",
-      "actions": []
+      "actions": [
+        "list_hr_sanctions",
+        "get_hr_sanction",
+        "create_hr_sanction",
+        "update_hr_sanction",
+        "lift_hr_sanction"
+      ]
     },
     {
       "id": "ops_files",
@@ -1118,7 +1156,11 @@
         "get_dossier",
         "open_dossier",
         "update_dossier",
-        "transition_dossier"
+        "transition_dossier",
+        "list_geo_places",
+        "search_geo_places",
+        "create_geo_place",
+        "confirm_geo_place"
       ]
     },
     {
@@ -1134,7 +1176,12 @@
         "service_type_assumptions",
         "publish_milestone_template",
         "instantiate_milestones",
-        "advance_milestone"
+        "advance_milestone",
+        "list_q_tickets",
+        "get_q_ticket",
+        "raise_q_ticket",
+        "reply_q_ticket",
+        "resolve_q_ticket"
       ]
     },
     {
@@ -1450,7 +1497,10 @@
       "area": "vault",
       "module_key": "MOD-64",
       "purpose": "Stored documents, gated download.",
-      "actions": []
+      "actions": [
+        "list_documents",
+        "archive_document"
+      ]
     },
     {
       "id": "vault_signatures",
@@ -1462,7 +1512,18 @@
       "actions": [
         "list_signatures",
         "signature_menu",
-        "sign_document"
+        "sign_document",
+        "qes_quote",
+        "qes_usage",
+        "list_signature_requests",
+        "get_signature_request",
+        "create_signature_request",
+        "dispatch_signature_request",
+        "void_signature_request",
+        "wet_signature_queue",
+        "unreconciled_wet_signatures",
+        "issue_wet_signature_job",
+        "mark_wet_signature_printed"
       ]
     },
     {
@@ -1511,7 +1572,9 @@
       "area": "home",
       "module_key": "MOD-00A",
       "purpose": "The signed-in user's day as ONE list: tasks and appointments interleaved by when they are wanted, rather than a calendar beside a to-do list. Carries the counts of what is overdue, due and booked, and links out to the approvals queue instead of re-rendering it.",
-      "actions": []
+      "actions": [
+        "my_day_timeline"
+      ]
     },
     {
       "id": "workspace_tasks",
@@ -1524,7 +1587,14 @@
         "create task",
         "move task",
         "edit task",
-        "delete task"
+        "delete task",
+        "list_my_tasks",
+        "get_my_task",
+        "my_task_board",
+        "my_deadlines",
+        "create_task",
+        "update_task",
+        "change_task_status"
       ]
     },
     {
@@ -1538,7 +1608,11 @@
         "create event",
         "edit event",
         "delete event",
-        "invite participant"
+        "invite participant",
+        "list_my_events",
+        "get_my_event",
+        "create_calendar_event",
+        "update_calendar_event"
       ]
     },
     {
@@ -1598,7 +1672,9 @@
       "area": "comms",
       "module_key": "MOD-70",
       "purpose": "The signature card as it goes out: a person's own typed fields and PNG download, plus (MOD-70) batch generation for staff and which template each part of the company gets. Name, title, address and logo are derived; colours follow tenant branding.",
-      "actions": []
+      "actions": [
+        "save_my_signature"
+      ]
     },
     {
       "id": "settings_email_signatures",
@@ -1607,7 +1683,10 @@
       "area": "settings",
       "module_key": "MOD-70",
       "purpose": "Own signature profile (typed phones, pronouns) plus admin template list. Derived fields come from HR and update on the next send.",
-      "actions": []
+      "actions": [
+        "list_signature_staff",
+        "list_signature_templates"
+      ]
     },
     {
       "id": "settings_deliverability",
@@ -1616,7 +1695,11 @@
       "area": "settings",
       "module_key": "MOD-70",
       "purpose": "Outbound domain health: SPF, DKIM, DMARC, MX, PTR and public RBL checks with scheduled re-checks and regression alerts.",
-      "actions": []
+      "actions": [
+        "deliverability_dashboard",
+        "deliverability_history",
+        "check_delivery_route"
+      ]
     },
     {
       "id": "support",
@@ -1691,7 +1774,11 @@
       "area": "settings",
       "module_key": "MOD-70",
       "purpose": "Invoice, PO, receipt and contract layouts.",
-      "actions": []
+      "actions": [
+        "list_document_templates",
+        "get_document_template_config",
+        "set_document_template_config"
+      ]
     },
     {
       "id": "settings_custom_fields",
@@ -1700,7 +1787,12 @@
       "area": "settings",
       "module_key": "MOD-70",
       "purpose": "Per-entity field definitions.",
-      "actions": []
+      "actions": [
+        "get_client_field_config",
+        "get_supplier_field_config",
+        "set_client_field_config",
+        "set_supplier_field_config"
+      ]
     },
     {
       "id": "settings_catalogue",
@@ -1709,7 +1801,9 @@
       "area": "settings",
       "module_key": "MOD-70",
       "purpose": "Modules and features enabled for this tenant's plan.",
-      "actions": []
+      "actions": [
+        "list_modules"
+      ]
     },
     {
       "id": "portal_access",
@@ -1732,7 +1826,12 @@
       "area": "settings",
       "module_key": "MOD-67",
       "purpose": "External auditors' document requests and the vault documents shared in answer (data room).",
-      "actions": []
+      "actions": [
+        "list_audit_room_requests",
+        "get_audit_room_request",
+        "attach_audit_room_document",
+        "answer_audit_room_request"
+      ]
     },
     {
       "id": "settings_client_support",

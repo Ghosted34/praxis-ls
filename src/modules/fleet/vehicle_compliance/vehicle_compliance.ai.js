@@ -26,8 +26,8 @@ module.exports = {
     },
     {
       key: "update_compliance",
-      service: service.update,
-      schema: validator.schemas.update,
+      service: (c, p, actor) => (({ compliance_id, ...patch }) => service.update(c, { id: compliance_id, patch, actor }))(p),
+      schema: validator.schemas.aiUpdate,
       permission: { module: "MOD-40", action: "edit" },
       confirm: true,
       describe: "Update a compliance record (kind, expiry, attached document).",

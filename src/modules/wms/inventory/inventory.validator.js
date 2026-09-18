@@ -23,7 +23,12 @@ const move = z.object({
   from_location: z.string().uuid().optional(),
   to_location: z.string().uuid().optional(),
 });
-const schemas = { create, update: create.partial(), state, move };
+const update = create.partial();
+// AI-facing: the record id travels IN the payload — the copilot has no route param.
+const aiUpdate = update.extend({ inventory_item_id: z.string().uuid() });
+const aiState = state.extend({ inventory_item_id: z.string().uuid() });
+const aiMove = move.extend({ inventory_item_id: z.string().uuid() });
+const schemas = { create, update, state, move, aiUpdate, aiState, aiMove };
 
 const mw = (k) => (req, _res, next) => {
   const p = schemas[k].safeParse(req.body);

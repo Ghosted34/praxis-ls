@@ -1,3 +1,4 @@
+// ai:none — the assistant itself. Exposing the copilot's own endpoints as copilot tools lets a turn re-enter the orchestrator, and the transcript is already the caller's.
 "use strict";
 const service = require("./assistant.service");
 const { asyncHandler } = require("../../../utils/errors");

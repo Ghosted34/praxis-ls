@@ -11,7 +11,11 @@ const create = z.object({
   effective_date: z.string().optional(),
   end_date: z.string().optional().nullable(),
 });
-const schemas = { create, update: create.partial() };
+const update = create.partial();
+// AI-facing: the record id travels IN the payload — the copilot has no route param.
+const aiUpdate = update.extend({ hr_sanction_id: z.string().uuid() });
+const aiLift = z.object({ hr_sanction_id: z.string().uuid() });
+const schemas = { create, update, aiUpdate, aiLift };
 
 const mw = (k) => (req, _res, next) => {
   const p = schemas[k].safeParse(req.body);

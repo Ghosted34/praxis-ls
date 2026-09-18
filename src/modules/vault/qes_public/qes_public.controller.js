@@ -1,3 +1,4 @@
+// ai:none — the unauthenticated QES landing endpoints for an external signer. No tenant caller, so no RBAC to run as.
 "use strict";
 
 const service = require("./qes_public.service");

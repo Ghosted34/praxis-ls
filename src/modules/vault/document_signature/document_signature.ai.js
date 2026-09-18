@@ -32,7 +32,7 @@ module.exports = {
   writes: [
     {
       key: "sign_document",
-      service: service.signInternal,
+      service: (c, p, actor) => service.signInternal(c, { entityRef: p.entity_ref, docType: p.doc_type, presetCode: p.preset_code, signReason: p.sign_reason, markImageB64: p.mark_image_b64, actor }),
       schema: validator.schemas.signInternal,
       permission: { module: "MOD-64", action: "approve" },
       confirm: true,

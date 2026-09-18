@@ -9,10 +9,8 @@ module.exports = {
   writes: [
     {
       key: "create_treasury_category",
-      service: (c, p) => service.create(c, {
-        code: p.code, label: p.label, legacyKind: p.legacy_kind, coaParentCode: p.coa_parent_code,
-        requiresCustodian: p.requires_custodian, isBankIdentity: p.is_bank_identity, isMomoIdentity: p.is_momo_identity,
-      }),
+      service: (c, p, actor) => service.create(c, { code: p.code, label: p.label, legacyKind: p.legacy_kind, coaParentCode: p.coa_parent_code,
+        requiresCustodian: p.requires_custodian, isBankIdentity: p.is_bank_identity, isMomoIdentity: p.is_momo_identity, actor }),
       schema: validator.schemas.create,
       permission: { module: "MOD-09", action: "create" },
       confirm: true,

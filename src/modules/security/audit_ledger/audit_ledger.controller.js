@@ -1,3 +1,4 @@
+// ai:none — the append-only audit ledger. It RECORDS what the AI did; a tool that writes to it would be the AI marking its own homework, and reads go through each module's own trail.
 "use strict";
 const { asyncHandler, AppError } = require("../../../utils/errors");
 const { makeController } = require("../../../shared/crud/resource");

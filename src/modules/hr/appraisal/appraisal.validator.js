@@ -57,7 +57,10 @@ const reviewRespond = z
 
 const scoreRun = z.object({ employee_id: z.string().uuid().optional() });
 
-const schemas = { create, update: create.partial(), reward, cycle, cycleStatus, reviewOpen, reviewSubmit, lineRate, reviewRespond, scoreRun };
+const update = create.partial();
+// AI-facing: the record id travels IN the payload — the copilot has no route param.
+const aiUpdate = update.extend({ appraisal_id: z.string().uuid() });
+const schemas = { create, update, reward, cycle, cycleStatus, reviewOpen, reviewSubmit, lineRate, reviewRespond, scoreRun, aiUpdate };
 
 const mw = (k) => (req, _res, next) => {
   const p = schemas[k].safeParse(req.body);

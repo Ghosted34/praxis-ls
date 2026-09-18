@@ -10,8 +10,8 @@ module.exports = {
     { key: "delivery_note_summary", service: service.summary, permission: { module: "MOD-32", action: "view" }, describe: "Count delivery notes by status, for the KPI tiles." },
   ],
   writes: [
-    { key: "create_delivery_note", service: service.create, schema: validator.schemas.create, permission: { module: "MOD-32", action: "create" }, confirm: true, describe: "Draft a delivery note on an operations file. No number is allocated until it is issued." },
-    { key: "issue_delivery_note", service: service.issue, schema: validator.schemas.issue, permission: { module: "MOD-32", action: "create" }, confirm: true, describe: "Allocate the number, snapshot the shipment details and capture the PDF." },
-    { key: "confirm_delivery", service: service.confirmDelivery, schema: validator.schemas.deliver, permission: { module: "MOD-32", action: "edit" }, confirm: true, describe: "Record who received the goods, when, and any reservations they noted." },
+    { key: "create_delivery_note", service: (c, p, actor) => service.create(c, { entityId: p.entity_id, dossierId: p.dossier_id, consignee: p.consignee, cityZone: p.city_zone, contactPerson: p.contact_person, address: p.address, phone: p.phone, deliveryDate: p.delivery_date || p.date, lines: p.lines, containers: p.containers, actor }), schema: validator.schemas.create, permission: { module: "MOD-32", action: "create" }, confirm: true, describe: "Draft a delivery note on an operations file. No number is allocated until it is issued." },
+    { key: "issue_delivery_note", service: (c, p, actor) => service.issue(c, { id: p.delivery_note_id, actor }), schema: validator.schemas.aiIssue, permission: { module: "MOD-32", action: "create" }, confirm: true, describe: "Allocate the number, snapshot the shipment details and capture the PDF." },
+    { key: "confirm_delivery", service: (c, p, actor) => service.confirmDelivery(c, { id: p.delivery_note_id, receivedByName: p.received_by_name, receivedAt: p.received_at, reservations: p.reservations, signatureVaultId: p.signature_vault_id, actor }), schema: validator.schemas.aiDeliver, permission: { module: "MOD-32", action: "edit" }, confirm: true, describe: "Record who received the goods, when, and any reservations they noted." },
   ],
 };

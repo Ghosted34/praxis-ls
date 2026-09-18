@@ -1,3 +1,4 @@
+// ai:none — the platform-side error inbox (Praxis staff, cross-tenant). Outside any tenant's copilot, which never leaves its own tenant.
 /**
  * Error Command Center HTTP controller. Thin — delegates to the services.
  * Response envelope matches the rest of /api/platform: { data }.

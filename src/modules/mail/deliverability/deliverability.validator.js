@@ -27,4 +27,9 @@ const route = (req, _res, next) => {
   return next();
 };
 
-module.exports = { check, route };
+// AI-facing: the raw shapes, so deliverability.ai.js can declare payload
+// schemas. `history` takes its domain in the URL over HTTP; a copilot call has
+// no URL, so it carries the domain in the payload like the other two.
+const schemas = { check: schema, route: routeSchema, aiHistory: routeSchema };
+
+module.exports = { check, route, schemas };

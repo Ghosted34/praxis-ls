@@ -17,7 +17,7 @@ module.exports = {
   writes: [
     {
       key: "create_attendance",
-      service: service.create,
+      service: (c, p, actor) => service.create(c, { data: p, actor }),
       schema: validator.schemas.create,
       permission: { module: "MOD-14", action: "create" },
       confirm: true,
@@ -25,16 +25,16 @@ module.exports = {
     },
     {
       key: "update_attendance",
-      service: service.update,
-      schema: validator.schemas.update,
+      service: (c, p, actor) => (({ attendance_id, ...patch }) => service.update(c, { id: attendance_id, patch, actor }))(p),
+      schema: validator.schemas.clockOut,
       permission: { module: "MOD-14", action: "edit" },
       confirm: true,
       describe: "Update an attendance log.",
     },
     {
       key: "clock_out_attendance",
-      service: service.clockOut,
-      schema: null,
+      service: (c, p, actor) => service.clockOut(c, { id: p.id || null, employeeId: p.employee_id || null, latitude: p.latitude, longitude: p.longitude, actor }),
+      schema: validator.schemas.clockOut,
       permission: { module: "MOD-14", action: "edit" },
       confirm: true,
       describe: "Stamp clock-out on an open attendance row.",

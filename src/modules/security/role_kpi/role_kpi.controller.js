@@ -1,3 +1,4 @@
+// ai:none — which KPI tiles a role sees. RBAC presentation, governed with the roles themselves.
 /**
  * role_kpi handlers. Thin, like every controller here — and like `iam_role`'s,
  * pinned to the IDENTITY handle: the row configures a role that lives in the

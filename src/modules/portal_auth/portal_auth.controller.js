@@ -1,3 +1,4 @@
+// ai:none — portal sign-in for clients, investors and auditors. Issuing and checking credentials is the boundary the AI runs INSIDE, never a tool it may call.
 "use strict";
 const service = require("./portal_auth.service");
 const portal = require("../portal/portal.service");

@@ -186,7 +186,14 @@ const placeSearch = z.object({
   limit: z.coerce.number().int().min(1).max(10).optional(),
 });
 
-const schemas = { create, update, status, applicant, applicantStatus, consider, criterion, question, answer, publish, intake, transcribe, placeSearch };
+// AI-facing: the record id travels IN the payload — the copilot has no route param.
+// `update` is a ZodEffects (it carries the salary-order refinement), which has
+// no `.extend()` — so the AI variant is built from the object and re-refined.
+const aiUpdate = createShape.partial().extend({ vacancy_id: z.string().uuid() }).refine(salaryOrder, SALARY_ORDER_ERROR);
+const aiStatus = status.extend({ vacancy_id: z.string().uuid() });
+const aiApplicant = applicant.extend({ vacancy_id: z.string().uuid() });
+const aiApplicantStatus = applicantStatus.extend({ vacancy_id: z.string().uuid(), applicant_id: z.string().uuid() });
+const schemas = { create, update, status, applicant, applicantStatus, consider, criterion, question, answer, publish, intake, transcribe, placeSearch, aiUpdate, aiStatus, aiApplicant, aiApplicantStatus };
 
 const mw = (k) => (req, _res, next) => {
   const p = schemas[k].safeParse(req.body);

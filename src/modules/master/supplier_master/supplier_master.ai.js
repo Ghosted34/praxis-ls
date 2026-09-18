@@ -9,6 +9,6 @@ module.exports = {
   ],
   writes: [
     { key: "create_supplier", service: (c, p, actor) => service.create(c, { data: p, actor }), schema: validator.schemas.create, permission: { module: "MOD-04", action: "create" }, confirm: true, describe: "Register a supplier (mobile money, non-resident SIT flag)." },
-    { key: "update_supplier", service: (c, p) => (({ supplier_id, ...patch }) => service.update(c, { id: supplier_id, patch }))(p), schema: validator.schemas.aiUpdate, permission: { module: "MOD-04", action: "edit" }, confirm: true, describe: "Update a supplier by id." },
+    { key: "update_supplier", service: (c, p, actor) => (({ supplier_id, ...patch }) => service.update(c, { id: supplier_id, patch, actor }))(p), schema: validator.schemas.aiUpdate, permission: { module: "MOD-04", action: "edit" }, confirm: true, describe: "Update a supplier by id." },
   ],
 };

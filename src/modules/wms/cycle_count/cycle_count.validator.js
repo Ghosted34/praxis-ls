@@ -11,7 +11,10 @@ const create = z.object({
   discrepancy: z.union([z.array(z.any()), z.record(z.any())]).optional(),
   certified_report_vault_id: z.string().uuid().optional(), // Rapport d'Audit
 });
-const schemas = { create, update: create.partial() };
+const update = create.partial();
+// AI-facing: the record id travels IN the payload — the copilot has no route param.
+const aiUpdate = update.extend({ cycle_count_id: z.string().uuid() });
+const schemas = { create, update, aiUpdate };
 
 const mw = (k) => (req, _res, next) => {
   const p = schemas[k].safeParse(req.body);

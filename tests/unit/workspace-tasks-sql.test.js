@@ -48,16 +48,24 @@ function placeholders(sql) {
 /**
  * Assert a statement's placeholders are exactly 1..params.length.
  *
- * Checks BOTH directions: a placeholder with no parameter is a 42P02, and a
- * parameter with no placeholder is a value silently ignored — which is the
- * worse one, because the query succeeds and returns the wrong rows.
+ * BOTH directions are hard errors on the server, which is why this is exact
+ * rather than a bound:
+ *
+ *   · a placeholder with no parameter — `$4` with three values — is SQLSTATE
+ *     42P02, "there is no parameter $4";
+ *   · a parameter the statement never mentions is NOT ignored. Postgres infers
+ *     a parameter's type from its use, so a bound value with no `$n` has no
+ *     type to infer and the statement is refused with SQLSTATE 42P18, "could
+ *     not determine data type of parameter $2". That is what took the whole
+ *     Analytics dashboard down: the burn-down's opening read carried the
+ *     window's `to` and the timezone in its array without referencing them.
+ *
+ * So the assertion is `max === params.length` as well as "no gaps": the old
+ * `max <= params.length` is satisfied by a statement that binds $1, $4 and $5.
  */
 function expectBound({ sql, params }) {
-  const max = maxPlaceholder(sql);
-  expect(max).toBeLessThanOrEqual(params.length);
-  expect(placeholders(sql)).toEqual(
-    params.length ? Array.from({ length: max }, (_, i) => i + 1) : [],
-  );
+  expect(placeholders(sql)).toEqual(params.map((_, i) => i + 1));
+  expect(maxPlaceholder(sql)).toBe(params.length);
 }
 
 describe("tasks.repo — placeholders match parameters", () => {
@@ -355,7 +363,26 @@ describe("tasks.repo — placeholders match parameters", () => {
     expect(c.calls).toHaveLength(2);
     expect(c.calls[0].sql).toMatch(/status NOT IN \('DONE','CANCELLED'\)/);
     expect(c.calls.some((call) => /t\.due_at < \$1/.test(call.sql))).toBe(true);
+    // BOTH segments, and this is the assertion that was missing: the overdue
+    // segment is bounded by `from` alone, so carrying the window's `to` in its
+    // parameter array left `$2` referenced nowhere — 42P18 on the server, and
+    // `/workspace/day` answered 500 for as long as it was like that.
+    expectBound(c.calls[0]);
+    expectBound(c.calls[1]);
     expect(out.truncated).toBe(true);
+  });
+
+  it("day subtask segments bind only the bounds they read", async () => {
+    const c = mockClient([{ _total: "201", task_subtask_id: "s1" }]);
+    await repo.daySubtasks(c, {
+      from: "2026-09-01",
+      to: "2026-10-01",
+      visibility: { audience: "mine", userId: "u1", personalOnly: true },
+      limit: 200,
+    });
+    expect(c.calls).toHaveLength(2);
+    expectBound(c.calls[0]);
+    expectBound(c.calls[1]);
   });
 
   it("dueTaskReminders reads only armed rows and skips finished work", async () => {

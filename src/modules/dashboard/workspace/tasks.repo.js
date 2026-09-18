@@ -266,7 +266,15 @@ const DAY_SUBTASK_LIMIT = 200;
 
 /** One segment of actionable task deadlines for Today. */
 async function dayTaskSegment(client, { from, to, visibility, overdue, limit = DAY_TASK_LIMIT }) {
-  const params = [from, to];
+  // The overdue segment is bounded by `from` alone, so `to` is NOT bound into
+  // its statement. It cannot simply be carried along for symmetry: Postgres has
+  // no type for a parameter the statement never mentions and refuses the query
+  // with SQLSTATE 42P18 ("could not determine data type of parameter $2"). One
+  // segment failing rejects the `Promise.all` behind `/workspace/day`, so the
+  // whole Today read returned a 500. The rule is that a query's parameter array
+  // is built for THAT query's placeholders — `params.length + 1` below is what
+  // keeps the visibility and limit numbering correct either way.
+  const params = overdue ? [from] : [from, to];
   const where = [
     "t.is_deleted = false",
     "t.status NOT IN ('DONE','CANCELLED')",
@@ -307,7 +315,9 @@ async function dayTasks(client, { from, to, visibility, limit = DAY_TASK_LIMIT }
 }
 
 async function daySubtaskSegment(client, { from, to, visibility, overdue, limit = DAY_SUBTASK_LIMIT }) {
-  const params = [from, to];
+  // Same one-bound window as `dayTaskSegment` above, and the same reason `to`
+  // is bound only when the statement actually reads it.
+  const params = overdue ? [from] : [from, to];
   const where = [
     "t.is_deleted = false",
     "t.status NOT IN ('DONE','CANCELLED')",
@@ -1701,14 +1711,30 @@ async function analyticsBurndown(client, { visibility, filters, timeZone }) {
   );
   // The backlog as it stood the instant the window opened. Without it the line
   // starts at zero and reads as "we had no work", which is never true.
+  //
+  // ITS OWN SCOPE, AND ITS OWN NUMBERING. The opening read is a different shape
+  // from the day series — one window bound, no `AT TIME ZONE`, no bucketing —
+  // so it cannot borrow the series' WHERE clause and parameter array. Doing
+  // that left `$2` (the window's `to`) and `$3` (the zone) referenced nowhere in
+  // the statement, and Postgres refuses a bound parameter it cannot type:
+  // SQLSTATE 42P18, "could not determine data type of parameter $2". It is a
+  // hard error on every request, in one of the eight reads the dashboard
+  // `Promise.all`s, so the failure was total — every figure on /workspace/
+  // analytics answered with a 500 rather than the one panel going blank.
+  //
+  // The rule this encodes: a query's placeholder numbering must be built for
+  // the query that uses it. `analyticsScope`'s `start` exists for exactly this,
+  // and the unit test below now asserts the *whole* series is bound — not just
+  // that the highest `$n` fits inside `params`.
+  const open = analyticsScope(visibility, filters, 2);
   const { rows: opening } = await client.query(
     `SELECT count(*)::int AS open_at_start
        FROM task t
-      WHERE ${s.where.join(" AND ")}
+      WHERE ${open.where.join(" AND ")}
         AND t.created_at < $1
         AND (t.completed_at IS NULL OR t.completed_at >= $1)
         AND t.status <> 'CANCELLED'`,
-    params,
+    [filters.from, ...open.params],
   );
   return { days: rows, open_at_start: opening[0] ? opening[0].open_at_start : 0 };
 }

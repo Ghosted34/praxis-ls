@@ -20,7 +20,7 @@ const repo = require("./office_expense.repo");
 const events = require("./office_expense.events");
 const { buildExpenseLines } = require("./office_expense.rules");
 const journalEntry = require("../journal_entry/journal_entry.service");
-const { emitEvent, audit } = require("../../../shared/events/emit");
+const { emitEvent, audit, resolveActorId } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
 const { accountFor } = require("../../../shared/config/finance-accounts");
 
@@ -42,7 +42,10 @@ async function create(client, { data, actor = {} }) {
       currency: data.currency || "XAF",
       expense_coa: data.expense_coa,
       notes: data.notes || null,
-      created_by: actor.user_id || null,
+      // created_by REFERENCES app_user(user_id), and identity is pinned to the
+      // LIVE schema — a raw id written beside SANDBOX data raises 23503 (DATA
+      // 2.4). resolveActorId degrades to null rather than failing the create.
+      created_by: await resolveActorId(client, actor.user_id),
     });
     await emitEvent(client, { eventTypeKey: events.CREATED, moduleKey: events.MODULE, entityRef: ref(row.office_expense_id), actorUserId: actor.user_id || null });
     await audit(client, { actorUserId: actor.user_id || null, action: events.CREATED, moduleKey: events.MODULE, entityRef: ref(row.office_expense_id), after: row });

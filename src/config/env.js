@@ -374,6 +374,17 @@ const Schema = z.object({
   // 200-word prose blurb; it is still the thing that bounds cost, so it is
   // still capped.
   AI_SUMMARY_WORDS: int(400),
+  // How many retrieved chunks ground one answer (PRAXIS_AI_AUDIT.md A3). The old
+  // value was 6 — and 6 was ALSO the per-corpus LIMIT, so the tenant's records
+  // and this repository's source code shared those six slots. 12 is a grounding
+  // block a cross-module question can actually be answered from.
+  AI_RETRIEVAL_K: int(12),
+  // Of those, how many are RESERVED for domain knowledge — the OHADA KB, the PRD,
+  // the rest of `doc/` (PRAXIS_AI_AUDIT.md A3). Without a reservation a tenant
+  // corpus of entity cards outranks the knowledge base on every query, and the
+  // model loses the only SYSCOHADA reference it has. Unused slots fall back to
+  // tenant hits, so this costs nothing when there is no relevant doc.
+  AI_RETRIEVAL_KB_K: int(4),
 
   EMBEDDINGS_PROVIDER: z.string().default("openai"),
   EMBEDDINGS_MODEL: z.string().default("text-embedding-3-small"),

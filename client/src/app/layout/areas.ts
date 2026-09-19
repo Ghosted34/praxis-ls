@@ -307,6 +307,9 @@ export const AREAS: Area[] = [
       { key: "access", label: "Access" },
       { key: "budget", label: "Budget" },
       { key: "usage", label: "Usage" },
+      // Cost and quality are different questions with different answers, so
+      // Health is its own tab rather than a strip on Usage (audit H2).
+      { key: "health", label: "Health" },
     ],
   },
   {

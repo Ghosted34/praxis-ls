@@ -12,6 +12,7 @@ const axios = require("axios");
 const { config } = require("../../config/env");
 const platformVendors = require("../platform/ai-vendor.service");
 const { logger } = require("../../config/logger");
+const { KINDS } = require("./health.service");
 
 const PRIMARY = "deepseek";
 const FALLBACK = "gemini";
@@ -172,7 +173,8 @@ async function callVendor(vendor, { messages, tools, temperature, responseFormat
     // before the user's actual question is sent — see AI_SUMMARY_TIMEOUT_MS.
     timeout: timeoutMs || config.AI_REQUEST_TIMEOUT_MS,
   });
-  const msg = (data.choices && data.choices[0] && data.choices[0].message) || {};
+  const choice = (data.choices && data.choices[0]) || {};
+  const msg = choice.message || {};
   let toolCalls = Array.isArray(msg.tool_calls) ? msg.tool_calls : [];
   let text = msg.content || "";
   // Only salvage from text when the provider didn't already return structured calls.
@@ -184,7 +186,19 @@ async function callVendor(vendor, { messages, tools, temperature, responseFormat
   // `model` rides along so the usage ledger records WHICH model was billed —
   // the vendor row can be re-pointed at a cheaper/newer model at any time, and
   // a ledger that only names the vendor cannot explain a change in spend.
-  return { provider: vendor.vendor, model: data.model || vendor.model || null, text, toolCalls, usage: data.usage || {} };
+  // `finish_reason` is how a vendor says WHY it stopped, and nothing read it
+  // until audit H2. "length" means the reply was cut off at `max_tokens` — the
+  // exact defect B1 raised `max_tokens` to fix, still silent afterwards because
+  // a truncated answer looks like a short one. Carried out so the orchestrator
+  // can count it (`health.KINDS.TRUNCATION`).
+  return {
+    provider: vendor.vendor,
+    model: data.model || vendor.model || null,
+    text,
+    toolCalls,
+    usage: data.usage || {},
+    finishReason: choice.finish_reason || null,
+  };
 }
 
 /**
@@ -237,6 +251,8 @@ async function* callVendorStream(vendor, { messages, tools, temperature, maxToke
   const toolCallBuffers = new Map(); // index → { id, type, function: { name, arguments } }
   let usage = {};
 
+  // Why the model stopped, accumulated across frames — see the note below.
+  let finishReason = null;
   // Parse SSE lines from the response stream.
   const stream = response.data;
   for await (const rawChunk of stream) {
@@ -256,13 +272,17 @@ async function* callVendorStream(vendor, { messages, tools, temperature, maxToke
         // If no structured tool calls, try to recover inline ones from text.
         const finalToolCalls = toolCalls.length ? toolCalls : (TOOLCALL_MARKUP.test(text) ? extractInlineToolCalls(text).toolCalls : []);
         const finalText = toolCalls.length ? text : (TOOLCALL_MARKUP.test(text) ? extractInlineToolCalls(text).text : text);
-        yield { delta: "", done: true, toolCalls: finalToolCalls, text: finalText, usage, provider: vendor.vendor, model: vendor.model || null };
+        yield { delta: "", done: true, toolCalls: finalToolCalls, text: finalText, usage, provider: vendor.vendor, model: vendor.model || null, finishReason };
         return;
       }
       try {
         const json = JSON.parse(payload);
-        const delta = (json.choices && json.choices[0] && json.choices[0].delta) || {};
+        const choice = (json.choices && json.choices[0]) || {};
+        const delta = choice.delta || {};
         if (json.usage) usage = json.usage;
+        // Arrives on its own frame, near the end and BEFORE [DONE] — so it is
+        // held rather than read at the terminal frame, which has no choices.
+        if (choice.finish_reason) finishReason = choice.finish_reason;
 
         // Text delta — yield immediately for client rendering.
         if (delta.content) {
@@ -296,7 +316,10 @@ async function* callVendorStream(vendor, { messages, tools, temperature, maxToke
   const toolCalls = Array.from(toolCallBuffers.values()).map((tc) => ({
     id: tc.id, type: tc.type || "function", function: { name: tc.function.name, arguments: tc.function.arguments },
   }));
-  yield { delta: "", done: true, toolCalls, text, usage, provider: vendor.vendor, model: vendor.model || null };
+  // A stream that ends without [DONE] never sent a finish_reason either. That
+  // is itself a truncation — the connection stopped mid-answer — so it is
+  // reported as one rather than as "we do not know".
+  yield { delta: "", done: true, toolCalls, text, usage, provider: vendor.vendor, model: vendor.model || null, finishReason: finishReason || "length" };
 }
 
 const STUB = {
@@ -318,6 +341,20 @@ const STUB = {
  * errors that should be logged loudly and NOT fall back (the operator needs
  * to see this).
  */
+/**
+ * A timeout, specifically.
+ *
+ * `classifyVendorError` folds it into "transient" because that is the right
+ * ROUTING decision — fall back and answer the question. But for audit H2 it is
+ * its own signal: a 5xx is the vendor's problem and a timeout is usually ours,
+ * meaning the caps in `AI_REQUEST_TIMEOUT_MS` / `AI_STREAM_TIMEOUT_MS` are
+ * tighter than real multi-hop turns need (audit E1). The two want different
+ * responses, so they are counted separately even though they route the same.
+ */
+function isTimeoutError(err) {
+  return err.code === "ECONNABORTED" || err.code === "ETIMEDOUT" || /timeout/i.test(err.message || "");
+}
+
 function classifyVendorError(err) {
   const status = err.response && err.response.status;
   // 401/403 = bad key; 404 = wrong endpoint/model. These are config errors.
@@ -334,14 +371,30 @@ async function chat({ client, messages, tools, temperature = 0.2, vendorName = P
   // wait for work whose failure costs nothing but a retry next turn.
   const chain = singleVendor ? [vendorName] : [...new Set([vendorName, FALLBACK])];
   let configError = null;
+  // Audit H2. This layer is the ONLY one that can see a fallback happen — by
+  // the time the orchestrator has a result, a degraded turn and a clean one
+  // look identical. It has no client-scoped context to persist with, though,
+  // so it collects and the orchestrator records (`health.recordAll`).
+  const events = [];
+  let attempted = 0;
   for (const name of chain) {
     const vendor = await resolveVendor(client, name);
     if (!vendor) continue;
+    attempted += 1;
     try {
-      return await callVendor(vendor, { messages, tools, temperature, responseFormat, maxTokens, timeoutMs });
+      const out = await callVendor(vendor, { messages, tools, temperature, responseFormat, maxTokens, timeoutMs });
+      // Anything tried before the vendor that answered means the turn degraded:
+      // this answer, and its cost model, belong to the fallback (audit B2).
+      if (attempted > 1) events.push({ kind: KINDS.FALLBACK, provider: vendor.vendor, model: out.model, detail: { after: chain.slice(0, chain.indexOf(name)) } });
+      if (out.finishReason === "length") {
+        events.push({ kind: KINDS.TRUNCATION, provider: vendor.vendor, model: out.model, detail: { max_tokens: maxTokens } });
+      }
+      return { ...out, health: events };
     } catch (err) {
       const kind = classifyVendorError(err);
+      if (isTimeoutError(err)) events.push({ kind: KINDS.TIMEOUT, provider: name, detail: { timeout_ms: timeoutMs || config.AI_REQUEST_TIMEOUT_MS, streaming: false } });
       if (kind === "config") {
+        events.push({ kind: KINDS.VENDOR_CONFIG_ERROR, provider: name, detail: { status: err.response ? err.response.status : null } });
         // A bad key/endpoint must be LOUD (audit 3.6 — the operator has to know),
         // but it must NOT strand the turn on the stub while a working fallback
         // exists (audit B2 — "killing the primary key degrades to a WORKING
@@ -360,10 +413,11 @@ async function chat({ client, messages, tools, temperature = 0.2, vendorName = P
   }
   // The whole chain is exhausted. If the failures were configuration errors, say
   // so in the stub rather than the generic "no provider configured" message.
+  events.push({ kind: KINDS.PROVIDER_EXHAUSTED, detail: { chain, config_error: configError || null } });
   if (configError) {
-    return { ...STUB, provider: null, text: `The AI providers are unavailable — the "${configError}" credential has a configuration error and no fallback answered. An administrator should check AI Control > Vendors.` };
+    return { ...STUB, provider: null, health: events, text: `The AI providers are unavailable — the "${configError}" credential has a configuration error and no fallback answered. An administrator should check AI Control > Vendors.` };
   }
-  return STUB;
+  return { ...STUB, health: events };
 }
 
 /**
@@ -378,18 +432,35 @@ async function chat({ client, messages, tools, temperature = 0.2, vendorName = P
 async function* chatStream({ client, messages, tools, temperature = 0.2, vendorName = PRIMARY, onDelta, maxTokens = config.AI_MAX_TOKENS }) {
   const chain = [...new Set([vendorName, FALLBACK])];
   let configError = null;
+  // Audit H2 — same collect-here, record-there split as `chat`. The events ride
+  // out on the TERMINAL chunk rather than a return value, because a generator's
+  // return value is invisible to `for await`, which is how every caller reads
+  // this. A fallback mid-stream is the case that makes it worth carrying: the
+  // user saw tokens from a vendor that then died, and the answer they kept came
+  // from a different one.
+  const events = [];
+  let attempted = 0;
   for (const name of chain) {
     const vendor = await resolveVendor(client, name);
     if (!vendor) continue;
+    attempted += 1;
     try {
       for await (const chunk of callVendorStream(vendor, { messages, tools, temperature, maxTokens })) {
         if (!chunk.done && chunk.delta && onDelta) onDelta(chunk.delta);
+        if (chunk.done) {
+          if (attempted > 1) events.push({ kind: KINDS.FALLBACK, provider: vendor.vendor, model: chunk.model, detail: { after: chain.slice(0, chain.indexOf(name)), streaming: true } });
+          if (chunk.finishReason === "length") events.push({ kind: KINDS.TRUNCATION, provider: vendor.vendor, model: chunk.model, detail: { max_tokens: maxTokens, streaming: true } });
+          yield { ...chunk, health: events };
+          return;
+        }
         yield chunk;
       }
       return;
     } catch (err) {
       const kind = classifyVendorError(err);
+      if (isTimeoutError(err)) events.push({ kind: KINDS.TIMEOUT, provider: name, detail: { timeout_ms: config.AI_STREAM_TIMEOUT_MS, streaming: true } });
       if (kind === "config") {
+        events.push({ kind: KINDS.VENDOR_CONFIG_ERROR, provider: name, detail: { status: err.response ? err.response.status : null, streaming: true } });
         // Loud, but fall THROUGH to the fallback — same reasoning as chat()
         // (audit 3.6 visibility + audit B2 working fallback, not the stub).
         logger.error({ err, vendor: name, errorKind: kind },
@@ -405,7 +476,8 @@ async function* chatStream({ client, messages, tools, temperature = 0.2, vendorN
   const text = configError
     ? `The AI providers are unavailable — the "${configError}" credential has a configuration error and no fallback answered. An administrator should check AI Control > Vendors.`
     : STUB.text;
-  yield { delta: text, done: true, toolCalls: [], text, usage: {}, provider: null };
+  events.push({ kind: KINDS.PROVIDER_EXHAUSTED, detail: { chain, config_error: configError || null, streaming: true } });
+  yield { delta: text, done: true, toolCalls: [], text, usage: {}, provider: null, health: events };
 }
 
 /**

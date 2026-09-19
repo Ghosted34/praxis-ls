@@ -132,7 +132,7 @@ const HUB_COMPONENT_KEYS: Record<string, string[]> = {
     "sessions",
     "my-security",
   ],
-  "/ai-control": ["features", "access", "budget", "usage"],
+  "/ai-control": ["features", "access", "budget", "usage", "health"],
 };
 
 const Stub = () => null;

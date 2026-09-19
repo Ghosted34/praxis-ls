@@ -978,6 +978,15 @@
       "actions": []
     },
     {
+      "id": "ai_health",
+      "title": "Health",
+      "route": "/ai-control/health",
+      "area": "ai",
+      "module_key": "MOD-67",
+      "purpose": "How well the assistant is answering: truncation, fallback, timeout and tool-miss rates.",
+      "actions": []
+    },
+    {
       "id": "commercial_quotations",
       "title": "Quotations",
       "route": "/commercial/quotations",

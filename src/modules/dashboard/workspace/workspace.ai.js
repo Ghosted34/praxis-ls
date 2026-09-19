@@ -22,6 +22,25 @@
  * is also the useful one: "my tasks", "my week", "remind me on Thursday".
  * Widening this to team/all means deriving the caller's scope closure on the AI
  * path first, deliberately — not defaulting to "all" here.
+ *
+ * ── THE OPERATIONS-FILE LINK (13920) ───────────────────────────────────────
+ *
+ * A task may name the operations file the work is on, and a stage of that
+ * file's chain. Both ride the ordinary create/update schemas, so the assistant
+ * can answer "add a task to chase the BL on the Brasseries export" and filter
+ * with "what's outstanding on file SL-…". Two things it deliberately cannot
+ * do, and the describes say so rather than leaving the model to discover them
+ * from a 400:
+ *
+ *   · a stage must belong to the file it is filed under — the service refuses
+ *     one from another file by name (`resolveFileLink`);
+ *   · linking NEVER moves the milestone. The chain is what was promised a
+ *     client, and an assistant closing somebody's to-do must not be able to
+ *     advance it. There is no manifest write that touches a milestone here.
+ *
+ * The link does not widen the audience either: a task on a file the caller
+ * cannot see is still not visible to them, because the file filter is applied
+ * on top of the same "mine" predicate above, never instead of it.
  */
 "use strict";
 
@@ -44,7 +63,7 @@ module.exports = {
   screens: [],
 
   reads: [
-    { key: "list_my_tasks", service: (c, p, caller) => service.listTasks(c, ctx(caller), p || {}), permission: { module: MOD, action: "view" }, describe: "The caller's own tasks. Filter by status, priority, assigned_to, a free-text q, or the record they hang off (entity_type + entity_id)." },
+    { key: "list_my_tasks", service: (c, p, caller) => service.listTasks(c, ctx(caller), p || {}), permission: { module: MOD, action: "view" }, describe: "The caller's own tasks. Filter by status, priority, assigned_to, a free-text q, the record they hang off (entity_type + entity_id), or the operations file the work is on (dossier_id, and milestone_instance_id for one stage of its chain)." },
     { key: "get_my_task", service: (c, p, caller) => service.getTask(c, ctx(caller), p.task_id || p.id || p), permission: { module: MOD, action: "view" }, describe: "One of the caller's tasks by id, with its subtasks, watchers and dependencies." },
     { key: "my_task_board", service: (c, p, caller) => service.getBoard(c, ctx(caller), p || {}), permission: { module: MOD, action: "view" }, describe: "The caller's tasks grouped into board columns by status." },
     { key: "my_day_timeline", service: (c, p, caller) => service.dayTimeline(c, ctx(caller), { from: p.from, to: p.to }), permission: { module: MOD, action: "view" }, describe: "Tasks and calendar events merged into one chronological timeline between two datetimes." },
@@ -60,7 +79,7 @@ module.exports = {
       schema: validator.schemas.taskCreate,
       permission: { module: MOD, action: "create" },
       confirm: true,
-      describe: "Create a task for the caller (title, due date, priority, assignee, reminder, subtasks, recurrence). Attach it to a record with entity_type + entity_id.",
+      describe: "Create a task for the caller (title, due date, priority, assignee, reminder, subtasks, recurrence). Attach it to a record with entity_type + entity_id, and say what operations file the work is on with dossier_id (plus milestone_instance_id for a stage of that file's chain — it must be a stage of THAT file, and clearing the file clears it).",
     },
     {
       key: "update_task",
@@ -68,7 +87,7 @@ module.exports = {
       schema: validator.schemas.aiTaskUpdate,
       permission: { module: MOD, action: "edit" },
       confirm: true,
-      describe: "Amend one of the caller's tasks by id (title, due date, priority, assignee, reminder, recurrence).",
+      describe: "Amend one of the caller's tasks by id (title, due date, priority, assignee, reminder, recurrence, and the operations file or milestone the work sits on). Send dossier_id: null to unlink it from a file; moving it to another file drops a stage you do not name.",
     },
     {
       key: "change_task_status",

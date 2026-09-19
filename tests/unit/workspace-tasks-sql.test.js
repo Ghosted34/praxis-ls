@@ -189,11 +189,16 @@ describe("tasks.repo — placeholders match parameters", () => {
       entity_id: "e1",
       is_personal: true,
       scope_id: "s1",
+      // 13920's operations-file link. Counted here like every other column:
+      // the whole point of this test is that adding one to the INSERT without
+      // adding its parameter is a runtime 42P18 nothing else catches.
+      dossier_id: "d1",
+      milestone_instance_id: "m1",
     });
     const { sql, params } = c.calls[0];
     expectBound(c.calls[0]);
-    expect(sql.match(/\$\d+/g)).toHaveLength(14);
-    expect(params).toHaveLength(14);
+    expect(sql.match(/\$\d+/g)).toHaveLength(16);
+    expect(params).toHaveLength(16);
   });
 
   it("updateTask never touches a reminder column; re-arm has its own statement", async () => {

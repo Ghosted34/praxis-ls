@@ -11,7 +11,7 @@ const emailService = require("../../services/email.service");
 const { logger } = require("../../config/logger");
 const { CATEGORIES, categoryFor, isSecurityCategory } = require("../../shared/notifications/categories");
 const events = require("./notification.events");
-const { entityRoute, notificationInterrupt } = require("@praxis/shared");
+const { entityRoute, notificationInterrupt, notificationEmailDefault } = require("@praxis/shared");
 const realtime = require("../../realtime");
 const requestContext = require("../../config/request-context");
 const { AppError } = require("../../utils/errors");
@@ -482,10 +482,13 @@ async function notifyMany(client, userIds, {
   // design), which also means it always takes the computed default — and that
   // default is `true`, because the fan-out forces security events to HIGH.
   const prefs = isSecurity ? new Map() : await repo.preferencesFor(client, ids, ["IN_APP", "EMAIL", "INTERRUPT"], cat);
-  // Absence of a row means enabled for IN_APP and disabled for EMAIL — matching
-  // the per-user defaults isChannelEnabled was called with.
+  // Absence of a row means enabled for IN_APP; for EMAIL it means the
+  // CATEGORY's default — opt-in everywhere except the tasks exception
+  // (notification-email-default.js), which is opt-out because the people a
+  // task notifies are the people already on it.
   const wantsInApp = (u) => isSecurity || prefs.get(`${u}:IN_APP`) !== false;
-  const wantsEmail = (u) => isSecurity || prefs.get(`${u}:EMAIL`) === true;
+  const emailDefault = notificationEmailDefault.emailDefaultFor(cat);
+  const wantsEmail = (u) => isSecurity || (prefs.get(`${u}:EMAIL`) ?? emailDefault);
   const wantsInterrupt = (u) => notificationInterrupt.interruptFor({
     priority, category: cat, preference: prefs.get(`${u}:INTERRUPT`),
   });
@@ -620,6 +623,12 @@ async function notify(client, {
   // via the `email` flag below); PUSH mirrors the in-app decision, since a user
   // who silenced a category in the product has not asked for it on a phone.
   //
+  // The default handed to the preference read is the CATEGORY's: opt-in (false)
+  // everywhere except the tasks exception (notification-email-default.js),
+  // which is opt-out because the people a task notifies are the people already
+  // on it. `forceEmail` still outranks both, and an explicit opt-out row still
+  // beats the default — precedence is unchanged for every category.
+  //
   // `forceEmail` is the ONE-recorded exception, and it is deliberately narrow:
   // a reminder's author can tick "email me/them about this one" (PR 3). The
   // recipient has not silenced the CATEGORY — if they had, `inApp` is null and
@@ -631,7 +640,13 @@ async function notify(client, {
   const wantsEmail =
     isSecurity ||
     forceEmail === true ||
-    (await repo.isChannelEnabled(client, userId, "EMAIL", cat, false));
+    (await repo.isChannelEnabled(
+      client,
+      userId,
+      "EMAIL",
+      cat,
+      notificationEmailDefault.emailDefaultFor(cat),
+    ));
   // `null` as the default rather than a boolean: "no row" must reach
   // `interruptFor` as absent so it computes the default, and a boolean default
   // here would silently pin every user to it.

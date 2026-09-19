@@ -44,6 +44,29 @@ router.put("/:id/working-calendar", requirePermission(MODULE, "edit"), validator
 router.post("/:id/working-calendar/reset", requirePermission(MODULE, "edit"), controller.resetWorkingCalendar);
 router.get("/:id/renewals", requirePermission(MODULE, "view"), controller.renewals);
 
+/*
+ * ── Tax obligation calendar (PR-05, audit CE-16 / Decision Q4) ─────────────
+ *
+ * The filing calendar the generator writes, and the three things a person can
+ * do to a row on it.
+ *
+ * GATES. Reads at MOD-01 `view`; writes at MOD-01 `edit`. Decision Q10 puts
+ * tax writes under MOD-01 edit and reserves MOD-01 approve for VERIFICATION
+ * actions — a waiver or an assignment is a tax write, not a verification, so
+ * it follows the tax-registration CRUD beside it rather than the document
+ * verify endpoint.
+ *
+ * The list route is `view` but the SERIALIZER enforces the number boundary
+ * (`canSeeRegistrations` → `redactTaxObligation`), because the row carries the
+ * registration's `tax_number`. Gating the route harder would have been the
+ * lazy fix and would have hidden the calendar itself from people who are
+ * entitled to see the deadlines and not the numbers.
+ */
+router.get("/:id/tax-obligations", requirePermission(MODULE, "view"), controller.taxObligations);
+router.post("/:id/tax-obligations/generate", requirePermission(MODULE, "edit"), validator.taxObligationGenerate, controller.generateTaxObligations);
+router.post("/:id/tax-obligations/:obligationId/status", requirePermission(MODULE, "edit"), validator.taxObligationStatus, controller.setTaxObligationStatus);
+router.post("/:id/tax-obligations/:obligationId/assign", requirePermission(MODULE, "edit"), validator.taxObligationAssign, controller.assignTaxObligation);
+
 router.post("/", requirePermission(MODULE, "create"), validator.create, controller.create);
 router.patch("/:id", requirePermission(MODULE, "edit"), validator.update, controller.update);
 

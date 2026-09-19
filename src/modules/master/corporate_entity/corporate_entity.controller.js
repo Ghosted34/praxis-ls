@@ -1,7 +1,10 @@
 "use strict";
 const service = require("./corporate_entity.service");
 const calendar = require("./corporate_entity.calendar");
+const taxCalendar = require("./corporate_entity.tax-calendar");
+const repo = require("./corporate_entity.repo");
 const dossierService = require("../entity-360.service");
+const { canSeeRegistrations } = require("../_shared/confidential");
 const { asyncHandler, AppError } = require("../../../utils/errors");
 const actor = (req) => req.user || { user_id: null };
 
@@ -91,6 +94,74 @@ module.exports = {
     const governance = await dossierService.canSeeGovernance(req);
     const tax = await dossierService.canSeeRegistrations(req);
     const data = await req.tenantDb((c) => service.renewals(c, req.params.id, req.query.as_of || null, { governance, tax }));
+    res.json({ data });
+  }),
+
+  /*
+   * ── Tax obligation calendar (PR-05, audit CE-16) ────────────────────────
+   *
+   * Four routes over the obligations the generator writes. All MOD-01 `edit`
+   * for the writes: Decision Q10 gives MOD-01 edit ownership of tax writes in
+   * this module and reserves MOD-01 approve for VERIFICATION actions, and a
+   * waiver is a tax write rather than a verification.
+   *
+   * The READ is MOD-01 `view`, and it is redacted by the serializer rather
+   * than gated harder, because the row joins the registration's `tax_number`
+   * onto it so a person chasing a filing can see WHICH number files it. PR-04
+   * established that boundary for the dossier and the nested collections; this
+   * list is the same data on a different route, so it pays the same
+   * `canSeeRegistrations` lookup and applies the same `redactTaxObligation`.
+   * Without that, a caller denied the numbers on /360 could read every one of
+   * them off the filing list — the exact hole PR-04 closed.
+   */
+  taxObligations: asyncHandler(async (req, res) => {
+    const tax = await canSeeRegistrations(req);
+    const data = await req.tenantDb((c) => repo.obligations(c, req.params.id, req.query));
+    res.json({
+      data: {
+        ...data,
+        items: tax ? data.items : data.items.map(dossierService.redactTaxObligation),
+      },
+    });
+  }),
+
+  /**
+   * Run the generator for this entity, now.
+   *
+   * The scheduler runs it nightly; this exists because "I have just added a
+   * VAT registration and I want to see the filings it implies" is a reasonable
+   * thing to want without waiting until tomorrow. Idempotent by construction
+   * (`ux_tax_calendar_generation_key`), so pressing it twice is not a hazard —
+   * which is the property that makes it safe to expose as a button at all.
+   */
+  generateTaxObligations: asyncHandler(async (req, res) => {
+    const data = await req.tenantDb((c) =>
+      taxCalendar.generateForEntity(c, req.params.id, {
+        horizon: req.body.horizon ?? taxCalendar.DEFAULT_HORIZON_PERIODS,
+        backfill: req.body.backfill ?? taxCalendar.DEFAULT_BACKFILL_PERIODS,
+        actor: req.user || {},
+      }));
+    res.json({ data });
+  }),
+
+  /** Waive, complete or reopen one obligation. Audited with actor and reason. */
+  setTaxObligationStatus: asyncHandler(async (req, res) => {
+    const data = await req.tenantDb((c) =>
+      taxCalendar.setStatus(c, req.params.obligationId, {
+        status: req.body.status,
+        reason: req.body.reason ?? null,
+        actor: req.user || {},
+      }));
+    res.json({ data });
+  }),
+
+  /** Assign the person who files it — the override half of "assign or inherit". */
+  assignTaxObligation: asyncHandler(async (req, res) => {
+    const data = await req.tenantDb((c) =>
+      taxCalendar.assign(c, req.params.obligationId, {
+        responsible_user_id: req.body.responsible_user_id ?? null,
+        actor: req.user || {},
+      }));
     res.json({ data });
   }),
 

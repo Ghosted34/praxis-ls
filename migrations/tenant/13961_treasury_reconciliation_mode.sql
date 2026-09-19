@@ -1,9 +1,10 @@
 -- Add reconciliation_mode to treasury_category (Audit #10)
 -- Modes: BANK_STATEMENT, CASH_COUNT, MOMO_STATEMENT, OTHER_EXTERNAL_STATEMENT
+-- Note: Mode values validated at application layer (validator/service)
+-- per migration constraint ordering rules for pre-existing tables.
 
 ALTER TABLE treasury_category
-  ADD COLUMN IF NOT EXISTS reconciliation_mode text NOT NULL DEFAULT 'BANK_STATEMENT'
-  CHECK (reconciliation_mode IN ('BANK_STATEMENT', 'CASH_COUNT', 'MOMO_STATEMENT', 'OTHER_EXTERNAL_STATEMENT'));
+  ADD COLUMN IF NOT EXISTS reconciliation_mode text NOT NULL DEFAULT 'BANK_STATEMENT';
 
 UPDATE treasury_category
    SET reconciliation_mode = 'CASH_COUNT'

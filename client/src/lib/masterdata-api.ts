@@ -703,6 +703,24 @@ export type CapTable = {
   redacted?: boolean;
 };
 
+/**
+ * What this caller may DO on an entity dossier (PR-01).
+ *
+ * Resolved server-side (identity database) and sent on the `/360` bundle, so
+ * the dossier hides or disables controls that would otherwise predictably 403.
+ * The routes are still the authority — this only shapes the UI.
+ *
+ * `public_story` is MOD-01 `edit` OR MOD-29 `edit` (Decision Q10): the entity
+ * editor owns the whole dossier including the Story tab, and the website editor
+ * keeps writing the Story on its own.
+ */
+export type EntityCapabilities = {
+  view: boolean;
+  edit: boolean;
+  approve: boolean;
+  public_story: boolean;
+};
+
 /** The `/entities/:id/360` aggregation — everything the dossier page renders. */
 export type Entity360 = {
   entity: Entity;
@@ -764,6 +782,9 @@ export type Entity360 = {
     expired: boolean;
   }[];
   can_see_governance: boolean;
+  /** PR-01: the caller's MOD-01 view/edit/approve + public-story capabilities.
+   *  Absent (null) for non-request reads such as the AI surface. */
+  capabilities: EntityCapabilities | null;
 };
 
 export const listEntities = () => tenant<Entity[]>("/entities");

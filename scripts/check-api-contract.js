@@ -69,7 +69,13 @@ function chainNames(route) {
 // portal grant, so it counts as `rbac` too: a portal route is not "logged in
 // with no permission check", it is gated by the grant.
 const IS_AUTH = (n) => /^authMiddleware$|^platformAuth$|^portalAuthCheck$/.test(n);
-const IS_RBAC = (n) => /rbacCheck|capabilityCheck|ceoCheck|requireCap|transitionRbac|portalAuthCheck|platformRoleCheck|platformCapCheck/i.test(n);
+// `anyPermissionCheck` is requireAnyPermission's own middleware (PR-01 — an
+// OR over several [module, action] grants), and `mediaSlotCheck` is the
+// slot-dispatching editor gate in site_settings.routes.js; both admit only
+// after a real grant check, so both count as `rbac` here. Without them the
+// diff reports "lost rbac" on routes that merely changed WHICH gate names
+// them — a false security regression.
+const IS_RBAC = (n) => /rbacCheck|anyPermissionCheck|mediaSlotCheck|capabilityCheck|ceoCheck|requireCap|transitionRbac|portalAuthCheck|platformRoleCheck|platformCapCheck/i.test(n);
 const IS_VALID = (n) => /^mw$|validat|^zValidate$|deprecationHeaders/i.test(n);
 
 /**

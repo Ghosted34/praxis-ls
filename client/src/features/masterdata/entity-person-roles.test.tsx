@@ -115,6 +115,15 @@ const BASE = {
   readiness: { ready: true, missing: [] },
   expiring_registrations: [],
   can_see_governance: true,
+  // PR-01: the write gates read this. These tests exercise the edit surfaces
+  // (Add/Edit/Remove/Add role), so the fixture carries the full set rather
+  // than the read-only default the component falls back to when absent.
+  capabilities: {
+    view: true,
+    edit: true,
+    approve: true,
+    public_story: true,
+  },
   letterhead_config: null,
   letterhead_source: {},
   letterhead_preview: {

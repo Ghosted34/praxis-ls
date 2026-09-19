@@ -24,10 +24,13 @@ module.exports = {
     // tenant transaction, because they read the identity database. Governance
     // gates the cap table; financials gates account numbers (gate 14) — an
     // entity's own bank details are finance data even though the route that
-    // carries them is MOD-01.
+    // carries them is MOD-01. Capabilities (PR-01) are resolved the same way,
+    // because the dossier must tell the UI which MOD-01 controls are honest
+    // to offer rather than pointing it at predictable 403s.
     const governance = await dossierService.canSeeGovernance(req);
     const financials = await dossierService.canSeeFinancials(req);
-    const data = await req.tenantDb((c) => dossierService.dossier(c, req.params.id, { governance, financials }));
+    const capabilities = await dossierService.capabilitiesFor(req);
+    const data = await req.tenantDb((c) => dossierService.dossier(c, req.params.id, { governance, financials, capabilities }));
     res.json({ data });
   }),
 

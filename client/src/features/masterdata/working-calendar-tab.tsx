@@ -79,7 +79,16 @@ const resetCalendar = (entityId: string) =>
 /** "07:30:00" → "07:30" — a time column comes back with seconds. */
 const hhmm = (v: string) => String(v || "").slice(0, 5);
 
-export function WorkingCalendarTab({ entityId }: { entityId: string }) {
+export function WorkingCalendarTab({
+  entityId,
+  canEdit = false,
+}: {
+  entityId: string;
+  /** PR-01: MOD-01 edit. Without it the calendar renders read-only — checkboxes,
+   *  time inputs, holiday rows, timezone and name all disable, and the Save /
+   *  Follow-default / Add-holiday controls disappear. */
+  canEdit?: boolean;
+}) {
   const loaded = useResource<Calendar>(() => getCalendar(entityId), [entityId]);
   const [draft, setDraft] = React.useState<Calendar | null>(null);
   const [busy, setBusy] = React.useState(false);
@@ -160,6 +169,7 @@ export function WorkingCalendarTab({ entityId }: { entityId: string }) {
 
   const invalidDay = draft.days.find((d) => !(d.closes_at > d.opens_at));
   const canSave =
+    canEdit &&
     draft.days.length > 0 &&
     !invalidDay &&
     draft.holidays.every((h) => h.holiday_date && h.name_fr.trim()) &&
@@ -216,14 +226,16 @@ export function WorkingCalendarTab({ entityId }: { entityId: string }) {
       ) : (
         <div className="flex flex-wrap items-center gap-2">
           <Pill tone="ok">Own calendar</Pill>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={useDefault}
-            loading={busy}
-          >
-            Follow the tenant default instead
-          </Button>
+          {canEdit && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={useDefault}
+              loading={busy}
+            >
+              Follow the tenant default instead
+            </Button>
+          )}
         </div>
       )}
 
@@ -237,6 +249,7 @@ export function WorkingCalendarTab({ entityId }: { entityId: string }) {
             onChange={(timezone) => setDraft({ ...draft, timezone })}
             label="Timezone"
             allowEmpty={false}
+            disabled={!canEdit}
           />
         </Field>
         <Field label="Calendar name">
@@ -244,6 +257,7 @@ export function WorkingCalendarTab({ entityId }: { entityId: string }) {
             value={draft.name || ""}
             onChange={(e) => setDraft({ ...draft, name: e.target.value })}
             placeholder="Douala branch"
+            disabled={!canEdit}
           />
         </Field>
       </div>
@@ -264,6 +278,7 @@ export function WorkingCalendarTab({ entityId }: { entityId: string }) {
               >
                 <Checkbox
                   checked={!!day}
+                  disabled={!canEdit}
                   onCheckedChange={(on) => toggleDay(weekday, on)}
                   label={label}
                 />
@@ -277,6 +292,7 @@ export function WorkingCalendarTab({ entityId }: { entityId: string }) {
                       className="num w-24"
                       aria-label={`${label} opening time`}
                       placeholder="07:30"
+                      disabled={!canEdit}
                     />
                     <Input
                       value={day.closes_at}
@@ -286,6 +302,7 @@ export function WorkingCalendarTab({ entityId }: { entityId: string }) {
                       className="num w-24"
                       aria-label={`${label} closing time`}
                       placeholder="17:00"
+                      disabled={!canEdit}
                     />
                     {!(day.closes_at > day.opens_at) && (
                       <span className="text-sm text-[rgb(var(--bad))]">
@@ -307,9 +324,11 @@ export function WorkingCalendarTab({ entityId }: { entityId: string }) {
           <h3 className="text-sm font-medium text-foreground">
             Public holidays
           </h3>
-          <Button size="sm" variant="outline" onClick={addHoliday}>
-            Add a holiday
-          </Button>
+          {canEdit && (
+            <Button size="sm" variant="outline" onClick={addHoliday}>
+              Add a holiday
+            </Button>
+          )}
         </div>
 
         {movable.length > 0 && (
@@ -349,6 +368,7 @@ export function WorkingCalendarTab({ entityId }: { entityId: string }) {
                       onChange={(iso) => setHoliday(i, { holiday_date: iso })}
                       className="w-40"
                       aria-label={`Holiday ${i + 1} date`}
+                      disabled={!canEdit}
                     />
                     {h.is_recurring && h.holiday_date && (
                       <span className="micro block">
@@ -363,6 +383,7 @@ export function WorkingCalendarTab({ entityId }: { entityId: string }) {
                         setHoliday(i, { name_fr: e.target.value })
                       }
                       aria-label={`Holiday ${i + 1} French name`}
+                      disabled={!canEdit}
                     />
                   </TD>
                   <TD>
@@ -372,11 +393,13 @@ export function WorkingCalendarTab({ entityId }: { entityId: string }) {
                         setHoliday(i, { name_en: e.target.value })
                       }
                       aria-label={`Holiday ${i + 1} English name`}
+                      disabled={!canEdit}
                     />
                   </TD>
                   <TD>
                     <Checkbox
                       checked={!!h.is_recurring}
+                      disabled={!canEdit}
                       onCheckedChange={(v) =>
                         setHoliday(i, { is_recurring: v })
                       }
@@ -384,14 +407,16 @@ export function WorkingCalendarTab({ entityId }: { entityId: string }) {
                     />
                   </TD>
                   <TD>
-                    <button
-                      type="button"
-                      onClick={() => removeHoliday(i)}
-                      aria-label={`Remove ${h.name_fr || `holiday ${i + 1}`}`}
-                      className="px-2 text-muted-foreground hover:text-foreground"
-                    >
-                      ×
-                    </button>
+                    {canEdit && (
+                      <button
+                        type="button"
+                        onClick={() => removeHoliday(i)}
+                        aria-label={`Remove ${h.name_fr || `holiday ${i + 1}`}`}
+                        className="px-2 text-muted-foreground hover:text-foreground"
+                      >
+                        ×
+                      </button>
+                    )}
                   </TD>
                 </TR>
               ))}
@@ -402,13 +427,15 @@ export function WorkingCalendarTab({ entityId }: { entityId: string }) {
 
       {error && <p className="text-sm text-[rgb(var(--bad))]">{error}</p>}
 
-      <div className="flex justify-end gap-2">
-        <Button onClick={save} loading={busy} disabled={!canSave}>
-          {draft.inherited
-            ? "Give this entity its own calendar"
-            : "Save calendar"}
-        </Button>
-      </div>
+      {canEdit && (
+        <div className="flex justify-end gap-2">
+          <Button onClick={save} loading={busy} disabled={!canSave}>
+            {draft.inherited
+              ? "Give this entity its own calendar"
+              : "Save calendar"}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

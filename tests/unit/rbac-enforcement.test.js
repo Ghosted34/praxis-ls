@@ -32,11 +32,16 @@
  */
 
 let MOCK_GRANTS = [];
+let MOCK_GRANTS_BY_MODULE = null;
 let MOCK_SCOPE_IDS = [];
 let MOCK_CAPS = { capabilities: [], is_line_manager: false };
 
 jest.mock("../../src/shared/cache/identity-cache", () => ({
-  getGrants: async () => MOCK_GRANTS,
+  // Module-aware when `requireAnyPermission` needs two modules resolved
+  // against different grants (its whole reason to exist). Falls back to the
+  // single MOCK_GRANTS list so the existing single-module tests are unchanged.
+  getGrants: async (_client, { module }) =>
+    MOCK_GRANTS_BY_MODULE ? MOCK_GRANTS_BY_MODULE[module] || [] : MOCK_GRANTS,
   getUserScopeClosure: async () => MOCK_SCOPE_IDS,
   getUserCapabilities: async () => MOCK_CAPS,
 }));
@@ -44,6 +49,7 @@ jest.mock("../../src/shared/cache/identity-cache", () => ({
 let requirePermission;
 let requireCapability;
 let requireCeo;
+let requireAnyPermission;
 
 const clerk = { user_id: "u-clerk", role_ids: ["r-clerk"], is_ceo: false };
 const ceo = { user_id: "u-ceo", role_ids: ["r-ceo"], is_ceo: true };
@@ -66,6 +72,7 @@ async function run(mw, req) {
 describe("RBAC enforcement (TC-C3)", () => {
   beforeEach(() => {
     MOCK_GRANTS = [];
+    MOCK_GRANTS_BY_MODULE = null;
     MOCK_SCOPE_IDS = [];
     MOCK_CAPS = { capabilities: [], is_line_manager: false };
     jest.resetModules();
@@ -73,6 +80,7 @@ describe("RBAC enforcement (TC-C3)", () => {
       requirePermission,
       requireCapability,
       requireCeo,
+      requireAnyPermission,
     } = require("../../src/middleware/rbac"));
   });
 
@@ -341,6 +349,148 @@ describe("RBAC enforcement (TC-C3)", () => {
         makeReq({ ...clerk, is_ceo: "yes" }),
       );
       expect(error.code).toBe("PERMISSION_DENIED");
+    });
+  });
+
+  describe("requireAnyPermission — the OR gate (PR-01, Decision Q10)", () => {
+    const ENTITY_EDIT = [["MOD-01", "edit"]];
+    const STORY_PUT = [["MOD-01", "edit"], ["MOD-29", "edit"]];
+    const STORY_GET = [["MOD-01", "view"], ["MOD-29", "view"]];
+
+    it("admits a caller holding the FIRST member grant", async () => {
+      MOCK_GRANTS_BY_MODULE = {
+        "MOD-01": [{ can_update: true }],
+        "MOD-29": [],
+      };
+      const { error, nexted } = await run(
+        requireAnyPermission(STORY_PUT),
+        makeReq(clerk),
+      );
+      expect(error).toBeNull();
+      expect(nexted).toBe(true);
+    });
+
+    it("admits a caller holding only the SECOND member grant — the website editor", async () => {
+      MOCK_GRANTS_BY_MODULE = {
+        "MOD-01": [],
+        "MOD-29": [{ can_update: true }],
+      };
+      const { error, nexted } = await run(
+        requireAnyPermission(STORY_PUT),
+        makeReq(clerk),
+      );
+      expect(error).toBeNull();
+      expect(nexted).toBe(true);
+    });
+
+    it("denies a caller holding neither member grant", async () => {
+      MOCK_GRANTS_BY_MODULE = {
+        "MOD-01": [{ can_read: true }], // view, not edit
+        "MOD-29": [{ can_read: true }],
+      };
+      const { error, nexted } = await run(
+        requireAnyPermission(STORY_PUT),
+        makeReq(clerk),
+      );
+      expect(nexted).toBe(false);
+      expect(error.code).toBe("PERMISSION_DENIED");
+      expect(error.status).toBe(403);
+      expect(error.message).toBe("No permission for MOD-01.edit or MOD-29.edit");
+    });
+
+    it("does not let a view grant on one module satisfy an edit OR-gate", async () => {
+      // The whole point of the OR is to share the SURFACE, not the power: each
+      // member must hold the action it is listed with.
+      MOCK_GRANTS_BY_MODULE = {
+        "MOD-01": [],
+        "MOD-29": [{ can_read: true }],
+      };
+      const { error } = await run(
+        requireAnyPermission(STORY_PUT),
+        makeReq(clerk),
+      );
+      expect(error.code).toBe("PERMISSION_DENIED");
+    });
+
+    it("maps each member's action to its own column", async () => {
+      // approve maps to can_approve for MOD-01, while MOD-29 edit maps to
+      // can_update — a broken shared map would let one action leak into the
+      // other's column.
+      const SPEC = [["MOD-01", "approve"], ["MOD-29", "edit"]];
+      MOCK_GRANTS_BY_MODULE = {
+        "MOD-01": [{ can_approve: true }],
+        "MOD-29": [],
+      };
+      const { error } = await run(requireAnyPermission(SPEC), makeReq(clerk));
+      expect(error).toBeNull();
+    });
+
+    it("applies the SAME view gate to the story READ", async () => {
+      MOCK_GRANTS_BY_MODULE = {
+        "MOD-01": [],
+        "MOD-29": [{ can_read: true }],
+      };
+      const { error, nexted } = await run(
+        requireAnyPermission(STORY_GET),
+        makeReq(clerk),
+      );
+      expect(error).toBeNull();
+      expect(nexted).toBe(true);
+    });
+
+    it("carries one member spec through unchanged", async () => {
+      MOCK_GRANTS_BY_MODULE = { "MOD-01": [{ can_update: true }] };
+      const { error } = await run(
+        requireAnyPermission(ENTITY_EDIT),
+        makeReq(clerk),
+      );
+      expect(error).toBeNull();
+    });
+
+    it("resolves record-level scope identically to requirePermission", async () => {
+      MOCK_GRANTS_BY_MODULE = { "MOD-01": [{ can_update: true }] };
+      MOCK_SCOPE_IDS = ["scope-hq", "scope-douala"];
+      const { req } = await run(
+        requireAnyPermission(ENTITY_EDIT),
+        makeReq(clerk),
+      );
+      expect(req.scope_ids).toEqual(["scope-hq", "scope-douala"]);
+      expect(req.permission_scope).toBe("scoped");
+    });
+
+    it("gives the CEO the OR-gate without any lookup", async () => {
+      MOCK_GRANTS_BY_MODULE = {};
+      const { error, req } = await run(
+        requireAnyPermission(STORY_PUT),
+        makeReq(ceo),
+      );
+      expect(error).toBeNull();
+      expect(req.permission_scope).toBe("all");
+      expect(req.scope_ids).toBeNull();
+    });
+
+    it("denies an unauthenticated request with 401", async () => {
+      const { error } = await run(requireAnyPermission(STORY_PUT), {
+        identityDb: (f) => f({}),
+      });
+      expect(error.code).toBe("AUTH_REQUIRED");
+      expect(error.status).toBe(401);
+    });
+
+    it("fails loudly when tenantContext has not run", async () => {
+      const { error } = await run(requireAnyPermission(STORY_PUT), {
+        user: clerk,
+      });
+      expect(error.code).toBe("NO_TENANT_CONTEXT");
+      expect(error.status).toBe(500);
+    });
+
+    it("rejects malformed specs at construction, before any request", () => {
+      expect(() => requireAnyPermission()).toThrow("at least one");
+      expect(() => requireAnyPermission([])).toThrow("at least one");
+      expect(() => requireAnyPermission([["MOD-01"]])).toThrow("[moduleKey, action]");
+      expect(() => requireAnyPermission([["", "edit"]])).toThrow("moduleKey required");
+      expect(() => requireAnyPermission([["MOD-01", "frobnicate"]])).toThrow("invalid action");
     });
   });
 });

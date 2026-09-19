@@ -63,10 +63,15 @@ export function EntityPublicStoryTab({
   entity,
   addresses,
   onSaved,
+  canEdit = false,
 }: {
   entity: Entity;
   addresses?: { type?: string | null; line1?: string | null; line2?: string | null; city?: string | null; region?: string | null; postal_code?: string | null; country_code?: string | null; po_box?: string | null; is_primary?: boolean | null }[] | null;
   onSaved: () => void;
+  /** PR-01: the Public Story write gate — MOD-01 edit OR MOD-29 edit (Decision
+   *  Q10). Every control below disables without it; the facts panel and the
+   *  preview stay visible either way. */
+  canEdit?: boolean;
 }) {
   const entityId = entity.entity_id;
   const toast = useToast();
@@ -155,7 +160,7 @@ export function EntityPublicStoryTab({
             )}
             <Checkbox
               checked={d.public_enabled}
-              disabled={busy}
+              disabled={busy || !canEdit}
               onCheckedChange={(next: boolean) => save({ public_enabled: next })}
               label={tr("Published")}
             />
@@ -214,7 +219,7 @@ export function EntityPublicStoryTab({
               <textarea
                 className="mt-1 min-h-24 w-full rounded-md border border-input bg-card px-3 py-2 text-sm"
                 value={draft[key]}
-                disabled={busy}
+                disabled={busy || !canEdit}
                 onChange={(e) => setDraft((p) => ({ ...p, [key]: e.target.value }))}
                 onBlur={(e) =>
                   e.target.value !== (d[key] ?? "") && save({ [key]: e.target.value })
@@ -239,7 +244,7 @@ export function EntityPublicStoryTab({
                 aria-label={tr("Country code")}
                 value={c.country_code ?? ""}
                 maxLength={2}
-                disabled={busy}
+                disabled={busy || !canEdit}
                 onChange={(e) =>
                   setCoverage((p) =>
                     p.map((row, j) =>
@@ -251,7 +256,7 @@ export function EntityPublicStoryTab({
               <Input
                 aria-label={tr("Label (FR)")}
                 value={c.label_fr ?? ""}
-                disabled={busy}
+                disabled={busy || !canEdit}
                 onChange={(e) =>
                   setCoverage((p) =>
                     p.map((row, j) => (j === i ? { ...row, label_fr: e.target.value } : row)),
@@ -261,7 +266,7 @@ export function EntityPublicStoryTab({
               <Input
                 aria-label={tr("Label (EN)")}
                 value={c.label_en ?? ""}
-                disabled={busy}
+                disabled={busy || !canEdit}
                 onChange={(e) =>
                   setCoverage((p) =>
                     p.map((row, j) => (j === i ? { ...row, label_en: e.target.value } : row)),
@@ -271,7 +276,7 @@ export function EntityPublicStoryTab({
               <Button
                 size="sm"
                 variant="ghost"
-                disabled={busy}
+                disabled={busy || !canEdit}
                 onClick={() => setCoverage((p) => p.filter((_, j) => j !== i))}
               >
                 {tr("Remove")}
@@ -283,7 +288,7 @@ export function EntityPublicStoryTab({
           <Button
             size="sm"
             variant="outline"
-            disabled={busy}
+            disabled={busy || !canEdit}
             onClick={() =>
               setCoverage((p) => [...p, { country_code: "", label_fr: "", label_en: "" }])
             }
@@ -292,7 +297,7 @@ export function EntityPublicStoryTab({
           </Button>
           <Button
             size="sm"
-            disabled={busy}
+            disabled={busy || !canEdit}
             onClick={() =>
               save({
                 // Rows with no country code are dropped rather than sent: the
@@ -320,7 +325,7 @@ export function EntityPublicStoryTab({
               <Input
                 aria-label={tr("Label (FR)")}
                 value={f.label_fr ?? ""}
-                disabled={busy}
+                disabled={busy || !canEdit}
                 onChange={(e) =>
                   setFocus((p) =>
                     p.map((row, j) => (j === i ? { ...row, label_fr: e.target.value } : row)),
@@ -330,7 +335,7 @@ export function EntityPublicStoryTab({
               <Input
                 aria-label={tr("Label (EN)")}
                 value={f.label_en ?? ""}
-                disabled={busy}
+                disabled={busy || !canEdit}
                 onChange={(e) =>
                   setFocus((p) =>
                     p.map((row, j) => (j === i ? { ...row, label_en: e.target.value } : row)),
@@ -341,7 +346,7 @@ export function EntityPublicStoryTab({
                 aria-label={tr("Transport mode")}
                 className="h-9 rounded-md border border-input bg-card px-2 text-sm"
                 value={f.mode ?? ""}
-                disabled={busy}
+                disabled={busy || !canEdit}
                 onChange={(e) =>
                   setFocus((p) =>
                     p.map((row, j) =>
@@ -359,7 +364,7 @@ export function EntityPublicStoryTab({
               <Button
                 size="sm"
                 variant="ghost"
-                disabled={busy}
+                disabled={busy || !canEdit}
                 onClick={() => setFocus((p) => p.filter((_, j) => j !== i))}
               >
                 {tr("Remove")}
@@ -371,14 +376,14 @@ export function EntityPublicStoryTab({
           <Button
             size="sm"
             variant="outline"
-            disabled={busy}
+            disabled={busy || !canEdit}
             onClick={() => setFocus((p) => [...p, { label_fr: "", label_en: "", mode: null }])}
           >
             {tr("Add a service line")}
           </Button>
           <Button
             size="sm"
-            disabled={busy}
+            disabled={busy || !canEdit}
             onClick={() =>
               save({
                 public_focus: focus.filter((f) => (f.label_fr || f.label_en || "").trim()),
@@ -402,7 +407,7 @@ export function EntityPublicStoryTab({
             slot="entity-cover"
             ownerId={entityId}
             currentId={d.public_cover_vault_id}
-            disabled={busy}
+            disabled={busy || !canEdit}
             onChange={() => {
               story.reload();
               onSaved();

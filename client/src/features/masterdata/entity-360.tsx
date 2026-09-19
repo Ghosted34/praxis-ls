@@ -55,6 +55,7 @@ import { NewMessageDialog } from "@/features/comms/inbox/composer/new-message";
 import { WorkingCalendarTab } from "./working-calendar-tab";
 import { EntityPublicStoryTab } from "./entity-public-story-tab";
 import { useResource, useList, errMsg } from "@/lib/use-resource";
+import { EntityPicker } from "@/components/entity-picker";
 import {
   money,
   num,
@@ -253,7 +254,9 @@ type FieldSpec = {
     | "select"
     | "textarea"
     | "multiselect"
-    | "file";
+    | "file"
+    /** Server-searched corporate entity (EntityPicker) — an id, not free text. */
+    | "entity";
   options?: { value: string; label: string }[];
   placeholder?: string;
   hint?: string;
@@ -526,6 +529,21 @@ function ChildModal({
                       onChange={(c) => set(f.key, c)}
                       label={f.label}
                     />
+                  ) : f.type === "entity" ? (
+                    /*
+                     * PR-09: the corporate-shareholder link. This used to be a
+                     * `<select>` over the tenant-wide entity list the modal
+                     * fetched on open — capped at 200 by `page()` and filtered
+                     * in the browser, and one full-list request per modal. The
+                     * picker searches server-side, offers only ACTIVE entities
+                     * for a new link (Decision Q6) and shows an existing
+                     * inactive holder as history with a replacement path.
+                     */
+                    <EntityPicker
+                      label={f.label}
+                      value={(values[f.key] as string) || null}
+                      onChange={(id) => set(f.key, id ?? "")}
+                    />
                   ) : f.type === "timezone" ? (
                     <TimezonePicker
                       value={(values[f.key] as string) || ""}
@@ -680,9 +698,12 @@ const opts = (xs: readonly string[]) =>
  * entity-owns-entity holding that could not be recorded — in a module whose
  * whole point is group structure. A uuid text box would technically close the
  * gap and would never be used, so these are pickers.
+ *
+ * Entities are deliberately NOT in this map anymore (PR-09): a corporate
+ * holder is chosen through `EntityPicker`, which searches the server on demand
+ * rather than the modal pre-fetching the tenant-wide list.
  */
 type Lookups = {
-  entities: { entity_id: string; code: string; legal_name: string }[];
   employees: { employee_id: string; full_name?: string | null }[];
   users: {
     user_id: string;
@@ -696,7 +717,6 @@ type Lookups = {
 };
 
 const EMPTY_LOOKUPS: Lookups = {
-  entities: [],
   employees: [],
   users: [],
   jurisdictions: [],
@@ -789,13 +809,8 @@ const personFields = (lk: Lookups): FieldSpec[] => [
   {
     key: "holder_entity_id",
     label: "Held by one of our entities",
-    type: "select",
-    options: nameOpts(
-      lk.entities,
-      (e) => e.entity_id,
-      (e) => `${e.code} — ${e.legal_name}`,
-    ),
-    hint: "For an intra-group holding. The cap table shows this as a code beside the holder.",
+    type: "entity",
+    hint: "For an intra-group holding. The cap table shows this as a code beside the holder. Only active entities are offered for a new holding.",
   },
 
   {
@@ -1100,17 +1115,17 @@ const establishmentFields = (lk: Lookups): FieldSpec[] => [
  * people modal fetches four lists. They load when the modal opens rather than
  * with the dossier: six extra requests on every entity view, for pickers most
  * visits never open, is not a trade worth making.
+ *
+ * PR-09: the tenant-wide ENTITY list is no longer one of them. The corporate
+ * holder field is an `EntityPicker`, which searches `/entities` on the server
+ * only when its popover is opened — so a people modal costs one lookup fewer,
+ * and no nested modal fetches a full tenant-wide list it mostly never shows.
  */
 function useChildFields(
   seg: api.EntityCollection,
   establishments: api.EntityEstablishment[],
 ) {
   const needs = (...segs: api.EntityCollection[]) => segs.includes(seg);
-  const entities = useList<Lookups["entities"][number]>(
-    // A corporate shareholder this picker cannot offer is a cap table that
-    // cannot be recorded. See ENTITY_LIST.
-    needs("people") ? api.ENTITY_LIST : null,
-  );
   const employees = useList<Lookups["employees"][number]>(
     needs("people", "establishments") ? "/employees" : null,
   );
@@ -1130,7 +1145,6 @@ function useChildFields(
   return React.useMemo(() => {
     const lk: Lookups = {
       ...EMPTY_LOOKUPS,
-      entities: entities.rows || [],
       employees: employees.rows || [],
       users: users.rows || [],
       jurisdictions: jurisdictions.rows || [],
@@ -1159,7 +1173,6 @@ function useChildFields(
   }, [
     seg,
     establishments,
-    entities.rows,
     employees.rows,
     users.rows,
     jurisdictions.rows,
@@ -4105,9 +4118,6 @@ function StructureModal({
   onSaved: () => void;
 }) {
   const toast = useToast();
-  // The whole list, not the first 50 — a parent this picker cannot offer is a
-  // group structure that cannot be recorded. See ENTITY_LIST.
-  const { rows: entities } = useList<api.Entity>(api.ENTITY_LIST);
   const [parentId, setParentId] = React.useState(
     structure.parent_entity_id ?? "",
   );
@@ -4128,15 +4138,20 @@ function StructureModal({
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
-  // Never offer this entity as its own parent, nor anything it already sits
-  // above — the API rejects both (rules.assertNoCycle), but a picker that leads
-  // straight to a 422 is a picker that should not have offered the option.
-  const descendants = React.useMemo(
-    () => new Set(structure.children.map((c) => c.entity_id)),
-    [structure.children],
-  );
-  const parentOptions = (entities || []).filter(
-    (x) => x.entity_id !== entityId && !descendants.has(x.entity_id),
+  /*
+   * Never offer this entity as its own parent, nor anything it already sits
+   * above — the API rejects both (rules.assertNoCycle), but a picker that leads
+   * straight to a 422 is a picker that should not have offered the option.
+   *
+   * PR-09: the parent is chosen through `EntityPicker`, which searches the
+   * server (so a parent beyond the 200-row client-side ceiling is reachable)
+   * and offers only ACTIVE entities for a NEW link (Decision Q6). A parent
+   * that has since been deactivated stays on the trigger and in the panel as
+   * history, with the active entities below it as the replacement path.
+   */
+  const excludeIds = React.useMemo(
+    () => [entityId, ...structure.children.map((c) => c.entity_id)],
+    [entityId, structure.children],
   );
 
   async function save() {
@@ -4172,19 +4187,15 @@ function StructureModal({
       <div className="space-y-3">
         <Field
           label="Parent entity"
-          hint="Leave blank for a standalone or top-level company."
+          hint="Leave blank for a standalone or top-level company. Only active entities can be a new parent."
         >
-          <Select
-            value={parentId}
-            onChange={(ev) => setParentId(ev.target.value)}
-          >
-            <option value="">{tr("— none —")}</option>
-            {parentOptions.map((p) => (
-              <option key={p.entity_id} value={p.entity_id}>
-                {p.code} — {p.legal_name}
-              </option>
-            ))}
-          </Select>
+          <EntityPicker
+            label="Parent entity"
+            value={parentId || null}
+            onChange={(id) => setParentId(id ?? "")}
+            excludeIds={excludeIds}
+            emptyLabel={tr("— none —")}
+          />
         </Field>
 
         {parentId && (

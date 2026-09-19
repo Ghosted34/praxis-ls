@@ -3,10 +3,20 @@ const service = require("./corporate_entity.service");
 const calendar = require("./corporate_entity.calendar");
 const dossierService = require("../entity-360.service");
 const { asyncHandler, AppError } = require("../../../utils/errors");
+const { sendPaged } = require("../../../shared/http/paged");
 const actor = (req) => req.user || { user_id: null };
 
 module.exports = {
-  list: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.list(c, req.query)) })),
+  /*
+   * PR-09 (CE-03 / CE-35): the list route reports the true match count in
+   * `X-Total-Count` so the client can page and search server-side. The BODY is
+   * unchanged — still `{ data: [...] }` — so every existing consumer (and the
+   * AI read, which goes through `service.list` and its bare-array contract)
+   * keeps working. A tenant with more entities than `page()`'s 200-row maximum
+   * is now fully reachable: entity 201+ is findable through `q`.
+   */
+  list: asyncHandler(async (req, res) =>
+    sendPaged(res, await req.tenantDb((c) => service.listPaged(c, req.query)))),
 
   get: asyncHandler(async (req, res) => {
     const r = await req.tenantDb((c) => service.get(c, req.params.id));

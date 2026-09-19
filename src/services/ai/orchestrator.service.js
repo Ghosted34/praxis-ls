@@ -14,6 +14,7 @@ const governance = require("../../modules/ai/governance/governance.service");
 const convo = require("../../modules/ai/assistant/assistant.repo");
 const { buildFieldMeta } = require("./action-fields");
 const { logger } = require("../../config/logger");
+const health = require("./health.service");
 const actionAuthz = require("./action-authz");
 const { buildSources, buildTrace } = require("./answer-sources");
 const { config } = require("../../config/env");
@@ -1106,15 +1107,23 @@ async function ask({ client, user, conversationId, message, allowed, registry, f
   const convo = [...messages];
   const seenReads = new Map();
   let duplicates = 0;
+  // How the loop ENDED, for the health counters (audit H2). `round` is scoped
+  // to the for, and the two conditions worth counting — running out of rounds
+  // while still reaching, and being stopped by the duplicate guard — are only
+  // distinguishable from outside it.
+  let lastRound = 0;
+  let usedTools = false;
   let current = res;
   let lastText = res.text || "";
   for (let round = 1; round <= MAX_TOOL_ROUNDS; round++) {
+    lastRound = round;
     const roundReads = [];
     for (const call of current.toolCalls || []) {
       const def = defFor(call);
       if (!def) continue;
       (def.is_write ? writeCalls : roundReads).push({ call, def });
     }
+    if (roundReads.length && registry) usedTools = true;
     if (!roundReads.length || !registry) {
       // No reads left to run: this pass had nothing to reach for, so its prose
       // is the answer.
@@ -1226,6 +1235,15 @@ async function ask({ client, user, conversationId, message, allowed, registry, f
     sources,
     trace,
   });
+
+  // Audit H2 — the turn's own signals. Recorded once, here, rather than inside
+  // the loop: a groove is a property of how the turn ENDED, and counting it per
+  // duplicate read would report one stuck turn as several.
+  await health.recordAll(
+    client,
+    turnHealth({ duplicates, round: lastRound, nudged, usedTools }),
+    { userId: user.user_id, conversationId: history.conversationId || null, feature },
+  );
 
   const actions = [];
   const batchId = writeCalls.length ? crypto.randomUUID() : null;
@@ -1490,7 +1508,46 @@ async function confirmBatch({ client, user, batchId, registry, allowed }) {
   return { batch_id: batchId, halted: false, executed: results.length, results };
 }
 
+/**
+ * The signals the TURN produces, as opposed to the ones a vendor call produces.
+ *
+ * `duplicates`, `round` and `nudged` are already computed by both loops and
+ * were already thrown away in both (audit H2). Shared rather than written twice
+ * because `ask` and `askStream` have drifted before — B5 was exactly that, two
+ * copies of the system prompt — and a health counter that means one thing on
+ * the streaming path and another on the non-streaming one is worse than no
+ * counter, since nothing on the panel would say which turn it came from.
+ *
+ * Thresholds, not raw values: a groove is `duplicates` reaching the cap that
+ * STOPS the loop, not the model repeating one read; the round cap is the loop
+ * running out while still reaching for tools. Both mean "the model could not
+ * get where it was going", which is the audit's "tool-selection miss".
+ */
+function turnHealth({ duplicates, round, nudged, usedTools }) {
+  const events = [];
+  if (duplicates >= MAX_DUPLICATE_READS) {
+    events.push({ kind: health.KINDS.GROOVE, detail: { duplicates, rounds: round } });
+  }
+  if (usedTools && round >= MAX_TOOL_ROUNDS) {
+    events.push({ kind: health.KINDS.TOOL_ROUND_CAP, detail: { rounds: round } });
+  }
+  if (nudged) events.push({ kind: health.KINDS.STALL_NUDGE, detail: { rounds: round } });
+  return events;
+}
+
 async function recordUsage(client, { user, conversationId, res, feature, callType = "chat" }) {
+  // Audit H2. The vendor-chain signals — fallback, truncation, timeout, a dead
+  // credential — are detected in `llm.service`, which has no user, no thread
+  // and no client to persist against. They ride out on the result, and this is
+  // where they land, because every model call in this file already passes
+  // through here with exactly the context a health row needs. Flushing at one
+  // choke point rather than at eight call sites is also what stops the next
+  // model call added to this service from being silently uninstrumented.
+  await health.recordAll(client, res.health, {
+    userId: user && user.user_id,
+    conversationId: conversationId || null,
+    feature,
+  });
   try {
     const u = res.usage || {};
     // Route through governance so the row is tied to the active budget period and
@@ -1603,6 +1660,10 @@ async function* askStream({ client, user, conversationId, message, allowed, regi
   let finalUsage = {};
   let provider = null;
   let model = null;
+  // The vendor-chain signals ride out on the TERMINAL chunk (audit H2) — a
+  // generator's return value is invisible to `for await`, which is how this
+  // reads it — so they are lifted here and handed to `recordUsage` below.
+  let streamHealth = [];
 
   for await (const chunk of llm.chatStream({ client, messages, tools: offered.map(toOpenAiTool), onDelta: (d) => { fullText += d; } })) {
     if (!chunk.done) {
@@ -1613,9 +1674,10 @@ async function* askStream({ client, user, conversationId, message, allowed, regi
       finalUsage = chunk.usage || {};
       provider = chunk.provider;
       model = chunk.model || model;
+      streamHealth = chunk.health || [];
     }
   }
-  await recordUsage(client, { user, conversationId: history.conversationId, res: { text: fullText, toolCalls: finalToolCalls, usage: finalUsage, provider, model }, feature });
+  await recordUsage(client, { user, conversationId: history.conversationId, res: { text: fullText, toolCalls: finalToolCalls, usage: finalUsage, provider, model, health: streamHealth }, feature });
 
   // ── Anti-stall (non-streaming, same as ask) ──
   let nudged = false;
@@ -1667,9 +1729,13 @@ async function* askStream({ client, user, conversationId, message, allowed, regi
   let duplicates = 0;
   let current = { text: fullText, toolCalls: finalToolCalls };
   let usedTools = false;
+  // See the note on `lastRound` in ask(): the loop's exit condition is only
+  // visible from outside the for.
+  let lastRound = 0;
   let answer = "";
 
   for (let round = 1; round <= MAX_TOOL_ROUNDS; round++) {
+    lastRound = round;
     const roundReads = [];
     for (const call of current.toolCalls || []) {
       const def = defFor(call);
@@ -1756,6 +1822,7 @@ async function* askStream({ client, user, conversationId, message, allowed, regi
     yield { type: "status", text: "Writing the answer…" };
     let finalText = "";
     let finalPassUsage = {};
+    let finalPassHealth = [];
     for await (const chunk of llm.chatStream({
       client,
       messages: [...convo, { role: "system", content: FINAL_PASS_NOTE }],
@@ -1768,12 +1835,15 @@ async function* askStream({ client, user, conversationId, message, allowed, regi
         finalPassUsage = chunk.usage || {};
         provider = chunk.provider || provider;
         model = chunk.model || model;
+        // The final pass is the one the user KEEPS, so a truncation here is the
+        // one that actually cuts their answer off.
+        finalPassHealth = chunk.health || [];
       }
     }
     await recordUsage(client, {
       user,
       conversationId: history.conversationId,
-      res: { text: finalText, toolCalls: [], usage: finalPassUsage, provider, model },
+      res: { text: finalText, toolCalls: [], usage: finalPassUsage, provider, model, health: finalPassHealth },
       feature,
     });
     answer = finalText.trim();
@@ -1798,6 +1868,14 @@ async function* askStream({ client, user, conversationId, message, allowed, regi
     sources,
     trace,
   });
+
+  // Audit H2 — the turn's own signals, through the SAME helper ask() uses, so
+  // a groove means the same thing on both paths.
+  await health.recordAll(
+    client,
+    turnHealth({ duplicates, round: lastRound, nudged, usedTools }),
+    { userId: user.user_id, conversationId: history.conversationId || null, feature },
+  );
 
   // ── Writes: action cards ──
   const actions = [];

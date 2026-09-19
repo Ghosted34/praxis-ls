@@ -19,7 +19,10 @@ const CREATE_FIELDS = [
   "custodian_user_id", "location", "float_limit",
   "momo_number", "momo_till", "momo_agent", "momo_network", "momo_fee_account",
 ];
-const UPDATE_FIELDS = CREATE_FIELDS;
+const UPDATE_FIELDS = [
+  ...CREATE_FIELDS,
+  "opening_balance_reason",
+];
 
 /** Copy an explicit allow-list of keys from src → out. Skips undefined so a
  *  patch keeps its "unchanged" semantics rather than clearing columns. */
@@ -58,7 +61,11 @@ module.exports = {
 
   setActive: asyncHandler(async (req, res) => {
     res.json({ data: await req.tenantDb((c) => service.setActive(c, {
-      id: req.params.id, active: req.body.active === true, actor: actor(req),
+      id: req.params.id,
+      active: req.body.active === true,
+      forceClearPrimary: req.body.force_clear_primary === true,
+      replacementAccountId: req.body.replacement_account_id || null,
+      actor: actor(req),
     })) });
   }),
 

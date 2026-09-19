@@ -707,11 +707,10 @@ export function ReconciliationTab({
     }
   };
 
-  // Petty cash reconciles against a physical count, not a statement — the same
-  // question ("does the declared external truth agree with the ledger?") with a
-  // different source, so it gets its own screen rather than a disabled version
-  // of this one.
-  if (requiresCustodian) {
+  // Cash vault and petty cash reconcile against a physical count, not a statement —
+  // Audit #10: separate bank-statement, cash-vault, petty-cash, and MoMo reconciliation modes
+  const isCashCountMode = requiresCustodian || categoryCode === "CASH" || categoryCode === "PETTY_CASH";
+  if (isCashCountMode) {
     return <CashCountSheet accountId={accountId} currency={currency} floatLimit={floatLimit} />;
   }
 

@@ -42,8 +42,13 @@ const schemas = {
   update: z.object({
     ...Object.fromEntries(Object.entries(richFields).map(([k, v]) => [k, v.optional()])),
     label: richFields.label.optional(),
+    opening_balance_reason: z.string().max(500).optional().nullable(),
   }),
-  setActive: z.object({ active: z.boolean() }),
+  setActive: z.object({
+    active: z.boolean(),
+    force_clear_primary: z.boolean().optional(),
+    replacement_account_id: z.string().uuid().optional().nullable(),
+  }),
 
   // AI-facing shapes (id in the payload → picker action).
   aiUpdate: z.object({

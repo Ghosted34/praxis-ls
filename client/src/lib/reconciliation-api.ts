@@ -98,6 +98,7 @@ export type StatementLine = {
   matched_amount: string | number;
   duplicate_of: string | null;
   ignored_reason: string | null;
+  proposed_entry_id?: string | null;
   suggestion_count?: string | number;
 };
 
@@ -313,6 +314,15 @@ export const rejectMatch = (matchId: string, reason?: string) =>
 
 export const ignoreLine = (statementLineId: string, reason?: string) =>
   tenant<StatementLine>(`${base}/lines/${statementLineId}/ignore`, { method: "POST", body: { reason } });
+
+export const proposeEntry = (
+  statementLineId: string,
+  body: { offset_account_code?: string | null; description?: string | null } = {},
+) =>
+  tenant<{ proposed_entry_id: string; entry: unknown }>(
+    `${base}/lines/${statementLineId}/propose-entry`,
+    { method: "POST", body },
+  );
 
 export const buildReconciliation = (body: {
   treasury_account_id: string; statement_id?: string; period_start?: string; period_end?: string;

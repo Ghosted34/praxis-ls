@@ -88,6 +88,10 @@ const schemas = {
     message: "Provide either a denomination breakdown or a counted total",
   }),
   attestCashCount: z.object({ variance_reason: z.string().max(1000).optional() }),
+  proposeEntry: z.object({
+    offset_account_code: z.string().max(64).optional().nullable(),
+    description: z.string().max(200).optional().nullable(),
+  }),
 
   // AI-facing shapes: id in the payload, per the picker-action convention.
   aiRunMatcher: z.object({ statement_id: uuid }).merge(matchRun.partial()),
@@ -118,5 +122,6 @@ module.exports = {
   buildReconciliation: mw("buildReconciliation"),
   cashCount: mw("cashCount"),
   attestCashCount: mw("attestCashCount"),
+  proposeEntry: mw("proposeEntry"),
   schemas,
 };

@@ -88,6 +88,14 @@ const profileToSettings = (p) => ({
 async function canonicalise(client, { buffer, filename, account, overrideProfile = null }) {
   const parsed = await statements.parse(buffer, { filename, client });
 
+  if (overrideProfile && overrideProfile.source_kind && overrideProfile.source_kind !== parsed.source_kind) {
+    throw new AppError(
+      "PROFILE_SOURCE_KIND_MISMATCH",
+      `Statement profile source kind (${overrideProfile.source_kind}) does not match file source kind (${parsed.source_kind})`,
+      422,
+    );
+  }
+
   if (parsed.canonical) {
     const rows = parsed.rows.map((r) => ({ ...r, fee: Math.abs(Number(r.fee || 0)), raw: r }));
     return { parsed, profile: null, canonicalRows: rows, rejected: [], needsMapping: false };
@@ -278,7 +286,12 @@ async function importStatement(client, { treasuryAccountId, file, filename, prof
   }
 
   const overrideProfile = profileId ? await repo.getProfile(client, profileId) : null;
-  if (profileId && !overrideProfile) throw new AppError("NOT_FOUND", "Statement profile not found", 404);
+  if (profileId) {
+    if (!overrideProfile) throw new AppError("NOT_FOUND", "Statement profile not found", 404);
+    if (account.entity_id && overrideProfile.entity_id && overrideProfile.entity_id !== account.entity_id) {
+      throw new AppError("PROFILE_ENTITY_MISMATCH", "Statement profile belongs to a different corporate entity", 422);
+    }
+  }
 
   const ctx = await canonicalise(client, { buffer, filename, account, overrideProfile });
 
@@ -629,6 +642,64 @@ async function manualMatch(client, { statementLineId, journalLineId, actor }) {
   const line = await repo.getLine(client, statementLineId);
   if (!line) throw new AppError("NOT_FOUND", "Statement line not found", 404);
 
+  // Audit #21: Independently validate journal line
+  const { rows: jLines } = await client.query(
+    `SELECT jl.line_id, jl.account_code, jl.debit, jl.credit, jl.currency,
+            je.entry_id, je.entity_id, je.status, je.currency AS entry_currency
+       FROM journal_line jl
+       JOIN journal_entry je ON je.entry_id = jl.entry_id
+      WHERE jl.line_id = $1`,
+    [journalLineId],
+  );
+  if (!jLines.length) throw new AppError("NOT_FOUND", "Ledger journal line not found", 404);
+  const jl = jLines[0];
+
+  const account = await repo.accountContext(client, line.treasury_account_id);
+  if (!account) throw new AppError("NOT_FOUND", "Treasury account not found", 404);
+
+  if (jl.account_code !== account.coa_code) {
+    throw new AppError(
+      "ACCOUNT_MISMATCH",
+      `Journal line account (${jl.account_code}) does not match treasury account CoA code (${account.coa_code})`,
+      422,
+    );
+  }
+
+  if (account.entity_id && jl.entity_id && jl.entity_id !== account.entity_id) {
+    throw new AppError(
+      "ENTITY_MISMATCH",
+      "Journal line entity does not match treasury account entity",
+      422,
+    );
+  }
+
+  if (jl.status !== "validated") {
+    throw new AppError(
+      "JOURNAL_NOT_VALIDATED",
+      `Journal line must belong to a validated journal entry (current status: ${jl.status})`,
+      422,
+    );
+  }
+
+  const jCurr = jl.currency || jl.entry_currency;
+  if (account.currency && jCurr && account.currency !== jCurr) {
+    throw new AppError(
+      "CURRENCY_MISMATCH",
+      `Journal line currency (${jCurr}) does not match account currency (${account.currency})`,
+      422,
+    );
+  }
+
+  const stmtAmt = Number(line.amount);
+  const jlAmt = Number(jl.debit) > 0 ? Number(jl.debit) : -Number(jl.credit);
+  if (Math.sign(stmtAmt) !== 0 && Math.sign(jlAmt) !== 0 && Math.sign(stmtAmt) !== Math.sign(jlAmt)) {
+    throw new AppError(
+      "DIRECTION_MISMATCH",
+      `Statement line direction (${stmtAmt >= 0 ? "credit" : "debit"}) does not match journal line direction (${jlAmt >= 0 ? "debit" : "credit"})`,
+      422,
+    );
+  }
+
   const actorId = await resolveActorId(client, actor && actor.user_id);
   await client.query("BEGIN");
   try {
@@ -846,18 +917,41 @@ async function approveReconciliation(client, { reconciliationId, actor }) {
   const row = await repo.getReconciliation(client, reconciliationId);
   if (!row) throw new AppError("NOT_FOUND", "Reconciliation not found", 404);
   if (row.status === "APPROVED_LOCKED") return row;
-  if (Number(row.unexplained_difference) !== 0) {
+
+  // Audit #22: Rebuild reconciliation totals immediately before approval
+  let unexplained = Number(row.unexplained_difference);
+  if (row.statement_id) {
+    const fresh = await buildReconciliation(client, {
+      treasuryAccountId: row.treasury_account_id,
+      statementId: row.statement_id,
+      asAt: row.period_end ? new Date(row.period_end).toISOString().slice(0, 10) : undefined,
+      actor,
+    });
+    unexplained = Number(fresh.reconciliation.unexplained_difference);
+  }
+
+  if (unexplained !== 0) {
     throw new AppError(
       "RECONCILIATION_DOES_NOT_BALANCE",
-      `This reconciliation still has an unexplained difference of ${Number(row.unexplained_difference).toFixed(2)} ${row.currency}. Every difference must be matched, explained as an outstanding item, or posted before it can be approved.`,
+      `This reconciliation still has an unexplained difference of ${unexplained.toFixed(2)} ${row.currency}. Every difference must be matched, explained as an outstanding item, or posted before it can be approved.`,
       409,
-      { unexplained_difference: row.unexplained_difference },
+      { unexplained_difference: unexplained },
     );
   }
 
   const actorId = await resolveActorId(client, actor && actor.user_id);
   await client.query("BEGIN");
   try {
+    const { rows: locked } = await client.query(
+      "SELECT * FROM bank_reconciliation WHERE reconciliation_id = $1 FOR UPDATE",
+      [reconciliationId],
+    );
+    if (!locked.length) throw new AppError("NOT_FOUND", "Reconciliation not found", 404);
+    if (locked[0].status === "APPROVED_LOCKED") {
+      await client.query("ROLLBACK");
+      return locked[0];
+    }
+
     const updated = await repo.updateReconciliation(client, reconciliationId, {
       status: "APPROVED_LOCKED", approved_by: actorId, approved_at: new Date(),
       content_hash: crypto.createHash("sha256")
@@ -878,6 +972,113 @@ async function approveReconciliation(client, { reconciliationId, actor }) {
     });
     await client.query("COMMIT");
     return updated;
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  }
+}
+
+/**
+ * Propose a DRAFT journal entry for an unmatched bank statement line (Audit #23).
+ * Links the resulting journal_entry to bank_statement_line.proposed_entry_id.
+ */
+async function proposeEntryForLine(client, { statementLineId, offsetAccountCode, description, actor }) {
+  const line = await repo.getLine(client, statementLineId);
+  if (!line) throw new AppError("NOT_FOUND", "Statement line not found", 404);
+  if (line.proposed_entry_id) {
+    throw new AppError("ALREADY_PROPOSED", "A draft journal entry has already been proposed for this line", 409);
+  }
+  if (line.match_status === "CONFIRMED") {
+    throw new AppError("ALREADY_MATCHED", "Statement line is already confirmed matched", 409);
+  }
+
+  const account = await repo.accountContext(client, line.treasury_account_id);
+  if (!account) throw new AppError("NOT_FOUND", "Treasury account not found", 404);
+
+  const amount = Math.abs(Number(line.amount));
+  const isCredit = Number(line.amount) >= 0;
+
+  let journalId = null;
+  const { rows: journals } = await client.query(
+    "SELECT journal_id FROM journal WHERE entity_id = $1 AND (code = 'BQ' OR code = 'TREASURY' OR code = 'OD') ORDER BY CASE WHEN code = 'BQ' THEN 1 WHEN code = 'TREASURY' THEN 2 ELSE 3 END LIMIT 1",
+    [account.entity_id],
+  );
+  if (journals.length) journalId = journals[0].journal_id;
+  if (!journalId) {
+    const { rows: anyJ } = await client.query("SELECT journal_id FROM journal WHERE entity_id = $1 LIMIT 1", [account.entity_id]);
+    if (anyJ.length) journalId = anyJ[0].journal_id;
+  }
+  if (!journalId) {
+    throw new AppError("NO_JOURNAL", "No journal configured for entity " + account.entity_id, 422);
+  }
+
+  const entryDate = line.booking_date ? new Date(line.booking_date).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
+  const { rows: periods } = await client.query(
+    "SELECT period_id, status FROM accounting_period WHERE entity_id = $1 AND $2::date BETWEEN start_date AND end_date LIMIT 1",
+    [account.entity_id, entryDate],
+  );
+  if (!periods.length || periods[0].status !== "OPEN") {
+    throw new AppError("NO_OPEN_PERIOD", "No open accounting period for " + entryDate, 422);
+  }
+  const periodId = periods[0].period_id;
+
+  const offsetCode = offsetAccountCode || (isCredit ? "771000" : "631000");
+  const entryDesc = description || line.description || (isCredit ? "Bank interest/receipt" : "Bank charge");
+
+  const actorId = await resolveActorId(client, actor && actor.user_id);
+
+  await client.query("BEGIN");
+  try {
+    const { rows: seq } = await client.query(
+      "SELECT COALESCE(MAX(entry_no), 0) + 1 AS next_no FROM journal_entry WHERE journal_id = $1 AND period_id = $2",
+      [journalId, periodId],
+    );
+    const entryNo = seq[0].next_no;
+
+    const { rows: insertedEntries } = await client.query(
+      `INSERT INTO journal_entry
+         (journal_id, entity_id, period_id, entry_no, entry_date, description, source_doc_ref, status, source, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'draft', 'SYSTEM_RULE', $8)
+       RETURNING *`,
+      [journalId, account.entity_id, periodId, entryNo, entryDate, entryDesc, line.external_ref || `STMT-${line.statement_id}`, actorId],
+    );
+    const entry = insertedEntries[0];
+
+    const lines = isCredit
+      ? [
+          { account_code: account.coa_code, debit: amount, credit: 0 },
+          { account_code: offsetCode, debit: 0, credit: amount },
+        ]
+      : [
+          { account_code: offsetCode, debit: amount, credit: 0 },
+          { account_code: account.coa_code, debit: 0, credit: amount },
+        ];
+
+    let lineNo = 1;
+    for (const l of lines) {
+      await client.query(
+        `INSERT INTO journal_line
+           (entry_id, line_no, account_code, debit, credit, currency)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [entry.entry_id, lineNo++, l.account_code, l.debit, l.credit, account.currency || "XAF"],
+      );
+    }
+
+    await client.query(
+      "UPDATE bank_statement_line SET proposed_entry_id = $1 WHERE statement_line_id = $2",
+      [entry.entry_id, statementLineId],
+    );
+
+    await audit(client, {
+      actorUserId: actor && actor.user_id ? actor.user_id : null,
+      action: "bank_statement_line.entry_proposed",
+      moduleKey: events.MODULE,
+      entityRef: "bank_statement_line:" + statementLineId,
+      after: { proposed_entry_id: entry.entry_id, entry_no: entryNo },
+    });
+
+    await client.query("COMMIT");
+    return { proposed_entry_id: entry.entry_id, entry };
   } catch (err) {
     await client.query("ROLLBACK");
     throw err;
@@ -1231,7 +1432,7 @@ const listCashCounts = (client, query = {}) => repo.listCashCounts(client, {
 
 module.exports = {
   preview, confirmProfile, importStatement,
-  runMatcher, confirmMatch, rejectMatch, manualMatch, ignoreLine,
+  runMatcher, confirmMatch, rejectMatch, manualMatch, ignoreLine, proposeEntryForLine,
   buildReconciliation, approveReconciliation, renderReconciliationDocument, renderCashCountDocument,
   recordCashCount, attestCashCount,
   listStatements, getStatement, lineMatches, listProfiles,

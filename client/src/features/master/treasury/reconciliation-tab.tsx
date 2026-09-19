@@ -431,17 +431,31 @@ function MatchQueue({
                   <tr className="border-t bg-muted/20">
                     <td colSpan={5} className="px-3 py-2">
                       {matches.length === 0 ? (
-                        <div className="flex items-center justify-between gap-3">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
                           <p className="micro text-muted-foreground">
                             {tr("Nothing in the ledger explains this line. It is probably a bank charge, interest, or a receipt nobody recorded — post it, or set it aside.")}
                           </p>
-                          <Button
-                            variant="outline"
-                            onClick={() => void act(() => recon.ignoreLine(l.statement_line_id, "set aside by the treasurer"))}
-                            disabled={busy}
-                          >
-                            {tr("Set aside")}
-                          </Button>
+                          <div className="flex items-center gap-2">
+                            {l.proposed_entry_id ? (
+                              <Pill tone="info">{tr("Draft entry proposed")}</Pill>
+                            ) : (
+                              <Button
+                                size="sm"
+                                onClick={() => void act(() => recon.proposeEntry(l.statement_line_id))}
+                                disabled={busy}
+                              >
+                                {tr("Propose draft entry")}
+                              </Button>
+                            )}
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => void act(() => recon.ignoreLine(l.statement_line_id, "set aside by the treasurer"))}
+                              disabled={busy}
+                            >
+                              {tr("Set aside")}
+                            </Button>
+                          </div>
                         </div>
                       ) : (
                         <ul className="space-y-1.5">
@@ -815,7 +829,24 @@ export function ReconciliationTab({
 
             {/* A statement that does not foot has been misread, and every
                 number derived from it would be fiction. No import button. */}
-            {preview.footing.foots === false ? (
+            {preview.already_imported ? (
+              <div className="flex items-center gap-3">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    const existing = statements?.find(
+                      (s) => s.statement_id === preview.already_imported?.statement_id,
+                    );
+                    if (existing) selectStatement(existing);
+                  }}
+                >
+                  {tr("View existing statement")}
+                </Button>
+                <p className="micro text-muted-foreground">
+                  {tr("This exact file was already imported. Re-importing is disabled.")}
+                </p>
+              </div>
+            ) : preview.footing.foots === false ? (
               <p className="micro text-muted-foreground">
                 {tr("Fix the file or the column mapping and upload again — importing a statement that does not add up would reconcile your books against a mis-parse.")}
               </p>

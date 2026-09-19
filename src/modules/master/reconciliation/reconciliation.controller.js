@@ -128,6 +128,16 @@ module.exports = {
       })),
     })),
 
+  proposeEntry: asyncHandler(async (req, res) =>
+    res.status(201).json({
+      data: await req.tenantDb((c) => service.proposeEntryForLine(c, {
+        statementLineId: req.params.lineId,
+        offsetAccountCode: req.body.offset_account_code,
+        description: req.body.description,
+        actor: actor(req),
+      })),
+    })),
+
   /* ── the etat de rapprochement ─────────────────────────────────────────── */
 
   buildReconciliation: asyncHandler(async (req, res) =>

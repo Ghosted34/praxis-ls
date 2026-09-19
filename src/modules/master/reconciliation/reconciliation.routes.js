@@ -41,6 +41,7 @@ router.get("/statements/:id", requirePermission(MODULE, "view"), c.getStatement)
 router.post("/statements/:id/match", requirePermission(MODULE, "create"), v.matchRun, c.runMatcher);
 router.get("/lines/:lineId/matches", requirePermission(MODULE, "view"), c.lineMatches);
 router.post("/lines/:lineId/ignore", requirePermission(MODULE, "edit"), v.ignoreLine, c.ignoreLine);
+router.post("/lines/:lineId/propose-entry", requirePermission(MODULE, "edit"), v.proposeEntry, c.proposeEntry);
 router.post("/matches", requirePermission(MODULE, "edit"), v.manualMatch, c.manualMatch);
 router.post("/matches/:matchId/confirm", requirePermission(MODULE, "edit"), c.confirmMatch);
 router.post("/matches/:matchId/reject", requirePermission(MODULE, "edit"), v.matchReject, c.rejectMatch);

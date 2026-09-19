@@ -21,7 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { AiActions } from "@/components/ai-actions";
 import type { AiAction } from "@/features/scaffold/screen-specs";
-import { EntitySelect } from "./shared";
+import { EntityPicker } from "@/components/entity-picker";
 
 const SUPPLIER_AI: AiAction[] = [
   {
@@ -42,13 +42,11 @@ const PAYMENT_METHODS = ["", "BANK", "CASH", "MOBILE_MONEY", "CHEQUE"];
 function SupplierForm({
   open,
   editing,
-  entities,
   onClose,
   onSaved,
 }: {
   open: boolean;
   editing: Row | null;
-  entities: Row[] | null;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -139,10 +137,11 @@ function SupplierForm({
             hint="Which of your legal entities pays this vendor"
             className="sm:col-span-2"
           >
-            <EntitySelect
-              entities={entities}
-              value={entityId}
-              onChange={setEntityId}
+            {/* PR-09: server-searched, ACTIVE-only entity picker. */}
+            <EntityPicker
+              value={entityId || null}
+              onChange={(id) => setEntityId(id ?? "")}
+              label={tr("Corporate entity")}
             />
           </Field>
           <Field label={tr("Category")} hint="e.g. Freight, Customs, Fuel">
@@ -241,7 +240,6 @@ function SupplierForm({
 export function SuppliersPage() {
   const reload = useRefresh();
   const { rows, error } = useList("/suppliers");
-  const { rows: entities } = useList("/entities");
   const [formOpen, setFormOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<Row | null>(null);
 
@@ -322,7 +320,6 @@ export function SuppliersPage() {
       <SupplierForm
         open={formOpen}
         editing={editing}
-        entities={entities}
         onClose={() => setFormOpen(false)}
         onSaved={reload}
       />

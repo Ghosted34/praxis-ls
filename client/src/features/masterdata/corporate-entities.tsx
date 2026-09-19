@@ -59,7 +59,11 @@ import { SmartCurrencyPicker } from "@/components/smart-currency-picker";
 import { TimezonePicker } from "@/components/timezone-picker";
 import { LegalFormPicker } from "@/components/legal-form-picker";
 import { Pill, type Tone } from "@/components/ui/pill";
-import { useList, errMsg } from "@/lib/use-resource";
+import { useToast } from "@/components/ui/toast";
+import { useList, useListPaged, errMsg } from "@/lib/use-resource";
+import { useDebounced } from "@/lib/use-debounced";
+import { Pagination } from "@/components/ui/pagination";
+import { EntityPicker } from "@/components/entity-picker";
 import { enumLabel } from "@/lib/format";
 import { entityCommon } from "@shared";
 import * as api from "@/lib/masterdata-api";
@@ -206,12 +210,10 @@ function Fieldset({
 
 function EntityForm({
   row,
-  entities,
   onClose,
   onSaved,
 }: {
   row: api.Entity | null;
-  entities: api.Entity[];
   onClose: () => void;
   onSaved: (saved: api.Entity) => void;
 }) {
@@ -255,9 +257,16 @@ function EntityForm({
           },
     );
 
-  // A subsidiary's parent can be any other entity — never itself, which the API
-  // rejects anyway (rules.assertNoCycle), but offering it would be a trap.
-  const parentOptions = entities.filter((x) => x.entity_id !== row?.entity_id);
+  /*
+   * A subsidiary's parent can be any other entity — never itself, which the API
+   * rejects anyway (rules.assertNoCycle), but offering it would be a trap.
+   * PR-09: the parent is no longer chosen from a browser-filtered copy of the
+   * whole tenant (which capped out at entity 200); the picker searches the
+   * server and offers only ACTIVE entities for a NEW link (Decision Q6). An
+   * existing parent that has since been deactivated stays visible on the
+   * trigger and in the open panel as history, with the active entities right
+   * below it as the replacement path.
+   */
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -817,20 +826,16 @@ function EntityForm({
         >
           <Field
             label="Parent entity"
-            hint="Leave blank for a standalone or top-level company"
+            hint="Leave blank for a standalone or top-level company. Only active entities can be a new parent."
             className="sm:col-span-2"
           >
-            <Select
-              value={v.parent_entity_id}
-              onChange={(e) => set("parent_entity_id", e.target.value)}
-            >
-              <option value="">{tr("— none —")}</option>
-              {parentOptions.map((p) => (
-                <option key={p.entity_id} value={p.entity_id}>
-                  {p.code} — {p.legal_name}
-                </option>
-              ))}
-            </Select>
+            <EntityPicker
+              label="Parent entity"
+              value={v.parent_entity_id || null}
+              onChange={(id) => set("parent_entity_id", id ?? "")}
+              excludeIds={row ? [row.entity_id] : []}
+              emptyLabel={tr("— none —")}
+            />
           </Field>
           {v.parent_entity_id && (
             <Field label="Relationship to parent">
@@ -886,29 +891,54 @@ function EntityForm({
 }
 
 export function CorporateEntitiesPage() {
-  // `?limit=` because `page()` caps an unparameterised list at 50 and this
-  // screen filters the result IN THE BROWSER — so entity 51 could not be found
-  // by searching for it, which is the truncation `listComplete`'s docblock
-  // describes ("the match sat at row 80 of 300"). 200 is that helper's maximum;
-  // past it the honest fix is to move the search server-side, where LIST_SQL
-  // already has the ILIKE branch waiting.
-  const { rows, error, loading, reload } = useList<api.Entity>(api.ENTITY_LIST);
+  /*
+   * PR-09 (CE-03 / CE-35): the list is searched and paged SERVER-SIDE. This
+   * screen used to fetch `?limit=200` — `page()`'s own maximum — and filter
+   * those rows in the browser, so entity 201 was unfindable by search no
+   * matter what it was called, and nothing said the list had been cut. The
+   * repo's `q` ILIKE branch does the matching, the `X-Total-Count` header the
+   * list route now sends does the counting, and every entity in the tenant is
+   * reachable through the pager.
+   */
+  const PAGE_SIZE = 50;
+  const [page, setPage] = React.useState(0);
+  const [q, setQ] = React.useState("");
+  const search = useDebounced(q.trim(), 300);
+  const paged = useListPaged<api.Entity>("/entities", {
+    page,
+    pageSize: PAGE_SIZE,
+    q: search || undefined,
+  });
+  const { rows, error, loading, reload } = paged;
   const [params, setParams] = useSearchParams();
   const [selId, setSelId] = React.useState<string | null>(null);
-  const [q, setQ] = React.useState("");
+  /** The last row clicked, so the dossier survives paging away from it. */
+  const [selRow, setSelRow] = React.useState<api.Entity | null>(null);
   const [editing, setEditing] = React.useState<api.Entity | "new" | null>(null);
-  const entities = React.useMemo(() => rows || [], [rows]);
+  const entities = React.useMemo(() => rows ?? [], [rows]);
+
+  // A new search starts from the first page — page 3 of a previous search is
+  // not a meaningful place to land in the results of a new one.
+  React.useEffect(() => {
+    setPage(0);
+  }, [search]);
 
   const statusOf = (r: api.Entity) =>
     r.registration_status || (r.is_active ? "ACTIVE" : "DEACTIVATED");
-  const filtered = q
-    ? entities.filter((e) =>
-        `${e.code} ${e.legal_name}`.toLowerCase().includes(q.toLowerCase()),
-      )
-    : entities;
-  const selected = entities.find((e) => e.entity_id === selId) || null;
+  /*
+   * The selected entity may not be on the LOADED page (the user paged or
+   * searched past it), so the last-clicked row is kept and used as a fallback.
+   * Without it the dossier would unmount the moment its row left the current
+   * page — closing the very record the operator is reading.
+   */
+  const selected =
+    entities.find((e) => e.entity_id === selId) ??
+    (selRow && selRow.entity_id === selId ? selRow : null);
   React.useEffect(() => {
-    if (!selId && entities.length) setSelId(entities[0].entity_id);
+    if (!selId && entities.length) {
+      setSelId(entities[0].entity_id);
+      setSelRow(entities[0]);
+    }
   }, [entities, selId]);
 
   /*
@@ -926,27 +956,51 @@ export function CorporateEntitiesPage() {
    * `legal_name` and `website` are entity SCALARS — the dossier only displays
    * them, this form is where they are edited — which is why a "your website is
    * missing" gap points at the list screen and not at the 360.
+   *
+   * PR-09: the row is fetched by id rather than looked up in the loaded page,
+   * because with a server-paged list the entity can sit past the visible page
+   * — the old lookup silently did nothing for exactly the entities this PR
+   * makes reachable.
    */
   const editParam = params.get("edit");
   const rowParam = params.get("row");
   const editId = editParam === "entity" ? rowParam : editParam;
+  const editHandled = React.useRef<string | null>(null);
+  const toast = useToast();
   React.useEffect(() => {
     if (!editId) return;
-    if (editId === "new") {
-      setEditing("new");
-    } else {
-      const found = entities.find((e) => e.entity_id === editId);
-      if (!found) return;
-      setEditing(found);
-      setSelId(found.entity_id);
-    }
     // Strip the arrival, keep the location: `?field=` stays so the highlight
     // still runs, and closing the dialog does not put it back on refresh.
     const next = new URLSearchParams(params);
     next.delete("edit");
     next.delete("row");
     setParams(next, { replace: true });
-  }, [editId, entities, params, setParams]);
+    if (editHandled.current === editId) return;
+    editHandled.current = editId;
+    if (editId === "new") {
+      setEditing("new");
+      return;
+    }
+    let live = true;
+    api
+      .getEntity(editId)
+      .then((row) => {
+        if (!live || !row?.entity_id) return;
+        setEditing(row);
+        setSelId(row.entity_id);
+        setSelRow(row);
+      })
+      .catch((err) => {
+        // Real handling rather than silence: a deep link someone followed is
+        // an expectation, and "the screen did nothing" sends the reader
+        // hunting for a grant that is not the problem. The param is already
+        // stripped, so the toast fires once and a refresh does not repeat it.
+        if (live) toast.error(`Couldn't open that entity. ${errMsg(err)}`);
+      });
+    return () => {
+      live = false;
+    };
+  }, [editId, params, setParams, toast]);
 
   // Runs again when the dialog opens, because the field it is looking for is
   // inside it and does not exist until then.
@@ -986,14 +1040,21 @@ export function CorporateEntitiesPage() {
             <div className="max-h-[70vh] space-y-1 overflow-auto rounded-lg border p-1">
               {loading ? (
                 <LoadingRow label="Loading entities…" />
-              ) : filtered.length === 0 ? (
-                <div className="px-3 py-4 micro">No entities.</div>
+              ) : entities.length === 0 ? (
+                <div className="px-3 py-4 micro">
+                  {search
+                    ? `No entity matches “${search}”.`
+                    : "No entities yet."}
+                </div>
               ) : (
-                filtered.map((en) => (
+                entities.map((en) => (
                   <IndexRow
                     key={en.entity_id}
                     selected={en.entity_id === selId}
-                    onClick={() => setSelId(en.entity_id)}
+                    onClick={() => {
+                      setSelId(en.entity_id);
+                      setSelRow(en);
+                    }}
                     className="items-center justify-between gap-2"
                   >
                     <span className="min-w-0 truncate">
@@ -1007,6 +1068,12 @@ export function CorporateEntitiesPage() {
                 ))
               )}
             </div>
+            <Pagination
+              page={page}
+              pageSize={PAGE_SIZE}
+              total={paged.total}
+              onPageChange={setPage}
+            />
           </div>
           {selected ? (
             <EntityDossier
@@ -1025,13 +1092,15 @@ export function CorporateEntitiesPage() {
       {editing !== null && (
         <EntityForm
           row={editing === "new" ? null : editing}
-          entities={entities}
           onClose={() => setEditing(null)}
           onSaved={(saved) => {
             reload();
             // A brand-new entity is selected straight away: the readiness
             // checklist on its dossier is what says what is still missing.
-            if (saved?.entity_id) setSelId(saved.entity_id);
+            if (saved?.entity_id) {
+              setSelId(saved.entity_id);
+              setSelRow(saved);
+            }
           }}
         />
       )}

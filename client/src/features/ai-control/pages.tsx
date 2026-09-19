@@ -1169,3 +1169,185 @@ export function AiUsagePage() {
     </section>
   );
 }
+
+/* ═══════════════════════ Health (audit H2) ═══════════════════════ */
+
+/**
+ * What each signal means when it is not zero, in the words an operator can act
+ * on. A counter nobody can interpret is a counter nobody looks at twice, and
+ * this panel's whole purpose is that somebody reads it and does something.
+ */
+const HEALTH_COPY: Record<string, { label: string; meaning: string }> = {
+  truncation: {
+    label: "Truncated answers",
+    meaning:
+      "The model ran out of room mid-answer. Above zero means the output ceiling is too low for the questions people are actually asking.",
+  },
+  fallback: {
+    label: "Fell back to another vendor",
+    meaning:
+      "The primary vendor did not answer and a later one did. The turn succeeded — on a different model, at a different cost.",
+  },
+  vendor_config_error: {
+    label: "Vendor credential rejected",
+    meaning:
+      "A key or endpoint was refused. Never transient: somebody has to fix it in the platform console.",
+  },
+  provider_exhausted: {
+    label: "No vendor answered",
+    meaning: "Every vendor in the chain failed, so the user got the placeholder reply.",
+  },
+  timeout: {
+    label: "Vendor timed out",
+    meaning:
+      "A call exceeded its budget. Usually means the caps are tighter than a real multi-step question needs.",
+  },
+  tool_round_cap: {
+    label: "Ran out of steps",
+    meaning:
+      "The assistant was still looking things up when the round limit stopped it — it could not find what it needed.",
+  },
+  groove: {
+    label: "Repeated the same lookups",
+    meaning: "The model kept re-requesting reads it had already made, until the guard stopped it.",
+  },
+  stall_nudge: {
+    label: "Needed prodding",
+    meaning:
+      "The assistant said it would do something and then did not, so it had to be told to go ahead.",
+  },
+};
+
+/** Green below 1 in 1,000, amber to 10, red above. Null (no turns) is neutral. */
+function healthTone(per1k: number | null): Tone {
+  if (per1k === null) return "mute";
+  if (per1k < 1) return "ok";
+  if (per1k <= 10) return "warn";
+  return "bad";
+}
+
+export function AiHealthPage() {
+  const [days, setDays] = React.useState(7);
+  const health = useResource(() => api.getAiHealth(days), [days]);
+  const events = useList<api.AiHealthEvent>(
+    `/ai/governance/health/events?limit=50`,
+  );
+
+  const kinds = health.data ? health.data.kinds : [];
+  // Sorted worst-first. A panel ordered by an internal enum makes the reader do
+  // the triage the panel exists to do for them.
+  const ranked = [...kinds].sort((a, b) => (b.per_1k ?? 0) - (a.per_1k ?? 0));
+  const worst = ranked.find((k) => k.events > 0) || null;
+
+  const columns: Column<api.AiHealthEvent>[] = [
+    {
+      key: "occurred_at",
+      label: "When",
+      render: (r) => <span className="num">{dateFmt(r.occurred_at)}</span>,
+    },
+    {
+      key: "kind",
+      label: "Signal",
+      render: (r) => (
+        <Pill tone="mute">{HEALTH_COPY[r.kind]?.label || r.kind}</Pill>
+      ),
+    },
+    {
+      key: "model",
+      label: "Model",
+      render: (r) => (
+        <span className="num text-muted-foreground">
+          {r.provider ? `${r.provider} · ` : ""}
+          {r.model || "—"}
+        </span>
+      ),
+    },
+    {
+      key: "detail",
+      label: "Detail",
+      render: (r) => (
+        <span className="num text-xs text-muted-foreground">
+          {r.detail ? JSON.stringify(r.detail) : "—"}
+        </span>
+      ),
+    },
+  ];
+
+  return (
+    <section className={shell}>
+      <PageHeader
+        eyebrow={<HubCrumb area="AI Control" to="/ai-control" />}
+        title="Health"
+        description="How well the assistant is answering — as opposed to what it costs. Every rate here should be trending towards zero."
+      />
+      <HubTabs />
+
+      {health.error ? <ErrorState message={errMsg(health.error)} /> : null}
+
+      <div className="flex items-center gap-2">
+        {[1, 7, 30].map((d) => (
+          <Button
+            key={d}
+            size="sm"
+            variant={d === days ? "default" : "outline"}
+            onClick={() => setDays(d)}
+          >
+            {d === 1 ? tr("Last 24 hours") : `${tr("Last")} ${d} ${tr("days")}`}
+          </Button>
+        ))}
+      </div>
+
+      <KpiRow>
+        <KpiTile label={tr("Chat turns")} value={num(health.data?.turns ?? 0)} />
+        <KpiTile
+          label={tr("Worst signal")}
+          value={worst ? HEALTH_COPY[worst.kind]?.label || worst.kind : tr("None")}
+        />
+      </KpiRow>
+
+      {/* Every kind, including the ones at zero — a row that disappears when it
+          stops firing is a row that vanishes as it becomes good news, and the
+          reader cannot then tell "fixed" from "never measured". */}
+      <ul className="grid gap-2 sm:grid-cols-2">
+        {ranked.map((k) => {
+          const copy = HEALTH_COPY[k.kind];
+          return (
+            <li
+              key={k.kind}
+              className="rounded-lg border border-border bg-card p-3"
+            >
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="text-sm font-medium text-foreground">
+                  {copy?.label || k.kind}
+                </span>
+                <Pill tone={healthTone(k.per_1k)}>
+                  {k.per_1k === null
+                    ? tr("no turns yet")
+                    : `${k.per_1k} ${tr("per 1k turns")}`}
+                </Pill>
+              </div>
+              <p className="micro mt-1 text-muted-foreground">
+                {num(k.events)} {tr("in this window.")}{" "}
+                {copy ? tr(copy.meaning) : null}
+              </p>
+            </li>
+          );
+        })}
+      </ul>
+
+      <DataList
+        columns={columns}
+        rows={events.rows}
+        loading={events.loading}
+        error={events.error ? errMsg(events.error) : null}
+        rowKey={(r) => String(r.health_event_id)}
+        empty={{
+          title: tr("Nothing to report"),
+          hint: tr(
+            "No health events in this window. That is the state this panel is trying to reach.",
+          ),
+        }}
+      />
+    </section>
+  );
+}

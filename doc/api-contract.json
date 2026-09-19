@@ -2,11 +2,11 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 141,
-  "route_count": 1650,
+  "route_count": 1652,
   "tiers": {
     "public": 68,
     "self-scoped": 103,
-    "gated": 1479
+    "gated": 1481
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -1084,6 +1084,18 @@
       "tier": "gated"
     },
     "GET /api/tenant/ai/governance/grants": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/ai/governance/health": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/ai/governance/health/events": {
       "auth": true,
       "rbac": true,
       "validated": false,

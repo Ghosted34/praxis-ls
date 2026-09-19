@@ -123,7 +123,7 @@ async function recordAll(client, events, context = {}) {
   if (!Array.isArray(events) || !events.length) return 0;
   let written = 0;
   for (const e of events) {
-    // eslint-disable-next-line no-await-in-loop -- one shared connection per request; see above
+    // Sequential on purpose — one shared connection per request, see above.
     if (await record(client, { ...context, ...e })) written += 1;
   }
   return written;

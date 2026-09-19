@@ -25,6 +25,11 @@ router.get("/budget", requirePermission(MODULE, "view"), controller.budget);
 router.post("/budget", requirePermission(MODULE, "edit"), validator.setBudget, controller.setBudget);
 router.get("/can-use", requirePermission(MODULE, "view"), controller.canUse);
 router.get("/usage", requirePermission(MODULE, "view"), controller.usage);
+// AI health (audit H2). Same MOD-70 view gate as the rest of AI Control — the
+// events name conversations and vendors, so they are administrator-only, and
+// the signal an operator acts on lives beside the spend they act on.
+router.get("/health", requirePermission(MODULE, "view"), controller.health);
+router.get("/health/events", requirePermission(MODULE, "view"), controller.healthEvents);
 
 // Vendor keys are managed deploy-wide from the platform console
 // (/api/platform/ai-vendors) — one shared set for all tenants. The former

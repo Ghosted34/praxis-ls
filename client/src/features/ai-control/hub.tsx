@@ -7,6 +7,7 @@ import {
   AiGrantsPage,
   AiBudgetPage,
   AiUsagePage,
+  AiHealthPage,
 } from "./pages";
 
 export function AiControlHub() {
@@ -23,6 +24,7 @@ export function AiControlHub() {
         access: AiGrantsPage,
         budget: AiBudgetPage,
         usage: AiUsagePage,
+        health: AiHealthPage,
       })}
     />
   );

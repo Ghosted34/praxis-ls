@@ -11,6 +11,7 @@
 "use strict";
 
 const repo = require("./governance.repo");
+const health = require("../../../services/ai/health.service");
 const events = require("./governance.events");
 const { estimateCostNative, capState, canUse } = require("./governance.rules");
 const encryption = require("../../../services/encryption.service");
@@ -245,6 +246,18 @@ async function recordUsage(client, { userId = null, featureKey = null, conversat
 
 const listUsage = (client, q) => repo.listUsage(client, q);
 
+/**
+ * AI health (audit H2) — the quality signals, as opposed to the cost ones.
+ *
+ * Read through THIS module rather than letting the panel reach into
+ * `services/ai/health.service` directly, for the same reason `listUsage` sits
+ * here: AI Control is the admin surface for the AI subsystem, and its reads
+ * being one module boundary is what keeps the RBAC gate (MOD-70 view) in one
+ * place. The detection logic stays where it fires.
+ */
+const healthSummary = (client, { days } = {}) => health.summary(client, { days });
+const recentHealthEvents = (client, { limit, kind } = {}) => health.recent(client, { limit, kind });
+
 // ── Vendor credentials (keys encrypted) ──
 const listVendors = (client) => repo.listVendors(client);
 const getVendor = (client, vendor) => repo.getVendorSafe(client, vendor);
@@ -284,6 +297,8 @@ async function testVendor(client, vendor) {
 }
 
 module.exports = {
+  healthSummary,
+  recentHealthEvents,
   listFeatures, setFeature, testVendor,
   grantAccess, revokeAccess, listGrants,
   budgetStatus, setBudget, canUseFeature, isFeatureEnabled, recordUsage, listUsage,

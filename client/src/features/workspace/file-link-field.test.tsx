@@ -62,6 +62,21 @@ function Harness({ initial, onChange }: { initial: FileLink; onChange?: (v: File
   );
 }
 
+/**
+ * Waits for the chain to be *loaded*, not merely for the group to exist.
+ *
+ * The group renders the moment a file is picked; its chip list carries
+ * `aria-busy` until the stages resolve. Waiting on the group alone therefore
+ * returns an empty list, and whether the next assertion beats the network is
+ * up to the runner — the suite passed locally and failed in CI on exactly
+ * that. Asking for the checkboxes makes the wait match the intent.
+ */
+async function loadedMilestoneGroup() {
+  const group = await screen.findByRole("group", { name: "Milestones" });
+  await waitFor(() => expect(within(group).getAllByRole("checkbox").length).toBeGreaterThan(0));
+  return group;
+}
+
 beforeEach(() => {
   fixtures.current = { routes: { "/operations": [FILE_ROW] } };
 });
@@ -75,12 +90,8 @@ describe("FileLinkField — the stage set", () => {
   it("renders the picked file's chain as checkboxes, in chain order, none ticked", async () => {
     milestonesByDossier.mockResolvedValue(CHAIN);
     const { container } = render(<Harness initial={LINKED} />);
-    const group = await screen.findByRole("group", { name: "Milestones" });
-    // The group is rendered WHILE the chain loads (aria-busy, "Loading
-    // milestones…"), so finding it proves nothing about the chips. Await the
-    // chips themselves — on a loaded runner the group can settle before the
-    // setStages re-render commits, and getAllByRole then reads a spinner.
-    const boxes = await within(group).findAllByRole("checkbox");
+    const group = await loadedMilestoneGroup();
+    const boxes = within(group).getAllByRole("checkbox");
     expect(boxes.map((b) => b.textContent)).toEqual([
       "1Pre-alert & work order",
       "2Shipping documents verified",
@@ -96,10 +107,7 @@ describe("FileLinkField — the stage set", () => {
     milestonesByDossier.mockResolvedValue(CHAIN);
     const onChange = vi.fn();
     render(<Harness initial={LINKED} onChange={onChange} />);
-    const group = await screen.findByRole("group", { name: "Milestones" });
-    // Same race as above: the group exists from the first loading paint, the
-    // checkboxes only once the chain resolves. Await one chip before ticking.
-    await within(group).findByRole("checkbox", { name: /Shipping documents verified/ });
+    const group = await loadedMilestoneGroup();
     fireEvent.click(within(group).getByRole("checkbox", { name: /Shipping documents verified/ }));
     fireEvent.click(within(group).getByRole("checkbox", { name: /Customs declaration lodged/ }));
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ milestone_instance_ids: ["m2", "m3"] }));
@@ -115,7 +123,7 @@ describe("FileLinkField — the stage set", () => {
     milestonesByDossier.mockResolvedValue(CHAIN);
     const onChange = vi.fn();
     render(<Harness initial={{ ...LINKED, milestone_instance_ids: ["m1", "m3"] }} onChange={onChange} />);
-    await screen.findByRole("group", { name: "Milestones" });
+    await loadedMilestoneGroup();
     fireEvent.click(screen.getByRole("button", { name: "Clear milestones" }));
     expect(onChange).toHaveBeenLastCalledWith({ ...LINKED, milestone_instance_ids: [] });
     // The file is still shown (named by the picker itself), the set is
@@ -128,7 +136,7 @@ describe("FileLinkField — the stage set", () => {
     milestonesByDossier.mockResolvedValue(CHAIN);
     const onChange = vi.fn();
     render(<Harness initial={{ ...LINKED, milestone_instance_ids: ["m2"] }} onChange={onChange} />);
-    await screen.findByRole("group", { name: "Milestones" });
+    await loadedMilestoneGroup();
     // The picker's own "Change" — the one control that unpicks a file.
     fireEvent.click(screen.getByRole("button", { name: "Change" }));
     expect(onChange).toHaveBeenLastCalledWith(EMPTY_LINK);

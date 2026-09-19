@@ -2091,6 +2091,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/entities/:id/tax-obligations": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/entities/:id/tax-registrations": {
       "auth": true,
       "rbac": true,
@@ -7138,6 +7144,24 @@
       "tier": "gated"
     },
     "POST /api/tenant/entities/:id/structure": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/entities/:id/tax-obligations/:obligationId/assign": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/entities/:id/tax-obligations/:obligationId/status": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/entities/:id/tax-obligations/generate": {
       "auth": true,
       "rbac": true,
       "validated": false,

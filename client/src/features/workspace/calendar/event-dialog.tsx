@@ -151,7 +151,9 @@ export function EventDialog({
       // PR 3's list supersedes the 13810 pair server-side; an empty list
       // disarms. See the task dialog for the same payload contract.
       reminders: built.input,
-      recurrence_rule: repeatRule,
+      // On create, a one-off event omits recurrence_rule; on edit, an explicit
+      // null disarms an existing series.
+      recurrence_rule: repeatRule || (editing ? null : undefined),
       force,
     };
     // Only meaningful for a row that is one occurrence of a series; the server

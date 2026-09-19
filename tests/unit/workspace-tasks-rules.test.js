@@ -498,4 +498,20 @@ describe("input schemas — what the client sends must be what the server accept
     });
     expect(r.success).toBe(true);
   });
+
+  it("taskCreate and eventCreate accept recurrence_rule: null for non-recurring items", () => {
+    // When "Does not repeat" is selected, the dialogs pass recurrence_rule: null
+    const task = v.taskCreate.safeParse({
+      title: "Follow up on FMA export file",
+      recurrence_rule: null,
+    });
+    const event = v.eventCreate.safeParse({
+      title: "One-off meeting",
+      start_at: "2026-09-19T09:00",
+      end_at: "2026-09-19T10:00",
+      recurrence_rule: null,
+    });
+    expect(task.success).toBe(true);
+    expect(event.success).toBe(true);
+  });
 });

@@ -163,7 +163,45 @@ const history = asyncHandler(async (req, res) => {
 });
 const conversations = asyncHandler(async (req, res) => {
   const out = await req.tenantDb((client) =>
-    service.conversations(client, { user: user(req), limit: Math.min(Number(req.query.limit) || 50, 200) }),
+    service.conversations(client, {
+      user: user(req),
+      limit: Math.min(Number(req.query.limit) || 50, 200),
+      // Archived threads are a second, explicit read — the rail asks for them
+      // when the user opens that section, not on every load (audit J1).
+      includeArchived: req.query.include_archived === "true",
+    }),
+  );
+  res.json({ data: out });
+});
+
+/** Pin / rename / archive one thread. Only the keys sent are touched. */
+const updateConversation = asyncHandler(async (req, res) => {
+  const out = await req.tenantDb((client) =>
+    service.updateConversation(client, {
+      user: user(req),
+      conversationId: req.params.id,
+      patch: req.body,
+    }),
+  );
+  res.json({ data: out });
+});
+
+/**
+ * Remove one thread. `?purge=true` is the irreversible half.
+ *
+ * The flag is a QUERY parameter rather than a body because a DELETE body is the
+ * one place in HTTP where intermediaries are entitled to drop what you sent,
+ * and the field it would be dropping is the one that decides between "hidden"
+ * and "erased". A lost `purge` must fail closed, and reading it from the URL is
+ * how it cannot be lost at all.
+ */
+const removeConversation = asyncHandler(async (req, res) => {
+  const out = await req.tenantDb((client) =>
+    service.removeConversation(client, {
+      user: user(req),
+      conversationId: req.params.id,
+      purge: req.query.purge === "true",
+    }),
   );
   res.json({ data: out });
 });
@@ -198,4 +236,17 @@ const feedback = asyncHandler(async (req, res) => {
   res.json({ data: { ok: true } });
 });
 
-module.exports = { ask, askStream, confirm, confirmBatch, history, conversations, clearHistory, options, exportTables, feedback };
+module.exports = {
+  ask,
+  askStream,
+  confirm,
+  confirmBatch,
+  history,
+  conversations,
+  updateConversation,
+  removeConversation,
+  clearHistory,
+  options,
+  exportTables,
+  feedback,
+};

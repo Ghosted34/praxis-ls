@@ -119,6 +119,25 @@ export type AiConversationMeta = {
   title: string | null;
   last_at: string;
   message_count: number;
+  /**
+   * When the thread was pinned / archived, or null (13930, audit J1-J2).
+   *
+   * TIMESTAMPS RATHER THAN BOOLEANS, all the way to the client. The rail only
+   * needs presence — it renders a pin marker and sorts on it — but "when did
+   * this get archived" is a question somebody eventually asks, and a boolean
+   * can never answer it. Presence-checking a nullable date costs nothing here
+   * and keeps the option open.
+   */
+  pinned_at?: string | null;
+  archived_at?: string | null;
+};
+
+/** What `patchAiConversation` may change. Send only what the user altered. */
+export type AiConversationPatch = {
+  /** Empty string RESTORES the derived title (the first user message). */
+  title?: string;
+  pinned?: boolean;
+  archived?: boolean;
 };
 
 /** The current thread, or a specific one by id (the server verifies ownership). */
@@ -127,9 +146,49 @@ export const fetchAiHistory = (conversationId?: string) =>
     `/ai/history${conversationId ? `?conversation_id=${encodeURIComponent(conversationId)}` : ""}`,
   );
 
-/** The caller's past threads for the history sidebar (metadata only, newest first). */
-export const listAiConversations = () =>
-  tenant<AiConversationMeta[]>("/ai/conversations");
+/**
+ * The caller's past threads for the history sidebar.
+ *
+ * Pinned first, then most recent — the server settles that order before its
+ * LIMIT, so the rail can group on what it is given (`groupConversations`).
+ * Archived threads are excluded unless asked for, because the archived section
+ * is opened rarely and paying for it on every load is the wrong trade.
+ */
+export const listAiConversations = (opts?: { includeArchived?: boolean }) =>
+  tenant<AiConversationMeta[]>(
+    `/ai/conversations${opts?.includeArchived ? "?include_archived=true" : ""}`,
+  );
+
+/**
+ * Pin, rename or archive one thread. Answers with the updated row.
+ *
+ * ONE CALL FOR THE THREE, and it answers with the row rather than `{ ok }` so
+ * the rail can patch what it has instead of refetching the list. That matters
+ * for rename in particular: clearing the title hands back the DERIVED one (the
+ * first user message), which the client cannot compute for itself.
+ */
+export const patchAiConversation = (id: string, patch: AiConversationPatch) =>
+  tenant<AiConversationMeta>(`/ai/conversations/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: patch,
+  });
+
+/**
+ * Remove one thread. `purge` is the irreversible half.
+ *
+ * Without `purge` the thread is soft-deleted: it leaves every list and stops
+ * being loadable by id, and the rows are still there. With it, the transcript
+ * is destroyed and the action runs that never executed go with it — the ones
+ * that DID execute are detached and kept, because they are the only record of a
+ * real change to the ERP. The flag rides in the URL rather than a body because
+ * a DELETE body is the one thing in HTTP an intermediary may drop, and this is
+ * not a field that may be lost silently.
+ */
+export const deleteAiConversation = (id: string, opts?: { purge?: boolean }) =>
+  tenant<{ conversation_id: string; purged: boolean }>(
+    `/ai/conversations/${encodeURIComponent(id)}${opts?.purge ? "?purge=true" : ""}`,
+    { method: "DELETE" },
+  );
 
 /** Start a fresh thread. The old one is retained, just no longer current. */
 export const clearAiHistory = () =>

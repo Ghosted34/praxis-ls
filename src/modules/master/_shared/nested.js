@@ -58,7 +58,11 @@ const provided = (obj) =>
   Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined));
 
 function buildResource(cfg) {
-  const { table, pk, parentCol, parentTable, parentPk, moduleKey, label, writable, touch, isBank, isDocument, kind, governed, numberingKey, immutable = [], primaryScope } = cfg;
+  const {
+    table, pk, parentCol, parentTable, parentPk, moduleKey, label, writable,
+    touch, isBank, isDocument, isVerifiableRegistration, kind, governed,
+    numberingKey, immutable = [], primaryScope,
+  } = cfg;
   const insertAllow = [...writable, parentCol];
   const updateAllow = writable.filter((field) => !immutable.includes(field));
 
@@ -128,15 +132,57 @@ function buildResource(cfg) {
   }
 
   /**
-   * Human verification of a scanned record. Uploading a file only proves that
-   * bytes exist (`scan_status = SCANNED`); it must not silently certify that the
-   * document itself was checked against the original. This action is the
-   * deliberate SCANNED → VERIFIED step used by the party and entity dossiers.
+   * Human verification of a service-owned fact.
+   *
+   * Documents keep their existing SCANNED → VERIFIED path. Corporate-entity
+   * registrations use the same deliberate, MOD-01-approve-gated action, but
+   * write only the 0515 fields that already describe that decision:
+   * `verified`, `verified_by`, and `verified_at`. Neither shape is writable by
+   * the ordinary PATCH allow-list.
    */
   async function verify(c, { parentId, id, actor = {} }) {
     const before = await getById(c, table, pk, id);
     if (!belongs(before, parentId)) throw new AppError("NOT_FOUND", `${label} not found`, 404);
-    if (!isDocument) throw new AppError("NOT_DOCUMENT", "Only documents can be verified", 422);
+
+    if (isVerifiableRegistration) {
+      if (!String(before.number || "").trim()) {
+        throw new AppError(
+          "REGISTRATION_NUMBER_REQUIRED",
+          "Add the registration number before verifying it.",
+          422,
+        );
+      }
+      // A retry must not rewrite who checked the fact or when they checked it.
+      if (before.verified === true) return before;
+
+      await c.query("BEGIN");
+      try {
+        const { rows: [row] } = await c.query(
+          `UPDATE ${table}
+              SET verified = true, verified_by = $2, verified_at = now(),
+                  updated_at = now()
+            WHERE ${pk} = $1 AND ${parentCol} = $3
+            RETURNING *`,
+          [id, actor.user_id || null, parentId],
+        );
+        if (!row) throw new AppError("NOT_FOUND", `${label} not found`, 404);
+        await audit(c, {
+          actorUserId: actor.user_id || null,
+          action: `${label}.verified`,
+          moduleKey,
+          entityRef: `${label}:${id}`,
+          before,
+          after: row,
+        });
+        await c.query("COMMIT");
+        return row;
+      } catch (e) {
+        await c.query("ROLLBACK");
+        throw e;
+      }
+    }
+
+    if (!isDocument) throw new AppError("NOT_DOCUMENT", "Only documents or entity registrations can be verified", 422);
     if (!before.vault_id) throw new AppError("SCAN_REQUIRED", "Attach a scan before verifying this document.", 422);
 
     const { rows: vaultRows } = await c.query(
@@ -174,6 +220,46 @@ function buildResource(cfg) {
     }
   }
 
+  /**
+   * Withdraw a registration verification without inventing a rejection/lifecycle
+   * column. The row returns to the stored-but-unverified state; the immutable
+   * ledger retains the approver, timestamp, and before/after verification facts.
+   */
+  async function unverify(c, { parentId, id, actor = {} }) {
+    const before = await getById(c, table, pk, id);
+    if (!belongs(before, parentId)) throw new AppError("NOT_FOUND", `${label} not found`, 404);
+    if (!isVerifiableRegistration) {
+      throw new AppError("NOT_VERIFIABLE", `${label} cannot be unverified`, 422);
+    }
+    if (before.verified !== true) return before;
+
+    await c.query("BEGIN");
+    try {
+      const { rows: [row] } = await c.query(
+        `UPDATE ${table}
+            SET verified = false, verified_by = NULL, verified_at = NULL,
+                updated_at = now()
+          WHERE ${pk} = $1 AND ${parentCol} = $2
+          RETURNING *`,
+        [id, parentId],
+      );
+      if (!row) throw new AppError("NOT_FOUND", `${label} not found`, 404);
+      await audit(c, {
+        actorUserId: actor.user_id || null,
+        action: `${label}.unverified`,
+        moduleKey,
+        entityRef: `${label}:${id}`,
+        before,
+        after: row,
+      });
+      await c.query("COMMIT");
+      return row;
+    } catch (e) {
+      await c.query("ROLLBACK");
+      throw e;
+    }
+  }
+
   const service = {
     list: async (c, parentId, q = {}) => {
       const { limit, offset } = page(q);
@@ -184,6 +270,7 @@ function buildResource(cfg) {
       return rows;
     },
     verify,
+    unverify,
     async create(c, { parentId, data, actor = {}, env }) {
       await assertParent(c, parentId);
       // Sensitive-field maker-checker (§8): in LIVE a bank / tax-registration
@@ -292,6 +379,8 @@ function buildResource(cfg) {
     }),
     verify: asyncHandler(async (req, res) =>
       res.json({ data: await req.tenantDb((c) => service.verify(c, { parentId: req.params.id, id: req.params.childId, actor: actorOf(req) })) })),
+    unverify: asyncHandler(async (req, res) =>
+      res.json({ data: await req.tenantDb((c) => service.unverify(c, { parentId: req.params.id, id: req.params.childId, actor: actorOf(req) })) })),
     update: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.update(c, { parentId: req.params.id, id: req.params.childId, patch: req.body, actor: actorOf(req), env: req.env })) })),
     remove: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.remove(c, { parentId: req.params.id, id: req.params.childId, actor: actorOf(req) })) })),
   };
@@ -406,7 +495,8 @@ function entityResourceSpecs() {
     },
     {
       seg: "registrations", table: "entity_registration", pk: "registration_id",
-      create: entityCommon.registrationCreate, update: entityCommon.registrationUpdate, touch: true,
+      create: entityCommon.registrationCreate, update: entityCommon.registrationUpdate,
+      touch: true, isVerifiableRegistration: true,
       // "Primary for this country" — what the checkbox on the form says.
       primaryScope: ["country_code"],
       writable: ["country_code", "kind", "number", "issuing_authority", "issued_on", "expires_on", "is_primary", "notes"],
@@ -463,6 +553,7 @@ function mountEntityNested(router, { moduleKey, parentTable, parentPk }) {
       table: r.table, pk: r.pk, parentCol: "entity_id",
       parentTable, parentPk, moduleKey, label: r.table,
       writable: r.writable, touch: r.touch, isDocument: r.isDocument,
+      isVerifiableRegistration: r.isVerifiableRegistration,
       numberingKey: r.numberingKey, immutable: r.immutable,
       primaryScope: r.primaryScope,
     });
@@ -473,7 +564,12 @@ function mountEntityNested(router, { moduleKey, parentTable, parentPk }) {
     const viewAction = ["people", "documents"].includes(r.seg) ? "edit" : "view";
     router.get(`/:id/${r.seg}`, requirePermission(moduleKey, viewAction), controller.list);
     router.post(`/:id/${r.seg}`, requirePermission(moduleKey, "create"), validate(r.create), controller.create);
-    if (r.isDocument) router.post(`/:id/${r.seg}/:childId/verify`, requirePermission(moduleKey, "approve"), controller.verify);
+    if (r.isDocument || r.isVerifiableRegistration) {
+      router.post(`/:id/${r.seg}/:childId/verify`, requirePermission(moduleKey, "approve"), controller.verify);
+    }
+    if (r.isVerifiableRegistration) {
+      router.post(`/:id/${r.seg}/:childId/unverify`, requirePermission(moduleKey, "approve"), controller.unverify);
+    }
     router.patch(`/:id/${r.seg}/:childId`, requirePermission(moduleKey, "edit"), validate(r.update), controller.update);
     router.delete(`/:id/${r.seg}/:childId`, requirePermission(moduleKey, "delete"), controller.remove);
   }

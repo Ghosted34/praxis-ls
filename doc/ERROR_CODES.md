@@ -25,11 +25,13 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 5× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (572)
+## All codes (590)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
 | `2FA_NOT_IMPLEMENTED` | 501 | 1× | — |
+| `ACCOUNT_MISMATCH` | 422 | 1× | — |
+| `ACCOUNT_NOT_CASH_CAPABLE` | 422 | 1× | — |
 | `ACTUALS_LOCKED` | — | 1× | — |
 | `ADVANCE_NOT_CLEARED` | 422 | 2× | — |
 | `AI_ACTION_FORBIDDEN` | 403 | 1× | — |
@@ -49,8 +51,10 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `ALREADY_EXISTS` | 409 | 2× | — |
 | `ALREADY_GRANTED` | 409 | 1× | — |
 | `ALREADY_INSTANTIATED` | 409 | 1× | — |
+| `ALREADY_MATCHED` | 409 | 1× | — |
 | `ALREADY_MERGED` | 409 | 2× | — |
 | `ALREADY_POSTED` | 409 | 3× | — |
+| `ALREADY_PROPOSED` | 409 | 1× | — |
 | `ALREADY_QUOTED` | 409 | 1× | — |
 | `ALREADY_RECONCILED` | 409 | 1× | — |
 | `ALREADY_RESTORED` | 409 | 1× | — |
@@ -102,7 +106,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `BAD_PRINCIPAL` | 422 | 2× | — |
 | `BAD_PWA_VALUE` | 422 | 2× | — |
 | `BAD_RATE` | 422 | 3× | — |
-| `BAD_REPLACEMENT` | 422 | 1× | — |
+| `BAD_REPLACEMENT` | 422 | 2× | — |
 | `BAD_REQUEST` | 400 | 3× | — |
 | `BAD_ROLE` | 422 | 1× | — |
 | `BAD_SAVEPOINT` | 500 | 1× | — |
@@ -136,6 +140,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `CAPABILITY_REQUIRED` | 403 | 1× | — |
 | `CATALOGUE_TAKEN` | 409 | 1× | — |
 | `CATEGORY_INACTIVE` | 422 | 1× | — |
+| `CATEGORY_LOCKED` | 422 | 2× | — |
 | `CERTIFIED_NOT_AVAILABLE` | — | 2× | — |
 | `CLASH_DETECTED` | 409 | 2× | — |
 | `CLASS_MISMATCH` | 422 | 1× | — |
@@ -154,15 +159,18 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `COSTING_EXISTS` | — | 1× | — |
 | `COSTING_NOT_APPROVED` | 403 | 2× | — |
 | `COST_CENTER_REQUIRED` | 422 | 1× | — |
-| `COUNT_NOT_ATTESTED` | 409 | 1× | — |
+| `COUNT_NOT_ATTESTED` | 409, 422 | 2× | — |
 | `COUNT_SHEET_DISAGREES` | 422 | 1× | — |
 | `CREDENTIAL_TAKEN` | 409 | 1× | — |
 | `CURRENCY_IN_USE` | 409 | 1× | — |
+| `CURRENCY_MISMATCH` | 422 | 1× | — |
+| `CUSTODIAN_ATTESTATION_REQUIRED` | 403 | 1× | — |
 | `CYCLIC_PARENT` | 422 | 2× | — |
 | `DATE_REQUIRED` | 422 | 1× | — |
 | `DEFAULT_OUT_OF_SCOPE` | — | 1× | — |
 | `DEVICE_NOT_REGISTERED` | 422 | 1× | — |
 | `DEVICE_REVOKED` | 422 | 1× | — |
+| `DIRECTION_MISMATCH` | 422 | 1× | — |
 | `DOCUMENT_AMENDED` | 409 | 3× | — |
 | `DOCUMENT_UNREADABLE` | — | 1× | — |
 | `DOC_NOT_VERIFIED` | 422 | 1× | — |
@@ -198,8 +206,10 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `EMPTY_TRANSCRIPT` | 422 | 1× | — |
 | `ENTITLEMENT_CHECK_UNAVAILABLE` | — | 1× | — |
 | `ENTITLEMENT_EXCEEDED` | — | 1× | — |
+| `ENTITY_MISMATCH` | 422 | 1× | — |
 | `ENTITY_NOT_IN_IDENTITY_SCHEMA` | — | 1× | — |
 | `ENTITY_REQUIRED` | 422 | 12× | — |
+| `ENTRY_NOT_ON_ACCOUNT` | 400 | 1× | — |
 | `ENVELOPE_IN_FLIGHT` | 409 | 1× | — |
 | `EVENT_FORBIDDEN` | 403 | 1× | — |
 | `EVERY_LINE_NEEDS_BUDGET` | — | 1× | — |
@@ -259,6 +269,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `ITINERARY_INVALID` | 422 | 1× | — |
 | `ITINERARY_LEG_REQUIRED` | — | 1× | — |
 | `JOIN_LINK_REQUIRED` | — | 1× | — |
+| `JOURNAL_NOT_VALIDATED` | 422 | 1× | — |
 | `KEY_IMMUTABLE` | 422 | 1× | — |
 | `KEY_RESERVED` | 422 | 2× | — |
 | `KEY_TAKEN` | 422 | 4× | — |
@@ -274,7 +285,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `LINE_HAS_CLAIMS` | — | 1× | — |
 | `LINE_REQUIRED` | 422 | 1× | — |
 | `LOCATION_REQUIRED` | — | 1× | — |
-| `LOCKED` | 422 | 35× | — |
+| `LOCKED` | 422 | 36× | — |
 | `LOCKED_NOT_DEFAULT` | — | 1× | — |
 | `LOGIN_THROTTLED` | 429 | 1× | — |
 | `LOW_MARGIN_JUSTIFICATION_REQUIRED` | 422 | 1× | — |
@@ -320,7 +331,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_EDITABLE` | 400 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 3× | — |
-| `NOT_FOUND` | 404, 422 | 666× | — |
+| `NOT_FOUND` | 404, 422 | 682× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_OPEN` | 409, 422 | 3× | — |
 | `NOT_OPERATIONAL` | 422 | 1× | — |
@@ -373,9 +384,11 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NO_FINGERPRINT` | 422 | 1× | — |
 | `NO_FX_RATE` | 422 | 1× | — |
 | `NO_ITEMS` | 422 | 2× | — |
+| `NO_JOURNAL` | 422 | 1× | — |
 | `NO_LINES` | 422 | 10× | — |
 | `NO_MODULE` | 422 | 2× | — |
-| `NO_NETWORK` | 422 | 1× | — |
+| `NO_NETWORK` | 422 | 2× | — |
+| `NO_OPEN_PERIOD` | 422 | 1× | — |
 | `NO_OPEN_SHIFT` | 404 | 1× | — |
 | `NO_ORIGIN` | 422 | 1× | — |
 | `NO_PARENT` | 422 | 1× | — |
@@ -407,6 +420,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `OAUTH_PROBE_FAILED` | 502 | 1× | — |
 | `OAUTH_REDIRECT_MISCONFIGURED` | — | 1× | — |
 | `ODOMETER_BACKWARDS` | 422 | 1× | — |
+| `OPENING_BALANCE_REASON_REQUIRED` | 422 | 1× | — |
 | `OPS_CODE_TAKEN` | 422 | 1× | — |
 | `OPS_CONTEXT_REQUIRED` | 422 | 1× | — |
 | `OPS_MARKER_EXHAUSTED` | 500 | 1× | — |
@@ -453,8 +467,11 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `PREFIX_IN_USE` | 422 | 1× | — |
 | `PREFIX_TAKEN` | 422 | 1× | — |
 | `PRESET_NOT_ALLOWED` | 422 | 2× | — |
+| `PRIMARY_DEACTIVATION_BLOCKED` | 422 | 1× | — |
 | `PRINT_CODE_EXHAUSTED` | 500 | 1× | — |
 | `PRIVILEGED_TARGET` | 403 | 1× | — |
+| `PROFILE_ENTITY_MISMATCH` | 422 | 1× | — |
+| `PROFILE_SOURCE_KIND_MISMATCH` | 422 | 1× | — |
 | `PROOF_REQUIRED` | 422 | 1× | — |
 | `PROTECTED` | 422 | 1× | — |
 | `PROTECTED_ROLE` | 409 | 1× | — |
@@ -586,12 +603,13 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `USER_NOT_ACTIVE` | 422 | 1× | — |
 | `USE_APPROVE` | 422 | 1× | — |
 | `VACANCY_CLOSED` | — | 1× | — |
-| `VALIDATION_ERROR` | 422 | 267× | — |
+| `VALIDATION_ERROR` | 422 | 266× | — |
 | `VALIDATOR_NOT_LINE_MANAGER` | — | 1× | — |
 | `VARIANCE_UNEXPLAINED` | 422 | 1× | — |
 | `VEHICLE_COMMITTED` | — | 1× | — |
 | `VEHICLE_NOT_FOUND` | 404 | 1× | — |
 | `VEHICLE_UNAVAILABLE` | 422 | 1× | — |
+| `VERIFICATION_INCOMPLETE` | — | 3× | — |
 | `VOICE_TOO_LONG` | 422 | 1× | — |
 | `WEAK_PASSWORD` | 422 | 2× | — |
 | `WEBAUTHN_UNAVAILABLE` | 500 | 1× | — |

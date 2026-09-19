@@ -86,7 +86,7 @@ describe("treasury 360 timeline reads event_log, not a table that never existed"
     // `action` and `actor_user_id` need no alias — same name on both.
     expect(sql).toMatch(/\baction\b/);
     // Ordering must follow the real column, not the alias.
-    expect(sql).toMatch(/ORDER BY created_at DESC/);
+    expect(sql).toMatch(/ORDER BY (?:il\.)?created_at DESC/);
   });
 
   it("clamps the limit rather than trusting the caller", async () => {

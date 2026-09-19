@@ -4,6 +4,7 @@ const service = require("./assistant.service");
 const { asyncHandler } = require("../../../utils/errors");
 const { buildTablesWorkbook } = require("./assistant.export");
 const { resolveContext, exportFilename } = require("../../../services/spreadsheet");
+const { canSeeRegistrations } = require("../../../modules/master/_shared/confidential");
 const user = (req) => req.user || { user_id: null };
 
 /**
@@ -21,6 +22,9 @@ const exportTables = asyncHandler(async (req, res) => {
     const context = await resolveContext(client, {
       title: req.user && req.user.full_name ? `AI — ${req.user.full_name}` : "AI export",
       actor: user(req),
+      // PR-04: the cover's RCCM/NIU are registration numbers, so they follow
+      // the requester's MOD-01 view grant like every other export.
+      registrationNumbers: await canSeeRegistrations(req),
     });
     return buildTablesWorkbook(req.body.tables, context);
   });

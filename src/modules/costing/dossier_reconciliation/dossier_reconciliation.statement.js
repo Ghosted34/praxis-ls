@@ -205,12 +205,14 @@ async function statementPdf(client, { dossierId, actor = {}, language = null }) 
  * generated-at and the brand), the data sheet carries one row per budget
  * line with the reason and the proofs — the three conditions of Q19 again.
  */
-async function statementXlsx(client, { dossierId } = {}) {
+async function statementXlsx(client, { dossierId, registrationNumbers = false } = {}) {
   const data = await statementData(client, { dossierId });
   // Language is the ENTITY's, resolved inside the context — the workbook is a
   // controlled document of the file's tenant, and its language was chosen the
-  // day the entity was configured, not per-download.
-  const ctx = await spreadsheet.resolveContext(client, { entityId: data.entity_id });
+  // day the entity was configured, not per-download. `registrationNumbers`
+  // (PR-04) is the requester's MOD-01 view grant, resolved by the controller:
+  // the xlsx cover is an export, so its RCCM/NIU lines obey the tax boundary.
+  const ctx = await spreadsheet.resolveContext(client, { entityId: data.entity_id, registrationNumbers });
   const fr = ctx.language === "fr";
   const H = (f, e) => (fr ? f : e);
   const day = (v) => (v ? String(v).slice(0, 10).split("-").reverse().join("/") : "");

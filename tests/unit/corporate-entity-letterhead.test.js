@@ -499,6 +499,95 @@ describe("renewal ladder", () => {
     expect(r.items[0].state).toBe("APPROACHING");
   });
 
+  it("monitors only the SELECTED registration per (country, kind) — the current-row rule", () => {
+    // A superseded row expiring sooner must not shout over the row that is
+    // actually current; the array is history, not a lifecycle.
+    const r = rn.renewals(
+      {
+        registrations: [
+          { registration_id: "r-old", kind: "NIU", number: "OLD", country_code: "CM", is_primary: false, expires_on: "2026-08-10" },
+          { registration_id: "r-now", kind: "NIU", number: "NEW", country_code: "CM", is_primary: true, expires_on: "2026-10-01" },
+        ],
+      },
+      TODAY,
+    );
+    expect(r.items).toHaveLength(1);
+    expect(r.items[0].id).toBe("r-now");
+    expect(r.ambiguous_registrations).toEqual([]);
+  });
+
+  it("selects a sole row with no primary, and keeps monitoring it after expiry", () => {
+    const r = rn.renewals(
+      {
+        registrations: [
+          { registration_id: "r-only", kind: "RCCM", number: "X", country_code: "CM", is_primary: false, expires_on: "2026-01-01" },
+        ],
+      },
+      TODAY,
+    );
+    expect(r.items).toHaveLength(1);
+    expect(r.items[0]).toMatchObject({ id: "r-only", kind: "REGISTRATION", state: "EXPIRED" });
+  });
+
+  it("reports an ambiguous key as a data-quality finding and monitors no row for it", () => {
+    const r = rn.renewals(
+      {
+        registrations: [
+          { registration_id: "r-a", kind: "VAT", number: "A", country_code: "FR", expires_on: "2026-08-10" },
+          { registration_id: "r-b", kind: "VAT", number: "B", country_code: "FR", expires_on: "2026-09-01" },
+        ],
+      },
+      TODAY,
+    );
+    expect(r.items).toEqual([]);
+    expect(r.ambiguous_registrations).toEqual([
+      { country_code: "FR", kind: "VAT", rows: 2, reason: "no_primary_multiple_rows" },
+    ]);
+  });
+
+  it("treats two primary rows as ambiguous too — selection must be unique", () => {
+    const r = rn.renewals(
+      {
+        registrations: [
+          { registration_id: "r-a", kind: "NIU", number: "A", country_code: "CM", is_primary: true, expires_on: "2026-08-10" },
+          { registration_id: "r-b", kind: "NIU", number: "B", country_code: "CM", is_primary: true, expires_on: "2026-09-01" },
+        ],
+      },
+      TODAY,
+    );
+    expect(r.items).toEqual([]);
+    expect(r.ambiguous_registrations).toEqual([
+      { country_code: "CM", kind: "NIU", rows: 2, reason: "multiple_primary_rows" },
+    ]);
+  });
+
+  it("groups the current-row key by country and kind, case-insensitively", () => {
+    const r = rn.renewals(
+      {
+        registrations: [
+          { registration_id: "r-cm", kind: "NIU", number: "CM-NIU", country_code: "CM", is_primary: true, expires_on: "2026-08-20" },
+          { registration_id: "r-fr", kind: "NIU", number: "FR-NIU", country_code: "FR", is_primary: true, expires_on: "2026-08-25" },
+        ],
+      },
+      TODAY,
+    );
+    // Two DIFFERENT keys — both selected, both monitored.
+    expect(r.items.map((i) => i.id).sort()).toEqual(["r-cm", "r-fr"]);
+  });
+
+  it("keeps an unverified selected row selected — verification is a gate, not a selector", () => {
+    const r = rn.renewals(
+      {
+        registrations: [
+          { registration_id: "r-v", kind: "NIU", number: "N", country_code: "CM", is_primary: true, verified: false, expires_on: "2026-08-20" },
+        ],
+      },
+      TODAY,
+    );
+    expect(r.items).toHaveLength(1);
+    expect(r.items[0].id).toBe("r-v");
+  });
+
   it("produces compliance flags that never exceed a recommendation", () => {
     const r = rn.renewals(
       {

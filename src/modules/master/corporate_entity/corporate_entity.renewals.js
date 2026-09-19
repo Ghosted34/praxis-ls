@@ -76,6 +76,55 @@ const num = (v) => (v === null || v === undefined || v === "" || !Number.isFinit
 const leadFor = (doc) => num(doc.renewal_lead_days) ?? num(doc.type_renewal_lead_days) ?? DEFAULT_LEAD_DAYS;
 
 /**
+ * The current-row rule for statutory registrations —
+ * doc/CORPORATE_ENTITY_REGISTRATION_CURRENT_ROW.md (normative, PR-03).
+ *
+ * A registration array is HISTORY, not an ordered lifecycle: the row that
+ * matters is not "the first one" or "the latest one" but the SELECTED one, and
+ * nothing about expiry may promote a different row to its place. Per
+ * (country, kind):
+ *
+ *   1. a unique `is_primary = true` row is the selected current row;
+ *   2. with no primary, a sole row is selected; two or more are ambiguous and
+ *      NO row is current — guessing would monitor history;
+ *   3. `verified` and `expires_on` are gates, not selectors — an unverified or
+ *      expired selected row stays selected (a fallback would silently swap the
+ *      number a renewal is about).
+ *
+ * `verified`/`verified_at`/`verified_by` ride on the row already (0515) and
+ * survive PR-04 redaction, which deletes only the number.
+ *
+ * @returns {{ selected: object[], ambiguous: Array<{country_code: string, kind: string, rows: number, reason: string}> }}
+ *          `ambiguous` is the data-quality finding the contract asks for: the
+ *          keys where no row could be selected, reported rather than swallowed,
+ *          because an expiring registration the list silently dropped is worse
+ *          than one it names.
+ */
+function selectedRegistrations(rows) {
+  const groups = new Map();
+  for (const r of rows || []) {
+    const key = `${String(r.country_code || "").toUpperCase()}|${String(r.kind || "").toUpperCase()}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(r);
+  }
+  const selected = [];
+  const ambiguous = [];
+  for (const group of groups.values()) {
+    const primaries = group.filter((r) => r.is_primary === true);
+    if (primaries.length === 1) {
+      selected.push(primaries[0]);
+    } else if (primaries.length > 1) {
+      ambiguous.push({ country_code: group[0].country_code || null, kind: group[0].kind || null, rows: group.length, reason: "multiple_primary_rows" });
+    } else if (group.length === 1) {
+      selected.push(group[0]);
+    } else {
+      ambiguous.push({ country_code: group[0].country_code || null, kind: group[0].kind || null, rows: group.length, reason: "no_primary_multiple_rows" });
+    }
+  }
+  return { selected, ambiguous };
+}
+
+/**
  * Everything on this entity that needs renewing, most urgent first.
  *
  * @param {object} input.documents          entity_document rows (joined to their type)
@@ -86,6 +135,13 @@ const leadFor = (doc) => num(doc.renewal_lead_days) ?? num(doc.type_renewal_lead
 function renewals({ documents = [], registrations = [], taxRegistrations = [] }, today = null) {
   const on = today || new Date().toISOString().slice(0, 10);
   const items = [];
+
+  // Statutory registrations: only the SELECTED row per (country, kind) is
+  // monitored — the current-row rule. Superseded history rows are not this
+  // list's business; their expiry belongs to the past, not to a person's week.
+  // An expired selected row STAYS here (rule 3): expiry must not promote the
+  // next historical row into a warning it has no right to raise.
+  const { selected: selectedRegistrationRows, ambiguous: ambiguousRegistrations } = selectedRegistrations(registrations);
 
   for (const d of documents) {
     if (d.is_active === false) continue;
@@ -111,7 +167,7 @@ function renewals({ documents = [], registrations = [], taxRegistrations = [] },
     });
   }
 
-  for (const r of registrations) {
+  for (const r of selectedRegistrationRows) {
     const expires = isoDate(r.expires_on);
     if (!expires) continue;
     const { state, days_remaining } = stateOf(expires, on, DEFAULT_LEAD_DAYS);
@@ -153,6 +209,12 @@ function renewals({ documents = [], registrations = [], taxRegistrations = [] },
       due: items.filter((i) => i.state === "DUE").length,
       approaching: items.filter((i) => i.state === "APPROACHING").length,
     },
+    // Data-quality findings from the current-row rule: registration keys where
+    // no row could be selected (no sole row, no unique primary). Nothing is
+    // monitored for these keys — an arbitrary pick would warn about history —
+    // so the ambiguity itself is reported instead of being swallowed. Advisory
+    // like everything else here: it is a finding for a person, not a block.
+    ambiguous_registrations: ambiguousRegistrations,
   };
 }
 
@@ -192,6 +254,6 @@ function toComplianceFlags(entityId, result) {
 }
 
 module.exports = {
-  renewals, stateOf, toComplianceFlags, hardest, isoDate, addDays, daysBetween,
+  renewals, selectedRegistrations, stateOf, toComplianceFlags, hardest, isoDate, addDays, daysBetween,
   DEFAULT_LEAD_DAYS, SEVERITY_BY_STATE,
 };

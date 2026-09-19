@@ -4,6 +4,7 @@ const statement = require("./dossier_reconciliation.statement");
 const vault = require("../../vault/document_vault/document_vault.service");
 const { fileMeta } = require("../../vault/document_vault/document_vault.controller");
 const { exportFilename } = require("../../../services/spreadsheet");
+const { canSeeRegistrations } = require("../../master/_shared/confidential");
 const { asyncHandler } = require("../../../utils/errors");
 
 const actor = (req) => req.user || { user_id: null };
@@ -111,7 +112,11 @@ module.exports = {
   statement: asyncHandler(async (req, res) => {
     const out = await req.tenantDb(async (c) => {
       if (req.query.format === "xlsx") {
-        const x = await statement.statementXlsx(c, { dossierId: req.params.dossierId });
+        // registrationNumbers (PR-04): the cover's RCCM/NIU are our own entity's
+        // statutory identifiers and follow the caller's MOD-01 view grant. The
+        // PDF half keeps the documents kit's letterhead — a rendered statement
+        // carries its statutory mentions by design (CE-18).
+        const x = await statement.statementXlsx(c, { dossierId: req.params.dossierId, registrationNumbers: await canSeeRegistrations(req) });
         return {
           buffer: x.buffer,
           filename: exportFilename({ base: x.filenameBase, env: req.env, extension: "xlsx" }),

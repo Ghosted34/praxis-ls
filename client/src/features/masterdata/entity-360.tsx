@@ -55,7 +55,14 @@ import { NewMessageDialog } from "@/features/comms/inbox/composer/new-message";
 import { WorkingCalendarTab } from "./working-calendar-tab";
 import { EntityPublicStoryTab } from "./entity-public-story-tab";
 import { useResource, useList, errMsg } from "@/lib/use-resource";
-import { money, num, dateDmy, enumLabel, toDateInput } from "@/lib/format";
+import {
+  money,
+  num,
+  dateDmy,
+  dateTimeFmt,
+  enumLabel,
+  toDateInput,
+} from "@/lib/format";
 import { reportActionError } from "@/lib/action-error";
 import { pageShell } from "@/lib/layout";
 import { entityCommon } from "@shared";
@@ -1278,6 +1285,12 @@ export function EntityDossier({
   const [statusOpen, setStatusOpen] = React.useState(false);
   const [structureOpen, setStructureOpen] = React.useState(false);
   const [opsPrefixOpen, setOpsPrefixOpen] = React.useState(false);
+  const [registrationVerifyBusy, setRegistrationVerifyBusy] = React.useState<
+    string | null
+  >(null);
+  const [registrationVerifyError, setRegistrationVerifyError] = React.useState<
+    string | null
+  >(null);
   // Which KPI tile's drill-in is open, if any. The dialog is mounted only while
   // one is chosen, so the fetching kinds (employees, journal) do not issue a
   // request for a list nobody asked to see.
@@ -1323,6 +1336,28 @@ export function EntityDossier({
       reload();
     } catch (e) {
       reportActionError(e);
+    }
+  }
+
+  async function setRegistrationVerified(
+    registration: api.EntityRegistration,
+    verified: boolean,
+  ) {
+    setRegistrationVerifyBusy(registration.registration_id);
+    setRegistrationVerifyError(null);
+    try {
+      if (verified) {
+        await api.verifyEntityRegistration(entityId, registration.registration_id);
+        toast.success("Registration verified.");
+      } else {
+        await api.unverifyEntityRegistration(entityId, registration.registration_id);
+        toast.success("Registration marked unverified.");
+      }
+      reload();
+    } catch (e) {
+      setRegistrationVerifyError(errMsg(e));
+    } finally {
+      setRegistrationVerifyBusy(null);
     }
   }
 
@@ -1757,6 +1792,9 @@ export function EntityDossier({
             ) : undefined
           }
         >
+          {registrationVerifyError && (
+            <ErrorState message={registrationVerifyError} />
+          )}
           <MiniTable
             empty={registrations.length === 0}
             head={
@@ -1767,6 +1805,7 @@ export function EntityDossier({
                 <Th>Authority</Th>
                 <Th>{tr("Issued")}</Th>
                 <Th>{tr("Expires")}</Th>
+                <Th>{tr("Verification")}</Th>
                 <Th />
               </>
             }
@@ -1789,33 +1828,55 @@ export function EntityDossier({
                 <Td>{r.issuing_authority || "—"}</Td>
                 <Td>{r.issued_on ? dateDmy(r.issued_on) : "—"}</Td>
                 <Td>{r.expires_on ? dateDmy(r.expires_on) : "—"}</Td>
+                <Td>
+                  <Pill tone={r.verified ? "ok" : "warn"}>
+                    {r.verified ? tr("Verified") : tr("Not verified")}
+                  </Pill>
+                  {r.verified && r.verified_at ? (
+                    <div className="micro text-muted-foreground">
+                      {dateTimeFmt(r.verified_at)}
+                    </div>
+                  ) : null}
+                </Td>
                 <Td r>
-                  {caps.edit && (
-                    <>
+                  <div className="flex flex-wrap justify-end gap-2">
+                    {caps.approve && (
                       <Button
                         size="sm"
                         variant="ghost"
-                        onClick={() =>
-                          setEditing({
-                            seg: "registrations",
-                            title: "Edit registration",
-                            row: r as unknown as Record<string, unknown>,
-                          })
-                        }
+                        loading={registrationVerifyBusy === r.registration_id}
+                        onClick={() => void setRegistrationVerified(r, !r.verified)}
                       >
-                        Edit
+                        {r.verified ? "Unverify" : "Verify"}
                       </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() =>
-                          removeChild("registrations", r.registration_id)
-                        }
-                      >
-                        Remove
-                      </Button>
-                    </>
-                  )}
+                    )}
+                    {caps.edit && (
+                      <>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() =>
+                            setEditing({
+                              seg: "registrations",
+                              title: "Edit registration",
+                              row: r as unknown as Record<string, unknown>,
+                            })
+                          }
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() =>
+                            removeChild("registrations", r.registration_id)
+                          }
+                        >
+                          Remove
+                        </Button>
+                      </>
+                    )}
+                  </div>
                 </Td>
               </tr>
             ))}

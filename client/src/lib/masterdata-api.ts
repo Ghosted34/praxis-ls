@@ -309,6 +309,10 @@ export type Entity = {
 export type EntityInput = Partial<Omit<Entity, "entity_id" | "is_active">> & {
   code: string;
   legal_name: string;
+  /** PR-02 atomic creation: optional initial REGISTERED address committed in the same transaction. */
+  initial_address?: Partial<EntityAddress> & {
+    type?: EntityAddress["type"];
+  };
 };
 
 /* Nested collections owned by an entity. */
@@ -414,7 +418,15 @@ export type EntityRegistration = {
   expires_on?: string | null;
   is_primary?: boolean;
   verified?: boolean;
+  verified_by?: string | null;
+  verified_at?: string | null;
   notes?: string | null;
+  /**
+   * Set when the caller lacks MOD-01 view: the number itself is absent from
+   * the row rather than blanked, so the kind/country/dates still render and
+   * the compliance story stays readable. See entity-360.service.redactRegistration.
+   */
+  redacted?: boolean;
 };
 export type EntityEstablishment = {
   establishment_id: string;
@@ -500,6 +512,8 @@ export type EntityTaxRegistration = {
   /** Joined from `app_user` — who chases this filing. */
   responsible_name?: string | null;
   notes?: string | null;
+  /** Set when the caller lacks MOD-01 view — the number is absent, not blanked. */
+  redacted?: boolean;
 };
 
 export type TaxObligation = {
@@ -510,6 +524,12 @@ export type TaxObligation = {
   period_code?: string | null;
   tax_kind?: string | null;
   country_code?: string | null;
+  /**
+   * Joined from the tax registration — which number files this obligation.
+   * Absent (with `redacted`) for a caller without MOD-01 view.
+   */
+  tax_number?: string | null;
+  redacted?: boolean;
 };
 
 export type LetterheadConfig = {
@@ -690,6 +710,18 @@ export type Renewals = {
   as_of: string;
   items: RenewalItem[];
   counts: { expired: number; due: number; approaching: number };
+  /**
+   * Current-row data-quality findings (doc/CORPORATE_ENTITY_REGISTRATION_
+   * CURRENT_ROW.md): registration keys where no row could be selected — no sole
+   * row and no unique primary. Nothing is monitored for those keys; the
+   * ambiguity itself is the finding. Advisory, like every renewal.
+   */
+  ambiguous_registrations?: Array<{
+    country_code: string | null;
+    kind: string | null;
+    rows: number;
+    reason: "multiple_primary_rows" | "no_primary_multiple_rows";
+  }>;
 };
 
 export type CapTableFinding = {
@@ -910,6 +942,23 @@ export const updateEntityChild = <T>(
 export const verifyEntityDocument = (entityId: string, documentId: string) =>
   tenant<EntityDocument>(
     `/entities/${entityId}/documents/${documentId}/verify`,
+    { method: "POST" },
+  );
+/** MOD-01 approval transitions; ordinary registration PATCH cannot write these fields. */
+export const verifyEntityRegistration = (
+  entityId: string,
+  registrationId: string,
+) =>
+  tenant<EntityRegistration>(
+    `/entities/${entityId}/registrations/${registrationId}/verify`,
+    { method: "POST" },
+  );
+export const unverifyEntityRegistration = (
+  entityId: string,
+  registrationId: string,
+) =>
+  tenant<EntityRegistration>(
+    `/entities/${entityId}/registrations/${registrationId}/unverify`,
     { method: "POST" },
   );
 export const deleteEntityChild = (

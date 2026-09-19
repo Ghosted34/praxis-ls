@@ -43,17 +43,43 @@ async function update(client, id, fields) {
  */
 async function list(client, q = {}) {
   const { limit, offset } = page(q);
-  const params = [limit, offset];
   const wh = [];
+  const params = [];
+
   if (q.entity_id) { params.push(q.entity_id); wh.push("t.entity_id = $" + params.length); }
   if (q.kind)      { params.push(q.kind);      wh.push("t.kind = $" + params.length); }
   if (q.category_id) { params.push(q.category_id); wh.push("t.category_id = $" + params.length); }
-  if (q.is_active !== undefined) {
+  if (q.is_active !== undefined && q.is_active !== null && q.is_active !== "") {
     params.push(q.is_active === "true" || q.is_active === true);
     wh.push("t.is_active = $" + params.length);
   }
+  if (q.is_primary !== undefined && q.is_primary !== null && q.is_primary !== "") {
+    params.push(q.is_primary === "true" || q.is_primary === true);
+    wh.push("t.is_primary = $" + params.length);
+  }
+  if (q.is_verified !== undefined && q.is_verified !== null && q.is_verified !== "") {
+    params.push(q.is_verified === "true" || q.is_verified === true);
+    wh.push("t.is_verified = $" + params.length);
+  }
   if (q.custodian_user_id) { params.push(q.custodian_user_id); wh.push("t.custodian_user_id = $" + params.length); }
+  if (q.search || q.q) {
+    const term = (q.search || q.q).trim();
+    if (term) {
+      params.push(`%${term}%`);
+      const p = params.length;
+      wh.push(`(t.label ILIKE $${p} OR t.coa_code ILIKE $${p} OR t.account_number ILIKE $${p} OR t.bank_name ILIKE $${p} OR t.iban ILIKE $${p} OR t.momo_number ILIKE $${p} OR c.label ILIKE $${p})`);
+    }
+  }
+
   const where = wh.length ? "WHERE " + wh.join(" AND ") : "";
+
+  const { rows: countRows } = await client.query(
+    "SELECT COUNT(*)::int AS total FROM treasury_account t LEFT JOIN treasury_category c ON c.treasury_category_id = t.category_id " + where,
+    params,
+  );
+  const total = Number(countRows[0]?.total || 0);
+
+  const queryParams = [...params, limit, offset];
   const { rows } = await client.query(
     "SELECT t.*, c.code AS category_code, c.label AS category_label, " +
     "       c.requires_custodian AS category_requires_custodian, " +
@@ -63,9 +89,12 @@ async function list(client, q = {}) {
     "  FROM treasury_account t " +
     "  LEFT JOIN treasury_category c ON c.treasury_category_id = t.category_id " +
     "  " + where +
-    " ORDER BY t.is_primary DESC, t.created_at DESC LIMIT $1 OFFSET $2",
-    params,
+    ` ORDER BY t.is_primary DESC, t.created_at DESC LIMIT $${queryParams.length - 1} OFFSET $${queryParams.length}`,
+    queryParams,
   );
+  rows.total = total;
+  rows.limit = limit;
+  rows.offset = offset;
   return rows;
 }
 
@@ -94,6 +123,19 @@ async function getCategory(client, id) {
   const { rows } = await client.query(
     "SELECT * FROM treasury_category WHERE treasury_category_id = $1",
     [id],
+  );
+  return rows[0] || null;
+}
+
+/**
+ * Load and lock the parent CoA row FOR UPDATE. Concurrency safety for nextLeafCode:
+ * prevents concurrent transactions from allocating the same next leaf under this parent.
+ * Also used to assert the parent is valid before leaf insertion.
+ */
+async function lockParentCoa(client, code) {
+  const { rows } = await client.query(
+    "SELECT code, class, is_postable, parent_code FROM chart_of_accounts WHERE code = $1 FOR UPDATE",
+    [code],
   );
   return rows[0] || null;
 }
@@ -200,9 +242,85 @@ async function deleteGateway(client, provider) {
   return rowCount > 0;
 }
 
+// ── Documents (PR-03, Audit #1, #2) ──
+async function listDocuments(client, accountId) {
+  const { rows } = await client.query(
+    "SELECT * FROM treasury_account_document WHERE treasury_account_id = $1 ORDER BY created_at DESC",
+    [accountId],
+  );
+  return rows;
+}
+
+async function insertDocument(client, data) {
+  return insertOne(client, "treasury_account_document", data, "*", [
+    "treasury_account_id", "document_type", "title", "document_number",
+    "vault_id", "file_name", "file_size", "mime_type", "issue_date", "expiry_date",
+    "upload_status", "is_verified", "verified_by", "verified_at", "notes", "created_by",
+  ]);
+}
+
+async function getDocument(client, documentId) {
+  return getById(client, "treasury_account_document", "document_id", documentId);
+}
+
+async function deleteDocument(client, documentId) {
+  const { rowCount } = await client.query(
+    "DELETE FROM treasury_account_document WHERE document_id = $1",
+    [documentId],
+  );
+  return rowCount > 0;
+}
+
+async function verifyDocument(client, documentId, verifiedBy) {
+  return updateOne(client, "treasury_account_document", "document_id", documentId, {
+    is_verified: true,
+    verified_by: verifiedBy,
+    verified_at: new Date(),
+  }, "*", ["is_verified", "verified_by", "verified_at"]);
+}
+
+// ── Signatories (PR-03, Audit #3) ──
+async function listSignatories(client, accountId) {
+  const { rows } = await client.query(
+    "SELECT * FROM treasury_account_signatory WHERE treasury_account_id = $1 ORDER BY is_active DESC, signatory_type ASC, created_at ASC",
+    [accountId],
+  );
+  return rows;
+}
+
+async function insertSignatory(client, data) {
+  return insertOne(client, "treasury_account_signatory", data, "*", [
+    "treasury_account_id", "user_id", "person_id", "full_name", "email", "phone",
+    "role_title", "signatory_type", "rule_type", "limit_amount", "currency",
+    "effective_from", "effective_to", "is_active", "signature_card_doc_id", "notes", "created_by",
+  ]);
+}
+
+async function getSignatory(client, signatoryId) {
+  return getById(client, "treasury_account_signatory", "signatory_id", signatoryId);
+}
+
+async function updateSignatory(client, signatoryId, fields) {
+  return updateOne(client, "treasury_account_signatory", "signatory_id", signatoryId, fields, "*", [
+    "user_id", "person_id", "full_name", "email", "phone",
+    "role_title", "signatory_type", "rule_type", "limit_amount", "currency",
+    "effective_from", "effective_to", "is_active", "signature_card_doc_id", "notes",
+  ]);
+}
+
+async function deleteSignatory(client, signatoryId) {
+  const { rowCount } = await client.query(
+    "DELETE FROM treasury_account_signatory WHERE signatory_id = $1",
+    [signatoryId],
+  );
+  return rowCount > 0;
+}
+
 module.exports = {
   insert, get, update, list, getWithCategory,
-  getCategory, existingLeavesUnder, insertLeafCoa, setLeafActive, renameLeaf,
+  getCategory, lockParentCoa, existingLeavesUnder, insertLeafCoa, setLeafActive, renameLeaf,
   clearPrimaryInCategory,
+  listDocuments, insertDocument, getDocument, deleteDocument, verifyDocument,
+  listSignatories, insertSignatory, getSignatory, updateSignatory, deleteSignatory,
   listGateways, getGatewayRaw, upsertGateway, setGatewayActive, setGatewayRole, deleteGateway,
 };

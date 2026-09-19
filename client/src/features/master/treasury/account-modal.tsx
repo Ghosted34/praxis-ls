@@ -135,6 +135,8 @@ export function AccountModal({
   const [momoNumber, setMomoNumber] = React.useState("");
   const [momoTill, setMomoTill] = React.useState("");
   const [momoAgent, setMomoAgent] = React.useState("");
+  const [momoNetwork, setMomoNetwork] = React.useState("");
+  const [momoFeeAccount, setMomoFeeAccount] = React.useState("");
 
   // Opening + statement
   const [openBal, setOpenBal] = React.useState("");
@@ -169,6 +171,8 @@ export function AccountModal({
     setMomoNumber(str(a?.momo_number));
     setMomoTill(str(a?.momo_till));
     setMomoAgent(str(a?.momo_agent));
+    setMomoNetwork(str(a?.momo_network));
+    setMomoFeeAccount(str(a?.momo_fee_account));
     setOpenBal(numStr(a?.opening_balance));
     setOpenDate(dateStr(a?.opening_date));
     setStmtDay(a?.statement_day != null ? String(a.statement_day) : "");
@@ -245,6 +249,8 @@ export function AccountModal({
       if (momoNumber.trim()) body.momo_number = momoNumber.trim();
       if (momoTill.trim()) body.momo_till = momoTill.trim();
       if (momoAgent.trim()) body.momo_agent = momoAgent.trim();
+      if (momoNetwork.trim()) body.momo_network = momoNetwork.trim();
+      if (momoFeeAccount.trim()) body.momo_fee_account = momoFeeAccount.trim();
     }
     if (needCust) {
       body.custodian_user_id = custodian;
@@ -297,6 +303,8 @@ export function AccountModal({
       patch.momo_number = orNull(momoNumber);
       patch.momo_till = orNull(momoTill);
       patch.momo_agent = orNull(momoAgent);
+      patch.momo_network = orNull(momoNetwork);
+      patch.momo_fee_account = orNull(momoFeeAccount);
     }
     if (needCust) {
       // The backend refuses to clear a custodian on a category that requires
@@ -447,9 +455,9 @@ export function AccountModal({
 
           {showVerifiedWarning && (
             <p className="rounded-lg border border-warn/40 bg-warn/5 p-3 text-xs text-muted-foreground">
-              This account is marked <strong>verified</strong>. Saving a change
-              here does not clear that stamp — un-verify and re-verify it
-              against the bank letter once the numbers are right.
+              This account is marked <strong>verified</strong>. Modifying banking or
+              mobile-money identity details will automatically clear that stamp and
+              require re-verification against the bank letter.
             </p>
           )}
 
@@ -513,6 +521,19 @@ export function AccountModal({
               <legend className="px-1 text-sm font-medium">
                 Mobile-money identity
               </legend>
+              <Field label="MoMo network" required>
+                <Select
+                  value={momoNetwork}
+                  onChange={(e) => setMomoNetwork(e.target.value)}
+                >
+                  <option value="">Select network…</option>
+                  <option value="MTN">MTN</option>
+                  <option value="ORANGE">Orange</option>
+                  <option value="AIRTEL">Airtel</option>
+                  <option value="MOOV">Moov</option>
+                  <option value="OTHER">Other</option>
+                </Select>
+              </Field>
               <Field label="MoMo number">
                 <Input
                   value={momoNumber}
@@ -530,6 +551,13 @@ export function AccountModal({
                 <Input
                   value={momoAgent}
                   onChange={(e) => setMomoAgent(e.target.value)}
+                />
+              </Field>
+              <Field label="Fee charge account (Class 6)" hint="e.g. 6281 or 631">
+                <Input
+                  value={momoFeeAccount}
+                  onChange={(e) => setMomoFeeAccount(e.target.value)}
+                  placeholder="631000"
                 />
               </Field>
             </fieldset>

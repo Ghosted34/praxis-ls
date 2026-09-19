@@ -140,6 +140,168 @@ describe("assertCoaParent — a treasury CoA parent must be class 5, non-postabl
   });
 });
 
+describe("assertCoaParent — audit repair verification (#30, #31)", () => {
+  test("accepts 571, 581, 5381, 5382, 5711 when non-postable", () => {
+    for (const code of ["571", "581", "5381", "5382", "5711"]) {
+      expect(rules.assertCoaParent({ code, class: 5, is_postable: false })).toBe(true);
+    }
+  });
+
+  test("rejects if postable flag is still true", () => {
+    for (const code of ["571", "581", "5381", "5382", "5711"]) {
+      expect(() => rules.assertCoaParent({ code, class: 5, is_postable: true })).toThrow(/postable/);
+    }
+  });
+});
+
+describe("category safety — freezing capability & coa_parent once accounts exist (#33, #35)", () => {
+  const catService = require("../../src/modules/master/treasury_category/treasury_category.service");
+  const catRepo = require("../../src/modules/master/treasury_category/treasury_category.repo");
+
+  test("refuses CoA parent change if category is in use", async () => {
+    jest.spyOn(catRepo, "get").mockResolvedValue({
+      treasury_category_id: "cat-1",
+      code: "CUSTOM",
+      coa_parent_code: "521",
+      is_system: false,
+      requires_custodian: false,
+    });
+    jest.spyOn(catRepo, "countUsage").mockResolvedValue(3);
+
+    await expect(
+      catService.update({}, { id: "cat-1", patch: { coa_parent_code: "571" } })
+    ).rejects.toThrow(/Cannot change CoA parent/);
+
+    catRepo.get.mockRestore();
+    catRepo.countUsage.mockRestore();
+  });
+
+  test("refuses capability flag changes if category is in use", async () => {
+    jest.spyOn(catRepo, "get").mockResolvedValue({
+      treasury_category_id: "cat-1",
+      code: "CUSTOM",
+      coa_parent_code: "521",
+      is_system: false,
+      requires_custodian: false,
+      is_bank_identity: true,
+      is_momo_identity: false,
+    });
+    jest.spyOn(catRepo, "countUsage").mockResolvedValue(2);
+
+    await expect(
+      catService.update({}, { id: "cat-1", patch: { requires_custodian: true } })
+    ).rejects.toThrow(/Cannot change capability flags/);
+
+    catRepo.get.mockRestore();
+    catRepo.countUsage.mockRestore();
+  });
+});
+
+describe("assertVerificationPrerequisites — Audit #7", () => {
+  test("passes for complete bank identity", () => {
+    expect(
+      rules.assertVerificationPrerequisites({
+        category_is_bank_identity: true,
+        bank_name: "Ecobank",
+        account_number: "1234567890",
+        iban: "CM2110005000012345678901234",
+      }),
+    ).toBe(true);
+  });
+
+  test("refuses bank account without account number or bank name", () => {
+    expect(() =>
+      rules.assertVerificationPrerequisites({
+        category_is_bank_identity: true,
+        bank_name: null,
+        account_number: "1234567890",
+      }),
+    ).toThrow(/missing bank_name/);
+  });
+
+  test("passes for complete MoMo identity", () => {
+    expect(
+      rules.assertVerificationPrerequisites({
+        category_is_momo_identity: true,
+        momo_number: "+237670000000",
+        momo_network: "MTN",
+      }),
+    ).toBe(true);
+  });
+
+  test("refuses MoMo account without network", () => {
+    expect(() =>
+      rules.assertVerificationPrerequisites({
+        category_is_momo_identity: true,
+        momo_number: "+237670000000",
+        momo_network: null,
+      }),
+    ).toThrow(/missing momo_network/);
+  });
+
+  test("passes for complete petty cash", () => {
+    expect(
+      rules.assertVerificationPrerequisites({
+        category_requires_custodian: true,
+        custodian_user_id: "00000000-0000-4000-8000-000000000001",
+        float_limit: 500000,
+      }),
+    ).toBe(true);
+  });
+
+  test("refuses petty cash without float limit or custodian", () => {
+    expect(() =>
+      rules.assertVerificationPrerequisites({
+        category_requires_custodian: true,
+        custodian_user_id: null,
+        float_limit: null,
+      }),
+    ).toThrow(/missing custodian_user_id, float_limit/);
+  });
+});
+
+describe("opening balance correction — Audit #13", () => {
+  test("allows correction without reason when account has no posted journals", () => {
+    expect(
+      rules.assertOpeningBalanceCorrection({ hasJournals: false, reason: null }),
+    ).toBe(true);
+  });
+
+  test("requires reason when correcting account with posted journals", () => {
+    expect(() =>
+      rules.assertOpeningBalanceCorrection({ hasJournals: true, reason: null }),
+    ).toThrow(/requires an explanation/);
+    expect(
+      rules.assertOpeningBalanceCorrection({
+        hasJournals: true,
+        reason: "Auditor approved adjustment",
+      }),
+    ).toBe(true);
+  });
+});
+
+describe("primary account deactivation safety — Audit #12", () => {
+  const accService = require("../../src/modules/master/treasury_account/treasury_account.service");
+  const accRepo = require("../../src/modules/master/treasury_account/treasury_account.repo");
+
+  test("blocks deactivation of primary account without replacement or explicit confirmation", async () => {
+    const mockClient = {
+      query: jest.fn().mockResolvedValue({ rows: [] }),
+    };
+    jest.spyOn(accRepo, "get").mockResolvedValue({
+      treasury_account_id: "acc-1",
+      is_primary: true,
+      category_id: "cat-1",
+    });
+
+    await expect(
+      accService.setActive(mockClient, { id: "acc-1", active: false })
+    ).rejects.toThrow(/Cannot deactivate primary account/);
+
+    accRepo.get.mockRestore();
+  });
+});
+
 describe("legacy shims — kept so the older tests and the older callers still pass", () => {
   test("assertCashAccount still refuses non-class-5 codes", () => {
     expect(rules.assertCashAccount("521")).toBe(true);

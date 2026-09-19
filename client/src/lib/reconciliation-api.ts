@@ -98,6 +98,7 @@ export type StatementLine = {
   matched_amount: string | number;
   duplicate_of: string | null;
   ignored_reason: string | null;
+  proposed_entry_id?: string | null;
   suggestion_count?: string | number;
 };
 
@@ -220,6 +221,7 @@ export type Reconciliation = {
 
 export type CashCount = {
   cash_count_id: string;
+  treasury_account_id?: string;
   counted_on: string;
   currency: string;
   denominations: Array<{ note: number; qty: number }>;
@@ -230,6 +232,11 @@ export type CashCount = {
   variance_reason: string | null;
   status: "DRAFT" | "ATTESTED" | "APPROVED_LOCKED" | "CANCELLED";
   attested_at: string | null;
+  custodian_user_id?: string | null;
+  witness_user_id?: string | null;
+  adjustment_entry_id?: string | null;
+  approved_by?: string | null;
+  approved_at?: string | null;
 };
 
 /* ─────────────── fetchers ────────────────────────────────────────────────── */
@@ -314,6 +321,15 @@ export const rejectMatch = (matchId: string, reason?: string) =>
 export const ignoreLine = (statementLineId: string, reason?: string) =>
   tenant<StatementLine>(`${base}/lines/${statementLineId}/ignore`, { method: "POST", body: { reason } });
 
+export const proposeEntry = (
+  statementLineId: string,
+  body: { offset_account_code?: string | null; description?: string | null } = {},
+) =>
+  tenant<{ proposed_entry_id: string; entry: unknown }>(
+    `${base}/lines/${statementLineId}/propose-entry`,
+    { method: "POST", body },
+  );
+
 export const buildReconciliation = (body: {
   treasury_account_id: string; statement_id?: string; period_start?: string; period_end?: string;
 }) => tenant<{ reconciliation: Reconciliation; outstanding: Record<string, unknown[]> }>(base, { method: "POST", body });
@@ -355,3 +371,9 @@ export const recordCashCount = (body: {
 
 export const attestCashCount = (id: string, variance_reason?: string) =>
   tenant<CashCount>(`${base}/cash-counts/${id}/attest`, { method: "POST", body: { variance_reason } });
+
+export const approveCashCount = (id: string, propose_adjustment = true) =>
+  tenant<CashCount>(`${base}/cash-counts/${id}/approve`, { method: "POST", body: { propose_adjustment } });
+
+export const cancelCashCount = (id: string, reason?: string) =>
+  tenant<CashCount>(`${base}/cash-counts/${id}/cancel`, { method: "POST", body: { reason } });

@@ -128,6 +128,16 @@ module.exports = {
       })),
     })),
 
+  proposeEntry: asyncHandler(async (req, res) =>
+    res.status(201).json({
+      data: await req.tenantDb((c) => service.proposeEntryForLine(c, {
+        statementLineId: req.params.lineId,
+        offsetAccountCode: req.body.offset_account_code,
+        description: req.body.description,
+        actor: actor(req),
+      })),
+    })),
+
   /* ── the etat de rapprochement ─────────────────────────────────────────── */
 
   buildReconciliation: asyncHandler(async (req, res) =>
@@ -194,6 +204,24 @@ module.exports = {
     res.json({
       data: await req.tenantDb((c) => service.attestCashCount(c, {
         cashCountId: req.params.id, varianceReason: req.body.variance_reason, actor: actor(req),
+      })),
+    })),
+
+  approveCashCount: asyncHandler(async (req, res) =>
+    res.json({
+      data: await req.tenantDb((c) => service.approveCashCount(c, {
+        cashCountId: req.params.id,
+        proposeAdjustment: req.body?.propose_adjustment !== false,
+        actor: actor(req),
+      })),
+    })),
+
+  cancelCashCount: asyncHandler(async (req, res) =>
+    res.json({
+      data: await req.tenantDb((c) => service.cancelCashCount(c, {
+        cashCountId: req.params.id,
+        reason: req.body?.reason,
+        actor: actor(req),
       })),
     })),
 

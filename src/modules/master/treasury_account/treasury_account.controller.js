@@ -19,7 +19,10 @@ const CREATE_FIELDS = [
   "custodian_user_id", "location", "float_limit",
   "momo_number", "momo_till", "momo_agent", "momo_network", "momo_fee_account",
 ];
-const UPDATE_FIELDS = CREATE_FIELDS;
+const UPDATE_FIELDS = [
+  ...CREATE_FIELDS,
+  "opening_balance_reason",
+];
 
 /** Copy an explicit allow-list of keys from src → out. Skips undefined so a
  *  patch keeps its "unchanged" semantics rather than clearing columns. */
@@ -30,7 +33,23 @@ function pick(src, keys) {
 }
 
 module.exports = {
-  list: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.list(c, req.query)) })),
+  list: asyncHandler(async (req, res) => {
+    const rows = await req.tenantDb((c) => service.list(c, req.query));
+    if (rows && rows.total !== undefined) {
+      res.set("X-Total-Count", String(rows.total));
+      return res.json({
+        data: rows,
+        pagination: {
+          total: rows.total,
+          limit: rows.limit,
+          offset: rows.offset,
+          page: Math.floor(rows.offset / rows.limit) + 1,
+          total_pages: Math.ceil(rows.total / rows.limit) || 1,
+        },
+      });
+    }
+    return res.json({ data: rows });
+  }),
   get: asyncHandler(async (req, res) => {
     const r = await req.tenantDb((c) => service.get(c, req.params.id));
     if (!r) throw new AppError("NOT_FOUND", "Treasury account not found", 404);
@@ -58,7 +77,11 @@ module.exports = {
 
   setActive: asyncHandler(async (req, res) => {
     res.json({ data: await req.tenantDb((c) => service.setActive(c, {
-      id: req.params.id, active: req.body.active === true, actor: actor(req),
+      id: req.params.id,
+      active: req.body.active === true,
+      forceClearPrimary: req.body.force_clear_primary === true,
+      replacementAccountId: req.body.replacement_account_id || null,
+      actor: actor(req),
     })) });
   }),
 
@@ -77,6 +100,70 @@ module.exports = {
   unverify: asyncHandler(async (req, res) => {
     res.json({ data: await req.tenantDb((c) => service.unverify(c, {
       id: req.params.id, actor: actor(req),
+    })) });
+  }),
+
+  reverseEntry: asyncHandler(async (req, res) => {
+    res.json({ data: await req.tenantDb((c) => service.reverseEntry(c, {
+      accountId: req.params.id,
+      entryId: req.body.entry_id,
+      reason: req.body.reason,
+      actor: actor(req),
+    })) });
+  }),
+
+  // Documents (PR-03, Audit #1, #2)
+  listDocuments: asyncHandler(async (req, res) => {
+    res.json({ data: await req.tenantDb((c) => service.listDocuments(c, req.params.id)) });
+  }),
+  createDocument: asyncHandler(async (req, res) => {
+    const data = await req.tenantDb((c) => service.addDocument(c, {
+      accountId: req.params.id,
+      actor: actor(req),
+      ...req.body,
+    }));
+    res.status(201).json({ data });
+  }),
+  removeDocument: asyncHandler(async (req, res) => {
+    res.json({ data: await req.tenantDb((c) => service.removeDocument(c, {
+      accountId: req.params.id,
+      documentId: req.params.docId,
+      actor: actor(req),
+    })) });
+  }),
+  verifyDocument: asyncHandler(async (req, res) => {
+    res.json({ data: await req.tenantDb((c) => service.verifyDocument(c, {
+      accountId: req.params.id,
+      documentId: req.params.docId,
+      actor: actor(req),
+    })) });
+  }),
+
+  // Signatories (PR-03, Audit #3)
+  listSignatories: asyncHandler(async (req, res) => {
+    res.json({ data: await req.tenantDb((c) => service.listSignatories(c, req.params.id)) });
+  }),
+  createSignatory: asyncHandler(async (req, res) => {
+    const data = await req.tenantDb((c) => service.addSignatory(c, {
+      accountId: req.params.id,
+      actor: actor(req),
+      ...req.body,
+    }));
+    res.status(201).json({ data });
+  }),
+  updateSignatory: asyncHandler(async (req, res) => {
+    res.json({ data: await req.tenantDb((c) => service.updateSignatory(c, {
+      accountId: req.params.id,
+      signatoryId: req.params.sigId,
+      patch: req.body,
+      actor: actor(req),
+    })) });
+  }),
+  removeSignatory: asyncHandler(async (req, res) => {
+    res.json({ data: await req.tenantDb((c) => service.removeSignatory(c, {
+      accountId: req.params.id,
+      signatoryId: req.params.sigId,
+      actor: actor(req),
     })) });
   }),
 

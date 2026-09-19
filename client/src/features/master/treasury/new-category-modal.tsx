@@ -134,7 +134,7 @@ export function NewCategoryModal({
           <Field
             label="CoA parent (class 5)"
             required
-            hint="Non-postable class-5 code (e.g. 5383)"
+            hint="Non-postable class-5 code (e.g. 521 Banks, 571 Cash, 5711 Petty cash, 581 Imprest, 5383 MoMo)"
           >
             <Input
               value={parent}

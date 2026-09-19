@@ -69,11 +69,16 @@ async function create(client, { entityId, categoryId, actor = {}, ...body }) {
     category,
     custodianUserId: body.custodian_user_id,
     coaCode: body.coa_code,   // must be undefined; assertCreate rejects otherwise
+    momoNetwork: body.momo_network,
   });
   rules.assertMomoFeeAccount(body.momo_fee_account);
 
   await client.query("BEGIN");
   try {
+    // Assert and lock the parent CoA row FOR UPDATE to prevent allocation race conditions (#31, #32)
+    const parentCoa = await repo.lockParentCoa(client, category.coa_parent_code);
+    rules.assertCoaParent(parentCoa);
+
     // Allocate the next 6-digit leaf under the category's parent.
     const existing = await repo.existingLeavesUnder(client, category.coa_parent_code);
     const leafCode = rules.nextLeafCode(category.coa_parent_code, existing);
@@ -111,6 +116,13 @@ async function create(client, { entityId, categoryId, actor = {}, ...body }) {
   }
 }
 
+const SENSITIVE_FIELDS = [
+  "bank_name", "branch", "account_number", "iban", "swift_bic", "routing_code", "holder_name",
+  "opening_balance", "opening_date", "statement_day",
+  "custodian_user_id", "location", "float_limit",
+  "momo_number", "momo_till", "momo_agent", "momo_network", "momo_fee_account",
+];
+
 /**
  * Patch an account. category_id and coa_code are ignored (managed elsewhere);
  * kind stays in sync with category so nothing needs to be done there. Renaming
@@ -136,6 +148,42 @@ async function update(client, { id, patch = {}, actor = {} }) {
     }
   }
 
+  // Audit #13: Controlled opening balance correction
+  if (
+    patch.opening_balance !== undefined &&
+    before.opening_balance !== null &&
+    Number(patch.opening_balance) !== Number(before.opening_balance)
+  ) {
+    let hasJournals = false;
+    if (before.coa_code) {
+      const { rows } = await client.query(
+        "SELECT 1 FROM journal_line WHERE account_code = $1 LIMIT 1",
+        [before.coa_code]
+      );
+      hasJournals = rows.length > 0;
+    }
+    rules.assertOpeningBalanceCorrection({
+      hasJournals,
+      reason: patch.opening_balance_reason,
+    });
+  }
+
+  // Audit #8: Invalidate verification after sensitive account edits
+  let sensitiveChanged = false;
+  if (before.is_verified) {
+    for (const k of SENSITIVE_FIELDS) {
+      if (patch[k] !== undefined && String(patch[k] ?? "") !== String(before[k] ?? "")) {
+        sensitiveChanged = true;
+        break;
+      }
+    }
+    if (sensitiveChanged) {
+      fields.is_verified = false;
+      fields.verified_by = null;
+      fields.verified_at = null;
+    }
+  }
+
   // `updated_by` FKs to app_user(user_id) — same LIVE-vs-SANDBOX story as
   // `created_by` in create(). DATA 2.4.
   fields.updated_by = await resolveActorId(client, actor.user_id);
@@ -149,14 +197,48 @@ async function update(client, { id, patch = {}, actor = {} }) {
     actorUserId: actor.user_id || null, action: events.UPDATED, moduleKey: events.MODULE,
     entityRef: ref(id), before, after: row,
   });
+
+  if (sensitiveChanged) {
+    await audit(client, {
+      actorUserId: actor.user_id || null,
+      action: "treasury_account.verification_invalidated",
+      moduleKey: events.MODULE,
+      entityRef: ref(id),
+      before: { is_verified: true, verified_by: before.verified_by, verified_at: before.verified_at },
+      after: { is_verified: false, verified_by: null, verified_at: null },
+    });
+  }
+
   return repo.getWithCategory(client, id);
 }
 
-async function setActive(client, { id, active, actor = {} }) {
+async function setActive(client, { id, active, forceClearPrimary = false, replacementAccountId = null, actor = {} }) {
   const before = await repo.get(client, id);
   if (!before) throw new AppError("NOT_FOUND", "Treasury account not found", 404);
   await client.query("BEGIN");
   try {
+    // Audit #12: Prevent deactivation of primary account without replacement or explicit confirmation
+    if (active === false && before.is_primary === true) {
+      if (replacementAccountId) {
+        const rep = await repo.get(client, replacementAccountId);
+        if (!rep || !rep.is_active || rep.category_id !== before.category_id) {
+          throw new AppError("BAD_REPLACEMENT", "Replacement account must be an active account in the same category", 422);
+        }
+        await repo.clearPrimaryInCategory(client, {
+          entityId: rep.entity_id, categoryId: rep.category_id, exceptId: replacementAccountId,
+        });
+        await repo.update(client, replacementAccountId, { is_primary: true });
+      } else if (forceClearPrimary === true) {
+        await repo.update(client, id, { is_primary: false });
+      } else {
+        throw new AppError(
+          "PRIMARY_DEACTIVATION_BLOCKED",
+          "Cannot deactivate primary account without replacement or explicit confirmation",
+          422,
+        );
+      }
+    }
+
     const row = await repo.update(client, id, { is_active: active === true });
     // Follow-through on the CoA leaf so nobody can post to a deactivated
     // account by hand-writing a journal.
@@ -207,8 +289,12 @@ async function setPrimary(client, { id, actor = {} }) {
  * cleanly verified or cleanly unverified.
  */
 async function verify(client, { id, actor = {} }) {
-  const row = await repo.get(client, id);
+  const row = await repo.getWithCategory(client, id);
   if (!row) throw new AppError("NOT_FOUND", "Treasury account not found", 404);
+
+  // Audit #7: Enforce complete banking/MoMo/petty identity before verifying
+  rules.assertVerificationPrerequisites(row);
+
   // `verified_by` FKs to app_user(user_id) — LIVE only. Resolve through the
   // sandbox guard rather than storing a raw actor id; DATA 2.4.
   const verifiedBy = await resolveActorId(client, actor.user_id);
@@ -239,6 +325,118 @@ async function unverify(client, { id, actor = {} }) {
 
 const get  = (client, id) => repo.getWithCategory(client, id);
 const list = (client, q)  => repo.list(client, q);
+
+/** Reverse a validated journal entry on this treasury account (PR-06, Audit #5). */
+async function reverseEntry(client, { accountId, entryId, reason, actor = {} }) {
+  const account = await repo.get(client, accountId);
+  if (!account) throw new AppError("NOT_FOUND", "Treasury account not found", 404);
+
+  const { rows } = await client.query(
+    "SELECT jl.line_id, je.status FROM journal_line jl JOIN journal_entry je ON je.entry_id = jl.entry_id WHERE jl.entry_id = $1 AND jl.account_code = $2 LIMIT 1",
+    [entryId, account.coa_code],
+  );
+  if (!rows.length) {
+    throw new AppError("ENTRY_NOT_ON_ACCOUNT", "Journal entry does not belong to this treasury account", 400);
+  }
+
+  const journalService = require("../../finance/journal_entry/journal_entry.service");
+  return journalService.reverse(client, { entryId, reason, actor });
+}
+
+// ── Documents (PR-03, Audit #1, #2) ──
+async function listDocuments(client, accountId) {
+  return repo.listDocuments(client, accountId);
+}
+
+async function addDocument(client, { accountId, actor = {}, ...body }) {
+  const acc = await repo.get(client, accountId);
+  if (!acc) throw new AppError("NOT_FOUND", "Treasury account not found", 404);
+  const createdBy = await resolveActorId(client, actor.user_id);
+  const row = await repo.insertDocument(client, {
+    treasury_account_id: accountId,
+    created_by: createdBy,
+    ...body,
+  });
+  await audit(client, {
+    actorUserId: actor.user_id || null, action: "treasury_account.document_added",
+    moduleKey: events.MODULE, entityRef: ref(accountId), after: row,
+  });
+  return row;
+}
+
+async function removeDocument(client, { accountId, documentId, actor = {} }) {
+  const doc = await repo.getDocument(client, documentId);
+  if (!doc || doc.treasury_account_id !== accountId) {
+    throw new AppError("NOT_FOUND", "Treasury document not found", 404);
+  }
+  await repo.deleteDocument(client, documentId);
+  await audit(client, {
+    actorUserId: actor.user_id || null, action: "treasury_account.document_removed",
+    moduleKey: events.MODULE, entityRef: ref(accountId), before: doc,
+  });
+  return { deleted: true };
+}
+
+async function verifyDocument(client, { accountId, documentId, actor = {} }) {
+  const doc = await repo.getDocument(client, documentId);
+  if (!doc || doc.treasury_account_id !== accountId) {
+    throw new AppError("NOT_FOUND", "Treasury document not found", 404);
+  }
+  const verifiedBy = await resolveActorId(client, actor.user_id);
+  const next = await repo.verifyDocument(client, documentId, verifiedBy);
+  await audit(client, {
+    actorUserId: actor.user_id || null, action: "treasury_account.document_verified",
+    moduleKey: events.MODULE, entityRef: ref(accountId), after: next,
+  });
+  return next;
+}
+
+// ── Signatories (PR-03, Audit #3) ──
+async function listSignatories(client, accountId) {
+  return repo.listSignatories(client, accountId);
+}
+
+async function addSignatory(client, { accountId, actor = {}, ...body }) {
+  const acc = await repo.get(client, accountId);
+  if (!acc) throw new AppError("NOT_FOUND", "Treasury account not found", 404);
+  const createdBy = await resolveActorId(client, actor.user_id);
+  const row = await repo.insertSignatory(client, {
+    treasury_account_id: accountId,
+    created_by: createdBy,
+    ...body,
+  });
+  await audit(client, {
+    actorUserId: actor.user_id || null, action: "treasury_account.signatory_added",
+    moduleKey: events.MODULE, entityRef: ref(accountId), after: row,
+  });
+  return row;
+}
+
+async function updateSignatory(client, { accountId, signatoryId, patch = {}, actor = {} }) {
+  const sig = await repo.getSignatory(client, signatoryId);
+  if (!sig || sig.treasury_account_id !== accountId) {
+    throw new AppError("NOT_FOUND", "Signatory not found", 404);
+  }
+  const next = await repo.updateSignatory(client, signatoryId, patch);
+  await audit(client, {
+    actorUserId: actor.user_id || null, action: "treasury_account.signatory_updated",
+    moduleKey: events.MODULE, entityRef: ref(accountId), before: sig, after: next,
+  });
+  return next;
+}
+
+async function removeSignatory(client, { accountId, signatoryId, actor = {} }) {
+  const sig = await repo.getSignatory(client, signatoryId);
+  if (!sig || sig.treasury_account_id !== accountId) {
+    throw new AppError("NOT_FOUND", "Signatory not found", 404);
+  }
+  await repo.deleteSignatory(client, signatoryId);
+  await audit(client, {
+    actorUserId: actor.user_id || null, action: "treasury_account.signatory_removed",
+    moduleKey: events.MODULE, entityRef: ref(accountId), before: sig,
+  });
+  return { deleted: true };
+}
 
 // ── Payment gateways (2.3) — unchanged from pre-revamp ──
 const safeGateway = (row) => row && ({ provider: row.provider, active: row.active, role: row.role, has_credentials: row.has_credentials === true, updated_at: row.updated_at });
@@ -280,6 +478,8 @@ async function deleteGateway(client, { provider, actor = {} }) {
 }
 
 module.exports = {
-  create, update, setActive, setPrimary, verify, unverify, get, list,
+  create, update, setActive, setPrimary, verify, unverify, get, list, reverseEntry,
+  listDocuments, addDocument, removeDocument, verifyDocument,
+  listSignatories, addSignatory, updateSignatory, removeSignatory,
   listGateways, getGateway, upsertGateway, setGatewayActive, setGatewayRole, deleteGateway,
 };

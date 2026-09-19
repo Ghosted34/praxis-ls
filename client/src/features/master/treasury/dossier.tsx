@@ -22,14 +22,19 @@ import { EmptyState, ErrorState, LoadingRow } from "@/components/ui/states";
 import { useResource, errMsg } from "@/lib/use-resource";
 import { money, dateFmt, cell } from "@/lib/format";
 import * as api from "@/lib/treasury-api";
+import { useConfirm } from "@/components/ui/use-confirm";
+import { usePrompt } from "@/components/ui/use-prompt";
+import { useToast } from "@/components/ui/toast";
 import { AccountModal } from "./account-modal";
+import { DocumentModal } from "./document-modal";
+import { SignatoryModal } from "./signatory-modal";
 import { ReconciliationTab } from "./reconciliation-tab";
 
 const TABS = [
   "Overview",
   "Statement",
   "Reconciliation",
-  "Sub-account",
+  "CoA leaf",
   "Signatories",
   "Documents",
   "Timeline",
@@ -116,8 +121,20 @@ const Th = ({ children, r }: { children?: React.ReactNode; r?: boolean }) => (
     {children}
   </th>
 );
-const Td = ({ children, r }: { children?: React.ReactNode; r?: boolean }) => (
-  <td className={`px-3 py-1.5 ${r ? "text-right num" : ""}`}>{children}</td>
+const Td = ({
+  children,
+  r,
+  className = "",
+  title,
+}: {
+  children?: React.ReactNode;
+  r?: boolean;
+  className?: string;
+  title?: string;
+}) => (
+  <td className={`px-3 py-1.5 ${r ? "text-right num" : ""} ${className}`} title={title}>
+    {children}
+  </td>
 );
 
 function amount(
@@ -149,6 +166,11 @@ export function TreasuryDossier({
   const [busy, setBusy] = React.useState<string | null>(null);
   const [actionError, setActionError] = React.useState<string | null>(null);
   const [editOpen, setEditOpen] = React.useState(false);
+  const [docModalOpen, setDocModalOpen] = React.useState(false);
+  const [sigModalOpen, setSigModalOpen] = React.useState(false);
+  const [confirm, confirmDialog] = useConfirm();
+  const [prompt, promptDialog] = usePrompt();
+  const toast = useToast();
 
   async function doAction(key: string, run: () => Promise<unknown>) {
     setBusy(key);
@@ -273,6 +295,30 @@ export function TreasuryDossier({
         }}
       />
 
+      <DocumentModal
+        open={docModalOpen}
+        onClose={() => setDocModalOpen(false)}
+        accountId={id}
+        onSaved={() => {
+          reload();
+          onChanged?.();
+        }}
+      />
+
+      <SignatoryModal
+        open={sigModalOpen}
+        onClose={() => setSigModalOpen(false)}
+        accountId={id}
+        currency={a.currency || "XAF"}
+        onSaved={() => {
+          reload();
+          onChanged?.();
+        }}
+      />
+
+      {confirmDialog}
+      {promptDialog}
+
       {/* ── KPIs ────────────────────────────────────────────────────────── */}
       <KpiRow stack>
         <KpiTile
@@ -298,6 +344,12 @@ export function TreasuryDossier({
         <KpiTile
           label="This year (net)"
           value={amount(data.kpis.ytd.net, data.kpis.currency)}
+        />
+        <KpiTile
+          label={tr("Unreconciled")}
+          value={data.kpis.unreconciled_count === null ? "—" : String(data.kpis.unreconciled_count)}
+          hint={data.kpis.unreconciled_count ? tr("Items needing reconciliation") : tr("All items reconciled")}
+          onClick={() => setTab("Reconciliation")}
         />
       </KpiRow>
 
@@ -452,6 +504,7 @@ export function TreasuryDossier({
                 <Th r>{tr("Debit")}</Th>
                 <Th r>{tr("Credit")}</Th>
                 <Th>{tr("Status")}</Th>
+                <Th r>{tr("Reversal")}</Th>
               </>
             }
             empty={data.recent_lines.length === 0}
@@ -475,9 +528,42 @@ export function TreasuryDossier({
                     {l.status}
                   </Pill>
                 </Td>
+                <Td r>
+                  {l.reversed_by_entry_no ? (
+                    <Pill tone="mute">{tr("Reversed by #")}{l.reversed_by_entry_no}</Pill>
+                  ) : l.reverses_entry_no ? (
+                    <Pill tone="blue">{tr("Reversal of #")}{l.reverses_entry_no}</Pill>
+                  ) : l.status === "validated" ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={async () => {
+                        const reason = await prompt({
+                          title: tr("Reverse Journal Entry"),
+                          label: tr("Reason for reversing entry #") + l.entry_no,
+                          placeholder: tr("e.g. Inadvertent duplicate or wrong account"),
+                        });
+                        if (!reason) return;
+                        try {
+                          await api.reverseEntry(id, l.entry_id, reason);
+                          reload();
+                          onChanged?.();
+                          toast.success(tr("Journal entry reversed"));
+                        } catch (e) {
+                          toast.error(errMsg(e));
+                        }
+                      }}
+                    >
+                      {tr("Reverse")}
+                    </Button>
+                  ) : null}
+                </Td>
               </tr>
             ))}
           </MiniTable>
+          <p className="micro text-muted-foreground mt-2">
+            {tr("Note: Only validated postings are included in posted balance and monthly KPI totals. Draft and reversed entries are excluded.")}
+          </p>
         </Section>
       )}
 
@@ -492,7 +578,7 @@ export function TreasuryDossier({
         />
       )}
 
-      {tab === "Sub-account" && (
+      {tab === "CoA leaf" && (
         <Section
           title="CoA leaf"
           description="Every treasury account owns exactly one auto-minted CoA leaf under its category's parent."
@@ -522,17 +608,167 @@ export function TreasuryDossier({
       )}
 
       {tab === "Signatories" && (
-        <EmptyState
-          title="Signatories module is coming"
-          hint="Add signatories with single- and joint-signature limits. Follow-up to this refactor."
-        />
+        <Section
+          title="Authorized signatories"
+          description="Single- and joint-signature limits, effective dates and authority rules"
+          action={
+            <Button size="sm" onClick={() => setSigModalOpen(true)}>
+              Add signatory
+            </Button>
+          }
+        >
+          <MiniTable
+            head={
+              <>
+                <Th>{tr("Name")}</Th>
+                <Th>Role</Th>
+                <Th>Type</Th>
+                <Th>Rule</Th>
+                <Th r>Limit</Th>
+                <Th>Effective</Th>
+                <Th r>Actions</Th>
+              </>
+            }
+            empty={!data.signatories || data.signatories.length === 0}
+            emptyLabel="No signatories registered yet — add authorized signatories above."
+          >
+            {(data.signatories || []).map((sig) => (
+              <tr key={sig.signatory_id}>
+                <Td className="font-medium">
+                  <div>{sig.full_name}</div>
+                  {(sig.email || sig.phone) && (
+                    <div className="micro text-muted-foreground">
+                      {[sig.email, sig.phone].filter(Boolean).join(" · ")}
+                    </div>
+                  )}
+                </Td>
+                <Td>{cell(sig.role_title)}</Td>
+                <Td>
+                  <Pill tone={sig.signatory_type === "PRIMARY" ? "blue" : "mute"}>
+                    {sig.signatory_type}
+                  </Pill>
+                </Td>
+                <Td>
+                  <span className="micro">
+                    {sig.rule_type === "SINGLE_SIGNATURE"
+                      ? "Single signature"
+                      : "Joint required"}
+                  </span>
+                </Td>
+                <Td r>
+                  {sig.limit_amount
+                    ? amount(sig.limit_amount, sig.currency)
+                    : "Unlimited"}
+                </Td>
+                <Td>
+                  <span className="micro">
+                    {dateFmt(sig.effective_from)}
+                    {sig.effective_to ? ` → ${dateFmt(sig.effective_to)}` : " (indefinite)"}
+                  </span>
+                </Td>
+                <Td r>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={async () => {
+                      const ok = await confirm({
+                        title: "Remove signatory",
+                        body: `Remove ${sig.full_name} from authorized signatories?`,
+                        confirmLabel: "Remove",
+                        destructive: true,
+                      });
+                      if (!ok) return;
+                      await api.removeSignatory(id, sig.signatory_id);
+                      reload();
+                    }}
+                  >
+                    Remove
+                  </Button>
+                </Td>
+              </tr>
+            ))}
+          </MiniTable>
+        </Section>
       )}
 
       {tab === "Documents" && (
-        <EmptyState
-          title="No documents attached yet"
-          hint="Attach the bank mandate, KYC letter and signature card here. Follow-up to this refactor."
-        />
+        <Section
+          title="Attached documents"
+          description="Bank confirmation, RIB, mandates, KYC and signature cards"
+          action={
+            <Button size="sm" onClick={() => setDocModalOpen(true)}>
+              Attach document
+            </Button>
+          }
+        >
+          <MiniTable
+            head={
+              <>
+                <Th>Type</Th>
+                <Th>{tr("Title")}</Th>
+                <Th>Number</Th>
+                <Th>Issue date</Th>
+                <Th>Expiry date</Th>
+                <Th>{tr("Status")}</Th>
+                <Th r>Actions</Th>
+              </>
+            }
+            empty={!data.documents || data.documents.length === 0}
+            emptyLabel="No documents attached yet — attach the bank RIB or mandate above."
+          >
+            {(data.documents || []).map((doc) => (
+              <tr key={doc.document_id}>
+                <Td>
+                  <code className="rounded bg-muted px-1 text-xs">
+                    {doc.document_type}
+                  </code>
+                </Td>
+                <Td className="font-medium">{doc.title}</Td>
+                <Td>{cell(doc.document_number)}</Td>
+                <Td>{dateFmt(doc.issue_date)}</Td>
+                <Td>{dateFmt(doc.expiry_date)}</Td>
+                <Td>
+                  <Pill tone={doc.is_verified ? "ok" : "warn"}>
+                    {doc.is_verified ? "Verified" : "Unverified"}
+                  </Pill>
+                </Td>
+                <Td r>
+                  <div className="flex items-center justify-end gap-1">
+                    {!doc.is_verified && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={async () => {
+                          await api.verifyDocument(id, doc.document_id);
+                          reload();
+                        }}
+                      >
+                        Verify
+                      </Button>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={async () => {
+                        const ok = await confirm({
+                          title: "Remove document",
+                          body: `Remove ${doc.title}?`,
+                          confirmLabel: "Remove",
+                          destructive: true,
+                        });
+                        if (!ok) return;
+                        await api.removeDocument(id, doc.document_id);
+                        reload();
+                      }}
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                </Td>
+              </tr>
+            ))}
+          </MiniTable>
+        </Section>
       )}
 
       {tab === "Timeline" && (
@@ -558,7 +794,9 @@ export function TreasuryDossier({
                     {t.action}
                   </code>
                 </Td>
-                <Td>{cell(t.actor_user_id)}</Td>
+                <Td title={t.actor_user_id || undefined}>
+                  {t.actor_name || t.actor_user_id || tr("System")}
+                </Td>
               </tr>
             ))}
           </MiniTable>

@@ -10,7 +10,7 @@ import { ScreenAi } from "@/components/screen-ai";
 import { Button } from "@/components/ui/button";
 import { FormButtons } from "@/components/ui/form-buttons";
 import { Input } from "@/components/ui/input";
-import { Modal, Select } from "@/components/ui/modal";
+import { Modal } from "@/components/ui/modal";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Form, FormField, FormError } from "@/components/ui/form";
 import { useZodForm } from "@/lib/use-zod-form";
@@ -29,6 +29,7 @@ import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { Pill } from "@/components/ui/pill";
 import { useList } from "@/lib/use-resource";
 import { money, num, enumLabel } from "@/lib/format";
+import { EntityPicker } from "@/components/entity-picker";
 import * as api from "@/lib/masterdata-api";
 import { shell } from "./shared";
 
@@ -76,7 +77,6 @@ export function ClientForm({
   onSaved: () => void;
 }) {
   const isNew = row === null;
-  const { rows: entities } = useList<api.Entity>(api.ENTITY_LIST);
   const toast = useToast();
 
   // `update` rather than `create` when editing: it is the schema that allows a
@@ -249,17 +249,22 @@ export function ClientForm({
             form={form}
             name="entity_id"
             label={tr("Corporate entity")}
-            hint="Which of our entities bills this client"
+            hint="Which of our entities bills this client. Only active entities are offered for a new link; an existing link to a deactivated entity stays as history."
           >
             {(field) => (
-              <Select {...field} value={String(field.value ?? "")}>
-                <option value="">—</option>
-                {(entities || []).map((en) => (
-                  <option key={en.entity_id} value={en.entity_id}>
-                    {en.legal_name || en.code}
-                  </option>
-                ))}
-              </Select>
+              /*
+               * PR-09: this was a `<Select>` over `ENTITY_LIST` (the whole
+               * tenant's entities, capped at 200 by `page()`, filtered in the
+               * browser) — entity 201 was unreachable, and the form fetched the
+               * full list just to open. The picker searches server-side and
+               * enforces the ACTIVE-only rule (Decision Q6).
+               */
+              <EntityPicker
+                label={tr("Corporate entity")}
+                value={field.value ? String(field.value) : null}
+                onChange={(id) => field.onChange(id ?? "")}
+                placeholder={tr("— none —")}
+              />
             )}
           </FormField>
 

@@ -906,17 +906,17 @@ export const entityRenewals = (id: string, asOf?: string | null) =>
 export const entityCapTable = (id: string, asOf?: string | null) =>
   tenant<CapTable>(`/entities/${id}/cap-table${asOfQuery(asOf)}`);
 
-/**
- * The entity list as every picker needs it: all of them.
- *
- * `page()` on the API clamps a list with no `limit` to 50 rows, and the screens
- * that read this one filter it in the BROWSER — so entity 51 was unfindable by
- * search and unofferable as a parent or a corporate shareholder, with no error
- * and no empty state to say the list had been cut. 200 is `page()`'s own
- * maximum. Past that the fix is server-side search, which `LIST_SQL` already
- * supports through its `q` parameter.
+/*
+ * PR-09: ENTITY_LIST ("/entities?limit=200") is gone. Every screen that used it
+ * filtered the fetched rows in the browser, so entity 201+ was unreachable —
+ * and every nested modal that contained an entity picker re-fetched the whole
+ * tenant-wide list just to open. The pickers now search server-side through
+ * `/entities?registration_status=ACTIVE&q=…&limit=…` (see
+ * components/entity-picker.tsx) and the entity list page pages through
+ * `/entities` with `useListPaged`, whose `X-Total-Count` the list route now
+ * sends. Do not reintroduce a "fetch them all" constant here — that ceiling is
+ * what this PR removed.
  */
-export const ENTITY_LIST = "/entities?limit=200";
 
 /** Generic nested-collection helpers — one implementation for all seven. */
 export type EntityCollection =

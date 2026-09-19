@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 1674 mounted routes, grouped by path prefix.
+All 1678 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -819,6 +819,10 @@ All 1674 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/entities/:id/renewals` | — |
 | POST | `/api/tenant/entities/:id/status` | — |
 | POST | `/api/tenant/entities/:id/structure` | — |
+| GET | `/api/tenant/entities/:id/tax-obligations` | — |
+| POST | `/api/tenant/entities/:id/tax-obligations/:obligationId/assign` | — |
+| POST | `/api/tenant/entities/:id/tax-obligations/:obligationId/status` | — |
+| POST | `/api/tenant/entities/:id/tax-obligations/generate` | — |
 | GET | `/api/tenant/entities/:id/tax-registrations` | — |
 | POST | `/api/tenant/entities/:id/tax-registrations` | — |
 | DELETE | `/api/tenant/entities/:id/tax-registrations/:childId` | — |

@@ -23,7 +23,7 @@ import { Input } from "@/components/ui/input";
 import { Modal, Field } from "@/components/ui/modal";
 import { AiActions } from "@/components/ai-actions";
 import type { AiAction } from "@/features/scaffold/screen-specs";
-import { EntitySelect } from "./shared";
+import { EntityPicker } from "@/components/entity-picker";
 
 const CLIENT_AI: AiAction[] = [
   {
@@ -49,13 +49,11 @@ const CLIENT_AI: AiAction[] = [
 function ClientForm({
   open,
   editing,
-  entities,
   onClose,
   onSaved,
 }: {
   open: boolean;
   editing: Row | null;
-  entities: Row[] | null;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -142,10 +140,11 @@ function ClientForm({
             hint="Which of your legal entities owns this relationship"
             className="sm:col-span-2"
           >
-            <EntitySelect
-              entities={entities}
-              value={entityId}
-              onChange={setEntityId}
+            {/* PR-09: server-searched, ACTIVE-only entity picker. */}
+            <EntityPicker
+              value={entityId || null}
+              onChange={(id) => setEntityId(id ?? "")}
+              label={tr("Corporate entity")}
             />
           </Field>
           <Field label={tr("NIU")} hint="Taxpayer number">
@@ -286,7 +285,6 @@ function CreditModal({
 export function ClientsPage() {
   const reload = useRefresh();
   const { rows, error } = useList("/clients");
-  const { rows: entities } = useList("/entities");
   const [formOpen, setFormOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<Row | null>(null);
   const [creditFor, setCreditFor] = React.useState<Row | null>(null);
@@ -379,7 +377,6 @@ export function ClientsPage() {
       <ClientForm
         open={formOpen}
         editing={editing}
-        entities={entities}
         onClose={() => setFormOpen(false)}
         onSaved={reload}
       />

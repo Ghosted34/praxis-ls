@@ -31,6 +31,10 @@ const schemas = {
   // identifier clients see, and it is only changeable before any operation file
   // has used it. See the note beside the schema.
   opsReferencePrefix: entityCommon.opsReferencePrefix,
+  // Tax obligation generator (PR-05) — the run and its two manual transitions.
+  taxObligationGenerate: entityCommon.taxObligationGenerate,
+  taxObligationStatus: entityCommon.taxObligationStatus,
+  taxObligationAssign: entityCommon.taxObligationAssign,
   // AI-facing: entity_id in the payload → list_entities picker.
   aiUpdate: entityCommon.aiUpdate,
   aiSetActive: entityCommon.aiSetActive,
@@ -103,5 +107,8 @@ module.exports = {
   letterheadLine: mw("letterheadLine"),
   workingCalendar: mw("workingCalendar"),
   opsReferencePrefix: mw("opsReferencePrefix"),
+  taxObligationGenerate: mw("taxObligationGenerate"),
+  taxObligationStatus: mw("taxObligationStatus"),
+  taxObligationAssign: mw("taxObligationAssign"),
   schemas,
 };

@@ -25,6 +25,19 @@ treasuryRouter.post("/:id/active",  requirePermission(MODULE, "edit"), validator
 treasuryRouter.post("/:id/primary", requirePermission(MODULE, "edit"), controller.setPrimary);
 treasuryRouter.post("/:id/verify",  requirePermission(MODULE, "edit"), controller.verify);
 treasuryRouter.post("/:id/unverify",requirePermission(MODULE, "edit"), controller.unverify);
+treasuryRouter.post("/:id/reverse-entry", requirePermission(MODULE, "approve"), validator.reverseEntry, controller.reverseEntry);
+
+// Documents (PR-03, Audit #1, #2)
+treasuryRouter.get("/:id/documents", requirePermission(MODULE, "view"), controller.listDocuments);
+treasuryRouter.post("/:id/documents", requirePermission(MODULE, "edit"), validator.createDocument, controller.createDocument);
+treasuryRouter.delete("/:id/documents/:docId", requirePermission(MODULE, "edit"), controller.removeDocument);
+treasuryRouter.post("/:id/documents/:docId/verify", requirePermission(MODULE, "edit"), controller.verifyDocument);
+
+// Signatories (PR-03, Audit #3)
+treasuryRouter.get("/:id/signatories", requirePermission(MODULE, "view"), controller.listSignatories);
+treasuryRouter.post("/:id/signatories", requirePermission(MODULE, "edit"), validator.createSignatory, controller.createSignatory);
+treasuryRouter.patch("/:id/signatories/:sigId", requirePermission(MODULE, "edit"), validator.updateSignatory, controller.updateSignatory);
+treasuryRouter.delete("/:id/signatories/:sigId", requirePermission(MODULE, "edit"), controller.removeSignatory);
 
 const gatewayRouter = express.Router();
 gatewayRouter.use(authMiddleware);

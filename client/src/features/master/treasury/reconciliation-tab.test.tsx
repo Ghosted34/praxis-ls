@@ -218,4 +218,15 @@ describe("Treasury · reconciliation tab", () => {
     await upload(user);
     expect(await screen.findByText(/read off a scan/i)).toBeInTheDocument();
   });
+
+  it("disables import when file has already been imported (Audit #19)", async () => {
+    const user = userEvent.setup();
+    render({
+      ...READY,
+      already_imported: { statement_id: "s1", imported_at: "2026-04-01T00:00:00Z" },
+    });
+    await upload(user);
+    expect(screen.queryByRole("button", { name: /import this statement/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/view existing statement/i)).toBeInTheDocument();
+  });
 });

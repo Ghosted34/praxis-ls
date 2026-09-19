@@ -22,7 +22,7 @@ const { AppError } = require("../../../utils/errors");
  * `category` is the row loaded from treasury_category (with the capability
  * flags). Everything else comes from the request body.
  */
-function assertCreate({ category, custodianUserId, coaCode }) {
+function assertCreate({ category, custodianUserId, coaCode, momoNetwork }) {
   if (coaCode) {
     // The service allocates the leaf; a body that supplies coaCode is either
     // reaching around the allocator or racing it. Both are bugs.
@@ -43,6 +43,13 @@ function assertCreate({ category, custodianUserId, coaCode }) {
       "NO_CUSTODIAN",
       "category " + category.code + " needs a custodian_user_id " +
       "(the person responsible for the account's payouts)",
+      422,
+    );
+  }
+  if (category.is_momo_identity && !momoNetwork) {
+    throw new AppError(
+      "NO_NETWORK",
+      "category " + category.code + " needs momo_network (e.g. MTN, ORANGE)",
       422,
     );
   }
@@ -181,8 +188,74 @@ function assertMomo({ kind, momoNetwork, momoFeeAccount }) {
   return assertMomoFeeAccount(momoFeeAccount);
 }
 
+/**
+ * Full coherence check before marking an account verified (Audit #7).
+ * Prevents empty or incomplete identity rows from being marked verified.
+ */
+function assertVerificationPrerequisites(account) {
+  if (!account) throw new AppError("NOT_FOUND", "Treasury account not found", 404);
+
+  if (account.category_is_bank_identity) {
+    const missing = [];
+    if (!account.bank_name) missing.push("bank_name");
+    if (!account.account_number) missing.push("account_number");
+    if (!account.iban && !account.swift_bic) missing.push("iban or swift_bic");
+    if (missing.length > 0) {
+      throw new AppError(
+        "VERIFICATION_INCOMPLETE",
+        "Bank account cannot be verified without complete bank identity: missing " + missing.join(", "),
+        422,
+      );
+    }
+  }
+
+  if (account.category_is_momo_identity) {
+    const missing = [];
+    if (!account.momo_number) missing.push("momo_number");
+    if (!account.momo_network) missing.push("momo_network");
+    if (missing.length > 0) {
+      throw new AppError(
+        "VERIFICATION_INCOMPLETE",
+        "MoMo account cannot be verified without complete MoMo identity: missing " + missing.join(", "),
+        422,
+      );
+    }
+  }
+
+  if (account.category_requires_custodian) {
+    const missing = [];
+    if (!account.custodian_user_id) missing.push("custodian_user_id");
+    if (account.float_limit === null || account.float_limit === undefined) missing.push("float_limit");
+    if (missing.length > 0) {
+      throw new AppError(
+        "VERIFICATION_INCOMPLETE",
+        "Petty cash account cannot be verified without custodian and float limit: missing " + missing.join(", "),
+        422,
+      );
+    }
+  }
+
+  return true;
+}
+
+/**
+ * Opening balance correction rules (Audit #13).
+ * Requires explanation when correcting an opening balance on an account with journal history.
+ */
+function assertOpeningBalanceCorrection({ hasJournals, reason }) {
+  if (hasJournals && !reason) {
+    throw new AppError(
+      "OPENING_BALANCE_REASON_REQUIRED",
+      "Correction of opening balance on an account with posted journals requires an explanation / reason",
+      422,
+    );
+  }
+  return true;
+}
+
 module.exports = {
   assertCreate, assertCoaParent, assertMomoFeeAccount, nextLeafCode,
+  assertVerificationPrerequisites, assertOpeningBalanceCorrection,
   // legacy re-exports
   assertCashAccount, assertMomo,
 };

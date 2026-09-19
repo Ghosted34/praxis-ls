@@ -41,6 +41,7 @@ router.get("/statements/:id", requirePermission(MODULE, "view"), c.getStatement)
 router.post("/statements/:id/match", requirePermission(MODULE, "create"), v.matchRun, c.runMatcher);
 router.get("/lines/:lineId/matches", requirePermission(MODULE, "view"), c.lineMatches);
 router.post("/lines/:lineId/ignore", requirePermission(MODULE, "edit"), v.ignoreLine, c.ignoreLine);
+router.post("/lines/:lineId/propose-entry", requirePermission(MODULE, "edit"), v.proposeEntry, c.proposeEntry);
 router.post("/matches", requirePermission(MODULE, "edit"), v.manualMatch, c.manualMatch);
 router.post("/matches/:matchId/confirm", requirePermission(MODULE, "edit"), c.confirmMatch);
 router.post("/matches/:matchId/reject", requirePermission(MODULE, "edit"), v.matchReject, c.rejectMatch);
@@ -52,6 +53,8 @@ router.post("/", requirePermission(MODULE, "create"), v.buildReconciliation, c.b
 router.get("/cash-counts", requirePermission(MODULE, "view"), c.listCashCounts);
 router.post("/cash-counts", requirePermission(MODULE, "create"), v.cashCount, c.recordCashCount);
 router.post("/cash-counts/:id/attest", requirePermission(MODULE, "edit"), v.attestCashCount, c.attestCashCount);
+router.post("/cash-counts/:id/approve", requirePermission(MODULE, "approve"), v.approveCashCount, c.approveCashCount);
+router.post("/cash-counts/:id/cancel", requirePermission(MODULE, "edit"), v.cancelCashCount, c.cancelCashCount);
 router.post("/cash-counts/:id/document", requirePermission(MODULE, "view"), c.renderCashCountDocument);
 router.get("/:id", requirePermission(MODULE, "view"), c.getReconciliation);
 router.post("/:id/approve", requirePermission(MODULE, "approve"), c.approveReconciliation);

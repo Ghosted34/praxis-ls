@@ -42,8 +42,13 @@ const schemas = {
   update: z.object({
     ...Object.fromEntries(Object.entries(richFields).map(([k, v]) => [k, v.optional()])),
     label: richFields.label.optional(),
+    opening_balance_reason: z.string().max(500).optional().nullable(),
   }),
-  setActive: z.object({ active: z.boolean() }),
+  setActive: z.object({
+    active: z.boolean(),
+    force_clear_primary: z.boolean().optional(),
+    replacement_account_id: z.string().uuid().optional().nullable(),
+  }),
 
   // AI-facing shapes (id in the payload → picker action).
   aiUpdate: z.object({
@@ -52,6 +57,60 @@ const schemas = {
     label: richFields.label.optional(),
   }),
   aiSetActive: z.object({ treasury_account_id: z.string().uuid(), active: z.boolean() }),
+
+  createDocument: z.object({
+    document_type: z.enum(["BANK_RIB", "BANK_MANDATE", "KYC_DOCUMENT", "SIGNATURE_CARD", "ACCOUNT_LETTER", "OTHER"]),
+    title: z.string().min(1).max(200),
+    document_number: z.string().max(100).optional().nullable(),
+    vault_id: z.string().uuid().optional().nullable(),
+    file_name: z.string().max(255).optional().nullable(),
+    file_size: z.number().int().nonnegative().optional().nullable(),
+    mime_type: z.string().max(100).optional().nullable(),
+    issue_date: z.string().optional().nullable(),
+    expiry_date: z.string().optional().nullable(),
+    notes: z.string().max(1000).optional().nullable(),
+  }),
+
+  createSignatory: z.object({
+    user_id: z.string().uuid().optional().nullable(),
+    person_id: z.string().uuid().optional().nullable(),
+    full_name: z.string().min(1).max(200),
+    email: z.string().email().optional().nullable(),
+    phone: z.string().max(50).optional().nullable(),
+    role_title: z.string().max(100).optional().nullable(),
+    signatory_type: z.enum(["PRIMARY", "JOINT"]).optional(),
+    rule_type: z.enum(["SINGLE_SIGNATURE", "JOINT_REQUIRED"]).optional(),
+    limit_amount: z.number().nonnegative().optional().nullable(),
+    currency: z.string().length(3).optional(),
+    effective_from: z.string().optional().nullable(),
+    effective_to: z.string().optional().nullable(),
+    is_active: z.boolean().optional(),
+    signature_card_doc_id: z.string().uuid().optional().nullable(),
+    notes: z.string().max(1000).optional().nullable(),
+  }),
+
+  updateSignatory: z.object({
+    user_id: z.string().uuid().optional().nullable(),
+    person_id: z.string().uuid().optional().nullable(),
+    full_name: z.string().min(1).max(200).optional(),
+    email: z.string().email().optional().nullable(),
+    phone: z.string().max(50).optional().nullable(),
+    role_title: z.string().max(100).optional().nullable(),
+    signatory_type: z.enum(["PRIMARY", "JOINT"]).optional(),
+    rule_type: z.enum(["SINGLE_SIGNATURE", "JOINT_REQUIRED"]).optional(),
+    limit_amount: z.number().nonnegative().optional().nullable(),
+    currency: z.string().length(3).optional(),
+    effective_from: z.string().optional().nullable(),
+    effective_to: z.string().optional().nullable(),
+    is_active: z.boolean().optional(),
+    signature_card_doc_id: z.string().uuid().optional().nullable(),
+    notes: z.string().max(1000).optional().nullable(),
+  }),
+
+  reverseEntry: z.object({
+    entry_id: z.string().uuid(),
+    reason: z.string().min(1).max(500),
+  }),
 
   gatewayUpsert: z.object({
     provider: z.string().min(1).max(64),
@@ -72,6 +131,9 @@ const mw = (k) => (req, _res, next) => {
 
 module.exports = {
   create: mw("create"), update: mw("update"), setActive: mw("setActive"),
+  reverseEntry: mw("reverseEntry"),
+  createDocument: mw("createDocument"),
+  createSignatory: mw("createSignatory"), updateSignatory: mw("updateSignatory"),
   gatewayUpsert: mw("gatewayUpsert"), gatewayActive: mw("gatewayActive"), gatewayRole: mw("gatewayRole"),
   schemas,
 };

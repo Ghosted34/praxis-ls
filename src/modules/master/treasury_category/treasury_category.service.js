@@ -67,6 +67,18 @@ async function update(client, { id, patch = {}, actor = {} }) {
   // System rows: label and capability flags can be tuned; code and legacy_kind
   // are frozen (renaming BANK's code would break every screen that reads it).
   if (patch.label !== undefined) fields.label = String(patch.label).trim();
+
+  // Audit #35: Freeze capability flags once accounts exist
+  const flagChanged = (patch.requires_custodian !== undefined && patch.requires_custodian !== before.requires_custodian)
+    || (patch.is_bank_identity !== undefined && patch.is_bank_identity !== before.is_bank_identity)
+    || (patch.is_momo_identity !== undefined && patch.is_momo_identity !== before.is_momo_identity);
+  if (flagChanged) {
+    const usage = await repo.countUsage(client, id);
+    if (usage > 0) {
+      throw new AppError("CATEGORY_LOCKED", "Cannot change capability flags of a category with " + usage + " existing account(s)", 422);
+    }
+  }
+
   if (patch.requires_custodian !== undefined) fields.requires_custodian = patch.requires_custodian === true;
   if (patch.is_bank_identity   !== undefined) fields.is_bank_identity   = patch.is_bank_identity === true;
   if (patch.is_momo_identity   !== undefined) fields.is_momo_identity   = patch.is_momo_identity === true;
@@ -75,7 +87,12 @@ async function update(client, { id, patch = {}, actor = {} }) {
     rules.assertCode(c);
     fields.code = c;
   }
-  if (!before.is_system && patch.coa_parent_code !== undefined) {
+  if (!before.is_system && patch.coa_parent_code !== undefined && patch.coa_parent_code !== before.coa_parent_code) {
+    // Audit #33: Prevent category-parent changes once accounts exist
+    const usage = await repo.countUsage(client, id);
+    if (usage > 0) {
+      throw new AppError("CATEGORY_LOCKED", "Cannot change CoA parent of a category with " + usage + " existing account(s)", 422);
+    }
     const parent = await repo.getCoa(client, patch.coa_parent_code);
     rules.assertCoaParent(parent);
     fields.coa_parent_code = patch.coa_parent_code;

@@ -71,10 +71,27 @@ describe("Treasury · petty-cash count sheet", () => {
     expect(screen.queryByRole("button", { name: /issue sheet/i })).not.toBeInTheDocument();
   });
 
-  it("offers the count sheet once the custodian has attested", async () => {
+  it("offers the count sheet and approve button once the custodian has attested", async () => {
     render([{ ...COUNTS[0], status: "ATTESTED", attested_at: "2026-05-02" }]);
     expect(await screen.findByRole("button", { name: /issue sheet/i })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /approve/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^attest$/i })).not.toBeInTheDocument();
+  });
+
+  it("renders currency-specific denominations for EUR and shows witness input", async () => {
+    renderScreen(
+      <CashCountSheet accountId="t2" currency="EUR" floatLimit={null} />,
+      { routes: { "/reconciliation/cash-counts": [] } },
+    );
+    expect(await screen.findByLabelText(/quantity of 500$/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/quantity of 200$/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/quantity of 20$/i)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/User UUID of count witness/i)).toBeInTheDocument();
+  });
+
+  it("offers cancel action for draft count to allow same-day recount", async () => {
+    render();
+    expect(await screen.findByRole("button", { name: /cancel/i })).toBeInTheDocument();
   });
 
   it("warns when the float has drifted above its limit", async () => {

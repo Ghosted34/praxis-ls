@@ -263,7 +263,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `INVALID_SUBSCRIPTION` | 422 | 1× | — |
 | `INVALID_TOKEN` | 401 | 10× | — |
 | `INVALID_TRANSITION` | 422 | 23× | — |
-| `INVALID_VALUE` | 409, 422 | 10× | — |
+| `INVALID_VALUE` | 409, 422 | 13× | — |
 | `INVOICE_POSTED` | 422 | 1× | — |
 | `IN_USE` | 409 | 2× | — |
 | `ISSUER_NOT_SIGNED` | 409 | 1× | — |
@@ -333,7 +333,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_EDITABLE` | 400 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 3× | — |
-| `NOT_FOUND` | 404, 422 | 689× | — |
+| `NOT_FOUND` | 404, 422 | 690× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_OPEN` | 409, 422 | 3× | — |
 | `NOT_OPERATIONAL` | 422 | 1× | — |

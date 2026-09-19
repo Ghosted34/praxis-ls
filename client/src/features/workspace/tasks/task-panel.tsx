@@ -58,6 +58,7 @@ import {
 } from "../hooks";
 import { PRIORITY_LABEL, PRIORITY_TONE, STATUS_LABEL, STATUS_TONE } from "../labels";
 import { TaskDialog } from "./task-dialog";
+import { BlockageSection } from "./task-blockage";
 
 /**
  * The stages a task is on, for the panel's list. The set when the read
@@ -214,11 +215,26 @@ export function TaskPanel({
           */}
           {task.is_blocked && (
             <Callout tone="warn">
-              Waiting on {task.blocking_count}{" "}
-              {task.blocking_count === 1 ? "task" : "tasks"} that{" "}
-              {task.blocking_count === 1 ? "is" : "are"} not finished. It cannot be
-              marked done until {task.blocking_count === 1 ? "it is" : "they are"}{" "}
-              — or the dependency is overridden below.
+              {/* A hold and a prerequisite are different remedies (resolve the
+                  hold vs. chase the prerequisite), so the callout names whichever
+                  is true — and both, when both are. */}
+              {task.blockage && (
+                <>
+                  Blocked by a registered hold: “{task.blockage.note}” It cannot be
+                  marked done until the hold is resolved in the Blockages section
+                  below — resolving moves the due date by the blocked time.
+                </>
+              )}
+              {task.blockage && (task.blocking_count ?? 0) > 0 && " "}
+              {(task.blocking_count ?? 0) > 0 && (
+                <>
+                  Waiting on {task.blocking_count}{" "}
+                  {task.blocking_count === 1 ? "task" : "tasks"} that{" "}
+                  {task.blocking_count === 1 ? "is" : "are"} not finished. It cannot be
+                  marked done until {task.blocking_count === 1 ? "it is" : "they are"}{" "}
+                  — or the dependency is overridden below.
+                </>
+              )}
             </Callout>
           )}
 
@@ -435,6 +451,13 @@ export function TaskPanel({
           {!task.parent_task_id && (
             <ChildTasksSection task={task} audience={audience} onOpenChild={onOpenChild} />
           )}
+
+          {/* ── blockages (13975) ──────────────────────────────────────────
+              Beside the dependency section, not inside it: a hold on the work
+              ("customs' network is down") is not an edge in the task graph,
+              and hiding it under "dependencies" would teach people to look
+              for a prerequisite task that does not exist. */}
+          <BlockageSection task={task} audience={audience} />
 
           {/* ── dependencies ─────────────────────────────────────────────── */}
           <DependenciesSection task={task} audience={audience} />

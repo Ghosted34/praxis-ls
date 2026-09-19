@@ -274,6 +274,41 @@ const taskPing = z
   })
   .strict();
 
+/**
+ * Raise a blockage (13975) — "I am blocked, and here is why".
+ *
+ * `note` is REQUIRED and bounded at 1000: a badge with nothing behind it is
+ * worse than no badge, and a thousand characters is far more room than any
+ * honest hold needs ("held at customs — network down since Tuesday").
+ *
+ * `notify_user_ids` may name ANY user in the tenant, unlike a ping: the person
+ * who can lift a customs hold is usually not on the task. Every named person
+ * receives a SmartComm direct message, so the reach is recorded in the comms
+ * thread rather than hidden in a delivery log — see the service's header.
+ * `channel_ids` are SmartComm groups the raiser belongs to; membership is
+ * enforced by comms itself at post time.
+ */
+const blockageRaise = z
+  .object({
+    note: z.string().trim().min(1, "a blockage needs an explanation").max(1000),
+    estimated_resolve_at: dt(DATETIME_MSG).nullable().optional(),
+    notify_user_ids: z.array(z.string().uuid()).max(50).optional(),
+    channel_ids: z.array(z.string().uuid()).max(10).optional(),
+    audience: z.enum(AUDIENCES).optional(),
+  })
+  .strict();
+
+/**
+ * Clear the hold. `resolve_note` is optional for the same reason an override
+ * reason is: a forced justification produces "n/a", not an explanation.
+ */
+const blockageResolve = z
+  .object({
+    resolve_note: z.string().trim().max(500).nullable().optional(),
+    audience: z.enum(AUDIENCES).optional(),
+  })
+  .strict();
+
 const taskListQuery = strictQuery({
   status: filters.enum(STATUSES),
   priority: filters.enum(PRIORITIES),
@@ -426,6 +461,8 @@ module.exports = {
   dependencyAdd: body(dependencyAdd),
   dependencyOverride: body(dependencyOverride),
   taskPing: body(taskPing),
+  blockageRaise: body(blockageRaise),
+  blockageResolve: body(blockageResolve),
   eventCreate: body(eventCreate),
   eventUpdate: body(eventUpdate),
   participantAdd: body(participantAdd),

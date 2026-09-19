@@ -76,6 +76,14 @@ tasks.delete("/:id/dependencies/:dependencyId", can("edit"), t.removeDependency)
 // patch should not have to reason about.
 tasks.patch("/:id/dependencies/:dependencyId/override", can("edit"), v.dependencyOverride, t.overrideDependency);
 
+// Blockages (13975) — an external hold with a note ("customs' network is
+// down"). Raising and resolving are their own verbs rather than fields on a
+// PATCH because each carries attribution, a notification contract and — on
+// resolve — a due-date movement: consequences a generic patch should not have
+// to reason about. `edit`, like the dependency edges above.
+tasks.post("/:id/blockages", can("edit"), v.blockageRaise, t.raiseBlockage);
+tasks.post("/:id/blockages/:blockageId/resolve", can("edit"), v.blockageResolve, t.resolveBlockage);
+
 /* ── /workspace/events ──────────────────────────────────────────────────── */
 const events = express.Router();
 events.get("/", can("view"), v.eventListQuery, t.listEvents);

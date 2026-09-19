@@ -523,11 +523,12 @@ async function listTasks(client, ctx, q = {}) {
     limit: q.limit,
     offset: q.offset,
   });
-  const [blockedRows, childRows] = await Promise.all([
+  const [blockedRows, childRows, blockageRows] = await Promise.all([
     repo.blockedCountsFor(client, rows.map((r) => r.task_id)),
     repo.childCountsFor(client, rows.map((r) => r.task_id)),
+    repo.activeBlockagesFor(client, rows.map((r) => r.task_id)),
   ]);
-  return { rows: rows.map(decorator(blockedRows, childRows)), total, audience, audiences: audiencesFor(ctx) };
+  return { rows: rows.map(decorator(blockedRows, childRows, blockageRows)), total, audience, audiences: audiencesFor(ctx) };
 }
 
 /**
@@ -552,11 +553,12 @@ async function getBoard(client, ctx, q = {}) {
     q: q.q,
   });
   const ids = Object.values(board).flat().map((t) => t.task_id);
-  const [blockedRows, childRows] = await Promise.all([
+  const [blockedRows, childRows, blockageRows] = await Promise.all([
     repo.blockedCountsFor(client, ids),
     repo.childCountsFor(client, ids),
+    repo.activeBlockagesFor(client, ids),
   ]);
-  const decorate = decorator(blockedRows, childRows);
+  const decorate = decorator(blockedRows, childRows, blockageRows);
   for (const k of Object.keys(board)) board[k] = board[k].map(decorate);
   return {
     board,
@@ -570,25 +572,63 @@ async function getBoard(client, ctx, q = {}) {
 /**
  * Stamp blocked/child metadata onto list and board cards.
  *
- * Built once from two batched reads rather than queried per card: the
- * alternative is the N+1 that turns a 200-card board into 401 round trips, and
+ * Built once from three batched reads rather than queried per card: the
+ * alternative is the N+1 that turns a 200-card board into 601 round trips, and
  * it is invisible in development where a board holds four cards.
+ *
+ * "Blocked" here answers ONE question from two sources (13975): an unresolved
+ * dependency edge OR a live blockage row. A card that said unblocked while a
+ * customs hold sat on the task would be the exact lie the Blocked-work panel
+ * exists to prevent, so both feed `is_blocked`, and the card carries the hold's
+ * note as its snippet — the sentence a reader needs before opening the panel.
  */
-function decorator(blockedRows = [], childRows = []) {
+function decorator(blockedRows = [], childRows = [], blockageRows = []) {
   const blocked = new Map(blockedRows.map((r) => [r.task_id, r]));
   const kids = new Map(childRows.map((r) => [r.parent_task_id, r]));
+  const holds = new Map(blockageRows.map((r) => [r.task_id, r]));
   return (row) => {
     const b = blocked.get(row.task_id);
     const c = kids.get(row.task_id);
+    const h = holds.get(row.task_id);
     const card = withLink(row);
     return {
       ...card,
       blocking_count: b ? b.blocking_count : 0,
-      is_blocked: Boolean(b) && !DONE_STATUSES.has(row.status),
-      blocked_since: b ? b.blocked_since : null,
+      blockage: h ? shapeBlockage(h) : null,
+      is_blocked: (Boolean(b) || Boolean(h)) && !DONE_STATUSES.has(row.status),
+      blocked_since: olderOf(b ? b.blocked_since : null, h ? h.raised_at : null),
       child_count: c ? c.child_count : 0,
       child_done_count: c ? c.child_done_count : 0,
     };
+  };
+}
+
+/** The earlier of two hold stamps, either possibly absent. */
+function olderOf(a, b) {
+  if (!a) return b || null;
+  if (!b) return a;
+  return new Date(a) <= new Date(b) ? a : b;
+}
+
+/**
+ * A blockage row as the client renders it — one shape for the card snippet,
+ * the panel's collapsible and the raised/resolved responses, so no screen can
+ * drift from the others about what a hold carries.
+ */
+function shapeBlockage(r) {
+  if (!r) return null;
+  return {
+    task_blockage_id: r.task_blockage_id,
+    task_id: r.task_id,
+    note: r.note,
+    estimated_resolve_at: r.estimated_resolve_at || null,
+    raised_by: r.raised_by || null,
+    raised_by_name: r.raised_by_name || null,
+    raised_at: r.raised_at,
+    resolved_at: r.resolved_at || null,
+    resolved_by_name: r.resolved_by_name || null,
+    resolve_note: r.resolve_note || null,
+    due_shift: r.due_shift || null,
   };
 }
 
@@ -613,7 +653,7 @@ async function getTask(client, ctx, id, audience) {
   if (!task || !canSeeTask(task, ctx, resolved)) {
     throw new AppError("NOT_FOUND", "Task not found", 404);
   }
-  const [subtasks, watchers, dependencyRows, children, parent, reminders] = await Promise.all([
+  const [subtasks, watchers, dependencyRows, children, parent, reminders, activeBlockage, blockageHistory] = await Promise.all([
     repo.listSubtasks(client, id),
     repo.listWatchers(client, id),
     repo.listDependencies(client, id),
@@ -622,6 +662,11 @@ async function getTask(client, ctx, id, audience) {
     task.parent_task_id ? Promise.resolve([]) : repo.listChildTasks(client, id),
     task.parent_task_id ? repo.findTask(client, task.parent_task_id) : Promise.resolve(null),
     repo.listReminders(client, "task", id),
+    // 13975: the live hold (the panel's collapsible header and Resolve button)
+    // and the resolved ones (its history) in the same round trip as everything
+    // else the panel draws — a task panel is one request or it is a spinner.
+    repo.activeBlockageFor(client, id),
+    repo.listBlockages(client, id),
   ]);
 
   const dependencies = dependencyRows.map((row) =>
@@ -644,6 +689,7 @@ async function getTask(client, ctx, id, audience) {
   // see is still blocked, and a count that dropped hidden edges would tell a
   // manager their task is ready when it is not.
   const blocking = blockingCount(dependencyRows);
+  const blockedByHold = Boolean(activeBlockage);
 
   return {
     ...withLink(task),
@@ -652,7 +698,12 @@ async function getTask(client, ctx, id, audience) {
     dependencies,
     reminders,
     blocking_count: blocking,
-    is_blocked: blocking > 0 && !DONE_STATUSES.has(task.status),
+    blockage: shapeBlockage(activeBlockage),
+    // Newest first, live hold included: the panel renders this as the
+    // collapsible's history, and a resolved hold is the evidence behind "late
+    // because of X" — hiding it would hide the reason a due date moved.
+    blockages: blockageHistory.map(shapeBlockage),
+    is_blocked: (blocking > 0 || blockedByHold) && !DONE_STATUSES.has(task.status),
     // The roll-up counts EVERY child (an honest denominator) while the rendered
     // list carries only the ones this caller may open — see `listChildTasks`.
     children: children.filter((c) => canSeeTask(c, ctx, resolved)).map(withLink),
@@ -872,6 +923,18 @@ async function changeStatus(client, ctx, id, status, audience) {
   // CANCELLED is allowed through: calling off blocked work is exactly what a
   // person does about a dead end, and refusing it would trap the task.
   if (status === "DONE" && before.is_blocked) {
+    // A live hold refuses completion BEFORE the dependency message, because
+    // its remedy is one button on the same panel (Resolve) whereas a
+    // dependency's is a conversation with whoever owns the prerequisite —
+    // naming the wrong remedy sends the reader on the wrong errand.
+    if (before.blockage) {
+      throw new AppError(
+        "INVALID_VALUE",
+        `This task has an active blockage: "${before.blockage.note}". Resolve the blockage first — resolving moves the due date by the time you were blocked.`,
+        422,
+        { status: ["this task has an active blockage"] },
+      );
+    }
     throw new AppError(
       "INVALID_VALUE",
       before.blocking_count === 1
@@ -1461,6 +1524,232 @@ async function pingTask(client, ctx, taskId, { user_ids, message }, audience) {
     entityRef: `task:${taskId}`, after: { recipients: targets, has_message: Boolean(message) },
   });
   return { pinged: targets.length, user_ids: targets };
+}
+
+/* ── blockages (13975) ────────────────────────────────────────────────────── */
+
+/**
+ * Register an external hold on a task — "customs' network is down" — with the
+ * note that explains it and an optional estimate of when it clears.
+ *
+ * ── WHY THE FAN-OUT IS WIDER THAN A PING'S ─────────────────────────────────
+ *
+ * A ping may only reach people already on the task, because a ping is a
+ * nudge about work the recipient already owns. A blockage is the opposite:
+ * its whole purpose is to reach the person who can LIFT the hold, who is
+ * usually NOT on the task — the customs manager, the client's contact, the
+ * network provider's account handler. So `notify_user_ids` here accepts any
+ * user in the tenant. That is not an unaudited message channel bolted to a
+ * to-do list (the defect the ping rule exists to prevent): every named
+ * recipient receives a SmartComm direct message that lives in the comms
+ * record, and the raise itself is an audit row. The reach is deliberate and
+ * the paper trail is the comms thread.
+ *
+ * ── WHY THE NOTIFICATION IS FORCED ─────────────────────────────────────────
+ *
+ * A hold nobody noticed is a hold that becomes a missed sailing. The raise
+ * therefore uses `force` on the notification service: in-app, push and email
+ * all fire regardless of per-category silencing — the same treatment the
+ * security category gets, and for the same reason: the cost of one unwanted
+ * alert is trivial against the cost of one unnoticed hold. Resolving is NOT
+ * forced (see `resolveBlockage`): good news can wait for preferences.
+ *
+ * ── WHY DELIVERY IS BEST-EFFORT AND AFTER THE WRITE ────────────────────────
+ *
+ * The blockage row is the record; the messages are courtesies about it. A
+ * SmartComm channel that rejects the post (archived, membership gone) must
+ * not roll back a hold that is real, so every leg is individually caught and
+ * logged, exactly like `notifyEach`.
+ */
+async function raiseBlockage(client, ctx, taskId, body, audience) {
+  const resolved = resolveAudience(ctx, audience ?? ctx.audience);
+  const task = await getTask(client, ctx, taskId, resolved);
+  if (DONE_STATUSES.has(task.status)) {
+    throw new AppError(
+      "INVALID_VALUE",
+      "A finished task cannot be blocked. Reopen it first if the hold is real.",
+      422,
+      { status: ["closed tasks cannot carry a blockage"] },
+    );
+  }
+  if (task.blockage) {
+    throw new AppError(
+      "INVALID_VALUE",
+      "This task already has an active blockage. Resolve it before raising another.",
+      422,
+      { blockage: ["one active blockage per task"] },
+    );
+  }
+
+  const eta = body.estimated_resolve_at || null;
+  const row = await repo.insertBlockage(client, {
+    taskId,
+    note: body.note,
+    estimatedResolveAt: eta,
+    raisedBy: ctx.user.user_id,
+  });
+  await emitEvent(client, {
+    eventTypeKey: events.TASK_BLOCKAGE_RAISED, moduleKey: events.MODULE,
+    entityRef: `task:${taskId}`, actorUserId: ctx.user.user_id,
+    payload: { blockage_id: row.task_blockage_id, estimated_resolve_at: eta },
+  });
+  await audit(client, {
+    ...actorOf(ctx), action: events.TASK_BLOCKAGE_RAISED, moduleKey: events.MODULE,
+    entityRef: `task:${taskId}`,
+    after: { blockage_id: row.task_blockage_id, note: body.note, estimated_resolve_at: eta },
+  });
+
+  const auto = recipientsOf(task, task.watchers || [], { exclude: ctx.user.user_id });
+  const extra = [...new Set((body.notify_user_ids || []).filter((id) => id !== ctx.user.user_id))];
+  const validExtra = extra.length ? await repo.existingUserIds(client, extra) : [];
+  const targets = [...new Set([...auto, ...validExtra])];
+  const from = ctx.user.display_name || ctx.user.email || "A colleague";
+  const message =
+    `Blockage on "${task.title}": ${body.note}` +
+    (eta ? ` — expected to clear by ${new Date(eta).toISOString().slice(0, 10)}` : "");
+
+  if (targets.length) {
+    await notifyEach(client, targets, (userId) => ({
+      eventTypeKey: events.TASK_BLOCKAGE_RAISED,
+      title: `${from} registered a blockage on a task`,
+      body: message,
+      entityRef: `task:${taskId}`,
+      priority: "HIGH",
+      url: entityRouteFor(taskId),
+      dedupeKey: `task-blockage:${row.task_blockage_id}:${userId}`,
+      force: true,
+    }));
+
+    // The in-house message: one DM per named person, created if it does not
+    // exist yet (createChannel dedupes DIRECT channels), posted as the raiser
+    // so the thread reads as them saying it — because it is them saying it.
+    // notifyMembers OFF: these people already got the forced notification,
+    // and a second, preference-honouring bell for the same sentence is noise.
+    const comms = require("../../smartcomm/smartcomm.service");
+    for (const userId of targets) {
+      try {
+        const dm = await comms.createChannel(client, {
+          data: { kind: "DIRECT", member_ids: [userId] },
+          actor: ctx.user,
+        });
+        await comms.postMessage(client, {
+          groupId: dm.group_id,
+          body: `${message}\n${entityRouteFor(taskId)}`,
+          actor: ctx.user,
+          notifyMembers: false,
+        });
+      } catch (err) {
+        logger.error({ err, userId, taskId }, "blockage SmartComm DM failed");
+      }
+    }
+  }
+
+  // Group channels the raiser picked ("tell the customs channel"). Members
+  // are notified through comms' own preference-honouring fan-out — that IS
+  // the channel's normal contract, and they did not get a forced bell.
+  const commsForGroups = require("../../smartcomm/smartcomm.service");
+  const postedChannels = [];
+  for (const groupId of body.channel_ids || []) {
+    try {
+      await commsForGroups.postMessage(client, { groupId, body: message, actor: ctx.user, notifyMembers: true });
+      postedChannels.push(groupId);
+    } catch (err) {
+      logger.error({ err, groupId, taskId }, "blockage SmartComm channel post failed");
+    }
+  }
+
+  return {
+    blockage: shapeBlockage({ ...row, raised_by_name: ctx.user.display_name || ctx.user.email || null }),
+    notified: targets.length,
+    channels_posted: postedChannels,
+  };
+}
+
+/**
+ * Clear the hold. Resolving does three things a raise deliberately does not:
+ *
+ *   1. closes the row (the partial unique index then frees the task for a
+ *      future hold),
+ *   2. moves an OPEN task's due date forward by exactly the blocked duration
+ *      and records that movement on the blockage row (`due_shift`), so "why
+ *      is this deadline later than the one I wrote" is answerable from the
+ *      task's own history — the performance-review promise the feature exists
+ *      for: the delay is attributed to the hold, not to the person,
+ *   3. tells the people on the task — through their PREFERENCES, not forced,
+ *      because "you are unblocked, start" is good news and good news respects
+ *      the switches people set. The forced leg was the raise.
+ *
+ * A finished task's due date is NOT moved: its deadline is history by then,
+ * and rewriting history to flatter the present is exactly what the audit
+ * ledger exists to make impossible.
+ */
+async function resolveBlockage(client, ctx, taskId, blockageId, body, audience) {
+  const resolved = resolveAudience(ctx, audience ?? ctx.audience);
+  const task = await getTask(client, ctx, taskId, resolved);
+  const row = await repo.resolveBlockageRow(client, blockageId, {
+    resolvedBy: ctx.user.user_id,
+    resolveNote: body.resolve_note || null,
+  });
+  if (!row || row.task_id !== taskId) {
+    throw new AppError("NOT_FOUND", "Blockage not found on this task, or already resolved", 404);
+  }
+
+  const seconds = Math.max(0, Math.round((new Date(row.resolved_at).getTime() - new Date(row.raised_at).getTime()) / 1000));
+  let newDueAt = null;
+  if (seconds > 0 && !DONE_STATUSES.has(task.status)) {
+    newDueAt = await repo.shiftTaskDue(client, taskId, seconds);
+    if (newDueAt) await repo.setBlockageDueShift(client, blockageId, seconds);
+  }
+
+  await emitEvent(client, {
+    eventTypeKey: events.TASK_BLOCKAGE_RESOLVED, moduleKey: events.MODULE,
+    entityRef: `task:${taskId}`, actorUserId: ctx.user.user_id,
+    payload: { blockage_id: blockageId, due_shift_seconds: newDueAt ? seconds : 0 },
+  });
+  await audit(client, {
+    ...actorOf(ctx), action: events.TASK_BLOCKAGE_RESOLVED, moduleKey: events.MODULE,
+    entityRef: `task:${taskId}`,
+    before: { note: row.note, raised_at: row.raised_at },
+    after: {
+      blockage_id: blockageId,
+      resolve_note: body.resolve_note || null,
+      due_shift_seconds: newDueAt ? seconds : 0,
+      new_due_at: newDueAt,
+    },
+  });
+
+  const targets = recipientsOf(task, task.watchers || [], { exclude: ctx.user.user_id });
+  if (targets.length) {
+    const from = ctx.user.display_name || ctx.user.email || "A colleague";
+    const duration = humanDuration(seconds);
+    await notifyEach(client, targets, (userId) => ({
+      eventTypeKey: events.TASK_BLOCKAGE_RESOLVED,
+      title: `A blockage on a task was resolved`,
+      body: newDueAt
+        ? `${from} cleared "${row.note}" after ${duration}. The due date moved to ${new Date(newDueAt).toISOString().slice(0, 10)}.`
+        : `${from} cleared "${row.note}" after ${duration}.`,
+      entityRef: `task:${taskId}`,
+      priority: "NORMAL",
+      url: entityRouteFor(taskId),
+      dedupeKey: `task-blockage-resolved:${blockageId}:${userId}`,
+    }));
+  }
+
+  const full = (await repo.listBlockages(client, taskId)).find((b) => b.task_blockage_id === blockageId);
+  return { blockage: shapeBlockage(full || row), new_due_at: newDueAt };
+}
+
+/** "2d 4h" / "3h" / "20m" — a hold's length as a person says it, for the
+ *  resolve notification. Days first because a customs hold is measured in
+ *  days and "52h" makes a reader do arithmetic nobody should do on a lock
+ *  screen. */
+function humanDuration(seconds) {
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const minutes = Math.round((seconds % 3600) / 60);
+  if (days) return hours ? `${days}d ${hours}h` : `${days}d`;
+  if (hours) return minutes ? `${hours}h ${minutes}m` : `${hours}h`;
+  return `${minutes}m`;
 }
 
 /**
@@ -2230,6 +2519,11 @@ async function analytics(client, ctx, q = {}) {
       assigned_to_name: r.assigned_to_name,
       blocking_count: r.blocking_count,
       blocked_since: r.blocked_since,
+      // 13975: the hold's own sentence, when the wait is a blockage rather
+      // than (or beside) a prerequisite. Written to be read by this reader,
+      // so unlike a prerequisite title it travels.
+      blockage_note: r.blockage_note || null,
+      blockage_eta: r.blockage_eta || null,
       link_url: entityRouteFor(r.task_id),
     })),
     burndown: burndownSeries(burndown),
@@ -2320,7 +2614,8 @@ module.exports = {
   spawnDue,
   // PR 2 — hierarchy, dependencies, collaboration and operational Analytics.
   assertParentable, assertRecurrenceAnchored, childRollup, redactDependency, dependencyBlocks,
-  blockingCount, entityRouteFor, recipientsOf, decorator,
+  blockingCount, entityRouteFor, recipientsOf, decorator, shapeBlockage, humanDuration,
+  raiseBlockage, resolveBlockage,
   addChildTask, childrenFor, dependenciesFor,
   addDependency, removeDependency, setDependencyOverride,
   pingTask, notifyStatusWatchers,

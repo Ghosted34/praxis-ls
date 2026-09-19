@@ -468,27 +468,30 @@ function announce(recipients, notification, inserted) {
 async function notifyMany(client, userIds, {
   eventTypeKey = null, title, body = null, entityRef = null, priority = "NORMAL", category = null,
   url = null, pushTag = undefined, renotify = false, requireInteraction = false,
-  urgency = "normal", pushData = null, actions = null, emailFallback = false, ctx = {},
+  urgency = "normal", pushData = null, actions = null, emailFallback = false, force = false, ctx = {},
 } = {}) {
   const ids = [...new Set((userIds || []).filter(Boolean))];
   if (ids.length === 0 || !title) return 0;
 
   const cat = category || categoryFor(eventTypeKey);
   const isSecurity = isSecurityCategory(cat);
+  const forced = force === true;
 
   // 1. every preference for every recipient, one query.
   // INTERRUPT rides the same table and the same round-trip. A security
   // notification skips the preference read entirely (it ignores preferences by
   // design), which also means it always takes the computed default — and that
   // default is `true`, because the fan-out forces security events to HIGH.
-  const prefs = isSecurity ? new Map() : await repo.preferencesFor(client, ids, ["IN_APP", "EMAIL", "INTERRUPT"], cat);
+  // `force` (13975 task blockages) skips it for the same reason: nothing it
+  // would read is allowed to change the answer.
+  const prefs = (isSecurity || forced) ? new Map() : await repo.preferencesFor(client, ids, ["IN_APP", "EMAIL", "INTERRUPT"], cat);
   // Absence of a row means enabled for IN_APP; for EMAIL it means the
   // CATEGORY's default — opt-in everywhere except the tasks exception
   // (notification-email-default.js), which is opt-out because the people a
   // task notifies are the people already on it.
-  const wantsInApp = (u) => isSecurity || prefs.get(`${u}:IN_APP`) !== false;
+  const wantsInApp = (u) => forced || isSecurity || prefs.get(`${u}:IN_APP`) !== false;
   const emailDefault = notificationEmailDefault.emailDefaultFor(cat);
-  const wantsEmail = (u) => isSecurity || (prefs.get(`${u}:EMAIL`) ?? emailDefault);
+  const wantsEmail = (u) => forced || isSecurity || (prefs.get(`${u}:EMAIL`) ?? emailDefault);
   const wantsInterrupt = (u) => notificationInterrupt.interruptFor({
     priority, category: cat, preference: prefs.get(`${u}:INTERRUPT`),
   });
@@ -511,7 +514,7 @@ async function notifyMany(client, userIds, {
   const recipients = ids.map((userId) => ({
     userId,
     email: wantsEmail(userId),
-    push: isSecurity || inAppSet.has(userId),
+    push: forced || isSecurity || inAppSet.has(userId),
     badgeCount: badges.get(userId) ?? null,
     interrupt: wantsInterrupt(userId),
   })).filter((r) => r.email || r.push);
@@ -594,7 +597,8 @@ async function notify(client, {
   userId, eventTypeKey = null, title, body = null, entityRef = null, priority = "NORMAL",
   category = null, dedupeKey = null,
   url = null, pushTag = undefined, renotify = false, requireInteraction = false,
-  urgency = "normal", pushData = null, actions = null, emailFallback = false, forceEmail = false, ctx = {},
+  urgency = "normal", pushData = null, actions = null, emailFallback = false, forceEmail = false,
+  force = false, ctx = {},
 } = {}) {
   if (!userId || !title) return null;
   const cat = category || categoryFor(eventTypeKey);
@@ -605,8 +609,15 @@ async function notify(client, {
 
   const { linkUrl, pushUrl } = resolveDestination({ url, entityRef });
 
+  // `force` outranks every preference on every channel: in-app row, push and
+  // (below) email all fire as if the recipient had opted into everything. It
+  // is NOT the security category — the notification still files under its own
+  // category in the inbox and in Preferences — it is the delivery contract of
+  // exactly one producer today: a raised task blockage (13975), where "one
+  // hold nobody noticed" costs more than every unwanted alert combined. New
+  // callers should earn the same bar before reaching for it.
   let inApp = null;
-  if (isSecurity || (await repo.isChannelEnabled(client, userId, "IN_APP", cat))) {
+  if (force || isSecurity || (await repo.isChannelEnabled(client, userId, "IN_APP", cat))) {
     inApp = await repo.insertForUser(client, { userId, eventTypeKey, title, body, entityRef, priority, category: cat, linkUrl });
   }
 
@@ -638,6 +649,7 @@ async function notify(client, {
   // re-engage a silenced channel, and it is recorded against the reminder at
   // write, so "who asked" is answerable from the row.
   const wantsEmail =
+    force ||
     isSecurity ||
     forceEmail === true ||
     (await repo.isChannelEnabled(

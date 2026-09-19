@@ -6,7 +6,7 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 1674 |
+| Routes | 1680 |
 | Modules mounted | 141 |
 | API version | v1 |
 
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 1678 mounted routes, grouped by path prefix.
+All 1680 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -2410,6 +2410,8 @@ All 1678 mounted routes, grouped by path prefix.
 | DELETE | `/api/tenant/workspace/tasks/:id` | — |
 | GET | `/api/tenant/workspace/tasks/:id` | — |
 | PATCH | `/api/tenant/workspace/tasks/:id` | — |
+| POST | `/api/tenant/workspace/tasks/:id/blockages` | — |
+| POST | `/api/tenant/workspace/tasks/:id/blockages/:blockageId/resolve` | — |
 | POST | `/api/tenant/workspace/tasks/:id/children` | — |
 | POST | `/api/tenant/workspace/tasks/:id/dependencies` | — |
 | DELETE | `/api/tenant/workspace/tasks/:id/dependencies/:dependencyId` | — |

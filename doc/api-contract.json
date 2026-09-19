@@ -2,11 +2,11 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 141,
-  "route_count": 1674,
+  "route_count": 1680,
   "tiers": {
     "public": 68,
     "self-scoped": 105,
-    "gated": 1501
+    "gated": 1507
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -9736,6 +9736,18 @@
       "tier": "gated"
     },
     "POST /api/tenant/workspace/tasks/": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/workspace/tasks/:id/blockages": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/workspace/tasks/:id/blockages/:blockageId/resolve": {
       "auth": true,
       "rbac": true,
       "validated": false,

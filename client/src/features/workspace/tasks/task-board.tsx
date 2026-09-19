@@ -730,7 +730,20 @@ function TaskCardFace({ task, hoverTitle }: { task: Task; hoverTitle: boolean })
             work blocked by something hidden is still blocked, and a card that
             said "Blocked by 1" where the truth was 2 would be worse than one
             that said nothing. */}
-        {task.is_blocked && <Pill tone="warn">Blocked by {task.blocking_count}</Pill>}
+        {task.is_blocked && (
+          <Pill tone="warn">
+            {(task.blocking_count ?? 0) > 0 ? `Blocked by ${task.blocking_count}` : "Blocked"}
+          </Pill>
+        )}
+        {/* 13975: the hold's own sentence on the card, truncated — the one line
+            a reader needs before opening the panel ("held at customs…"). It is
+            a snippet, not the box: the box (note, ETA, resolve, history) lives
+            in the panel, where there is room for all of it. */}
+        {task.blockage && (
+          <span className="min-w-0 max-w-full truncate text-xs text-muted-foreground" title={task.blockage.note}>
+            ⛔ {task.blockage.note}
+          </span>
+        )}
         {task.assigned_to_name && (
           <span className="min-w-0 truncate text-xs text-muted-foreground">{task.assigned_to_name}</span>
         )}

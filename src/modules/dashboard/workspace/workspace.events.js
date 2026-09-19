@@ -33,6 +33,14 @@ module.exports = {
   TASK_WATCHER_REMOVED: "task.watcher_removed",
   TASK_PINGED: "task.pinged",
 
+  // 13975 — a blockage is an external hold ("customs' network is down"), not a
+  // dependency edge: nothing in the task graph represents it, so it gets its
+  // own rows and its own two keys. Raised is the loud one (forced notification
+  // + SmartComm fan-out); resolved is the quiet one that also explains a
+  // due-date shift.
+  TASK_BLOCKAGE_RAISED: "task.blockage_raised",
+  TASK_BLOCKAGE_RESOLVED: "task.blockage_resolved",
+
   EVENT_CREATED: "calendar_event.created",
   EVENT_UPDATED: "calendar_event.updated",
   EVENT_DELETED: "calendar_event.deleted",

@@ -65,6 +65,7 @@ import { useResource, errMsg } from "@/lib/use-resource";
 import { money, num, dateFmt } from "@/lib/format";
 import * as api from "@/lib/operations-api";
 import { MilestoneChain } from "./milestone-chain";
+import { FileTasksTab } from "./file-tasks";
 import { QTickets } from "./q-tickets";
 import {
   humanizeKey,
@@ -90,6 +91,7 @@ export type File360Tab =
   | "containers"
   | "itinerary"
   | "milestones"
+  | "tasks"
   | "queries"
   | "money"
   | "people"
@@ -103,6 +105,10 @@ export const FILE_360_TABS: readonly File360Tab[] = [
   "containers",
   "itinerary",
   "milestones",
+  // Directly after the chain, because the two answer the same question from
+  // opposite ends: the chain is what the system says has happened to this
+  // file, Tasks is what people have undertaken to do about it (13900).
+  "tasks",
   "queries",
   "money",
   "people",
@@ -114,6 +120,7 @@ const TAB_LABEL: Record<File360Tab, string> = {
   containers: "Containers",
   itinerary: "Itinerary",
   milestones: "Milestones",
+  tasks: "Tasks",
   queries: "Queries",
   money: "Money",
   people: "People",
@@ -1002,6 +1009,13 @@ export function OperationFile360({
       {activeTab === "containers" && <ContainersTab fileId={fileId} />}
       {activeTab === "itinerary" && <ItineraryEditor dossierId={fileId} />}
       {activeTab === "milestones" && <MilestonesTab fileId={fileId} />}
+      {activeTab === "tasks" && (
+        <FileTasksTab
+          fileId={fileId}
+          fileRef={header.ref}
+          clientName={header.client_name}
+        />
+      )}
       {activeTab === "queries" && <QTickets dossierId={fileId} />}
       {activeTab === "money" && <MoneyTab m={d.money} />}
       {activeTab === "people" && <PeopleTab people={d.people} />}

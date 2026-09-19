@@ -184,6 +184,82 @@ const withLink = (row) => {
 };
 
 /**
+ * Settle the operations-file link a write is asking for (13900).
+ *
+ * ── THE RULE, AND WHY IT IS HERE AND NOT ONLY IN THE DATABASE ──────────────
+ *
+ * A milestone must belong to the file it is filed under. 13900's CHECK enforces
+ * the floor (a stage with no file at all is refused by the table), but the
+ * stronger rule — that the stage is one of THAT file's — cannot be a CHECK,
+ * because it reads a second table. It is enforced here, where a mismatch can be
+ * a sentence naming both records rather than a 23514 the user cannot act on.
+ *
+ * ── CLEARING THE FILE CLEARS THE STAGE ─────────────────────────────────────
+ *
+ * A stage is a narrowing of a file, not an alternative to one, so unpicking the
+ * file must take the stage with it. Doing that HERE rather than asking the
+ * dialog to send both nulls is deliberate: the API has other callers (the AI
+ * adapter, a task raised from another screen), and a rule that lives in one
+ * form is a rule the next caller breaks. The column pair can then never reach
+ * a state the UI has no way to show.
+ *
+ * Returns the patch to apply. `before` is the row as it stands, so a PATCH that
+ * names only the stage is checked against the file the task already has rather
+ * than against nothing.
+ */
+async function resolveFileLink(client, input, before = null) {
+  const patch = {};
+  const touchesFile = "dossier_id" in input;
+  const touchesStage = "milestone_instance_id" in input;
+  if (!touchesFile && !touchesStage) return patch;
+
+  const dossierId = touchesFile ? input.dossier_id || null : (before ? before.dossier_id : null) || null;
+  let milestoneId = touchesStage ? input.milestone_instance_id || null : (before ? before.milestone_instance_id : null) || null;
+
+  /*
+   * The stage follows the file, in BOTH directions the file can move.
+   *
+   * Unpicking it is the obvious half. The other half is moving a task from one
+   * file to another without mentioning the stage: the old stage belongs to the
+   * old file, so carrying it forward would either store a stage of a shipment
+   * the task is no longer on, or — since the check below would catch it — turn
+   * a legitimate "move this to the other file" into a 400 about a milestone
+   * the caller never named. Neither is what they asked for, and a stage is a
+   * narrowing of a file rather than a thing that survives it, so it goes.
+   *
+   * A caller that DID name a stage is not second-guessed here: it is checked
+   * against the new file below and refused by name if it is another file's.
+   */
+  const fileChanged = touchesFile && dossierId !== ((before ? before.dossier_id : null) || null);
+  if (touchesFile && (!dossierId || (fileChanged && !touchesStage))) milestoneId = null;
+
+  if (milestoneId) {
+    if (!dossierId) {
+      throw new AppError(
+        "BAD_VALUE",
+        "Pick the operations file before its milestone — a milestone belongs to a file.",
+        400,
+      );
+    }
+    const stage = await repo.milestoneFileOf(client, milestoneId);
+    if (!stage) throw new AppError("NOT_FOUND", "That milestone no longer exists on this file.", 404);
+    if (stage.dossier_id !== dossierId) {
+      throw new AppError(
+        "BAD_VALUE",
+        `“${stage.label}” is a milestone of another operations file. Pick one from the file you linked.`,
+        400,
+      );
+    }
+  }
+
+  if (touchesFile) patch.dossier_id = dossierId;
+  // Written whenever the caller named it, and whenever the file moving under it
+  // decided it for them — an omitted column would leave the old stage on the row.
+  if (touchesStage || (touchesFile && milestoneId === null)) patch.milestone_instance_id = milestoneId;
+  return patch;
+}
+
+/**
  * Normalise one reminder entry as the client sent it, into the row shape the
  * repo stores. Shared by the task and event writers; the two differ only in
  * which of the anchors (`due_at`, `start_at`) feeds a relative row, which is
@@ -381,6 +457,10 @@ async function listTasks(client, ctx, q = {}) {
     // a filter and filtered nothing. Honour it.
     priority: q.priority,
     assignedTo: q.assigned_to === "me" ? ctx.user.user_id : q.assigned_to,
+    // 13900: the file's own Tasks tab reads the list through these, so the tab
+    // and the Analytics rollup count one population rather than two.
+    dossierId: q.dossier_id,
+    milestoneInstanceId: q.milestone_instance_id,
     q: q.q,
     sort: q.sort,
     limit: q.limit,
@@ -411,6 +491,7 @@ async function getBoard(client, ctx, q = {}) {
   const { board, total, shown, limit, truncated } = await repo.boardTasks(client, {
     ...visibilityOf(ctx, audience),
     assignedTo: q.assigned_to === "me" ? ctx.user.user_id : q.assigned_to,
+    dossierId: q.dossier_id,
   });
   const ids = Object.values(board).flat().map((t) => t.task_id);
   const [blockedRows, childRows] = await Promise.all([
@@ -536,8 +617,13 @@ async function createTask(client, ctx, input) {
   // above everything else on the day it was created.
   const due_at = toInstant(input.due_at, { timeZone, dateOnlyTime: "17:00:00" });
   const rule = ruleOrThrow(input);
+  // 13900: a stage must belong to the file it is filed under, and an unpicked
+  // file takes its stage with it. Settled BEFORE the insert so a mismatch is a
+  // 400 naming both records rather than a row the panel cannot render.
+  const link = await resolveFileLink(client, input);
   const task = await repo.insertTask(client, {
     ...input,
+    ...link,
     due_at,
     created_by: ctx.user.user_id,
     recurrence_rule: rule,
@@ -616,6 +702,9 @@ async function updateTask(client, ctx, id, input) {
   }
   const rule = ruleOrThrow(input);
   if (rule !== undefined) patch.recurrence_rule = rule;
+  // The link is settled against the row AS IT STANDS, so a PATCH naming only
+  // the stage is checked against the file the task already carries (13900).
+  Object.assign(patch, await resolveFileLink(client, input, before));
 
   // Reminder inputs are consumed by writeReminders below, not by
   // updateTask's column allow-list — the parent columns are now a read-only
@@ -1127,6 +1216,16 @@ async function addChildTask(client, ctx, parentTaskId, input, audience) {
     parent_task_id: parentTaskId,
     entity_type: input.entity_type !== undefined ? input.entity_type : parent.entity_type,
     entity_id: input.entity_id !== undefined ? input.entity_id : parent.entity_id,
+    // The operations-file link is inherited on the same terms (13900). A child
+    // is a separately-assigned piece of the SAME work, so it is on the same
+    // file and the same stage unless the caller says otherwise — and a child
+    // that silently lost its file would go missing from the file's own Tasks
+    // tab while plainly being work on it.
+    dossier_id: input.dossier_id !== undefined ? input.dossier_id : parent.dossier_id,
+    milestone_instance_id:
+      input.milestone_instance_id !== undefined
+        ? input.milestone_instance_id
+        : parent.milestone_instance_id,
   });
   await audit(client, {
     ...actorOf(ctx), action: events.TASK_UPDATED, moduleKey: events.MODULE,
@@ -1960,10 +2059,13 @@ async function analytics(client, ctx, q = {}) {
     // the drill-down link can carry the same parameter through unchanged.
     assignedTo: q.assigned_to === "me" ? ctx.user.user_id : q.assigned_to || null,
     scopeId: q.scope_id || null,
+    // 13900. In `filters` and therefore in `analyticsScope`, so picking a file
+    // narrows EVERY figure rather than only the panel that groups by it.
+    dossierId: q.dossier_id || null,
   };
   const args = { visibility, filters, nowIso, timeZone: window.timeZone };
 
-  const [summary, throughput, overdueAging, workload, cycleTime, blocked, burndown, composition] =
+  const [summary, throughput, overdueAging, workload, cycleTime, blocked, burndown, composition, byFile, byMilestone] =
     await Promise.all([
       repo.analyticsSummary(client, args),
       repo.analyticsThroughput(client, args),
@@ -1973,6 +2075,12 @@ async function analytics(client, ctx, q = {}) {
       repo.analyticsBlocked(client, args),
       repo.analyticsBurndown(client, args),
       repo.analyticsComposition(client, args),
+      repo.analyticsByFile(client, args),
+      // Only when a file is picked: milestone labels repeat across files, so a
+      // tenant-wide grouping would add unrelated shipments together under one
+      // heading. Skipped rather than computed-and-hidden, because the tenth
+      // read on a dashboard nobody asked for it on is still a read.
+      filters.dossierId ? repo.analyticsByMilestone(client, args) : Promise.resolve([]),
     ]);
 
   return {
@@ -1985,6 +2093,7 @@ async function analytics(client, ctx, q = {}) {
     filters: {
       status: filters.status, priority: filters.priority,
       assigned_to: q.assigned_to || null, scope_id: filters.scopeId,
+      dossier_id: filters.dossierId,
     },
     summary: {
       open: summary.open_count,
@@ -2021,6 +2130,36 @@ async function analytics(client, ctx, q = {}) {
     })),
     burndown: burndownSeries(burndown),
     composition: composition.map((r) => ({ status: r.status, priority: r.priority, tasks: r.tasks })),
+    // Work per operations file, and — only when one is picked — per stage of
+    // its chain (13900). A file whose reference the reader cannot resolve is
+    // named as such rather than shown as a bare uuid: `dossier_visible` is a
+    // LEFT join, so a link to a file that has since become invisible (deleted,
+    // or reverted to DRAFT) leaves `ref` NULL, and "A file you cannot view" is
+    // the truthful line — dropping the row would make this panel's counts
+    // disagree with the summary above it.
+    by_file: byFile.map((r) => ({
+      dossier_id: r.dossier_id,
+      dossier_ref: r.dossier_ref || null,
+      client_name: r.client_name || null,
+      label: r.dossier_ref || "A file you cannot view",
+      open_tasks: r.open_tasks,
+      overdue_tasks: r.overdue_tasks,
+      blocked_tasks: r.blocked_tasks,
+      completed_tasks: r.completed_tasks,
+      total_tasks: r.total_tasks,
+    })),
+    by_milestone: byMilestone.map((r) => ({
+      milestone_instance_id: r.milestone_instance_id,
+      // An unlinked task inside a picked file is a real group, not a gap: the
+      // work is on the file but on no particular stage of it, and that is the
+      // most common shape a link takes.
+      label: r.milestone_label || "No milestone",
+      status: r.milestone_status || null,
+      stage_seq: r.stage_seq === null || r.stage_seq === undefined ? null : Number(r.stage_seq),
+      open_tasks: r.open_tasks,
+      overdue_tasks: r.overdue_tasks,
+      total_tasks: r.total_tasks,
+    })),
   };
 }
 
@@ -2083,4 +2222,8 @@ module.exports = {
   pingTask, notifyStatusWatchers,
   analytics, resolveAnalyticsWindow, burndownSeries, fillBuckets,
   ANALYTICS_MAX_DAYS, ANALYTICS_DEFAULT_DAYS, AGE_BUCKETS,
+  // 13900. Exported so the two rules it encodes — a stage belongs to its file,
+  // and clearing the file clears the stage — are tested directly rather than
+  // through a create/update that would need half the module mocked to reach.
+  resolveFileLink,
 };

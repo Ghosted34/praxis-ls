@@ -50,7 +50,7 @@ const ANALYTICS = {
   },
   audience: "mine",
   audiences: ["mine", "team"],
-  filters: { status: null, priority: null, assigned_to: null, scope_id: null },
+  filters: { status: null, priority: null, assigned_to: null, scope_id: null, dossier_id: null },
   summary: { open: 17, overdue: 4, blocked: 2, completed: 23, cancelled: 1, total: 41 },
   throughput: [
     { day: "2026-09-16", completed: 3 },
@@ -98,6 +98,36 @@ const ANALYTICS = {
     ],
   },
   composition: [{ status: "TO_DO", priority: "HIGH", tasks: 6 }],
+  // 13900 — work per operations file. Two rows, one of them a file this reader
+  // cannot resolve, because that is the case the panel has to render rather
+  // than drop: dropping it would make its counts disagree with the summary.
+  by_file: [
+    {
+      dossier_id: "d-1",
+      dossier_ref: "SL-7Z3K9QW2M4XB-SM",
+      client_name: "Brasseries du Cameroun",
+      label: "SL-7Z3K9QW2M4XB-SM",
+      open_tasks: 6,
+      overdue_tasks: 2,
+      blocked_tasks: 1,
+      completed_tasks: 4,
+      total_tasks: 10,
+    },
+    {
+      dossier_id: "d-2",
+      dossier_ref: null,
+      client_name: null,
+      label: "A file you cannot view",
+      open_tasks: 2,
+      overdue_tasks: 0,
+      blocked_tasks: 0,
+      completed_tasks: 1,
+      total_tasks: 3,
+    },
+  ],
+  // Empty unless one file is picked — the server skips the read entirely, so
+  // the default fixture is the default response.
+  by_milestone: [],
 };
 
 const at = (path = "/workspace/analytics", data: unknown = ANALYTICS) => ({

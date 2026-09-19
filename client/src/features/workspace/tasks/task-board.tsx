@@ -713,6 +713,18 @@ function TaskCardFace({ task, hoverTitle }: { task: Task; hoverTitle: boolean })
           <span className="min-w-0 truncate text-xs text-muted-foreground">{task.assigned_to_name}</span>
         )}
         {task.entity_label && <Pill tone="blue">{task.entity_label}</Pill>}
+        {/* Which shipment this card is work on (13900). The REFERENCE, not the
+            client: a board is read in columns at a glance and the reference is
+            the shorter, unambiguous token — the client name is on the row in
+            the List view and on the panel, where there is width for it. The
+            stage rides the same chip because it is only ever a narrowing of
+            the file and a second pill would double the card's badge count. */}
+        {task.dossier_ref && (
+          <Pill tone="mute">
+            {task.dossier_ref}
+            {task.milestone_label ? ` · ${task.milestone_label}` : ""}
+          </Pill>
+        )}
       </span>
     </>
   );

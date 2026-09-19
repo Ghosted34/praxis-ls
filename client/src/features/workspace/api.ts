@@ -111,6 +111,15 @@ export type Task = {
   recurrence_series_id?: string | null;
   entity_type: string | null;
   entity_id: string | null;
+  /** The operations file this work is IN, and the stage of its chain (13900).
+   *  Separate from the entity pair above, which is what the task POINTS AT —
+   *  a task raised from a costing can carry both. The `*_ref`/`*_label` fields
+   *  are joined on read so a row can name its file without a second request. */
+  dossier_id: string | null;
+  dossier_ref: string | null;
+  dossier_client_name: string | null;
+  milestone_instance_id: string | null;
+  milestone_label: string | null;
   /** Derived on read, never stored — see the service's header for why. */
   link_url: string | null;
   entity_label: string | null;
@@ -378,6 +387,11 @@ export type TaskInput = {
   due_at?: string | null;
   entity_type?: string | null;
   entity_id?: string | null;
+  /** The operations file this work is IN, and the stage of its chain (13900).
+   *  Clearing the file clears the stage server-side — a stage is a narrowing
+   *  of a file, never an alternative to one. */
+  dossier_id?: string | null;
+  milestone_instance_id?: string | null;
   is_personal?: boolean;
   reminder_minutes?: number | null;
   remind_at?: string | null;
@@ -505,8 +519,9 @@ export type BoardResponse = {
   completeness: BoardCompleteness;
 };
 
-export const getBoard = (params: { assigned_to?: string; audience?: Audience } = {}) =>
-  tenant<BoardResponse>(`/workspace/tasks/board${qs(params)}`);
+export const getBoard = (
+  params: { assigned_to?: string; audience?: Audience; dossier_id?: string } = {},
+) => tenant<BoardResponse>(`/workspace/tasks/board${qs(params)}`);
 
 export const listTasks = (
   params: {
@@ -527,6 +542,9 @@ export const listTasksPaged = (
     assigned_to?: string;
     q?: string;
     audience?: Audience;
+    /** Narrow to one operations file, or one stage of its chain (13900). */
+    dossier_id?: string;
+    milestone_instance_id?: string;
     limit?: number;
     offset?: number;
   } = {},
@@ -613,6 +631,9 @@ export type ChildTaskInput = {
   due_at?: string | null;
   entity_type?: string | null;
   entity_id?: string | null;
+  /** Omitted inherits the parent's file and stage; an explicit null detaches. */
+  dossier_id?: string | null;
+  milestone_instance_id?: string | null;
   reminder_minutes?: number | null;
   remind_at?: string | null;
 };
@@ -683,6 +704,7 @@ export type AnalyticsResponse = {
     priority: TaskPriority | null;
     assigned_to: string | null;
     scope_id: string | null;
+    dossier_id: string | null;
   };
   summary: {
     open: number;
@@ -718,6 +740,32 @@ export type AnalyticsResponse = {
     days: { day: string; created: number; completed: number; open: number }[];
   };
   composition: { status: TaskStatus; priority: TaskPriority; tasks: number }[];
+  /** Open work per operations file (13900). Linked work only — every task with
+   *  no file would otherwise be one enormous row saying nothing. */
+  by_file: {
+    dossier_id: string;
+    dossier_ref: string | null;
+    client_name: string | null;
+    /** The reference, or a sentence when the reader cannot resolve the file. */
+    label: string;
+    open_tasks: number;
+    overdue_tasks: number;
+    blocked_tasks: number;
+    completed_tasks: number;
+    total_tasks: number;
+  }[];
+  /** Per stage of the chain — populated ONLY when one file is picked, because
+   *  milestone labels repeat across files and a tenant-wide grouping would add
+   *  unrelated shipments together under one heading. */
+  by_milestone: {
+    milestone_instance_id: string | null;
+    label: string;
+    status: string | null;
+    stage_seq: number | null;
+    open_tasks: number;
+    overdue_tasks: number;
+    total_tasks: number;
+  }[];
 };
 
 export type AnalyticsParams = {
@@ -728,6 +776,8 @@ export type AnalyticsParams = {
   priority?: TaskPriority;
   assigned_to?: string;
   scope_id?: string;
+  /** Narrows EVERY figure on the dashboard, not only the by-file panel. */
+  dossier_id?: string;
 };
 
 /**

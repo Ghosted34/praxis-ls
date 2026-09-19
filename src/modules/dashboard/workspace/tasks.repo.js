@@ -99,14 +99,36 @@ const SUBTASK_COUNTS = `
   (SELECT count(*)::int FROM task_subtask s WHERE s.task_id = t.task_id) AS subtask_count,
   (SELECT count(*)::int FROM task_subtask s WHERE s.task_id = t.task_id AND s.is_done) AS subtask_done_count`;
 
+/**
+ * The linked operations file and stage, as a reader needs them (13900).
+ *
+ * `dossier_visible`, not `dossier`: the picker only ever offers non-draft
+ * files, so joining the view costs nothing and keeps this out of the
+ * base-table allow-list `dossier-draft-isolation.test.js` maintains. A LEFT
+ * join throughout — the link is optional on nearly every task, and an INNER
+ * join here would silently drop every unlinked row from the list.
+ */
+const LINK_JOINS = `
+    LEFT JOIN dossier_visible dv ON dv.dossier_id = t.dossier_id
+    LEFT JOIN client_master dcm ON dcm.client_id = dv.client_id
+    LEFT JOIN milestone_instance mi ON mi.milestone_instance_id = t.milestone_instance_id`;
+
+const LINK_COLS = `
+         dv.ref        AS dossier_ref,
+         dcm.name      AS dossier_client_name,
+         mi.label      AS milestone_label,
+         mi.stage_seq  AS milestone_stage_seq,
+         mi.status     AS milestone_status`;
+
 const TASK_SELECT = `
   SELECT t.*,
          a.full_name AS assigned_to_name,
          c.full_name AS created_by_name,
+         ${LINK_COLS},
          ${SUBTASK_COUNTS}
     FROM task t
     LEFT JOIN app_user a ON a.user_id = t.assigned_to
-    LEFT JOIN app_user c ON c.user_id = t.created_by`;
+    LEFT JOIN app_user c ON c.user_id = t.created_by${LINK_JOINS}`;
 
 /**
  * The same select plus the pre-LIMIT total, for the one caller that paginates.
@@ -143,12 +165,14 @@ const TASK_ORDER = {
   priority_desc: "ORDER BY array_position(ARRAY['LOW','NORMAL','HIGH','URGENT'], t.priority) DESC, t.created_at DESC",
 };
 
-async function listTasks(client, { audience, userId, scopeIds, personalOnly, status, priority, assignedTo, q, entity, sort = "due_asc", limit = 50, offset = 0 }) {
+async function listTasks(client, { audience, userId, scopeIds, personalOnly, status, priority, assignedTo, q, entity, dossierId, milestoneInstanceId, sort = "due_asc", limit = 50, offset = 0 }) {
   const params = [limit, offset];
   const where = ["t.is_deleted = false"];
   if (status) { params.push(status); where.push(`t.status = $${params.length}`); }
   if (priority) { params.push(priority); where.push(`t.priority = $${params.length}`); }
   if (assignedTo) { params.push(assignedTo); where.push(`t.assigned_to = $${params.length}`); }
+  if (dossierId) { params.push(dossierId); where.push(`t.dossier_id = $${params.length}`); }
+  if (milestoneInstanceId) { params.push(milestoneInstanceId); where.push(`t.milestone_instance_id = $${params.length}`); }
   if (q) { params.push(`%${q}%`); where.push(`t.title ILIKE $${params.length}`); }
   if (entity) {
     params.push(entity.entity_type, entity.entity_id);
@@ -181,10 +205,11 @@ async function listTasks(client, { audience, userId, scopeIds, personalOnly, sta
  */
 const BOARD_LIMIT = 200;
 
-async function boardTasks(client, { audience, userId, scopeIds, personalOnly, assignedTo, limit = BOARD_LIMIT }) {
+async function boardTasks(client, { audience, userId, scopeIds, personalOnly, assignedTo, dossierId, limit = BOARD_LIMIT }) {
   const params = [];
   const where = ["t.is_deleted = false", "t.status <> 'CANCELLED'"];
   if (assignedTo) { params.push(assignedTo); where.push(`t.assigned_to = $${params.length}`); }
+  if (dossierId) { params.push(dossierId); where.push(`t.dossier_id = $${params.length}`); }
   const vis = visibleWhere({ audience, userId, scopeIds, personalOnly }, params.length + 1);
   params.push(...vis.params);
   where.push(...vis.sql);
@@ -361,14 +386,15 @@ async function insertTask(client, t) {
     `INSERT INTO task (
        title, description, status, priority, assigned_to, created_by, due_at,
        parent_task_id, entity_type, entity_id, is_personal, scope_id,
-       recurrence_rule, recurrence_series_id
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+       recurrence_rule, recurrence_series_id, dossier_id, milestone_instance_id
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
      RETURNING *`,
     [
       t.title, t.description ?? null, t.status || "TO_DO", t.priority || "NORMAL",
       t.assigned_to ?? null, t.created_by, t.due_at ?? null, t.parent_task_id ?? null,
       t.entity_type ?? null, t.entity_id ?? null, t.is_personal === true, t.scope_id ?? null,
       t.recurrence_rule ?? null, t.recurrence_series_id ?? null,
+      t.dossier_id ?? null, t.milestone_instance_id ?? null,
     ],
   );
   return rows[0];
@@ -398,7 +424,7 @@ async function updateTask(client, id, patch) {
   const sets = [];
   const params = [];
   for (const key of ["title", "description", "status", "priority", "assigned_to", "due_at",
-    "entity_type", "entity_id", "is_personal",
+    "entity_type", "entity_id", "dossier_id", "milestone_instance_id", "is_personal",
     "recurrence_rule", "recurrence_series_id"]) {
     if (!(key in patch)) continue;
     params.push(patch[key] ?? null);
@@ -1457,13 +1483,19 @@ async function updateSeriesEvents(client, seriesId, patch, { exclude } = {}) {
  */
 
 /** The shared FROM/WHERE for every aggregate: one authorised task population. */
-function analyticsScope(v, { from, to, status, priority, assignedTo, scopeId }, start = 1) {
+function analyticsScope(v, { from, to, status, priority, assignedTo, scopeId, dossierId }, start = 1) {
   const params = [];
   const where = ["t.is_deleted = false"];
   if (status) { params.push(status); where.push(`t.status = $${start + params.length - 1}`); }
   if (priority) { params.push(priority); where.push(`t.priority = $${start + params.length - 1}`); }
   if (assignedTo) { params.push(assignedTo); where.push(`t.assigned_to = $${start + params.length - 1}`); }
   if (scopeId) { params.push(scopeId); where.push(`t.scope_id = $${start + params.length - 1}`); }
+  // The operations-file narrowing (13900). In the SHARED scope rather than in
+  // the one panel that groups by it, so picking a file narrows every figure on
+  // the dashboard — the summary, the throughput line and the workload table
+  // included. A filter honoured by one panel and ignored by the other seven is
+  // the exact disagreement this section's header refuses to ship.
+  if (dossierId) { params.push(dossierId); where.push(`t.dossier_id = $${start + params.length - 1}`); }
   const vis = visibleWhere(v, start + params.length);
   params.push(...vis.params);
   where.push(...vis.sql);
@@ -1589,6 +1621,110 @@ async function analyticsWorkload(client, { visibility, filters, nowIso, limit = 
     params,
   );
   return rows;
+}
+
+/**
+ * Work by operations file — the rollup the file link exists for (13900).
+ *
+ * ── WHAT A ROW SAYS ────────────────────────────────────────────────────────
+ *
+ * One line per file that has work on it: how much is open, how much of that is
+ * late, how much is waiting on something else, and how much was finished
+ * inside the window. Ordered by overdue first and then by open volume, because
+ * the question this panel is opened with is "which file is in trouble", not
+ * "which file is busiest" — a file with forty tasks and none late needs
+ * nobody's attention this morning.
+ *
+ * ── WHY `open_tasks` AND `completed_tasks` ARE COUNTED DIFFERENTLY ─────────
+ *
+ * Open/overdue/blocked are a snapshot of NOW; completed is a count inside the
+ * window. That is the same split `analyticsSummary` makes, and it is the only
+ * honest pairing: "still open" has no window (a task opened two years ago is
+ * still open today) while "completed" without one would report the file's
+ * whole history beside a seven-day backlog.
+ *
+ * ── UNLINKED WORK IS NOT A ROW ─────────────────────────────────────────────
+ *
+ * `dossier_id IS NOT NULL` — unlike the workload table, which keeps its
+ * unassigned group because "nobody owns eleven of these" is actionable. Here
+ * the NULL group would be every personal reminder in the tenant, dwarfing
+ * every real file and saying nothing: this panel answers "how is work moving
+ * per file", and a task with no file is not an answer to it. The summary above
+ * still counts those rows, so nothing goes missing from the dashboard — it is
+ * this ONE panel that is scoped to linked work, which is what its title says.
+ */
+async function analyticsByFile(client, { visibility, filters, nowIso, limit = 25 }) {
+  const s = analyticsScope(visibility, filters, 4);
+  const params = [nowIso, filters.from, filters.to, ...s.params];
+  const limitParam = params.push(limit);
+  const { rows } = await client.query(
+    `SELECT t.dossier_id,
+            dv.ref        AS dossier_ref,
+            dcm.name      AS client_name,
+            count(*) FILTER (WHERE t.status NOT IN ('DONE','CANCELLED'))::int AS open_tasks,
+            count(*) FILTER (WHERE t.status NOT IN ('DONE','CANCELLED')
+                               AND t.due_at IS NOT NULL AND t.due_at < $1)::int AS overdue_tasks,
+            count(*) FILTER (WHERE t.status NOT IN ('DONE','CANCELLED') AND EXISTS (
+              SELECT 1 FROM task_dependency d
+                JOIN task p ON p.task_id = d.depends_on_task_id AND p.is_deleted = false
+               WHERE d.task_id = t.task_id AND d.overridden_at IS NULL AND p.status <> 'DONE'
+            ))::int AS blocked_tasks,
+            count(*) FILTER (WHERE t.status = 'DONE'
+                               AND t.completed_at >= $2 AND t.completed_at < $3)::int AS completed_tasks,
+            count(*)::int AS total_tasks
+       FROM task t
+       LEFT JOIN dossier_visible dv ON dv.dossier_id = t.dossier_id
+       LEFT JOIN client_master dcm ON dcm.client_id = dv.client_id
+      WHERE ${s.where.join(" AND ")}
+        AND t.dossier_id IS NOT NULL
+      GROUP BY t.dossier_id, dv.ref, dcm.name
+      ORDER BY overdue_tasks DESC, open_tasks DESC, dossier_ref NULLS LAST
+      LIMIT $${limitParam}`,
+    params,
+  );
+  return rows;
+}
+
+/**
+ * Open work by milestone, for the ONE file a reader has narrowed to (13900).
+ *
+ * Only computed when `filters.dossierId` is set, and deliberately so: milestone
+ * labels repeat across files ("Customs cleared" exists on every one of them),
+ * so a tenant-wide grouping would add rows from unrelated shipments together
+ * under one heading and present the sum as a stage's backlog. Narrowed to a
+ * file, the labels are unique and the grouping means what it reads as.
+ */
+async function analyticsByMilestone(client, { visibility, filters, nowIso, limit = 50 }) {
+  const s = analyticsScope(visibility, filters, 2);
+  const params = [nowIso, ...s.params];
+  const limitParam = params.push(limit);
+  const { rows } = await client.query(
+    `SELECT t.milestone_instance_id,
+            mi.label      AS milestone_label,
+            mi.status     AS milestone_status,
+            mi.stage_seq  AS stage_seq,
+            count(*) FILTER (WHERE t.status NOT IN ('DONE','CANCELLED'))::int AS open_tasks,
+            count(*) FILTER (WHERE t.status NOT IN ('DONE','CANCELLED')
+                               AND t.due_at IS NOT NULL AND t.due_at < $1)::int AS overdue_tasks,
+            count(*)::int AS total_tasks
+       FROM task t
+       LEFT JOIN milestone_instance mi ON mi.milestone_instance_id = t.milestone_instance_id
+      WHERE ${s.where.join(" AND ")}
+      GROUP BY t.milestone_instance_id, mi.label, mi.status, mi.stage_seq
+      ORDER BY stage_seq NULLS LAST, milestone_label NULLS LAST
+      LIMIT $${limitParam}`,
+    params,
+  );
+  return rows;
+}
+
+/** Which file a milestone belongs to — the service's cross-check on a link. */
+async function milestoneFileOf(client, milestoneInstanceId) {
+  const { rows } = await client.query(
+    "SELECT milestone_instance_id, dossier_id, label FROM milestone_instance WHERE milestone_instance_id = $1",
+    [milestoneInstanceId],
+  );
+  return rows[0] || null;
 }
 
 /**
@@ -1762,7 +1898,7 @@ module.exports = {
   overrideDependency, clearDependencyOverride, deleteDependency, blockedCountsFor,
   analyticsScope, analyticsSummary, analyticsThroughput, analyticsOverdueAging,
   analyticsWorkload, analyticsCycleTime, analyticsBlocked, analyticsBurndown,
-  analyticsComposition,
+  analyticsComposition, analyticsByFile, analyticsByMilestone, milestoneFileOf,
   eventVisibleWhere, listEventsWindow, listEvents, insertEvent, findEvent, updateEvent, softDeleteEvent, findEventClashes,
   listParticipants, insertParticipant, respondParticipant, removeParticipant,
   dueTaskReminders, dueEventReminders, markReminderSent,

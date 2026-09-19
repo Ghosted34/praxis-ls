@@ -122,6 +122,12 @@ const taskCreate = z
     parent_task_id: z.string().uuid().optional(),
     entity_type: z.string().trim().max(40).optional(),
     entity_id: z.string().uuid().optional(),
+    // The operations file this work is IN, and optionally the stage of its
+    // chain (13900). Distinct from the pair above, which is what the task
+    // POINTS AT — a task can legitimately have both. Nullable because the
+    // dialog sends an explicit null when the picker is cleared.
+    dossier_id: z.string().uuid().nullable().optional(),
+    milestone_instance_id: z.string().uuid().nullable().optional(),
     is_personal: z.boolean().optional(),
     // `reminder_minutes` is RELATIVE (before the due date) and `remind_at` is
     // ABSOLUTE. Sending both is allowed — the absolute one wins — because the
@@ -147,6 +153,8 @@ const taskUpdate = z
     due_at: dt(DATETIME_MSG).nullable().optional(),
     entity_type: z.string().trim().max(40).nullable().optional(),
     entity_id: z.string().uuid().nullable().optional(),
+    dossier_id: z.string().uuid().nullable().optional(),
+    milestone_instance_id: z.string().uuid().nullable().optional(),
     is_personal: z.boolean().optional(),
     reminder_minutes: z.number().int().min(0).max(525600).nullable().optional(),
     remind_at: dt(DATETIME_MSG).nullable().optional(),
@@ -206,10 +214,14 @@ const childCreate = z
     priority: z.enum(PRIORITIES).optional(),
     assigned_to: z.string().uuid().nullable().optional(),
     due_at: dt(DATETIME_MSG).nullable().optional(),
-    // Omit both and the child inherits the parent's operations-file link; send
-    // them to point the child at a different record.
+    // Omit both and the child inherits the parent's linked record; send them to
+    // point the child at a different one.
     entity_type: z.string().trim().max(40).nullable().optional(),
     entity_id: z.string().uuid().nullable().optional(),
+    // Same terms for the operations file and its stage (13900): omitted means
+    // inherit, an explicit null means "this piece is not on that file".
+    dossier_id: z.string().uuid().nullable().optional(),
+    milestone_instance_id: z.string().uuid().nullable().optional(),
     reminder_minutes: z.number().int().min(0).max(525600).nullable().optional(),
     remind_at: dt(DATETIME_MSG).nullable().optional(),
     reminders: reminders.optional(),
@@ -258,6 +270,11 @@ const taskListQuery = strictQuery({
   audience: filters.enum(AUDIENCES),
   entity_type: z.string().trim().max(40).optional(),
   entity_id: filters.uuid,
+  // Narrow to one operations file, or to one stage of its chain (13900). The
+  // file's own 360 reads its Tasks tab through this, so the tab and the
+  // Analytics rollup count the same population rather than two that agree.
+  dossier_id: filters.uuid,
+  milestone_instance_id: filters.uuid,
   // An allow-list, not free text — it lands in an ORDER BY (tasks.repo.js).
   sort: z.enum(["due_asc", "due_desc", "created_desc", "priority_desc"]).optional(),
 });
@@ -265,6 +282,7 @@ const taskListQuery = strictQuery({
 const boardQuery = strictQuery({
   assigned_to: z.string().trim().max(64).optional(),
   audience: filters.enum(AUDIENCES),
+  dossier_id: filters.uuid,
 });
 
 /** The detail read carries the audience the list/board was rendered at (B-03). */
@@ -287,6 +305,10 @@ const analyticsQuery = strictQuery({
   priority: filters.enum(PRIORITIES),
   assigned_to: z.string().trim().max(64).optional(), // a uuid, or the literal "me"
   scope_id: filters.uuid,
+  // Narrow every figure on the dashboard to one operations file (13900). The
+  // same parameter the drill-down carries into the Tasks list, so a number
+  // opened from here lands on exactly the rows it counted.
+  dossier_id: filters.uuid,
 });
 
 // The window is OPTIONAL because the controller defaults it to today in the

@@ -98,7 +98,9 @@ export function useReceiptsOwed() {
   });
 }
 
-export function useTaskBoard(params: { assigned_to?: string; audience?: Audience } = {}) {
+export function useTaskBoard(
+  params: { assigned_to?: string; audience?: Audience; dossier_id?: string } = {},
+) {
   return useQuery<api.BoardResponse>({
     queryKey: [ROOT, "board", params],
     queryFn: () => api.getBoard(params),
@@ -131,6 +133,9 @@ export function useTaskListPaged(
     assigned_to?: string;
     q?: string;
     audience?: Audience;
+    /** Narrow to one operations file, or one stage of its chain (13900). */
+    dossier_id?: string;
+    milestone_instance_id?: string;
     sort?: string;
     limit?: number;
     offset?: number;

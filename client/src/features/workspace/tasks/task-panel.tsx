@@ -209,6 +209,36 @@ export function TaskPanel({
             </Button>
           )}
 
+          {/* The operations file this work is on (13900), and the stage when it
+              is narrower than the file. A separate block from the record link
+              above, because they answer different questions — that one is what
+              the task POINTS AT, this is the shipment the work is happening
+              inside, and a task can carry both. The button goes to the file's
+              own Tasks tab rather than its Details, so the reader lands where
+              the rest of this file's work is. */}
+          {task.dossier_id && (
+            <div className="rounded-md border px-3 py-2">
+              <p className="micro mb-1">Operations file</p>
+              <p className="text-sm">
+                <span className="num font-medium">{task.dossier_ref ?? "Linked file"}</span>
+                {task.dossier_client_name && (
+                  <span className="text-muted-foreground"> · {task.dossier_client_name}</span>
+                )}
+              </p>
+              {task.milestone_label && (
+                <p className="text-xs text-muted-foreground">{task.milestone_label}</p>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-2"
+                onClick={() => navigate(`/operations/files/${task.dossier_id}?tab=tasks`)}
+              >
+                Open the file
+              </Button>
+            </div>
+          )}
+
           <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
             <dt className="micro">Status</dt>
             <dd>

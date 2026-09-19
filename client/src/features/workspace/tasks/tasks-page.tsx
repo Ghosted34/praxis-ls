@@ -66,10 +66,29 @@ export function TasksPage() {
   );
   // Board is the default; the List view is the cap-proof shape for >100 tasks.
   const view: "board" | "list" = params.get("view") === "list" ? "list" : "board";
+  // The operations-file narrowing lives in the URL like every other filter
+  // (13900): an Analytics drill-down arrives carrying it, and a screenshotted
+  // list has to reproduce for whoever opens it. `dossier_ref` rides alongside
+  // so the chip reads as a reference without a second request for the name.
+  const dossierId = params.get("dossier_id");
+  const dossierRef = params.get("dossier_ref");
+  const milestoneInstanceId = params.get("milestone_instance_id");
+  const milestoneLabel = params.get("milestone_label");
+  // Whose work — a uuid or the literal "me". An Analytics drill-down carries
+  // it, and the list has to honour it or the figure the reader clicked opens a
+  // different set of rows than it counted.
+  const assignedTo = params.get("assigned_to");
+  const assigneeName = params.get("assignee_name");
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const [createOpen, setCreateOpen] = React.useState(false);
 
-  const q = useTaskBoard({ audience });
+  // The file filter reaches the board too, so switching Board↔List keeps the
+  // narrowing rather than silently widening back to the whole tenant.
+  const q = useTaskBoard({
+    audience,
+    dossier_id: dossierId || undefined,
+    assigned_to: assignedTo || undefined,
+  });
   const showList = React.useCallback(() => {
     const next = new URLSearchParams(params);
     next.set("view", "list");
@@ -101,6 +120,37 @@ export function TasksPage() {
     if (next === "mine") params.delete("audience");
     else params.set("audience", next);
     setParams(params, { replace: true });
+  }
+
+  function chooseFile(file: { dossier_id: string; ref: string } | null) {
+    const next = new URLSearchParams(params);
+    if (file) {
+      next.set("dossier_id", file.dossier_id);
+      next.set("dossier_ref", file.ref);
+    } else {
+      next.delete("dossier_id");
+      next.delete("dossier_ref");
+      // A stage is a narrowing of a file, so clearing the file clears it here
+      // exactly as it does on the task itself — leaving it behind would filter
+      // the list by a stage with no file beside it to explain the emptiness.
+      next.delete("milestone_instance_id");
+      next.delete("milestone_label");
+    }
+    setParams(next, { replace: true });
+  }
+
+  function clearMilestone() {
+    const next = new URLSearchParams(params);
+    next.delete("milestone_instance_id");
+    next.delete("milestone_label");
+    setParams(next, { replace: true });
+  }
+
+  function clearAssignee() {
+    const next = new URLSearchParams(params);
+    next.delete("assigned_to");
+    next.delete("assignee_name");
+    setParams(next, { replace: true });
   }
 
   function chooseView(next: "board" | "list") {
@@ -180,6 +230,15 @@ export function TasksPage() {
               selectedId={selectedId}
               onOpen={setSelectedId}
               onCreate={() => setCreateOpen(true)}
+              dossierId={dossierId}
+              dossierRef={dossierRef}
+              milestoneInstanceId={milestoneInstanceId}
+              milestoneLabel={milestoneLabel}
+              onMilestoneClear={clearMilestone}
+              assignedTo={assignedTo}
+              assigneeName={assigneeName}
+              onAssigneeClear={clearAssignee}
+              onDossierChange={chooseFile}
             />
           )}
 

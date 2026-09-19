@@ -10,7 +10,7 @@
  *     history row.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { screen, within, waitFor } from "@testing-library/react";
+import { screen, within, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import {
@@ -122,5 +122,31 @@ describe("Currency 360 — C-PR-03 discovery & chart", () => {
       const row = document.querySelector('[data-hist-row="2"]');
       expect(row?.className).toMatch(/bg-primary/);
     });
+  });
+
+  // Production feedback: the tooltip never showed because the hit target was a
+  // 4px dot, and the growing hovered dot made the chart feel like it moved.
+  // Hover is now owned by the whole SVG surface and maps to the NEAREST point.
+  it("rate chart: hovering the surface (not a dot) reveals the nearest point's date + rate", async () => {
+    const user = userEvent.setup();
+    await openEur(user);
+    const chart = await screen.findByRole("img", { name: /Rate trend for XAF→EUR/i });
+    // jsdom rects are all-zero; give the SVG its real 220×44 box at (0,0).
+    vi.spyOn(chart, "getBoundingClientRect").mockReturnValue({
+      x: 0, y: 0, top: 0, left: 0, right: 220, bottom: 44,
+      width: 220, height: 44, toJSON: () => ({}),
+    } as DOMRect);
+    // x=110 of 220 → middle of 3 points → 2026-09-18 @ 655.9.
+    fireEvent.mouseMove(chart, { clientX: 110, clientY: 22 });
+    expect(
+      await screen.findByText("2026-09-18: 1 XAF = 655.9 EUR · exchangerate-api"),
+    ).toBeInTheDocument();
+    // Leaving the chart clears the tooltip back to the hint.
+    fireEvent.mouseLeave(chart);
+    await waitFor(() =>
+      expect(
+        screen.getByText("Hover or focus a point for its date and exact rate."),
+      ).toBeInTheDocument(),
+    );
   });
 });

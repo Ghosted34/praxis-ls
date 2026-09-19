@@ -67,6 +67,34 @@ d("currency & FX lifecycle (real Postgres)", () => {
     }
   });
 
+  // Regression (production, 2026-09-19): rebasing BACK — e.g. XAF→EUR→XAF —
+  // died with 23505 on ux_currency_single_base because setBase's old single
+  // `SET is_base = (code = $1)` flip visited the target row before the old
+  // base row, so for one row-ordering moment two bases were flagged. The
+  // ordered off-sweep → on-flip must survive the round trip in either order.
+  it("setBase round-trips: base→other→base never trips the single-base index", async () => {
+    const base = await repo.getBaseCode(client);
+    if (!base) return;
+    const { rows } = await client.query(
+      "SELECT code FROM currency WHERE is_base = false AND is_active = true ORDER BY code LIMIT 1",
+    );
+    if (!rows.length) return;
+    const other = rows[0].code;
+    await client.query("BEGIN");
+    try {
+      await repo.setBase(client, other);
+      expect(await repo.getBaseCode(client)).toBe(other);
+      await repo.setBase(client, base); // back again — the case that 500'd
+      expect(await repo.getBaseCode(client)).toBe(base);
+      const { rows: flagged } = await client.query(
+        "SELECT code FROM currency WHERE is_base = true",
+      );
+      expect(flagged).toEqual([{ code: base }]);
+    } finally {
+      await client.query("ROLLBACK");
+    }
+  });
+
   it("rate history reads back through the offset/total/has_more contract", async () => {
     const base = await repo.getBaseCode(client);
     if (!base) return;

@@ -430,6 +430,9 @@ export function AiWorkspace() {
                   setPane(EMPTY_PANE);
                   setPinned(null);
                 }}
+                onPatch={thread.patchConversation}
+                onRemove={thread.removeConversation}
+                onReload={thread.loadConversations}
               />
             </aside>
           </>

@@ -32,10 +32,13 @@ import {
   classifyAiFailure,
   clearAiHistory,
   confirmAiAction,
+  deleteAiConversation,
   fetchAiHistory,
   listAiConversations,
+  patchAiConversation,
   type AiActionRun,
   type AiConversationMeta,
+  type AiConversationPatch,
   type AiFailure,
   type AiSourceLike,
 } from "@/lib/ai-api";
@@ -99,7 +102,20 @@ export type UseAiThread = {
   /** Past threads, for the workspace's history rail. Empty until `loadConversations`. */
   conversations: AiConversationMeta[];
   loadingConversations: boolean;
-  loadConversations: () => void;
+  loadConversations: (opts?: { includeArchived?: boolean }) => void;
+  /**
+   * Pin, rename or archive one thread (audit J1-J3). Resolves once the server
+   * has confirmed; the list is patched from the row it answers with.
+   */
+  patchConversation: (
+    id: string,
+    patch: AiConversationPatch,
+  ) => Promise<void>;
+  /** Remove one thread. `purge` is the irreversible half. */
+  removeConversation: (
+    id: string,
+    opts?: { purge?: boolean },
+  ) => Promise<void>;
   confirmAction: (run: AiActionRun, payload: Record<string, unknown>) => void;
   confirming: string | null;
   doneActions: Record<string, boolean>;
@@ -423,13 +439,83 @@ export function useAiThread(
     [busy, conversationId, load],
   );
 
-  const loadConversations = React.useCallback(() => {
-    setLoadingConversations(true);
-    listAiConversations()
-      .then(setConversations)
-      .catch(() => setConversations([]))
-      .finally(() => setLoadingConversations(false));
-  }, []);
+  /**
+   * Whether the rail is currently showing archived threads.
+   *
+   * Held in a ref rather than state because nothing RENDERS from it — it exists
+   * so that a reload triggered by a mutation asks for the same view the user is
+   * looking at. Putting it in state would re-render every consumer of this hook
+   * to change a query string.
+   */
+  const withArchived = React.useRef(false);
+
+  const loadConversations = React.useCallback(
+    (opts?: { includeArchived?: boolean }) => {
+      if (opts?.includeArchived !== undefined) {
+        withArchived.current = opts.includeArchived;
+      }
+      setLoadingConversations(true);
+      listAiConversations({ includeArchived: withArchived.current })
+        .then(setConversations)
+        .catch(() => setConversations([]))
+        .finally(() => setLoadingConversations(false));
+    },
+    [],
+  );
+
+  /**
+   * Pin, rename or archive one thread (audit J1-J3).
+   *
+   * NOT OPTIMISTIC, DELIBERATELY. Three of these four properties are cheap to
+   * get back if the call fails, but the fourth is archive, and an archive that
+   * appears to work and silently did not is a thread the user believes they
+   * have put away. Waiting for the row the server answers with also settles
+   * rename properly: clearing the title restores the DERIVED one — the first
+   * user message, trimmed — which the client has no way to compute, so an
+   * optimistic write would flash a wrong title and then correct itself.
+   *
+   * ARCHIVING THE THREAD YOU ARE READING STARTS A NEW ONE. It has just left the
+   * rail, and `currentConversation` server-side will not resume into it, so
+   * carrying on typing in it would be the one state where the screen and the
+   * backend disagree about which thread you are in.
+   *
+   * A thread that no longer belongs in the current view (archived, while the
+   * archived section is closed) is dropped from the list rather than left in
+   * it; everything else is replaced in place and re-ordered by
+   * `groupConversations`, which applies the same pinned-first rule the server
+   * does.
+   */
+  const patchConversation = React.useCallback(
+    async (id: string, patch: AiConversationPatch) => {
+      const row = await patchAiConversation(id, patch);
+      const leaves = row.archived_at != null && !withArchived.current;
+      setConversations((list) =>
+        leaves
+          ? list.filter((c) => c.conversation_id !== id)
+          : list.map((c) => (c.conversation_id === id ? row : c)),
+      );
+      if (patch.archived === true && id === conversationId) newThread();
+    },
+    [conversationId, newThread],
+  );
+
+  /**
+   * Remove one thread — soft by default, `purge` for the irreversible half.
+   *
+   * The row goes from the list either way: a soft delete is not "hidden with a
+   * marker", it is the thread leaving, and the backend backs that up by
+   * refusing to load it by id afterwards. Removing the thread on screen moves
+   * to a fresh one, because the alternative is a transcript the user has just
+   * deleted still sitting in front of them.
+   */
+  const removeConversation = React.useCallback(
+    async (id: string, opts?: { purge?: boolean }) => {
+      await deleteAiConversation(id, opts);
+      setConversations((list) => list.filter((c) => c.conversation_id !== id));
+      if (id === conversationId) newThread();
+    },
+    [conversationId, newThread],
+  );
 
   /**
    * Execute one proposed action with the values the user edited in its form.
@@ -484,6 +570,8 @@ export function useAiThread(
     conversations,
     loadingConversations,
     loadConversations,
+    patchConversation,
+    removeConversation,
     confirmAction,
     confirming,
     doneActions,
@@ -491,17 +579,36 @@ export function useAiThread(
 }
 
 /**
- * Group threads the way a person looks for one: by when they last touched it.
+ * Group threads the way a person looks for one: pinned first, then by when they
+ * last touched it.
  *
  * Buckets, not dates. Nobody remembers that they asked about the Douala file on
  * the 14th; they remember it was "the other day". Empty buckets are dropped so
  * the rail never shows a heading with nothing under it.
+ *
+ * PINNED IS A GROUP, NOT A MARKER ON A ROW (audit J2). A pin's whole job is
+ * that the thread stops moving — leaving pinned rows inside the time buckets
+ * and drawing an icon on them would mean the thread you pinned still slid from
+ * "Today" to "Previous 7 days" and then out of the visible list, which is the
+ * problem the pin was pressed to solve. Its own section at the top is the only
+ * shape that holds.
+ *
+ * ORDERED THE SAME WAY THE SERVER ORDERS IT — pinned by `pinned_at` DESC, the
+ * rest by `last_at` DESC. The list arrives already sorted, and re-deriving it
+ * here rather than trusting the arrival order is what keeps a locally-patched
+ * row (a pin the user just pressed) in the right place without a refetch.
  */
 export function groupConversations(
   list: AiConversationMeta[],
 ): { heading: string; items: AiConversationMeta[] }[] {
   const now = Date.now();
   const DAY = 86_400_000;
+  const at = (v?: string | null) => (v ? +new Date(v) : 0);
+
+  const pinned = list
+    .filter((c) => c.pinned_at != null)
+    .sort((a, b) => at(b.pinned_at) - at(a.pinned_at));
+
   const buckets: {
     heading: string;
     max: number;
@@ -513,15 +620,18 @@ export function groupConversations(
     { heading: "Previous 30 days", max: 30 * DAY, items: [] },
     { heading: "Older", max: Infinity, items: [] },
   ];
-  for (const c of [...list].sort(
-    (a, b) => +new Date(b.last_at) - +new Date(a.last_at),
-  )) {
-    const age = now - +new Date(c.last_at);
+  for (const c of list
+    .filter((c) => c.pinned_at == null)
+    .sort((a, b) => at(b.last_at) - at(a.last_at))) {
+    const age = now - at(c.last_at);
     (
       buckets.find((b) => age < b.max) ?? buckets[buckets.length - 1]
     ).items.push(c);
   }
-  return buckets
-    .filter((b) => b.items.length)
-    .map(({ heading, items }) => ({ heading, items }));
+  return [
+    ...(pinned.length ? [{ heading: "Pinned", items: pinned }] : []),
+    ...buckets
+      .filter((b) => b.items.length)
+      .map(({ heading, items }) => ({ heading, items })),
+  ];
 }

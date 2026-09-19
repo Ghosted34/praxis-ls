@@ -199,7 +199,9 @@ export function TaskDialog({
       // real statement ("no reminders"), so editing a task can disarm it.
       reminders: built.input,
       is_personal: isPersonal,
-      recurrence_rule: repeatRule,
+      // On create, an unrepeated task omits recurrence_rule (or passes null).
+      // On edit, an explicit null disarms an existing series.
+      recurrence_rule: repeatRule || (editing ? null : undefined),
       // Explicit null when nobody is chosen, so EDITING a task can UNASSIGN it
       // rather than silently leaving the previous owner in place.
       assigned_to: assignedTo,

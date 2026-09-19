@@ -30,6 +30,7 @@ import { LoadingRow } from "@/components/ui/states";
 import { Callout } from "@/components/ui/callout";
 import { EmployeePicker } from "@/components/employee-picker";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, type SelectOption } from "@/components/ui/select";
 import { ScreenError } from "@/components/connection/screen-error";
 import { useConfirm } from "@/components/ui/use-confirm";
 import { useToast } from "@/components/ui/toast";
@@ -54,8 +55,28 @@ import {
   useTaskListPaged,
   useToggleSubtask,
 } from "../hooks";
-import { PRIORITY_LABEL, PRIORITY_TONE, STATUS_LABEL } from "../labels";
+import { PRIORITY_LABEL, PRIORITY_TONE, STATUS_LABEL, STATUS_TONE } from "../labels";
 import { TaskDialog } from "./task-dialog";
+
+/**
+ * The status picker's options — the board's four columns plus the one state
+ * that is not a column. Each option wears the tone the module maps to it
+ * (`STATUS_TONE`), so the closed trigger, the open list and the pills row
+ * above all draw one state in one colour: a status that read "In progress"
+ * blue in the row and amber in the picker would be two facts, not one.
+ */
+const STATUS_OPTIONS: SelectOption[] = [
+  ...BOARD_COLUMNS.map((c) => ({
+    value: c,
+    text: STATUS_LABEL[c],
+    label: <Pill tone={STATUS_TONE[c]}>{STATUS_LABEL[c]}</Pill>,
+  })),
+  {
+    value: "CANCELLED",
+    text: STATUS_LABEL.CANCELLED,
+    label: <Pill tone={STATUS_TONE.CANCELLED}>{STATUS_LABEL.CANCELLED}</Pill>,
+  },
+];
 
 export function TaskPanel({
   taskId,
@@ -156,7 +177,10 @@ export function TaskPanel({
         <div className="space-y-4">
           <div className="flex flex-wrap items-center gap-1.5">
             <Pill tone={PRIORITY_TONE[task.priority]}>{PRIORITY_LABEL[task.priority]}</Pill>
-            <Pill tone={task.status === "DONE" ? "ok" : "blue"}>{STATUS_LABEL[task.status]}</Pill>
+            {/* The module's tone map, not an inline guess: this is the same
+                pill the status picker below draws when closed, and the two
+                must agree about what the current state looks like. */}
+            <Pill tone={STATUS_TONE[task.status]}>{STATUS_LABEL[task.status]}</Pill>
             {task.is_personal && <Pill tone="mute">Personal</Pill>}
             {overdue && <Pill tone="bad">Overdue</Pill>}
             {task.is_blocked && <Pill tone="warn">Blocked</Pill>}
@@ -254,31 +278,36 @@ export function TaskPanel({
                 (B-04). `useMoveTask` is the transition endpoint; the server
                 also splits a status out of the edit dialog's PATCH and replays
                 it here, so all five gestures now end in one place.
+
+                THE PICKER IS THE DESIGN SYSTEM'S LISTBOX, not a native
+                `<select>`. The native control is the one piece of this pane
+                the browser drew: an OS-white option list, an OS chevron, and
+                trigger text the tenant's fonts never touched — the exact
+                white-label break the frontend rules exist to prevent, at the
+                control a person touches most on this screen. Radix's listbox
+                keeps everything the native one gave (arrow keys, type-ahead,
+                Escape, a labelled combobox) and surrenders nothing a native
+                option list was doing better here: the options are five known
+                strings that never change, so there is no OS picker to miss.
               */}
-              <select
-                className="input h-8 py-0 text-sm"
+              <Select
+                className="h-8"
                 value={task.status}
                 aria-label="Status"
-                onChange={(e) =>
+                options={STATUS_OPTIONS}
+                onValueChange={(v) =>
                   void move
                     .mutateAsync({
                       id: task.task_id,
-                      status: e.target.value as typeof task.status,
+                      status: v as typeof task.status,
                       audience,
                     })
                     // A refused move (a blocked task being marked done) must
-                    // leave the select where it was, which it does: the value
+                    // leave the picker where it was, which it does: the value
                     // is the server's task, and nothing local was changed.
                     .catch((err) => toast.error(errMsg(err)))
                 }
-              >
-                {BOARD_COLUMNS.map((c) => (
-                  <option key={c} value={c}>
-                    {STATUS_LABEL[c]}
-                  </option>
-                ))}
-                <option value="CANCELLED">Cancelled</option>
-              </select>
+              />
             </dd>
 
             <dt className="micro">Due</dt>

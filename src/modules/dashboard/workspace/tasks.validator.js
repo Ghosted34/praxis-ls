@@ -139,7 +139,7 @@ const taskCreate = z
     remind_at: dt(DATETIME_MSG).nullable().optional(),
     reminders: reminders.optional(),
     subtasks: z.array(subtask).max(50).optional(),
-    recurrence_rule: recurrenceRule.optional(),
+    recurrence_rule: recurrenceRule.nullable().optional(),
   })
   .strict();
 
@@ -344,7 +344,7 @@ const eventCreate = z
     start_at: dt(DATETIME_MSG),
     end_at: dt(DATETIME_MSG),
     all_day: z.boolean().optional(),
-    recurrence_rule: z.string().trim().max(500).optional(),
+    recurrence_rule: recurrenceRule.nullable().optional(),
     entity_type: z.string().trim().max(40).optional(),
     entity_id: z.string().uuid().optional(),
     scope_id: z.string().uuid().nullable().optional(),
@@ -367,7 +367,7 @@ const eventUpdateShape = z
     start_at: dt(DATETIME_MSG).optional(),
     end_at: dt(DATETIME_MSG).optional(),
     all_day: z.boolean().optional(),
-    recurrence_rule: z.string().trim().max(500).nullable().optional(),
+    recurrence_rule: recurrenceRule.nullable().optional(),
     entity_type: z.string().trim().max(40).nullable().optional(),
     entity_id: z.string().uuid().nullable().optional(),
     scope_id: z.string().uuid().nullable().optional(),

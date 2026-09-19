@@ -199,9 +199,32 @@ const readKey = (actionKey, payload) => `${actionKey}(${stableJson(payload || {}
  * geocoding and milestone-seeding paths follow.
  */
 const history_ = {
-  /** Resolve the thread id once, so condense + load agree on which thread. */
-  async currentId(client, user) {
+  /**
+   * Resolve the thread this turn belongs to, once, so condense + load + the
+   * message writes all agree on which thread.
+   *
+   * IT VERIFIES THE REQUESTED ID RATHER THAN TRUSTING IT. `conversation_id`
+   * arrives in the ask body, validated only as a uuid, and was previously used
+   * as given — so a borrowed id replayed somebody else's transcript into the
+   * caller's prompt and appended this turn to their thread. `history()` in the
+   * assistant service has always checked ownership before loading; the ask path
+   * had not, and it is the path that WRITES.
+   *
+   * It is also what makes a delete mean anything (13930, audit J1):
+   * `conversationBelongsToUser` excludes soft-deleted threads, so a stale `?c=`
+   * or an open second tab cannot go on adding turns to a conversation the user
+   * has removed. An unverified, missing or removed id falls back to the
+   * caller's own current thread — never an error, because a thread that has
+   * gone is not a reason to refuse to answer the question.
+   */
+  async resolveId(client, { user, conversationId }) {
     try {
+      if (
+        conversationId &&
+        (await convo.conversationBelongsToUser(client, conversationId, user.user_id))
+      ) {
+        return conversationId;
+      }
       return await convo.currentConversation(client, user.user_id);
     } catch {
       return null;
@@ -996,7 +1019,7 @@ async function ask({ client, user, conversationId, message, allowed, registry, f
   // first, so THIS answer sees it (0481). Best-effort — never blocks the answer.
   // Skipped on the cheap auto-continue follow-up (audit E2): the turn that
   // triggered it just condensed this same conversation moments ago.
-  const resolvedId = conversationId || (await history_.currentId(client, user));
+  const resolvedId = await history_.resolveId(client, { user, conversationId });
   if (!skipRetrieval) await history_.condense(client, { user, conversationId: resolvedId, feature });
 
   const history = await history_.load(client, { user, conversationId: resolvedId });
@@ -1625,7 +1648,7 @@ async function* askStream({ client, user, conversationId, message, allowed, regi
   const prompt = buildSystemPrompt({ user, patternBlock, feedbackBlock, prefsBlock, mode, hits });
 
   // ── Conversation memory (same as non-streaming) ──
-  const resolvedId = conversationId || (await history_.currentId(client, user));
+  const resolvedId = await history_.resolveId(client, { user, conversationId });
   await history_.condense(client, { user, conversationId: resolvedId, feature });
   const history = await history_.load(client, { user, conversationId: resolvedId });
   const messages = [
@@ -1939,6 +1962,10 @@ module.exports = {
   // shared prompt, and its static prefix is the single SYSTEM_RULES constant.
   buildSystemPrompt,
   SYSTEM_RULES,
+  // Exported for the J1 ownership test: `resolveId` is the single point where a
+  // client-supplied conversation_id is checked against the caller, on the path
+  // that WRITES, so it is worth pinning directly rather than through ask().
+  history_,
   // Exported for the propose-time validation tests (review 16 Sep 2026 #17).
   // This is the gate that decides whether a bad value is reported next to the
   // field NOW or surfaces as an opaque failure after the user has confirmed.

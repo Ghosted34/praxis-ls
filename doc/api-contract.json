@@ -2,10 +2,10 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 141,
-  "route_count": 1652,
+  "route_count": 1654,
   "tiers": {
     "public": 68,
-    "self-scoped": 103,
+    "self-scoped": 105,
     "gated": 1481
   },
   "routes": {
@@ -50,6 +50,12 @@
       "rbac": true,
       "validated": false,
       "tier": "gated"
+    },
+    "DELETE /api/tenant/ai/conversations/:id": {
+      "auth": true,
+      "rbac": false,
+      "validated": false,
+      "tier": "self-scoped"
     },
     "DELETE /api/tenant/appraisals/:id": {
       "auth": true,
@@ -5000,6 +5006,12 @@
       "rbac": true,
       "validated": false,
       "tier": "gated"
+    },
+    "PATCH /api/tenant/ai/conversations/:id": {
+      "auth": true,
+      "rbac": false,
+      "validated": false,
+      "tier": "self-scoped"
     },
     "PATCH /api/tenant/ai/governance/features/:key": {
       "auth": true,

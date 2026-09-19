@@ -1233,6 +1233,62 @@ page in `src/features/ai/`.
   and decides when an answer belongs on the canvas. `AskResult.sources` / `.trace` upgrade it in
   place when the backend sends them; nothing regresses while it does not.
 
+### 8.1 A list row that carries actions — the overflow-menu pattern
+
+The workspace's history rail (`features/ai/history-rail.tsx`) is the reference implementation, and
+the pattern generalises to any scrolling list whose rows are openable **and** manageable: a
+conversation, a saved view, a draft. Four rules, each of which was a real defect somewhere before
+it was a rule.
+
+**1. Two sibling buttons in a layout `<div>`, never a menu nested in the row's button.** A `<button>`
+inside a `<button>` is invalid markup, and the browsers that tolerate it pick a click target
+themselves. The row's open control and the `<DropdownMenu>` trigger are siblings; the wrapping div
+carries layout and no handler, so — unlike `<RowActions>` in a clickable table row — it needs no
+a11y suppression.
+
+```tsx
+<div className="group relative flex items-center rounded-md">
+  <button type="button" onClick={() => onOpen(row.id)} className="min-w-0 flex-1 …">
+    {row.title}
+  </button>
+  <DropdownMenu
+    align="end"
+    trigger={
+      <button
+        type="button"
+        aria-label={`Actions for ${row.title}`}
+        className="opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
+      >
+        <KebabIcon width={14} height={14} />
+      </button>
+    }
+  >
+    <DropdownItem onSelect={() => pin(row)}>Pin to top</DropdownItem>
+    <DropdownItem onSelect={() => rename(row)}>Rename</DropdownItem>
+    <DropdownSeparator />
+    <DropdownItem destructive onSelect={() => remove(row)}>Delete</DropdownItem>
+  </DropdownMenu>
+</div>
+```
+
+**2. Quiet, not absent.** The trigger is transparent until the row is hovered, the trigger is
+focused, or its menu is open — `group-hover` / `group-focus-within` / `data-[state=open]`. Rendering
+it only on hover removes it for the keyboard and the screen reader; this keeps one piece of markup
+that is calm for the pointer and reachable without one. Name it per row
+(`aria-label={`Actions for ${title}`}`), or a screen-reader user hears thirty identical "Actions".
+
+**3. The destructive item is last, after a `<DropdownSeparator>`, and it opens `useConfirm()`.** Never
+`window.confirm` — §3.10. Where a delete has an irreversible tier, the tier is a `<Checkbox>` inside
+the confirm's `body`, defaulting to off, and it must be its **own component with its own state**:
+`useConfirm` captures `body` as a node when the dialog opens, so a checkbox controlled by the caller's
+state never re-renders and reads as permanently unticked.
+
+**4. A row mutation is not optimistic, and a failure says so.** Hold the row while the call is in
+flight, patch it from the row the server answers with, and `toast.error()` on rejection. These are
+the one class of action where silence looks exactly like success — the menu closes either way — and
+the ones that matter (archive, delete) are the ones the user most needs to be true. Rejecting
+silently also leaves an unhandled promise, since nothing above the menu awaits it.
+
 **Adding to it.** A new starter set for an area is one entry in `AREA_STARTERS`
 (`components/ai/context.tsx`), keyed on the screen registry's `area` — no component changes. A new
 right-pane view is a tab in `features/ai/right-pane.tsx`; it must disable rather than hide when

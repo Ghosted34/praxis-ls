@@ -32,6 +32,42 @@ const schemas = {
     mode: z.enum(["ask", "draft", "analyse", "act"]).optional(),
     scope: z.string().max(64).optional(),
   }),
+  // ── Conversation management (audit J1-J3) ────────────────────────────────
+  //
+  // ONE PATCH FOR THE THREE MUTABLE PROPERTIES. Pin, rename and archive are
+  // three things a person does to one row, not three features; sending only
+  // what changed keeps the API idempotent and lets the server answer with one
+  // row version rather than leaving the client to reconcile three.
+  //
+  // `.strict()`, so an unknown key is a 422 rather than a silent no-op, and
+  // `.refine()` rejects `{}` — a PATCH that asks for nothing is a client bug,
+  // and answering 200 to it would hide that bug behind a successful-looking
+  // round trip.
+  //
+  // `pinned` / `archived` carry the INTENDED STATE, not a toggle. A toggle
+  // makes the outcome depend on the state the client believed it was in, so
+  // two rails open in two tabs disagree about what one click does. Sending the
+  // state makes the call idempotent and the last writer simply right.
+  //
+  // The conversation id is a PATH parameter on these routes, not a body field
+  // — cast by Postgres and scoped to the caller in the SQL, the same way
+  // `/actions/:id/confirm` treats its id.
+  //
+  // 120 chars for a title: the column is `text` and the rail renders one line,
+  // with the derived fallback already capped at 80. A longer title would only
+  // ever be truncated on screen, so refusing it is more honest than storing
+  // something the product will not show. EMPTY IS ALLOWED and means "give me
+  // the derived title back" (`assistant.repo.updateConversation`).
+  conversationPatch: z
+    .object({
+      title: z.string().max(120).optional(),
+      pinned: z.boolean().optional(),
+      archived: z.boolean().optional(),
+    })
+    .strict()
+    .refine((v) => Object.keys(v).length > 0, {
+      message: "at least one of title, pinned or archived is required",
+    }),
   // AI answer feedback (thumbs up/down). Bounded comment, required vote.
   feedback: z.object({
     conversation_id: z.string().uuid().optional(),

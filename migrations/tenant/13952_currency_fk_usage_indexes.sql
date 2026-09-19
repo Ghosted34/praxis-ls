@@ -1,5 +1,5 @@
 -- ============================================================================
--- TENANT DB — 13942 currency-usage index coverage (MOD-08, audit #10).
+-- TENANT DB — 13952 currency-usage index coverage (MOD-08, audit #10).
 --
 -- WHY. Currency 360 answers "where is this currency used?" by counting rows in
 -- every table that has a FK to currency(code) — currency.repo.usageForCode()

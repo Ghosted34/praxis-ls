@@ -242,6 +242,96 @@ function requireCeo() {
  * @param {Array<[string,string]>} specs  [[moduleKey, action], …]
  * @returns {Promise<boolean[]>} one answer per spec, in order
  */
+/**
+ * Admit a request when the caller holds AT LEAST ONE of several
+ * (module, action) grants.
+ *
+ * `requirePermission` answers "may this request proceed?" for ONE grant.
+ * Some routes are legitimately shared between two modules — an entity's
+ * Public Story is website copy on a master-data row — and must admit the
+ * website editor (MOD-29) OR the entities editor (MOD-01) without inventing
+ * one grant that neither role holds. This is that gate, reusing the same
+ * ACTION_COLUMN map and the same grant cache, so a grant change here flips
+ * the answer exactly as fast as everywhere else.
+ *
+ * CEO bypasses, same as `requirePermission`. The gate is an OR over the
+ * specs, not a new privilege: a caller who holds any member grant proceeds,
+ * a caller who holds none is denied 403 with the same metrics and log the
+ * single-grant gate emits.
+ *
+ * NOTE: only safe for routes whose member grants are EQUIVALENT in power.
+ * If one member carried more authority than another, OR-ing them would hand
+ * the looser grant the wider surface.
+ *
+ * @param {Array<[string,string]>} specs [[moduleKey, action], …]
+ */
+function requireAnyPermission(specs = []) {
+  if (!Array.isArray(specs) || !specs.length) {
+    throw new Error("requireAnyPermission: at least one [module, action] entry required");
+  }
+  // Validate every spec eagerly, the way requirePermission does, so a
+  // malformed spec fails at boot rather than on the first request.
+  for (const spec of specs) {
+    if (!Array.isArray(spec) || spec.length < 2) {
+      throw new Error("requireAnyPermission: each entry must be [moduleKey, action]");
+    }
+    const [moduleKey, action] = spec;
+    if (!moduleKey || typeof moduleKey !== "string") {
+      throw new Error("requireAnyPermission: moduleKey required");
+    }
+    if (!ACTION_COLUMN[action]) {
+      throw new Error(`requireAnyPermission: invalid action "${action}"`);
+    }
+  }
+
+  return async function anyPermissionCheck(req, _res, next) {
+    if (!req.user) {
+      throw new AppError("AUTH_REQUIRED", "Authentication required", 401);
+    }
+    if (req.user.is_ceo === true) {
+      req.permission_scope = "all";
+      req.scope_ids = null;
+      return next();
+    }
+    if (!req.identityDb) {
+      throw new AppError("NO_TENANT_CONTEXT", "tenantContext must run before requireAnyPermission", 500);
+    }
+
+    const { grants, scopeIds } = await req.identityDb(async (client) => ({
+      grants: await Promise.all(
+        specs.map(([moduleKey]) =>
+          identityCache.getGrants(client, { role_ids: req.user.role_ids, module: moduleKey }),
+        ),
+      ),
+      scopeIds: await identityCache.getUserScopeClosure(client, req.user.user_id),
+    }));
+
+    const allowed = grants.some((list, i) => {
+      const column = ACTION_COLUMN[specs[i][1]];
+      return list.some((g) => g[column] === true);
+    });
+
+    if (!allowed) {
+      const label = specs.map(([m, a]) => `${m}.${a}`).join(" or ");
+      metrics.inc("praxis_rbac_denials_total", { module: "any", action: "any" }, 1,
+        "Permission denials by module and action.");
+      logger.warn(
+        { user_id: req.user.user_id, modules: specs },
+        "permission denied",
+      );
+      throw new AppError(
+        "PERMISSION_DENIED",
+        `No permission for ${label}`,
+        403,
+      );
+    }
+
+    req.scope_ids = scopeIds.length ? scopeIds : null;
+    req.permission_scope = req.scope_ids ? "scoped" : "all";
+    return next();
+  };
+}
+
 async function readPermissions(req, specs = []) {
   if (!req || !req.user || !Array.isArray(specs) || !specs.length) {
     return specs.map(() => false);
@@ -273,4 +363,4 @@ async function readPermissions(req, specs = []) {
   }
 }
 
-module.exports = { requirePermission, requireCapability, requireCeo, readPermissions };
+module.exports = { requirePermission, requireAnyPermission, requireCapability, requireCeo, readPermissions };

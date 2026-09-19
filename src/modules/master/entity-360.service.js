@@ -63,6 +63,45 @@ const PERSONAL_FIELDS = ["date_of_birth", "id_type", "id_number", "email", "phon
   "signature_limit_amount", "signature_limit_currency", "is_pep", "notes"];
 
 /**
+ * The MOD-01 view/edit/approve capabilities of the caller, resolved against
+ * the identity database (not the tenant database) and the same grant cache the
+ * RBAC gate uses.
+ *
+ * WHY THE DOSSIER REPORTS THESE. The 360 page is one aggregation behind one
+ * `view` route, but its controls are not one capability: status/child/
+ * letterhead/calendar writes need `edit`, document & registration verification
+ * needs `approve`, and the Public Story needs MOD-01 `edit` OR MOD-29 `edit`
+ * (Decision Q10). The server is authoritative either way — every route gates
+ * itself — but the PR-01 defect is the UI offering controls that 403, so the
+ * dossier tells the client which controls are honest to show. `can_see_governance`
+ * remains a separate question (who may read the cap table) and is unchanged.
+ *
+ * The shape is additive: `capabilities` is a new field; absence of an entry
+ * must be read by the client as "the caller cannot do this".
+ */
+async function capabilitiesFor(req) {
+  const none = { view: false, edit: false, approve: false, public_story: false };
+  if (!req || !req.user) return none;
+  if (req.user.is_ceo === true) return { view: true, edit: true, approve: true, public_story: true };
+  if (!req.identityDb || !Array.isArray(req.user.role_ids)) return none;
+
+  const grants = await req.identityDb(async (c) => ({
+    entity: await identityCache.getGrants(c, { role_ids: req.user.role_ids, module: "MOD-01" }),
+    site: await identityCache.getGrants(c, { role_ids: req.user.role_ids, module: "MOD-29" }),
+  }));
+
+  const entity = grants.entity;
+  const site = grants.site;
+  return {
+    view: entity.some((g) => g.can_read === true),
+    edit: entity.some((g) => g.can_update === true),
+    approve: entity.some((g) => g.can_approve === true),
+    // MOD-01 edit owns the Story (Q10); MOD-29 edit keeps writing it as today.
+    public_story: entity.some((g) => g.can_update === true) || site.some((g) => g.can_update === true),
+  };
+}
+
+/**
  * The entity row with its bank block masked.
  *
  * `corporate_entity` is read with `SELECT *`, so `bank_block` — which holds an
@@ -219,10 +258,11 @@ function letterheadSource(entity, { addresses, registrations }) {
 /**
  * @param {object} c        tenant db client
  * @param {string} id       entity_id
- * @param {object} opts     { governance, financials } — see canSeeGovernance and
- *                          _shared/confidential.canSeeFinancials
+ * @param {object} opts     { governance, financials, capabilities } — see
+ *                          canSeeGovernance, _shared/confidential.canSeeFinancials
+ *                          and capabilitiesFor
  */
-async function dossier(c, id, { governance = false, financials = false } = {}) {
+async function dossier(c, id, { governance = false, financials = false, capabilities = null } = {}) {
   const entity = await repo.get(c, id);
   if (!entity) throw new AppError("NOT_FOUND", "Entity not found", 404);
 
@@ -308,6 +348,10 @@ async function dossier(c, id, { governance = false, financials = false } = {}) {
     readiness: rules.readiness(entity, { registrations, addresses, people }),
     expiring_registrations: expiringRegistrations,
     can_see_governance: governance,
+    // PR-01: what THIS caller may do on this dossier. The routes gate
+    // themselves; this is the answer the UI reads to hide/disable controls
+    // that would otherwise 403. Absent (AI reads) = no capabilities.
+    capabilities: capabilities || null,
   };
 }
 
@@ -336,7 +380,7 @@ function addDays(iso, days) {
 }
 
 module.exports = {
-  dossier, canSeeGovernance, canSeeFinancials, letterheadSource,
+  dossier, canSeeGovernance, canSeeFinancials, capabilitiesFor, letterheadSource,
   redactPerson, redactDocument, DOCUMENT_CONFIDENTIAL_FIELDS,
   maskEntityBank, maskPaymentBlock, isoDate,
 };

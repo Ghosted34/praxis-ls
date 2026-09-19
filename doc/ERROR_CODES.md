@@ -65,7 +65,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `ASSIGNEE_UNAVAILABLE` | 422 | 1× | — |
 | `ATTACHMENT_TOO_LARGE` | — | 1× | — |
 | `AUDIO_TOO_LARGE` | 413 | 1× | — |
-| `AUTH_REQUIRED` | 401 | 15× | — |
+| `AUTH_REQUIRED` | 401 | 16× | — |
 | `AWAITING_DECISION` | — | 1× | — |
 | `BAD_ACTION` | 422 | 4× | — |
 | `BAD_AMOUNT` | 422 | 15× | `INVALID_AMOUNT` |
@@ -396,7 +396,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NO_SLUG` | 422 | 1× | — |
 | `NO_TARIFF` | 422 | 1× | — |
 | `NO_TEMPLATE` | 422 | 2× | — |
-| `NO_TENANT_CONTEXT` | 500 | 5× | — |
+| `NO_TENANT_CONTEXT` | 500 | 6× | — |
 | `NO_TREASURY_ACCOUNT` | 422 | 1× | — |
 | `NO_USER_ACCOUNT` | — | 1× | — |
 | `NO_VALIDATOR` | 422 | 1× | — |
@@ -435,7 +435,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `PASSWORD_REQUIRED` | — | 1× | — |
 | `PERIOD_CLOSED` | 422 | 1× | — |
 | `PERIOD_NOT_OPEN` | 422 | 1× | — |
-| `PERMISSION_DENIED` | 403 | 7× | — |
+| `PERMISSION_DENIED` | 403 | 8× | — |
 | `PERSONAL_MAILBOX` | — | 1× | — |
 | `PERSONAL_MAILBOX_EXISTS` | — | 1× | — |
 | `PIN_EXPIRED` | 422 | 1× | — |

@@ -1183,6 +1183,44 @@ function EntityChildModal({
 
 /* ── The dossier ───────────────────────────────────────────────────────────── */
 
+/**
+ * What the dossier may offer THIS caller (PR-01).
+ *
+ * The server sends an `api.EntityCapabilities` on the `/360` bundle; this is the
+ * dossier's local view of it with a load-safe default. Expensive to guess
+ * wrong in either direction: defaulting to "allow" would keep offering buttons
+ * that 403, which is the exact defect PR-01 closes — so the default is the
+ * READ-ONLY posture (view-only, no writes) and flips open only once the server
+ * has said so.
+ */
+type DossierCapabilities = {
+  ready: boolean;
+  view: boolean;
+  edit: boolean;
+  approve: boolean;
+  /** May edit the public story: MOD-01 edit OR MOD-29 edit (decision Q10). */
+  public_story: boolean;
+};
+
+const NO_CAPABILITIES: DossierCapabilities = {
+  ready: false,
+  view: false,
+  edit: false,
+  approve: false,
+  public_story: false,
+};
+
+const capabilitiesOf = (caps: api.EntityCapabilities | null | undefined): DossierCapabilities => {
+  if (!caps) return NO_CAPABILITIES;
+  return {
+    ready: true,
+    view: !!caps.view,
+    edit: !!caps.edit,
+    approve: !!caps.approve,
+    public_story: !!caps.public_story,
+  };
+};
+
 export function EntityDossier({
   entityId,
   onEdit,
@@ -1302,11 +1340,18 @@ export function EntityDossier({
    */
   const deepEdit = useDeepLinkEdit("addresses");
   const loadedAddresses = d.data ? d.data.addresses : null;
+  const loadedCapabilities = d.data ? d.data.capabilities : null;
   React.useEffect(() => {
     // Not loaded yet — the arrival params stay in the URL and this runs again
     // when they are, which is the whole reason `clear()` is called on success
-    // rather than on mount.
+    // rather than on mount. A caller without MOD-01 edit should not be handed
+    // the address form at all (PR-01): it cannot save it, so the deep link
+    // lands on the section instead of opening a dialog that 403s.
     if (!deepEdit.open || !loadedAddresses) return;
+    if (!(loadedCapabilities && loadedCapabilities.edit)) {
+      deepEdit.clear();
+      return;
+    }
     const id = deepEdit.row;
     const found = id && id !== "new"
       ? loadedAddresses.find((a) => a.address_id === id)
@@ -1319,7 +1364,7 @@ export function EntityDossier({
         : { type: "REGISTERED" },
     });
     deepEdit.clear();
-  }, [deepEdit, loadedAddresses]);
+  }, [deepEdit, loadedAddresses, loadedCapabilities]);
 
   if (d.loading) return <LoadingRow label="Loading entity…" />;
   if (d.error || !d.data) {
@@ -1342,7 +1387,16 @@ export function EntityDossier({
     treasury_accounts: treasury,
     expiring_registrations: expiring,
     can_see_governance: gov,
+    capabilities,
   } = d.data;
+
+  // PR-01: the caller's capability set. Server-authoritative; absent = the
+  // read-only posture (hide every write control) until the bundle says otherwise.
+  //
+  // A plain call, not useMemo: this sits after the early returns above and
+  // hooks must not change count between renders. capabilitiesOf only builds a
+  // four-boolean object, so memoising it would buy nothing anyway.
+  const caps = capabilitiesOf(capabilities);
 
   const status =
     e.registration_status || (e.is_active ? "ACTIVE" : "DEACTIVATED");
@@ -1396,16 +1450,20 @@ export function EntityDossier({
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setStatusOpen(true)}
-            >
-              Change status
-            </Button>
-            <Button size="sm" onClick={onEdit}>
-              Edit details
-            </Button>
+            {caps.edit && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setStatusOpen(true)}
+              >
+                Change status
+              </Button>
+            )}
+            {caps.edit && (
+              <Button size="sm" onClick={onEdit}>
+                Edit details
+              </Button>
+            )}
           </div>
         </div>
       </div>
@@ -1591,13 +1649,15 @@ export function EntityDossier({
                 {e.ops_reference_prefix ? (
                   <span className="inline-flex items-center gap-2">
                     <span className="font-mono">{e.ops_reference_prefix}</span>
-                    <button
-                      type="button"
-                      className="micro underline underline-offset-2 hover:text-foreground"
-                      onClick={() => setOpsPrefixOpen(true)}
-                    >
-                      Change
-                    </button>
+                    {caps.edit && (
+                      <button
+                        type="button"
+                        className="micro underline underline-offset-2 hover:text-foreground"
+                        onClick={() => setOpsPrefixOpen(true)}
+                      >
+                        Change
+                      </button>
+                    )}
                   </span>
                 ) : null}
               </Detail>
@@ -1677,14 +1737,16 @@ export function EntityDossier({
           field="registrations"
           description="Tax and trade identifiers, one row per country. This is what keeps a multi-country group compliant in each system."
           action={
-            <Button
-              size="sm"
-              onClick={() =>
-                setEditing({ seg: "registrations", title: "Add registration" })
-              }
-            >
-              Add registration
-            </Button>
+            caps.edit ? (
+              <Button
+                size="sm"
+                onClick={() =>
+                  setEditing({ seg: "registrations", title: "Add registration" })
+                }
+              >
+                Add registration
+              </Button>
+            ) : undefined
           }
         >
           <MiniTable
@@ -1720,28 +1782,32 @@ export function EntityDossier({
                 <Td>{r.issued_on ? dateDmy(r.issued_on) : "—"}</Td>
                 <Td>{r.expires_on ? dateDmy(r.expires_on) : "—"}</Td>
                 <Td r>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() =>
-                      setEditing({
-                        seg: "registrations",
-                        title: "Edit registration",
-                        row: r as unknown as Record<string, unknown>,
-                      })
-                    }
-                  >
-                    Edit
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() =>
-                      removeChild("registrations", r.registration_id)
-                    }
-                  >
-                    Remove
-                  </Button>
+                  {caps.edit && (
+                    <>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() =>
+                          setEditing({
+                            seg: "registrations",
+                            title: "Edit registration",
+                            row: r as unknown as Record<string, unknown>,
+                          })
+                        }
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() =>
+                          removeChild("registrations", r.registration_id)
+                        }
+                      >
+                        Remove
+                      </Button>
+                    </>
+                  )}
                 </Td>
               </tr>
             ))}
@@ -1773,6 +1839,8 @@ export function EntityDossier({
             establishments={establishments}
             onRemove={(id) => removeChild("documents", id)}
             onSaved={reload}
+            canEdit={caps.edit}
+            canApprove={caps.approve}
           />
         </div>
       )}
@@ -1791,18 +1859,20 @@ export function EntityDossier({
                 >
                   Open Tax module →
                 </Button>
-                <Button
-                  size="sm"
-                  onClick={() =>
-                    setEditing({
-                      seg: "tax-registrations",
-                      title: "Add tax registration",
-                      row: { country_code: e.country_code, tax_kind: "VAT" },
-                    })
-                  }
-                >
-                  Add registration
-                </Button>
+                {caps.edit && (
+                  <Button
+                    size="sm"
+                    onClick={() =>
+                      setEditing({
+                        seg: "tax-registrations",
+                        title: "Add tax registration",
+                        row: { country_code: e.country_code, tax_kind: "VAT" },
+                      })
+                    }
+                  >
+                    Add registration
+                  </Button>
+                )}
               </div>
             }
           >
@@ -1880,28 +1950,32 @@ export function EntityDossier({
                     )}
                   </Td>
                   <Td r>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() =>
-                        setEditing({
-                          seg: "tax-registrations",
-                          title: "Edit tax registration",
-                          row: t as unknown as Record<string, unknown>,
-                        })
-                      }
-                    >
-                      Edit
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() =>
-                        removeChild("tax-registrations", t.tax_registration_id)
-                      }
-                    >
-                      Remove
-                    </Button>
+                    {caps.edit && (
+                      <>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() =>
+                            setEditing({
+                              seg: "tax-registrations",
+                              title: "Edit tax registration",
+                              row: t as unknown as Record<string, unknown>,
+                            })
+                          }
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() =>
+                            removeChild("tax-registrations", t.tax_registration_id)
+                          }
+                        >
+                          Remove
+                        </Button>
+                      </>
+                    )}
                   </Td>
                 </tr>
               ))}
@@ -1969,12 +2043,21 @@ export function EntityDossier({
       )}
 
       {tab === "Letterhead" && (
-        <LetterheadTab entityId={entityId} onSaved={reload} />
+        <LetterheadTab entityId={entityId} canEdit={caps.edit} onSaved={reload} />
       )}
 
-      {tab === "Working calendar" && <WorkingCalendarTab entityId={entityId} />}
+      {tab === "Working calendar" && (
+        <WorkingCalendarTab entityId={entityId} canEdit={caps.edit} />
+      )}
 
-      {tab === "Public story" && <EntityPublicStoryTab entity={e} addresses={addresses} onSaved={reload} />}
+      {tab === "Public story" && (
+        <EntityPublicStoryTab
+          entity={e}
+          addresses={addresses}
+          onSaved={reload}
+          canEdit={caps.public_story}
+        />
+      )}
 
       {tab === "Renewals" && (
         <Section
@@ -2116,18 +2199,20 @@ export function EntityDossier({
                     Today
                   </Button>
                 )}
-                <Button
-                  size="sm"
-                  onClick={() =>
-                    setEditing({
-                      seg: "people",
-                      title: "Add shareholder",
-                      row: { role: "SHAREHOLDER" },
-                    })
-                  }
-                >
-                  Add shareholder
-                </Button>
+                {caps.edit && (
+                  <Button
+                    size="sm"
+                    onClick={() =>
+                      setEditing({
+                        seg: "people",
+                        title: "Add shareholder",
+                        row: { role: "SHAREHOLDER" },
+                      })
+                    }
+                  >
+                    Add shareholder
+                  </Button>
+                )}
               </div>
             }
           >
@@ -2249,39 +2334,43 @@ export function EntityDossier({
                       {/* The quick route the request asked for: this shareholder
                           also runs the company, so tick the second role here
                           instead of retyping them as a separate person. */}
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() =>
-                          setEditing({
-                            seg: "people",
-                            title: `Also acts as — ${p.full_name}`,
-                            row: p as unknown as Record<string, unknown>,
-                          })
-                        }
-                      >
-                        Add role
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() =>
-                          setEditing({
-                            seg: "people",
-                            title: "Edit shareholder",
-                            row: p as unknown as Record<string, unknown>,
-                          })
-                        }
-                      >
-                        Edit
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => removeChild("people", p.person_id)}
-                      >
-                        Remove
-                      </Button>
+                      {caps.edit && (
+                        <>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() =>
+                              setEditing({
+                                seg: "people",
+                                title: `Also acts as — ${p.full_name}`,
+                                row: p as unknown as Record<string, unknown>,
+                              })
+                            }
+                          >
+                            Add role
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() =>
+                              setEditing({
+                                seg: "people",
+                                title: "Edit shareholder",
+                                row: p as unknown as Record<string, unknown>,
+                              })
+                            }
+                          >
+                            Edit
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => removeChild("people", p.person_id)}
+                          >
+                            Remove
+                          </Button>
+                        </>
+                      )}
                     </Td>
                   </tr>
                 );
@@ -2304,18 +2393,20 @@ export function EntityDossier({
             title="Directors, officers and signatories"
             description="One person can hold several roles — add them once and tick every role they hold, rather than adding a row per role."
             action={
-              <Button
-                size="sm"
-                onClick={() =>
-                  setEditing({
-                    seg: "people",
-                    title: "Add person",
-                    row: { role: "DIRECTOR" },
-                  })
-                }
-              >
-                Add person
-              </Button>
+              caps.edit ? (
+                <Button
+                  size="sm"
+                  onClick={() =>
+                    setEditing({
+                      seg: "people",
+                      title: "Add person",
+                      row: { role: "DIRECTOR" },
+                    })
+                  }
+                >
+                  Add person
+                </Button>
+              ) : undefined
             }
           >
             <MiniTable
@@ -2377,39 +2468,43 @@ export function EntityDossier({
                   <Td>{p.effective_from ? dateDmy(p.effective_from) : "—"}</Td>
                   <Td>{p.effective_to ? dateDmy(p.effective_to) : "—"}</Td>
                   <Td r>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() =>
-                        setEditing({
-                          seg: "people",
-                          title: `Also acts as — ${p.full_name}`,
-                          row: p as unknown as Record<string, unknown>,
-                        })
-                      }
-                    >
-                      Add role
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() =>
-                        setEditing({
-                          seg: "people",
-                          title: "Edit person",
-                          row: p as unknown as Record<string, unknown>,
-                        })
-                      }
-                    >
-                      Edit
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => removeChild("people", p.person_id)}
-                    >
-                      Remove
-                    </Button>
+                    {caps.edit && (
+                      <>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() =>
+                            setEditing({
+                              seg: "people",
+                              title: `Also acts as — ${p.full_name}`,
+                              row: p as unknown as Record<string, unknown>,
+                            })
+                          }
+                        >
+                          Add role
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() =>
+                            setEditing({
+                              seg: "people",
+                              title: "Edit person",
+                              row: p as unknown as Record<string, unknown>,
+                            })
+                          }
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => removeChild("people", p.person_id)}
+                        >
+                          Remove
+                        </Button>
+                      </>
+                    )}
                   </Td>
                 </tr>
               ))}
@@ -2425,18 +2520,20 @@ export function EntityDossier({
             field="address_registered"
             description="REGISTERED is the statutory office the letterhead prints — often not where people actually work."
             action={
-              <Button
-                size="sm"
-                onClick={() =>
-                  setEditing({
-                    seg: "addresses",
-                    title: "Add address",
-                    row: { type: "REGISTERED" },
-                  })
-                }
-              >
-                Add address
-              </Button>
+              caps.edit ? (
+                <Button
+                  size="sm"
+                  onClick={() =>
+                    setEditing({
+                      seg: "addresses",
+                      title: "Add address",
+                      row: { type: "REGISTERED" },
+                    })
+                  }
+                >
+                  Add address
+                </Button>
+              ) : undefined
             }
           >
             <MiniTable
@@ -2476,26 +2573,30 @@ export function EntityDossier({
                   </Td>
                   <Td>{a.country_code || "—"}</Td>
                   <Td r>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() =>
-                        setEditing({
-                          seg: "addresses",
-                          title: "Edit address",
-                          row: a as unknown as Record<string, unknown>,
-                        })
-                      }
-                    >
-                      Edit
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => removeChild("addresses", a.address_id)}
-                    >
-                      Remove
-                    </Button>
+                    {caps.edit && (
+                      <>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() =>
+                            setEditing({
+                              seg: "addresses",
+                              title: "Edit address",
+                              row: a as unknown as Record<string, unknown>,
+                            })
+                          }
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => removeChild("addresses", a.address_id)}
+                        >
+                          Remove
+                        </Button>
+                      </>
+                    )}
                   </Td>
                 </tr>
               ))}
@@ -2506,14 +2607,16 @@ export function EntityDossier({
             title="Contacts"
             description="Departmental contact points for this entity — the AP inbox, the legal contact on a tender."
             action={
-              <Button
-                size="sm"
-                onClick={() =>
-                  setEditing({ seg: "contacts", title: "Add contact" })
-                }
-              >
-                Add contact
-              </Button>
+              caps.edit ? (
+                <Button
+                  size="sm"
+                  onClick={() =>
+                    setEditing({ seg: "contacts", title: "Add contact" })
+                  }
+                >
+                  Add contact
+                </Button>
+              ) : undefined
             }
           >
             {/* The department pills are the point of this section: "the AP inbox,
@@ -2579,26 +2682,30 @@ export function EntityDossier({
                     ) : null}
                   </Td>
                   <Td r>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() =>
-                        setEditing({
-                          seg: "contacts",
-                          title: "Edit contact",
-                          row: c as unknown as Record<string, unknown>,
-                        })
-                      }
-                    >
-                      Edit
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => removeChild("contacts", c.contact_id)}
-                    >
-                      Remove
-                    </Button>
+                    {caps.edit && (
+                      <>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() =>
+                            setEditing({
+                              seg: "contacts",
+                              title: "Edit contact",
+                              row: c as unknown as Record<string, unknown>,
+                            })
+                          }
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => removeChild("contacts", c.contact_id)}
+                        >
+                          Remove
+                        </Button>
+                      </>
+                    )}
                   </Td>
                 </tr>
               ))}
@@ -2613,9 +2720,11 @@ export function EntityDossier({
             title="Position in the group"
             description="A subsidiary is its own entity with its own books — this records how it relates to the parent."
             action={
-              <Button size="sm" onClick={() => setStructureOpen(true)}>
-                Edit structure
-              </Button>
+              caps.edit ? (
+                <Button size="sm" onClick={() => setStructureOpen(true)}>
+                  Edit structure
+                </Button>
+              ) : undefined
             }
           >
             <dl className="grid gap-3 sm:grid-cols-3 xl:grid-cols-5">
@@ -2706,17 +2815,19 @@ export function EntityDossier({
             field="establishments"
             description="Sites that are not separate legal persons — a warehouse or branch office with its own tax-office reference but no separate books."
             action={
-              <Button
-                size="sm"
-                onClick={() =>
-                  setEditing({
-                    seg: "establishments",
-                    title: "Add establishment",
-                  })
-                }
-              >
-                Add establishment
-              </Button>
+              caps.edit ? (
+                <Button
+                  size="sm"
+                  onClick={() =>
+                    setEditing({
+                      seg: "establishments",
+                      title: "Add establishment",
+                    })
+                  }
+                >
+                  Add establishment
+                </Button>
+              ) : undefined
             }
           >
             <MiniTable
@@ -2766,28 +2877,32 @@ export function EntityDossier({
                     <span className="num">{s.tax_office_ref || "—"}</span>
                   </Td>
                   <Td r>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() =>
-                        setEditing({
-                          seg: "establishments",
-                          title: "Edit establishment",
-                          row: s as unknown as Record<string, unknown>,
-                        })
-                      }
-                    >
-                      Edit
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() =>
-                        removeChild("establishments", s.establishment_id)
-                      }
-                    >
-                      Remove
-                    </Button>
+                    {caps.edit && (
+                      <>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() =>
+                            setEditing({
+                              seg: "establishments",
+                              title: "Edit establishment",
+                              row: s as unknown as Record<string, unknown>,
+                            })
+                          }
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() =>
+                            removeChild("establishments", s.establishment_id)
+                          }
+                        >
+                          Remove
+                        </Button>
+                      </>
+                    )}
                   </Td>
                 </tr>
               ))}
@@ -3109,6 +3224,8 @@ function DocumentsTab({
   establishments,
   onRemove,
   onSaved,
+  canEdit = false,
+  canApprove = false,
 }: {
   entityId: string;
   /** Prefixed onto the ZIP the selection downloads as, e.g. `SLAS-documents.zip`. */
@@ -3117,6 +3234,11 @@ function DocumentsTab({
   establishments: api.EntityEstablishment[];
   onRemove: (id: string) => void;
   onSaved: () => void;
+  /** PR-01: MOD-01 edit — gates Add/attach/Edit/Remove. View-only still selects
+   *  and shares what they are allowed to see. */
+  canEdit?: boolean;
+  /** PR-01: MOD-01 approve — gates the human Verify step. */
+  canApprove?: boolean;
 }) {
   const toast = useToast();
   const types = useResource(() => api.listDocumentTypes("ENTITY"), []);
@@ -3327,9 +3449,11 @@ function DocumentsTab({
       title="Administrative documents"
       description="Statutes, tax clearances, licences and insurance — add each one and upload its file. Anything with an expiry date feeds the Renewals tab. Uploading marks the scan as scanned; use Verify after checking the file against the original. Tick documents to share them by email or download them together as a ZIP."
       action={
-        <Button size="sm" onClick={() => setAdding("new")}>
-          Add document
-        </Button>
+        canEdit && (
+          <Button size="sm" onClick={() => setAdding("new")}>
+            Add document
+          </Button>
+        )
       }
     >
       {types.error && <ErrorState message={errMsg(types.error)} />}
@@ -3437,37 +3561,45 @@ function DocumentsTab({
             </Td>
             <Td r>
               <div className="flex flex-wrap justify-end gap-2">
-                <ScanAttachment
-                  vaultId={doc.vault_id}
-                  docType="ENTITY_DOCUMENT"
-                  entityRef={`entity_document:${doc.document_id}`}
-                  onAttached={(vaultId) => linkScan(doc, vaultId)}
-                  onError={setAttachError}
-                />
-                {doc.vault_id && doc.verification_status !== "VERIFIED" && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    loading={verifyBusy === doc.document_id}
-                    onClick={() => void verifyDocument(doc)}
-                  >
-                    Verify
-                  </Button>
+                {canEdit && (
+                  <ScanAttachment
+                    vaultId={doc.vault_id}
+                    docType="ENTITY_DOCUMENT"
+                    entityRef={`entity_document:${doc.document_id}`}
+                    onAttached={(vaultId) => linkScan(doc, vaultId)}
+                    onError={setAttachError}
+                  />
                 )}
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => setAdding(doc)}
-                >
-                  Edit
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => onRemove(doc.document_id)}
-                >
-                  Remove
-                </Button>
+                {canApprove &&
+                  doc.vault_id &&
+                  doc.verification_status !== "VERIFIED" && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      loading={verifyBusy === doc.document_id}
+                      onClick={() => void verifyDocument(doc)}
+                    >
+                      Verify
+                    </Button>
+                  )}
+                {canEdit && (
+                  <>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setAdding(doc)}
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => onRemove(doc.document_id)}
+                    >
+                      Remove
+                    </Button>
+                  </>
+                )}
               </div>
             </Td>
           </tr>
@@ -3557,9 +3689,13 @@ function DocumentsTab({
 function LetterheadTab({
   entityId,
   onSaved,
+  canEdit = false,
 }: {
   entityId: string;
   onSaved: () => void;
+  /** PR-01: MOD-01 edit — gates every write in the studio (placement, wording,
+   *  brand, payment block). View-only still previews the live letterhead. */
+  canEdit?: boolean;
 }) {
   const toast = useToast();
   const lh = useResource<api.LetterheadBundle>(
@@ -3659,6 +3795,7 @@ function LetterheadTab({
         onLang={setLang}
         onReload={lh.reload}
         onSaved={onSaved}
+        readOnly={!canEdit}
       />
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -3695,6 +3832,7 @@ function LetterheadTab({
                   <textarea
                     className="min-h-16 w-full rounded-lg border bg-background px-3 py-2 text-sm"
                     value={draft[key] ?? ""}
+                    readOnly={!canEdit}
                     placeholder={
                       base === "legal_mentions"
                         ? lang === "fr"
@@ -3728,7 +3866,7 @@ function LetterheadTab({
             <Field label="Paper size" hint="A4 outside North America.">
               <Select
                 value={c.paper_size ?? "A4"}
-                disabled={busy}
+                disabled={busy || !canEdit}
                 onChange={(ev) => patch({ paper_size: ev.target.value })}
               >
                 <option value="A4">A4 — 210 × 297 mm</option>
@@ -3738,7 +3876,7 @@ function LetterheadTab({
             <Field label="Logo position">
               <Select
                 value={c.logo_position ?? "LEFT"}
-                disabled={busy}
+                disabled={busy || !canEdit}
                 onChange={(ev) => patch({ logo_position: ev.target.value })}
               >
                 {(["LEFT", "CENTER", "RIGHT"] as const).map((p) => (
@@ -3752,6 +3890,7 @@ function LetterheadTab({
               <Input
                 value={draft.brand_color ?? ""}
                 placeholder="#C2703D"
+                readOnly={!canEdit}
                 onChange={(ev) => {
                   setDraft((s) => ({ ...s, brand_color: ev.target.value }));
                   setDirty(true);
@@ -3765,6 +3904,7 @@ function LetterheadTab({
               <Input
                 value={draft.accent_color ?? ""}
                 placeholder="#1F6F6B"
+                readOnly={!canEdit}
                 onChange={(ev) => {
                   setDraft((s) => ({ ...s, accent_color: ev.target.value }));
                   setDirty(true);
@@ -3782,6 +3922,7 @@ function LetterheadTab({
                 step="any"
                 value={draft.header_height_mm ?? ""}
                 placeholder="35"
+                readOnly={!canEdit}
                 onChange={(ev) => {
                   setDraft((s) => ({
                     ...s,
@@ -3802,6 +3943,7 @@ function LetterheadTab({
                 step="any"
                 value={draft.footer_height_mm ?? ""}
                 placeholder="25"
+                readOnly={!canEdit}
                 onChange={(ev) => {
                   setDraft((s) => ({
                     ...s,
@@ -3814,9 +3956,11 @@ function LetterheadTab({
           </div>
           {error && <ErrorState message={error} />}
           <div className="flex justify-end">
-            <Button loading={busy} disabled={!dirty || busy} onClick={saveText}>
-              Save wording and brand
-            </Button>
+            {canEdit && (
+              <Button loading={busy} disabled={!dirty || busy} onClick={saveText}>
+                Save wording and brand
+              </Button>
+            )}
           </div>
         </Section>
 
@@ -3834,7 +3978,7 @@ function LetterheadTab({
           )}
           <Select
             value={remittance ?? ""}
-            disabled={busy}
+            disabled={busy || !canEdit}
             onChange={(ev) =>
               patch({ remittance_account_id: ev.target.value || null })
             }

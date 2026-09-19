@@ -147,6 +147,7 @@ function CanvasBlock({
   onDragStart,
   onDragEnd,
   accent,
+  readOnly,
 }: {
   block: api.LetterheadBlock;
   lang: Lang;
@@ -155,6 +156,7 @@ function CanvasBlock({
   onDragStart: () => void;
   onDragEnd: () => void;
   accent: string;
+  readOnly: boolean;
 }) {
   const label = block.label[lang] || block.label.en || block.id;
 
@@ -214,7 +216,7 @@ function CanvasBlock({
       tabIndex={0}
       aria-pressed={selected}
       aria-label={`${label}${block.empty ? ` — ${tr("nothing to print")}` : ""}`}
-      draggable
+      draggable={!readOnly}
       onDragStart={(e) => {
         e.dataTransfer.effectAllowed = "move";
         // Firefox refuses to start a drag without data on the transfer.
@@ -238,6 +240,7 @@ function CanvasBlock({
         "hover:bg-primary/10 focus-visible:outline-2 focus-visible:outline-ring",
         selected ? "outline outline-2 outline-ring bg-primary/10" : "outline-none",
         block.empty ? "border border-dashed px-1" : "",
+        readOnly ? "cursor-default" : "",
       ].join(" ")}
       style={{
         borderColor: block.empty ? PRINT.rule : undefined,
@@ -269,6 +272,7 @@ function CanvasZone({
   onDrop,
   accent,
   dragging,
+  readOnly,
 }: {
   zone: Zone;
   blocks: api.LetterheadBlock[];
@@ -280,6 +284,7 @@ function CanvasZone({
   onDrop: (row: number, col: number) => void;
   accent: string;
   dragging: string | null;
+  readOnly: boolean;
 }) {
   const [over, setOver] = React.useState<string | null>(null);
   const live = blocks.filter((b) => b.visible);
@@ -313,6 +318,7 @@ function CanvasZone({
               * path; this is the direct one.
               */}
             {dragging &&
+              !readOnly &&
               Array.from({ length: COLS }, (_, col) => {
                 const key = `${row}:${col}`;
                 return (
@@ -369,6 +375,7 @@ function CanvasZone({
                       onSelect={() => onSelect(b.id)}
                       onDragStart={() => onDragStart(b.id)}
                       onDragEnd={onDragEnd}
+                      readOnly={readOnly}
                     />
                   ))}
               </div>
@@ -397,6 +404,7 @@ function Inspector({
   line,
   tokens,
   busy,
+  readOnly,
   logoHeightMm,
   onPlace,
   onLine,
@@ -409,6 +417,7 @@ function Inspector({
   line: api.LetterheadLine | null;
   tokens: { token: string; label: string }[];
   busy: boolean;
+  readOnly: boolean;
   logoHeightMm: number | null;
   onPlace: (patch: Partial<api.LetterheadPlacement>) => void;
   onLine: (patch: Record<string, unknown>) => void;
@@ -475,7 +484,7 @@ function Inspector({
               max={60}
               step={0.5}
               value={logoHeightMm ?? ""}
-              disabled={busy}
+              disabled={busy || readOnly}
               onChange={(e) => onLogoHeight(e.target.value === "" ? null : Number(e.target.value))}
             />
           </Field>
@@ -491,7 +500,7 @@ function Inspector({
             <Input
               ref={textRef}
               value={draft}
-              disabled={busy}
+              disabled={busy || readOnly}
               onChange={(e) => setDraft(e.target.value)}
               onBlur={() => {
                 if (draft !== ((line && (line[textKey] as string)) || "")) {
@@ -507,7 +516,7 @@ function Inspector({
                 <button
                   key={t.token}
                   type="button"
-                  disabled={busy}
+                  disabled={busy || readOnly}
                   title={t.token}
                   onClick={() => {
                     /*
@@ -534,7 +543,7 @@ function Inspector({
         <Field label={tr("Align")}>
           <Select
             value={block.align}
-            disabled={busy}
+            disabled={busy || readOnly}
             onChange={(e) => onPlace({ align: e.target.value as api.LetterheadPlacement["align"] })}
           >
             <option value="left">{tr("Left")}</option>
@@ -548,7 +557,7 @@ function Inspector({
             min={1}
             max={COLS}
             value={block.span}
-            disabled={busy}
+            disabled={busy || readOnly}
             onChange={(e) => onPlace({ span: Number(e.target.value) })}
           />
         </Field>
@@ -558,7 +567,7 @@ function Inspector({
             min={0}
             max={COLS - 1}
             value={block.col}
-            disabled={busy}
+            disabled={busy || readOnly}
             onChange={(e) => onPlace({ col: Number(e.target.value) })}
           />
         </Field>
@@ -568,7 +577,7 @@ function Inspector({
             min={0}
             max={40}
             value={block.row}
-            disabled={busy}
+            disabled={busy || readOnly}
             onChange={(e) => onPlace({ row: Number(e.target.value) })}
           />
         </Field>
@@ -583,14 +592,14 @@ function Inspector({
               max={2.5}
               step={0.05}
               value={block.size}
-              disabled={busy}
+              disabled={busy || readOnly}
               onChange={(e) => onPlace({ size: Number(e.target.value) })}
             />
           </Field>
           <Field label={tr("Emphasis")}>
             <Select
               value={block.weight}
-              disabled={busy}
+              disabled={busy || readOnly}
               onChange={(e) => onPlace({ weight: e.target.value as "normal" | "bold" })}
             >
               <option value="normal">{tr("Regular")}</option>
@@ -600,7 +609,7 @@ function Inspector({
           <Field label={tr("Tone")}>
             <Select
               value={block.tone}
-              disabled={busy}
+              disabled={busy || readOnly}
               onChange={(e) => onPlace({ tone: e.target.value as "ink" | "muted" | "accent" })}
             >
               <option value="ink">{tr("Full strength")}</option>
@@ -611,7 +620,7 @@ function Inspector({
           <Field label={tr("Letter case")}>
             <Select
               value={block.transform}
-              disabled={busy}
+              disabled={busy || readOnly}
               onChange={(e) => onPlace({ transform: e.target.value as "none" | "upper" })}
             >
               <option value="none">{tr("As written")}</option>
@@ -624,12 +633,12 @@ function Inspector({
       <div className="flex items-center justify-between gap-2 border-t pt-3">
         <Checkbox
           checked={block.visible}
-          disabled={busy}
+          disabled={busy || readOnly}
           onCheckedChange={(v) => onPlace({ visible: v === true })}
           label={tr("Show on documents")}
         />
         {block.custom && (
-          <Button size="sm" variant="destructive" disabled={busy} onClick={onRemoveLine}>
+          <Button size="sm" variant="destructive" disabled={busy || readOnly} onClick={onRemoveLine}>
             {tr("Remove line")}
           </Button>
         )}
@@ -648,6 +657,7 @@ export function LetterheadStudio({
   onLang,
   onReload,
   onSaved,
+  readOnly = false,
 }: {
   entityId: string;
   bundle: api.LetterheadBundle;
@@ -655,6 +665,9 @@ export function LetterheadStudio({
   onLang: (l: Lang) => void;
   onReload: () => void;
   onSaved: () => void;
+  /** PR-01: MOD-01 view without edit. Disables every write in the studio —
+   *  placement, wording, brand and lines — while the preview stays live. */
+  readOnly?: boolean;
 }) {
   const toast = useToast();
   const [confirm, confirmDialog] = useConfirm();
@@ -818,6 +831,7 @@ export function LetterheadStudio({
       lang={lang}
       accent={accent}
       dragging={dragging}
+      readOnly={readOnly}
       selectedId={selected}
       onSelect={setSelected}
       onDragStart={(id) => {
@@ -897,9 +911,13 @@ export function LetterheadStudio({
         </div>
 
         <p className="micro text-muted-foreground">
-          {tr(
-            "Drag a block to move it. Click one to edit it. The content comes from the entity's own record — this arranges it.",
-          )}
+          {readOnly
+            ? tr(
+                "This letterhead is read-only for you. The preview is live — ask an entity administrator to change the arrangement.",
+              )
+            : tr(
+                "Drag a block to move it. Click one to edit it. The content comes from the entity's own record — this arranges it.",
+              )}
         </p>
       </div>
 
@@ -919,6 +937,7 @@ export function LetterheadStudio({
               line={line}
               tokens={bundle.tokens}
               busy={busy}
+              readOnly={readOnly}
               logoHeightMm={cfg.logo_height_mm ?? null}
               onPlace={(patch) => place(block.id, patch)}
               onLine={(patch) => line && saveLine(line.line_id, patch)}
@@ -948,6 +967,7 @@ export function LetterheadStudio({
         </div>
 
         {/* ── Add ─────────────────────────────────────────────────────── */}
+        {!readOnly && (
         <div className="lux-card space-y-2 p-4">
           <p className="text-sm font-medium text-foreground">{tr("Add to the letterhead")}</p>
           {hidden.length > 0 && (
@@ -993,6 +1013,7 @@ export function LetterheadStudio({
             )}
           </p>
         </div>
+        )}
 
         {comp.empty_blocks.length > 0 && (
           <Callout tone="warn" title={tr("Switched on, but empty")}>

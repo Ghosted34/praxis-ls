@@ -12,7 +12,7 @@
 
 const express = require("express");
 const { authMiddleware } = require("../../../middleware/auth");
-const { requirePermission } = require("../../../middleware/rbac");
+const { requirePermission, requireAnyPermission } = require("../../../middleware/rbac");
 const { asyncHandler } = require("../../../utils/errors");
 const service = require("./site_settings.service");
 const events = require("./site_settings.events");
@@ -28,6 +28,36 @@ router.use(authMiddleware);
 
 const view = requirePermission(MODULE, "view");
 const edit = requirePermission(MODULE, "edit");
+
+/**
+ * The website-media gate, differentiated by SLOT.
+ *
+ * Website media is MOD-29 work — partners, credentials, leader portraits. The
+ * entity cover is the one slot on a MOD-01-owned row, and Decision Q10 says
+ * MOD-01 edit owns the entity's Public Story — whose cover control is the
+ * upload/replace/remove in `entity-public-story-tab.tsx`. So the `entity-cover`
+ * slot also admits MOD-01 `edit`, while every other slot stays MOD-29 only.
+ *
+ * The slot name is a shared-schema enum, so testing it here is safe — it is
+ * never interpolated into a query.
+ *
+ * Named `mediaSlotGate` (not anonymous) so scripts/check-api-contract.js can
+ * see this stack entry as an RBAC gate: an anonymous arrow sits in the chain
+ * with `.name === "anonymous"` and the route reads — falsely — as having lost
+ * its permission check.
+ */
+function mediaSlotGate(slotFrom = (req) => (req.body && req.body.slot)) {
+  // Named (not an arrow) so the REGISTERED middleware — this returned
+  // function, not the factory — carries a name Express records on the stack.
+  // check-api-contract.js reads stack names to detect RBAC; an anonymous
+  // arrow would read as a route that lost its permission gate.
+  return function mediaSlotCheck(req, _res, next) {
+    if (slotFrom(req) === "entity-cover") {
+      return requireAnyPermission([["MOD-01", "edit"], ["MOD-29", "edit"]])(req, _res, next);
+    }
+    return edit(req, _res, next);
+  };
+}
 
 /* ── theme ──────────────────────────────────────────────────────────────────*/
 
@@ -165,7 +195,7 @@ router.delete("/leaders/:id", edit, asyncHandler(async (req, res) => {
  * `req.tenant.slug` is what the vault names the storage key from; every other
  * upload path in this codebase passes it the same way.
  */
-router.post("/media", edit, v.media, asyncHandler(async (req, res) => {
+router.post("/media", mediaSlotGate(), v.media, asyncHandler(async (req, res) => {
   const data = await req.tenantDb((c) => media.upload(c, {
     slot: req.body.slot,
     ownerId: req.body.owner_id,
@@ -185,7 +215,7 @@ router.post("/media", edit, v.media, asyncHandler(async (req, res) => {
  * states: it is looked up in `OWNERS` and answers 422 when it is not a key.
  * Nothing is interpolated from it.
  */
-router.delete("/media/:slot/:ownerId", edit, asyncHandler(async (req, res) => {
+router.delete("/media/:slot/:ownerId", mediaSlotGate((req) => req.params.slot), asyncHandler(async (req, res) => {
   const data = await req.tenantDb((c) => media.remove(c, {
     slot: req.params.slot,
     ownerId: req.params.ownerId,
@@ -219,24 +249,34 @@ router.put("/careers", edit, v.careers, asyncHandler(async (req, res) => {
 /* ── an entity's public story ───────────────────────────────────────────────*/
 
 /**
- * Under THIS module rather than under MOD-01, deliberately.
+ * The columns live on `corporate_entity`, but what they are is website copy.
  *
- * The columns live on `corporate_entity`, but what they are is website copy,
- * and the permission that should govern them is the one that governs the
- * website. A marketing administrator who may write the homepage should be able
- * to write an entity's public paragraph without also being granted the
- * statutory dossier, the cap table and the governance data that MOD-01 `edit`
- * carries.
+ * Decision Q10: MOD-01 `edit` INCLUDES Public Story edit for this module. A
+ * marketing administrator who writes the homepage (MOD-29) may still write an
+ * entity's public paragraph, and the entity administrator (MOD-01) may now edit
+ * the whole dossier — including the Story tab — without being refused by a
+ * MOD-29-only gate. The two grants are equivalent in power for this route (the
+ * write surface is "the entity's public paragraphs, coverage, focus, cover and
+ * publish switch"), so the gate is an OR rather than a second grant.
+ *
+ * The READ stays wide (both modules may view their own surface under MOD-01
+ * `view` / MOD-29 `view`), and keeps working server-side regardless of which
+ * module the caller holds.
  */
-router.get("/entities/:id/story", view, asyncHandler(async (req, res) => {
-  const data = await req.tenantDb((c) => service.getEntityStory(c, req.params.id));
-  if (!data) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Entity not found" } });
-  return res.json({ data });
-}));
+router.get("/entities/:id/story",
+  requireAnyPermission([["MOD-01", "view"], ["MOD-29", "view"]]),
+  asyncHandler(async (req, res) => {
+    const data = await req.tenantDb((c) => service.getEntityStory(c, req.params.id));
+    if (!data) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Entity not found" } });
+    return res.json({ data });
+  }));
 
-router.put("/entities/:id/story", edit, v.entityStory, asyncHandler(async (req, res) => {
-  const data = await req.tenantDb((c) => service.updateEntityStory(c, { entityId: req.params.id, patch: req.body, actor: req.user || {} }));
-  res.json({ data });
-}));
+router.put("/entities/:id/story",
+  requireAnyPermission([["MOD-01", "edit"], ["MOD-29", "edit"]]),
+  v.entityStory,
+  asyncHandler(async (req, res) => {
+    const data = await req.tenantDb((c) => service.updateEntityStory(c, { entityId: req.params.id, patch: req.body, actor: req.user || {} }));
+    res.json({ data });
+  }));
 
 module.exports = { basePath: "/site-settings", feature: null, router };

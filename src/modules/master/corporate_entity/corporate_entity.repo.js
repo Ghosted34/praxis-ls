@@ -1,6 +1,8 @@
 /** Corporate-entity repository (MOD-01). All SQL lives here. */
 "use strict";
-const { insertOne, getById, page, updateOne } = require("../../../shared/db/query-helpers");
+const {
+  insertOne, getById, page, updateOne, splitTotal,
+} = require("../../../shared/db/query-helpers");
 
 /**
  * Columns a caller may write. Declared explicitly rather than inferred from the
@@ -78,9 +80,16 @@ const updateInternal = (client, id, fields) => update(client, id, fields, { allo
  * filter static. It costs an index scan on a table with a handful of rows per
  * tenant — entities are counted in single digits — which is a price worth paying
  * to have no query construction at all.
+ *
+ * PR-09 (CE-03 / CE-35): the SELECT also carries `COUNT(*) OVER() AS _total`,
+ * so a caller that pages through the list knows the true match count before
+ * LIMIT truncates it. That count is what lets the entity list and the pickers
+ * move their search SERVER-SIDE — the previous client contract fetched
+ * `?limit=200` (the `page()` maximum) and filtered those rows in the browser,
+ * so entity 201 was unreachable from any picker no matter what it was called.
  */
 const LIST_SQL = `
-  SELECT * FROM corporate_entity
+  SELECT *, COUNT(*) OVER() AS _total FROM corporate_entity
    WHERE ($3::boolean IS NULL OR is_active = $3)
      AND ($4::text    IS NULL OR registration_status = $4)
      AND ($5::uuid    IS NULL OR parent_entity_id = $5)
@@ -89,7 +98,16 @@ const LIST_SQL = `
    ORDER BY code ASC
    LIMIT $1 OFFSET $2`;
 
-async function list(client, q = {}) {
+/**
+ * One page of entities plus the total matching the filter.
+ *
+ * `registration_status = 'ACTIVE'` is the lifecycle predicate the pickers send
+ * for NEW links (Decision Q6): only ACTIVE entities may be newly linked as the
+ * billing entity, a parent or a corporate shareholder. Existing links to an
+ * entity that has since been deactivated are history — they stay visible where
+ * they are already recorded and are never offered as a fresh choice.
+ */
+async function listPaged(client, q = {}) {
   const { limit, offset } = page(q);
   const isActive = q.is_active === undefined ? null : (q.is_active === "true" || q.is_active === true);
   const { rows } = await client.query(LIST_SQL, [
@@ -101,7 +119,17 @@ async function list(client, q = {}) {
     q.country_code ? String(q.country_code).toUpperCase() : null,
     q.q ? `%${q.q}%` : null,
   ]);
-  return rows;
+  return splitTotal(rows);
+}
+
+/**
+ * Bare rows, unchanged. This is the AI tool contract — `list_entities` is
+ * described to the model as returning a list, and handing it a
+ * `{ rows, total }` envelope it has no schema for would change that contract
+ * for a UI concern the AI path does not have.
+ */
+async function list(client, q = {}) {
+  return (await listPaged(client, q)).rows;
 }
 
 /** entity_id -> parent_entity_id for the whole tenant, for the cycle walk. */
@@ -396,7 +424,7 @@ const deleteLetterheadLine = async (client, id, lineId) => (await client.query(
 module.exports = {
   letterheadLines, addLetterheadLine, updateLetterheadLine, deleteLetterheadLine,
   WRITABLE, LETTERHEAD_WRITABLE,
-  insert, get, getByCode, first, update, updateInternal, list,
+  insert, get, getByCode, first, update, updateInternal, list, listPaged,
   parentMap, children, ancestors, collections, usage, treasuryAccounts,
   documentsAndTax, taxObligations, getLetterhead, upsertLetterhead,
 };

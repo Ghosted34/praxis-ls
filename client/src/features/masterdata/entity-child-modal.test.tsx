@@ -152,7 +152,15 @@ const ENTITY_360 = {
 const routes = {
   "/entities/e1/360": ENTITY_360,
   "/entities": [
-    { entity_id: "e2", code: "SBXFR", legal_name: "SmartBox France SAS" },
+    {
+      entity_id: "e2",
+      code: "SBXFR",
+      legal_name: "SmartBox France SAS",
+      // PR-09: the holder picker offers only ACTIVE entities, so the fixture
+      // row has to say what it is.
+      registration_status: "ACTIVE",
+      is_active: true,
+    },
   ],
   "/employees": [{ employee_id: "emp1", full_name: "Amina Ndoumbe" }],
   "/clients": [{ client_id: "c1", name: "Bolloré Transport" }],
@@ -262,12 +270,22 @@ describe("Master data · entity nested modals", () => {
 
     // Each of these was a column the API accepted, the dossier rendered, and no
     // control could set. A picker populated from a lookup is the proof it landed.
+    //
+    // PR-09: the corporate holder is a server-searched EntityPicker now — its
+    // options arrive from `/entities?registration_status=ACTIVE&…` when the
+    // popover opens, not from the lookup list this modal used to pre-fetch.
     const holder = await screen.findByRole("combobox", {
       name: /held by one of our entities/i,
     });
+    await user.click(holder);
     expect(
-      within(holder).getByRole("option", { name: /SmartBox France SAS/ }),
+      await screen.findByRole("option", { name: /SmartBox France SAS/ }),
     ).toBeTruthy();
+    // Close it again so the axe scan below covers the modal as it is used.
+    await user.type(
+      screen.getByRole("combobox", { name: "Search entity" }),
+      "{Escape}",
+    );
     expect(
       within(
         await screen.findByRole("combobox", { name: /is also an employee/i }),

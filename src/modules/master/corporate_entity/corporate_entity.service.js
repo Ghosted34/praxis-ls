@@ -586,9 +586,24 @@ async function capTable(client, id, asOf = null) {
 }
 
 const get = (client, id) => repo.get(client, id);
-const list = (client, q) => repo.list(client, q);
+
+/**
+ * One page of entities plus the filter total, for the HTTP layer to surface as
+ * `X-Total-Count` (PR-09). The pickers and the entity list page search
+ * server-side through `q` + `registration_status`, so a tenant with more
+ * entities than `page()`'s 200-row maximum is still fully reachable — and the
+ * total is what tells the client there are more pages to offer.
+ */
+const listPaged = (client, q) => repo.listPaged(client, q);
+
+/**
+ * Bare rows — the AI tool registry's `list_entities` contract. See the matching
+ * note in the repo: the model is told this returns a list, so it must not start
+ * receiving the `{ rows, total }` envelope the paged route sends.
+ */
+const list = async (client, q) => (await repo.listPaged(client, q)).rows;
 
 module.exports = {
   create, update, setStatus, setActive, setStructure, uploadLogo, capTable,
-  letterhead, saveLetterhead, saveLetterheadLine, renewals, get, list, setOpsReferencePrefix,
+  letterhead, saveLetterhead, saveLetterheadLine, renewals, get, list, listPaged, setOpsReferencePrefix,
 };

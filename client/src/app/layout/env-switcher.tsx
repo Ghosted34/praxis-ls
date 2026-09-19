@@ -64,18 +64,11 @@ import {
   CheckIcon,
   RefreshIcon,
 } from "@/components/ui/icons";
-
-export type Env = "live" | "sandbox";
-
-/** The env is a plain string in `tokenStore` and in shell state, and anything
- *  that is not the sandbox is live — the same reading the toggle has always
- *  done inline (`env !== "sandbox"`). */
-export const asEnv = (env: string): Env => (env === "sandbox" ? "sandbox" : "live");
-
-/** The other one. Two environments, so "switch" has exactly one destination. */
-export const otherEnv = (env: Env): Env => (env === "sandbox" ? "live" : "sandbox");
-
-export const ENV_LABEL: Record<Env, string> = { live: "LIVE", sandbox: "TEST" };
+// `Env`, `asEnv`, `otherEnv` and `ENV_LABEL` live in ./env.ts — see the note
+// there. Only components (and one primitive constant) are exported from here,
+// which is what keeps Fast Refresh working on this file.
+import { ENV_LABEL, asEnv, otherEnv } from "@/app/layout/env";
+import type { Env } from "@/app/layout/env";
 
 /**
  * The two tints, and the ONLY place this module names a colour (see header).

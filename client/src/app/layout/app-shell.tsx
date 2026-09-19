@@ -55,7 +55,7 @@ import { Ribbon } from "@/app/layout/ribbon";
 import { IconRail } from "@/app/layout/icon-rail";
 import { BottomNav } from "@/app/layout/mobile-nav";
 import { EnvChip, EnvSwitchOverlay, EnvToggle, SwitchToLiveButton } from "@/app/layout/env-switcher";
-import type { Env } from "@/app/layout/env-switcher";
+import type { Env } from "@/app/layout/env";
 import { RibbonCommandsProvider } from "@/app/layout/shell-providers";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { TENANT_KEY } from "@/lib/query-client";

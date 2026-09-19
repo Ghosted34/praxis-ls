@@ -19,8 +19,17 @@ module.exports = {
   removeCurrency: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.removeCurrency(c, codeOf(req), req.user || {})) })),
   syncNow: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.syncNow(c, req.user || {})) })),
 
-  // FX rates.
-  rates: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.listRates(c, req.query)) })),
+  // FX rates. Gate-0 paged contract: { data, total, limit, offset, has_more }.
+  rates: asyncHandler(async (req, res) => {
+    const r = await req.tenantDb((c) => service.listRates(c, req.query));
+    res.json({ data: r.rows, total: r.total, limit: r.limit, offset: r.offset, has_more: r.offset + r.rows.length < r.total });
+  }),
+  // Paged rate history for one pair (the 360 "load more").
+  rateHistory: asyncHandler(async (req, res) =>
+    res.json(await req.tenantDb((c) => service.rateHistoryPage(c, { base: req.query.base, quote: req.query.quote, limit: req.query.limit, offset: req.query.offset }))),
+  ),
+  // Operational sync status for the master page (key/scheduler/last-run).
+  syncStatus: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.syncStatus(c)) })),
   rate: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.rateFor(c, { base: req.query.base, quote: req.query.quote, date: req.query.date })) })),
   convert: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.convertAmount(c, { amount: Number(req.query.amount), base: req.query.base, quote: req.query.quote, date: req.query.date })) })),
   setRate: asyncHandler(async (req, res) => {

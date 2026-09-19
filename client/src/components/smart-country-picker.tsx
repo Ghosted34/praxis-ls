@@ -113,6 +113,15 @@ export function SmartCountryPicker({
           className="h-8 w-full rounded-md border bg-transparent px-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
       </div>
+      {/* Result count so the list never reads as a dead-end (audit #2). */}
+      <div
+        className="border-b px-2 py-1 text-xs text-muted-foreground"
+        aria-live="polite"
+      >
+        {filtered.length === 0
+          ? "No match"
+          : `${filtered.length} ${filtered.length === 1 ? "country" : "countries"}${q.trim() ? " match" : " available"} · scroll for all`}
+      </div>
       <div
         className="max-h-64 overflow-auto p-1"
         role="listbox"

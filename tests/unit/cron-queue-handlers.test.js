@@ -31,12 +31,21 @@ const { enqueue } = require("../../src/jobs/queue-producer");
 const fxSyncScheduler = require("../../src/jobs/handlers/fx-sync-scheduler");
 const fxSync = require("../../src/jobs/handlers/fx-sync");
 const currencySync = require("../../src/modules/master/currency/currency.sync");
+const currencyRepo = require("../../src/modules/master/currency/currency.repo");
 const { withCronLock } = require("../../src/jobs/cron-lock");
 const registry = require("../../src/services/tenant/registry.service");
 
 // Mock dependencies
 jest.mock("../../src/services/tenant/registry.service");
 jest.mock("../../src/modules/master/currency/currency.sync");
+// fx-sync now records a fx_sync_run around the shared core (audit #6). Those
+// repo calls hit the tenant client's .query; here the fake client is a bare
+// sentinel, so stub the run-log writes — this suite asserts the sync CORE is
+// invoked, not the run bookkeeping (that is covered by currency-sync-run.test).
+jest.mock("../../src/modules/master/currency/currency.repo", () => ({
+  startSyncRun: jest.fn().mockResolvedValue("run-1"),
+  finishSyncRun: jest.fn().mockResolvedValue(undefined),
+}));
 
 describe("Cron & Queue Handlers - Deduplication & FX Sync", () => {
   afterEach(() => {
@@ -136,6 +145,17 @@ describe("Cron & Queue Handlers - Deduplication & FX Sync", () => {
       expect(currencySync.syncRates).toHaveBeenCalledWith(
         { fakeClient: true },
         { base: "XAF", quotes: ["USD", "EUR"] },
+      );
+      // The nightly run is bracketed by a fx_sync_run record (audit #6):
+      // start with trigger 'cron', then finish 'ok' with the updated count.
+      expect(currencyRepo.startSyncRun).toHaveBeenCalledWith(
+        { fakeClient: true },
+        { trigger: "cron", actorUserId: null },
+      );
+      expect(currencyRepo.finishSyncRun).toHaveBeenCalledWith(
+        { fakeClient: true },
+        "run-1",
+        expect.objectContaining({ status: "ok", updatedCount: 1 }),
       );
       expect(res.skipped).toBe(false);
     });

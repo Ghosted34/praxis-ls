@@ -56,6 +56,8 @@ type Rate = {
   source: string;
   is_override?: boolean;
   fetched_at?: string;
+  set_by_user_id?: string | null;
+  set_by_name?: string | null;
 };
 type UsageRow = { table: string; label: string; count: number };
 type Dossier = {
@@ -71,6 +73,9 @@ type Dossier = {
   } | null;
   countries: { code: string; name: string }[];
   rate_history: Rate[];
+  rate_history_total?: number;
+  rate_history_page_size?: number;
+  rate_history_has_more?: boolean;
   latest_rate: Rate | null;
   last_sync: Rate | null;
   overrides: Rate[];
@@ -85,6 +90,29 @@ type SyncResult = {
   unsupported?: string[];
   fetched_at?: string;
   source?: string;
+};
+type SyncRun = {
+  base_code: string | null;
+  trigger: "manual" | "cron";
+  status: "ok" | "skipped" | "partial" | "error";
+  updated_count: number;
+  unsupported: string[];
+  reason: string | null;
+  started_at: string;
+  finished_at: string | null;
+};
+type SyncStatus = {
+  key_configured: boolean;
+  scheduler_enabled: boolean;
+  base: string | null;
+  last_run: SyncRun | null;
+};
+type RateHistoryPage = {
+  data: Rate[];
+  total: number;
+  limit: number;
+  offset: number;
+  has_more: boolean;
 };
 
 /* ── Small helpers ────────────────────────────────────────────────────────── */
@@ -118,41 +146,208 @@ function asDossier(data: unknown): Dossier | null {
     : null;
 }
 
-/** Tiny inline trend line — no chart lib. Green when the latest ≥ the oldest. */
-function Sparkline({ values }: { values: number[] }) {
-  if (values.length < 2) return null;
-  const w = 140;
-  const h = 32;
-  const pad = 3;
+/**
+ * Interactive trend chart — no chart lib (audit #4). Each point carries its
+ * date and exact rate, so a viewer can hover OR keyboard-focus any point to see
+ * "date · exact rate" in a tooltip, instead of a decorative line with no dates.
+ * Points are oldest→newest left-to-right. Green when the latest ≥ the oldest.
+ * `onPick(index)` drills through to the matching history row.
+ */
+type SparkPoint = { date: string; value: number; source?: string; override?: boolean };
+function Sparkline({
+  points,
+  quote,
+  base,
+  onPick,
+}: {
+  points: SparkPoint[];
+  quote: string;
+  base: string;
+  onPick?: (index: number) => void;
+}) {
+  const [active, setActive] = React.useState<number | null>(null);
+  if (points.length < 2) return null;
+  const w = 220;
+  const h = 44;
+  const pad = 5;
+  const values = points.map((p) => p.value);
   const min = Math.min(...values);
   const max = Math.max(...values);
   const span = max - min || 1;
-  const pts = values
-    .map((v, i) => {
-      const x = pad + (i / (values.length - 1)) * (w - 2 * pad);
-      const y = h - pad - ((v - min) / span) * (h - 2 * pad);
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
-    })
-    .join(" ");
+  const xy = (i: number, v: number) => ({
+    x: pad + (i / (points.length - 1)) * (w - 2 * pad),
+    y: h - pad - ((v - min) / span) * (h - 2 * pad),
+  });
+  const line = points.map((p, i) => {
+    const { x, y } = xy(i, p.value);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
   const up = values[values.length - 1] >= values[0];
+  const cur = active != null ? points[active] : null;
+  const first = points[0];
+  const last = points[points.length - 1];
+
   return (
-    <svg
-      width={w}
-      height={h}
-      viewBox={`0 0 ${w} ${h}`}
-      role="img"
-      aria-label="Rate trend"
-      className="shrink-0"
+    <div className="shrink-0">
+      <svg
+        width={w}
+        height={h}
+        viewBox={`0 0 ${w} ${h}`}
+        role="img"
+        aria-label={`Rate trend for ${base}→${quote}, ${points.length} points from ${first.date} to ${last.date}`}
+        className="overflow-visible"
+      >
+        <polyline
+          points={line.join(" ")}
+          fill="none"
+          stroke={up ? "rgb(var(--ok))" : "rgb(var(--bad))"}
+          strokeWidth="1.5"
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        />
+        {points.map((p, i) => {
+          const { x, y } = xy(i, p.value);
+          return (
+            <circle
+              key={i}
+              cx={x}
+              cy={y}
+              r={active === i ? 3.5 : 2}
+              tabIndex={0}
+              role="button"
+              aria-label={`${p.date}: 1 ${base} = ${fmtRate(p.value)} ${quote}${p.override ? " (manual override)" : ""}`}
+              className="cursor-pointer fill-primary outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              onMouseEnter={() => setActive(i)}
+              onMouseLeave={() => setActive((a) => (a === i ? null : a))}
+              onFocus={() => setActive(i)}
+              onBlur={() => setActive((a) => (a === i ? null : a))}
+              onClick={() => onPick?.(i)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onPick?.(i);
+                }
+              }}
+            />
+          );
+        })}
+      </svg>
+      {/* Endpoint date labels so the axis is readable without hovering. */}
+      <div className="mt-0.5 flex justify-between text-[10px] text-muted-foreground">
+        <span>{first.date}</span>
+        <span>{last.date}</span>
+      </div>
+      {/* Live tooltip: exact date + rate for the focused/hovered point. */}
+      <div aria-live="polite" className="mt-0.5 h-4 text-[11px] text-muted-foreground">
+        {cur ? (
+          <span className="num">
+            {cur.date}: 1 {base} = {fmtRate(cur.value)} {quote}
+            {cur.override ? " · manual" : cur.source ? ` · ${cur.source}` : ""}
+          </span>
+        ) : (
+          "Hover or focus a point for its date and exact rate."
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ── Country list (audit #1 — every "more" is reachable) ──────────────────── */
+
+const COUNTRY_PREVIEW = 14;
+
+/**
+ * The countries that trade in a currency. Shows a preview row of chips, then an
+ * accessible "Show all / N more" TOGGLE (not a dead-end label) that expands the
+ * full, searchable set. Keyboard reachable, announces the hidden count, and
+ * never truncates the backend array — the whole point of audit #1.
+ */
+function CountryChips({
+  countries,
+}: {
+  countries: { code: string; name: string }[];
+}) {
+  const [expanded, setExpanded] = React.useState(false);
+  const [q, setQ] = React.useState("");
+  const total = countries.length;
+  const hidden = Math.max(0, total - COUNTRY_PREVIEW);
+
+  const shown = React.useMemo(() => {
+    if (!expanded) return countries.slice(0, COUNTRY_PREVIEW);
+    const needle = q.trim().toLowerCase();
+    if (!needle) return countries;
+    return countries.filter(
+      (c) =>
+        c.name.toLowerCase().includes(needle) ||
+        c.code.toLowerCase().includes(needle),
+    );
+  }, [countries, expanded, q]);
+
+  const Chip = (co: { code: string; name: string }) => (
+    <span
+      key={co.code}
+      className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs"
     >
-      <polyline
-        points={pts}
-        fill="none"
-        stroke={up ? "rgb(var(--ok))" : "rgb(var(--bad))"}
-        strokeWidth="1.5"
-        strokeLinejoin="round"
-        strokeLinecap="round"
-      />
-    </svg>
+      <span aria-hidden>{flagOf(co.code)}</span>
+      {co.name}
+    </span>
+  );
+
+  return (
+    <div className="mt-4">
+      <div className="mb-1 flex items-center justify-between gap-2">
+        <div className="text-xs text-muted-foreground">
+          Used in {total} {total === 1 ? "country" : "countries"}
+        </div>
+        {hidden > 0 && (
+          <button
+            type="button"
+            className="text-xs font-medium text-primary-ink underline"
+            aria-expanded={expanded}
+            onClick={() => {
+              setExpanded((v) => !v);
+              setQ("");
+            }}
+          >
+            {expanded ? "Show fewer" : `Show all ${total}`}
+          </button>
+        )}
+      </div>
+      {expanded && hidden > 0 && (
+        <Input
+          className="mb-2"
+          placeholder="Search countries…"
+          aria-label="Search countries"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+        />
+      )}
+      <div
+        className={
+          expanded
+            ? "flex max-h-56 flex-wrap gap-1.5 overflow-auto rounded-lg border p-2"
+            : "flex flex-wrap gap-1.5"
+        }
+      >
+        {shown.length === 0 ? (
+          <span className="px-1 py-0.5 text-xs text-muted-foreground">
+            No country matches “{q}”.
+          </span>
+        ) : (
+          shown.map(Chip)
+        )}
+        {!expanded && hidden > 0 && (
+          <button
+            type="button"
+            className="rounded-full border px-2 py-0.5 text-xs text-primary-ink underline"
+            aria-expanded={false}
+            onClick={() => setExpanded(true)}
+          >
+            +{hidden} more
+          </button>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -689,19 +884,43 @@ function CurrencyDossier({
   >(null);
   const [busy, setBusy] = React.useState(false);
   const [actionErr, setActionErr] = React.useState<string | null>(null);
+  const [actionNote, setActionNote] = React.useState<string | null>(null);
+  // Rate-history "load more" appends pages fetched under the Gate-0 contract on
+  // top of the first page the dossier already embedded. Reset when the currency
+  // changes, or a stale page from the previous currency would show.
+  const [moreHistory, setMoreHistory] = React.useState<Rate[]>([]);
+  const [loadingMore, setLoadingMore] = React.useState(false);
+  // Chart drill-down: which history row to flash/scroll to when a point is picked.
+  const [highlightIdx, setHighlightIdx] = React.useState<number | null>(null);
+  const historyRef = React.useRef<HTMLTableSectionElement>(null);
+  React.useEffect(() => {
+    setMoreHistory([]);
+    setHighlightIdx(null);
+  }, [code]);
 
   const reloadAll = () => {
     res.reload();
+    setMoreHistory([]);
     onChanged();
   };
 
   async function run(kind: "base" | "deactivate" | "activate" | "delete") {
     setBusy(true);
     setActionErr(null);
+    setActionNote(null);
     try {
-      if (kind === "base")
-        await tenant("/currencies/base", { method: "POST", body: { code } });
-      else if (kind === "delete")
+      if (kind === "base") {
+        const r = await tenant<{
+          base?: string;
+          previous_base?: string | null;
+          rebased?: { quote: string; rate: number }[];
+        }>("/currencies/base", { method: "POST", body: { code } });
+        const n = r.rebased?.length ?? 0;
+        if (n > 0)
+          setActionNote(
+            `${code} is now the base. ${n} ${n === 1 ? "rate was" : "rates were"} rebased from ${r.previous_base ?? "the old base"} — dated history is unchanged.`,
+          );
+      } else if (kind === "delete")
         await tenant(`/currencies/${code}`, { method: "DELETE" });
       else
         await tenant(`/currencies/${code}`, {
@@ -714,6 +933,22 @@ function CurrencyDossier({
       setActionErr(errMsg(e));
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function loadMoreHistory(base: string) {
+    setLoadingMore(true);
+    try {
+      const offset =
+        (d?.rate_history?.length ?? 0) + moreHistory.length;
+      const page = await tenant<RateHistoryPage>(
+        `/currencies/rate-history?base=${encodeURIComponent(base)}&quote=${encodeURIComponent(code)}&offset=${offset}`,
+      );
+      setMoreHistory((prev) => [...prev, ...(page.data || [])]);
+    } catch (e) {
+      setActionErr(errMsg(e));
+    } finally {
+      setLoadingMore(false);
     }
   }
 
@@ -730,11 +965,24 @@ function CurrencyDossier({
   const decimals = c.decimals ?? cat?.decimals ?? 2;
   const symbol = c.symbol || cat?.symbol || "";
   const flag = flagOf(ccyLib.representativeCountry(code));
-  const history = d.rate_history || [];
-  const values = history
-    .map(rateNum)
-    .filter((v): v is number => v != null)
-    .reverse();
+  const history = [...(d.rate_history || []), ...moreHistory];
+  const historyTotal = d.rate_history_total ?? history.length;
+  const hasMoreHistory = history.length < historyTotal;
+  // Chart points oldest→newest, carrying date/source for tooltips + drill-down.
+  // `histIndex` maps a chart point back to its row in the (newest-first) table.
+  const points: (SparkPoint & { histIndex: number })[] = [];
+  history.forEach((r, i) => {
+    const value = rateNum(r);
+    if (value == null) return;
+    points.push({
+      date: r.as_of_date,
+      value,
+      source: r.source,
+      override: r.is_override === true,
+      histIndex: i,
+    });
+  });
+  points.reverse();
   const latest = d.latest_rate;
 
   return (
@@ -805,6 +1053,23 @@ function CurrencyDossier({
             <ErrorState message={actionErr} />
           </div>
         )}
+        {actionNote && (
+          <Callout
+            tone="ok"
+            className="mt-3"
+            action={
+              <button
+                type="button"
+                className="text-sm underline"
+                onClick={() => setActionNote(null)}
+              >
+                Dismiss
+              </button>
+            }
+          >
+            {actionNote}
+          </Callout>
+        )}
       </div>
 
       {/* Overview & format */}
@@ -829,36 +1094,28 @@ function CurrencyDossier({
             value={c.updated_at ? dateTimeFmt(c.updated_at) : "—"}
           />
         </div>
-        {d.countries.length > 0 && (
-          <div className="mt-4">
-            <div className="mb-1 text-xs text-muted-foreground">
-              Used in {d.countries.length}{" "}
-              {d.countries.length === 1 ? "country" : "countries"}
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {d.countries.slice(0, 14).map((co) => (
-                <span
-                  key={co.code}
-                  className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs"
-                >
-                  <span aria-hidden>{flagOf(co.code)}</span>
-                  {co.name}
-                </span>
-              ))}
-              {d.countries.length > 14 && (
-                <span className="rounded-full border px-2 py-0.5 text-xs text-muted-foreground">
-                  +{d.countries.length - 14} more
-                </span>
-              )}
-            </div>
-          </div>
-        )}
+        {d.countries.length > 0 && <CountryChips countries={d.countries} />}
       </SectionCard>
 
       {/* Rate history & trend */}
       <SectionCard
         title={`Rate history vs ${d.base ?? "base"}`}
-        right={values.length >= 2 ? <Sparkline values={values} /> : undefined}
+        right={
+          points.length >= 2 && d.base ? (
+            <Sparkline
+              points={points}
+              base={d.base}
+              quote={code}
+              onPick={(i) => {
+                const idx = points[i]?.histIndex ?? null;
+                setHighlightIdx(idx);
+                historyRef.current
+                  ?.querySelector(`[data-hist-row="${idx}"]`)
+                  ?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+              }}
+            />
+          ) : undefined
+        }
       >
         {c.is_base ? (
           <p className="text-sm text-muted-foreground">
@@ -904,39 +1161,70 @@ function CurrencyDossier({
                 hint="Use “Sync now” or set a manual rate."
               />
             ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <THead>
-                    <TR>
-                      <TH>{tr("As of")}</TH>
-                      <TH className="text-right">{tr("Rate")}</TH>
-                      <TH>{tr("Source")}</TH>
-                      <TH>Override</TH>
-                      <TH>Fetched</TH>
-                    </TR>
-                  </THead>
-                  <TBody>
-                    {history.map((r, i) => (
-                      <TR key={i}>
-                        <TD className="text-sm">{r.as_of_date}</TD>
-                        <TD className="num text-right text-sm">
-                          {fmtRate(r.rate)}
-                        </TD>
-                        <TD className="text-sm">{smartCell(r.source)}</TD>
-                        <TD className="text-sm">
-                          {r.is_override ? (
-                            <Pill tone="warn">manual</Pill>
-                          ) : (
-                            "—"
-                          )}
-                        </TD>
-                        <TD className="text-sm text-muted-foreground">
-                          {r.fetched_at ? dateTimeFmt(r.fetched_at) : "—"}
-                        </TD>
+              <div className="space-y-3">
+                <div className="overflow-x-auto">
+                  <Table>
+                    <THead>
+                      <TR>
+                        <TH>{tr("As of")}</TH>
+                        <TH className="text-right">{tr("Rate")}</TH>
+                        <TH>{tr("Source")}</TH>
+                        <TH>Override</TH>
+                        <TH>Set by</TH>
+                        <TH>Fetched</TH>
                       </TR>
-                    ))}
-                  </TBody>
-                </Table>
+                    </THead>
+                    <TBody ref={historyRef}>
+                      {history.map((r, i) => (
+                        <TR
+                          key={i}
+                          data-hist-row={i}
+                          className={
+                            highlightIdx === i
+                              ? "bg-primary/10 transition-colors"
+                              : undefined
+                          }
+                        >
+                          <TD className="text-sm">{r.as_of_date}</TD>
+                          <TD className="num text-right text-sm">
+                            {fmtRate(r.rate)}
+                          </TD>
+                          <TD className="text-sm">{smartCell(r.source)}</TD>
+                          <TD className="text-sm">
+                            {r.is_override ? (
+                              <Pill tone="warn">manual</Pill>
+                            ) : (
+                              "—"
+                            )}
+                          </TD>
+                          <TD className="text-sm text-muted-foreground">
+                            {r.is_override
+                              ? r.set_by_name || "Unknown"
+                              : "—"}
+                          </TD>
+                          <TD className="text-sm text-muted-foreground">
+                            {r.fetched_at ? dateTimeFmt(r.fetched_at) : "—"}
+                          </TD>
+                        </TR>
+                      ))}
+                    </TBody>
+                  </Table>
+                </div>
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>
+                    Showing {history.length} of {historyTotal}
+                  </span>
+                  {hasMoreHistory && d.base && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      loading={loadingMore}
+                      onClick={() => loadMoreHistory(d.base as string)}
+                    >
+                      Load more
+                    </Button>
+                  )}
+                </div>
               </div>
             )}
           </>
@@ -1014,6 +1302,7 @@ function CurrencyDossier({
                     <span className="num">{fmtRate(o.rate)}</span>
                     <span className="text-xs text-muted-foreground">
                       {o.as_of_date}
+                      {o.set_by_name ? ` · ${o.set_by_name}` : ""}
                       {o.fetched_at ? ` · ${dateTimeFmt(o.fetched_at)}` : ""}
                     </span>
                   </li>
@@ -1033,8 +1322,13 @@ function CurrencyDossier({
         body={
           <>
             New transactions and FX rates will be quoted against <b>{code}</b>.
-            Existing rates and history are kept exactly as they are — nothing is
-            recalculated.
+            The current working rates are <b>rebased</b> onto {code} in one step
+            (each pair is converted through the existing{" "}
+            {d.base ?? "base"}→{code} rate), so quotes stay correct immediately.
+            Dated rate history is preserved as-is and posted transactions keep
+            the rate they were stamped with — nothing historical is
+            reinterpreted. This needs a current {d.base ?? "base"}→{code} rate;
+            if none exists, sync or set it first.
           </>
         }
         confirmLabel="Set as base"
@@ -1104,11 +1398,65 @@ function Stat({
   );
 }
 
+/* ── Sync freshness banner (audit #6) ─────────────────────────────────────── */
+
+/** Rates older than this (no successful run since) read as "stale". */
+const STALE_HOURS = 36;
+
+function SyncStatusBanner({ status }: { status: SyncStatus | null }) {
+  if (!status) return null;
+  const run = status.last_run;
+  const lastAt = run?.finished_at || run?.started_at || null;
+  const ageMs = lastAt ? Date.now() - new Date(lastAt).getTime() : null;
+  const stale = ageMs != null && ageMs > STALE_HOURS * 3600_000;
+
+  // No key configured — the sync cannot run at all. Most actionable state first.
+  if (!status.key_configured) {
+    return (
+      <Callout tone="warn" className="mb-3">
+        Automatic FX sync is off — no provider key is configured. Add one under ⚙
+        Settings, or keep setting rates manually.
+      </Callout>
+    );
+  }
+
+  const okRun = run && (run.status === "ok" || run.status === "partial");
+  const tone = run && run.status === "error" ? "bad" : stale || !status.scheduler_enabled ? "warn" : "ok";
+  const bits: string[] = [];
+  if (!status.scheduler_enabled)
+    bits.push("Nightly sync is disabled (FX_SYNC_CRON empty) — use “Sync now”.");
+  if (run) {
+    if (run.status === "error")
+      bits.push(`Last sync failed${lastAt ? ` ${dateTimeFmt(lastAt)}` : ""}${run.reason ? `: ${run.reason}` : "."}`);
+    else if (run.status === "skipped")
+      bits.push(`Last run was skipped${run.reason ? `: ${run.reason}` : "."}`);
+    else if (okRun)
+      bits.push(
+        `Last synced ${lastAt ? dateTimeFmt(lastAt) : "recently"} (${run.updated_count} ${run.updated_count === 1 ? "rate" : "rates"}${run.trigger === "cron" ? ", nightly" : ""})${run.unsupported?.length ? ` · no rate for ${run.unsupported.join(", ")}` : ""}.`,
+      );
+    if (stale && okRun) bits.push("Rates may be stale.");
+  } else {
+    bits.push("No sync has run yet — use “Sync now” to pull live rates.");
+  }
+  if (bits.length === 0) return null;
+  return (
+    <Callout tone={tone} className="mb-3">
+      {bits.join(" ")}
+    </Callout>
+  );
+}
+
 /* ── Page ─────────────────────────────────────────────────────────────────── */
 
 export function CurrenciesPage() {
   const cur = useList<Currency>("/currencies?all=1&usage=1");
-  const rates = useList<Rate>("/currencies/rates");
+  // Sync-status drives the freshness banner (audit #6). The old unused
+  // `/currencies/rates` prefetch (audit #10) was removed — the page never
+  // rendered it; the dossier owns rate history.
+  const status = useResource<SyncStatus | null>(
+    () => tenant<{ data: SyncStatus }>("/currencies/sync-status").then((r) => r.data),
+    [],
+  );
   const [selId, setSelId] = React.useState<string | null>(null);
   const [q, setQ] = React.useState("");
   const [addOpen, setAddOpen] = React.useState(false);
@@ -1159,7 +1507,7 @@ export function CurrenciesPage() {
 
   function reloadAll() {
     cur.reload();
-    rates.reload();
+    status.reload();
   }
 
   async function syncNow() {
@@ -1226,6 +1574,8 @@ export function CurrenciesPage() {
         }
       />
       <HubTabs />
+
+      <SyncStatusBanner status={status.data ?? null} />
 
       {syncMsg && (
         <Callout

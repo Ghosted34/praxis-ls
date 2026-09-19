@@ -12,8 +12,9 @@ const repo = require("./currency.repo");
 const events = require("./currency.events");
 const dossierSvc = require("./currency.dossier");
 const sync = require("./currency.sync");
-const { pickRate, convert } = require("./currency.rules");
+const { pickRate, convert, rebaseRates } = require("./currency.rules");
 const { emitEvent, audit } = require("../../../shared/events/emit");
+const { atomically } = require("../../../shared/db/tx");
 const { AppError } = require("../../../utils/errors");
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -82,23 +83,51 @@ async function rateMap(client, { date, extra = [] } = {}) {
 
 async function setRate(client, { base, quote, rate, asOfDate, source = "manual", isOverride = true, actor = {} }) {
   if (!(Number(rate) > 0)) throw new AppError("BAD_RATE", "rate must be > 0", 422);
-  const row = await repo.upsertRate(client, { base, quote, rate, asOfDate: asOfDate || today(), source, isOverride });
+  // Persist the actor on the rate row (audit #9 — "who set it") AND in the
+  // immutable ledger. The denormalised column lets the 360 override log render
+  // the name without a cross-table join; the audit is the tamper-evident record.
+  const row = await repo.upsertRate(client, { base, quote, rate, asOfDate: asOfDate || today(), source, isOverride, setByUserId: actor.user_id || null });
   await emitEvent(client, { eventTypeKey: events.RATE_SET, moduleKey: events.MODULE, entityRef: "fx:" + base + "-" + quote, actorUserId: actor.user_id || null });
   await audit(client, { actorUserId: actor.user_id || null, action: events.RATE_SET, moduleKey: events.MODULE, entityRef: "fx:" + base + "-" + quote, after: row });
   return row;
 }
 
-/** Run the live sync now (base→all active). Same core as the daily cron. */
-async function syncNow(client, actor = {}) {
-  const result = await sync.syncRates(client, {});
-  // Strict `=== true`: `skipped` is the sentinel boolean, never an array. See
-  // the syncRates JSDoc — an empty-array escape used to make this branch
-  // silently skip the audit on every successful sync.
-  if (result.skipped !== true) {
-    await emitEvent(client, { eventTypeKey: events.RATE_SYNCED, moduleKey: events.MODULE, entityRef: "fx:sync", actorUserId: actor.user_id || null, payload: { updated: result.updated ? result.updated.length : 0, base: result.base } });
-    await audit(client, { actorUserId: actor.user_id || null, action: events.RATE_SYNCED, moduleKey: events.MODULE, entityRef: "fx:sync", after: result });
+/**
+ * Run the live sync now (base→all active). Same core as the daily cron, and now
+ * WRAPPED IN A SYNC-RUN RECORD (audit #6) so an administrator can see when sync
+ * last ran, whether it succeeded, and what it updated/left unsupported. A skip
+ * (no key / no quotes) and a real failure are both recorded — a disabled sync
+ * and a silently-failing one must be distinguishable. `trigger` marks manual vs
+ * cron so the master-page banner can say which.
+ */
+async function syncNow(client, actor = {}, { trigger = "manual" } = {}) {
+  const runId = await repo.startSyncRun(client, { trigger, actorUserId: actor.user_id || null });
+  try {
+    const result = await sync.syncRates(client, {});
+    // Strict `=== true`: `skipped` is the sentinel boolean, never an array. See
+    // the syncRates JSDoc — an empty-array escape used to make this branch
+    // silently skip the audit on every successful sync.
+    if (result.skipped === true) {
+      await repo.finishSyncRun(client, runId, { status: "skipped", reason: result.reason || null, base: result.base || null });
+    } else {
+      const status = result.unsupported && result.unsupported.length ? "partial" : "ok";
+      await repo.finishSyncRun(client, runId, {
+        status,
+        updatedCount: result.updated ? result.updated.length : 0,
+        unsupported: result.unsupported || [],
+        base: result.base || null,
+      });
+      await emitEvent(client, { eventTypeKey: events.RATE_SYNCED, moduleKey: events.MODULE, entityRef: "fx:sync", actorUserId: actor.user_id || null, payload: { updated: result.updated ? result.updated.length : 0, base: result.base } });
+      await audit(client, { actorUserId: actor.user_id || null, action: events.RATE_SYNCED, moduleKey: events.MODULE, entityRef: "fx:sync", after: result });
+    }
+    return result;
+  } catch (e) {
+    // Record the failure before rethrowing so the run log shows WHY, not just
+    // that a run started and vanished. The message is provider/HTTP text from
+    // syncRates (never the URL — the API key is a path segment).
+    await repo.finishSyncRun(client, runId, { status: "error", reason: e && e.message ? String(e.message).slice(0, 500) : "sync failed" });
+    throw e;
   }
-  return result;
 }
 
 /* ── Currency master ──────────────────────────────────────────────────────── */
@@ -108,6 +137,37 @@ const listCurrenciesRich = (client, q = {}) =>
   repo.listCurrenciesRich(client, { all: q.all === "1" || q.all === true, usage: q.usage === "1" || q.usage === true });
 const listRates = (client, q) => repo.listRates(client, q);
 const dossier = (client, code) => dossierSvc.dossier(client, code);
+
+/**
+ * A page of rate history for a pair — the Gate-0 contract shared with the
+ * dossier and the generic list: `{ data, total, limit, offset, has_more }`,
+ * deterministic ordering, actor name for overrides. The dossier's first page is
+ * embedded in the 360; this endpoint serves the "load more" beyond it.
+ */
+async function rateHistoryPage(client, { base, quote, limit, offset } = {}) {
+  if (!base || !quote) throw new AppError("VALIDATION_ERROR", "base and quote are required", 422);
+  const r = await repo.rateHistory(client, { base, quote, limit, offset });
+  return { data: r.rows, total: r.total, limit: r.limit, offset: r.offset, has_more: r.offset + r.rows.length < r.total };
+}
+
+/**
+ * Operational sync status for the master page (audit #6): whether a provider key
+ * is configured, whether the nightly scheduler is enabled, and the last run's
+ * outcome/freshness. Read-only; safe to call on every page load.
+ */
+async function syncStatus(client) {
+  const [key, last, base] = await Promise.all([
+    sync.resolveKey(client),
+    repo.lastSyncRun(client),
+    repo.getBaseCode(client),
+  ]);
+  return {
+    key_configured: !!key,
+    scheduler_enabled: !!require("../../../config/env").config.FX_SYNC_CRON,
+    base,
+    last_run: last,
+  };
+}
 
 async function addCurrency(client, { code, name, symbol, decimals, actor = {} }) {
   const row = await repo.insertCurrency(client, { code, name, symbol, decimals });
@@ -129,13 +189,71 @@ async function editCurrency(client, code, patch, actor = {}) {
   return row;
 }
 
+/**
+ * Change the base currency — FORMAL REBASE (Gate-0 decision, audit #7).
+ *
+ * A base change is not just a flag flip: the whole cross-rate table is anchored
+ * on the base, so the CURRENT working rates are rebased onto the new base in the
+ * same transaction (currency.rules.rebaseRates does the pure math):
+ *   · new→old  = 1 / (old→new)          keeps the old base priced under the new one
+ *   · new→quote = (old→quote)/(old→new)  cancels the old base out of every cross
+ * The rebased rows are written as-of today with source 'rebase', is_override=true
+ * so they win in the resolver immediately and are visibly distinct from a feed.
+ *
+ * DATED HISTORY IS NOT REWRITTEN. Old base→quote rows stay exactly as they are —
+ * posted transactions already stamp their own fx_rate at posting time, so no
+ * historical amount is reinterpreted. The rebase only sets the new CURRENT rate.
+ *
+ * A rebase requires a known old→new rate; without one there is no meaningful
+ * anchor and we refuse (NO_REBASE_RATE) rather than silently leave the new base
+ * unpriced. Flipping to the very first base (no prior base) is a plain flip.
+ *
+ * The whole thing runs in one transaction so a partial rebase can never leave
+ * two bases or a half-written cross table.
+ */
 async function setBase(client, code, actor = {}) {
   const existing = await repo.getCurrency(client, code);
   if (!existing) throw new AppError("NOT_FOUND", "Currency not found", 404);
-  const changed = await repo.setBase(client, code);
-  await emitEvent(client, { eventTypeKey: events.BASE_SET, moduleKey: events.MODULE, entityRef: "currency:" + code, actorUserId: actor.user_id || null });
-  await audit(client, { actorUserId: actor.user_id || null, action: events.BASE_SET, moduleKey: events.MODULE, entityRef: "currency:" + code, before: { base: existing.is_base ? code : null }, after: { base: code } });
-  return { base: code, changed };
+  if (existing.is_base) return { base: code, changed: [], rebased: [], skipped: "already-base" };
+
+  const oldBase = await repo.getBaseCode(client);
+  const asOf = today();
+
+  return atomically(client, async () => {
+    const rebased = [];
+    // Only rebase when there IS an old base to rebase FROM. The first-ever base
+    // (oldBase === null) has no cross table to convert.
+    if (oldBase && oldBase !== code) {
+      const rows = await repo.latestRatesFromBase(client, oldBase);
+      const { pairs, missing } = rebaseRates(rows, oldBase, code);
+      if (missing) {
+        throw new AppError(
+          "NO_REBASE_RATE",
+          `Cannot rebase onto ${code}: there is no current ${oldBase}→${code} rate to anchor the conversion. Sync or set that rate first, then change the base.`,
+          422,
+        );
+      }
+      for (const p of pairs) {
+        const row = await repo.upsertRate(client, {
+          base: code,
+          quote: p.quote,
+          rate: p.rate,
+          asOfDate: asOf,
+          source: "rebase",
+          isOverride: true,
+        });
+        rebased.push({ quote: p.quote, rate: Number(row.rate) });
+      }
+    }
+
+    const changed = await repo.setBase(client, code);
+    await emitEvent(client, { eventTypeKey: events.BASE_SET, moduleKey: events.MODULE, entityRef: "currency:" + code, actorUserId: actor.user_id || null, payload: { from: oldBase, to: code, rebased: rebased.length } });
+    if (rebased.length) {
+      await emitEvent(client, { eventTypeKey: events.BASE_REBASED, moduleKey: events.MODULE, entityRef: "currency:" + code, actorUserId: actor.user_id || null, payload: { from: oldBase, to: code, pairs: rebased.length } });
+    }
+    await audit(client, { actorUserId: actor.user_id || null, action: events.BASE_SET, moduleKey: events.MODULE, entityRef: "currency:" + code, before: { base: oldBase }, after: { base: code, rebased } });
+    return { base: code, previous_base: oldBase, changed, rebased };
+  });
 }
 
 async function removeCurrency(client, code, actor = {}) {
@@ -171,6 +289,8 @@ module.exports = {
   listCurrencies,
   listCurrenciesRich,
   listRates,
+  rateHistoryPage,
+  syncStatus,
   dossier,
   addCurrency,
   editCurrency,

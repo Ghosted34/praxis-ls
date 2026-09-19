@@ -13,6 +13,8 @@ router.use(authMiddleware);
 // single-segment and it is two, so there is no capture, but order keeps it clear.
 router.get("/", requirePermission(MODULE, "view"), controller.currencies);
 router.get("/rates", requirePermission(MODULE, "view"), controller.rates);
+router.get("/rate-history", requirePermission(MODULE, "view"), controller.rateHistory);
+router.get("/sync-status", requirePermission(MODULE, "view"), controller.syncStatus);
 router.get("/rate", requirePermission(MODULE, "view"), controller.rate);
 router.get("/convert", requirePermission(MODULE, "view"), controller.convert);
 router.get("/:code/360", requirePermission(MODULE, "view"), controller.dossier);

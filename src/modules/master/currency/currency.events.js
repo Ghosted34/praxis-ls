@@ -7,4 +7,5 @@ module.exports = {
   CURRENCY_UPDATED: "currency.updated",
   CURRENCY_REMOVED: "currency.removed",
   BASE_SET: "currency.base_set",
+  BASE_REBASED: "currency.base_rebased",
 };

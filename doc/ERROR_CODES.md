@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 5× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (570)
+## All codes (572)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -129,6 +129,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `BAD_VALUE` | 400, 422 | 12× | — |
 | `BAD_WINDOW` | 422 | 2× | — |
 | `BASE_CURRENCY` | 409, 422 | 2× | — |
+| `BASE_CURRENCY_CORRUPT` | — | 1× | — |
 | `BREACHED_PASSWORD` | 422 | 1× | — |
 | `BUDGET_EXHAUSTED` | 422 | 1× | — |
 | `CAMPAIGN_ENDED` | 422 | 1× | — |
@@ -384,6 +385,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NO_RATE` | 404, 422 | 2× | — |
 | `NO_RATE_MATCH` | 404 | 1× | — |
 | `NO_REASON` | 422 | 2× | — |
+| `NO_REBASE_RATE` | — | 1× | — |
 | `NO_RECIPIENT` | 422 | 4× | — |
 | `NO_RECIPIENT_TIMEZONE` | — | 1× | — |
 | `NO_REPLY_ADDRESS` | 422 | 1× | — |
@@ -584,7 +586,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `USER_NOT_ACTIVE` | 422 | 1× | — |
 | `USE_APPROVE` | 422 | 1× | — |
 | `VACANCY_CLOSED` | — | 1× | — |
-| `VALIDATION_ERROR` | 422 | 266× | — |
+| `VALIDATION_ERROR` | 422 | 267× | — |
 | `VALIDATOR_NOT_LINE_MANAGER` | — | 1× | — |
 | `VARIANCE_UNEXPLAINED` | 422 | 1× | — |
 | `VEHICLE_COMMITTED` | — | 1× | — |

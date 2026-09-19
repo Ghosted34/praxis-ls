@@ -36,6 +36,11 @@ import type { Lang } from "./i18n";
  *  blank. */
 export type Bilingual = { fr: string; en?: string | null };
 
+/** Anything bilingual-shaped enough to READ: the strict block type above, or
+ *  the server's nullable pair (`other_addresses.label` is null on the side the
+ *  tenant did not fill in — the read only guarantees one language). */
+export type Bilingualish = { fr?: string | null; en?: string | null };
+
 /** One figure. `value` is post-resolution: live where the block named a metric,
  *  the tenant's literal where it did not. */
 export type StatCounter = {
@@ -96,9 +101,11 @@ export const getSitePage = (key: string): Promise<SitePage | null> =>
 
 /** A bilingual field read in the visitor's language, falling back to the other
  *  rather than to a blank — the same rule `services-api.pickText` follows for
- *  the tenant's service copy, and for the same reason. */
+ *  the tenant's service copy, and for the same reason. Takes the loose shape
+ *  too (`Bilingualish`): the caller filters for a non-empty result, and what
+ *  matters is what the visitor can read, not which type declared it. */
 export function pickBilingual(
-  value: Bilingual | null | undefined,
+  value: Bilingualish | null | undefined,
   lang: Lang,
 ): string {
   if (!value) return "";
@@ -388,9 +395,29 @@ export type PublicEntity = {
     label_fr?: string | null;
     label_en?: string | null;
     mode?: string | null;
+    /** The stable service-type key this line is classified as (Decision Q8).
+     *  The mode above is DERIVED from it server-side; the labels stay an
+     *  editorial overlay. */
+    service_type_key?: string | null;
   }>;
   cover_id?: string | null;
   cover_variants?: MediaVariants;
+  /**
+   * The canonical registered address, composed server-side by the same
+   * precedence the letterhead uses (Decision Q2, CE-28) — an active
+   * `REGISTERED` row, then a primary one, then the legacy free-text column.
+   * A single line, or null when the company has recorded none.
+   */
+  registered_address?: string | null;
+  /**
+   * Operational/trading addresses an operator EXPLICITLY marked public, each
+   * with the label a visitor reads it by (Decision Q2's "both addresses"
+   * rule: never automatic, never every row). Empty for most companies.
+   */
+  other_addresses?: Array<{
+    label: { fr: string | null; en: string | null };
+    line: string;
+  }>;
   leaders?: PublicLeader[];
 };
 

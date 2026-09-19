@@ -86,13 +86,29 @@ function addressLines(entity, addresses = [], { countryName = null, language = "
 }
 
 /**
- * The registered office, preferring a REGISTERED row, then the primary one, then
- * the legacy free-text column that predates entity_address.
+ * The structured row the registered office is printed from: an active
+ * `REGISTERED` row, then an active primary one, then any active row.
+ *
+ * EXPORTED, because the public entity card now publishes the same address from
+ * the same precedence (Decision Q2, audit CE-28): the stranger-facing read and
+ * the letterhead resolve the registered office through THIS function, so the
+ * shop window and the invoice footer cannot disagree about which row is the
+ * statutory seat — the "one structured source" the decision asks for. The
+ * public side also uses the row to avoid publishing it twice when an operator
+ * marks the registered row public as well as a second one.
+ */
+function registeredAddressRow(addresses = []) {
+  const active = (addresses || []).filter((a) => a && a.is_active !== false);
+  return active.find((a) => a.type === "REGISTERED") || active.find((a) => a.is_primary) || active[0] || null;
+}
+
+/**
+ * The registered office as one line, preferring a REGISTERED row, then the
+ * primary one, then the legacy free-text column that predates entity_address.
  */
 function registeredAddress(entity, addresses = []) {
-  const active = addresses.filter((a) => a.is_active !== false);
-  const reg = active.find((a) => a.type === "REGISTERED") || active.find((a) => a.is_primary) || active[0];
-  return addressLine(reg) || (entity.address ? String(entity.address).trim() : null);
+  const reg = registeredAddressRow(addresses);
+  return addressLine(reg) || (entity && entity.address ? String(entity.address).trim() : null);
 }
 
 /**
@@ -295,6 +311,7 @@ function render({ entity, config, addresses = [], registrations = [], taxRegistr
 }
 
 module.exports = {
-  render, registeredAddress, identifiers, paymentBlock, addressLine, addressLines, formatAmount, poBox,
+  render, registeredAddress, registeredAddressRow, identifiers, paymentBlock,
+  addressLine, addressLines, formatAmount, poBox,
   issuingEstablishment, establishmentLine, DEFAULT_CONFIG,
 };

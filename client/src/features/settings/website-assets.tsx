@@ -82,8 +82,12 @@ const EVIDENCE_NOTE = () =>
 /**
  * Photos need the photo profile's 2400 px ceiling. Brand marks keep the brand
  * profile because it preserves their source format and avoids needlessly
- * sending a large raster. This distinction is important for the entity cover:
- * its server minimum is 1200 px, while the brand profile tops out at 1024 px.
+ * sending a large raster. The entity cover is a photograph, so it rides the
+ * photo profile too — NOT because of a width floor: the cover slot accepts any
+ * width (`minWidth: 1`, Bug #16 — the old 1200 px floor rejected legitimate
+ * photos and its removal is deliberate, do not restore it), but because the
+ * brand profile's 1024 px ceiling would soften an image the public card serves
+ * derivatives of at up to 1600 px.
  */
 export function uploadProfileForSlot(slot: api.AssetSlot): UploadProfile {
   return slot === "entity-cover" || slot === "leader-portrait"
@@ -141,11 +145,13 @@ export function AssetSlotField({
 
   /**
    * Through the upload engine. Brand marks keep their source format and use the
-   * smaller brand profile; photographs use the photo profile so client-side
-   * compression never shrinks a valid cover or portrait below the server's
-   * minimum width. In particular, an entity cover must remain at least 1200 px
-   * wide — the brand profile's 1024 px ceiling would turn a valid 1200 px cover
-   * into an invalid upload before the request reached the API.
+   * smaller brand profile; photographs use the photo profile so a cover or a
+   * portrait keeps its detail. The slots that DO carry a server floor
+   * (portrait, partner-mark, credential-mark) pass it as `minimumWidth` so
+   * compression never invalidates them. The entity cover carries none
+   * (`minWidth: 1`, Bug #16): its photo profile is about quality, and the
+   * server's `writeVariants` never produces a derivative wider than the
+   * source, so a small cover simply yields fewer rungs rather than a refusal.
    */
   const upload = useUpload<{ doc_id: string }>({
     profile: uploadProfileForSlot(slot),

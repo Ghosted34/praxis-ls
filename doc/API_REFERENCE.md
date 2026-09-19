@@ -6,7 +6,7 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 1654 |
+| Routes | 1672 |
 | Modules mounted | 141 |
 | API version | v1 |
 
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 1654 mounted routes, grouped by path prefix.
+All 1672 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -650,9 +650,11 @@ All 1654 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/currencies/base` | — |
 | GET | `/api/tenant/currencies/convert` | — |
 | GET | `/api/tenant/currencies/rate` | — |
+| GET | `/api/tenant/currencies/rate-history` | — |
 | GET | `/api/tenant/currencies/rates` | — |
 | POST | `/api/tenant/currencies/rates` | — |
 | POST | `/api/tenant/currencies/sync` | — |
+| GET | `/api/tenant/currencies/sync-status` | — |
 
 ### `tenant/cycle-counts`
 
@@ -1640,6 +1642,9 @@ All 1654 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/public/site/pages` | — |
 | GET | `/api/tenant/public/site/pages/:key` | — |
 | GET | `/api/tenant/public/site/partners` | — |
+| GET | `/api/tenant/public/site/preview/entities` | — |
+| GET | `/api/tenant/public/site/preview/media/:id` | — |
+| GET | `/api/tenant/public/site/preview/media/:id/:variant` | — |
 | GET | `/api/tenant/public/site/social` | — |
 | GET | `/api/tenant/public/site/theme` | — |
 | GET | `/api/tenant/public/tracking/:reference` | — |
@@ -1735,10 +1740,13 @@ All 1654 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/reconciliation/:id/document` | — |
 | GET | `/api/tenant/reconciliation/cash-counts` | — |
 | POST | `/api/tenant/reconciliation/cash-counts` | — |
+| POST | `/api/tenant/reconciliation/cash-counts/:id/approve` | — |
 | POST | `/api/tenant/reconciliation/cash-counts/:id/attest` | — |
+| POST | `/api/tenant/reconciliation/cash-counts/:id/cancel` | — |
 | POST | `/api/tenant/reconciliation/cash-counts/:id/document` | — |
 | POST | `/api/tenant/reconciliation/lines/:lineId/ignore` | — |
 | GET | `/api/tenant/reconciliation/lines/:lineId/matches` | — |
+| POST | `/api/tenant/reconciliation/lines/:lineId/propose-entry` | — |
 | POST | `/api/tenant/reconciliation/matches` | — |
 | POST | `/api/tenant/reconciliation/matches/:matchId/confirm` | — |
 | POST | `/api/tenant/reconciliation/matches/:matchId/reject` | — |
@@ -1951,6 +1959,7 @@ All 1654 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/site-settings/partners` | — |
 | DELETE | `/api/tenant/site-settings/partners/:id` | — |
 | PATCH | `/api/tenant/site-settings/partners/:id` | — |
+| GET | `/api/tenant/site-settings/service-types` | — |
 | GET | `/api/tenant/site-settings/social` | — |
 | PUT | `/api/tenant/site-settings/social` | — |
 | GET | `/api/tenant/site-settings/theme` | — |
@@ -2244,7 +2253,16 @@ All 1654 mounted routes, grouped by path prefix.
 | PATCH | `/api/tenant/treasury-accounts/:id` | — |
 | GET | `/api/tenant/treasury-accounts/:id/360` | — |
 | POST | `/api/tenant/treasury-accounts/:id/active` | — |
+| GET | `/api/tenant/treasury-accounts/:id/documents` | — |
+| POST | `/api/tenant/treasury-accounts/:id/documents` | — |
+| DELETE | `/api/tenant/treasury-accounts/:id/documents/:docId` | — |
+| POST | `/api/tenant/treasury-accounts/:id/documents/:docId/verify` | — |
 | POST | `/api/tenant/treasury-accounts/:id/primary` | — |
+| POST | `/api/tenant/treasury-accounts/:id/reverse-entry` | — |
+| GET | `/api/tenant/treasury-accounts/:id/signatories` | — |
+| POST | `/api/tenant/treasury-accounts/:id/signatories` | — |
+| DELETE | `/api/tenant/treasury-accounts/:id/signatories/:sigId` | — |
+| PATCH | `/api/tenant/treasury-accounts/:id/signatories/:sigId` | — |
 | POST | `/api/tenant/treasury-accounts/:id/unverify` | — |
 | POST | `/api/tenant/treasury-accounts/:id/verify` | — |
 

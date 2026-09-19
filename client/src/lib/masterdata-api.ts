@@ -397,6 +397,12 @@ export type EntityAddress = {
   po_box?: string | null;
   is_primary?: boolean;
   is_active?: boolean;
+  /** The explicit public-address marker (13963, Decision Q2): publishes this
+   *  row on the public entity card beside the canonical registered address —
+   *  only with a label, never automatically. */
+  is_public?: boolean;
+  public_label_fr?: string | null;
+  public_label_en?: string | null;
 };
 export type EntityRegistration = {
   registration_id: string;

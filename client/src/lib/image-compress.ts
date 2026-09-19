@@ -77,10 +77,14 @@ export type CompressResult = {
  *
  * `maxEdge` is a client optimisation cap, not permission to make an image
  * invalid. A caller can provide minimum dimensions when the API has a hard
- * requirement (for example, the entity-cover slot requires 1200 px of width).
- * The floor wins over the cap, and a source that is already below the floor is
- * never enlarged — it must reach the server unchanged so the server can report
- * the real source dimensions.
+ * requirement (for example, the leader-portrait slot requires 600 px of
+ * width). The floor wins over the cap, and a source that is already below the
+ * floor is never enlarged — it must reach the server unchanged so the server
+ * can report the real source dimensions.
+ *
+ * Note that the entity-cover slot deliberately has NO floor (`minWidth: 1`,
+ * Bug #16) — the old 1200 px rejection is gone and must not come back; a
+ * smaller cover yields fewer derivative rungs, not an invalid upload.
  */
 export function resizeDimensions(
   sourceWidth: number,

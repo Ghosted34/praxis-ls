@@ -258,8 +258,33 @@ const entityPublicStory = z.object({
       z.object({
         label_fr: text(TITLE),
         label_en: text(TITLE),
-        /** Lets an entity card carry the same harmonised transport colour the
-         *  services grid uses, instead of inventing a second colour language. */
+        /**
+         * The stable service-type ID this line is classified as (Decision Q8,
+         * audit CE-23). A catalogue key, not free text: the picker on the Story
+         * tab offers `service_type.key` and the SERVER re-validates it against
+         * that table on save. The transport mode and its colour are then
+         * DERIVED from the key in one place (`operations/_shared/service-mode`)
+         * rather than hand-picked per line, so the About page cannot invent a
+         * second colour language.
+         *
+         * The bilingual labels above remain an EDITORIAL OVERLAY only — local
+         * wording over the catalogue's classification. They do not classify
+         * anything.
+         */
+        service_type_key: z
+          .string()
+          .trim()
+          .min(2)
+          .max(60)
+          .regex(
+            /^[A-Z][A-Z0-9_]*$/,
+            "A service type key is SCREAMING_SNAKE_CASE, e.g. SEA_FREIGHT_IMPORT — pick one from the catalogue.",
+          )
+          .nullable()
+          .optional(),
+        /** Legacy free-picked mode. Superseded by `service_type_key` — the
+         *  server derives the mode from the key whenever one is present, and
+         *  keeps this only for rows written before the catalogue existed. */
         mode: z.enum(["sea", "air", "road", "rail"]).nullable().optional(),
       }),
     )

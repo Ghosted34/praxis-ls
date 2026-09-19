@@ -28,6 +28,11 @@ const { audit } = require("../../../shared/events/emit");
 // same two rows. A plain top-level require, because there is no cycle to break:
 // careers.repo imports nothing but its own SQL.
 const careersRepo = require("../../hr/careers/careers.repo");
+// The registered-office precedence, shared with the letterhead rather than
+// copied: both callers are pure modules with no requires, so there is no cycle
+// to break and no second precedence table to drift. See `publicEntities`.
+const letterhead = require("../../master/entity-letterhead.service");
+const { serviceMode } = require("../../operations/_shared/service-mode");
 const { AppError } = require("../../../utils/errors");
 const events = require("./site_settings.events");
 const repo = require("./site_settings.repo");
@@ -328,11 +333,82 @@ async function updateAbout(client, { patch, actor = {} }) {
 
 const getEntityStory = (client, entityId) => repo.getEntityStory(client, entityId);
 
+/**
+ * `serviceMode`'s ladder mapped onto the four lane colours the public focus
+ * schema knows. WAREHOUSE/CUSTOMS/OTHER deliberately answer NULL: the four
+ * hues are the four ways cargo MOVES (§1.4's anchor constants), and painting a
+ * customs file road-orange would state a leg it does not have — the same rule
+ * `modeToken` on the public site applies to its own token table.
+ */
+const FOCUS_MODES = { SEA: "sea", AIR: "air", RAIL: "rail", ROAD: "road" };
+const focusModeOf = (key) => FOCUS_MODES[serviceMode(key)] || null;
+
+/**
+ * One focus row as it is STORED: the transport mode DERIVED from the catalogue
+ * key when one is present, so the row is self-consistent for readers that
+ * predate the key. A keyless row keeps its legacy hand-picked mode untouched —
+ * the key is the classification; the mode is not the operator's to choose once
+ * a classification exists.
+ */
+const deriveFocusMode = (f) =>
+  f && f.service_type_key ? { ...f, mode: focusModeOf(f.service_type_key) } : f;
+
+/**
+ * The service-type keys a story names must be real, current catalogue rows
+ * (Decision Q8, CE-23). "Validate the ID server-side": the picker only OFFERS
+ * `service_type.key`, and this is the gate that makes the offer a contract —
+ * a key nobody can reach from the UI can still be posted by hand.
+ *
+ * Retired keys are refused like unknown ones, with the reason in the message:
+ * a tenant who deactivated a service type should be told to re-classify the
+ * line, not handed a 500 from a constraint that does not exist.
+ */
+async function assertFocusCatalogue(client, focus) {
+  const keys = [
+    ...new Set(
+      (focus || [])
+        .map((f) => f && f.service_type_key)
+        .filter((k) => k !== null && k !== undefined && String(k).trim() !== "")
+        .map((k) => String(k).trim()),
+    ),
+  ];
+  if (!keys.length) return;
+  // `key` is citext; comparing against a text[] stays case-insensitive.
+  const { rows } = await client.query(
+    `SELECT key, is_active FROM service_type WHERE key = ANY($1::text[])`,
+    [keys],
+  );
+  const byKey = new Map(rows.map((r) => [String(r.key).toUpperCase(), r]));
+  const unknown = keys.filter((k) => !byKey.has(k.toUpperCase()));
+  if (unknown.length) {
+    throw new AppError(
+      "VALIDATION_ERROR",
+      `Unknown service type: ${unknown.join(", ")}. Pick one from the catalogue.`,
+      422,
+      { public_focus: [`Unknown service type key(s): ${unknown.join(", ")}.`] },
+    );
+  }
+  const retired = keys.filter((k) => byKey.get(k.toUpperCase()).is_active === false);
+  if (retired.length) {
+    throw new AppError(
+      "VALIDATION_ERROR",
+      `No longer in the catalogue: ${retired.join(", ")}. Re-classify this line against a current service type.`,
+      422,
+      { public_focus: [`Retired service type key(s): ${retired.join(", ")}.`] },
+    );
+  }
+}
+
 async function updateEntityStory(client, { entityId, patch, actor = {} }) {
   const before = await repo.getEntityStory(client, entityId);
   if (!before) throw new AppError("NOT_FOUND", "Entity not found", 404);
+  let story = patch;
+  if (Array.isArray(patch.public_focus)) {
+    await assertFocusCatalogue(client, patch.public_focus);
+    story = { ...patch, public_focus: patch.public_focus.map(deriveFocusMode) };
+  }
   return atomically(client, async () => {
-    const row = await repo.updateEntityStory(client, entityId, patch);
+    const row = await repo.updateEntityStory(client, entityId, story);
     await audit(client, {
       actorUserId: actor.user_id || null,
       action: events.ENTITY_STORY_UPDATED,
@@ -343,6 +419,25 @@ async function updateEntityStory(client, { entityId, patch, actor = {} }) {
     });
     return row;
   });
+}
+
+/**
+ * The service catalogue the Story tab's focus picker offers (Decision Q8):
+ * every ACTIVE service type with its transport mode derived by the SAME
+ * function the public payload derives it from. Authenticated and
+ * permission-gated at the route (MOD-01 or MOD-29 view — the same callers who
+ * may read a story may read the list it classifies against); nothing here is
+ * stranger-facing.
+ */
+async function serviceFocusCatalogue(client) {
+  const { rows } = await client.query(
+    `SELECT key, name_fr, name_en FROM service_type WHERE is_active = true ORDER BY name_fr, key`,
+  );
+  return rows.map((r) => ({
+    key: r.key,
+    label: { fr: r.name_fr, en: r.name_en || null },
+    mode: focusModeOf(r.key),
+  }));
 }
 
 /* ── the stranger-facing reads ──────────────────────────────────────────────
@@ -516,16 +611,32 @@ async function publicAbout(client) {
  * `tests/unit/site-public-redaction.test.js` asserts on the SERIALISED body
  * rather than on this function's shape, because a redaction that is only a
  * SELECT list is one refactor away from leaking.
+ *
+ * ── THE LIFECYCLE GATE (Decision Q1, CE-27) ────────────────────────────────
+ *
+ * `public_enabled = true` ALONE is not publishable. The authoritative ladder
+ * on `corporate_entity` (0515) is the decider: DRAFT, PENDING_REVIEW,
+ * SUSPENDED, DEACTIVATED and ARCHIVED are not stranger-facing even when the
+ * operator left the switch on, and a company that goes DEACTIVATED drops out
+ * of this read AND out of the media owner join below — a cover URL a visitor
+ * cached keeps serving for a year, so the byte route has to 404 on its own
+ * join rather than trusting this list. `registration_status = 'ACTIVE'` is
+ * the predicate on both, deliberately not `is_active`: the boolean is the
+ * derived compatibility surface (the 0515 trigger keeps it in step), the
+ * ladder is the authority, and a NULL ladder row — impossible after the
+ * backfill — would fail-closed here rather than pass-open.
  */
 async function publicEntities(client) {
   const { rows } = await client.query(
-    `SELECT entity_id, code, legal_name, trading_name, country_code,
+    `SELECT entity_id, code, legal_name, trading_name, country_code, address,
             public_summary_fr, public_summary_en, public_coverage, public_focus,
             public_cover_vault_id
        FROM corporate_entity
       WHERE public_enabled = true
+        AND registration_status = 'ACTIVE'
       ORDER BY legal_name`,
   );
+  const addresses = await addressesOf(client, rows.map((e) => e.entity_id));
   const leaders = (await repo.listLeaders(client)).filter((l) => l.is_active && l.entity_id);
   const variants = await mediaVariants(client, [
     ...rows.map((e) => e.public_cover_vault_id),
@@ -539,13 +650,102 @@ async function publicEntities(client) {
     country_code: e.country_code,
     summary: { fr: e.public_summary_fr, en: e.public_summary_en },
     coverage: e.public_coverage || [],
-    focus: e.public_focus || [],
+    focus: (e.public_focus || []).map(publicFocusItem),
     cover_id: e.public_cover_vault_id || null,
     cover_variants: variants[e.public_cover_vault_id] || null,
+    registered_address: letterhead.registeredAddress(e, addresses[e.entity_id] || []),
+    other_addresses: otherPublicAddresses(addresses[e.entity_id] || []),
     leaders: leaders
       .filter((l) => l.entity_id === e.entity_id)
       .map((l) => publicLeader(l, variants)),
   }));
+}
+
+/**
+ * Every address row of every published entity, in one query — the same shape
+ * `registeredAddress` and `otherPublicAddresses` below consume. Structured
+ * fields only; there is no `notes`, no `address_id` in the payload, and no
+ * row is published by this read on its own.
+ */
+async function addressesOf(client, entityIds) {
+  if (!entityIds.length) return {};
+  const { rows } = await client.query(
+    `SELECT entity_id, address_id, type, line1, line2, city, region, postal_code,
+            country_code, po_box, is_primary, is_active, is_public,
+            public_label_fr, public_label_en
+       FROM entity_address
+      WHERE entity_id = ANY($1::uuid[])
+      ORDER BY is_primary DESC, type`,
+    [entityIds],
+  );
+  return rows.reduce((byEntity, row) => {
+    (byEntity[row.entity_id] = byEntity[row.entity_id] || []).push(row);
+    return byEntity;
+  }, {});
+}
+
+/**
+ * ── THE REGISTERED ADDRESS IS PUBLISHED, AND THAT IS DECISION Q2 (CE-28) ───
+ *
+ * The card used to carry a country and no address while the Story tab and the
+ * letterhead both showed the registered office — an admin/public mismatch the
+ * audit called out. The selected direction is to publish the CANONICAL
+ * REGISTERED ADDRESS: the same row, chosen by the same precedence
+ * (`letterhead.registeredAddressRow`), composed by the same join
+ * (`letterhead.addressLine`), with the same legacy `corporate_entity.address`
+ * fallback for a company whose address predates structured rows. Importing
+ * the letterhead's own functions — rather than re-deriving "REGISTERED, then
+ * primary, then first" here — is what "one structured source" means: the
+ * shop window cannot drift from the invoice footer because it does not have
+ * its own copy of the rule to drift with.
+ *
+ * ── AND A SECOND ADDRESS ONLY THROUGH THE MARKER ───────────────────────────
+ *
+ * The decision's "both addresses" is honoured as the safe implementation the
+ * audit records: an operational/trading address is published BESIDE the
+ * registered one only when an operator explicitly marked that row public
+ * (13963's `is_public`) and supplied its label. Never automatically, never
+ * every row — a warehouse, a remittance desk and a PO box are real addresses
+ * and none of them is the public face of a company.
+ *
+ * The label check is deliberately redundant with the table's CHECK constraint
+ * (13963): the constraint makes an unlabelled public row impossible, and this
+ * makes it unpublished anyway — for the reason `publicPartners` re-checks
+ * 13782's rule, a read that trusts the writer is one repair script away from
+ * publishing something nobody can interpret.
+ */
+function otherPublicAddresses(addresses) {
+  const active = (addresses || []).filter((a) => a && a.is_active !== false);
+  const canonical = letterhead.registeredAddressRow(active);
+  return active
+    .filter((a) => a.is_public === true && a !== canonical)
+    .filter(
+      (a) =>
+        String(a.public_label_fr || "").trim() !== "" ||
+        String(a.public_label_en || "").trim() !== "",
+    )
+    .map((a) => ({
+      label: { fr: a.public_label_fr || null, en: a.public_label_en || null },
+      line: letterhead.addressLine(a),
+    }))
+    .filter((a) => a.line);
+}
+
+/**
+ * One focus row for the public payload. The mode is DERIVED from the
+ * catalogue key when one is present — `serviceMode` is the one derivation for
+ * the Control Tower, the tracking page and this card (Decision Q8) — and the
+ * stored hand-picked `mode` survives only for rows written before the
+ * catalogue existed.
+ */
+function publicFocusItem(f) {
+  const key = f && f.service_type_key ? String(f.service_type_key) : null;
+  return {
+    service_type_key: key,
+    label_fr: (f && f.label_fr) || null,
+    label_en: (f && f.label_en) || null,
+    mode: key ? focusModeOf(key) : (f && f.mode) || null,
+  };
 }
 
 module.exports = {
@@ -555,6 +755,6 @@ module.exports = {
   partners, credentials, leaders,
   getAbout, updateAbout,
   getCareers, updateCareers,
-  getEntityStory, updateEntityStory,
+  getEntityStory, updateEntityStory, serviceFocusCatalogue,
   publicPartners, publicSocial, publicAbout, publicEntities,
 };

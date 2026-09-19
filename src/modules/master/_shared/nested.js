@@ -58,7 +58,7 @@ const provided = (obj) =>
   Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined));
 
 function buildResource(cfg) {
-  const { table, pk, parentCol, parentTable, parentPk, moduleKey, label, writable, touch, isBank, isDocument, kind, governed, numberingKey, immutable = [], primaryScope } = cfg;
+  const { table, pk, parentCol, parentTable, parentPk, moduleKey, label, writable, touch, isBank, isDocument, kind, governed, numberingKey, immutable = [], primaryScope, rowRules } = cfg;
   const insertAllow = [...writable, parentCol];
   const updateAllow = writable.filter((field) => !immutable.includes(field));
 
@@ -241,6 +241,9 @@ function buildResource(cfg) {
     async update(c, { parentId, id, patch, actor = {}, env }) {
       const before = await getById(c, table, pk, id);
       if (!belongs(before, parentId)) throw new AppError("NOT_FOUND", `${label} not found`, 404);
+      // Row-aware rules the schema cannot express (see the addresses spec):
+      // checked against the row the patch lands on, before any write.
+      if (rowRules) rowRules(before, patch);
       // Sensitive-field maker-checker (§8): a bank / tax-registration EDIT is
       // governed in LIVE the same way a create is.
       if (governed && changeRequest.isGoverned(env)) {
@@ -336,7 +339,7 @@ function mountNested(router, { kind, moduleKey, parentTable, parentPk }) {
       table: r.table, pk: r.pk, parentCol: r.parentCol || `${kind}_id`,
       parentTable, parentPk, moduleKey, label: r.table, writable: r.writable,
       touch: r.touch, isBank: r.isBank, isDocument: r.isDocument, numberingKey: r.numberingKey,
-      immutable: r.immutable, kind, governed: r.governed,
+      immutable: r.immutable, kind, governed: r.governed, rowRules: r.rowRules,
     });
     // Bank numbers are masked in the list unless the caller has finance
     // visibility (gate 14) — masking in the serializer, never in the client.
@@ -372,6 +375,35 @@ function mountNested(router, { kind, moduleKey, parentTable, parentPk }) {
  * every allow-list — verification is a service-owned step, not something a PATCH
  * can assert about itself.
  */
+/**
+ * `entity_address.is_public` without a label is a line on a public page a
+ * visitor cannot interpret (13963, Decision Q2) — so the marker must never
+ * stand alone. The table carries no CHECK on purpose (a constraint on a
+ * pre-existing table aborts tenant provisioning at 13791 — see
+ * migration-constraint-ordering.test.js), which makes THIS the row-aware half
+ * of the rule: it reads the patch MERGED onto the current row, which is the
+ * exact semantics the withdrawn CHECK had and the only place "the row already
+ * has a label" can be known. The shared schema guards CREATE (label must ride
+ * in the same body); the public read skips a label-less marker as the third
+ * layer, for rows written before this rule or straight through psql.
+ */
+function assertPublicAddressLabel(before, patch) {
+  const isPublic =
+    patch.is_public === undefined ? before.is_public : patch.is_public;
+  if (!isPublic) return;
+  const fr =
+    patch.public_label_fr === undefined ? before.public_label_fr : patch.public_label_fr;
+  const en =
+    patch.public_label_en === undefined ? before.public_label_en : patch.public_label_en;
+  if (!String(fr || "").trim() && !String(en || "").trim()) {
+    throw new AppError(
+      "PUBLIC_ADDRESS_NEEDS_LABEL",
+      "A public address needs the label visitors will read beside it — write it in at least one language.",
+      422,
+    );
+  }
+}
+
 function entityResourceSpecs() {
   return [
     {
@@ -402,7 +434,16 @@ function entityResourceSpecs() {
       // One primary address per entity — it is the fallback the letterhead
       // prints when no address is marked REGISTERED.
       primaryScope: [],
-      writable: ["type", "line1", "line2", "city", "region", "postal_code", "country_code", "po_box", "is_primary", "is_active"],
+      // `is_public` / `public_label_*` are the second-address marker (13963,
+      // Decision Q2): publishable beside the canonical registered address,
+      // never instead of it, and never without a label — the shared schema
+      // refuses an unlabelled marker on create, `rowRules` below refuses it
+      // on update against the row the patch lands on, and the public read
+      // re-asserts it as a third layer. The table itself carries no CHECK on
+      // purpose: a constraint on a pre-existing table aborts tenant
+      // provisioning at 13791 (migration-constraint-ordering.test.js).
+      rowRules: assertPublicAddressLabel,
+      writable: ["type", "line1", "line2", "city", "region", "postal_code", "country_code", "po_box", "is_primary", "is_active", "is_public", "public_label_fr", "public_label_en"],
     },
     {
       seg: "registrations", table: "entity_registration", pk: "registration_id",
@@ -464,7 +505,7 @@ function mountEntityNested(router, { moduleKey, parentTable, parentPk }) {
       parentTable, parentPk, moduleKey, label: r.table,
       writable: r.writable, touch: r.touch, isDocument: r.isDocument,
       numberingKey: r.numberingKey, immutable: r.immutable,
-      primaryScope: r.primaryScope,
+      primaryScope: r.primaryScope, rowRules: r.rowRules,
     });
     // `people` carries the cap table and personal identifiers, and `documents`
     // the statutes and tax certificates — both need the same UPDATE grant that

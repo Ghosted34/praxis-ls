@@ -249,6 +249,28 @@ router.put("/careers", edit, v.careers, asyncHandler(async (req, res) => {
 /* ── an entity's public story ───────────────────────────────────────────────*/
 
 /**
+ * The service catalogue behind the Story tab's focus picker (Decision Q8).
+ *
+ * The picker must offer `service_type.key` — a stable ID from the tenant's own
+ * taxonomy — and NOT a free-text transport mode, so the card's colour is
+ * derived in one place instead of hand-picked per line. The list is the
+ * ACTIVE catalogue with each entry's mode derived by the same function the
+ * public payload uses, which is why it lives here rather than the caller
+ * re-deriving it: two derivations is how a ship on the tracking page ends up
+ * orange on the About page.
+ *
+ * The gate is the STORY READ's gate (MOD-01 view OR MOD-29 view — Q10): the
+ * two callers who may read a story are exactly the two who may read the list
+ * it classifies against, and a MOD-01 editor who cannot see the catalogue
+ * would be reduced to typing a key nobody ever showed them.
+ */
+router.get("/service-types",
+  requireAnyPermission([["MOD-01", "view"], ["MOD-29", "view"]]),
+  asyncHandler(async (req, res) => {
+    res.json({ data: await req.tenantDb((c) => service.serviceFocusCatalogue(c)) });
+  }));
+
+/**
  * The columns live on `corporate_entity`, but what they are is website copy.
  *
  * Decision Q10: MOD-01 `edit` INCLUDES Public Story edit for this module. A

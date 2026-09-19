@@ -295,6 +295,10 @@ exports.contactCreate = z.object(contactShape);
 exports.contactUpdate = patchOf(contactShape);
 
 // ── Address ────────────────────────────────────────────────────────────────
+// `is_public` / `public_label_*` are the explicit second-address marker
+// (Decision Q2, migration 13963). They never publish the REGISTERED office —
+// that is resolved by the public read the same way the letterhead resolves
+// it — they publish THIS row beside it, and only with a label.
 const addressShape = {
   type: requiredEnum(ADDRESS_TYPES, "Address type").optional(),
   line1: nullableText,
@@ -306,8 +310,29 @@ const addressShape = {
   po_box: nullableText,
   is_primary: z.boolean().optional(),
   is_active: z.boolean().optional(),
+  is_public: z.boolean().optional(),
+  public_label_fr: nullableText,
+  public_label_en: nullableText,
 };
-exports.addressCreate = z.object(addressShape);
+/** A row marked public on CREATE must carry its label in the same body. The
+ *  UPDATE twin cannot live here — a patch may set the marker on a row that
+ *  already carries a label, and only the write service sees that row — so it
+ *  is `rowRules` on the addresses spec in nested.js. Neither rule is a
+ *  database CHECK: 13963 documents the 13791 provisioning hazard that keeps
+ *  `entity_address` constraint-free, and the public read re-asserts the rule
+ *  as the third layer anyway. */
+const withAddressRules = (schema) =>
+  schema.refine(
+    (v) =>
+      !v.is_public ||
+      [v.public_label_fr, v.public_label_en].some((l) => l && String(l).trim()),
+    {
+      message:
+        "A public address needs the label visitors will read beside it — write it in at least one language.",
+      path: ["public_label_fr"],
+    },
+  );
+exports.addressCreate = withAddressRules(z.object(addressShape));
 exports.addressUpdate = patchOf(addressShape);
 
 // ── Registration (the entity's own NIU / RCCM / VAT / EORI / EIN …) ─────────

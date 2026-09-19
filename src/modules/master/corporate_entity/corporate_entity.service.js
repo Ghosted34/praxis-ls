@@ -468,8 +468,19 @@ async function letterhead(client, id, lang = null, { financials = false, tax = f
   // list both carry the number, and this route is MOD-01 `view`.
   const mask = (p) => dossierService.maskPaymentBlock(p, financials);
   const customLines = await repo.letterheadLines(client, id);
+  /*
+   * The registration rows ride along so `compose()` can build the identifiers
+   * block from them — `visibleEntity` is the raw repo row and carries no
+   * `identifiers` array, so without these the block fell back to the legacy
+   * `niu`/`rccm` columns and printed nothing for any tenant whose NIU/RCCM
+   * live in entity_registration rows. The VISIBLE (PR-04-redacted) rows, not
+   * the raw ones: a redacted row has no `number`, contributes no identifier,
+   * and a caller without MOD-01 tax view keeps getting the layout with the
+   * numbers absent — same rule as the rendered preview above.
+   */
   const composeInput = {
     entity: visibleEntity, config, addresses, establishments, treasuryAccounts, customLines,
+    registrations: visibleRegistrations, taxRegistrations: visibleTaxRegistrations,
     layout: (config && config.layout) || null,
     logo_url: entity.logo_light_ref || null,
   };

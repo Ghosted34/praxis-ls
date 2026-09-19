@@ -818,7 +818,10 @@ export function LetterheadStudio({
       }
     }
     const q = new URLSearchParams({ tab: b.source.tab, field: b.source.field });
-    window.location.assign(`/master/entities/${entityId}?${q}`);
+    // The dossier's real route (app.tsx: `master/corporate-entities/:entityId`).
+    // It was `/master/entities/…`, which no route serves — every "Edit in X →"
+    // landed on the catch-all redirect to "/", which is worse than no link.
+    window.location.assign(`/master/corporate-entities/${entityId}?${q}`);
   }
 
   /** Blocks not currently on the page, offered for adding back. */

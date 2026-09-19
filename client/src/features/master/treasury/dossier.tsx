@@ -20,6 +20,7 @@ import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { Button } from "@/components/ui/button";
 import { EmptyState, ErrorState, LoadingRow } from "@/components/ui/states";
 import { useResource, errMsg } from "@/lib/use-resource";
+import { useUrlTab } from "@/lib/use-url-tab";
 import { money, dateFmt, cell } from "@/lib/format";
 import * as api from "@/lib/treasury-api";
 import { useConfirm } from "@/components/ui/use-confirm";
@@ -162,7 +163,10 @@ export function TreasuryDossier({
     () => api.getDossier(id),
     [id],
   );
-  const [tab, setTab] = React.useState<Tab>("Overview");
+  // `?tab=` (use-url-tab), not local state: this 360 exists on its own route
+  // precisely to be deep-linkable, and a reload was dumping the reader back on
+  // Overview. "Overview" is the fallback, so the param is omitted there.
+  const [tab, setTab] = useUrlTab<Tab>(TABS, "Overview");
   const [busy, setBusy] = React.useState<string | null>(null);
   const [actionError, setActionError] = React.useState<string | null>(null);
   const [editOpen, setEditOpen] = React.useState(false);

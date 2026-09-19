@@ -243,6 +243,23 @@ export default {
         // carrying meaning — direction of travel — rather than delight.
         // Speed differs per mode; the offset is the same.
         "lane-dash": { to: { strokeDashoffset: "-100" } },
+        // The environment-switch dialog and overlay (app/layout/env-switcher.tsx):
+        // rows settle upward, the destination card arrives from the right, the
+        // overlay card pops, and its progress track fills once. Each is a
+        // single entrance under the budget; none loops.
+        "rise-in": {
+          from: { opacity: "0", transform: "translateY(6px)" },
+          to: { opacity: "1", transform: "none" },
+        },
+        "slide-in-right": {
+          from: { opacity: "0", transform: "translateX(10px)" },
+          to: { opacity: "1", transform: "none" },
+        },
+        "pop-in": {
+          from: { opacity: "0", transform: "scale(0.94)" },
+          to: { opacity: "1", transform: "none" },
+        },
+        "grow-x": { from: { transform: "scaleX(0)" }, to: { transform: "scaleX(1)" } },
       },
       animation: {
         // Was 0.35s with a 4px translate. Entrance motion on a screen opened
@@ -252,6 +269,10 @@ export default {
         "lane-road": "lane-dash 1.6s linear infinite",
         "lane-air": "lane-dash 3s linear infinite",
         "lane-rail": "lane-dash 2s linear infinite",
+        "rise-in": "rise-in 0.2s ease-out both",
+        "slide-in-right": "slide-in-right 0.22s cubic-bezier(0.2, 0.8, 0.2, 1) both",
+        "pop-in": "pop-in 0.2s cubic-bezier(0.2, 0.8, 0.2, 1) both",
+        "grow-x": "grow-x 0.25s ease-out both",
       },
     },
   },

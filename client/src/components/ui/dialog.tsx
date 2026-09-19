@@ -75,9 +75,10 @@ export function Dialog({
   titleIcon?: React.ReactNode;
   /**
    * Tints the dialog's top hairline and header so the WHOLE surface carries the
-   * tone, not just the confirm button. `bad` is the brand red used for warnings.
+   * tone, not just the confirm button. `bad` is the brand red used for warnings;
+   * `ok` is the LIVE-environment green, for a dialog whose destination is live.
    */
-  accent?: "bad" | "warn";
+  accent?: "bad" | "warn" | "ok";
   /**
    * Clicking the backdrop / pressing Escape closes the dialog. Default true.
    *
@@ -167,9 +168,9 @@ export function Dialog({
               aria-hidden
               className={cn(
                 "h-1 shrink-0",
-                accent === "bad"
-                  ? "bg-[rgb(var(--bad-fill))]"
-                  : "bg-[rgb(var(--warn-fill))]",
+                accent === "bad" && "bg-[rgb(var(--bad-fill))]",
+                accent === "warn" && "bg-[rgb(var(--warn-fill))]",
+                accent === "ok" && "bg-[rgb(var(--ok-fill))]",
               )}
             />
           )}
@@ -178,6 +179,7 @@ export function Dialog({
               "flex shrink-0 items-start justify-between gap-4 border-b px-6 py-4",
               accent === "bad" && "bg-bad-fill/[0.06]",
               accent === "warn" && "bg-warn-fill/[0.06]",
+              accent === "ok" && "bg-ok-fill/[0.06]",
             )}
           >
             <div className="flex min-w-0 items-start gap-3">

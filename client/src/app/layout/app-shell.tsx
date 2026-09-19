@@ -54,7 +54,8 @@ import {
 import { Ribbon } from "@/app/layout/ribbon";
 import { IconRail } from "@/app/layout/icon-rail";
 import { BottomNav } from "@/app/layout/mobile-nav";
-import { EnvChip, SwitchToLiveButton } from "@/app/layout/env-switcher";
+import { EnvChip, EnvSwitchOverlay, EnvToggle, SwitchToLiveButton } from "@/app/layout/env-switcher";
+import type { Env } from "@/app/layout/env-switcher";
 import { RibbonCommandsProvider } from "@/app/layout/shell-providers";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { TENANT_KEY } from "@/lib/query-client";
@@ -118,121 +119,6 @@ function useVisibleNav(): NavGroup[] {
       items: g.items.filter((it) => it.to !== "/ai-control"),
     })).filter((g) => g.items.length > 0);
   }, [aiEnabled]);
-}
-
-/**
- * LIVE / TEST, from `sm` up. Lifted out of the shell's markup when the utility
- * cluster moved into the title bar — it is the one control in there whose
- * colours carry meaning (a sandbox session must never be mistaken for a live
- * one), so it is worth being a named component rather than forty lines inline.
- *
- * `--ok` / `--warn` rather than raw emerald/amber: two of the 122 palette
- * bypasses F14 counted were in this exact control, in the shell itself.
- *
- * BELOW `sm` THE CONTROL IS `EnvChip` (env-switcher.tsx), not this. Two labelled
- * cells cost ~100px of a 360px strip, and this component's `hidden` used to mean
- * a phone had no way INTO the sandbox at all while the sandbox banner offered a
- * way out of it. Deliberately still single-tap and unconfirmed: that asymmetry
- * with the phone's confirm-both-ways is argued in env-switcher.tsx's header.
- */
-function EnvToggle({
-  env,
-  onSwitch,
-}: {
-  env: string;
-  onSwitch: (e: "live" | "sandbox") => void;
-}) {
-  return (
-    <div
-      className="hidden items-center rounded-md border p-0.5 text-[11px] font-semibold sm:inline-flex"
-      role="group"
-      aria-label="Data environment"
-    >
-      <button
-        type="button"
-        onClick={() => onSwitch("live")}
-        aria-pressed={env !== "sandbox"}
-        className={cn(
-          "rounded-sm px-2 py-1 transition-colors",
-          env !== "sandbox"
-            ? "bg-[rgb(var(--ok-fill)_/_0.14)] text-[rgb(var(--ok))]"
-            : "text-muted-foreground hover:text-foreground",
-        )}
-      >
-        LIVE
-      </button>
-      <button
-        type="button"
-        onClick={() => onSwitch("sandbox")}
-        aria-pressed={env === "sandbox"}
-        className={cn(
-          "rounded-sm px-2 py-1 transition-colors",
-          env === "sandbox"
-            ? "bg-[rgb(var(--warn-fill)_/_0.16)] text-[rgb(var(--warn))]"
-            : "text-muted-foreground hover:text-foreground",
-        )}
-      >
-        TEST
-      </button>
-    </div>
-  );
-}
-
-/**
- * Full-screen interstitial during an env switch.
- *
- * `switchEnv` has already remounted every screen under `key={env}` and TanStack
- * is fetching fresh data under new env-scoped keys, so this overlay is a
- * VISUAL CUE, not a functional gate: without it the header briefly still
- * carries the old env's chrome and the newly-mounted screen paints its
- * skeleton — a fast-but-flickery transition that reads as either the toggle
- * having not worked or the app being confused. Half a second of "Switching…"
- * makes the same operation feel intentional.
- *
- * `role="status"` + `aria-live="polite"` so screen-reader users hear the
- * change instead of watching focus land back on the same nav tree with no
- * announcement of why.
- */
-function EnvSwitchOverlay({ to }: { to: "live" | "sandbox" }) {
-  const label = to === "sandbox" ? "TEST" : "LIVE";
-  const tint = to === "sandbox" ? "warn" : "ok";
-  return (
-    <div
-      role="status"
-      aria-live="polite"
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-background/80 backdrop-blur-sm animate-fade-in"
-    >
-      <div className="flex flex-col items-center gap-3 rounded-xl border bg-card px-6 py-5 shadow-[var(--shadow-l)]">
-        <span
-          aria-hidden
-          className={cn(
-            "inline-block h-6 w-6 animate-spin rounded-full border-2 border-transparent",
-            tint === "warn"
-              ? "border-t-[rgb(var(--warn))]"
-              : "border-t-[rgb(var(--ok))]",
-          )}
-        />
-        <div className="text-center">
-          <div className="text-sm font-semibold text-foreground">
-            Switching to{" "}
-            <span
-              className={cn(
-                "rounded px-1.5 py-0.5 text-[11px] font-bold",
-                tint === "warn"
-                  ? "bg-[rgb(var(--warn-fill)_/_0.16)] text-[rgb(var(--warn))]"
-                  : "bg-[rgb(var(--ok-fill)_/_0.14)] text-[rgb(var(--ok))]",
-              )}
-            >
-              {label}
-            </span>
-          </div>
-          <div className="mt-1 text-xs text-muted-foreground">
-            Loading fresh data…
-          </div>
-        </div>
-      </div>
-    </div>
-  );
 }
 
 /** Initials from a name or email local-part. */
@@ -744,16 +630,15 @@ export function AppShell() {
   const qc = useQueryClient();
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
   const [paletteOpen, setPaletteOpen] = React.useState(false);
-  const [env, setEnvState] = React.useState<string>(tokenStore.getEnv());
-  // Non-null while an env switch is settling — shows a full-screen overlay so
-  // the user sees the transition instead of a flash of the new env's skeleton.
-  // Set to the OUTGOING env so the copy reads "Switching to <new>…".
-  const [switchingFrom, setSwitchingFrom] = React.useState<string | null>(null);
-  // The overlay's dismiss timer, held so it can be cancelled. An uncancelled
-  // one fires `setSwitchingFrom` on an unmounted shell — harmless in a browser,
-  // but in jsdom the window is gone by then and React throws
-  // "window is not defined" from a timer nobody is awaiting, which fails the
-  // whole test run as an unhandled error.
+  const [env] = React.useState<string>(tokenStore.getEnv());
+  // Non-null from the moment an env switch is confirmed until the browser has
+  // replaced the document: the DESTINATION env, which the full-screen overlay
+  // names while the reload is in progress.
+  const [switchingTo, setSwitchingTo] = React.useState<Env | null>(null);
+  // The reload timer, held so it can be cancelled on unmount. An uncancelled
+  // one would fire on an unmounted shell — harmless in a browser, but in jsdom
+  // the window is gone by then and a timer nobody is awaiting fails the whole
+  // test run as an unhandled error.
   const switchTimer = React.useRef<number | null>(null);
   React.useEffect(() => () => {
     if (switchTimer.current !== null) window.clearTimeout(switchTimer.current);
@@ -863,60 +748,60 @@ export function AppShell() {
     navigate("/login", { replace: true });
   }
 
-  // Test/Live switch — SOFT (no reload). Identity is now env-independent
-  // (server pins auth/sessions to the live schema), so flipping X-Praxis-Env no
-  // longer logs the user out — only *business* data is sandboxed. Persist the
-  // header, update state; the `key={env}` on <main> remounts the routed screen
-  // so every useEffect re-fetches under the new environment. Access token, auth
-  // and scroll of the shell are preserved.
-  //
-  // WHY THE STEPS ARE ORDERED THE WAY THEY ARE — this is the fix for the stale-
-  // toggle bug (a user switching LIVE → TEST briefly saw LIVE data until they
-  // refreshed the browser). The bug had three sources; each step here addresses
-  // one:
-  //
-  //   1. `tenantKey()` and `resourceKey()` include env now, so a switch produces
-  //      a fresh cache key and TanStack can never serve the other env's data
-  //      from cache. This is the primary fix — the rest is defence.
-  //
-  //   2. `qc.cancelQueries()` stops any in-flight LIVE fetch. Without this, a
-  //      request that departed before the switch would land after it, and its
-  //      response (correctly headed with X-Praxis-Env: live) would still
-  //      populate the LIVE-keyed cache — which is fine per se, but wastes a
-  //      round-trip on data the user is no longer looking at.
-  //
-  //   3. The comms websocket carries env in its handshake, not per message —
-  //      so a live socket keeps subscribing to the OLD env's channels until it
-  //      is torn down. Disconnect here; the next `getCommsSocket()` reconnects
-  //      under the new env.
-  //
-  // The overlay is a brief interstitial (~350 ms, or however long the first
-  // batch of new-env fetches takes) so the switch is felt, not a silent
-  // repaint. `key={env}` on <main> still remounts the routed screen — that
-  // is what actually causes every screen's `useQuery` to be called again, with
-  // the new key.
-  function switchEnv(next: string) {
+  /**
+   * Test/Live switch — a HARD switch: persist the choice, then reload the page.
+   *
+   * ── WHY A RELOAD, WHEN THE SOFT SWITCH WORKED ──────────────────────────────
+   *
+   * The previous version flipped `X-Praxis-Env` in place: cancel the outgoing
+   * env's queries, drop the comms socket, `setEnv`, remount the routed screen
+   * under `key={env}`. Every one of those steps was a patch over the same
+   * fact — the page was full of state that belonged to the OTHER environment —
+   * and each new kind of state (a form draft in memory, a dialog half-filled, a
+   * websocket subscription, a module-level cache, a worker) needed its own
+   * patch or leaked across. Users met the leak as "I switched to TEST and the
+   * page still showed LIVE data until I pressed Ctrl+F5." A reload is what
+   * Ctrl+F5 does, done for them: the new document boots from `praxis.env`
+   * alone, and there is no state to clean because there is no old state. The
+   * service worker never caches `/api` (vite.config.ts), so what the new
+   * document fetches is the new environment's data, not a cached copy.
+   *
+   * The cost is that unsaved work does not survive — which is exactly what
+   * `EnvSwitchDialog` (env-switcher.tsx) says before anyone gets here. Every
+   * control that can call this goes through that dialog, on every width.
+   *
+   * ── ORDER ──────────────────────────────────────────────────────────────────
+   *
+   *   1. Show the overlay FIRST, so the outgoing screen is covered for the
+   *      whole of the reload rather than flashing between the click and the
+   *      new document — and so a slow connection shows "Switching to TEST"
+   *      instead of a page that appears to have ignored the click.
+   *   2. Cancel the outgoing env's in-flight queries and drop the comms
+   *      socket. Both are moot once the document is gone, but the reload is a
+   *      beat away and a response or a socket frame landing in that beat
+   *      would still be work done for an environment nobody is looking at.
+   *   3. Persist. `tokenStore.setEnv` is the ONLY input the next document
+   *      reads, so it is written before anything that could fail.
+   *   4. Reload, a moment later. The delay is one paint of the overlay, not a
+   *      wait: long enough for the interstitial to be seen as the answer to
+   *      the click, short enough that nobody reads it as loading.
+   *
+   * Shell state is deliberately NOT flipped: the outgoing screen stays as it
+   * was under the overlay instead of remounting and refetching everything for
+   * an environment it will never get to show.
+   */
+  const ENV_RELOAD_DELAY_MS = 450;
+  function switchEnv(next: Env) {
     if (next === env) return;
-    setSwitchingFrom(env);
-    // Cancel anything already flying under the outgoing env — its response is
-    // no longer wanted, and we do not want it landing in the cache after the
-    // switch. Prefix-match on [TENANT_KEY, prevEnv] catches every tenant query.
+    setSwitchingTo(next);
     void qc.cancelQueries({ queryKey: [TENANT_KEY, env] });
-    // The socket carries env in its auth object, once, at connect time. We
-    // have to tear it down for the next getCommsSocket() to reconnect under
-    // the new env — otherwise Smart Comms keeps talking to the old schema
-    // for the remaining lifetime of the page.
     disconnectCommsSocket();
     tokenStore.setEnv(next);
-    setEnvState(next);
-    // Give the newly-mounted screen a beat to fire its queries so the overlay
-    // does not vanish before the skeleton behind it has a chance to paint.
-    // Kept short — this is a transition indicator, not a load screen.
     if (switchTimer.current !== null) window.clearTimeout(switchTimer.current);
     switchTimer.current = window.setTimeout(() => {
       switchTimer.current = null;
-      setSwitchingFrom(null);
-    }, 350);
+      window.location.reload();
+    }, ENV_RELOAD_DELAY_MS);
   }
 
   const visibleNav = useVisibleNav();
@@ -1137,8 +1022,10 @@ export function AppShell() {
             <div className="flex min-w-0 flex-1 flex-col">
               <Ribbon pathname={location.pathname} />
 
-              {/* key={env} remounts the routed screen on an env switch so every screen
-              re-fetches under the new X-Praxis-Env — the soft-switch mechanism. */}
+              {/* key={env}: the routed screen is keyed by environment. `env` is
+              read once per document now that a switch reloads the page
+              (switchEnv), so this is a statement of ownership rather than a
+              remount trigger — every screen under here belongs to one env. */}
               {/*
             Padding scales with the viewport now (was a flat p-6 at every width).
             Width itself is NOT capped here — each screen picks a deliberate column
@@ -1246,12 +1133,11 @@ export function AppShell() {
               The overlap is solved where it is caused: the composer publishes
               `--fab-floor` and the cluster anchors above it (floating-actions.tsx). */}
           <FloatingActions badge={unread.messages + unread.notifications} />
-          {/* Env-switch interstitial. Shown while `switchingFrom` is set — i.e. for
-          the brief window between the toggle and the newly-mounted screen's
-          first paint. `to` is the destination env, mapped back from the
-          project's terminology (sandbox=TEST). */}
-          {switchingFrom && (
-            <EnvSwitchOverlay to={env === "sandbox" ? "sandbox" : "live"} />
+          {/* Env-switch interstitial. Shown from the confirmed switch until the
+          browser has replaced the document (switchEnv above). `onReload` is
+          the escape hatch the overlay offers if the reload was refused. */}
+          {switchingTo && (
+            <EnvSwitchOverlay to={switchingTo} onReload={() => window.location.reload()} />
           )}
         </div>
       </RibbonCommandsProvider>

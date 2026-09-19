@@ -221,6 +221,7 @@ export type Reconciliation = {
 
 export type CashCount = {
   cash_count_id: string;
+  treasury_account_id?: string;
   counted_on: string;
   currency: string;
   denominations: Array<{ note: number; qty: number }>;
@@ -231,6 +232,11 @@ export type CashCount = {
   variance_reason: string | null;
   status: "DRAFT" | "ATTESTED" | "APPROVED_LOCKED" | "CANCELLED";
   attested_at: string | null;
+  custodian_user_id?: string | null;
+  witness_user_id?: string | null;
+  adjustment_entry_id?: string | null;
+  approved_by?: string | null;
+  approved_at?: string | null;
 };
 
 /* ─────────────── fetchers ────────────────────────────────────────────────── */
@@ -365,3 +371,9 @@ export const recordCashCount = (body: {
 
 export const attestCashCount = (id: string, variance_reason?: string) =>
   tenant<CashCount>(`${base}/cash-counts/${id}/attest`, { method: "POST", body: { variance_reason } });
+
+export const approveCashCount = (id: string, propose_adjustment = true) =>
+  tenant<CashCount>(`${base}/cash-counts/${id}/approve`, { method: "POST", body: { propose_adjustment } });
+
+export const cancelCashCount = (id: string, reason?: string) =>
+  tenant<CashCount>(`${base}/cash-counts/${id}/cancel`, { method: "POST", body: { reason } });

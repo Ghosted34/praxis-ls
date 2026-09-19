@@ -53,6 +53,8 @@ router.post("/", requirePermission(MODULE, "create"), v.buildReconciliation, c.b
 router.get("/cash-counts", requirePermission(MODULE, "view"), c.listCashCounts);
 router.post("/cash-counts", requirePermission(MODULE, "create"), v.cashCount, c.recordCashCount);
 router.post("/cash-counts/:id/attest", requirePermission(MODULE, "edit"), v.attestCashCount, c.attestCashCount);
+router.post("/cash-counts/:id/approve", requirePermission(MODULE, "approve"), v.approveCashCount, c.approveCashCount);
+router.post("/cash-counts/:id/cancel", requirePermission(MODULE, "edit"), v.cancelCashCount, c.cancelCashCount);
 router.post("/cash-counts/:id/document", requirePermission(MODULE, "view"), c.renderCashCountDocument);
 router.get("/:id", requirePermission(MODULE, "view"), c.getReconciliation);
 router.post("/:id/approve", requirePermission(MODULE, "approve"), c.approveReconciliation);

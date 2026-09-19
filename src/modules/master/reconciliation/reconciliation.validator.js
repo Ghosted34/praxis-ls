@@ -88,6 +88,12 @@ const schemas = {
     message: "Provide either a denomination breakdown or a counted total",
   }),
   attestCashCount: z.object({ variance_reason: z.string().max(1000).optional() }),
+  approveCashCount: z.object({
+    propose_adjustment: z.boolean().optional(),
+  }).default({}),
+  cancelCashCount: z.object({
+    reason: z.string().max(1000).optional().nullable(),
+  }).default({}),
   proposeEntry: z.object({
     offset_account_code: z.string().max(64).optional().nullable(),
     description: z.string().max(200).optional().nullable(),
@@ -122,6 +128,8 @@ module.exports = {
   buildReconciliation: mw("buildReconciliation"),
   cashCount: mw("cashCount"),
   attestCashCount: mw("attestCashCount"),
+  approveCashCount: mw("approveCashCount"),
+  cancelCashCount: mw("cancelCashCount"),
   proposeEntry: mw("proposeEntry"),
   schemas,
 };

@@ -207,6 +207,24 @@ module.exports = {
       })),
     })),
 
+  approveCashCount: asyncHandler(async (req, res) =>
+    res.json({
+      data: await req.tenantDb((c) => service.approveCashCount(c, {
+        cashCountId: req.params.id,
+        proposeAdjustment: req.body?.propose_adjustment !== false,
+        actor: actor(req),
+      })),
+    })),
+
+  cancelCashCount: asyncHandler(async (req, res) =>
+    res.json({
+      data: await req.tenantDb((c) => service.cancelCashCount(c, {
+        cashCountId: req.params.id,
+        reason: req.body?.reason,
+        actor: actor(req),
+      })),
+    })),
+
   listCashCounts: asyncHandler(async (req, res) => {
     if (!req.query.treasury_account_id) {
       throw new AppError("VALIDATION_ERROR", "treasury_account_id is required", 422);

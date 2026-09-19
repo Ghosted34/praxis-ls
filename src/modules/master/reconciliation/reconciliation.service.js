@@ -1101,8 +1101,18 @@ async function proposeEntryForLine(client, { statementLineId, offsetAccountCode,
  */
 async function recordCashCount(client, { treasuryAccountId, countedOn, denominations, countedTotal, witnessUserId, varianceReason, actor }) {
   const account = await requireAccount(client, treasuryAccountId);
-  if (!account.requires_custodian && !account.category_code) {
-    throw new AppError("VALIDATION_ERROR", "Cash counts apply to cash and petty-cash accounts", 422);
+  const isCashCapable = Boolean(
+    account.requires_custodian ||
+    account.category_code === "CASH" ||
+    account.category_code === "PETTY_CASH" ||
+    account.reconciliation_mode === "CASH_COUNT"
+  );
+  if (!isCashCapable) {
+    throw new AppError(
+      "ACCOUNT_NOT_CASH_CAPABLE",
+      `Cash counts only apply to cash and petty-cash accounts (account category is ${account.category_code || "uncategorized"})`,
+      422,
+    );
   }
 
   const denoms = Array.isArray(denominations) ? denominations : [];
@@ -1178,13 +1188,24 @@ async function attestCashCount(client, { cashCountId, varianceReason, actor }) {
     );
   }
 
+  const account = await repo.accountContext(client, row.treasury_account_id);
   const actorId = await resolveActorId(client, actor && actor.user_id);
+
+  // Designated custodian check: if the account has a custodian configured, only they may attest
+  if (account && account.custodian_user_id && actorId && account.custodian_user_id !== actorId) {
+    throw new AppError(
+      "CUSTODIAN_ATTESTATION_REQUIRED",
+      "Only the designated custodian can attest this physical cash count",
+      403,
+    );
+  }
+
   await client.query("BEGIN");
   try {
     const updated = await repo.updateCashCount(client, cashCountId, {
       status: "ATTESTED",
       attested_at: new Date(),
-      custodian_user_id: row.custodian_user_id || actorId,
+      custodian_user_id: account?.custodian_user_id || row.custodian_user_id || actorId,
       variance_reason: reason || null,
     });
     await emitEvent(client, {
@@ -1196,6 +1217,169 @@ async function attestCashCount(client, { cashCountId, varianceReason, actor }) {
       moduleKey: events.MODULE, entityRef: countRef(cashCountId), before: row, after: updated,
       isSensitive: difference !== 0,
     });
+    await client.query("COMMIT");
+    return updated;
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  }
+}
+
+/**
+ * Sign off and approve an attested cash count (Audit #28).
+ * If there is a variance and proposeAdjustment is true, generates a DRAFT journal entry:
+ * - Cash shortfall (counted < ledger): Dr 658000 (écart de caisse) / Cr Treasury Account
+ * - Cash surplus (counted > ledger): Dr Treasury Account / Cr 758000 (surplus de caisse)
+ * Links the journal entry to cash_count.adjustment_entry_id.
+ * Locks the cash count with status = 'APPROVED_LOCKED'.
+ */
+async function approveCashCount(client, { cashCountId, proposeAdjustment = true, actor }) {
+  const row = await repo.getCashCount(client, cashCountId);
+  if (!row) throw new AppError("NOT_FOUND", "Cash count not found", 404);
+  if (row.status === "APPROVED_LOCKED") return row;
+  if (row.status !== "ATTESTED") {
+    throw new AppError("COUNT_NOT_ATTESTED", "Cash count must be attested before approval", 422);
+  }
+
+  const actorId = await resolveActorId(client, actor && actor.user_id);
+  const account = await repo.accountContext(client, row.treasury_account_id);
+  if (!account) throw new AppError("NOT_FOUND", "Treasury account not found", 404);
+
+  const diff = Number(row.difference);
+  let adjustmentEntryId = row.adjustment_entry_id;
+
+  await client.query("BEGIN");
+  try {
+    if (diff !== 0 && proposeAdjustment && !adjustmentEntryId) {
+      let journalId = null;
+      const { rows: journals } = await client.query(
+        "SELECT journal_id FROM journal WHERE entity_id = $1 AND (code = 'OD' OR code = 'CAISSE' OR code = 'BQ') ORDER BY CASE WHEN code = 'OD' THEN 1 WHEN code = 'CAISSE' THEN 2 ELSE 3 END LIMIT 1",
+        [row.entity_id],
+      );
+      if (journals.length) journalId = journals[0].journal_id;
+      if (!journalId) {
+        const { rows: anyJ } = await client.query("SELECT journal_id FROM journal WHERE entity_id = $1 LIMIT 1", [row.entity_id]);
+        if (anyJ.length) journalId = anyJ[0].journal_id;
+      }
+
+      const entryDate = row.counted_on ? new Date(row.counted_on).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
+      const { rows: periods } = await client.query(
+        "SELECT period_id, status FROM accounting_period WHERE entity_id = $1 AND $2::date BETWEEN start_date AND end_date LIMIT 1",
+        [row.entity_id, entryDate],
+      );
+
+      if (journalId && periods.length && periods[0].status === "OPEN") {
+        const periodId = periods[0].period_id;
+        const { rows: seq } = await client.query(
+          "SELECT COALESCE(MAX(entry_no), 0) + 1 AS next_no FROM journal_entry WHERE journal_id = $1 AND period_id = $2",
+          [journalId, periodId],
+        );
+        const entryNo = seq[0].next_no;
+
+        const isOver = diff > 0;
+        const absDiff = Math.abs(diff);
+        const offsetAccount = isOver ? "758000" : "658000";
+        const desc = `Cash count variance adjustment: ${row.variance_reason || (isOver ? "Cash surplus" : "Cash shortfall")}`;
+
+        const { rows: entries } = await client.query(
+          `INSERT INTO journal_entry
+             (journal_id, entity_id, period_id, entry_no, entry_date, description, source_doc_ref, status, source, created_by)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, 'draft', 'SYSTEM_RULE', $8)
+           RETURNING *`,
+          [journalId, row.entity_id, periodId, entryNo, entryDate, desc, `COUNT-${row.cash_count_id}`, actorId],
+        );
+        const entry = entries[0];
+        adjustmentEntryId = entry.entry_id;
+
+        const lines = isOver
+          ? [
+              { account_code: account.coa_code, debit: absDiff, credit: 0 },
+              { account_code: offsetAccount, debit: 0, credit: absDiff },
+            ]
+          : [
+              { account_code: offsetAccount, debit: absDiff, credit: 0 },
+              { account_code: account.coa_code, debit: 0, credit: absDiff },
+            ];
+
+        let lineNo = 1;
+        for (const l of lines) {
+          await client.query(
+            `INSERT INTO journal_line
+               (entry_id, line_no, account_code, debit, credit, currency)
+             VALUES ($1, $2, $3, $4, $5, $6)`,
+            [entry.entry_id, lineNo++, l.account_code, l.debit, l.credit, row.currency || "XAF"],
+          );
+        }
+      }
+    }
+
+    const updated = await repo.updateCashCount(client, cashCountId, {
+      status: "APPROVED_LOCKED",
+      approved_by: actorId,
+      approved_at: new Date(),
+      adjustment_entry_id: adjustmentEntryId || null,
+    });
+
+    await emitEvent(client, {
+      eventTypeKey: events.CASH_COUNT_APPROVED,
+      moduleKey: events.MODULE,
+      entityRef: countRef(cashCountId),
+      actorUserId: actor && actor.user_id ? actor.user_id : null,
+    });
+    await audit(client, {
+      actorUserId: actor && actor.user_id ? actor.user_id : null,
+      action: events.CASH_COUNT_APPROVED,
+      moduleKey: events.MODULE,
+      entityRef: countRef(cashCountId),
+      before: row,
+      after: updated,
+    });
+
+    await client.query("COMMIT");
+    return updated;
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  }
+}
+
+/**
+ * Cancel an unapproved cash count (Audit #29).
+ * Frees the account/date uniqueness constraint so a recount can take place on the same day.
+ */
+async function cancelCashCount(client, { cashCountId, reason, actor }) {
+  const row = await repo.getCashCount(client, cashCountId);
+  if (!row) throw new AppError("NOT_FOUND", "Cash count not found", 404);
+  if (row.status === "APPROVED_LOCKED") {
+    throw new AppError("LOCKED", "Cannot cancel an approved and locked cash count", 422);
+  }
+  if (row.status === "CANCELLED") return row;
+
+  const actorId = await resolveActorId(client, actor && actor.user_id);
+  await client.query("BEGIN");
+  try {
+    const updated = await repo.updateCashCount(client, cashCountId, {
+      status: "CANCELLED",
+      variance_reason: reason
+        ? (row.variance_reason ? `${row.variance_reason} [Cancelled: ${reason}]` : `Cancelled: ${reason}`)
+        : row.variance_reason,
+    });
+
+    await emitEvent(client, {
+      eventTypeKey: events.CASH_COUNT_CANCELLED,
+      moduleKey: events.MODULE,
+      entityRef: countRef(cashCountId),
+      actorUserId: actor && actor.user_id ? actor.user_id : null,
+    });
+    await audit(client, {
+      actorUserId: actor && actor.user_id ? actor.user_id : null,
+      action: events.CASH_COUNT_CANCELLED,
+      moduleKey: events.MODULE,
+      entityRef: countRef(cashCountId),
+      before: row,
+      after: updated,
+    });
+
     await client.query("COMMIT");
     return updated;
   } catch (err) {
@@ -1434,7 +1618,7 @@ module.exports = {
   preview, confirmProfile, importStatement,
   runMatcher, confirmMatch, rejectMatch, manualMatch, ignoreLine, proposeEntryForLine,
   buildReconciliation, approveReconciliation, renderReconciliationDocument, renderCashCountDocument,
-  recordCashCount, attestCashCount,
+  recordCashCount, attestCashCount, approveCashCount, cancelCashCount,
   listStatements, getStatement, lineMatches, listProfiles,
   listReconciliations, getReconciliation, listCashCounts,
   decodeUpload,

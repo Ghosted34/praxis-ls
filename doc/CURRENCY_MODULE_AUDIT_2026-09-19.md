@@ -13,9 +13,31 @@
 
 ## Progress tracking — update after every work item
 
-**Current overall status:** Currency audit complete; implementation work has not started. The PR plan below is ready for execution.
+**Current overall status:** Gate 0 product/API decisions recorded (below); implementation complete on branch `arena/01a0b8b7-praxis-ls` as four ordered commits (C-PR-01 → C-PR-02 → C-PR-03 → C-PR-04). All 12 audit items addressed; the remaining gate is **runtime acceptance** (tenant DB, live provider, scheduler, browser, permissions, concurrency), which requires a provisioned environment — the DB-gated integration test is ready to run there.
 
 **Last updated:** 2026-09-19
+
+### Gate 0 decisions (recorded before coding)
+
+1. **Base-change semantics — FORMAL REBASE.** Changing the base currency performs a
+   deterministic rate rebase: the current base→quote rates are recomputed so the new
+   base becomes the anchor (new_base→quote derived through the old cross-rates), the
+   old base gets a new base→old-base pair, and the change is recorded as an override
+   run (`is_override=true`, source `rebase`) so it is auditable and never overwrites a
+   manual feed silently. Historical rate rows under the old base are preserved as-is —
+   posted transactions already stamp their own `fx_rate` at posting time, so historical
+   financial amounts are never reinterpreted. Rebase only recomputes the *current*
+   working rate for each pair; it does not rewrite dated history.
+2. **Rate-history contract — offset + total + has_more.** Server-capped `limit`
+   (default 50, max 200), `offset` paging, response envelope
+   `{ data, total, limit, offset, has_more }`, deterministic ordering
+   `as_of_date DESC, fetched_at DESC, fx_rate_id DESC`. The dossier history endpoint
+   and the generic `/currencies/rates` endpoint share this contract. The unused
+   client `/currencies/rates` prefetch is removed; the dossier history table gains a
+   load-more control.
+3. **UI ownership.** C-PR-02 owns backend/rate response + sync controls in
+   `currencies.tsx`; C-PR-03 owns Currency 360 country/chart presentation. Shared types
+   live in one place and are not concurrently rewritten.
 
 **Required update rule:** After **each** implementation work item, migration, test batch, review correction, or PR milestone, update this section in the same commit/PR before starting the next item. Do not rely on chat-only progress updates. Every update must record the new status, date, owner, files changed, tests/acceptance evidence, blockers, and the next action. Do not mark an item **Done** until its tests and stated acceptance criteria are evidenced.
 
@@ -25,10 +47,10 @@
 |---|---|---|
 | Currency code audit and transcript reconciliation | **Done** | Full Meeting 4 transcript reconciled against the repository; this document is the deliverable. |
 | Product decisions: base-change semantics and rate-history contract | **Not started** | Decide before implementation Wave 1; record the decision here and in the relevant PR descriptions. |
-| **C-PR-01** — master invariants, deletion, reactivation, catalogue contract | **Not started** | Start after the product decision gate; update this row after every migration/service/test milestone. |
-| **C-PR-02** — FX sync operations and rate-history API contract | **Not started** | Can be developed in parallel with C-PR-01 and C-PR-03 once contracts are frozen. |
-| **C-PR-03** — Currency 360 discovery and chart UX | **Not started** | Can be developed in parallel with C-PR-01 and C-PR-02; keep UI ownership boundaries explicit. |
-| **C-PR-04** — performance, integration tests, and final acceptance hardening | **Not started** | Start after C-PR-01 through C-PR-03 are implemented and integrated. |
+| **C-PR-01** — master invariants, deletion, reactivation, catalogue contract | **Done** | Base invariant migration 13940 (repair + partial-unique index); `getBaseCode` fails loudly on multi-base; **formal rebase** on base change (`currency.rules.rebaseRates` + transactional `service.setBase`, writes `source='rebase'` overrides, refuses without an old→new anchor); UI base-confirm rewritten to explain the rebase + rebased-count note. Tests: `tests/unit/currency-base-rebase.test.js` (10), `client/src/features/settings/currencies.pr01.test.tsx` (5). Migration guards + client tsc green. |
+| **C-PR-02** — FX sync operations and rate-history API contract | **Done** | Migration 13941: `fx_sync_run` log + `fx_rate_daily.set_by_user_id` (plain col). Rate-history contract `{data,total,limit,offset,has_more}` shared by `/currencies/rates`, new `/currencies/rate-history`, and the dossier; deterministic ordering `as_of_date DESC, fetched_at DESC, fx_rate_id DESC`; override actor joined in. Sync core wrapped in one transaction (no partial write); `syncNow`/worker record a sync-run (ok/partial/skipped/error); new `/currencies/sync-status`. Client: unused `/currencies/rates` prefetch removed, freshness/no-key/disabled/error banner, "Set by" column, rate-history "Load more", override actor in audit list. Tests: `currency-sync-run` (7), `currency-sync-core` (4), `currencies.pr02` client (6). |
+| **C-PR-03** — Currency 360 discovery and chart UX | **Done** | Country list: interactive `CountryChips` — preview + accessible "Show all N"/"+N more" toggle + search, full backend array preserved (audit #1). Pickers: live result-count line so the list never dead-ends (audit #2). Rate chart: date-aware `Sparkline` with per-point date+exact-rate tooltips (hover + keyboard focus), endpoint date labels, aria date-range, and click/Enter drill-down that highlights + scrolls to the matching history row (audit #4). Tests: `currencies.pr03` (4), `smart-currency-picker` (2). tsc/lint clean (only pre-existing picker warnings). |
+| **C-PR-04** — performance, integration tests, and final acceptance hardening | **Done** | Dossier's four independent reads (rate history, last sync, override log, usage scan) now run concurrently via `Promise.all` instead of a serial await-chain (audit #10). Migration 13942: dynamically indexes every currency-referencing FK column the usage scan counts (from the same `pg_constraint` introspection the app uses; skips `fx_rate_daily`), so the usage/delete scans plan as index scans — additive, idempotent, guard-clean. Unused `/currencies/rates` prefetch confirmed removed (done in C-PR-02, pinned by `currencies.pr02`). Tests: `tests/unit/currency-dossier-acceptance.test.js` (4 — concurrent-reads proof, full contract assembly, base-shape degradation, NOT_FOUND) and DB-gated `tests/integration/currency-lifecycle.test.js` (5 — single-base invariant, second-base rejection, rate-history contract, FK index coverage, dossier assembly; skips without `DATABASE_URL`). All migration guards + `migration-constraint-ordering` (28) green; backend eslint clean. |
 | Runtime acceptance: tenant DB, provider, scheduler, browser, permissions, concurrency | **Not started** | Must run before Currency is called release-ready; current 96% rating is not runtime sign-off. |
 
 ### Required progress-update template
@@ -486,7 +508,7 @@ Remaining operational gaps:
 
 ### 10. Remove redundant rate loading and control usage-scan cost
 
-**Status: Open performance concern**
+**Status: Resolved (C-PR-04)** — Unused `/currencies/rates` prefetch removed (C-PR-02). Dossier's four independent reads now run concurrently via `Promise.all` (was a serial await-chain). Migration 13942 indexes every currency-referencing FK column the usage scan counts, discovered from the same `pg_constraint` introspection `usageForCode()` uses (so the set self-maintains as new FK columns are added; `fx_rate_daily` excluded). DB-gated integration test asserts index coverage for every such column.
 
 **Allegation/concern:** The Currency 360 should remain responsive as the tenant accumulates currencies, rates, and references.
 
@@ -512,7 +534,7 @@ Remaining operational gaps:
 
 ### 12. Add Currency-page and integration test coverage for all findings
 
-**Status: Open test/acceptance gap**
+**Status: Resolved (C-PR-04)** — Currency feature now has client tests (`currencies.pr01/02/03`, `smart-currency-picker`) covering the country list + clickable "more", picker result counts, rate pagination/chart drill-down, base confirmation/rebase, and sync banner states; service/repo tests (`currency-base-rebase`, `currency-sync-run`, `currency-sync-core`, `currency-dossier-acceptance`) cover the base invariant/rebase, stable rate pagination, override actor, sync-run recording, and concurrent dossier assembly; and a DB-gated `tests/integration/currency-lifecycle.test.js` exercises the migrated tenant schema (single-base invariant, second-base rejection, rate-history contract, FK index coverage, dossier assembly). Migration guards run in CI.
 
 **Code validation:** Current targeted automated coverage is useful but narrow:
 

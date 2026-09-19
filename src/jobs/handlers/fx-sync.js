@@ -14,9 +14,34 @@
 "use strict";
 const registry = require("../../services/tenant/registry.service");
 const sync = require("../../modules/master/currency/currency.sync");
+const repo = require("../../modules/master/currency/currency.repo");
 
 module.exports = async function fxSync(job) {
   const { tenantMeta, env = "live", base, quotes } = job.data || {};
   if (!tenantMeta) throw new Error("fx-sync job needs tenantMeta");
-  return registry.withTenantConnection(tenantMeta, env, async (c) => sync.syncRates(c, { base, quotes }));
+  return registry.withTenantConnection(tenantMeta, env, async (c) => {
+    // Record the nightly run in fx_sync_run so the master page can show when the
+    // scheduler last ran and its outcome (audit #6). trigger='cron', no actor.
+    // The record wraps the SAME shared core the "Sync now" button calls, so the
+    // two paths stay identical while each gets its own run row.
+    const runId = await repo.startSyncRun(c, { trigger: "cron", actorUserId: null });
+    try {
+      const result = await sync.syncRates(c, { base, quotes });
+      if (result.skipped === true) {
+        await repo.finishSyncRun(c, runId, { status: "skipped", reason: result.reason || null, base: result.base || null });
+      } else {
+        const status = result.unsupported && result.unsupported.length ? "partial" : "ok";
+        await repo.finishSyncRun(c, runId, {
+          status,
+          updatedCount: result.updated ? result.updated.length : 0,
+          unsupported: result.unsupported || [],
+          base: result.base || null,
+        });
+      }
+      return result;
+    } catch (e) {
+      await repo.finishSyncRun(c, runId, { status: "error", reason: e && e.message ? String(e.message).slice(0, 500) : "sync failed" });
+      throw e;
+    }
+  });
 };

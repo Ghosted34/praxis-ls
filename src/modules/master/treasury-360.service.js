@@ -202,7 +202,7 @@ async function _timeline(client, id, limit = 25) {
     "  FROM immutable_ledger il " +
     "  LEFT JOIN app_user u ON u.user_id = il.actor_user_id " +
     " WHERE il.entity_ref = $1 " +
-    " ORDER BY created_at DESC LIMIT $2",
+    " ORDER BY il.created_at DESC LIMIT $2",
     ["treasury_account:" + id, Math.min(Math.max(parseInt(limit, 10) || 25, 1), 200)],
   );
   return rows;

@@ -768,6 +768,19 @@ export declare namespace notificationInterrupt {
 }
 
 /**
+ * Which categories EMAIL by default — the opt-out exception to email's
+ * opt-in rule (every other category emails only when asked). Shared because
+ * the API hands the default to the EMAIL preference read and the Preferences
+ * matrix draws its checkbox from it. See rules/notification-email-default.js.
+ */
+export declare namespace notificationEmailDefault {
+  /** Categories whose EMAIL channel defaults ON. Today: tasks. */
+  const EMAIL_DEFAULT_CATEGORIES: ReadonlySet<string>;
+  /** The answer absent any preference row. */
+  function emailDefaultFor(category?: string | null): boolean;
+}
+
+/**
  * Where a notification about an `entity_ref` should take the reader.
  *
  * Shared because the API stamps `notification.link_url` from it when the row is

@@ -29,6 +29,14 @@ const CATEGORIES = [
   { key: "comms", label: "Mail & Messages", security: false },
   { key: "finance", label: "Finance", security: false },
   { key: "operations", label: "Operations", security: false },
+  // My Workspace tasks — pings, assignments, status moves, reminders. Its own
+  // bucket rather than a corner of "operations": the people a task notifies
+  // are the people already on it (assignee, author, watchers), a set that only
+  // grows by explicit acts, and it is the one category whose email defaults ON
+  // (see packages/shared/rules/notification-email-default.js) — "nobody on a
+  // task forgets it" is the module's whole promise, and it cannot be kept
+  // through a bell somebody does not keep open.
+  { key: "tasks", label: "Tasks", security: false },
   { key: "sales", label: "Sales & CRM", security: false },
   { key: "compliance", label: "Compliance", security: false },
   { key: "system", label: "System", security: false },
@@ -73,6 +81,10 @@ const DOMAIN_TO_CATEGORY = {
   goods_received: "operations", purchase_order: "operations", purchase_request: "operations",
   hr_contract: "operations", leave_allowance: "operations", vacancy: "operations", training: "operations",
   incident: "operations", work_order: "operations", fuel_log: "operations",
+  // My Workspace tasks (MOD-00A). Before this row every `task.*` event filed
+  // itself under "system", next to cache invalidations — so the people a ping
+  // had to reach could neither find the switch nor tell what it governed.
+  task: "tasks",
 
   // sales & CRM
   client: "sales", lead: "sales", campaign: "sales", contact_enquiry: "sales",

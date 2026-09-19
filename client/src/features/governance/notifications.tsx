@@ -17,7 +17,7 @@ import { useList, useResource, errMsg } from "@/lib/use-resource";
 import { tenant } from "@/lib/api-client";
 import { num, dateFmt, enumLabel } from "@/lib/format";
 import { PushOptIn } from "@/components/pwa/push-opt-in";
-import { notificationInterrupt } from "@praxis/shared";
+import { notificationInterrupt, notificationEmailDefault } from "@praxis/shared";
 import { RowActions } from "@/components/ui/row-actions";
 import { Link } from "react-router-dom";
 import { notificationLink } from "@/lib/notification-link";
@@ -69,6 +69,7 @@ const FALLBACK_CATEGORIES: Category[] = [
   { key: "approvals", label: "Approvals", security: false },
   { key: "finance", label: "Finance", security: false },
   { key: "operations", label: "Operations", security: false },
+  { key: "tasks", label: "Tasks", security: false },
   { key: "sales", label: "Sales & CRM", security: false },
   { key: "compliance", label: "Compliance", security: false },
   { key: "system", label: "System", security: false },
@@ -115,8 +116,10 @@ function PreferencesPanel() {
   );
 
   // Defaults when the user has set no explicit row: IN_APP on (cheap, in-product),
-  // outbound channels (EMAIL/SMS) off — they're opt-in so we never
-  // message someone who didn't ask. Mirrors notification.repo.isChannelEnabled.
+  // INTERRUPT from the shared rule, EMAIL from the shared per-category rule —
+  // opt-in everywhere except the tasks exception, which is opt-out because the
+  // people a task notifies are the people already on it — and SMS off (no SMS
+  // dispatch exists yet). Mirrors notification.repo.isChannelEnabled's defaults.
   const key = (c: string, ch: string) => `${ch}::${c}`;
   const current = React.useMemo(() => {
     const m: Record<string, boolean> = {};
@@ -133,7 +136,11 @@ function PreferencesPanel() {
               // a HIGH notification interrupts regardless, which is why the
               // rule takes priority separately.
               ? notificationInterrupt.defaultInterrupt({ priority: "NORMAL", category: c })
-              : false;
+              : ch === "EMAIL"
+                // Same shared rule the server hands to its preference read —
+                // one answer, or this checkbox says "off" while emails go out.
+                ? notificationEmailDefault.emailDefaultFor(c)
+                : false;
       }),
     );
     stored.forEach((p) => {

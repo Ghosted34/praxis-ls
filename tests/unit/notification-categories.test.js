@@ -14,6 +14,16 @@ describe("categoryFor — event domain → category", () => {
     ["payment.received", "finance"],
     ["vehicle.insurance.expiring", "operations"],
     ["employee.created", "operations"],
+    // MOD-00A — every task.* event files under its own bucket, not "system":
+    // the people a ping must reach need a switch they can find.
+    ["task.pinged", "tasks"],
+    ["task.assigned", "tasks"],
+    ["task.status_changed", "tasks"],
+    ["task.reminder_due", "tasks"],
+    // Calendar events are NOT tasks: a diary invitation is a different thing to
+    // tune than work somebody is owed, and folding both under "tasks" would
+    // make one switch govern two meanings.
+    ["calendar_event.created", "system"],
     ["client.created", "sales"],
     ["campaign.created", "sales"],
     ["document.signed", "compliance"],
@@ -34,6 +44,14 @@ describe("categoryFor — event domain → category", () => {
     expect(cats.CATEGORIES.find((c) => c.key === "security")).toMatchObject({
       security: true,
     });
+  });
+
+  test("tasks is its own tunable category, not a corner of System", () => {
+    const tasks = cats.CATEGORIES.find((c) => c.key === "tasks");
+    expect(tasks).toMatchObject({ label: "Tasks", security: false });
+    // It appears in the catalog exactly once, like every row the Preferences
+    // table renders — a duplicate key would render two switches for one truth.
+    expect(cats.CATEGORIES.filter((c) => c.key === "tasks")).toHaveLength(1);
   });
 });
 

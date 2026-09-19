@@ -689,6 +689,7 @@ function CurrencyDossier({
   >(null);
   const [busy, setBusy] = React.useState(false);
   const [actionErr, setActionErr] = React.useState<string | null>(null);
+  const [actionNote, setActionNote] = React.useState<string | null>(null);
 
   const reloadAll = () => {
     res.reload();
@@ -698,10 +699,20 @@ function CurrencyDossier({
   async function run(kind: "base" | "deactivate" | "activate" | "delete") {
     setBusy(true);
     setActionErr(null);
+    setActionNote(null);
     try {
-      if (kind === "base")
-        await tenant("/currencies/base", { method: "POST", body: { code } });
-      else if (kind === "delete")
+      if (kind === "base") {
+        const r = await tenant<{
+          base?: string;
+          previous_base?: string | null;
+          rebased?: { quote: string; rate: number }[];
+        }>("/currencies/base", { method: "POST", body: { code } });
+        const n = r.rebased?.length ?? 0;
+        if (n > 0)
+          setActionNote(
+            `${code} is now the base. ${n} ${n === 1 ? "rate was" : "rates were"} rebased from ${r.previous_base ?? "the old base"} — dated history is unchanged.`,
+          );
+      } else if (kind === "delete")
         await tenant(`/currencies/${code}`, { method: "DELETE" });
       else
         await tenant(`/currencies/${code}`, {
@@ -804,6 +815,23 @@ function CurrencyDossier({
           <div className="mt-3">
             <ErrorState message={actionErr} />
           </div>
+        )}
+        {actionNote && (
+          <Callout
+            tone="ok"
+            className="mt-3"
+            action={
+              <button
+                type="button"
+                className="text-sm underline"
+                onClick={() => setActionNote(null)}
+              >
+                Dismiss
+              </button>
+            }
+          >
+            {actionNote}
+          </Callout>
         )}
       </div>
 
@@ -1033,8 +1061,13 @@ function CurrencyDossier({
         body={
           <>
             New transactions and FX rates will be quoted against <b>{code}</b>.
-            Existing rates and history are kept exactly as they are — nothing is
-            recalculated.
+            The current working rates are <b>rebased</b> onto {code} in one step
+            (each pair is converted through the existing{" "}
+            {d.base ?? "base"}→{code} rate), so quotes stay correct immediately.
+            Dated rate history is preserved as-is and posted transactions keep
+            the rate they were stamped with — nothing historical is
+            reinterpreted. This needs a current {d.base ?? "base"}→{code} rate;
+            if none exists, sync or set it first.
           </>
         }
         confirmLabel="Set as base"

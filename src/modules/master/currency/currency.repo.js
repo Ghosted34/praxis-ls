@@ -1,6 +1,7 @@
 /** Currency + FX repository (MOD-08). All currency / fx_rate_daily SQL here. */
 "use strict";
 const { page } = require("../../../shared/db/query-helpers");
+const { AppError } = require("../../../utils/errors");
 
 /* ── Currency master ──────────────────────────────────────────────────────── */
 
@@ -16,9 +17,30 @@ async function listActiveCodes(client) {
   return rows.map((r) => r.code);
 }
 
-/** The tenant's base currency code, or null when none is flagged. */
+/**
+ * The tenant's base currency code, or null when none is flagged.
+ *
+ * FAILS LOUDLY on a corrupt multiple-base state instead of silently returning
+ * whichever row Postgres handed back first (the old `LIMIT 1`). Migration 13930
+ * repairs legacy drift and adds a partial unique index so two bases cannot exist
+ * going forward, but a tenant that has not yet taken 13930 could still be in the
+ * broken state — and resolving FX against an arbitrary base is exactly the silent
+ * corruption the audit (#7) flagged. Zero bases is a valid, expected state
+ * (a bare tenant mid-seed) and returns null; TWO OR MORE is not, and throws.
+ */
 async function getBaseCode(client) {
-  const { rows } = await client.query("SELECT code FROM currency WHERE is_base = true LIMIT 1");
+  const { rows } = await client.query(
+    "SELECT code FROM currency WHERE is_base = true ORDER BY code",
+  );
+  if (rows.length > 1) {
+    throw new AppError(
+      "BASE_CURRENCY_CORRUPT",
+      "More than one base currency is flagged (" +
+        rows.map((r) => r.code).join(", ") +
+        "). Apply migration 13930 or set the base again to repair before FX can resolve.",
+      500,
+    );
+  }
   return rows[0] ? rows[0].code : null;
 }
 
@@ -199,6 +221,26 @@ async function ratesForPair(client, base, quote, date) {
   return rows;
 }
 
+/**
+ * The latest WORKING rate for every quote against `base`, as of today —
+ * one row per quote, newest first, an override winning over a feed on the same
+ * date. This is the cross-rate table a base REBASE reads: to make NEW the base
+ * we need every current OLD→quote and OLD→NEW so we can derive NEW→quote and
+ * NEW→OLD. DISTINCT ON collapses each quote to its single current rate, which
+ * is exactly what "the current working rate for each pair" means.
+ */
+async function latestRatesFromBase(client, base) {
+  const { rows } = await client.query(
+    `SELECT DISTINCT ON (quote_code)
+            quote_code, rate, as_of_date::text AS as_of_date, source, is_override
+       FROM fx_rate_daily
+      WHERE base_code = $1 AND as_of_date <= CURRENT_DATE
+      ORDER BY quote_code, as_of_date DESC, is_override DESC, fetched_at DESC`,
+    [base],
+  );
+  return rows;
+}
+
 async function upsertRate(client, { base, quote, rate, asOfDate, source = "manual", isOverride = true }) {
   const { rows } = await client.query(
     "INSERT INTO fx_rate_daily (base_code, quote_code, rate, as_of_date, source, is_override) VALUES ($1,$2,$3,$4,$5,$6) " +
@@ -277,6 +319,7 @@ module.exports = {
   usageCounts,
   usageForCode,
   ratesForPair,
+  latestRatesFromBase,
   upsertRate,
   listRates,
   rateHistory,

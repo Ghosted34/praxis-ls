@@ -12,8 +12,9 @@ const repo = require("./currency.repo");
 const events = require("./currency.events");
 const dossierSvc = require("./currency.dossier");
 const sync = require("./currency.sync");
-const { pickRate, convert } = require("./currency.rules");
+const { pickRate, convert, rebaseRates } = require("./currency.rules");
 const { emitEvent, audit } = require("../../../shared/events/emit");
+const { atomically } = require("../../../shared/db/tx");
 const { AppError } = require("../../../utils/errors");
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -129,13 +130,71 @@ async function editCurrency(client, code, patch, actor = {}) {
   return row;
 }
 
+/**
+ * Change the base currency — FORMAL REBASE (Gate-0 decision, audit #7).
+ *
+ * A base change is not just a flag flip: the whole cross-rate table is anchored
+ * on the base, so the CURRENT working rates are rebased onto the new base in the
+ * same transaction (currency.rules.rebaseRates does the pure math):
+ *   · new→old  = 1 / (old→new)          keeps the old base priced under the new one
+ *   · new→quote = (old→quote)/(old→new)  cancels the old base out of every cross
+ * The rebased rows are written as-of today with source 'rebase', is_override=true
+ * so they win in the resolver immediately and are visibly distinct from a feed.
+ *
+ * DATED HISTORY IS NOT REWRITTEN. Old base→quote rows stay exactly as they are —
+ * posted transactions already stamp their own fx_rate at posting time, so no
+ * historical amount is reinterpreted. The rebase only sets the new CURRENT rate.
+ *
+ * A rebase requires a known old→new rate; without one there is no meaningful
+ * anchor and we refuse (NO_REBASE_RATE) rather than silently leave the new base
+ * unpriced. Flipping to the very first base (no prior base) is a plain flip.
+ *
+ * The whole thing runs in one transaction so a partial rebase can never leave
+ * two bases or a half-written cross table.
+ */
 async function setBase(client, code, actor = {}) {
   const existing = await repo.getCurrency(client, code);
   if (!existing) throw new AppError("NOT_FOUND", "Currency not found", 404);
-  const changed = await repo.setBase(client, code);
-  await emitEvent(client, { eventTypeKey: events.BASE_SET, moduleKey: events.MODULE, entityRef: "currency:" + code, actorUserId: actor.user_id || null });
-  await audit(client, { actorUserId: actor.user_id || null, action: events.BASE_SET, moduleKey: events.MODULE, entityRef: "currency:" + code, before: { base: existing.is_base ? code : null }, after: { base: code } });
-  return { base: code, changed };
+  if (existing.is_base) return { base: code, changed: [], rebased: [], skipped: "already-base" };
+
+  const oldBase = await repo.getBaseCode(client);
+  const asOf = today();
+
+  return atomically(client, async () => {
+    const rebased = [];
+    // Only rebase when there IS an old base to rebase FROM. The first-ever base
+    // (oldBase === null) has no cross table to convert.
+    if (oldBase && oldBase !== code) {
+      const rows = await repo.latestRatesFromBase(client, oldBase);
+      const { pairs, missing } = rebaseRates(rows, oldBase, code);
+      if (missing) {
+        throw new AppError(
+          "NO_REBASE_RATE",
+          `Cannot rebase onto ${code}: there is no current ${oldBase}→${code} rate to anchor the conversion. Sync or set that rate first, then change the base.`,
+          422,
+        );
+      }
+      for (const p of pairs) {
+        const row = await repo.upsertRate(client, {
+          base: code,
+          quote: p.quote,
+          rate: p.rate,
+          asOfDate: asOf,
+          source: "rebase",
+          isOverride: true,
+        });
+        rebased.push({ quote: p.quote, rate: Number(row.rate) });
+      }
+    }
+
+    const changed = await repo.setBase(client, code);
+    await emitEvent(client, { eventTypeKey: events.BASE_SET, moduleKey: events.MODULE, entityRef: "currency:" + code, actorUserId: actor.user_id || null, payload: { from: oldBase, to: code, rebased: rebased.length } });
+    if (rebased.length) {
+      await emitEvent(client, { eventTypeKey: events.BASE_REBASED, moduleKey: events.MODULE, entityRef: "currency:" + code, actorUserId: actor.user_id || null, payload: { from: oldBase, to: code, pairs: rebased.length } });
+    }
+    await audit(client, { actorUserId: actor.user_id || null, action: events.BASE_SET, moduleKey: events.MODULE, entityRef: "currency:" + code, before: { base: oldBase }, after: { base: code, rebased } });
+    return { base: code, previous_base: oldBase, changed, rebased };
+  });
 }
 
 async function removeCurrency(client, code, actor = {}) {

@@ -13,9 +13,31 @@
 
 ## Progress tracking — update after every work item
 
-**Current overall status:** Currency audit complete; implementation work has not started. The PR plan below is ready for execution.
+**Current overall status:** Gate 0 product/API decisions recorded (below); implementation in progress on branch `arena/01a0b8b7-praxis-ls` as four ordered commits (C-PR-01 → C-PR-02 → C-PR-03 → C-PR-04).
 
 **Last updated:** 2026-09-19
+
+### Gate 0 decisions (recorded before coding)
+
+1. **Base-change semantics — FORMAL REBASE.** Changing the base currency performs a
+   deterministic rate rebase: the current base→quote rates are recomputed so the new
+   base becomes the anchor (new_base→quote derived through the old cross-rates), the
+   old base gets a new base→old-base pair, and the change is recorded as an override
+   run (`is_override=true`, source `rebase`) so it is auditable and never overwrites a
+   manual feed silently. Historical rate rows under the old base are preserved as-is —
+   posted transactions already stamp their own `fx_rate` at posting time, so historical
+   financial amounts are never reinterpreted. Rebase only recomputes the *current*
+   working rate for each pair; it does not rewrite dated history.
+2. **Rate-history contract — offset + total + has_more.** Server-capped `limit`
+   (default 50, max 200), `offset` paging, response envelope
+   `{ data, total, limit, offset, has_more }`, deterministic ordering
+   `as_of_date DESC, fetched_at DESC, fx_rate_id DESC`. The dossier history endpoint
+   and the generic `/currencies/rates` endpoint share this contract. The unused
+   client `/currencies/rates` prefetch is removed; the dossier history table gains a
+   load-more control.
+3. **UI ownership.** C-PR-02 owns backend/rate response + sync controls in
+   `currencies.tsx`; C-PR-03 owns Currency 360 country/chart presentation. Shared types
+   live in one place and are not concurrently rewritten.
 
 **Required update rule:** After **each** implementation work item, migration, test batch, review correction, or PR milestone, update this section in the same commit/PR before starting the next item. Do not rely on chat-only progress updates. Every update must record the new status, date, owner, files changed, tests/acceptance evidence, blockers, and the next action. Do not mark an item **Done** until its tests and stated acceptance criteria are evidenced.
 
@@ -25,8 +47,8 @@
 |---|---|---|
 | Currency code audit and transcript reconciliation | **Done** | Full Meeting 4 transcript reconciled against the repository; this document is the deliverable. |
 | Product decisions: base-change semantics and rate-history contract | **Not started** | Decide before implementation Wave 1; record the decision here and in the relevant PR descriptions. |
-| **C-PR-01** — master invariants, deletion, reactivation, catalogue contract | **Not started** | Start after the product decision gate; update this row after every migration/service/test milestone. |
-| **C-PR-02** — FX sync operations and rate-history API contract | **Not started** | Can be developed in parallel with C-PR-01 and C-PR-03 once contracts are frozen. |
+| **C-PR-01** — master invariants, deletion, reactivation, catalogue contract | **Done** | Base invariant migration 13930 (repair + partial-unique index); `getBaseCode` fails loudly on multi-base; **formal rebase** on base change (`currency.rules.rebaseRates` + transactional `service.setBase`, writes `source='rebase'` overrides, refuses without an old→new anchor); UI base-confirm rewritten to explain the rebase + rebased-count note. Tests: `tests/unit/currency-base-rebase.test.js` (10), `client/src/features/settings/currencies.pr01.test.tsx` (5). Migration guards + client tsc green. |
+| **C-PR-02** — FX sync operations and rate-history API contract | **In progress** | Can be developed in parallel with C-PR-01 and C-PR-03 once contracts are frozen. |
 | **C-PR-03** — Currency 360 discovery and chart UX | **Not started** | Can be developed in parallel with C-PR-01 and C-PR-02; keep UI ownership boundaries explicit. |
 | **C-PR-04** — performance, integration tests, and final acceptance hardening | **Not started** | Start after C-PR-01 through C-PR-03 are implemented and integrated. |
 | Runtime acceptance: tenant DB, provider, scheduler, browser, permissions, concurrency | **Not started** | Must run before Currency is called release-ready; current 96% rating is not runtime sign-off. |

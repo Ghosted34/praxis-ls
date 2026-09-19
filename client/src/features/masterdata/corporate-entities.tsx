@@ -272,10 +272,47 @@ function EntityForm({
        * throws and still reaches `errMsg` below, because a validation failure
        * is a decision the server made and queueing it would only delay the
        * same answer.
+       *
+       * PR-02: the initial REGISTERED address is part of the same durable
+       * operation as the entity itself. The client builds `initial_address` from
+       * the registered-office fields and sends it on the same POST, so one
+       * server transaction owns both rows (Decision Q7 / CE-08 / CE-19). A
+       * successful create can no longer silently lose the address, and an
+       * offline create is not reported complete before both records exist —
+       * the outbox holds the combined payload and replays it atomically.
        */
+      // Build the initial REGISTERED address from the form's office fields.
+      // Kept in the same shape the dossier's address modal uses, so the
+      // validation path (entityCommon.addressCreate) is identical.
+      const addr = {
+        line1: v.address_line1.trim(),
+        line2: v.address_line2.trim(),
+        city: v.address_city.trim(),
+        region: v.address_region.trim(),
+        postal_code: v.address_postal_code.trim(),
+        country_code: (v.address_country_code || v.country_code || "").trim().toUpperCase(),
+        po_box: v.address_po_box.trim(),
+      };
+      const hasAddr = addr.line1 || addr.city || addr.po_box || addr.postal_code;
+      const initialAddress = hasAddr
+        ? {
+            type: "REGISTERED" as const,
+            line1: addr.line1 || null,
+            line2: addr.line2 || null,
+            city: addr.city || null,
+            region: addr.region || null,
+            postal_code: addr.postal_code || null,
+            country_code: addr.country_code || null,
+            po_box: addr.po_box || null,
+            is_primary: true,
+          }
+        : undefined;
+
       const result = isNew
         ? // An entity may be opened as a DRAFT and completed over several sittings —
           // gathering statutes, certificates and a cap table is not a one-form job.
+          // The address is part of the same queued operation, so offline creates
+          // hold both and report queued rather than partial success.
           await submitQueued<api.Entity>({
             path: "/entities",
             method: "POST",
@@ -285,6 +322,7 @@ function EntityForm({
               legal_name: v.legal_name.trim(),
               registration_status: (v.registration_status || undefined) as
                 api.EntityLifecycle | undefined,
+              ...(initialAddress ? { initial_address: initialAddress } : {}),
             },
             label: `New corporate entity — ${v.legal_name.trim() || v.code.trim()}`,
           })
@@ -304,40 +342,10 @@ function EntityForm({
         // Deliberately NOT closed. The user pressed Save and nothing has been
         // saved yet; closing the form would look identical to a success and is
         // exactly the lie this feature exists to stop telling.
+        // For a new entity the queued entry now includes the initial address,
+        // so "complete" is not reported before both records exist.
         setQueued(true);
         return;
-      }
-      // If a registered office was filled, create it as entity_address. The
-      // entity itself is created first — addresses are a nested collection with
-      // their own endpoint. Failure here is non-fatal: the entity exists and the
-      // address can be added from the dossier's Contacts & addresses tab.
-      try {
-        const addr = {
-          line1: v.address_line1.trim(),
-          line2: v.address_line2.trim(),
-          city: v.address_city.trim(),
-          region: v.address_region.trim(),
-          postal_code: v.address_postal_code.trim(),
-          country_code: (v.address_country_code || v.country_code || "").trim().toUpperCase(),
-          po_box: v.address_po_box.trim(),
-        };
-        const hasAddr = addr.line1 || addr.city || addr.po_box || addr.postal_code;
-        if (isNew && hasAddr && result.data?.entity_id) {
-          await api.addEntityChild(result.data.entity_id, "addresses", {
-            type: "REGISTERED",
-            line1: addr.line1 || null,
-            line2: addr.line2 || null,
-            city: addr.city || null,
-            region: addr.region || null,
-            postal_code: addr.postal_code || null,
-            country_code: addr.country_code || null,
-            po_box: addr.po_box || null,
-            is_primary: true,
-          });
-        }
-      } catch (e) {
-        // eslint-disable-next-line no-console
-        console.warn("Failed to create initial registered address", e);
       }
       onSaved(result.data);
       onClose();

@@ -15,6 +15,7 @@
  * hundred orders.
  */
 import * as React from "react";
+import { useDossierRefs } from "@/lib/use-dossier-refs";
 import { tr } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { DocButton } from "@/components/doc-button";
@@ -34,7 +35,7 @@ import {
   TRANSIT_ORDERS_PATH,
   TransitOrder360Modal,
 } from "./transit-order-360";
-import { nameMap, transitTone } from "./shared";
+import { transitTone } from "./shared";
 
 /* ── The list ──────────────────────────────────────────────────────────────── */
 
@@ -49,9 +50,17 @@ export function TransitOrdersPage() {
     () => api.transitOrderSummary(),
     [],
   );
-  const { rows: dossiers } = useList<api.Dossier>("/operations");
   const [creating, setCreating] = React.useState(false);
-  const dref = nameMap(dossiers, "dossier_id", "ref");
+  // The file column, named from the ids on this page rather than from the
+  // first fifty files in the tenant (13930).
+  const { byId: dossierById } = useDossierRefs(
+    React.useMemo(() => (rows || []).map((r) => r.dossier_id), [rows]),
+  );
+  const dref = React.useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const [id, row] of dossierById) if (row.ref) m[id] = String(row.ref);
+    return m;
+  }, [dossierById]);
 
   /*
    * OPENING AN ORDER IS TWO GESTURES — desktop navigates to the order's own

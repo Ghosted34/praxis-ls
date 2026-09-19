@@ -6,6 +6,7 @@
 import { pageShell } from "@/lib/layout";
 import { tr } from "@/lib/i18n";
 import * as React from "react";
+import { OperationsFilePicker } from "@/components/operations/file-picker";
 import { Button } from "@/components/ui/button";
 import { DocButton } from "@/components/doc-button";
 import { Input } from "@/components/ui/input";
@@ -28,8 +29,6 @@ const STATUS_TONE: Record<string, Tone> = {
   RETURNED: "ok",
   CANCELLED: "bad",
 };
-
-type Dossier = { dossier_id: string; ref?: string | null };
 
 /* Check-out / check-in odometer capture */
 function OdometerModal({
@@ -118,7 +117,6 @@ function NewDispatchForm({
     employee_id: string;
     full_name?: string;
   }>("/employees");
-  const { rows: dossiers } = useList<Dossier>("/operations");
   const [f, setF] = React.useState({
     vehicle_id: "",
     driver_employee_id: "",
@@ -184,17 +182,12 @@ function NewDispatchForm({
           label={tr("Operations file")}
           hint="Optional — driver time is costed here on return"
         >
-          <Select
-            value={f.dossier_id}
-            onChange={(e) => set("dossier_id", e.target.value)}
-          >
-            <option value="">—</option>
-            {(dossiers || []).map((d) => (
-              <option key={d.dossier_id} value={d.dossier_id}>
-                {d.ref || d.dossier_id.slice(0, 8)}
-              </option>
-            ))}
-          </Select>
+          <OperationsFilePicker
+            label={tr("Operations file")}
+            value={f.dossier_id || null}
+            onSelect={(picked) => set("dossier_id", picked.dossier_id)}
+            onClear={() => set("dossier_id", "")}
+          />
         </Field>
         {error && <ErrorState message={error} />}
         <div className="flex justify-end gap-2 pt-2">

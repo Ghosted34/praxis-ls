@@ -3,6 +3,8 @@
  *
  * Split out of `features/finance/pages.tsx` in Phase 3 (audit F7).
  */
+import { OperationsFilePicker } from "@/components/operations/file-picker";
+import { useDossierRefs } from "@/lib/use-dossier-refs";
 import { pageShell } from "@/lib/layout";
 import { tr } from "@/lib/i18n";
 import * as React from "react";
@@ -34,7 +36,6 @@ function AdvancePaymentForm({
   const { opts: entities } = useOptions(fin.loadEntities, open);
   const { opts: clients } = useOptions(fin.loadClients, open);
   const { opts: accounts } = useOptions(fin.loadPostableAccounts, open);
-  const { opts: dossiers } = useOptions(fin.loadDossiers, open);
 
   const [entityId, setEntityId] = React.useState("");
   const [clientId, setClientId] = React.useState("");
@@ -120,22 +121,13 @@ function AdvancePaymentForm({
               ))}
             </Select>
           </Field>
-          <Field
+          <OperationsFilePicker
             label={tr("Operations file")}
             hint="Links this to an operations file — sets service type and matches advances."
-          >
-            <Select
-              value={dossierId}
-              onChange={(e) => setDossierId(e.target.value)}
-            >
-              <option value="">No operations file</option>
-              {dossiers.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {optionLabel(o)}
-                </option>
-              ))}
-            </Select>
-          </Field>
+            value={dossierId || null}
+            onSelect={(picked) => setDossierId(picked.dossier_id)}
+            onClear={() => setDossierId("")}
+          />
           <Field label={tr("Amount")} required>
             <Input
               type="number"
@@ -205,9 +197,6 @@ export const ProformasPage = () => {
   const [clientName, setClientName] = React.useState<Record<string, string>>(
     {},
   );
-  const [dossierRef, setDossierRef] = React.useState<Record<string, string>>(
-    {},
-  );
 
   React.useEffect(() => {
     let live = true;
@@ -232,13 +221,26 @@ export const ProformasPage = () => {
         setClientName(Object.fromEntries(o.map((x) => [x.id, x.label]))),
       )
       .catch(() => {});
-    fin
-      .loadDossiers()
-      .then((o) =>
-        setDossierRef(Object.fromEntries(o.map((x) => [x.id, x.label]))),
-      )
-      .catch(() => {});
   }, []);
+
+  /*
+   * The File column, named from the ids ON THIS PAGE (13930).
+   *
+   * `loadDossiers()` reads `/operations` unpaged — the first fifty files — so
+   * an advance against the fifty-first showed eight characters of a uuid in
+   * the column that says which shipment the money belongs to.
+   */
+  const { byId: dossierById } = useDossierRefs(
+    React.useMemo(
+      () => (rows || []).map((r) => (r.dossier_id ? String(r.dossier_id) : null)),
+      [rows],
+    ),
+  );
+  const dossierRef = React.useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const [id, row] of dossierById) if (row.ref) m[id] = String(row.ref);
+    return m;
+  }, [dossierById]);
 
   const str = (r: Record<string, unknown>, k: string) =>
     r[k] == null ? "" : String(r[k]);

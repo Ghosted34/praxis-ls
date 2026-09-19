@@ -627,19 +627,6 @@ export type TreasuryAccount = {
 export const listTreasuryAccounts = () =>
   tenant<TreasuryAccount[]>("/treasury-accounts");
 
-/* operations-file option loader (ref + service key) — for tagging advances / invoices to a file */
-export async function loadDossiers(): Promise<Option[]> {
-  const rows = await tenant<Record<string, unknown>[]>("/operations");
-  return (rows || []).map((r) => ({
-    id: String(r.dossier_id),
-    label: String(r.ref || r.dossier_id),
-    extra:
-      r.service_name_en || r.service_key
-        ? String(r.service_name_en || r.service_key)
-        : undefined,
-  }));
-}
-
 /* read-only VAT/total preview for a draft invoice (HT / débours / TVA / TTC + open advance) */
 export type InvoiceTotals = {
   totals: {

@@ -67,7 +67,16 @@ export type DossierInput = {
   // pol_place_id/pod_place_id above.
   rate_provider_id?: string | null;
 };
-export const listDossiers = () => tenant<Dossier[]>("/operations");
+/**
+ * DELIBERATELY ABSENT: a `listDossiers()` that reads `/operations` unpaged.
+ *
+ * It existed, had no callers left once the pickers were unified, and was
+ * removed rather than kept (13930). `/operations` is clamped to 50 rows by
+ * `page()`, so any screen reaching for a whole-tenant list of files gets the
+ * first fifty and no indication of the rest — the bug this refactor exists to
+ * end. To NAME a file from its id use `useDossierRefs`; to LET SOMEBODY PICK
+ * one use `<OperationsFilePicker>`. Both ask the server for what they need.
+ */
 export const getDossier = (id: string) =>
   tenant<Dossier & { lines?: unknown[] }>(`/operations/${id}`);
 export const dossier360 = (id: string) =>

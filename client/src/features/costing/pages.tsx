@@ -42,13 +42,14 @@ import {
   statusLabel as cashStatusLabel,
   statusTone as cashStatusTone,
 } from "./cash-request-model";
+import { OperationsFilePicker } from "@/components/operations/file-picker";
+import { useDossierRef, useDossierRefs, refOf } from "@/lib/use-dossier-refs";
 import { useList, useResource, errMsg } from "@/lib/use-resource";
 import { money, money0, num, dateFmt, todayISO } from "@/lib/format";
 import { reportActionError } from "@/lib/action-error";
 import type { Entity } from "@/lib/masterdata-api";
 import { listCurrencies } from "@/lib/masterdata-api";
 import { DictionaryFinder } from "@/components/dictionary-finder";
-import type { Dossier } from "@/lib/operations-api";
 import * as api from "@/lib/costing-api";
 import { useDebounced } from "@/lib/use-debounced";
 // The worksheet owns the route and the status vocabulary; the register links
@@ -73,14 +74,6 @@ const TONES: Record<string, Tone> = {
 };
 const tone = (s?: string | null): Tone =>
   TONES[String(s || "").toUpperCase()] || "mute";
-const refOf = (rows: Dossier[] | null) => {
-  const m: Record<string, string> = {};
-  (rows || []).forEach((d) => {
-    m[d.dossier_id] = d.ref;
-  });
-  return m;
-};
-
 /* ═══════════════════ Costing sheets ═══════════════════ */
 
 /**
@@ -110,7 +103,8 @@ function CostingForm({
   onCreated: (id: string) => void;
 }) {
   const navigate = useNavigate();
-  const { rows: dossiers } = useList<Dossier>("/operations");
+  // The picked file itself, for the rate-provider hint below — resolved from
+  // the id rather than looked up in a clamped list of fifty (13930).
   const { rows: users } = useList<{
     user_id: string;
     full_name?: string | null;
@@ -132,7 +126,7 @@ function CostingForm({
    */
   const [existing, setExisting] = React.useState<ExistingCosting | null>(null);
 
-  const file = (dossiers || []).find((d) => d.dossier_id === dossierId);
+  const { file } = useDossierRef(dossierId || null);
   const openExisting = existing
     ? () => navigate(`${COSTING_BASE}/${existing.costing_id}`)
     : null;
@@ -182,24 +176,23 @@ function CostingForm({
         }}
       >
         <Field label={tr("Operations file")} required>
-          <Select
-            value={dossierId}
-            onChange={(e) => {
-              setDossierId(e.target.value);
+          <OperationsFilePicker
+            label={tr("Operations file")}
+            required
+            value={dossierId || null}
+            onSelect={(picked) => {
+              setDossierId(picked.dossier_id);
               // A different file may or may not have its own live costing —
               // don't strand yesterday's answer on today's question.
               setExisting(null);
               setError(null);
             }}
-          >
-            <option value="">—</option>
-            {(dossiers || []).map((d) => (
-              <option key={d.dossier_id} value={d.dossier_id}>
-                {d.ref}
-                {d.rate_provider_name ? ` — ${d.rate_provider_name}` : ""}
-              </option>
-            ))}
-          </Select>
+            onClear={() => {
+              setDossierId("");
+              setExisting(null);
+              setError(null);
+            }}
+          />
           {file && !file.rate_provider_id && (
             <p className="mt-1 micro">
               {tr(
@@ -449,7 +442,6 @@ export function CostingPage() {
 }
 
 export function CostTrackingPage() {
-  const { rows: dossiers } = useList<Dossier>("/operations");
   const [tab, setTab] = React.useState("summary");
   const [dossierId, setDossierId] = React.useState("");
 
@@ -473,19 +465,15 @@ export function CostTrackingPage() {
           ]}
         />
         {tab !== "summary" && (
-          <Select
-            aria-label="Filter by operations file"
-            value={dossierId}
-            onChange={(e) => setDossierId(e.target.value)}
-            className="max-w-xs"
-          >
-            <option value="">Select an operations file…</option>
-            {(dossiers || []).map((d) => (
-              <option key={d.dossier_id} value={d.dossier_id}>
-                {d.ref}
-              </option>
-            ))}
-          </Select>
+          <div className="max-w-xs">
+            <OperationsFilePicker
+              label="Filter by operations file"
+              placeholder="Select an operations file…"
+              value={dossierId || null}
+              onSelect={(picked) => setDossierId(picked.dossier_id)}
+              onClear={() => setDossierId("")}
+            />
+          </div>
         )}
       </div>
 
@@ -1418,7 +1406,6 @@ function CashRequestForm({
   onClose: () => void;
   onCreated: (id: string, loadFailed: string | null) => void;
 }) {
-  const { rows: dossiers } = useList<Dossier>("/operations");
   const { rows: validatorUsers } = useList<{
     user_id: string;
     full_name?: string | null;
@@ -1549,19 +1536,12 @@ function CashRequestForm({
           </Field>
           {category === "OPS" ? (
             <>
-              <Field label={tr("Operations file")}>
-                <Select
-                  value={dossierId}
-                  onChange={(e) => setDossierId(e.target.value)}
-                >
-                  <option value="">—</option>
-                  {(dossiers || []).map((d) => (
-                    <option key={d.dossier_id} value={d.dossier_id}>
-                      {d.ref}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
+              <OperationsFilePicker
+                label={tr("Operations file")}
+                value={dossierId || null}
+                onSelect={(picked) => setDossierId(picked.dossier_id)}
+                onClear={() => setDossierId("")}
+              />
               {/* The costing is RESOLVED from the file, never picked from a
                   list — see CostingGatePanel. */}
               <CostingGatePanel
@@ -1691,10 +1671,19 @@ export function CashRequestsPage() {
   // had loaded, so "Approved: 3" meant three ON THIS PAGE and was simply wrong
   // past the first fifty rows. Its own endpoint now, over the same filter.
   const kpis = useResource(() => api.cashRequestKpis(), []);
-  const { rows: dossiers } = useList<Dossier>("/operations");
   const [open, setOpen] = React.useState(false);
   const [busyId, setBusyId] = React.useState<string | null>(null);
-  const dref = refOf(dossiers);
+  /*
+   * The file column, named from the ids ON THIS PAGE (13930).
+   *
+   * It used to build a map from `useList("/operations")` — the first fifty
+   * files — so a cash request against the fifty-first showed "—" where a
+   * reference belongs. That is the same defect the comment above records for
+   * the KPI strip: counted in the browser, over whichever page had loaded.
+   */
+  const { byId: dossierById } = useDossierRefs(
+    React.useMemo(() => (rows || []).map((r) => r.dossier_id), [rows]),
+  );
 
   // The two money actions open a dialog; the three status moves are one call.
   const [disbursing, setDisbursing] = React.useState<api.CashRequest | null>(null);
@@ -1748,7 +1737,7 @@ export function CashRequestsPage() {
     {
       key: "dossier_id",
       label: "File",
-      render: (r) => (r.dossier_id ? dref[r.dossier_id] || "—" : "—"),
+      render: (r) => refOf(r.dossier_id ? dossierById.get(r.dossier_id) : null),
     },
     {
       key: "beneficiary",

@@ -19,10 +19,11 @@
  * reader nothing about what the template DOES.
  */
 import * as React from "react";
+import { OperationsFilePicker } from "@/components/operations/file-picker";
 import { tr } from "@/lib/i18n";
 import { PageContainer } from "@/components/layout/page-container";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
-import { Select, Modal } from "@/components/ui/modal";
+import { Modal } from "@/components/ui/modal";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { Callout } from "@/components/ui/callout";
 import { Button } from "@/components/ui/button";
@@ -580,7 +581,6 @@ function TemplatesPanel() {
 }
 
 export function MilestonesPage() {
-  const { rows: dossiers } = useList<api.Dossier>("/operations");
   const [dossierId, setDossierId] = React.useState("");
   /**
    * WHY TEMPLATES IS A TAB RATHER THAN THE FOURTH BLOCK DOWN.
@@ -598,19 +598,15 @@ export function MilestonesPage() {
   const [tab, setTab] = React.useState("chain");
 
   const dossierPicker = (
-    <Select
-      value={dossierId}
-      onChange={(e) => setDossierId(e.target.value)}
-      aria-label={tr("Operations file")}
-      className="w-full sm:w-72"
-    >
-      <option value="">Select an operations file…</option>
-      {(dossiers || []).map((d) => (
-        <option key={d.dossier_id} value={d.dossier_id}>
-          {d.ref}
-        </option>
-      ))}
-    </Select>
+    <div className="w-full sm:w-72">
+      <OperationsFilePicker
+        label={tr("Operations file")}
+        placeholder="Select an operations file…"
+        value={dossierId || null}
+        onSelect={(picked) => setDossierId(picked.dossier_id)}
+        onClear={() => setDossierId("")}
+      />
+    </div>
   );
 
   return (

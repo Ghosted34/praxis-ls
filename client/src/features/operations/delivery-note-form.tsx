@@ -609,8 +609,11 @@ export function DeliveryForm({
           hint="Search by reference, client, B/L or AWB. Everything below fills from the file."
         >
           <OperationsFilePicker
-            value={file?.ref || note?.dossier_ref || null}
+            // The ID, not the reference: the picker names the file itself, so
+            // this form no longer needs a ref on hand to show what it chose.
+            value={file?.dossier_id || note?.dossier_id || null}
             disabled={editing}
+            required
             onSelect={(picked) => void pickDossier(picked.dossier_id)}
           />
         </Field>

@@ -84,7 +84,6 @@ export function TaskList({
   /** Pre-narrowed to one operations file — what an Analytics drill-down
    *  carries in, and what the file's own 360 renders the tab with (13920). */
   dossierId,
-  dossierRef,
   onDossierChange,
 }: {
   audience: Audience;
@@ -92,7 +91,6 @@ export function TaskList({
   onOpen: (id: string) => void;
   onCreate: () => void;
   dossierId?: string | null;
-  dossierRef?: string | null;
   /** One stage of the picked file's chain. Set by the Analytics drill-down;
    *  it has no picker of its own here because a stage is only meaningful
    *  inside a file, and the file filter beside it already says which. */
@@ -217,36 +215,14 @@ export function TaskList({
             tab the user is reading. */}
         {onDossierChange && (
           <div className="min-w-[14rem]">
-            {dossierId ? (
-              <>
-                <label className="micro mb-1 block" htmlFor="task-list-file">
-                  Operations file
-                </label>
-                <div
-                  id="task-list-file"
-                  className="flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm"
-                >
-                  <span className="num min-w-0 truncate">{dossierRef || "Linked file"}</span>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => onDossierChange(null)}
-                  >
-                    Clear
-                  </Button>
-                </div>
-              </>
-            ) : (
-              <OperationsFilePicker
-                id="task-list-file"
-                label="Operations file"
-                placeholder="Any file — search ref, client, B/L…"
-                onSelect={(file) =>
-                  onDossierChange({ dossier_id: file.dossier_id, ref: file.ref })
-                }
-              />
-            )}
+            <OperationsFilePicker
+              id="task-list-file"
+              label="Operations file"
+              placeholder="Any file — search ref, client, B/L…"
+              value={dossierId}
+              onSelect={(file) => onDossierChange({ dossier_id: file.dossier_id, ref: file.ref })}
+              onClear={() => onDossierChange(null)}
+            />
           </div>
         )}
         {/* Whose work, when a drill-down named somebody. Named and droppable for

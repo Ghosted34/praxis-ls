@@ -90,9 +90,45 @@ async function update(client, id, fields) {
  *
  * @returns {Promise<{rows: Array<object>, total: number}>}
  */
+/** A uuid, as Postgres will accept one. Anything else is a 22P02 at the driver. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * The `ids` filter, parsed defensively (13930).
+ *
+ * This route has no zod validator — reads on this module never had one — so
+ * the parsing is here, next to the SQL that would otherwise carry a malformed
+ * value to the driver. A bad uuid is SQLSTATE 22P02, which surfaces as a 500
+ * on a list endpoint a picker calls on every form open; dropping it instead
+ * degrades to "that one id resolved to nothing", which is what the caller's UI
+ * already renders for a file it cannot see.
+ *
+ * Capped at 200 — the same ceiling `page()` puts on a page — because the
+ * callers are resolving the ids ON ONE PAGE of rows, never an unbounded set,
+ * and an uncapped `= ANY($n)` is a way to ask for the whole table by URL.
+ */
+const MAX_IDS = 200;
+function parseIds(raw) {
+  if (!raw) return null;
+  const parts = Array.isArray(raw) ? raw : String(raw).split(",");
+  const ids = [...new Set(parts.map((v) => String(v).trim()).filter((v) => UUID_RE.test(v)))];
+  return ids.length ? ids.slice(0, MAX_IDS) : null;
+}
+
 async function listPaged(client, q = {}) {
-  const { limit, offset } = page(q);
+  // Resolve a known set of files by id — what a picker does to name the file a
+  // form already holds, and what a table does to turn its rows' dossier_id
+  // into a reference. Both used to read the first 50 files and hope; on any
+  // tenant past its fiftieth file that silently showed a raw uuid instead.
+  const ids = parseIds(q.ids);
+  // An id list is its OWN page: the caller named exactly which rows it wants,
+  // so `page()`'s default of 50 would drop the 51st id on the floor and the
+  // caller would render a uuid for it — the very failure this filter exists to
+  // end, reintroduced one layer up. `parseIds` has already capped the list at
+  // 200, which is also `page()`'s own ceiling, so this can never widen a page.
+  const { limit, offset } = page(ids && !q.limit ? { ...q, limit: ids.length } : q);
   const params = [limit, offset]; const wh = [];
+  if (ids) { params.push(ids); wh.push("d.dossier_id = ANY($" + params.length + "::uuid[])"); }
   if (q.entity_id) { params.push(q.entity_id); wh.push("d.entity_id = $" + params.length); }
   if (q.client_id) { params.push(q.client_id); wh.push("d.client_id = $" + params.length); }
   if (q.status) { params.push(q.status); wh.push("d.status = $" + params.length); }
@@ -359,4 +395,4 @@ async function vaultDocuments(client, dossierId) {
 // it against the columns the migrations actually declare. That test is the link
 // between this file and the schema — the link whose absence let `title` be
 // written for months against a column that did not exist.
-module.exports = { insert, get, update, list, listPaged, overview, headerJoins, vaultDocuments, WRITABLE };
+module.exports = { insert, get, update, list, listPaged, overview, headerJoins, vaultDocuments, WRITABLE, parseIds, MAX_IDS };

@@ -6,6 +6,7 @@
 import { pageShell } from "@/lib/layout";
 import { tr } from "@/lib/i18n";
 import * as React from "react";
+import { OperationsFilePicker } from "@/components/operations/file-picker";
 import { Button } from "@/components/ui/button";
 import { DocButton } from "@/components/doc-button";
 import { Modal, Field, Select } from "@/components/ui/modal";
@@ -17,7 +18,7 @@ import { PageHeader, DataList, type Column } from "@/components/data-list";
 import { TransitionButtons, type Transition } from "@/components/ui/workflow";
 import { ScreenAi } from "@/components/screen-ai";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
-import { useResource, useList, errMsg } from "@/lib/use-resource";
+import { useResource, errMsg } from "@/lib/use-resource";
 import { dateFmt } from "@/lib/format";
 import * as api from "@/lib/wms-api";
 import { reportActionError } from "@/lib/action-error";
@@ -33,8 +34,6 @@ const QA_LABEL: Record<string, string> = {
   PASSED: "Passed",
   REJECTED: "Rejected",
 };
-
-type Dossier = { dossier_id: string; ref?: string | null };
 
 /* QA pass — choose the putaway location the received goods slot into. */
 function PassModal({
@@ -124,7 +123,6 @@ function NewGrnForm({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const { rows: dossiers } = useList<Dossier>("/operations");
   const [dossierId, setDossierId] = React.useState("");
   const [lines, setLines] = React.useState<GrnLine[]>([blankGrnLine()]);
   const setLine = (i: number, patch: Partial<GrnLine>) =>
@@ -169,17 +167,12 @@ function NewGrnForm({
           label={tr("Operations file")}
           hint="Optional — the operation this delivery belongs to"
         >
-          <Select
-            value={dossierId}
-            onChange={(e) => setDossierId(e.target.value)}
-          >
-            <option value="">—</option>
-            {(dossiers || []).map((d) => (
-              <option key={d.dossier_id} value={d.dossier_id}>
-                {d.ref || d.dossier_id.slice(0, 8)}
-              </option>
-            ))}
-          </Select>
+          <OperationsFilePicker
+            label={tr("Operations file")}
+            value={dossierId || null}
+            onSelect={(picked) => setDossierId(picked.dossier_id)}
+            onClear={() => setDossierId("")}
+          />
         </Field>
         <div className="space-y-2">
           <div className="micro">Received items</div>

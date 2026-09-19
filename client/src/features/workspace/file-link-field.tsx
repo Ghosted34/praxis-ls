@@ -28,7 +28,6 @@
 import * as React from "react";
 import { Field } from "@/components/ui/modal";
 import { NativeSelect } from "@/components/ui/select";
-import { Button } from "@/components/ui/button";
 import { OperationsFilePicker } from "@/components/operations/file-picker";
 import type { PickedFile } from "@/components/operations/file-picker";
 import { milestonesByDossier } from "@/lib/operations-api";
@@ -88,53 +87,26 @@ export function FileLinkField({
   }, [dossierId]);
 
   function pick(file: PickedFile) {
-    onChange({
-      dossier_id: file.dossier_id,
-      dossier_ref: file.ref,
-      dossier_client_name: file.client_name ?? null,
-      // A new file means the old file's stage is meaningless, not carried over.
-      milestone_instance_id: null,
-    });
+    // A new file means the old file's stage is meaningless, not carried over.
+    onChange({ dossier_id: file.dossier_id, milestone_instance_id: null });
   }
 
   return (
     <>
-      {dossierId ? (
-        <Field
-          label="Operations file"
-          htmlFor={`${idPrefix}-file`}
-          hint="The work still belongs to whoever it is assigned to — linking it only makes it visible on the file."
-        >
-          <div
-            id={`${idPrefix}-file`}
-            className="flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm"
-          >
-            <span className="min-w-0 truncate">
-              <span className="num font-medium">{value.dossier_ref || tr("Linked file")}</span>
-              {value.dossier_client_name && (
-                <span className="text-muted-foreground"> · {value.dossier_client_name}</span>
-              )}
-            </span>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              disabled={disabled}
-              onClick={() => onChange(EMPTY_LINK)}
-            >
-              Clear
-            </Button>
-          </div>
-        </Field>
-      ) : (
-        <OperationsFilePicker
-          id={`${idPrefix}-file`}
-          label="Operations file"
-          placeholder={tr("Search by reference, client, B/L or AWB…")}
-          disabled={disabled}
-          onSelect={pick}
-        />
-      )}
+      {/*
+        One control for both states. The picker names the chosen file itself
+        from its id, so this no longer hand-rolls a "chosen" row beside the
+        search — which is what let the two drift apart in the first place.
+      */}
+      <OperationsFilePicker
+        id={`${idPrefix}-file`}
+        label="Operations file"
+        value={dossierId}
+        disabled={disabled}
+        hint="The work still belongs to whoever it is assigned to — linking it only makes it visible on the file."
+        onSelect={pick}
+        onClear={() => onChange(EMPTY_LINK)}
+      />
 
       {/* Only once a file is picked, and only when it HAS a chain: a select
           whose sole option is "No milestone" teaches nothing and takes a row

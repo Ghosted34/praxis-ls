@@ -76,7 +76,11 @@ describe("FileLinkField — the stage set", () => {
     milestonesByDossier.mockResolvedValue(CHAIN);
     const { container } = render(<Harness initial={LINKED} />);
     const group = await screen.findByRole("group", { name: "Milestones" });
-    const boxes = within(group).getAllByRole("checkbox");
+    // The group is rendered WHILE the chain loads (aria-busy, "Loading
+    // milestones…"), so finding it proves nothing about the chips. Await the
+    // chips themselves — on a loaded runner the group can settle before the
+    // setStages re-render commits, and getAllByRole then reads a spinner.
+    const boxes = await within(group).findAllByRole("checkbox");
     expect(boxes.map((b) => b.textContent)).toEqual([
       "1Pre-alert & work order",
       "2Shipping documents verified",
@@ -93,6 +97,9 @@ describe("FileLinkField — the stage set", () => {
     const onChange = vi.fn();
     render(<Harness initial={LINKED} onChange={onChange} />);
     const group = await screen.findByRole("group", { name: "Milestones" });
+    // Same race as above: the group exists from the first loading paint, the
+    // checkboxes only once the chain resolves. Await one chip before ticking.
+    await within(group).findByRole("checkbox", { name: /Shipping documents verified/ });
     fireEvent.click(within(group).getByRole("checkbox", { name: /Shipping documents verified/ }));
     fireEvent.click(within(group).getByRole("checkbox", { name: /Customs declaration lodged/ }));
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ milestone_instance_ids: ["m2", "m3"] }));

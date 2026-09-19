@@ -20,24 +20,32 @@
  */
 import * as React from "react";
 import { tr } from "@/lib/i18n";
-import { Pill } from "@/components/ui/pill";
+import { Pill, type Tone } from "@/components/ui/pill";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
 import { EmptyState, ErrorState, LoadingRow } from "@/components/ui/states";
 import { errMsg } from "@/lib/use-resource";
 import { money, dateFmt } from "@/lib/format";
 import * as recon from "@/lib/reconciliation-api";
+import { usePrompt } from "@/components/ui/use-prompt";
 
 /**
  * BEAC notes and coins, largest first.
  *
- * Hard-coded to XAF because that is the currency of every account this screen
- * will meet in the CEMAC franc zone, and a tenant counting a second currency
- * needs a different list rather than a longer one. When that day comes this
- * becomes a lookup keyed on the account's currency; until then a fabricated
- * generality would be a worse lie than the constant.
+ * Denomination grids configured per currency. Defaults to CEMAC / BEAC (XAF).
  */
-const XAF_DENOMINATIONS = [10000, 5000, 2000, 1000, 500, 100, 50, 25, 10, 5];
+const CURRENCY_DENOMINATIONS: Record<string, number[]> = {
+  XAF: [10000, 5000, 2000, 1000, 500, 100, 50, 25, 10, 5, 2, 1],
+  XOF: [10000, 5000, 2000, 1000, 500, 100, 50, 25, 10, 5],
+  EUR: [500, 200, 100, 50, 20, 10, 5, 2, 1, 0.5, 0.2, 0.1, 0.05, 0.02, 0.01],
+  USD: [100, 50, 20, 10, 5, 2, 1, 0.5, 0.25, 0.1, 0.05, 0.01],
+};
+const DEFAULT_DENOMINATIONS = [10000, 5000, 2000, 1000, 500, 100, 50, 25, 10, 5];
+
+function getDenominationsForCurrency(curr: string): number[] {
+  const upper = (curr || "").toUpperCase();
+  return CURRENCY_DENOMINATIONS[upper] || DEFAULT_DENOMINATIONS;
+}
 
 const num = (v: unknown) => Number(v ?? 0);
 
@@ -52,9 +60,13 @@ export function CashCountSheet({
   const [counts, setCounts] = React.useState<Record<number, string>>({});
   const [history, setHistory] = React.useState<recon.CashCount[] | null>(null);
   const [reason, setReason] = React.useState("");
+  const [witnessUserId, setWitnessUserId] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [notice, setNotice] = React.useState<string | null>(null);
+  const [prompt, promptDialog] = usePrompt();
+
+  const activeDenominations = React.useMemo(() => getDenominationsForCurrency(currency), [currency]);
 
   const load = React.useCallback(async () => {
     try {
@@ -66,7 +78,7 @@ export function CashCountSheet({
 
   React.useEffect(() => { void load(); }, [load]);
 
-  const denominations = XAF_DENOMINATIONS
+  const denominations = activeDenominations
     .map((note) => ({ note, qty: Math.max(0, Math.floor(Number(counts[note] || 0))) }))
     .filter((d) => Number.isFinite(d.qty));
 
@@ -86,6 +98,7 @@ export function CashCountSheet({
       const row = await recon.recordCashCount({
         treasury_account_id: accountId,
         denominations: denominations.filter((d) => d.qty > 0),
+        witness_user_id: witnessUserId.trim() || null,
         variance_reason: reason || null,
       });
       const diff = num(row.difference);
@@ -96,6 +109,7 @@ export function CashCountSheet({
       );
       setCounts({});
       setReason("");
+      setWitnessUserId("");
       await load();
     } catch (e) {
       setError(errMsg(e));
@@ -143,7 +157,7 @@ export function CashCountSheet({
               </tr>
             </thead>
             <tbody>
-              {XAF_DENOMINATIONS.map((note) => {
+              {activeDenominations.map((note) => {
                 const qty = Math.max(0, Math.floor(Number(counts[note] || 0)));
                 return (
                   <tr key={note} className="border-t">
@@ -180,18 +194,33 @@ export function CashCountSheet({
           </Callout>
         )}
 
-        <div>
-          <label className="micro text-muted-foreground" htmlFor="cash-variance">
-            {tr("Explanation, if the count will not agree with the books")}
-          </label>
-          <textarea
-            id="cash-variance"
-            rows={2}
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-            placeholder={tr("e.g. 5 000 advanced to the driver, receipt not yet filed")}
-            className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm text-foreground"
-          />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div>
+            <label className="micro text-muted-foreground" htmlFor="cash-witness">
+              {tr("Witness user ID (optional)")}
+            </label>
+            <input
+              id="cash-witness"
+              type="text"
+              value={witnessUserId}
+              onChange={(e) => setWitnessUserId(e.target.value)}
+              placeholder={tr("User UUID of count witness")}
+              className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm text-foreground"
+            />
+          </div>
+          <div>
+            <label className="micro text-muted-foreground" htmlFor="cash-variance">
+              {tr("Explanation, if the count will not agree with the books")}
+            </label>
+            <textarea
+              id="cash-variance"
+              rows={2}
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder={tr("e.g. 5 000 advanced to the driver, receipt not yet filed")}
+              className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm text-foreground"
+            />
+          </div>
         </div>
 
         {error && <ErrorState message={error} />}
@@ -221,12 +250,16 @@ export function CashCountSheet({
                   <th className="px-3 py-2 text-right font-medium">{tr("Ledger")}</th>
                   <th className="px-3 py-2 text-right font-medium">{tr("Difference")}</th>
                   <th className="px-3 py-2 text-left font-medium">{tr("Status")}</th>
-                  <th className="px-3 py-2" />
+                  <th className="px-3 py-2 text-right font-medium">{tr("Actions")}</th>
                 </tr>
               </thead>
               <tbody>
                 {history.map((row) => {
                   const diff = num(row.difference);
+                  const tone: Tone =
+                    row.status === "APPROVED_LOCKED" ? "ok" :
+                    row.status === "ATTESTED" ? "blue" :
+                    row.status === "CANCELLED" ? "mute" : "warn";
                   return (
                     <tr key={row.cash_count_id} className="border-t">
                       <td className="px-3 py-1.5 whitespace-nowrap">{dateFmt(row.counted_on)}</td>
@@ -236,33 +269,111 @@ export function CashCountSheet({
                         {money(diff, row.currency)}
                       </td>
                       <td className="px-3 py-1.5">
-                        <Pill tone={row.status === "DRAFT" ? "warn" : "ok"}>{row.status.toLowerCase()}</Pill>
+                        <Pill tone={tone}>{row.status.toLowerCase().replace("_", " ")}</Pill>
                         {row.over_float_limit && <span className="micro ml-2 text-muted-foreground">{tr("over float")}</span>}
+                        {row.adjustment_entry_id && (
+                          <span className="micro ml-2 text-primary-ink font-medium" title={tr("Draft adjustment entry linked")}>
+                            {tr("entry proposed")}
+                          </span>
+                        )}
                       </td>
                       <td className="px-3 py-1.5 text-right">
-                        {row.status === "DRAFT" ? (
-                          <Button
-                            variant="outline"
-                            disabled={busy}
-                            onClick={() => void act(
-                              () => recon.attestCashCount(row.cash_count_id, row.variance_reason || reason || undefined),
-                              tr("Count attested."),
-                            )}
-                          >
-                            {tr("Attest")}
-                          </Button>
-                        ) : (
-                          <Button
-                            variant="outline"
-                            disabled={busy}
-                            onClick={() => void act(
-                              () => recon.renderCashCountDocument(row.cash_count_id),
-                              tr("Count sheet issued and filed in the vault."),
-                            )}
-                          >
-                            {tr("Issue sheet")}
-                          </Button>
-                        )}
+                        <div className="flex items-center justify-end gap-1.5">
+                          {row.status === "DRAFT" && (
+                            <>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={busy}
+                                onClick={() => void act(
+                                  () => recon.attestCashCount(row.cash_count_id, row.variance_reason || reason || undefined),
+                                  tr("Count attested."),
+                                )}
+                              >
+                                {tr("Attest")}
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                disabled={busy}
+                                onClick={async () => {
+                                  const cancelReason = await prompt({
+                                    title: tr("Cancel Cash Count"),
+                                    label: tr("Reason for cancelling count (allows recount)"),
+                                    placeholder: tr("e.g. Discrepancy explained, recount requested"),
+                                  });
+                                  if (cancelReason !== null) {
+                                    void act(
+                                      () => recon.cancelCashCount(row.cash_count_id, cancelReason || undefined),
+                                      tr("Count cancelled."),
+                                    );
+                                  }
+                                }}
+                              >
+                                {tr("Cancel")}
+                              </Button>
+                            </>
+                          )}
+                          {row.status === "ATTESTED" && (
+                            <>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={busy}
+                                onClick={() => void act(
+                                  () => recon.approveCashCount(row.cash_count_id, true),
+                                  tr("Cash count approved and locked."),
+                                )}
+                              >
+                                {tr("Approve")}
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={busy}
+                                onClick={() => void act(
+                                  () => recon.renderCashCountDocument(row.cash_count_id),
+                                  tr("Count sheet issued and filed in the vault."),
+                                )}
+                              >
+                                {tr("Issue sheet")}
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                disabled={busy}
+                                onClick={async () => {
+                                  const cancelReason = await prompt({
+                                    title: tr("Cancel Cash Count"),
+                                    label: tr("Reason for cancelling count (allows recount)"),
+                                    placeholder: tr("e.g. Discrepancy explained, recount requested"),
+                                  });
+                                  if (cancelReason !== null) {
+                                    void act(
+                                      () => recon.cancelCashCount(row.cash_count_id, cancelReason || undefined),
+                                      tr("Count cancelled."),
+                                    );
+                                  }
+                                }}
+                              >
+                                {tr("Cancel")}
+                              </Button>
+                            </>
+                          )}
+                          {row.status === "APPROVED_LOCKED" && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={busy}
+                              onClick={() => void act(
+                                () => recon.renderCashCountDocument(row.cash_count_id),
+                                tr("Count sheet issued and filed in the vault."),
+                              )}
+                            >
+                              {tr("Issue sheet")}
+                            </Button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -275,6 +386,7 @@ export function CashCountSheet({
           {tr("Attesting is the custodian saying the money was there. A count that disagrees with the books cannot be attested until the difference is explained.")}
         </p>
       </section>
+      {promptDialog}
     </div>
   );
 }

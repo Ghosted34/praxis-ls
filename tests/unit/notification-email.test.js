@@ -85,6 +85,26 @@ test("non-security email sends when the category is opted in", async () => {
   expect(email.send).toHaveBeenCalledTimes(1);
 });
 
+test("tasks email is opt-OUT: the category default sends without a stored row", async () => {
+  // No stored EMAIL row: the mock answers with the default notify() handed it
+  // for the tasks category — true. A ping, assignment or reminder therefore
+  // emails a connected person who never visited Preferences.
+  repo.isChannelEnabled.mockImplementation(async (_c, _u, ch) => ch !== "SMS");
+  await svc.notify(client, {
+    userId: "u",
+    eventTypeKey: "task.pinged",
+    title: "A colleague pinged you about a task",
+  });
+  expect(email.send).toHaveBeenCalledTimes(1);
+  expect(repo.isChannelEnabled).toHaveBeenCalledWith(
+    client,
+    "u",
+    "EMAIL",
+    "tasks",
+    true,
+  );
+});
+
 test("email send failure is swallowed; in-app row is still returned", async () => {
   repo.isChannelEnabled.mockResolvedValue(true);
   email.send.mockRejectedValueOnce(new Error("smtp down"));

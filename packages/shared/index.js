@@ -17,6 +17,7 @@ const ledger = require("./rules/ledger");
 const marks = require("./rules/marks");
 const entityRoute = require("./rules/entity-route");
 const notificationInterrupt = require("./rules/notification-interrupt");
+const notificationEmailDefault = require("./rules/notification-email-default");
 const workSchedule = require("./rules/work-schedule");
 const pwaDesign = require("./pwa-design");
 const countries = require("./data/countries");
@@ -63,6 +64,11 @@ exports.entityRoute = entityRoute;
 // listener uses it to decide whether to make a noise, and the Preferences
 // matrix draws the default from it for a user who has set none.
 exports.notificationInterrupt = notificationInterrupt;
+// Which categories email by default (the tasks opt-out exception to email's
+// opt-in rule). Shared for the same reason the interrupt rule is: the API
+// hands the default to the EMAIL preference read, and the Preferences matrix
+// draws its checkbox from it — two callers, one answer, no drift.
+exports.notificationEmailDefault = notificationEmailDefault;
 // Canonical ISO country reference (code, name, phone, currency, per-jurisdiction
 // registration requirements) — the API, the seed and the client picker's source.
 /*

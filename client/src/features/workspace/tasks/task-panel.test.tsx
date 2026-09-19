@@ -432,6 +432,33 @@ describe("watchers and pings", () => {
     ).toBeInTheDocument();
   });
 
+  it("names every person the ping will reach, with why they are on it", async () => {
+    const user = userEvent.setup();
+    show(watched);
+    await user.click(await screen.findByRole("button", { name: /Ping everyone on this task/ }));
+    // "Everyone" was a black box until after the send — the count in the toast
+    // is an audit, not a preview. The composer says the list out loud, with the
+    // same roles the server's own recipient rule uses.
+    const list = await screen.findByLabelText("Who the ping will reach");
+    expect(list).toHaveTextContent("JBS Praxis");
+    expect(list).toHaveTextContent(/author, assignee/);
+    expect(list).toHaveTextContent("Ada Lovelace");
+    expect(list).toHaveTextContent(/watching/);
+    // u-test is the reader: a ping never goes to the person who sends it.
+    expect(list).not.toHaveTextContent("Test Operator");
+  });
+
+  it("disables the ping when there is nobody to ping, and says why", async () => {
+    // Written and assigned to yourself, nobody watching: the server would
+    // refuse the send with a 422 — said here, on the button, before the click.
+    show(task({ created_by: "u-test", created_by_name: "Test Operator", assigned_to: "u-test", assigned_to_name: "Test Operator", watchers: [] }));
+    const button = await screen.findByRole("button", { name: /Ping everyone on this task/ });
+    expect(button).toBeDisabled();
+    expect(
+      await screen.findByText(/There is nobody to ping — assign the task or add a watcher first/),
+    ).toBeInTheDocument();
+  });
+
   it("sends the ping through the task's own endpoint", async () => {
     const user = userEvent.setup();
     show(watched);

@@ -412,6 +412,8 @@ export type EntityRegistration = {
   expires_on?: string | null;
   is_primary?: boolean;
   verified?: boolean;
+  verified_by?: string | null;
+  verified_at?: string | null;
   notes?: string | null;
 };
 export type EntityEstablishment = {
@@ -908,6 +910,23 @@ export const updateEntityChild = <T>(
 export const verifyEntityDocument = (entityId: string, documentId: string) =>
   tenant<EntityDocument>(
     `/entities/${entityId}/documents/${documentId}/verify`,
+    { method: "POST" },
+  );
+/** MOD-01 approval transitions; ordinary registration PATCH cannot write these fields. */
+export const verifyEntityRegistration = (
+  entityId: string,
+  registrationId: string,
+) =>
+  tenant<EntityRegistration>(
+    `/entities/${entityId}/registrations/${registrationId}/verify`,
+    { method: "POST" },
+  );
+export const unverifyEntityRegistration = (
+  entityId: string,
+  registrationId: string,
+) =>
+  tenant<EntityRegistration>(
+    `/entities/${entityId}/registrations/${registrationId}/unverify`,
     { method: "POST" },
   );
 export const deleteEntityChild = (

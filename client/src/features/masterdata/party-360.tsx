@@ -35,6 +35,7 @@ import {
   readFileAsDataUrl,
 } from "@/lib/vault-file";
 import * as api from "@/lib/masterdata-api";
+import { useUrlTab } from "@/lib/use-url-tab";
 import { ComposeIconButton as MailIconButton } from "@/features/comms/inbox/composer/compose-icon-button";
 import {
   KpiDetailsModal,
@@ -1369,7 +1370,13 @@ export function PartyDossier({
     () => api.listDocumentTypes(kind === "client" ? "CLIENT" : "SUPPLIER"),
     [kind],
   );
-  const [tab, setTab] = React.useState<Tab>("Overview");
+  // `?tab=` (use-url-tab), not local state: the tab survives a reload and a
+  // link can land on it — same house pattern as entity-360. "Overview" is the
+  // fallback, so the param is omitted there and a bare URL stays clean.
+  const [tab, setTab] = useUrlTab<Tab>(
+    kind === "client" ? CLIENT_TABS : SUPPLIER_TABS,
+    "Overview",
+  );
   const [adding, setAdding] = React.useState<
     | null
     | "contact"

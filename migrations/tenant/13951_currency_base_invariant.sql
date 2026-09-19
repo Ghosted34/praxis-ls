@@ -1,5 +1,5 @@
 -- ============================================================================
--- TENANT DB — 13950 Currency base-currency invariant (MOD-08, Currency audit #7).
+-- TENANT DB — 13951 Currency base-currency invariant (MOD-08, Currency audit #7).
 --
 -- 0342 declared `currency.is_base boolean` but added NO database-level guard that
 -- exactly one currency is the base. `getBaseCode()` used `LIMIT 1`, so a tenant

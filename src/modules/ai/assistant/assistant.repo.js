@@ -10,7 +10,7 @@
  * picker; the copilot is a floating panel that continues where you left off, and
  * clearing starts a fresh conversation row. SQL only, per doc/CONVENTIONS.md.
  *
- * MANAGEMENT (13920, audit J1-J3). That model is still true of the DRAWER, and
+ * MANAGEMENT (13930, audit J1-J3). That model is still true of the DRAWER, and
  * it stopped being the whole truth the moment the workspace grew a history rail.
  * A thread you can only ever add to is a thread you cannot get rid of, and the
  * review raised the case that makes that unacceptable: sensitive research typed
@@ -35,7 +35,7 @@ const { atomically } = require("../../../shared/db/tx");
  * leaves old rows in place (history is retained, just detached), so a user can
  * legitimately have several, and the newest is always the live one.
  *
- * ARCHIVED AND DELETED THREADS ARE NOT CANDIDATES (13920). Both are things the
+ * ARCHIVED AND DELETED THREADS ARE NOT CANDIDATES (13930). Both are things the
  * user has explicitly put away, and resuming into one on the next question is
  * the opposite of what either gesture asked for — archiving the thread you were
  * in and having the assistant carry straight on in it would read as the control
@@ -133,7 +133,7 @@ const CONVERSATION_GROUP =
  * message time (not created_at), so an old thread the user just returned to sorts
  * to the top. Empty threads (a `clear` with no follow-up question) are hidden.
  *
- * PINNED FIRST, THEN TIME (13920, audit J2). `pinned_at DESC NULLS LAST` ahead
+ * PINNED FIRST, THEN TIME (13930, audit J2). `pinned_at DESC NULLS LAST` ahead
  * of `last_at DESC` is what makes a pin mean anything: the rail groups the
  * pinned rows above its time buckets, and it can only do that if they arrive
  * ahead of the LIMIT rather than scattered through it. Ordering by the pin
@@ -181,7 +181,7 @@ async function conversationMeta(client, conversationId, userId) {
 /**
  * Ownership gate: a thread is private to its user, so load-by-id must verify it.
  *
- * A SOFT-DELETED THREAD IS NOT THE CALLER'S TO OPEN (13920). `deleted_at` is
+ * A SOFT-DELETED THREAD IS NOT THE CALLER'S TO OPEN (13930). `deleted_at` is
  * what the user pressed delete on; leaving it loadable by id would mean a stale
  * tab, a bookmarked `?c=` or the drawer's hand-over could put the transcript
  * back on screen after it had been removed from every list — which is the one
@@ -229,7 +229,7 @@ async function addMessage(client, { conversationId, role, content, sources, trac
  * it the current one and leaves the old thread intact in the rail.
  *
  * Deleting is now a separate, named act (`softDeleteConversation` /
- * `purgeConversation`, 13920). The FK note that used to live here belongs with
+ * `purgeConversation`, 13930). The FK note that used to live here belongs with
  * the purge, which is the function that has to deal with it.
  */
 async function startNewConversation(client, userId) {
@@ -240,7 +240,7 @@ async function startNewConversation(client, userId) {
   return rows[0].conversation_id;
 }
 
-// ── Conversation management (13920, audit J1-J3) ────────────────────────────
+// ── Conversation management (13930, audit J1-J3) ────────────────────────────
 // Pin, rename, archive, delete. Every statement carries `AND user_id = $2` and
 // every function answers "did that match a row of yours", so a caller cannot
 // act on a thread that is not the caller's even by mistake.

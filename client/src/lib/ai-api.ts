@@ -120,7 +120,7 @@ export type AiConversationMeta = {
   last_at: string;
   message_count: number;
   /**
-   * When the thread was pinned / archived, or null (13920, audit J1-J2).
+   * When the thread was pinned / archived, or null (13930, audit J1-J2).
    *
    * TIMESTAMPS RATHER THAN BOOLEANS, all the way to the client. The rail only
    * needs presence — it renders a pin marker and sorts on it — but "when did

@@ -1,5 +1,5 @@
 -- ============================================================================
--- 13920 — pin / archive / soft-delete on ai_conversation (audit J1, J2).
+-- 13930 — pin / archive / soft-delete on ai_conversation (audit J1, J2).
 --
 -- WHY. `doc/PRAXIS_AI_AUDIT.md` J1: a conversation could not be deleted or
 -- archived. The repo exposed `currentConversation` / `startNewConversation` /

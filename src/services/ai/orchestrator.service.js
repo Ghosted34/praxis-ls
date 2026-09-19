@@ -209,7 +209,7 @@ const history_ = {
    * assistant service has always checked ownership before loading; the ask path
    * had not, and it is the path that WRITES.
    *
-   * It is also what makes a delete mean anything (13920, audit J1):
+   * It is also what makes a delete mean anything (13930, audit J1):
    * `conversationBelongsToUser` excludes soft-deleted threads, so a stale `?c=`
    * or an open second tab cannot go on adding turns to a conversation the user
    * has removed. An unverified, missing or removed id falls back to the

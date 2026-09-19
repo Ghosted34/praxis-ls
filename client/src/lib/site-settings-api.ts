@@ -223,6 +223,21 @@ export type EntityStory = {
     service_type_key?: string | null;
   }[];
   public_cover_vault_id: string | null;
+  /**
+   * PR-07 (CE-25): the state of the last cover-attachment attempt that has
+   * not resolved — null when the last attempt linked or was reconciled. The
+   * Story tab renders it as a durable banner so "the upload did not take"
+   * stays on the screen until it is fixed, instead of dying with the toast.
+   * `vault_doc_id` is the honest byte counter: present when the file reached
+   * storage, absent when the attempt died before any byte was written.
+   */
+  cover_attachment?: {
+    state: "INTENT" | "BYTES_STORED" | "FAILED";
+    vault_doc_id: string | null;
+    attempts: number;
+    last_error: string | null;
+    updated_at: string | null;
+  } | null;
 };
 
 export const getEntityStory = (id: string) =>

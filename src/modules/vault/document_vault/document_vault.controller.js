@@ -8,14 +8,58 @@ const COST_PROOF_TYPES = [
 ];
 const path = require("path");
 const service = require("./document_vault.service");
+const outbox = require("./attachment_outbox.service");
 const { asyncHandler, AppError } = require("../../../utils/errors");
 const { readUpload } = require("../../../shared/http/upload.middleware");
+const { logger } = require("../../../config/logger");
 
 // Moved to `document_vault.mime.js` so the public secure-link route can read
 // the same table — a controller cannot be required by a service without a
 // cycle, and the copy that route kept instead was wrong. Re-exported below,
 // because `fileMeta` is already imported by two other controllers.
 const { EXT_BY_MIME, contentTypeForPath } = require("./document_vault.mime");
+
+/**
+ * PR-07 (CE-11): book a DOCUMENT_SCAN outbox row when an upload's entity_ref
+ * names a document row.
+ *
+ * The document-scan workflow is three requests — create the record, upload
+ * the file, PATCH vault_id — and until this hook, the middle request's
+ * success left no durable trace: if the PATCH never landed, the register read
+ * "no scan" (PENDING) exactly as if nobody had ever picked a file, while the
+ * bytes sat in the vault with an entity_ref naming the row they were meant
+ * for. The outbox row names that state — record yes, bytes yes (this vault
+ * row), link no — so the register can render it and the reconciliation can
+ * complete or sweep it.
+ *
+ * BEST-EFFORT, deliberately. The upload itself has succeeded by the time this
+ * runs; the bytes and their entity_ref are already ground truth, and phase 1
+ * of the reconciliation heals the link from that ground truth even with no
+ * outbox row at all. The row adds retry visibility and lets phase 2 sweep
+ * bytes that will never be linked — worth having, never worth failing a
+ * completed upload over.
+ *
+ * The table list is the same frozen set the outbox migration's owner_table
+ * CHECK admits. An entity_ref naming anything else (an operation, a mail
+ * attachment, a site slot) is not a document scan and is left alone.
+ */
+const SCAN_OWNER_TABLES = new Set(["entity_document", "client_document", "supplier_document"]);
+
+async function bookDocumentScanAttempt(client, entityRef, vaultDocId, actor) {
+  const sep = String(entityRef || "").indexOf(":");
+  if (sep < 1) return;
+  const table = String(entityRef).slice(0, sep);
+  const ownerId = String(entityRef).slice(sep + 1);
+  if (!SCAN_OWNER_TABLES.has(table)) return;
+  try {
+    await outbox.recordScanUpload(client, { ownerTable: table, ownerId, vaultDocId, actor });
+  } catch (err) {
+    logger.warn(
+      { err, entityRef, vaultDocId },
+      "vault upload: could not book the document-scan outbox row — the link remains healable from entity_ref",
+    );
+  }
+}
 
 /**
  * Uploaded scans are not all PDFs. Vault rows keep the extension selected by
@@ -102,7 +146,7 @@ module.exports = {
       // One call for both transports: multipart lands on req.file, the legacy
       // base64 body on req.body.data_url. See shared/http/upload.middleware.
       const file = readUpload(req);
-      return service.createDocument(c, {
+      const uploaded = await service.createDocument(c, {
         entityRef: b.entity_ref, docType, dataUrl: b.data_url, file,
         fileContext: b.file_context, folderRef: b.folder_ref, dossierId: b.dossier_id,
         docTypeRefId: b.doc_type_ref_id || null, clientId: b.client_id || null,
@@ -126,6 +170,10 @@ module.exports = {
           : {}),
         slug: req.tenant.slug, actor: req.user || { user_id: null },
       });
+      // See bookDocumentScanAttempt: names the bytes-behind-a-record state
+      // when this upload was a document scan whose link PATCH is still ahead.
+      await bookDocumentScanAttempt(c, b.entity_ref, uploaded.doc_id, req.user || { user_id: null });
+      return uploaded;
     });
     res.status(201).json({ data });
   }),

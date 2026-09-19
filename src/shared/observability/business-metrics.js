@@ -102,6 +102,72 @@ const PROBES = [
            GROUP BY status`,
     labels: (r) => ({ status: r.status }),
   },
+  /*
+   * PR-07 (CE-11 + CE-25): the media/document compensation metrics. These
+   * belong to the same family as the depreciation probe above — the app is
+   * UP, every route answers 200, and the only visible symptom of a broken
+   * compensation path is a number that should be zero and is not:
+   *
+   *   · attachment attempts parked in a non-terminal state — an upload that
+   *     was interrupted or failed and has not been retried or reconciled;
+   *   · document scans whose bytes exist but whose link PATCH never landed —
+   *     readable from the rows themselves, so the metric counts damage that
+   *     predates the outbox too;
+   *   · SITE_MEDIA vault objects created before an owner-pointer commit that
+   *     never came — storage orphans, held to the reconciliation's TTL window.
+   *
+   * The reconciliation (jobs/handlers/media-reconcile.js) drives all three
+   * toward zero; a floor that does not drop means the sweep is not running.
+   */
+  {
+    gauge: "praxis_media_attachment_open",
+    help: "Media/document attachment attempts in a non-terminal state (interrupted or failed, never linked or reconciled). Should trend to zero.",
+    sql: `SELECT kind, state, COUNT(*)::int AS value
+            FROM media_attachment
+           WHERE state IN ('INTENT', 'BYTES_STORED', 'FAILED')
+           GROUP BY kind, state`,
+    labels: (r) => ({ kind: r.kind, state: r.state }),
+  },
+  {
+    gauge: "praxis_vault_unlinked_document_scans",
+    help: "Vault documents whose bytes name a document row (entity_ref) that has no link (vault_id NULL). The reconciliation completes these; a persistent value means the sweep is not running.",
+    sql: `SELECT 'entity' AS scope, COUNT(*)::int AS value
+            FROM document_vault v
+            JOIN entity_document d ON d.document_id::text = split_part(v.entity_ref, ':', 2)
+           WHERE v.entity_ref LIKE 'entity_document:%'
+             AND v.status <> 'ARCHIVED'
+             AND d.vault_id IS NULL
+           UNION ALL
+          SELECT 'client' AS scope, COUNT(*)::int AS value
+            FROM document_vault v
+            JOIN client_document d ON d.document_id::text = split_part(v.entity_ref, ':', 2)
+           WHERE v.entity_ref LIKE 'client_document:%'
+             AND v.status <> 'ARCHIVED'
+             AND d.vault_id IS NULL
+           UNION ALL
+          SELECT 'supplier' AS scope, COUNT(*)::int AS value
+            FROM document_vault v
+            JOIN supplier_document d ON d.document_id::text = split_part(v.entity_ref, ':', 2)
+           WHERE v.entity_ref LIKE 'supplier_document:%'
+             AND v.status <> 'ARCHIVED'
+             AND d.vault_id IS NULL`,
+    labels: (r) => ({ scope: r.scope }),
+  },
+  {
+    gauge: "praxis_vault_orphan_site_media",
+    help: "SITE_MEDIA vault objects with no public scope and no owner pointer — created before a failed owner-pointer commit, waiting for the reconciliation's TTL. Should return to zero after each sweep.",
+    sql: `SELECT COUNT(*)::int AS value
+            FROM document_vault v
+           WHERE v.doc_type = 'SITE_MEDIA'
+             AND v.public_media_scope IS NULL
+             AND v.status <> 'ARCHIVED'
+             AND v.created_at < now() - interval '1 hour'
+             AND NOT EXISTS (SELECT 1 FROM corporate_entity o WHERE o.public_cover_vault_id = v.doc_id)
+             AND NOT EXISTS (SELECT 1 FROM site_leader o WHERE o.photo_vault_id = v.doc_id)
+             AND NOT EXISTS (SELECT 1 FROM site_partner o WHERE o.logo_vault_id = v.doc_id)
+             AND NOT EXISTS (SELECT 1 FROM site_credential o WHERE o.logo_vault_id = v.doc_id)`,
+    labels: () => ({}),
+  },
   {
     gauge: "praxis_ledger_writes_total",
     help: "Immutable-ledger rows written in the last hour. Flat means nothing is happening.",

@@ -102,6 +102,14 @@ const PROCESSORS = [
   { name: "mail-sla-sweep-scheduler", concurrency: 1, handler: require("./handlers/mail-sla-sweep-scheduler") },
   { name: "mail-followup-sweep", concurrency: 1, handler: require("./handlers/mail-followup-sweep") },
   { name: "mail-followup-sweep-scheduler", concurrency: 1, handler: require("./handlers/mail-followup-sweep-scheduler") },
+  /*
+   * Media/document compensation (PR-07, CE-11 + CE-25). Concurrency 1: the
+   * pass is idempotent but its guarded archives and byte deletions are exactly
+   * the kind of work that must not race itself — a second concurrent sweep
+   * over one tenant would contend on the same orphan rows for nothing.
+   */
+  { name: "media-reconcile", concurrency: 1, handler: require("./handlers/media-reconcile") },
+  { name: "media-reconcile-scheduler", concurrency: 1, handler: require("./handlers/media-reconcile-scheduler") },
   { name: "mail-webhook-renew", concurrency: 2, handler: require("./handlers/mail-webhook-renew") },
   { name: "mail-webhook-renew-scheduler", concurrency: 1, handler: require("./handlers/mail-webhook-renew-scheduler") },
   // PR-4 §8.6. One attachment per job, so the unit of retry is the unit of
@@ -373,6 +381,20 @@ async function scheduleRecurring() {
   } else {
     await enqueue("mail-followup-sweep-scheduler", "tick", {}, { repeat: { every: followEvery }, removeOnComplete: true, removeOnFail: 50 });
     logger.info({ every: followEvery }, "mail follow-up sweep registered");
+  }
+
+  // Media/document compensation (PR-07): completes scan links whose PATCH
+  // never landed and sweeps vault objects orphaned by failed owner-pointer
+  // commits. Warn rather than info when disabled — an orphan left by a failed
+  // cover replacement is invisible by design until this sweep runs, so a
+  // silently disabled sweep turns the compensation guarantees into best
+  // wishes.
+  const mediaEvery = config.MEDIA_RECONCILE_INTERVAL_MS;
+  if (!mediaEvery || mediaEvery <= 0) {
+    logger.warn("media reconciliation disabled (MEDIA_RECONCILE_INTERVAL_MS=0) — orphaned vault objects will not be swept");
+  } else {
+    await enqueue("media-reconcile-scheduler", "tick", {}, { repeat: { every: mediaEvery }, removeOnComplete: true, removeOnFail: 50 });
+    logger.info({ every: mediaEvery }, "media reconciliation registered");
   }
 
   // Mail push-subscription renewal (Graph/Gmail webhooks expire). Disabled at 0.

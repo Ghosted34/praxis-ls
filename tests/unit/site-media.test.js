@@ -23,8 +23,292 @@
  */
 "use strict";
 
+// Hoisted with the file. The factories close over nothing out-of-scope — the
+// new doc id lives inside the vault factory and is read back below, because a
+// factory referencing a later-declared const would hit the temporal dead zone
+// when the require above first executes it.
+jest.mock("../../src/services/storage.service", () => ({
+  put: jest.fn(async () => ({ key: "stored" })),
+  delete: jest.fn(async () => {}),
+}));
+
+jest.mock(
+  "../../src/modules/vault/document_vault/document_vault.service",
+  () => {
+    // The bytes-and-row half is the vault's own, tested there. What the
+    // upload-lifecycle tests below exercise is everything AFTER
+    // createDocument returns.
+    const docId = "22222222-2222-2222-2222-222222222222";
+    return {
+      __mockNewDocId: docId,
+      createDocument: jest.fn(async () => ({
+        doc_id: docId,
+        storage_path: "tenant_t/vault/doc_new.png",
+        status: "VERIFIED",
+      })),
+    };
+  },
+);
+
 const media = require("../../src/modules/site/site_settings/site_settings.media");
 const { siteSettings } = require("@praxis/shared");
+const mockNewDocId =
+  require("../../src/modules/vault/document_vault/document_vault.service").__mockNewDocId;
+
+/*
+ * ── the attachment outbox around an upload (PR-07, CE-25) ──────────────────
+ *
+ * These tests drive `upload()` end to end with the vault service and storage
+ * mocked, against a client that ACTUALLY TRANSACTIONS: statements inside the
+ * atomically() block are buffered and applied on COMMIT, discarded on
+ * ROLLBACK — because the property being proven is precisely about what
+ * survives a failed pointer transaction.
+ *
+ * The three rules, in the audit's own words:
+ *
+ *   · a FAILED cover replacement leaves the previous cover servable;
+ *   · a failed new upload is not publishable;
+ *   · every failure state names whether the record, the bytes and the link
+ *     exist — here, in the outbox row the failed attempt leaves behind.
+ */
+
+/** A 1×1 PNG — the smallest buffer sharp will actually decode. */
+const PNG_1PX =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+
+const OLD_DOC = "11111111-1111-1111-1111-111111111111";
+const ENTITY = "33333333-3333-3333-3333-333333333333";
+
+/**
+ * A client that interprets the statements upload() actually issues, with
+ * real transaction buffering. `failOn` names a SQL substring that throws the
+ * first time it is reached — the injected fault is always the owner-pointer
+ * UPDATE, the statement whose failure used to strand the bytes.
+ */
+function makeUploadClient({ priorCoverId = null, failOn = null } = {}) {
+  const state = {
+    ownerPointer: priorCoverId,
+    // A prior cover was uploaded through the same path in an earlier request:
+    // scoped public, pointed at, never archived. That is the "previous cover"
+    // the public-safety property is about.
+    scopes: priorCoverId ? { [priorCoverId]: "SITE" } : {},
+    archived: [],      // doc_ids archived by a committed replacement
+    outbox: [],        // media_attachment rows (autocommit + buffered updates)
+    audits: [],
+    inTx: false,
+    txBuffer: [],
+  };
+
+  const record = (entry) => {
+    if (state.inTx) state.txBuffer.push(entry);
+    else applyEntry(entry);
+  };
+  const applyEntry = (entry) => {
+    if (entry.kind === "scope") state.scopes[entry.docId] = "SITE";
+    if (entry.kind === "pointer") state.ownerPointer = entry.docId;
+    if (entry.kind === "archive") state.archived.push(entry.docId);
+    if (entry.kind === "audit") state.audits.push(entry);
+    if (entry.kind === "outbox") {
+      const row = state.outbox.find((r) => r.attachment_id === entry.id);
+      if (row) Object.assign(row, entry.sets);
+    }
+  };
+
+  const client = {
+    async query(text, params = []) {
+      const q = String(text).trim();
+      if (q.startsWith("RELEASE")) return { rows: [], rowCount: 0 };
+      // Postgres raises 25P01 for a SAVEPOINT outside a transaction block —
+      // this is the probe atomically() uses to detect a foreign BEGIN, and a
+      // fake that accepts it makes every transaction a no-op.
+      if (q.startsWith("SAVEPOINT")) {
+        if (!state.inTx) throw new Error("SAVEPOINT can only be used in transaction blocks");
+        return { rows: [], rowCount: 0 };
+      }
+      if (q === "BEGIN") { state.inTx = true; state.txBuffer = []; return { rows: [], rowCount: 0 }; }
+      if (q === "COMMIT") {
+        state.inTx = false;
+        for (const entry of state.txBuffer) applyEntry(entry);
+        state.txBuffer = [];
+        return { rows: [], rowCount: 0 };
+      }
+      if (q === "ROLLBACK") { state.inTx = false; state.txBuffer = []; return { rows: [], rowCount: 0 }; }
+
+      if (failOn && q.includes(failOn)) throw new Error("boom (injected)");
+
+      // The owner read: which document the slot points at today.
+      if (/SELECT public_cover_vault_id AS vault_id FROM corporate_entity/.test(q)) {
+        return { rows: [{ vault_id: state.ownerPointer }], rowCount: 1 };
+      }
+      // Where the vault put the new bytes.
+      if (/SELECT storage_path FROM document_vault WHERE doc_id/.test(q)) {
+        return { rows: [{ storage_path: "tenant_t/vault/doc_new.png" }], rowCount: 1 };
+      }
+      // The outbox INSERT (insertOne: quoted columns, positional params).
+      if (/INSERT INTO media_attachment/.test(q)) {
+        const cols = q
+          .match(/\(([^()]+)\) VALUES/i)[1]
+          .split(",")
+          .map((s) => s.trim().replace(/"/g, ""));
+        const row = { attachment_id: "att-1" };
+        cols.forEach((c, i) => { row[c] = params[i]; });
+        state.outbox.push(row);
+        return { rows: [row], rowCount: 1 };
+      }
+      // An outbox state transition.
+      if (/UPDATE media_attachment SET/.test(q)) {
+        const id = params[params.length - 1];
+        const sets = {};
+        const setSql = q.slice(q.indexOf("SET") + 3, q.indexOf("WHERE"));
+        for (const m of setSql.matchAll(/([a-z_]+) = \$(\d+)/g)) {
+          sets[m[1]] = params[Number(m[2]) - 1];
+        }
+        if (/attempts = attempts \+ 1/.test(setSql)) sets.attempts = "bump";
+        record({ kind: "outbox", id, sets });
+        const row = state.outbox.find((r) => r.attachment_id === id);
+        return { rows: row ? [row] : [], rowCount: row ? 1 : 0 };
+      }
+      // The audit ledger write (params: [actor, role, name, email, action, ...]).
+      if (/INSERT INTO immutable_ledger/.test(q)) {
+        record({ kind: "audit", action: params[4], entityRef: params[6] });
+        return { rows: [], rowCount: 1 };
+      }
+      // The scope UPDATE — the statement that makes bytes publicly servable.
+      if (/UPDATE document_vault\s+SET public_media_scope/.test(q)) {
+        record({ kind: "scope", docId: params[0] });
+        return { rows: [], rowCount: 1 };
+      }
+      // The owner pointer — the statement whose failure CE-25 is about.
+      if (/UPDATE corporate_entity\s+SET public_cover_vault_id/.test(q)) {
+        record({ kind: "pointer", docId: params[1] });
+        return { rows: [{ public_cover_vault_id: params[1] }], rowCount: 1 };
+      }
+      // Archiving the replaced document.
+      if (/UPDATE document_vault\s+SET status = 'ARCHIVED'/.test(q)) {
+        record({ kind: "archive", docId: params[0] });
+        return { rows: [], rowCount: 1 };
+      }
+      // The public serve joins, answered with the predicates the SQL carries.
+      // The three mark/portrait slots have nothing in these fixtures; the
+      // entity-cover join answers from the same state the transaction moved.
+      if (/JOIN (site_leader|site_partner|site_credential|corporate_entity) o ON o\./.test(q)) {
+        if (!/JOIN corporate_entity/.test(q)) return { rows: [], rowCount: 0 };
+        const docId = params[0];
+        const wantsScope = /v\.public_media_scope = 'SITE'/.test(q);
+        const wantsOwner = /o\.public_cover_vault_id = v\.doc_id/.test(q);
+        const passes =
+          (!wantsScope || state.scopes[docId] === "SITE") &&
+          (!wantsOwner || state.ownerPointer === docId);
+        return {
+          rows: passes
+            ? [{ doc_id: docId, storage_path: `t/vault/${docId}.png`,
+                public_media_content_type: "image/png",
+                public_media_variants: { widths: [480], formats: ["webp"] } }]
+            : [],
+          rowCount: passes ? 1 : 0,
+        };
+      }
+      throw new Error(`makeUploadClient: unrecognised statement: ${q.slice(0, 90)}`);
+    },
+  };
+  return { client, state };
+}
+
+describe("the attachment outbox around a cover upload (PR-07, CE-25)", () => {
+  const uploadOpts = (extra = {}) => ({
+    slot: "entity-cover",
+    ownerId: ENTITY,
+    dataUrl: PNG_1PX,
+    provenance: "owned",
+    originalName: "cover.png",
+    slug: "t",
+    ...extra,
+  });
+
+  test("a successful upload books the whole ladder and ends LINKED", async () => {
+    const { client, state } = makeUploadClient({ priorCoverId: OLD_DOC });
+    const out = await media.upload(client, uploadOpts());
+    expect(out.doc_id).toBe(mockNewDocId);
+
+    const att = state.outbox[0];
+    expect(att.kind).toBe("SITE_MEDIA");
+    expect(att.owner_table).toBe("corporate_entity");
+    expect(att.slot).toBe("entity-cover");
+    expect(att.state).toBe("LINKED");
+    expect(att.vault_doc_id).toBe(mockNewDocId);
+    // The derivative keys the writer wrote are recorded on the attempt — the
+    // vault row's own variants column is written by the pointer transaction
+    // and cannot be the sweep's source of truth.
+    expect(Array.isArray(JSON.parse(att.variant_keys))).toBe(true);
+    expect(JSON.parse(att.variant_keys).length).toBeGreaterThan(0);
+    // And the replacement really happened.
+    expect(state.ownerPointer).toBe(mockNewDocId);
+    expect(state.scopes[mockNewDocId]).toBe("SITE");
+    expect(state.archived).toEqual([OLD_DOC]);
+  });
+
+  test("a replacement whose pointer transaction fails leaves the previous cover servable", async () => {
+    const { client, state } = makeUploadClient({
+      priorCoverId: OLD_DOC,
+      failOn: "SET public_cover_vault_id",
+    });
+
+    await expect(
+      media.upload(client, uploadOpts()),
+    ).rejects.toThrow("boom (injected)");
+
+    // The bytes exist (vault.createDocument ran) and the outbox says so —
+    // BYTES were stored, the LINK was not, and FAILED names it.
+    const att = state.outbox[0];
+    expect(att.state).toBe("FAILED");
+    expect(att.vault_doc_id).toBe(mockNewDocId);
+    expect(att.attempts).toBe("bump");
+    expect(att.last_error).toContain("boom");
+
+    // The transaction rolled back: the new object was never scoped public,
+    // the previous cover was never archived, and the pointer never moved.
+    expect(state.scopes[mockNewDocId]).toBeUndefined();
+    expect(state.archived).toEqual([]);
+    expect(state.ownerPointer).toBe(OLD_DOC);
+
+    // THE PUBLIC-SAFETY PROPERTY: the old cover is still servable, the new
+    // one is not — answered by the serve join the route runs, with the
+    // predicates the SQL carries.
+    expect(await media.publicMediaForServe(client, OLD_DOC)).toMatchObject({ doc_id: OLD_DOC });
+    expect(await media.publicMediaForServe(client, mockNewDocId)).toBeNull();
+  });
+
+  test("a failed first upload is not publishable, and still names its state", async () => {
+    const { client, state } = makeUploadClient({
+      priorCoverId: null,
+      failOn: "SET public_cover_vault_id",
+    });
+
+    await expect(media.upload(client, uploadOpts())).rejects.toThrow("boom (injected)");
+
+    const att = state.outbox[0];
+    expect(att.state).toBe("FAILED");
+    expect(att.vault_doc_id).toBe(mockNewDocId);
+
+    // Nothing is public: no scope, no pointer, no servable document at all.
+    expect(state.scopes[mockNewDocId]).toBeUndefined();
+    expect(state.ownerPointer).toBeNull();
+    expect(await media.publicMediaForServe(client, mockNewDocId)).toBeNull();
+    expect(await media.publicMediaForServe(client, OLD_DOC)).toBeNull();
+  });
+
+  test("a refusal before the bytes books no attempt at all", async () => {
+    const { client, state } = makeUploadClient();
+    await expect(
+      media.upload(client, uploadOpts({ provenance: "generated" })),
+    ).rejects.toMatchObject({ status: 422 });
+    await expect(
+      media.upload(client, uploadOpts({ dataUrl: "not-a-data-url" })),
+    ).rejects.toMatchObject({ code: "BAD_FILE_TYPE" });
+    expect(state.outbox).toEqual([]);
+  });
+});
+
 
 /* ── the slot register ──────────────────────────────────────────────────────*/
 
@@ -137,7 +421,8 @@ describe("the upload body", () => {
   });
 
   test("requires a provenance at all — §6.3 makes it a required field", () => {
-    const { provenance, ...without } = valid;
+    const without = { ...valid };
+    delete without.provenance;
     expect(siteSettings.siteMediaUpload.safeParse(without).success).toBe(false);
   });
 

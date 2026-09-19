@@ -467,6 +467,29 @@ const Schema = z.object({
   // than mid-afternoon while someone is looking at the same advance. Empty
   // disables it; POST /regie/age-due still ages on demand.
   REGIE_AGING_CRON: z.string().default("0 6 * * *"),
+  /*
+   * Tax obligation generation + reminders (MOD-01, PR-05 / audit CE-16).
+   *
+   * ONE tick does both halves, and that is deliberate rather than convenient:
+   * generation writes the obligations and reminders announce them, so a tenant
+   * whose filing appeared yesterday and whose reminder fired this morning has
+   * been told about a deadline that only exists because of the other job.
+   * Coupling them also means there is no window in which the calendar and the
+   * notifications disagree.
+   *
+   * 05:00 in the FX timezone. After the ledger-writing jobs (regie at 06:00 is
+   * the nearest and this one does not post), and early enough that the run has
+   * finished before the 07:00 contract warnings — the reminders it emits land
+   * in the same morning feed a person is already reading, rather than in an
+   * overnight queue nobody opens.
+   *
+   * Safe to run far more often than daily: the generator is idempotent on
+   * `ux_tax_calendar_generation_key` and the reminder ladder is watermarked on
+   * `last_reminder_step`, so an hourly tick costs one indexed pass and repeats
+   * nothing. Empty disables both; the dossier's Generate button still runs the
+   * generator for one entity on demand.
+   */
+  TAX_OBLIGATION_CRON: z.string().default("0 5 * * *"),
   // Scheduled reports (1.3): the tick that fans `scheduled-report` out per live
   // tenant. HOURLY, at five past — `next_run_at` is a timestamp and the due
   // query asks `next_run_at <= now()`, so this interval is the resolution of

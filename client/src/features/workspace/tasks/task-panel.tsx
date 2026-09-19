@@ -34,6 +34,7 @@ import { Select, type SelectOption } from "@/components/ui/select";
 import { ScreenError } from "@/components/connection/screen-error";
 import { useConfirm } from "@/components/ui/use-confirm";
 import { useToast } from "@/components/ui/toast";
+import { useAuth } from "@/app/auth/auth-context";
 import { errMsg } from "@/lib/use-resource";
 import { dateTimeFmt, fmtRelative } from "@/lib/format";
 import type { Audience, Dependency, Subtask, Task, TaskMilestone } from "../api";
@@ -883,8 +884,35 @@ function DependencyRow({
  * in a delivery log. The server enforces this; the UI simply does not offer
  * the alternative.
  */
+/**
+ * Who a ping from here would reach — the same set the server's `recipientsOf`
+ * allows: the task's author, its assignee and its watchers, deduplicated,
+ * minus the person about to click. Never anyone else, never the sender.
+ *
+ * Computed on the client ONLY to say it before the click; the server recomputes
+ * the set from the database and remains the enforcer, so a stale name here can
+ * never widen who a ping actually reaches.
+ */
+function pingRecipientsOf(task: Task, me: string | null | undefined) {
+  const byId = new Map<string, { user_id: string; name: string; roles: string[] }>();
+  const add = (userId: string | null | undefined, name: string | null, role: string) => {
+    if (!userId || userId === me) return;
+    const existing = byId.get(userId);
+    if (existing) {
+      if (!existing.roles.includes(role)) existing.roles.push(role);
+    } else {
+      byId.set(userId, { user_id: userId, name: name?.trim() || "A colleague", roles: [role] });
+    }
+  };
+  add(task.created_by, task.created_by_name, "author");
+  add(task.assigned_to, task.assigned_to_name, "assignee");
+  for (const w of task.watchers ?? []) add(w.user_id, w.full_name || w.email, "watching");
+  return [...byId.values()];
+}
+
 function CollaborationSection({ task, audience }: { task: Task; audience?: Audience }) {
   const toast = useToast();
+  const { user } = useAuth();
   const addWatcher = useAddWatcher();
   const removeWatcher = useRemoveWatcher();
   const ping = usePingTask();
@@ -892,6 +920,10 @@ function CollaborationSection({ task, audience }: { task: Task; audience?: Audie
   const [composing, setComposing] = React.useState(false);
 
   const watchers = task.watchers ?? [];
+  const recipients = React.useMemo(
+    () => pingRecipientsOf(task, user?.user_id),
+    [task, user?.user_id],
+  );
 
   async function send() {
     try {
@@ -952,8 +984,24 @@ function CollaborationSection({ task, audience }: { task: Task; audience?: Audie
         />
       </div>
 
-      {composing ? (
+      {composing && recipients.length > 0 ? (
         <div className="mt-2 space-y-2">
+          {/* WHO before WHEN: "everyone" was a black box until after the send,
+              and the count in the toast is an audit, not a preview. The list
+              is the server's own recipient rule, said out loud. */}
+          <div>
+            <p className="micro">The ping goes to</p>
+            <ul className="mt-1 space-y-0.5" aria-label="Who the ping will reach">
+              {recipients.map((r) => (
+                <li key={r.user_id} className="flex items-baseline gap-1.5 text-sm">
+                  <span className="min-w-0 truncate">{r.name}</span>
+                  <span className="micro shrink-0 text-muted-foreground">
+                    {r.roles.join(", ")}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
           <Textarea
             value={message}
             rows={2}
@@ -975,10 +1023,21 @@ function CollaborationSection({ task, audience }: { task: Task; audience?: Audie
             never to you, and never to anybody who is not already on the task.
           </p>
         </div>
-      ) : (
+      ) : recipients.length > 0 ? (
         <Button size="sm" variant="outline" className="mt-2" onClick={() => setComposing(true)}>
           Ping everyone on this task
         </Button>
+      ) : (
+        /* The server refuses this send with a 422 ("nobody to ping"); saying it
+           here, on the button, turns an error toast into an explanation. */
+        <div className="mt-2">
+          <Button size="sm" variant="outline" disabled>
+            Ping everyone on this task
+          </Button>
+          <p className="micro mt-1">
+            There is nobody to ping — assign the task or add a watcher first.
+          </p>
+        </div>
       )}
     </section>
   );

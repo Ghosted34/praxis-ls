@@ -842,6 +842,63 @@ exports.opsReferencePrefix = z.object({
     .regex(/^[A-Z0-9]{2}$/, "Two characters, A-Z or 0-9 — e.g. SL"),
 });
 
+/*
+ * ── Tax obligation generator (PR-05, audit CE-16) ──────────────────────────
+ *
+ * These are the shapes for the three write endpoints on the generated
+ * obligation calendar. They live here rather than in the API validator for the
+ * reason the rest of this file does — one definition, both halves of the app —
+ * and because the horizon/backfill bounds below are the same numbers the
+ * scheduler uses as its defaults, so a client cannot ask for a window the
+ * generator would refuse.
+ */
+
+/** The statuses a PERSON may set. SUPERSEDED is written by the generator only. */
+const TAX_OBLIGATION_MANUAL_STATUSES = ["PENDING", "DONE", "WAIVED"];
+
+/**
+ * A run of the generator for one entity.
+ *
+ * Both knobs are optional and both are bounded: an unbounded `horizon` would
+ * let a caller ask for four hundred years of obligations in one request, and
+ * an unbounded `backfill` would let one call mark a decade of never-filed
+ * periods LATE at once — which is not a generation, it is a demolition.
+ */
+exports.taxObligationGenerate = z.object({
+  horizon: blankToUndefined(
+    z.number().int("Whole periods only.").min(0).max(24, "Generate at most 24 periods ahead."),
+  )
+    .optional(),
+  backfill: blankToUndefined(
+    z.number().int("Whole periods only.").min(0).max(12, "Backfill at most 12 periods."),
+  )
+    .optional(),
+});
+
+/**
+ * Waive, complete or reopen one obligation.
+ *
+ * `reason` is optional in the shape and REQUIRED for a waiver by the service —
+ * the rule is "a waiver needs a reason", not "this endpoint always needs one",
+ * and a refine that fired on DONE would ask someone to justify ticking a
+ * filing as filed.
+ */
+exports.taxObligationStatus = z.object({
+  status: z.enum(TAX_OBLIGATION_MANUAL_STATUSES),
+  reason: blankToUndefined(z.string().trim().min(3, "Give a reason.").max(500)).nullable().optional(),
+});
+
+/**
+ * Assign the person who files it.
+ *
+ * Nullable and not optional: sending `responsible_user_id: null` means "take
+ * the assignment off", which is a real action and must not be indistinguishable
+ * from a body that forgot the field.
+ */
+exports.taxObligationAssign = z.object({
+  responsible_user_id: nullableId("Must be a valid user id."),
+});
+
 // ── AI-facing envelopes ────────────────────────────────────────────────────
 // The assistant calls a tool with a flat payload and no route parameter, so the
 // entity id travels in the body. Composed here rather than in the API validator
@@ -941,3 +998,4 @@ exports.CONTACT_ROLE_TAGS = CONTACT_ROLE_TAGS;
 exports.TAX_KINDS = TAX_KINDS;
 exports.FILING_FREQUENCIES = FILING_FREQUENCIES;
 exports.TAX_REGIMES = TAX_REGIMES;
+exports.TAX_OBLIGATION_MANUAL_STATUSES = TAX_OBLIGATION_MANUAL_STATUSES;

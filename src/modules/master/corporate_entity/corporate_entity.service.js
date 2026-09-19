@@ -12,6 +12,7 @@
 "use strict";
 
 const crypto = require("crypto");
+const { insertOne } = require("../../../shared/db/query-helpers");
 const repo = require("./corporate_entity.repo");
 const events = require("./corporate_entity.events");
 const rules = require("./corporate_entity.rules");
@@ -55,17 +56,24 @@ const CREATE_CAMEL_ALIASES = {
 };
 
 /**
- * Register a corporate entity.
+ * Register a corporate entity with optional atomic initial registered address (PR-02).
  *
- * `input` is the schema-validated body (entityCommon.masterCreate) in COLUMN
- * NAMES, plus `actor`. Every writable column is accepted through the SAME
- * allow-list the PATCH path uses (repo.WRITABLE), so a field the shared schema
- * accepts can never again be silently dropped between validation and INSERT —
- * create and update agree by construction instead of by two hand-kept lists.
+ * The entity and its initial REGISTERED address must commit or fail together
+ * (Decision Q7 / CE-08 / CE-19). The previous client flow POSTed the entity and
+ * then issued a second POST for the address, logging only a console warning on
+ * failure and leaving the offline outbox unaware of the dependent write. That
+ * allowed a successful create to silently lose its address and an offline create
+ * to be reported complete before both records existed.
  *
- * `actorArg` exists for the AI write adapter, which calls
- * `service(client, payload, actor)` with the actor as a third positional
- * argument rather than folded into the body.
+ * This implementation moves the boundary to the server: one transaction owns
+ * both rows. If the address payload is present and contains any meaningful
+ * content, it is inserted in the same BEGIN/COMMIT block as the entity. Any
+ * failure rolls back both — no partial success, no orphaned dependent row.
+ *
+ * Idempotency: the tenant router's idempotency middleware stores the response
+ * against the Idempotency-Key. A replay of the same key returns the original
+ * entity response without re-executing this transaction, which prevents duplicate
+ * entities and duplicate initial addresses on reconnect (outbox flush).
  */
 async function create(client, input = {}, actorArg = null) {
   const { actor = actorArg || {}, ...body } = input;
@@ -74,13 +82,18 @@ async function create(client, input = {}, actorArg = null) {
     delete body[camel];
   }
 
-  const code = body.code;
+  // PR-02: initial_address is not a column; it is a dependent child that must be
+  // created atomically with the entity. Extract it before building the entity fields.
+  const { initial_address: rawInitialAddress, initialAddress, ...entityBody } = body;
+  const initialAddressInput = rawInitialAddress || initialAddress || null;
+
+  const code = entityBody.code;
   const existing = await repo.getByCode(client, code);
   if (existing) throw new AppError("DUPLICATE_CODE", "An entity with code " + code + " already exists", 409);
-  rules.assertFiscalMonth(body.fiscal_year_start_month);
+  rules.assertFiscalMonth(entityBody.fiscal_year_start_month);
 
-  if (body.parent_entity_id) {
-    const parent = await repo.get(client, body.parent_entity_id);
+  if (entityBody.parent_entity_id) {
+    const parent = await repo.get(client, entityBody.parent_entity_id);
     if (!parent) throw new AppError("NOT_FOUND", "The parent entity does not exist", 404);
   }
 
@@ -93,16 +106,78 @@ async function create(client, input = {}, actorArg = null) {
   // because there a null means "clear this".)
   const fields = { code };
   for (const k of repo.WRITABLE) {
-    if (body[k] !== undefined && body[k] !== null) fields[k] = body[k];
+    if (entityBody[k] !== undefined && entityBody[k] !== null) fields[k] = entityBody[k];
   }
   if (fields.bank_block !== undefined) fields.bank_block = JSON.stringify(fields.bank_block || {});
   // Service-owned column, so not in WRITABLE — but the create schema allows
   // starting life as a DRAFT, and the 0515 trigger defaults it to ACTIVE.
-  if (body.registration_status) fields.registration_status = body.registration_status;
+  if (entityBody.registration_status) fields.registration_status = entityBody.registration_status;
 
   await client.query("BEGIN");
   try {
     const row = await repo.insert(client, fields);
+
+    // Atomic initial registered address (PR-02 / CE-08 / CE-19)
+    let initialAddressRow = null;
+    if (initialAddressInput) {
+      const hasContent = (a) => {
+        if (!a || typeof a !== "object") return false;
+        const keys = ["line1", "line2", "city", "region", "postal_code", "country_code", "po_box"];
+        return keys.some((k) => {
+          const v = a[k];
+          return v !== undefined && v !== null && String(v).trim() !== "";
+        });
+      };
+
+      if (hasContent(initialAddressInput)) {
+        // Force canonical values: REGISTERED type and primary flag, regardless of
+        // what the client sent — the initial address is always the registered office.
+        const addressData = {
+          entity_id: row.entity_id,
+          type: "REGISTERED",
+          line1: initialAddressInput.line1 ?? null,
+          line2: initialAddressInput.line2 ?? null,
+          city: initialAddressInput.city ?? null,
+          region: initialAddressInput.region ?? null,
+          postal_code: initialAddressInput.postal_code ?? null,
+          country_code:
+            initialAddressInput.country_code ||
+            entityBody.country_code ||
+            fields.country_code ||
+            null,
+          po_box: initialAddressInput.po_box ?? null,
+          is_primary: true,
+          is_active: initialAddressInput.is_active !== undefined ? initialAddressInput.is_active : true,
+        };
+
+        // Re-use the same allow-list the nested address endpoint uses, so validation
+        // parity is preserved. The parent column is included explicitly.
+        const ADDRESS_WRITABLE = [
+          "type",
+          "line1",
+          "line2",
+          "city",
+          "region",
+          "postal_code",
+          "country_code",
+          "po_box",
+          "is_primary",
+          "is_active",
+        ];
+        const ADDRESS_INSERT_ALLOW = [...ADDRESS_WRITABLE, "entity_id"];
+
+        initialAddressRow = await insertOne(client, "entity_address", addressData, "*", ADDRESS_INSERT_ALLOW);
+
+        await audit(client, {
+          actorUserId: actor.user_id || null,
+          action: "entity_address.created",
+          moduleKey: events.MODULE,
+          entityRef: "entity_address:" + initialAddressRow.address_id,
+          after: initialAddressRow,
+        });
+      }
+    }
+
     // The two-character marker that leads this entity's OPERATION-file
     // references (`SL` in `SL7Z3K9QW2M4XBSM`) — derived from the name, walked
     // past anything already taken, and persisted once. Assigned here, in the
@@ -114,7 +189,7 @@ async function create(client, input = {}, actorArg = null) {
     await emitEvent(client, { eventTypeKey: events.CREATED, moduleKey: events.MODULE, entityRef: ref(row.entity_id), actorUserId: actor.user_id || null });
     await audit(client, { actorUserId: actor.user_id || null, action: events.CREATED, moduleKey: events.MODULE, entityRef: ref(row.entity_id), after: row });
     await client.query("COMMIT");
-    return { ...row, ops_reference_prefix: opsPrefix };
+    return { ...row, ops_reference_prefix: opsPrefix, ...(initialAddressRow ? { initial_address: initialAddressRow } : {}) };
   } catch (err) { await client.query("ROLLBACK"); throw err; }
 }
 

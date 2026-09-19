@@ -45,8 +45,55 @@ const mw = (k) => (req, _res, next) => {
   req.body = p.data; return next();
 };
 
+/**
+ * Create with optional atomic initial registered address (PR-02).
+ *
+ * The entity and its initial REGISTERED address must commit or fail together
+ * (Decision Q7). The address arrives as `initial_address` on the same POST that
+ * creates the entity, so a single transaction owns both rows and a failure of
+ * the child rolls back the parent — no orphaned entity, no silently lost address.
+ *
+ * `masterCreate` is the authority for the entity columns; `addressCreate` is the
+ * authority for the nested address. They are validated separately so that
+ * `initial_address` does not need to be smuggled into the shared master shape
+ * (which would break the WRITABLE parity gate — it is not a column).
+ */
+function createWithInitialAddress(req, _res, next) {
+  const raw = req.body || {};
+  const { initial_address: rawAddress, ...rest } = raw;
+
+  const parsedEntity = schemas.create.safeParse(rest);
+  if (!parsedEntity.success) {
+    return next(
+      new AppError(
+        "VALIDATION_ERROR",
+        "Invalid body",
+        422,
+        parsedEntity.error.flatten().fieldErrors,
+      ),
+    );
+  }
+
+  let validatedAddress;
+  if (rawAddress !== undefined && rawAddress !== null) {
+    const parsedAddress = entityCommon.addressCreate.safeParse(rawAddress);
+    if (!parsedAddress.success) {
+      const fieldErrors = parsedAddress.error.flatten().fieldErrors;
+      const mapped = {};
+      for (const [k, v] of Object.entries(fieldErrors)) {
+        mapped[`initial_address.${k}`] = v;
+      }
+      return next(new AppError("VALIDATION_ERROR", "Invalid initial address", 422, mapped));
+    }
+    validatedAddress = parsedAddress.data;
+  }
+
+  req.body = { ...parsedEntity.data, initial_address: validatedAddress };
+  return next();
+}
+
 module.exports = {
-  create: mw("create"),
+  create: createWithInitialAddress,
   update: mw("update"),
   setActive: mw("setActive"),
   setStatus: mw("setStatus"),

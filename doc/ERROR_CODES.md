@@ -603,7 +603,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `USER_NOT_ACTIVE` | 422 | 1× | — |
 | `USE_APPROVE` | 422 | 1× | — |
 | `VACANCY_CLOSED` | — | 1× | — |
-| `VALIDATION_ERROR` | 422 | 266× | — |
+| `VALIDATION_ERROR` | 422 | 268× | — |
 | `VALIDATOR_NOT_LINE_MANAGER` | — | 1× | — |
 | `VARIANCE_UNEXPLAINED` | 422 | 1× | — |
 | `VEHICLE_COMMITTED` | — | 1× | — |

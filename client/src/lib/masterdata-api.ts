@@ -309,6 +309,10 @@ export type Entity = {
 export type EntityInput = Partial<Omit<Entity, "entity_id" | "is_active">> & {
   code: string;
   legal_name: string;
+  /** PR-02 atomic creation: optional initial REGISTERED address committed in the same transaction. */
+  initial_address?: Partial<EntityAddress> & {
+    type?: EntityAddress["type"];
+  };
 };
 
 /* Nested collections owned by an entity. */

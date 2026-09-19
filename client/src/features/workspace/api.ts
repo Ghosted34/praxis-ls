@@ -90,7 +90,7 @@ export type Subtask = {
 
 export type Watcher = { user_id: string; full_name: string | null; email: string };
 
-/** One stage of the linked file's chain, as a task read carries it (13940). */
+/** One stage of the linked file's chain, as a task read carries it (13950). */
 export type TaskMilestone = {
   milestone_instance_id: string;
   label: string | null;
@@ -129,7 +129,7 @@ export type Task = {
   /** The FIRST stage of the set below (13920's column, kept as a projection). */
   milestone_instance_id: string | null;
   milestone_label: string | null;
-  /** Every stage of the file's chain the task is on, in chain order (13940).
+  /** Every stage of the file's chain the task is on, in chain order (13950).
    *  Absent only on rows older than the field; treat as empty. */
   milestone_instance_ids?: string[];
   milestones?: TaskMilestone[];
@@ -406,7 +406,7 @@ export type TaskInput = {
   dossier_id?: string | null;
   milestone_instance_id?: string | null;
   /** The stages the work belongs to — one or several, all of the linked file
-   *  (13940). Replaces the whole set; [] clears it. Wins over the single id. */
+   *  (13950). Replaces the whole set; [] clears it. Wins over the single id. */
   milestone_instance_ids?: string[];
   is_personal?: boolean;
   reminder_minutes?: number | null;

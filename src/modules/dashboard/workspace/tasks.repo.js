@@ -114,7 +114,7 @@ const LINK_JOINS = `
     LEFT JOIN milestone_instance mi ON mi.milestone_instance_id = t.milestone_instance_id`;
 
 /**
- * Every stage the task is on, in chain order (13940).
+ * Every stage the task is on, in chain order (13950).
  *
  * A correlated aggregate rather than a fourth LEFT JOIN: a join would multiply
  * each task row by its stage count and break `COUNT(*) OVER()`, the board's
@@ -176,7 +176,7 @@ const TASK_SELECT_PAGED = TASK_SELECT.replace(
  * would drift (API F-26).
  */
 /**
- * "Is on this stage" — the list's milestone filter, against the SET (13940).
+ * "Is on this stage" — the list's milestone filter, against the SET (13950).
  *
  * Not `t.milestone_instance_id = $n`: that column is only the first stage of
  * the set, and a task filed under two stages would vanish from the second
@@ -1778,7 +1778,7 @@ async function analyticsByFile(client, { visibility, filters, nowIso, limit = 25
  * under one heading and present the sum as a stage's backlog. Narrowed to a
  * file, the labels are unique and the grouping means what it reads as.
  *
- * Through the SET (13940), so a task on two stages is counted under both —
+ * Through the SET (13950), so a task on two stages is counted under both —
  * the work is on both — and a task on none lands in the "No milestone" row
  * the LEFT JOIN keeps for it.
  */
@@ -1809,7 +1809,7 @@ async function analyticsByMilestone(client, { visibility, filters, nowIso, limit
 
 /**
  * Which file each named stage belongs to — the service's cross-check on a
- * link (13920, several at once since 13940). One query for the whole set,
+ * link (13920, several at once since 13950). One query for the whole set,
  * with the chain position, so the service can refuse a stranger by name and
  * order the rest as the chain does.
  */
@@ -1831,7 +1831,7 @@ async function milestoneFileOf(client, milestoneInstanceId) {
 }
 
 /**
- * Make the task's stage set exactly `ids` (13940).
+ * Make the task's stage set exactly `ids` (13950).
  *
  * Two statements, both idempotent: rows no longer wanted go, rows already
  * present stay (ON CONFLICT on the pair), so a form that re-posts the same

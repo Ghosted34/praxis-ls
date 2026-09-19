@@ -109,7 +109,7 @@ const reminders = z.array(reminder).max(3, "at most three reminders per record")
 
 /* ══════════════════════════════════ TASKS ════════════════════════════════ */
 
-/** The stage set of 13940 — uuids, deduplicated by the service, bounded here. */
+/** The stage set of 13950 — uuids, deduplicated by the service, bounded here. */
 const stageSet = z.array(z.string().uuid()).max(20).optional();
 
 const taskCreate = z
@@ -132,7 +132,7 @@ const taskCreate = z
     dossier_id: z.string().uuid().nullable().optional(),
     milestone_instance_id: z.string().uuid().nullable().optional(),
     // The stages of the file's chain the work belongs to — one or several
-    // (13940). Supersedes the single column above when present; an empty list
+    // (13950). Supersedes the single column above when present; an empty list
     // is a real statement ("no stage"). Twenty is more than any chain has.
     milestone_instance_ids: stageSet,
     is_personal: z.boolean().optional(),
@@ -227,7 +227,7 @@ const childCreate = z
     // point the child at a different one.
     entity_type: z.string().trim().max(40).nullable().optional(),
     entity_id: z.string().uuid().nullable().optional(),
-    // Same terms for the operations file and its stages (13920, 13940):
+    // Same terms for the operations file and its stages (13920, 13950):
     // omitted means inherit, an explicit null (or []) means "this piece is
     // not on that file / those stages".
     dossier_id: z.string().uuid().nullable().optional(),

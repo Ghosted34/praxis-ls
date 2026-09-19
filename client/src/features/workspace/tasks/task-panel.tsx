@@ -267,7 +267,7 @@ export function TaskPanel({
                   <span className="text-muted-foreground"> · {task.dossier_client_name}</span>
                 )}
               </p>
-              {/* Every stage the work is on, in chain order (13940) — the
+              {/* Every stage the work is on, in chain order (13950) — the
                   panel has the width the card chip does not. */}
               {stagesOf(task).length > 0 && (
                 <ul className="mt-1 flex flex-wrap gap-1" aria-label="Milestones">

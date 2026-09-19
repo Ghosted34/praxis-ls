@@ -9,6 +9,6 @@ module.exports = {
     { key: "investor_portal_view", service: (c, p) => service.investorView(c, { params: p }), permission: { module: "MOD-56", action: "view" }, describe: "Investor/board terminal: income statement + cash position." },
   ],
   writes: [
-    { key: "grant_portal_access", service: (c, p) => service.grantAccess(c, p), schema: validator.schemas.grant, permission: { module: "MOD-67", action: "edit" }, confirm: true, describe: "Grant a client/investor/auditor portal access (auditor time-boxed)." },
+    { key: "grant_portal_access", service: (c, p, actor) => service.grantAccess(c, { portal: p.portal, subjectEmail: p.subject_email, clientId: p.client_id, expiresAt: p.expires_at, actor }), schema: validator.schemas.grant, permission: { module: "MOD-67", action: "edit" }, confirm: true, describe: "Grant a client/investor/auditor portal access (auditor time-boxed)." },
   ],
 };

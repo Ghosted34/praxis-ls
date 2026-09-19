@@ -25,8 +25,8 @@ module.exports = {
     },
     {
       key: "update_vehicle",
-      service: service.update,
-      schema: validator.schemas.update,
+      service: (c, p, actor) => (({ vehicle_id, ...patch }) => service.update(c, { id: vehicle_id, patch, actor }))(p),
+      schema: validator.schemas.aiUpdate,
       permission: { module: "MOD-39", action: "edit" },
       confirm: true,
       describe: "Update a vehicle (details or status).",

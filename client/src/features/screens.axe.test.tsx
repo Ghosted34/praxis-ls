@@ -47,6 +47,7 @@ vi.mock("@/app/auth/auth-context", async () => authContextMock());
 import { InvoicesPage } from "./finance/invoices";
 import { ChartOfAccountsPage } from "./finance/chart-of-accounts";
 import { JournalsPage } from "./finance/journals";
+import { OfficeExpensesPage } from "./finance/office-expenses";
 import { OperationsFilesPage } from "./operations/operation-files";
 import { ServiceTypesPage } from "./masterdata/service-types";
 import { LeadsPage } from "./sales/leads";
@@ -402,6 +403,26 @@ const AREAS: Area[] = [
             },
           ],
         },
+      },
+      {
+        name: "Office expenses",
+        render: () => <OfficeExpensesPage />,
+        routes: {
+          "/office-expenses": [
+            {
+              office_expense_id: "oe1",
+              entity_id: "e1",
+              category: "UTILITIES",
+              label: "Electricity — August, Akwa office",
+              expense_date: "2026-08-31",
+              amount: 185_000,
+              expense_coa: "6053",
+              status: "DRAFT",
+            },
+          ],
+          "/office-expenses/totals": { mtd: 185_000, ytd: 1_240_000, draft_count: 1 },
+        },
+        populatedProof: /Electricity — August/,
       },
     ],
   },

@@ -56,10 +56,8 @@ module.exports = {
       key: "run_reconciliation_matcher",
       // auto_confirm is pinned false regardless of what the caller passes: an
       // assistant may propose pairings, never accept its own.
-      service: (c, p) => service.runMatcher(c, {
-        statementId: p.statement_id,
-        options: { near_days: p.near_days, far_days: p.far_days, auto_confirm: false },
-      }),
+      service: (c, p, actor) => service.runMatcher(c, { statementId: p.statement_id,
+        options: { near_days: p.near_days, far_days: p.far_days, auto_confirm: false }, actor }),
       schema: validator.schemas.aiRunMatcher,
       permission: { module: "MOD-09", action: "create" },
       confirm: true,
@@ -67,11 +65,9 @@ module.exports = {
     },
     {
       key: "build_reconciliation",
-      service: (c, p) => service.buildReconciliation(c, {
-        treasuryAccountId: p.treasury_account_id,
+      service: (c, p, actor) => service.buildReconciliation(c, { treasuryAccountId: p.treasury_account_id,
         periodStart: p.period_start,
-        periodEnd: p.period_end,
-      }),
+        periodEnd: p.period_end, actor }),
       schema: validator.schemas.aiBuildReconciliation,
       permission: { module: "MOD-09", action: "create" },
       confirm: true,

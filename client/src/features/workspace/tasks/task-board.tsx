@@ -713,7 +713,7 @@ function TaskCardFace({ task, hoverTitle }: { task: Task; hoverTitle: boolean })
           <span className="min-w-0 truncate text-xs text-muted-foreground">{task.assigned_to_name}</span>
         )}
         {task.entity_label && <Pill tone="blue">{task.entity_label}</Pill>}
-        {/* Which shipment this card is work on (13900). The REFERENCE, not the
+        {/* Which shipment this card is work on (13920). The REFERENCE, not the
             client: a board is read in columns at a glance and the reference is
             the shorter, unambiguous token — the client name is on the row in
             the List view and on the panel, where there is width for it. The

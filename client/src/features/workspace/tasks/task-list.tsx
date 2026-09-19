@@ -13,10 +13,38 @@
  * the very pane the board opens, so the two views never teach two gestures for
  * one action.
  *
+ * ── THE TITLE IS TWO LINES, WITH A DOOR ────────────────────────────────────
+ *
+ * A row is read, not scanned, so a long title earns TWO lines before it is
+ * clamped. Whether it is clamped is MEASURED (scroll vs client height), not
+ * guessed from word counts — eight short words fit, six long ones do not, and
+ * the answer changes with the width and the tenant's typeface. When it IS
+ * clamped, the dots beside the title are a real button: it expands the row in
+ * place to the full title, and the same dots collapse it again, without
+ * opening the task. Opening the task stays the title's own tap; the dots are a
+ * SIBLING of that button, never a child, because a button may not hold a
+ * button.
+ *
+ * The clamped flag is set while collapsed and then KEPT through the cycle:
+ * expanded, the span is unclamped, so measuring it would report "not clamped"
+ * and the only way back out would vanish with the button.
+ *
+ * ── THE PILLS SHARE ONE WRAP ROW, AND THE NARROW ROW IS THE ONE THAT WARDS ──
+ *
+ * Recurrence, priority and status — plus the Move menu — sit in ONE flex-wrap
+ * container. The pills are `white-space: nowrap` and cannot shrink, so on a
+ * 360px row a "Repeats every day until 20 Sept 2026" beside the title used to
+ * overflow the title zone and land on top of the priority and status pills.
+ * One wrap row has nothing to overflow into: below `md` the container takes
+ * the whole row (title / meta / pills, top to bottom, all of them visible),
+ * and at `md` and up the SAME container is the right-hand cluster the row
+ * always had. One DOM, one layout, a breakpoint for width only.
+ *
  * Day-first: every date renders through `dateFmt`, and a search box is an
  * `<Input>`, not a date control, so the day-first gate has nothing to catch.
  */
 import * as React from "react";
+import { cn } from "@/lib/cn";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
@@ -54,7 +82,7 @@ export function TaskList({
   assigneeName,
   onAssigneeClear,
   /** Pre-narrowed to one operations file — what an Analytics drill-down
-   *  carries in, and what the file's own 360 renders the tab with (13900). */
+   *  carries in, and what the file's own 360 renders the tab with (13920). */
   dossierId,
   dossierRef,
   onDossierChange,
@@ -183,7 +211,7 @@ export function TaskList({
             ))}
           </NativeSelect>
         </div>
-        {/* The operations-file filter (13900). Rendered only when the caller
+        {/* The operations-file filter (13920). Rendered only when the caller
             can act on a change — the file's own 360 fixes the file, and a
             picker there would offer to navigate away from the very file whose
             tab the user is reading. */}
@@ -294,49 +322,12 @@ export function TaskList({
         <ul className="divide-y rounded-lg border bg-card">
           {rows.map((task) => (
             <li key={task.task_id}>
-              <div className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-left">
-                <button
-                  type="button"
-                  onClick={() => onOpen(task.task_id)}
-                  className="min-w-0 flex-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  aria-current={task.task_id === selectedId ? "true" : undefined}
-                >
-                  <span className="flex flex-wrap items-center gap-2">
-                    <span className="min-w-0 truncate text-sm font-medium">{task.title}</span>
-                    {task.recurrence_rule && <Pill tone="blue">{describeRule(task.recurrence_rule)}</Pill>}
-                  </span>
-                  <span className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                    {task.due_at && <span className="num">{dateFmt(task.due_at)}</span>}
-                    {task.assigned_to_name && <span>{task.assigned_to_name}</span>}
-                    {/* The file, and the stage when there is one. On the
-                        SECOND line with the date and the owner rather than
-                        beside the title: it is context for the work, not part
-                        of what the work is. */}
-                    {task.dossier_ref && (
-                      <span className="num">
-                        {task.dossier_ref}
-                        {task.milestone_label ? ` · ${task.milestone_label}` : ""}
-                      </span>
-                    )}
-                  </span>
-                </button>
-                <Pill tone={PRIORITY_TONE[task.priority]}>{PRIORITY_LABEL[task.priority]}</Pill>
-                <Pill tone={STATUS_TONE[task.status]}>{STATUS_LABEL[task.status]}</Pill>
-                <DropdownMenu
-                  align="end"
-                  trigger={
-                    <Button size="sm" variant="outline" aria-label={`Move “${task.title}” to another column`}>
-                      Move
-                    </Button>
-                  }
-                >
-                  {BOARD_COLUMNS.filter((c) => c !== task.status).map((c) => (
-                    <DropdownItem key={c} onSelect={() => void moveTo(task, c)}>
-                      {STATUS_LABEL[c]}
-                    </DropdownItem>
-                  ))}
-                </DropdownMenu>
-              </div>
+              <TaskRow
+                task={task}
+                selected={task.task_id === selectedId}
+                onOpen={() => onOpen(task.task_id)}
+                onMove={(next) => moveTo(task, next)}
+              />
             </li>
           ))}
         </ul>
@@ -364,6 +355,143 @@ export function TaskList({
             Next
           </Button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * One row: the title (two lines, expandable in place), the meta line, and the
+ * shared pill row. A component because the clamp is a measurement with state —
+ * a `useEffect` per row — and hooks do not live in a `.map()`.
+ */
+function TaskRow({
+  task,
+  selected,
+  onOpen,
+  onMove,
+}: {
+  task: Task;
+  selected: boolean;
+  onOpen: () => void;
+  onMove: (next: TaskStatus) => Promise<void>;
+}) {
+  const titleRef = React.useRef<HTMLSpanElement>(null);
+  // True while the title overflows the two-line clamp, and kept through the
+  // expand/collapse cycle (see the file header for why it must survive).
+  const [clamped, setClamped] = React.useState(false);
+  const [expanded, setExpanded] = React.useState(false);
+
+  React.useEffect(() => {
+    const el = titleRef.current;
+    // Expanded, the span is unclamped and its scroll height says nothing about
+    // the clamp — measuring it would clear the flag and take the dots away,
+    // leaving the expanded row with no way back. So the flag is only ever
+    // written while collapsed, and re-written on the way back down.
+    if (!el || expanded) return;
+    const measure = () => setClamped(el.scrollHeight > el.clientHeight);
+    measure();
+    // The clamp box's BORDER size never changes (two lines either way), so a
+    // typeface arriving over the fallback after mount can change the scroll
+    // height without the observer ever firing. Measure again when the fonts
+    // settle, and on every size change for rotation and zoom.
+    const ro =
+      typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : null;
+    ro?.observe(el);
+    let alive = true;
+    document.fonts?.ready.then(() => {
+      if (alive) measure();
+    });
+    return () => {
+      alive = false;
+      ro?.disconnect();
+    };
+  }, [task.title, expanded]);
+
+  const titleId = `task-list-title-${task.task_id}`;
+
+  return (
+    <div className="flex w-full flex-wrap items-start gap-x-3 gap-y-1.5 px-3 py-2 text-left">
+      {/*
+        The open target. Title AND meta stay one button, so "tap the row" keeps
+        meaning "open the task" exactly as before — the dots are beside it,
+        never inside it.
+      */}
+      <div className="flex min-w-0 flex-1 items-start gap-2">
+        <button
+          type="button"
+          onClick={onOpen}
+          className="min-w-0 flex-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          aria-current={selected ? "true" : undefined}
+        >
+          <span
+            ref={titleRef}
+            id={titleId}
+            className={cn("text-sm font-medium", expanded ? "block" : "line-clamp-2")}
+          >
+            {task.title}
+          </span>
+          <span className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            {task.due_at && <span className="num">{dateFmt(task.due_at)}</span>}
+            {task.assigned_to_name && <span>{task.assigned_to_name}</span>}
+            {/* The file, and the stage when there is one (13920). On this
+                meta line with the date and the owner rather than beside the
+                title: it is context for the work, not part of what the work
+                is — and the title above it is clamped to two lines, so
+                anything put up there competes with the sentence the row
+                exists to show. */}
+            {task.dossier_ref && (
+              <span className="num">
+                {task.dossier_ref}
+                {task.milestone_label ? ` · ${task.milestone_label}` : ""}
+              </span>
+            )}
+          </span>
+        </button>
+        {clamped && (
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            aria-expanded={expanded}
+            aria-controls={titleId}
+            aria-label={expanded ? "Collapse title" : "Show full title"}
+            className="-mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-xs font-medium leading-none text-muted-foreground transition-colors hover:border-primary hover:text-primary-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            …
+          </button>
+        )}
+      </div>
+
+      {/*
+        ONE wrap row for the pills and the Move menu — see the file header for
+        the overlap it ends. `max-md:w-full` is the whole breakpoint: below it
+        the row becomes title / meta / pills, and above it this is the
+        right-hand cluster, in the same DOM.
+      */}
+      <div className="flex flex-wrap items-center gap-1.5 max-md:w-full">
+        {task.recurrence_rule && (
+          <Pill tone="blue">{describeRule(task.recurrence_rule)}</Pill>
+        )}
+        <Pill tone={PRIORITY_TONE[task.priority]}>{PRIORITY_LABEL[task.priority]}</Pill>
+        <Pill tone={STATUS_TONE[task.status]}>{STATUS_LABEL[task.status]}</Pill>
+        <DropdownMenu
+          align="end"
+          trigger={
+            <Button
+              size="sm"
+              variant="outline"
+              aria-label={`Move “${task.title}” to another column`}
+            >
+              Move
+            </Button>
+          }
+        >
+          {BOARD_COLUMNS.filter((c) => c !== task.status).map((c) => (
+            <DropdownItem key={c} onSelect={() => void onMove(c)}>
+              {STATUS_LABEL[c]}
+            </DropdownItem>
+          ))}
+        </DropdownMenu>
       </div>
     </div>
   );

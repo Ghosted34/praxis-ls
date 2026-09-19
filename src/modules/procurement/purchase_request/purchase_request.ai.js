@@ -9,6 +9,6 @@ module.exports = {
   ],
   writes: [
     { key: "create_purchase_request", service: (c, p, actor) => service.createDraft(c, { requestedBy: p.requested_by, department: p.department, scopeId: p.scope_id, justification: p.justification, lines: p.lines, actor }), schema: validator.schemas.create, permission: { module: "MOD-62", action: "create" }, confirm: true, describe: "Create a DRAFT purchase requisition." },
-    { key: "transition_purchase_request", service: (c, p) => service.transition(c, { id: p.purchase_request_id, to: p.to, entityId: p.entity_id, date: p.date }), schema: validator.schemas.aiTransition, permission: { module: "MOD-62", action: "approve" }, confirm: true, describe: "Advance a purchase request by id one step along DRAFT→SUBMITTED→APPROVED→ORDERED (REJECTED from SUBMITTED). Cannot skip states." },
+    { key: "transition_purchase_request", service: (c, p, actor) => service.transition(c, { id: p.purchase_request_id, to: p.to, entityId: p.entity_id, date: p.date, actor }), schema: validator.schemas.aiTransition, permission: { module: "MOD-62", action: "approve" }, confirm: true, describe: "Advance a purchase request by id one step along DRAFT→SUBMITTED→APPROVED→ORDERED (REJECTED from SUBMITTED). Cannot skip states." },
   ],
 };

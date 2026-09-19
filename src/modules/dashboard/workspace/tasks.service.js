@@ -184,15 +184,20 @@ const withLink = (row) => {
 };
 
 /**
- * Settle the operations-file link a write is asking for (13900).
+ * Settle the operations-file link a write is asking for (13920).
  *
- * ── THE RULE, AND WHY IT IS HERE AND NOT ONLY IN THE DATABASE ──────────────
+ * ── THE RULES, AND WHY THE DATABASE ENFORCES NEITHER ───────────────────────
  *
- * A milestone must belong to the file it is filed under. 13900's CHECK enforces
- * the floor (a stage with no file at all is refused by the table), but the
- * stronger rule — that the stage is one of THAT file's — cannot be a CHECK,
- * because it reads a second table. It is enforced here, where a mismatch can be
- * a sentence naming both records rather than a 23514 the user cannot act on.
+ * A milestone must belong to the file it is filed under, and a milestone with
+ * no file at all is meaningless. The first could never have been a CHECK — it
+ * reads a second table. The second could have been, and was, until 13920 had
+ * to drop it: a constraint added above 13791 to a pre-existing table aborts
+ * provisioning a NEW tenant, because 13791's sandbox repair pass reads live's
+ * catalogue while sandbox is still behind it. See that migration's header.
+ *
+ * So both live here, which is where the better error was anyway: a mismatch
+ * can name both records in a sentence the user can act on, rather than arrive
+ * as a 23514 about a constraint they have never heard of.
  *
  * ── CLEARING THE FILE CLEARS THE STAGE ─────────────────────────────────────
  *
@@ -457,7 +462,7 @@ async function listTasks(client, ctx, q = {}) {
     // a filter and filtered nothing. Honour it.
     priority: q.priority,
     assignedTo: q.assigned_to === "me" ? ctx.user.user_id : q.assigned_to,
-    // 13900: the file's own Tasks tab reads the list through these, so the tab
+    // 13920: the file's own Tasks tab reads the list through these, so the tab
     // and the Analytics rollup count one population rather than two.
     dossierId: q.dossier_id,
     milestoneInstanceId: q.milestone_instance_id,
@@ -617,7 +622,7 @@ async function createTask(client, ctx, input) {
   // above everything else on the day it was created.
   const due_at = toInstant(input.due_at, { timeZone, dateOnlyTime: "17:00:00" });
   const rule = ruleOrThrow(input);
-  // 13900: a stage must belong to the file it is filed under, and an unpicked
+  // 13920: a stage must belong to the file it is filed under, and an unpicked
   // file takes its stage with it. Settled BEFORE the insert so a mismatch is a
   // 400 naming both records rather than a row the panel cannot render.
   const link = await resolveFileLink(client, input);
@@ -703,7 +708,7 @@ async function updateTask(client, ctx, id, input) {
   const rule = ruleOrThrow(input);
   if (rule !== undefined) patch.recurrence_rule = rule;
   // The link is settled against the row AS IT STANDS, so a PATCH naming only
-  // the stage is checked against the file the task already carries (13900).
+  // the stage is checked against the file the task already carries (13920).
   Object.assign(patch, await resolveFileLink(client, input, before));
 
   // Reminder inputs are consumed by writeReminders below, not by
@@ -1216,7 +1221,7 @@ async function addChildTask(client, ctx, parentTaskId, input, audience) {
     parent_task_id: parentTaskId,
     entity_type: input.entity_type !== undefined ? input.entity_type : parent.entity_type,
     entity_id: input.entity_id !== undefined ? input.entity_id : parent.entity_id,
-    // The operations-file link is inherited on the same terms (13900). A child
+    // The operations-file link is inherited on the same terms (13920). A child
     // is a separately-assigned piece of the SAME work, so it is on the same
     // file and the same stage unless the caller says otherwise — and a child
     // that silently lost its file would go missing from the file's own Tasks
@@ -2059,7 +2064,7 @@ async function analytics(client, ctx, q = {}) {
     // the drill-down link can carry the same parameter through unchanged.
     assignedTo: q.assigned_to === "me" ? ctx.user.user_id : q.assigned_to || null,
     scopeId: q.scope_id || null,
-    // 13900. In `filters` and therefore in `analyticsScope`, so picking a file
+    // 13920. In `filters` and therefore in `analyticsScope`, so picking a file
     // narrows EVERY figure rather than only the panel that groups by it.
     dossierId: q.dossier_id || null,
   };
@@ -2131,7 +2136,7 @@ async function analytics(client, ctx, q = {}) {
     burndown: burndownSeries(burndown),
     composition: composition.map((r) => ({ status: r.status, priority: r.priority, tasks: r.tasks })),
     // Work per operations file, and — only when one is picked — per stage of
-    // its chain (13900). A file whose reference the reader cannot resolve is
+    // its chain (13920). A file whose reference the reader cannot resolve is
     // named as such rather than shown as a bare uuid: `dossier_visible` is a
     // LEFT join, so a link to a file that has since become invisible (deleted,
     // or reverted to DRAFT) leaves `ref` NULL, and "A file you cannot view" is
@@ -2222,7 +2227,7 @@ module.exports = {
   pingTask, notifyStatusWatchers,
   analytics, resolveAnalyticsWindow, burndownSeries, fillBuckets,
   ANALYTICS_MAX_DAYS, ANALYTICS_DEFAULT_DAYS, AGE_BUCKETS,
-  // 13900. Exported so the two rules it encodes — a stage belongs to its file,
+  // 13920. Exported so the two rules it encodes — a stage belongs to its file,
   // and clearing the file clears the stage — are tested directly rather than
   // through a create/update that would need half the module mocked to reach.
   resolveFileLink,

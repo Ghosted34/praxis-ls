@@ -2,10 +2,26 @@
  * PraxisActions — the in-screen AI affordance. Drop it in a screen's PageHeader
  * `action` slot with that screen's `ai` suggestions (from screen-specs.ts). It
  * opens a small panel where Praxis can draft / suggest / carry out the screen's
- * actions: the prompt goes to /ai/ask, proposed write-actions render with a
- * Confirm (executed permission-inheringly), and `onApplied` refreshes the list.
+ * actions: proposed write-actions render with a Confirm (executed permission-
+ * inheritingly), and `onApplied` refreshes the list.
  *
  * This is per-screen and screen-scoped — distinct from any general chat.
+ *
+ * ── STREAMING, LIKE THE CHAT (audit E1) ────────────────────────────────────
+ *
+ * This panel used the non-streaming `askPraxis`, which the general chat gave up
+ * on for the reason recorded in `components/ai/thread.ts`: it waits for the
+ * whole completion before rendering anything, so the person watches a spinner
+ * for 5–15 seconds with no sign of progress. That was already the worse
+ * experience; audit E1 made it a reliability problem too, because the server's
+ * per-call cap is now 120s and the non-streaming request had no client bound at
+ * all — a stalled turn was a spinner that never resolved.
+ *
+ * The SSE path fixes all three at once: first tokens in ~500ms, a 15s heartbeat
+ * that proves the turn is alive through any proxy, and an abort that actually
+ * reaches the server when the panel closes. `askPraxisStream` still falls back
+ * to `askPraxis` by itself where SSE cannot be reached, and that call is now
+ * bounded by `AI_ASK_TIMEOUT_MS`, so neither path can hang.
  */
 import * as React from "react";
 import { Textarea } from "@/components/ui/textarea";
@@ -15,9 +31,11 @@ import { ErrorState } from "@/components/ui/states";
 import { Pill } from "@/components/ui/pill";
 import { errMsg } from "@/lib/use-resource";
 import {
-  askPraxis,
+  askPraxisStream,
+  classifyAiFailure,
   confirmAiAction,
   confirmAiBatch,
+  type AiFailure,
   type AskResult,
   type AiActionRun,
 } from "@/lib/ai-api";
@@ -91,32 +109,98 @@ function PraxisPanel({
 }) {
   const [message, setMessage] = React.useState("");
   const [busy, setBusy] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
+  const [failure, setFailure] = React.useState<AiFailure | null>(null);
   const [result, setResult] = React.useState<AskResult | null>(null);
+  /** The assistant's current step, replaced each time and never kept. */
+  const [status, setStatus] = React.useState<string | null>(null);
   const [convId, setConvId] = React.useState<string | undefined>(undefined);
   const [executed, setExecuted] = React.useState<Record<string, "ok" | "err">>(
     {},
   );
   const [confirming, setConfirming] = React.useState<string | null>(null);
 
+  // The in-flight stream. Aborted when the panel closes or a new question
+  // starts, so a turn nobody is waiting for stops costing the server a model
+  // call — the disconnect-abort half of audit E1.
+  const streamAbort = React.useRef<AbortController | null>(null);
+  const lastAsked = React.useRef<string | null>(null);
+  React.useEffect(() => () => streamAbort.current?.abort(), []);
+
   async function ask(text: string) {
     const msg = text.trim();
-    if (!msg) return;
+    if (!msg || busy) return;
+    lastAsked.current = msg;
+
+    streamAbort.current?.abort();
+    const abort = new AbortController();
+    streamAbort.current = abort;
+
     setBusy(true);
-    setError(null);
+    setFailure(null);
+    setStatus(null);
+    setResult(null);
+    setExecuted({});
+
+    // Built up locally and committed to state as it grows, so the answer types
+    // out rather than appearing all at once at the end.
+    let answer = "";
+    let streamed: AskResult = { answer: "", actions: [] };
+    const commit = (patch: Partial<AskResult>) => {
+      streamed = { ...streamed, ...patch };
+      setResult(streamed);
+    };
+
     try {
-      const out = await askPraxis(
+      for await (const event of askPraxisStream(
         context ? `[Screen: ${context}] ${msg}` : msg,
         convId,
-      );
-      setResult(out);
-      // ai_action_run rows are keyed by conversation; the batch id lets us keep
-      // follow-ups in the same thread when present.
-      if (out.batch_id) setConvId((c) => c ?? out.batch_id ?? undefined);
+        undefined,
+        abort.signal,
+      )) {
+        if (abort.signal.aborted) return;
+        if (event.type === "delta") {
+          answer += event.text;
+          setStatus(null);
+          commit({ answer });
+        } else if (event.type === "status") {
+          // One line saying what is happening NOW — replaced, never appended.
+          setStatus(event.text);
+        } else if (event.type === "reset") {
+          // What arrived so far was a preamble to a tool call, not the reply.
+          answer = "";
+          commit({ answer });
+        } else if (event.type === "answer") {
+          answer = event.text || answer;
+          setStatus(null);
+          commit({ answer });
+        } else if (event.type === "actions") {
+          commit({ actions: event.actions, batch_id: event.batch_id });
+          // ai_action_run rows are keyed by conversation; the batch id keeps
+          // follow-ups in the same thread when there is one.
+          if (event.batch_id) setConvId((c) => c ?? event.batch_id ?? undefined);
+        } else if (event.type === "done") {
+          if (event.conversation_id) setConvId((c) => c ?? event.conversation_id ?? undefined);
+          setFailure(
+            classifyAiFailure({
+              provider: event.provider,
+              blocked: streamed.blocked,
+              completed: true,
+            }),
+          );
+        } else if (event.type === "error") {
+          setFailure(classifyAiFailure({ error: new Error(event.message) }));
+        }
+      }
     } catch (e) {
-      setError(errMsg(e));
+      if (!abort.signal.aborted) setFailure(classifyAiFailure({ error: e }));
     } finally {
-      setBusy(false);
+      if (!abort.signal.aborted) {
+        setBusy(false);
+        // A status line claims work is in progress. However the turn ended, it
+        // is not, so the line must not outlive it.
+        setStatus(null);
+      }
+      if (streamAbort.current === abort) streamAbort.current = null;
     }
   }
 
@@ -151,7 +235,7 @@ function PraxisPanel({
       });
       if (r.executed > 0) onApplied?.();
     } catch (e) {
-      setError(errMsg(e));
+      setFailure({ kind: "transient", message: errMsg(e) });
     } finally {
       setConfirming(null);
     }
@@ -214,7 +298,36 @@ function PraxisPanel({
           </Button>
         </div>
 
-        {error && <ErrorState message={error} />}
+        {failure && (
+          <div className="space-y-2">
+            <ErrorState message={failure.message} />
+            <div className="flex items-center gap-3">
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={busy || !lastAsked.current}
+                onClick={() => lastAsked.current && void ask(lastAsked.current)}
+              >
+                Try again
+              </Button>
+              {/* Both kinds keep the retry. Only a provider failure says where
+                  the fix lives, because retrying does not resolve a credential
+                  and the person needs to know who to ask. */}
+              {failure.kind === "provider" && (
+                <span className="text-xs text-muted-foreground">
+                  Retrying will not help until the vendor credentials are fixed.
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+
+        {status && (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
+            {status}
+          </div>
+        )}
 
         {result && (
           <div className="space-y-3">

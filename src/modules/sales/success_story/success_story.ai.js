@@ -8,8 +8,8 @@ module.exports = {
     { key: "get_success_story", service: (c, p) => service.get(c, p.id || p), permission: { module: "MOD-26", action: "view" }, describe: "Get a success story by id." },
   ],
   writes: [
-    { key: "generate_success_story", service: (c,p) => service.generate(c,{dossierIds:p.dossier_ids,roughNotes:p.rough_notes}), schema: validator.schemas.generate, permission: { module: "MOD-26", action: "create" }, confirm: true, describe: "Draft structured case-study copy from completed operations files." },
+    { key: "generate_success_story", service: (c, p, actor) => service.generate(c, { dossierIds:p.dossier_ids,roughNotes:p.rough_notes, actor }), schema: validator.schemas.generate, permission: { module: "MOD-26", action: "create" }, confirm: true, describe: "Draft structured case-study copy from completed operations files." },
     { key: "create_success_story", service: (c, p, actor) => service.create(c, { data: p, actor }), schema: validator.schemas.create, permission: { module: "MOD-26", action: "create" }, confirm: true, describe: "Draft a success story (AI-assisted)." },
-    { key: "publish_success_story", service: (c, p) => service.publish(c, p), schema: validator.schemas.update, permission: { module: "MOD-26", action: "approve" }, confirm: true, describe: "Publish a signed-off success story." },
+    { key: "publish_success_story", service: (c, p, actor) => service.publish(c, { id: p.success_story_id, actor }), schema: validator.schemas.aiPublish, permission: { module: "MOD-26", action: "approve" }, confirm: true, describe: "Publish a signed-off success story." },
   ],
 };

@@ -32,6 +32,10 @@ const schemas = {
     source_doc_ref: z.string().max(120).optional().nullable(),
   }),
 };
+// AI-facing: the note is in the URL for the HTTP routes, but a copilot call has
+// no URL — it passes one flat object, so the id must be IN the schema.
+schemas.aiUpdate = schemas.update.extend({ credit_note_id: z.string().uuid() });
+schemas.aiPost = schemas.post.extend({ credit_note_id: z.string().uuid() });
 const mw = (k) => (req, _res, next) => {
   const p = schemas[k].safeParse(req.body ?? {});
   if (!p.success) return next(new AppError("VALIDATION_ERROR", "Invalid body", 422, p.error.flatten().fieldErrors));

@@ -21,6 +21,8 @@ const schemas = {
   reverse: z.object({ reason: z.string().optional(), entry_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() }),
   aiReverse: z.object({ supplier_invoice_id: z.string().uuid(), reason: z.string().optional(), entry_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() }),
   match: z.object({}).strict(),
+  // AI-facing: the invoice is in the URL for HTTP, in the payload for the copilot.
+  aiMatch: z.object({ supplier_invoice_id: z.string().uuid() }),
 };
 const mw = (k) => (req, _res, next) => {
   const p = schemas[k].safeParse(req.body);

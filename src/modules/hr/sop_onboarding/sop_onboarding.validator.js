@@ -82,7 +82,10 @@ const rule = withValueCheck(z.object({ ...ruleShape, code: z.string().min(1).max
 // them by kind, and a renamed code orphans the days already charged under it.
 const ruleUpdate = withValueCheck(z.object(ruleShape).partial());
 
-const schemas = { create, update: create.partial(), draft, rule, ruleUpdate };
+const update = create.partial();
+// AI-facing: the record id travels IN the payload — the copilot has no route param.
+const aiUpdate = update.extend({ sop_document_id: z.string().uuid() });
+const schemas = { create, update, draft, rule, ruleUpdate, aiUpdate };
 
 const mw = (k) => (req, _res, next) => {
   const p = schemas[k].safeParse(req.body);

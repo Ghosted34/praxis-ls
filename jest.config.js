@@ -43,5 +43,39 @@ module.exports = {
   // PDF/DataMatrix test exercises native canvas + WASM; unbounded workers make
   // the Test step measure memory pressure rather than code correctness.
   maxWorkers: 2,
+  /**
+   * RESTART A WORKER THAT HAS GROWN PAST 1 GB.
+   *
+   * A Jest worker is reused across suites and keeps `require.cache` between
+   * them, so memory only ever goes UP over a run. Measured with
+   * `--logHeapUsage`: workers finish this suite at ~1.35 GB, and the number
+   * climbs steadily with the number of files a worker has been handed rather
+   * than with any one file's weight — the heaviest reported suites
+   * (`ai-workers`, `query-columns`, `entity-child-clear-field`) are simply the
+   * ones that happened to run late.
+   *
+   * That is survivable until it isn't. CI died with:
+   *
+   *     A jest worker process was terminated by another process:
+   *     signal=SIGKILL, exitCode=null
+   *
+   * — the OOM killer, reported against `ai-readiness.test.js`, a suite that had
+   * not changed. THE SUITE NAMED IN THAT MESSAGE IS THE VICTIM, NOT THE CAUSE:
+   * the kernel kills whatever is resident when the machine runs out, so the
+   * blame lands on whichever file the doomed worker happened to be holding.
+   * Chasing that name is how this gets misdiagnosed as a flake and re-run.
+   *
+   * `workerIdleMemoryLimit` makes Jest restart a worker once it crosses the
+   * bound, between suites, so the run has a ceiling instead of a slope. 1 GB
+   * leaves room for two workers plus the coverage maps and the parent process
+   * inside the runner's budget, and is high enough that restarts are rare
+   * rather than a per-file cost.
+   *
+   * Deliberately NOT `--runInBand` (TC-F2 measured 22.5s serial vs 7.4s
+   * parallel and removed it on purpose) and deliberately not a bigger
+   * `--max-old-space-size`: raising the ceiling on a slope only moves the
+   * failure later, and the next person to add a test file pays for it again.
+   */
+  workerIdleMemoryLimit: "1GB",
   clearMocks: true,
 };

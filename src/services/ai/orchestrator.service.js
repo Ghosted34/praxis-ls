@@ -299,6 +299,15 @@ const history_ = {
           { role: "system", content: summarySystemPrompt() },
           { role: "user", content: `${prior}NEW EXCHANGES:\n${transcript}` },
         ],
+        // BOUNDED, and single-vendor. This call sits in front of the user's
+        // question — see AI_SUMMARY_TIMEOUT_MS. On the default budget a hung
+        // summariser stalled the turn for up to 2× AI_REQUEST_TIMEOUT_MS
+        // (primary + fallback) before the question was sent, which is the
+        // "memory timeout" in the 16 Sep review. Failure here is free: the
+        // catch below logs it, `summary_through` does not advance, and the
+        // next turn tries the same batch again.
+        timeoutMs: config.AI_SUMMARY_TIMEOUT_MS,
+        singleVendor: true,
       });
       if (!res.text) return; // no provider configured, or the vendor failed — try again next turn
 
@@ -611,6 +620,85 @@ function selectTools(tools, contextText, limit = TOOL_LIMIT) {
 // is accepted for boolean fields. The module's own Zod schema is the final
 // gate at execution time. We only reject CLEARLY wrong types: an object where
 // a string is expected, an array where a number is expected, etc.
+//
+// ── FORMATS ARE CHECKED HERE NOW (review 16 Sep 2026 #17) ──────────────────
+//
+// The catalogue schema carries `format`/`pattern`/bounds since the registrar
+// stopped flattening them. Checking them at PROPOSE time is the whole value of
+// having carried them: `create_lead` with a person's name in `owner_user_id`
+// used to pass this function (both are strings), reach the module's Zod
+// validator at execute time, and fail there — after the confirm, phrased in
+// terms of a constraint nobody had been shown. Now the run is stored
+// VALIDATION_FAILED with "'owner_user_id' must be a uuid", the copilot renders
+// that next to the field, and `field_meta` has already offered a picker for it.
+//
+// Still lenient in the direction that matters: unknown keys pass (see above),
+// an absent optional is fine, and a format is only judged when the schema
+// actually declares one. A wrong-looking value is never silently corrected.
+const FORMAT_RE = {
+  uuid: /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+  email: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
+  // Date-only and date-time are checked shape-first then for real calendar
+  // validity, so "2026-02-31" is refused rather than handed to Postgres.
+  date: /^\d{4}-\d{2}-\d{2}$/,
+  "date-time": /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})?$/i,
+  uri: /^[a-z][a-z0-9+.-]*:\/\/[^\s]+$/i,
+  ipv4: /^(\d{1,3}\.){3}\d{1,3}$/,
+  time: /^\d{2}:\d{2}(:\d{2})?$/,
+};
+
+/** A human sentence naming what is wrong with `value` for `prop`, or null. */
+function formatProblem(key, prop, value) {
+  if (typeof value !== "string" || value === "") return null;
+  const fmt = prop.format;
+  if (fmt && FORMAT_RE[fmt]) {
+    if (!FORMAT_RE[fmt].test(value)) {
+      // Name the field and the shape. "must be a uuid" is actionable; the raw
+      // value is NOT echoed — it can be a client's email or tax id, and this
+      // string is stored on the action run and shown in the panel.
+      return `'${key}' must be a ${fmt === "uri" ? "URL" : fmt}`;
+    }
+    if (fmt === "date" || fmt === "date-time") {
+      // `Date.parse` is NOT sufficient on its own: it ROLLS OVER an out-of-range
+      // day rather than rejecting it — "2026-02-31" parses happily to 3 March.
+      // A silent 3-day shift on a deadline or a due date is worse than the
+      // rejection this is supposed to produce, so the parsed date is compared
+      // back against the digits that were written.
+      const [y, m, d] = value.slice(0, 10).split("-").map(Number);
+      const parsed = new Date(Date.UTC(y, m - 1, d));
+      const roundTrips =
+        parsed.getUTCFullYear() === y && parsed.getUTCMonth() === m - 1 && parsed.getUTCDate() === d;
+      if (Number.isNaN(parsed.getTime()) || !roundTrips) return `'${key}' is not a real date`;
+    }
+  }
+  if (prop.pattern) {
+    let re = null;
+    // A malformed pattern in the catalogue must not throw inside validation —
+    // an unusable rule is skipped, never turned into a false rejection.
+    try { re = new RegExp(prop.pattern); } catch { re = null; }
+    if (re && !re.test(value)) return `'${key}' is not in the expected format`;
+  }
+  if (typeof prop.minLength === "number" && value.length < prop.minLength) {
+    return `'${key}' must be at least ${prop.minLength} character${prop.minLength === 1 ? "" : "s"}`;
+  }
+  if (typeof prop.maxLength === "number" && value.length > prop.maxLength) {
+    return `'${key}' must be at most ${prop.maxLength} characters`;
+  }
+  return null;
+}
+
+/** A human sentence naming what is wrong with a numeric `value`, or null. */
+function numberProblem(key, prop, value) {
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n)) return null; // not a number at all — the type check above owns that
+  if (prop.type === "integer" && !Number.isInteger(n)) return `'${key}' must be a whole number`;
+  if (typeof prop.minimum === "number" && n < prop.minimum) return `'${key}' must be at least ${prop.minimum}`;
+  if (typeof prop.maximum === "number" && n > prop.maximum) return `'${key}' must be at most ${prop.maximum}`;
+  if (typeof prop.exclusiveMinimum === "number" && n <= prop.exclusiveMinimum) return `'${key}' must be greater than ${prop.exclusiveMinimum}`;
+  if (typeof prop.exclusiveMaximum === "number" && n >= prop.exclusiveMaximum) return `'${key}' must be less than ${prop.exclusiveMaximum}`;
+  return null;
+}
+
 function validatePayload(schema, payload) {
   const errors = [];
   const props = (schema && schema.properties) || {};
@@ -642,6 +730,24 @@ function validatePayload(schema, payload) {
     if (Array.isArray(prop.enum) && prop.enum.length && typeof value === "string") {
       if (!prop.enum.includes(value)) {
         errors.push(`'${key}' must be one of: ${prop.enum.join(", ")}`);
+      }
+      continue; // an enum member is not additionally a format/pattern candidate
+    }
+    // Format, pattern and bounds — see the FORMATS note above. Checked only
+    // when the schema declares them, and only on a value the type check above
+    // has not already complained about.
+    if (prop.type === "string") {
+      const problem = formatProblem(key, prop, value);
+      if (problem) errors.push(problem);
+    } else if (prop.type === "number" || prop.type === "integer") {
+      const problem = numberProblem(key, prop, value);
+      if (problem) errors.push(problem);
+    } else if (prop.type === "array" && Array.isArray(value)) {
+      if (typeof prop.minItems === "number" && value.length < prop.minItems) {
+        errors.push(`'${key}' needs at least ${prop.minItems} item${prop.minItems === 1 ? "" : "s"}`);
+      }
+      if (typeof prop.maxItems === "number" && value.length > prop.maxItems) {
+        errors.push(`'${key}' allows at most ${prop.maxItems} items`);
       }
     }
   }
@@ -773,7 +879,29 @@ const SYSTEM_RULES =
   "  are missing when the user has already told you the values. Map what they said to the " +
   "  action's fields. " +
   "• If an action fails because of a field mapping issue, try to FIX the mapping yourself " +
-  "  (e.g. look up the client by name to get their ID) before telling the user it failed. ";
+  "  (e.g. look up the client by name to get their ID) before telling the user it failed. " +
+  // ── IDENTIFIERS ARE READ, NEVER COMPOSED (review 16 Sep 2026 #17) ─────────
+  //
+  // The tool contract now advertises `format: "uuid"` on id fields, which is
+  // what stops the model sending a person's NAME where an id belongs. It
+  // creates one new failure mode that has to be closed in the same change: a
+  // model that knows the SHAPE of a uuid can satisfy the shape by inventing
+  // one. A fabricated uuid passes the regex, passes propose-time validation,
+  // and then either 404s or — far worse — matches a real unrelated record.
+  //
+  // So the rule is about PROVENANCE, not shape: an id may only be one the model
+  // actually read this turn. "Ask" is named as the alternative because the
+  // LANGUAGE RULES above forbid reporting a technical error, and without an
+  // explicit escape the model's remaining option is to guess.
+  "IDENTIFIER RULES — absolute, and they matter more than completing the action: " +
+  "• An id field (anything the schema marks as a uuid) may ONLY contain a value you read " +
+  "  from a previous list_/get_ call in THIS conversation. " +
+  "• NEVER construct, guess, pattern-match or 'fill in' a uuid, even one that looks plausible. " +
+  "  There is no such thing as a reasonable guess at an identifier. " +
+  "• If you need an id you have not read, either call the matching list_ action to find it, " +
+  "  or ask the user which record they mean — in plain language, naming the record, not the field. " +
+  "• Leave an OPTIONAL id out entirely rather than filling it with a placeholder. An omitted " +
+  "  optional field is correct; an invented one is a wrong record. ";
 
 /**
  * The ONE builder both ask() and askStream() use (audit B5), so the two paths
@@ -1733,4 +1861,8 @@ module.exports = {
   // shared prompt, and its static prefix is the single SYSTEM_RULES constant.
   buildSystemPrompt,
   SYSTEM_RULES,
+  // Exported for the propose-time validation tests (review 16 Sep 2026 #17).
+  // This is the gate that decides whether a bad value is reported next to the
+  // field NOW or surfaces as an opaque failure after the user has confirmed.
+  validatePayload,
 };

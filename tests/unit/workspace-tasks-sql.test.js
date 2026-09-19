@@ -189,7 +189,7 @@ describe("tasks.repo — placeholders match parameters", () => {
       entity_id: "e1",
       is_personal: true,
       scope_id: "s1",
-      // 13900's operations-file link. Counted here like every other column:
+      // 13920's operations-file link. Counted here like every other column:
       // the whole point of this test is that adding one to the INSERT without
       // adding its parameter is a runtime 42P18 nothing else catches.
       dossier_id: "d1",

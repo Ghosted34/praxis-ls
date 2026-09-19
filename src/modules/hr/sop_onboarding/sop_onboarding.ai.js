@@ -25,8 +25,8 @@ module.exports = {
     },
     {
       key: "update_sop",
-      service: service.update,
-      schema: validator.schemas.update,
+      service: (c, p, actor) => (({ sop_document_id, ...patch }) => service.update(c, { id: sop_document_id, patch, actor }))(p),
+      schema: validator.schemas.aiUpdate,
       permission: { module: "MOD-16", action: "edit" },
       confirm: true,
       describe: "Update an SOP document (version bump, activation).",

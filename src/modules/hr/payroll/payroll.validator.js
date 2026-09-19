@@ -50,7 +50,8 @@ const advanceUpdate = z.object({
 
 // AI-facing: payroll_run_id in the payload → list_payroll_runs picker.
 const aiStatus = status.extend({ payroll_run_id: z.string().uuid() });
-const schemas = { createRun, compute, status, aiStatus, advance, advanceUpdate };
+const aiCompute = compute.extend({ payroll_run_id: z.string().uuid() });
+const schemas = { createRun, compute, status, aiStatus, aiCompute, advance, advanceUpdate };
 const mw = (k) => (req, _res, next) => {
   const p = schemas[k].safeParse(req.body || {});
   if (!p.success) return next(new AppError("VALIDATION_ERROR", "Invalid body", 422, p.error.flatten().fieldErrors));

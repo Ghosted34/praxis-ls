@@ -29,12 +29,14 @@
 import * as React from "react";
 import {
   askPraxisStream,
+  classifyAiFailure,
   clearAiHistory,
   confirmAiAction,
   fetchAiHistory,
   listAiConversations,
   type AiActionRun,
   type AiConversationMeta,
+  type AiFailure,
   type AiSourceLike,
 } from "@/lib/ai-api";
 import { errMsg } from "@/lib/use-resource";
@@ -67,6 +69,15 @@ export type AiTurn = {
   mode?: AiMode;
   /** A failed send. Drawn as an error, and retryable. */
   failed?: boolean;
+  /**
+   * WHY the turn failed, when it did (audit G4).
+   *
+   * `transient` (a drop, a 5xx, a timeout) and `provider` (the vendor chain is
+   * misconfigured) both keep the retry button — see `classifyAiFailure` — but
+   * only the second one is worth telling somebody about, because no number of
+   * retries fixes a credential. Absent on a turn that did not fail.
+   */
+  failureKind?: AiFailure["kind"];
 };
 
 let seq = 0;
@@ -297,11 +308,38 @@ export function useAiThread(
             } else if (event.type === "done") {
               if (event.conversation_id)
                 setConversationId(event.conversation_id);
+              // A completed turn that names no vendor is the provider chain
+              // exhausted (audit B2/G4). It arrives looking like a perfectly
+              // good answer — prose explaining the problem — so until now
+              // nothing marked it, and the person got an explanation with no
+              // control beside it.
+              const why = classifyAiFailure({
+                provider: event.provider,
+                completed: true,
+              });
+              if (why)
+                setTurns((t) =>
+                  t.map((x) =>
+                    x.id === assistantTurnId
+                      ? {
+                          ...x,
+                          text: accText || why.message,
+                          failed: true,
+                          failureKind: why.kind,
+                        }
+                      : x,
+                  ),
+                );
             } else if (event.type === "error") {
               setTurns((t) =>
                 t.map((x) =>
                   x.id === assistantTurnId
-                    ? { ...x, text: event.message, failed: true }
+                    ? {
+                        ...x,
+                        text: event.message,
+                        failed: true,
+                        failureKind: "transient",
+                      }
                     : x,
                 ),
               );
@@ -309,10 +347,13 @@ export function useAiThread(
           }
         } catch (e) {
           if (!abort.signal.aborted) {
+            const why: AiFailure =
+              classifyAiFailure({ error: e }) ??
+              { kind: "transient", message: errMsg(e) };
             setTurns((t) =>
               t.map((x) =>
                 x.id === assistantTurnId
-                  ? { ...x, text: errMsg(e), failed: true }
+                  ? { ...x, text: why.message, failed: true, failureKind: why.kind }
                   : x,
               ),
             );

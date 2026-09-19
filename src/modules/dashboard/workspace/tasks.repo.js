@@ -100,7 +100,7 @@ const SUBTASK_COUNTS = `
   (SELECT count(*)::int FROM task_subtask s WHERE s.task_id = t.task_id AND s.is_done) AS subtask_done_count`;
 
 /**
- * The linked operations file and stage, as a reader needs them (13900).
+ * The linked operations file and stage, as a reader needs them (13920).
  *
  * `dossier_visible`, not `dossier`: the picker only ever offers non-draft
  * files, so joining the view costs nothing and keeps this out of the
@@ -1490,7 +1490,7 @@ function analyticsScope(v, { from, to, status, priority, assignedTo, scopeId, do
   if (priority) { params.push(priority); where.push(`t.priority = $${start + params.length - 1}`); }
   if (assignedTo) { params.push(assignedTo); where.push(`t.assigned_to = $${start + params.length - 1}`); }
   if (scopeId) { params.push(scopeId); where.push(`t.scope_id = $${start + params.length - 1}`); }
-  // The operations-file narrowing (13900). In the SHARED scope rather than in
+  // The operations-file narrowing (13920). In the SHARED scope rather than in
   // the one panel that groups by it, so picking a file narrows every figure on
   // the dashboard — the summary, the throughput line and the workload table
   // included. A filter honoured by one panel and ignored by the other seven is
@@ -1624,7 +1624,7 @@ async function analyticsWorkload(client, { visibility, filters, nowIso, limit = 
 }
 
 /**
- * Work by operations file — the rollup the file link exists for (13900).
+ * Work by operations file — the rollup the file link exists for (13920).
  *
  * ── WHAT A ROW SAYS ────────────────────────────────────────────────────────
  *
@@ -1686,7 +1686,7 @@ async function analyticsByFile(client, { visibility, filters, nowIso, limit = 25
 }
 
 /**
- * Open work by milestone, for the ONE file a reader has narrowed to (13900).
+ * Open work by milestone, for the ONE file a reader has narrowed to (13920).
  *
  * Only computed when `filters.dossierId` is set, and deliberately so: milestone
  * labels repeat across files ("Customs cleared" exists on every one of them),

@@ -111,7 +111,7 @@ export type Task = {
   recurrence_series_id?: string | null;
   entity_type: string | null;
   entity_id: string | null;
-  /** The operations file this work is IN, and the stage of its chain (13900).
+  /** The operations file this work is IN, and the stage of its chain (13920).
    *  Separate from the entity pair above, which is what the task POINTS AT —
    *  a task raised from a costing can carry both. The `*_ref`/`*_label` fields
    *  are joined on read so a row can name its file without a second request. */
@@ -387,7 +387,7 @@ export type TaskInput = {
   due_at?: string | null;
   entity_type?: string | null;
   entity_id?: string | null;
-  /** The operations file this work is IN, and the stage of its chain (13900).
+  /** The operations file this work is IN, and the stage of its chain (13920).
    *  Clearing the file clears the stage server-side — a stage is a narrowing
    *  of a file, never an alternative to one. */
   dossier_id?: string | null;
@@ -542,7 +542,7 @@ export const listTasksPaged = (
     assigned_to?: string;
     q?: string;
     audience?: Audience;
-    /** Narrow to one operations file, or one stage of its chain (13900). */
+    /** Narrow to one operations file, or one stage of its chain (13920). */
     dossier_id?: string;
     milestone_instance_id?: string;
     limit?: number;
@@ -740,7 +740,7 @@ export type AnalyticsResponse = {
     days: { day: string; created: number; completed: number; open: number }[];
   };
   composition: { status: TaskStatus; priority: TaskPriority; tasks: number }[];
-  /** Open work per operations file (13900). Linked work only — every task with
+  /** Open work per operations file (13920). Linked work only — every task with
    *  no file would otherwise be one enormous row saying nothing. */
   by_file: {
     dossier_id: string;

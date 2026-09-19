@@ -77,6 +77,13 @@ const GATES = [
   { group: "backend", name: "Schema drift", cmd: node("scripts/db/check-schema-drift.js") },
   { group: "backend", name: "Query columns exist", cmd: node("scripts/db/check-query-columns.js") },
   { group: "backend", name: "Write routes are validated", cmd: node("scripts/check-write-route-validators.js") },
+  // The two AI-governance gates (audit I1/I2/I4). Coverage first: it is the one
+  // that fails when a NEW module ships without a manifest, which is the common
+  // case, and its message says what to do. The drift check is manifest-side
+  // here — the tenant diff needs a provisioned database, so it is listed under
+  // SKIPPED with the command to run it.
+  { group: "backend", name: "AI manifest coverage", cmd: node("scripts/check-ai-manifest-coverage.js") },
+  { group: "backend", name: "AI catalogue drift", cmd: node("scripts/ai/sync-actions.js", "--check") },
   { group: "backend", name: "API contract", cmd: node("scripts/check-api-contract.js") },
   { group: "backend", name: "Response-contract drift", cmd: node("scripts/check-response-contract.js") },
   { group: "backend", name: "No new silent catches", cmd: node("scripts/check-silent-catch.js") },
@@ -168,6 +175,10 @@ const SKIPPED = [
   // property of live and sandbox being migrated in that order, so it has
   // nothing to compare until both schemas exist.
   ["live/sandbox schema parity", "a provisioned tenant", "node scripts/db/check-schema-parity.js --slug=citenant"],
+  // The manifest-side half of this runs above. The half that needs rows is the
+  // diff against `ai_action_catalogue` in BOTH the live and sandbox schemas —
+  // audit I4, the reason an action could work in LIVE and be missing in TEST.
+  ["AI catalogue syncs to live AND sandbox", "a provisioned tenant", "node scripts/ai/sync-actions.js --tenant=citenant && node scripts/ai/sync-actions.js --check --tenant=citenant"],
   ["Integration suites", "a live Postgres + seeded tenant", "RUN_DB_TESTS=1 npx jest tests/integration"],
   ["PgBouncer pooling", "PgBouncer", "see .github/workflows/ci.yaml — 'Stand up PgBouncer'"],
   ["Desktop layout gate (e2e)", "a Chromium download", "npm run e2e:install --prefix client && npm run test:e2e --prefix client"],

@@ -1,3 +1,4 @@
+// ai:none — the module's only surface is `resolve(code)` on the PUBLIC /v/:code portal, whose own routes file states that the rate limiter is the SOLE defence against enumerating a plaintext 12-character code ("load-bearing, not decoration"). An AI tool is an unlimited authenticated path to that same lookup, and a model can call it in a loop — so wiring it would remove the one control the design depends on. There is no list/history read to expose instead. Tracked in doc/PRAXIS_AI_AUDIT.md §0.
 "use strict";
 
 const service = require("./document_verification.service");

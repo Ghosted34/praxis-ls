@@ -152,7 +152,7 @@ function extractInlineToolCalls(content) {
   return { toolCalls: calls, text };
 }
 
-async function callVendor(vendor, { messages, tools, temperature, responseFormat, maxTokens }) {
+async function callVendor(vendor, { messages, tools, temperature, responseFormat, maxTokens, timeoutMs }) {
   const base = String(vendor.endpoint_url).replace(/\/$/, "");
   const body = { model: vendor.model, messages: prepareMessages(vendor, messages), temperature };
   // Explicit output ceiling — without it the vendor default (often short) caps
@@ -165,7 +165,12 @@ async function callVendor(vendor, { messages, tools, temperature, responseFormat
     // Generous + configurable (audit E1): an `ask` makes several sequential
     // calls, so a tight cap trips a slow multi-hop turn and is misread as a
     // transient failure.
-    timeout: config.AI_REQUEST_TIMEOUT_MS,
+    //
+    // `timeoutMs` lets ONE caller buy a tighter budget than the default. It
+    // exists for the background summariser, which is not on the answer's
+    // critical path and must not be allowed to spend the full 120 s twice
+    // before the user's actual question is sent — see AI_SUMMARY_TIMEOUT_MS.
+    timeout: timeoutMs || config.AI_REQUEST_TIMEOUT_MS,
   });
   const msg = (data.choices && data.choices[0] && data.choices[0].message) || {};
   let toolCalls = Array.isArray(msg.tool_calls) ? msg.tool_calls : [];
@@ -323,14 +328,17 @@ function classifyVendorError(err) {
   return "transient";
 }
 
-async function chat({ client, messages, tools, temperature = 0.2, vendorName = PRIMARY, responseFormat, maxTokens = config.AI_MAX_TOKENS }) {
-  const chain = [...new Set([vendorName, FALLBACK])];
+async function chat({ client, messages, tools, temperature = 0.2, vendorName = PRIMARY, responseFormat, maxTokens = config.AI_MAX_TOKENS, timeoutMs, singleVendor = false }) {
+  // `singleVendor` drops the fallback hop. Only for calls that are OPTIONAL to
+  // the turn (the summariser): trying a second vendor doubles the worst-case
+  // wait for work whose failure costs nothing but a retry next turn.
+  const chain = singleVendor ? [vendorName] : [...new Set([vendorName, FALLBACK])];
   let configError = null;
   for (const name of chain) {
     const vendor = await resolveVendor(client, name);
     if (!vendor) continue;
     try {
-      return await callVendor(vendor, { messages, tools, temperature, responseFormat, maxTokens });
+      return await callVendor(vendor, { messages, tools, temperature, responseFormat, maxTokens, timeoutMs });
     } catch (err) {
       const kind = classifyVendorError(err);
       if (kind === "config") {

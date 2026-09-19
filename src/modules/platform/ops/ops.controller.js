@@ -1,3 +1,4 @@
+// ai:none — platform operations — backups, probes, restore drills. Praxis-staff runbook territory, not tenant capability.
 /**
  * Kaizen ops HTTP controller (INFRASTRUCTURE_PLAN §3) — thin: delegate to the
  * services in src/services/platform/*.

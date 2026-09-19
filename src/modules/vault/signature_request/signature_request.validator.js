@@ -91,7 +91,12 @@ const candidatesQuery = z.object({
   doc_type: z.string().min(1).max(64),
 });
 
-const schemas = { create, voidRequest, listQuery, dispatchBody, candidatesQuery };
+// AI-facing: the request is in the URL for the HTTP routes, but a copilot call
+// has no URL — it passes one flat object, so the id must be IN the schema.
+const aiVoid = voidRequest.extend({ signature_request_id: z.string().uuid() });
+const aiDispatch = dispatchBody.extend({ signature_request_id: z.string().uuid() });
+
+const schemas = { create, voidRequest, listQuery, dispatchBody, candidatesQuery, aiVoid, aiDispatch };
 
 const body = (k) => (req, _res, next) => {
   const p = schemas[k].safeParse(req.body);

@@ -159,8 +159,11 @@ const importErrors = z.object({
   rows: z.array(z.object({ row: z.number().int().optional(), reasons: z.array(z.string()).default([]), raw: z.record(z.any()) })).min(1).max(2000),
 });
 
+const update = create.partial();
+// AI-facing: the item is in the URL for HTTP, in the payload for the copilot.
+const aiUpdate = update.extend({ dictionary_item_id: z.string().uuid() });
 const schemas = {
-  create, update: create.partial(), refCreate, refUpdate,
+  create, update, aiUpdate, refCreate, refUpdate,
   searchQuery, spendQuery, rateSupersede, importUpload, importCommit, importErrors,
 };
 

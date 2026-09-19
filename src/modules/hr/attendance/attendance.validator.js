@@ -225,7 +225,11 @@ const reconcileRun = z.object({ date: d.optional() });
  *  the employee-facing grant this rides on can never approve a device. */
 const deviceRename = z.object({ label: z.string().trim().min(1).max(80) });
 
-const schemas = { create, update: create.partial(), clockIn, clockOut, workSite, workSiteUpdate: workSite.partial(), placeSearch, deviceRegister, deviceUpdate, deviceRename, dayWindow, analyticsWindow, exportWindow, punchWindow, mapWindow, weeklyRun, justify, reconcileRun };
+const update = create.partial();
+const workSiteUpdate = workSite.partial();
+// AI-facing: the record id travels IN the payload — the copilot has no route param.
+const aiUpdate = update.extend({ attendance_id: z.string().uuid() });
+const schemas = { create, update, clockIn, clockOut, workSite, workSiteUpdate, placeSearch, deviceRegister, deviceUpdate, deviceRename, dayWindow, analyticsWindow, exportWindow, punchWindow, mapWindow, weeklyRun, justify, reconcileRun, aiUpdate };
 
 const mw = (k) => (req, _res, next) => {
   const p = schemas[k].safeParse(req.body);

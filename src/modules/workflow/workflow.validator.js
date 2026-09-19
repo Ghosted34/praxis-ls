@@ -45,11 +45,14 @@ const actApproval = z.object({
   note: z.string().optional(),
 });
 
+// AI-facing: the task is in the URL for HTTP, in the payload for the copilot.
+const aiActApproval = actApproval.extend({ approval_task_id: z.string().uuid() });
+
 module.exports = {
   registerEventType: check(registerEventType),
   createWorkflow: check(createWorkflow),
   updateWorkflow: check(updateWorkflow),
   addStep: check(addStep),
   actApproval: check(actApproval),
-  schemas: { registerEventType, createWorkflow, updateWorkflow, addStep, actApproval },
+  schemas: { registerEventType, createWorkflow, updateWorkflow, addStep, actApproval, aiActApproval },
 };

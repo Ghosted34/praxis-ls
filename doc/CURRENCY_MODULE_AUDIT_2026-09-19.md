@@ -11,6 +11,42 @@
 
 **Cross-check performed:** the referenced Currency client, shared catalogue, service, repository, routes, scheduler, worker, migration, and seed paths were checked against the checkout. Existing capabilities are explicitly marked so they are not unnecessarily rebuilt.
 
+## Progress tracking — update after every work item
+
+**Current overall status:** Currency audit complete; implementation work has not started. The PR plan below is ready for execution.
+
+**Last updated:** 2026-09-19
+
+**Required update rule:** After **each** implementation work item, migration, test batch, review correction, or PR milestone, update this section in the same commit/PR before starting the next item. Do not rely on chat-only progress updates. Every update must record the new status, date, owner, files changed, tests/acceptance evidence, blockers, and the next action. Do not mark an item **Done** until its tests and stated acceptance criteria are evidenced.
+
+### Current progress
+
+| Workstream | Status | Evidence / next action |
+|---|---|---|
+| Currency code audit and transcript reconciliation | **Done** | Full Meeting 4 transcript reconciled against the repository; this document is the deliverable. |
+| Product decisions: base-change semantics and rate-history contract | **Not started** | Decide before implementation Wave 1; record the decision here and in the relevant PR descriptions. |
+| **C-PR-01** — master invariants, deletion, reactivation, catalogue contract | **Not started** | Start after the product decision gate; update this row after every migration/service/test milestone. |
+| **C-PR-02** — FX sync operations and rate-history API contract | **Not started** | Can be developed in parallel with C-PR-01 and C-PR-03 once contracts are frozen. |
+| **C-PR-03** — Currency 360 discovery and chart UX | **Not started** | Can be developed in parallel with C-PR-01 and C-PR-02; keep UI ownership boundaries explicit. |
+| **C-PR-04** — performance, integration tests, and final acceptance hardening | **Not started** | Start after C-PR-01 through C-PR-03 are implemented and integrated. |
+| Runtime acceptance: tenant DB, provider, scheduler, browser, permissions, concurrency | **Not started** | Must run before Currency is called release-ready; current 96% rating is not runtime sign-off. |
+
+### Required progress-update template
+
+Use this compact entry after each work item:
+
+```text
+Progress update — YYYY-MM-DD
+Workstream / PR:
+Status: Not started | In progress | Blocked | In review | Done
+Owner:
+Files changed:
+Completed:
+Tests and acceptance evidence:
+Blockers / decisions needed:
+Next action:
+```
+
 ## One-page action list — start here
 
 The detailed validation follows this concise implementation list. Status: **Open** = work required; **Partial** = capability exists but is incomplete, inconsistent, or not safe enough; **Addressed** = the requested foundation exists and should be retained, with only tests or hardening remaining.
@@ -30,11 +66,11 @@ The detailed validation follows this concise implementation list. Status: **Open
 
 ---
 
-## PR split, parallel work, and merge order
+## Explicit PR plan, development parallelism, and merge order
 
 ### Recommendation
 
-Split Currency work into **four feature PRs**. Each PR should include its own migration notes, service tests, client tests, and acceptance criteria. The existing GBP/catalogue, sync, and deletion foundations should be extended and tested, not replaced.
+Split Currency work into **four feature PRs**. Each PR should include its own migration notes, service tests, client tests, and acceptance criteria. The existing GBP/catalogue, sync, and deletion foundations should be extended and tested, not replaced. The progress section above must be updated after every work item in these PRs.
 
 | PR | Scope | Audit items | Primary implementation locations | Dependency and parallelism |
 |---|---|---:|---|---|
@@ -43,18 +79,39 @@ Split Currency work into **four feature PRs**. Each PR should include its own mi
 | **C-PR-03** | **Currency 360 discovery and chart UX** | **#1–2, #4** | `client/src/features/settings/currencies.tsx`; `client/src/components/smart-currency-picker.tsx`; `client/src/components/smart-country-picker.tsx`; `src/modules/master/currency/currency.dossier.js`; `packages/shared/data/currencies.js`; `packages/shared/data/countries.js` | Can be developed in parallel with C-PR-01 and C-PR-02 if C-PR-02’s rate-history contract is agreed. Reserve the Currency 360 and picker UI ownership for this PR to avoid conflicts. |
 | **C-PR-04** | **Performance, integration tests, and final acceptance hardening** | **#10, #12 plus cross-PR verification** | `src/modules/master/currency/currency.repo.js`; `src/modules/master/currency/currency.dossier.js`; Currency tests; Currency-page tests; migration/worker/provider test fixtures | Final integration PR. It should measure usage-scan and dossier latency, remove the unused `/currencies/rates` request, and run the full Currency acceptance matrix. |
 
-### Recommended execution order
+### Development order and parallel work
 
-1. **C-PR-01** — establish base-currency, deletion, reactivation, and catalogue invariants.
-2. **C-PR-02 and C-PR-03 in parallel** — harden the FX/API path and build the Currency 360/picker experience against the agreed contracts.
-3. **C-PR-04** — measure, remove redundant work, add cross-flow tests, and perform final acceptance.
+Use the following development sequence. “Parallel” means the PRs may be implemented concurrently after the stated contract gate; it does not mean their shared files can be edited without ownership boundaries.
 
-### What can run in parallel
+**Gate 0 — product/API decisions before coding:**
 
-- **Development Wave 1:** C-PR-01, C-PR-02, and C-PR-03 can be developed concurrently after the team decides the base-change and rate-history contracts.
-- **C-PR-02 and C-PR-03:** safe to work in parallel if C-PR-02 owns backend/rate response changes and C-PR-03 owns Currency 360/picker UI changes.
-- **C-PR-04:** should not be merged until C-PR-01 through C-PR-03 are integrated, because its performance and workflow tests span all of them.
-- **Do not parallelize edits to `client/src/features/settings/currencies.tsx` without ownership boundaries:** C-PR-02 touches sync/rate controls, while C-PR-03 touches dossier/chart/country rendering.
+1. Decide and record base-change semantics: historical-only preservation, a formal rebase, or prohibition after financial activity.
+2. Decide and record the rate-history contract: page size, cursor/offset shape, total/`has_more`, ordering, and whether the dossier or generic rates endpoint is authoritative.
+3. Assign file ownership for `client/src/features/settings/currencies.tsx`, especially sync/rate controls versus dossier/chart/country rendering.
+
+**Wave 1 — develop these three PRs in parallel after Gate 0:**
+
+- **C-PR-01:** master invariants, deletion, reactivation, catalogue contract, and the additive base migration.
+- **C-PR-02:** FX sync hardening, rate-history API contract, GBP provider acceptance path, and manual-override identity.
+- **C-PR-03:** Currency 360 country/currency discovery, clickable “more” behavior, rate chart dates/tooltips/drill-down, and client workflow tests.
+
+C-PR-02 owns backend/rate response changes; C-PR-03 owns Currency 360/picker presentation. They may share agreed TypeScript/API types, but must not concurrently rewrite the same component sections.
+
+**Wave 2 — develop after Wave 1 is functionally complete:**
+
+- **C-PR-04:** performance measurement/remediation, cross-PR integration tests, tenant/provider/worker fixtures, and final acceptance hardening. Test scaffolding can begin earlier, but the final PR must run against the integrated contracts.
+
+### Merge order — recommended strict order
+
+Merge in this order unless an explicit dependency review records a different order:
+
+1. **Merge C-PR-01 first.** It establishes the base-currency/data-integrity migration, deletion/reactivation behavior, and master-data contract.
+2. **Merge C-PR-02 second.** It establishes the rate-history API shape and sync behavior that the Currency 360 UI consumes.
+3. **Merge C-PR-03 third.** It consumes the merged rate-history contract and completes the Currency 360/picker/chart experience.
+4. **Merge C-PR-04 last.** It depends on the integrated behavior of C-PR-01 through C-PR-03 and closes performance, test, and acceptance gaps.
+5. Run the full Currency acceptance gate after C-PR-04; only then update the progress section to mark the implementation complete.
+
+C-PR-02 and C-PR-03 may be reviewed and developed in parallel, but the recommended merge order is **C-PR-01 → C-PR-02 → C-PR-03 → C-PR-04**. If C-PR-03 has no runtime dependency on C-PR-02 after the API contract is frozen, it may technically merge before C-PR-02; record that exception in the progress section and PR descriptions.
 
 ### Acceptance gate before calling Currency complete
 

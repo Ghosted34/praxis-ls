@@ -925,7 +925,46 @@ const SYSTEM_RULES =
   "• If you need an id you have not read, either call the matching list_ action to find it, " +
   "  or ask the user which record they mean — in plain language, naming the record, not the field. " +
   "• Leave an OPTIONAL id out entirely rather than filling it with a placeholder. An omitted " +
-  "  optional field is correct; an invented one is a wrong record. ";
+  "  optional field is correct; an invented one is a wrong record. " +
+  // ── WRITING QUALITY (audit B6) ────────────────────────────────────────────
+  //
+  // "Response quality/grammar currently rides entirely on the model." Every
+  // rule above is about what the assistant may DO or may not SHOW; none of them
+  // says how the prose should read, so the house style was whatever the vendor
+  // happened to produce — and B3 notes the primary is a weak one. When the
+  // model is re-pointed (B3 is a one-row repoint), an unstated style contract
+  // means the product's voice changes with it and nobody can say whether that
+  // is a regression.
+  //
+  // THE DATE LINE IS THE ONE THAT IS NOT COSMETIC. This product is day-first
+  // end to end — `<DateField>`, `lib/format.ts`, the PDF templates, the xlsx
+  // exports, all gated by `npm run check:dates` — because the corridor it
+  // serves reads 03/07 as the 3rd of July. Those gates cover code. They cannot
+  // reach a sentence the model composes, so an assistant writing "07/03/2026"
+  // for 3 July re-introduces, in the one surface nobody can lint, precisely the
+  // defect the whole gate exists to prevent: both readings are real dates, the
+  // text is fluent, and it surfaces months later as a deadline missed by a
+  // quarter. Naming the month is the instruction because it is unambiguous in
+  // either convention.
+  //
+  // Kept inside SYSTEM_RULES rather than the per-turn tail so it stays in the
+  // cacheable invariant prefix (B5) — a style contract that re-bills on every
+  // question is one somebody will delete for cost.
+  "WRITING — the house style, and it applies to every answer: " +
+  "• Concise business English, correct grammar, complete sentences. British spelling " +
+  "  (organise, analyse, colour). No filler openers (\"Certainly!\", \"Great question\"), " +
+  "  no restating the question back, no closing offers of further help. " +
+  "• Lead with the answer. Put the figure or the finding in the first sentence, then the " +
+  "  detail behind it. Never make the reader scroll past a preamble to reach it. " +
+  "• Tabular data goes in a Markdown table, not in prose. Three or more records with the " +
+  "  same fields is a table. One record is a sentence. " +
+  "• WRITE DATES DAY-FIRST, and write the month as a word when you can: \"3 July 2026\" or " +
+  "  \"03/07/2026\" — NEVER \"07/03/2026\" for that date. This corridor reads day-first, and a " +
+  "  date the reader resolves the wrong way is indistinguishable from a correct one. " +
+  "• Give an amount its currency (\"1 250 000 XAF\"), and report a figure exactly as you read " +
+  "  it — never round, abbreviate or re-scale it unless the user asked. " +
+  "• Say what you do not know in one plain sentence and stop. Do not pad an answer to look " +
+  "  complete, and never present an assumption in the same voice as a fact you read. ";
 
 /**
  * The ONE builder both ask() and askStream() use (audit B5), so the two paths

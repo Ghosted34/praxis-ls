@@ -326,6 +326,101 @@ async function unverify(client, { id, actor = {} }) {
 const get  = (client, id) => repo.getWithCategory(client, id);
 const list = (client, q)  => repo.list(client, q);
 
+// ── Documents (PR-03, Audit #1, #2) ──
+async function listDocuments(client, accountId) {
+  return repo.listDocuments(client, accountId);
+}
+
+async function addDocument(client, { accountId, actor = {}, ...body }) {
+  const acc = await repo.get(client, accountId);
+  if (!acc) throw new AppError("NOT_FOUND", "Treasury account not found", 404);
+  const createdBy = await resolveActorId(client, actor.user_id);
+  const row = await repo.insertDocument(client, {
+    treasury_account_id: accountId,
+    created_by: createdBy,
+    ...body,
+  });
+  await audit(client, {
+    actorUserId: actor.user_id || null, action: "treasury_account.document_added",
+    moduleKey: events.MODULE, entityRef: ref(accountId), after: row,
+  });
+  return row;
+}
+
+async function removeDocument(client, { accountId, documentId, actor = {} }) {
+  const doc = await repo.getDocument(client, documentId);
+  if (!doc || doc.treasury_account_id !== accountId) {
+    throw new AppError("NOT_FOUND", "Treasury document not found", 404);
+  }
+  await repo.deleteDocument(client, documentId);
+  await audit(client, {
+    actorUserId: actor.user_id || null, action: "treasury_account.document_removed",
+    moduleKey: events.MODULE, entityRef: ref(accountId), before: doc,
+  });
+  return { deleted: true };
+}
+
+async function verifyDocument(client, { accountId, documentId, actor = {} }) {
+  const doc = await repo.getDocument(client, documentId);
+  if (!doc || doc.treasury_account_id !== accountId) {
+    throw new AppError("NOT_FOUND", "Treasury document not found", 404);
+  }
+  const verifiedBy = await resolveActorId(client, actor.user_id);
+  const next = await repo.verifyDocument(client, documentId, verifiedBy);
+  await audit(client, {
+    actorUserId: actor.user_id || null, action: "treasury_account.document_verified",
+    moduleKey: events.MODULE, entityRef: ref(accountId), after: next,
+  });
+  return next;
+}
+
+// ── Signatories (PR-03, Audit #3) ──
+async function listSignatories(client, accountId) {
+  return repo.listSignatories(client, accountId);
+}
+
+async function addSignatory(client, { accountId, actor = {}, ...body }) {
+  const acc = await repo.get(client, accountId);
+  if (!acc) throw new AppError("NOT_FOUND", "Treasury account not found", 404);
+  const createdBy = await resolveActorId(client, actor.user_id);
+  const row = await repo.insertSignatory(client, {
+    treasury_account_id: accountId,
+    created_by: createdBy,
+    ...body,
+  });
+  await audit(client, {
+    actorUserId: actor.user_id || null, action: "treasury_account.signatory_added",
+    moduleKey: events.MODULE, entityRef: ref(accountId), after: row,
+  });
+  return row;
+}
+
+async function updateSignatory(client, { accountId, signatoryId, patch = {}, actor = {} }) {
+  const sig = await repo.getSignatory(client, signatoryId);
+  if (!sig || sig.treasury_account_id !== accountId) {
+    throw new AppError("NOT_FOUND", "Signatory not found", 404);
+  }
+  const next = await repo.updateSignatory(client, signatoryId, patch);
+  await audit(client, {
+    actorUserId: actor.user_id || null, action: "treasury_account.signatory_updated",
+    moduleKey: events.MODULE, entityRef: ref(accountId), before: sig, after: next,
+  });
+  return next;
+}
+
+async function removeSignatory(client, { accountId, signatoryId, actor = {} }) {
+  const sig = await repo.getSignatory(client, signatoryId);
+  if (!sig || sig.treasury_account_id !== accountId) {
+    throw new AppError("NOT_FOUND", "Signatory not found", 404);
+  }
+  await repo.deleteSignatory(client, signatoryId);
+  await audit(client, {
+    actorUserId: actor.user_id || null, action: "treasury_account.signatory_removed",
+    moduleKey: events.MODULE, entityRef: ref(accountId), before: sig,
+  });
+  return { deleted: true };
+}
+
 // ── Payment gateways (2.3) — unchanged from pre-revamp ──
 const safeGateway = (row) => row && ({ provider: row.provider, active: row.active, role: row.role, has_credentials: row.has_credentials === true, updated_at: row.updated_at });
 const listGateways = (client) => repo.listGateways(client);
@@ -367,5 +462,7 @@ async function deleteGateway(client, { provider, actor = {} }) {
 
 module.exports = {
   create, update, setActive, setPrimary, verify, unverify, get, list,
+  listDocuments, addDocument, removeDocument, verifyDocument,
+  listSignatories, addSignatory, updateSignatory, removeSignatory,
   listGateways, getGateway, upsertGateway, setGatewayActive, setGatewayRole, deleteGateway,
 };

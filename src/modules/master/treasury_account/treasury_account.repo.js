@@ -213,9 +213,85 @@ async function deleteGateway(client, provider) {
   return rowCount > 0;
 }
 
+// ── Documents (PR-03, Audit #1, #2) ──
+async function listDocuments(client, accountId) {
+  const { rows } = await client.query(
+    "SELECT * FROM treasury_account_document WHERE treasury_account_id = $1 ORDER BY created_at DESC",
+    [accountId],
+  );
+  return rows;
+}
+
+async function insertDocument(client, data) {
+  return insertOne(client, "treasury_account_document", data, "*", [
+    "treasury_account_id", "document_type", "title", "document_number",
+    "vault_id", "file_name", "file_size", "mime_type", "issue_date", "expiry_date",
+    "upload_status", "is_verified", "verified_by", "verified_at", "notes", "created_by",
+  ]);
+}
+
+async function getDocument(client, documentId) {
+  return getById(client, "treasury_account_document", "document_id", documentId);
+}
+
+async function deleteDocument(client, documentId) {
+  const { rowCount } = await client.query(
+    "DELETE FROM treasury_account_document WHERE document_id = $1",
+    [documentId],
+  );
+  return rowCount > 0;
+}
+
+async function verifyDocument(client, documentId, verifiedBy) {
+  return updateOne(client, "treasury_account_document", "document_id", documentId, {
+    is_verified: true,
+    verified_by: verifiedBy,
+    verified_at: new Date(),
+  }, "*", ["is_verified", "verified_by", "verified_at"]);
+}
+
+// ── Signatories (PR-03, Audit #3) ──
+async function listSignatories(client, accountId) {
+  const { rows } = await client.query(
+    "SELECT * FROM treasury_account_signatory WHERE treasury_account_id = $1 ORDER BY is_active DESC, signatory_type ASC, created_at ASC",
+    [accountId],
+  );
+  return rows;
+}
+
+async function insertSignatory(client, data) {
+  return insertOne(client, "treasury_account_signatory", data, "*", [
+    "treasury_account_id", "user_id", "person_id", "full_name", "email", "phone",
+    "role_title", "signatory_type", "rule_type", "limit_amount", "currency",
+    "effective_from", "effective_to", "is_active", "signature_card_doc_id", "notes", "created_by",
+  ]);
+}
+
+async function getSignatory(client, signatoryId) {
+  return getById(client, "treasury_account_signatory", "signatory_id", signatoryId);
+}
+
+async function updateSignatory(client, signatoryId, fields) {
+  return updateOne(client, "treasury_account_signatory", "signatory_id", signatoryId, fields, "*", [
+    "user_id", "person_id", "full_name", "email", "phone",
+    "role_title", "signatory_type", "rule_type", "limit_amount", "currency",
+    "effective_from", "effective_to", "is_active", "signature_card_doc_id", "notes",
+  ]);
+}
+
+async function deleteSignatory(client, signatoryId) {
+  const { rowCount } = await client.query(
+    "DELETE FROM treasury_account_signatory WHERE signatory_id = $1",
+    [signatoryId],
+  );
+  return rowCount > 0;
+}
+
 module.exports = {
   insert, get, update, list, getWithCategory,
   getCategory, lockParentCoa, existingLeavesUnder, insertLeafCoa, setLeafActive, renameLeaf,
   clearPrimaryInCategory,
+  listDocuments, insertDocument, getDocument, deleteDocument, verifyDocument,
+  listSignatories, insertSignatory, getSignatory, updateSignatory, deleteSignatory,
   listGateways, getGatewayRaw, upsertGateway, setGatewayActive, setGatewayRole, deleteGateway,
 };

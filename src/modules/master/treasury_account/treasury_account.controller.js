@@ -87,6 +87,61 @@ module.exports = {
     })) });
   }),
 
+  // Documents (PR-03, Audit #1, #2)
+  listDocuments: asyncHandler(async (req, res) => {
+    res.json({ data: await req.tenantDb((c) => service.listDocuments(c, req.params.id)) });
+  }),
+  createDocument: asyncHandler(async (req, res) => {
+    const data = await req.tenantDb((c) => service.addDocument(c, {
+      accountId: req.params.id,
+      actor: actor(req),
+      ...req.body,
+    }));
+    res.status(201).json({ data });
+  }),
+  removeDocument: asyncHandler(async (req, res) => {
+    res.json({ data: await req.tenantDb((c) => service.removeDocument(c, {
+      accountId: req.params.id,
+      documentId: req.params.docId,
+      actor: actor(req),
+    })) });
+  }),
+  verifyDocument: asyncHandler(async (req, res) => {
+    res.json({ data: await req.tenantDb((c) => service.verifyDocument(c, {
+      accountId: req.params.id,
+      documentId: req.params.docId,
+      actor: actor(req),
+    })) });
+  }),
+
+  // Signatories (PR-03, Audit #3)
+  listSignatories: asyncHandler(async (req, res) => {
+    res.json({ data: await req.tenantDb((c) => service.listSignatories(c, req.params.id)) });
+  }),
+  createSignatory: asyncHandler(async (req, res) => {
+    const data = await req.tenantDb((c) => service.addSignatory(c, {
+      accountId: req.params.id,
+      actor: actor(req),
+      ...req.body,
+    }));
+    res.status(201).json({ data });
+  }),
+  updateSignatory: asyncHandler(async (req, res) => {
+    res.json({ data: await req.tenantDb((c) => service.updateSignatory(c, {
+      accountId: req.params.id,
+      signatoryId: req.params.sigId,
+      patch: req.body,
+      actor: actor(req),
+    })) });
+  }),
+  removeSignatory: asyncHandler(async (req, res) => {
+    res.json({ data: await req.tenantDb((c) => service.removeSignatory(c, {
+      accountId: req.params.id,
+      signatoryId: req.params.sigId,
+      actor: actor(req),
+    })) });
+  }),
+
   // 360 aggregation — one call feeds the whole dossier page.
   dossier: asyncHandler(async (req, res) => {
     const treasury360 = require("../treasury-360.service");

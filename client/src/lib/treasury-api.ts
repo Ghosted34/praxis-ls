@@ -215,6 +215,73 @@ export const unverifyAccount = (id: string) =>
     method: "POST",
   });
 
+/* ─────────────── documents and signatories (PR-03) ─────────────── */
+
+export type TreasuryDocument = {
+  document_id: string;
+  treasury_account_id: string;
+  document_type: "BANK_RIB" | "BANK_MANDATE" | "KYC_DOCUMENT" | "SIGNATURE_CARD" | "ACCOUNT_LETTER" | "OTHER";
+  title: string;
+  document_number: string | null;
+  vault_id: string | null;
+  file_name: string | null;
+  file_size: number | null;
+  mime_type: string | null;
+  issue_date: string | null;
+  expiry_date: string | null;
+  upload_status: "PENDING_UPLOAD" | "COMPLETED" | "FAILED";
+  is_verified: boolean;
+  verified_by: string | null;
+  verified_at: string | null;
+  notes: string | null;
+  created_at: string;
+};
+
+export type TreasurySignatory = {
+  signatory_id: string;
+  treasury_account_id: string;
+  user_id: string | null;
+  person_id: string | null;
+  full_name: string;
+  email: string | null;
+  phone: string | null;
+  role_title: string | null;
+  signatory_type: "PRIMARY" | "JOINT";
+  rule_type: "SINGLE_SIGNATURE" | "JOINT_REQUIRED";
+  limit_amount: number | null;
+  currency: string;
+  effective_from: string;
+  effective_to: string | null;
+  is_active: boolean;
+  signature_card_doc_id: string | null;
+  notes: string | null;
+  created_at: string;
+};
+
+export const listDocuments = (accountId: string) =>
+  tenant<TreasuryDocument[]>(`/treasury-accounts/${accountId}/documents`);
+
+export const addDocument = (accountId: string, body: Partial<TreasuryDocument>) =>
+  tenant<TreasuryDocument>(`/treasury-accounts/${accountId}/documents`, { method: "POST", body });
+
+export const removeDocument = (accountId: string, documentId: string) =>
+  tenant<{ deleted: boolean }>(`/treasury-accounts/${accountId}/documents/${documentId}`, { method: "DELETE" });
+
+export const verifyDocument = (accountId: string, documentId: string) =>
+  tenant<TreasuryDocument>(`/treasury-accounts/${accountId}/documents/${documentId}/verify`, { method: "POST" });
+
+export const listSignatories = (accountId: string) =>
+  tenant<TreasurySignatory[]>(`/treasury-accounts/${accountId}/signatories`);
+
+export const addSignatory = (accountId: string, body: Partial<TreasurySignatory>) =>
+  tenant<TreasurySignatory>(`/treasury-accounts/${accountId}/signatories`, { method: "POST", body });
+
+export const updateSignatory = (accountId: string, signatoryId: string, body: Partial<TreasurySignatory>) =>
+  tenant<TreasurySignatory>(`/treasury-accounts/${accountId}/signatories/${signatoryId}`, { method: "PATCH", body });
+
+export const removeSignatory = (accountId: string, signatoryId: string) =>
+  tenant<{ deleted: boolean }>(`/treasury-accounts/${accountId}/signatories/${signatoryId}`, { method: "DELETE" });
+
 /* ─────────────── 360 dossier ─────────────── */
 
 export type Kpis = {
@@ -301,7 +368,8 @@ export type Dossier = {
   } | null;
   monthly_series: MonthlyPoint[];
   recent_lines: MovementLine[];
-  documents: unknown[];
+  documents: TreasuryDocument[];
+  signatories?: TreasurySignatory[];
   timeline: {
     audit_id: string;
     action: string;

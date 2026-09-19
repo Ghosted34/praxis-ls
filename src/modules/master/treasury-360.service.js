@@ -206,6 +206,8 @@ async function load(client, { id }) {
   const leaf = code ? await _leaf(client, code) : null;
   const custodian = await _custodian(client, acc.custodian_user_id);
   const verifier = await _verifier(client, acc.verified_by);
+  const documents = await accRepo.listDocuments(client, id);
+  const signatories = await accRepo.listSignatories(client, id);
   const timeline = await _timeline(client, id, 25);
 
   const opening = Number(acc.opening_balance || 0);
@@ -240,9 +242,10 @@ async function load(client, { id }) {
     last_credit: lastMovements.last_credit,
     monthly_series: monthly,
     recent_lines: recentLines,
-    documents: [],   // stub — treasury docs come in a follow-up
+    documents,
+    signatories,
     timeline,
-    readiness: buildReadiness(acc),
+    readiness: buildReadiness(acc, documents),
   };
 }
 
@@ -251,7 +254,7 @@ async function load(client, { id }) {
  * account renders it as its empty state, and it explains what to do next
  * rather than showing "—".
  */
-function buildReadiness(acc) {
+function buildReadiness(acc, docs = []) {
   const items = [];
   const push = (key, label, ok, hint) => items.push({ key, label, ok: ok === true, hint: hint || null });
 
@@ -265,9 +268,14 @@ function buildReadiness(acc) {
     push("account_number", "Account number", !!acc.account_number);
     push("iban", "IBAN", !!acc.iban, "Some jurisdictions accept the account number without an IBAN");
     push("swift_bic", "SWIFT / BIC", !!acc.swift_bic);
+    const hasRib = (docs || []).some(
+      (d) => d.document_type === "BANK_RIB" && (!d.expiry_date || new Date(d.expiry_date) >= new Date())
+    );
+    push("bank_rib", "Bank RIB / attestation", hasRib, "Attach a bank confirmation letter or RIB in Documents");
   }
   if (acc.category_is_momo_identity) {
     push("momo_number", "MoMo number", !!acc.momo_number);
+    push("momo_network", "MoMo network", !!acc.momo_network);
   }
   if (acc.category_requires_custodian) {
     push("custodian", "Custodian", !!acc.custodian_user_id);

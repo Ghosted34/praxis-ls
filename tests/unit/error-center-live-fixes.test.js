@@ -301,8 +301,22 @@ describe("service_type repo exposes findById, not get", () => {
       if (!/\brepo\.get\(/.test(fs.readFileSync(file, "utf8"))) continue;
 
       const dir = path.dirname(file);
-      const repoFile = fs.readdirSync(dir).find((x) => x.endsWith(".repo.js"));
-      if (!repoFile) continue; // repo is injected, or lives elsewhere
+      const repoFiles = fs
+        .readdirSync(dir)
+        .filter((x) => x.endsWith(".repo.js"));
+      if (repoFiles.length === 0) continue; // repo is injected, or lives elsewhere
+
+      // A module directory can hold more than one repo (the vault gained a
+      // second when the media outbox landed). Pair by filename stem first —
+      // document_vault.service.js calls document_vault.repo.get, not the
+      // alphabetically-first repo's. Only when there is no stem match do we
+      // fall back to the original single-repo heuristic, and a directory with
+      // several repos and no stem match is ambiguous enough to leave alone:
+      // the pairing that made this scan exact was "one module, one repo".
+      const stem = path.basename(file).replace(/\.[^.]+$/, "").split(".")[0];
+      let repoFile = repoFiles.find((x) => x === `${stem}.repo.js`);
+      if (!repoFile && repoFiles.length === 1) repoFile = repoFiles[0];
+      if (!repoFile) continue;
 
       const repo = require(path.join(dir, repoFile));
       if (typeof repo.get !== "function")

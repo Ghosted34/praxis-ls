@@ -471,6 +471,14 @@ export type EntityDocument = {
   /** Joined from `entity_establishment` — which site the document belongs to. */
   establishment_name?: string | null;
   vault_id?: string | null;
+  /**
+   * PR-07 (CE-11): true when a live vault document under this row's
+   * `entity_ref` holds the scan bytes but `vault_id` was never linked — the
+   * middle request of the three-request attach flow failed. The
+   * reconciliation completes the link; the register shows this pill until it
+   * does, so "stored, link pending" stops reading as "no scan at all".
+   */
+  scan_stored_unlinked?: boolean;
   scan_status: "PENDING" | "SCANNED" | "VERIFIED" | "REJECTED" | "EXPIRED";
   physical_ref?: string | null;
   scan_due_on?: string | null;

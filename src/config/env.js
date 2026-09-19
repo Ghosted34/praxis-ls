@@ -740,6 +740,14 @@ const Schema = z.object({
   MAIL_FOLLOWUP_SWEEP_INTERVAL_MS: int(60000),
   MAIL_AI_MONTHLY_CAP_XAF: int(0),
 
+  // Media/document compensation sweep (PR-07, CE-11 + CE-25): how often the
+  // reconciliation runs per LIVE tenant — completing document-scan links whose
+  // PATCH never landed, and sweeping vault objects orphaned by failed
+  // owner-pointer commits after the service's own TTL (24h). 0 disables the
+  // sweep; the outbox still records every attempt state, it just stops being
+  // repaired automatically.
+  MEDIA_RECONCILE_INTERVAL_MS: int(900000), // 15 min
+
   // How often to renew push subscriptions (Graph webhooks expire ~3d). 0 disables.
   MAIL_WEBHOOK_RENEW_INTERVAL_MS: int(21600000), // 6h
 

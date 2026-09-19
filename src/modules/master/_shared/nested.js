@@ -28,6 +28,11 @@ void taxRegimes;
 const { canSeeFinancials, canSeeRegistrations, maskBank } = require("./confidential");
 const changeRequest = require("./change-request.service");
 const numbering = require("../../../services/documents/numbering.service");
+// PR-07 (CE-11): the attachment outbox. The vault-side service only — the
+// vault's own service is not needed here, and this file must not depend on
+// the module it mounts beside. No cycle: the outbox service reads
+// document_vault and media_attachment, never master tables' services.
+const attachmentOutbox = require("../../vault/document_vault/attachment_outbox.service");
 // The entity dossier's redaction helpers (PR-04): the same authority that
 // redacts the /360 bundle, applied to the entity's child collections.
 // entity-360.service depends only on the repo/rules/renewals/letterhead
@@ -133,6 +138,19 @@ function buildResource(cfg) {
       // (SCANNED → VERIFIED) stays a human step.
       await c.query(`UPDATE ${table} SET scan_status = 'SCANNED', updated_at = now() WHERE ${pk} = $1`, [row[pk]]);
       row.scan_status = "SCANNED";
+    }
+    // PR-07 (CE-11): the link just landed, so every outbox attempt that was
+    // waiting on it — the upload that stored these bytes, and any earlier
+    // retry that stored bytes a PATCH never reached — closes as LINKED in the
+    // SAME transaction. An attempt cannot outlive the link it was chasing,
+    // which is what stops a "bytes stored, link missing" state from being
+    // recorded as success.
+    if (isDocument && row.vault_id) {
+      await attachmentOutbox.markScanLinked(c, {
+        ownerTable: table,
+        ownerId: row[pk],
+        vaultDocId: row.vault_id,
+      });
     }
   }
 
@@ -618,13 +636,27 @@ function mountEntityNested(router, { moduleKey, parentTable, parentPk }) {
     // collection still renders and explains itself for a caller who has not
     // been granted the numbers.
     const redactList = { registrations: dossier360.redactRegistration, "tax-registrations": dossier360.redactTaxRegistration }[r.seg];
+    // PR-07 (CE-11): documents get the attachment state stamped on the rows —
+    // `scan_stored_unlinked` names the one state the register used to render
+    // as "no scan at all": bytes exist under this row's entity_ref, the link
+    // PATCH never landed. The reconciliation completes it; the pill says so
+    // instead of leaving the operator to re-upload a file the vault already
+    // holds. One extra query per list, and only for rows whose vault_id is
+    // still NULL.
+    const annotateScans = r.seg === "documents";
     const listHandler = redactList
       ? asyncHandler(async (req, res) => {
           const canSee = await canSeeRegistrations(req);
           const rows = await req.tenantDb((c) => service.list(c, req.params.id, req.query));
           res.json({ data: canSee ? rows : rows.map(redactList) });
         })
-      : controller.list;
+      : annotateScans
+        ? asyncHandler(async (req, res) => {
+            const rows = await req.tenantDb(async (c) =>
+              attachmentOutbox.annotateUnlinkedScans(c, r.table, await service.list(c, req.params.id, req.query)));
+            res.json({ data: rows });
+          })
+        : controller.list;
 
     router.get(`/:id/${r.seg}`, requirePermission(moduleKey, viewAction), listHandler);
     router.post(`/:id/${r.seg}`, requirePermission(moduleKey, "create"), validate(r.create), controller.create);

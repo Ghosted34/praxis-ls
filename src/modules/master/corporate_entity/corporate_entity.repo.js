@@ -189,6 +189,13 @@ async function collections(client, id) {
  * paying for the documents half, and so PR-2 callers that only want renewals do
  * not drag in five unrelated queries. Sequential for the same reason as
  * `collections` — one pg client per request.
+ *
+ * `scan_stored_unlinked` (PR-07, CE-11): true when the file reached the vault
+ * under this row's `entity_ref` but `vault_id` was never linked — the middle
+ * request of the attach flow failed. One scalar EXISTS per unlinked row, so
+ * the register can say "file stored, link pending" instead of rendering the
+ * bytes' existence as "no scan at all". A workflow state, not an identifier:
+ * it survives document redaction, which strips vault references and hashes.
  */
 async function documentsAndTax(client, id) {
   const documents = await client.query(
@@ -199,7 +206,13 @@ async function documentsAndTax(client, id) {
             t.requires_expiry,
             t.renewal_lead_days AS type_renewal_lead_days,
             v.storage_path, v.content_hash AS vault_hash, v.status AS vault_status,
-            s.name AS establishment_name
+            s.name AS establishment_name,
+            CASE WHEN d.vault_id IS NULL THEN EXISTS (
+              SELECT 1 FROM document_vault w
+               WHERE w.entity_ref = 'entity_document:' || d.document_id::text
+                 AND w.status <> 'ARCHIVED'
+                 AND w.storage_path NOT LIKE 'pending://%'
+            ) ELSE false END AS scan_stored_unlinked
        FROM entity_document d
        LEFT JOIN party_document_type t   ON t.document_type_id = d.document_type_id
        LEFT JOIN document_vault v        ON v.doc_id = d.vault_id

@@ -90,6 +90,45 @@ export type UsageRow = {
 };
 export const listUsage = () => tenant<UsageRow[]>("/ai/governance/usage");
 
+/**
+ * AI health (audit H2) — the QUALITY signals, next to the cost ones above.
+ *
+ * `per_1k` rather than a count, and every kind present even at zero. Both come
+ * from the server and both matter to the panel: a raw count rises with
+ * adoption, so it cannot show "trending to zero", and a kind that disappears
+ * from the list the moment it stops firing is a row that vanishes exactly when
+ * it becomes good news.
+ */
+export type AiHealthKind = {
+  kind: string;
+  events: number;
+  last_at?: string | null;
+  /** Events per 1,000 chat turns in the window. Null when there were no turns. */
+  per_1k: number | null;
+};
+export type AiHealth = {
+  window_days: number;
+  /** Chat turns in the window — the denominator behind every `per_1k`. */
+  turns: number;
+  kinds: AiHealthKind[];
+};
+export type AiHealthEvent = {
+  health_event_id: number | string;
+  kind: string;
+  provider?: string | null;
+  model?: string | null;
+  detail?: Record<string, unknown> | null;
+  conversation_id?: string | null;
+  occurred_at: string;
+};
+
+export const getAiHealth = (days = 7) =>
+  tenant<AiHealth>(`/ai/governance/health?days=${days}`);
+export const listAiHealthEvents = (opts?: { kind?: string; limit?: number }) =>
+  tenant<AiHealthEvent[]>(
+    `/ai/governance/health/events?limit=${opts?.limit ?? 50}${opts?.kind ? `&kind=${encodeURIComponent(opts.kind)}` : ""}`,
+  );
+
 export type Vendor = {
   vendor: string;
   display_name?: string | null;

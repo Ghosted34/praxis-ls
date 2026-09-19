@@ -27,10 +27,14 @@ module.exports = {
     // carries them is MOD-01. Capabilities (PR-01) are resolved the same way,
     // because the dossier must tell the UI which MOD-01 controls are honest
     // to offer rather than pointing it at predictable 403s.
+    //
+    // PR-04: `tax` is the caller's MOD-01 view capability, taken from the same
+    // capabilities bundle so the SERIALIZER enforces the tax-number boundary
+    // rather than relying on this route's `view` gate alone.
     const governance = await dossierService.canSeeGovernance(req);
     const financials = await dossierService.canSeeFinancials(req);
     const capabilities = await dossierService.capabilitiesFor(req);
-    const data = await req.tenantDb((c) => dossierService.dossier(c, req.params.id, { governance, financials, capabilities }));
+    const data = await req.tenantDb((c) => dossierService.dossier(c, req.params.id, { governance, financials, capabilities, tax: capabilities.view === true }));
     res.json({ data });
   }),
 
@@ -42,9 +46,13 @@ module.exports = {
     res.json({ data: await req.tenantDb((c) => calendar.reset(c, req.params.id, { actor: req.user || {} })) })),
   letterhead: asyncHandler(async (req, res) => {
     // Gate 14 again: this route is MOD-01 `view`, and the payment block it
-    // renders carries the account number.
+    // renders carries the account number. PR-04 adds the tax half: the
+    // identifier line and the identifiers block are registration numbers,
+    // gated on the caller's MOD-01 view capability (Decision Q3) — the same
+    // can_read the /360 bundle reports as `capabilities.view`.
     const financials = await dossierService.canSeeFinancials(req);
-    const data = await req.tenantDb((c) => service.letterhead(c, req.params.id, req.query.lang || null, { financials }));
+    const tax = await dossierService.canSeeRegistrations(req);
+    const data = await req.tenantDb((c) => service.letterhead(c, req.params.id, req.query.lang || null, { financials, tax }));
     res.json({ data });
   }),
 
@@ -73,10 +81,16 @@ module.exports = {
    * MOD-01 `view`, like the dossier — and redacted the same way. A renewal
    * label falls back to the document's own reference, so the governance grant
    * has to be resolved here too or this route hands out what /360 withholds.
+   * PR-04 adds the tax half of the same rule: registration and tax labels
+   * carry the number itself, which the caller's MOD-01 view capability gates
+   * (Decision Q3). `canSeeRegistrations` is that capability on its own — the
+   * same can_read the /360 bundle reports as `capabilities.view` — so this
+   * route pays one grant lookup, not the whole capability set.
    */
   renewals: asyncHandler(async (req, res) => {
     const governance = await dossierService.canSeeGovernance(req);
-    const data = await req.tenantDb((c) => service.renewals(c, req.params.id, req.query.as_of || null, { governance }));
+    const tax = await dossierService.canSeeRegistrations(req);
+    const data = await req.tenantDb((c) => service.renewals(c, req.params.id, req.query.as_of || null, { governance, tax }));
     res.json({ data });
   }),
 

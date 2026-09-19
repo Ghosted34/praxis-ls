@@ -415,6 +415,12 @@ export type EntityRegistration = {
   verified_by?: string | null;
   verified_at?: string | null;
   notes?: string | null;
+  /**
+   * Set when the caller lacks MOD-01 view: the number itself is absent from
+   * the row rather than blanked, so the kind/country/dates still render and
+   * the compliance story stays readable. See entity-360.service.redactRegistration.
+   */
+  redacted?: boolean;
 };
 export type EntityEstablishment = {
   establishment_id: string;
@@ -500,6 +506,8 @@ export type EntityTaxRegistration = {
   /** Joined from `app_user` — who chases this filing. */
   responsible_name?: string | null;
   notes?: string | null;
+  /** Set when the caller lacks MOD-01 view — the number is absent, not blanked. */
+  redacted?: boolean;
 };
 
 export type TaxObligation = {
@@ -510,6 +518,12 @@ export type TaxObligation = {
   period_code?: string | null;
   tax_kind?: string | null;
   country_code?: string | null;
+  /**
+   * Joined from the tax registration — which number files this obligation.
+   * Absent (with `redacted`) for a caller without MOD-01 view.
+   */
+  tax_number?: string | null;
+  redacted?: boolean;
 };
 
 export type LetterheadConfig = {
@@ -690,6 +704,18 @@ export type Renewals = {
   as_of: string;
   items: RenewalItem[];
   counts: { expired: number; due: number; approaching: number };
+  /**
+   * Current-row data-quality findings (doc/CORPORATE_ENTITY_REGISTRATION_
+   * CURRENT_ROW.md): registration keys where no row could be selected — no sole
+   * row and no unique primary. Nothing is monitored for those keys; the
+   * ambiguity itself is the finding. Advisory, like every renewal.
+   */
+  ambiguous_registrations?: Array<{
+    country_code: string | null;
+    kind: string | null;
+    rows: number;
+    reason: "multiple_primary_rows" | "no_primary_multiple_rows";
+  }>;
 };
 
 export type CapTableFinding = {

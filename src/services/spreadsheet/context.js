@@ -114,10 +114,18 @@ async function resolveLogo(ref) {
  * caller's tenant connection so branding, currency and env all observe the
  * SAME environment (live vs sandbox) as the data being exported.
  *
- * opts: { entityId, actor, title, filters, generatedAt }
+ * opts: { entityId, actor, title, filters, generatedAt, registrationNumbers }
  *   entityId — which corporate entity's identity/language/timezone to use
  *              (multi-entity tenants); default: the first entity.
  *   actor    — req.user or job actor → { user_id, name } for the cover.
+ *   registrationNumbers — may the cover carry the entity's RCCM/NIU (PR-04,
+ *              Decision Q3)? Resolved by the CALLER from the requester's MOD-01
+ *              view grant (`canSeeRegistrations(req)`); an export is a way to
+ *              OBTAIN registration numbers, so it is held to the same boundary
+ *              as the /360 bundle. Defaults to FALSE: a caller-less path (a
+ *              scheduled report, a job) has nobody to vouch for the grant, and
+ *              the emailed attachment is the copy most likely to leave the
+ *              building — it fails closed.
  */
 async function resolveContext(client, opts = {}) {
   // Branding first: an unconfigured tenant simply yields all-null tokens,
@@ -170,8 +178,12 @@ async function resolveContext(client, opts = {}) {
     entity: entity
       ? {
           legal_name: entity.legal_name || null,
-          rccm: entity.rccm || null,
-          niu: entity.niu || null,
+          // PR-04: the statutory identifiers are gated on the requester's
+          // MOD-01 view grant. Null (not omitted) so the cover's line()
+          // helper skips them cleanly and the workbook still carries the
+          // legal name, address and currency facts every export needs.
+          rccm: opts.registrationNumbers === true ? entity.rccm || null : null,
+          niu: opts.registrationNumbers === true ? entity.niu || null : null,
           address: entity.address || null,
           default_currency: entity.default_currency || null,
           default_language: entity.default_language || null,

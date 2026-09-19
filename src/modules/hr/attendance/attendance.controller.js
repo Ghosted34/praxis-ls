@@ -7,6 +7,7 @@ const weekly = require("./attendance.weekly");
 const geoapify = require("../../../services/geoapify.service");
 const identityCache = require("../../../shared/cache/identity-cache");
 const { resolveContext } = require("../../../services/spreadsheet");
+const { canSeeRegistrations } = require("../../master/_shared/confidential");
 
 const base = makeController(service, "Attendance");
 const actor = (req) => req.user || { user_id: null };
@@ -189,7 +190,9 @@ module.exports = {
   exportWindow: asyncHandler(async (req, res) => {
     const { from, to, employee_id: employeeId, employee_ids: employeeIds, department, format, sheet } = req.validatedQuery;
     const file = await req.tenantDb(async (c) => {
-      const context = await resolveContext(c, { title: `Attendance ${from} → ${to}`, env: req.env, actor: req.user || null });
+      // registrationNumbers (PR-04): the cover's RCCM/NIU follow the caller's
+      // MOD-01 view grant — an HR export is a way to obtain them like any other.
+      const context = await resolveContext(c, { title: `Attendance ${from} → ${to}`, env: req.env, actor: req.user || null, registrationNumbers: await canSeeRegistrations(req) });
       return service.exportWindow(c, {
         from, to,
         employeeId: employeeId || null,
@@ -206,7 +209,7 @@ module.exports = {
   myExport: asyncHandler(async (req, res) => {
     const { from, to, format, sheet } = req.validatedQuery;
     const file = await req.tenantDb(async (c) => {
-      const context = await resolveContext(c, { title: `My attendance ${from} → ${to}`, env: req.env, actor: req.user || null });
+      const context = await resolveContext(c, { title: `My attendance ${from} → ${to}`, env: req.env, actor: req.user || null, registrationNumbers: await canSeeRegistrations(req) });
       return service.myExport(c, {
         from, to, format: format || "xlsx", sheet: sheet || "days", context, env: req.env, actor: actor(req),
       });

@@ -17,6 +17,15 @@
  * things a company holds. They are returned only to a caller who can see them
  * (see `canSeeGovernance`); everyone else gets a count and a redaction marker, so
  * the tab still renders and explains itself rather than 403-ing the whole page.
+ *
+ * Tax and registration NUMBERS sit one rung lower (Decision Q3, PR-04): a
+ * caller with MOD-01 `view` may see them in full — the dossier, the nested
+ * child routes, the renewals labels and the letterhead source all say the same
+ * thing to that caller — while a caller without the grant gets the rows with
+ * the numbers deleted (`redactRegistration` & co). Documents and vault
+ * references keep their stronger governance redaction; only the numbers moved
+ * to the view boundary, and the serializer enforces it so a route-gate change
+ * can never quietly widen it.
  */
 "use strict";
 const repo = require("./corporate_entity/corporate_entity.repo");
@@ -24,7 +33,7 @@ const rules = require("./corporate_entity/corporate_entity.rules");
 const renewalRules = require("./corporate_entity/corporate_entity.renewals");
 const letterheadService = require("./entity-letterhead.service");
 const identityCache = require("../../shared/cache/identity-cache");
-const { canSeeFinancials, maskAccount, maskBank } = require("./_shared/confidential");
+const { canSeeFinancials, canSeeRegistrations, maskAccount, maskBank } = require("./_shared/confidential");
 const { AppError } = require("../../utils/errors");
 
 /**
@@ -198,6 +207,70 @@ function redactDocument(d) {
   return out;
 }
 
+/*
+ * ── Tax/registration numbers (Decision Q3, PR-04) ──────────────────────────
+ *
+ * The audit's selected policy separates THREE audiences, and the middle one is
+ * what these helpers implement: a caller with MOD-01 `view` may see full tax
+ * and registration numbers — they are what a compliance officer works with and
+ * what the renewals list has to name — while a caller WITHOUT that grant (and
+ * every public route) must not obtain them. Documents, vault references and
+ * the cap table stay behind the harder governance grant exactly as before;
+ * only the NUMBERS move to the view boundary.
+ *
+ * Like redactDocument, these DELETE rather than mask: "••••9012" is four
+ * characters of a statutory identifier handed to a caller the policy says
+ * must not have any of it, and a deleted field cannot be half-leaked by a
+ * future refactor that stops calling the marker-aware formatter. The row keeps
+ * its kind, country, dates and cadence so the surface it renders on can still
+ * say "a VAT registration in France lapses in March" — which is compliance
+ * information, not an identifier.
+ */
+
+/** A statutory registration row reduced to what a no-MOD-01-view caller may see. */
+function redactRegistration(r) {
+  const out = { ...r };
+  delete out.number;
+  out.redacted = true;
+  return out;
+}
+
+/** A tax registration row reduced to what a no-MOD-01-view caller may see. */
+function redactTaxRegistration(t) {
+  const out = { ...t };
+  delete out.tax_number;
+  out.redacted = true;
+  return out;
+}
+
+/**
+ * A tax-calendar obligation row with the joined registration number removed.
+ *
+ * `repo.taxObligations` joins `tr.tax_number` onto the obligation so a person
+ * chasing a filing can see WHICH number files it — useful at MOD-01 view,
+ * and exactly the field that must not ride along for anyone else.
+ */
+function redactTaxObligation(o) {
+  const out = { ...o };
+  delete out.tax_number;
+  out.redacted = true;
+  return out;
+}
+
+/**
+ * The entity row with its legacy statutory identifier columns removed.
+ *
+ * `corporate_entity` is read with `SELECT *`, so `niu` and `rccm` — the
+ * pre-0515 spelling of the registration numbers, still authoritative whenever
+ * no `entity_registration` row exists — ride along on every response. The
+ * registration ROWS are redacted by the helpers above; without this the same
+ * numbers would come back through the columns.
+ */
+function maskEntityRegistrations(entity, canSee) {
+  if (canSee || !entity) return entity;
+  return { ...entity, niu: null, rccm: null, registrations_redacted: true };
+}
+
 /**
  * The letterhead source block: the fields a document header/footer is assembled
  * from, resolved once here so the client is not re-deriving "registered address
@@ -258,11 +331,11 @@ function letterheadSource(entity, { addresses, registrations }) {
 /**
  * @param {object} c        tenant db client
  * @param {string} id       entity_id
- * @param {object} opts     { governance, financials, capabilities } — see
- *                          canSeeGovernance, _shared/confidential.canSeeFinancials
- *                          and capabilitiesFor
+ * @param {object} opts     { governance, financials, capabilities, tax } — see
+ *                          canSeeGovernance, _shared/confidential.canSeeFinancials,
+ *                          capabilitiesFor, and canSeeRegistrations
  */
-async function dossier(c, id, { governance = false, financials = false, capabilities = null } = {}) {
+async function dossier(c, id, { governance = false, financials = false, capabilities = null, tax = false } = {}) {
   const entity = await repo.get(c, id);
   if (!entity) throw new AppError("NOT_FOUND", "Entity not found", 404);
 
@@ -288,6 +361,23 @@ async function dossier(c, id, { governance = false, financials = false, capabili
   // label for a row this caller is not allowed to identify.
   const visibleDocuments = governance ? documents : documents.map(redactDocument);
 
+  // The same rule for tax/registration numbers (Decision Q3, PR-04), and the
+  // same shape: every derived surface below — the letterhead source, the
+  // rendered preview, the renewals labels, the expiring list — is computed
+  // from THESE rows, so a redacted caller cannot get a number back through a
+  // label the way the document number once leaked. `tax` is the caller's
+  // MOD-01 view capability: the HTTP controller resolves it from the same
+  // capabilities bundle PR-01 ships, so the SERIALIZER is the authority and
+  // the route gate is defence in depth rather than the only door. It defaults
+  // to false so a new call site fails closed.
+  const visibleRegistrations = tax ? registrations : registrations.map(redactRegistration);
+  const visibleTaxRegistrations = tax ? taxRegistrations : taxRegistrations.map(redactTaxRegistration);
+  const visibleObligations = tax ? obligations : obligations.map(redactTaxObligation);
+  // The legacy columns are the other spelling of the same numbers — see
+  // maskEntityRegistrations. Sanitised here, once, and everything downstream
+  // (letterhead source, preview, readiness) receives the sanitised row.
+  const visibleEntity = maskEntityRegistrations(entity, tax);
+
   // Reconciled against the full people list regardless of visibility — the
   // TOTALS are not sensitive, the per-holder breakdown is. A caller without
   // governance still gets to know the cap table balances.
@@ -295,17 +385,23 @@ async function dossier(c, id, { governance = false, financials = false, capabili
 
   const now = new Date().toISOString().slice(0, 10);
   const horizon = addDays(now, 90);
-  const expiringRegistrations = registrations
+  // The current-row rule (doc/CORPORATE_ENTITY_REGISTRATION_CURRENT_ROW.md):
+  // only the SELECTED registration per (country, kind) is monitored. An expired
+  // selected row stays on the list — expiry must not promote a historical row —
+  // and a key with no selectable row (ambiguous history) contributes nothing
+  // here; the renewals result carries that as a data-quality finding.
+  const expiringRegistrations = renewalRules.selectedRegistrations(visibleRegistrations).selected
     .map((r) => ({ r, on: isoDate(r.expires_on) }))
     .filter(({ on }) => on && on <= horizon)
     .map(({ r, on }) => ({
-      registration_id: r.registration_id, kind: r.kind, number: r.number,
+      registration_id: r.registration_id, kind: r.kind,
+      number: r.number || null,
       expires_on: on,
       expired: on < now,
     }));
 
   return {
-    entity: maskEntityBank(entity, financials),
+    entity: maskEntityBank(visibleEntity, financials),
     structure: {
       parent_entity_id: entity.parent_entity_id || null,
       relationship_type: entity.relationship_type || null,
@@ -318,7 +414,7 @@ async function dossier(c, id, { governance = false, financials = false, capabili
     people: governance ? people : people.map(redactPerson),
     contacts,
     addresses,
-    registrations,
+    registrations: visibleRegistrations,
     establishments,
     // Read-only. The client renders these with a deep link to MOD-09 rather than
     // an edit form; see the module header. Masked for a caller without Treasury
@@ -330,22 +426,27 @@ async function dossier(c, id, { governance = false, financials = false, capabili
       : { ...cap, findings: cap.findings.map((f) => ({ ...f, person_id: undefined })), redacted: true },
     usage,
     documents: visibleDocuments,
-    tax_registrations: taxRegistrations,
-    tax_obligations: obligations,
+    tax_registrations: visibleTaxRegistrations,
+    tax_obligations: visibleObligations,
     // The resolved inputs a document header/footer is built from, plus the
     // rendered result in the entity's own language — the designer previews the
     // same function the invoice renderer will call, so the preview cannot lie.
-    letterhead_source: letterheadSource(entity, { addresses, registrations }),
+    // Both are fed the REDACTED rows for a caller without MOD-01 view: the
+    // source block and the preview are API reads of the same numbers the
+    // collections above just redacted, not a print path — the invoice renderer
+    // keeps composing from the raw rows, because a commercial document MUST
+    // carry its statutory mentions (CE-18).
+    letterhead_source: letterheadSource(visibleEntity, { addresses, registrations: visibleRegistrations }),
     letterhead_config: letterhead,
     letterhead_preview: maskPaymentBlock(
       letterheadService.render(
-        { entity, config: letterhead, addresses, registrations, taxRegistrations, treasuryAccounts: treasury, establishments },
+        { entity: visibleEntity, config: letterhead, addresses, registrations: visibleRegistrations, taxRegistrations: visibleTaxRegistrations, treasuryAccounts: treasury, establishments },
         entity.default_language,
       ),
       financials,
     ),
-    renewals: renewalRules.renewals({ documents: visibleDocuments, registrations, taxRegistrations }),
-    readiness: rules.readiness(entity, { registrations, addresses, people }),
+    renewals: renewalRules.renewals({ documents: visibleDocuments, registrations: visibleRegistrations, taxRegistrations: visibleTaxRegistrations }),
+    readiness: rules.readiness(visibleEntity, { registrations: visibleRegistrations, addresses, people }),
     expiring_registrations: expiringRegistrations,
     can_see_governance: governance,
     // PR-01: what THIS caller may do on this dossier. The routes gate
@@ -380,7 +481,8 @@ function addDays(iso, days) {
 }
 
 module.exports = {
-  dossier, canSeeGovernance, canSeeFinancials, capabilitiesFor, letterheadSource,
+  dossier, canSeeGovernance, canSeeFinancials, canSeeRegistrations, capabilitiesFor, letterheadSource,
   redactPerson, redactDocument, DOCUMENT_CONFIDENTIAL_FIELDS,
+  redactRegistration, redactTaxRegistration, redactTaxObligation, maskEntityRegistrations,
   maskEntityBank, maskPaymentBlock, isoDate,
 };

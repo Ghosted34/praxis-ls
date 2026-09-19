@@ -113,12 +113,34 @@ const LINK_JOINS = `
     LEFT JOIN client_master dcm ON dcm.client_id = dv.client_id
     LEFT JOIN milestone_instance mi ON mi.milestone_instance_id = t.milestone_instance_id`;
 
+/**
+ * Every stage the task is on, in chain order (13930).
+ *
+ * A correlated aggregate rather than a fourth LEFT JOIN: a join would multiply
+ * each task row by its stage count and break `COUNT(*) OVER()`, the board's
+ * per-column cap and every LIMIT in this file. `t.milestone_instance_id` stays
+ * joined above as the FIRST stage — it is the projection the service keeps
+ * in step with this set, so a reader that knows only 13920's column still
+ * sees a stage. Empty array, never NULL, so a card can `.map` without a guard.
+ */
+const MILESTONES_COL = `(SELECT COALESCE(json_agg(json_build_object(
+                    'milestone_instance_id', tmi.milestone_instance_id,
+                    'label', tmi.label,
+                    'stage_seq', tmi.stage_seq,
+                    'status', tmi.status)
+                  ORDER BY tmi.stage_seq, tmi.label), '[]'::json)
+            FROM task_milestone tm
+            JOIN milestone_instance tmi ON tmi.milestone_instance_id = tm.milestone_instance_id
+           WHERE tm.task_id = t.task_id) AS milestones`;
+
 const LINK_COLS = `
          dv.ref        AS dossier_ref,
          dcm.name      AS dossier_client_name,
          mi.label      AS milestone_label,
          mi.stage_seq  AS milestone_stage_seq,
-         mi.status     AS milestone_status`;
+         mi.status     AS milestone_status,
+         ${MILESTONES_COL}`;
+
 
 const TASK_SELECT = `
   SELECT t.*,
@@ -154,6 +176,37 @@ const TASK_SELECT_PAGED = TASK_SELECT.replace(
  * would drift (API F-26).
  */
 /**
+ * "Is on this stage" — the list's milestone filter, against the SET (13930).
+ *
+ * Not `t.milestone_instance_id = $n`: that column is only the first stage of
+ * the set, and a task filed under two stages would vanish from the second
+ * stage's view — the exact gap several stages exist to close.
+ */
+const onStage = (n) =>
+  `EXISTS (SELECT 1 FROM task_milestone tm WHERE tm.task_id = t.task_id AND tm.milestone_instance_id = $${n})`;
+
+/**
+ * Free-text search over what a person remembers about a task.
+ *
+ * The title alone was the whole of `q` until now, and it is the field people
+ * remember LEAST reliably: "the one about the Brasseries container" is a
+ * client name, "the BL chase on SL3213" is a file reference, and "call before
+ * the scanner slot" lives in the notes. So `q` matches the title, the notes,
+ * the linked file's reference and its client's name, and the title of any
+ * step under the task. One pattern, bound once, tested against each column —
+ * the same `ILIKE '%…%'` the rest of the module's search uses, on lists whose
+ * scope (a person's own work, a team's) is small enough that an index would
+ * not change the answer.
+ *
+ * `_` and `%` in what the user typed are escaped so "100%" searches for the
+ * literal string rather than for "100" followed by anything.
+ */
+const searchPattern = (q) => `%${String(q).replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+const SEARCH_WHERE = (n) =>
+  `(t.title ILIKE $${n} OR t.description ILIKE $${n} OR dv.ref ILIKE $${n} OR dcm.name ILIKE $${n}
+      OR EXISTS (SELECT 1 FROM task_subtask sq WHERE sq.task_id = t.task_id AND sq.title ILIKE $${n}))`;
+
+/**
  * A safe ORDER BY, built from an allow-list rather than interpolated — a sort
  * column taken from the query string and dropped into SQL is the one injection
  * this endpoint would otherwise expose.
@@ -172,8 +225,8 @@ async function listTasks(client, { audience, userId, scopeIds, personalOnly, sta
   if (priority) { params.push(priority); where.push(`t.priority = $${params.length}`); }
   if (assignedTo) { params.push(assignedTo); where.push(`t.assigned_to = $${params.length}`); }
   if (dossierId) { params.push(dossierId); where.push(`t.dossier_id = $${params.length}`); }
-  if (milestoneInstanceId) { params.push(milestoneInstanceId); where.push(`t.milestone_instance_id = $${params.length}`); }
-  if (q) { params.push(`%${q}%`); where.push(`t.title ILIKE $${params.length}`); }
+  if (milestoneInstanceId) { params.push(milestoneInstanceId); where.push(onStage(params.length)); }
+  if (q) { params.push(searchPattern(q)); where.push(SEARCH_WHERE(params.length)); }
   if (entity) {
     params.push(entity.entity_type, entity.entity_id);
     where.push(`t.entity_type = $${params.length - 1} AND t.entity_id = $${params.length}`);
@@ -205,11 +258,14 @@ async function listTasks(client, { audience, userId, scopeIds, personalOnly, sta
  */
 const BOARD_LIMIT = 200;
 
-async function boardTasks(client, { audience, userId, scopeIds, personalOnly, assignedTo, dossierId, limit = BOARD_LIMIT }) {
+async function boardTasks(client, { audience, userId, scopeIds, personalOnly, assignedTo, dossierId, q, limit = BOARD_LIMIT }) {
   const params = [];
   const where = ["t.is_deleted = false", "t.status <> 'CANCELLED'"];
   if (assignedTo) { params.push(assignedTo); where.push(`t.assigned_to = $${params.length}`); }
   if (dossierId) { params.push(dossierId); where.push(`t.dossier_id = $${params.length}`); }
+  // The same search the list answers, so Board↔List does not change what a
+  // typed query finds (title, notes, file reference, client, step titles).
+  if (q) { params.push(searchPattern(q)); where.push(SEARCH_WHERE(params.length)); }
   const vis = visibleWhere({ audience, userId, scopeIds, personalOnly }, params.length + 1);
   params.push(...vis.params);
   where.push(...vis.sql);
@@ -272,12 +328,17 @@ async function subtasksInRange(client, { from, to, visibility }) {
   const vis = visibleWhere(visibility, params.length + 1);
   params.push(...vis.params);
   where.push(...vis.sql);
+  // The parent's notes and file ride along so the calendar's filter can find
+  // a step by what its task is about — the same words that find the task.
   const { rows } = await client.query(
     `SELECT s.task_subtask_id, s.task_id, s.title, s.due_at, s.is_done,
             t.title AS task_title, t.status AS task_status, t.priority AS task_priority,
-            t.entity_type, t.entity_id
+            t.entity_type, t.entity_id, t.description AS task_description,
+            dv.ref AS dossier_ref, dcm.name AS dossier_client_name
        FROM task_subtask s
        JOIN task t ON t.task_id = s.task_id
+       LEFT JOIN dossier_visible dv ON dv.dossier_id = t.dossier_id
+       LEFT JOIN client_master dcm ON dcm.client_id = dv.client_id
       WHERE ${where.join(" AND ")}
       ORDER BY s.due_at ASC NULLS LAST
       LIMIT 200`,
@@ -1167,7 +1228,30 @@ async function rearmOwnerReminders(client, ownerType, ownerId) {
   );
 }
 
-/** Project a single-reminder owner's state onto the parent columns. */
+/**
+ * Project a single-reminder owner's state onto the parent columns.
+ *
+ * ── THE PLACEHOLDERS ARE NUMBERED BY MEANING, AND THAT IS THE WHOLE BUG ─────
+ *
+ * This UPDATE is the LAST statement of every task or event write that names
+ * its reminders — the dialog always does, even to say "none" — so a fault
+ * here is a 500 on every create and edit made from the dialog, AFTER the
+ * parent row is already in. That is exactly what shipped: the `reminder_sent_at`
+ * subselect below used to read `owner_type = $1 AND owner_id = $2` (the
+ * numbering of the SELECT above it), but in THIS statement `$1` is the owner
+ * id and `$2` is `reminder_minutes`. Postgres refused it at parse time —
+ * `42883 operator does not exist: text = uuid` — on every call, whatever the
+ * values, and the unit tests could not see it because a scripted client
+ * accepts any SQL.
+ *
+ * So the parameters are now bound once each with one meaning each: `$1` the
+ * owner id (row to update AND reminders to read), `$2`/`$3` the projected
+ * pair, `$4` the owner type. Anything else is the same bug waiting to come
+ * back, which is why `tests/unit/workspace-reminders-write.test.js` now
+ * checks what each `$n` in an `owner_id =` / `owner_type =` comparison is
+ * bound to, and `tests/integration/workspace-reminder-sync.test.js` runs the
+ * statement against the real tables.
+ */
 async function syncParentReminderColumns(client, ownerType, ownerId) {
   const table = ownerType === "task" ? "task" : "calendar_event";
   const idColumn = ownerType === "task" ? "task_id" : "calendar_event_id";
@@ -1184,15 +1268,15 @@ async function syncParentReminderColumns(client, ownerType, ownerId) {
     `UPDATE ${table}
         SET reminder_minutes = $2, remind_at = $3,
             reminder_sent_at = CASE
-              WHEN $2 IS NULL AND $3 IS NULL THEN reminder_sent_at
+              WHEN $2::integer IS NULL AND $3::timestamptz IS NULL THEN reminder_sent_at
               ELSE (
                 SELECT reminder_sent_at FROM workspace_reminder
-                 WHERE owner_type = $1 AND owner_id = $2 AND is_deleted = false ORDER BY ordinal LIMIT 1
+                 WHERE owner_type = $4 AND owner_id = $1 AND is_deleted = false ORDER BY ordinal LIMIT 1
               )
             END,
             updated_at = now()
       WHERE ${idColumn} = $1`,
-    [ownerId, reminder_minutes, remind_at],
+    [ownerId, reminder_minutes, remind_at, ownerType],
   );
 }
 
@@ -1693,13 +1777,17 @@ async function analyticsByFile(client, { visibility, filters, nowIso, limit = 25
  * so a tenant-wide grouping would add rows from unrelated shipments together
  * under one heading and present the sum as a stage's backlog. Narrowed to a
  * file, the labels are unique and the grouping means what it reads as.
+ *
+ * Through the SET (13930), so a task on two stages is counted under both —
+ * the work is on both — and a task on none lands in the "No milestone" row
+ * the LEFT JOIN keeps for it.
  */
 async function analyticsByMilestone(client, { visibility, filters, nowIso, limit = 50 }) {
   const s = analyticsScope(visibility, filters, 2);
   const params = [nowIso, ...s.params];
   const limitParam = params.push(limit);
   const { rows } = await client.query(
-    `SELECT t.milestone_instance_id,
+    `SELECT tm.milestone_instance_id,
             mi.label      AS milestone_label,
             mi.status     AS milestone_status,
             mi.stage_seq  AS stage_seq,
@@ -1708,9 +1796,10 @@ async function analyticsByMilestone(client, { visibility, filters, nowIso, limit
                                AND t.due_at IS NOT NULL AND t.due_at < $1)::int AS overdue_tasks,
             count(*)::int AS total_tasks
        FROM task t
-       LEFT JOIN milestone_instance mi ON mi.milestone_instance_id = t.milestone_instance_id
+       LEFT JOIN task_milestone tm ON tm.task_id = t.task_id
+       LEFT JOIN milestone_instance mi ON mi.milestone_instance_id = tm.milestone_instance_id
       WHERE ${s.where.join(" AND ")}
-      GROUP BY t.milestone_instance_id, mi.label, mi.status, mi.stage_seq
+      GROUP BY tm.milestone_instance_id, mi.label, mi.status, mi.stage_seq
       ORDER BY stage_seq NULLS LAST, milestone_label NULLS LAST
       LIMIT $${limitParam}`,
     params,
@@ -1718,13 +1807,54 @@ async function analyticsByMilestone(client, { visibility, filters, nowIso, limit
   return rows;
 }
 
-/** Which file a milestone belongs to — the service's cross-check on a link. */
-async function milestoneFileOf(client, milestoneInstanceId) {
+/**
+ * Which file each named stage belongs to — the service's cross-check on a
+ * link (13920, several at once since 13930). One query for the whole set,
+ * with the chain position, so the service can refuse a stranger by name and
+ * order the rest as the chain does.
+ */
+async function milestoneFilesOf(client, milestoneInstanceIds) {
+  if (!milestoneInstanceIds || !milestoneInstanceIds.length) return [];
   const { rows } = await client.query(
-    "SELECT milestone_instance_id, dossier_id, label FROM milestone_instance WHERE milestone_instance_id = $1",
-    [milestoneInstanceId],
+    `SELECT milestone_instance_id, dossier_id, label, stage_seq
+       FROM milestone_instance
+      WHERE milestone_instance_id = ANY($1::uuid[])`,
+    [milestoneInstanceIds],
   );
+  return rows;
+}
+
+/** One stage's file — 13920's single-stage form of the lookup above. */
+async function milestoneFileOf(client, milestoneInstanceId) {
+  const rows = await milestoneFilesOf(client, [milestoneInstanceId]);
   return rows[0] || null;
+}
+
+/**
+ * Make the task's stage set exactly `ids` (13930).
+ *
+ * Two statements, both idempotent: rows no longer wanted go, rows already
+ * present stay (ON CONFLICT on the pair), so a form that re-posts the same
+ * three stages on every save churns nothing and a set of none clears the
+ * table for that task. The caller runs this inside the task's transaction
+ * with the projection column already written, so the two cannot be read
+ * apart.
+ */
+async function replaceTaskMilestones(client, taskId, ids) {
+  const wanted = [...new Set((ids || []).filter(Boolean))];
+  await client.query(
+    "DELETE FROM task_milestone WHERE task_id = $1 AND NOT (milestone_instance_id = ANY($2::uuid[]))",
+    [taskId, wanted],
+  );
+  if (!wanted.length) return [];
+  const { rows } = await client.query(
+    `INSERT INTO task_milestone (task_id, milestone_instance_id)
+     SELECT $1, unnest($2::uuid[])
+     ON CONFLICT DO NOTHING
+     RETURNING milestone_instance_id`,
+    [taskId, wanted],
+  );
+  return rows.map((r) => r.milestone_instance_id);
 }
 
 /**
@@ -1898,7 +2028,7 @@ module.exports = {
   overrideDependency, clearDependencyOverride, deleteDependency, blockedCountsFor,
   analyticsScope, analyticsSummary, analyticsThroughput, analyticsOverdueAging,
   analyticsWorkload, analyticsCycleTime, analyticsBlocked, analyticsBurndown,
-  analyticsComposition, analyticsByFile, analyticsByMilestone, milestoneFileOf,
+  analyticsComposition, analyticsByFile, analyticsByMilestone, milestoneFileOf, milestoneFilesOf, replaceTaskMilestones,
   eventVisibleWhere, listEventsWindow, listEvents, insertEvent, findEvent, updateEvent, softDeleteEvent, findEventClashes,
   listParticipants, insertParticipant, respondParticipant, removeParticipant,
   dueTaskReminders, dueEventReminders, markReminderSent,

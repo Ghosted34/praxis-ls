@@ -63,9 +63,9 @@ module.exports = {
   screens: [],
 
   reads: [
-    { key: "list_my_tasks", service: (c, p, caller) => service.listTasks(c, ctx(caller), p || {}), permission: { module: MOD, action: "view" }, describe: "The caller's own tasks. Filter by status, priority, assigned_to, a free-text q, the record they hang off (entity_type + entity_id), or the operations file the work is on (dossier_id, and milestone_instance_id for one stage of its chain)." },
+    { key: "list_my_tasks", service: (c, p, caller) => service.listTasks(c, ctx(caller), p || {}), permission: { module: MOD, action: "view" }, describe: "The caller's own tasks. Filter by status, priority, assigned_to, a free-text q (matches the title, the notes, the linked file's reference, its client's name and step titles), the record they hang off (entity_type + entity_id), or the operations file the work is on (dossier_id, and milestone_instance_id for one stage of its chain — a task on several stages is found under each). Each row carries milestone_instance_ids and milestones (every stage it is on, in chain order)." },
     { key: "get_my_task", service: (c, p, caller) => service.getTask(c, ctx(caller), p.task_id || p.id || p), permission: { module: MOD, action: "view" }, describe: "One of the caller's tasks by id, with its subtasks, watchers and dependencies." },
-    { key: "my_task_board", service: (c, p, caller) => service.getBoard(c, ctx(caller), p || {}), permission: { module: MOD, action: "view" }, describe: "The caller's tasks grouped into board columns by status." },
+    { key: "my_task_board", service: (c, p, caller) => service.getBoard(c, ctx(caller), p || {}), permission: { module: MOD, action: "view" }, describe: "The caller's tasks grouped into board columns by status. Accepts the same free-text q and dossier_id narrowing as the list." },
     { key: "my_day_timeline", service: (c, p, caller) => service.dayTimeline(c, ctx(caller), { from: p.from, to: p.to }), permission: { module: MOD, action: "view" }, describe: "Tasks and calendar events merged into one chronological timeline between two datetimes." },
     { key: "my_deadlines", service: (c, p, caller) => service.deadlinesInRange(c, ctx(caller), { from: p.from, to: p.to }), permission: { module: MOD, action: "view" }, describe: "The caller's task deadlines falling in a window — what is due, and when." },
     { key: "list_my_events", service: (c, p, caller) => service.listEvents(c, ctx(caller), p || {}), permission: { module: MOD, action: "view" }, describe: "The caller's calendar events in a window, optionally filtered by event_type." },
@@ -79,7 +79,7 @@ module.exports = {
       schema: validator.schemas.taskCreate,
       permission: { module: MOD, action: "create" },
       confirm: true,
-      describe: "Create a task for the caller (title, due date, priority, assignee, reminder, subtasks, recurrence). Attach it to a record with entity_type + entity_id, and say what operations file the work is on with dossier_id (plus milestone_instance_id for a stage of that file's chain — it must be a stage of THAT file, and clearing the file clears it).",
+      describe: "Create a task for the caller (title, due date, priority, assignee, reminder, subtasks, recurrence). Attach it to a record with entity_type + entity_id, and say what operations file the work is on with dossier_id (plus milestone_instance_ids for the stages of that file's chain the work belongs to — one or several, each must be a stage of THAT file, and clearing the file clears them; milestone_instance_id still names a single stage).",
     },
     {
       key: "update_task",
@@ -87,7 +87,7 @@ module.exports = {
       schema: validator.schemas.aiTaskUpdate,
       permission: { module: MOD, action: "edit" },
       confirm: true,
-      describe: "Amend one of the caller's tasks by id (title, due date, priority, assignee, reminder, recurrence, and the operations file or milestone the work sits on). Send dossier_id: null to unlink it from a file; moving it to another file drops a stage you do not name.",
+      describe: "Amend one of the caller's tasks by id (title, due date, priority, assignee, reminder, recurrence, and the operations file or milestones the work sits on — milestone_instance_ids replaces the whole set, [] clears it). Send dossier_id: null to unlink it from a file; moving it to another file drops stages you do not name.",
     },
     {
       key: "change_task_status",

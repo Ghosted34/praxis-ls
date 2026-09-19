@@ -43,21 +43,7 @@ async function _balances(client, accountCode, mtdDate, ytdDate) {
   };
 }
 
-/** Legacy single-balance helper kept for backward compatibility if called directly. */
-async function _balance(client, accountCode, sinceDate) {
-  const params = [accountCode];
-  let dateClause = "";
-  if (sinceDate) { params.push(sinceDate); dateClause = " AND je.entry_date >= $2"; }
-  const { rows } = await client.query(
-    "SELECT COALESCE(SUM(jl.debit),0)::numeric AS debit_sum, " +
-    "       COALESCE(SUM(jl.credit),0)::numeric AS credit_sum " +
-    "  FROM journal_line jl JOIN journal_entry je ON je.entry_id = jl.entry_id " +
-    " WHERE jl.account_code = $1 AND je.status = 'validated'" + dateClause,
-    params,
-  );
-  const r = rows[0] || { debit_sum: 0, credit_sum: 0 };
-  return { debit: Number(r.debit_sum), credit: Number(r.credit_sum) };
-}
+
 
 /** Recent journal lines that hit this account with reversal links (Audit #5, #16). */
 async function _recentLines(client, accountCode, limit = 50) {
@@ -110,7 +96,7 @@ async function _unreconciledCount(client, accountId) {
       [accountId],
     );
     const { rows: recons } = await client.query(
-      "SELECT COUNT(*)::int AS cnt FROM bank_reconciliation WHERE treasury_account_id = $1 AND status <> 'APPROVED_LOCKED'",
+      "SELECT COUNT(*)::int AS cnt FROM reconciliation WHERE treasury_account_id = $1 AND status <> 'APPROVED_LOCKED'",
       [accountId],
     );
     return Number(lines[0]?.cnt || 0) + Number(recons[0]?.cnt || 0);

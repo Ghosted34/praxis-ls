@@ -23,6 +23,8 @@ import { useResource, errMsg } from "@/lib/use-resource";
 import { money, dateFmt, cell } from "@/lib/format";
 import * as api from "@/lib/treasury-api";
 import { useConfirm } from "@/components/ui/use-confirm";
+import { usePrompt } from "@/components/ui/use-prompt";
+import { useToast } from "@/components/ui/toast";
 import { AccountModal } from "./account-modal";
 import { DocumentModal } from "./document-modal";
 import { SignatoryModal } from "./signatory-modal";
@@ -119,8 +121,20 @@ const Th = ({ children, r }: { children?: React.ReactNode; r?: boolean }) => (
     {children}
   </th>
 );
-const Td = ({ children, r }: { children?: React.ReactNode; r?: boolean }) => (
-  <td className={`px-3 py-1.5 ${r ? "text-right num" : ""}`}>{children}</td>
+const Td = ({
+  children,
+  r,
+  className = "",
+  title,
+}: {
+  children?: React.ReactNode;
+  r?: boolean;
+  className?: string;
+  title?: string;
+}) => (
+  <td className={`px-3 py-1.5 ${r ? "text-right num" : ""} ${className}`} title={title}>
+    {children}
+  </td>
 );
 
 function amount(
@@ -155,6 +169,8 @@ export function TreasuryDossier({
   const [docModalOpen, setDocModalOpen] = React.useState(false);
   const [sigModalOpen, setSigModalOpen] = React.useState(false);
   const [confirm, confirmDialog] = useConfirm();
+  const [prompt, promptDialog] = usePrompt();
+  const toast = useToast();
 
   async function doAction(key: string, run: () => Promise<unknown>) {
     setBusy(key);
@@ -301,6 +317,7 @@ export function TreasuryDossier({
       />
 
       {confirmDialog}
+      {promptDialog}
 
       {/* ── KPIs ────────────────────────────────────────────────────────── */}
       <KpiRow stack>
@@ -513,7 +530,7 @@ export function TreasuryDossier({
                 </Td>
                 <Td r>
                   {l.reversed_by_entry_no ? (
-                    <Pill tone="muted">{tr("Reversed by #")}{l.reversed_by_entry_no}</Pill>
+                    <Pill tone="mute">{tr("Reversed by #")}{l.reversed_by_entry_no}</Pill>
                   ) : l.reverses_entry_no ? (
                     <Pill tone="blue">{tr("Reversal of #")}{l.reverses_entry_no}</Pill>
                   ) : l.status === "validated" ? (
@@ -521,16 +538,19 @@ export function TreasuryDossier({
                       variant="ghost"
                       size="sm"
                       onClick={async () => {
-                        const reason = window.prompt(
-                          tr("Enter reason for reversing journal entry #{no}:", { no: l.entry_no }),
-                        );
+                        const reason = await prompt({
+                          title: tr("Reverse Journal Entry"),
+                          label: tr("Reason for reversing entry #") + l.entry_no,
+                          placeholder: tr("e.g. Inadvertent duplicate or wrong account"),
+                        });
                         if (!reason) return;
                         try {
                           await api.reverseEntry(id, l.entry_id, reason);
                           reload();
                           onChanged?.();
+                          toast.success(tr("Journal entry reversed"));
                         } catch (e) {
-                          window.alert(errMsg(e));
+                          toast.error(errMsg(e));
                         }
                       }}
                     >
@@ -624,7 +644,7 @@ export function TreasuryDossier({
                 </Td>
                 <Td>{cell(sig.role_title)}</Td>
                 <Td>
-                  <Pill tone={sig.signatory_type === "PRIMARY" ? "info" : "neutral"}>
+                  <Pill tone={sig.signatory_type === "PRIMARY" ? "blue" : "mute"}>
                     {sig.signatory_type}
                   </Pill>
                 </Td>
@@ -648,14 +668,14 @@ export function TreasuryDossier({
                 </Td>
                 <Td r>
                   <Button
-                    size="xs"
+                    size="sm"
                     variant="ghost"
                     onClick={async () => {
                       const ok = await confirm({
                         title: "Remove signatory",
                         body: `Remove ${sig.full_name} from authorized signatories?`,
-                        confirmText: "Remove",
-                        tone: "destructive",
+                        confirmLabel: "Remove",
+                        destructive: true,
                       });
                       if (!ok) return;
                       await api.removeSignatory(id, sig.signatory_id);
@@ -716,7 +736,7 @@ export function TreasuryDossier({
                   <div className="flex items-center justify-end gap-1">
                     {!doc.is_verified && (
                       <Button
-                        size="xs"
+                        size="sm"
                         variant="outline"
                         onClick={async () => {
                           await api.verifyDocument(id, doc.document_id);
@@ -727,14 +747,14 @@ export function TreasuryDossier({
                       </Button>
                     )}
                     <Button
-                      size="xs"
+                      size="sm"
                       variant="ghost"
                       onClick={async () => {
                         const ok = await confirm({
                           title: "Remove document",
                           body: `Remove ${doc.title}?`,
-                          confirmText: "Remove",
-                          tone: "destructive",
+                          confirmLabel: "Remove",
+                          destructive: true,
                         });
                         if (!ok) return;
                         await api.removeDocument(id, doc.document_id);

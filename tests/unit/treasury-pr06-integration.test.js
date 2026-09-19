@@ -156,7 +156,7 @@ describe("Treasury PR-06 integration: Timeline, Reversals, KPIs, Search & Pagina
           if (sql.includes("SELECT COUNT(*)::int AS cnt FROM bank_statement_line")) {
             return { rows: [{ cnt: 3 }] };
           }
-          if (sql.includes("SELECT COUNT(*)::int AS cnt FROM bank_reconciliation")) {
+          if (sql.includes("FROM reconciliation WHERE treasury_account_id")) {
             return { rows: [{ cnt: 1 }] };
           }
           return { rows: [] };

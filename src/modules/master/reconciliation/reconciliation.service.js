@@ -645,7 +645,7 @@ async function manualMatch(client, { statementLineId, journalLineId, actor }) {
   // Audit #21: Independently validate journal line
   const { rows: jLines } = await client.query(
     `SELECT jl.line_id, jl.account_code, jl.debit, jl.credit, jl.currency,
-            je.entry_id, je.entity_id, je.status, je.currency AS entry_currency
+            je.entry_id, je.entity_id, je.status
        FROM journal_line jl
        JOIN journal_entry je ON je.entry_id = jl.entry_id
       WHERE jl.line_id = $1`,
@@ -943,7 +943,7 @@ async function approveReconciliation(client, { reconciliationId, actor }) {
   await client.query("BEGIN");
   try {
     const { rows: locked } = await client.query(
-      "SELECT * FROM bank_reconciliation WHERE reconciliation_id = $1 FOR UPDATE",
+      "SELECT * FROM reconciliation WHERE reconciliation_id = $1 FOR UPDATE",
       [reconciliationId],
     );
     if (!locked.length) throw new AppError("NOT_FOUND", "Reconciliation not found", 404);
@@ -1355,7 +1355,6 @@ async function cancelCashCount(client, { cashCountId, reason, actor }) {
   }
   if (row.status === "CANCELLED") return row;
 
-  const actorId = await resolveActorId(client, actor && actor.user_id);
   await client.query("BEGIN");
   try {
     const updated = await repo.updateCashCount(client, cashCountId, {

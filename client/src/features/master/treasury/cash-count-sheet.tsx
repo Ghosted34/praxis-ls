@@ -20,13 +20,14 @@
  */
 import * as React from "react";
 import { tr } from "@/lib/i18n";
-import { Pill } from "@/components/ui/pill";
+import { Pill, type Tone } from "@/components/ui/pill";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
 import { EmptyState, ErrorState, LoadingRow } from "@/components/ui/states";
 import { errMsg } from "@/lib/use-resource";
 import { money, dateFmt } from "@/lib/format";
 import * as recon from "@/lib/reconciliation-api";
+import { usePrompt } from "@/components/ui/use-prompt";
 
 /**
  * BEAC notes and coins, largest first.
@@ -63,6 +64,7 @@ export function CashCountSheet({
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [notice, setNotice] = React.useState<string | null>(null);
+  const [prompt, promptDialog] = usePrompt();
 
   const activeDenominations = React.useMemo(() => getDenominationsForCurrency(currency), [currency]);
 
@@ -254,10 +256,10 @@ export function CashCountSheet({
               <tbody>
                 {history.map((row) => {
                   const diff = num(row.difference);
-                  const tone =
+                  const tone: Tone =
                     row.status === "APPROVED_LOCKED" ? "ok" :
-                    row.status === "ATTESTED" ? "info" :
-                    row.status === "CANCELLED" ? "muted" : "warn";
+                    row.status === "ATTESTED" ? "blue" :
+                    row.status === "CANCELLED" ? "mute" : "warn";
                   return (
                     <tr key={row.cash_count_id} className="border-t">
                       <td className="px-3 py-1.5 whitespace-nowrap">{dateFmt(row.counted_on)}</td>
@@ -270,7 +272,7 @@ export function CashCountSheet({
                         <Pill tone={tone}>{row.status.toLowerCase().replace("_", " ")}</Pill>
                         {row.over_float_limit && <span className="micro ml-2 text-muted-foreground">{tr("over float")}</span>}
                         {row.adjustment_entry_id && (
-                          <span className="micro ml-2 text-primary font-medium" title={tr("Draft adjustment entry linked")}>
+                          <span className="micro ml-2 text-primary-ink font-medium" title={tr("Draft adjustment entry linked")}>
                             {tr("entry proposed")}
                           </span>
                         )}
@@ -294,8 +296,12 @@ export function CashCountSheet({
                                 variant="ghost"
                                 size="sm"
                                 disabled={busy}
-                                onClick={() => {
-                                  const cancelReason = window.prompt(tr("Reason for cancelling count (allows recount):"));
+                                onClick={async () => {
+                                  const cancelReason = await prompt({
+                                    title: tr("Cancel Cash Count"),
+                                    label: tr("Reason for cancelling count (allows recount)"),
+                                    placeholder: tr("e.g. Discrepancy explained, recount requested"),
+                                  });
                                   if (cancelReason !== null) {
                                     void act(
                                       () => recon.cancelCashCount(row.cash_count_id, cancelReason || undefined),
@@ -336,8 +342,12 @@ export function CashCountSheet({
                                 variant="ghost"
                                 size="sm"
                                 disabled={busy}
-                                onClick={() => {
-                                  const cancelReason = window.prompt(tr("Reason for cancelling count (allows recount):"));
+                                onClick={async () => {
+                                  const cancelReason = await prompt({
+                                    title: tr("Cancel Cash Count"),
+                                    label: tr("Reason for cancelling count (allows recount)"),
+                                    placeholder: tr("e.g. Discrepancy explained, recount requested"),
+                                  });
                                   if (cancelReason !== null) {
                                     void act(
                                       () => recon.cancelCashCount(row.cash_count_id, cancelReason || undefined),
@@ -376,6 +386,7 @@ export function CashCountSheet({
           {tr("Attesting is the custodian saying the money was there. A count that disagrees with the books cannot be attested until the difference is explained.")}
         </p>
       </section>
+      {promptDialog}
     </div>
   );
 }

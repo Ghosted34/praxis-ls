@@ -437,7 +437,7 @@ function MatchQueue({
                           </p>
                           <div className="flex items-center gap-2">
                             {l.proposed_entry_id ? (
-                              <Pill tone="info">{tr("Draft entry proposed")}</Pill>
+                              <Pill tone="blue">{tr("Draft entry proposed")}</Pill>
                             ) : (
                               <Button
                                 size="sm"
@@ -837,7 +837,7 @@ export function ReconciliationTab({
                     const existing = statements?.find(
                       (s) => s.statement_id === preview.already_imported?.statement_id,
                     );
-                    if (existing) selectStatement(existing);
+                    if (existing) setSelected(existing);
                   }}
                 >
                   {tr("View existing statement")}

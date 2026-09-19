@@ -245,19 +245,6 @@ export function TreasuryMasterPage() {
           )}
         </SplitPane>
       )}
-          {selected ? (
-            <TreasuryDossier
-              id={selected.treasury_account_id}
-              onChanged={reload}
-            />
-          ) : (
-            <EmptyState
-              title="No account selected"
-              hint="Pick an account from the list to see its 360."
-            />
-          )}
-        </SplitPane>
-      )}
 
       <AccountModal
         open={createOpen}

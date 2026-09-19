@@ -126,7 +126,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `BAD_TOTALS` | 422 | 1× | — |
 | `BAD_TRAINING_MODE` | — | 1× | — |
 | `BAD_TRANSITION` | 422 | 3× | — |
-| `BAD_VALUE` | 400, 422 | 10× | — |
+| `BAD_VALUE` | 400, 422 | 12× | — |
 | `BAD_WINDOW` | 422 | 2× | — |
 | `BASE_CURRENCY` | 409, 422 | 2× | — |
 | `BREACHED_PASSWORD` | 422 | 1× | — |

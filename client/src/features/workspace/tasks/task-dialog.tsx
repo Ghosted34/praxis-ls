@@ -28,6 +28,9 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
 import { EmployeePicker } from "@/components/employee-picker";
+import { FileLinkField } from "../file-link-field";
+import { EMPTY_LINK, linkOf } from "../file-link";
+import type { FileLink } from "../file-link";
 import { useToast } from "@/components/ui/toast";
 import { errMsg } from "@/lib/use-resource";
 import { TASK_PRIORITIES, TASK_STATUSES } from "../api";
@@ -75,7 +78,17 @@ export function TaskDialog({
   onClose: () => void;
   task?: Task | null;
   defaultDue?: string | null;
-  initial?: { title?: string | null; description?: string | null } | null;
+  initial?: {
+    title?: string | null;
+    description?: string | null;
+    /** Opens the form already linked to an operations file (13920) — what the
+     *  file's own Tasks tab raises a task through, so the link is visible in
+     *  the form rather than applied invisibly on save. */
+    dossier_id?: string | null;
+    dossier_ref?: string | null;
+    dossier_client_name?: string | null;
+    milestone_instance_id?: string | null;
+  } | null;
   onSaved?: (id?: string | null) => void;
   parent?: Task | null;
 }) {
@@ -110,6 +123,11 @@ export function TaskDialog({
   // without a second lookup.
   const [assignedTo, setAssignedTo] = React.useState<string | null>(null);
   const [assignedName, setAssignedName] = React.useState<string | null>(null);
+  // The operations file this work is on, and optionally the stage of its chain
+  // (13920). One piece of state rather than two, because clearing the file has
+  // to clear the stage and a split pair makes that an effect that can be
+  // forgotten — see file-link-field.tsx.
+  const [fileLink, setFileLink] = React.useState<FileLink>(EMPTY_LINK);
   const [error, setError] = React.useState<string | null>(null);
 
   // Reset on open rather than on unmount: the Dialog stays mounted and only
@@ -136,10 +154,16 @@ export function TaskDialog({
     setSeriesScope("this");
     setAssignedTo(task?.assigned_to ?? null);
     setAssignedName(task?.assigned_to_name ?? null);
+    // A child seeds from the PARENT's file, so the pre-filled form shows the
+    // link it will inherit rather than an empty picker that then fills itself
+    // in server-side — the user would have no way to tell it was going to.
+    setFileLink(
+      task ? linkOf(task) : childMode && parent ? linkOf(parent) : linkOf(initial ?? null),
+    );
     setError(null);
     // `initial` is a dep like the rest: the mail conversion page memoises it,
     // so this re-seeds only when the seed itself changes, not on every render.
-  }, [open, task, defaultDue, initial, timeZone]);
+  }, [open, task, defaultDue, initial, timeZone, childMode, parent]);
 
   async function submit() {
     const trimmed = title.trim();
@@ -179,6 +203,12 @@ export function TaskDialog({
       // Explicit null when nobody is chosen, so EDITING a task can UNASSIGN it
       // rather than silently leaving the previous owner in place.
       assigned_to: assignedTo,
+      // Both explicit, for the same reason: an edit that clears the picker has
+      // to UNLINK the task, and an omitted field would leave the old file on
+      // it. The server clears the stage whenever the file goes, so the two can
+      // never disagree even if a future caller sends only one.
+      dossier_id: fileLink.dossier_id,
+      milestone_instance_id: fileLink.milestone_instance_id,
     };
     // Only meaningful when the open task belongs to a series; otherwise the
     // server ignores it (there is nothing else to rewrite).
@@ -306,6 +336,13 @@ export function TaskDialog({
           </Field>
 
         </div>
+
+        {/* Which operations file this work is on, and optionally which stage of
+            its chain (13920). Both optional, and NULL on most tasks — a
+            reminder to renew a licence is not about a shipment. Linking it puts
+            the task on the file's own Tasks tab and into the Analytics rollup;
+            it never moves the milestone. */}
+        <FileLinkField value={fileLink} onChange={setFileLink} idPrefix="task" disabled={busy} />
 
         {/* The several reminders of 13890. A relative row rides the due date;
             an absolute one is written as a zoneless wall clock and read by the

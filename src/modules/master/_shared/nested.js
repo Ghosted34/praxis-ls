@@ -25,9 +25,14 @@ const { partyCommon, entityCommon, taxRegimes } = require("@praxis/shared");
 // references packages/shared/data/tax-regimes.js. The variable is used in a log guard
 // below to avoid an unused-import lint while keeping the import visible to the gate.
 void taxRegimes;
-const { canSeeFinancials, maskBank } = require("./confidential");
+const { canSeeFinancials, canSeeRegistrations, maskBank } = require("./confidential");
 const changeRequest = require("./change-request.service");
 const numbering = require("../../../services/documents/numbering.service");
+// The entity dossier's redaction helpers (PR-04): the same authority that
+// redacts the /360 bundle, applied to the entity's child collections.
+// entity-360.service depends only on the repo/rules/renewals/letterhead
+// trio — never on this file — so requiring it here opens no cycle.
+const dossier360 = require("../entity-360.service");
 
 const actorOf = (req) => req.user || { user_id: null };
 
@@ -549,7 +554,7 @@ function entityResourceSpecs() {
  */
 function mountEntityNested(router, { moduleKey, parentTable, parentPk }) {
   for (const r of entityResourceSpecs()) {
-    const { controller } = buildResource({
+    const { service, controller } = buildResource({
       table: r.table, pk: r.pk, parentCol: "entity_id",
       parentTable, parentPk, moduleKey, label: r.table,
       writable: r.writable, touch: r.touch, isDocument: r.isDocument,
@@ -562,7 +567,25 @@ function mountEntityNested(router, { moduleKey, parentTable, parentPk }) {
     // entity-360's redaction tests, or the collection endpoint becomes a way to
     // read around the dossier's redaction entirely.
     const viewAction = ["people", "documents"].includes(r.seg) ? "edit" : "view";
-    router.get(`/:id/${r.seg}`, requirePermission(moduleKey, viewAction), controller.list);
+
+    // PR-04 (Decision Q3): `registrations` and `tax-registrations` rows carry
+    // the statutory/tax numbers themselves. The route above already refuses a
+    // caller without MOD-01 view; the SERIALIZER now enforces the same rule,
+    // so the boundary holds even if a future route mounts these collections
+    // under a weaker gate — the same authority the /360 bundle has, applied to
+    // the child route. The rows keep kind, country, cadence and dates, so the
+    // collection still renders and explains itself for a caller who has not
+    // been granted the numbers.
+    const redactList = { registrations: dossier360.redactRegistration, "tax-registrations": dossier360.redactTaxRegistration }[r.seg];
+    const listHandler = redactList
+      ? asyncHandler(async (req, res) => {
+          const canSee = await canSeeRegistrations(req);
+          const rows = await req.tenantDb((c) => service.list(c, req.params.id, req.query));
+          res.json({ data: canSee ? rows : rows.map(redactList) });
+        })
+      : controller.list;
+
+    router.get(`/:id/${r.seg}`, requirePermission(moduleKey, viewAction), listHandler);
     router.post(`/:id/${r.seg}`, requirePermission(moduleKey, "create"), validate(r.create), controller.create);
     if (r.isDocument || r.isVerifiableRegistration) {
       router.post(`/:id/${r.seg}/:childId/verify`, requirePermission(moduleKey, "approve"), controller.verify);

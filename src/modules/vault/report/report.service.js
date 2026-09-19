@@ -196,6 +196,12 @@ async function runDue(client, { tenantMeta = null, env = "live", actor = {} } = 
   // One context for the whole batch: brand/entity/currency cannot change
   // between two due reports in the same run, and each attachment then spreads
   // its own title over the shared facts.
+  //
+  // No `registrationNumbers` (PR-04): a scheduled run has no requester to
+  // vouch for an MOD-01 view grant, and the emailed attachment is the copy
+  // most likely to be forwarded outside the app — so its cover carries the
+  // entity's name and address, not its RCCM/NIU. An interactive export adds
+  // the numbers back for a caller who holds the grant.
   const baseContext = await resolveContext(client, { actor });
   const results = [];
   for (const sr of due) {

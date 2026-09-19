@@ -533,7 +533,20 @@ const BUILDERS = [
   /* Our own tax and trade identifiers, one card per registration — "what is our
    * NIU", "which VAT number do we invoice under in France". Its own builder
    * rather than a join on the card above, so `tableExists` skips it cleanly on a
-   * tenant that predates 0515 instead of failing the whole reindex. */
+   * tenant that predates 0515 instead of failing the whole reindex.
+   *
+   * THE NUMBER IS NOT IN THE TEXT (PR-04, Decision Q3). Retrieval cards are
+   * readable by every caller the assistant serves, with no per-module grant to
+   * filter on — the confidentiality tag on a card is a class ("normal" /
+   * "confidential"), not a capability, and no tag means "MOD-01 view". So this
+   * card grounds the FACT ("SLAS holds the primary NIU in CM, expiring March")
+   * and stops there: the exact value comes from the function-calling tools
+   * (`get_entity`, `get_entity_360`, `get_entity_letterhead`), which ARE
+   * permission-gated at MOD-01 view and return the real number to a caller who
+   * holds the grant. That has always been this file's contract — "exact/current
+   * values come from function-calling, not from these cards" — and the tax
+   * boundary is why it now applies to identifiers too. `WHERE r.number IS NOT
+   * NULL` stays: it is a data-completeness filter, not a publication. */
   {
     key: "entity_registration",
     sql: `SELECT r.kind, r.number, r.country_code, r.issuing_authority, r.expires_on, r.is_primary,
@@ -546,7 +559,7 @@ const BUILDERS = [
       ref: `entity-registration:${r.entity_code || "?"}-${r.kind || "?"}`,
       title: `Our ${r.kind || "registration"} (${r.entity_code || "?"})`,
       confidentiality: "normal",
-      text: `${r.legal_name || r.entity_code || "?"} holds ${r.kind || "a registration"} ${r.number || "?"}`
+      text: `${r.legal_name || r.entity_code || "?"} holds ${r.kind || "a registration"}`
         + `${r.country_code ? ` in ${r.country_code}` : ""}`
         + `${r.issuing_authority ? `, issued by ${r.issuing_authority}` : ""}`
         + `${r.is_primary ? " (primary for that country)" : ""}`

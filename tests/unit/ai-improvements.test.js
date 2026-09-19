@@ -145,9 +145,12 @@ describe("entity card builders", () => {
         entity_code: "SLAS",
         legal_name: "Smart Logistics and Services Ltd",
       });
-      expect(card.text).toContain("NIU P0123456789A");
-      expect(card.text).toContain("in CM");
+      // PR-04 (Decision Q3): the card grounds WHICH registration we hold —
+      // the number itself comes from the permission-gated entity tools, never
+      // from retrieval text any AI caller can search.
+      expect(card.text).toContain("holds NIU in CM");
       expect(card.text).toContain("primary for that country");
+      expect(card.text).not.toContain("P0123456789A");
     });
   });
 

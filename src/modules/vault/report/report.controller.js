@@ -3,6 +3,7 @@ const service = require("./report.service");
 const templateSvc = require("../../documents/template/template.service");
 const reportExport = require("./report-export");
 const { resolveContext, exportFilename } = require("../../../services/spreadsheet");
+const { canSeeRegistrations } = require("../../master/_shared/confidential");
 const { asyncHandler } = require("../../../utils/errors");
 const actor = (req) => req.user || { user_id: null };
 module.exports = {
@@ -25,10 +26,14 @@ module.exports = {
       const result = await service.run(c, { reportKey: req.params.key, params: req.query });
       // Brand/language/currency resolved on the SAME pinned connection as the
       // data, so a sandbox request exports sandbox-branded output.
+      // registrationNumbers (PR-04): the cover's RCCM/NIU follow the caller's
+      // MOD-01 view grant — the scheduled/job path resolves no requester and
+      // fails closed inside resolveContext itself.
       const context = await resolveContext(c, {
         title: reportExport.sheetName(req.params.key),
         filters: req.query,
         actor: actor(req),
+        registrationNumbers: await canSeeRegistrations(req),
       });
       return reportExport.toExport(req.params.key, result.data, format, context);
     });

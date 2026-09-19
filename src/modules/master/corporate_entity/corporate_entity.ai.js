@@ -28,6 +28,15 @@ const validator = require("./corporate_entity.validator");
  * A view-only caller keeps `list_entities`, `get_entity`, `get_entity_renewals`
  * and `get_entity_letterhead`; none of those carries governance data, and the
  * letterhead read masks account identifiers by default.
+ *
+ * PR-04 (Decision Q3) — the tax half of the same alignment. Tax and
+ * registration numbers are visible at MOD-01 `view`, so every read that can
+ * name them passes `tax: true` BECAUSE its permission already demands at least
+ * that grant: the view-gated tools demand exactly `view`, and `get_entity_360`
+ * demands `edit` — the module's governance gate, which is what vouches for the
+ * whole unredacted dossier in the first place. The services default `tax` to
+ * false, so a future read registered below `view` fails closed: it hands back
+ * redacted rows rather than numbers.
  */
 module.exports = {
   entity: "corporate_entity", module_key: "MOD-01", screens: [],
@@ -36,7 +45,7 @@ module.exports = {
     { key: "get_entity", service: service.get, permission: { module: "MOD-01", action: "view" }, describe: "Get a corporate entity by id." },
     {
       key: "get_entity_360",
-      service: (c, p) => dossierService.dossier(c, p.entity_id || p, { governance: true }), permission: { module: "MOD-01", action: "edit" },
+      service: (c, p) => dossierService.dossier(c, p.entity_id || p, { governance: true, tax: true }), permission: { module: "MOD-01", action: "edit" },
       describe: "Full 360 for one entity: identity, group structure, people and shareholding, contacts, addresses, registrations, establishments, treasury accounts (read-only) and the readiness checklist.",
     },
     {
@@ -46,12 +55,12 @@ module.exports = {
     },
     {
       key: "get_entity_renewals",
-      service: (c, p) => service.renewals(c, p.entity_id || p, (p && p.as_of) || null), permission: { module: "MOD-01", action: "view" },
+      service: (c, p) => service.renewals(c, p.entity_id || p, (p && p.as_of) || null, { tax: true }), permission: { module: "MOD-01", action: "view" },
       describe: "Documents, registrations and tax registrations on one entity that have expired or are approaching expiry, most urgent first. Answers 'when does our France VAT certificate expire' and 'what is lapsing this quarter'.",
     },
     {
       key: "get_entity_letterhead",
-      service: (c, p) => service.letterhead(c, p.entity_id || p, (p && p.lang) || null), permission: { module: "MOD-01", action: "view" },
+      service: (c, p) => service.letterhead(c, p.entity_id || p, (p && p.lang) || null, { tax: true }), permission: { module: "MOD-01", action: "view" },
       describe: "The letterhead/footer configuration for one entity and the rendered header, footer and payment block in both languages.",
     },
   ],

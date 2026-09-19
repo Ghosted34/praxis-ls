@@ -432,12 +432,25 @@ async function saveLetterhead(client, { id, patch = {}, actor = {} }) {
 }
 
 /** The stored configuration plus its rendered preview, in one or both languages. */
-async function letterhead(client, id, lang = null, { financials = false } = {}) {
+async function letterhead(client, id, lang = null, { financials = false, tax = false } = {}) {
   const entity = await repo.get(client, id);
   if (!entity) throw new AppError("NOT_FOUND", "Entity not found", 404);
   const { addresses, registrations, establishments } = await repo.collections(client, id);
   const { tax_registrations: taxRegistrations, letterhead: config } = await repo.documentsAndTax(client, id);
   const treasuryAccounts = await repo.treasuryAccounts(client, id);
+
+  // PR-04 (Decision Q3): this endpoint is an API READ of the letterhead, not a
+  // print path, so the registration numbers it composes from are gated on the
+  // caller's MOD-01 view capability exactly like the /360 bundle. A caller
+  // without it gets the layout with the identifiers absent — the source block,
+  // the rendered preview and the composed blocks all degrade together, because
+  // they are all fed these same rows. The invoice/quotation RENDERERS keep
+  // composing from the raw rows on their own module's authority: a commercial
+  // document must carry its statutory mentions (CE-18), and that is a document
+  // gate, not this one.
+  const visibleEntity = dossierService.maskEntityRegistrations(entity, tax);
+  const visibleRegistrations = tax ? registrations : registrations.map(dossierService.redactRegistration);
+  const visibleTaxRegistrations = tax ? taxRegistrations : taxRegistrations.map(dossierService.redactTaxRegistration);
 
   // Bug #14: registerdAddress() / identifiers() / paymentBlock() inside the
   // block composer read both top-level entity columns (address_line1..city) and
@@ -450,13 +463,13 @@ async function letterhead(client, id, lang = null, { financials = false } = {}) 
   // "Legal form & capital" / "Bank" blocks printed empty even when data
   // existed. Passing them through is the fix.
 
-  const input = { entity, config, addresses, registrations, taxRegistrations, treasuryAccounts, establishments };
+  const input = { entity: visibleEntity, config, addresses, registrations: visibleRegistrations, taxRegistrations: visibleTaxRegistrations, treasuryAccounts, establishments };
   // Same confidentiality rule as the dossier: the payment block and the account
   // list both carry the number, and this route is MOD-01 `view`.
   const mask = (p) => dossierService.maskPaymentBlock(p, financials);
   const customLines = await repo.letterheadLines(client, id);
   const composeInput = {
-    entity, config, addresses, establishments, treasuryAccounts, customLines,
+    entity: visibleEntity, config, addresses, establishments, treasuryAccounts, customLines,
     layout: (config && config.layout) || null,
     logo_url: entity.logo_light_ref || null,
   };
@@ -539,10 +552,17 @@ async function saveLetterheadLine(client, { id, lineId = null, patch = {}, remov
  * Deriving the two lists from differently-redacted rows would also have made
  * the dossier's renewals and this route disagree about the same document.
  *
- * `governance` defaults to FALSE: a caller that has not established the grant
- * gets the redacted list, so a new call site fails closed rather than open.
+ * PR-04 adds the tax half of the same discipline (Decision Q3): registration
+ * and tax labels carry the number itself (`"VAT FR12345678901"`), so the rows
+ * are redacted for a caller without MOD-01 view and the label degrades to the
+ * kind alone — still enough to act on ("the France VAT registration lapses in
+ * March"), without handing over the identifier.
+ *
+ * `governance` and `tax` both default to FALSE: a caller that has not
+ * established the grant gets the redacted list, so a new call site fails
+ * closed rather than open.
  */
-async function renewals(client, id, asOf = null, { governance = false } = {}) {
+async function renewals(client, id, asOf = null, { governance = false, tax = false } = {}) {
   const entity = await repo.get(client, id);
   if (!entity) throw new AppError("NOT_FOUND", "Entity not found", 404);
   const { registrations } = await repo.collections(client, id);
@@ -550,8 +570,8 @@ async function renewals(client, id, asOf = null, { governance = false } = {}) {
   return renewalRules.renewals(
     {
       documents: governance ? documents : documents.map(dossierService.redactDocument),
-      registrations,
-      taxRegistrations,
+      registrations: tax ? registrations : registrations.map(dossierService.redactRegistration),
+      taxRegistrations: tax ? taxRegistrations : taxRegistrations.map(dossierService.redactTaxRegistration),
     },
     asOf,
   );

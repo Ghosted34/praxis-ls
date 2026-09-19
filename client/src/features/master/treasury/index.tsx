@@ -119,7 +119,7 @@ export function TreasuryMasterPage() {
       <HubTabs />
 
       {/* Category chips + "+ New category" */}
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-card p-3">
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-card p-3 mb-2">
         <button
           onClick={() => { setCatFilter(""); setPage(0); }}
           className={`rounded-full px-3 py-1 text-xs ${catFilter === "" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"}`}

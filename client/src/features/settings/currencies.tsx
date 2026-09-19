@@ -152,6 +152,13 @@ function asDossier(data: unknown): Dossier | null {
  * "date · exact rate" in a tooltip, instead of a decorative line with no dates.
  * Points are oldest→newest left-to-right. Green when the latest ≥ the oldest.
  * `onPick(index)` drills through to the matching history row.
+ *
+ * Hover stability (production feedback): pointer events are owned by the SVG
+ * SURFACE, not by the dots — the pointer position is mapped to the NEAREST
+ * point. Per-dot hit areas (a 4px circle) were near-impossible to land on and
+ * flickered between neighbours; growing the hovered dot also changed the hit
+ * geometry under the cursor, which read as the chart "moving". The dots stay a
+ * constant size and the active point gets a pointer-transparent halo instead.
  */
 type SparkPoint = { date: string; value: number; source?: string; override?: boolean };
 function Sparkline({
@@ -187,6 +194,16 @@ function Sparkline({
   const first = points[0];
   const last = points[points.length - 1];
 
+  /** Map a pointer event on the SVG to the nearest point index (viewBox units). */
+  const nearest = (e: React.PointerEvent<SVGSVGElement> | React.MouseEvent<SVGSVGElement>): number | null => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    if (rect.width <= 0) return null;
+    const x = ((e.clientX - rect.left) / rect.width) * w;
+    const t = (x - pad) / (w - 2 * pad);
+    const i = Math.round(t * (points.length - 1));
+    return Math.max(0, Math.min(points.length - 1, i));
+  };
+
   return (
     <div className="shrink-0">
       <svg
@@ -196,6 +213,15 @@ function Sparkline({
         role="img"
         aria-label={`Rate trend for ${base}→${quote}, ${points.length} points from ${first.date} to ${last.date}`}
         className="overflow-visible"
+        onMouseMove={(e) => setActive(nearest(e))}
+        onMouseLeave={() => setActive(null)}
+        onClick={(e) => {
+          // Surface clicks pick the nearest point; clicks that landed on a dot
+          // are handled by the dot itself (and would bubble here too).
+          if (e.target !== e.currentTarget) return;
+          const i = nearest(e);
+          if (i != null) onPick?.(i);
+        }}
       >
         <polyline
           points={line.join(" ")}
@@ -204,7 +230,19 @@ function Sparkline({
           strokeWidth="1.5"
           strokeLinejoin="round"
           strokeLinecap="round"
+          style={{ pointerEvents: "none" }}
         />
+        {active != null && (
+          <circle
+            cx={xy(active, points[active].value).x}
+            cy={xy(active, points[active].value).y}
+            r={4.5}
+            fill="none"
+            stroke="rgb(var(--primary))"
+            strokeWidth={1.5}
+            style={{ pointerEvents: "none" }}
+          />
+        )}
         {points.map((p, i) => {
           const { x, y } = xy(i, p.value);
           return (
@@ -212,13 +250,11 @@ function Sparkline({
               key={i}
               cx={x}
               cy={y}
-              r={active === i ? 3.5 : 2}
+              r={2}
               tabIndex={0}
               role="button"
               aria-label={`${p.date}: 1 ${base} = ${fmtRate(p.value)} ${quote}${p.override ? " (manual override)" : ""}`}
               className="cursor-pointer fill-primary outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              onMouseEnter={() => setActive(i)}
-              onMouseLeave={() => setActive((a) => (a === i ? null : a))}
               onFocus={() => setActive(i)}
               onBlur={() => setActive((a) => (a === i ? null : a))}
               onClick={() => onPick?.(i)}
@@ -237,15 +273,21 @@ function Sparkline({
         <span>{first.date}</span>
         <span>{last.date}</span>
       </div>
-      {/* Live tooltip: exact date + rate for the focused/hovered point. */}
-      <div aria-live="polite" className="mt-0.5 h-4 text-[11px] text-muted-foreground">
+      {/* Live tooltip: exact date + rate for the focused/hovered point.
+          Single line, clipped — a wrapping tooltip used to reflow the panel. */}
+      <div
+        aria-live="polite"
+        className="mt-0.5 h-4 overflow-hidden text-[11px] text-muted-foreground"
+      >
         {cur ? (
-          <span className="num">
+          <span className="num whitespace-nowrap">
             {cur.date}: 1 {base} = {fmtRate(cur.value)} {quote}
             {cur.override ? " · manual" : cur.source ? ` · ${cur.source}` : ""}
           </span>
         ) : (
-          "Hover or focus a point for its date and exact rate."
+          <span className="whitespace-nowrap">
+            Hover or focus a point for its date and exact rate.
+          </span>
         )}
       </div>
     </div>

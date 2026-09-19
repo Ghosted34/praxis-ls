@@ -17,6 +17,27 @@
 
 **Last updated:** 2026-09-19
 
+```text
+Progress update — 2026-09-19
+Workstream / PR: Runtime acceptance (post C-PR-04) → hotfix branch arena/01a0b9cd-praxis-ls
+Status: In progress
+Owner: Arena agent session (01a0b9cd)
+Files changed: src/modules/master/currency/currency.repo.js (setBase ordered flip),
+  client/src/features/settings/currencies.tsx (Sparkline surface-hover),
+  tests/unit/currency-base-rebase.test.js, tests/integration/currency-lifecycle.test.js,
+  client/src/features/settings/currencies.pr03.test.tsx, CHANGELOG.md, this doc.
+Completed: production 12-step acceptance walkthrough (10 pass); root-caused and fixed
+  the rebase-back 23505 (single-statement base flip vs non-deferrable partial unique
+  index) and the unstable/invisible sparkline tooltip (surface-level nearest-point
+  hover, fixed-size dots, single-line tooltip).
+Tests and acceptance evidence: currency-base-rebase (incl. new query-order
+  regression), currency-lifecycle DB-gated round-trip, currencies.pr03 hover test —
+  see PR; production re-test of the two fixed paths still pending.
+Blockers / decisions needed: none.
+Next action: merge + deploy the hotfix, then re-verify base change EUR→XAF/USD and
+  chart hover on production; record results here.
+```
+
 ### Gate 0 decisions (recorded before coding)
 
 1. **Base-change semantics — FORMAL REBASE.** Changing the base currency performs a
@@ -51,7 +72,7 @@
 | **C-PR-02** — FX sync operations and rate-history API contract | **Done** | Migration 13952: `fx_sync_run` log + `fx_rate_daily.set_by_user_id` (plain col). Rate-history contract `{data,total,limit,offset,has_more}` shared by `/currencies/rates`, new `/currencies/rate-history`, and the dossier; deterministic ordering `as_of_date DESC, fetched_at DESC, fx_rate_id DESC`; override actor joined in. Sync core wrapped in one transaction (no partial write); `syncNow`/worker record a sync-run (ok/partial/skipped/error); new `/currencies/sync-status`. Client: unused `/currencies/rates` prefetch removed, freshness/no-key/disabled/error banner, "Set by" column, rate-history "Load more", override actor in audit list. Tests: `currency-sync-run` (7), `currency-sync-core` (4), `currencies.pr02` client (6). |
 | **C-PR-03** — Currency 360 discovery and chart UX | **Done** | Country list: interactive `CountryChips` — preview + accessible "Show all N"/"+N more" toggle + search, full backend array preserved (audit #1). Pickers: live result-count line so the list never dead-ends (audit #2). Rate chart: date-aware `Sparkline` with per-point date+exact-rate tooltips (hover + keyboard focus), endpoint date labels, aria date-range, and click/Enter drill-down that highlights + scrolls to the matching history row (audit #4). Tests: `currencies.pr03` (4), `smart-currency-picker` (2). tsc/lint clean (only pre-existing picker warnings). |
 | **C-PR-04** — performance, integration tests, and final acceptance hardening | **Done** | Dossier's four independent reads (rate history, last sync, override log, usage scan) now run concurrently via `Promise.all` instead of a serial await-chain (audit #10). Migration 13953: dynamically indexes every currency-referencing FK column the usage scan counts (from the same `pg_constraint` introspection the app uses; skips `fx_rate_daily`), so the usage/delete scans plan as index scans — additive, idempotent, guard-clean. Unused `/currencies/rates` prefetch confirmed removed (done in C-PR-02, pinned by `currencies.pr02`). Tests: `tests/unit/currency-dossier-acceptance.test.js` (4 — concurrent-reads proof, full contract assembly, base-shape degradation, NOT_FOUND) and DB-gated `tests/integration/currency-lifecycle.test.js` (5 — single-base invariant, second-base rejection, rate-history contract, FK index coverage, dossier assembly; skips without `DATABASE_URL`). All migration guards + `migration-constraint-ordering` (28) green; backend eslint clean. |
-| Runtime acceptance: tenant DB, provider, scheduler, browser, permissions, concurrency | **Not started** | Must run before Currency is called release-ready; current 96% rating is not runtime sign-off. |
+| Runtime acceptance: tenant DB, provider, scheduler, browser, permissions, concurrency | **In progress (production walkthrough done 2026-09-19)** | 12-step acceptance matrix executed on the production deployment: 10 pass (list, add/reactivate NGN, keyed sync live, rate pagination/Load more, override actor, countries, deletion, nightly scheduler, permissions, GBP-adjacent paths). 2 defects found and fixed on `arena/01a0b9cd-praxis-ls`: (a) base rebase-back (XAF→EUR→XAF, or onto USD) failed with 23505 on `ux_currency_single_base` — `repo.setBase`'s single-statement flip checked the non-deferrable partial index in unsafe row order; now an ordered off-sweep→on-flip with unit + DB-gated round-trip tests; (b) rate-chart hover was unstable/invisible (4px hit targets, growing dot, wrapping tooltip) — hover now maps the SVG surface to the nearest point, dots stay fixed-size, tooltip is single-line. Test-env "Sync now" without a key skips with the designed no-key notice (audit #6), not an error. Remaining: re-run the two fixed paths on production after merge + deploy. |
 
 ### Required progress-update template
 

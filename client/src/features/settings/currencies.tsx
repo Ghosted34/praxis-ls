@@ -56,6 +56,8 @@ type Rate = {
   source: string;
   is_override?: boolean;
   fetched_at?: string;
+  set_by_user_id?: string | null;
+  set_by_name?: string | null;
 };
 type UsageRow = { table: string; label: string; count: number };
 type Dossier = {
@@ -71,6 +73,9 @@ type Dossier = {
   } | null;
   countries: { code: string; name: string }[];
   rate_history: Rate[];
+  rate_history_total?: number;
+  rate_history_page_size?: number;
+  rate_history_has_more?: boolean;
   latest_rate: Rate | null;
   last_sync: Rate | null;
   overrides: Rate[];
@@ -85,6 +90,29 @@ type SyncResult = {
   unsupported?: string[];
   fetched_at?: string;
   source?: string;
+};
+type SyncRun = {
+  base_code: string | null;
+  trigger: "manual" | "cron";
+  status: "ok" | "skipped" | "partial" | "error";
+  updated_count: number;
+  unsupported: string[];
+  reason: string | null;
+  started_at: string;
+  finished_at: string | null;
+};
+type SyncStatus = {
+  key_configured: boolean;
+  scheduler_enabled: boolean;
+  base: string | null;
+  last_run: SyncRun | null;
+};
+type RateHistoryPage = {
+  data: Rate[];
+  total: number;
+  limit: number;
+  offset: number;
+  has_more: boolean;
 };
 
 /* ── Small helpers ────────────────────────────────────────────────────────── */
@@ -690,9 +718,18 @@ function CurrencyDossier({
   const [busy, setBusy] = React.useState(false);
   const [actionErr, setActionErr] = React.useState<string | null>(null);
   const [actionNote, setActionNote] = React.useState<string | null>(null);
+  // Rate-history "load more" appends pages fetched under the Gate-0 contract on
+  // top of the first page the dossier already embedded. Reset when the currency
+  // changes, or a stale page from the previous currency would show.
+  const [moreHistory, setMoreHistory] = React.useState<Rate[]>([]);
+  const [loadingMore, setLoadingMore] = React.useState(false);
+  React.useEffect(() => {
+    setMoreHistory([]);
+  }, [code]);
 
   const reloadAll = () => {
     res.reload();
+    setMoreHistory([]);
     onChanged();
   };
 
@@ -728,6 +765,22 @@ function CurrencyDossier({
     }
   }
 
+  async function loadMoreHistory(base: string) {
+    setLoadingMore(true);
+    try {
+      const offset =
+        (d?.rate_history?.length ?? 0) + moreHistory.length;
+      const page = await tenant<RateHistoryPage>(
+        `/currencies/rate-history?base=${encodeURIComponent(base)}&quote=${encodeURIComponent(code)}&offset=${offset}`,
+      );
+      setMoreHistory((prev) => [...prev, ...(page.data || [])]);
+    } catch (e) {
+      setActionErr(errMsg(e));
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+
   if (res.error) return <ErrorState message={res.error} />;
   if (!d)
     return (
@@ -741,7 +794,9 @@ function CurrencyDossier({
   const decimals = c.decimals ?? cat?.decimals ?? 2;
   const symbol = c.symbol || cat?.symbol || "";
   const flag = flagOf(ccyLib.representativeCountry(code));
-  const history = d.rate_history || [];
+  const history = [...(d.rate_history || []), ...moreHistory];
+  const historyTotal = d.rate_history_total ?? history.length;
+  const hasMoreHistory = history.length < historyTotal;
   const values = history
     .map(rateNum)
     .filter((v): v is number => v != null)
@@ -932,39 +987,62 @@ function CurrencyDossier({
                 hint="Use “Sync now” or set a manual rate."
               />
             ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <THead>
-                    <TR>
-                      <TH>{tr("As of")}</TH>
-                      <TH className="text-right">{tr("Rate")}</TH>
-                      <TH>{tr("Source")}</TH>
-                      <TH>Override</TH>
-                      <TH>Fetched</TH>
-                    </TR>
-                  </THead>
-                  <TBody>
-                    {history.map((r, i) => (
-                      <TR key={i}>
-                        <TD className="text-sm">{r.as_of_date}</TD>
-                        <TD className="num text-right text-sm">
-                          {fmtRate(r.rate)}
-                        </TD>
-                        <TD className="text-sm">{smartCell(r.source)}</TD>
-                        <TD className="text-sm">
-                          {r.is_override ? (
-                            <Pill tone="warn">manual</Pill>
-                          ) : (
-                            "—"
-                          )}
-                        </TD>
-                        <TD className="text-sm text-muted-foreground">
-                          {r.fetched_at ? dateTimeFmt(r.fetched_at) : "—"}
-                        </TD>
+              <div className="space-y-3">
+                <div className="overflow-x-auto">
+                  <Table>
+                    <THead>
+                      <TR>
+                        <TH>{tr("As of")}</TH>
+                        <TH className="text-right">{tr("Rate")}</TH>
+                        <TH>{tr("Source")}</TH>
+                        <TH>Override</TH>
+                        <TH>Set by</TH>
+                        <TH>Fetched</TH>
                       </TR>
-                    ))}
-                  </TBody>
-                </Table>
+                    </THead>
+                    <TBody>
+                      {history.map((r, i) => (
+                        <TR key={i}>
+                          <TD className="text-sm">{r.as_of_date}</TD>
+                          <TD className="num text-right text-sm">
+                            {fmtRate(r.rate)}
+                          </TD>
+                          <TD className="text-sm">{smartCell(r.source)}</TD>
+                          <TD className="text-sm">
+                            {r.is_override ? (
+                              <Pill tone="warn">manual</Pill>
+                            ) : (
+                              "—"
+                            )}
+                          </TD>
+                          <TD className="text-sm text-muted-foreground">
+                            {r.is_override
+                              ? r.set_by_name || "Unknown"
+                              : "—"}
+                          </TD>
+                          <TD className="text-sm text-muted-foreground">
+                            {r.fetched_at ? dateTimeFmt(r.fetched_at) : "—"}
+                          </TD>
+                        </TR>
+                      ))}
+                    </TBody>
+                  </Table>
+                </div>
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>
+                    Showing {history.length} of {historyTotal}
+                  </span>
+                  {hasMoreHistory && d.base && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      loading={loadingMore}
+                      onClick={() => loadMoreHistory(d.base as string)}
+                    >
+                      Load more
+                    </Button>
+                  )}
+                </div>
               </div>
             )}
           </>
@@ -1042,6 +1120,7 @@ function CurrencyDossier({
                     <span className="num">{fmtRate(o.rate)}</span>
                     <span className="text-xs text-muted-foreground">
                       {o.as_of_date}
+                      {o.set_by_name ? ` · ${o.set_by_name}` : ""}
                       {o.fetched_at ? ` · ${dateTimeFmt(o.fetched_at)}` : ""}
                     </span>
                   </li>
@@ -1137,11 +1216,65 @@ function Stat({
   );
 }
 
+/* ── Sync freshness banner (audit #6) ─────────────────────────────────────── */
+
+/** Rates older than this (no successful run since) read as "stale". */
+const STALE_HOURS = 36;
+
+function SyncStatusBanner({ status }: { status: SyncStatus | null }) {
+  if (!status) return null;
+  const run = status.last_run;
+  const lastAt = run?.finished_at || run?.started_at || null;
+  const ageMs = lastAt ? Date.now() - new Date(lastAt).getTime() : null;
+  const stale = ageMs != null && ageMs > STALE_HOURS * 3600_000;
+
+  // No key configured — the sync cannot run at all. Most actionable state first.
+  if (!status.key_configured) {
+    return (
+      <Callout tone="warn" className="mb-3">
+        Automatic FX sync is off — no provider key is configured. Add one under ⚙
+        Settings, or keep setting rates manually.
+      </Callout>
+    );
+  }
+
+  const okRun = run && (run.status === "ok" || run.status === "partial");
+  const tone = run && run.status === "error" ? "bad" : stale || !status.scheduler_enabled ? "warn" : "ok";
+  const bits: string[] = [];
+  if (!status.scheduler_enabled)
+    bits.push("Nightly sync is disabled (FX_SYNC_CRON empty) — use “Sync now”.");
+  if (run) {
+    if (run.status === "error")
+      bits.push(`Last sync failed${lastAt ? ` ${dateTimeFmt(lastAt)}` : ""}${run.reason ? `: ${run.reason}` : "."}`);
+    else if (run.status === "skipped")
+      bits.push(`Last run was skipped${run.reason ? `: ${run.reason}` : "."}`);
+    else if (okRun)
+      bits.push(
+        `Last synced ${lastAt ? dateTimeFmt(lastAt) : "recently"} (${run.updated_count} ${run.updated_count === 1 ? "rate" : "rates"}${run.trigger === "cron" ? ", nightly" : ""})${run.unsupported?.length ? ` · no rate for ${run.unsupported.join(", ")}` : ""}.`,
+      );
+    if (stale && okRun) bits.push("Rates may be stale.");
+  } else {
+    bits.push("No sync has run yet — use “Sync now” to pull live rates.");
+  }
+  if (bits.length === 0) return null;
+  return (
+    <Callout tone={tone} className="mb-3">
+      {bits.join(" ")}
+    </Callout>
+  );
+}
+
 /* ── Page ─────────────────────────────────────────────────────────────────── */
 
 export function CurrenciesPage() {
   const cur = useList<Currency>("/currencies?all=1&usage=1");
-  const rates = useList<Rate>("/currencies/rates");
+  // Sync-status drives the freshness banner (audit #6). The old unused
+  // `/currencies/rates` prefetch (audit #10) was removed — the page never
+  // rendered it; the dossier owns rate history.
+  const status = useResource<SyncStatus | null>(
+    () => tenant<{ data: SyncStatus }>("/currencies/sync-status").then((r) => r.data),
+    [],
+  );
   const [selId, setSelId] = React.useState<string | null>(null);
   const [q, setQ] = React.useState("");
   const [addOpen, setAddOpen] = React.useState(false);
@@ -1192,7 +1325,7 @@ export function CurrenciesPage() {
 
   function reloadAll() {
     cur.reload();
-    rates.reload();
+    status.reload();
   }
 
   async function syncNow() {
@@ -1259,6 +1392,8 @@ export function CurrenciesPage() {
         }
       />
       <HubTabs />
+
+      <SyncStatusBanner status={status.data ?? null} />
 
       {syncMsg && (
         <Callout

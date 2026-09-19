@@ -1,6 +1,6 @@
 /** Currency + FX repository (MOD-08). All currency / fx_rate_daily SQL here. */
 "use strict";
-const { page } = require("../../../shared/db/query-helpers");
+const { page, TOTAL_COL, splitTotal } = require("../../../shared/db/query-helpers");
 const { AppError } = require("../../../utils/errors");
 
 /* ── Currency master ──────────────────────────────────────────────────────── */
@@ -241,18 +241,25 @@ async function latestRatesFromBase(client, base) {
   return rows;
 }
 
-async function upsertRate(client, { base, quote, rate, asOfDate, source = "manual", isOverride = true }) {
+async function upsertRate(client, { base, quote, rate, asOfDate, source = "manual", isOverride = true, setByUserId = null }) {
   const { rows } = await client.query(
-    "INSERT INTO fx_rate_daily (base_code, quote_code, rate, as_of_date, source, is_override) VALUES ($1,$2,$3,$4,$5,$6) " +
-      "ON CONFLICT (base_code, quote_code, as_of_date, source) DO UPDATE SET rate = EXCLUDED.rate, is_override = EXCLUDED.is_override, fetched_at = now() RETURNING *",
-    [base, quote, rate, asOfDate, source, isOverride],
+    "INSERT INTO fx_rate_daily (base_code, quote_code, rate, as_of_date, source, is_override, set_by_user_id) VALUES ($1,$2,$3,$4,$5,$6,$7) " +
+      "ON CONFLICT (base_code, quote_code, as_of_date, source) DO UPDATE SET rate = EXCLUDED.rate, is_override = EXCLUDED.is_override, set_by_user_id = EXCLUDED.set_by_user_id, fetched_at = now() RETURNING *",
+    [base, quote, rate, asOfDate, source, isOverride, setByUserId],
   );
   return rows[0];
 }
 
+/**
+ * The generic paged rate list. Shares the Gate-0 rate-history contract with
+ * {@link rateHistory}: server-capped `limit`, `offset`, a real `total`, and the
+ * deterministic ordering `as_of_date DESC, fetched_at DESC, fx_rate_id DESC` so
+ * two rows on the same date never swap places between pages. Returns
+ * `{ rows, total, limit, offset }`; the controller shapes `has_more`.
+ */
 async function listRates(client, q = {}) {
   const { limit, offset } = page(q);
-  const params = [limit, offset];
+  const params = [];
   const wh = [];
   if (q.base) {
     params.push(q.base);
@@ -263,30 +270,54 @@ async function listRates(client, q = {}) {
     wh.push("quote_code = $" + params.length);
   }
   const where = wh.length ? "WHERE " + wh.join(" AND ") : "";
-  const { rows } = await client.query("SELECT * FROM fx_rate_daily " + where + " ORDER BY as_of_date DESC LIMIT $1 OFFSET $2", params);
-  return rows;
+  params.push(limit, offset);
+  const { rows } = await client.query(
+    `SELECT f.*, u.full_name AS set_by_name, ${TOTAL_COL}
+       FROM fx_rate_daily f
+       LEFT JOIN app_user u ON u.user_id = f.set_by_user_id
+       ${where}
+      ORDER BY f.as_of_date DESC, f.fetched_at DESC, f.fx_rate_id DESC
+      LIMIT $${params.length - 1} OFFSET $${params.length}`,
+    params,
+  );
+  const { rows: clean, total } = splitTotal(rows);
+  return { rows: clean, total, limit, offset };
 }
 
-/** Rate rows for a pair over time (newest first) — the 360's history/sparkline. */
-async function rateHistory(client, { base, quote, limit = 60 }) {
+/**
+ * Rate rows for a pair over time (newest first) — the 360's history/sparkline.
+ *
+ * Gate-0 rate-history contract: capped `limit` + `offset`, a real window-function
+ * `total`, deterministic ordering `as_of_date DESC, fetched_at DESC, fx_rate_id
+ * DESC`, and the manual-override actor name joined in (audit #9 — "who set it").
+ * Returns `{ rows, total, limit, offset }` so the dossier/UI can page.
+ */
+async function rateHistory(client, { base, quote, limit = 50, offset = 0 }) {
+  const lim = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 200);
+  const off = Math.max(parseInt(offset, 10) || 0, 0);
   const { rows } = await client.query(
-    `SELECT rate, as_of_date::text AS as_of_date, source, is_override, fetched_at
-       FROM fx_rate_daily
-      WHERE base_code = $1 AND quote_code = $2
-      ORDER BY as_of_date DESC, fetched_at DESC
-      LIMIT $3`,
-    [base, quote, limit],
+    `SELECT f.rate, f.as_of_date::text AS as_of_date, f.source, f.is_override,
+            f.fetched_at, f.set_by_user_id, u.full_name AS set_by_name, ${TOTAL_COL}
+       FROM fx_rate_daily f
+       LEFT JOIN app_user u ON u.user_id = f.set_by_user_id
+      WHERE f.base_code = $1 AND f.quote_code = $2
+      ORDER BY f.as_of_date DESC, f.fetched_at DESC, f.fx_rate_id DESC
+      LIMIT $3 OFFSET $4`,
+    [base, quote, lim, off],
   );
-  return rows;
+  const { rows: clean, total } = splitTotal(rows);
+  return { rows: clean, total, limit: lim, offset: off };
 }
 
 /** The manual-override history for a pair (who set what, when) — the audit log. */
 async function overrideLog(client, { base, quote, limit = 25 }) {
   const { rows } = await client.query(
-    `SELECT rate, as_of_date::text AS as_of_date, source, fetched_at
-       FROM fx_rate_daily
-      WHERE base_code = $1 AND quote_code = $2 AND is_override = true
-      ORDER BY as_of_date DESC, fetched_at DESC
+    `SELECT f.rate, f.as_of_date::text AS as_of_date, f.source, f.fetched_at,
+            f.set_by_user_id, u.full_name AS set_by_name
+       FROM fx_rate_daily f
+       LEFT JOIN app_user u ON u.user_id = f.set_by_user_id
+      WHERE f.base_code = $1 AND f.quote_code = $2 AND f.is_override = true
+      ORDER BY f.as_of_date DESC, f.fetched_at DESC, f.fx_rate_id DESC
       LIMIT $3`,
     [base, quote, limit],
   );
@@ -304,6 +335,55 @@ async function lastSync(client, { base, quote }) {
     [base, quote],
   );
   return rows[0] || null;
+}
+
+/* ── FX sync-run log (operational visibility — audit #6) ──────────────────── */
+
+/** Open a sync-run row and return its id, so the outcome can be stamped later. */
+async function startSyncRun(client, { base = null, trigger = "manual", actorUserId = null } = {}) {
+  const { rows } = await client.query(
+    `INSERT INTO fx_sync_run (base_code, trigger, actor_user_id, status)
+     VALUES ($1, $2, $3, 'ok') RETURNING fx_sync_run_id`,
+    [base, trigger, actorUserId],
+  );
+  return rows[0].fx_sync_run_id;
+}
+
+/** Stamp the outcome (status/counts/reason) and close the run. */
+async function finishSyncRun(client, id, { status, updatedCount = 0, unsupported = [], reason = null, base = null } = {}) {
+  await client.query(
+    `UPDATE fx_sync_run
+        SET status = $2, updated_count = $3, unsupported = $4, reason = $5,
+            base_code = COALESCE($6, base_code), finished_at = now()
+      WHERE fx_sync_run_id = $1`,
+    [id, status, updatedCount, unsupported, reason, base],
+  );
+}
+
+/** The most recent sync run (any trigger) — the master-page freshness banner. */
+async function lastSyncRun(client) {
+  const { rows } = await client.query(
+    `SELECT fx_sync_run_id, base_code, trigger, status, updated_count,
+            unsupported, reason, started_at, finished_at
+       FROM fx_sync_run
+      ORDER BY started_at DESC
+      LIMIT 1`,
+  );
+  return rows[0] || null;
+}
+
+/** Recent sync runs for an operational history view. */
+async function recentSyncRuns(client, limit = 10) {
+  const lim = Math.min(Math.max(parseInt(limit, 10) || 10, 1), 100);
+  const { rows } = await client.query(
+    `SELECT fx_sync_run_id, base_code, trigger, status, updated_count,
+            unsupported, reason, started_at, finished_at
+       FROM fx_sync_run
+      ORDER BY started_at DESC
+      LIMIT $1`,
+    [lim],
+  );
+  return rows;
 }
 
 module.exports = {
@@ -325,4 +405,8 @@ module.exports = {
   rateHistory,
   overrideLog,
   lastSync,
+  startSyncRun,
+  finishSyncRun,
+  lastSyncRun,
+  recentSyncRuns,
 };

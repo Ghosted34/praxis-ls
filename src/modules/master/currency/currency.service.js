@@ -83,23 +83,51 @@ async function rateMap(client, { date, extra = [] } = {}) {
 
 async function setRate(client, { base, quote, rate, asOfDate, source = "manual", isOverride = true, actor = {} }) {
   if (!(Number(rate) > 0)) throw new AppError("BAD_RATE", "rate must be > 0", 422);
-  const row = await repo.upsertRate(client, { base, quote, rate, asOfDate: asOfDate || today(), source, isOverride });
+  // Persist the actor on the rate row (audit #9 — "who set it") AND in the
+  // immutable ledger. The denormalised column lets the 360 override log render
+  // the name without a cross-table join; the audit is the tamper-evident record.
+  const row = await repo.upsertRate(client, { base, quote, rate, asOfDate: asOfDate || today(), source, isOverride, setByUserId: actor.user_id || null });
   await emitEvent(client, { eventTypeKey: events.RATE_SET, moduleKey: events.MODULE, entityRef: "fx:" + base + "-" + quote, actorUserId: actor.user_id || null });
   await audit(client, { actorUserId: actor.user_id || null, action: events.RATE_SET, moduleKey: events.MODULE, entityRef: "fx:" + base + "-" + quote, after: row });
   return row;
 }
 
-/** Run the live sync now (base→all active). Same core as the daily cron. */
-async function syncNow(client, actor = {}) {
-  const result = await sync.syncRates(client, {});
-  // Strict `=== true`: `skipped` is the sentinel boolean, never an array. See
-  // the syncRates JSDoc — an empty-array escape used to make this branch
-  // silently skip the audit on every successful sync.
-  if (result.skipped !== true) {
-    await emitEvent(client, { eventTypeKey: events.RATE_SYNCED, moduleKey: events.MODULE, entityRef: "fx:sync", actorUserId: actor.user_id || null, payload: { updated: result.updated ? result.updated.length : 0, base: result.base } });
-    await audit(client, { actorUserId: actor.user_id || null, action: events.RATE_SYNCED, moduleKey: events.MODULE, entityRef: "fx:sync", after: result });
+/**
+ * Run the live sync now (base→all active). Same core as the daily cron, and now
+ * WRAPPED IN A SYNC-RUN RECORD (audit #6) so an administrator can see when sync
+ * last ran, whether it succeeded, and what it updated/left unsupported. A skip
+ * (no key / no quotes) and a real failure are both recorded — a disabled sync
+ * and a silently-failing one must be distinguishable. `trigger` marks manual vs
+ * cron so the master-page banner can say which.
+ */
+async function syncNow(client, actor = {}, { trigger = "manual" } = {}) {
+  const runId = await repo.startSyncRun(client, { trigger, actorUserId: actor.user_id || null });
+  try {
+    const result = await sync.syncRates(client, {});
+    // Strict `=== true`: `skipped` is the sentinel boolean, never an array. See
+    // the syncRates JSDoc — an empty-array escape used to make this branch
+    // silently skip the audit on every successful sync.
+    if (result.skipped === true) {
+      await repo.finishSyncRun(client, runId, { status: "skipped", reason: result.reason || null, base: result.base || null });
+    } else {
+      const status = result.unsupported && result.unsupported.length ? "partial" : "ok";
+      await repo.finishSyncRun(client, runId, {
+        status,
+        updatedCount: result.updated ? result.updated.length : 0,
+        unsupported: result.unsupported || [],
+        base: result.base || null,
+      });
+      await emitEvent(client, { eventTypeKey: events.RATE_SYNCED, moduleKey: events.MODULE, entityRef: "fx:sync", actorUserId: actor.user_id || null, payload: { updated: result.updated ? result.updated.length : 0, base: result.base } });
+      await audit(client, { actorUserId: actor.user_id || null, action: events.RATE_SYNCED, moduleKey: events.MODULE, entityRef: "fx:sync", after: result });
+    }
+    return result;
+  } catch (e) {
+    // Record the failure before rethrowing so the run log shows WHY, not just
+    // that a run started and vanished. The message is provider/HTTP text from
+    // syncRates (never the URL — the API key is a path segment).
+    await repo.finishSyncRun(client, runId, { status: "error", reason: e && e.message ? String(e.message).slice(0, 500) : "sync failed" });
+    throw e;
   }
-  return result;
 }
 
 /* ── Currency master ──────────────────────────────────────────────────────── */
@@ -109,6 +137,37 @@ const listCurrenciesRich = (client, q = {}) =>
   repo.listCurrenciesRich(client, { all: q.all === "1" || q.all === true, usage: q.usage === "1" || q.usage === true });
 const listRates = (client, q) => repo.listRates(client, q);
 const dossier = (client, code) => dossierSvc.dossier(client, code);
+
+/**
+ * A page of rate history for a pair — the Gate-0 contract shared with the
+ * dossier and the generic list: `{ data, total, limit, offset, has_more }`,
+ * deterministic ordering, actor name for overrides. The dossier's first page is
+ * embedded in the 360; this endpoint serves the "load more" beyond it.
+ */
+async function rateHistoryPage(client, { base, quote, limit, offset } = {}) {
+  if (!base || !quote) throw new AppError("VALIDATION_ERROR", "base and quote are required", 422);
+  const r = await repo.rateHistory(client, { base, quote, limit, offset });
+  return { data: r.rows, total: r.total, limit: r.limit, offset: r.offset, has_more: r.offset + r.rows.length < r.total };
+}
+
+/**
+ * Operational sync status for the master page (audit #6): whether a provider key
+ * is configured, whether the nightly scheduler is enabled, and the last run's
+ * outcome/freshness. Read-only; safe to call on every page load.
+ */
+async function syncStatus(client) {
+  const [key, last, base] = await Promise.all([
+    sync.resolveKey(client),
+    repo.lastSyncRun(client),
+    repo.getBaseCode(client),
+  ]);
+  return {
+    key_configured: !!key,
+    scheduler_enabled: !!require("../../../config/env").config.FX_SYNC_CRON,
+    base,
+    last_run: last,
+  };
+}
 
 async function addCurrency(client, { code, name, symbol, decimals, actor = {} }) {
   const row = await repo.insertCurrency(client, { code, name, symbol, decimals });
@@ -230,6 +289,8 @@ module.exports = {
   listCurrencies,
   listCurrenciesRich,
   listRates,
+  rateHistoryPage,
+  syncStatus,
   dossier,
   addCurrency,
   editCurrency,

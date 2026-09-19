@@ -18,6 +18,7 @@ const axios = require("axios");
 const repo = require("./currency.repo");
 const { getSetting } = require("../../../shared/config/settings");
 const settingService = require("../../security/setting/setting.service");
+const { atomically } = require("../../../shared/db/tx");
 const { config } = require("../../../config/env");
 
 async function resolveKey(client) {
@@ -92,17 +93,23 @@ async function syncRates(client, { base, quotes } = {}) {
   const fetchedAt = new Date().toISOString();
   const asOf = fetchedAt.slice(0, 10);
 
+  // ONE TRANSACTION for the whole daily run (audit #6 — no partial write). A
+  // database failure part-way through would otherwise leave some quotes at
+  // today's rate and others stale, with no signal that the run was incomplete.
+  // Feed rows only (is_override=false), so a manual override is never touched.
   const updated = [];
   const unsupported = [];
-  for (const quote of quoteCodes) {
-    const rate = Number(rates[quote]);
-    if (!(rate > 0)) {
-      unsupported.push(quote);
-      continue;
+  await atomically(client, async () => {
+    for (const quote of quoteCodes) {
+      const rate = Number(rates[quote]);
+      if (!(rate > 0)) {
+        unsupported.push(quote);
+        continue;
+      }
+      await repo.upsertRate(client, { base: baseCode, quote, rate, asOfDate: asOf, source: "exchangerate-api", isOverride: false });
+      updated.push({ quote, rate });
     }
-    await repo.upsertRate(client, { base: baseCode, quote, rate, asOfDate: asOf, source: "exchangerate-api", isOverride: false });
-    updated.push({ quote, rate });
-  }
+  });
   return { skipped: false, base: baseCode, as_of_date: asOf, fetched_at: fetchedAt, source: "exchangerate-api", updated, unsupported };
 }
 

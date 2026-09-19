@@ -29,7 +29,14 @@ async function dossier(client, code) {
   // Rates are stored base→quote; the dossier shows this currency AS a quote of
   // base. The base itself has no such pair.
   const pair = base && !isBase ? { base, quote: code } : null;
-  const rate_history = pair ? await repo.rateHistory(client, { ...pair, limit: 60 }) : [];
+  // First page of the Gate-0 rate-history contract; the client pages the rest
+  // through GET /currencies/rate-history. `rate_history_total`/`has_more` let the
+  // UI show a "load more" without a second request just to learn the count.
+  const HISTORY_PAGE = 50;
+  const history = pair ? await repo.rateHistory(client, { ...pair, limit: HISTORY_PAGE, offset: 0 }) : { rows: [], total: 0, limit: HISTORY_PAGE, offset: 0 };
+  const rate_history = history.rows;
+  const rate_history_total = history.total;
+  const rate_history_has_more = history.offset + history.rows.length < history.total;
   const last_sync = pair ? await repo.lastSync(client, pair) : null;
   const overrides = pair ? await repo.overrideLog(client, { ...pair, limit: 25 }) : [];
 
@@ -45,6 +52,9 @@ async function dossier(client, code) {
     catalogue: currencies.byCode(code) || null,
     countries: currencies.countriesFor(code),
     rate_history,
+    rate_history_total,
+    rate_history_page_size: HISTORY_PAGE,
+    rate_history_has_more,
     latest_rate: rate_history[0] || null,
     last_sync,
     overrides,

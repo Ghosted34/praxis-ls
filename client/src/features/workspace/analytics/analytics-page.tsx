@@ -801,11 +801,11 @@ function BlockedPanel({ data, timeZone }: { data: AnalyticsResponse; timeZone: s
   const navigate = useNavigate();
   const rows = data.blocked;
   return (
-    <Panel title="Blocked work" subtitle="Open tasks waiting on something unfinished, longest wait first.">
+    <Panel title="Blocked work" subtitle="Open tasks waiting on something unfinished or carrying a registered blockage, longest wait first.">
       {rows.length === 0 ? (
         <EmptyState
           title="Nothing is blocked"
-          hint="No open task is waiting on an unresolved dependency."
+          hint="No open task is waiting on an unresolved dependency or carrying a blockage."
         />
       ) : (
         <div className="overflow-x-auto">
@@ -833,9 +833,23 @@ function BlockedPanel({ data, timeZone }: { data: AnalyticsResponse; timeZone: s
                   </td>
                   <td className="py-1.5 pr-3">{r.assigned_to_name ?? "Nobody yet"}</td>
                   <td className="num py-1.5 pr-3">
-                    <Pill tone={r.blocking_count > 1 ? "bad" : "warn"}>
-                      {r.blocking_count} {r.blocking_count === 1 ? "task" : "tasks"}
-                    </Pill>
+                    {/* 13975: the wait has two possible sources and the row shows
+                        whichever is true — a prerequisite count, a blockage note,
+                        or both. The note travels because it was written for
+                        exactly this reader; a prerequisite title does not. */}
+                    {r.blocking_count > 0 && (
+                      <Pill tone={r.blocking_count > 1 ? "bad" : "warn"}>
+                        {r.blocking_count} {r.blocking_count === 1 ? "task" : "tasks"}
+                      </Pill>
+                    )}
+                    {r.blockage_note && (
+                      <span
+                        className="block max-w-56 truncate text-xs text-muted-foreground"
+                        title={r.blockage_note}
+                      >
+                        ⛔ {r.blockage_note}
+                      </span>
+                    )}
                   </td>
                   <td className="py-1.5">
                     {r.blocked_since ? tenantDateTimeFmt(r.blocked_since, timeZone) : "—"}

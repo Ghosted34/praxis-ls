@@ -820,6 +820,137 @@ async function blockedCountsFor(client, taskIds) {
   return rows;
 }
 
+/* ── WHAT "BLOCKED" MEANS: dependency edges (13870) OR live holds (13975) ──
+ *
+ * Two tables, one question — "can this finish today?" A task waiting on an
+ * unfinished, non-overridden prerequisite is blocked; so is a task carrying an
+ * active `task_blockage` row ("customs' network is down"). Every blocked
+ * count, panel and list builds its predicate from these snippets so the card,
+ * the panel callout and the Monitor's Blocked-work table can never disagree
+ * about which tasks are stuck. `alias` is the task row's alias in the calling
+ * query — `t` everywhere in analytics today.
+ */
+const depBlockedSql = (alias) =>
+  `EXISTS (SELECT 1 FROM task_dependency d JOIN task p ON p.task_id = d.depends_on_task_id AND p.is_deleted = false WHERE d.task_id = ${alias}.task_id AND d.overridden_at IS NULL AND p.status <> 'DONE')`;
+const blockageBlockedSql = (alias) =>
+  `EXISTS (SELECT 1 FROM task_blockage b WHERE b.task_id = ${alias}.task_id AND b.resolved_at IS NULL)`;
+const blockedSql = (alias) => `(${depBlockedSql(alias)} OR ${blockageBlockedSql(alias)})`;
+
+/* ════════════════════════ BLOCKAGES (13975) ═══════════════════════════════ */
+
+const BLOCKAGE_SELECT = `
+  SELECT b.*, u.full_name AS raised_by_name, r.full_name AS resolved_by_name
+    FROM task_blockage b
+    LEFT JOIN app_user u ON u.user_id = b.raised_by
+    LEFT JOIN app_user r ON r.user_id = b.resolved_by`;
+
+/**
+ * The live hold on each of these tasks, batched for boards and lists.
+ *
+ * At most ONE row per task: `uq_task_blockage_one_active` makes a second
+ * concurrent hold unrepresentable, so this is a lookup, not an aggregation —
+ * and the card's snippet is the whole note, not the newest of several.
+ */
+async function activeBlockagesFor(client, taskIds) {
+  if (!taskIds || !taskIds.length) return [];
+  const { rows } = await client.query(
+    `${BLOCKAGE_SELECT}
+      WHERE b.task_id = ANY($1::uuid[]) AND b.resolved_at IS NULL`,
+    [taskIds],
+  );
+  return rows;
+}
+
+/** The live hold on ONE task, for the panel and the raise-time refusal. */
+async function activeBlockageFor(client, taskId) {
+  const { rows } = await client.query(
+    `${BLOCKAGE_SELECT}
+      WHERE b.task_id = $1 AND b.resolved_at IS NULL
+      LIMIT 1`,
+    [taskId],
+  );
+  return rows[0] || null;
+}
+
+/**
+ * The task's holds, newest first — the panel's collapsible history. Resolved
+ * rows are the evidence behind "late because of X for N days", so they are
+ * read here rather than filtered out.
+ */
+async function listBlockages(client, taskId) {
+  const { rows } = await client.query(
+    `${BLOCKAGE_SELECT}
+      WHERE b.task_id = $1
+      ORDER BY b.raised_at DESC`,
+    [taskId],
+  );
+  return rows;
+}
+
+async function insertBlockage(client, { taskId, note, estimatedResolveAt = null, raisedBy = null }) {
+  const { rows } = await client.query(
+    `INSERT INTO task_blockage (task_id, note, estimated_resolve_at, raised_by)
+     VALUES ($1, $2, $3, $4)
+     RETURNING *`,
+    [taskId, note, estimatedResolveAt, raisedBy],
+  );
+  return rows[0];
+}
+
+/**
+ * Close the hold. `resolved_at IS NULL` in the WHERE is the guard: two racing
+ * resolve clicks produce one resolution, and the loser gets zero rows back
+ * and reports 404 rather than re-shifting the due date.
+ */
+async function resolveBlockageRow(client, blockageId, { resolvedBy, resolveNote = null }) {
+  const { rows } = await client.query(
+    `UPDATE task_blockage
+        SET resolved_at = now(), resolved_by = $2, resolve_note = $3
+      WHERE task_blockage_id = $1 AND resolved_at IS NULL
+      RETURNING *`,
+    [blockageId, resolvedBy, resolveNote],
+  );
+  return rows[0] || null;
+}
+
+/** Record the due-date movement on the row that caused it — see 13975. */
+async function setBlockageDueShift(client, blockageId, seconds) {
+  const { rows } = await client.query(
+    `UPDATE task_blockage
+        SET due_shift = ($2 || ' seconds')::interval
+      WHERE task_blockage_id = $1
+      RETURNING due_shift`,
+    [blockageId, seconds],
+  );
+  return rows[0] ? rows[0].due_shift : null;
+}
+
+/**
+ * Move an open task's deadline forward by the blocked duration. Only touches
+ * rows that HAVE a due date; a task with no deadline has nothing to shift and
+ * the blockage's `due_shift` stays NULL, which is the truthful record.
+ */
+async function shiftTaskDue(client, taskId, seconds) {
+  const { rows } = await client.query(
+    `UPDATE task
+        SET due_at = due_at + ($2 || ' seconds')::interval
+      WHERE task_id = $1 AND due_at IS NOT NULL
+      RETURNING due_at`,
+    [taskId, seconds],
+  );
+  return rows[0] ? rows[0].due_at : null;
+}
+
+/** Which of these user ids exist — the blockage chooser may name anybody. */
+async function existingUserIds(client, userIds) {
+  if (!userIds || !userIds.length) return [];
+  const { rows } = await client.query(
+    "SELECT user_id FROM app_user WHERE user_id = ANY($1::uuid[])",
+    [userIds],
+  );
+  return rows.map((r) => r.user_id);
+}
+
 /* ════════════════════════════ CALENDAR EVENTS ════════════════════════════ */
 
 const EVENT_SELECT = `
@@ -1605,11 +1736,7 @@ async function analyticsSummary(client, { visibility, filters, nowIso }) {
        count(*) FILTER (WHERE t.status = 'DONE'
                           AND t.completed_at >= $1 AND t.completed_at < $2)::int AS completed_count,
        count(*) FILTER (WHERE t.status = 'CANCELLED')::int AS cancelled_count,
-       count(*) FILTER (WHERE t.status NOT IN ('DONE','CANCELLED') AND EXISTS (
-         SELECT 1 FROM task_dependency d
-           JOIN task p ON p.task_id = d.depends_on_task_id AND p.is_deleted = false
-          WHERE d.task_id = t.task_id AND d.overridden_at IS NULL AND p.status <> 'DONE'
-       ))::int AS blocked_count,
+       count(*) FILTER (WHERE t.status NOT IN ('DONE','CANCELLED') AND ${blockedSql("t")})::int AS blocked_count,
        count(*)::int AS total_count
      FROM task t
      WHERE ${s.where.join(" AND ")}`,
@@ -1690,11 +1817,7 @@ async function analyticsWorkload(client, { visibility, filters, nowIso, limit = 
             a.full_name   AS assignee_name,
             count(*)::int AS open_tasks,
             count(*) FILTER (WHERE t.due_at IS NOT NULL AND t.due_at < $1)::int AS overdue_tasks,
-            count(*) FILTER (WHERE EXISTS (
-              SELECT 1 FROM task_dependency d
-                JOIN task p ON p.task_id = d.depends_on_task_id AND p.is_deleted = false
-               WHERE d.task_id = t.task_id AND d.overridden_at IS NULL AND p.status <> 'DONE'
-            ))::int AS blocked_tasks
+            count(*) FILTER (WHERE ${blockedSql("t")})::int AS blocked_tasks
        FROM task t
        LEFT JOIN app_user a ON a.user_id = t.assigned_to
       WHERE ${s.where.join(" AND ")}
@@ -1748,11 +1871,7 @@ async function analyticsByFile(client, { visibility, filters, nowIso, limit = 25
             count(*) FILTER (WHERE t.status NOT IN ('DONE','CANCELLED'))::int AS open_tasks,
             count(*) FILTER (WHERE t.status NOT IN ('DONE','CANCELLED')
                                AND t.due_at IS NOT NULL AND t.due_at < $1)::int AS overdue_tasks,
-            count(*) FILTER (WHERE t.status NOT IN ('DONE','CANCELLED') AND EXISTS (
-              SELECT 1 FROM task_dependency d
-                JOIN task p ON p.task_id = d.depends_on_task_id AND p.is_deleted = false
-               WHERE d.task_id = t.task_id AND d.overridden_at IS NULL AND p.status <> 'DONE'
-            ))::int AS blocked_tasks,
+            count(*) FILTER (WHERE t.status NOT IN ('DONE','CANCELLED') AND ${blockedSql("t")})::int AS blocked_tasks,
             count(*) FILTER (WHERE t.status = 'DONE'
                                AND t.completed_at >= $2 AND t.completed_at < $3)::int AS completed_tasks,
             count(*)::int AS total_tasks
@@ -1905,12 +2024,20 @@ async function analyticsCycleTime(client, { visibility, filters }) {
 }
 
 /**
- * Blocked work — open tasks with an unresolved prerequisite, oldest edge first.
+ * Blocked work — open tasks with an unresolved prerequisite OR a live
+ * blockage, oldest hold first.
  *
  * The prerequisite's TITLE is not selected. A blocked task may be visible to
  * the caller while the thing blocking it is not, and the table's job is to say
- * "this is waiting", not to disclose what on. The detail panel resolves the
+ * "this is waiting", not to disclose what on. A BLOCKAGE note IS selected, and
+ * the difference is deliberate: the note was written to be read by exactly
+ * this reader ("held at customs — network down"), whereas a prerequisite is a
+ * task row with its own visibility. The detail panel resolves the
  * prerequisite through the same intersection rule and redacts there.
+ *
+ * `blocked_since` is the older of the two holds, because the panel orders by
+ * "longest wait first" and a task that has been held since Tuesday is not
+ * younger than its Wednesday dependency.
  */
 async function analyticsBlocked(client, { visibility, filters, limit = 50 }) {
   const s = analyticsScope(visibility, filters, 1);
@@ -1920,19 +2047,31 @@ async function analyticsBlocked(client, { visibility, filters, limit = 50 }) {
     `SELECT t.task_id, t.title, t.status, t.priority, t.due_at,
             t.assigned_to, a.full_name AS assigned_to_name,
             t.entity_type, t.entity_id,
-            blocking.blocking_count,
-            blocking.blocked_since
+            COALESCE(deps.blocking_count, 0) AS blocking_count,
+            deps.blocked_since AS dependency_since,
+            hold.task_blockage_id,
+            hold.note               AS blockage_note,
+            hold.raised_at          AS blockage_since,
+            hold.estimated_resolve_at AS blockage_eta,
+            least(deps.blocked_since, hold.raised_at) AS blocked_since
        FROM task t
        LEFT JOIN app_user a ON a.user_id = t.assigned_to
-       JOIN LATERAL (
+       LEFT JOIN LATERAL (
          SELECT count(*)::int AS blocking_count, min(d.created_at) AS blocked_since
            FROM task_dependency d
            JOIN task p ON p.task_id = d.depends_on_task_id AND p.is_deleted = false
           WHERE d.task_id = t.task_id AND d.overridden_at IS NULL AND p.status <> 'DONE'
-       ) blocking ON blocking.blocking_count > 0
+       ) deps ON deps.blocking_count > 0
+       LEFT JOIN LATERAL (
+         SELECT b.task_blockage_id, b.note, b.raised_at, b.estimated_resolve_at
+           FROM task_blockage b
+          WHERE b.task_id = t.task_id AND b.resolved_at IS NULL
+          LIMIT 1
+       ) hold ON true
       WHERE ${s.where.join(" AND ")}
         AND t.status NOT IN ('DONE','CANCELLED')
-      ORDER BY blocking.blocked_since ASC
+        AND (deps.blocking_count > 0 OR hold.task_blockage_id IS NOT NULL)
+      ORDER BY blocked_since ASC
       LIMIT $${limitParam}`,
     params,
   );
@@ -2026,6 +2165,8 @@ module.exports = {
   listChildTasks, childCountsFor,
   listDependencies, listDependents, dependencyWouldCycle, findDependency, insertDependency,
   overrideDependency, clearDependencyOverride, deleteDependency, blockedCountsFor,
+  activeBlockagesFor, activeBlockageFor, listBlockages, insertBlockage, resolveBlockageRow,
+  setBlockageDueShift, shiftTaskDue, existingUserIds,
   analyticsScope, analyticsSummary, analyticsThroughput, analyticsOverdueAging,
   analyticsWorkload, analyticsCycleTime, analyticsBlocked, analyticsBurndown,
   analyticsComposition, analyticsByFile, analyticsByMilestone, milestoneFileOf, milestoneFilesOf, replaceTaskMilestones,

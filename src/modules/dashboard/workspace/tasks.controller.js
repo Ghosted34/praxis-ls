@@ -247,6 +247,32 @@ const pingTask = asyncHandler(async (req, res) => {
   });
 });
 
+/* ── blockages (13975) ────────────────────────────────────────────────────── */
+
+/**
+ * Register an external hold on the task. 201, like every other "a row now
+ * exists" write; the response carries the shaped blockage plus who was told,
+ * so the panel can confirm the fan-out in the same breath as the raise.
+ */
+const raiseBlockage = asyncHandler(async (req, res) => {
+  res.status(201).json({
+    data: await req.tenantDb((c) =>
+      service.raiseBlockage(c, ctxOf(req), req.params.id, req.body, req.query.audience),
+    ),
+  });
+});
+
+/** Clear the hold — and, on an open task, move its due date by the blocked
+ *  duration. The response says where the deadline landed, because that is the
+ *  first question everybody asks. */
+const resolveBlockage = asyncHandler(async (req, res) => {
+  res.json({
+    data: await req.tenantDb((c) =>
+      service.resolveBlockage(c, ctxOf(req), req.params.id, req.params.blockageId, req.body, req.query.audience),
+    ),
+  });
+});
+
 /* ── analytics ──────────────────────────────────────────────────────────── */
 
 /**
@@ -372,7 +398,8 @@ async function tenantMonthWindow(client) {
 module.exports = {
   listTasks, getBoard, getDay, getDeadlines, getTask, createTask, updateTask, changeStatus, deleteTask,
   addSubtask, patchSubtask, deleteSubtask, addWatcher, removeWatcher,
-  addChildTask, addDependency, removeDependency, overrideDependency, pingTask, getAnalytics,
+  addChildTask, addDependency, removeDependency, overrideDependency, pingTask,
+  raiseBlockage, resolveBlockage, getAnalytics,
   listEvents, getEvent, createEvent, updateEvent, deleteEvent,
   addParticipant, respondParticipant, removeParticipant,
 };

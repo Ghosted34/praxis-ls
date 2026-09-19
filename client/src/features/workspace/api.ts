@@ -157,6 +157,10 @@ export type Task = {
   blocking_count?: number;
   is_blocked?: boolean;
   blocked_since?: string | null;
+  /** The task's live external hold (13975), when it has one. */
+  blockage?: TaskBlockage | null;
+  /** Live hold first, then resolved ones, newest first — the panel's history. */
+  blockages?: TaskBlockage[];
   dependencies?: Dependency[];
   /** Children the caller may open. `rollup` counts every child, visible or not. */
   children?: Task[];
@@ -718,6 +722,55 @@ export const pingTask = (
     body,
   });
 
+/* ── blockages (13975) ─────────────────────────────────────────────────────── */
+
+/**
+ * An external hold on a task — "held at customs, network down". One active
+ * row per task; resolved rows are the history behind "late because of X" and
+ * behind the due-date movement a resolve applies.
+ */
+export type TaskBlockage = {
+  task_blockage_id: string;
+  task_id: string;
+  note: string;
+  estimated_resolve_at: string | null;
+  raised_by: string | null;
+  raised_by_name: string | null;
+  raised_at: string;
+  resolved_at: string | null;
+  resolved_by_name: string | null;
+  resolve_note: string | null;
+  /** The due-date movement applied when this hold cleared, as an interval
+   *  string ("4 days"); null when nothing moved. */
+  due_shift: string | null;
+};
+
+export const raiseBlockage = (
+  taskId: string,
+  body: {
+    note: string;
+    estimated_resolve_at?: string | null;
+    notify_user_ids?: string[];
+    channel_ids?: string[];
+  },
+  audience?: Audience,
+) =>
+  tenant<{ blockage: TaskBlockage; notified: number; channels_posted: string[] }>(
+    `/workspace/tasks/${taskId}/blockages${qs({ audience })}`,
+    { method: "POST", body },
+  );
+
+export const resolveBlockage = (
+  taskId: string,
+  blockageId: string,
+  body: { resolve_note?: string | null } = {},
+  audience?: Audience,
+) =>
+  tenant<{ blockage: TaskBlockage; new_due_at: string | null }>(
+    `/workspace/tasks/${taskId}/blockages/${blockageId}/resolve${qs({ audience })}`,
+    { method: "POST", body },
+  );
+
 /* ── analytics (PR 2) ─────────────────────────────────────────────────────── */
 
 export type AnalyticsBucket = { bucket: string; tasks: number; avg_days?: number };
@@ -762,6 +815,9 @@ export type AnalyticsResponse = {
     assigned_to_name: string | null;
     blocking_count: number;
     blocked_since: string | null;
+    /** 13975: the hold's own sentence, when the wait is (also) a blockage. */
+    blockage_note: string | null;
+    blockage_eta: string | null;
     link_url: string | null;
   }[];
   burndown: {

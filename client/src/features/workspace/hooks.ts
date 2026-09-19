@@ -396,6 +396,56 @@ export const useAddWatcher = () =>
     api.addWatcher(taskId, userId),
   );
 
+/**
+ * Register an external hold (13975). Invalidates the whole workspace root on
+ * settle like every other task write: the hold moves the card's pill, the
+ * panel's collapsible AND the Monitor's Blocked-work panel, and three screens
+ * disagreeing about whether a task is stuck is worse than one refetch.
+ */
+export const useRaiseBlockage = () =>
+  useWorkspaceMutation(
+    ({
+      taskId,
+      note,
+      estimatedResolveAt,
+      notifyUserIds,
+      channelIds,
+      audience,
+    }: {
+      taskId: string;
+      note: string;
+      estimatedResolveAt?: string | null;
+      notifyUserIds?: string[];
+      channelIds?: string[];
+      audience?: Audience;
+    }) =>
+      api.raiseBlockage(
+        taskId,
+        {
+          note,
+          estimated_resolve_at: estimatedResolveAt || null,
+          notify_user_ids: notifyUserIds,
+          channel_ids: channelIds,
+        },
+        audience,
+      ),
+  );
+
+export const useResolveBlockage = () =>
+  useWorkspaceMutation(
+    ({
+      taskId,
+      blockageId,
+      resolveNote,
+      audience,
+    }: {
+      taskId: string;
+      blockageId: string;
+      resolveNote?: string | null;
+      audience?: Audience;
+    }) => api.resolveBlockage(taskId, blockageId, { resolve_note: resolveNote || null }, audience),
+  );
+
 export const useRemoveWatcher = () =>
   useWorkspaceMutation(({ taskId, userId }: { taskId: string; userId: string }) =>
     api.removeWatcher(taskId, userId),

@@ -13,6 +13,9 @@ module.exports = {
   setBudget: asyncHandler(async (req, res) => { const b = req.body; res.status(201).json({ data: await req.tenantDb((c) => service.setBudget(c, { periodStart: b.period_start, periodEnd: b.period_end, softCapXaf: b.soft_cap_xaf, hardCapXaf: b.hard_cap_xaf, actor: actor(req) })) }); }),
   canUse: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.canUseFeature(c, { userId: req.query.user_id || (req.user && req.user.user_id), featureKey: req.query.feature_key })) })),
   usage: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.listUsage(c, req.query)) })),
+  // AI health (audit H2): the quality signals next to the cost ones.
+  health: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.healthSummary(c, { days: Number(req.query.days) || 7 })) })),
+  healthEvents: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.recentHealthEvents(c, { limit: Number(req.query.limit) || 50, kind: req.query.kind || null })) })),
   listVendors: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.listVendors(c)) })),
   setVendor: asyncHandler(async (req, res) => { const b = req.body; res.json({ data: await req.tenantDb((c) => service.setVendor(c, { vendor: req.params.vendor, apiKey: b.api_key, patch: b, actor: actor(req) })) }); }),
   testVendor: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.testVendor(c, req.params.vendor)) })),

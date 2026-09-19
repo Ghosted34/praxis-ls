@@ -14,6 +14,7 @@ const governance = require("../../modules/ai/governance/governance.service");
 const convo = require("../../modules/ai/assistant/assistant.repo");
 const { buildFieldMeta } = require("./action-fields");
 const { logger } = require("../../config/logger");
+const health = require("./health.service");
 const actionAuthz = require("./action-authz");
 const { buildSources, buildTrace } = require("./answer-sources");
 const { config } = require("../../config/env");
@@ -924,7 +925,46 @@ const SYSTEM_RULES =
   "• If you need an id you have not read, either call the matching list_ action to find it, " +
   "  or ask the user which record they mean — in plain language, naming the record, not the field. " +
   "• Leave an OPTIONAL id out entirely rather than filling it with a placeholder. An omitted " +
-  "  optional field is correct; an invented one is a wrong record. ";
+  "  optional field is correct; an invented one is a wrong record. " +
+  // ── WRITING QUALITY (audit B6) ────────────────────────────────────────────
+  //
+  // "Response quality/grammar currently rides entirely on the model." Every
+  // rule above is about what the assistant may DO or may not SHOW; none of them
+  // says how the prose should read, so the house style was whatever the vendor
+  // happened to produce — and B3 notes the primary is a weak one. When the
+  // model is re-pointed (B3 is a one-row repoint), an unstated style contract
+  // means the product's voice changes with it and nobody can say whether that
+  // is a regression.
+  //
+  // THE DATE LINE IS THE ONE THAT IS NOT COSMETIC. This product is day-first
+  // end to end — `<DateField>`, `lib/format.ts`, the PDF templates, the xlsx
+  // exports, all gated by `npm run check:dates` — because the corridor it
+  // serves reads 03/07 as the 3rd of July. Those gates cover code. They cannot
+  // reach a sentence the model composes, so an assistant writing "07/03/2026"
+  // for 3 July re-introduces, in the one surface nobody can lint, precisely the
+  // defect the whole gate exists to prevent: both readings are real dates, the
+  // text is fluent, and it surfaces months later as a deadline missed by a
+  // quarter. Naming the month is the instruction because it is unambiguous in
+  // either convention.
+  //
+  // Kept inside SYSTEM_RULES rather than the per-turn tail so it stays in the
+  // cacheable invariant prefix (B5) — a style contract that re-bills on every
+  // question is one somebody will delete for cost.
+  "WRITING — the house style, and it applies to every answer: " +
+  "• Concise business English, correct grammar, complete sentences. British spelling " +
+  "  (organise, analyse, colour). No filler openers (\"Certainly!\", \"Great question\"), " +
+  "  no restating the question back, no closing offers of further help. " +
+  "• Lead with the answer. Put the figure or the finding in the first sentence, then the " +
+  "  detail behind it. Never make the reader scroll past a preamble to reach it. " +
+  "• Tabular data goes in a Markdown table, not in prose. Three or more records with the " +
+  "  same fields is a table. One record is a sentence. " +
+  "• WRITE DATES DAY-FIRST, and write the month as a word when you can: \"3 July 2026\" or " +
+  "  \"03/07/2026\" — NEVER \"07/03/2026\" for that date. This corridor reads day-first, and a " +
+  "  date the reader resolves the wrong way is indistinguishable from a correct one. " +
+  "• Give an amount its currency (\"1 250 000 XAF\"), and report a figure exactly as you read " +
+  "  it — never round, abbreviate or re-scale it unless the user asked. " +
+  "• Say what you do not know in one plain sentence and stop. Do not pad an answer to look " +
+  "  complete, and never present an assumption in the same voice as a fact you read. ";
 
 /**
  * The ONE builder both ask() and askStream() use (audit B5), so the two paths
@@ -1129,15 +1169,23 @@ async function ask({ client, user, conversationId, message, allowed, registry, f
   const convo = [...messages];
   const seenReads = new Map();
   let duplicates = 0;
+  // How the loop ENDED, for the health counters (audit H2). `round` is scoped
+  // to the for, and the two conditions worth counting — running out of rounds
+  // while still reaching, and being stopped by the duplicate guard — are only
+  // distinguishable from outside it.
+  let lastRound = 0;
+  let usedTools = false;
   let current = res;
   let lastText = res.text || "";
   for (let round = 1; round <= MAX_TOOL_ROUNDS; round++) {
+    lastRound = round;
     const roundReads = [];
     for (const call of current.toolCalls || []) {
       const def = defFor(call);
       if (!def) continue;
       (def.is_write ? writeCalls : roundReads).push({ call, def });
     }
+    if (roundReads.length && registry) usedTools = true;
     if (!roundReads.length || !registry) {
       // No reads left to run: this pass had nothing to reach for, so its prose
       // is the answer.
@@ -1249,6 +1297,15 @@ async function ask({ client, user, conversationId, message, allowed, registry, f
     sources,
     trace,
   });
+
+  // Audit H2 — the turn's own signals. Recorded once, here, rather than inside
+  // the loop: a groove is a property of how the turn ENDED, and counting it per
+  // duplicate read would report one stuck turn as several.
+  await health.recordAll(
+    client,
+    turnHealth({ duplicates, round: lastRound, nudged, usedTools }),
+    { userId: user.user_id, conversationId: history.conversationId || null, feature },
+  );
 
   const actions = [];
   const batchId = writeCalls.length ? crypto.randomUUID() : null;
@@ -1513,7 +1570,46 @@ async function confirmBatch({ client, user, batchId, registry, allowed }) {
   return { batch_id: batchId, halted: false, executed: results.length, results };
 }
 
+/**
+ * The signals the TURN produces, as opposed to the ones a vendor call produces.
+ *
+ * `duplicates`, `round` and `nudged` are already computed by both loops and
+ * were already thrown away in both (audit H2). Shared rather than written twice
+ * because `ask` and `askStream` have drifted before — B5 was exactly that, two
+ * copies of the system prompt — and a health counter that means one thing on
+ * the streaming path and another on the non-streaming one is worse than no
+ * counter, since nothing on the panel would say which turn it came from.
+ *
+ * Thresholds, not raw values: a groove is `duplicates` reaching the cap that
+ * STOPS the loop, not the model repeating one read; the round cap is the loop
+ * running out while still reaching for tools. Both mean "the model could not
+ * get where it was going", which is the audit's "tool-selection miss".
+ */
+function turnHealth({ duplicates, round, nudged, usedTools }) {
+  const events = [];
+  if (duplicates >= MAX_DUPLICATE_READS) {
+    events.push({ kind: health.KINDS.GROOVE, detail: { duplicates, rounds: round } });
+  }
+  if (usedTools && round >= MAX_TOOL_ROUNDS) {
+    events.push({ kind: health.KINDS.TOOL_ROUND_CAP, detail: { rounds: round } });
+  }
+  if (nudged) events.push({ kind: health.KINDS.STALL_NUDGE, detail: { rounds: round } });
+  return events;
+}
+
 async function recordUsage(client, { user, conversationId, res, feature, callType = "chat" }) {
+  // Audit H2. The vendor-chain signals — fallback, truncation, timeout, a dead
+  // credential — are detected in `llm.service`, which has no user, no thread
+  // and no client to persist against. They ride out on the result, and this is
+  // where they land, because every model call in this file already passes
+  // through here with exactly the context a health row needs. Flushing at one
+  // choke point rather than at eight call sites is also what stops the next
+  // model call added to this service from being silently uninstrumented.
+  await health.recordAll(client, res.health, {
+    userId: user && user.user_id,
+    conversationId: conversationId || null,
+    feature,
+  });
   try {
     const u = res.usage || {};
     // Route through governance so the row is tied to the active budget period and
@@ -1626,6 +1722,10 @@ async function* askStream({ client, user, conversationId, message, allowed, regi
   let finalUsage = {};
   let provider = null;
   let model = null;
+  // The vendor-chain signals ride out on the TERMINAL chunk (audit H2) — a
+  // generator's return value is invisible to `for await`, which is how this
+  // reads it — so they are lifted here and handed to `recordUsage` below.
+  let streamHealth = [];
 
   for await (const chunk of llm.chatStream({ client, messages, tools: offered.map(toOpenAiTool), onDelta: (d) => { fullText += d; } })) {
     if (!chunk.done) {
@@ -1636,9 +1736,10 @@ async function* askStream({ client, user, conversationId, message, allowed, regi
       finalUsage = chunk.usage || {};
       provider = chunk.provider;
       model = chunk.model || model;
+      streamHealth = chunk.health || [];
     }
   }
-  await recordUsage(client, { user, conversationId: history.conversationId, res: { text: fullText, toolCalls: finalToolCalls, usage: finalUsage, provider, model }, feature });
+  await recordUsage(client, { user, conversationId: history.conversationId, res: { text: fullText, toolCalls: finalToolCalls, usage: finalUsage, provider, model, health: streamHealth }, feature });
 
   // ── Anti-stall (non-streaming, same as ask) ──
   let nudged = false;
@@ -1690,9 +1791,13 @@ async function* askStream({ client, user, conversationId, message, allowed, regi
   let duplicates = 0;
   let current = { text: fullText, toolCalls: finalToolCalls };
   let usedTools = false;
+  // See the note on `lastRound` in ask(): the loop's exit condition is only
+  // visible from outside the for.
+  let lastRound = 0;
   let answer = "";
 
   for (let round = 1; round <= MAX_TOOL_ROUNDS; round++) {
+    lastRound = round;
     const roundReads = [];
     for (const call of current.toolCalls || []) {
       const def = defFor(call);
@@ -1779,6 +1884,7 @@ async function* askStream({ client, user, conversationId, message, allowed, regi
     yield { type: "status", text: "Writing the answer…" };
     let finalText = "";
     let finalPassUsage = {};
+    let finalPassHealth = [];
     for await (const chunk of llm.chatStream({
       client,
       messages: [...convo, { role: "system", content: FINAL_PASS_NOTE }],
@@ -1791,12 +1897,15 @@ async function* askStream({ client, user, conversationId, message, allowed, regi
         finalPassUsage = chunk.usage || {};
         provider = chunk.provider || provider;
         model = chunk.model || model;
+        // The final pass is the one the user KEEPS, so a truncation here is the
+        // one that actually cuts their answer off.
+        finalPassHealth = chunk.health || [];
       }
     }
     await recordUsage(client, {
       user,
       conversationId: history.conversationId,
-      res: { text: finalText, toolCalls: [], usage: finalPassUsage, provider, model },
+      res: { text: finalText, toolCalls: [], usage: finalPassUsage, provider, model, health: finalPassHealth },
       feature,
     });
     answer = finalText.trim();
@@ -1821,6 +1930,14 @@ async function* askStream({ client, user, conversationId, message, allowed, regi
     sources,
     trace,
   });
+
+  // Audit H2 — the turn's own signals, through the SAME helper ask() uses, so
+  // a groove means the same thing on both paths.
+  await health.recordAll(
+    client,
+    turnHealth({ duplicates, round: lastRound, nudged, usedTools }),
+    { userId: user.user_id, conversationId: history.conversationId || null, feature },
+  );
 
   // ── Writes: action cards ──
   const actions = [];

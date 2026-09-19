@@ -118,6 +118,7 @@ Multi-step reads chain freely; **no write executes without confirmation.**
 - `ai_conversation` / `ai_message` — sessions + turns.
 - `ai_document` / `ai_chunk` (pgvector) — the tenant corpus (schema cards, entity cards, docs).
 - Governance: `ai_feature_flag`, `ai_access_grant`, `ai_vendor_credential` (encrypted keys), `ai_budget_period`, `ai_usage_ledger`.
+- `ai_health_event` (13940) — the QUALITY signals, append-only, deliberately separate from `ai_usage_ledger`. The ledger answers what a call cost, is tied to a budget period and is read by the spend cap; a turn that fell back to another vendor and came back truncated still *succeeded* in the only sense the ledger means. `conversation_id` carries no FK, matching the ledger, because a conversation can now be purged (13930) and an FK with no `ON DELETE` would block that.
 
 ## 6. Governance & safety
 
@@ -177,6 +178,39 @@ migrations/tenant/04xx_ai_batch.sql             adds ai_action_run.batch_id
 scripts/ai/sync-actions.js                       CLI: rebuild ai_action_catalogue from *.ai.js
 scripts/ai/reindex.js                            backfill knowledge (exists)
 ```
+
+## 7b. Evaluation and health (audit H1, H2)
+
+**Health.** Every signal the assistant already produced and discarded is now a
+row: truncation (`finish_reason: "length"` — nothing read it before, so B1's
+`max_tokens` fix was unverifiable in production), fallback to a second vendor,
+a rejected credential, an exhausted chain, a timeout, the tool-round cap, a
+duplicate-read groove, and the anti-stall nudge. `services/ai/health.service.js`
+owns the vocabulary and refuses an unknown kind rather than writing it — a
+typo'd kind is a counter that reads zero for ever and gets believed.
+`llm.service` detects the vendor-chain events (it is the only layer that can
+see a fallback happen) and the orchestrator records them through `recordUsage`,
+the one choke point every model call already passes through. AI Control →
+Health reports them as rates per 1,000 turns, with every kind shown including
+the ones at zero.
+
+**Eval.** The golden set (`services/ai/eval/golden-set.js`) is one case per
+behaviour the audit paid for, each citing its finding. Grading is a pure
+function (`eval/grade.js`), and the split matters:
+
+| | runs | gates the build |
+| --- | --- | --- |
+| `tests/unit/ai-eval-grader.test.js` | every push, no DB, no vendor | **yes** |
+| `scripts/ai/eval.js --tenant=<slug>` | on demand — a seeded tenant + a real model | no |
+
+The rules are what CI can hold to. A gate that asks a live model a question and
+asserts on the prose needs a provisioned tenant and a funded credential, and
+answers differently every run — a build that reddens because a model rephrased
+something is a build people learn to ignore. So the grader is regression-tested
+against recorded answers, including the audit's named A1 case (a figure
+≥ 100,000,000 XAF reported exactly, and any redaction marker in a tenant-facing
+answer treated as a failure), and the live pass reuses that same function
+rather than re-implementing it slightly differently.
 
 ## 8. Open follow-ups (not blockers)
 

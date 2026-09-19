@@ -241,6 +241,319 @@ async function taxObligations(client, id, { limit = 24 } = {}) {
 }
 
 /**
+ * The obligation calendar as a LIST the filing view can page through (PR-05).
+ *
+ * Separate from `taxObligations` rather than an extension of it: that one is
+ * the dossier's top-of-page strip and its ordering ("open first") is a display
+ * decision, while this one is a working list where an accountant filtering to
+ * one quarter of one country needs a stable `due_on` order and a real total.
+ *
+ * Joins the responsible person's NAME, not just the id — CE-33: a filing with a
+ * UUID where a person should be is a filing nobody can chase. Redaction of
+ * `tax_number` stays with the serializer, not here, for the same reason PR-04
+ * put it there.
+ */
+async function obligations(client, id, query = {}) {
+  const limit = Math.min(Math.max(Number(query.limit) || 50, 1), 200);
+  const offset = Math.max(Number(query.offset) || 0, 0);
+
+  const where = ["c.entity_id = $1"];
+  const params = [id];
+  const add = (sql, v) => {
+    params.push(v);
+    where.push(sql.replace("?", `$${params.length}`));
+  };
+
+  // A comma list is accepted because "show me everything still open" is one
+  // filter, not two round trips.
+  if (query.status) {
+    const statuses = String(query.status).split(",").map((s) => s.trim().toUpperCase()).filter(Boolean);
+    // `::text[]` is not decoration: an empty JS array arrives as `{}`, which
+    // Postgres cannot type-deduce on its own and answers with 42P18. The cast
+    // is the house spelling (see insight.repo.js, costing.repo.js).
+    if (statuses.length) add("c.status = ANY(?::text[])", statuses);
+  }
+  if (query.from) add("c.due_on >= ?", query.from);
+  if (query.to) add("c.due_on <= ?", query.to);
+  if (query.period_code) add("c.period_code = ?", query.period_code);
+  if (query.tax_registration_id) add("c.tax_registration_id = ?", query.tax_registration_id);
+  if (query.obligation) add("c.obligation = ?", String(query.obligation).toUpperCase());
+  if (query.responsible_user_id) add("c.responsible_user_id = ?", query.responsible_user_id);
+  // The finding the generator reports, and this list has to be filterable by
+  // it: obligations nobody has been told about.
+  if (String(query.unassigned) === "true") where.push("c.responsible_user_id IS NULL");
+  // Generated rows only, so a hand-typed legacy calendar entry cannot be
+  // mistaken for something the registration model produced.
+  if (String(query.generated) === "true") where.push("c.generated = true");
+
+  const predicate = where.join(" AND ");
+  const { rows } = await client.query(
+    `SELECT c.*,
+            tr.tax_kind, tr.country_code, tr.tax_number, tr.jurisdiction_id,
+            j.name AS jurisdiction_name,
+            u.full_name AS responsible_name
+       FROM tax_calendar c
+       LEFT JOIN entity_tax_registration tr ON tr.tax_registration_id = c.tax_registration_id
+       LEFT JOIN tax_jurisdiction j         ON j.jurisdiction_id = tr.jurisdiction_id
+       LEFT JOIN app_user u                 ON u.user_id = c.responsible_user_id
+      WHERE ${predicate}
+      ORDER BY c.due_on, c.obligation
+      LIMIT ${limit} OFFSET ${offset}`,
+    params,
+  );
+  const total = await client.query(`SELECT count(*)::int AS n FROM tax_calendar c WHERE ${predicate}`, params);
+  return { items: rows, total: total.rows[0].n, limit, offset };
+}
+
+/*
+ * ── Tax obligation generator (PR-05, audit CE-16) ──────────────────────────
+ *
+ * The SQL behind `corporate_entity.tax-calendar.js`, kept here because this
+ * file is where the module's SQL lives and because the generator is worth
+ * testing the way `leave-accrual` is: a fake repo enforcing the unique index,
+ * with the loop's arithmetic and stopping conditions under test. Queries
+ * inline in the generator would have made that a fake of Postgres's parser
+ * instead of a fake of a table.
+ */
+
+/** Every tax registration on an entity, joined to what the generator labels with. */
+async function taxRegistrationsForGeneration(client, entityId) {
+  const { rows } = await client.query(
+    `SELECT tr.*, j.name AS jurisdiction_name
+       FROM entity_tax_registration tr
+       LEFT JOIN tax_jurisdiction j ON j.jurisdiction_id = tr.jurisdiction_id
+      WHERE tr.entity_id = $1
+      ORDER BY tr.country_code, tr.tax_kind`,
+    [entityId],
+  );
+  return rows;
+}
+
+/**
+ * Insert one generated obligation, or nothing if its generation key exists.
+ *
+ * THE LINE THE WHOLE ACCEPTANCE CONDITION RESTS ON. `ux_tax_calendar_
+ * generation_key` (13970) is a unique index over `generation_key`, and this is
+ * the only place a generated row is written — so "a re-run produces no
+ * duplicates" is enforced by Postgres here rather than by the caller's
+ * bookkeeping above it. Two overlapping runs, or a bug in the generator's own
+ * "have I generated this period?" logic, still cannot produce a second row.
+ *
+ * The conflict target names the index PREDICATE as well as the column because
+ * the index is partial: a bare `ON CONFLICT (generation_key)` matches no index
+ * and fails with 42P10 rather than deduplicating.
+ *
+ * BOTH user columns go through the `(SELECT user_id FROM app_user …)`
+ * sub-select, and it is doing two jobs at once:
+ *
+ *   - it is the house guard from `emitEvent`/`audit` (DATA 2.4): under TEST the
+ *     user's row lives in the LIVE schema, and a raw bind would raise 23503 and
+ *     take the whole generation run with it;
+ *   - it is the existence check the FOREIGN KEY would have made. 13970 could
+ *     not add one — `tax_calendar` pre-exists, and per the 13791 rule a table a
+ *     migration did not create gains PLAIN columns only — so an id that does
+ *     not resolve stores NULL here rather than raising. For `created_by` that
+ *     is the right answer anyway (a scheduled run has no actor); for
+ *     `responsible_user_id` the caller catches the NULL, because silently
+ *     un-assigning a statutory filing is worse than refusing.
+ *
+ * @returns {object|null} the inserted row, or null when the key already existed.
+ */
+async function insertObligation(client, row) {
+  const { rows } = await client.query(
+    `INSERT INTO tax_calendar
+       (entity_id, obligation, due_on, status, tax_registration_id, period_code,
+        generated, generation_key, period_start, period_end, responsible_user_id, created_by)
+     VALUES ($1,$2,$3,'PENDING',$4,$5,true,$6,$7,$8,
+             (SELECT user_id FROM app_user WHERE user_id = $9),
+             (SELECT user_id FROM app_user WHERE user_id = $10))
+     ON CONFLICT (generation_key) WHERE generation_key IS NOT NULL DO NOTHING
+     RETURNING tax_calendar_id`,
+    [
+      row.entity_id, row.obligation, row.due_on, row.tax_registration_id, row.period_code,
+      row.generation_key, row.period_start, row.period_end,
+      row.responsible_user_id || null, row.created_by || null,
+    ],
+  );
+  return rows[0] || null;
+}
+
+/**
+ * Supersede every open generated obligation on one registration.
+ *
+ * For when the registration itself closes. Reaches LATE as well as PENDING: an
+ * overdue filing on a number the authority has closed is a task nobody can
+ * perform, and leaving it LATE would have the reminder engine chasing it
+ * forever. DONE and WAIVED are untouched — see the generator's header.
+ */
+async function supersedeOpenForRegistration(client, taxRegistrationId, { reason, actorUserId = null }) {
+  const { rows } = await client.query(
+    `UPDATE tax_calendar
+        SET status = 'SUPERSEDED',
+            status_changed_at = now(),
+            status_changed_by = (SELECT user_id FROM app_user WHERE user_id = $2),
+            status_reason = $3
+      WHERE tax_registration_id = $1
+        AND generated
+        AND status IN ('PENDING', 'LATE')
+      RETURNING tax_calendar_id`,
+    [taxRegistrationId, actorUserId || null, reason],
+  );
+  return rows;
+}
+
+/**
+ * Supersede the open generated obligations on one registration whose
+ * `generation_key` is no longer expected inside a window.
+ *
+ * Scoped to the window on purpose: obligations outside it were not considered
+ * by this run and must not be swept up by it. This is what turns a cadence
+ * change into a visible decision rather than a silent one — the old obligation
+ * is superseded with a reason, and the new one exists beside it.
+ *
+ * An EMPTY `keys` array is meaningful, not a degenerate case: it means the run
+ * expects nothing from this registration inside the window (every remaining
+ * period falls after a deregistration), so everything open there is superseded.
+ * `= ANY('{}'::text[])` is false for every row, which makes `NOT (...)` true
+ * for every row — the right answer, and the reason the cast is explicit.
+ */
+async function supersedeUnexpectedForRegistration(
+  client, taxRegistrationId, { keys, windowStart, windowEnd, reason, actorUserId = null },
+) {
+  const { rows } = await client.query(
+    `UPDATE tax_calendar
+        SET status = 'SUPERSEDED',
+            status_changed_at = now(),
+            status_changed_by = (SELECT user_id FROM app_user WHERE user_id = $2),
+            status_reason = $3
+      WHERE tax_registration_id = $1
+        AND generated
+        AND status IN ('PENDING', 'LATE')
+        AND generation_key IS NOT NULL
+        AND NOT (generation_key = ANY($4::text[]))
+        AND period_start <= $6
+        AND period_end   >= $5
+      RETURNING tax_calendar_id, generation_key`,
+    [taxRegistrationId, actorUserId || null, reason, keys, windowStart, windowEnd],
+  );
+  return rows;
+}
+
+/**
+ * Flip PENDING obligations past their deadline to LATE.
+ *
+ * Returns the rows so the caller can emit one event each. An obligation whose
+ * deadline passed is the single most important thing this module can tell
+ * anybody, and it is advisory: a status and an event, never a block.
+ */
+async function markOverdue(client, entityId, today, { actorUserId = null } = {}) {
+  const { rows } = await client.query(
+    `UPDATE tax_calendar
+        SET status = 'LATE',
+            status_changed_at = now(),
+            status_changed_by = (SELECT user_id FROM app_user WHERE user_id = $2),
+            status_reason = 'past_due_on'
+      WHERE entity_id = $1
+        AND status = 'PENDING'
+        AND due_on < $3
+      RETURNING tax_calendar_id, obligation, period_code, due_on, responsible_user_id`,
+    [entityId, actorUserId || null, today],
+  );
+  return rows;
+}
+
+/** One obligation by id. */
+async function obligationById(client, taxCalendarId) {
+  const { rows } = await client.query("SELECT * FROM tax_calendar WHERE tax_calendar_id = $1", [taxCalendarId]);
+  return rows[0] || null;
+}
+
+/** Write a status transition onto one obligation and hand back the row. */
+async function setObligationStatus(client, taxCalendarId, { status, reason = null, actorUserId = null }) {
+  const { rows } = await client.query(
+    `UPDATE tax_calendar
+        SET status = $2,
+            status_changed_at = now(),
+            status_changed_by = (SELECT user_id FROM app_user WHERE user_id = $3),
+            status_reason = $4
+      WHERE tax_calendar_id = $1
+      RETURNING *`,
+    [taxCalendarId, status, actorUserId || null, reason || null],
+  );
+  return rows[0] || null;
+}
+
+/**
+ * Write the assignee onto one obligation and hand back the row.
+ *
+ * The sub-select means a `responsibleUserId` that does not resolve stores NULL
+ * rather than raising — there is no FK to raise (see `insertObligation`). The
+ * caller compares what it asked for with what came back, so a mistyped
+ * assignee becomes a 404 instead of a silently un-assigned filing.
+ */
+async function setObligationResponsible(client, taxCalendarId, { responsibleUserId = null }) {
+  const { rows } = await client.query(
+    `UPDATE tax_calendar
+        SET responsible_user_id = (SELECT user_id FROM app_user WHERE user_id = $2)
+      WHERE tax_calendar_id = $1
+      RETURNING *`,
+    [taxCalendarId, responsibleUserId || null],
+  );
+  return rows[0] || null;
+}
+
+/** Record which reminder rung an obligation has already been told about. */
+async function markReminded(client, taxCalendarId, step) {
+  await client.query(
+    "UPDATE tax_calendar SET last_reminder_step = $2, last_reminder_at = now() WHERE tax_calendar_id = $1",
+    [taxCalendarId, step],
+  );
+}
+
+/** Every entity the generator should visit: those with at least one registration. */
+async function entitiesWithRegistrations(client) {
+  const { rows } = await client.query(
+    `SELECT DISTINCT tr.entity_id, e.code, e.legal_name
+       FROM entity_tax_registration tr
+       JOIN corporate_entity e ON e.entity_id = tr.entity_id
+      ORDER BY e.code`,
+  );
+  return rows;
+}
+
+/** `YYYY-MM-DD` plus N days. */
+function addDaysIso(iso, days) {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + Number(days || 0));
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * The open obligations across the tenant due within `days` — what the reminder
+ * sweep considers. In the repo with the rest of the SQL because `src/jobs`
+ * must not grow a query of its own.
+ */
+async function obligationsDueWithin(client, { today, days }) {
+  const { rows } = await client.query(
+    `SELECT c.tax_calendar_id, c.entity_id, c.obligation, c.period_code, c.due_on,
+            c.responsible_user_id, c.last_reminder_step,
+            e.code AS entity_code, e.legal_name AS entity_name,
+            tr.tax_kind, tr.country_code, tr.filing_portal_url,
+            u.full_name AS responsible_name
+       FROM tax_calendar c
+       JOIN corporate_entity e              ON e.entity_id = c.entity_id
+       LEFT JOIN entity_tax_registration tr ON tr.tax_registration_id = c.tax_registration_id
+       LEFT JOIN app_user u                 ON u.user_id = c.responsible_user_id
+      WHERE c.status = 'PENDING'
+        AND c.due_on >= $1
+        AND c.due_on <= $2
+      ORDER BY c.due_on`,
+    [today, addDaysIso(today, days)],
+  );
+  return rows;
+}
+
+/**
  * Columns the letterhead designer may write. As with WRITABLE above, this is an
  * explicit allow-list rather than "whatever the body carried" — `updated_by` is
  * stamped by the service and `entity_id` is the key, so neither is writable.
@@ -398,5 +711,10 @@ module.exports = {
   WRITABLE, LETTERHEAD_WRITABLE,
   insert, get, getByCode, first, update, updateInternal, list,
   parentMap, children, ancestors, collections, usage, treasuryAccounts,
-  documentsAndTax, taxObligations, getLetterhead, upsertLetterhead,
+  documentsAndTax, taxObligations, obligations, obligationsDueWithin,
+  // Tax obligation generator (PR-05)
+  taxRegistrationsForGeneration, insertObligation, supersedeOpenForRegistration,
+  supersedeUnexpectedForRegistration, markOverdue, obligationById,
+  setObligationStatus, setObligationResponsible, markReminded, entitiesWithRegistrations,
+  getLetterhead, upsertLetterhead,
 };

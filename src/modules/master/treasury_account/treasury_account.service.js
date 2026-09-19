@@ -74,6 +74,10 @@ async function create(client, { entityId, categoryId, actor = {}, ...body }) {
 
   await client.query("BEGIN");
   try {
+    // Assert and lock the parent CoA row FOR UPDATE to prevent allocation race conditions (#31, #32)
+    const parentCoa = await repo.lockParentCoa(client, category.coa_parent_code);
+    rules.assertCoaParent(parentCoa);
+
     // Allocate the next 6-digit leaf under the category's parent.
     const existing = await repo.existingLeavesUnder(client, category.coa_parent_code);
     const leafCode = rules.nextLeafCode(category.coa_parent_code, existing);

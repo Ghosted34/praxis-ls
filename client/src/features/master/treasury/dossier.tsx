@@ -29,7 +29,7 @@ const TABS = [
   "Overview",
   "Statement",
   "Reconciliation",
-  "Sub-account",
+  "CoA leaf",
   "Signatories",
   "Documents",
   "Timeline",
@@ -492,7 +492,7 @@ export function TreasuryDossier({
         />
       )}
 
-      {tab === "Sub-account" && (
+      {tab === "CoA leaf" && (
         <Section
           title="CoA leaf"
           description="Every treasury account owns exactly one auto-minted CoA leaf under its category's parent."

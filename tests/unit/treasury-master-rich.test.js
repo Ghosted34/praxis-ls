@@ -140,6 +140,63 @@ describe("assertCoaParent — a treasury CoA parent must be class 5, non-postabl
   });
 });
 
+describe("assertCoaParent — audit repair verification (#30, #31)", () => {
+  test("accepts 571, 581, 5381, 5382, 5711 when non-postable", () => {
+    for (const code of ["571", "581", "5381", "5382", "5711"]) {
+      expect(rules.assertCoaParent({ code, class: 5, is_postable: false })).toBe(true);
+    }
+  });
+
+  test("rejects if postable flag is still true", () => {
+    for (const code of ["571", "581", "5381", "5382", "5711"]) {
+      expect(() => rules.assertCoaParent({ code, class: 5, is_postable: true })).toThrow(/postable/);
+    }
+  });
+});
+
+describe("category safety — freezing capability & coa_parent once accounts exist (#33, #35)", () => {
+  const catService = require("../../src/modules/master/treasury_category/treasury_category.service");
+  const catRepo = require("../../src/modules/master/treasury_category/treasury_category.repo");
+
+  test("refuses CoA parent change if category is in use", async () => {
+    jest.spyOn(catRepo, "get").mockResolvedValue({
+      treasury_category_id: "cat-1",
+      code: "CUSTOM",
+      coa_parent_code: "521",
+      is_system: false,
+      requires_custodian: false,
+    });
+    jest.spyOn(catRepo, "countUsage").mockResolvedValue(3);
+
+    await expect(
+      catService.update({}, { id: "cat-1", patch: { coa_parent_code: "571" } })
+    ).rejects.toThrow(/Cannot change CoA parent/);
+
+    catRepo.get.mockRestore();
+    catRepo.countUsage.mockRestore();
+  });
+
+  test("refuses capability flag changes if category is in use", async () => {
+    jest.spyOn(catRepo, "get").mockResolvedValue({
+      treasury_category_id: "cat-1",
+      code: "CUSTOM",
+      coa_parent_code: "521",
+      is_system: false,
+      requires_custodian: false,
+      is_bank_identity: true,
+      is_momo_identity: false,
+    });
+    jest.spyOn(catRepo, "countUsage").mockResolvedValue(2);
+
+    await expect(
+      catService.update({}, { id: "cat-1", patch: { requires_custodian: true } })
+    ).rejects.toThrow(/Cannot change capability flags/);
+
+    catRepo.get.mockRestore();
+    catRepo.countUsage.mockRestore();
+  });
+});
+
 describe("legacy shims — kept so the older tests and the older callers still pass", () => {
   test("assertCashAccount still refuses non-class-5 codes", () => {
     expect(rules.assertCashAccount("521")).toBe(true);

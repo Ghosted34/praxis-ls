@@ -99,6 +99,19 @@ async function getCategory(client, id) {
 }
 
 /**
+ * Load and lock the parent CoA row FOR UPDATE. Concurrency safety for nextLeafCode:
+ * prevents concurrent transactions from allocating the same next leaf under this parent.
+ * Also used to assert the parent is valid before leaf insertion.
+ */
+async function lockParentCoa(client, code) {
+  const { rows } = await client.query(
+    "SELECT code, class, is_postable, parent_code FROM chart_of_accounts WHERE code = $1 FOR UPDATE",
+    [code],
+  );
+  return rows[0] || null;
+}
+
+/**
  * List the existing CoA leaf codes under a parent. Fed to rules.nextLeafCode
  * to pick the next 6-digit child.
  */
@@ -202,7 +215,7 @@ async function deleteGateway(client, provider) {
 
 module.exports = {
   insert, get, update, list, getWithCategory,
-  getCategory, existingLeavesUnder, insertLeafCoa, setLeafActive, renameLeaf,
+  getCategory, lockParentCoa, existingLeavesUnder, insertLeafCoa, setLeafActive, renameLeaf,
   clearPrimaryInCategory,
   listGateways, getGatewayRaw, upsertGateway, setGatewayActive, setGatewayRole, deleteGateway,
 };

@@ -1,18 +1,18 @@
 "use strict";
 /**
  * DB-backed proof of the Currency & FX module (MOD-08) against the real tenant
- * schema and the invariants added by migrations 13940/13941/13942. Skipped
+ * schema and the invariants added by migrations 13950/13951/13952. Skipped
  * unless DATABASE_URL points at a migrated, seeded tenant database.
  *
  * Env it needs:
  *   DATABASE_URL   postgres connection string (search_path = the tenant schema)
  *
  * What it proves end-to-end (C-PR-01..04, audit #5/#7/#8/#10/#12):
- *   - the single-base invariant is enforced (13940's partial unique index);
+ *   - the single-base invariant is enforced (13950's partial unique index);
  *   - a manual rate carries its actor (set_by_user_id) and reads back in the
  *     rate-history contract with { data, total, has_more };
  *   - the usage scan runs and every currency-referencing FK column it counts is
- *     index-covered (13942), so the scan plans as index scans not seq scans;
+ *     index-covered (13952), so the scan plans as index scans not seq scans;
  *   - the dossier assembles for both a quote currency and the base.
  *
  * Read-mostly: it writes rates for a throwaway quote and cleans up in afterAll.
@@ -82,7 +82,7 @@ d("currency & FX lifecycle (real Postgres)", () => {
     expect(page.rows.length).toBeLessThanOrEqual(5);
   });
 
-  it("every currency-FK usage column is index-covered (13942)", async () => {
+  it("every currency-FK usage column is index-covered (13952)", async () => {
     // Same introspection usageForCode uses: leading FK columns referencing
     // currency, excluding fx_rate_daily.
     const { rows: cols } = await client.query(
@@ -98,7 +98,7 @@ d("currency & FX lifecycle (real Postgres)", () => {
         "SELECT 1 FROM pg_index WHERE indrelid = $1 AND indkey[0] = $2 LIMIT 1",
         [c.relid, c.first_attnum],
       );
-      expect(idx.length).toBeGreaterThanOrEqual(1); // covered by 13942 (or a prior index)
+      expect(idx.length).toBeGreaterThanOrEqual(1); // covered by 13952 (or a prior index)
     }
   });
 

@@ -15,6 +15,8 @@ import { Select } from "@/components/ui/modal";
 import { useList } from "@/lib/use-resource";
 import type { ServiceType } from "@/lib/operations-api";
 import type { ControlTowerFilters } from "../use-control-tower";
+import { cn } from "@/lib/cn";
+import { ChevronIcon } from "@/app/layout/nav-icons";
 
 type TowerPage = {
   limit: number;
@@ -91,6 +93,12 @@ function Field({
 export function TowerFilters({ value, page, onChange }: Props) {
   const { rows: serviceTypes } = useList<ServiceType>("/service-types");
   const [draft, setDraft] = React.useState<ControlTowerFilters>(value);
+  // Mobile-only collapsible: filters occupy a full viewport on a phone, so the
+  // section starts collapsed and can be expanded. Desktop is unaffected — the
+  // grid is always visible there (hidden lg:grid pattern), so the toggle
+  // itself is lg:hidden. Default collapsed avoids the screenshot-1 wall of
+  // inputs; a user who filters often expands once per session.
+  const [mobileOpen, setMobileOpen] = React.useState(false);
 
   React.useEffect(() => {
     setDraft(value);
@@ -123,13 +131,49 @@ export function TowerFilters({ value, page, onChange }: Props) {
       ? ""
       : String(draft.include_completed);
 
+  // Count of applied filters for the collapsed summary / toggle badge.
+  const appliedCount = React.useMemo(() => {
+    const v = value as Record<string, unknown>;
+    let n = 0;
+    if (v.mode) n += 1;
+    if (v.territory) n += 1;
+    if (v.service_type_id) n += 1;
+    if (v.date_field && v.date_field !== "created") n += 1;
+    if (v.from) n += 1;
+    if (v.to) n += 1;
+    if (v.layer) n += 1;
+    if (v.verified) n += 1;
+    if (v.include_completed !== undefined) n += 1;
+    if (v.limit && v.limit !== page.limit) n += 1;
+    return n;
+  }, [value, page.limit]);
+
+  // Draft summary for collapsed state — what WOULD be applied if the user
+  // hit Apply. Kept tiny: a single line of chips.
+  const draftActive = React.useMemo(() => {
+    const chips: string[] = [];
+    if (draft.mode) chips.push(MODES.find((m) => m.value === draft.mode)?.label ?? draft.mode);
+    if (draft.territory) chips.push(`Territory ${draft.territory}`);
+    if (draft.service_type_id) {
+      const svc = (serviceTypes ?? []).find((s) => s.service_type_id === draft.service_type_id);
+      chips.push(svc?.name_en || svc?.name_fr || "Service type");
+    }
+    if (draft.layer) chips.push(LAYERS.find((l) => l.value === draft.layer)?.label ?? draft.layer);
+    if (draft.verified) chips.push(VERIFICATION.find((v) => v.value === draft.verified)?.label ?? draft.verified);
+    if (draft.from || draft.to) chips.push([draft.from ?? "…", draft.to ?? "…"].join(" → "));
+    if (draft.include_completed !== undefined) chips.push(draft.include_completed ? "Incl. completed" : "Open only");
+    return chips;
+  }, [draft, serviceTypes]);
+
+  const filterGridId = React.useId();
+
   return (
     <section
       className="mb-5 rounded-xl border bg-card p-4"
       aria-label="Control Tower filters"
     >
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <div>
+        <div className="min-w-0 flex-1">
           <h2 className="text-sm font-semibold text-foreground">
             Filter operations
           </h2>
@@ -137,17 +181,65 @@ export function TowerFilters({ value, page, onChange }: Props) {
             Filters are applied on the server and keep the result page stable.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Mobile-only expand / collapse. Desktop always shows the grid, so
+              this control is lg:hidden and the grid uses hidden lg:grid when
+              collapsed. */}
+          <button
+            type="button"
+            onClick={() => setMobileOpen((o) => !o)}
+            aria-expanded={mobileOpen}
+            aria-controls={filterGridId}
+            className="inline-flex items-center gap-1.5 rounded-md border bg-background px-3 py-1.5 text-xs font-semibold text-foreground shadow-sm transition-colors hover:bg-accent lg:hidden"
+          >
+            <span className="whitespace-nowrap">
+              {mobileOpen ? "Hide filters" : "Show filters"}
+              {appliedCount > 0 ? ` · ${appliedCount}` : ""}
+            </span>
+            <ChevronIcon
+              className={cn(
+                "h-3.5 w-3.5 shrink-0 transition-transform",
+                mobileOpen ? "rotate-180" : "",
+              )}
+            />
+          </button>
           <Button type="button" size="sm" variant="ghost" onClick={reset}>
             Reset
           </Button>
           <Button type="button" size="sm" onClick={apply}>
-            Apply filters
+            ✓ Apply filters
           </Button>
         </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
+      {/* Collapsed summary — mobile only, hidden on desktop where the full
+          grid is always visible, and hidden when the grid is open (no need
+          to show both). Keeps context without costing height. */}
+      {!mobileOpen && draftActive.length > 0 && (
+        <div className="mb-3 flex flex-wrap gap-1.5 lg:hidden" aria-label="Active filters">
+          {draftActive.slice(0, 4).map((label) => (
+            <span
+              key={label}
+              className="inline-flex items-center rounded-full bg-accent px-2.5 py-1 text-xs font-medium text-foreground"
+            >
+              {label}
+            </span>
+          ))}
+          {draftActive.length > 4 && (
+            <span className="inline-flex items-center rounded-full bg-accent px-2.5 py-1 text-xs text-muted-foreground">
+              +{draftActive.length - 4} more
+            </span>
+          )}
+        </div>
+      )}
+
+      <div
+        id={filterGridId}
+        className={cn(
+          "grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5",
+          mobileOpen ? "grid" : "hidden lg:grid",
+        )}
+      >
         <Field label="Transport mode">
           <Select
             value={draft.mode ?? ""}

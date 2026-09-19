@@ -242,27 +242,50 @@ function useUnreadCounts(env: string): {
  */
 function DensityChoice() {
   const [density, setLocal] = React.useState<Density>(getDensity);
+  const [open, setOpen] = React.useState(false);
 
   return (
-    <>
-      <DropdownLabel>
-        <span className="micro">Row density</span>
-      </DropdownLabel>
-      <DropdownRadioGroup
-        value={density}
-        onValueChange={(v) => {
-          if (!isDensity(v)) return;
-          setDensity(v);
-          setLocal(v);
-        }}
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="flex w-full items-center justify-between rounded-md px-3 py-2 text-sm transition-colors hover:bg-accent/60"
       >
-        {(["compact", "default", "comfortable"] as const).map((d) => (
-          <DropdownRadioItem key={d} value={d} hint={DENSITY_HINT[d]}>
-            {DENSITY_LABEL[d]}
-          </DropdownRadioItem>
-        ))}
-      </DropdownRadioGroup>
-    </>
+        <span className="micro font-semibold tracking-wide text-muted-foreground">
+          Row density
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="text-xs font-medium normal-case text-foreground">
+            {DENSITY_LABEL[density]}
+          </span>
+          <ChevronIcon
+            className={cn(
+              "h-3.5 w-3.5 text-muted-foreground transition-transform",
+              open && "rotate-180",
+            )}
+          />
+        </span>
+      </button>
+      {open && (
+        <div className="mt-1 rounded-md border bg-card/50 p-1">
+          <DropdownRadioGroup
+            value={density}
+            onValueChange={(v) => {
+              if (!isDensity(v)) return;
+              setDensity(v);
+              setLocal(v);
+            }}
+          >
+            {(["compact", "default", "comfortable"] as const).map((d) => (
+              <DropdownRadioItem key={d} value={d} hint={DENSITY_HINT[d]}>
+                {DENSITY_LABEL[d]}
+              </DropdownRadioItem>
+            ))}
+          </DropdownRadioGroup>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -292,24 +315,47 @@ function ThemeChoice() {
   const [mode, setLocal] = React.useState<"light" | "dark">(() =>
     resolved(getMode()),
   );
+  const [open, setOpen] = React.useState(false);
 
   return (
-    <>
-      <DropdownLabel>
-        <span className="micro">Theme</span>
-      </DropdownLabel>
-      <DropdownRadioGroup
-        value={mode}
-        onValueChange={(v) => {
-          if (v !== "light" && v !== "dark") return;
-          setMode(v);
-          setLocal(v);
-        }}
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="flex w-full items-center justify-between rounded-md px-3 py-2 text-sm transition-colors hover:bg-accent/60"
       >
-        <DropdownRadioItem value="light">Light</DropdownRadioItem>
-        <DropdownRadioItem value="dark">Dark</DropdownRadioItem>
-      </DropdownRadioGroup>
-    </>
+        <span className="micro font-semibold tracking-wide text-muted-foreground">
+          Theme
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="text-xs font-medium capitalize text-foreground">
+            {mode}
+          </span>
+          <ChevronIcon
+            className={cn(
+              "h-3.5 w-3.5 text-muted-foreground transition-transform",
+              open && "rotate-180",
+            )}
+          />
+        </span>
+      </button>
+      {open && (
+        <div className="mt-1 rounded-md border bg-card/50 p-1">
+          <DropdownRadioGroup
+            value={mode}
+            onValueChange={(v) => {
+              if (v !== "light" && v !== "dark") return;
+              setMode(v);
+              setLocal(v);
+            }}
+          >
+            <DropdownRadioItem value="light">Light</DropdownRadioItem>
+            <DropdownRadioItem value="dark">Dark</DropdownRadioItem>
+          </DropdownRadioGroup>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -347,6 +393,7 @@ function UserMenu({
   return (
     <div data-navarea>
       <DropdownMenu
+        className="w-[calc(100vw-16px)] max-w-[20rem] sm:max-w-[22rem] max-h-[85vh] overflow-y-auto"
         trigger={
           <button
             type="button"
@@ -415,19 +462,24 @@ function UserMenu({
           </DropdownItem>
         )}
         <DropdownSeparator />
-        {/* Theme only where the strip's toggle is not. A menu whose contents
-            change with the viewport is a small cost; two live doors to one
-            preference at the same width is a larger one, because the two would
-            have to be kept in step forever and a user who found one would have
-            no way to know the other existed. */}
+        {/* Theme + density are collapsible so the menu stays a scannable list
+            on a phone. Theme is still sm:hidden — the header's ThemeToggle is
+            the desktop door, so showing both at sm+ would be two live toggles
+            for one preference that must stay in sync. Density is the user's
+            personal row-height preference and lives here at every width. */}
         <div className="sm:hidden">
           <ThemeChoice />
         </div>
         <DensityChoice />
         <DropdownSeparator />
-        <DropdownItem destructive onSelect={onLogout}>
-          <LogoutIcon /> {t("shell.signOut")}
-        </DropdownItem>
+        <div className="p-1 pt-2">
+          <DropdownItem
+            onSelect={onLogout}
+            className="justify-center rounded-md bg-primary py-2.5 font-semibold !text-primary-foreground shadow-sm hover:!bg-primary/90 data-[highlighted]:!bg-primary/90 data-[highlighted]:!text-primary-foreground"
+          >
+            <LogoutIcon /> {t("shell.signOut")}
+          </DropdownItem>
+        </div>
       </DropdownMenu>
     </div>
   );
@@ -1132,7 +1184,7 @@ export function AppShell() {
 
               The overlap is solved where it is caused: the composer publishes
               `--fab-floor` and the cluster anchors above it (floating-actions.tsx). */}
-          <FloatingActions badge={unread.messages + unread.notifications} />
+          <FloatingActions badge={unread.messages + unread.notifications} messageBadge={unread.messages} />
           {/* Env-switch interstitial. Shown from the confirmed switch until the
           browser has replaced the document (switchEnv above). `onReload` is
           the escape hatch the overlay offers if the reload was refused. */}

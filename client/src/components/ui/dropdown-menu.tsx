@@ -43,7 +43,7 @@ import { Link } from "react-router-dom";
 import { cn } from "@/lib/cn";
 
 const CONTENT_CLASS =
-  "z-50 min-w-[13rem] animate-fade-in rounded-lg border bg-popover p-1.5 text-popover-foreground shadow-[var(--shadow-l)]";
+  "z-50 min-w-[13rem] max-w-[calc(100vw-12px)] animate-fade-in rounded-lg border bg-popover p-1.5 text-popover-foreground shadow-[var(--shadow-l)] sm:max-w-[22rem]";
 
 const ITEM_CLASS =
   "flex cursor-pointer select-none items-center gap-2.5 rounded-md px-3 py-2 text-sm text-muted-foreground outline-none transition-colors " +
@@ -283,10 +283,10 @@ export function DropdownRadioItem({
           <span className="block h-1.5 w-1.5 rounded-full bg-primary" />
         </RadixMenu.ItemIndicator>
       </span>
-      <span className="min-w-0">
-        <span className="block">{children}</span>
+      <span className="min-w-0 flex-1">
+        <span className="block whitespace-normal break-words">{children}</span>
         {hint && (
-          <span className="block text-micro normal-case text-muted-foreground">
+          <span className="block whitespace-normal break-words text-micro normal-case leading-snug text-muted-foreground">
             {hint}
           </span>
         )}

@@ -57,7 +57,14 @@ const BurstIcon = (p: IP) => (
   </svg>
 );
 
-export function FloatingActions({ badge = 0 }: { badge?: number }) {
+export function FloatingActions({
+  badge = 0,
+  messageBadge = 0,
+}: {
+  badge?: number;
+  /** Unread messages specifically — shown as a badge on the Messages action when open. */
+  messageBadge?: number;
+}) {
   const [open, setOpen] = React.useState(false);
   const ref = React.useRef<HTMLDivElement>(null);
   const closeTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -213,29 +220,48 @@ export function FloatingActions({ badge = 0 }: { badge?: number }) {
       className="fixed bottom-[max(6rem,var(--fab-floor,0px))] right-5 z-50 flex flex-col items-end gap-3 md:hidden"
     >
       {open && (
-        <>
-          {actions.map((a, i) => (
-            <div
-              key={a.key}
-              className="flex items-center gap-2 animate-fade-in"
-              style={{ animationDelay: `${i * 30}ms` }}
-            >
-              <span className="rounded-md border bg-popover px-2 py-1 text-xs font-medium text-foreground shadow-md">
-                {a.label}
-              </span>
-              <button
-                onClick={a.onSelect}
-                title={a.label}
-                aria-label={a.label}
-                className="grid h-11 w-11 place-items-center rounded-full border bg-card text-foreground shadow-lg transition-colors duration-150 hover:bg-accent hover:text-primary-ink"
+        <div className="flex flex-col items-end gap-2.5 rounded-2xl border bg-card/95 p-3 shadow-2xl backdrop-blur-xl">
+          {actions.map((a, i) => {
+            const isMessages = a.key === "msg";
+            const showBadge = isMessages && messageBadge > 0;
+            return (
+              <div
+                key={a.key}
+                className="flex items-center gap-3 animate-fade-in"
+                style={{ animationDelay: `${i * 30}ms` }}
               >
-                <a.Icon />
-              </button>
-            </div>
-          ))}
+                <span className="inline-flex items-center gap-2 rounded-full border bg-popover px-3.5 py-2 text-sm font-semibold leading-none text-foreground shadow-lg ring-1 ring-black/5 backdrop-blur-sm">
+                  {a.label}
+                  {showBadge && (
+                    <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-brand-blue-deep px-1.5 text-[11px] font-bold leading-none text-white">
+                      {messageBadge > 99 ? "99+" : messageBadge}
+                    </span>
+                  )}
+                </span>
+                <button
+                  onClick={a.onSelect}
+                  title={a.label}
+                  aria-label={
+                    showBadge ? `${a.label}, ${messageBadge} unread` : a.label
+                  }
+                  className="relative grid h-11 w-11 shrink-0 place-items-center rounded-full border-2 border-background bg-popover text-foreground shadow-xl ring-1 ring-black/10 transition-colors duration-150 hover:bg-accent hover:text-primary-ink"
+                >
+                  <a.Icon />
+                  {showBadge && (
+                    <span
+                      aria-hidden
+                      className="absolute -right-1.5 -top-1.5 grid h-5 min-w-[20px] place-items-center rounded-full bg-brand-blue-deep px-1 text-[10px] font-bold leading-none text-white ring-2 ring-background"
+                    >
+                      {messageBadge > 99 ? "99+" : messageBadge}
+                    </span>
+                  )}
+                </button>
+              </div>
+            );
+          })}
           {/* Clock-in lives inside the expanded cluster, not always-on. */}
           <ClockPunch />
-        </>
+        </div>
       )}
       <button
         onPointerDown={startDrag}

@@ -35,7 +35,7 @@ import { useConfirm } from "@/components/ui/use-confirm";
 import { useToast } from "@/components/ui/toast";
 import { errMsg } from "@/lib/use-resource";
 import { dateTimeFmt, fmtRelative } from "@/lib/format";
-import type { Audience, Dependency, Subtask, Task } from "../api";
+import type { Audience, Dependency, Subtask, Task, TaskMilestone } from "../api";
 import { BOARD_COLUMNS } from "../api";
 import {
   useAddChildTask,
@@ -56,6 +56,24 @@ import {
 } from "../hooks";
 import { PRIORITY_LABEL, PRIORITY_TONE, STATUS_LABEL } from "../labels";
 import { TaskDialog } from "./task-dialog";
+
+/**
+ * The stages a task is on, for the panel's list. The set when the read
+ * carries one; 13920's single projected stage for a payload older than the
+ * set, so nothing that used to show a stage stops showing it.
+ */
+function stagesOf(task: Task): TaskMilestone[] {
+  if (task.milestones?.length) return task.milestones;
+  if (task.milestone_label) {
+    return [{
+      milestone_instance_id: task.milestone_instance_id ?? "first",
+      label: task.milestone_label,
+      stage_seq: null,
+      status: null,
+    }];
+  }
+  return [];
+}
 
 export function TaskPanel({
   taskId,
@@ -225,8 +243,16 @@ export function TaskPanel({
                   <span className="text-muted-foreground"> · {task.dossier_client_name}</span>
                 )}
               </p>
-              {task.milestone_label && (
-                <p className="text-xs text-muted-foreground">{task.milestone_label}</p>
+              {/* Every stage the work is on, in chain order (13930) — the
+                  panel has the width the card chip does not. */}
+              {stagesOf(task).length > 0 && (
+                <ul className="mt-1 flex flex-wrap gap-1" aria-label="Milestones">
+                  {stagesOf(task).map((m) => (
+                    <li key={m.milestone_instance_id}>
+                      <Pill tone={String(m.status || "").toUpperCase() === "DONE" ? "ok" : "mute"}>{m.label}</Pill>
+                    </li>
+                  ))}
+                </ul>
               )}
               <Button
                 variant="outline"

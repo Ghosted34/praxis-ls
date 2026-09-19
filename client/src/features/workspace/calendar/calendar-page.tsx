@@ -28,7 +28,6 @@ import { PageHeader } from "@/components/data-list";
 import { Panel } from "@/components/ui/panel";
 import { Pill } from "@/components/ui/pill";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
 import { EmptyState, LoadingRow } from "@/components/ui/states";
 import { ScreenError } from "@/components/connection/screen-error";
@@ -39,6 +38,9 @@ import {
   useWorkspaceContext,
 } from "../hooks";
 import type { CalendarEvent } from "../api";
+import { SearchField } from "../search-field";
+import { tr } from "@/lib/i18n";
+import { matchesDeadline, matchesEvent } from "./search";
 import { eventTypeTone, humanizeType } from "../labels";
 import {
   addTenantDays,
@@ -132,19 +134,18 @@ export function CalendarPage() {
 
   // The filter narrows the visible set, never the query: the window the page
   // fetched stays the truth, and clearing the box restores it whole. Matched
-  // on the words a person would type — title, the kind, the room.
+  // on the words a person would type — for an event its name, kind, room and
+  // notes; for a deadline the task's title and notes, the operations file it
+  // is on (reference and client) and the stages of the chain, a step's being
+  // its parent's. The same words the Tasks page's search matches server-side.
   const needle = filter.trim().toLowerCase();
   const events = React.useMemo(() => {
     if (!needle) return allEvents;
-    return allEvents.filter((e) =>
-      [e.title, e.event_type, e.location ?? ""].join(" ").toLowerCase().includes(needle),
-    );
+    return allEvents.filter((e) => matchesEvent(e, needle));
   }, [allEvents, needle]);
   const deadlines = React.useMemo(() => {
     if (!needle) return allDeadlines;
-    return allDeadlines.filter((d) =>
-      [d.title, d.task_title ?? ""].join(" ").toLowerCase().includes(needle),
-    );
+    return allDeadlines.filter((d) => matchesDeadline(d, needle));
   }, [allDeadlines, needle]);
 
   // A deep link (`?event=<id>`) selects from the visible range or fetches the
@@ -281,12 +282,13 @@ export function CalendarPage() {
             </Button>
           </div>
           <div className="flex items-center gap-2">
-            <Input
-              aria-label="Filter the visible calendar"
-              placeholder="Filter this view…"
+            <SearchField
+              id="calendar-filter"
               value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-              className="w-40 sm:w-52"
+              onChange={setFilter}
+              label={tr("Filter by title, notes, file or client")}
+              placeholder={tr("Filter this view…")}
+              className="w-48 min-w-0 flex-none sm:w-64"
             />
             {needle && (
               <span className="micro">

@@ -49,7 +49,9 @@ import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Segmented } from "@/components/ui/segmented";
 import { ScreenError } from "@/components/connection/screen-error";
+import { tr } from "@/lib/i18n";
 import { useTaskBoard } from "../hooks";
+import { SearchField } from "../search-field";
 import type { Audience } from "../api";
 import { AUDIENCE_LABEL } from "../labels";
 import { TaskBoard } from "./task-board";
@@ -79,15 +81,20 @@ export function TasksPage() {
   // different set of rows than it counted.
   const assignedTo = params.get("assigned_to");
   const assigneeName = params.get("assignee_name");
+  // The search, in the URL like every other narrowing: it is one box for both
+  // views, and a link to "the tasks about Brasseries" should open on them.
+  const search = params.get("q") ?? "";
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const [createOpen, setCreateOpen] = React.useState(false);
 
-  // The file filter reaches the board too, so switching Board↔List keeps the
-  // narrowing rather than silently widening back to the whole tenant.
+  // The file filter and the search reach the board too, so switching
+  // Board↔List keeps the narrowing rather than silently widening back to the
+  // whole tenant.
   const q = useTaskBoard({
     audience,
     dossier_id: dossierId || undefined,
     assigned_to: assignedTo || undefined,
+    q: search || undefined,
   });
   const showList = React.useCallback(() => {
     const next = new URLSearchParams(params);
@@ -153,6 +160,21 @@ export function TasksPage() {
     setParams(next, { replace: true });
   }
 
+  const chooseSearch = React.useCallback(
+    (next: string) => {
+      setParams(
+        (prev) => {
+          const out = new URLSearchParams(prev);
+          if (next.trim()) out.set("q", next.trim());
+          else out.delete("q");
+          return out;
+        },
+        { replace: true },
+      );
+    },
+    [setParams],
+  );
+
   function chooseView(next: "board" | "list") {
     if (next === "list") params.set("view", "list");
     else params.delete("view");
@@ -192,6 +214,17 @@ export function TasksPage() {
             Showing {AUDIENCE_LABEL[effective].toLowerCase()}.
           </span>
         )}
+        {/* One search for both views. The server matches the title, the
+            notes, the linked file's reference and its client, and step
+            titles — the words a person actually remembers a task by. */}
+        <SearchField
+          id="tasks-search"
+          value={search}
+          onChange={chooseSearch}
+          label={tr("Search tasks")}
+          placeholder={tr("Search title, notes, file or client…")}
+          className="ml-auto max-w-md"
+        />
       </div>
 
       {q.error ? (
@@ -217,6 +250,8 @@ export function TasksPage() {
               selectedId={selectedId}
               onOpen={setSelectedId}
               onCreate={() => setCreateOpen(true)}
+              query={search}
+              onClearQuery={() => chooseSearch("")}
               // The reach the cards were rendered at travels with every move
               // and into the detail read, so a Team or All card opens and
               // mutates as the same task the board showed (B-03).
@@ -230,6 +265,7 @@ export function TasksPage() {
               selectedId={selectedId}
               onOpen={setSelectedId}
               onCreate={() => setCreateOpen(true)}
+              search={search}
               dossierId={dossierId}
               dossierRef={dossierRef}
               milestoneInstanceId={milestoneInstanceId}

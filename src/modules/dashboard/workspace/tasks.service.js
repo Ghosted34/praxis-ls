@@ -798,7 +798,7 @@ async function updateTask(client, ctx, id, input) {
   const stageSet = patch.milestone_instance_ids;
   delete patch.milestone_instance_ids;
 
-  const updated = await atomically(client, async () => {
+  await atomically(client, async () => {
     const row = await repo.updateTask(client, id, patch);
     if (stageSet) await repo.replaceTaskMilestones(client, id, stageSet);
     if (reminderTouched) {
@@ -833,8 +833,9 @@ async function updateTask(client, ctx, id, input) {
       before: { status: before.status, priority: before.priority, due_at: before.due_at },
       after: { status: row.status, priority: row.priority, due_at: row.due_at },
     });
-    return row;
   });
+  // Read back AFTER the commit, so the answer carries the reminder projection
+  // and the stage set the transaction just wrote, not the row mid-flight.
   let after = await getTask(client, ctx, id, ctx.audience);
   if (input.assigned_to && input.assigned_to !== before.assigned_to) await notifyAssignee(client, after);
   // The one status path. Replayed AFTER the field edits so the transition sees

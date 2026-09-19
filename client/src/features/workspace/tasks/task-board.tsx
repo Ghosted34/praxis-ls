@@ -155,6 +155,8 @@ import {
 } from "@dnd-kit/core";
 import { cn } from "@/lib/cn";
 import { Pill } from "@/components/ui/pill";
+import { tr } from "@/lib/i18n";
+import { stageSummary } from "../file-link";
 import { EmptyState, LoadingRow } from "@/components/ui/states";
 import { Callout } from "@/components/ui/callout";
 import { Button } from "@/components/ui/button";
@@ -245,6 +247,10 @@ export function TaskBoard({
   completeness,
   /** Switch to the paged List view — the honest shape past the board's cap. */
   onShowList,
+  /** The Tasks page's search, when one narrowed this board — so an empty
+   *  board can say "nothing matches" rather than "nothing on the board". */
+  query,
+  onClearQuery,
 }: {
   board: TaskBoard | undefined;
   loading: boolean;
@@ -255,6 +261,8 @@ export function TaskBoard({
   audience?: Audience;
   completeness?: BoardCompleteness;
   onShowList?: () => void;
+  query?: string;
+  onClearQuery?: () => void;
 }) {
   const move = useMoveTask();
   const toast = useToast();
@@ -371,15 +379,29 @@ export function TaskBoard({
 
       {total === 0 && (
         <div className="mt-6">
-          <EmptyState
-            title="Nothing on the board"
-            hint="Tasks you write, or that are assigned to you, land here in the column that matches how far along they are."
-            action={
-              <button type="button" className="btn-primary" onClick={onCreate}>
-                Add the first task
-              </button>
-            }
-          />
+          {query?.trim() ? (
+            <EmptyState
+              title={tr("No tasks match “{q}”").replace("{q}", query.trim())}
+              hint={tr("Try another word — the search covers titles, notes, the linked file's reference, its client and step titles.")}
+              action={
+                onClearQuery ? (
+                  <button type="button" className="btn-primary" onClick={onClearQuery}>
+                    {tr("Show all tasks")}
+                  </button>
+                ) : undefined
+              }
+            />
+          ) : (
+            <EmptyState
+              title="Nothing on the board"
+              hint="Tasks you write, or that are assigned to you, land here in the column that matches how far along they are."
+              action={
+                <button type="button" className="btn-primary" onClick={onCreate}>
+                  Add the first task
+                </button>
+              }
+            />
+          )}
         </div>
       )}
     </DndContext>
@@ -722,7 +744,7 @@ function TaskCardFace({ task, hoverTitle }: { task: Task; hoverTitle: boolean })
         {task.dossier_ref && (
           <Pill tone="mute">
             {task.dossier_ref}
-            {task.milestone_label ? ` · ${task.milestone_label}` : ""}
+            {stageSummary(task) ? ` · ${stageSummary(task)}` : ""}
           </Pill>
         )}
       </span>

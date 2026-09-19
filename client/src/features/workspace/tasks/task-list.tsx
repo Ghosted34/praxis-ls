@@ -40,15 +40,17 @@
  * and at `md` and up the SAME container is the right-hand cluster the row
  * always had. One DOM, one layout, a breakpoint for width only.
  *
- * Day-first: every date renders through `dateFmt`, and a search box is an
- * `<Input>`, not a date control, so the day-first gate has nothing to catch.
+ * Day-first: every date renders through `dateFmt`, and a search box is a
+ * `<SearchField>`, not a date control, so the day-first gate has nothing to catch.
  */
 import * as React from "react";
 import { cn } from "@/lib/cn";
-import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Pill } from "@/components/ui/pill";
+import { tr } from "@/lib/i18n";
+import { stageSummary } from "../file-link";
+import { SearchField } from "../search-field";
 import { DropdownMenu, DropdownItem } from "@/components/ui/dropdown-menu";
 import { EmptyState, LoadingRow } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
@@ -75,6 +77,7 @@ export function TaskList({
   selectedId,
   onOpen,
   onCreate,
+  search,
   milestoneInstanceId,
   milestoneLabel,
   onMilestoneClear,
@@ -91,6 +94,10 @@ export function TaskList({
   selectedId: string | null;
   onOpen: (id: string) => void;
   onCreate: () => void;
+  /** A search owned by the caller (the Tasks page's one box for both views).
+   *  When given — even empty — the list renders no search box of its own and
+   *  uses this; absent, the list keeps its own (the file's Tasks tab). */
+  search?: string;
   dossierId?: string | null;
   dossierRef?: string | null;
   /** One stage of the picked file's chain. Set by the Analytics drill-down;
@@ -112,26 +119,18 @@ export function TaskList({
 }) {
   const toast = useToast();
   const move = useMoveTask();
-  const [text, setText] = React.useState("");
-  const [q, setQ] = React.useState("");
+  const ownSearch = search === undefined;
+  const [ownQ, setOwnQ] = React.useState("");
+  const q = (ownSearch ? ownQ : search).trim();
   const [status, setStatus] = React.useState<"" | TaskStatus>("");
   const [priority, setPriority] = React.useState<"" | TaskPriority>("");
   const [sort, setSort] = React.useState("due_asc");
   const [offset, setOffset] = React.useState(0);
 
-  // Debounce the search so a typed word is one request, not one per keystroke.
-  React.useEffect(() => {
-    const t = setTimeout(() => {
-      setQ(text.trim());
-      setOffset(0);
-    }, 250);
-    return () => clearTimeout(t);
-  }, [text]);
-
-  // Any filter change returns to the first page.
+  // Any filter change — the search included — returns to the first page.
   React.useEffect(() => {
     setOffset(0);
-  }, [status, priority, sort, audience, dossierId, milestoneInstanceId, assignedTo]);
+  }, [q, status, priority, sort, audience, dossierId, milestoneInstanceId, assignedTo]);
 
   const query = useTaskListPaged({
     audience,
@@ -166,17 +165,23 @@ export function TaskList({
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-end gap-3">
-        <div className="min-w-[12rem] flex-1">
-          <label className="micro mb-1 block" htmlFor="task-list-search">
-            Search
-          </label>
-          <Input
-            id="task-list-search"
-            value={text}
-            placeholder="Search titles…"
-            onChange={(e) => setText(e.target.value)}
-          />
-        </div>
+        {ownSearch && (
+          <div className="min-w-[12rem] flex-1">
+            <label className="micro mb-1 block" htmlFor="task-list-search">
+              Search
+            </label>
+            {/* The same search the Tasks page offers: title, notes, the linked
+                file's reference and client, and step titles. */}
+            <SearchField
+              id="task-list-search"
+              value={ownQ}
+              onChange={setOwnQ}
+              label={tr("Search tasks")}
+              placeholder={tr("Search title, notes, file or client…")}
+              className="min-w-0"
+            />
+          </div>
+        )}
         <div>
           <label className="micro mb-1 block" htmlFor="task-list-status">
             Status
@@ -308,8 +313,20 @@ export function TaskList({
         <LoadingRow label="Loading tasks…" />
       ) : rows.length === 0 ? (
         <EmptyState
-          title={filtered ? "Nothing matches those filters" : "Nothing on your list"}
-          hint={filtered ? "Clear a filter or two and it will come back." : undefined}
+          title={
+            q
+              ? tr("No tasks match “{q}”").replace("{q}", q)
+              : filtered
+                ? "Nothing matches those filters"
+                : "Nothing on your list"
+          }
+          hint={
+            q
+              ? tr("Try another word — the search covers titles, notes, the linked file's reference, its client and step titles.")
+              : filtered
+                ? "Clear a filter or two and it will come back."
+                : undefined
+          }
           action={
             !filtered ? (
               <button type="button" className="btn-primary" onClick={onCreate}>
@@ -443,7 +460,7 @@ function TaskRow({
             {task.dossier_ref && (
               <span className="num">
                 {task.dossier_ref}
-                {task.milestone_label ? ` · ${task.milestone_label}` : ""}
+                {stageSummary(task) ? ` · ${stageSummary(task)}` : ""}
               </span>
             )}
           </span>

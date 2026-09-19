@@ -607,4 +607,32 @@ describe("TaskBoard — the board's parts", () => {
     expect(dots!.className).toContain("group-hover:opacity-100");
     expect(dots!.className).toContain("group-focus-within:opacity-100");
   });
+
+  it("names the file and the FIRST stage on the chip, and counts the rest", () => {
+    const linked = {
+      ...TASK,
+      dossier_id: "d-1",
+      dossier_ref: "SL3213P44RG55ZSM",
+      dossier_client_name: "Brasseries du Cameroun",
+      milestone_instance_id: "m-1",
+      milestone_label: "Pré-alerte et ordre de travail",
+      milestone_instance_ids: ["m-1", "m-2", "m-3"],
+      milestones: [
+        { milestone_instance_id: "m-1", label: "Pré-alerte et ordre de travail", stage_seq: 1, status: "DONE" },
+        { milestone_instance_id: "m-2", label: "Documents d'expédition vérifiés", stage_seq: 2, status: "PENDING" },
+        { milestone_instance_id: "m-3", label: "Déclaration en douane déposée", stage_seq: 7, status: "PENDING" },
+      ],
+    };
+    renderScreen(
+      <TaskBoard
+        board={{ ...BOARD, TO_DO: [linked] }}
+        loading={false}
+        selectedId={null}
+        onOpen={() => {}}
+        onCreate={() => {}}
+      />,
+    );
+    // One token, not a paragraph: the reference, the first stage, "+2".
+    expect(screen.getByText("SL3213P44RG55ZSM · Pré-alerte et ordre de travail +2")).toBeTruthy();
+  });
 });

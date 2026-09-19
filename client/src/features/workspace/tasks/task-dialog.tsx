@@ -88,6 +88,7 @@ export function TaskDialog({
     dossier_ref?: string | null;
     dossier_client_name?: string | null;
     milestone_instance_id?: string | null;
+    milestone_instance_ids?: string[] | null;
   } | null;
   onSaved?: (id?: string | null) => void;
   parent?: Task | null;
@@ -207,10 +208,12 @@ export function TaskDialog({
       assigned_to: assignedTo,
       // Both explicit, for the same reason: an edit that clears the picker has
       // to UNLINK the task, and an omitted field would leave the old file on
-      // it. The server clears the stage whenever the file goes, so the two can
-      // never disagree even if a future caller sends only one.
+      // it. The server clears the stages whenever the file goes, so the two
+      // can never disagree even if a future caller sends only one. The SET is
+      // what is posted (13930) — an empty list is a real statement, "no
+      // stage" — and the server projects its first member onto 13920's column.
       dossier_id: fileLink.dossier_id,
-      milestone_instance_id: fileLink.milestone_instance_id,
+      milestone_instance_ids: fileLink.milestone_instance_ids,
     };
     // Only meaningful when the open task belongs to a series; otherwise the
     // server ignores it (there is nothing else to rewrite).

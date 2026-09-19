@@ -10,6 +10,7 @@
  * degrades to the Sales view when it is refused.
  */
 
+import { useDossierRefs } from "@/lib/use-dossier-refs";
 import { pageShell } from "@/lib/layout";
 import { tr } from "@/lib/i18n";
 import * as React from "react";
@@ -21,7 +22,7 @@ import { EmptyState, ErrorState } from "@/components/ui/states";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { AiActions } from "@/components/ai-actions";
 import type { AiAction } from "@/features/scaffold/screen-specs";
-import { errMsg, useList, type Row } from "@/lib/use-resource";
+import { errMsg, useList } from "@/lib/use-resource";
 import { cell, dateFmt, money } from "@/lib/format";
 import { Pill, StatusPill, type Tone } from "@/components/ui/pill";
 import { Chips } from "@/components/ui/chips";
@@ -226,23 +227,22 @@ function VarianceDetail({
 
 export function PricingVariancePage() {
   const { rows, error, loading } = useList<SalesRow>("/pricing-variance");
-  const { rows: dossiers } = useList<Row>("/operations");
   const [filter, setFilter] = React.useState("");
   const [selected, setSelected] = React.useState<SalesRow | null>(null);
 
-  const dossierRef = React.useMemo(
-    () =>
-      new Map(
-        (dossiers || []).map((d) => [
-          String(d.dossier_id),
-          cell(d.reference ?? d.title ?? d.dossier_id),
-        ]),
-      ),
-    [dossiers],
+  /*
+   * Named from the ids ON THIS PAGE (13930). This used to map over
+   * `useList("/operations")` — the first fifty files — and fall back to
+   * `File <8 chars of a uuid>` for everything else, on a screen whose entire
+   * subject is which file was priced how.
+   */
+  const { byId } = useDossierRefs(
+    React.useMemo(() => (rows || []).map((r) => String(r.dossier_id)), [rows]),
   );
-  const nameOf = (r: SalesRow) =>
-    dossierRef.get(String(r.dossier_id)) ??
-    `File ${String(r.dossier_id).slice(0, 8)}`;
+  const nameOf = (r: SalesRow) => {
+    const d = byId.get(String(r.dossier_id));
+    return d ? cell(d.ref ?? d.title ?? r.dossier_id) : `File ${String(r.dossier_id).slice(0, 8)}`;
+  };
 
   const filtered = React.useMemo(
     () => (rows || []).filter((r) => !filter || String(r.flag) === filter),

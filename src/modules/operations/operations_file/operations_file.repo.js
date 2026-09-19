@@ -110,8 +110,8 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const MAX_IDS = 200;
 function parseIds(raw) {
   if (!raw) return null;
-  const list = Array.isArray(raw) ? raw : String(raw).split(",");
-  const ids = [...new Set(list.map((v) => String(v).trim()).filter((v) => UUID_RE.test(v)))];
+  const parts = Array.isArray(raw) ? raw : String(raw).split(",");
+  const ids = [...new Set(parts.map((v) => String(v).trim()).filter((v) => UUID_RE.test(v)))];
   return ids.length ? ids.slice(0, MAX_IDS) : null;
 }
 

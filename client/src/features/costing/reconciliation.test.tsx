@@ -114,11 +114,14 @@ const sheet = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-/** Pick the file, which is what makes the sheet fetch. SearchSelect is a
- *  combobox behind a trigger button, so this is two clicks. */
+/** Pick the file, which is what makes the sheet fetch.
+ *
+ *  `OperationsFilePicker` is a combobox INPUT whose results are a portaled
+ *  popover (13930) — not the trigger button the old SearchSelect had. Focusing
+ *  the input opens the list; the row is a real `option`. */
 async function pickFile(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole("button", { name: /operations file/i }));
-  await user.click(await screen.findByText("SLAS-OPS-2026-0117"));
+  await user.click(screen.getByRole("combobox", { name: /operations file/i }));
+  await user.click(await screen.findByRole("option", { name: /SLAS-OPS-2026-0117/ }));
 }
 
 const TIMELINE = {

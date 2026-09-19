@@ -4,6 +4,7 @@
  * Split out of `features/finance/pages.tsx` in Phase 3 (audit F7).
  */
 import * as React from "react";
+import { OperationsFilePicker } from "@/components/operations/file-picker";
 import { tr } from "@/lib/i18n";
 import { amount } from "@/lib/format";
 import { errMsg } from "@/lib/use-resource";
@@ -34,7 +35,6 @@ export function InvoiceDraftForm({
 }) {
   const { opts: entities } = useOptions(fin.loadEntities, open);
   const { opts: clients } = useOptions(fin.loadClients, open);
-  const { opts: dossiers } = useOptions(fin.loadDossiers, open);
   const [entityId, setEntityId] = React.useState("");
   const [clientId, setClientId] = React.useState("");
   const [dossierId, setDossierId] = React.useState("");
@@ -120,22 +120,13 @@ export function InvoiceDraftForm({
               ))}
             </Select>
           </Field>
-          <Field
+          <OperationsFilePicker
             label={tr("Operations file")}
             hint="Links this to an operations file — sets service type and matches advances."
-          >
-            <Select
-              value={dossierId}
-              onChange={(e) => setDossierId(e.target.value)}
-            >
-              <option value="">No operations file</option>
-              {dossiers.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {optionLabel(o)}
-                </option>
-              ))}
-            </Select>
-          </Field>
+            value={dossierId || null}
+            onSelect={(picked) => setDossierId(picked.dossier_id)}
+            onClear={() => setDossierId("")}
+          />
         </div>
 
         <div className="space-y-2">

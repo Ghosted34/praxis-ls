@@ -136,6 +136,15 @@ const PROCESSORS = [
   // is told once.
   { name: "contract-lapse", concurrency: 1, handler: require("./handlers/contract-lapse") },
   { name: "contract-lapse-scheduler", concurrency: 1, handler: require("./handlers/contract-lapse-scheduler") },
+  // Tax obligation generation + reminders (MOD-01, PR-05, 13970). concurrency 1
+  // is load-bearing rather than tidy: generation inserts under
+  // `ux_tax_calendar_generation_key` and the reminder sweep reads then writes
+  // `last_reminder_step`, so two passes over one tenant would spend the whole
+  // run colliding on the unique index and re-reading the same watermark. The
+  // work is safe to do twice — that is the point of both mechanisms — but it
+  // would be safe twice and take twice as long.
+  { name: "tax-obligation", concurrency: 1, handler: require("./handlers/tax-obligation") },
+  { name: "tax-obligation-scheduler", concurrency: 1, handler: require("./handlers/tax-obligation-scheduler") },
   // Workspace reminders (MOD-00A, 13810). concurrency 1: the sweep disarms rows
   // as it goes, so two passes over one tenant would mostly find nothing — but
   // the rows they DO both see are the ones in flight, and a reminder is the one
@@ -540,6 +549,31 @@ async function scheduleRecurring() {
       removeOnFail: 50,
     });
     logger.info({ pattern: regieCron, tz: config.FX_SYNC_TZ || "UTC" }, "regie aging scheduler registered");
+  }
+
+  /*
+   * Tax obligation generation + reminders (MOD-01, PR-05). 05:00 local: after
+   * the ledger-writing jobs and early enough to be finished before the 07:00
+   * contract warnings, so the reminders land in the same morning feed a person
+   * is already reading.
+   *
+   * Wall-clock cron rather than an interval for the reason the leave-accrual
+   * comment gives — "by the 15th" is a calendar promise, and an interval-based
+   * repeat drifts off it after every restart. Both halves are idempotent, so a
+   * missed day is recovered by the next tick rather than lost, and a tenant
+   * that wants an hourly belt-and-braces pass can set `0 * * * *` without
+   * duplicating anything.
+   */
+  const taxObligationCron = config.TAX_OBLIGATION_CRON;
+  if (!taxObligationCron) {
+    logger.info("tax obligation scheduler disabled (TAX_OBLIGATION_CRON empty)");
+  } else {
+    await enqueue("tax-obligation-scheduler", "tick", {}, {
+      repeat: { pattern: taxObligationCron, tz: config.FX_SYNC_TZ || "UTC" },
+      removeOnComplete: true,
+      removeOnFail: 50,
+    });
+    logger.info({ pattern: taxObligationCron, tz: config.FX_SYNC_TZ || "UTC" }, "tax obligation scheduler registered");
   }
 
   // Scheduled reports (1.3). Hourly rather than daily: `next_run_at` is a

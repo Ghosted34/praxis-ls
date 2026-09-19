@@ -79,6 +79,14 @@ export function EntityPublicStoryTab({
     () => site.getEntityStory(entityId),
     [entityId],
   );
+  // The catalogue behind the focus picker (Decision Q8). Fetched beside the
+  // story rather than embedded in it, so a taxonomy edit does not rewrite the
+  // story row, and so the picker is one source for however the focus list is
+  // long.
+  const catalogue = useResource<site.ServiceFocusEntry[]>(
+    () => site.listServiceFocus(),
+    [],
+  );
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [draft, setDraft] = React.useState<{
@@ -167,6 +175,21 @@ export function EntityPublicStoryTab({
           </div>
         </div>
       </section>
+
+      {/* Decision Q1: the switch is not the only gate. The lifecycle ladder is
+          authoritative — a DRAFT, PENDING_REVIEW, SUSPENDED, DEACTIVATED or
+          ARCHIVED company is NOT on the website however brightly the switch
+          glows, and its cover URLs 404 too. Saying so here, beside the switch
+          the operator just flipped, is the difference between a correction and
+          a support ticket that says "the toggle is on but the site ignores
+          me". */}
+      {d.public_enabled && d.registration_status !== "ACTIVE" ? (
+        <Callout tone="warn" title={tr("Not on the website")}>
+          {tr(
+            "Publishing is on, but this company's lifecycle status is not ACTIVE, so the public website excludes it — and serves 404s for its cover. Set the status back to ACTIVE in Master data to publish it.",
+          )}
+        </Callout>
+      ) : null}
 
       <section className="rounded-lg border border-[var(--border)] p-4">
         <h3 className="text-sm font-medium text-foreground">
@@ -316,9 +339,14 @@ export function EntityPublicStoryTab({
         <h3 className="text-sm font-medium text-foreground">{tr("Service focus")}</h3>
         <p className="mt-1 max-w-prose text-sm text-muted-foreground">
           {tr(
-            "What this company actually handles. Naming a transport mode lets the card carry the same colour the services grid uses, instead of a second colour language.",
+            "What this company actually handles. Classify each line against a service type from your catalogue — the transport mode and the card's colour come from it, in every language. Your labels are optional wording on top of the classification.",
           )}
         </p>
+        {catalogue.error ? (
+          <p className="mt-2 text-sm text-muted-foreground">
+            {tr("The service catalogue could not be loaded.")}
+          </p>
+        ) : null}
         <ul className="mt-3 space-y-2">
           {focus.map((f, i) => (
             <li key={i} className="grid gap-2 sm:grid-cols-4">
@@ -342,33 +370,43 @@ export function EntityPublicStoryTab({
                   )
                 }
               />
+              {/* The PICKER, not a free mode: Decision Q8. The key is the
+                  tenant's own taxonomy; the mode shown beside it is DERIVED
+                  server-side from that key and comes back read-only — the
+                  operator classifies, the catalogue decides the colour. */}
               <select
-                aria-label={tr("Transport mode")}
+                aria-label={tr("Service type")}
                 className="h-9 rounded-md border border-input bg-card px-2 text-sm"
-                value={f.mode ?? ""}
+                value={f.service_type_key ?? ""}
                 disabled={busy || !canEdit}
                 onChange={(e) =>
                   setFocus((p) =>
                     p.map((row, j) =>
-                      j === i ? { ...row, mode: e.target.value || null } : row,
+                      j === i ? { ...row, service_type_key: e.target.value || null } : row,
                     ),
                   )
                 }
               >
-                <option value="">{tr("No mode")}</option>
-                <option value="sea">{tr("Sea")}</option>
-                <option value="air">{tr("Air")}</option>
-                <option value="road">{tr("Road")}</option>
-                <option value="rail">{tr("Rail")}</option>
+                <option value="">{tr("No service type")}</option>
+                {(catalogue.data || []).map((st) => (
+                  <option key={st.key} value={st.key}>
+                    {`${st.label.fr || st.label.en || st.key}${st.mode ? ` · ${st.mode}` : ""}`}
+                  </option>
+                ))}
               </select>
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={busy || !canEdit}
-                onClick={() => setFocus((p) => p.filter((_, j) => j !== i))}
-              >
-                {tr("Remove")}
-              </Button>
+              <div className="flex items-center gap-2">
+                <span className="text-micro uppercase tracking-[0.06em] text-muted-foreground">
+                  {f.mode ?? tr("No mode")}
+                </span>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={busy || !canEdit}
+                  onClick={() => setFocus((p) => p.filter((_, j) => j !== i))}
+                >
+                  {tr("Remove")}
+                </Button>
+              </div>
             </li>
           ))}
         </ul>
@@ -377,7 +415,9 @@ export function EntityPublicStoryTab({
             size="sm"
             variant="outline"
             disabled={busy || !canEdit}
-            onClick={() => setFocus((p) => [...p, { label_fr: "", label_en: "", mode: null }])}
+            onClick={() =>
+              setFocus((p) => [...p, { label_fr: "", label_en: "", service_type_key: null }])
+            }
           >
             {tr("Add a service line")}
           </Button>
@@ -386,7 +426,15 @@ export function EntityPublicStoryTab({
             disabled={busy || !canEdit}
             onClick={() =>
               save({
-                public_focus: focus.filter((f) => (f.label_fr || f.label_en || "").trim()),
+                // A line needs a classification or a label to be worth
+                // publishing: the key carries the card's colour, the label
+                // carries its words, and a row with neither renders nothing
+                // anywhere.
+                public_focus: focus.filter(
+                  (f) =>
+                    (f.label_fr || f.label_en || "").trim() ||
+                    (f.service_type_key || "").trim(),
+                ),
               })
             }
           >

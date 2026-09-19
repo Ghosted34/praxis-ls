@@ -2,7 +2,7 @@
 /**
  * GENERATED FILE — do not hand-edit.
  * The site copy catalogue: every `site.*` string a tenant may override.
- * 494 keys in 24 sections.
+ * 495 keys in 24 sections.
  * Source: public-web/src/lib/i18n-dict.ts
  * Regenerate with: node scripts/gen/gen-site-copy-catalogue.js
  *
@@ -19,6 +19,7 @@ exports.SITE_COPY_ENTRIES = [
   ["site.about.credentialRef","about","Credential Ref","Reference","Référence"],
   ["site.about.credentialValid","about","Credential Valid","Valid until","Valable jusqu’au"],
   ["site.about.credentialsTitle","about","Credentials Title","Certifications and licences","Certifications et licences"],
+  ["site.about.entityAddress","about","Entity Address","Registered address","Siège social"],
   ["site.about.entityCoverAlt","about","Entity Cover Alt","{{name}}","{{name}}"],
   ["site.about.entityCoverage","about","Entity Coverage","Where it operates","Où elle opère"],
   ["site.about.entityFocus","about","Entity Focus","What it handles","Ce qu’elle traite"],

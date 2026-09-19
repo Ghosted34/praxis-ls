@@ -2,11 +2,11 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 141,
-  "route_count": 1654,
+  "route_count": 1674,
   "tiers": {
     "public": 68,
     "self-scoped": 105,
-    "gated": 1481
+    "gated": 1501
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -682,6 +682,18 @@
       "tier": "gated"
     },
     "DELETE /api/tenant/trainings/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "DELETE /api/tenant/treasury-accounts/:id/documents/:docId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "DELETE /api/tenant/treasury-accounts/:id/signatories/:sigId": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -1755,7 +1767,19 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/currencies/rate-history": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/currencies/rates": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/currencies/sync-status": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -3675,6 +3699,24 @@
       "validated": false,
       "tier": "public"
     },
+    "GET /api/tenant/public/site/preview/entities": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/public/site/preview/media/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/public/site/preview/media/:id/:variant": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/public/site/social": {
       "auth": false,
       "rbac": false,
@@ -4191,6 +4233,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/site-settings/service-types": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/site-settings/social": {
       "auth": true,
       "rbac": true,
@@ -4696,6 +4744,18 @@
       "tier": "gated"
     },
     "GET /api/tenant/treasury-accounts/:id/360": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/treasury-accounts/:id/documents": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/treasury-accounts/:id/signatories": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -5776,6 +5836,12 @@
       "tier": "gated"
     },
     "PATCH /api/tenant/treasury-accounts/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PATCH /api/tenant/treasury-accounts/:id/signatories/:sigId": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -7048,6 +7114,18 @@
       "tier": "gated"
     },
     "POST /api/tenant/entities/:id/registrations": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/entities/:id/registrations/:childId/unverify": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/entities/:id/registrations/:childId/verify": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -8535,7 +8613,19 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/reconciliation/cash-counts/:id/approve": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/reconciliation/cash-counts/:id/attest": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/reconciliation/cash-counts/:id/cancel": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -8548,6 +8638,12 @@
       "tier": "gated"
     },
     "POST /api/tenant/reconciliation/lines/:lineId/ignore": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/reconciliation/lines/:lineId/propose-entry": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -9393,7 +9489,31 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/treasury-accounts/:id/documents": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/treasury-accounts/:id/documents/:docId/verify": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/treasury-accounts/:id/primary": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/treasury-accounts/:id/reverse-entry": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/treasury-accounts/:id/signatories": {
       "auth": true,
       "rbac": true,
       "validated": false,

@@ -349,6 +349,7 @@ export const en = {
       networkPlaces: "Coverage: {{count}}",
       entityFocus: "What it handles",
       entityCoverage: "Where it operates",
+      entityAddress: "Registered address",
       entityPeople: "Who runs it",
       entityCoverAlt: "{{name}}",
 
@@ -1248,6 +1249,7 @@ export const fr = {
       networkPlaces: "Couverture : {{count}}",
       entityFocus: "Ce qu’elle traite",
       entityCoverage: "Où elle opère",
+      entityAddress: "Siège social",
       entityPeople: "Qui la dirige",
       entityCoverAlt: "{{name}}",
 

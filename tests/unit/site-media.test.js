@@ -199,3 +199,68 @@ describe("variantKey", () => {
     expect(media.variantKey("t.v1/vault/doc_a.png", 480, "webp")).toBe("t.v1/vault/doc_a@480.webp");
   });
 });
+
+/* ── the entity cover's lifecycle gate (Decision Q1, CE-27) ─────────────────
+ *
+ * The media routes answer `Cache-Control: public, max-age=31536000,
+ * immutable`, so a cover URL a visitor has already loaded keeps being requested
+ * for a YEAR after the entity is deactivated. Dropping the entity from the
+ * JSON read is therefore not enough — the byte route has to refuse on its OWN
+ * owner join, or the JSON says "not public" while the bytes keep saying
+ * "200 OK" from every cache in between.
+ *
+ * The first test asserts the predicate on the OWNER SQL itself, in the
+ * register the service actually runs. The second drives `publicMediaForServe`
+ * through a client that applies the predicates the SQL carries — the same
+ * trick as the lifecycle tests in site-public-redaction.test.js — so a
+ * predicate deleted from the query stops filtering and the cover leaks back
+ * into the result.
+ */
+describe("the entity cover serve join (Q1, CE-27)", () => {
+  const serve = media.OWNERS["entity-cover"].serve;
+
+  test("the owner join requires the public switch AND the ACTIVE lifecycle state", () => {
+    expect(serve).toMatch(/o\.public_enabled\s*=\s*true/);
+    expect(serve).toMatch(/o\.registration_status\s*=\s*'ACTIVE'/);
+    // The LADDER, not the derived boolean: is_active is the compatibility
+    // surface the 0515 trigger keeps in step, and a NULL ladder row must fail
+    // closed rather than pass open.
+    expect(serve).not.toMatch(/o\.is_active/);
+  });
+
+  test("a cover whose owner left the ACTIVE ladder stops being servable — cached URLs 404", async () => {
+    const DOC_ID = "11111111-1111-1111-1111-111111111111";
+    const doc = {
+      doc_id: DOC_ID,
+      storage_path: "t/vault/doc_a.png",
+      public_media_content_type: "image/png",
+      public_media_variants: { widths: [480], formats: ["webp"] },
+    };
+    /** Applies the predicates the SQL carries to the configured owner, so the
+     *  stub tests the QUERY AS WRITTEN rather than a copy of its intent. */
+    function serveClient(ownerStatus, ownerEnabled) {
+      return {
+        async query(text) {
+          const q = String(text);
+          if (!/JOIN corporate_entity/.test(q)) return { rows: [] };
+          const wantsEnabled = /o\.public_enabled\s*=\s*true/.test(q);
+          const wantsActive = /o\.registration_status\s*=\s*'ACTIVE'/.test(q);
+          const ownerPasses =
+            (!wantsEnabled || ownerEnabled) && (!wantsActive || ownerStatus === "ACTIVE");
+          return { rows: ownerPasses ? [doc] : [] };
+        },
+      };
+    }
+
+    // ACTIVE and public: servable, as it always was.
+    expect(await media.publicMediaForServe(serveClient("ACTIVE", true), DOC_ID)).toMatchObject({
+      doc_id: DOC_ID,
+    });
+    // Every non-ACTIVE ladder state with the switch still on: 404 at the route.
+    for (const state of ["DRAFT", "PENDING_REVIEW", "SUSPENDED", "DEACTIVATED", "ARCHIVED"]) {
+      expect(await media.publicMediaForServe(serveClient(state, true), DOC_ID)).toBeNull();
+    }
+    // And the switch alone was never the whole gate either.
+    expect(await media.publicMediaForServe(serveClient("ACTIVE", false), DOC_ID)).toBeNull();
+  });
+});

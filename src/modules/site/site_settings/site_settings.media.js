@@ -160,6 +160,15 @@ const OWNERS = {
            WHERE entity_id = $1 RETURNING *`,
     setParams: 2,
     column: "public_cover_vault_id",
+    /* TWO PREDICATES, and the second is Decision Q1 (CE-27). `public_enabled`
+       alone kept a DEACTIVATED or ARCHIVED company's cover serving from URLs a
+       visitor had already cached — the JSON read dropping the entity is not
+       enough when the byte route answers for a year off `Cache-Control:
+       immutable`. The LIFECYCLE LADDER is the authority here as there:
+       `registration_status = 'ACTIVE'` (0515), not the derived `is_active`
+       boolean, and a NULL ladder fails closed. The same predicate sits in
+       `publicEntities` — the two are the gate and this is the second lock on
+       it. */
     serve: `SELECT v.doc_id, v.public_media_content_type, v.public_media_variants, v.storage_path
               FROM document_vault v
               JOIN corporate_entity o ON o.public_cover_vault_id = v.doc_id
@@ -168,7 +177,8 @@ const OWNERS = {
                AND v.public_media_scope = 'SITE'
                AND v.public_media_role = $2
                AND v.public_media_content_type = ANY($3::text[])
-               AND o.public_enabled = true`,
+               AND o.public_enabled = true
+               AND o.registration_status = 'ACTIVE'`,
   },
 };
 

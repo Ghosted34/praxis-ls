@@ -284,16 +284,19 @@ export function EntityNetwork({ entities }: { entities: PublicEntity[] }) {
  * DOM, which is the check §9.7 actually asks for: "re-verified against the
  * rendered page".
  *
- * ── THE REGISTERED ADDRESS IS ALSO NOT HERE, AND THAT IS NOT AN OMISSION ──
+ * ── THE REGISTERED ADDRESS IS HERE NOW, AND THAT IS DECISION Q2 ───────────
  *
- * §9.2 lists it. `corporate_entity.address` is NOT in the public payload
- * either — 13787 selected a deliberate allow-list and left it out, and PR 2's
- * §6.9 shipped that. A postal address is a different disclosure from a country:
- * it is what somebody needs to send a courier, and also what somebody needs to
- * impersonate the company on headed paper. The country and the coverage the
- * tenant wrote are what the card carries. Recorded as a finding rather than
- * fixed here, because widening a public endpoint's allow-list on the last PR of
- * a programme is not a decision to take quietly.
+ * It used not to be, and 13787's allow-list was right to leave it out at the
+ * time. Decision Q2 (audit CE-28) settled the other way: the public card
+ * publishes the CANONICAL REGISTERED ADDRESS — resolved server-side by the
+ * same precedence the letterhead uses, so the card and the invoice footer
+ * cannot disagree about where a company's statutory seat is. A second,
+ * operational address appears only when an operator explicitly marked that
+ * row public and supplied its label (13963's `is_public`), never
+ * automatically — a warehouse is a real address and it is not the public face
+ * of a company. Rows that arrive without a label are skipped here as well as
+ * by the server read, the same deliberately-redundant belt `publicPartners`
+ * wears over its permission-note constraint.
  */
 function EntityCard({
   entity,
@@ -326,6 +329,13 @@ function EntityCard({
   const cover = mediaUrl(entity.cover_id);
   const avif = mediaSrcSet(entity.cover_id, entity.cover_variants ?? null, "avif");
   const webp = mediaSrcSet(entity.cover_id, entity.cover_variants ?? null, "webp");
+  // Second addresses are label-first: the label is the operator's own words for
+  // what the address IS, and a row without one is skipped defensively — the
+  // server read already refuses it, and a card must never print an address a
+  // visitor cannot interpret.
+  const otherAddresses = (entity.other_addresses || []).filter(
+    (a) => !!a && !!a.line && pickBilingual(a.label, lang),
+  );
 
   return (
     <article
@@ -360,6 +370,33 @@ function EntityCard({
           <p className="entity-legal">{entity.legal_name}</p>
         ) : null}
         {summary ? <p className="entity-summary">{summary}</p> : null}
+
+        {/* The statutory seat, composed server-side by the letterhead's own
+            precedence (Decision Q2). One line, our label for it — the address
+            itself is the tenant's structured record, not their prose. */}
+        {entity.registered_address ? (
+          <>
+            <p className="micro mt-4">{t("site.about.entityAddress")}</p>
+            <p className="entity-places">{entity.registered_address}</p>
+          </>
+        ) : null}
+
+        {/* Operational addresses the tenant explicitly published, each under
+            ITS OWN label — the tenant's words, never ours, for the same reason
+            coverage labels are theirs: our name for their counter is a claim
+            about their business. */}
+        {otherAddresses.length ? (
+          <ul className="entity-places entity-places-list">
+            {otherAddresses.map((a) => (
+              <li key={a.line}>
+                <span className="entity-place-label">
+                  {pickBilingual(a.label, lang)}
+                </span>{" "}
+                {a.line}
+              </li>
+            ))}
+          </ul>
+        ) : null}
 
         {focus.length ? (
           <>

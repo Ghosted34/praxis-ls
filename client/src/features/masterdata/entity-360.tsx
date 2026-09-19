@@ -930,6 +930,14 @@ const addressFields = (): FieldSpec[] => [
   { key: "po_box", label: "PO box" },
   { key: "is_primary", label: "Primary", type: "checkbox" },
   {
+    key: "is_public",
+    label: "Public on the website",
+    type: "checkbox",
+    hint: "Publishes this address on the public entity card beside the registered one — only with a public label.",
+  },
+  { key: "public_label_fr", label: "Public label (FR)", placeholder: "Bureau opérationnel de Douala" },
+  { key: "public_label_en", label: "Public label (EN)", placeholder: "Douala operations desk" },
+  {
     key: "is_active",
     label: "Active",
     type: "checkbox",
@@ -2622,6 +2630,12 @@ export function EntityDossier({
                       <>
                         {" "}
                         <Pill tone="mute">{tr("Inactive")}</Pill>
+                      </>
+                    )}
+                    {a.is_public && (
+                      <>
+                        {" "}
+                        <Pill tone="blue">{tr("Public")}</Pill>
                       </>
                     )}
                   </Td>

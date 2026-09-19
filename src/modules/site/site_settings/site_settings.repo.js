@@ -236,6 +236,9 @@ const deleteLeader = async (client, id) =>
 
 const ENTITY_STORY_COLUMNS = ["public_enabled", "public_summary_fr", "public_summary_en", "public_coverage", "public_focus", "public_cover_vault_id"];
 const ENTITY_JSON = new Set(["public_coverage", "public_focus"]);
+const ENTITY_STORY_SELECT = `entity_id, code, legal_name, trading_name, country_code,
+            registration_status, public_enabled, public_summary_fr, public_summary_en,
+            public_coverage, public_focus, public_cover_vault_id`;
 
 async function updateEntityStory(client, entityId, patch) {
   const cols = ENTITY_STORY_COLUMNS.filter((c) => patch[c] !== undefined);
@@ -245,19 +248,22 @@ async function updateEntityStory(client, entityId, patch) {
   const sets = cols.map((c, i) => `${c} = $${i + 1}${ENTITY_JSON.has(c) ? "::jsonb" : ""}`);
   const { rows } = await client.query(
     `UPDATE corporate_entity SET ${sets.join(", ")} WHERE entity_id = $${vals.length}
-       RETURNING entity_id, code, legal_name, trading_name, country_code,
-                 public_enabled, public_summary_fr, public_summary_en,
-                 public_coverage, public_focus, public_cover_vault_id`,
+       RETURNING ${ENTITY_STORY_SELECT}`,
     vals,
   );
   return rows[0] || null;
 }
 
+/**
+ * The story read is the ADMIN surface, so it carries the lifecycle state
+ * beside the publish switch (Decision Q1): the tab needs to tell an operator
+ * that a DEACTIVATED company with `public_enabled` on is NOT on the website,
+ * rather than letting them discover it by loading the About page. The
+ * stranger-facing read enforces the state; this read merely reports it.
+ */
 async function getEntityStory(client, entityId) {
   const { rows } = await client.query(
-    `SELECT entity_id, code, legal_name, trading_name, country_code,
-            public_enabled, public_summary_fr, public_summary_en,
-            public_coverage, public_focus, public_cover_vault_id
+    `SELECT ${ENTITY_STORY_SELECT}
        FROM corporate_entity WHERE entity_id = $1`,
     [entityId],
   );

@@ -65,7 +65,7 @@ const PUBLIC_BY_DESIGN = new Map([
   ],
   [
     "site/site_public",
-    "The tenant website's own pages (12753). Anonymous by design — the public site IS the feature. Every route is pinned to LIVE so an internet caller cannot select sandbox, rate-limited 240/15min, and gated on the `website` package; unpublished and unknown pages are the same 404, so nothing unreleased is enumerable.",
+    "The tenant website's own pages (12753). Anonymous by design — the public site IS the feature. Every ANONYMOUS route is pinned to LIVE so an internet caller cannot select sandbox, rate-limited 240/15min, and gated on the `website` package; unpublished and unknown pages are the same 404, so nothing unreleased is enumerable. The `/preview/*` routes are the one exception and they are AUTHENTICATED (Decision Q9): MOD-01/MOD-29 view may read the same allow-listed payload from the SANDBOX schema, behind `private, no-store` and `X-Robots-Tag: noindex` — test content is rehearsable without ever being served to a stranger.",
   ],
   [
     "mail/public_secure",

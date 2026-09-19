@@ -3633,6 +3633,23 @@ function DocumentsTab({
                   <Pill tone="mute">Paper</Pill>
                 </>
               ) : null}
+              {/*
+               * PR-07 (CE-11): the one state the PENDING pill used to hide —
+               * the file IS in the vault, the link PATCH just never landed.
+               * Distinguishable from "no scan at all" since the reconciliation
+               * completes it automatically; the tooltip says so instead of
+               * sending the operator to re-upload a file the vault holds.
+               */}
+              {doc.scan_stored_unlinked ? (
+                <span
+                  title={tr(
+                    "The file reached the vault, but the link back to this record did not complete. It finishes automatically on the next reconciliation pass — no need to upload again.",
+                  )}
+                >
+                  {" "}
+                  <Pill tone="warn">{tr("File stored — link pending")}</Pill>
+                </span>
+              ) : null}
             </Td>
             <Td>
               <Pill

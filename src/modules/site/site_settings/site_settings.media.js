@@ -51,6 +51,8 @@ const { AppError } = require("../../../utils/errors");
 const { parseDataUrl } = require("../../../utils/data-url");
 const storage = require("../../../services/storage.service");
 const vault = require("../../vault/document_vault/document_vault.service");
+const outbox = require("../../vault/document_vault/attachment_outbox.service");
+const { VARIANT_WIDTHS, VARIANT_FORMATS, variantKey } = require("../../vault/document_vault/attachment_variants");
 const events = require("./site_settings.events");
 const {
   SITE_MEDIA_SLOTS,
@@ -87,6 +89,7 @@ const IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp"];
 const OWNERS = {
   "leader-portrait": {
     refPrefix: "site_leader",
+    table: "site_leader",
     event: events.LEADER_UPDATED,
     read: `SELECT photo_vault_id AS vault_id FROM site_leader WHERE leader_id = $1`,
     set: `UPDATE site_leader
@@ -105,6 +108,7 @@ const OWNERS = {
   },
   "partner-mark": {
     refPrefix: "site_partner",
+    table: "site_partner",
     event: events.PARTNER_UPDATED,
     read: `SELECT logo_vault_id AS vault_id FROM site_partner WHERE partner_id = $1`,
     set: `UPDATE site_partner
@@ -126,6 +130,7 @@ const OWNERS = {
   },
   "credential-mark": {
     refPrefix: "site_credential",
+    table: "site_credential",
     event: events.CREDENTIAL_UPDATED,
     read: `SELECT logo_vault_id AS vault_id FROM site_credential WHERE credential_id = $1`,
     set: `UPDATE site_credential
@@ -148,6 +153,7 @@ const OWNERS = {
   },
   "entity-cover": {
     refPrefix: "corporate_entity",
+    table: "corporate_entity",
     event: events.ENTITY_STORY_UPDATED,
     read: `SELECT public_cover_vault_id AS vault_id FROM corporate_entity WHERE entity_id = $1`,
     /* `corporate_entity` has no `updated_by`, so this one takes two parameters
@@ -184,7 +190,11 @@ const OWNERS = {
 
 
 /**
- * The derivative ladder.
+ * The derivative ladder — widths, formats and the one function that names a
+ * variant key — moved to `attachment_variants.js` (a leaf beside the vault)
+ * when PR-07 gave the reconciliation sweep the same names to delete. One
+ * implementation, two readers: the writer here and the sweeper there cannot
+ * disagree about what a derivative is called.
  *
  * Three widths and two formats, per §6.3. AVIF first in the `<picture>` the
  * renderer emits, because it is roughly 30% smaller than WebP at the same
@@ -194,20 +204,6 @@ const OWNERS = {
  * told never to enlarge, and a listed width that does not exist is a 404 per
  * visitor per image in a `srcset` the browser has already committed to.
  */
-const VARIANT_WIDTHS = [480, 960, 1600];
-const VARIANT_FORMATS = ["avif", "webp"];
-
-/** The storage key of one derivative, derived from the original's.
- *
- *  THE ONE FUNCTION THAT KNOWS HOW A VARIANT IS NAMED. Both the writer and the
- *  serve route call it, so a variant cannot be written under a name the reader
- *  cannot rebuild — and no part of a request ever becomes part of a path: the
- *  width and the format are matched against the two constants above before this
- *  is reached. */
-function variantKey(storagePath, width, format) {
-  const base = String(storagePath).replace(/\.[a-z0-9]+$/i, "");
-  return `${base}@${width}.${format}`;
-}
 
 /**
  * Is this image usable in this slot?
@@ -280,6 +276,11 @@ async function assertUsable(buffer, slot, spec) {
  * tenant's file over an optimisation. What is returned is the truth about what
  * exists — which is the whole reason `public_media_variants` records it rather
  * than the renderer assuming a fixed ladder.
+ *
+ * PR-07: the return now carries the KEYS as well as the ladder, because the
+ * owner-pointer transaction that would have recorded the ladder on the vault
+ * row is exactly the transaction that can fail — and the outbox needs the
+ * keys to name what it stored before that transaction is attempted.
  */
 async function writeVariants(buffer, storagePath, sourceWidth) {
   const widths = VARIANT_WIDTHS.filter((w) => w <= sourceWidth);
@@ -287,7 +288,7 @@ async function writeVariants(buffer, storagePath, sourceWidth) {
   // width: the format change alone is most of the saving on a flat-colour logo.
   if (!widths.length) widths.push(sourceWidth);
 
-  const written = { widths: [], formats: [] };
+  const written = { widths: [], formats: [], keys: [] };
   for (const format of VARIANT_FORMATS) {
     const done = [];
     for (const width of widths) {
@@ -296,11 +297,13 @@ async function writeVariants(buffer, storagePath, sourceWidth) {
           .resize({ width, withoutEnlargement: true })
           .toFormat(format, { quality: format === "avif" ? 55 : 78 })
           .toBuffer();
+        const key = variantKey(storagePath, width, format);
         await storage.put(out, {
-          key: variantKey(storagePath, width, format),
+          key,
           contentType: `image/${format}`,
         });
         done.push(width);
+        written.keys.push(key);
       } catch {
         /* One rung, one format. See the note above: the original is already
            stored, and the renderer's `<picture>` degrades to it. Taxonomy:
@@ -326,6 +329,25 @@ const ref = (prefix, id) => `${prefix}:${id}`;
  * replaced is archived with its scope cleared. Interleaving those is how a
  * tenant ends up with two public documents for one slot and no record of which
  * one the page is showing.
+ *
+ * ── AND SINCE PR-07, THE GAP BEFORE THAT TRANSACTION IS NAMED (CE-25) ──────
+ *
+ * The bytes — the vault object, its pipeline derivatives, this slot's variant
+ * ladder — are written BEFORE the transaction, and storage has no seat at a
+ * COMMIT. A failure from that point on used to leave an unowned object nobody
+ * would ever reference, discovered by nobody. The attachment outbox now books
+ * the attempt before the first byte: INTENT at the door, BYTES_STORED the
+ * moment the vault row exists, the derivative KEYS recorded before the
+ * pointer is attempted, LINKED inside the transaction itself (so the row can
+ * never claim a link that rolled back), and FAILED — with the error, and with
+ * vault_doc_id still saying whether the bytes exist — on any throw. The
+ * reconciliation sweep archives and deletes what those failed attempts left,
+ * and the Story tab shows the failure until it is resolved.
+ *
+ * THE PUBLIC-SAFETY PROPERTY IS UNCHANGED AND NOW PROVEN: the pointer, scope
+ * and archive still move only inside the one transaction, so a failed
+ * replacement leaves the previous cover exactly where it was, and an unscoped
+ * vault object answers the serve route's owner join with nothing.
  */
 async function upload(client, { slot, ownerId, dataUrl, originalName, provenance, actor = {}, slug }) {
   const spec = SITE_MEDIA_SLOTS[slot];
@@ -352,63 +374,96 @@ async function upload(client, { slot, ownerId, dataUrl, originalName, provenance
   const before = await currentOwner(client, owner, ownerId);
   if (!before) throw new AppError("NOT_FOUND", "Not found", 404);
 
-  const size = await assertUsable(parsed.buffer, slot, spec);
-
-  const created = await vault.createDocument(client, {
-    entityRef: ref(owner.refPrefix, ownerId),
-    docType: "SITE_MEDIA",
-    dataUrl,
-    originalName,
-    maxBytes: spec.maxBytes,
-    allowedTypes: IMAGE_TYPES,
-    // Sniffed, not trusted: the content type in a data URL is written by the
-    // caller, and the public route serves these bytes to strangers with the
-    // stored type in the header.
-    sniff: true,
-    slug,
+  // Everything above this line refuses before a byte is written, so there is
+  // nothing to compensate yet and no attempt to book. From here on, every
+  // step has a durable name.
+  const attachment = await outbox.begin(client, {
+    kind: "SITE_MEDIA",
+    ownerTable: owner.table,
+    ownerId,
+    slot,
     actor,
   });
 
-  const stored = await client.query(
-    `SELECT storage_path FROM document_vault WHERE doc_id = $1`,
-    [created.doc_id],
-  );
-  const variants = await writeVariants(
-    parsed.buffer,
-    stored.rows[0]?.storage_path || "",
-    size.width,
-  );
+  try {
+    const size = await assertUsable(parsed.buffer, slot, spec);
 
-  return atomically(client, async () => {
-    await client.query(
-      `UPDATE document_vault
-          SET public_media_scope = 'SITE', public_media_entity_ref = $2,
-              public_media_role = $3, public_media_content_type = $4,
-              public_media_provenance = $5, public_media_variants = $6
-        WHERE doc_id = $1`,
-      [
-        created.doc_id,
-        ref(owner.refPrefix, ownerId),
-        spec.role,
-        parsed.mimeType,
-        provenance,
-        variants ? JSON.stringify(variants) : null,
-      ],
-    );
-    const row = await setOwnerVaultId(client, owner, ownerId, created.doc_id, actor.user_id);
-    if (before.vault_id && before.vault_id !== created.doc_id) {
-      await archive(client, owner, before.vault_id, ref(owner.refPrefix, ownerId));
-    }
-    await audit(client, {
-      actorUserId: actor.user_id || null,
-      action: owner.event,
-      moduleKey: events.MODULE,
+    const created = await vault.createDocument(client, {
       entityRef: ref(owner.refPrefix, ownerId),
-      before: { [owner.column]: before.vault_id },
-      after: { [owner.column]: created.doc_id, provenance },
+      docType: "SITE_MEDIA",
+      dataUrl,
+      originalName,
+      maxBytes: spec.maxBytes,
+      allowedTypes: IMAGE_TYPES,
+      // Sniffed, not trusted: the content type in a data URL is written by the
+      // caller, and the public route serves these bytes to strangers with the
+      // stored type in the header.
+      sniff: true,
+      slug,
+      actor,
     });
-    return { ...row, doc_id: created.doc_id, provenance, variants };
-  });
+    await outbox.markBytesStored(client, attachment.attachment_id, created.doc_id);
+
+    const stored = await client.query(
+      `SELECT storage_path FROM document_vault WHERE doc_id = $1`,
+      [created.doc_id],
+    );
+    const written = await writeVariants(
+      parsed.buffer,
+      stored.rows[0]?.storage_path || "",
+      size.width,
+    );
+    // Recorded BEFORE the pointer transaction: that transaction's own
+    // public_media_variants UPDATE never lands when it fails, so this outbox
+    // row is the only place the written keys exist for the sweep to delete.
+    if (written && written.keys.length) {
+      await outbox.recordVariantKeys(client, attachment.attachment_id, written.keys);
+    }
+    // The row (and the response) record the LADDER — what a renderer may ask
+    // for. The KEYS are outbox business and stop here.
+    const variants = written
+      ? { widths: written.widths, formats: written.formats }
+      : null;
+
+    return await atomically(client, async () => {
+      await client.query(
+        `UPDATE document_vault
+            SET public_media_scope = 'SITE', public_media_entity_ref = $2,
+                public_media_role = $3, public_media_content_type = $4,
+                public_media_provenance = $5, public_media_variants = $6
+          WHERE doc_id = $1`,
+        [
+          created.doc_id,
+          ref(owner.refPrefix, ownerId),
+          spec.role,
+          parsed.mimeType,
+          provenance,
+          variants ? JSON.stringify(variants) : null,
+        ],
+      );
+      const row = await setOwnerVaultId(client, owner, ownerId, created.doc_id, actor.user_id);
+      if (before.vault_id && before.vault_id !== created.doc_id) {
+        await archive(client, owner, before.vault_id, ref(owner.refPrefix, ownerId));
+      }
+      await audit(client, {
+        actorUserId: actor.user_id || null,
+        action: owner.event,
+        moduleKey: events.MODULE,
+        entityRef: ref(owner.refPrefix, ownerId),
+        before: { [owner.column]: before.vault_id },
+        after: { [owner.column]: created.doc_id, provenance },
+      });
+      // Inside the transaction, so LINKED can only mean the link committed.
+      await outbox.markLinked(client, attachment.attachment_id);
+      return { ...row, doc_id: created.doc_id, provenance, variants };
+    });
+  } catch (err) {
+    // Best-effort by contract (attachment_outbox.fail): the row names what
+    // exists — vault_doc_id when the bytes landed — without ever masking the
+    // error the operator needs to see.
+    await outbox.fail(client, attachment.attachment_id, err);
+    throw err;
+  }
 }
 
 /** Take the image out of a slot. The document is ARCHIVED rather than deleted,

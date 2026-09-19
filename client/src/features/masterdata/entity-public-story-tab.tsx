@@ -450,6 +450,38 @@ export function EntityPublicStoryTab({
             "Shown behind this company's card on the About page. It sits under a company name, so it is a photograph of this operation or it is nothing.",
           )}
         </p>
+        {/*
+         * PR-07 (CE-25): the durable half of upload failure. A failed
+         * replacement leaves the previous cover serving — the pointer never
+         * moved — and until this banner existed the only trace of the failure
+         * was a toast that died with the modal. `cover_attachment` comes from
+         * the attachment outbox and disappears the moment the last attempt
+         * links or is reconciled, so the banner cannot outlive its problem.
+         */}
+        {d.cover_attachment && (
+          <Callout tone="warn" title={tr("The last cover upload did not take")}>
+            {d.cover_attachment.state === "FAILED" ? (
+              <>
+                {tr("It failed on")}{" "}
+                {d.cover_attachment.updated_at
+                  ? dateDmy(d.cover_attachment.updated_at)
+                  : ""}{" "}
+                — {d.cover_attachment.last_error || tr("the server did not say why")}.{" "}
+                {d.cover_attachment.vault_doc_id
+                  ? tr(
+                      "The file reached storage but was never published, so the cover shown above is still the previous one. Try again — the stored copy is cleaned up automatically.",
+                    )
+                  : tr(
+                      "No file was stored. The cover shown above is unchanged. Try again.",
+                    )}
+              </>
+            ) : (
+              tr(
+                "An upload was interrupted before it finished. If you just uploaded, give it a moment and reload; otherwise try again — the previous cover is still the one on the site.",
+              )
+            )}
+          </Callout>
+        )}
         <div className="mt-3">
           <AssetSlotField
             slot="entity-cover"

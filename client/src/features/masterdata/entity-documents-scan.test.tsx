@@ -242,3 +242,44 @@ describe("Corporate entities · Documents — the Add document form", () => {
     );
   });
 });
+
+/*
+ * ── PR-07 (CE-11): the in-between state, visible ───────────────────────────
+ *
+ * The attach flow is three requests — create the record, upload the file,
+ * PATCH `vault_id` — and for years both "no file picked" and "file uploaded,
+ * link PATCH failed" rendered as the same PENDING pill. The register now
+ * carries `scan_stored_unlinked` on the row, and this is the state that pill
+ * could not name: the bytes exist, the link does not, and the reconciliation
+ * will finish it.
+ */
+describe("Corporate entities · Documents — the stored-but-unlinked scan", () => {
+  const WAITING = {
+    ...PAPER_ONLY,
+    document_id: "d3",
+    title: "Licence douanière",
+    scan_stored_unlinked: true,
+  };
+
+  it("names the state on the row instead of rendering it as 'no scan yet'", async () => {
+    await openDocuments([WAITING, PAPER_ONLY]);
+
+    const waitingRow = screen.getByText("Licence douanière").closest("tr") as HTMLElement;
+    expect(within(waitingRow).getByText("File stored — link pending")).toBeInTheDocument();
+    // The pill is a link-state, not a scan-state: the scan column still says
+    // Pending, because no scan is LINKED yet — that is the honest pair.
+    expect(within(waitingRow).getByText("Pending")).toBeInTheDocument();
+
+    // A plain paper-only row is NOT waiting on a link, and must not say it is.
+    const paperRow = screen.getByText("Certificat d'incorporation").closest("tr") as HTMLElement;
+    expect(within(paperRow).queryByText("File stored — link pending")).toBeNull();
+  });
+
+  it("explains that the reconciliation finishes the link, so nobody re-uploads", async () => {
+    await openDocuments([WAITING]);
+
+    expect(
+      screen.getByTitle(/finishes automatically on the next reconciliation/i),
+    ).toBeInTheDocument();
+  });
+});

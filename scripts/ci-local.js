@@ -180,6 +180,13 @@ const SKIPPED = [
   // audit I4, the reason an action could work in LIVE and be missing in TEST.
   ["AI catalogue syncs to live AND sandbox", "a provisioned tenant", "node scripts/ai/sync-actions.js --tenant=citenant && node scripts/ai/sync-actions.js --check --tenant=citenant"],
   ["Integration suites", "a live Postgres + seeded tenant", "RUN_DB_TESTS=1 npx jest tests/integration"],
+  // The AI eval's RULES are gated above, in the jest run — `eval/grade.js` is
+  // pure and `tests/unit/ai-eval-grader.test.js` runs it against recorded
+  // answers on every push. THIS is the live pass, and it is deliberately not a
+  // gate: it needs a seeded tenant and a funded vendor, and a language model
+  // answers differently every time, so a build that reddens on a rephrasing is
+  // a build people stop reading (audit H1).
+  ["AI golden-set eval (live model)", "a seeded tenant + a funded vendor", "node scripts/ai/eval.js --tenant=citenant"],
   ["PgBouncer pooling", "PgBouncer", "see .github/workflows/ci.yaml — 'Stand up PgBouncer'"],
   ["Desktop layout gate (e2e)", "a Chromium download", "npm run e2e:install --prefix client && npm run test:e2e --prefix client"],
   ["Docker image + module mount check", "Docker", "docker build --target runtime -t praxis-ls:ci ."],

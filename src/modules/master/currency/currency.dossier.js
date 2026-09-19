@@ -33,14 +33,21 @@ async function dossier(client, code) {
   // through GET /currencies/rate-history. `rate_history_total`/`has_more` let the
   // UI show a "load more" without a second request just to learn the count.
   const HISTORY_PAGE = 50;
-  const history = pair ? await repo.rateHistory(client, { ...pair, limit: HISTORY_PAGE, offset: 0 }) : { rows: [], total: 0, limit: HISTORY_PAGE, offset: 0 };
+
+  // These four reads are INDEPENDENT (audit #10 — dossier query count/latency):
+  // rate history, last feed sync, override log and the usage scan don't depend on
+  // each other, so run them concurrently on the one tenant client instead of the
+  // old sequential await-chain. `usageForCode` is the expensive cross-table scan;
+  // overlapping it with the cheap rate reads hides most of its cost.
+  const [history, last_sync, overrides, usage] = await Promise.all([
+    pair ? repo.rateHistory(client, { ...pair, limit: HISTORY_PAGE, offset: 0 }) : Promise.resolve({ rows: [], total: 0, limit: HISTORY_PAGE, offset: 0 }),
+    pair ? repo.lastSync(client, pair) : Promise.resolve(null),
+    pair ? repo.overrideLog(client, { ...pair, limit: 25 }) : Promise.resolve([]),
+    repo.usageForCode(client, code),
+  ]);
   const rate_history = history.rows;
   const rate_history_total = history.total;
   const rate_history_has_more = history.offset + history.rows.length < history.total;
-  const last_sync = pair ? await repo.lastSync(client, pair) : null;
-  const overrides = pair ? await repo.overrideLog(client, { ...pair, limit: 25 }) : [];
-
-  const usage = await repo.usageForCode(client, code);
   const usage_total = usage.reduce((sum, u) => sum + u.count, 0);
 
   return {

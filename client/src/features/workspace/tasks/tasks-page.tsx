@@ -68,10 +68,10 @@ export function TasksPage() {
   const view: "board" | "list" = params.get("view") === "list" ? "list" : "board";
   // The operations-file narrowing lives in the URL like every other filter
   // (13920): an Analytics drill-down arrives carrying it, and a screenshotted
-  // list has to reproduce for whoever opens it. `dossier_ref` rides alongside
-  // so the chip reads as a reference without a second request for the name.
+  // list has to reproduce for whoever opens it. The ID ALONE — the picker
+  // resolves the reference itself (13930), so the URL cannot carry a label
+  // that has since gone stale.
   const dossierId = params.get("dossier_id");
-  const dossierRef = params.get("dossier_ref");
   const milestoneInstanceId = params.get("milestone_instance_id");
   const milestoneLabel = params.get("milestone_label");
   // Whose work — a uuid or the literal "me". An Analytics drill-down carries
@@ -126,10 +126,8 @@ export function TasksPage() {
     const next = new URLSearchParams(params);
     if (file) {
       next.set("dossier_id", file.dossier_id);
-      next.set("dossier_ref", file.ref);
     } else {
       next.delete("dossier_id");
-      next.delete("dossier_ref");
       // A stage is a narrowing of a file, so clearing the file clears it here
       // exactly as it does on the task itself — leaving it behind would filter
       // the list by a stage with no file beside it to explain the emptiness.
@@ -231,7 +229,6 @@ export function TasksPage() {
               onOpen={setSelectedId}
               onCreate={() => setCreateOpen(true)}
               dossierId={dossierId}
-              dossierRef={dossierRef}
               milestoneInstanceId={milestoneInstanceId}
               milestoneLabel={milestoneLabel}
               onMilestoneClear={clearMilestone}

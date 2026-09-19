@@ -25,6 +25,7 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 import * as React from "react";
+import { OperationsFilePicker } from "@/components/operations/file-picker";
 import { Button } from "@/components/ui/button";
 import { DateField } from "@/components/ui/date-field";
 import { FormButtons } from "@/components/ui/form-buttons";
@@ -36,11 +37,10 @@ import { ErrorState, EmptyState } from "@/components/ui/states";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { FilePicker, UploadList } from "@/components/ui/image-upload";
 import { useUpload } from "@/lib/use-upload";
-import { useResource, useList, errMsg } from "@/lib/use-resource";
+import { useResource, errMsg } from "@/lib/use-resource";
 import { money, num, dateFmt, todayISO } from "@/lib/format";
 import { tr } from "@/lib/i18n";
 import { uploadVaultFile } from "@/lib/masterdata-api";
-import type { Dossier } from "@/lib/operations-api";
 import * as api from "@/lib/costing-api";
 
 /** What a cost proof may be (Q8) — whatever the supplier actually sent. The
@@ -218,7 +218,6 @@ function RetireForm({
   // module that serves dossiers, and every other call site in the client uses
   // this path. "/dossiers" 404s, which would have left this picker permanently
   // empty and made the RECEIPT path unusable.
-  const { rows: dossiers } = useList<Dossier>("/operations");
   const open = Number(advance.open_balance ?? 0);
   const [f, setF] = React.useState({
     kind: "RECEIPT" as api.RegieRetirementKind,
@@ -350,17 +349,13 @@ function RetireForm({
               required
               hint="4731 is analytical — a receipt must say which operations file it belongs to."
             >
-              <Select
-                value={f.dossier_id}
-                onChange={(e) => set("dossier_id", e.target.value)}
-              >
-                <option value="">—</option>
-                {(dossiers || []).map((d) => (
-                  <option key={d.dossier_id} value={d.dossier_id}>
-                    {d.ref}
-                  </option>
-                ))}
-              </Select>
+              <OperationsFilePicker
+                label={tr("Operations file")}
+                required
+                value={f.dossier_id || null}
+                onSelect={(picked) => set("dossier_id", picked.dossier_id)}
+                onClear={() => set("dossier_id", "")}
+              />
             </Field>
           )}
           <Field label={tr("Date")} required>

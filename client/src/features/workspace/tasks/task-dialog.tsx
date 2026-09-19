@@ -83,10 +83,9 @@ export function TaskDialog({
     description?: string | null;
     /** Opens the form already linked to an operations file (13920) — what the
      *  file's own Tasks tab raises a task through, so the link is visible in
-     *  the form rather than applied invisibly on save. */
+     *  the form rather than applied invisibly on save. The id alone: the
+     *  picker names the file itself (13930). */
     dossier_id?: string | null;
-    dossier_ref?: string | null;
-    dossier_client_name?: string | null;
     milestone_instance_id?: string | null;
   } | null;
   onSaved?: (id?: string | null) => void;

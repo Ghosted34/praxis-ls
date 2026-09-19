@@ -39,15 +39,7 @@ import { Button } from "@/components/ui/button";
 import { TaskList } from "@/features/workspace/tasks/task-list";
 import { TaskDialog } from "@/features/workspace/tasks/task-dialog";
 
-export function FileTasksTab({
-  fileId,
-  fileRef,
-  clientName,
-}: {
-  fileId: string;
-  fileRef?: string | null;
-  clientName?: string | null;
-}) {
+export function FileTasksTab({ fileId }: { fileId: string }) {
   const navigate = useNavigate();
   const [createOpen, setCreateOpen] = React.useState(false);
 
@@ -81,7 +73,6 @@ export function FileTasksTab({
         onOpen={openTask}
         onCreate={() => setCreateOpen(true)}
         dossierId={fileId}
-        dossierRef={fileRef ?? null}
       />
 
       <TaskDialog
@@ -90,11 +81,7 @@ export function FileTasksTab({
         // Pre-linked, and VISIBLY so: the form opens showing the file rather
         // than applying it on save, so the user can see what they are about to
         // attach the work to — and can still pick a milestone within it.
-        initial={{
-          dossier_id: fileId,
-          dossier_ref: fileRef ?? null,
-          dossier_client_name: clientName ?? null,
-        }}
+        initial={{ dossier_id: fileId }}
         onSaved={() => setCreateOpen(false)}
       />
     </div>

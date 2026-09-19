@@ -5,11 +5,11 @@
  * WHAT EACH GROUP PINS, and why it is a defect waiting to come back:
  *
  * 1. ONE TRANSITION PATH (B-04). Five gestures can move a task: a board drag,
- *    the Move menu, the keyboard, this select, and the edit dialog. Before PR2
+ *    the Move menu, the keyboard, this picker, and the edit dialog. Before PR2
  *    the last two sent a generic PATCH, so the same user action produced
  *    `task.updated` from one place and `task.status_changed` from another —
  *    one event, two histories, and an audit trail that could not answer when a
- *    task moved. This asserts the detail's select hits the TRANSITION endpoint,
+ *    task moved. This asserts the detail's picker hits the TRANSITION endpoint,
  *    which is the only assertion that can catch the regression, because both
  *    versions look identical on screen.
  *
@@ -110,6 +110,20 @@ const paths = () => calls().map((c) => String(c[0]));
 /** The body of the first request to a path matching `re`. */
 const bodyOf = (re: RegExp) => calls().find((c) => re.test(String(c[0])))?.[1]?.body ?? null;
 
+type User = ReturnType<typeof userEvent.setup>;
+
+/**
+ * Choose a status through the real control. The picker is the design system's
+ * listbox (Radix `Select`), so the gesture is open-then-pick — `selectOptions`
+ * belongs to the native `<select>` this control stopped being. Going through
+ * the combobox is also what proves the picker is reachable and operable at
+ * all: a listbox that cannot be opened fails here, not in production.
+ */
+async function pickStatus(user: User, label: string) {
+  await user.click(await screen.findByRole("combobox", { name: "Status" }));
+  await user.click(await screen.findByRole("option", { name: label }));
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   fixtures.current = {};
@@ -119,8 +133,7 @@ describe("one status path", () => {
   it("moves the task through the transition endpoint, not a generic edit", async () => {
     const user = userEvent.setup();
     show(task());
-    const select = await screen.findByLabelText("Status");
-    await user.selectOptions(select, "DONE");
+    await pickStatus(user, "Done");
 
     await waitFor(() => {
       // `/status`, and nothing that looks like a bare PATCH of the task. This
@@ -132,7 +145,7 @@ describe("one status path", () => {
   it("carries the reach the list was read at into the move", async () => {
     const user = userEvent.setup();
     show(task(), "team");
-    await user.selectOptions(await screen.findByLabelText("Status"), "DONE");
+    await pickStatus(user, "Done");
     // In the BODY, beside the status: a transition is a POST, and the reach it
     // was requested at belongs with the request rather than in the URL.
     await waitFor(() =>
@@ -149,12 +162,17 @@ describe("one status path", () => {
         "/workspace/tasks": [],
       },
     });
-    const select = (await screen.findByLabelText("Status")) as HTMLSelectElement;
-    await user.selectOptions(select, "DONE");
+    // The closed picker reads the SERVER's task from the moment it renders —
+    // never a placeholder or a local guess.
+    const trigger = await screen.findByRole("combobox", { name: "Status" });
+    await waitFor(() => expect(trigger).toHaveTextContent("In progress"));
+
+    await pickStatus(user, "Done");
     // The value is the SERVER's task, never a local optimistic guess, so a
     // refused transition cannot leave the screen claiming a state the database
     // does not hold.
-    await waitFor(() => expect(select.value).toBe("IN_PROGRESS"));
+    await waitFor(() => expect(paths().some((p) => p.endsWith("/tasks/t-1/status"))).toBe(true));
+    expect(trigger).toHaveTextContent("In progress");
   });
 });
 

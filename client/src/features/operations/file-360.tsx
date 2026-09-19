@@ -1009,13 +1009,7 @@ export function OperationFile360({
       {activeTab === "containers" && <ContainersTab fileId={fileId} />}
       {activeTab === "itinerary" && <ItineraryEditor dossierId={fileId} />}
       {activeTab === "milestones" && <MilestonesTab fileId={fileId} />}
-      {activeTab === "tasks" && (
-        <FileTasksTab
-          fileId={fileId}
-          fileRef={header.ref}
-          clientName={header.client_name}
-        />
-      )}
+      {activeTab === "tasks" && <FileTasksTab fileId={fileId} />}
       {activeTab === "queries" && <QTickets dossierId={fileId} />}
       {activeTab === "money" && <MoneyTab m={d.money} />}
       {activeTab === "people" && <PeopleTab people={d.people} />}

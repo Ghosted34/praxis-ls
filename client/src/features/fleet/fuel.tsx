@@ -6,6 +6,7 @@
 import { pageShell } from "@/lib/layout";
 import { tr } from "@/lib/i18n";
 import * as React from "react";
+import { OperationsFilePicker } from "@/components/operations/file-picker";
 import { Stat } from "@/components/ui/stat";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,13 +15,11 @@ import { ErrorState } from "@/components/ui/states";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
 import { ScreenAi } from "@/components/screen-ai";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
-import { useResource, useList, errMsg } from "@/lib/use-resource";
+import { useResource, errMsg } from "@/lib/use-resource";
 import { money, num, dateFmt } from "@/lib/format";
 import * as api from "@/lib/fleet-api";
 
 const shell = pageShell.wide;
-type Dossier = { dossier_id: string; ref?: string | null };
-
 function LogFillForm({
   vehicles,
   presetVehicle,
@@ -32,7 +31,6 @@ function LogFillForm({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const { rows: dossiers } = useList<Dossier>("/operations");
   const [f, setF] = React.useState({
     vehicle_id: presetVehicle,
     odometer: "",
@@ -116,17 +114,12 @@ function LogFillForm({
           label={tr("Operations file")}
           hint="Optional — attribute the fuel cost to an operation"
         >
-          <Select
-            value={f.dossier_id}
-            onChange={(e) => set("dossier_id", e.target.value)}
-          >
-            <option value="">—</option>
-            {(dossiers || []).map((d) => (
-              <option key={d.dossier_id} value={d.dossier_id}>
-                {d.ref || d.dossier_id.slice(0, 8)}
-              </option>
-            ))}
-          </Select>
+          <OperationsFilePicker
+            label={tr("Operations file")}
+            value={f.dossier_id || null}
+            onSelect={(picked) => set("dossier_id", picked.dossier_id)}
+            onClear={() => set("dossier_id", "")}
+          />
         </Field>
         {error && <ErrorState message={error} />}
         <div className="flex justify-end gap-2 pt-2">

@@ -113,7 +113,6 @@ export function AnalyticsPage() {
   const assigneeName = params.get("assignee_name");
   const mineOnly = assignedTo === "me";
   const dossierId = params.get("dossier_id");
-  const dossierRef = params.get("dossier_ref");
 
   const window_ = React.useMemo(() => {
     // Computed on the TENANT's clock, not the browser's: the server reads a
@@ -180,12 +179,9 @@ export function AnalyticsPage() {
       // narrowed to rather than a filter the reader cannot see.
       if (assigneeName) search.set("assignee_name", assigneeName);
     }
-    // The file travels too, and with its reference, so the list the reader
-    // lands on shows the same chip they drilled from rather than a bare id.
-    if (dossierId) {
-      search.set("dossier_id", dossierId);
-      if (dossierRef) search.set("dossier_ref", dossierRef);
-    }
+    // The file travels too. The ID alone — the list's picker resolves the
+    // reference itself, so a drill-down cannot hand it a stale label.
+    if (dossierId) search.set("dossier_id", dossierId);
     for (const [k, v] of Object.entries(extra)) search.set(k, v);
     navigate(`/workspace/tasks?${search.toString()}`);
   }
@@ -300,36 +296,14 @@ export function AnalyticsPage() {
         </div>
 
         <div className="min-w-[15rem]">
-          {dossierId ? (
-            <Field label="Operations file" htmlFor="analytics-file">
-              <div
-                id="analytics-file"
-                className="flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm"
-              >
-                <span className="num min-w-0 truncate">{dossierRef || "Linked file"}</span>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setLabelledParam("dossier_id", "dossier_ref", null)}
-                >
-                  Clear
-                </Button>
-              </div>
-            </Field>
-          ) : (
-            <OperationsFilePicker
-              id="analytics-file"
-              label="Operations file"
-              placeholder="Every file — search ref, client, B/L…"
-              onSelect={(file) =>
-                setLabelledParam("dossier_id", "dossier_ref", {
-                  id: file.dossier_id,
-                  label: file.ref,
-                })
-              }
-            />
-          )}
+          <OperationsFilePicker
+            id="analytics-file"
+            label="Operations file"
+            placeholder="Every file — search ref, client, B/L…"
+            value={dossierId}
+            onSelect={(file) => setParam("dossier_id", file.dossier_id)}
+            onClear={() => setParam("dossier_id", null)}
+          />
         </div>
       </div>
 
@@ -671,13 +645,7 @@ function WorkByFilePanel({
             key={r.dossier_id}
             type="button"
             className="micro text-primary-ink underline"
-            onClick={() =>
-              onDrill(
-                r.dossier_ref
-                  ? { dossier_id: r.dossier_id, dossier_ref: r.dossier_ref }
-                  : { dossier_id: r.dossier_id },
-              )
-            }
+            onClick={() => onDrill({ dossier_id: r.dossier_id })}
           >
             Open
           </button>,

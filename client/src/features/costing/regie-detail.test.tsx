@@ -65,6 +65,18 @@ const routes = (extra: Record<string, unknown> = {}) => ({
   ...extra,
 });
 
+/**
+ * Pick the file.
+ *
+ * `OperationsFilePicker` is a combobox input with a portaled popover (13930),
+ * not the `<select>` this box used to carry — the old control could only ever
+ * offer the first fifty files in the tenant.
+ */
+async function pickOperationsFile(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole("combobox", { name: /operations file/i }));
+  await user.click(await screen.findByRole("option", { name: /SLAS-OPS-2026-0117/ }));
+}
+
 const pdf = (name = "port-invoice.pdf") =>
   new File([new Uint8Array(1024)], name, { type: "application/pdf" });
 
@@ -108,7 +120,7 @@ describe("the retirement proof box (guide §8.3)", () => {
     await openRetire(user);
 
     await user.type(screen.getByLabelText(/^amount/i), "40000");
-    await user.selectOptions(screen.getByLabelText(/^operations file/i), "d-1");
+    await pickOperationsFile(user);
     await user.upload(screen.getByLabelText("Attach the receipt or invoice"), pdf());
 
     // The file is picked, not yet uploaded — autoStart is false; Save does it.
@@ -152,7 +164,7 @@ describe("the retirement proof box (guide §8.3)", () => {
     await openRetire(user);
 
     await user.type(screen.getByLabelText(/^amount/i), "40000");
-    await user.selectOptions(screen.getByLabelText(/^operations file/i), "d-1");
+    await pickOperationsFile(user);
     await user.click(screen.getByRole("button", { name: "Record retirement" }));
 
     expect(uploadFile).not.toHaveBeenCalled();

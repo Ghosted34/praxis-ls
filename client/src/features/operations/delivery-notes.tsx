@@ -8,6 +8,7 @@
  * the form, and one file importing another both ways is a cycle.
  */
 import * as React from "react";
+import { useDossierRefs } from "@/lib/use-dossier-refs";
 import { tr } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { DocButton } from "@/components/doc-button";
@@ -27,7 +28,7 @@ import {
   DELIVERY_NOTES_PATH,
   DeliveryNote360Modal,
 } from "./delivery-note-360";
-import { deliveryTone, nameMap } from "./shared";
+import { deliveryTone } from "./shared";
 
 /* ── List ───────────────────────────────────────────────────────────────── */
 
@@ -36,13 +37,21 @@ export function DeliveryNotesPage() {
   const { rows, error, loading, reload } = useList<api.DeliveryNote>(
     `/delivery-notes${status ? `?status=${status}` : ""}`,
   );
-  const { rows: dossiers } = useList<api.Dossier>("/operations");
   const { data: counts, reload: reloadCounts } = useResource(
     () => api.deliveryNoteSummary(),
     [],
   );
   const [open, setOpen] = React.useState(false);
-  const dref = nameMap(dossiers, "dossier_id", "ref");
+  // The file column, named from the ids on this page rather than from the
+  // first fifty files in the tenant (13930).
+  const { byId: dossierById } = useDossierRefs(
+    React.useMemo(() => (rows || []).map((r) => r.dossier_id), [rows]),
+  );
+  const dref = React.useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const [id, row] of dossierById) if (row.ref) m[id] = String(row.ref);
+    return m;
+  }, [dossierById]);
 
   /*
    * OPENING A NOTE IS TWO GESTURES — desktop navigates to the note's own page,

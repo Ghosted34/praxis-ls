@@ -18,6 +18,8 @@
  *    has a caller.
  */
 
+import { OperationsFilePicker } from "@/components/operations/file-picker";
+import { useDossierRefs } from "@/lib/use-dossier-refs";
 import { pageShell } from "@/lib/layout";
 import { tr } from "@/lib/i18n";
 import * as React from "react";
@@ -45,7 +47,6 @@ import { MeterGroup } from "@/components/ui/meter";
 import { Pill, StatusPill, type Tone } from "@/components/ui/pill";
 import { DictionaryFinder } from "@/components/dictionary-finder";
 import { listCurrencies } from "@/lib/masterdata-api";
-import type { Dossier } from "@/lib/operations-api";
 import { usePrompt } from "@/components/ui/use-prompt";
 
 const MARGIN_AI: AiAction[] = [
@@ -234,7 +235,6 @@ function MarginSimForm({
     .map((c) => ({ value: c.code, label: c.code, hint: c.name || undefined }));
 
   // Header context: the file, and the costing to price from.
-  const { rows: dossiers } = useList<Dossier>("/operations");
   const [dossierId, setDossierId] = React.useState("");
   const [costingId, setCostingId] = React.useState("");
   const [linking, setLinking] = React.useState(false);
@@ -478,23 +478,19 @@ function MarginSimForm({
       <div className="space-y-4">
         {/* Header: the file and its costing — cost the file, then price it. */}
         <div className="grid gap-4 sm:grid-cols-3">
-          <Field label={tr("Operations file")} hint="The file being priced">
-            <Select
-              value={dossierId}
-              onValueChange={(v) => {
-                setDossierId(v);
-                setCostingId("");
-              }}
-              options={[
-                { value: "", label: "— ad-hoc —" },
-                ...(dossiers || []).map((d) => ({
-                  value: d.dossier_id,
-                  label: d.ref,
-                })),
-              ]}
-              aria-label={tr("Operations file")}
-            />
-          </Field>
+          <OperationsFilePicker
+            label={tr("Operations file")}
+            hint="The file being priced — leave it empty for an ad-hoc simulation"
+            value={dossierId || null}
+            onSelect={(picked) => {
+              setDossierId(picked.dossier_id);
+              setCostingId("");
+            }}
+            onClear={() => {
+              setDossierId("");
+              setCostingId("");
+            }}
+          />
           <Field
             label={tr("Link costing")}
             hint="Imports the costing's lines as the cost base"
@@ -1030,7 +1026,6 @@ function SimDetail({
 export function MarginSimulationsPage() {
   const reload = useRefresh();
   const { rows, error, loading } = useList("/margin-simulations");
-  const { rows: dossiers } = useList<Dossier>("/operations");
   const [formOpen, setFormOpen] = React.useState(false);
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   // §2.4a — the simulation being edited. Held here rather than inside the
@@ -1038,11 +1033,25 @@ export function MarginSimulationsPage() {
   // modal on top of the first.
   const [editing, setEditing] = React.useState<Row | null>(null);
 
-  const dossierRef = React.useMemo(
-    () =>
-      new Map((dossiers || []).map((d) => [String(d.dossier_id), d.ref])),
-    [dossiers],
+  /*
+   * The File column, named from the ids ON THIS PAGE (13930).
+   *
+   * It used to build this map from `useList("/operations")` — the first fifty
+   * files — and fall back to `dossier_id.slice(0, 8)`. So a simulation against
+   * the fifty-first file rendered eight characters of a uuid, in the column
+   * whose whole job is to say which shipment was priced.
+   */
+  const { byId } = useDossierRefs(
+    React.useMemo(
+      () => ((rows || []) as Row[]).map((r) => (r.dossier_id ? String(r.dossier_id) : null)),
+      [rows],
+    ),
   );
+  const dossierRef = React.useMemo(() => {
+    const m = new Map<string, string>();
+    for (const [id, row] of byId) if (row.ref) m.set(id, String(row.ref));
+    return m;
+  }, [byId]);
 
   const columns: Column<Row>[] = [
     {

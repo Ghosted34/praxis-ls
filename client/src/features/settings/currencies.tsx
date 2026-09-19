@@ -146,41 +146,208 @@ function asDossier(data: unknown): Dossier | null {
     : null;
 }
 
-/** Tiny inline trend line — no chart lib. Green when the latest ≥ the oldest. */
-function Sparkline({ values }: { values: number[] }) {
-  if (values.length < 2) return null;
-  const w = 140;
-  const h = 32;
-  const pad = 3;
+/**
+ * Interactive trend chart — no chart lib (audit #4). Each point carries its
+ * date and exact rate, so a viewer can hover OR keyboard-focus any point to see
+ * "date · exact rate" in a tooltip, instead of a decorative line with no dates.
+ * Points are oldest→newest left-to-right. Green when the latest ≥ the oldest.
+ * `onPick(index)` drills through to the matching history row.
+ */
+type SparkPoint = { date: string; value: number; source?: string; override?: boolean };
+function Sparkline({
+  points,
+  quote,
+  base,
+  onPick,
+}: {
+  points: SparkPoint[];
+  quote: string;
+  base: string;
+  onPick?: (index: number) => void;
+}) {
+  const [active, setActive] = React.useState<number | null>(null);
+  if (points.length < 2) return null;
+  const w = 220;
+  const h = 44;
+  const pad = 5;
+  const values = points.map((p) => p.value);
   const min = Math.min(...values);
   const max = Math.max(...values);
   const span = max - min || 1;
-  const pts = values
-    .map((v, i) => {
-      const x = pad + (i / (values.length - 1)) * (w - 2 * pad);
-      const y = h - pad - ((v - min) / span) * (h - 2 * pad);
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
-    })
-    .join(" ");
+  const xy = (i: number, v: number) => ({
+    x: pad + (i / (points.length - 1)) * (w - 2 * pad),
+    y: h - pad - ((v - min) / span) * (h - 2 * pad),
+  });
+  const line = points.map((p, i) => {
+    const { x, y } = xy(i, p.value);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
   const up = values[values.length - 1] >= values[0];
+  const cur = active != null ? points[active] : null;
+  const first = points[0];
+  const last = points[points.length - 1];
+
   return (
-    <svg
-      width={w}
-      height={h}
-      viewBox={`0 0 ${w} ${h}`}
-      role="img"
-      aria-label="Rate trend"
-      className="shrink-0"
+    <div className="shrink-0">
+      <svg
+        width={w}
+        height={h}
+        viewBox={`0 0 ${w} ${h}`}
+        role="img"
+        aria-label={`Rate trend for ${base}→${quote}, ${points.length} points from ${first.date} to ${last.date}`}
+        className="overflow-visible"
+      >
+        <polyline
+          points={line.join(" ")}
+          fill="none"
+          stroke={up ? "rgb(var(--ok))" : "rgb(var(--bad))"}
+          strokeWidth="1.5"
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        />
+        {points.map((p, i) => {
+          const { x, y } = xy(i, p.value);
+          return (
+            <circle
+              key={i}
+              cx={x}
+              cy={y}
+              r={active === i ? 3.5 : 2}
+              tabIndex={0}
+              role="button"
+              aria-label={`${p.date}: 1 ${base} = ${fmtRate(p.value)} ${quote}${p.override ? " (manual override)" : ""}`}
+              className="cursor-pointer fill-primary outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              onMouseEnter={() => setActive(i)}
+              onMouseLeave={() => setActive((a) => (a === i ? null : a))}
+              onFocus={() => setActive(i)}
+              onBlur={() => setActive((a) => (a === i ? null : a))}
+              onClick={() => onPick?.(i)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onPick?.(i);
+                }
+              }}
+            />
+          );
+        })}
+      </svg>
+      {/* Endpoint date labels so the axis is readable without hovering. */}
+      <div className="mt-0.5 flex justify-between text-[10px] text-muted-foreground">
+        <span>{first.date}</span>
+        <span>{last.date}</span>
+      </div>
+      {/* Live tooltip: exact date + rate for the focused/hovered point. */}
+      <div aria-live="polite" className="mt-0.5 h-4 text-[11px] text-muted-foreground">
+        {cur ? (
+          <span className="num">
+            {cur.date}: 1 {base} = {fmtRate(cur.value)} {quote}
+            {cur.override ? " · manual" : cur.source ? ` · ${cur.source}` : ""}
+          </span>
+        ) : (
+          "Hover or focus a point for its date and exact rate."
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ── Country list (audit #1 — every "more" is reachable) ──────────────────── */
+
+const COUNTRY_PREVIEW = 14;
+
+/**
+ * The countries that trade in a currency. Shows a preview row of chips, then an
+ * accessible "Show all / N more" TOGGLE (not a dead-end label) that expands the
+ * full, searchable set. Keyboard reachable, announces the hidden count, and
+ * never truncates the backend array — the whole point of audit #1.
+ */
+function CountryChips({
+  countries,
+}: {
+  countries: { code: string; name: string }[];
+}) {
+  const [expanded, setExpanded] = React.useState(false);
+  const [q, setQ] = React.useState("");
+  const total = countries.length;
+  const hidden = Math.max(0, total - COUNTRY_PREVIEW);
+
+  const shown = React.useMemo(() => {
+    if (!expanded) return countries.slice(0, COUNTRY_PREVIEW);
+    const needle = q.trim().toLowerCase();
+    if (!needle) return countries;
+    return countries.filter(
+      (c) =>
+        c.name.toLowerCase().includes(needle) ||
+        c.code.toLowerCase().includes(needle),
+    );
+  }, [countries, expanded, q]);
+
+  const Chip = (co: { code: string; name: string }) => (
+    <span
+      key={co.code}
+      className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs"
     >
-      <polyline
-        points={pts}
-        fill="none"
-        stroke={up ? "rgb(var(--ok))" : "rgb(var(--bad))"}
-        strokeWidth="1.5"
-        strokeLinejoin="round"
-        strokeLinecap="round"
-      />
-    </svg>
+      <span aria-hidden>{flagOf(co.code)}</span>
+      {co.name}
+    </span>
+  );
+
+  return (
+    <div className="mt-4">
+      <div className="mb-1 flex items-center justify-between gap-2">
+        <div className="text-xs text-muted-foreground">
+          Used in {total} {total === 1 ? "country" : "countries"}
+        </div>
+        {hidden > 0 && (
+          <button
+            type="button"
+            className="text-xs font-medium text-primary-ink underline"
+            aria-expanded={expanded}
+            onClick={() => {
+              setExpanded((v) => !v);
+              setQ("");
+            }}
+          >
+            {expanded ? "Show fewer" : `Show all ${total}`}
+          </button>
+        )}
+      </div>
+      {expanded && hidden > 0 && (
+        <Input
+          className="mb-2"
+          placeholder="Search countries…"
+          aria-label="Search countries"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+        />
+      )}
+      <div
+        className={
+          expanded
+            ? "flex max-h-56 flex-wrap gap-1.5 overflow-auto rounded-lg border p-2"
+            : "flex flex-wrap gap-1.5"
+        }
+      >
+        {shown.length === 0 ? (
+          <span className="px-1 py-0.5 text-xs text-muted-foreground">
+            No country matches “{q}”.
+          </span>
+        ) : (
+          shown.map(Chip)
+        )}
+        {!expanded && hidden > 0 && (
+          <button
+            type="button"
+            className="rounded-full border px-2 py-0.5 text-xs text-primary-ink underline"
+            aria-expanded={false}
+            onClick={() => setExpanded(true)}
+          >
+            +{hidden} more
+          </button>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -723,8 +890,12 @@ function CurrencyDossier({
   // changes, or a stale page from the previous currency would show.
   const [moreHistory, setMoreHistory] = React.useState<Rate[]>([]);
   const [loadingMore, setLoadingMore] = React.useState(false);
+  // Chart drill-down: which history row to flash/scroll to when a point is picked.
+  const [highlightIdx, setHighlightIdx] = React.useState<number | null>(null);
+  const historyRef = React.useRef<HTMLTableSectionElement>(null);
   React.useEffect(() => {
     setMoreHistory([]);
+    setHighlightIdx(null);
   }, [code]);
 
   const reloadAll = () => {
@@ -797,10 +968,21 @@ function CurrencyDossier({
   const history = [...(d.rate_history || []), ...moreHistory];
   const historyTotal = d.rate_history_total ?? history.length;
   const hasMoreHistory = history.length < historyTotal;
-  const values = history
-    .map(rateNum)
-    .filter((v): v is number => v != null)
-    .reverse();
+  // Chart points oldest→newest, carrying date/source for tooltips + drill-down.
+  // `histIndex` maps a chart point back to its row in the (newest-first) table.
+  const points: (SparkPoint & { histIndex: number })[] = [];
+  history.forEach((r, i) => {
+    const value = rateNum(r);
+    if (value == null) return;
+    points.push({
+      date: r.as_of_date,
+      value,
+      source: r.source,
+      override: r.is_override === true,
+      histIndex: i,
+    });
+  });
+  points.reverse();
   const latest = d.latest_rate;
 
   return (
@@ -912,36 +1094,28 @@ function CurrencyDossier({
             value={c.updated_at ? dateTimeFmt(c.updated_at) : "—"}
           />
         </div>
-        {d.countries.length > 0 && (
-          <div className="mt-4">
-            <div className="mb-1 text-xs text-muted-foreground">
-              Used in {d.countries.length}{" "}
-              {d.countries.length === 1 ? "country" : "countries"}
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {d.countries.slice(0, 14).map((co) => (
-                <span
-                  key={co.code}
-                  className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs"
-                >
-                  <span aria-hidden>{flagOf(co.code)}</span>
-                  {co.name}
-                </span>
-              ))}
-              {d.countries.length > 14 && (
-                <span className="rounded-full border px-2 py-0.5 text-xs text-muted-foreground">
-                  +{d.countries.length - 14} more
-                </span>
-              )}
-            </div>
-          </div>
-        )}
+        {d.countries.length > 0 && <CountryChips countries={d.countries} />}
       </SectionCard>
 
       {/* Rate history & trend */}
       <SectionCard
         title={`Rate history vs ${d.base ?? "base"}`}
-        right={values.length >= 2 ? <Sparkline values={values} /> : undefined}
+        right={
+          points.length >= 2 && d.base ? (
+            <Sparkline
+              points={points}
+              base={d.base}
+              quote={code}
+              onPick={(i) => {
+                const idx = points[i]?.histIndex ?? null;
+                setHighlightIdx(idx);
+                historyRef.current
+                  ?.querySelector(`[data-hist-row="${idx}"]`)
+                  ?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+              }}
+            />
+          ) : undefined
+        }
       >
         {c.is_base ? (
           <p className="text-sm text-muted-foreground">
@@ -1000,9 +1174,17 @@ function CurrencyDossier({
                         <TH>Fetched</TH>
                       </TR>
                     </THead>
-                    <TBody>
+                    <TBody ref={historyRef}>
                       {history.map((r, i) => (
-                        <TR key={i}>
+                        <TR
+                          key={i}
+                          data-hist-row={i}
+                          className={
+                            highlightIdx === i
+                              ? "bg-primary/10 transition-colors"
+                              : undefined
+                          }
+                        >
                           <TD className="text-sm">{r.as_of_date}</TD>
                           <TD className="num text-right text-sm">
                             {fmtRate(r.rate)}

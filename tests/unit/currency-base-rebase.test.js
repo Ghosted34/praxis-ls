@@ -73,7 +73,7 @@ describe("rebaseRates (pure cross-rate math)", () => {
  * latestRatesFromBase, upsertRate, setBase flag flip. Events/audit fall through to
  * the generic empty-rows branch.
  */
-function fakeClient({ target, targetIsBase = false, oldBase = "XAF", latest = [] } = {}) {
+function fakeClient({ targetIsBase = false, oldBase = "XAF", latest = [] } = {}) {
   const queries = [];
   const upserts = [];
   return {

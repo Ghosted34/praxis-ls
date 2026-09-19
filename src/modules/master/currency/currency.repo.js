@@ -21,9 +21,9 @@ async function listActiveCodes(client) {
  * The tenant's base currency code, or null when none is flagged.
  *
  * FAILS LOUDLY on a corrupt multiple-base state instead of silently returning
- * whichever row Postgres handed back first (the old `LIMIT 1`). Migration 13930
+ * whichever row Postgres handed back first (the old `LIMIT 1`). Migration 13940
  * repairs legacy drift and adds a partial unique index so two bases cannot exist
- * going forward, but a tenant that has not yet taken 13930 could still be in the
+ * going forward, but a tenant that has not yet taken 13940 could still be in the
  * broken state — and resolving FX against an arbitrary base is exactly the silent
  * corruption the audit (#7) flagged. Zero bases is a valid, expected state
  * (a bare tenant mid-seed) and returns null; TWO OR MORE is not, and throws.
@@ -37,7 +37,7 @@ async function getBaseCode(client) {
       "BASE_CURRENCY_CORRUPT",
       "More than one base currency is flagged (" +
         rows.map((r) => r.code).join(", ") +
-        "). Apply migration 13930 or set the base again to repair before FX can resolve.",
+        "). Apply migration 13940 or set the base again to repair before FX can resolve.",
       500,
     );
   }

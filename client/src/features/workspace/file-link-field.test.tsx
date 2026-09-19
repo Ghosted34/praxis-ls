@@ -1,5 +1,5 @@
 /**
- * The operations-file link field — several stages per task (13930).
+ * The operations-file link field — several stages per task (13940).
  *
  * What is proved here is the part a form gets wrong silently: that the
  * picked file's chain renders as toggleable checkboxes in chain order, that
@@ -9,9 +9,17 @@
  * control at all. Plus the value helpers a card and a form both lean on.
  */
 import * as React from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { axe } from "jest-axe";
+
+import { apiClientMock, fixtures } from "@/test/screen-harness";
+
+// The picker names the chosen file itself through `/operations?ids=…`; the
+// harness fake answers that from a fixture so the field renders a reference,
+// not a spinner, and no real request is attempted.
+vi.mock("@/lib/api-client", async () => apiClientMock());
 
 const milestonesByDossier = vi.fn();
 vi.mock("@/lib/operations-api", async () => {
@@ -26,31 +34,37 @@ import { FileLinkField } from "./file-link-field";
 import { EMPTY_LINK, linkOf, stageSummary, toggleStage } from "./file-link";
 import type { FileLink } from "./file-link";
 
+const FILE_ROW = { dossier_id: "d1", ref: "SL3213P44RG55ZSM", client_name: "Brasseries du Cameroun", title: "Export of beer" };
+
 const CHAIN = [
   { milestone_instance_id: "m1", dossier_id: "d1", stage_seq: 1, code: "PRE", label: "Pré-alerte et ordre de travail", label_en: "Pre-alert & work order", status: "DONE" },
   { milestone_instance_id: "m2", dossier_id: "d1", stage_seq: 2, code: "DOC", label: "Documents vérifiés", label_en: "Shipping documents verified", status: "PENDING" },
   { milestone_instance_id: "m3", dossier_id: "d1", stage_seq: 7, code: "DEC", label: "Déclaration déposée", label_en: "Customs declaration lodged", status: "PENDING" },
 ];
 
-const LINKED: FileLink = {
-  dossier_id: "d1",
-  dossier_ref: "SL3213P44RG55ZSM",
-  dossier_client_name: "Brasseries du Cameroun",
-  milestone_instance_ids: [],
-};
+const LINKED: FileLink = { dossier_id: "d1", milestone_instance_ids: [] };
 
 function Harness({ initial, onChange }: { initial: FileLink; onChange?: (v: FileLink) => void }) {
   const [value, setValue] = React.useState(initial);
+  // The picker resolves its value through TanStack Query, so the field needs
+  // a client above it exactly as the dialog has one.
+  const [qc] = React.useState(() => new QueryClient({ defaultOptions: { queries: { retry: false } } }));
   return (
-    <FileLinkField
-      value={value}
-      onChange={(next) => {
-        setValue(next);
-        onChange?.(next);
-      }}
-    />
+    <QueryClientProvider client={qc}>
+      <FileLinkField
+        value={value}
+        onChange={(next) => {
+          setValue(next);
+          onChange?.(next);
+        }}
+      />
+    </QueryClientProvider>
   );
 }
+
+beforeEach(() => {
+  fixtures.current = { routes: { "/operations": [FILE_ROW] } };
+});
 
 afterEach(() => {
   cleanup();
@@ -97,17 +111,19 @@ describe("FileLinkField — the stage set", () => {
     await screen.findByRole("group", { name: "Milestones" });
     fireEvent.click(screen.getByRole("button", { name: "Clear milestones" }));
     expect(onChange).toHaveBeenLastCalledWith({ ...LINKED, milestone_instance_ids: [] });
-    // The file is still shown, the set is empty, the button is gone.
-    expect(screen.getByText("SL3213P44RG55ZSM")).toBeTruthy();
+    // The file is still shown (named by the picker itself), the set is
+    // empty, the button is gone.
+    expect(await screen.findByText("SL3213P44RG55ZSM")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Clear milestones" })).toBeNull();
   });
 
-  it("clearing the file clears everything", async () => {
+  it("changing away from the file clears everything", async () => {
     milestonesByDossier.mockResolvedValue(CHAIN);
     const onChange = vi.fn();
     render(<Harness initial={{ ...LINKED, milestone_instance_ids: ["m2"] }} onChange={onChange} />);
     await screen.findByRole("group", { name: "Milestones" });
-    fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+    // The picker's own "Change" — the one control that unpicks a file.
+    fireEvent.click(screen.getByRole("button", { name: "Change" }));
     expect(onChange).toHaveBeenLastCalledWith(EMPTY_LINK);
     await waitFor(() => expect(screen.queryByRole("group", { name: "Milestones" })).toBeNull());
   });

@@ -7,6 +7,7 @@ const orchestrator = require("../../../services/ai/orchestrator.service");
 const repo = require("./assistant.repo");
 const { buildExecutorMap } = require("../../../services/ai/action-registrar");
 const { rowsToOptions } = require("../../../services/ai/action-fields");
+const { AppError } = require("../../../utils/errors");
 
 // Executor map is auto-derived from every module manifest (reads) + the vetted
 // write registry. Built once at load; a manifest change requires a restart, same
@@ -64,19 +65,85 @@ async function history(client, { user, conversationId, limit }) {
   return { conversation_id: id, messages };
 }
 
-/** The caller's threads for the history sidebar (metadata only, newest first). */
-async function conversations(client, { user, limit }) {
-  return repo.listConversations(client, user.user_id, Math.min(limit || 50, 200));
+/** The caller's threads for the history sidebar (metadata only, pinned first). */
+async function conversations(client, { user, limit, includeArchived }) {
+  return repo.listConversations(client, user.user_id, {
+    limit: Math.min(limit || 50, 200),
+    includeArchived: includeArchived === true,
+  });
 }
 
 /**
- * Start a fresh thread. Does not delete the old one — retention is "keep
- * indefinitely" for now, and ai_action_run rows reference conversation_id, so
- * deleting would strip the audit trail of what the assistant was asked to do.
+ * Start a fresh thread. Does not delete the old one — "new conversation" means
+ * put this one down, and the rail is where you pick it back up. Removing a
+ * thread is `removeConversation` below, which is a different gesture with a
+ * different control.
  */
 async function clearHistory(client, { user }) {
   const conversationId = await repo.startNewConversation(client, user.user_id);
   return { conversation_id: conversationId, messages: [] };
 }
 
-module.exports = { ask, askStream, confirm, confirmBatch, history, conversations, clearHistory, options };
+// ── Conversation management (audit J1-J3) ───────────────────────────────────
+//
+// WHY EVERY ONE OF THESE 404s RATHER THAN 403. The repo statements are scoped
+// with `AND user_id = $2`, so a thread that is not the caller's matches nothing
+// and is indistinguishable here from one that does not exist. That is the
+// correct answer to give as well as the only one available: replying 403 to a
+// conversation id would confirm the id belongs to SOMEBODY, which is a fact
+// about another user's history.
+//
+// There is no RBAC beyond auth on any of them, for the same reason `history`
+// has none — a conversation is private to the person who had it and there is no
+// path in the module that reads anyone else's.
+
+const NOT_FOUND = () => new AppError("NOT_FOUND", "Conversation not found", 404);
+
+/**
+ * Pin, rename or archive the caller's own thread. Only the keys present in
+ * `patch` are touched.
+ *
+ * Answers with the row in the rail's own shape (`repo.conversationMeta`) rather
+ * than `{ ok: true }`, so the client patches the row it has instead of
+ * refetching the whole list — and so a cleared title comes back as the DERIVED
+ * one, which is the thing the rail must draw and the raw column does not carry.
+ */
+async function updateConversation(client, { user, conversationId, patch }) {
+  const ok = await repo.updateConversation(client, conversationId, user.user_id, patch || {});
+  if (!ok) throw NOT_FOUND();
+  return repo.conversationMeta(client, conversationId, user.user_id);
+}
+
+/**
+ * Remove a thread: soft by default, `purge` for the irreversible one.
+ *
+ * THE TWO ARE ONE ENDPOINT ON PURPOSE. They are the same intent at two
+ * strengths, and the difference is a decision the USER makes in the confirm
+ * dialog ("also erase it permanently"), not a different feature. Splitting them
+ * into two routes would mean the client picking a URL from a checkbox, and
+ * would make it possible to ship the soft one and forget the hard one — which
+ * is precisely the half-measure J1 is about: a delete that only hides.
+ *
+ * A purge on an already soft-deleted thread is the normal second step and must
+ * work, so it does not go through the soft path first.
+ */
+async function removeConversation(client, { user, conversationId, purge }) {
+  const ok = purge === true
+    ? await repo.purgeConversation(client, conversationId, user.user_id)
+    : await repo.softDeleteConversation(client, conversationId, user.user_id);
+  if (!ok) throw NOT_FOUND();
+  return { conversation_id: conversationId, purged: purge === true };
+}
+
+module.exports = {
+  ask,
+  askStream,
+  confirm,
+  confirmBatch,
+  history,
+  conversations,
+  clearHistory,
+  options,
+  updateConversation,
+  removeConversation,
+};

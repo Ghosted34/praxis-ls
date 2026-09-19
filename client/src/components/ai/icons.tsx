@@ -243,6 +243,15 @@ export const PinIcon = (p: IP) => (
   </svg>
 );
 
+/** Archive a thread: out of the list, not out of existence. */
+export const ArchiveIcon = (p: IP) => (
+  <svg {...s(p)} width={14} height={14}>
+    <path d="M3 7h18v3H3z" />
+    <path d="M5 10v9h14v-9" />
+    <path d="M10 14h4" />
+  </svg>
+);
+
 /** Row overflow in the history list. */
 export const KebabIcon = (p: IP) => (
   <svg {...s(p)} width={14} height={14} strokeWidth={2.2}>

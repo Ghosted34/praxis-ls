@@ -25,7 +25,7 @@
  */
 
 /*
- * 13930 widened the stage to a SET (`task_milestone`), with 13920's column kept
+ * 13940 widened the stage to a SET (`task_milestone`), with 13920's column kept
  * as the projection of its first member. The rules above hold for every member,
  * and two more join them: the set is ordered as the chain is, and the column
  * and the set are written together or not at all.
@@ -74,7 +74,7 @@ describe("tasks.repo — the file link in SQL", () => {
     expectBound(call);
     expect(call.sql).toContain("t.dossier_id = $");
     // Against the SET, not the projection column: a task filed under two
-    // stages must be found from the second stage's view too (13930).
+    // stages must be found from the second stage's view too (13940).
     expect(call.sql).toMatch(/EXISTS \(SELECT 1 FROM task_milestone tm WHERE tm\.task_id = t\.task_id AND tm\.milestone_instance_id = \$\d+\)/);
     expect(call.sql).not.toContain("t.milestone_instance_id = $");
     expect(call.params).toContain("d1");
@@ -358,7 +358,7 @@ describe("tasks.service.resolveFileLink — the rules a write is settled by", ()
     expect(patch).toEqual({ milestone_instance_id: null, milestone_instance_ids: [] });
   });
 
-  /* ── several stages (13930) ─────────────────────────────────────────────── */
+  /* ── several stages (13940) ─────────────────────────────────────────────── */
 
   it("accepts several stages of the file, and projects the FIRST in chain order onto the column", async () => {
     // The chain answers m2 as stage 1 and m1 as stage 2 (see stageOn: the

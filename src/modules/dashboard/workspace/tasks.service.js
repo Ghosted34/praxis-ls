@@ -181,7 +181,7 @@ const withLink = (row) => {
     link_url,
     entity_label: row.entity_type ? entityLabel(row.entity_type) : null,
     has_link: Boolean(link_url),
-    // The stage SET (13930), beside 13920's single column. Derived from the
+    // The stage SET (13940), beside 13920's single column. Derived from the
     // aggregate the repo reads so the ids and the labels cannot disagree;
     // events carry no set and keep no field.
     ...(Array.isArray(row.milestones)
@@ -193,7 +193,7 @@ const withLink = (row) => {
 /**
  * The stage set a write names, in the vocabulary it used.
  *
- * `milestone_instance_ids` is the set (13930); `milestone_instance_id` is
+ * `milestone_instance_ids` is the set (13940); `milestone_instance_id` is
  * 13920's single stage, still accepted so an older client or an AI caller
  * that learned the column keeps working — null there means "no stage", the
  * same as an empty list here. `undefined` means the caller said nothing.
@@ -279,7 +279,7 @@ async function resolveFileLink(client, input, before = null) {
         400,
       );
     }
-    // One lookup for the whole set (13930). Every stage must exist and must be
+    // One lookup for the whole set (13940). Every stage must exist and must be
     // a stage of THIS file; the first stranger is refused by name.
     const found = await repo.milestoneFilesOf(client, stageIds);
     const byId = new Map(found.map((r) => [r.milestone_instance_id, r]));
@@ -698,7 +698,7 @@ async function createTask(client, ctx, input) {
       created_by: ctx.user.user_id,
       recurrence_rule: rule,
     });
-    // The stage set lands with the row (13930); the column the insert wrote
+    // The stage set lands with the row (13940); the column the insert wrote
     // is its first member, so the two are never readable apart.
     if (link.milestone_instance_ids && link.milestone_instance_ids.length) {
       await repo.replaceTaskMilestones(client, row.task_id, link.milestone_instance_ids);
@@ -1311,7 +1311,7 @@ async function addChildTask(client, ctx, parentTaskId, input, audience) {
     // that silently lost its file would go missing from the file's own Tasks
     // tab while plainly being work on it.
     dossier_id: input.dossier_id !== undefined ? input.dossier_id : parent.dossier_id,
-    // The whole stage SET (13930), and only while the child stays on the
+    // The whole stage SET (13940), and only while the child stays on the
     // parent's file: a child moved to another file inherits no stage, because
     // the parent's stages are the other file's and would be refused by name.
     ...(namedStages(input) === undefined && (input.dossier_id === undefined || input.dossier_id === parent.dossier_id)

@@ -22,6 +22,7 @@
  */
 import * as React from "react";
 import { tr } from "@/lib/i18n";
+import { OperationsFilePicker } from "@/components/operations/file-picker";
 import { Button } from "@/components/ui/button";
 import { DateField } from "@/components/ui/date-field";
 import { Input } from "@/components/ui/input";
@@ -107,7 +108,6 @@ export function TransitForm({
 }) {
   const isNew = row === null;
   const { rows: entities } = useList<Entity>("/entities");
-  const { rows: dossiers } = useList<api.Dossier>("/operations");
   // The checklist comes from the server, so the form can never be a stale copy
   // of a vocabulary the API has moved on from.
   const { data: docTypes } = useResource(() => api.transitDocTypes(), []);
@@ -333,21 +333,14 @@ export function TransitForm({
         <section className="space-y-3">
           <div className="micro">1 · Operations file</div>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Operations file" required>
-              <Select
-                value={f.dossier_id}
-                disabled={locked}
-                onChange={(e) => void pickDossier(e.target.value)}
-              >
-                <option value="">—</option>
-                {(dossiers || []).map((d) => (
-                  <option key={d.dossier_id} value={d.dossier_id}>
-                    {d.ref}
-                    {d.client_name ? ` — ${d.client_name}` : ""}
-                  </option>
-                ))}
-              </Select>
-            </Field>
+            <OperationsFilePicker
+              label="Operations file"
+              required
+              value={f.dossier_id || null}
+              disabled={locked}
+              onSelect={(picked) => void pickDossier(picked.dossier_id)}
+              onClear={() => void pickDossier("")}
+            />
             <Field
               label="Issuing entity"
               hint="Whose letterhead this prints on. Defaults to the file's."

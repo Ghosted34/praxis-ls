@@ -63,7 +63,7 @@ import { cell, dateFmt, money, money0 } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { listCurrencies } from "@/lib/masterdata-api";
 import { Modal } from "@/components/ui/modal";
-import { SearchSelect } from "@/components/ui/search-select";
+import { OperationsFilePicker } from "@/components/operations/file-picker";
 
 const EXTRA_AI: AiAction[] = [
   {
@@ -404,12 +404,9 @@ export function ExtraChargeSimulationsPage() {
   // ATA and the shipping line from what the system already knows; gate-out and
   // empty-return stay the operator's (the system does not know them yet).
   const [dossierId, setDossierId] = React.useState("");
-  const [dossierLabel, setDossierLabel] = React.useState<string | null>(null);
   const [prefillNote, setPrefillNote] = React.useState<string | null>(null);
-  async function pickDossier(d: { dossier_id?: unknown; ref?: unknown }) {
-    const id = String(d.dossier_id);
+  async function pickDossier(id: string) {
     setDossierId(id);
-    setDossierLabel(cell(d.ref ?? id));
     try {
       const p = await tenant<{
         containers: string | null;
@@ -550,7 +547,6 @@ export function ExtraChargeSimulationsPage() {
   function startNew() {
     setEditingId(null);
     setDossierId("");
-    setDossierLabel(null);
     setContainers("");
     setAta("");
     setGateOut("");
@@ -575,10 +571,7 @@ export function ExtraChargeSimulationsPage() {
     if (s.free_days != null) setFreeDays(String(s.free_days));
     if (s.shipping_line) setShippingLine(String(s.shipping_line));
     if (s.currency) setCurrency(String(s.currency));
-    if (s.dossier_id) {
-      setDossierId(String(s.dossier_id));
-      setDossierLabel(null);
-    }
+    if (s.dossier_id) setDossierId(String(s.dossier_id));
     setEditingId(asEdit ? String(s.extra_charge_simulation_id) : null);
     setSelected(null);
     setWorkbenchOpen(true);
@@ -805,19 +798,13 @@ export function ExtraChargeSimulationsPage() {
             className="p-4"
           >
             <div className="space-y-3">
-              <Field
+              <OperationsFilePicker
                 label={tr("Operations file")}
                 hint="Pre-fills containers, ATA and the shipping line"
-              >
-                <SearchSelect
-                  path="/operations"
-                  value={dossierLabel}
-                  placeholder={tr("Search files…")}
-                  getLabel={(d) => cell(d.ref ?? d.dossier_id)}
-                  getKey={(d) => String(d.dossier_id)}
-                  onSelect={(d) => void pickDossier(d)}
-                />
-              </Field>
+                value={dossierId || null}
+                onSelect={(file) => void pickDossier(file.dossier_id)}
+                onClear={() => setDossierId("")}
+              />
               {prefillNote && (
                 <p className="micro" role="status">
                   {prefillNote}

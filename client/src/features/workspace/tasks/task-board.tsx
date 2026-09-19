@@ -740,11 +740,36 @@ function TaskCardFace({ task, hoverTitle }: { task: Task; hoverTitle: boolean })
             the shorter, unambiguous token — the client name is on the row in
             the List view and on the panel, where there is width for it. The
             stage rides the same chip because it is only ever a narrowing of
-            the file and a second pill would double the card's badge count. */}
+            the file and a second pill would double the card's badge count.
+
+            THE CHIP IS CAPPED, because the pill is the one thing on this card
+            that cannot shrink on its own: `.status` is `white-space: nowrap`,
+            so a long stage ("Pré-alerte et ordre de travail") made the chip
+            wider than its column and it overhung the neighbouring one — worst
+            with the detail pane open, which is exactly when the columns are
+            narrowest. `max-w-full` lets the row's `flex-wrap` move the chip
+            onto its own line the moment it stops fitting beside the priority
+            pill, and the inner `truncate` keeps it inside the card when a
+            whole line is not enough either; the full stage stays on hover
+            (`title`) and reads in full in the panel's operations-file block,
+            which is where a stage is acted on. */}
         {task.dossier_ref && (
-          <Pill tone="mute">
-            {task.dossier_ref}
-            {stageSummary(task) ? ` · ${stageSummary(task)}` : ""}
+          <Pill tone="mute" className="max-w-full">
+            <span
+              className="min-w-0 truncate"
+              // The full set on hover — every stage by name — where the chip
+              // itself names the first and counts the rest.
+              title={
+                task.milestones?.length
+                  ? `${task.dossier_ref} · ${task.milestones.map((m) => m.label).filter(Boolean).join(" · ")}`
+                  : task.milestone_label
+                    ? `${task.dossier_ref} · ${task.milestone_label}`
+                    : task.dossier_ref
+              }
+            >
+              {task.dossier_ref}
+              {stageSummary(task) ? ` · ${stageSummary(task)}` : ""}
+            </span>
           </Pill>
         )}
       </span>

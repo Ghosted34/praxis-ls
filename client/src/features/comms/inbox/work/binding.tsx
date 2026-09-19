@@ -30,6 +30,7 @@
  * not go looking for a way to correct someone else's work.
  */
 import * as React from "react";
+import { OperationsFilePicker } from "@/components/operations/file-picker";
 import { Button } from "@/components/ui/button";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { Input } from "@/components/ui/input";
@@ -189,6 +190,31 @@ export function BindingChip({
       )}
 
       {showManual ? (
+        <div className="space-y-2">
+          {/*
+            THE FILE, PICKED RATHER THAN TYPED (13930).
+            An operations file is the thing threads are bound to most often,
+            and `dossier:<uuid>` is not something a person can type — they
+            would have to find the file on another screen and copy its id.
+            The picker searches by reference, client, B/L or AWB and binds the
+            id itself. The free-text box below stays because a thread can also
+            be bound to a client or any other record the ref vocabulary
+            covers, which one picker cannot express.
+          */}
+          <OperationsFilePicker
+            label={tr("Operations file")}
+            placeholder={tr("Search by reference, client, B/L or AWB…")}
+            disabled={busy === "manual"}
+            onSelect={(file) =>
+              void run("manual", () =>
+                api.bindThread(threadId, `dossier:${file.dossier_id}`),
+              ).then(() => {
+                setManual("");
+                setShowManual(false);
+              })
+            }
+          />
+          <p className="micro">{tr("Or paste a reference for another kind of record:")}</p>
         <form
           className="flex items-center gap-2"
           onSubmit={(e) => {
@@ -215,6 +241,7 @@ export function BindingChip({
             {tr("Cancel")}
           </Button>
         </form>
+        </div>
       ) : (
         <Button size="sm" variant="ghost" onClick={() => setShowManual(true)}>
           {entityRef ? tr("Link to something else") : tr("Link it myself")}

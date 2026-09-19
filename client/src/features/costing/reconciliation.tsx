@@ -35,7 +35,8 @@ import { ConsumptionTrack } from "@/components/ui/chart";
 import { FullViewDrawer, GradesStrip } from "./reconciliation-full-view";
 import { Panel } from "@/components/ui/panel";
 import { Pill, type Tone } from "@/components/ui/pill";
-import { SearchSelect } from "@/components/ui/search-select";
+import { OperationsFilePicker } from "@/components/operations/file-picker";
+import { useDossierRef } from "@/lib/use-dossier-refs";
 import { FilePicker, UploadList } from "@/components/ui/image-upload";
 import { useUpload } from "@/lib/use-upload";
 import { useToast } from "@/components/ui/toast";
@@ -475,7 +476,14 @@ function LineRow({
 
 export function ReconciliationPage() {
   const [dossierId, setDossierId] = React.useState("");
-  const [dossierLabel, setDossierLabel] = React.useState<string | null>(null);
+  /*
+   * The file's reference, for the export filename and the conversation label.
+   * Resolved from the id rather than remembered from the pick (13930): the
+   * screen can be deep-linked straight to a dossier_id with nothing ever
+   * picked, and a remembered label would be blank in exactly that case.
+   */
+  const { file: pickedFile } = useDossierRef(dossierId || null);
+  const dossierLabel = pickedFile?.ref ? String(pickedFile.ref) : null;
   const [busy, setBusy] = React.useState(false);
   const [actionError, setActionError] = React.useState<string | null>(null);
   const [openLine, setOpenLine] = React.useState<string | null>(null);
@@ -614,17 +622,16 @@ export function ReconciliationPage() {
 
       <Panel title={tr("Operations file")} className="mb-4">
         <div className="max-w-md">
-          <SearchSelect
-            path="/operations"
+          <OperationsFilePicker
             label={tr("Operations file")}
-            value={dossierLabel}
-            placeholder={tr("Search files…")}
-            getLabel={(d) => cell((d.ref as string | null) ?? String(d.dossier_id))}
-            getKey={(d) => String(d.dossier_id)}
-            onSelect={(d) => {
+            value={dossierId || null}
+            onSelect={(file) => {
               setDrafts({});
-              setDossierLabel(cell((d.ref as string | null) ?? String(d.dossier_id)));
-              setDossierId(String(d.dossier_id));
+              setDossierId(file.dossier_id);
+            }}
+            onClear={() => {
+              setDrafts({});
+              setDossierId("");
             }}
           />
         </div>

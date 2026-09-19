@@ -10,6 +10,7 @@
 
 import * as React from "react";
 import { tr } from "@/lib/i18n";
+import { OperationsFilePicker } from "@/components/operations/file-picker";
 import { HubTabs, HubCrumb } from "@/components/tabbed-hub";
 import { ScreenAi } from "@/components/screen-ai";
 import { Button } from "@/components/ui/button";
@@ -29,7 +30,6 @@ import { useFocusRow } from "@/lib/use-focus-row";
 import { RowActions } from "@/components/ui/row-actions";
 import { money, num, dateFmt, todayISO } from "@/lib/format";
 import type { Entity, Supplier } from "@/lib/masterdata-api";
-import type { Dossier } from "@/lib/operations-api";
 import * as api from "@/lib/procurement-api";
 import { map, shell, tone } from "./shared";
 
@@ -68,7 +68,6 @@ function PoForm({
       && s.verification_status === "VERIFIED"
       && s.avl_status === "APPROVED",
   );
-  const { rows: dossiers } = useList<Dossier>("/operations");
   const [f, setF] = React.useState(() => ({
     ...EMPTY_FORM,
     supplier_id: initial?.supplier_id || "",
@@ -174,19 +173,12 @@ function PoForm({
               ))}
             </Select>
           </Field>
-          <Field label={tr("Operations file")}>
-            <Select
-              value={f.dossier_id}
-              onChange={(e) => set("dossier_id", e.target.value)}
-            >
-              <option value="">—</option>
-              {(dossiers || []).map((d) => (
-                <option key={d.dossier_id} value={d.dossier_id}>
-                  {d.ref}
-                </option>
-              ))}
-            </Select>
-          </Field>
+          <OperationsFilePicker
+            label={tr("Operations file")}
+            value={f.dossier_id || null}
+            onSelect={(picked) => set("dossier_id", picked.dossier_id)}
+            onClear={() => set("dossier_id", "")}
+          />
           <Field label={tr("Category")}>
             <Select
               value={f.expense_category}

@@ -608,7 +608,45 @@ describe("TaskBoard — the board's parts", () => {
     expect(dots!.className).toContain("group-focus-within:opacity-100");
   });
 
-  it("names the file and the FIRST stage on the chip, and counts the rest", () => {
+  it("keeps the dossier chip inside its card, however long the stage is", () => {
+    // The chip is the one thing on a card that cannot shrink by itself —
+    // `.status` is `white-space: nowrap` — so a long stage ("Pré-alerte et
+    // ordre de travail") once made the chip wider than its column and it
+    // overhung the neighbouring one, worst with the detail pane open and the
+    // columns at their narrowest. jsdom cannot measure a wrap, so the pin is
+    // on the classes that encode the guarantee: the chip may fill its row and
+    // no further (`max-w-full`), the row offers it a line of its own when it
+    // stops fitting beside the other pills (`flex-wrap`), and the label clips
+    // instead of spilling (`truncate`) with the full stage on hover (`title`).
+    renderScreen(
+      <TaskBoard
+        board={{
+          ...BOARD,
+          TO_DO: [
+            {
+              ...TASK,
+              dossier_ref: "SL3213P44RG55ZSM",
+              milestone_label: "Pré-alerte et ordre de travail",
+            },
+          ],
+        }}
+        loading={false}
+        selectedId={null}
+        onOpen={() => {}}
+        onCreate={() => {}}
+      />,
+    );
+
+    const label = screen.getByText("SL3213P44RG55ZSM · Pré-alerte et ordre de travail");
+    expect(label).toHaveClass("truncate");
+    expect(label).toHaveAttribute("title", "SL3213P44RG55ZSM · Pré-alerte et ordre de travail");
+    const chip = label.closest("span.status");
+    expect(chip).not.toBeNull();
+    expect(chip).toHaveClass("max-w-full");
+    expect(chip!.parentElement).toHaveClass("flex-wrap");
+  });
+
+  it("names the file and the FIRST stage on the chip, counts the rest, and lists them all on hover", () => {
     const linked = {
       ...TASK,
       dossier_id: "d-1",
@@ -632,7 +670,12 @@ describe("TaskBoard — the board's parts", () => {
         onCreate={() => {}}
       />,
     );
-    // One token, not a paragraph: the reference, the first stage, "+2".
-    expect(screen.getByText("SL3213P44RG55ZSM · Pré-alerte et ordre de travail +2")).toBeTruthy();
+    // One token, not a paragraph: the reference, the first stage, "+2" — and
+    // every stage by name where there is room for it, the hover title.
+    const label = screen.getByText("SL3213P44RG55ZSM · Pré-alerte et ordre de travail +2");
+    expect(label).toHaveAttribute(
+      "title",
+      "SL3213P44RG55ZSM · Pré-alerte et ordre de travail · Documents d'expédition vérifiés · Déclaration en douane déposée",
+    );
   });
 });

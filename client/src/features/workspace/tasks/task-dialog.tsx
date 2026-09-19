@@ -83,10 +83,9 @@ export function TaskDialog({
     description?: string | null;
     /** Opens the form already linked to an operations file (13920) — what the
      *  file's own Tasks tab raises a task through, so the link is visible in
-     *  the form rather than applied invisibly on save. */
+     *  the form rather than applied invisibly on save. The id alone: the
+     *  picker names the file itself (13930). */
     dossier_id?: string | null;
-    dossier_ref?: string | null;
-    dossier_client_name?: string | null;
     milestone_instance_id?: string | null;
     milestone_instance_ids?: string[] | null;
   } | null;
@@ -210,7 +209,7 @@ export function TaskDialog({
       // to UNLINK the task, and an omitted field would leave the old file on
       // it. The server clears the stages whenever the file goes, so the two
       // can never disagree even if a future caller sends only one. The SET is
-      // what is posted (13930) — an empty list is a real statement, "no
+      // what is posted (13940) — an empty list is a real statement, "no
       // stage" — and the server projects its first member onto 13920's column.
       dossier_id: fileLink.dossier_id,
       milestone_instance_ids: fileLink.milestone_instance_ids,

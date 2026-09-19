@@ -37,6 +37,13 @@ router.post("/ask/stream", aiAskLimiter, validate("ask"), c.askStream);
 // Conversation history — always the CALLER's own thread (scoped to req.user in
 // the service), so no RBAC beyond auth: there is no path to read anyone else's.
 router.get("/conversations", c.conversations);
+// Pin / rename / archive (audit J2, J3, J1). PATCH because these are partial
+// updates to one row the caller already owns; `:id` is scoped to req.user in
+// the SQL, so a thread that is not theirs matches nothing and answers 404.
+router.patch("/conversations/:id", validate("conversationPatch"), c.updateConversation);
+// Delete. Soft by default; `?purge=true` is the irreversible half and is what
+// the confirm dialog's second checkbox sends.
+router.delete("/conversations/:id", c.removeConversation);
 router.get("/options", c.options);
 router.get("/history", c.history);
 router.post("/history/clear", c.clearHistory);

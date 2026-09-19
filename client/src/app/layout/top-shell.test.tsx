@@ -24,7 +24,7 @@
  *    which makes "everything is present and reachable here" the assertion.
  */
 import * as React from "react";
-import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { axe } from "jest-axe";
@@ -446,43 +446,65 @@ describe("title bar strip", () => {
 });
 
 /**
- * THE PHONE'S HALF OF THE STRIP.
+ * THE PHONE'S HALF OF THE STRIP, AND THE ENVIRONMENT SWITCH ON EVERY WIDTH.
  *
- * Two defects, one shape: a control that existed for a pointer and not for a
- * thumb.
+ * Search was `lg:flex` in the strip and `md:hidden` in the bottom bar, so
+ * 768–1023px had neither. ⌘K still worked, which is exactly why nobody found
+ * it — a keyboard hides the hole from the people who could fix it.
  *
- *   SEARCH was `lg:flex` in the strip and `md:hidden` in the bottom bar, so
- *   768–1023px had neither. ⌘K still worked, which is exactly why nobody found
- *   it — a keyboard hides the hole from the people who could fix it.
+ * The environment switch used to be TWO behaviours: the phone's chip asked
+ * before switching, the desktop's segmented control switched on one
+ * unconfirmed click, and neither reloaded — so state from the outgoing
+ * environment leaked into the new one until someone pressed Ctrl+F5. Now every
+ * control (chip, segmented toggle, sandbox banner) opens the SAME dialog, which
+ * says unsaved work will not survive, and a confirmed switch persists the
+ * choice and reloads the page.
  *
- *   THE ENVIRONMENT TOGGLE was `sm:inline-flex`, while the sandbox banner it
- *   shares the screen with renders at every width and offers "Switch to live".
- *   So a phone was a one-way door out of TEST with no way back in.
- *
- * The assertions below are mostly about NAMES and ORDER OF EVENTS rather than
+ * The assertions below are about NAMES and ORDER OF EVENTS rather than
  * appearance, for the reason this file's header gives: jsdom loads no
  * stylesheet, so a breakpoint is not observable here. What is observable is
- * whether the control is in the tree, what it is called, and what happens when
- * it is pressed — and each of those is where these two bugs actually lived.
+ * whether the control is in the tree, what it is called, what it says before
+ * it acts, and whether `location.reload` was called — and each of those is
+ * where these bugs actually lived.
  */
-describe("search and the environment control on a phone", () => {
+describe("search and the environment control", () => {
+  let reload: ReturnType<typeof vi.fn>;
+  const originalLocation = window.location;
+
   beforeEach(() => {
     // `tokenStore` reads the environment out of localStorage when the shell
     // mounts, and these tests write it. Without this, whichever test switched
     // last decides which environment the next one starts in — and half of them
     // are about which direction the switch goes.
     localStorage.clear();
+    // jsdom's `location.reload` is "not implemented" and throws. The switch
+    // ends in a reload, so it is replaced with a spy — the same shape
+    // nav-refresh.test.tsx uses — and put back after each test.
+    reload = vi.fn();
+    Object.defineProperty(window, "location", {
+      value: { ...originalLocation, reload },
+      configurable: true,
+      writable: true,
+    });
+  });
+
+  afterEach(() => {
+    Object.defineProperty(window, "location", {
+      value: originalLocation,
+      configurable: true,
+      writable: true,
+    });
   });
 
   const stripIn = (container: HTMLElement) =>
     within(container.querySelector<HTMLElement>(".wco")!);
 
-  async function openEnvSheet(container: HTMLElement) {
-    await userEvent.click(
-      stripIn(container).getByRole("button", { name: /data environment/i }),
-    );
-    return screen.findByRole("dialog", { name: "Data environment" });
-  }
+  const chipIn = (container: HTMLElement) =>
+    stripIn(container).getByRole("button", { name: /data environment/i });
+
+  /** The desktop control: a labelled group of two pressed/unpressed cells. */
+  const toggleIn = (container: HTMLElement) =>
+    within(stripIn(container).getByRole("group", { name: "Data environment" }));
 
   it("keeps search named at every width and reveals its label only from lg", () => {
     const { container } = renderShell();
@@ -506,9 +528,7 @@ describe("search and the environment control on a phone", () => {
 
   it("states the current environment on the chip, and what pressing it does", () => {
     const { container } = renderShell();
-    const chip = stripIn(container).getByRole("button", {
-      name: /data environment/i,
-    });
+    const chip = chipIn(container);
 
     expect(chip).toHaveTextContent("LIVE");
     // Not `aria-label="LIVE"`. A lone value tells a screen-reader user what the
@@ -521,119 +541,147 @@ describe("search and the environment control on a phone", () => {
     expect(chip).toHaveAttribute("aria-haspopup", "dialog");
   });
 
-  it("opens a sheet naming both environments and what each one means", async () => {
+  it("opens the switch dialog from the chip: both environments, the warning, and the two outcomes", async () => {
     const { container } = renderShell();
-    const sheet = await openEnvSheet(container);
-    expect(
-      within(sheet).getByText("Real data. Changes are permanent."),
-    ).toBeInTheDocument();
-    expect(
-      within(sheet).getByText("Sandbox data. Changes don't affect live."),
-    ).toBeInTheDocument();
+    await userEvent.click(chipIn(container));
+
+    const dialog = await screen.findByRole("dialog", { name: "Switch to TEST mode?" });
+    // Where you are and where you are going, both named — the sheet this
+    // replaced carried the same two facts one tap later.
+    expect(within(dialog).getByText("You are in")).toBeInTheDocument();
+    expect(within(dialog).getByText("You'll be in")).toBeInTheDocument();
+    expect(within(dialog).getByText("Real data. Changes are permanent.")).toBeInTheDocument();
+    expect(within(dialog).getByText("Sandbox data. Changes don't affect live.")).toBeInTheDocument();
+    // THE warning. A switch reloads the page, so this is the sentence the
+    // dialog exists to put in front of the answer.
+    expect(within(dialog).getByRole("note")).toHaveTextContent("Unsaved changes will be lost");
+    expect(within(dialog).getByText(/Praxis reloads to open TEST/)).toBeInTheDocument();
+    // Outcomes, not Yes/No.
+    expect(within(dialog).getByRole("button", { name: "Stay in LIVE" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Switch to TEST" })).toBeInTheDocument();
   });
 
   it("asks before leaving LIVE, and a cancelled ask changes nothing", async () => {
     const { container } = renderShell();
-    const sheet = await openEnvSheet(container);
-    await userEvent.click(
-      within(sheet).getByRole("button", { name: /sandbox data/i }),
-    );
+    await userEvent.click(chipIn(container));
 
-    const confirm = await screen.findByRole("dialog", {
-      name: "Switch to TEST mode?",
-    });
-    await userEvent.click(
-      within(confirm).getByRole("button", { name: "Cancel" }),
-    );
+    const confirm = await screen.findByRole("dialog", { name: "Switch to TEST mode?" });
+    await userEvent.click(within(confirm).getByRole("button", { name: "Stay in LIVE" }));
 
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     // `switchEnv` persists through `tokenStore` under `praxis.env` before
-    // anything visible changes, so an absent key is the strongest available
-    // statement that it never ran — stronger than the absent banner beside it.
+    // anything else happens, so an absent key is the strongest available
+    // statement that it never ran — stronger than the absent overlay beside it.
     expect(localStorage.getItem("praxis.env")).toBeNull();
+    expect(screen.queryByText("Loading fresh data…")).toBeNull();
+    // Give the reload delay a chance to elapse before declaring it never came.
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    expect(reload).not.toHaveBeenCalled();
     expect(screen.queryByText(/TEST MODE/)).toBeNull();
   });
 
-  it("performs the switch once confirmed, interstitial and banner included", async () => {
+  it("performs the switch once confirmed: persists TEST, covers the screen, then reloads", async () => {
     const { container } = renderShell();
-    const sheet = await openEnvSheet(container);
-    await userEvent.click(
-      within(sheet).getByRole("button", { name: /sandbox data/i }),
-    );
+    await userEvent.click(chipIn(container));
 
-    const confirm = await screen.findByRole("dialog", {
-      name: "Switch to TEST mode?",
-    });
-    await userEvent.click(
-      within(confirm).getByRole("button", { name: "Switch to TEST" }),
-    );
+    const confirm = await screen.findByRole("dialog", { name: "Switch to TEST mode?" });
+    await userEvent.click(within(confirm).getByRole("button", { name: "Switch to TEST" }));
 
-    // Asserted synchronously and first: `EnvSwitchOverlay` retires itself 350ms
-    // after the switch, so anything that polls could watch it leave and report
-    // a control that worked as one that did nothing.
-    expect(screen.getByText("Loading fresh data…")).toBeInTheDocument();
-    expect(screen.getByText(/TEST MODE/)).toBeInTheDocument();
+    // The order of events IS the fix. The environment is persisted and the
+    // overlay is up BEFORE the reload — so the new document boots into TEST
+    // and nothing from the LIVE screen is readable in the meantime…
     expect(localStorage.getItem("praxis.env")).toBe("sandbox");
+    const overlay = screen.getByRole("status", { name: "Environment switch" });
+    expect(overlay).toHaveTextContent("Switching to TEST");
+    expect(overlay).toHaveTextContent("Loading fresh data…");
+    expect(reload).not.toHaveBeenCalled();
+    // …and the shell does NOT flip in place: the sandbox banner belongs to the
+    // next document, not to a soft switch of this one.
+    expect(screen.queryByText(/TEST MODE/)).toBeNull();
+
+    // …then the page reloads, which is what Ctrl+F5 did by hand.
+    await waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
   });
 
   it("asks in the other direction too — TEST back to LIVE is not a free action", async () => {
     localStorage.setItem("praxis.env", "sandbox");
     const { container } = renderShell();
-    expect(
-      stripIn(container).getByRole("button", { name: /data environment/i }),
-    ).toHaveTextContent("TEST");
+    expect(chipIn(container)).toHaveTextContent("TEST");
 
-    const sheet = await openEnvSheet(container);
-    await userEvent.click(
-      within(sheet).getByRole("button", { name: /real data/i }),
-    );
+    await userEvent.click(chipIn(container));
+    const confirm = await screen.findByRole("dialog", { name: "Switch to LIVE mode?" });
+    expect(within(confirm).getByRole("note")).toHaveTextContent("Unsaved changes will be lost");
+    await userEvent.click(within(confirm).getByRole("button", { name: "Switch to LIVE" }));
 
-    const confirm = await screen.findByRole("dialog", {
-      name: "Switch to LIVE mode?",
-    });
-    await userEvent.click(
-      within(confirm).getByRole("button", { name: "Switch to LIVE" }),
-    );
-
-    expect(screen.getByText("Loading fresh data…")).toBeInTheDocument();
     expect(localStorage.getItem("praxis.env")).toBe("live");
+    expect(screen.getByRole("status", { name: "Environment switch" })).toHaveTextContent("Switching to LIVE");
+    await waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
   });
 
-  it("just closes when you choose the environment you are already in", async () => {
+  it("gives the desktop toggle the SAME dialog — no single-click switch under a pointer", async () => {
     const { container } = renderShell();
-    const sheet = await openEnvSheet(container);
-    await userEvent.click(
-      within(sheet).getByRole("button", { name: /real data/i }),
-    );
+    const toggle = toggleIn(container);
+    const live = toggle.getByRole("button", { name: "LIVE" });
+    const test = toggle.getByRole("button", { name: "TEST" });
+    expect(live).toHaveAttribute("aria-pressed", "true");
+    expect(test).toHaveAttribute("aria-pressed", "false");
 
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    // A confirmation, if one were coming, opens a frame after the sheet closes
-    // (the two never overlap — see env-switcher.tsx), so give that frame a
-    // chance to happen before declaring that nothing did.
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    // The cell you are already in is not a switch, so it does not ask.
+    await userEvent.click(live);
     expect(screen.queryByRole("dialog")).toBeNull();
+
+    await userEvent.click(test);
+    const confirm = await screen.findByRole("dialog", { name: "Switch to TEST mode?" });
+    expect(within(confirm).getByRole("note")).toHaveTextContent("Unsaved changes will be lost");
+    // Nothing has happened yet — the click alone used to be the switch.
     expect(localStorage.getItem("praxis.env")).toBeNull();
-    expect(screen.queryByText("Loading fresh data…")).toBeNull();
+    expect(reload).not.toHaveBeenCalled();
+
+    await userEvent.click(within(confirm).getByRole("button", { name: "Switch to TEST" }));
+    expect(localStorage.getItem("praxis.env")).toBe("sandbox");
+    expect(screen.getByRole("status", { name: "Environment switch" })).toHaveTextContent("Switching to TEST");
+    await waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
   });
 
-  it("routes the sandbox banner's way out through the same confirmation", async () => {
+  it("routes the sandbox banner's way out through the same dialog", async () => {
     // The banner used to call `switchEnv("live")` straight from its onClick, so
     // a phone had two routes between environments and only one of them asked.
     localStorage.setItem("praxis.env", "sandbox");
     renderShell();
 
-    await userEvent.click(
-      screen.getByRole("button", { name: "Switch to live" }),
-    );
-    const confirm = await screen.findByRole("dialog", {
-      name: "Switch to LIVE mode?",
-    });
-    await userEvent.click(
-      within(confirm).getByRole("button", { name: "Cancel" }),
-    );
+    await userEvent.click(screen.getByRole("button", { name: "Switch to live" }));
+    const confirm = await screen.findByRole("dialog", { name: "Switch to LIVE mode?" });
+    expect(within(confirm).getByRole("button", { name: "Switch to LIVE" })).toBeInTheDocument();
+    await userEvent.click(within(confirm).getByRole("button", { name: "Stay in TEST" }));
 
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(localStorage.getItem("praxis.env")).toBe("sandbox");
     expect(screen.getByText(/TEST MODE/)).toBeInTheDocument();
+    expect(reload).not.toHaveBeenCalled();
+  });
+
+  it("offers the reload by hand if the page is still here after the switch", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const { container } = renderShell();
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      await user.click(chipIn(container));
+      const confirm = await screen.findByRole("dialog", { name: "Switch to TEST mode?" });
+      await user.click(within(confirm).getByRole("button", { name: "Switch to TEST" }));
+
+      // The reload fires, but a `beforeunload` guard on the screen can make the
+      // browser ask its own question, and "stay" leaves the overlay up over a
+      // page going nowhere. After a few seconds the overlay offers the reload
+      // again rather than sitting there forever.
+      await vi.advanceTimersByTimeAsync(600);
+      expect(reload).toHaveBeenCalledTimes(1);
+      expect(screen.queryByRole("button", { name: "Still here? Reload now" })).toBeNull();
+
+      await vi.advanceTimersByTimeAsync(5000);
+      await user.click(screen.getByRole("button", { name: "Still here? Reload now" }));
+      expect(reload).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

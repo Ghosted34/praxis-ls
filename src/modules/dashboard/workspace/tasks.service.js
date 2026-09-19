@@ -29,6 +29,7 @@
 const { AppError } = require("../../../utils/errors");
 const { emitEvent, audit } = require("../../../shared/events/emit");
 const { entityRoute } = require("@praxis/shared");
+const { atomically } = require("../../../shared/db/tx");
 const repo = require("./tasks.repo");
 const events = require("./workspace.events");
 const { timezoneOf, toInstant } = require("./workspace.time");
@@ -180,8 +181,38 @@ const withLink = (row) => {
     link_url,
     entity_label: row.entity_type ? entityLabel(row.entity_type) : null,
     has_link: Boolean(link_url),
+    // The stage SET (13950), beside 13920's single column. Derived from the
+    // aggregate the repo reads so the ids and the labels cannot disagree;
+    // events carry no set and keep no field.
+    ...(Array.isArray(row.milestones)
+      ? { milestone_instance_ids: row.milestones.map((m) => m.milestone_instance_id) }
+      : {}),
   };
 };
+
+/**
+ * The stage set a write names, in the vocabulary it used.
+ *
+ * `milestone_instance_ids` is the set (13950); `milestone_instance_id` is
+ * 13920's single stage, still accepted so an older client or an AI caller
+ * that learned the column keeps working — null there means "no stage", the
+ * same as an empty list here. `undefined` means the caller said nothing.
+ */
+function namedStages(input) {
+  if ("milestone_instance_ids" in input) {
+    return [...new Set((input.milestone_instance_ids || []).filter(Boolean))];
+  }
+  if ("milestone_instance_id" in input) return input.milestone_instance_id ? [input.milestone_instance_id] : [];
+  return undefined;
+}
+
+/** The set a row already carries — the aggregate when read, the column when not. */
+function stagesOf(before) {
+  if (!before) return [];
+  if (Array.isArray(before.milestone_instance_ids)) return before.milestone_instance_ids;
+  if (Array.isArray(before.milestones)) return before.milestones.map((m) => m.milestone_instance_id);
+  return before.milestone_instance_id ? [before.milestone_instance_id] : [];
+}
 
 /**
  * Settle the operations-file link a write is asking for (13920).
@@ -215,11 +246,12 @@ const withLink = (row) => {
 async function resolveFileLink(client, input, before = null) {
   const patch = {};
   const touchesFile = "dossier_id" in input;
-  const touchesStage = "milestone_instance_id" in input;
+  const named = namedStages(input);
+  const touchesStage = named !== undefined;
   if (!touchesFile && !touchesStage) return patch;
 
   const dossierId = touchesFile ? input.dossier_id || null : (before ? before.dossier_id : null) || null;
-  let milestoneId = touchesStage ? input.milestone_instance_id || null : (before ? before.milestone_instance_id : null) || null;
+  let stageIds = touchesStage ? named : stagesOf(before);
 
   /*
    * The stage follows the file, in BOTH directions the file can move.
@@ -236,9 +268,10 @@ async function resolveFileLink(client, input, before = null) {
    * against the new file below and refused by name if it is another file's.
    */
   const fileChanged = touchesFile && dossierId !== ((before ? before.dossier_id : null) || null);
-  if (touchesFile && (!dossierId || (fileChanged && !touchesStage))) milestoneId = null;
+  const stagesCleared = touchesFile && (!dossierId || (fileChanged && !touchesStage));
+  if (stagesCleared) stageIds = [];
 
-  if (milestoneId) {
+  if (stageIds.length) {
     if (!dossierId) {
       throw new AppError(
         "BAD_VALUE",
@@ -246,21 +279,40 @@ async function resolveFileLink(client, input, before = null) {
         400,
       );
     }
-    const stage = await repo.milestoneFileOf(client, milestoneId);
-    if (!stage) throw new AppError("NOT_FOUND", "That milestone no longer exists on this file.", 404);
-    if (stage.dossier_id !== dossierId) {
-      throw new AppError(
-        "BAD_VALUE",
-        `“${stage.label}” is a milestone of another operations file. Pick one from the file you linked.`,
-        400,
-      );
+    // One lookup for the whole set (13950). Every stage must exist and must be
+    // a stage of THIS file; the first stranger is refused by name.
+    const found = await repo.milestoneFilesOf(client, stageIds);
+    const byId = new Map(found.map((r) => [r.milestone_instance_id, r]));
+    for (const id of stageIds) {
+      const stage = byId.get(id);
+      if (!stage) throw new AppError("NOT_FOUND", "That milestone no longer exists on this file.", 404);
+      if (stage.dossier_id !== dossierId) {
+        throw new AppError(
+          "BAD_VALUE",
+          `“${stage.label}” is a milestone of another operations file. Pick one from the file you linked.`,
+          400,
+        );
+      }
     }
+    // Chain order, whatever order the form sent: the projection column below
+    // is "the first stage", and first means earliest in the chain.
+    stageIds = [...stageIds].sort((a, b) => {
+      const sa = Number(byId.get(a).stage_seq);
+      const sb = Number(byId.get(b).stage_seq);
+      if (Number.isFinite(sa) && Number.isFinite(sb) && sa !== sb) return sa - sb;
+      return String(byId.get(a).label || "").localeCompare(String(byId.get(b).label || ""));
+    });
   }
 
   if (touchesFile) patch.dossier_id = dossierId;
-  // Written whenever the caller named it, and whenever the file moving under it
-  // decided it for them — an omitted column would leave the old stage on the row.
-  if (touchesStage || (touchesFile && milestoneId === null)) patch.milestone_instance_id = milestoneId;
+  // Written whenever the caller named the stages, and whenever the file moving
+  // under them decided it for them — an omitted column would leave the old
+  // stage on the row. Both forms travel together: the set is what
+  // `replaceTaskMilestones` stores, the single column is its projection.
+  if (touchesStage || stagesCleared) {
+    patch.milestone_instance_id = stageIds[0] || null;
+    patch.milestone_instance_ids = stageIds;
+  }
   return patch;
 }
 
@@ -497,6 +549,7 @@ async function getBoard(client, ctx, q = {}) {
     ...visibilityOf(ctx, audience),
     assignedTo: q.assigned_to === "me" ? ctx.user.user_id : q.assigned_to,
     dossierId: q.dossier_id,
+    q: q.q,
   });
   const ids = Object.values(board).flat().map((t) => t.task_id);
   const [blockedRows, childRows] = await Promise.all([
@@ -626,51 +679,71 @@ async function createTask(client, ctx, input) {
   // file takes its stage with it. Settled BEFORE the insert so a mismatch is a
   // 400 naming both records rather than a row the panel cannot render.
   const link = await resolveFileLink(client, input);
-  const task = await repo.insertTask(client, {
-    ...input,
-    ...link,
-    due_at,
-    created_by: ctx.user.user_id,
-    recurrence_rule: rule,
-  });
-  // The series id is the first occurrence's own id: one UPDATE after the INSERT
-  // makes the template discoverable by its descendants with no registry table.
-  if (rule) await repo.updateTask(client, task.task_id, { recurrence_series_id: task.task_id });
-  // Reminders outlive the columns: a create declares them in 13810's pair
-  // vocabulary or PR 3's list of up to three, and they land in
-  // workspace_reminder on this same transaction so a committed task has its
-  // armed rows with it, not eventually.
-  if ("reminders" in input || "reminder_minutes" in input || "remind_at" in input) {
-    await writeReminders(client, {
-      ownerType: "task", ownerId: task.task_id, input, anchor: due_at, timeZone,
-      actor: { user_id: ctx.user.user_id },
+  // ── ONE TRANSACTION FROM THE INSERT TO THE AUDIT ROW ─────────────────────
+  //
+  // `req.tenantDb` pins a connection; it does not open a transaction. So when
+  // a statement AFTER the insert failed — the reminder projection did, on
+  // every dialog save, for as long as its placeholders were misnumbered — the
+  // task was already committed and the caller was told 500: the board showed
+  // a card the form said it had failed to create, and a retry made a second
+  // one. Reminders, subtasks, the event and the audit line now land with the
+  // row or not at all. `atomically` joins a caller's open transaction rather
+  // than nesting one (shared/db/tx.js), so the AI write path and the HTTP path
+  // behave the same.
+  const task = await atomically(client, async () => {
+    const row = await repo.insertTask(client, {
+      ...input,
+      ...link,
+      due_at,
+      created_by: ctx.user.user_id,
+      recurrence_rule: rule,
     });
-  }
-  if (input.subtasks && input.subtasks.length) {
-    for (const [i, s] of input.subtasks.entries()) {
-      await repo.insertSubtask(client, {
-        task_id: task.task_id,
-        title: s.title,
-        display_order: s.display_order ?? i + 1,
-        // A step's deadline resolves on the tenant clock exactly as the parent's
-        // does — a bare date is end of the working day, not midnight.
-        due_at: toInstant(s.due_at, { timeZone, dateOnlyTime: "17:00:00" }),
+    // The stage set lands with the row (13950); the column the insert wrote
+    // is its first member, so the two are never readable apart.
+    if (link.milestone_instance_ids && link.milestone_instance_ids.length) {
+      await repo.replaceTaskMilestones(client, row.task_id, link.milestone_instance_ids);
+    }
+    // The series id is the first occurrence's own id: one UPDATE after the INSERT
+    // makes the template discoverable by its descendants with no registry table.
+    if (rule) await repo.updateTask(client, row.task_id, { recurrence_series_id: row.task_id });
+    // Reminders outlive the columns: a create declares them in 13810's pair
+    // vocabulary or PR 3's list of up to three, and they land in
+    // workspace_reminder on this same transaction so a committed task has its
+    // armed rows with it, not eventually.
+    if ("reminders" in input || "reminder_minutes" in input || "remind_at" in input) {
+      await writeReminders(client, {
+        ownerType: "task", ownerId: row.task_id, input, anchor: due_at, timeZone,
+        actor: { user_id: ctx.user.user_id },
       });
     }
-  }
-  await emitEvent(client, {
-    eventTypeKey: events.TASK_CREATED, moduleKey: events.MODULE,
-    entityRef: `task:${task.task_id}`, actorUserId: ctx.user.user_id,
-    payload: { status: task.status, priority: task.priority },
-  });
-  await audit(client, {
-    ...actorOf(ctx), action: events.TASK_CREATED, moduleKey: events.MODULE,
-    entityRef: `task:${task.task_id}`, after: { title: task.title, status: task.status, priority: task.priority },
+    if (input.subtasks && input.subtasks.length) {
+      for (const [i, s] of input.subtasks.entries()) {
+        await repo.insertSubtask(client, {
+          task_id: row.task_id,
+          title: s.title,
+          display_order: s.display_order ?? i + 1,
+          // A step's deadline resolves on the tenant clock exactly as the parent's
+          // does — a bare date is end of the working day, not midnight.
+          due_at: toInstant(s.due_at, { timeZone, dateOnlyTime: "17:00:00" }),
+        });
+      }
+    }
+    await emitEvent(client, {
+      eventTypeKey: events.TASK_CREATED, moduleKey: events.MODULE,
+      entityRef: `task:${row.task_id}`, actorUserId: ctx.user.user_id,
+      payload: { status: row.status, priority: row.priority },
+    });
+    await audit(client, {
+      ...actorOf(ctx), action: events.TASK_CREATED, moduleKey: events.MODULE,
+      entityRef: `task:${row.task_id}`, after: { title: row.title, status: row.status, priority: row.priority },
+    });
+    return row;
   });
   const created = await getTask(client, ctx, task.task_id, ctx.audience);
+  // Outside the transaction on purpose: a notification is a courtesy about a
+  // record that now exists, and it may touch Redis, web-push and SMTP.
   await notifyAssignee(client, created);
   return created;
-
 }
 
 /**
@@ -719,39 +792,50 @@ async function updateTask(client, ctx, id, input) {
   delete patch.reminder_minutes;
   delete patch.remind_at;
 
-  const updated = await repo.updateTask(client, id, patch);
-  if (reminderTouched) {
-    await writeReminders(client, {
-      ownerType: "task", ownerId: id, input,
-      anchor: patch.due_at !== undefined ? patch.due_at : before.due_at,
-      timeZone, actor: { user_id: ctx.user.user_id },
+  // The same boundary as createTask: the row, its reminder set, the series
+  // rewrite, the event and the audit line commit together or not at all.
+  // Consumed by replaceTaskMilestones below, not by the column allow-list.
+  const stageSet = patch.milestone_instance_ids;
+  delete patch.milestone_instance_ids;
+
+  await atomically(client, async () => {
+    const row = await repo.updateTask(client, id, patch);
+    if (stageSet) await repo.replaceTaskMilestones(client, id, stageSet);
+    if (reminderTouched) {
+      await writeReminders(client, {
+        ownerType: "task", ownerId: id, input,
+        anchor: patch.due_at !== undefined ? patch.due_at : before.due_at,
+        timeZone, actor: { user_id: ctx.user.user_id },
+      });
+    } else if ("due_at" in input) {
+      // Moving a reminder's anchor re-arms what has fired — the same contract
+      // 13810 pinned a single reminder to — applied to the whole armed set, so
+      // a rescheduled task does not keep stamps for a date that is no longer
+      // the deadline.
+      await repo.rearmOwnerReminders(client, "task", id);
+    }
+    // A "whole series" edit rewrites the FUTURE of the series, not just this row.
+    // `due_at` is deliberately not carried: each occurrence owns its date, and
+    // stamping every row with one would collapse the series onto a single day.
+    // Finished rows are excluded inside the repo, so history is never rewritten.
+    if (input.series === "series" && before.recurrence_series_id) {
+      const seriesPatch = { ...patch };
+      delete seriesPatch.due_at;
+      await repo.updateSeriesTasks(client, before.recurrence_series_id, seriesPatch, { exclude: id });
+    }
+    await emitEvent(client, {
+      eventTypeKey: events.TASK_UPDATED, moduleKey: events.MODULE,
+      entityRef: `task:${id}`, actorUserId: ctx.user.user_id, payload: { fields: Object.keys(input) },
     });
-  } else if ("due_at" in input) {
-    // Moving a reminder's anchor re-arms what has fired — the same contract
-    // 13810 pinned a single reminder to — applied to the whole armed set, so
-    // a rescheduled task does not keep stamps for a date that is no longer
-    // the deadline.
-    await repo.rearmOwnerReminders(client, "task", id);
-  }
-  // A "whole series" edit rewrites the FUTURE of the series, not just this row.
-  // `due_at` is deliberately not carried: each occurrence owns its date, and
-  // stamping every row with one would collapse the series onto a single day.
-  // Finished rows are excluded inside the repo, so history is never rewritten.
-  if (input.series === "series" && before.recurrence_series_id) {
-    const seriesPatch = { ...patch };
-    delete seriesPatch.due_at;
-    await repo.updateSeriesTasks(client, before.recurrence_series_id, seriesPatch, { exclude: id });
-  }
-  await emitEvent(client, {
-    eventTypeKey: events.TASK_UPDATED, moduleKey: events.MODULE,
-    entityRef: `task:${id}`, actorUserId: ctx.user.user_id, payload: { fields: Object.keys(input) },
+    await audit(client, {
+      ...actorOf(ctx), action: events.TASK_UPDATED, moduleKey: events.MODULE,
+      entityRef: `task:${id}`,
+      before: { status: before.status, priority: before.priority, due_at: before.due_at },
+      after: { status: row.status, priority: row.priority, due_at: row.due_at },
+    });
   });
-  await audit(client, {
-    ...actorOf(ctx), action: events.TASK_UPDATED, moduleKey: events.MODULE,
-    entityRef: `task:${id}`,
-    before: { status: before.status, priority: before.priority, due_at: before.due_at },
-    after: { status: updated.status, priority: updated.priority, due_at: updated.due_at },
-  });
+  // Read back AFTER the commit, so the answer carries the reminder projection
+  // and the stage set the transaction just wrote, not the row mid-flight.
   let after = await getTask(client, ctx, id, ctx.audience);
   if (input.assigned_to && input.assigned_to !== before.assigned_to) await notifyAssignee(client, after);
   // The one status path. Replayed AFTER the field edits so the transition sees
@@ -1227,10 +1311,12 @@ async function addChildTask(client, ctx, parentTaskId, input, audience) {
     // that silently lost its file would go missing from the file's own Tasks
     // tab while plainly being work on it.
     dossier_id: input.dossier_id !== undefined ? input.dossier_id : parent.dossier_id,
-    milestone_instance_id:
-      input.milestone_instance_id !== undefined
-        ? input.milestone_instance_id
-        : parent.milestone_instance_id,
+    // The whole stage SET (13950), and only while the child stays on the
+    // parent's file: a child moved to another file inherits no stage, because
+    // the parent's stages are the other file's and would be refused by name.
+    ...(namedStages(input) === undefined && (input.dossier_id === undefined || input.dossier_id === parent.dossier_id)
+      ? { milestone_instance_ids: stagesOf(parent) }
+      : {}),
   });
   await audit(client, {
     ...actorOf(ctx), action: events.TASK_UPDATED, moduleKey: events.MODULE,
@@ -1865,6 +1951,17 @@ async function deadlinesInRange(client, ctx, { from, to, audience }) {
     repo.subtasksInRange(client, { from: window.from, to: window.to, visibility: vis }),
   ]);
   const now = Date.now();
+  // What a person types to find a deadline rides on the item: the notes, the
+  // file's reference and its client, and the stages of the chain. The
+  // calendar filters the fetched window on the client, so these are the
+  // words that search can see there — for a step, they are its parent's.
+  const searchable = (row) => ({
+    description: row.description ?? null,
+    dossier_id: row.dossier_id ?? null,
+    dossier_ref: row.dossier_ref ?? null,
+    dossier_client_name: row.dossier_client_name ?? null,
+    milestone_labels: Array.isArray(row.milestones) ? row.milestones.map((m) => m.label) : [],
+  });
   const items = [
     ...tasks
       .filter((t) => t.status !== "CANCELLED")
@@ -1873,6 +1970,7 @@ async function deadlinesInRange(client, ctx, { from, to, audience }) {
         title: t.title, task_title: null, at: t.due_at,
         status: t.status, priority: t.priority, is_done: t.status === "DONE",
         is_overdue: t.status !== "DONE" && Boolean(t.due_at) && new Date(t.due_at).getTime() < now,
+        ...searchable(t),
       })),
     ...subtasks
       .filter((s) => s.task_status !== "CANCELLED")
@@ -1881,6 +1979,7 @@ async function deadlinesInRange(client, ctx, { from, to, audience }) {
         title: s.title, task_title: s.task_title, at: s.due_at,
         status: s.task_status, priority: s.task_priority, is_done: s.is_done,
         is_overdue: !s.is_done && Boolean(s.due_at) && new Date(s.due_at).getTime() < now,
+        ...searchable({ ...s, description: s.task_description }),
       })),
   ].sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
   return { items, audience: resolved, audiences: audiencesFor(ctx) };

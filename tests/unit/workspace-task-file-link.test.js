@@ -24,6 +24,13 @@
  * fires on the filter combination nobody tried.
  */
 
+/*
+ * 13950 widened the stage to a SET (`task_milestone`), with 13920's column kept
+ * as the projection of its first member. The rules above hold for every member,
+ * and two more join them: the set is ordered as the chain is, and the column
+ * and the set are written together or not at all.
+ */
+
 const repo = require("../../src/modules/dashboard/workspace/tasks.repo");
 
 function mockClient(rows = []) {
@@ -66,9 +73,59 @@ describe("tasks.repo — the file link in SQL", () => {
     const call = c.calls[0];
     expectBound(call);
     expect(call.sql).toContain("t.dossier_id = $");
-    expect(call.sql).toContain("t.milestone_instance_id = $");
+    // Against the SET, not the projection column: a task filed under two
+    // stages must be found from the second stage's view too (13950).
+    expect(call.sql).toMatch(/EXISTS \(SELECT 1 FROM task_milestone tm WHERE tm\.task_id = t\.task_id AND tm\.milestone_instance_id = \$\d+\)/);
+    expect(call.sql).not.toContain("t.milestone_instance_id = $");
     expect(call.params).toContain("d1");
     expect(call.params).toContain("m1");
+  });
+
+  it("every task read carries the whole stage set, in chain order, as an array", async () => {
+    const c = mockClient();
+    await repo.findTask(c, "t1");
+    const { sql } = c.calls[0];
+    expect(sql).toContain("FROM task_milestone tm");
+    expect(sql).toContain("AS milestones");
+    // An aggregate, not a join: a join would multiply the row by its stage
+    // count and break COUNT(*) OVER() and every LIMIT in the file.
+    expect(sql).not.toMatch(/LEFT JOIN task_milestone/);
+    expect(sql).toContain("ORDER BY tmi.stage_seq");
+    expect(sql).toContain("'[]'::json");
+  });
+
+  it("replaceTaskMilestones makes the set exactly the ids, and clears it for none", async () => {
+    const c = mockClient([{ milestone_instance_id: "m1" }, { milestone_instance_id: "m2" }]);
+    await repo.replaceTaskMilestones(c, "t1", ["m1", "m2", "m1"]);
+    expect(c.calls).toHaveLength(2);
+    const [del, ins] = c.calls;
+    expectBound(del);
+    expect(del.sql).toMatch(/DELETE FROM task_milestone WHERE task_id = \$1 AND NOT \(milestone_instance_id = ANY\(\$2::uuid\[\]\)\)/);
+    expect(del.params).toEqual(["t1", ["m1", "m2"]]); // deduplicated
+    expectBound(ins);
+    expect(ins.sql).toContain("INSERT INTO task_milestone");
+    expect(ins.sql).toContain("ON CONFLICT DO NOTHING");
+    expect(ins.params).toEqual(["t1", ["m1", "m2"]]);
+
+    const none = mockClient();
+    await repo.replaceTaskMilestones(none, "t1", []);
+    // Nothing wanted: one DELETE against an empty list, and no INSERT.
+    expect(none.calls).toHaveLength(1);
+    expect(none.calls[0].params).toEqual(["t1", []]);
+  });
+
+  it("milestoneFilesOf reads the whole set in one query, with the chain position", async () => {
+    const c = mockClient();
+    await repo.milestoneFilesOf(c, ["m1", "m2"]);
+    expect(c.calls).toHaveLength(1);
+    expectBound(c.calls[0]);
+    expect(c.calls[0].sql).toContain("= ANY($1::uuid[])");
+    expect(c.calls[0].sql).toContain("stage_seq");
+    expect(c.calls[0].params).toEqual([["m1", "m2"]]);
+    // An empty set costs no round trip.
+    const none = mockClient();
+    expect(await repo.milestoneFilesOf(none, [])).toEqual([]);
+    expect(none.calls).toHaveLength(0);
   });
 
   it("the board honours the file filter, so Board↔List does not widen it", async () => {
@@ -124,7 +181,10 @@ describe("tasks.repo — the file link in SQL", () => {
       nowIso: "2026-01-15T00:00:00Z",
     });
     expectBound(c.calls[0]);
-    expect(c.calls[0].sql).toContain("GROUP BY t.milestone_instance_id");
+    // Through the set: a task on two stages is work on both, and is counted
+    // under both; a task on none keeps its "No milestone" row (LEFT JOIN).
+    expect(c.calls[0].sql).toContain("LEFT JOIN task_milestone tm ON tm.task_id = t.task_id");
+    expect(c.calls[0].sql).toContain("GROUP BY tm.milestone_instance_id");
   });
 
   it("updateTask can write the link, and still refuses the derived columns", async () => {
@@ -163,12 +223,18 @@ describe("tasks.repo — the file link in SQL", () => {
 describe("tasks.service.resolveFileLink — the rules a write is settled by", () => {
   const service = require("../../src/modules/dashboard/workspace/tasks.service");
 
-  /** A client whose only job is to answer the milestone→file lookup. */
+  /**
+   * A client whose only job is to answer the milestone→file lookup. Answers
+   * for whichever ids were asked, so a set lookup gets a row per member.
+   */
   const stageOn = (dossierId, label = "Customs cleared") => ({
-    query: async () => ({
-      rows: [{ milestone_instance_id: "m1", dossier_id: dossierId, label }],
-      rowCount: 1,
-    }),
+    query: async (_sql, params = []) => {
+      const ids = Array.isArray(params[0]) ? params[0] : [params[0]];
+      const rows = ids.map((id, i) => ({
+        milestone_instance_id: id, dossier_id: dossierId, label, stage_seq: String(i + 1),
+      }));
+      return { rows, rowCount: rows.length };
+    },
   });
   const noStage = { query: async () => ({ rows: [], rowCount: 0 }) };
 
@@ -183,7 +249,7 @@ describe("tasks.service.resolveFileLink — the rules a write is settled by", ()
       dossier_id: "d1",
       milestone_instance_id: "m1",
     });
-    expect(patch).toEqual({ dossier_id: "d1", milestone_instance_id: "m1" });
+    expect(patch).toEqual({ dossier_id: "d1", milestone_instance_id: "m1", milestone_instance_ids: ["m1"] });
   });
 
   it("refuses a stage of ANOTHER file, and names it", async () => {
@@ -216,7 +282,7 @@ describe("tasks.service.resolveFileLink — the rules a write is settled by", ()
       { dossier_id: null },
       { dossier_id: "d1", milestone_instance_id: "m1" },
     );
-    expect(patch).toEqual({ dossier_id: null, milestone_instance_id: null });
+    expect(patch).toEqual({ dossier_id: null, milestone_instance_id: null, milestone_instance_ids: [] });
   });
 
   it("a PATCH naming only the stage is checked against the file the task already has", async () => {
@@ -225,7 +291,7 @@ describe("tasks.service.resolveFileLink — the rules a write is settled by", ()
       { milestone_instance_id: "m1" },
       { dossier_id: "d1", milestone_instance_id: null },
     );
-    expect(patch).toEqual({ milestone_instance_id: "m1" });
+    expect(patch).toEqual({ milestone_instance_id: "m1", milestone_instance_ids: ["m1"] });
   });
 
   it("a PATCH naming only a stage on a task with no file is refused", async () => {
@@ -248,7 +314,7 @@ describe("tasks.service.resolveFileLink — the rules a write is settled by", ()
       { dossier_id: "d2" },
       { dossier_id: "d1", milestone_instance_id: "m1" },
     );
-    expect(patch).toEqual({ dossier_id: "d2", milestone_instance_id: null });
+    expect(patch).toEqual({ dossier_id: "d2", milestone_instance_id: null, milestone_instance_ids: [] });
   });
 
   it("moving the task and naming a stage of the NEW file keeps it", async () => {
@@ -257,7 +323,7 @@ describe("tasks.service.resolveFileLink — the rules a write is settled by", ()
       { dossier_id: "d2", milestone_instance_id: "m1" },
       { dossier_id: "d1", milestone_instance_id: "m9" },
     );
-    expect(patch).toEqual({ dossier_id: "d2", milestone_instance_id: "m1" });
+    expect(patch).toEqual({ dossier_id: "d2", milestone_instance_id: "m1", milestone_instance_ids: ["m1"] });
   });
 
   it("moving the task and naming a stage of the OLD file is still refused by name", async () => {
@@ -289,6 +355,142 @@ describe("tasks.service.resolveFileLink — the rules a write is settled by", ()
       { milestone_instance_id: null },
       { dossier_id: "d1", milestone_instance_id: "m1" },
     );
-    expect(patch).toEqual({ milestone_instance_id: null });
+    expect(patch).toEqual({ milestone_instance_id: null, milestone_instance_ids: [] });
+  });
+
+  /* ── several stages (13950) ─────────────────────────────────────────────── */
+
+  it("accepts several stages of the file, and projects the FIRST in chain order onto the column", async () => {
+    // The chain answers m2 as stage 1 and m1 as stage 2 (see stageOn: the
+    // position follows the order asked), so the projection is m2 whatever
+    // order the form sent.
+    const patch = await service.resolveFileLink(stageOn("d1"), {
+      dossier_id: "d1",
+      milestone_instance_ids: ["m2", "m1"],
+    });
+    expect(patch).toEqual({
+      dossier_id: "d1",
+      milestone_instance_id: "m2",
+      milestone_instance_ids: ["m2", "m1"],
+    });
+  });
+
+  it("orders the set as the chain does, not as the form sent it", async () => {
+    const chain = {
+      query: async () => ({
+        rows: [
+          { milestone_instance_id: "late", dossier_id: "d1", label: "Delivery", stage_seq: "12.0000" },
+          { milestone_instance_id: "early", dossier_id: "d1", label: "Pre-alert", stage_seq: "1.0000" },
+        ],
+        rowCount: 2,
+      }),
+    };
+    const patch = await service.resolveFileLink(chain, {
+      dossier_id: "d1",
+      milestone_instance_ids: ["late", "early"],
+    });
+    expect(patch.milestone_instance_ids).toEqual(["early", "late"]);
+    expect(patch.milestone_instance_id).toBe("early");
+  });
+
+  it("deduplicates a set that names a stage twice, and reads it in ONE lookup", async () => {
+    let lookups = 0;
+    const counting = {
+      query: async (sql, params) => {
+        lookups += 1;
+        return stageOn("d1").query(sql, params);
+      },
+    };
+    const patch = await service.resolveFileLink(counting, {
+      dossier_id: "d1",
+      milestone_instance_ids: ["m1", "m1", "m2"],
+    });
+    expect(patch.milestone_instance_ids).toEqual(["m1", "m2"]);
+    expect(lookups).toBe(1);
+  });
+
+  it("refuses the whole set when ANY member is another file's, naming it", async () => {
+    const mixed = {
+      query: async () => ({
+        rows: [
+          { milestone_instance_id: "m1", dossier_id: "d1", label: "Customs cleared", stage_seq: "3" },
+          { milestone_instance_id: "m2", dossier_id: "d9", label: "Vessel departed", stage_seq: "2" },
+        ],
+        rowCount: 2,
+      }),
+    };
+    await expect(
+      service.resolveFileLink(mixed, { dossier_id: "d1", milestone_instance_ids: ["m1", "m2"] }),
+    ).rejects.toMatchObject({ status: 400, message: expect.stringContaining("Vessel departed") });
+  });
+
+  it("404s when a member of the set no longer exists", async () => {
+    const partial = {
+      query: async () => ({
+        rows: [{ milestone_instance_id: "m1", dossier_id: "d1", label: "Customs cleared", stage_seq: "3" }],
+        rowCount: 1,
+      }),
+    };
+    await expect(
+      service.resolveFileLink(partial, { dossier_id: "d1", milestone_instance_ids: ["m1", "gone"] }),
+    ).rejects.toMatchObject({ status: 404 });
+  });
+
+  it("the set wins over the single column when a caller sends both", async () => {
+    const patch = await service.resolveFileLink(stageOn("d1"), {
+      dossier_id: "d1",
+      milestone_instance_id: "m9",
+      milestone_instance_ids: ["m1", "m2"],
+    });
+    expect(patch.milestone_instance_ids).toEqual(["m1", "m2"]);
+    expect(patch.milestone_instance_id).toBe("m1");
+  });
+
+  it("an empty set is a statement — it clears every stage and the projection", async () => {
+    const patch = await service.resolveFileLink(
+      stageOn("d1"),
+      { milestone_instance_ids: [] },
+      { dossier_id: "d1", milestone_instance_id: "m1", milestone_instance_ids: ["m1", "m2"] },
+    );
+    expect(patch).toEqual({ milestone_instance_id: null, milestone_instance_ids: [] });
+  });
+
+  it("re-sending the SAME file leaves a set of several alone", async () => {
+    const patch = await service.resolveFileLink(
+      stageOn("d1"),
+      { dossier_id: "d1" },
+      { dossier_id: "d1", milestone_instance_id: "m1", milestone_instance_ids: ["m1", "m2"] },
+    );
+    expect(patch).toEqual({ dossier_id: "d1" });
+  });
+
+  it("moving the task to ANOTHER file drops the whole old set", async () => {
+    const patch = await service.resolveFileLink(
+      stageOn("d1"),
+      { dossier_id: "d2" },
+      { dossier_id: "d1", milestone_instance_id: "m1", milestone_instance_ids: ["m1", "m2"] },
+    );
+    expect(patch).toEqual({ dossier_id: "d2", milestone_instance_id: null, milestone_instance_ids: [] });
+  });
+
+  it("a set with no file is refused like a single stage with no file", async () => {
+    await expect(
+      service.resolveFileLink(noStage, { milestone_instance_ids: ["m1"] }),
+    ).rejects.toMatchObject({ status: 400 });
+  });
+
+  it("withLink derives milestone_instance_ids from the aggregate a read carries", () => {
+    const shaped = service.withLink({
+      task_id: "t1",
+      entity_type: null,
+      entity_id: null,
+      milestones: [
+        { milestone_instance_id: "m1", label: "Pre-alert", stage_seq: 1, status: "DONE" },
+        { milestone_instance_id: "m2", label: "Customs", stage_seq: 7, status: "PENDING" },
+      ],
+    });
+    expect(shaped.milestone_instance_ids).toEqual(["m1", "m2"]);
+    // An event carries no set and gains no field.
+    expect(service.withLink({ calendar_event_id: "e1", entity_type: null })).not.toHaveProperty("milestone_instance_ids");
   });
 });

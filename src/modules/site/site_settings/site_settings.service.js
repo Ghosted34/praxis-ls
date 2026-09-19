@@ -36,6 +36,10 @@ const { serviceMode } = require("../../operations/_shared/service-mode");
 const { AppError } = require("../../../utils/errors");
 const events = require("./site_settings.events");
 const repo = require("./site_settings.repo");
+// PR-07 (CE-25): the cover-attachment outbox — read here only, so the Story
+// tab can show a durable upload-failure state. The vault-side service never
+// requires this module, so the dependency is one-directional.
+const attachmentOutbox = require("../../vault/document_vault/attachment_outbox.service");
 const { derivePalette } = require("@praxis/shared/design/palette");
 const {
   resolveSiteFont,
@@ -331,7 +335,43 @@ async function updateAbout(client, { patch, actor = {} }) {
 
 /* ── an entity's public story ───────────────────────────────────────────────*/
 
-const getEntityStory = (client, entityId) => repo.getEntityStory(client, entityId);
+/**
+ * The story read, plus the one thing the story row cannot know about itself:
+ * the state of the last cover-attachment attempt (PR-07, CE-25).
+ *
+ * A cover upload that failed after its bytes were stored leaves the previous
+ * cover serving — the pointer never moved — and until this field existed the
+ * only trace of the failure was a toast that vanished with the modal. The
+ * Story tab now carries the attempt's state beside the slot, so "the upload
+ * did not take" stays on the screen until the retry succeeds or the
+ * reconciliation cleans the stored file up, instead of living in a console
+ * nobody reads.
+ *
+ * Null when the last attempt reached a terminal state: LINKED and RECONCILED
+ * are history, and a banner that outlives its problem is a banner operators
+ * stop reading.
+ */
+async function getEntityStory(client, entityId) {
+  const story = await repo.getEntityStory(client, entityId);
+  if (!story) return null;
+  const attachment = await attachmentOutbox.latestOpenForOwner(client, {
+    ownerTable: "corporate_entity",
+    ownerId: entityId,
+    slot: "entity-cover",
+  });
+  return {
+    ...story,
+    cover_attachment: attachment
+      ? {
+          state: attachment.state,
+          vault_doc_id: attachment.vault_doc_id,
+          attempts: attachment.attempts,
+          last_error: attachment.last_error,
+          updated_at: attachment.updated_at,
+        }
+      : null,
+  };
+}
 
 /**
  * `serviceMode`'s ladder mapped onto the four lane colours the public focus

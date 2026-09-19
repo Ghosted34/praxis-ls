@@ -109,20 +109,40 @@ async function updateCurrency(client, code, patch) {
 
 /**
  * Make `code` the base currency: flip the old base off, this one on (and active).
- * One statement so there is never a window with two bases or none. Only the rows
- * whose flag actually changes are touched.
+ *
+ * TWO ordered statements, not one. 13951's partial unique index
+ * `ux_currency_single_base` is a plain (non-deferrable) index, so Postgres
+ * checks it ROW BY ROW as an UPDATE walks the table — a single
+ * `SET is_base = (code = $1)` flip is only safe when the planner happens to
+ * visit the old base before the target. When it visits the target first
+ * (typically rebasing BACK to a row that sorts earlier, e.g. XAF→EUR→XAF),
+ * the target is flagged base while the old base still is → 23505
+ * "duplicate key value violates unique constraint ux_currency_single_base"
+ * and the base change is refused. Turning every other base off FIRST, then
+ * the target on, can never collide regardless of row order.
+ *
+ * The caller (service.setBase) wraps this in one transaction, so there is no
+ * observable window with two bases — or none: other sessions see the old base
+ * until commit. The `WHERE is_base AND code <> $1` sweep also self-heals a
+ * legacy multi-base drift, and the unique index remains the concurrency
+ * backstop.
  */
 async function setBase(client, code) {
-  const { rows } = await client.query(
+  const off = await client.query(
     `UPDATE currency
-        SET is_base    = (code = $1),
-            is_active  = CASE WHEN code = $1 THEN true ELSE is_active END,
-            updated_at = now()
-      WHERE is_base <> (code = $1) OR code = $1
+        SET is_base = false, updated_at = now()
+      WHERE is_base AND code <> $1
       RETURNING code, is_base, is_active`,
     [code],
   );
-  return rows;
+  const on = await client.query(
+    `UPDATE currency
+        SET is_base = true, is_active = true, updated_at = now()
+      WHERE code = $1
+      RETURNING code, is_base, is_active`,
+    [code],
+  );
+  return [...off.rows, ...on.rows];
 }
 
 /** Hard-delete a currency. FK violations (23503) surface to the caller as 409. */

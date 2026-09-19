@@ -102,8 +102,13 @@ function fakeClient({ targetIsBase = false, oldBase = "XAF", latest = [] } = {})
         upserts.push(row);
         return { rows: [row] };
       }
-      // setBase flag flip
-      if (/SET\s+is_base\s+=\s+\(code = \$1\)/i.test(sql)) {
+      // setBase flag flip — TWO ordered statements (off-sweep, then target on).
+      // The order is the contract: 13951's partial unique index is checked per
+      // row, so the old base must be cleared before the target is flagged.
+      if (/SET\s+is_base\s*=\s*false[\s\S]*WHERE\s+is_base\s+AND\s+code\s+<>\s*\$1/i.test(sql)) {
+        return { rows: oldBase && oldBase !== params[0] ? [{ code: oldBase, is_base: false, is_active: true }] : [] };
+      }
+      if (/SET\s+is_base\s*=\s*true[\s\S]*WHERE\s+code\s*=\s*\$1/i.test(sql)) {
         return { rows: [{ code: params[0], is_base: true, is_active: true }] };
       }
       return { rows: [] };
@@ -156,5 +161,29 @@ describe("service.setBase — formal rebase orchestration", () => {
     const out = await service.setBase(c, "XAF", {});
     expect(out.skipped).toBe("already-base");
     expect(c.upserts).toEqual([]);
+  });
+
+  // ── Regression: rebase-BACK (XAF→EUR→XAF) 500'd in production ──────────────
+  // The old single-statement flip `SET is_base = (code = $1)` violated 13951's
+  // partial unique index whenever Postgres visited the target row before the
+  // old base row (23505 duplicate key on ux_currency_single_base), so a second
+  // base change to any earlier-sorting currency was refused. setBase must now
+  // sweep every other base OFF first, then flag the target ON.
+  it("flips the old base off BEFORE the new base on (ordered statements, rebase-back 23505)", async () => {
+    const c = fakeClient({
+      target: "XAF",
+      oldBase: "EUR",
+      latest: [{ quote_code: "XAF", rate: 655.9 }],
+    });
+    const out = await service.setBase(c, "XAF", {});
+    expect(out.base).toBe("XAF");
+    const sqls = c.queries.map((q) => q.sql);
+    const offIdx = sqls.findIndex((s) => /SET\s+is_base\s*=\s*false/i.test(s));
+    const onIdx = sqls.findIndex((s) => /SET\s+is_base\s*=\s*true/i.test(s));
+    expect(offIdx).toBeGreaterThanOrEqual(0);
+    expect(onIdx).toBeGreaterThan(offIdx);
+    // The off-sweep must exclude the target; the on-statement must also activate it.
+    expect(sqls[offIdx]).toMatch(/WHERE\s+is_base\s+AND\s+code\s+<>\s*\$1/i);
+    expect(sqls[onIdx]).toMatch(/is_active\s*=\s*true/i);
   });
 });

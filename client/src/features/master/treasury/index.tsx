@@ -24,12 +24,13 @@ import { SplitPane } from "@/components/ui/split-pane";
 import { PageHeader } from "@/components/data-list";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { pageShell } from "@/lib/layout";
-import { useList, useRefresh, errMsg } from "@/lib/use-resource";
+import { useListPaged, useRefresh, errMsg } from "@/lib/use-resource";
 import { cell } from "@/lib/format";
 import * as api from "@/lib/treasury-api";
 import { TreasuryDossier } from "./dossier";
 import { AccountModal } from "./account-modal";
 import { NewCategoryModal } from "./new-category-modal";
+import { Pagination } from "@/components/ui/pagination";
 
 const KIND_TONE: Record<string, Tone> = {
   BANK: "blue",
@@ -39,11 +40,28 @@ const KIND_TONE: Record<string, Tone> = {
 
 export function TreasuryMasterPage() {
   const reload = useRefresh();
-  const { rows, error, loading } =
-    useList<api.TreasuryAccountRich>("/treasury-accounts");
-  const [cats, setCats] = React.useState<api.TreasuryCategory[] | null>(null);
+  const [page, setPage] = React.useState(0);
+  const pageSize = 20;
   const [catFilter, setCatFilter] = React.useState<string>("");
   const [q, setQ] = React.useState("");
+  const [debouncedQ, setDebouncedQ] = React.useState("");
+
+  React.useEffect(() => {
+    const t = setTimeout(() => {
+      setDebouncedQ(q);
+      setPage(0);
+    }, 250);
+    return () => clearTimeout(t);
+  }, [q]);
+
+  const paged = useListPaged<api.TreasuryAccountRich>("/treasury-accounts", {
+    page,
+    pageSize,
+    search: debouncedQ || undefined,
+    category_id: catFilter || undefined,
+  });
+
+  const [cats, setCats] = React.useState<api.TreasuryCategory[] | null>(null);
   const [selId, setSelId] = React.useState<string | null>(null);
   const [createOpen, setCreateOpen] = React.useState(false);
   const [newCatOpen, setNewCatOpen] = React.useState(false);
@@ -63,24 +81,11 @@ export function TreasuryMasterPage() {
     };
   }, []);
 
-  const accts = React.useMemo(() => rows || [], [rows]);
-  const filtered = React.useMemo(() => {
-    let out = accts;
-    if (catFilter) out = out.filter((a) => a.category_id === catFilter);
-    if (q) {
-      const needle = q.toLowerCase();
-      out = out.filter((a) =>
-        `${a.label} ${a.bank_name || ""} ${a.iban || ""} ${a.momo_number || ""} ${a.category_label || ""}`
-          .toLowerCase()
-          .includes(needle),
-      );
-    }
-    return out;
-  }, [accts, catFilter, q]);
+  const accts = React.useMemo(() => paged.rows || [], [paged.rows]);
 
   React.useEffect(() => {
-    if (!selId && filtered.length) setSelId(filtered[0].treasury_account_id);
-  }, [filtered, selId]);
+    if (!selId && accts.length) setSelId(accts[0].treasury_account_id);
+  }, [accts, selId]);
 
   // /master/treasury-accounts?open=<id> deep-links from other screens.
   const openId = params.get("open");
@@ -99,7 +104,7 @@ export function TreasuryMasterPage() {
   }, [accts]);
 
   const selected =
-    filtered.find((a) => a.treasury_account_id === selId) || null;
+    accts.find((a) => a.treasury_account_id === selId) || null;
 
   return (
     <section className={pageShell.wide}>
@@ -116,17 +121,17 @@ export function TreasuryMasterPage() {
       {/* Category chips + "+ New category" */}
       <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-card p-3">
         <button
-          onClick={() => setCatFilter("")}
+          onClick={() => { setCatFilter(""); setPage(0); }}
           className={`rounded-full px-3 py-1 text-xs ${catFilter === "" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"}`}
         >
-          All ({accts.length})
+          All ({paged.total ?? accts.length})
         </button>
         {(cats || [])
           .filter((c) => c.is_active)
           .map((c) => (
             <button
               key={c.treasury_category_id}
-              onClick={() => setCatFilter(c.treasury_category_id)}
+              onClick={() => { setCatFilter(c.treasury_category_id); setPage(0); }}
               className={`rounded-full px-3 py-1 text-xs ${catFilter === c.treasury_category_id ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"}`}
             >
               {c.label} ({countByCat[c.treasury_category_id] || 0})
@@ -145,8 +150,8 @@ export function TreasuryMasterPage() {
 
       {rowError && <ErrorState message={rowError} />}
 
-      {error ? (
-        <ErrorState message={error} />
+      {paged.error ? (
+        <ErrorState message={paged.error} />
       ) : (
         <SplitPane
           storageKey="master.treasury-accounts"
@@ -164,9 +169,9 @@ export function TreasuryMasterPage() {
               onChange={(e) => setQ(e.target.value)}
             />
             <div className="max-h-[70vh] space-y-1 overflow-auto rounded-lg border p-1">
-              {loading ? (
+              {paged.loading ? (
                 <LoadingRow label="Loading accounts…" />
-              ) : filtered.length === 0 ? (
+              ) : accts.length === 0 ? (
                 <div className="p-3">
                   <EmptyState
                     title="No accounts"
@@ -178,7 +183,7 @@ export function TreasuryMasterPage() {
                   />
                 </div>
               ) : (
-                filtered.map((a) => {
+                accts.map((a) => {
                   const id = a.treasury_account_id;
                   const sel = id === selId;
                   return (
@@ -220,7 +225,26 @@ export function TreasuryMasterPage() {
                 })
               )}
             </div>
+            <Pagination
+              page={page}
+              pageSize={pageSize}
+              total={paged.total}
+              onPageChange={setPage}
+            />
           </div>
+          {selected ? (
+            <TreasuryDossier
+              id={selected.treasury_account_id}
+              onChanged={reload}
+            />
+          ) : (
+            <EmptyState
+              title="No account selected"
+              hint="Pick an account from the list to see its 360."
+            />
+          )}
+        </SplitPane>
+      )}
           {selected ? (
             <TreasuryDossier
               id={selected.treasury_account_id}

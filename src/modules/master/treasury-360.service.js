@@ -22,8 +22,28 @@
 // stays a DAG (this file lives in master/, its consumer is treasury_account/
 // two levels down, and pre-loading would circle).
 
-/** Return the raw balance metric: SUM(debit) - SUM(credit). For a class-5
- *  account (normal balance D), this IS the balance. */
+/** Return the raw balance metrics: all-time, MTD, and YTD in one query (Audit #17). */
+async function _balances(client, accountCode, mtdDate, ytdDate) {
+  const { rows } = await client.query(
+    "SELECT COALESCE(SUM(jl.debit),0)::numeric AS debit_all, " +
+    "       COALESCE(SUM(jl.credit),0)::numeric AS credit_all, " +
+    "       COALESCE(SUM(CASE WHEN je.entry_date >= $2 THEN jl.debit ELSE 0 END),0)::numeric AS debit_mtd, " +
+    "       COALESCE(SUM(CASE WHEN je.entry_date >= $2 THEN jl.credit ELSE 0 END),0)::numeric AS credit_mtd, " +
+    "       COALESCE(SUM(CASE WHEN je.entry_date >= $3 THEN jl.debit ELSE 0 END),0)::numeric AS debit_ytd, " +
+    "       COALESCE(SUM(CASE WHEN je.entry_date >= $3 THEN jl.credit ELSE 0 END),0)::numeric AS credit_ytd " +
+    "  FROM journal_line jl JOIN journal_entry je ON je.entry_id = jl.entry_id " +
+    " WHERE jl.account_code = $1 AND je.status = 'validated'",
+    [accountCode, mtdDate, ytdDate],
+  );
+  const r = rows[0] || {};
+  return {
+    all: { debit: Number(r.debit_all || 0), credit: Number(r.credit_all || 0) },
+    mtd: { debit: Number(r.debit_mtd || 0), credit: Number(r.credit_mtd || 0) },
+    ytd: { debit: Number(r.debit_ytd || 0), credit: Number(r.credit_ytd || 0) },
+  };
+}
+
+/** Legacy single-balance helper kept for backward compatibility if called directly. */
 async function _balance(client, accountCode, sinceDate) {
   const params = [accountCode];
   let dateClause = "";
@@ -39,15 +59,20 @@ async function _balance(client, accountCode, sinceDate) {
   return { debit: Number(r.debit_sum), credit: Number(r.credit_sum) };
 }
 
-/** Recent journal lines that hit this account, most recent first. */
+/** Recent journal lines that hit this account with reversal links (Audit #5, #16). */
 async function _recentLines(client, accountCode, limit = 50) {
   const { rows } = await client.query(
     "SELECT jl.line_id, jl.entry_id, jl.debit, jl.credit, jl.currency, jl.dossier_id, " +
     "       je.entry_date, je.entry_no, je.description, je.source_doc_ref, je.status, " +
+    "       je.corrects_entry_id, " +
+    "       rev.entry_no AS reversed_by_entry_no, rev.entry_id AS reversed_by_entry_id, " +
+    "       orig.entry_no AS reverses_entry_no, " +
     "       j.code AS journal_code " +
     "  FROM journal_line jl " +
     "  JOIN journal_entry je ON je.entry_id = jl.entry_id " +
     "  JOIN journal j ON j.journal_id = je.journal_id " +
+    "  LEFT JOIN journal_entry rev ON rev.corrects_entry_id = je.entry_id AND rev.status = 'validated' " +
+    "  LEFT JOIN journal_entry orig ON orig.entry_id = je.corrects_entry_id " +
     " WHERE jl.account_code = $1 " +
     " ORDER BY je.entry_date DESC, je.entry_no DESC " +
     " LIMIT $2",
@@ -56,27 +81,42 @@ async function _recentLines(client, accountCode, limit = 50) {
   return rows;
 }
 
-/** The single most recent debit and credit on this account. Rendered as the
- *  "Last debit / Last credit" tiles on the Overview. */
+/** The single most recent debit and credit on this account. Filtered to validated status (Audit #16). */
 async function _lastMovements(client, accountCode) {
-  const debQ = client.query(
-    "SELECT jl.debit AS amount, je.entry_date, je.description, je.entry_no, j.code AS journal_code " +
-    "  FROM journal_line jl JOIN journal_entry je ON je.entry_id = jl.entry_id " +
-    "  JOIN journal j ON j.journal_id = je.journal_id " +
-    " WHERE jl.account_code = $1 AND jl.debit > 0 " +
-    " ORDER BY je.entry_date DESC, je.entry_no DESC LIMIT 1",
+  const { rows } = await client.query(
+    "(SELECT jl.debit AS amount, je.entry_date, je.description, je.entry_no, j.code AS journal_code, 'D' AS side " +
+    "   FROM journal_line jl JOIN journal_entry je ON je.entry_id = jl.entry_id " +
+    "   JOIN journal j ON j.journal_id = je.journal_id " +
+    "  WHERE jl.account_code = $1 AND jl.debit > 0 AND je.status = 'validated' " +
+    "  ORDER BY je.entry_date DESC, je.entry_no DESC LIMIT 1) " +
+    "UNION ALL " +
+    "(SELECT jl.credit AS amount, je.entry_date, je.description, je.entry_no, j.code AS journal_code, 'C' AS side " +
+    "   FROM journal_line jl JOIN journal_entry je ON je.entry_id = jl.entry_id " +
+    "   JOIN journal j ON j.journal_id = je.journal_id " +
+    "  WHERE jl.account_code = $1 AND jl.credit > 0 AND je.status = 'validated' " +
+    "  ORDER BY je.entry_date DESC, je.entry_no DESC LIMIT 1)",
     [accountCode],
   );
-  const crQ = client.query(
-    "SELECT jl.credit AS amount, je.entry_date, je.description, je.entry_no, j.code AS journal_code " +
-    "  FROM journal_line jl JOIN journal_entry je ON je.entry_id = jl.entry_id " +
-    "  JOIN journal j ON j.journal_id = je.journal_id " +
-    " WHERE jl.account_code = $1 AND jl.credit > 0 " +
-    " ORDER BY je.entry_date DESC, je.entry_no DESC LIMIT 1",
-    [accountCode],
-  );
-  const [d, c] = await Promise.all([debQ, crQ]);
-  return { last_debit: d.rows[0] || null, last_credit: c.rows[0] || null };
+  const deb = rows.find((r) => r.side === "D") || null;
+  const cr = rows.find((r) => r.side === "C") || null;
+  return { last_debit: deb, last_credit: cr };
+}
+
+/** Unreconciled count: unmatched statement lines + open reconciliations (Audit #14). */
+async function _unreconciledCount(client, accountId) {
+  try {
+    const { rows: lines } = await client.query(
+      "SELECT COUNT(*)::int AS cnt FROM bank_statement_line WHERE treasury_account_id = $1 AND match_status = 'UNMATCHED'",
+      [accountId],
+    );
+    const { rows: recons } = await client.query(
+      "SELECT COUNT(*)::int AS cnt FROM bank_reconciliation WHERE treasury_account_id = $1 AND status <> 'APPROVED_LOCKED'",
+      [accountId],
+    );
+    return Number(lines[0]?.cnt || 0) + Number(recons[0]?.cnt || 0);
+  } catch {
+    return 0;
+  }
 }
 
 /** 12-month movement series (calendar month, per side). */
@@ -169,11 +209,14 @@ async function _leaf(client, code) {
  */
 async function _timeline(client, id, limit = 25) {
   const { rows } = await client.query(
-    "SELECT ledger_id AS audit_id, action, actor_user_id, " +
-    "       before_json AS before_snapshot, after_json AS after_snapshot, " +
-    "       created_at AS occurred_at " +
-    "  FROM immutable_ledger WHERE entity_ref = $1 " +
-    " ORDER BY created_at DESC LIMIT $2",
+    "SELECT il.ledger_id AS audit_id, il.action, il.actor_user_id, " +
+    "       COALESCE(u.full_name, u.email, 'System') AS actor_name, u.email AS actor_email, " +
+    "       il.before_json AS before_snapshot, il.after_json AS after_snapshot, " +
+    "       il.created_at AS occurred_at " +
+    "  FROM immutable_ledger il " +
+    "  LEFT JOIN app_user u ON u.user_id = il.actor_user_id " +
+    " WHERE il.entity_ref = $1 " +
+    " ORDER BY il.created_at DESC LIMIT $2",
     ["treasury_account:" + id, Math.min(Math.max(parseInt(limit, 10) || 25, 1), 200)],
   );
   return rows;
@@ -190,16 +233,16 @@ async function load(client, { id }) {
 
   const code = acc.coa_code;
 
-  // Every one of these runs on the SAME tenant client (a pg client cannot
-  // execute two queries at once), so it's sequential. If a page gets slow, add
-  // a materialised view on the finance side rather than parallelising here.
-  const balanceAll = code ? await _balance(client, code, null) : { debit: 0, credit: 0 };
-  const balanceMtd = code
-    ? await _balance(client, code, new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10))
-    : { debit: 0, credit: 0 };
-  const balanceYtd = code
-    ? await _balance(client, code, new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10))
-    : { debit: 0, credit: 0 };
+  const mtdDate = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10);
+  const ytdDate = new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10);
+
+  // Consolidated balances in one query (Audit #17)
+  const balances = code ? await _balances(client, code, mtdDate, ytdDate) : {
+    all: { debit: 0, credit: 0 },
+    mtd: { debit: 0, credit: 0 },
+    ytd: { debit: 0, credit: 0 },
+  };
+
   const lastMovements = code ? await _lastMovements(client, code) : { last_debit: null, last_credit: null };
   const monthly = code ? await _monthlySeries(client, code) : [];
   const recentLines = code ? await _recentLines(client, code, 50) : [];
@@ -209,9 +252,10 @@ async function load(client, { id }) {
   const documents = await accRepo.listDocuments(client, id);
   const signatories = await accRepo.listSignatories(client, id);
   const timeline = await _timeline(client, id, 25);
+  const unreconciledCount = await _unreconciledCount(client, id);
 
   const opening = Number(acc.opening_balance || 0);
-  const posted = balanceAll.debit - balanceAll.credit;
+  const posted = balances.all.debit - balances.all.credit;
   const balance = opening + posted;
 
   return {
@@ -232,11 +276,11 @@ async function load(client, { id }) {
       posted_net: posted,
       balance,
       currency: acc.currency,
-      debit_total: balanceAll.debit,
-      credit_total: balanceAll.credit,
-      mtd: { debit: balanceMtd.debit, credit: balanceMtd.credit, net: balanceMtd.debit - balanceMtd.credit },
-      ytd: { debit: balanceYtd.debit, credit: balanceYtd.credit, net: balanceYtd.debit - balanceYtd.credit },
-      unreconciled_count: null,  // stub — filled in when the reconciliation feature lands
+      debit_total: balances.all.debit,
+      credit_total: balances.all.credit,
+      mtd: { debit: balances.mtd.debit, credit: balances.mtd.credit, net: balances.mtd.debit - balances.mtd.credit },
+      ytd: { debit: balances.ytd.debit, credit: balances.ytd.credit, net: balances.ytd.debit - balances.ytd.credit },
+      unreconciled_count: unreconciledCount,
     },
     last_debit: lastMovements.last_debit,
     last_credit: lastMovements.last_credit,

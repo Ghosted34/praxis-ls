@@ -108,14 +108,25 @@ export const listAccounts = (
   params: {
     entity_id?: string;
     category_id?: string;
+    kind?: string;
+    search?: string;
     is_active?: boolean;
+    is_verified?: boolean;
+    is_primary?: boolean;
+    limit?: number;
+    offset?: number;
   } = {},
 ) => {
   const qs = new URLSearchParams();
   if (params.entity_id) qs.set("entity_id", params.entity_id);
   if (params.category_id) qs.set("category_id", params.category_id);
-  if (params.is_active !== undefined)
-    qs.set("is_active", String(params.is_active));
+  if (params.kind) qs.set("kind", params.kind);
+  if (params.search) qs.set("search", params.search);
+  if (params.is_active !== undefined) qs.set("is_active", String(params.is_active));
+  if (params.is_verified !== undefined) qs.set("is_verified", String(params.is_verified));
+  if (params.is_primary !== undefined) qs.set("is_primary", String(params.is_primary));
+  if (params.limit !== undefined) qs.set("limit", String(params.limit));
+  if (params.offset !== undefined) qs.set("offset", String(params.offset));
   const s = qs.toString();
   return tenant<TreasuryAccountRich[]>(
     "/treasury-accounts" + (s ? "?" + s : ""),
@@ -309,6 +320,10 @@ export type MovementLine = {
   currency: string;
   dossier_id: string | null;
   status: string;
+  corrects_entry_id?: string | null;
+  reversed_by_entry_no?: number | null;
+  reversed_by_entry_id?: string | null;
+  reverses_entry_no?: number | null;
 };
 
 export type MonthlyPoint = {
@@ -374,6 +389,8 @@ export type Dossier = {
     audit_id: string;
     action: string;
     actor_user_id: string | null;
+    actor_name?: string | null;
+    actor_email?: string | null;
     before_snapshot: unknown;
     after_snapshot: unknown;
     occurred_at: string;
@@ -383,3 +400,9 @@ export type Dossier = {
 
 export const getDossier = (id: string) =>
   tenant<Dossier>(`/treasury-accounts/${id}/360`);
+
+export const reverseEntry = (accountId: string, entryId: string, reason: string) =>
+  tenant<{ reversal_entry_id: string; entry: unknown }>(
+    `/treasury-accounts/${encodeURIComponent(accountId)}/reverse-entry`,
+    { method: "POST", body: { entry_id: entryId, reason } },
+  );

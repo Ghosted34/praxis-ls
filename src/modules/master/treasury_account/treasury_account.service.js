@@ -326,6 +326,23 @@ async function unverify(client, { id, actor = {} }) {
 const get  = (client, id) => repo.getWithCategory(client, id);
 const list = (client, q)  => repo.list(client, q);
 
+/** Reverse a validated journal entry on this treasury account (PR-06, Audit #5). */
+async function reverseEntry(client, { accountId, entryId, reason, actor = {} }) {
+  const account = await repo.get(client, accountId);
+  if (!account) throw new AppError("NOT_FOUND", "Treasury account not found", 404);
+
+  const { rows } = await client.query(
+    "SELECT jl.line_id, je.status FROM journal_line jl JOIN journal_entry je ON je.entry_id = jl.entry_id WHERE jl.entry_id = $1 AND jl.account_code = $2 LIMIT 1",
+    [entryId, account.coa_code],
+  );
+  if (!rows.length) {
+    throw new AppError("ENTRY_NOT_ON_ACCOUNT", "Journal entry does not belong to this treasury account", 400);
+  }
+
+  const journalService = require("../../finance/journal_entry/journal_entry.service");
+  return journalService.reverse(client, { entryId, reason, actor });
+}
+
 // ── Documents (PR-03, Audit #1, #2) ──
 async function listDocuments(client, accountId) {
   return repo.listDocuments(client, accountId);
@@ -461,7 +478,7 @@ async function deleteGateway(client, { provider, actor = {} }) {
 }
 
 module.exports = {
-  create, update, setActive, setPrimary, verify, unverify, get, list,
+  create, update, setActive, setPrimary, verify, unverify, get, list, reverseEntry,
   listDocuments, addDocument, removeDocument, verifyDocument,
   listSignatories, addSignatory, updateSignatory, removeSignatory,
   listGateways, getGateway, upsertGateway, setGatewayActive, setGatewayRole, deleteGateway,

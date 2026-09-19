@@ -107,6 +107,11 @@ const schemas = {
     notes: z.string().max(1000).optional().nullable(),
   }),
 
+  reverseEntry: z.object({
+    entry_id: z.string().uuid(),
+    reason: z.string().min(1).max(500),
+  }),
+
   gatewayUpsert: z.object({
     provider: z.string().min(1).max(64),
     active: z.boolean().optional(),
@@ -126,6 +131,7 @@ const mw = (k) => (req, _res, next) => {
 
 module.exports = {
   create: mw("create"), update: mw("update"), setActive: mw("setActive"),
+  reverseEntry: mw("reverseEntry"),
   createDocument: mw("createDocument"),
   createSignatory: mw("createSignatory"), updateSignatory: mw("updateSignatory"),
   gatewayUpsert: mw("gatewayUpsert"), gatewayActive: mw("gatewayActive"), gatewayRole: mw("gatewayRole"),

@@ -25,6 +25,7 @@ treasuryRouter.post("/:id/active",  requirePermission(MODULE, "edit"), validator
 treasuryRouter.post("/:id/primary", requirePermission(MODULE, "edit"), controller.setPrimary);
 treasuryRouter.post("/:id/verify",  requirePermission(MODULE, "edit"), controller.verify);
 treasuryRouter.post("/:id/unverify",requirePermission(MODULE, "edit"), controller.unverify);
+treasuryRouter.post("/:id/reverse-entry", requirePermission(MODULE, "approve"), validator.reverseEntry, controller.reverseEntry);
 
 // Documents (PR-03, Audit #1, #2)
 treasuryRouter.get("/:id/documents", requirePermission(MODULE, "view"), controller.listDocuments);

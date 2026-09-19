@@ -43,17 +43,43 @@ async function update(client, id, fields) {
  */
 async function list(client, q = {}) {
   const { limit, offset } = page(q);
-  const params = [limit, offset];
   const wh = [];
+  const params = [];
+
   if (q.entity_id) { params.push(q.entity_id); wh.push("t.entity_id = $" + params.length); }
   if (q.kind)      { params.push(q.kind);      wh.push("t.kind = $" + params.length); }
   if (q.category_id) { params.push(q.category_id); wh.push("t.category_id = $" + params.length); }
-  if (q.is_active !== undefined) {
+  if (q.is_active !== undefined && q.is_active !== null && q.is_active !== "") {
     params.push(q.is_active === "true" || q.is_active === true);
     wh.push("t.is_active = $" + params.length);
   }
+  if (q.is_primary !== undefined && q.is_primary !== null && q.is_primary !== "") {
+    params.push(q.is_primary === "true" || q.is_primary === true);
+    wh.push("t.is_primary = $" + params.length);
+  }
+  if (q.is_verified !== undefined && q.is_verified !== null && q.is_verified !== "") {
+    params.push(q.is_verified === "true" || q.is_verified === true);
+    wh.push("t.is_verified = $" + params.length);
+  }
   if (q.custodian_user_id) { params.push(q.custodian_user_id); wh.push("t.custodian_user_id = $" + params.length); }
+  if (q.search || q.q) {
+    const term = (q.search || q.q).trim();
+    if (term) {
+      params.push(`%${term}%`);
+      const p = params.length;
+      wh.push(`(t.label ILIKE $${p} OR t.coa_code ILIKE $${p} OR t.account_number ILIKE $${p} OR t.bank_name ILIKE $${p} OR t.iban ILIKE $${p} OR t.momo_number ILIKE $${p} OR c.label ILIKE $${p})`);
+    }
+  }
+
   const where = wh.length ? "WHERE " + wh.join(" AND ") : "";
+
+  const { rows: countRows } = await client.query(
+    "SELECT COUNT(*)::int AS total FROM treasury_account t LEFT JOIN treasury_category c ON c.treasury_category_id = t.category_id " + where,
+    params,
+  );
+  const total = Number(countRows[0]?.total || 0);
+
+  const queryParams = [...params, limit, offset];
   const { rows } = await client.query(
     "SELECT t.*, c.code AS category_code, c.label AS category_label, " +
     "       c.requires_custodian AS category_requires_custodian, " +
@@ -63,9 +89,12 @@ async function list(client, q = {}) {
     "  FROM treasury_account t " +
     "  LEFT JOIN treasury_category c ON c.treasury_category_id = t.category_id " +
     "  " + where +
-    " ORDER BY t.is_primary DESC, t.created_at DESC LIMIT $1 OFFSET $2",
-    params,
+    ` ORDER BY t.is_primary DESC, t.created_at DESC LIMIT $${queryParams.length - 1} OFFSET $${queryParams.length}`,
+    queryParams,
   );
+  rows.total = total;
+  rows.limit = limit;
+  rows.offset = offset;
   return rows;
 }
 

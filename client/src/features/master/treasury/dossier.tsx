@@ -328,6 +328,12 @@ export function TreasuryDossier({
           label="This year (net)"
           value={amount(data.kpis.ytd.net, data.kpis.currency)}
         />
+        <KpiTile
+          label={tr("Unreconciled")}
+          value={data.kpis.unreconciled_count === null ? "—" : String(data.kpis.unreconciled_count)}
+          hint={data.kpis.unreconciled_count ? tr("Items needing reconciliation") : tr("All items reconciled")}
+          onClick={() => setTab("Reconciliation")}
+        />
       </KpiRow>
 
       {/* Readiness — the empty-state that explains itself. */}
@@ -481,6 +487,7 @@ export function TreasuryDossier({
                 <Th r>{tr("Debit")}</Th>
                 <Th r>{tr("Credit")}</Th>
                 <Th>{tr("Status")}</Th>
+                <Th r>{tr("Reversal")}</Th>
               </>
             }
             empty={data.recent_lines.length === 0}
@@ -504,9 +511,39 @@ export function TreasuryDossier({
                     {l.status}
                   </Pill>
                 </Td>
+                <Td r>
+                  {l.reversed_by_entry_no ? (
+                    <Pill tone="muted">{tr("Reversed by #")}{l.reversed_by_entry_no}</Pill>
+                  ) : l.reverses_entry_no ? (
+                    <Pill tone="blue">{tr("Reversal of #")}{l.reverses_entry_no}</Pill>
+                  ) : l.status === "validated" ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={async () => {
+                        const reason = window.prompt(
+                          tr("Enter reason for reversing journal entry #{no}:", { no: l.entry_no }),
+                        );
+                        if (!reason) return;
+                        try {
+                          await api.reverseEntry(id, l.entry_id, reason);
+                          reload();
+                          onChanged?.();
+                        } catch (e) {
+                          window.alert(errMsg(e));
+                        }
+                      }}
+                    >
+                      {tr("Reverse")}
+                    </Button>
+                  ) : null}
+                </Td>
               </tr>
             ))}
           </MiniTable>
+          <p className="micro text-muted-foreground mt-2">
+            {tr("Note: Only validated postings are included in posted balance and monthly KPI totals. Draft and reversed entries are excluded.")}
+          </p>
         </Section>
       )}
 
@@ -737,7 +774,9 @@ export function TreasuryDossier({
                     {t.action}
                   </code>
                 </Td>
-                <Td>{cell(t.actor_user_id)}</Td>
+                <Td title={t.actor_user_id || undefined}>
+                  {t.actor_name || t.actor_user_id || tr("System")}
+                </Td>
               </tr>
             ))}
           </MiniTable>

@@ -33,7 +33,23 @@ function pick(src, keys) {
 }
 
 module.exports = {
-  list: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.list(c, req.query)) })),
+  list: asyncHandler(async (req, res) => {
+    const rows = await req.tenantDb((c) => service.list(c, req.query));
+    if (rows && rows.total !== undefined) {
+      res.set("X-Total-Count", String(rows.total));
+      return res.json({
+        data: rows,
+        pagination: {
+          total: rows.total,
+          limit: rows.limit,
+          offset: rows.offset,
+          page: Math.floor(rows.offset / rows.limit) + 1,
+          total_pages: Math.ceil(rows.total / rows.limit) || 1,
+        },
+      });
+    }
+    return res.json({ data: rows });
+  }),
   get: asyncHandler(async (req, res) => {
     const r = await req.tenantDb((c) => service.get(c, req.params.id));
     if (!r) throw new AppError("NOT_FOUND", "Treasury account not found", 404);
@@ -84,6 +100,15 @@ module.exports = {
   unverify: asyncHandler(async (req, res) => {
     res.json({ data: await req.tenantDb((c) => service.unverify(c, {
       id: req.params.id, actor: actor(req),
+    })) });
+  }),
+
+  reverseEntry: asyncHandler(async (req, res) => {
+    res.json({ data: await req.tenantDb((c) => service.reverseEntry(c, {
+      accountId: req.params.id,
+      entryId: req.body.entry_id,
+      reason: req.body.reason,
+      actor: actor(req),
     })) });
   }),
 

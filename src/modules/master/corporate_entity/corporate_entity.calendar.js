@@ -140,16 +140,45 @@ async function save(client, entityId, { timezone, days = [], holidays = [], name
   return get(client, entityId);
 }
 
-/** Drop an entity's own calendar so it inherits the tenant default again. */
+/**
+ * Drop an entity's own calendar so it inherits the tenant default again.
+ *
+ * Reset is deliberately the same unit of work as save.  In particular, do not
+ * move the reads below outside the transaction: the audit record must describe
+ * the calendar that was actually removed, and an event/audit failure must not
+ * turn a successful delete into an unaudited change.  Keeping the inherited
+ * result in `after` also makes a reset auditable when there was no own calendar
+ * (the before and after snapshots then both identify the tenant default).
+ */
 async function reset(client, entityId, { actor = {} } = {}) {
-  await client.query("DELETE FROM working_calendar WHERE entity_id = $1", [entityId]);
-  await audit(client, {
-    actorUserId: await resolveActorId(client, actor.user_id),
-    action: "working_calendar.reset",
-    moduleKey: MODULE,
-    entityRef: "corporate_entity:" + entityId,
-  });
-  return get(client, entityId);
+  await client.query("BEGIN");
+  try {
+    const before = await get(client, entityId);
+
+    await client.query("DELETE FROM working_calendar WHERE entity_id = $1", [entityId]);
+
+    const after = await get(client, entityId);
+    await emitEvent(client, {
+      eventTypeKey: "working_calendar.reset",
+      moduleKey: MODULE,
+      entityRef: "corporate_entity:" + entityId,
+      actorUserId: actor.user_id || null,
+      payload: { before, after },
+    });
+    await audit(client, {
+      actorUserId: await resolveActorId(client, actor.user_id),
+      action: "working_calendar.reset",
+      moduleKey: MODULE,
+      entityRef: "corporate_entity:" + entityId,
+      before,
+      after,
+    });
+    await client.query("COMMIT");
+    return after;
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  }
 }
 
 module.exports = { get, save, reset };

@@ -145,7 +145,45 @@ describe("writeReminders — replacing, not stacking", () => {
     });
     expect(syncs(c)).toHaveLength(1);
     expect(syncs(c)[0].sql).toMatch(/UPDATE task/);
-    expect(syncs(c)[0].params.slice(1)).toEqual([60, "2026-09-15T16:00:00.000Z"]);
+    expect(syncs(c)[0].params.slice(1, 3)).toEqual([60, "2026-09-15T16:00:00.000Z"]);
+  });
+
+  /**
+   * The projection UPDATE is the last statement of every dialog save, and it
+   * shipped comparing `owner_id` with the placeholder that carried
+   * `reminder_minutes` (and `owner_type` with the one carrying the owner id).
+   * Postgres refused the statement at parse time — `operator does not exist:
+   * text = uuid` — so EVERY create and edit that named its reminders 500'd
+   * after the task row was already in. A scripted client accepts any SQL, so
+   * position-only assertions could not see it. This one reads what each
+   * `$n` in the owner predicates is bound to, which is the thing that broke.
+   */
+  it("binds the owner predicates of the projection UPDATE to the owner, never to the projected values", async () => {
+    for (const ownerType of ["task", "calendar_event"]) {
+      const c = mockClient();
+      const ownerId = `${ownerType}-owner-1`;
+      await service.writeReminders(c, {
+        ownerType,
+        ownerId,
+        input: { reminders: [{ reminder_minutes: 60 }] },
+        anchor: "2026-09-15T17:00:00Z",
+        timeZone: "UTC",
+      });
+      const [sync] = syncs(c);
+      expect(sync.sql).toMatch(ownerType === "task" ? /UPDATE task\b/ : /UPDATE calendar_event\b/);
+      const boundTo = (column) =>
+        [...sync.sql.matchAll(new RegExp(`\\b${column} = \\$(\\d+)`, "g"))].map((m) => sync.params[Number(m[1]) - 1]);
+      // Every `owner_id = $n` and the row predicate resolve to the owner's id…
+      expect(boundTo("owner_id")).toEqual([ownerId]);
+      expect(boundTo(ownerType === "task" ? "task_id" : "calendar_event_id")).toEqual([ownerId]);
+      // …every `owner_type = $n` to the owner type…
+      expect(boundTo("owner_type")).toEqual([ownerType]);
+      // …and the projected pair keeps its own placeholders.
+      expect(boundTo("reminder_minutes")).toEqual([60]);
+      expect(boundTo("remind_at")).toEqual(["2026-09-15T16:00:00.000Z"]);
+      // Nothing is bound twice under two meanings.
+      expect(sync.params).toHaveLength(4);
+    }
   });
 
   it("the 13810 pair is still honoured as one row, so the older client still arms", async () => {

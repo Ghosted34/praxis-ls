@@ -59,7 +59,15 @@ const listTasks = asyncHandler(async (req, res) => {
 
 const getBoard = asyncHandler(async (req, res) => {
   const out = await req.tenantDb((c) =>
-    service.getBoard(c, ctxOf(req), { audience: req.query.audience, assigned_to: req.query.assigned_to }),
+    service.getBoard(c, ctxOf(req), {
+      audience: req.query.audience,
+      assigned_to: req.query.assigned_to,
+      dossier_id: req.query.dossier_id,
+      // The same free-text search the list answers (title, notes, file
+      // reference, client, step titles), so the Tasks page's one search box
+      // narrows whichever view is showing.
+      q: req.query.q,
+    }),
   );
   // The board carries fields BESIDE the columns (which audiences this caller may
   // pick, and which one the server actually honoured). They ride INSIDE `data`

@@ -109,6 +109,9 @@ const reminders = z.array(reminder).max(3, "at most three reminders per record")
 
 /* ══════════════════════════════════ TASKS ════════════════════════════════ */
 
+/** The stage set of 13950 — uuids, deduplicated by the service, bounded here. */
+const stageSet = z.array(z.string().uuid()).max(20).optional();
+
 const taskCreate = z
   .object({
     title: z.string().trim().min(1, "a task needs a title").max(300),
@@ -128,6 +131,10 @@ const taskCreate = z
     // dialog sends an explicit null when the picker is cleared.
     dossier_id: z.string().uuid().nullable().optional(),
     milestone_instance_id: z.string().uuid().nullable().optional(),
+    // The stages of the file's chain the work belongs to — one or several
+    // (13950). Supersedes the single column above when present; an empty list
+    // is a real statement ("no stage"). Twenty is more than any chain has.
+    milestone_instance_ids: stageSet,
     is_personal: z.boolean().optional(),
     // `reminder_minutes` is RELATIVE (before the due date) and `remind_at` is
     // ABSOLUTE. Sending both is allowed — the absolute one wins — because the
@@ -155,6 +162,7 @@ const taskUpdateShape = z
     entity_id: z.string().uuid().nullable().optional(),
     dossier_id: z.string().uuid().nullable().optional(),
     milestone_instance_id: z.string().uuid().nullable().optional(),
+    milestone_instance_ids: stageSet,
     is_personal: z.boolean().optional(),
     reminder_minutes: z.number().int().min(0).max(525600).nullable().optional(),
     remind_at: dt(DATETIME_MSG).nullable().optional(),
@@ -219,10 +227,12 @@ const childCreate = z
     // point the child at a different one.
     entity_type: z.string().trim().max(40).nullable().optional(),
     entity_id: z.string().uuid().nullable().optional(),
-    // Same terms for the operations file and its stage (13920): omitted means
-    // inherit, an explicit null means "this piece is not on that file".
+    // Same terms for the operations file and its stages (13920, 13950):
+    // omitted means inherit, an explicit null (or []) means "this piece is
+    // not on that file / those stages".
     dossier_id: z.string().uuid().nullable().optional(),
     milestone_instance_id: z.string().uuid().nullable().optional(),
+    milestone_instance_ids: stageSet,
     reminder_minutes: z.number().int().min(0).max(525600).nullable().optional(),
     remind_at: dt(DATETIME_MSG).nullable().optional(),
     reminders: reminders.optional(),
@@ -284,6 +294,8 @@ const boardQuery = strictQuery({
   assigned_to: z.string().trim().max(64).optional(),
   audience: filters.enum(AUDIENCES),
   dossier_id: filters.uuid,
+  // `q` rides in from LIST_QUERY, as on every list: the board answers the same
+  // free-text search the list does, so Board↔List finds the same cards.
 });
 
 /** The detail read carries the audience the list/board was rendered at (B-03). */

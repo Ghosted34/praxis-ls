@@ -183,13 +183,52 @@ describe("Calendar — the day tap is an agenda, never an accident", () => {
     view();
     await screen.findByRole("button", { name: /15 September 2026 — 1 event, 1 deadline/ }, { timeout: 4000 });
     const baseLine = tenant.mock.calls.length;
-    fireEvent.change(screen.getByLabelText("Filter the visible calendar"), {
+    fireEvent.change(screen.getByLabelText("Filter by title, notes, file or client"), {
       target: { value: "TVA" },
     });
     await waitFor(() => {
       expect(screen.getByText(/1 event, 1 deadline match|0 events, 1 deadline match/)).toBeTruthy();
     });
     expect(tenant.mock.calls.length).toBe(baseLine);
+  });
+
+  it("finds a deadline by the file's client, the notes or a stage — not only its title", async () => {
+    tenant.mockImplementation((url: string, opts?: { method?: string }) => {
+      if (url.startsWith("/workspace/context")) return Promise.resolve({ timeZone: TZ });
+      if (url.startsWith("/workspace/events") && !opts?.method) {
+        return Promise.resolve([eventFixture({ description: "Bring the signed BL" })]);
+      }
+      if (url.startsWith("/workspace/deadlines")) {
+        return Promise.resolve({
+          items: [
+            deadlineFixture({
+              description: "Call the carrier before the scanner slot",
+              dossier_ref: "SL3213P44RG55ZSM",
+              dossier_client_name: "Brasseries du Cameroun",
+              milestone_labels: ["Pré-alerte et ordre de travail", "Déclaration en douane déposée"],
+            }),
+          ],
+          audience: "mine",
+          audiences: ["mine"],
+        });
+      }
+      return Promise.resolve({});
+    });
+    view();
+    await screen.findByRole("button", { name: /15 September 2026 — 1 event, 1 deadline/ }, { timeout: 4000 });
+    const box = screen.getByLabelText("Filter by title, notes, file or client");
+    const expectMatch = async (needle: string, text: RegExp) => {
+      fireEvent.change(box, { target: { value: needle } });
+      await waitFor(() => expect(screen.getByText(text)).toBeTruthy());
+    };
+    // The client's name, the file reference, the notes and a stage each find
+    // the deadline; the event's notes find the event.
+    await expectMatch("brasseries", /0 events, 1 deadline match/);
+    await expectMatch("SL3213", /0 events, 1 deadline match/);
+    await expectMatch("scanner", /0 events, 1 deadline match/);
+    await expectMatch("douane", /0 events, 1 deadline match/);
+    await expectMatch("signed bl", /1 event, 0 deadlines match/);
+    await expectMatch("nothing-like-this", /0 events, 0 deadlines match/);
   });
 
   it("is axe-clean with a busy month on screen", async () => {

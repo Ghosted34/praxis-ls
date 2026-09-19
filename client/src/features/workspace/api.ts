@@ -90,6 +90,14 @@ export type Subtask = {
 
 export type Watcher = { user_id: string; full_name: string | null; email: string };
 
+/** One stage of the linked file's chain, as a task read carries it (13950). */
+export type TaskMilestone = {
+  milestone_instance_id: string;
+  label: string | null;
+  stage_seq: number | string | null;
+  status: string | null;
+};
+
 export type Task = {
   task_id: string;
   title: string;
@@ -118,8 +126,13 @@ export type Task = {
   dossier_id: string | null;
   dossier_ref: string | null;
   dossier_client_name: string | null;
+  /** The FIRST stage of the set below (13920's column, kept as a projection). */
   milestone_instance_id: string | null;
   milestone_label: string | null;
+  /** Every stage of the file's chain the task is on, in chain order (13950).
+   *  Absent only on rows older than the field; treat as empty. */
+  milestone_instance_ids?: string[];
+  milestones?: TaskMilestone[];
   /** Derived on read, never stored — see the service's header for why. */
   link_url: string | null;
   entity_label: string | null;
@@ -392,6 +405,9 @@ export type TaskInput = {
    *  of a file, never an alternative to one. */
   dossier_id?: string | null;
   milestone_instance_id?: string | null;
+  /** The stages the work belongs to — one or several, all of the linked file
+   *  (13950). Replaces the whole set; [] clears it. Wins over the single id. */
+  milestone_instance_ids?: string[];
   is_personal?: boolean;
   reminder_minutes?: number | null;
   remind_at?: string | null;
@@ -417,6 +433,14 @@ export type Deadline = {
   priority: TaskPriority;
   is_done: boolean;
   is_overdue: boolean;
+  /** What a person types to find it: the notes, the linked file and its
+   *  client, the stages. For a step these are its parent's. Optional because
+   *  older payloads lack them; the calendar's filter treats absent as empty. */
+  description?: string | null;
+  dossier_id?: string | null;
+  dossier_ref?: string | null;
+  dossier_client_name?: string | null;
+  milestone_labels?: string[];
 };
 
 export type Deadlines = { items: Deadline[]; audience: Audience; audiences: Audience[] };
@@ -520,7 +544,10 @@ export type BoardResponse = {
 };
 
 export const getBoard = (
-  params: { assigned_to?: string; audience?: Audience; dossier_id?: string } = {},
+  /** `q` is the same free-text search the list answers — title, notes, the
+   *  linked file's reference and client, step titles — so the Tasks page's
+   *  one search box narrows whichever view is showing. */
+  params: { assigned_to?: string; audience?: Audience; dossier_id?: string; q?: string } = {},
 ) => tenant<BoardResponse>(`/workspace/tasks/board${qs(params)}`);
 
 export const listTasks = (
@@ -631,9 +658,11 @@ export type ChildTaskInput = {
   due_at?: string | null;
   entity_type?: string | null;
   entity_id?: string | null;
-  /** Omitted inherits the parent's file and stage; an explicit null detaches. */
+  /** Omitted inherits the parent's file and stages; an explicit null (or [])
+   *  detaches. */
   dossier_id?: string | null;
   milestone_instance_id?: string | null;
+  milestone_instance_ids?: string[];
   reminder_minutes?: number | null;
   remind_at?: string | null;
 };

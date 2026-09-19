@@ -99,7 +99,7 @@ export function useReceiptsOwed() {
 }
 
 export function useTaskBoard(
-  params: { assigned_to?: string; audience?: Audience; dossier_id?: string } = {},
+  params: { assigned_to?: string; audience?: Audience; dossier_id?: string; q?: string } = {},
 ) {
   return useQuery<api.BoardResponse>({
     queryKey: [ROOT, "board", params],

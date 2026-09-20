@@ -83,11 +83,12 @@ type RangeValue = (typeof RANGES)[number]["value"];
 /**
  * Mobile pager — one panel per swipe, like a native analytics app.
  *
- * DESKTOP: 2-col grid (xl:grid-cols-2). MOBILE: horizontal snap scroller
- * (88vw cards, fade edge not needed because cards peek). Dots + "Swipe"
- * hint keep it discoverable without teaching. Each chart gets full screen
- * width, so "Under a day / 1 to 2 days / 3 to 7 days" no longer clips
- * (your screenshot Sept 20). Desktop unchanged.
+ * DESKTOP: 2-col grid (lg:grid-cols-2). MOBILE: horizontal snap scroller
+ * (88vw cards). Dots + "Swipe" hint keep it discoverable. Each chart gets
+ * full width on mobile, so "Under a day / 1 to 2 days / 3 to 7 days"
+ * no longer clips (your screenshot Sept 20). Single DOM — no duplicate
+ * panels hidden with CSS (that breaks axe landmark-unique and makes
+ * getByRole find two radiogroups).
  */
 function AnalyticsPager({ children }: { children: React.ReactNode }) {
   const scrollRef = React.useRef<HTMLDivElement>(null);
@@ -97,8 +98,10 @@ function AnalyticsPager({ children }: { children: React.ReactNode }) {
   const onScroll = React.useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
+    // On desktop the container is grid/overflow-visible, scrollLeft is 0.
     const w = el.clientWidth;
     const cardW = w * 0.88 + 16; // 88vw + gap-4
+    if (cardW === 0) return;
     const i = Math.round(el.scrollLeft / cardW);
     setIndex(Math.max(0, Math.min(i, count - 1)));
   }, [count]);
@@ -117,39 +120,34 @@ function AnalyticsPager({ children }: { children: React.ReactNode }) {
   };
   return (
     <>
-      {/* Mobile: swipeable */}
-      <div className="lg:hidden">
-        <div
-          ref={scrollRef}
-          className="flex gap-4 overflow-x-auto snap-x snap-mandatory scroll-smooth pb-3 -mx-4 px-4 overscroll-x-contain [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
-        >
-          {items.map((child, i) => (
-            <div key={i} className="min-w-[88vw] snap-center snap-always shrink-0">
-              {child}
-            </div>
-          ))}
-        </div>
-        <div className="flex items-center justify-center gap-1.5 py-2">
-          {items.map((_, i) => (
-            <button
-              key={i}
-              type="button"
-              aria-label={`Go to panel ${i + 1} of ${count}`}
-              aria-current={i === index}
-              onClick={() => scrollTo(i)}
-              className={cn(
-                "h-1.5 rounded-full transition-all",
-                i === index ? "w-6 bg-primary" : "w-1.5 bg-[rgb(var(--ink)_/_0.12)] hover:bg-[rgb(var(--ink)_/_0.2)]",
-              )}
-            />
-          ))}
-        </div>
-        <p className="micro text-center text-muted-foreground">
-          Swipe to see more • {index + 1} / {count}
-        </p>
+      <div
+        ref={scrollRef}
+        className="flex gap-4 overflow-x-auto snap-x snap-mandatory scroll-smooth pb-3 -mx-4 px-4 overscroll-x-contain lg:grid lg:grid-cols-2 lg:gap-4 lg:overflow-visible lg:pb-0 lg:mx-0 lg:px-0 lg:snap-none [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
+      >
+        {items.map((child, i) => (
+          <div key={i} className="min-w-[88vw] snap-center snap-always shrink-0 lg:min-w-0 lg:snap-align-none">
+            {child}
+          </div>
+        ))}
       </div>
-      {/* Desktop: grid */}
-      <div className="hidden gap-4 lg:grid lg:grid-cols-2">{items}</div>
+      <div className="flex items-center justify-center gap-1.5 py-2 lg:hidden">
+        {items.map((_, i) => (
+          <button
+            key={i}
+            type="button"
+            aria-label={`Go to panel ${i + 1} of ${count}`}
+            aria-current={i === index}
+            onClick={() => scrollTo(i)}
+            className={cn(
+              "h-1.5 rounded-full transition-all",
+              i === index ? "w-6 bg-primary" : "w-1.5 bg-[rgb(var(--ink)_/_0.12)] hover:bg-[rgb(var(--ink)_/_0.2)]",
+            )}
+          />
+        ))}
+      </div>
+      <p className="micro text-center text-muted-foreground lg:hidden">
+        Swipe to see more • {index + 1} / {count}
+      </p>
     </>
   );
 }

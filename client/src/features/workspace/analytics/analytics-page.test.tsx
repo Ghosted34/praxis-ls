@@ -198,7 +198,11 @@ describe("Analytics — every chart has a table", () => {
   });
 
   it("prints the blocked table as a table, because it is a list of tasks", async () => {
+    const user = userEvent.setup();
     renderScreen(<AnalyticsPage />, at());
+    await screen.findByText("17");
+    const group = screen.getByRole("radiogroup", { name: /Blocked by assignee/i });
+    await user.click(within(group).getByRole("radio", { name: "Table" }));
     expect(await screen.findByText(/File the customs declaration/)).toBeInTheDocument();
   });
 });
@@ -255,9 +259,13 @@ describe("Analytics — filters and drill-downs", () => {
   });
 
   it("links a blocked row to the task itself, by the canonical route", async () => {
+    const user = userEvent.setup();
     renderScreen(<AnalyticsPage />, at());
+    await screen.findByText("17");
+    const group = screen.getByRole("radiogroup", { name: /Blocked by assignee/i });
+    await user.click(within(group).getByRole("radio", { name: "Table" }));
     const row = await screen.findByText(/File the customs declaration/);
-    expect(row.closest("a")?.getAttribute("href") ?? row.tagName).toBeTruthy();
+    expect(row.closest("a")?.getAttribute("href") ?? row.closest("button")?.tagName ?? row.tagName).toBeTruthy();
   });
 });
 

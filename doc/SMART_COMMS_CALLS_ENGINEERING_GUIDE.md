@@ -1,8 +1,11 @@
 # Praxis LS — Smart Comms Calls: Engineering Guide
 
-**Status:** Plan of record. Built from the feasibility review (WebRTC-in-PWA,
-Groq/Whisper, browser fallback) plus the answers returned on all ten decisions
-(six on scope & quality, four on bilingual code-switching and last seen).
+**Status:** Plan of record — **delivered.** All three PRs are merged to `main`
+(each chapter below is stamped with its merge commit and date; §7.5 records
+what actually shipped where it differed from this plan). Built from the
+feasibility review (WebRTC-in-PWA, Groq/Whisper, browser fallback) plus the
+answers returned on all ten decisions (six on scope & quality, four on
+bilingual code-switching and last seen).
 **Read alongside:** `doc/CONVENTIONS.md` (module layout), `doc/BUILD_CONVENTIONS.md`
 (document lifecycle, numbering, approval, AI), `doc/SMART_COMMS_COMPOSER.md`
 (chat contracts), `doc/AI_ARCHITECTURE.md` (reads free, writes confirmed),
@@ -135,7 +138,9 @@ An inhouse voice call between two employees of the same tenant:
 
 ### 3.1 Merge order
 
-`PR-1 → PR-2 → PR-3`, strictly. Each PR is independently shippable behind the
+`PR-1 → PR-2 → PR-3`, strictly — and all three are now merged to `main`
+(2026-09-20, in that order; each chapter below is stamped with its merge
+commit). Each PR is independently shippable behind the
 `calls` flag — and that flag is **ON by default, not a rollout gate**: §1 row 2
 decides it (the tenant's kill switch), §3.2 and §5.1 repeat it, and `9134` /
 `9135` implement it (catalogue `default_state = 'on'`, included in every plan,
@@ -256,6 +261,12 @@ Call-specific strategy per chapter; the standing matrix:
 - `IN_CALL` timer: **1800 s** → `ENDED(reason: max_duration)` (server). Client
   also counts down and shows the 29:00 warning — the client's timer is a
   courtesy; the server's is the law.
+- **Liveness (field note FN-1):** `IN_CALL` with **both** participants' sockets
+  gone for 60 s → `ENDED(disconnected)`. The 60 s sits beyond the matrix's 20 s
+  airplane row — that test drops one device, and the other is still online —
+  and the 30-minute cap remains the backstop if the online registry is down.
+  The client's half of the same rule: a page closing mid-call sends a
+  keep-alive hang-up, so a deliberate close ends the call at once.
 - `FAILED`: terminal, set when media never connected (ICE exhaustion with
   TURN). The UI says the plain sentence (§4.7).
 - Every transition is a DB write **then** a socket publish (the house
@@ -277,7 +288,7 @@ comms_call (
   connected_at    timestamptz,            -- IN_CALL
   ended_at        timestamptz,
   duration_seconds int,
-  end_reason      text,                   -- hangup|declined|cancelled|no_answer|busy|max_duration|ice_failed
+  end_reason          text,                   -- hangup|declined|cancelled|no_answer|busy|max_duration|ice_failed|disconnected
   UNIQUE (group_id, caller_id, callee_id, started_at)
 )
 -- partial index: one RINGING/IN_CALL call per user (D8)
@@ -469,6 +480,7 @@ parallel, not sequence:
 | 30:00 cap | "Time's up — 30-minute limit. The summary is being prepared." (the pipeline runs) |
 | Transcription failed | call record: "Transcript being retried — [reason]." Caller is re-notified on success. |
 | Summary LLM down | draft labelled "summary unavailable — provider down" + raw attributed transcript, still sendable |
+| Call lost — both devices gone (FN-1) | "The call was lost — the connection ended." Dial is available at once; the row is `ENDED(disconnected)`. |
 
 ### 4.8 iOS PWA hardening (the two known quirks)
 
@@ -558,7 +570,16 @@ generalised to the whole chat surface:
 
 ---
 
-## 5. PR-1 — "feat(comms): 1:1 voice calls — signaling, P2P engine, 30-minute cap"
+## 5. PR-1 — "feat(comms): 1:1 voice calls — signaling, P2P engine, 30-minute cap" · **DELIVERED**
+
+**Status:** built, tested and merged — PR #455, merge commit `fc028af3e8`,
+2026-09-20, all CI checks green. Delivered as specified in this chapter:
+`14000` + the platform seed `9134`, the `smartcomm.call.*` service and the
+TURN credentials, the `call:*` signaling, the call overlay and ring, and the
+presence/last-seen machinery (§4.11). The human half of §5.7's acceptance —
+real devices, real noise, a real ring — is the standing manual matrix; its
+sign-off state is recorded in `doc/SMART_COMMS_CALLS_MANUAL_MATRIX.md` and
+§7.5, not here.
 
 **Outcome:** two employees can call each other from the PWA and the browser,
 ring through (open/backgrounded/closed), hit the 30-minute cap, and see
@@ -667,7 +688,15 @@ session. `coturn` runs with `use-auth-secret` + `web-auth-secret` HMAC mode.
 
 ---
 
-## 6. PR-2 — "feat(comms): call recording, attributed transcription, AI summary to chat"
+## 6. PR-2 — "feat(comms): call recording, attributed transcription, AI summary to chat" · **DELIVERED**
+
+**Status:** built, tested and merged — PR #456, merge commit `c9db715402`,
+2026-09-20, all CI checks green. Delivered as specified in this chapter:
+`14010` + the platform seed `9135`, the pipeline service and the
+`call-transcribe` job, the recording/transcript/summary routes, the
+two-`MediaRecorder` capture, the consent banner, and the summary draft and
+card. The human half — a real call producing a real transcript on the matrix
+devices — sits in the same standing manual matrix.
 
 **Outcome:** the brain. A 27-minute call produces a vaulted attributed
 transcript and a reviewable summary card the caller can send to the channel in
@@ -773,7 +802,13 @@ one tap. Groq down → the browser capture carries the call, flagged honestly.
 
 ---
 
-## 7. PR-3 — "feat(comms): call hardening — RNNoise, ring escalation polish, iOS quirks, observability"
+## 7. PR-3 — "feat(comms): call hardening — RNNoise, ring escalation polish, iOS quirks, observability" · **DELIVERED**
+
+**Status:** built, tested and merged — PR #457, merge commit `b29b036add`,
+2026-09-20, all CI checks green. This chapter is the programme's closing bar;
+what actually shipped where it differed from this plan is recorded in §7.5,
+including the one gate a machine cannot hold — the human listening test and
+the device matrix.
 
 **Outcome:** the programme reaches its world-class bar. Noise for the yard,
 every ring channel polished, the two iOS quirks proven mitigated, the failure
@@ -928,6 +963,31 @@ corrected in place above. The closing PR verifies the projection per tenant
 (`scripts/tenant/feature-report.js --slug=…`) and the console override path;
 it does not insert flag rows.
 
+**Closing-PR verification of the flags (2026-09-20).** The owner's instruction
+for the close was verify-only: document the mechanism, prove the projection,
+change nothing — and the code confirms what this document has always said.
+Re-verified line by line in the closing PR: `migrations/seeds/9134_seed_calls_feature.sql`
+and `migrations/seeds/9135_seed_call_recording_feature.sql` put both keys in
+`platform.feature_catalogue` with `default_state = 'on'` and include them in
+**all three plans** (`platform.plan_feature`, one `included = true` row per
+plan); `migrations/tenant/14000_comms_calls.sql:105` and
+`migrations/tenant/14010_comms_call_records.sql:279` seed the bootstrap
+`feature_state` rows (`'on'`, `source = 'default'`) so the gate cannot 403 a
+tenant before its first projection; `projectFeatures()`
+(`src/services/platform/provisioning.service.js:469`) then recomputes every
+key as *override → plan → default* — a plan-included key with no override
+lands `state = 'on', source = 'plan'` — and upserts the result into **both**
+`live` and `sandbox` `feature_state` with `projected_at = now()`
+(`provisioning.service.js:510`). The routes gate on exactly these rows:
+`requireFeature("calls")` and `requireFeature("call_recording")`
+(`src/modules/smartcomm/smartcomm.routes.js:172,179`), mounted across the
+`/calls` routes, and `tests/security/feature-catalogue-coverage.test.js` fails
+a PR if the catalogue half ever drifts from the tenant half. Per-tenant live
+verification on a running environment is
+`scripts/tenant/feature-report.js --slug=…` (read-only, safe against
+production). The closing PR inserts no flag rows, adds no migration, and
+writes no override.
+
 ---
 
 ## 8. Index set
@@ -982,3 +1042,16 @@ PR-3: `COMMS_TRANSCRIPTION_ALERT_THRESHOLD` ·
 - **Summary:** same contract, one added field (`raised_by` becomes a name);
   the draft flow is unchanged (organizer reviews).
 - **Signaling:** M:N `call:*` relay; admission control per tenant seat count.
+
+**Verified accurate against the code — closing PR, 2026-09-20.** `git grep`
+across `src/`, `migrations/`, `client/`, `packages/` and the lockfiles found
+nothing of this phase 2 built or pre-empted: no `comms_call_participant` (or
+any participant set) anywhere; no mediasoup or LiveKit dependency;
+`comms_call` is still the two-column `caller_id`/`callee_id` 1:1 model (the
+repo derives the counterparty as `CASE WHEN caller_id = $2 THEN callee_id
+ELSE caller_id END`); `raised_by`/`owner` remain the `'caller' | 'callee'`
+enum in the shared Zod schema (`packages/shared/schemas/call-summary.js`),
+the validator and the pipeline prompt; `comms_call_recording.side` is
+CHECK-constrained to `'caller' | 'callee'` — per-side browser capture, not
+per-participant SFU streams. Nothing in the built work anticipates group
+calls; the programme paid for 1:1 and only 1:1.

@@ -26,7 +26,7 @@
  * same problem for call ringing.
  */
 
-type Tier = "urgent" | "alert" | "silent";
+type Tier = "urgent" | "alert" | "silent" | "ring";
 
 const SOUND_KEY = "praxis.notif.sound";
 
@@ -160,7 +160,15 @@ export function playNotifSound(tier: Tier): void {
     });
   }
   try {
-    if (tier === "urgent") {
+    if (tier === "ring") {
+      // The telephone ring, synthesised (FN-2): a two-note "ding" and a held
+      // "dong", repeated by the caller's interval (comms-live, 2.5 s). Louder
+      // than the notification blips on purpose — a ring is a phone, and a
+      // phone must be heard across a yard.
+      tone(ac, 660, 0, 0.18, 0.2);
+      tone(ac, 660, 0.22, 0.18, 0.2);
+      tone(ac, 520, 0.5, 0.42, 0.2);
+    } else if (tier === "urgent") {
       tone(ac, 1047, 0, 0.14, 0.14);
       tone(ac, 880, 0.15, 0.14, 0.12);
       tone(ac, 698, 0.3, 0.2, 0.1);

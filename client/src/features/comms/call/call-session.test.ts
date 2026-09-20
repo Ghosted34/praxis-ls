@@ -388,3 +388,72 @@ describe("the noise switch (PR-3)", () => {
     });
   });
 });
+
+/* ── FN-1: the page going away ends the server row at once ───────────────── */
+
+describe("the page goes away mid-call (FN-1)", () => {
+  // Every `fresh()` in this file registers its own pagehide listener on
+  // window, and listeners outlive their test. A call id unique to each test
+  // lets the assertion tell THIS tab's report from the leftovers' — and the
+  // first test must end its call, or its listener stays armed for the whole
+  // rest of the file.
+
+  function pageHideAndCollect(callId: string) {
+    const fakeFetch = vi.fn(
+      async (_url: string | URL, _init?: RequestInit) => ({ status: 200 }),
+    );
+    const prevFetch = globalThis.fetch;
+    vi.stubGlobal("fetch", fakeFetch);
+    try {
+      act(() => {
+        window.dispatchEvent(new Event("pagehide"));
+      });
+    } finally {
+      // Restore exactly the previous state (possibly "no fetch") — unstubbing
+      // all globals here would drop beforeEach's RTCPeerConnection stub.
+      vi.stubGlobal("fetch", prevFetch);
+    }
+    return fakeFetch.mock.calls.filter(([url]) =>
+      String(url).includes(`/calls/${callId}/hangup`),
+    );
+  }
+
+  it("an active call sends the keep-alive hang-up on pagehide", async () => {
+    const mod = await fresh();
+    const PH_ID = "c-pagehide-active";
+    W.api.dialCall = async () => W.row({ call_id: PH_ID, ice: W.ICE });
+    act(() => mod.wireCallSocket());
+    const { result } = renderHook(() => mod.useCall());
+
+    await act(async () => {
+      await mod.dial("g1", "Aïcha");
+    });
+    expect(result.current.phase).toBe("outgoing");
+
+    const hangups = pageHideAndCollect(PH_ID);
+    expect(hangups.length).toBeGreaterThanOrEqual(1);
+    const init = hangups[0][1] as RequestInit;
+    expect(init.method).toBe("POST");
+    // keepalive is the whole point: it is the only network call a dying page
+    // is owed, and without it the row is left to the 30-minute cap.
+    expect(init.keepalive).toBe(true);
+    expect(init.body).toBe(JSON.stringify({ reason: "hangup" }));
+    const headers = new Headers(init.headers);
+    expect(headers.get("Content-Type")).toBe("application/json");
+    // The env header rides from the token store, whatever the session set it
+    // to — a keep-alive that dials the wrong schema would be a silent miss.
+    expect(headers.get("X-Praxis-Env")).toMatch(/^(live|sandbox)$/);
+
+    // Disarm this instance's listener for the rest of the file.
+    await act(async () => {
+      await mod.hangup();
+    });
+    expect(result.current.phase).toBe("ended");
+  });
+
+  it("an idle tab sends nothing when the page goes", async () => {
+    await fresh();
+    const hangups = pageHideAndCollect("c-pagehide-idle");
+    expect(hangups).toEqual([]);
+  });
+});

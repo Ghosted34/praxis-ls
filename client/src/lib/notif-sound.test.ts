@@ -9,7 +9,13 @@
  * unbounded seen-set leaking in a tab left open for a working week.
  */
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
-import { tierFor, playOnce, isNotifSoundEnabled, setNotifSoundEnabled } from "./notif-sound";
+import {
+  tierFor,
+  playOnce,
+  playNotifSound,
+  isNotifSoundEnabled,
+  setNotifSoundEnabled,
+} from "./notif-sound";
 import { applyTabBadge, resetTabBadgeBase } from "./tab-badge";
 
 describe("tierFor", () => {
@@ -36,9 +42,13 @@ describe("playOnce", () => {
   it("never throws where there is no AudioContext", () => {
     // jsdom has none. Real browsers in a locked-down enterprise profile can
     // also refuse one, and a throw here runs inside a socket handler — it would
-    // take down every later notification, not just the sound.
+    // take down every later notification, not just the sound. The ring tier
+    // (FN-2) is a new figure with the same guarantee: a missing context loses
+    // the sound, never the handler.
     expect(() => playOnce("urgent", "n-1")).not.toThrow();
     expect(() => playOnce("silent", "n-2")).not.toThrow();
+    expect(() => playNotifSound("ring")).not.toThrow();
+    expect(() => playNotifSound("urgent")).not.toThrow();
   });
 });
 

@@ -30,6 +30,11 @@ const cref = (id) => "comms_call:" + id;
  *  UX (29:00 warning, hang-up at 30:00). */
 const RING_TIMEOUT_S = 60;
 const MAX_CALL_S = 1800;
+/** How long BOTH participants may be socket-less before an in-call call ends
+ *  itself `disconnected` (field note FN-1). Beyond the matrix's 20 s
+ *  airplane row (which drops one device — the other is still online), well
+ *  under the 30-minute cap that remains the backstop if the registry is down. */
+const LIVENESS_OFFLINE_S = 60;
 
 /** Push to ONE user's room on every replica (best-effort, no-op when the
  *  socket server is down — the row is already committed). The sweep runs
@@ -417,10 +422,12 @@ function durationSeconds(call, reason) {
  *
  * Per tenant+env, per tick: ring calls older than RING_TIMEOUT_S become
  * NO_ANSWER, and in-call calls older than MAX_CALL_S become
- * ENDED(max_duration). Each is a guarded transition, so a sweep that races a
- * real hang-up loses silently, and a deployment with several API/worker
- * replicas can never end one call twice. Returns how many it moved, so a
- * quiet tick is a 0, not an absence.
+ * ENDED(max_duration). In-call calls whose two devices have both been gone
+ * for LIVENESS_OFFLINE_S become ENDED(disconnected) — the row's fourth way to
+ * end (sweepLiveness, FN-1). Each is a guarded transition, so a sweep that
+ * races a real hang-up loses silently, and a deployment with several API/
+ * worker replicas can never end one call twice. Returns how many it moved, so
+ * a quiet tick is a 0, not an absence.
  */
 async function sweep(client, { tenantSlug = null, tenantMeta = null, env = "live" } = {}) {
   const due = await client.query(
@@ -434,6 +441,10 @@ async function sweep(client, { tenantSlug = null, tenantMeta = null, env = "live
     const result = await sweepOne(client, call, tenantSlug, { tenantMeta, env });
     if (result) moved += 1;
   }
+  // The fourth way to end (FN-1): both devices gone. Runs on a quiet tick too
+  // — an abandoned call has no deadline of its own; this check IS its
+  // deadline.
+  moved += await sweepLiveness(client, { tenantSlug, tenantMeta, env });
   return { moved };
 }
 
@@ -458,6 +469,102 @@ async function sweepOne(client, call, tenantSlug, { tenantMeta = null, env = "li
     if (err && err.status === 409) return false;
     throw err;
   }
+}
+
+/**
+ * The row's fourth way to end (field note FN-1).
+ *
+ * A call ends by client report, by the 60 s ring deadline, or by the
+ * 30-minute cap. The fourth way is what the first real-hardware run exposed:
+ * BOTH devices gone — the window closed, the phone's OS killed the
+ * backgrounded page — nobody is left to report, and the cap would hold the
+ * call IN_CALL, and both users BUSY, for up to 30 minutes.
+ *
+ * The rule: a participant is "gone" while their sockets are absent from the
+ * online registry (realtime/index.js keeps one SET per tenant+env, one member
+ * per socket). An IN_CALL call whose two participants have both been gone for
+ * LIVENESS_OFFLINE_S ends ENDED(disconnected). The 60 s sits beyond the
+ * matrix's airplane row (I3 drops ONE device for 20 s — the other is still in
+ * the set, so the rule cannot fire). Every read here fails toward "leave it
+ * alone": liveness must never be what ends a healthy call, so a registry
+ * outage skips the pass and the 30-minute cap remains the backstop.
+ */
+async function sweepLiveness(client, { tenantSlug = null, tenantMeta = null, env = "live" } = {}) {
+  if (!tenantSlug) return 0;
+  let redis;
+  try {
+    redis = require("../../config/redis").getClient();
+    if (!redis) return 0;
+  } catch (err) {
+    logger.warn({ err, tenantSlug }, "call liveness: redis unavailable — the 30-minute cap remains the backstop");
+    return 0;
+  }
+  let rows;
+  try {
+    ({ rows } = await client.query(
+      "SELECT call_id, caller_id, callee_id FROM comms_call WHERE status = 'IN_CALL'",
+    ));
+  } catch (err) {
+    logger.warn({ err, tenantSlug }, "call liveness: row scan failed — skipping this tick");
+    return 0;
+  }
+  if (!rows.length) return 0;
+
+  const onlineKey = `praxis:comms:online:${tenantSlug}:${env}`;
+  const offlineKey = `praxis:comms:call-offline:${tenantSlug}:${env}`;
+  let members;
+  try {
+    members = await redis.smembers(onlineKey);
+  } catch (err) {
+    logger.warn({ err, tenantSlug }, "call liveness: could not read the online set — skipping this tick");
+    return 0;
+  }
+  const online = new Set(members.map((m) => String(m).split(":")[0]));
+  const nowS = Math.floor(Date.now() / 1000);
+  const offlineSince = {};
+  try {
+    const entries = await redis.zrange(offlineKey, 0, -1, "WITHSCORES");
+    for (let i = 0; i + 1 < entries.length; i += 2) offlineSince[entries[i]] = Number(entries[i + 1]);
+  } catch {
+    /* @silent:storage — an unreadable book is read as "nobody proven gone yet". */
+  }
+
+  let moved = 0;
+  for (const call of rows) {
+    for (const uid of [call.caller_id, call.callee_id]) {
+      if (online.has(uid)) {
+        if (offlineSince[uid] !== undefined) delete offlineSince[uid];
+        try { await redis.zrem(offlineKey, uid); } catch { /* @silent:storage */ }
+      } else if (offlineSince[uid] === undefined) {
+        offlineSince[uid] = nowS;
+        try { await redis.zadd(offlineKey, nowS, uid); } catch { /* @silent:storage */ }
+      }
+    }
+    const outCaller = offlineSince[call.caller_id];
+    const outCallee = offlineSince[call.callee_id];
+    if (outCaller === undefined || outCallee === undefined) continue;
+    if (Math.min(outCaller, outCallee) > nowS - LIVENESS_OFFLINE_S) continue;
+    try {
+      const ended = await endCall(client, {
+        id: call.call_id,
+        fromStatus: "IN_CALL",
+        status: "ENDED",
+        reason: "disconnected",
+        notifyEvent: "call:ended",
+        tenantSlug,
+        tenantMeta,
+        env,
+      });
+      if (ended) {
+        moved += 1;
+        try { await redis.zrem(offlineKey, call.caller_id, call.callee_id); } catch { /* @silent:storage */ }
+      }
+    } catch (err) {
+      if (err && err.status === 409) continue; // a hang-up won the race; the row is terminal
+      throw err;
+    }
+  }
+  return moved;
 }
 
 /* ── The ring escalation (PR-3, §4.6) ────────────────────────────────────── */

@@ -564,10 +564,24 @@ export class CallEngine {
    * thought was said.
    */
   private async attachNoise(): Promise<NoiseFilterStatus> {
-    if (!this.localStream) return "off";
+    const stream = this.localStream;
+    if (!stream) return "off";
     if (this.noiseStatus === "on") return "on";
     const { applyNoiseSuppression } = await import("./noise-suppression");
-    const result = await applyNoiseSuppression(this.localStream);
+    // `stop()` is idempotent but not atomic: it can null localStream in the
+    // middle of this dynamic import (dial → immediate hang-up is exactly that
+    // race). Building a filter on a dead stream — or reporting a filter state
+    // to a session that is already gone — is a lie, so the captured reference
+    // must still be the live one at every await boundary.
+    if (this.localStream !== stream) return "off";
+    const result = await applyNoiseSuppression(stream);
+    if (this.localStream !== stream) {
+      // The call ended while the graph was being built: release what was just
+      // built rather than leaking a worklet on a stream whose tracks are
+      // stopped, and leave the session's state alone.
+      result.stop();
+      return "off";
+    }
     if (result.status !== "on") {
       this.noiseStatus = "unavailable";
       this.noiseReason = result.reason;

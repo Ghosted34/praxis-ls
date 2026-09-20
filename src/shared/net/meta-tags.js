@@ -129,8 +129,13 @@ function scanHead(html) {
   if (headEnd !== -1) text = text.slice(0, headEnd);
   text = text
     .replace(/<!--[\s\S]*?(?:-->|$)/g, " ")
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ");
+    // `\s*` before the closing `>` is load-bearing on BOTH tags: `</script >` is
+    // valid HTML and ends the element for the browser, so a scrub written as
+    // `<\/script>` leaves that element's contents in the text we then read
+    // declarations from — a page could put a fake `og:` meta inside a script this
+    // pass failed to remove. `<\/style >` likewise.
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, " ")
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, " ");
 
   const fields = new Map();
   const META = /<meta\b([^>]*)>/gi;

@@ -59,8 +59,23 @@ const SCHEME_URL =
 /** An email address. Deliberately narrower than RFC 5322: the local part is what
  *  people actually type, and the domain half must end in a letter so a trailing
  *  `.` from the sentence cannot be read as part of the address. */
-const EMAIL =
-  /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,24}/g;
+/**
+ * The address rules, as CHARACTER SETS rather than as one pattern.
+ *
+ * A regex like `[A-Za-z0-9._%+-]+@…` is what CodeQL's ReDoS query flags, and its
+ * objection is fair even though nothing here explodes exponentially: the engine
+ * re-tries the run at every start position, so a body that happens to be ten
+ * thousand `%%%-ish` characters is quadratic work — and a chat message is attacker
+ * sized input by definition. `findEmails` below walks each `@` instead: one pass,
+ * and the acceptance rules are the same ones the pattern had (local part from the
+ * character set, at least two dot-separated host labels, a final label of 2–24
+ * LETTERS so the `.` that ends the sentence is not part of the address).
+ */
+const LOCAL_CHARS = new Set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._%+-".split(""));
+const HOST_CHARS = new Set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-".split(""));
+const isLetter = (ch) => ch >= "a" && ch <= "z" || ch >= "A" && ch <= "Z";
+const TLD_MIN = 2;
+const TLD_MAX = 24;
 
 /** `www.` is only a host when the bit after it looks like one: `www.` on its own
  *  (a truncated paste) is not worth a red squiggle. */
@@ -74,8 +89,19 @@ const APP_PATH =
   /(?:^|[\s([{])\/[A-Za-z0-9][A-Za-z0-9\-/_]*(?:\?[A-Za-z0-9\-._~%=&+#]*)?/g;
 
 /** Sentence punctuation that is never the last character of a real URL. Brackets
- *  are NOT in here — they are counted, separately, for the reason in `peelTail`. */
-const SOFT_TRAILING = /[.,;:!?"·»\u201d\u2019]+$/;
+ *  are NOT in here — they are counted, separately, for the reason in `peelTail`.
+ *  A Set and a backward loop rather than `/[…]+$/`, for the ReDoS reason recorded
+ *  on `LOCAL_CHARS`: an anchored `+` class is re-tried at every start position. */
+const SOFT_TRAILING = new Set([",", ".", ";", ":", "!", "?", '"', "·", "»", "\u201d", "\u2019"]);
+const OPENERS = new Set(["(", "[", "{"]);
+const CLOSERS = new Set([")", "]", "}"]);
+
+/** Drop trailing characters while `test` approves them, in ONE pass. */
+function trimEndWhile(text, test) {
+  let end = text.length;
+  while (end > 0 && test(text[end - 1])) end -= 1;
+  return end === text.length ? text : text.slice(0, end);
+}
 
 /**
  * Peel sentence punctuation off the tail of a candidate, in one loop so "…"
@@ -88,20 +114,74 @@ const SOFT_TRAILING = /[.,;:!?"·»\u201d\u2019]+$/;
  * characters of the most link-shaped URLs people paste (Wikipedia, Amazon, any
  * URL with a query array).
  */
+/**
+ * Every address in `body`, left to right, by walking from each `@`.
+ * Returns `{ raw, start }` so the caller can keep the offsets it already uses.
+ */
+function findEmails(body) {
+  const out = [];
+  let at = body.indexOf("@");
+  while (at !== -1) {
+    let start = at;
+    while (start > 0 && LOCAL_CHARS.has(body[start - 1])) start -= 1;
+    const local = at - start;
+    let end = at + 1;
+    let labels = 0;
+    let lastLabel = 0;
+    let lastLabelLetters = 0;
+    while (end < body.length) {
+      const ch = body[end];
+      if (ch === ".") {
+        // A dot only joins two labels. If nothing followed it — `a@b.`, or the
+        // period that ends a sentence — the host ENDED before the dot, which is why
+        // `write ops@c.example.` is the address `ops@c.example` and not the nine
+        // characters with a full stop on the end. `lastLabel` is deliberately not
+        // reset on this path: the label before the dot is the one to test.
+        if (lastLabel === 0 || !HOST_CHARS.has(body[end + 1] || "")) break;
+        labels += 1;
+        lastLabel = 0;
+        lastLabelLetters = 0;
+        end += 1;
+        continue;
+      }
+      if (!HOST_CHARS.has(ch)) break;
+      lastLabel += 1;
+      if (isLetter(ch)) lastLabelLetters += 1;
+      end += 1;
+    }
+    const hasFinalLabel = lastLabel > 0;
+    if (hasFinalLabel) labels += 1;
+    const tldLength = hasFinalLabel ? lastLabel : 0;
+    const tldIsLetters = hasFinalLabel && lastLabelLetters === lastLabel;
+    if (local > 0 && labels >= 2 && tldLength >= TLD_MIN && tldLength <= TLD_MAX && tldIsLetters) {
+      out.push({ raw: body.slice(start, end), start });
+    } else {
+      // Nothing valid here; the next `@` is the only place an address can start.
+      end = at + 1;
+    }
+    at = body.indexOf("@", end);
+  }
+  return out;
+}
+
 function peelTail(candidate) {
   let text = String(candidate || "");
   for (let guard = 0; guard < 8; guard += 1) {
     const before = text;
-    let trimmed = text.replace(SOFT_TRAILING, "");
-    const opens = (trimmed.match(/[([{]/g) || []).length;
-    const closes = (trimmed.match(/[)\]}]/g) || []).length;
+    let trimmed = trimEndWhile(text, (ch) => SOFT_TRAILING.has(ch));
+    let opens = 0;
+    let closes = 0;
+    for (const ch of trimmed) {
+      if (OPENERS.has(ch)) opens += 1;
+      else if (CLOSERS.has(ch)) closes += 1;
+    }
     // Only an UNMATCHED closer is sentence punctuation. A URL that has lost its
     // opener inside the candidate (`(https://…/x)` after the leading `(` was
     // consumed as a separator) is exactly this case.
-    if (closes > opens) trimmed = trimmed.replace(/[)\]}]+$/, "");
+    if (closes > opens) trimmed = trimEndWhile(trimmed, (ch) => CLOSERS.has(ch));
     // An opener with no closer is not a URL character either — `[` and `{` never
     // appear unbalanced in a legal URL, so a trailing one is a mis-paste.
-    if (/[([{]$/.test(trimmed)) trimmed = trimmed.slice(0, -1);
+    if (trimmed && OPENERS.has(trimmed[trimmed.length - 1])) trimmed = trimmed.slice(0, -1);
     if (trimmed === before) break;
     text = trimmed;
   }
@@ -214,12 +294,12 @@ function extractLinks(text) {
     push(candidate, match.index + offset, "web", { href: norm });
   }
 
-  for (const match of body.matchAll(EMAIL)) {
+  for (const at of findEmails(body)) {
     // Skip an address that is inside an already-found URL: `mailto:` on the
     // `user@host` half of `https://user@host/` would be two overlapping links in
     // one word, and the host part is not anybody's mailbox.
-    if (found.some((f) => match.index >= f.start && match.index < f.end)) continue;
-    push(match[0], match.index, "mail", { href: `mailto:${match[0]}` });
+    if (found.some((f) => at.start >= f.start && at.start < f.end)) continue;
+    push(at.raw, at.start, "mail", { href: `mailto:${at.raw}` });
   }
 
   for (const match of body.matchAll(APP_PATH)) {

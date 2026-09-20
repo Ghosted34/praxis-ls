@@ -308,7 +308,17 @@ function parseUrl(input) {
   if (!path.startsWith("/")) return null;
   // A trailing slash is the same page to the router and must be the same answer
   // here, or `/operations/files/<id>/` silently stops being a link to a file.
-  const normalised = path.length > 1 ? path.replace(/\/+$/, "") : path;
+  // A backward walk, not `/\/+$/`: the anchored `+` class is re-tried at every
+  // start position, so a path made of slashes and one stray character is quadratic
+  // work — and this function is handed whatever a message contained. Same rule,
+  // one pass, and `/` itself still answers `/` (a route is not its own trailing
+  // slash, but the root has nothing to trim).
+  let normalised = path;
+  if (normalised.length > 1) {
+    let end = normalised.length;
+    while (end > 1 && normalised[end - 1] === "/") end -= 1;
+    normalised = normalised.slice(0, end);
+  }
   const search = new URLSearchParams(query);
   for (const entry of PATH_LOOKUPS) {
     const { spec, type, match } = entry;

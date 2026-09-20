@@ -57,7 +57,10 @@ beforeEach(() => {
 describe("MessageText — what becomes clickable", () => {
   it("turns an https link into a real anchor that opens safely", () => {
     inRouter(<MessageText body="see https://maersk.com/vessel/1 for the ETA" />);
-    const a = screen.getByRole("link", { name: /maersk\.com\/vessel\/1/ });
+    // Exact string rather than a pattern: an unanchored URL regex matches any host
+    // that CONTAINS the one under test, which is the assertion to avoid in a test
+    // about a link that must not be a look-alike domain.
+    const a = screen.getByRole("link", { name: "https://maersk.com/vessel/1" });
     expect(a).toHaveAttribute("href", "https://maersk.com/vessel/1");
     expect(a).toHaveAttribute("target", "_blank");
     // `noreferrer` is the reason this test exists: without it the destination

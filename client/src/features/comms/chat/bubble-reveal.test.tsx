@@ -157,7 +157,7 @@ describe("the rail is opened by a touch, and by nothing else", () => {
   it("a tap that lands on the link inside the message belongs to the link", () => {
     const onToggleReveal = vi.fn();
     bubble({ onToggleReveal });
-    const link = screen.getByRole("link", { name: /maersk\.com/ });
+    const link = screen.getByRole("link", { name: "https://maersk.com/vessel/1" });
     tapTheRow({ on: link });
     expect(onToggleReveal).not.toHaveBeenCalled();
   });

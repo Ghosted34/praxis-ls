@@ -69,6 +69,69 @@ describe("entity-route: the URL table round-trips", () => {
   });
 });
 
+/**
+ * Pathological input, and the address rules the ReDoS rewrite moved off a regex.
+ *
+ * CodeQL's `js/redos` flagged the old patterns and it was right to: an anchored
+ * `+` class re-tried at every start position is quadratic work, and the string it
+ * is quadratic on is a chat message — input the sender controls. The scanner is now
+ * one linear pass, and these rules are what prove the change kept the semantics:
+ * the same acceptances, the same refusals, and a hostile body that a reader can
+ * paste into a channel without making anybody's server sweat.
+ */
+describe("a message cannot make the scanner quadratic", () => {
+  test("ten thousand punctuation marks after a URL still peel in one pass", () => {
+    const body = "look https://a.example/x" + "!".repeat(10000) + " ok";
+    const links = extractLinks(body);
+    expect(links).toHaveLength(1);
+    expect(links[0].href).toBe("https://a.example/x");
+  });
+
+  test("a wall of percent signs is not an address, and is not a scan", () => {
+    expect(extractLinks("%".repeat(20000))).toEqual([]);
+    expect(extractLinks("100%".repeat(5000))).toEqual([]);
+  });
+
+  test("a wall of at-signs finds nothing", () => {
+    expect(extractLinks("@".repeat(20000))).toEqual([]);
+    expect(extractLinks("a@".repeat(5000))).toEqual([]);
+  });
+
+  test("a path of slashes and a stray letter is trimmed, not retried", () => {
+    expect(entityRoute.parseUrl("/operations/files/abc///")).not.toBeNull();
+    expect(entityRoute.parseUrl("/operations/files/abc///").id).toBe("abc");
+  });
+});
+
+describe("the address rules, unchanged by the rewrite", () => {
+  const mails = (text) => extractLinks(text).filter((l) => l.kind === "mail").map((l) => l.raw);
+
+  test("a sentence-final period is not part of the address", () => {
+    expect(mails("write ops@c.example.")).toEqual(["ops@c.example"]);
+  });
+
+  test("a host needs a dot and a lettered TLD of 2–24", () => {
+    expect(mails("ping ops@c")).toEqual([]);
+    expect(mails("ping ops@c.")).toEqual([]);
+    expect(mails("ping ops@c.x")).toEqual([]);
+    expect(mails("ping ops@c.ex")).toEqual(["ops@c.ex"]);
+  });
+
+  test("the local part keeps what people type and stops at a space", () => {
+    expect(mails("mail me at first.last+tag@sub.example.co.uk now")).toEqual(["first.last+tag@sub.example.co.uk"]);
+  });
+
+  test("a hyphen ends a host label but never starts the TLD with one", () => {
+    expect(mails("ops@team-ops.example.com")).toEqual(["ops@team-ops.example.com"]);
+    expect(mails("ops@example.c-m")).toEqual([]);
+  });
+
+  test("an address inside a URL stays part of the URL", () => {
+    const links = extractLinks("see https://user@host.com/page");
+    expect(links.map((l) => l.kind)).toEqual(["web"]);
+  });
+});
+
 describe("extractLinks: what becomes a link", () => {
   test("the offsets index the sender's characters, for every kind", () => {
     // A renderer slices the body at these offsets, so a wrong `start` silently

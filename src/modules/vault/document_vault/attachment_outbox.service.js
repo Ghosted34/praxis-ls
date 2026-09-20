@@ -55,6 +55,7 @@ const storage = require("../../../services/storage.service");
 const { audit, resolveActorId } = require("../../../shared/events/emit");
 const { atomically } = require("../../../shared/db/tx");
 const { logger } = require("../../../config/logger");
+const metrics = require("../../../shared/observability/metrics");
 
 const MODULE_KEY = "MOD-64";
 
@@ -66,6 +67,26 @@ const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000;
 
 const errText = (e) =>
   String((e && e.message) || e || "unknown error").slice(0, 500);
+
+/*
+ * PR-10 / B.2: the reconciliation's RETURN VALUE was the only record of what a
+ * pass did — visible to whichever caller logged it, invisible to everyone
+ * else. Each outcome now also increments a counter beside the out.* tally it
+ * belongs to, so a dashboard can watch the sweep work (and a counter that
+ * never moves catches a sweep that stopped running) without reading job logs.
+ */
+const RECONCILE_METRIC = (result, value = 1) => {
+  // A zero is not an outcome. Emitting result=outbox_closed=0 for every
+  // quiet pass would create a label series that never did anything — noise
+  // for a scraper and a false "activity" line in a dashboard listing.
+  if (!Number(value)) return;
+  metrics.inc(
+    "praxis_media_reconciliation_total",
+    { result },
+    value,
+    "Media reconciliation outcomes: document links completed, orphans swept, storage keys deleted, delete failures, outbox rows closed.",
+  );
+};
 
 /* ── the state machine, as the upload paths drive it ───────────────────────*/
 
@@ -221,9 +242,11 @@ async function deleteKey(key, out) {
   try {
     await storage.delete(key);
     out.bytes_deleted += 1;
+    RECONCILE_METRIC("bytes_deleted");
   } catch (err) {
     if (err && err.code === "ENOENT") return;
     out.byte_failures += 1;
+    RECONCILE_METRIC("byte_failures");
     logger.warn({ err, key }, "media reconciliation: storage delete failed");
   }
 }
@@ -269,6 +292,7 @@ async function sweepVaultRow(client, vaultDocId, out) {
   });
   if (!archived) return;
   out.swept += 1;
+  RECONCILE_METRIC("swept");
 
   const recorded = isSiteMedia
     ? await repo.variantKeysForVault(client, vaultDocId)
@@ -350,6 +374,7 @@ async function reconcile(client, { ttlMs = DEFAULT_TTL_MS, actor = {} } = {}) {
           state: "LINKED",
         });
         out.linked += 1;
+        RECONCILE_METRIC("linked");
       });
     }
   }
@@ -366,8 +391,12 @@ async function reconcile(client, { ttlMs = DEFAULT_TTL_MS, actor = {} } = {}) {
   }
 
   /* Phase 3 — close the bookkeeping. */
-  out.outbox_closed += await repo.closeWhereArchivedVault(client);
-  out.outbox_closed += await repo.closeStaleIntents(client, ttlInterval);
+  const closedArchived = await repo.closeWhereArchivedVault(client);
+  out.outbox_closed += closedArchived;
+  RECONCILE_METRIC("outbox_closed", closedArchived);
+  const closedStale = await repo.closeStaleIntents(client, ttlInterval);
+  out.outbox_closed += closedStale;
+  RECONCILE_METRIC("outbox_closed", closedStale);
 
   return out;
 }

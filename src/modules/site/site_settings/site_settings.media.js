@@ -92,6 +92,9 @@ const OWNERS = {
     table: "site_leader",
     event: events.LEADER_UPDATED,
     read: `SELECT photo_vault_id AS vault_id FROM site_leader WHERE leader_id = $1`,
+    /* The same read, inside the pointer transaction, with the owner row
+       locked — see upload(). */
+    lock: `SELECT photo_vault_id AS vault_id FROM site_leader WHERE leader_id = $1 FOR UPDATE`,
     set: `UPDATE site_leader
              SET photo_vault_id = $2, updated_at = now(), updated_by = $3
            WHERE leader_id = $1 RETURNING *`,
@@ -111,6 +114,7 @@ const OWNERS = {
     table: "site_partner",
     event: events.PARTNER_UPDATED,
     read: `SELECT logo_vault_id AS vault_id FROM site_partner WHERE partner_id = $1`,
+    lock: `SELECT logo_vault_id AS vault_id FROM site_partner WHERE partner_id = $1 FOR UPDATE`,
     set: `UPDATE site_partner
              SET logo_vault_id = $2, updated_at = now(), updated_by = $3
            WHERE partner_id = $1 RETURNING *`,
@@ -133,6 +137,7 @@ const OWNERS = {
     table: "site_credential",
     event: events.CREDENTIAL_UPDATED,
     read: `SELECT logo_vault_id AS vault_id FROM site_credential WHERE credential_id = $1`,
+    lock: `SELECT logo_vault_id AS vault_id FROM site_credential WHERE credential_id = $1 FOR UPDATE`,
     set: `UPDATE site_credential
              SET logo_vault_id = $2, updated_at = now(), updated_by = $3
            WHERE credential_id = $1 RETURNING *`,
@@ -156,6 +161,7 @@ const OWNERS = {
     table: "corporate_entity",
     event: events.ENTITY_STORY_UPDATED,
     read: `SELECT public_cover_vault_id AS vault_id FROM corporate_entity WHERE entity_id = $1`,
+    lock: `SELECT public_cover_vault_id AS vault_id FROM corporate_entity WHERE entity_id = $1 FOR UPDATE`,
     /* `corporate_entity` has no `updated_by`, so this one takes two parameters
        where the other three take three. That difference is why each statement is
        written out rather than assembled: the assembled version needed a ternary
@@ -441,16 +447,36 @@ async function upload(client, { slot, ownerId, dataUrl, originalName, provenance
           variants ? JSON.stringify(variants) : null,
         ],
       );
+      /*
+       * Lock the owner row and read the pointer AS IT IS NOW, not as the
+       * request first saw it (PR-10 / B.4).
+       *
+       * Two replacements that overlap used to archive from a STALE `before`:
+       * each had read the owner column before the other committed, so the
+       * loser's document — scoped SITE, VERIFIED, pointed at by nobody —
+       * survived the race as a permanently dangling public object. The serve
+       * route's owner join kept it unwatchable (fail-closed, as designed),
+       * but no sweep would ever take it: its scope is not NULL, so the
+       * orphan predicate cannot see it.
+       *
+       * FOR UPDATE serialises the two pointer transactions on the owner row
+       * itself. The second one to arrive waits, then re-reads the pointer the
+       * first one committed — and archives THAT. The loser leaves the race
+       * archived and stripped of its public scope, which is exactly what the
+       * reconciliation's bookkeeping expects to find.
+       */
+      const locked = await client.query(owner.lock, [ownerId]);
+      const replacedId = locked.rows[0] ? locked.rows[0].vault_id : null;
       const row = await setOwnerVaultId(client, owner, ownerId, created.doc_id, actor.user_id);
-      if (before.vault_id && before.vault_id !== created.doc_id) {
-        await archive(client, owner, before.vault_id, ref(owner.refPrefix, ownerId));
+      if (replacedId && replacedId !== created.doc_id) {
+        await archive(client, owner, replacedId, ref(owner.refPrefix, ownerId));
       }
       await audit(client, {
         actorUserId: actor.user_id || null,
         action: owner.event,
         moduleKey: events.MODULE,
         entityRef: ref(owner.refPrefix, ownerId),
-        before: { [owner.column]: before.vault_id },
+        before: { [owner.column]: replacedId },
         after: { [owner.column]: created.doc_id, provenance },
       });
       // Inside the transaction, so LINKED can only mean the link committed.

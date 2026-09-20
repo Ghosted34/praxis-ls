@@ -21,7 +21,6 @@ const lh = require("../entity-letterhead.service");
 const letterheadService = lh;
 const letterheadBlocks = require("../../../services/documents/templates/letterhead-blocks");
 const dossierService = require("../entity-360.service");
-const { maskBank } = require("../_shared/confidential");
 const storage = require("../../../services/storage.service");
 const imagePipeline = require("../../../services/image-pipeline.service");
 const { emitEvent, audit, resolveActorId } = require("../../../shared/events/emit");
@@ -432,11 +431,11 @@ async function saveLetterhead(client, { id, patch = {}, actor = {} }) {
 }
 
 /** The stored configuration plus its rendered preview, in one or both languages. */
-async function letterhead(client, id, lang = null, { financials = false, tax = false } = {}) {
+async function letterhead(client, id, lang = null, { tax = false } = {}) {
   const entity = await repo.get(client, id);
   if (!entity) throw new AppError("NOT_FOUND", "Entity not found", 404);
   const { addresses, registrations, establishments } = await repo.collections(client, id);
-  const { tax_registrations: taxRegistrations, letterhead: config } = await repo.documentsAndTax(client, id);
+  const { letterhead: config } = await repo.documentsAndTax(client, id);
   const treasuryAccounts = await repo.treasuryAccounts(client, id);
 
   // PR-04 (Decision Q3): this endpoint is an API READ of the letterhead, not a
@@ -448,9 +447,14 @@ async function letterhead(client, id, lang = null, { financials = false, tax = f
   // composing from the raw rows on their own module's authority: a commercial
   // document must carry its statutory mentions (CE-18), and that is a document
   // gate, not this one.
+  //
+  // PR-10 / A0: the PAYMENT BLOCK is deliberately NOT part of that redaction.
+  // The owner's binding decision is that every MOD-01 viewer sees the bank
+  // details on the letterhead surface — the preview must show what the
+  // document prints, which was the whole point of previewing the renderer's
+  // own composition.
   const visibleEntity = dossierService.maskEntityRegistrations(entity, tax);
   const visibleRegistrations = tax ? registrations : registrations.map(dossierService.redactRegistration);
-  const visibleTaxRegistrations = tax ? taxRegistrations : taxRegistrations.map(dossierService.redactTaxRegistration);
 
   // Bug #14: registerdAddress() / identifiers() / paymentBlock() inside the
   // block composer read both top-level entity columns (address_line1..city) and
@@ -463,10 +467,7 @@ async function letterhead(client, id, lang = null, { financials = false, tax = f
   // "Legal form & capital" / "Bank" blocks printed empty even when data
   // existed. Passing them through is the fix.
 
-  const input = { entity: visibleEntity, config, addresses, registrations: visibleRegistrations, taxRegistrations: visibleTaxRegistrations, treasuryAccounts, establishments };
-  // Same confidentiality rule as the dossier: the payment block and the account
-  // list both carry the number, and this route is MOD-01 `view`.
-  const mask = (p) => dossierService.maskPaymentBlock(p, financials);
+  const input = { entity: visibleEntity, config, addresses, registrations: visibleRegistrations, treasuryAccounts, establishments };
   const customLines = await repo.letterheadLines(client, id);
   /*
    * The registration rows ride along so `compose()` can build the identifiers
@@ -480,31 +481,27 @@ async function letterhead(client, id, lang = null, { financials = false, tax = f
    */
   const composeInput = {
     entity: visibleEntity, config, addresses, establishments, treasuryAccounts, customLines,
-    registrations: visibleRegistrations, taxRegistrations: visibleTaxRegistrations,
+    registrations: visibleRegistrations,
     layout: (config && config.layout) || null,
     logo_url: entity.logo_light_ref || null,
   };
-  const composeFor = (l) => {
-    const c = letterheadBlocks.compose(composeInput, l);
-    return {
-      ...c,
-      // The payment block carries an account number and this route is MOD-01
-      // `view`, not a financial grant — same rule the dossier applies.
-      footer: c.footer.map((b) => (b.id === "payment" && !financials
-        ? { ...b, lines: b.lines.map(() => ({ type: "text", text: "••••" })) }
-        : b)),
-    };
-  };
+  const composeFor = (l) => letterheadBlocks.compose(composeInput, l);
 
   return {
     config: config || { entity_id: id, ...letterheadService.DEFAULT_CONFIG },
     remittance_account_id: entity.remittance_account_id || null,
-    treasury_accounts: treasuryAccounts.map((t) => maskBank(t, financials)),
+    // PR-10 / A0: NOT masked. This endpoint is MOD-01 `view`, and the owner's
+    // decision is that the letterhead surface shows a MOD-01 viewer the bank
+    // details the document itself prints — bank name, account number, holder.
+    // The rows, the rendered previews and the composed blocks all carry the
+    // real values; gate 14 keeps applying to the Treasury module's own
+    // dossier and the party bank rows, which are different surfaces.
+    treasury_accounts: treasuryAccounts,
     // Both languages, always: a French entity that also invoices in English
     // needs to see both, and rendering twice is free (it is a pure function).
     preview: {
-      fr: mask(letterheadService.render(input, "fr")),
-      en: mask(letterheadService.render(input, "en")),
+      fr: letterheadService.render(input, "fr"),
+      en: letterheadService.render(input, "en"),
     },
     blocks: { fr: composeFor("fr"), en: composeFor("en") },
     custom_lines: customLines,

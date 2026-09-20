@@ -44,6 +44,10 @@ function calendarDb({ own, fallback, failOn } = {}) {
         return { rows: [] };
       }
       if (sql === "COMMIT") return { rows: [] };
+      // The per-entity advisory lock save()/reset() take to serialise
+      // concurrent writers (PR-10 / B.4). Postgres answers it with an empty
+      // row; so does the double.
+      if (sql.startsWith("SELECT pg_advisory_xact_lock")) return { rows: [] };
       if (sql.startsWith("DELETE FROM working_calendar WHERE entity_id")) {
         const deleted = state.calendars.filter((row) => row.entity_id === params[0]).map((row) => row.working_calendar_id);
         state.calendars = state.calendars.filter((row) => row.entity_id !== params[0]);

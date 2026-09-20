@@ -242,6 +242,18 @@ function Detail({
  * best — and it is what the letterhead studio's block links point at, because
  * the block catalogue names the section, not a control that may not exist yet.
  */
+/**
+ * The heading level a dossier `Section` renders at.
+ *
+ * A section heading must sit exactly one level below the entity's name: an h2
+ * name takes h3 sections (the master–detail list), an h1 name takes h2 sections
+ * (the deep-link page). `Section` is used dozens of times across the tabs, so
+ * the level travels by context rather than by a prop on every call — the
+ * provider is set once in `EntityDossier`, next to `titleAs`, which is the only
+ * place that knows the answer.
+ */
+const SectionHeadingLevel = React.createContext<"h2" | "h3">("h3");
+
 function Section({
   title,
   description,
@@ -255,11 +267,12 @@ function Section({
   field?: string;
   children: React.ReactNode;
 }) {
+  const H = React.useContext(SectionHeadingLevel);
   return (
     <section data-field={field} className="space-y-3 rounded-xl border bg-card p-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+          <H className="text-sm font-semibold text-foreground">{title}</H>
           {description && (
             <p className="micro text-muted-foreground">{description}</p>
           )}
@@ -1301,8 +1314,10 @@ export function EntityDossier({
    * rather than a style question. Inline in the master–detail list the page's h1
    * is "Corporate entities", so the entity name is an h2 and the `Section`
    * headings below it are h3s. On the deep-link route there is no other heading,
-   * so the entity name IS the h1. It was hard-coded to h3 in both, which skipped
-   * a level under the list's h1 and left the deep-link page with no h1 at all.
+   * so the entity name IS the h1 — and the sections step down to h2s so the
+   * ladder never skips (see `SectionHeadingLevel`). It was hard-coded to h3 in
+   * both, which skipped a level under the list's h1 and left the deep-link page
+   * with no h1 at all.
    */
   titleAs?: "h1" | "h2";
 }) {
@@ -1455,7 +1470,7 @@ export function EntityDossier({
   }, [deepEdit, loadedAddresses, loadedCapabilities]);
 
   if (d.loading) return <LoadingRow label="Loading entity…" />;
-  if (d.error || !d.data) {
+  if (d.error || !d.data || !d.data.entity) {
     return (
       <ErrorState message={d.error ? errMsg(d.error) : "Entity not found."} />
     );
@@ -1473,6 +1488,7 @@ export function EntityDossier({
     usage,
     readiness,
     treasury_accounts: treasury,
+    treasury_primary: treasuryPrimary,
     expiring_registrations: expiring,
     can_see_governance: gov,
     capabilities,
@@ -1512,6 +1528,7 @@ export function EntityDossier({
   const renewalsView = (renewalAsOf && datedRenewals.data) || d.data.renewals;
 
   return (
+    <SectionHeadingLevel.Provider value={Title === "h1" ? "h2" : "h3"}>
     <div className="space-y-4">
       {/* Header card — the client/supplier 360 surface (party-360.tsx), so the
           three masters read as one family. */}
@@ -1848,7 +1865,7 @@ export function EntityDossier({
                 <Th>{tr("Issued")}</Th>
                 <Th>{tr("Expires")}</Th>
                 <Th>{tr("Verification")}</Th>
-                <Th />
+                <Th><span className="sr-only">{tr("Actions")}</span></Th>
               </>
             }
           >
@@ -1997,7 +2014,7 @@ export function EntityDossier({
                   <Th>Regime</Th>
                   <Th>Filing</Th>
                   <Th>{tr("Status")}</Th>
-                  <Th />
+                  <Th><span className="sr-only">{tr("Actions")}</span></Th>
                 </>
               }
             >
@@ -2167,6 +2184,7 @@ export function EntityDossier({
           addresses={addresses}
           onSaved={reload}
           canEdit={caps.public_story}
+          headingAs={Title === "h1" ? "h2" : "h3"}
         />
       )}
 
@@ -2350,7 +2368,7 @@ export function EntityDossier({
                   <Th r>Ownership</Th>
                   <Th r>Voting</Th>
                   <Th>Held from</Th>
-                  <Th />
+                  <Th><span className="sr-only">{tr("Actions")}</span></Th>
                 </>
               }
             >
@@ -2529,7 +2547,7 @@ export function EntityDossier({
                   <Th>{tr("Title")}</Th>
                   <Th>Appointed</Th>
                   <Th>Until</Th>
-                  <Th />
+                  <Th><span className="sr-only">{tr("Actions")}</span></Th>
                 </>
               }
             >
@@ -2655,7 +2673,7 @@ export function EntityDossier({
                   <Th>{tr("Address")}</Th>
                   <Th>{tr("City")}</Th>
                   <Th>{tr("Country")}</Th>
-                  <Th />
+                  <Th><span className="sr-only">{tr("Actions")}</span></Th>
                 </>
               }
             >
@@ -2748,7 +2766,7 @@ export function EntityDossier({
                   <Th>{tr("Title")}</Th>
                   <Th>{tr("Email")}</Th>
                   <Th>{tr("Phone")}</Th>
-                  <Th />
+                  <Th><span className="sr-only">{tr("Actions")}</span></Th>
                 </>
               }
             >
@@ -2957,7 +2975,7 @@ export function EntityDossier({
                   <Th>{tr("Country")}</Th>
                   <Th>{tr("Manager")}</Th>
                   <Th>Tax office</Th>
-                  <Th />
+                  <Th><span className="sr-only">{tr("Actions")}</span></Th>
                 </>
               }
             >
@@ -3030,9 +3048,9 @@ export function EntityDossier({
 
       {tab === "Banking & treasury" && (
         <Section
-          title="Treasury accounts"
+          title="Banking & treasury"
           field="treasury_accounts"
-          description="Read-only here. Bank, cash and mobile-money accounts are owned by Treasury so the GL mapping and the invoice payment block can never disagree."
+          description="Read-only here. The primary account is the one this entity's documents print in their payment block; accounts themselves are owned by Treasury so the GL mapping and the invoice can never disagree."
           action={
             <Button
               size="sm"
@@ -3043,39 +3061,139 @@ export function EntityDossier({
             </Button>
           }
         >
-          <MiniTable
-            empty={treasury.length === 0}
-            head={
-              <>
-                <Th>{tr("Label")}</Th>
-                <Th>{tr("Kind")}</Th>
-                <Th>GL account</Th>
-                <Th>{tr("Currency")}</Th>
-                <Th>{tr("Status")}</Th>
-              </>
-            }
-          >
-            {treasury.map((t) => (
-              <tr key={t.treasury_account_id}>
+          {/*
+           * PR-10 / A5 + A1: ONE account, decided by the server's resolver
+           * (`treasury_primary`) — the same rule the letterhead payment block
+           * runs — printed in full: bank, number, holder. A tenant with six
+           * accounts gets one detailed row here and one payment line on the
+           * letterhead, never six of either. The other accounts stay
+           * discoverable through the count affordance below, without their
+           * identifiers being printed beside the primary's.
+           */}
+          {treasuryPrimary?.state === "account" && treasuryPrimary.account && (
+            <MiniTable
+              empty={false}
+              head={
+                <>
+                  <Th>{tr("Label")}</Th>
+                  <Th>{tr("Kind")}</Th>
+                  <Th>GL account</Th>
+                  <Th>{tr("Currency")}</Th>
+                  <Th>{tr("Status")}</Th>
+                  <Th>{tr("Bank name")}</Th>
+                  <Th>{tr("Account number")}</Th>
+                  <Th>{tr("Holder name")}</Th>
+                </>
+              }
+            >
+              <tr data-field="treasury_primary">
                 <Td>
-                  <span className="font-medium text-foreground">{t.label}</span>
+                  <span className="font-medium text-foreground">
+                    {treasuryPrimary.account.label}
+                  </span>{" "}
+                  <Pill tone="blue">{tr("Primary")}</Pill>
                 </Td>
                 <Td>
-                  {enumLabel(t.kind)}
-                  {t.momo_network ? ` · ${t.momo_network}` : ""}
+                  {enumLabel(treasuryPrimary.account.kind)}
+                  {treasuryPrimary.account.momo_network
+                    ? ` · ${treasuryPrimary.account.momo_network}`
+                    : ""}
                 </Td>
                 <Td>
-                  <span className="num">{t.coa_code}</span>
+                  <span className="num">{treasuryPrimary.account.coa_code}</span>
                 </Td>
-                <Td>{t.currency || "—"}</Td>
+                <Td>{treasuryPrimary.account.currency || "—"}</Td>
                 <Td>
-                  <Pill tone={t.is_active ? "ok" : "mute"}>
-                    {t.is_active ? "Active" : "Inactive"}
+                  <Pill
+                    tone={treasuryPrimary.account.is_active ? "ok" : "mute"}
+                  >
+                    {treasuryPrimary.account.is_active ? "Active" : "Inactive"}
                   </Pill>
                 </Td>
+                <Td>{treasuryPrimary.account.bank_name || "—"}</Td>
+                <Td>
+                  <span className="num">
+                    {treasuryPrimary.account.account_number || "—"}
+                  </span>
+                </Td>
+                <Td>{treasuryPrimary.account.holder_name || "—"}</Td>
               </tr>
-            ))}
-          </MiniTable>
+            </MiniTable>
+          )}
+          {/*
+           * The explicit empty states. "unset" — nobody picked a primary — and
+           * "ambiguous" — several accounts still carry the flag, the exact
+           * residue of the per-category clearing PR-10 fixed server-side. Both
+           * render NOTHING in the payment block, so the tab says so and points
+           * at the fix instead of guessing an account or printing them all.
+           */}
+          {treasuryPrimary && treasuryPrimary.state !== "account" && (
+            <Callout
+              tone="warn"
+              title="No primary account selected"
+            >
+              {treasuryPrimary.state === "ambiguous"
+                ? "Several accounts are flagged primary for this entity, so no payment block prints and no single account is shown here. Open Treasury and set one primary account — setting it clears the others."
+                : "This entity has no primary account, so its documents print no payment block. Open Treasury and set a primary account — it is the one the letterhead and this tab will show."}{" "}
+              <button
+                type="button"
+                className="underline"
+                onClick={() => navigate("/master/treasury-accounts")}
+              >
+                Open Treasury →
+              </button>
+            </Callout>
+          )}
+          {/* No bundle at all (an older API): the hint still renders rather
+              than an empty tab pretending everything is fine. */}
+          {!treasuryPrimary && (
+            <Callout tone="warn" title="No primary account selected">
+              Open Treasury and set a primary account — it is the one this
+              entity&apos;s payment block and this tab will show.{" "}
+              <button
+                type="button"
+                className="underline"
+                onClick={() => navigate("/master/treasury-accounts")}
+              >
+                Open Treasury →
+              </button>
+            </Callout>
+          )}
+          {/*
+           * The non-primary accounts stay discoverable without their
+           * identifiers being printed beside the primary's: a count and a way
+           * through. Treasury owns the rows (treasury_is_read_only).
+           */}
+          {treasury.filter(
+            (t) =>
+              !(
+                treasuryPrimary?.state === "account" &&
+                treasuryPrimary.account.treasury_account_id ===
+                  t.treasury_account_id
+              ),
+          ).length > 0 && (
+            <p className="micro text-muted-foreground">
+              {tr(
+                `${
+                  treasury.filter(
+                    (t) =>
+                      !(
+                        treasuryPrimary?.state === "account" &&
+                        treasuryPrimary.account.treasury_account_id ===
+                          t.treasury_account_id
+                      ),
+                  ).length
+                } other account(s) — open Treasury`,
+              )}{" "}
+              <button
+                type="button"
+                className="underline"
+                onClick={() => navigate("/master/treasury-accounts")}
+              >
+                {tr("Open Treasury →")}
+              </button>
+            </p>
+          )}
           {treasury.length === 0 && (
             <EmptyState
               title="No treasury accounts for this entity"
@@ -3137,6 +3255,7 @@ export function EntityDossier({
         />
       )}
     </div>
+    </SectionHeadingLevel.Provider>
   );
 }
 
@@ -3781,7 +3900,7 @@ function DocumentsTab({
             <Th>{tr("Expires")}</Th>
             <Th>Scan</Th>
             <Th>{tr("Verification")}</Th>
-            <Th />
+            <Th><span className="sr-only">{tr("Actions")}</span></Th>
           </>
         }
       >
@@ -4264,14 +4383,28 @@ function LetterheadTab({
 
         <Section
           title="Payment block"
-          description="Which account leads the payment block on this entity's documents. Accounts themselves live in Treasury."
+          description="The primary account — the ONE account this entity's documents print. Accounts themselves live in Treasury."
         >
           {p.payment_block.source === "bank_block_legacy" && (
             <Callout tone="warn" title="Still using the old bank block">
               These details come from the entity&apos;s legacy bank block, not a
               treasury account. Activate the migrated account in Treasury and
-              flag it &ldquo;show on documents&rdquo; so the payment block and
-              the ledger agree.
+              set it as the entity&apos;s primary so the payment block and the
+              ledger agree.
+            </Callout>
+          )}
+          {p.payment_block.source === "no_primary" && (
+            <Callout tone="warn" title="No primary account selected">
+              No payment block prints until Treasury has one primary account
+              for this entity{remittance ? " — the selected remittance account is inactive or ambiguous" : ""}.
+              {" "}
+              <button
+                type="button"
+                className="underline"
+                onClick={() => window.location.assign("/master/treasury-accounts")}
+              >
+                Open Treasury →
+              </button>
             </Callout>
           )}
           <Select
@@ -4281,10 +4414,12 @@ function LetterheadTab({
               patch({ remittance_account_id: ev.target.value || null })
             }
           >
-            <option value="">{tr("— first flagged account —")}</option>
+            <option value="">
+              {tr("— the account flagged primary in Treasury —")}
+            </option>
             {accounts.map((a) => (
               <option key={a.treasury_account_id} value={a.treasury_account_id}>
-                {a.label} ({a.currency})
+                {a.label} ({a.currency}){a.is_primary ? tr(" · primary") : ""}
               </option>
             ))}
           </Select>

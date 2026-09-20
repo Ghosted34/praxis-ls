@@ -12,7 +12,6 @@ const {
   redactPerson,
   isoDate,
   maskEntityBank,
-  maskPaymentBlock,
 } = require("../../src/modules/master/entity-360.service");
 
 describe("entity lifecycle transitions", () => {
@@ -425,6 +424,16 @@ describe("bank-detail masking (acceptance gate 14)", () => {
   // dossier — which is gated MOD-01 `view`, held by Sales and Ops. The account
   // number is finance data and must be masked in the SERIALIZER, exactly as the
   // party masters mask theirs.
+  //
+  // PR-10 / A0 narrowed this to the MASTER RECORD only. The legacy `bank_block`
+  // jsonb on the entity row stays masked without the financials grant; the two
+  // surfaces the owner deliberately relaxed — the Banking & treasury tab
+  // (treasury_accounts rows + treasury_primary) and the letterhead payment
+  // block — are NOT masked for a MOD-01 viewer, which
+  // tests/unit/entity-primary-account.test.js pins against the real
+  // serializers. `maskPaymentBlock`, the rendered-preview mask this suite
+  // used to exercise, was removed with the relaxation: both of its call sites
+  // were those two surfaces, so it was dead the moment they opened.
   const entity = {
     entity_id: "e1",
     legal_name: "Smart Logistics Ltd",
@@ -464,36 +473,6 @@ describe("bank-detail masking (acceptance gate 14)", () => {
   it("copes with an entity that has no bank block at all", () => {
     expect(() => maskEntityBank({ entity_id: "e2" }, false)).not.toThrow();
     expect(() => maskEntityBank(null, false)).not.toThrow();
-  });
-
-  it("masks the rendered payment block too — the same secret, a second route", () => {
-    const preview = {
-      payment_block: {
-        source: "treasury",
-        accounts: [
-          {
-            label: "Main",
-            bank_name: "Afriland",
-            account_number: "1000500012345",
-            iban: "CM21X",
-            swift_bic: "CCEICMCX",
-          },
-        ],
-      },
-    };
-    const m = maskPaymentBlock(preview, false);
-    expect(m.payment_block.accounts[0].account_number).toBe("••••2345");
-    expect(m.payment_block.accounts[0].masked).toBe(true);
-    expect(
-      maskPaymentBlock(preview, true).payment_block.accounts[0].account_number,
-    ).toBe("1000500012345");
-  });
-
-  it("copes with a payment block that has no accounts", () => {
-    expect(() =>
-      maskPaymentBlock({ payment_block: { source: "none" } }, false),
-    ).not.toThrow();
-    expect(() => maskPaymentBlock(null, false)).not.toThrow();
   });
 });
 

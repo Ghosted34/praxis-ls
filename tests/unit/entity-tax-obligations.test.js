@@ -841,4 +841,102 @@ describe("tax obligation generator (PR-05)", () => {
       expect(src).toMatch(/CORPORATE_ENTITY_REGISTRATION_CURRENT_ROW\.md/);
     });
   });
+
+  /*
+   * PR-10 / B.3 — the generator's outcomes as counters. The summary above goes
+   * to whichever caller logged it; the counters are how a dashboard answers
+   * "is the calendar actually being filled?" — and how a `generated` that
+   * never moves catches a generator that stopped running.
+   */
+  describe("the counters", () => {
+    const metrics = require("../../src/shared/observability/metrics");
+
+    afterEach(() => metrics.__reset());
+
+    it("counts generation and idempotent skips, and only after the run commits", async () => {
+      metrics.__reset();
+      fakeTenant({ registrations: [VAT_CM] });
+
+      const first = await tc.generateForEntity(CLIENT, "e1", { today: TODAY, backfill: 1, horizon: 3 });
+      expect(first.created).toBe(5);
+      expect(metrics.snapshot().counters["praxis_tax_obligations_total"]).toEqual({
+        "result=generated": 5,
+      });
+
+      // The re-run creates nothing and SKIPS five: the duplicate skip is the
+      // healthy, every-night reading of this counter, not an error.
+      const second = await tc.generateForEntity(CLIENT, "e1", { today: TODAY, backfill: 1, horizon: 3 });
+      expect(second.created).toBe(0);
+      expect(second.existing).toBe(5);
+      expect(metrics.snapshot().counters["praxis_tax_obligations_total"]).toEqual({
+        "result=generated": 5,
+        "result=duplicate_skipped": 5,
+      });
+    });
+
+    it("counts a rolled-back run as nothing at all", async () => {
+      metrics.__reset();
+      fakeTenant({ registrations: [VAT_CM] });
+      // The generator owns its transaction; a failure after the writes must
+      // not leave counters claiming work that never committed.
+      const failing = {
+        ...CLIENT,
+        query: async () => { throw new Error("boom"); },
+      };
+
+      await expect(
+        tc.generateForEntity(failing, "e1", { today: TODAY, backfill: 0, horizon: 1 }),
+      ).rejects.toThrow("boom");
+      expect(metrics.snapshot().counters["praxis_tax_obligations_total"]).toBeUndefined();
+    });
+
+    it("counts superseded obligations from both supersede paths", async () => {
+      metrics.__reset();
+      const t = fakeTenant({ registrations: [VAT_CM] });
+      await tc.generateForEntity(CLIENT, "e1", { today: TODAY, backfill: 0, horizon: 2 });
+      expect(t.obligations.filter((o) => o.status === "PENDING")).toHaveLength(3);
+
+      // Path 1 — the registration closes: its three open rows are retired.
+      repo.taxRegistrationsForGeneration.mockResolvedValue([{ ...VAT_CM, is_active: false }]);
+      const closed = await tc.generateForEntity(CLIENT, "e1", { today: TODAY, backfill: 0, horizon: 2 });
+      expect(closed.superseded).toBe(3);
+      expect(metrics.snapshot().counters["praxis_tax_obligations_total"]).toMatchObject({
+        "result=superseded": 3,
+      });
+
+      // Path 2 — the cadence changes: the open rows inside the window whose
+      // generation key is no longer expected are replaced, not edited.
+      metrics.__reset();
+      fakeTenant({ registrations: [VAT_CM] });
+      await tc.generateForEntity(CLIENT, "e1", { today: TODAY, backfill: 0, horizon: 1 });
+      repo.taxRegistrationsForGeneration.mockResolvedValue([{ ...VAT_CM, filing_due_day: 20 }]);
+      const recadenced = await tc.generateForEntity(CLIENT, "e1", { today: TODAY, backfill: 0, horizon: 1 });
+      expect(recadenced.superseded).toBe(2);
+      expect(metrics.snapshot().counters["praxis_tax_obligations_total"]).toMatchObject({
+        "result=superseded": 2,
+      });
+    });
+
+    it("counts a waiver — the one manual outcome worth a dashboard line", async () => {
+      metrics.__reset();
+      const t = fakeTenant({ registrations: [VAT_CM] });
+      await tc.generateForEntity(CLIENT, "e1", { today: TODAY, backfill: 0, horizon: 0 });
+      // The generation itself emitted its counter; start the assertion from
+      // clean so only the waiver is in play.
+      metrics.__reset();
+
+      await tc.setStatus(CLIENT, t.obligations[0].tax_calendar_id, {
+        status: "WAIVED", reason: "Nil return accepted by the DGI in writing", actor: { user_id: "u-ada" },
+      });
+      expect(metrics.snapshot().counters["praxis_tax_obligations_total"]).toEqual({
+        "result=waived": 1,
+      });
+
+      // Completing one is routine and is not its own line.
+      await tc.setStatus(CLIENT, t.obligations[0].tax_calendar_id, { status: "DONE", actor: {} });
+      expect(metrics.snapshot().counters["praxis_tax_obligations_total"]).toEqual({
+        "result=waived": 1,
+      });
+    });
+  });
 });

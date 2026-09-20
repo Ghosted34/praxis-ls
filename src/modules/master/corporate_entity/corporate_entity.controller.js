@@ -35,15 +35,19 @@ module.exports = {
   dossier: asyncHandler(async (req, res) => {
     // Both visibility questions are resolved on the REQUEST, not inside the
     // tenant transaction, because they read the identity database. Governance
-    // gates the cap table; financials gates account numbers (gate 14) — an
-    // entity's own bank details are finance data even though the route that
-    // carries them is MOD-01. Capabilities (PR-01) are resolved the same way,
+    // gates the cap table. Capabilities (PR-01) are resolved the same way,
     // because the dossier must tell the UI which MOD-01 controls are honest
     // to offer rather than pointing it at predictable 403s.
     //
     // PR-04: `tax` is the caller's MOD-01 view capability, taken from the same
     // capabilities bundle so the SERIALIZER enforces the tax-number boundary
     // rather than relying on this route's `view` gate alone.
+    //
+    // PR-10 / A0: `financials` still masks the entity row's legacy `bank_block`
+    // jsonb (the master record), but the Banking & treasury tab and the
+    // letterhead payment block are deliberately UNmasked for every caller of
+    // this MOD-01 `view` route — the owner's decision, asserted in
+    // tests/unit/entity-primary-account.test.js so it cannot drift silently.
     const governance = await dossierService.canSeeGovernance(req);
     const financials = await dossierService.canSeeFinancials(req);
     const capabilities = await dossierService.capabilitiesFor(req);
@@ -58,14 +62,16 @@ module.exports = {
   resetWorkingCalendar: asyncHandler(async (req, res) =>
     res.json({ data: await req.tenantDb((c) => calendar.reset(c, req.params.id, { actor: req.user || {} })) })),
   letterhead: asyncHandler(async (req, res) => {
-    // Gate 14 again: this route is MOD-01 `view`, and the payment block it
-    // renders carries the account number. PR-04 adds the tax half: the
-    // identifier line and the identifiers block are registration numbers,
-    // gated on the caller's MOD-01 view capability (Decision Q3) — the same
-    // can_read the /360 bundle reports as `capabilities.view`.
-    const financials = await dossierService.canSeeFinancials(req);
+    // PR-04: the identifier line and the identifiers block are registration
+    // numbers, gated on the caller's MOD-01 view capability (Decision Q3) —
+    // the same can_read the /360 bundle reports as `capabilities.view`.
+    //
+    // PR-10 / A0: the payment block needs NO financial grant on this surface.
+    // The route is MOD-01 `view`, and the owner's decision is that the
+    // letterhead shows a MOD-01 viewer the bank details the document prints —
+    // so the financials lookup is gone and the serializer does not mask.
     const tax = await dossierService.canSeeRegistrations(req);
-    const data = await req.tenantDb((c) => service.letterhead(c, req.params.id, req.query.lang || null, { financials, tax }));
+    const data = await req.tenantDb((c) => service.letterhead(c, req.params.id, req.query.lang || null, { tax }));
     res.json({ data });
   }),
 

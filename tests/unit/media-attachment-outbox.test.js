@@ -543,6 +543,78 @@ describe("annotateUnlinkedScans — the 'file stored, link pending' flag", () =>
 
 /* ── the metrics — orphans must be measurable ──────────────────────────────*/
 
+describe("the reconciliation counters (PR-10 / B.2)", () => {
+  const metrics = require("../../src/shared/observability/metrics");
+
+  afterEach(() => metrics.__reset());
+
+  test("every reconcile outcome increments its counter, and a no-op pass increments nothing", async () => {
+    metrics.__reset();
+    // One pass over the full damage catalogue: a link to complete, an orphan
+    // to sweep (whose bytes go with it), and stale intents to close.
+    const t = makeTenantDb();
+    seedDoc(t, "entity_document", { id: "ED-M" });
+    seedVault(t, {
+      doc_id: "V-LINK", entity_ref: "entity_document:ED-M",
+      storage_path: "t/vault/link.png",
+    });
+    seedAttachment(t, {
+      kind: "DOCUMENT_SCAN", owner_table: "entity_document", owner_id: "ED-M",
+      vault_doc_id: "V-LINK",
+    });
+    seedVault(t, {
+      doc_id: "V-ORPHAN", doc_type: "SITE_MEDIA", entity_ref: null,
+      storage_path: "t/vault/orphan.png", created_at: daysAgo(3),
+    });
+    // The attempt that parked those bytes: FAILED, pointing at the vault row
+    // the sweep is about to archive — exactly what phase 3 then closes.
+    seedAttachment(t, {
+      kind: "SITE_MEDIA", owner_table: "corporate_entity", owner_id: "E-M",
+      slot: "entity-cover", vault_doc_id: "V-ORPHAN", state: "FAILED",
+      last_error: "boom", created_at: daysAgo(3),
+    });
+
+    const out = await outbox.reconcile(t.client);
+
+    expect(out.linked).toBe(1);
+    expect(out.swept).toBe(1);
+    expect(out.bytes_deleted).toBeGreaterThan(0);
+    const counters = metrics.snapshot().counters["praxis_media_reconciliation_total"];
+    expect(counters).toMatchObject({
+      "result=linked": 1,
+      "result=swept": 1,
+      "result=bytes_deleted": out.bytes_deleted,
+    });
+    // Bookkeeping was closed too — the exact count is the repo's business;
+    // the counter's business is that it is present and non-zero.
+    expect(Number(counters["result=outbox_closed"])).toBeGreaterThan(0);
+
+    // A pass with nothing to do moves no counter: a flat line after activity
+    // is the healthy reading, and this is what makes that readable.
+    metrics.__reset();
+    const again = await outbox.reconcile(t.client);
+    expect(again).toMatchObject({ linked: 0, swept: 0, bytes_deleted: 0 });
+    expect(metrics.snapshot().counters["praxis_media_reconciliation_total"]).toBeUndefined();
+  });
+
+  test("a storage delete that fails (not ENOENT) counts as a byte_failure", async () => {
+    metrics.__reset();
+    storage.delete.mockRejectedValueOnce(Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" }));
+    const t = makeTenantDb();
+    seedVault(t, {
+      doc_id: "V-F", doc_type: "SITE_MEDIA", entity_ref: null,
+      storage_path: "t/vault/f.png", created_at: daysAgo(3),
+    });
+
+    const out = await outbox.reconcile(t.client);
+
+    expect(out.byte_failures).toBeGreaterThan(0);
+    expect(metrics.snapshot().counters["praxis_media_reconciliation_total"]).toMatchObject({
+      "result=byte_failures": out.byte_failures,
+    });
+  });
+});
+
 describe("the business-metrics probes (PR-07)", () => {
   test("the orphan and unlinked-media gauges exist and read the tables that hold the truth", () => {
     const gauges = new Map(businessMetrics.PROBES.map((p) => [p.gauge, p]));

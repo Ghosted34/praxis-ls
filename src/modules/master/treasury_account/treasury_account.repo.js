@@ -197,6 +197,10 @@ async function renameLeaf(client, code, label) {
  * "Clear primary" — inside a transaction the service opens, to make POST
  * /:id/primary an atomic swap: the previous primary in the same
  * (entity_id, category_id) goes false, then the target goes true.
+ *
+ * @deprecated for new callers — see clearPrimaryForEntity. Kept because the
+ * deactivation-replacement path still reaches for it through helper composition
+ * in tests; the SERVICE now clears per ENTITY (PR-10 / A1).
  */
 async function clearPrimaryInCategory(client, { entityId, categoryId, exceptId }) {
   await client.query(
@@ -204,6 +208,38 @@ async function clearPrimaryInCategory(client, { entityId, categoryId, exceptId }
     "  WHERE entity_id = $1 AND category_id = $2 AND treasury_account_id <> $3 AND is_primary = true",
     [entityId, categoryId, exceptId],
   );
+}
+
+/**
+ * PR-10 / A1 — clear every OTHER primary for the ENTITY, categories included.
+ *
+ * `clearPrimaryInCategory` above scoped the clearing to (entity_id,
+ * category_id), which let an entity accumulate one "primary" per category —
+ * six accounts, six primaries, and a letterhead that could not say which
+ * account an invoice should be paid into. The primary flag now means ONE
+ * account per entity: the one the payment block prints and the Banking &
+ * treasury tab shows. Setting a primary clears all the others in the same
+ * transaction the service opens.
+ */
+async function clearPrimaryForEntity(client, { entityId, exceptId }) {
+  await client.query(
+    "UPDATE treasury_account SET is_primary = false " +
+    "  WHERE entity_id = $1 AND treasury_account_id <> $2 AND is_primary = true",
+    [entityId, exceptId],
+  );
+}
+
+/**
+ * How many primaries the entity has left — the service uses it to WARN (never
+ * fail) when a change leaves the entity with none, so the letterhead's
+ * "No primary account selected" state is a known condition, not a mystery.
+ */
+async function countPrimaries(client, entityId) {
+  const { rows } = await client.query(
+    "SELECT COUNT(*)::int AS n FROM treasury_account WHERE entity_id = $1 AND is_primary = true",
+    [entityId],
+  );
+  return Number((rows[0] && rows[0].n) || 0);
 }
 
 // ── Payment gateways (2.3) — unchanged from pre-revamp, credentials write-only ──
@@ -319,7 +355,7 @@ async function deleteSignatory(client, signatoryId) {
 module.exports = {
   insert, get, update, list, getWithCategory,
   getCategory, lockParentCoa, existingLeavesUnder, insertLeafCoa, setLeafActive, renameLeaf,
-  clearPrimaryInCategory,
+  clearPrimaryInCategory, clearPrimaryForEntity, countPrimaries,
   listDocuments, insertDocument, getDocument, deleteDocument, verifyDocument,
   listSignatories, insertSignatory, getSignatory, updateSignatory, deleteSignatory,
   listGateways, getGatewayRaw, upsertGateway, setGatewayActive, setGatewayRole, deleteGateway,

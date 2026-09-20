@@ -98,8 +98,11 @@ describe("GET /entities/:id/letterhead — composed blocks read the registration
     const ids = block(out, "en", "footer", "identifiers");
     expect(textOf(ids)).toContain(`NIU ${SECRETS.niu}`);
     expect(textOf(ids)).toContain(`RCCM ${SECRETS.rccm}`);
-    // The VAT number rides the tax registration, not the trade register.
-    expect(textOf(ids)).toContain(`VAT ${SECRETS.vat}`);
+    // PR-10 / A3: the VAT number rides the tax registration and STAYS there —
+    // the trade-register line prints NIU/RCCM (and any other registration
+    // rows), never a tax-registration number.
+    expect(textOf(ids)).not.toContain(`VAT ${SECRETS.vat}`);
+    expect(textOf(ids)).not.toContain(SECRETS.vat);
     // On the page, and not reported as "switched on, but empty".
     expect(ids.visible).toBe(true);
     expect(ids.empty).toBe(false);

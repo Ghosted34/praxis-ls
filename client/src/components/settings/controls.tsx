@@ -69,13 +69,36 @@ export function Field({
   soon?: boolean;
   children: React.ReactNode;
 }) {
+  /*
+   * Audit F4, again, for the settings family: this Field rendered its Label
+   * as a sibling with no association, so every control under it — partner
+   * names, credential references, theme values — was unlabelled to a screen
+   * reader even though it looked labelled on screen. The modal `Field`
+   * (ui/modal.tsx) fixed the same defect for the form fields there; this one
+   * now wires the same association: a `useId`-minted id on the single control
+   * child, and the Label pointing at it. A child that brings its own id
+   * keeps it, and children that are not a single element are rendered as
+   * they were rather than guessed at.
+   */
+  const uid = React.useId();
+  const only =
+    React.Children.count(children) === 1
+      ? React.Children.toArray(children)[0]
+      : null;
+  const single = React.isValidElement(only)
+    ? (only as React.ReactElement<Record<string, unknown>>)
+    : null;
+  const controlId =
+    single && typeof single.props.id === "string"
+      ? single.props.id
+      : `${uid}-control`;
   return (
     <div className="flex flex-col gap-1.5">
       <span className="flex items-center gap-2">
-        <Label>{label}</Label>
+        <Label htmlFor={single ? controlId : undefined}>{label}</Label>
         {soon && <Soon />}
       </span>
-      {children}
+      {single ? React.cloneElement(single, { id: controlId }) : children}
     </div>
   );
 }

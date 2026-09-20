@@ -302,6 +302,93 @@ describe("primary account deactivation safety — Audit #12", () => {
   });
 });
 
+/*
+ * PR-10 / A1 — the primary flag is ONE per ENTITY.
+ *
+ * `clearPrimaryInCategory` scoped the swap to (entity_id, category_id), so an
+ * entity with a BANK, a CASH and a MOMO account could hold three "primaries"
+ * at once — and the corporate-entity letterhead, which needs ONE account to
+ * print in its payment block, could not say which one an invoice should be
+ * paid into. These pin the SQL the swap now runs: scoped to the ENTITY, with
+ * no category_id anywhere in the statement, on both the dedicated endpoint
+ * and the generic PATCH that could otherwise reintroduce the defect.
+ */
+describe("primary is per-ENTITY, not per-category — PR-10 / A1", () => {
+  const accService = require("../../src/modules/master/treasury_account/treasury_account.service");
+  const accRepo = require("../../src/modules/master/treasury_account/treasury_account.repo");
+  const { logger } = require("../../src/config/logger");
+
+  /** A client that records every SQL statement it is handed. */
+  function recordingClient() {
+    const sql = [];
+    return {
+      sql,
+      query: jest.fn(async (text, _params) => {
+        sql.push(String(text));
+        if (/COUNT\(\*\)/.test(String(text))) return { rows: [{ n: 0 }] };
+        return { rows: [], rowCount: 0 };
+      }),
+    };
+  }
+
+  afterEach(() => jest.restoreAllMocks());
+
+  test("POST /:id/primary clears every other primary FOR THE ENTITY — no category in the statement", async () => {
+    jest.spyOn(accRepo, "get").mockResolvedValue({
+      treasury_account_id: "acc-2", entity_id: "ent-1", category_id: "cat-bank", is_primary: false,
+    });
+    jest.spyOn(accRepo, "update").mockResolvedValue({ treasury_account_id: "acc-2", is_primary: true });
+    jest.spyOn(accRepo, "getWithCategory").mockResolvedValue({ treasury_account_id: "acc-2" });
+    const client = recordingClient();
+
+    await accService.setPrimary(client, { id: "acc-2", actor: {} });
+
+    const clear = client.sql.find((s) => s.includes("SET is_primary = false"));
+    expect(clear).toBeTruthy();
+    expect(clear).toMatch(/WHERE entity_id = \$1 AND treasury_account_id <> \$2 AND is_primary = true/);
+    // The category scope is GONE — that is the defect being fixed.
+    expect(clear).not.toContain("category_id");
+    // One transaction around the whole swap.
+    expect(client.sql).toContain("BEGIN");
+    expect(client.sql).toContain("COMMIT");
+  });
+
+  test("a PATCH cannot move the primary flag at all — UPDATE_FIELDS excludes it", async () => {
+    // The flag changes only through the dedicated atomic endpoints; the
+    // generic write path filtering it out is what keeps the entity-wide
+    // clearing honest. If someone re-adds is_primary to UPDATE_FIELDS, this
+    // fails and the transaction wrapper must come back with it.
+    const src = require("fs").readFileSync(
+      require("path").join(__dirname, "../../src/modules/master/treasury_account/treasury_account.service.js"),
+      "utf8",
+    );
+    const updateFields = src.match(/const UPDATE_FIELDS = \[([\s\S]*?)\];/)[1];
+    expect(updateFields).not.toMatch(/\bis_primary\b/);
+  });
+
+  test("deactivating the primary with forceClearPrimary clears it, commits, then WARNS — never fails", async () => {
+    const warn = jest.spyOn(logger, "warn").mockImplementation(() => {});
+    jest.spyOn(accRepo, "get").mockResolvedValue({
+      treasury_account_id: "acc-4", entity_id: "ent-1", category_id: "cat-bank",
+      is_primary: true, is_verified: false, coa_code: null, label: "Bank",
+    });
+    jest.spyOn(accRepo, "update").mockResolvedValue({ treasury_account_id: "acc-4", is_primary: false, is_active: false });
+    jest.spyOn(accRepo, "getWithCategory").mockResolvedValue({ treasury_account_id: "acc-4" });
+    const client = recordingClient();
+
+    // Must not throw — "no primary" is a legal state, surfaced as a warning
+    // after the commit so the deactivation itself cannot be half-applied.
+    await expect(
+      accService.setActive(client, { id: "acc-4", active: false, forceClearPrimary: true }),
+    ).resolves.toBeTruthy();
+    expect(client.sql).toContain("COMMIT");
+    expect(warn).toHaveBeenCalledWith(
+      expect.objectContaining({ entity_id: "ent-1" }),
+      expect.stringContaining("no primary account"),
+    );
+  });
+});
+
 describe("legacy shims — kept so the older tests and the older callers still pass", () => {
   test("assertCashAccount still refuses non-class-5 codes", () => {
     expect(rules.assertCashAccount("521")).toBe(true);

@@ -202,25 +202,32 @@ describe("letterhead assembly", () => {
       expect(ids.map((i) => i.kind).sort()).toEqual(["NIU", "RCCM"]);
     });
 
-    it("pulls the VAT number from the tax registration, not the trade register", () => {
-      const ids = lh.identifiers(
-        ENTITY,
-        [],
-        [{ tax_kind: "VAT", tax_number: "FR12345678901" }],
-      );
-      expect(ids.find((i) => i.kind === "VAT").number).toBe("FR12345678901");
-    });
-
-    it("ignores deregistered and inactive tax registrations", () => {
+    /*
+     * PR-10 / A3 — the reversal of the old rule, pinned. The VAT number used
+     * to be loop-added from the tax registrations; it is a tax-registration
+     * fact and no longer appears on the trade-register line at all. Full
+     * resolver-level coverage lives in entity-primary-account.test.js; these
+     * keep the unit contract visible where the rest of identifiers() is
+     * tested.
+     */
+    it("NEVER pulls the VAT number from the tax registration — trade-register rows only", () => {
       const ids = lh.identifiers(
         { ...ENTITY, niu: null, rccm: null },
-        [],
-        [
-          { tax_kind: "VAT", tax_number: "OLD", deregistered_on: "2025-01-01" },
-          { tax_kind: "WHT", tax_number: "INACTIVE", is_active: false },
-        ],
+        [{ kind: "NIU", number: "N1" }],
       );
-      expect(ids).toEqual([]);
+      expect(ids).toEqual([{ kind: "NIU", number: "N1" }]);
+    });
+
+    it("tax registrations cannot contribute an identifier even when handed one", () => {
+      // The old call shape (entity, registrations, taxRegistrations). The
+      // third argument is ignored by contract now — a caller still passing it
+      // must not get a VAT line back.
+      const ids = lh.identifiers(
+        { ...ENTITY, niu: null, rccm: null },
+        [{ kind: "RCCM", number: "RC/1" }],
+        [{ tax_kind: "VAT", tax_number: "FR12345678901", is_active: true }],
+      );
+      expect(ids).toEqual([{ kind: "RCCM", number: "RC/1" }]);
     });
 
     it("does not repeat a kind", () => {
@@ -237,21 +244,27 @@ describe("letterhead assembly", () => {
       treasury_account_id: "t1",
       label: "Afriland — Main XAF",
       show_on_documents: true,
+      is_active: true,
+      is_primary: true,
       bank_name: "Afriland First Bank",
       account_number: "1000500012345",
+      holder_name: "Smart Logistics and Services Ltd",
       currency: "XAF",
     };
 
-    it("reads treasury_account when an account is flagged for documents", () => {
+    it("prints the PRIMARY account — the single source the resolver picks", () => {
       const p = lh.paymentBlock(ENTITY, [account]);
       expect(p.source).toBe("treasury");
+      expect(p.accounts).toHaveLength(1);
       expect(p.accounts[0].bank_name).toBe("Afriland First Bank");
+      expect(p.accounts[0].holder_name).toBe("Smart Logistics and Services Ltd");
     });
 
-    it("leads with the entity's remittance account", () => {
+    it("the remittance account is the primary; the other accounts do not print beside it", () => {
       const second = {
         ...account,
         treasury_account_id: "t2",
+        is_primary: false,
         label: "Second",
         bank_name: "UBA",
       };
@@ -259,18 +272,23 @@ describe("letterhead assembly", () => {
         account,
         second,
       ]);
+      expect(p.accounts).toHaveLength(1);
       expect(p.accounts[0].label).toBe("Second");
-      expect(p.accounts).toHaveLength(2);
     });
 
-    it("skips accounts not flagged for documents, and inactive ones", () => {
-      expect(
-        lh.paymentBlock(ENTITY, [{ ...account, show_on_documents: false }])
-          .source,
-      ).not.toBe("treasury");
-      expect(
-        lh.paymentBlock(ENTITY, [{ ...account, is_active: false }]).source,
-      ).not.toBe("treasury");
+    it("several flagged primaries print nothing — an explicit no_primary state, never a pick", () => {
+      const sixPrimaries = [1, 2, 3, 4, 5, 6].map((n) => ({
+        ...account, treasury_account_id: `t${n}`, label: `Bank ${n}`,
+      }));
+      const p = lh.paymentBlock(ENTITY, sixPrimaries);
+      expect(p.source).toBe("no_primary");
+      expect(p.accounts).toHaveLength(0);
+    });
+
+    it("accounts but no primary: no_primary, and no silent legacy fallback", () => {
+      const p = lh.paymentBlock(ENTITY, [{ ...account, is_primary: false }]);
+      expect(p.source).toBe("no_primary");
+      expect(p.accounts).toHaveLength(0);
     });
 
     it("falls back to the frozen bank_block so existing invoices render unchanged", () => {
@@ -323,7 +341,8 @@ describe("letterhead assembly", () => {
         {
           treasury_account_id: "t1",
           label: "Main",
-          show_on_documents: true,
+          is_active: true,
+          is_primary: true,
           bank_name: "Afriland",
         },
       ],

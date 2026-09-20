@@ -654,6 +654,10 @@ export type PaymentAccount = {
   iban?: string | null;
   swift_bic?: string | null;
   currency?: string | null;
+  /** PR-10 / A4: the holder — whose account the remittance must land in. */
+  holder_name?: string | null;
+  /** The legacy 0516 spelling, still returned by the frozen bank_block
+   *  fallback for pre-treasury tenants. */
   beneficiary_name?: string | null;
 };
 
@@ -683,7 +687,7 @@ export type LetterheadPreview = {
     legal_mentions?: string | null;
   };
   payment_block: {
-    source: "treasury" | "bank_block_legacy" | "none" | "hidden";
+    source: "treasury" | "no_primary" | "bank_block_legacy" | "none" | "hidden";
     accounts: PaymentAccount[];
   };
   identifiers: { kind: string; number: string }[];
@@ -804,6 +808,10 @@ export type Entity360 = {
   establishments: EntityEstablishment[];
   /** Read-only here: treasury accounts are owned by MOD-09 and created there. */
   treasury_accounts: Treasury[];
+  /** PR-10 / A1: the resolver's answer — which ONE account is the primary.
+   *  "unset"/"ambiguous" is what the Banking & treasury tab renders as its
+   *  explicit "No primary account selected" hint. */
+  treasury_primary: TreasuryPrimary;
   treasury_is_read_only: boolean;
   cap_table: CapTable;
   usage: {
@@ -1075,7 +1083,30 @@ export type Treasury = {
   momo_network?: string | null;
   momo_fee_account?: string | null;
   is_active: boolean;
+  /** PR-10 / A1: ONE primary per entity — the account the letterhead payment
+   *  block prints and the Banking & treasury tab details. */
+  is_primary?: boolean;
+  show_on_documents?: boolean;
+  /** Bank identity (0516/0520). Unmasked on the corporate-entity 360 and
+   *  letterhead surfaces for every MOD-01 viewer (PR-10 / A0) — these are the
+   *  details the entity's own invoices print. */
+  bank_name?: string | null;
+  branch?: string | null;
+  account_number?: string | null;
+  iban?: string | null;
+  swift_bic?: string | null;
+  /** The account holder — holder_name is the source of truth (0520), with
+   *  beneficiary_name (0516) as the legacy fallback, coalesced server-side. */
+  holder_name?: string | null;
 };
+/**
+ * The resolver's answer for "which account is this entity's primary?" —
+ * serialized by the /360 bundle so the Banking & treasury tab and the
+ * letterhead can never disagree with the invoice (PR-10 / A1).
+ */
+export type TreasuryPrimary =
+  | { state: "account"; account: Treasury }
+  | { state: "unset" | "ambiguous"; account: null };
 export type TreasuryInput = {
   entity_id: string;
   kind: "BANK" | "CASH" | "MOMO";

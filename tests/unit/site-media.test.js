@@ -136,9 +136,15 @@ function makeUploadClient({ priorCoverId = null, failOn = null } = {}) {
 
       if (failOn && q.includes(failOn)) throw new Error("boom (injected)");
 
-      // The owner read: which document the slot points at today.
+      // The owner read: which document the slot points at today. The
+      // pointer transaction's FOR UPDATE re-read (PR-10 / B.4) can be made
+      // to answer differently — that is how a concurrent replacement is
+      // simulated without a second client.
       if (/SELECT public_cover_vault_id AS vault_id FROM corporate_entity/.test(q)) {
-        return { rows: [{ vault_id: state.ownerPointer }], rowCount: 1 };
+        const id = /FOR UPDATE/.test(q) && state.pointerAtLock !== undefined
+          ? state.pointerAtLock
+          : state.ownerPointer;
+        return { rows: [{ vault_id: id }], rowCount: 1 };
       }
       // Where the vault put the new bytes.
       if (/SELECT storage_path FROM document_vault WHERE doc_id/.test(q)) {
@@ -245,6 +251,29 @@ describe("the attachment outbox around a cover upload (PR-07, CE-25)", () => {
     expect(state.ownerPointer).toBe(mockNewDocId);
     expect(state.scopes[mockNewDocId]).toBe("SITE");
     expect(state.archived).toEqual([OLD_DOC]);
+  });
+
+  test("archives the cover current AT COMMIT TIME, not the one the request first saw (PR-10 / B.4)", async () => {
+    // A concurrent replacement landed between this request's first owner
+    // read and its pointer transaction: the entity pointed at OLD_DOC when
+    // the request arrived, and at CONCURRENT by the time it took the row
+    // lock. The archive must take CONCURRENT — the pointer it actually
+    // displaced. Archiving the stale OLD_DOC would leave the concurrent
+    // uploader's document dangling: scoped SITE, VERIFIED, pointed at by
+    // nobody, and invisible to the orphan sweep (whose predicate requires
+    // a NULL scope).
+    const CONCURRENT = "44444444-4444-4444-4444-444444444444";
+    const { client, state } = makeUploadClient({ priorCoverId: OLD_DOC });
+    state.pointerAtLock = CONCURRENT;
+
+    const out = await media.upload(client, uploadOpts());
+
+    expect(out.doc_id).toBe(mockNewDocId);
+    expect(state.ownerPointer).toBe(mockNewDocId);
+    expect(state.archived).toEqual([CONCURRENT]);
+    // The stale first read's document was NOT archived a second time — it
+    // was already the concurrent replacement's business.
+    expect(state.archived).not.toContain(OLD_DOC);
   });
 
   test("a replacement whose pointer transaction fails leaves the previous cover servable", async () => {

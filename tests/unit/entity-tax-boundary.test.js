@@ -332,11 +332,24 @@ describe("GET /entities/:id/360 — serialized tax boundary", () => {
     }
   });
 
-  it("bank masking is orthogonal: the account number follows the financials grant, not tax", async () => {
-    const noFinancials = await dossierService.dossier(NO_CLIENT, "e1", { tax: true, financials: false });
-    expect(JSON.stringify(noFinancials)).not.toContain(SECRETS.accountNumber);
-    const withFinancials = await dossierService.dossier(NO_CLIENT, "e1", { tax: true, financials: true });
-    expect(JSON.stringify(withFinancials)).toContain(SECRETS.accountNumber);
+  it("PR-10 / A0: the Banking tab and payment block follow MOD-01 view, NOT the financials grant", async () => {
+    // The owner's binding decision: bank_name / account_number / holder are
+    // visible on the Entity-360 Banking & treasury tab and the letterhead
+    // payment block to every caller with MOD-01 view — the financials
+    // (MOD-09 read) grant no longer narrows these two surfaces. The legacy
+    // `bank_block` on the MASTER RECORD stays masked (asserted below), and the
+    // Treasury module's own dossier keeps gate 14 — only these two surfaces
+    // opened. Full coverage: tests/unit/entity-primary-account.test.js.
+    const noFinancials = await dossierService.dossier(NO_CLIENT, "e1", { tax: true, financials: false, capabilities: { view: true, edit: false, approve: false, public_story: false } });
+    // The treasury rows and the letterhead preview's payment block carry the
+    // real numbers, unmasked, for this MOD-01 viewer…
+    expect(noFinancials.treasury_accounts[0].account_number).toBe(SECRETS.accountNumber);
+    expect(noFinancials.treasury_accounts[0].masked).toBeUndefined();
+    expect(noFinancials.letterhead_preview.payment_block.accounts[0].account_number).toBe(SECRETS.accountNumber);
+    // …while the master record's legacy bank_block stays masked for this
+    // caller — the relaxation is scoped to the two surfaces, not the row.
+    expect(noFinancials.entity.bank_block.account_number).toBe("••••9012");
+    expect(noFinancials.entity.bank_block.masked).toBe(true);
   });
 });
 

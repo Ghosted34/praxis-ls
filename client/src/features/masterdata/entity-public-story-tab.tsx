@@ -64,6 +64,7 @@ export function EntityPublicStoryTab({
   addresses,
   onSaved,
   canEdit = false,
+  headingAs = "h3",
 }: {
   entity: Entity;
   addresses?: { type?: string | null; line1?: string | null; line2?: string | null; city?: string | null; region?: string | null; postal_code?: string | null; country_code?: string | null; po_box?: string | null; is_primary?: boolean | null }[] | null;
@@ -72,7 +73,16 @@ export function EntityPublicStoryTab({
    *  Q10). Every control below disables without it; the facts panel and the
    *  preview stay visible either way. */
   canEdit?: boolean;
+  /**
+   * The level this tab's own headings render at. They sit directly under the
+   * entity's name with no `Section` wrapper, so they must step down from the
+   * dossier title exactly like `Section` does (see `SectionHeadingLevel` in
+   * entity-360.tsx): h3 beside the master–detail list's h2 name, h2 under the
+   * deep-link page's h1.
+   */
+  headingAs?: "h2" | "h3";
 }) {
+  const H = headingAs;
   const entityId = entity.entity_id;
   const toast = useToast();
   const story = useResource<site.EntityStory>(
@@ -151,9 +161,9 @@ export function EntityPublicStoryTab({
       <section className="rounded-lg border border-[var(--border)] p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h3 className="text-sm font-medium text-foreground">
+            <H className="text-sm font-medium text-foreground">
               {tr("Show this company on the public website")}
-            </h3>
+            </H>
             <p className="mt-1 max-w-prose text-sm text-muted-foreground">
               {tr(
                 "Off by default. When it is on, the About page shows this company's trading name, country, summary, coverage and service focus — and never its registration or tax numbers.",
@@ -192,9 +202,9 @@ export function EntityPublicStoryTab({
       ) : null}
 
       <section className="rounded-lg border border-[var(--border)] p-4">
-        <h3 className="text-sm font-medium text-foreground">
+        <H className="text-sm font-medium text-foreground">
           {tr("What the site already knows")}
-        </h3>
+        </H>
         <p className="mt-1 text-sm text-muted-foreground">
           {tr("From this dossier. Change them on the tabs that own them, not here.")}
         </p>
@@ -222,7 +232,7 @@ export function EntityPublicStoryTab({
       </section>
 
       <section className="rounded-lg border border-[var(--border)] p-4">
-        <h3 className="text-sm font-medium text-foreground">{tr("Summary")}</h3>
+        <H className="text-sm font-medium text-foreground">{tr("Summary")}</H>
         <p className="mt-1 max-w-prose text-sm text-muted-foreground">
           {tr(
             "A short paragraph about what this company does and where. French is the fallback everywhere on the site, so write it first.",
@@ -254,7 +264,7 @@ export function EntityPublicStoryTab({
       </section>
 
       <section className="rounded-lg border border-[var(--border)] p-4">
-        <h3 className="text-sm font-medium text-foreground">{tr("Where it operates")}</h3>
+        <H className="text-sm font-medium text-foreground">{tr("Where it operates")}</H>
         <p className="mt-1 max-w-prose text-sm text-muted-foreground">
           {tr(
             "The places this company covers, in your own words. The site prints your label, never our name for the country — the two-letter code is what joins a place to the corridor network.",
@@ -336,7 +346,7 @@ export function EntityPublicStoryTab({
       </section>
 
       <section className="rounded-lg border border-[var(--border)] p-4">
-        <h3 className="text-sm font-medium text-foreground">{tr("Service focus")}</h3>
+        <H className="text-sm font-medium text-foreground">{tr("Service focus")}</H>
         <p className="mt-1 max-w-prose text-sm text-muted-foreground">
           {tr(
             "What this company actually handles. Classify each line against a service type from your catalogue — the transport mode and the card's colour come from it, in every language. Your labels are optional wording on top of the classification.",
@@ -444,7 +454,7 @@ export function EntityPublicStoryTab({
       </section>
 
       <section className="rounded-lg border border-[var(--border)] p-4">
-        <h3 className="text-sm font-medium text-foreground">{tr("Cover image")}</h3>
+        <H className="text-sm font-medium text-foreground">{tr("Cover image")}</H>
         <p className="mt-1 max-w-prose text-sm text-muted-foreground">
           {tr(
             "Shown behind this company's card on the About page. It sits under a company name, so it is a photograph of this operation or it is nothing.",

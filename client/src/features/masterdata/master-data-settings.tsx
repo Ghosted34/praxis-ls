@@ -13,6 +13,7 @@ import * as React from "react";
 import { tr } from "@/lib/i18n";
 import { Modal, Select } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
+import { SectionTabs } from "@/components/ui/section-tabs";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Pill } from "@/components/ui/pill";
@@ -317,17 +318,13 @@ export function MasterDataSettings({
           </Button>
         ))}
       </div>
-      <div className="mb-4 flex flex-wrap gap-1 border-b">
-        {SECTIONS.map((t) => (
-          <button
-            key={t}
-            onClick={() => setSection(t)}
-            className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${section === t ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}
-          >
-            {t}
-          </button>
-        ))}
-      </div>
+      <SectionTabs
+        label="Master data sections"
+        value={section}
+        onChange={setSection}
+        className="mb-4"
+        tabs={SECTIONS.map((s) => ({ value: s, label: s }))}
+      />
 
       <div className="max-h-[60vh] overflow-auto pr-1">
         {section === "Required fields" && <FieldConfigEditor side={side} />}

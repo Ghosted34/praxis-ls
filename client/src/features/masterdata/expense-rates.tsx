@@ -36,6 +36,7 @@ import { tr } from "@/lib/i18n";
 import { IndexRow } from "@/components/ui/index-row";
 import { ScreenAi } from "@/components/screen-ai";
 import { Button } from "@/components/ui/button";
+import { SectionTabs } from "@/components/ui/section-tabs";
 import { DateField } from "@/components/ui/date-field";
 import { FormButtons } from "@/components/ui/form-buttons";
 import { Input } from "@/components/ui/input";
@@ -247,17 +248,13 @@ function RateProviderSettings({
       title="Carriers & authorities"
       description="The seeded-but-editable list every rate scope picks from — extend it here or inline from a carrier tab."
     >
-      <div className="mb-4 flex flex-wrap gap-1 border-b">
-        {PROVIDER_KIND_TABS.map((k) => (
-          <button
-            key={k.kind}
-            onClick={() => setKind(k.kind)}
-            className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${kind === k.kind ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}
-          >
-            {k.label}
-          </button>
-        ))}
-      </div>
+      <SectionTabs
+        label="Provider kinds"
+        value={kind}
+        onChange={setKind}
+        className="mb-4"
+        tabs={PROVIDER_KIND_TABS.map((k) => ({ value: k.kind, label: k.label }))}
+      />
       <div className="max-h-[60vh] overflow-auto pr-1">
         <ProviderManager kind={kind} />
       </div>
@@ -728,17 +725,13 @@ function RateDossier({
         </Callout>
       )}
 
-      <div className="flex flex-wrap gap-1 border-b">
-        {RATE_TABS.map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${tab === t ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}
-          >
-            {t}
-          </button>
-        ))}
-      </div>
+      <SectionTabs
+        label="Rate tabs"
+        value={tab}
+        onChange={setTab}
+        className="mb-3"
+        tabs={RATE_TABS.map((t) => ({ value: t, label: t }))}
+      />
 
       {tab === "Default rate" && (
         <DefaultRateGrid

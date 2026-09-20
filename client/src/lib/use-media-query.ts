@@ -59,6 +59,36 @@ export const DESKTOP_QUERY = "(min-width: 1024px)";
 export const useIsDesktop = (): boolean => useMediaQuery(DESKTOP_QUERY, true);
 
 /**
+ * `md` and up — matching tailwind.config.ts `md: "768px"` exactly.
+ *
+ * This is the width at which a data TABLE stops working and has to become
+ * something else. Below it a nine-column table with an action cell is not a
+ * narrow table, it is a horizontally scrolling one: the row's subject is off
+ * screen the moment the reader looks at its status, and on a touch screen the
+ * horizontal pan competes with the page's vertical scroll. `useIsCompact()` is
+ * the readable form of the question ("is this the small layout?"), and it
+ * exists so a screen that renders a table and a screen that renders the same
+ * records as cards cannot disagree about where the change happens.
+ */
+export const COMPACT_QUERY = "(min-width: 768px)";
+
+/**
+ * True below `md` — the phone and small-tablet layout.
+ *
+ * Defaults to FALSE (i.e. "render the full desktop table") for two reasons.
+ * It is what a server render and a jsdom test should see — the richest branch,
+ * which is the same reasoning `useIsDesktop` gives for defaulting to true —
+ * and it means a component that swaps a table for a card list never renders
+ * the cards during the first paint of a wide viewport.
+ *
+ * Use it through `<ResponsiveList>` rather than calling it directly when what
+ * you are switching is "a table vs. cards" — the primitive keeps the two
+ * branches mutually exclusive, which a hand-rolled `{compact ? … : …}` does
+ * only if the author remembers.
+ */
+export const useIsCompact = (): boolean => !useMediaQuery(COMPACT_QUERY, true);
+
+/**
  * `xl` and up — matching tailwind.config.ts `xl: "1280px"` exactly, and the
  * width at which the task board itself goes to four columns
  * (`xl:grid-cols-4`).

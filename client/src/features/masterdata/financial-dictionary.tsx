@@ -27,6 +27,7 @@ import { SplitPane } from "@/components/ui/split-pane";
 import { PageHeader } from "@/components/data-list";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
+import { SectionTabs } from "@/components/ui/section-tabs";
 import { useResource, errMsg } from "@/lib/use-resource";
 import { money, num } from "@/lib/format";
 import * as api from "@/lib/masterdata-api";
@@ -313,21 +314,20 @@ function DictDossier({
         <KpiTile label={tr("Rates")} value={num(u.expense_rates)} />
       </KpiRow>
 
-      {/* Tabs */}
-      <div className="flex flex-wrap gap-1 border-b">
-        {TABS.map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${tab === t ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}
-          >
-            {t}
-            {t === "Service tiers" && d.service_tiers.length ? (
-              <span className="ml-1.5 micro">{d.service_tiers.length}</span>
-            ) : null}
-          </button>
-        ))}
-      </div>
+      {/* One row on a phone — see `section-tabs.tsx`. */}
+      <SectionTabs
+        label="Charge sections"
+        value={tab}
+        onChange={setTab}
+        sticky
+        className="mb-4"
+        tabs={TABS.map((t) => ({
+          value: t,
+          label: t,
+          // Only "Service tiers" carries a count, and only when it has one.
+          count: t === "Service tiers" ? d.service_tiers.length : undefined,
+        }))}
+      />
 
       {tab === "Overview" && (
         <div className="grid gap-4 lg:grid-cols-2">

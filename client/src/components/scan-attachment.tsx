@@ -30,10 +30,25 @@ import {
 } from "@/lib/vault-file";
 import { errMsg } from "@/lib/use-resource";
 import { FilePicker } from "@/components/ui/image-upload";
+import { MoreMenu } from "@/components/ui/more-menu";
+import { DropdownItem, DropdownSeparator } from "@/components/ui/dropdown-menu";
 import { useUpload } from "@/lib/use-upload";
 
 const linkCls =
   "text-sm text-primary-ink underline underline-offset-2 hover:opacity-80 disabled:opacity-50";
+
+/**
+ * The compact trigger's own look — the SAME control as the link above, wearing
+ * the card's clothing.
+ *
+ * On a phone the row is a card, and the card's other control is the `⋯` menu
+ * (`components/ui/more-menu.tsx`) — a bordered 36px square. An underlined orange
+ * link beside it reads as two unrelated things and gives the primary action the
+ * smaller target of the two. So both become bordered 36px controls and the
+ * primary one keeps the brand colour in its text.
+ */
+const compactBtnCls =
+  "inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-md border px-2.5 text-micro font-semibold text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 export function ScanAttachment({
   vaultId,
@@ -43,6 +58,8 @@ export function ScanAttachment({
   onError,
   disabled,
   labelWhenEmpty = "Attach scan",
+  compact = false,
+  openRef,
 }: {
   /** The vault id already on the record, if it has been scanned. */
   vaultId?: string | null;
@@ -70,6 +87,26 @@ export function ScanAttachment({
   onError?: (message: string | null) => void;
   disabled?: boolean;
   labelWhenEmpty?: string;
+  /**
+   * ONE control instead of two — the phone-card variant.
+   *
+   * On a desktop table row both halves earn their place side by side: "View"
+   * opens the scan, "Replace" swaps it, and the reader has the width for both.
+   * On a 390px card the same pair is two underlined links plus whatever the
+   * kebab holds, and the row has room for exactly one of them. Compact shows
+   * the one the row is FOR — View when there is a file to open, the picker when
+   * there is not — and leaves "Replace" to the card's action menu, which drives
+   * the same picker through `openRef`.
+   */
+  compact?: boolean;
+  /**
+   * Hands the caller a function that opens the engine's picker, so an ACTION
+   * MENU can offer "Replace file" without a second `<input type="file">` (which
+   * `praxis/no-raw-upload` forbids anyway) and without the input unmounting
+   * between the menu item and the pick. Already the pattern in the chat
+   * composer's attach menu.
+   */
+  openRef?: React.Ref<() => void>;
 }) {
   const [busy, setBusy] = React.useState<"upload" | "open" | null>(null);
 
@@ -123,33 +160,47 @@ export function ScanAttachment({
     }
   }
 
+  const picker = (
+    <FilePicker
+      variant="inline"
+      accept={SCAN_ACCEPT}
+      openRef={openRef}
+      disabled={busy !== null || disabled || item?.state === "uploading"}
+      triggerClassName={compact ? compactBtnCls : undefined}
+      trigger={
+        item?.state === "compressing"
+          ? "Optimising…"
+          : item?.state === "uploading"
+            ? "Uploading…"
+            : vaultId
+              ? "Replace"
+              : labelWhenEmpty
+      }
+      onPick={(files) => attach(files?.[0] ?? null)}
+    />
+  );
+
+  const viewButton = (
+    <button
+      type="button"
+      className={compact ? compactBtnCls : linkCls}
+      disabled={busy !== null}
+      onClick={() => void open()}
+    >
+      {busy === "open" ? "Opening…" : "View"}
+    </button>
+  );
+
   return (
-    <span className="inline-flex items-center gap-3">
-      {vaultId && (
-        <button
-          type="button"
-          className={linkCls}
-          disabled={busy !== null}
-          onClick={() => void open()}
-        >
-          {busy === "open" ? "Opening…" : "View"}
-        </button>
-      )}
-      <FilePicker
-        variant="inline"
-        accept={SCAN_ACCEPT}
-        disabled={busy !== null || disabled || item?.state === "uploading"}
-        trigger={
-          item?.state === "compressing"
-            ? "Optimising…"
-            : item?.state === "uploading"
-              ? "Uploading…"
-              : vaultId
-                ? "Replace"
-                : labelWhenEmpty
-        }
-        onPick={(files) => attach(files?.[0] ?? null)}
-      />
+    <span className={compact ? "inline-flex items-center gap-2" : "inline-flex items-center gap-3"}>
+      {vaultId && viewButton}
+      {/* Compact with a file already attached: the picker is present but
+          unlabelled — the card's `⋯` menu owns "Replace file" and calls in here
+          through `openRef`, the same way the chat composer's attach menu does.
+          It has to stay MOUNTED for that to work (a hidden `display:none` file
+          input still opens the dialog when a user gesture clicks it), which is
+          why this is a wrapper rather than a conditional. */}
+      {compact && vaultId ? <span className="hidden">{picker}</span> : picker}
       {/* The preview the control never had. Small, because this sits inline in
           a table row — but present, so attaching the wrong scan is visible at
           the moment it happens rather than months later. */}
@@ -178,5 +229,82 @@ export function ScanAttachment({
         </span>
       )}
     </span>
+  );
+}
+
+/**
+ * ScanCardActions — `<ScanAttachment compact>` plus the `⋯` menu, as one unit.
+ *
+ * This is the phone-card action cluster, and it exists because the two halves
+ * are not independent: the menu's "Replace file" drives the attachment's picker
+ * through a ref, and the attachment's visible control changes with the same
+ * fact ("is there a file yet?") that decides whether "Replace" belongs in the
+ * menu at all. Split across two call sites, that pairing is three things to
+ * keep in step on every screen that grows a card row — which is how the four
+ * hand-rolled variants of this control happened in the first place.
+ *
+ * The order is the one the app uses everywhere: the primary action visible, the
+ * rest behind `⋯`. The FILE action leads the menu — it is the fact about this
+ * row's content, the way "Open" leads a file manager's menu — the caller's own
+ * items follow after a separator, and the caller puts anything destructive last
+ * in its own group.
+ *
+ * @example
+ * <ScanCardActions
+ *   vaultId={doc.vault_id}
+ *   docType="CLIENT_DOCUMENT"
+ *   entityRef={`client_document:${doc.document_id}`}
+ *   onAttached={(id) => linkScan(doc, id)}
+ *   onError={setError}
+ *   menuItems={<DropdownItem onSelect={verify}>Verify</DropdownItem>}
+ * />
+ */
+export function ScanCardActions({
+  vaultId,
+  docType,
+  entityRef,
+  onAttached,
+  onError,
+  disabled,
+  labelWhenEmpty = "Attach scan",
+  menuLabel,
+  menuItems,
+}: {
+  vaultId?: string | null;
+  docType: string;
+  entityRef: string;
+  onAttached: (vaultId: string) => void | Promise<void>;
+  onError?: (message: string | null) => void;
+  disabled?: boolean;
+  labelWhenEmpty?: string;
+  /** Accessible name of the menu ("Document actions"). */
+  menuLabel: string;
+  /** The caller's own items — Verify, Edit, Remove — rendered after the file
+   *  action under a separator. */
+  menuItems?: React.ReactNode;
+}) {
+  const pickRef = React.useRef<(() => void) | null>(null);
+
+  return (
+    <>
+      <ScanAttachment
+        compact
+        vaultId={vaultId}
+        docType={docType}
+        entityRef={entityRef}
+        onAttached={onAttached}
+        onError={onError}
+        disabled={disabled}
+        labelWhenEmpty={labelWhenEmpty}
+        openRef={pickRef}
+      />
+      <MoreMenu label={menuLabel} disabled={disabled}>
+        <DropdownItem onSelect={() => pickRef.current?.()}>
+          {vaultId ? "Replace file" : labelWhenEmpty}
+        </DropdownItem>
+        {menuItems && <DropdownSeparator />}
+        {menuItems}
+      </MoreMenu>
+    </>
   );
 }

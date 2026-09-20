@@ -514,6 +514,28 @@
       color-mix(in srgb, var(--primary) 15%, transparent)
     );
   }
+  /*
+   * A horizontally scrolled tab strip (`components/ui/scroll-strip.tsx`).
+   *
+   * The scrollbar is hidden, and that is a decision rather than a tidy-up: on a
+   * phone a horizontal scrollbar draws a 10px grey bar across the bottom of the
+   * tab row — which is ALSO where the row's active-tab underline lives — and it
+   * appears and disappears with the content, so the strip's height changes as
+   * the reader swipes. The overflow is communicated by the edge fades instead,
+   * which the strip measures and shows only when there is something to fade.
+   *
+   * The wheel/trackpad and keyboard paths are untouched (a desktop mouse wheel
+   * over the strip still scrolls it, `overflow-x: auto` still answers
+   * Shift+wheel), so this removes an indicator, not the ability to scroll.
+   */
+  .scroll-strip {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .scroll-strip::-webkit-scrollbar {
+    display: none;
+  }
+
   /* Was 10px / 0.19em / --ink-3 — 3.01:1, the app's most-used contrast failure
      across 198 call sites (F13). 11px with restrained tracking and the retuned
      --ink-3 measures 5.36:1 on --card and 4.89:1 on --background. Heavy

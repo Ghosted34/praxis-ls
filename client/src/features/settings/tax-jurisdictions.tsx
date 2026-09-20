@@ -39,6 +39,7 @@ import { SplitPane } from "@/components/ui/split-pane";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
+import { SectionTabs } from "@/components/ui/section-tabs";
 import { Callout } from "@/components/ui/callout";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { num, dateFmt, todayISO } from "@/lib/format";
@@ -763,24 +764,24 @@ function JurisdictionDossier({ id }: { id: string }) {
         <KpiTile label="Paie & social" value={num(countByKind("PAYROLL"))} />
       </KpiRow>
 
-      <nav className="flex flex-wrap gap-1 border-b" aria-label="Tax families">
-        {DOSSIER_TABS.map((t) => (
-          <button
-            key={t}
-            type="button"
-            onClick={() => setTab(t)}
-            aria-current={tab === t ? "page" : undefined}
-            className={`-mb-px border-b-2 px-3 py-2 text-sm ${tab === t ? "border-primary font-medium text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}
-          >
-            {tabLabel(t)}
-            {t !== "Overview" && countByKind(t as Kind) > 0 ? (
-              <span className="ml-1 micro text-muted-foreground">
-                ({countByKind(t as Kind)})
-              </span>
-            ) : null}
-          </button>
-        ))}
-      </nav>
+      {/* One row on a phone — see `section-tabs.tsx`. The counts used to ride
+          in parentheses inside the label; they are the badge now, and the
+          "Overview" tab has none to give (it counts every kind at once). */}
+      <SectionTabs
+        label="Tax families"
+        value={tab}
+        onChange={setTab}
+        sticky
+        className="mb-4"
+        tabs={DOSSIER_TABS.map((t) => ({
+          value: t,
+          label: tabLabel(t),
+          count:
+            t !== "Overview" && countByKind(t as Kind) > 0
+              ? countByKind(t as Kind)
+              : undefined,
+        }))}
+      />
 
       {tab === "Overview" ? (
         <div className="space-y-3">

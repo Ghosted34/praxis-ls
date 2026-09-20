@@ -191,21 +191,32 @@ describe("the head parser reads five facts and nothing else", () => {
     expect(card.imageUrl).toBeNull();
   });
 
-  test("a closing tag with a space still closes the element", () => {
-    // The one case that made the scrub's `\s*` worth a test of its own: `</script >`
-    // ends the element for the browser, so a scrub that only matched `</script>`
-    // would leave the element's CONTENTS in the text this parser then reads
-    // declarations from — and a page can put anything in there.
+  test("a closing tag with anything in it still closes the element", () => {
+    // `</script >`, `</script` + newline + `>` and `</script junk>` each end a script
+    // element for a real HTML parser, so the scrub has to accept every one of them:
+    // match only the exact `</script>` and a page's script contents stay in the text
+    // this parser reads declarations from, which is the single thing the scrub is
+    // here to prevent. (CodeQL's `js/html-jsmismatch` query is what insisted.)
     const card = meta.parseHead(
       html(`<script >document.write('x')</script >\n<meta property="og:description" content="Smuggled">`),
       "https://a.example/page",
     );
-    // The declaration after the script is legitimate and still read…
+    // A declaration AFTER the script is legitimate and is still read…
     expect(card.description).toBe("Smuggled");
-    // …and the scrub did not stop at the space-ended close, which is what would
-    // have made a `document.write` inside the script look like a real meta tag.
-    const inside = meta.parseHead(html(`<script ><meta property="og:title" content="Written">\n</script >`), "https://a.example/page");
-    expect(inside.title).toBeNull();
+    // …and a declaration INSIDE it is not, however the page closed the tag.
+    const closes = ["</script>", "</script >", "</script\n>", '</script foo="bar">'];
+    for (const close of closes) {
+      const inside = meta.parseHead(
+        html(`<script ><meta property="og:title" content="Written">\n${close}`),
+        "https://a.example/page",
+      );
+      expect({ close, title: inside.title }).toEqual({ close, title: null });
+    }
+    const styled = meta.parseHead(
+      html(`<style >a{color:red}\n</style junk><meta property="og:site_name" content="Real">`),
+      "https://a.example/x",
+    );
+    expect(styled.siteName).toBe("Real");
   });
 
   test("relative URLs resolve against the FINAL url, not the pasted short link", () => {

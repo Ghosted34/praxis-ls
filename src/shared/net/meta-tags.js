@@ -129,13 +129,15 @@ function scanHead(html) {
   if (headEnd !== -1) text = text.slice(0, headEnd);
   text = text
     .replace(/<!--[\s\S]*?(?:-->|$)/g, " ")
-    // `\s*` before the closing `>` is load-bearing on BOTH tags: `</script >` is
-    // valid HTML and ends the element for the browser, so a scrub written as
-    // `<\/script>` leaves that element's contents in the text we then read
-    // declarations from — a page could put a fake `og:` meta inside a script this
-    // pass failed to remove. `<\/style >` likewise.
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, " ")
-    .replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, " ");
+    // `[^>]*` on the CLOSING tag is load-bearing, and it is what CodeQL is
+    // insisting on here: `</script >`, `</script\n>` and even `</script foo>` are
+    // all valid ways to END a script element for a real HTML parser, so a scrub
+    // that matches only `</script>` leaves the element's contents in the text we
+    // then read declarations from — which is exactly the smuggling this pass
+    // exists to close. Same for style. `[^>]*` rather than `\s*` because the
+    // tolerance is the browser's, not ours to narrow.
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script[^>]*>/gi, " ")
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style[^>]*>/gi, " ");
 
   const fields = new Map();
   const META = /<meta\b([^>]*)>/gi;

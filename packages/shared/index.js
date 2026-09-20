@@ -13,6 +13,7 @@ const partyCommon = require("./schemas/party-common");
 const partyConfig = require("./schemas/party-config");
 const entityCommon = require("./schemas/entity-common");
 const siteSettings = require("./schemas/site-settings");
+const callSummary = require("./schemas/call-summary");
 const ledger = require("./rules/ledger");
 const marks = require("./rules/marks");
 const entityRoute = require("./rules/entity-route");
@@ -56,6 +57,11 @@ exports.entityCommon = entityCommon;
 // them is a FORM: the settings screen must refuse exactly what the API refuses,
 // or a tenant learns their colour was invalid from a 422 after pressing Save.
 exports.siteSettings = siteSettings;
+// The call summary contract (guide §4.10): the API parses the provider's JSON
+// with it, the caller's screen renders and edits the stored draft with it.
+// Shared because the draft is EDITED before it is sent — a shape the client
+// believes legal and the API refuses is a draft nobody can send.
+exports.callSummary = callSummary;
 // entity_ref → the screen that shows it. Shared because the API stamps
 // `notification.link_url` from it at write time and the client resolves it
 // again at draw time for every row written before that column existed.

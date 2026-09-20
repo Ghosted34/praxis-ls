@@ -1,5 +1,9 @@
 "use strict";
 const { z } = require("zod");
+// The summary's limits come from the shared contract (§4.10) rather than being
+// restated here: the caller's screen validates an edit with the same schema, and
+// two copies of "1200 characters" is how a draft the client accepts gets a 422.
+const { callSummary } = require("@praxis/shared");
 const { AppError } = require("../../utils/errors");
 /**
  * A posted attachment descriptor.
@@ -15,7 +19,7 @@ const { AppError } = require("../../utils/errors");
  * not learned the field must keep working.
  */
 const attachment = z.object({
-  attachment_kind: z.enum(["VAULT", "MEDIA", "ERP"]).optional(),
+  attachment_kind: z.enum(["VAULT", "MEDIA", "ERP", "CALL"]).optional(),
   vault_id: z.string().uuid().optional().nullable(),
   media_id: z.string().uuid().optional().nullable(),
   erp_kind: z.enum(["INVOICE", "DOSSIER", "CLIENT", "PURCHASE_ORDER", "SUPPLIER_INVOICE"]).optional().nullable(),
@@ -23,6 +27,9 @@ const attachment = z.object({
   // The fallback caption only. Bounded because it is stored verbatim and
   // rendered to every member who cannot resolve the record.
   erp_label: z.string().max(120).optional().nullable(),
+  // A call summary card (PR-2). The message carries only the pointer; the card
+  // (summary, key points, follow-ups, transcript link) resolves at read time.
+  call_id: z.string().uuid().optional().nullable(),
   filename: z.string().max(255).optional().nullable(),
   content_type: z.string().max(128).optional().nullable(),
   size_bytes: z.number().int().nonnegative().optional().nullable(),
@@ -134,6 +141,81 @@ const schemas = {
    */
   callCreate: z.object({ group_id: z.string().uuid() }).strict(),
   callHangup: z.object({ reason: z.enum(["hangup", "declined", "cancelled", "no_answer", "busy", "max_duration", "ice_failed"]).optional() }).strict(),
+
+  /**
+   * The record half (PR-2, guide §6.2).
+   *
+   * `recording` is the multipart body that rides with one recorded PART. The
+   * numbers arrive as strings through multipart (see `mediaUpload` above for
+   * the same lesson), so they are coerced; `side` is checked against the
+   * caller's own side in the SERVICE, because `.strict()` here cannot know who
+   * is uploading — a validator that guessed would be the second place the rule
+   * lives.
+   *
+   * `live_segments` is the browser capture (§4.9), sent as a JSON string
+   * alongside the audio (a multipart field cannot carry an array) and accepted
+   * as an array when the client uses a JSON body. Its CONTENTS are normalised
+   * in the pipeline service: a malformed segment is dropped, never a reason to
+   * refuse the audio it travelled with.
+   *
+   * `language` is the uploading side's app language. Only the CALLER's is used
+   * — it is the language the summary is drafted in (§4.10) — and it is an enum
+   * because an unchecked string would become the language of a business record.
+   */
+  callRecording: z.object({
+    side: z.enum(["caller", "callee"]),
+    part_index: z.coerce.number().int().min(1).max(60),
+    part_count: z.coerce.number().int().min(1).max(60),
+    duration_ms: z.coerce.number().int().min(0).max(3_600_000).optional(),
+    language: z.enum(["en", "fr"]).optional(),
+    live_segments: z.preprocess((v) => {
+      if (typeof v !== "string") return v;
+      try { return JSON.parse(v); } catch { return undefined; }
+    }, z.array(z.object({
+      seq: z.coerce.number().int().min(0).optional(),
+      text: z.string().max(2000),
+      language: z.enum(["en", "fr"]).optional(),
+      started_ms: z.coerce.number().int().min(0).optional().nullable(),
+      ended_ms: z.coerce.number().int().min(0).optional().nullable(),
+    })).max(2000).optional()),
+  }).passthrough(),
+  /** A retry of the live-log upload on its own (the audio may already be in). */
+  callLiveLog: z.object({
+    side: z.enum(["caller", "callee"]),
+    language: z.enum(["en", "fr"]).optional(),
+    live_segments: z.preprocess((v) => {
+      if (typeof v !== "string") return v;
+      try { return JSON.parse(v); } catch { return undefined; }
+    }, z.array(z.object({
+      seq: z.coerce.number().int().min(0).optional(),
+      text: z.string().max(2000),
+      language: z.enum(["en", "fr"]).optional(),
+      started_ms: z.coerce.number().int().min(0).optional().nullable(),
+      ended_ms: z.coerce.number().int().min(0).optional().nullable(),
+    })).max(2000)),
+  }).passthrough(),
+  /**
+   * The caller's SEND, carrying their own edit of the draft.
+   *
+   * Shape only at this layer (the counts and lengths), with the SEMANTIC rules
+   * — the verbatim/language contract of §4.10 — applied in the service through
+   * the shared `@praxis/shared` schema, so the API and the caller's editor
+   * cannot disagree about what a legal draft is.
+   */
+  callSummarySend: z.object({
+    summary_text: z.string().trim().min(1).max(callSummary.LIMITS.summaryMax).optional(),
+    key_points: z.array(z.object({
+      text: z.string().trim().min(1).max(callSummary.LIMITS.textMax),
+      raised_by: z.enum(["caller", "callee"]),
+    })).max(callSummary.LIMITS.pointsMax).optional(),
+    follow_ups: z.array(z.object({
+      text: z.string().trim().min(1).max(callSummary.LIMITS.textMax),
+      owner: z.enum(["caller", "callee"]),
+      due: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+    })).max(callSummary.LIMITS.followUpsMax).optional(),
+  }).strict(),
+  /** The EN/FR toggle (§4.10). One value, and it is the whole request. */
+  callSummaryRegenerate: z.object({ language: z.enum(["en", "fr"]) }).strict(),
 };
 const mw = (k) => (req, _res, next) => { const p = schemas[k].safeParse(req.body); if (!p.success) return next(new AppError("VALIDATION_ERROR", "Invalid body", 422, p.error.flatten().fieldErrors)); req.body = p.data; return next(); };
-module.exports = { transcribe: mw("transcribe"), linkPreview: mw("linkPreview"), scheduled: mw("scheduled"), reschedule: mw("reschedule"), mediaUpload: mw("mediaUpload"), promote: mw("promote"), channel: mw("channel"), member: mw("member"), message: mw("message"), editMessage: mw("editMessage"), react: mw("react"), draft: mw("draft"), quickReply: mw("quickReply"), flag: mw("flag"), emailTest: mw("emailTest"), emailDnsCheck: mw("emailDnsCheck"), emailTestSend: mw("emailTestSend"), quickReplyPatch: mw("quickReplyPatch"), whatsappConfig: mw("whatsappConfig"), emailConfig: mw("emailConfig"), callCreate: mw("callCreate"), callHangup: mw("callHangup"), schemas };
+module.exports = { transcribe: mw("transcribe"), callRecording: mw("callRecording"), callLiveLog: mw("callLiveLog"), callSummarySend: mw("callSummarySend"), callSummaryRegenerate: mw("callSummaryRegenerate"), linkPreview: mw("linkPreview"), scheduled: mw("scheduled"), reschedule: mw("reschedule"), mediaUpload: mw("mediaUpload"), promote: mw("promote"), channel: mw("channel"), member: mw("member"), message: mw("message"), editMessage: mw("editMessage"), react: mw("react"), draft: mw("draft"), quickReply: mw("quickReply"), flag: mw("flag"), emailTest: mw("emailTest"), emailDnsCheck: mw("emailDnsCheck"), emailTestSend: mw("emailTestSend"), quickReplyPatch: mw("quickReplyPatch"), whatsappConfig: mw("whatsappConfig"), emailConfig: mw("emailConfig"), callCreate: mw("callCreate"), callHangup: mw("callHangup"), schemas };

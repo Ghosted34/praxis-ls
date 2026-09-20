@@ -162,6 +162,16 @@ for (const f of clientFiles)
  * of the two a file is, and what would earn its removal.
  */
 const ALLOW_LOCAL_SCHEMA = {
+  // Partly migrated (PR-2): the call-summary contract (§4.10) IS
+  // `@praxis/shared`'s callSummary — its limits are what bound the caller's
+  // edit here — while the other ~25 shapes in this file (channels, messages,
+  // scheduling, provider config) have never been shared. Remove this entry when
+  // the Smart Comms shapes themselves move into packages/shared; until then the
+  // file is a normal validator that happens to consume one shared rule.
+  "src/modules/smartcomm/smartcomm.validator.js":
+    "Partly migrated (PR-2). `callSummary.LIMITS` is the shared contract for "
+    + "the caller's edited summary; everything else in this validator is local "
+    + "and unshared.",
   "src/modules/master/employees/employees.validator.js":
     "Partly migrated (13775). `work_schedule` is `@praxis/shared`'s "
     + "workSchedule.schema — the day vocabulary the form draws its checkboxes "

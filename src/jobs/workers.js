@@ -33,6 +33,18 @@ const PROCESSORS = [
   { name: "comms-call-sweep", concurrency: 1, handler: require("./handlers/comms-call-sweep") },
   { name: "comms-call-sweep-scheduler", concurrency: 1, handler: require("./handlers/comms-call-sweep-scheduler") },
   /**
+   * The call RECORD half (PR-2, guide §4.5). `call-transcribe` transcribes a
+   * call's recorded parts and drafts the summary; concurrency 2 because the
+   * work is mostly waiting on two third parties (the transcription vendor per
+   * part, then the LLM). The record sweep is the daily reprocess of everything
+   * that fell back to the browser capture, plus the 30-day audio retention —
+   * concurrency 1 on both, since neither is a deadline and a stampede of
+   * vendor calls is what concurrency 5 would buy.
+   */
+  { name: "call-transcribe", concurrency: 2, handler: require("./handlers/call-transcribe") },
+  { name: "comms-call-record-sweep", concurrency: 1, handler: require("./handlers/comms-call-record-sweep") },
+  { name: "comms-call-record-sweep-scheduler", concurrency: 1, handler: require("./handlers/comms-call-record-sweep-scheduler") },
+  /**
    * Smart Comms link previews. Concurrency 2 rather than 1: the work is one
    * outbound HTTP request to a third party that may take seconds, and two
    * tenants' backlogs should not queue behind each other's slow host — while
@@ -330,6 +342,17 @@ async function scheduleRecurring() {
   // if an unrelated automation interval is disabled.
   await require("./queue-producer").enqueue("comms-call-sweep-scheduler", "tick", {}, {
     repeat: { every: 15000 }, removeOnComplete: true, removeOnFail: 50,
+  });
+  /**
+   * The call RECORD tick (PR-2): daily, and deliberately NOT on the 15 s clock
+   * the deadlines use. Nothing here is a deadline — a flagged transcript is
+   * already readable and already alerted, and retention is a 30-day window —
+   * while every retry spends the tenant's transcription budget for real. A
+   * daily cadence is what makes both the spend and the PR-3 failure-rate signal
+   * honest.
+   */
+  await require("./queue-producer").enqueue("comms-call-record-sweep-scheduler", "tick", {}, {
+    repeat: { every: 24 * 60 * 60 * 1000 }, removeOnComplete: true, removeOnFail: 50,
   });
   const every = config.ORCHESTRATION_DISPATCH_INTERVAL_MS;
   if (!every || every <= 0) {

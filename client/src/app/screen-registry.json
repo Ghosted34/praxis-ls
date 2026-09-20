@@ -1662,7 +1662,9 @@
         "list_mail_thread",
         "client_mail_timeline",
         "send_mail",
-        "reply_mail"
+        "reply_mail",
+        "comms_call_transcript",
+        "comms_call_summary"
       ]
     },
     {

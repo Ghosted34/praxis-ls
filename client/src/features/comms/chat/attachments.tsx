@@ -28,6 +28,7 @@ import type { CommAttachment } from "@/lib/smartcomm-api";
 import { useObjectUrl, useNearViewport } from "./use-object-url";
 import { VoiceNote, type BubbleTone } from "./voice-note";
 import { ErpCardView } from "./erp-card";
+import { CallSummaryCardView } from "../call/call-summary-card";
 
 /**
  * Bytes, in the units a person reads.
@@ -226,6 +227,12 @@ export function Attachments({
         const key = a.attachment_id || `${a.attachment_kind}-${i}`;
         if (a.attachment_kind === "ERP") {
           return <ErpCardView key={key} card={a.erp_card || null} label={a.erp_label} />;
+        }
+        if (a.attachment_kind === "CALL") {
+          // A posted call summary (PR-2). Resolved live on the thread read, so a
+          // draft regenerated in the other language reads in that language here
+          // too, and the transcript link beside it always agrees with the card.
+          return <CallSummaryCardView key={key} card={a.call_card || null} callId={a.call_id} />;
         }
         if (a.attachment_kind === "MEDIA" && a.is_voice_note) {
           return <VoiceNote key={key} attachment={a} tone={tone} />;

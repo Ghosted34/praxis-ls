@@ -110,7 +110,11 @@ export function CommsLive() {
             body: call.peerName || "",
           });
         } else if (Notification.permission === "default" && document.hidden) {
-          void Notification.requestPermission().catch(() => {});
+          void Notification.requestPermission().catch(() => {
+            /* @silent:teardown — a denied permission prompt costs one
+               notification tier, not the ring; re-prompting on every
+               call would be worse. */
+          });
         }
       }
     } catch {

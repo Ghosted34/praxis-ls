@@ -50,7 +50,9 @@ export async function acquireWakeLock(): Promise<void> {
       return;
     }
   } catch {
-    // Fall through to the audio keep-alive.
+    /* @silent:teardown — a denied or half-implemented wake lock falls
+       through to the audio keep-alive, which is the fallback this
+       function exists to pick. */
   }
   startAudioKeepAlive();
 }

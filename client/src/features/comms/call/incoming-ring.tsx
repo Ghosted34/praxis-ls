@@ -36,7 +36,7 @@ export function IncomingRing({ name, secondsLeft, onAccept, onDecline }: Props) 
       aria-label={name ? tv("Incoming call from {{name}}", { name }) : tr("Voice call")}
       className="fixed inset-0 z-[70] flex flex-col items-center justify-center gap-6 bg-[rgb(var(--background)/0.97)] px-6 backdrop-blur-sm animate-fade-in"
     >
-      <PhoneIcon width={44} height={44} className="text-[rgb(var(--brand-blue))]" />
+      <PhoneIcon width={44} height={44} className="text-brand-blue-ink" />
       <div className="flex flex-col items-center gap-1 text-center">
         <p className="text-xl font-semibold text-foreground">{name || "—"}</p>
         <p className="text-sm text-muted-foreground">{tv("Incoming call from {{name}}", { name: name || "" })}</p>

@@ -101,6 +101,21 @@ const schemas = {
    * which is the honest default when nobody said.
    */
   transcribe: z.object({ language: z.enum(["en", "fr"]).optional() }).strict(),
+  /**
+   * "Preview this link while I am still typing" — one URL, and the shape check
+   * is deliberately NOT a security claim.
+   *
+   * A zod `url()` would accept `javascript:alert(1)//`, which the fetch guard
+   * rejects later for its own reasons; the length bound here is the only thing
+   * this schema is actually for (a 10 MB "URL" would otherwise be read into a
+   * string and hashed before anything said no). Protocol, host, port, address
+   * class and redirect chain are all decided in `shared/net/link-target.js`, in
+   * ONE place, because the same rules must also apply to a URL that arrives in a
+   * message body and was never through this route at all. A per-endpoint URL
+   * check is how you get an unfurler that is safe on one path and not on the
+   * other.
+   */
+  linkPreview: z.object({ url: z.string().trim().min(8).max(2048) }).strict(),
   quickReply: z.object({ label: z.string().trim().min(1).max(120), body: z.string().trim().min(1).max(10000) }).strict(),
   // API F-15: PATCH /quick-replies/:id reused the CREATE guard, which requires
   // both label and body — so a caller editing only the label had to resend the
@@ -111,4 +126,4 @@ const schemas = {
   emailConfig: z.object({ smtp_host: z.string().min(1).optional(), smtp_port: z.coerce.number().int().positive().optional(), smtp_user: z.string().optional(), smtp_pass: z.string().min(1).max(4000).optional(), from: z.string().optional(), reply_to: z.string().optional() }),
 };
 const mw = (k) => (req, _res, next) => { const p = schemas[k].safeParse(req.body); if (!p.success) return next(new AppError("VALIDATION_ERROR", "Invalid body", 422, p.error.flatten().fieldErrors)); req.body = p.data; return next(); };
-module.exports = { transcribe: mw("transcribe"), scheduled: mw("scheduled"), reschedule: mw("reschedule"), mediaUpload: mw("mediaUpload"), promote: mw("promote"), channel: mw("channel"), member: mw("member"), message: mw("message"), editMessage: mw("editMessage"), react: mw("react"), draft: mw("draft"), quickReply: mw("quickReply"), flag: mw("flag"), emailTest: mw("emailTest"), emailDnsCheck: mw("emailDnsCheck"), emailTestSend: mw("emailTestSend"), quickReplyPatch: mw("quickReplyPatch"), whatsappConfig: mw("whatsappConfig"), emailConfig: mw("emailConfig"), schemas };
+module.exports = { transcribe: mw("transcribe"), linkPreview: mw("linkPreview"), scheduled: mw("scheduled"), reschedule: mw("reschedule"), mediaUpload: mw("mediaUpload"), promote: mw("promote"), channel: mw("channel"), member: mw("member"), message: mw("message"), editMessage: mw("editMessage"), react: mw("react"), draft: mw("draft"), quickReply: mw("quickReply"), flag: mw("flag"), emailTest: mw("emailTest"), emailDnsCheck: mw("emailDnsCheck"), emailTestSend: mw("emailTestSend"), quickReplyPatch: mw("quickReplyPatch"), whatsappConfig: mw("whatsappConfig"), emailConfig: mw("emailConfig"), schemas };

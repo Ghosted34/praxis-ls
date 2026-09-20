@@ -122,6 +122,19 @@ router.post("/media/:mediaId/transcribe", view, v.transcribe, c.transcribeMedia)
 router.get("/erp/search", view, c.erpSearch);
 router.get("/erp/:kind/:id", view, c.erpCard);
 
+/**
+ * Link previews.
+ *
+ * `links/image` is the only file route in this module that answers with bytes
+ * rather than a JSON descriptor, and it is not an open proxy: it takes the hash
+ * of a LINK, not a URL, and can only return the image this tenant's own unfurl
+ * already recorded for it (see the controller). The two are on different
+ * permissions for the reason spelled out on every other route here — reading a
+ * cached picture is a read; making the server go and fetch a page is not.
+ */
+router.post("/links/preview", create, v.linkPreview, c.linkPreview);
+router.get("/links/image", view, c.linkImage);
+
 // Durable scheduled messages (personal management, never other senders' rows).
 router.get("/channels/:id/scheduled", view, c.scheduled);
 router.post("/channels/:id/scheduled", create, v.scheduled, c.schedule);

@@ -26,6 +26,15 @@ const { initRedis, createConnection, closeRedis } = require("../config/redis");
 const PROCESSORS = [
   { name: "comms-send-flush", concurrency: 1, handler: require("./handlers/comms-send-flush") },
   { name: "comms-send-scheduler", concurrency: 1, handler: require("./handlers/comms-send-scheduler") },
+  /**
+   * Smart Comms link previews. Concurrency 2 rather than 1: the work is one
+   * outbound HTTP request to a third party that may take seconds, and two
+   * tenants' backlogs should not queue behind each other's slow host — while
+   * still being small enough that a stuck deploy cannot turn into a hundred
+   * simultaneous requests from one box to the public internet.
+   */
+  { name: "comms-link-unfurl", concurrency: 2, handler: require("./handlers/comms-link-unfurl") },
+  { name: "comms-link-unfurl-scheduler", concurrency: 1, handler: require("./handlers/comms-link-unfurl-scheduler") },
   { name: "regie-aging", concurrency: 1, handler: require("./handlers/regie-aging") },
   { name: "regie-aging-scheduler", concurrency: 1, handler: require("./handlers/regie-aging-scheduler") },
   { name: "pdf", concurrency: 2, handler: require("./handlers/pdf-render") },
@@ -395,6 +404,17 @@ async function scheduleRecurring() {
   } else {
     await enqueue("media-reconcile-scheduler", "tick", {}, { repeat: { every: mediaEvery }, removeOnComplete: true, removeOnFail: 50 });
     logger.info({ every: mediaEvery }, "media reconciliation registered");
+  }
+
+  // Link previews: the backstop sweep. The queue is the fast path (a link posted
+  // is a fetch enqueued); this is the one that catches what the fast path missed,
+  // which is mostly rows written by a request that had no Redis to enqueue on.
+  const linkEvery = config.COMMS_LINK_SWEEP_INTERVAL_MS;
+  if (!linkEvery || linkEvery <= 0 || config.COMMS_LINK_PREVIEWS === false) {
+    logger.info("link-preview sweep disabled (COMMS_LINK_SWEEP_INTERVAL_MS=0 or COMMS_LINK_PREVIEWS=false)");
+  } else {
+    await enqueue("comms-link-unfurl-scheduler", "tick", {}, { repeat: { every: linkEvery }, removeOnComplete: true, removeOnFail: 50 });
+    logger.info({ every: linkEvery }, "link-preview sweep registered");
   }
 
   // Mail push-subscription renewal (Graph/Gmail webhooks expire). Disabled at 0.

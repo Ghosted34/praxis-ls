@@ -93,6 +93,44 @@ export type ErpAttachment = {
 
 export type PostedAttachment = UploadedAttachment | ErpAttachment;
 
+/**
+ * A link's preview card, resolved from the tenant's own cache.
+ *
+ * `image_src` is NEVER a third-party URL — it is our `/smartcomm/links/image`
+ * route keyed on the link's hash, and it must be fetched with a token (so it
+ * arrives as a blob through `linkImageObjectUrl`, like every other gated file in
+ * this module). A `<img src="https://them.example/open.gif">` inside a chat bubble
+ * hands the reader's IP, cookies and user agent to the site they only read a link
+ * to, which is a tracking pixel in a work product.
+ *
+ * `state` is the difference between three quiet things and one loud one:
+ * `OK` renders a card, `EMPTY`/`UNREACHABLE`/`PENDING` render the link alone, and
+ * `REFUSED` renders the link alone forever. None of them is an error to show the
+ * user: the message arrived, the URL is right there, and a card is a courtesy from
+ * a third-party website rather than a promise this product made.
+ */
+export type LinkPreviewState = "PENDING" | "OK" | "EMPTY" | "UNREACHABLE" | "REFUSED";
+export type LinkMediaKind = "YOUTUBE" | "VIMEO" | "LOOM" | "MAPS";
+export type LinkPreview = {
+  url: string;
+  state: LinkPreviewState;
+  title: string | null;
+  description: string | null;
+  site_name: string | null;
+  image_src: string | null;
+  icon_src: string | null;
+  /** The cache key of THIS link — the only thing a client may hand the image
+   *  route. null when the card has no pictures at all, which is the cue for the
+   *  bubble not to try. */
+  link_hash?: string | null;
+  media: { kind: LinkMediaKind; id: string; open_url: string; duration?: number | null; author?: string | null } | null;
+  fetched_at: string | null;
+  stale: boolean;
+};
+
+/** The thread read's link block: one card per distinct URL, referenced by id. */
+export type ThreadLinks = Record<string, LinkPreview>;
+
 export type CommMessage = {
   message_id: string;
   group_id: string;
@@ -120,6 +158,15 @@ export type CommMessage = {
   attachments?: CommAttachment[];
   reactions?: { emoji: string; count: number; users?: string[] }[];
   starred_by_me?: boolean;
+  /**
+   * The URLs in this bubble, in reading order, on the thread read only.
+   *
+   * Ids rather than cards, because `ThreadLinks` holds the card once. A link
+   * quoted nine times in one channel is nine pointers to one preview — the same
+   * shape the ERP attachments use, where the reference is stored and the card is
+   * resolved per read against the reader.
+   */
+  link_urls?: string[];
 };
 
 export type Channel = {
@@ -220,10 +267,21 @@ export const createChannel = (body: {
   member_ids?: string[];
   topic?: string;
 }) => tenant<Channel>("/smartcomm/channels", { method: "POST", body });
+/**
+ * The thread, plus the previews its links have earned.
+ *
+ * `links` is optional and keyed by canonical URL rather than embedded per message,
+ * so a client that predates the field ignores it and a thread with the same link
+ * quoted nine times carries the card once. Absent means "this server has no
+ * preview cache", which renders as plain links — the same thing a `REFUSED` or a
+ * dead third party renders as, and the reason the bubble needs no version check.
+ */
 export const getThread = (id: string) =>
-  tenant<{ group_id: string; messages: CommMessage[] }>(
-    `/smartcomm/channels/${id}/messages`,
-  );
+  tenant<{
+    group_id: string;
+    messages: CommMessage[];
+    links?: ThreadLinks;
+  }>(`/smartcomm/channels/${id}/messages`);
 export const postMessage = (
   id: string,
   body: string,
@@ -334,6 +392,38 @@ export const searchErp = (q: string, kinds?: ErpKind[]) =>
   );
 export const getErpCard = (kind: ErpKind, id: string) =>
   tenant<ErpCard>(`/smartcomm/erp/${kind}/${id}`);
+
+/**
+ * One link's preview, fetched NOW, for the composer.
+ *
+ * The exception to every other preview path in this file: this one waits on the
+ * third party, because a person is standing there looking at it with the URL
+ * still in their input box. Post-send, the card is always read from the cache and
+ * never waited on.
+ */
+export const previewLink = (url: string) =>
+  tenant<{
+    url: string;
+    state: LinkPreviewState;
+    title?: string | null;
+    description?: string | null;
+    card?: LinkPreview;
+    reason?: string | null;
+  }>("/smartcomm/links/preview", { method: "POST", body: { url } });
+
+/**
+ * A preview image, as an object URL.
+ *
+ * `linkHash` is the sha256 of the CANONICAL link, which is also the card's own
+ * key in the thread response — so the client never handles the remote image URL
+ * at all, and cannot be talked into fetching one the cache does not have.
+ */
+export const linkImageObjectUrl = (linkHash: string, part: "image" | "icon" = "image", signal?: AbortSignal) =>
+  tenantObjectUrl(
+    `/smartcomm/links/image?link=${encodeURIComponent(linkHash)}${part === "icon" ? "&part=icon" : ""}`,
+    signal,
+  );
+
 /* ── Per-channel draft ────────────────────────────────────────────────────
  *
  * `comms_draft` has existed since migration 0430 and nothing ever wrote to it,

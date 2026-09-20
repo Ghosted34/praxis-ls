@@ -31,42 +31,70 @@
  * already wrong when this was added: `/costing/costings/<id>` (the route is
  * `costing/costing/:costingId`) and `/settings/notifications` (the route is
  * `/notifications`). Neither 404s. Both silently land on the Control Tower.
- * `entity-route.test.js` now checks every path here against the real router.
+ * `notification-link.test.ts` now checks every path here against the real router.
  */
 
 /**
  * Types with a detail route of their own — the id is addressable, so the link
- * opens the record itself. Keys are the `entity_ref` prefix; values take the id.
+ * opens the record itself. Keys are the `entity_ref` prefix.
  *
- * Verified against client/src/app/app.tsx by entity-route.test.js. A path added
+ * Verified against client/src/app/app.tsx by `notification-link.test.ts`, which
+ * asserts every path emitted here is a route the router serves. A path added
  * here that the router does not serve fails that test rather than production.
+ *
+ * The values are DATA rather than builder functions.
+ *
+ * Both directions come out of this one shape. `build()` turns a ref into a path
+ * for the notification writer; `parseUrl()` turns a path back into a ref for
+ * anything that has to READ one — a link pasted into chat, or a `link_url` a
+ * row already carries. Written as functions the first time, this table could
+ * only answer the forward question, and the reverse direction would have needed
+ * a second table of hand-written regexes beside it. Two copies of a route table
+ * is two copies that drift — the exact failure this file exists to prevent — so
+ * the pattern is declared once and both directions derive from it.
+ *
+ * Two shapes, because the router has two shapes:
+ *   `prefix`  the id is the next path segment (`/sales/leads/<id>`)
+ *   `path` + `query`  the record is query state on a list screen, because the
+ *                     record opens in a panel ON that list
+ *
+ * The `prefix` form does NOT encode the id, exactly as the builders it replaced
+ * did not: these ids are uuids generated here, and encoding a uuid changes
+ * nothing while encoding a hand-written ref would change the URL a reader has
+ * bookmarked. The `query` form does encode, as it always did.
  */
 const DETAIL = {
-  lead: (id) => `/sales/leads/${id}`,
-  quote_request: (id) => `/sales/quote-requests/${id}`,
-  dossier: (id) => `/operations/files/${id}`,
-  transit_order: (id) => `/operations/transit-orders/${id}`,
-  delivery_note: (id) => `/operations/delivery-notes/${id}`,
-  costing: (id) => `/costing/costing/${id}`,
-  cash_request: (id) => `/costing/cash-requests/${id}`,
-  corporate_entity: (id) => `/master/corporate-entities/${id}`,
-  treasury_account: (id) => `/master/treasury-accounts/${id}`,
-  insight_article: (id) => `/settings/website/articles/${id}`,
+  lead: { prefix: "/sales/leads/" },
+  quote_request: { prefix: "/sales/quote-requests/" },
+  dossier: { prefix: "/operations/files/" },
+  transit_order: { prefix: "/operations/transit-orders/" },
+  delivery_note: { prefix: "/operations/delivery-notes/" },
+  costing: { prefix: "/costing/costing/" },
+  cash_request: { prefix: "/costing/cash-requests/" },
+  corporate_entity: { prefix: "/master/corporate-entities/" },
+  treasury_account: { prefix: "/master/treasury-accounts/" },
+  insight_article: { prefix: "/settings/website/articles/" },
   // Not a path segment: the inbox reads `?thread=` as its initial selection
   // (features/comms/inbox/index.tsx) and strips it afterwards, so a refresh
   // does not reopen it. This is the shape mail-notify has always sent.
-  email_thread: (id) => `/comms/mail?thread=${encodeURIComponent(id)}`,
+  email_thread: { path: "/comms/mail", query: "thread" },
   // Same shape: the Support & Feedback list (features/support/support-page.tsx)
   // reads `?ticket=` as its initial selection. The ticket row has no path of
   // its own — the thread is a modal on the list, like the mail inbox.
-  support_ticket: (id) => `/support?ticket=${encodeURIComponent(id)}`,
+  support_ticket: { path: "/support", query: "ticket" },
   // My Workspace. The section is the canonical path; the record remains query
   // state because the task/event opens in a panel ON that section. The client
   // still accepts the legacy `?tab=` form through its compatibility adapter so
   // notifications written before this route change remain useful.
-  task: (id) => `/workspace/tasks?task=${encodeURIComponent(id)}`,
-  calendar_event: (id) => `/workspace/calendar?event=${encodeURIComponent(id)}`,
+  task: { path: "/workspace/tasks", query: "task" },
+  calendar_event: { path: "/workspace/calendar", query: "event" },
 };
+
+/** The one place a detail URL is assembled. */
+function build(spec, id) {
+  if (spec.query) return `${spec.path}?${spec.query}=${encodeURIComponent(id)}`;
+  return `${spec.prefix}${id}`;
+}
 
 /**
  * Types with no addressable detail route. The link goes to the list that holds
@@ -170,6 +198,24 @@ const SECTION = {
 const DETAIL_BY_TYPE = new Map(Object.entries(DETAIL));
 const SECTION_BY_TYPE = new Map(Object.entries(SECTION));
 
+/**
+ * The same table, indexed by what the URL starts with — for the reverse
+ * direction.
+ *
+ * Built once at module load rather than scanned per call, because `parseUrl` runs
+ * for every URL in every message body that renders, and a linear scan over
+ * fourteen prefixes on each one is work the shape of the data does not require.
+ * `prefix` routes are matched on the leading segment because the id follows it;
+ * `query` routes are matched on their exact list path.
+ */
+const PATH_LOOKUPS = [...DETAIL_BY_TYPE.entries()].map(([type, spec]) => ({
+  type,
+  spec,
+  // Longest first, so `/costing/costings` can never be mistaken for
+  // `/costing/costing` if a future prefix is a prefix of another one.
+  match: spec.query ? spec.path : spec.prefix,
+})).sort((a, b) => b.match.length - a.match.length);
+
 /** Split "email_thread:39cb…" into its two halves. A ref with no colon is a
  *  type on its own (a few producers emit one); a ref with extra colons keeps
  *  them in the id, since only the FIRST separates type from id. */
@@ -201,14 +247,15 @@ function linkFor(entityRef) {
   const parsed = parseRef(entityRef);
   if (!parsed) return null;
   const { type, id } = parsed;
-  // The `typeof` checks are not ceremony around the Maps: they are what makes
-  // the dispatch below safe to read as well as safe to run, and they cost one
-  // comparison on a path that runs once per rendered row.
-  const detail = DETAIL_BY_TYPE.get(type);
+  // The `spec &&` guard is not ceremony: `type` is the first half of a string
+  // from the database, and `DETAIL_BY_TYPE.get("constructor")` is undefined
+  // precisely BECAUSE these are Maps. The check keeps the shape assumption
+  // (`spec.prefix`, `spec.query`) honest for anything that reaches it.
+  const spec = DETAIL_BY_TYPE.get(type);
   // A detail route without an id cannot be built. Fall through to the section
   // when the type also has one, rather than returning nothing.
-  if (typeof detail === "function" && id) {
-    return { url: detail(id), precision: "record" };
+  if (spec && id) {
+    return { url: build(spec, id), precision: "record" };
   }
   const section = SECTION_BY_TYPE.get(type);
   if (typeof section === "string" && section) {
@@ -223,12 +270,80 @@ function urlFor(entityRef) {
   return hit ? hit.url : null;
 }
 
+/**
+ * The reverse: a path or an absolute URL back to the record it addresses.
+ *
+ * Returns `{ type, id, precision: "record" }` for a path this table built, and
+ * null for anything else — including a section landing, deliberately. A section
+ * path (`/hr/payroll`) maps to dozens of records, so reporting a type for it
+ * would be inventing an entity that was never in the URL; the caller treats a
+ * null here as "an in-app page we can name but not resolve", which is the truth.
+ *
+ * Accepts a bare path (`/workspace/tasks?task=…`), a root-relative URL, or a
+ * full URL on any host — the host is the caller's business (`linkDetect` decides
+ * whether it is ours), and the same 80 characters mean the same record whichever
+ * of the three it arrived as.
+ */
+function parseUrl(input) {
+  const raw = String(input || "").trim();
+  if (!raw) return null;
+  let path = raw;
+  let query = "";
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(raw)) {
+    let url;
+    try {
+      url = new URL(raw);
+    } catch {
+      return null;
+    }
+    path = url.pathname;
+    query = url.search;
+  } else {
+    const split = path.indexOf("?");
+    if (split !== -1) {
+      query = path.slice(split);
+      path = path.slice(0, split);
+    }
+  }
+  if (!path.startsWith("/")) return null;
+  // A trailing slash is the same page to the router and must be the same answer
+  // here, or `/operations/files/<id>/` silently stops being a link to a file.
+  // A backward walk, not `/\/+$/`: the anchored `+` class is re-tried at every
+  // start position, so a path made of slashes and one stray character is quadratic
+  // work — and this function is handed whatever a message contained. Same rule,
+  // one pass, and `/` itself still answers `/` (a route is not its own trailing
+  // slash, but the root has nothing to trim).
+  let normalised = path;
+  if (normalised.length > 1) {
+    let end = normalised.length;
+    while (end > 1 && normalised[end - 1] === "/") end -= 1;
+    normalised = normalised.slice(0, end);
+  }
+  const search = new URLSearchParams(query);
+  for (const entry of PATH_LOOKUPS) {
+    const { spec, type, match } = entry;
+    if (spec.query) {
+      if (normalised !== match) continue;
+      const id = search.get(spec.query);
+      if (id) return { type, id, precision: "record" };
+      continue;
+    }
+    if (!normalised.startsWith(match)) continue;
+    const id = decodeURIComponent(normalised.slice(match.length));
+    // Only a single remaining segment addresses a record: `/operations/files/x/notes`
+    // is a sub-resource of the file, not the file, and claiming it as the file
+    // would send a chat click somewhere the sender never meant.
+    if (id && !id.includes("/")) return { type, id, precision: "record" };
+  }
+  return null;
+}
+
 /** Every path this module can emit — what the router test asserts against. */
 function allRoutes() {
   return [
-    ...[...DETAIL_BY_TYPE.values()].map((build) => build("ID")),
+    ...[...DETAIL_BY_TYPE.values()].map((spec) => build(spec, "ID")),
     ...SECTION_BY_TYPE.values(),
   ];
 }
 
-module.exports = { linkFor, urlFor, parseRef, allRoutes, DETAIL, SECTION };
+module.exports = { linkFor, urlFor, parseRef, parseUrl, allRoutes, DETAIL, SECTION };

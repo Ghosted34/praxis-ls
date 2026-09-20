@@ -28,7 +28,6 @@ import { Dialog } from "@/components/ui/dialog";
 import { useList } from "@/lib/use-resource";
 import type { ServiceType } from "@/lib/operations-api";
 import type { ControlTowerFilters } from "../use-control-tower";
-import { cn } from "@/lib/cn";
 import { FilterIcon } from "@/components/ui/icons";
 
 type TowerPage = {
@@ -404,7 +403,7 @@ export function TowerFilters({ value, page, onChange }: Props) {
       {/* ── MOBILE CAPSULE: ~56px tall, never wraps words vertically ── */}
       <section
         className="mb-4 flex items-center justify-between gap-3 rounded-xl border bg-card px-3 py-3 lg:hidden"
-        aria-label="Control Tower filters"
+        aria-label="Control Tower filters summary"
       >
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">

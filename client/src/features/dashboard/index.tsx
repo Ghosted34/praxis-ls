@@ -182,23 +182,12 @@ export function DashboardPage() {
       */}
       <TowerFilters value={filters} page={data.page} onChange={setFilters} />
 
-      <div className="mb-3 flex flex-wrap items-center justify-end gap-2 lg:mb-3">
+      <div className="mb-3 flex flex-wrap items-center justify-end gap-2">
         <Button
           type="button"
           size="sm"
           variant="outline"
           onClick={() => setMeeting(true)}
-          className="hidden sm:inline-flex"
-        >
-          Meeting view
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          onClick={() => setMeeting(true)}
-          className="sm:hidden"
-          aria-label="Meeting view"
         >
           Meeting view
         </Button>

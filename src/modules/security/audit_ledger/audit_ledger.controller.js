@@ -105,10 +105,19 @@ const myFeed = asyncHandler(async (req, res) => {
   // job (Governance → Ledger); the Control Tower widget is a glance.
   const maxTotal = 30;
 
-  const [idRows, tnRows] = await Promise.all([
-    req.identityDb((c) => service.myFeed(c, req.user.user_id, maxTotal)),
-    req.tenantDb((c) => service.myFeed(c, req.user.user_id, maxTotal)),
-  ]);
+  // Sequential, not Promise.all: tenantDb/identityDb share one pooled client
+  // per request (see middleware/tenant-context.js). Promise.all would run two
+  // queries concurrently on the same client, serialised through pg's queue
+  // with no parallelism benefit while breaking the documented invariant.
+  // Also, under LIVE both point at the SAME `live` schema, so querying twice
+  // would return the same rows twice and the Control Tower's "Recent
+  // activity" widget would show every action doubled — bug report Sept 20
+  // (screenshot: two "You signed in" at 7M AGO, etc.).
+  const idRows = await req.identityDb((c) => service.myFeed(c, req.user.user_id, maxTotal));
+  let tnRows = [];
+  if (req.env !== "live") {
+    tnRows = await req.tenantDb((c) => service.myFeed(c, req.user.user_id, maxTotal));
+  }
 
   // Tag each row with which ledger it came from. `get` (above) needs this to
   // query the right schema on the first try — ledger_id is a per-schema

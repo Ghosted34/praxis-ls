@@ -68,6 +68,36 @@ export function BlockageSection({ task, audience }: { task: Task; audience?: Aud
   const [tipHover, setTipHover] = React.useState(false);
   const [tipPinned, setTipPinned] = React.useState(false);
   const tipOpen = tipHover || tipPinned;
+  const tipWrapRef = React.useRef<HTMLSpanElement>(null);
+
+  // Pinned tooltip must dismiss on outside tap/click or Escape — otherwise it
+  // stays permanently after the ⓘ is tapped (bug report Sept 20 screenshot:
+  // the EXPLAINER popover covered the panel and could not be closed without
+  // tapping ⓘ again). Hover alone is fine; only the pinned (touch) path
+  // needs the outside handler. Also cleans up on unmount.
+  React.useEffect(() => {
+    if (!tipPinned) return;
+    const onDocDown = (e: MouseEvent | TouchEvent) => {
+      const target = e.target as Node;
+      if (tipWrapRef.current && !tipWrapRef.current.contains(target)) {
+        setTipPinned(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setTipPinned(false);
+        setTipHover(false);
+      }
+    };
+    document.addEventListener("mousedown", onDocDown as unknown as EventListener);
+    document.addEventListener("touchstart", onDocDown as unknown as EventListener);
+    document.addEventListener("keydown", onKey as unknown as EventListener);
+    return () => {
+      document.removeEventListener("mousedown", onDocDown as unknown as EventListener);
+      document.removeEventListener("touchstart", onDocDown as unknown as EventListener);
+      document.removeEventListener("keydown", onKey as unknown as EventListener);
+    };
+  }, [tipPinned]);
 
   const [note, setNote] = React.useState("");
   const [eta, setEta] = React.useState("");
@@ -229,6 +259,7 @@ export function BlockageSection({ task, audience }: { task: Task; audience?: Aud
                 only way in. */}
             {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions */}
             <span
+              ref={tipWrapRef}
               className="relative inline-flex"
               onMouseEnter={() => setTipHover(true)}
               onMouseLeave={() => setTipHover(false)}

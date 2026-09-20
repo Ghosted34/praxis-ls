@@ -283,7 +283,7 @@ export function RecentActivity({ tight = false }: { tight?: boolean }) {
           >
             {rows.map((row, i) => (
               <ActivityRow
-                key={row.ledger_id}
+                key={`${row.ledger_scope ?? "tenant"}:${row.ledger_id}`}
                 row={row}
                 isLast={i === rows.length - 1}
                 onOpen={setDetail}

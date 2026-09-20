@@ -61,6 +61,7 @@ import type { Audience, AnalyticsResponse, TaskPriority, TaskStatus } from "../a
 import { useWorkspaceAnalytics, useWorkspaceContext } from "../hooks";
 import { AUDIENCE_LABEL, PRIORITY_LABEL, STATUS_LABEL } from "../labels";
 import { tenantDateTimeFmt, tenantToday, addTenantDays } from "../time";
+import { cn } from "@/lib/cn";
 
 /**
  * The windows the screen offers.
@@ -78,6 +79,80 @@ const RANGES = [
 ] as const;
 
 type RangeValue = (typeof RANGES)[number]["value"];
+
+/**
+ * Mobile pager — one panel per swipe, like a native analytics app.
+ *
+ * DESKTOP: 2-col grid (xl:grid-cols-2). MOBILE: horizontal snap scroller
+ * (88vw cards, fade edge not needed because cards peek). Dots + "Swipe"
+ * hint keep it discoverable without teaching. Each chart gets full screen
+ * width, so "Under a day / 1 to 2 days / 3 to 7 days" no longer clips
+ * (your screenshot Sept 20). Desktop unchanged.
+ */
+function AnalyticsPager({ children }: { children: React.ReactNode }) {
+  const scrollRef = React.useRef<HTMLDivElement>(null);
+  const [index, setIndex] = React.useState(0);
+  const items = React.Children.toArray(children);
+  const count = items.length;
+  const onScroll = React.useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const w = el.clientWidth;
+    const cardW = w * 0.88 + 16; // 88vw + gap-4
+    const i = Math.round(el.scrollLeft / cardW);
+    setIndex(Math.max(0, Math.min(i, count - 1)));
+  }, [count]);
+  React.useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [onScroll]);
+  const scrollTo = (i: number) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const w = el.clientWidth;
+    const cardW = w * 0.88 + 16;
+    el.scrollTo({ left: i * cardW, behavior: "smooth" });
+  };
+  return (
+    <>
+      {/* Mobile: swipeable */}
+      <div className="lg:hidden">
+        <div
+          ref={scrollRef}
+          className="flex gap-4 overflow-x-auto snap-x snap-mandatory scroll-smooth pb-3 -mx-4 px-4 overscroll-x-contain [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
+        >
+          {items.map((child, i) => (
+            <div key={i} className="min-w-[88vw] snap-center snap-always shrink-0">
+              {child}
+            </div>
+          ))}
+        </div>
+        <div className="flex items-center justify-center gap-1.5 py-2">
+          {items.map((_, i) => (
+            <button
+              key={i}
+              type="button"
+              aria-label={`Go to panel ${i + 1} of ${count}`}
+              aria-current={i === index}
+              onClick={() => scrollTo(i)}
+              className={cn(
+                "h-1.5 rounded-full transition-all",
+                i === index ? "w-6 bg-primary" : "w-1.5 bg-[rgb(var(--ink)_/_0.12)] hover:bg-[rgb(var(--ink)_/_0.2)]",
+              )}
+            />
+          ))}
+        </div>
+        <p className="micro text-center text-muted-foreground">
+          Swipe to see more • {index + 1} / {count}
+        </p>
+      </div>
+      {/* Desktop: grid */}
+      <div className="hidden gap-4 lg:grid lg:grid-cols-2">{items}</div>
+    </>
+  );
+}
 
 export function AnalyticsPage() {
   const [params, setParams] = useSearchParams();
@@ -360,7 +435,7 @@ export function AnalyticsPage() {
 
           <SummaryStrip data={data} onDrill={drillDown} />
 
-          <div className="grid gap-4 xl:grid-cols-2">
+          <AnalyticsPager>
             <ThroughputPanel data={data} />
             <OverdueAgingPanel data={data} onDrill={drillDown} />
             <WorkloadPanel data={data} onDrill={drillDown} />
@@ -368,7 +443,7 @@ export function AnalyticsPage() {
             <CycleTimePanel data={data} />
             <BurndownPanel data={data} />
             <BlockedPanel data={data} timeZone={timeZone} />
-          </div>
+          </AnalyticsPager>
 
           {dossierId && <ByMilestonePanel data={data} onDrill={drillDown} />}
 
@@ -789,75 +864,118 @@ function BurndownPanel({ data }: { data: AnalyticsResponse }) {
 }
 
 /**
- * Blocked work — a table only, and deliberately so.
+ * Blocked work — chart + table, and why the chart is back (your request).
  *
- * A chart of "things that are stuck" tells a manager a count they already have
- * in the strip above. What they need is WHICH ones, oldest first, so they can
- * go and unstick them. The prerequisite's title is absent: a task may be
- * visible to this reader while the thing blocking it is not, and the row's job
- * is to say "this is waiting", not to disclose what on.
+ * The table tells WHICH ones (oldest first, with the note). The chart tells
+ * WHERE the jam is (per assignee, so a manager knows who to nudge). Both
+ * are the same rows, drawn twice — like every other panel's FigureWithTable.
+ *
+ * Tap a bar (or a pill below it) → the table filters to that person's blocked
+ * work and the first note is shown. That is the "touch a particular area of
+ * the chart it shows the reason and other details" interaction you asked for.
  */
 function BlockedPanel({ data, timeZone }: { data: AnalyticsResponse; timeZone: string }) {
   const navigate = useNavigate();
   const rows = data.blocked;
+  const [filter, setFilter] = React.useState<string | null>(null);
+
+  // Group for the chart: blocked per assignee (the bottleneck view)
+  const byAssignee = React.useMemo(() => {
+    const m = new Map<string, { count: number; exampleNote?: string }>();
+    for (const r of rows) {
+      const name = r.assigned_to_name || "Unassigned";
+      const cur = m.get(name) || { count: 0, exampleNote: undefined };
+      cur.count += 1;
+      if (!cur.exampleNote && r.blockage_note) cur.exampleNote = r.blockage_note;
+      m.set(name, cur);
+    }
+    return Array.from(m.entries())
+      .map(([name, v]) => ({ name, ...v }))
+      .sort((a, b) => b.count - a.count);
+  }, [rows]);
+
+  const points: BarsPoint[] = byAssignee.map((g) => ({
+    label: g.name.length > 14 ? g.name.slice(0, 13) + "…" : g.name,
+    values: { blocked: g.count },
+  }));
+  const visibleRows = filter ? rows.filter((r) => (r.assigned_to_name || "Unassigned") === filter) : rows;
+
+  if (rows.length === 0) {
+    return (
+      <Panel title="Blocked work" subtitle="Open tasks waiting on something unfinished or carrying a registered blockage, longest wait first.">
+        <EmptyState title="Nothing is blocked" hint="No open task is waiting on an unresolved dependency or carrying a blockage." />
+      </Panel>
+    );
+  }
+
+  const chartEmpty = byAssignee.length === 0;
+  const chart = (
+    <SeriesBars data={points} series={[{ key: "blocked", tone: "warn", label: "Blocked" }]} height={200} />
+  );
+
   return (
-    <Panel title="Blocked work" subtitle="Open tasks waiting on something unfinished or carrying a registered blockage, longest wait first.">
-      {rows.length === 0 ? (
-        <EmptyState
-          title="Nothing is blocked"
-          hint="No open task is waiting on an unresolved dependency or carrying a blockage."
-        />
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <caption className="sr-only">Open tasks with unresolved dependencies</caption>
-            <thead>
-              <tr className="border-b text-left">
-                <th scope="col" className="micro py-1.5 pr-3 font-medium">Task</th>
-                <th scope="col" className="micro py-1.5 pr-3 font-medium">Assignee</th>
-                <th scope="col" className="micro py-1.5 pr-3 font-medium">Waiting on</th>
-                <th scope="col" className="micro py-1.5 font-medium">Since</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r.task_id} className="border-b last:border-0">
-                  <td className="py-1.5 pr-3">
-                    <button
-                      type="button"
-                      className="text-left text-primary-ink underline"
-                      onClick={() => navigate(r.link_url || `/workspace/tasks?task=${r.task_id}`)}
-                    >
-                      {r.title}
-                    </button>
-                  </td>
-                  <td className="py-1.5 pr-3">{r.assigned_to_name ?? "Nobody yet"}</td>
-                  <td className="num py-1.5 pr-3">
-                    {/* 13975: the wait has two possible sources and the row shows
-                        whichever is true — a prerequisite count, a blockage note,
-                        or both. The note travels because it was written for
-                        exactly this reader; a prerequisite title does not. */}
-                    {r.blocking_count > 0 && (
-                      <Pill tone={r.blocking_count > 1 ? "bad" : "warn"}>
-                        {r.blocking_count} {r.blocking_count === 1 ? "task" : "tasks"}
-                      </Pill>
-                    )}
-                    {r.blockage_note && (
-                      <span
-                        className="block max-w-56 truncate text-xs text-muted-foreground"
-                        title={r.blockage_note}
-                      >
-                        ⛔ {r.blockage_note}
-                      </span>
-                    )}
-                  </td>
-                  <td className="py-1.5">
-                    {r.blocked_since ? tenantDateTimeFmt(r.blocked_since, timeZone) : "—"}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+    <Panel title="Blocked work" subtitle="Open tasks waiting on something unfinished or carrying a registered blockage — tap a bar (or pill) to see that person's blockage notes.">
+      <FigureWithTable
+        chartTitle="Blocked by assignee"
+        ariaLabel={`${rows.length} blocked tasks across ${byAssignee.length} assignees.`}
+        empty={chartEmpty}
+        emptyTitle="Nothing is blocked"
+        emptyHint="No open task is blocked."
+        chart={chart}
+        columns={["Task", "Assignee", "Waiting on", "Since"]}
+        rows={visibleRows.map((r) => [
+          <button key={`${r.task_id}-t`} type="button" className="text-left text-primary-ink underline" onClick={() => navigate(r.link_url || `/workspace/tasks?task=${r.task_id}`)}>
+            {r.title}
+          </button>,
+          r.assigned_to_name ?? "Nobody yet",
+          <span key={`${r.task_id}-w`} className="inline-flex flex-col gap-1">
+            {r.blocking_count > 0 && (
+              <Pill tone={r.blocking_count > 1 ? "bad" : "warn"}>
+                {r.blocking_count} {r.blocking_count === 1 ? "task" : "tasks"}
+              </Pill>
+            )}
+            {r.blockage_note && (
+              <span className="block max-w-56 truncate text-xs text-muted-foreground" title={r.blockage_note}>
+                ⛔ {r.blockage_note}
+              </span>
+            )}
+          </span>,
+          r.blocked_since ? tenantDateTimeFmt(r.blocked_since, timeZone) : "—",
+        ])}
+        caption="Blocked tasks"
+      />
+      {/* Tap affordance below the chart — pills are the hit targets Recharts bars aren't on touch */}
+      {byAssignee.length > 1 && (
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          <button
+            type="button"
+            onClick={() => setFilter(null)}
+            className={cn(
+              "rounded-full border px-2.5 py-1 text-xs font-medium",
+              !filter ? "bg-primary text-primary-foreground border-primary" : "bg-card hover:bg-accent",
+            )}
+          >
+            All ({rows.length})
+          </button>
+          {byAssignee.slice(0, 6).map((g) => (
+            <button
+              key={g.name}
+              type="button"
+              onClick={() => setFilter(filter === g.name ? null : g.name)}
+              title={g.exampleNote ? `Example: ${g.exampleNote}` : undefined}
+              className={cn(
+                "rounded-full border px-2.5 py-1 text-xs",
+                filter === g.name ? "bg-primary text-primary-foreground border-primary" : "bg-card hover:bg-accent",
+              )}
+            >
+              {g.name} • {g.count}
+            </button>
+          ))}
+          {filter && (
+            <span className="micro ml-1 self-center text-muted-foreground">
+              Tap again to clear • {visibleRows.length} shown
+            </span>
+          )}
         </div>
       )}
     </Panel>

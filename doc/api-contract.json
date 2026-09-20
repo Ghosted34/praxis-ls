@@ -2,11 +2,11 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 141,
-  "route_count": 1680,
+  "route_count": 1682,
   "tiers": {
     "public": 68,
     "self-scoped": 105,
-    "gated": 1507
+    "gated": 1509
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -4342,6 +4342,12 @@
       "tier": "gated"
     },
     "GET /api/tenant/smartcomm/erp/search": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/smartcomm/links/image": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -9076,6 +9082,12 @@
       "tier": "gated"
     },
     "POST /api/tenant/smartcomm/config/whatsapp/test": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/smartcomm/links/preview": {
       "auth": true,
       "rbac": true,
       "validated": false,

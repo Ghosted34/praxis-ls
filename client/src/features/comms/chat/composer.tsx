@@ -11,10 +11,12 @@ import { useUpload } from "@/lib/use-upload";
 import { useFabFloor } from "@/lib/fab-floor";
 import { tr } from "@/lib/i18n";
 import { errMsg } from "@/lib/use-resource";
+import { linkDetect } from "@praxis/shared";
 import * as api from "@/lib/smartcomm-api";
 import type {
   CommMessage,
   ErpCard,
+  LinkPreview,
   PostedAttachment,
   UploadedAttachment,
 } from "@/lib/smartcomm-api";
@@ -23,6 +25,7 @@ import { ErpCardView } from "./erp-card";
 import { ComposerActions } from "./composer-actions";
 import { MessageEditor } from "./message-editor";
 import { parseMessage } from "./message-format";
+import { LinkCard } from "./link-card";
 import { ScheduledMessages } from "./scheduled-messages";
 
 const ACCEPT =
@@ -62,6 +65,22 @@ export function Composer({
     setText(body);
     setEditorReset({ body });
   };
+  /**
+   * The card for the link being typed, if there is one.
+   *
+   * The one place in this feature where a preview is WAITED FOR rather than read
+   * from cache, and the only place that may be: a person is standing at the input
+   * with a URL they just pasted, which is precisely the moment a card earns its
+   * keep — "is this the page I meant" is answered before the message exists. Every
+   * other path reads the cache, because a thread must never be slow because
+   * Maersk's website is.
+   *
+   * Deliberately keyed on the URL rather than on the draft: the strip below then
+   * disappears by itself when the link is edited away, and an answer that arrives
+   * for a URL no longer on screen is discarded rather than shown.
+   */
+  const [linkPreview, setLinkPreview] = React.useState<LinkPreview | null>(null);
+  const previewFor = React.useRef<string | null>(null);
   const [busy, setBusyState] = React.useState(false);
   const setBusy = (next: boolean) => {
     setBusyState(next);
@@ -134,6 +153,46 @@ export function Composer({
     }, 700);
     return stopDraftTimer;
   }, [text, channelId, draftReady, busy, editingMessage]);
+  // The paste-preview request. Same 700ms the draft autosave waits, because it is
+  // the same question — "has the person stopped typing?" — and a shorter delay
+  // would fetch half a URL while the last path segment is still being typed,
+  // against somebody's real web server, from this tenant's address.
+  React.useEffect(() => {
+    if (busy || editingMessage) return;
+    // A restored DRAFT is never previewed. The person is reading their own
+    // half-written message, not asking a question about a link, and an outbound
+    // fetch on their behalf — one that leaves a line in that third party's access
+    // log — is not what opening a chat means. It starts once they type, which is
+    // the moment the URL becomes a live question.
+    if (untouched.current) return;
+    const urls = linkDetect.webUrls(text);
+    const url = urls.length ? urls[urls.length - 1] : null;
+    if (!url) {
+      previewFor.current = null;
+      setLinkPreview(null);
+      return;
+    }
+    if (previewFor.current === url) return;
+    previewFor.current = url;
+    const timer = window.setTimeout(() => {
+      void api
+        .previewLink(url)
+        .then((result) => {
+          // Either the text moved on (a second URL typed, the link deleted) or the
+          // page had nothing worth a card. Both mean: show nothing, quietly. A
+          // failed preview is not a send failure, and the message never carried a
+          // promise about a card in the first place.
+          if (previewFor.current !== url) return;
+          setLinkPreview(result.card && result.card.state === "OK" ? result.card : null);
+        })
+        .catch(() => {
+          /* @silent:network — a preview that will not load leaves the draft alone */
+          if (previewFor.current === url) setLinkPreview(null);
+        });
+    }, 700);
+    return () => window.clearTimeout(timer);
+  }, [text, busy, editingMessage]);
+
   React.useEffect(() => {
     if (editingMessage) {
       stopDraftTimer();
@@ -379,6 +438,17 @@ export function Composer({
               )}
             </p>
           )}
+        </div>
+      )}
+
+      {linkPreview && (
+        // The card, in the box, before the message exists. Not dismissible: it is
+        // a statement about the link in the text, so it goes away when the link
+        // goes away, and an "×" would imply it could be turned off while the link
+        // stayed — which would be a way to send a link the reader had decided not
+        // to look at.
+        <div className="border-b border-border px-3 py-2">
+          <LinkCard preview={linkPreview} tone="surface" />
         </div>
       )}
 

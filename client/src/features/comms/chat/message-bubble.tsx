@@ -24,6 +24,7 @@
  * a conversation where a reply survives and the thing it replied to silently
  * disappears reads as the product having lost it.
  */
+import * as React from "react";
 import { cn } from "@/lib/cn";
 import { tr } from "@/lib/i18n";
 import { DropdownMenu, DropdownItem, DropdownSeparator } from "@/components/ui/dropdown-menu";
@@ -35,6 +36,8 @@ import * as api from "@/lib/smartcomm-api";
 import type { CommMessage, CommAttachment } from "@/lib/smartcomm-api";
 import { Attachments } from "./attachments";
 import { MessageText } from "./message-text";
+import { LinkCards } from "./link-card";
+import type { LinkPreview } from "@/lib/smartcomm-api";
 
 
 function timeShort(iso?: string | null) {
@@ -70,6 +73,12 @@ export function MessageBubble({
   onForward,
   onChanged,
   onEdit,
+  /** This tenant's cached previews for the URLs in this message. */
+  links,
+  /** Touch only: whether this bubble's action rail is currently shown. */
+  revealed = false,
+  onToggleReveal,
+  onReacted,
 }: {
   message: CommMessage;
   mine: boolean;
@@ -81,6 +90,10 @@ export function MessageBubble({
   onForward: (m: CommMessage) => void;
   onChanged: () => void;
   onEdit?: (message: CommMessage) => void;
+  links?: Record<string, LinkPreview>;
+  revealed?: boolean;
+  onToggleReveal?: () => void;
+  onReacted?: () => void;
 }) {
   const toast = useToast();
   const [confirm, confirmElement] = useConfirm();
@@ -92,6 +105,10 @@ export function MessageBubble({
     try {
       await api.react(message.message_id, emoji);
       onChanged();
+      // A reaction was the thing the rail existed for. On a phone it then gets
+      // out of the way, rather than sitting over the next message the reader is
+      // already reaching for.
+      onReacted?.();
     } catch (e) {
       toast.error(errMsg(e) || tr("Couldn't add that reaction."));
     }
@@ -138,8 +155,67 @@ export function MessageBubble({
     .filter((r) => meId && (r.users || []).includes(meId))
     .map((r) => r.emoji);
 
+  /**
+   * Tap the message to get its actions, on a device with no hover.
+   *
+   * WHY `onPointerDown`/`onPointerUp` AND NOT `onClick`. Not to dodge a lint
+   * rule — to describe the real gesture. `no-static-element-interactions` and
+   * `click-events-have-key-events` are right about a `<div onClick>`: a click a
+   * keyboard cannot produce is an affordance with half a user in it. Here the
+   * other half of every gesture is already covered by CSS — hover on a mouse,
+   * `group-focus-within` on a keyboard — and this handler exists only for the
+   * finger, which has no hover to wait for. A pointer pair is also the only way
+   * to tell a TAP from a SCROLL: a `click` on a bubble fires after a flick that
+   * started on it in some browsers, which would mean an action rail appearing on
+   * every message a reader swipes past. The 12px and the button check below are
+   * what make the gesture mean "I meant this message".
+   *
+   * One rail at a time is not this component's business — `team-chat.tsx` owns
+   * which message is open, so fifty bubbles cannot all be revealed at once.
+   */
+  const press = React.useRef<{ x: number; y: number } | null>(null);
+  function onPointerDown(event: React.PointerEvent) {
+    if (!onToggleReveal) return;
+    // An ALLOWLIST of pointer types, not a check for `=== "mouse"`: a synthetic or
+    // oddly-sourced event with no pointer type must not open anything, and the
+    // promise this component makes is that it only ever answers a finger.
+    if (event.pointerType !== "touch" && event.pointerType !== "pen") return;
+    press.current = { x: event.clientX, y: event.clientY };
+  }
+  function onPointerUp(event: React.PointerEvent) {
+    const start = press.current;
+    press.current = null;
+    if (!start || !onToggleReveal) return;
+    if (event.pointerType !== "touch" && event.pointerType !== "pen") return;
+    if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > 12) return;
+    // A tap that landed on something already actionable belongs to that thing.
+    // Without this, tapping a link or an already-visible reaction button would
+    // also toggle the rail, and on a phone "close the rail" and "open the link"
+    // would be the same tap — which reads as the link being broken.
+    const el = event.target as HTMLElement | null;
+    if (el?.closest?.("a,button,input,textarea,select,[role='button'],[role='menuitem']")) return;
+    onToggleReveal();
+  }
+
   return (
-    <div className={cn("group relative flex", mine ? "justify-end" : "justify-start")}>
+    <div
+      data-message-bubble
+      /**
+       * The reveal state, readable from the DOM rather than by parsing a Tailwind
+       * class string. The same reason the composer marks a chip with
+       * `[data-mention-id]`: when a visual state is the entire behaviour, a test
+       * that has to match `opacity-0 group-hover:opacity-100 …` breaks on a
+       * cosmetic edit, and a reader who cannot see the rail has no way to tell
+       * whether it is hidden or simply empty.
+       */
+      data-revealed={revealed ? "true" : undefined}
+      className={cn("group relative flex", mine ? "justify-end" : "justify-start")}
+      onPointerDown={onPointerDown}
+      onPointerUp={onPointerUp}
+      onPointerCancel={() => {
+        press.current = null;
+      }}
+    >
       <div className={cn("max-w-[78%] min-w-0", mine && "flex flex-col items-end")}>
         {/* The hover rail.
             REVEALED BY CSS, not by state. Mouse and keyboard handlers on this
@@ -155,7 +231,15 @@ export function MessageBubble({
             className={cn(
               "mb-1 flex items-center gap-1 opacity-0 transition-opacity",
               "pointer-events-none group-hover:pointer-events-auto group-focus-within:pointer-events-auto",
-              "group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 [@media(hover:none)]:pointer-events-auto",
+              "group-hover:opacity-100 group-focus-within:opacity-100",
+              // On a touch device the rail is NOT permanently visible. It used to
+              // be — `[@media(hover:none)]:opacity-100` — because hiding it behind
+              // a hover that a finger cannot produce left reactions unreachable.
+              // The fix for an unreachable control is a reachable gesture, not a
+              // permanent strip of six emoji over every message in the thread;
+              // `revealed` is that gesture, and the space stays reserved so
+              // revealing it never shifts the bubble under the reader's finger.
+              revealed && "opacity-100 pointer-events-auto",
               mine ? "flex-row-reverse" : "flex-row",
             )}
           >
@@ -248,7 +332,14 @@ export function MessageBubble({
                   />
                 </div>
               )}
-              {message.body && <MessageText body={message.body} />}
+              {message.body && <MessageText body={message.body} mine={mine} />}
+              {message.link_urls?.length ? (
+                <LinkCards
+                  urls={message.link_urls}
+                  links={links}
+                  tone={mine ? "primary" : "surface"}
+                />
+              ) : null}
             </>
           )}
 

@@ -795,6 +795,35 @@ function Thread({
   // Memoised because `thread.data?.messages || []` is a fresh array on every
   // render, which would make the reply-quote map below rebuild each time.
   const msgs = React.useMemo(() => thread.data?.messages || [], [thread.data]);
+  /** One card per distinct URL in this page, from the tenant's own preview cache. */
+  const linkPreviews = React.useMemo(
+    () => thread.data?.links || undefined,
+    [thread.data],
+  );
+
+  /**
+   * Which message's action rail a touch device is currently showing.
+   *
+   * State lives HERE rather than in each bubble, and that placement is the whole
+   * design: one open rail at a time is what makes "tap the message" unambiguous.
+   * Tapping a second message closes the first, so a thread cannot accumulate
+   * fifteen emoji strips, and the reader always knows which message the bar
+   * belongs to. An Escape key and a tap outside clear it, because a control that
+   * can only be dismissed by finding the right message to tap again is a modal
+   * that forgot to trap anything.
+   */
+  const [revealedId, setRevealedId] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    if (!revealedId) return undefined;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setRevealedId(null);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [revealedId]);
+  // Changing channel while a rail is open must not leave the id pointing at a
+  // message in the channel that is no longer on screen.
+  React.useEffect(() => setRevealedId(null), [channelId]);
 
   const composerBusy = React.useRef(false);
   const [editingMessage, setEditingMessage] = React.useState<api.CommMessage | null>(null);
@@ -912,6 +941,20 @@ function Thread({
           nearBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 160;
         }}
         className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain bg-[rgb(var(--ink-3)/0.04)] px-4 py-3"
+        // A tap on the empty scroller — beside a bubble, in the gap between two —
+        // is the reader saying "not this one". The bubbles themselves stop nothing,
+        // so this only fires for the background.
+        onPointerDown={(event) => {
+          if (!revealedId) return;
+          // Bubbles handle their own taps (see `message-bubble.tsx`), and the
+          // pointer event from one of those arrives here too, because events
+          // bubble. Without this guard the ancestor would clear what the child
+          // just set, in the same tick, and the rail would never appear at all —
+          // the single most likely way to get this interaction wrong.
+          const target = event.target as HTMLElement | null;
+          if (target?.closest?.("[data-message-bubble]")) return;
+          setRevealedId(null);
+        }}
       >
         {thread.loading && msgs.length === 0 ? (
           <div className="micro">{tr("Loading…")}</div>
@@ -930,6 +973,12 @@ function Thread({
               onReply={(message) => { if (!composerBusy.current) setReplyTo(message); }}
               onForward={setForwarding}
               onChanged={() => { thread.reload(); onSent(); }}
+              links={linkPreviews}
+              revealed={revealedId === m.message_id}
+              onToggleReveal={() =>
+                setRevealedId((current) => (current === m.message_id ? null : m.message_id))
+              }
+              onReacted={() => setRevealedId(null)}
             />
           ))
         ) : (

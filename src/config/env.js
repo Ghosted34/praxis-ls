@@ -336,6 +336,23 @@ const Schema = z.object({
    */
   REDIS_PASSWORD: z.string().default(""),
 
+  /**
+   * Inhouse calls (Smart Comms PR-1): STUN/TURN for WebRTC media.
+   *
+   * `TURN_HOST` empty = STUN-only (local dev, easy NATs). When set, the
+   * compose `coturn` service sits behind it and every credential issued to a
+   * client is time-limited (TTL, HMAC with TURN_CREDENTIAL_SECRET) — a static
+   * public TURN user is a credential leak that outlives the call that needed
+   * it. See src/modules/smartcomm/smartcomm.turn.service.js and the guide §5.5.
+   */
+  STUN_URLS: z.string().default(""),
+  TURN_HOST: z.string().default(""),
+  TURN_PORT_TCP: int(3478),
+  TURN_PORT_UDP: int(3478),
+  TURN_TRANSPORTS: z.string().default("udp,tcp"),
+  TURN_CREDENTIAL_SECRET: z.string().default(""),
+  TURN_CREDENTIAL_TTL: int(1860),
+
   JWT_ACCESS_SECRET: z.string().default("__dev_access__"),
   JWT_REFRESH_SECRET: z.string().default("__dev_refresh__"),
   JWT_ACCESS_TTL: z.string().default("15m"),

@@ -84,6 +84,16 @@ export function tr(label: string): string {
 }
 
 /**
+ * tr() with interpolation: same exact-English-key lookup, but
+ * {{placeholders}} are filled from `vars` inside the translation (i18next),
+ * so a French "Vu le {{date}} à {{time}}" keeps its word order.
+ */
+export function tv(label: string, vars: Record<string, string | number>): string {
+  const out = i18n.t(`strings.${label}`, { defaultValue: label, ...vars });
+  return typeof out === "string" ? out : label;
+}
+
+/**
  * Subscribe the calling component (usually an app root) to language changes.
  * tr() reads the global i18next instance, so without this a component would
  * keep its first language until remount.

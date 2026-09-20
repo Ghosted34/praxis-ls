@@ -155,4 +155,31 @@ router.post("/messages/:messageId/react", view, v.react, c.react);
 router.post("/messages/:messageId/acknowledge", view, c.ack);
 router.post("/messages/:messageId/star", view, c.star);
 
+// ── 1:1 voice calls (PR-1) ─────────────────────────────────────────────────
+//
+// Gated on the `calls` feature ON TOP of MOD-64: the comms gate says "this
+// tenant has chat", the calls gate is the tenant's kill switch for the call
+// feature specifically (guide decision row 2). Off, the routes answer 403
+// FEATURE_DISABLED and the dial icon does not render — one flag, two honest
+// surfaces.
+//
+// RBAC: dialing is `create` (it starts a new interaction, like a message);
+// accepting/declining/hanging up is `view`, the same deliberate choice as
+// acknowledging a message — each of those is the user's own state in an
+// interaction they are part of, and the other participant only ever sees the
+// state change, never anything the actor wrote.
+const { requireFeature } = require("../../middleware/feature-gate");
+const callsOn = requireFeature("calls");
+router.post("/calls", create, callsOn, v.callCreate, c.createCall);
+router.post("/calls/:id/accept", view, callsOn, c.acceptCall);
+router.post("/calls/:id/decline", view, callsOn, c.declineCall);
+router.post("/calls/:id/hangup", view, callsOn, v.callHangup, c.hangupCall);
+// ICE exhausted — the engine gives up before the call ever connected.
+router.post("/calls/:id/fail", view, callsOn, c.callFailed);
+router.get("/calls", view, callsOn, c.listCalls);
+router.get("/calls/:id", view, callsOn, c.getCall);
+// A refreshed TURN credential mid-call (the one minted at dial expires with
+// the call, plus margin).
+router.get("/calls/:id/turn", view, callsOn, c.callTurn);
+
 module.exports = { basePath: "/smartcomm", feature: "comms", router };

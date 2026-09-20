@@ -13,10 +13,20 @@ const getChannel = (client, id) => getById(client, "comms_group", "group_id", id
 // The other member's avatar_ref, for DIRECT channels — lets the UI show the
 // user's uploaded profile photo instead of a hashed-colour initials chip. NULL
 // for every other kind (a group has no single "other" member).
-const PARTNER_AVATAR_SQL =
+/** The DIRECT partner's identity + presence, in one place. `partner_user_id`
+ *  is what the phone icon and the live dot key on; `partner_last_seen_at` is
+ *  the honest floor under the dot (guide §4.11 — the dot is the socket, and
+ *  when the socket is gone this column says when they were last here). */
+const PARTNER_SQL =
+  "CASE WHEN g.kind = 'DIRECT' THEN " +
+  "(SELECT u.user_id FROM comms_member pm JOIN app_user u ON u.user_id = pm.user_id " +
+  "  WHERE pm.group_id = g.group_id AND pm.user_id <> $1 LIMIT 1) END AS partner_user_id, " +
   "CASE WHEN g.kind = 'DIRECT' THEN " +
   "(SELECT u.avatar_ref FROM comms_member pm JOIN app_user u ON u.user_id = pm.user_id " +
-  "  WHERE pm.group_id = g.group_id AND pm.user_id <> $1 LIMIT 1) END AS partner_avatar_ref";
+  "  WHERE pm.group_id = g.group_id AND pm.user_id <> $1 LIMIT 1) END AS partner_avatar_ref, " +
+  "CASE WHEN g.kind = 'DIRECT' THEN " +
+  "(SELECT p.last_seen_at FROM comms_member pm JOIN comms_user_presence p ON p.user_id = pm.user_id " +
+  "  WHERE pm.group_id = g.group_id AND pm.user_id <> $1 LIMIT 1) END AS partner_last_seen_at";
 
 async function listChannelsForUser(client, userId, q = {}) {
   const { limit, offset } = page(q);
@@ -24,7 +34,7 @@ async function listChannelsForUser(client, userId, q = {}) {
     "SELECT g.*, m.is_pinned, m.is_muted, m.last_read_at, " +
       "  (SELECT COUNT(*)::int FROM comms_message x WHERE x.group_id = g.group_id AND x.deleted_at IS NULL " +
       "     AND (m.last_read_at IS NULL OR x.created_at > m.last_read_at) AND x.sender_user_id <> $1) AS unread, " +
-      "  " + PARTNER_AVATAR_SQL + ", " +
+      "  " + PARTNER_SQL + ", " +
       // The attachment flags ride on the last-message JSON so the channel list can
       // preview a voice note, a photo or a record card. Without them the client
       // saw only `body`, which is NULL for every media-only message, and the
@@ -357,9 +367,20 @@ async function deleteQuickReply(client, id, userId) {
 }
 
 // ── Colleague directory ──
+/** Colleagues for the directory + the chat's "last seen" text. `last_seen_at`
+ *  is the presence table's honest floor (guide §4.11): the LIVE dot is the
+ *  socket, and when the socket is gone this column says when they were last
+ *  here — day-first in the client, never invented. */
 async function listColleagues(client, q = {}) {
   const { limit, offset } = page(q);
-  return (await client.query("SELECT user_id, full_name, email, status, avatar_ref FROM app_user WHERE status = 'ACTIVE' ORDER BY full_name LIMIT $1 OFFSET $2", [limit, offset])).rows;
+  return (await client.query(
+    `SELECT u.user_id, u.full_name, u.email, u.status, u.avatar_ref, p.last_seen_at
+       FROM app_user u
+       LEFT JOIN comms_user_presence p ON p.user_id = u.user_id
+      WHERE u.status = 'ACTIVE'
+      ORDER BY u.full_name LIMIT $1 OFFSET $2`,
+    [limit, offset],
+  )).rows;
 }
 
 module.exports = {

@@ -16,9 +16,11 @@ import { ErrorState } from "@/components/ui/states";
 import { useResource, errMsg } from "@/lib/use-resource";
 import { useAuth } from "@/app/auth/auth-context";
 import { cn } from "@/lib/cn";
-import { PlusIcon } from "@/components/ui/icons";
+import { PlusIcon, PhoneIcon } from "@/components/ui/icons";
 import * as api from "@/lib/smartcomm-api";
 import { getCommsSocket, useCommsChannel } from "@/lib/comms-socket";
+import { useOnline, lastSeenText } from "./presence";
+import { dial } from "./call/call-session";
 import { NewMessageDialog } from "./inbox/composer/new-message";
 import { Composer } from "./chat/composer";
 import { MessageBubble } from "./chat/message-bubble";
@@ -356,7 +358,16 @@ function ChannelRow({
    * people and the avatar already says which half is which, but "Voice note"
    * under "Ops Task Force" is useless without a name on it. */
   const showSender = c.kind !== "DIRECT" && !!c.last_message && !!senderName;
-  const preview = showSender ? `${senderName}: ${channelPreview(c)}` : channelPreview(c);
+  const isDirect = c.kind === "DIRECT" && !!c.partner_user_id;
+  /* Presence (guide §4.11): the dot is the socket — live, not a guess. When
+   * the partner is OFFLINE the row says when they were last here, day-first;
+   * when they're ONLINE the row is a normal chat row (the green dot carries
+   * the news). Hook is unconditional — the row is one component for both. */
+  const partnerOnline = useOnline(isDirect ? c.partner_user_id : null);
+  const offlineSince = isDirect && !partnerOnline ? lastSeenText(c.partner_last_seen_at) : "";
+  const preview = showSender
+    ? `${senderName}: ${channelPreview(c)}`
+    : offlineSince || channelPreview(c);
   return (
     <button
       type="button"
@@ -380,6 +391,15 @@ function ChannelRow({
                 : "text-muted-foreground",
             )}
           >
+            {isDirect && (
+              <span
+                className={cn(
+                  "h-1.5 w-1.5 shrink-0 rounded-full",
+                  partnerOnline ? "bg-[rgb(var(--ok))]" : "bg-[rgb(var(--ink-3))]",
+                )}
+                aria-hidden
+              />
+            )}
             <span className="truncate">{c.name}</span>
             {c.is_pinned && (
               <span className="shrink-0 text-primary-ink">
@@ -430,6 +450,35 @@ function ChannelRow({
   );
 }
 
+/** The honest presence line (guide §4.11): a LIVE dot that is the socket —
+ *  green only while a socket is connected — and, under it, when the socket
+ *  is gone, the last beat in the house day-first form. A dot with no signal
+ *  behind it is a lie, so the green is conditional on the socket, never on
+ *  the timestamp. */
+function PartnerPresence({
+  userId,
+  lastSeenAt,
+}: {
+  userId: string;
+  lastSeenAt?: string | null;
+}) {
+  const online = useOnline(userId);
+  return (
+    <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+      <span
+        className={cn(
+          "h-2 w-2 rounded-full",
+          online ? "bg-[rgb(var(--ok))]" : "bg-[rgb(var(--ink-3))]",
+        )}
+        aria-hidden
+      />
+      <span aria-live="polite">
+        {online ? tr("Online now") : lastSeenText(lastSeenAt)}
+      </span>
+    </span>
+  );
+}
+
 function InfoPane({ channel }: { channel: api.Channel | null }) {
   if (!channel)
     return (
@@ -448,6 +497,24 @@ function InfoPane({ channel }: { channel: api.Channel | null }) {
         <div className="text-sm font-semibold">{channel.name}</div>
         {channel.kind && (
           <span className="micro">{channel.kind.toLowerCase()}</span>
+        )}
+        {channel.kind === "DIRECT" && channel.partner_user_id && (
+          <>
+            <PartnerPresence
+              userId={channel.partner_user_id}
+              lastSeenAt={channel.partner_last_seen_at}
+            />
+            {/* The member-area dial affordance (the top one lives on the
+                thread header) — the same action, the same row it sits on. */}
+            <button
+              type="button"
+              onClick={() => void dial(channel.group_id, channel.name)}
+              className="mt-1 inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-[12px] text-foreground transition-colors hover:bg-accent"
+            >
+              <PhoneIcon width={14} height={14} />
+              {tr("Start a voice call")}
+            </button>
+          </>
         )}
       </div>
       <div className="space-y-3 pt-4 text-sm">
@@ -925,6 +992,23 @@ function Thread({
         </span>
         {ch.data?.kind && (
           <span className="micro">· {ch.data.kind.toLowerCase()}</span>
+        )}
+        {/* The dial affordance lives on the DIRECT header itself — where the
+            eyes already are when choosing whom to call. The partner is
+            resolved server-side from the channel; the UI only names the
+            channel (guide D8 — no person id to get wrong). */}
+        {ch.data?.kind === "DIRECT" && (
+          <button
+            type="button"
+            className="shrink-0 rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            aria-label={tr("Start a voice call")}
+            title={tr("Start a voice call")}
+            onClick={() => {
+              if (ch.data) void dial(ch.data.group_id, ch.data.name);
+            }}
+          >
+            <PhoneIcon width={16} height={16} />
+          </button>
         )}
         <Button size="sm" variant="ghost" className="hidden shrink-0 lg:inline-flex"
           aria-expanded={infoOpen} aria-controls="chat-info-panel" onClick={onToggleInfo}>

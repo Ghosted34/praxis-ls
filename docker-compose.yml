@@ -135,6 +135,55 @@ services:
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD}
 
+  # ── coturn — STUN/TURN for inhouse 1:1 calls (Smart Comms PR-1) ───────────
+  #
+  # Opt-in behind the `turn` profile: a deployment that has not set
+  # TURN_HOST / TURN_CREDENTIAL_SECRET runs STUN-only (P2P still works on
+  # easy NATs and on LANs, which is most of inhouse), and the default
+  # `docker compose up` is unchanged for every existing tenant box.
+  #
+  # Enabling it is: set TURN_CREDENTIAL_SECRET in .env, point TURN_HOST at
+  # whatever address the CLIENTS can reach (this box's public hostname), and
+  # `docker compose --profile turn up -d turn`.
+  #
+  # Why host networking: TURN must be reachable from the callers' BROWSERS
+  # (not from this box's API), and media relay needs a wide port range that
+  # `ports:` cannot map cleanly. On the single-VPS deployment this stack
+  # targets, host networking is the standard coturn shape: 3478 for
+  # allocation plus the relay range, all under time-limited credentials.
+  #
+  # SECURITY: `--use-auth-secret` means there is no static user to leak. The
+  # API mints `<expiry>:<user>` / HMAC-SHA1 credentials per call (TTL default
+  # 31 min, src/modules/smartcomm/smartcomm.turn.service.js); a credential
+  # stops working when the call does. The secret below is the same one the
+  # API signs with — set it once in .env, both sides read it.
+  turn:
+    image: coturn/coturn:latest
+    container_name: praxis_turn
+    profiles: ["turn"]
+    network_mode: host
+    command:
+      [
+        "--use-auth-secret",
+        "--no-cli",
+        "--no-multicast-peers",
+        "--listening-port=3478",
+        "--min-port=49152",
+        "--max-port=65535",
+      ]
+    environment:
+      # The coturn image reads its shared secret from this variable when
+      # --use-auth-secret is set. Empty is refused by the API side (STUN-only
+      # mode kicks in), so there is no half-configured state where the relay
+      # accepts credentials nobody can mint.
+      TURNSHAREKEY: ${TURN_CREDENTIAL_SECRET}
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "3"
+
   # ── PgBouncer — transaction pooling for the tenant fleet (WS-S1 / D3) ─────
   #
   # Opt-in. Nothing routes through it until TENANT_DB_POOLER_HOST is set, so

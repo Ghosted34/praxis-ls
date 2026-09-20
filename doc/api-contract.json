@@ -2,11 +2,11 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 141,
-  "route_count": 1682,
+  "route_count": 1690,
   "tiers": {
     "public": 68,
     "self-scoped": 105,
-    "gated": 1509
+    "gated": 1517
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -4282,6 +4282,24 @@
       "tier": "gated"
     },
     "GET /api/tenant/site/pages/:pageId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/smartcomm/calls": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/smartcomm/calls/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/smartcomm/calls/:id/turn": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -8998,6 +9016,36 @@
       "tier": "gated"
     },
     "POST /api/tenant/site/pages/:pageId/publish": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/smartcomm/calls": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/smartcomm/calls/:id/accept": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/smartcomm/calls/:id/decline": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/smartcomm/calls/:id/fail": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/smartcomm/calls/:id/hangup": {
       "auth": true,
       "rbac": true,
       "validated": false,

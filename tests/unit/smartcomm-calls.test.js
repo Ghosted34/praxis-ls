@@ -15,6 +15,20 @@ jest.mock("../../src/jobs/queue-producer", () => ({ enqueue: jest.fn(async () =>
 jest.mock("../../src/shared/push/push.service", () => ({
   sendToUser: jest.fn(async () => ({ sent: 1, failed: 0, total: 1 })),
 }));
+// FN-1: the liveness sweep reads the online registry from Redis. An in-memory
+// SET/ZSET pair emulates it; a test seeds "who has been gone since when"
+// directly, which is exactly what the sweep is allowed to believe.
+const mockRedis = { sets: new Map(), zsets: new Map() };
+jest.mock("../../src/config/redis", () => ({
+  getClient: () => ({
+    sadd: async (k, m) => { if (!mockRedis.sets.has(k)) mockRedis.sets.set(k, new Set()); mockRedis.sets.get(k).add(m); return 1; },
+    srem: async (k, m) => { const hit = mockRedis.sets.get(k)?.delete(m); return hit ? 1 : 0; },
+    smembers: async (k) => [...(mockRedis.sets.get(k) || [])],
+    zadd: async (k, score, member) => { if (!mockRedis.zsets.has(k)) mockRedis.zsets.set(k, new Map()); mockRedis.zsets.get(k).set(member, score); return 1; },
+    zrem: async (k, ...members) => { const z = mockRedis.zsets.get(k); let n = 0; for (const m of members) if (z && z.delete(m)) n += 1; return n; },
+    zrange: async (k) => [...(mockRedis.zsets.get(k) || new Map()).entries()].flat(),
+  }),
+}));
 const service = require("../../src/modules/smartcomm/smartcomm.call.service");
 
 const U1 = "11111111-1111-1111-1111-111111111111";
@@ -140,6 +154,16 @@ function makeClient({ store, members = [], groupKind = "DIRECT" } = {}) {
         if (!row || (row.caller_id !== userId && row.callee_id !== userId)) return { rows: [] };
         return { rows: [{ user_id: row.caller_id === userId ? row.callee_id : row.caller_id }] };
       }
+      if (/SELECT call_id, caller_id, callee_id FROM comms_call WHERE status = 'IN_CALL'/.test(sql)) {
+        // FN-1: the liveness pass's row scan — only in-call rows are at risk.
+        return {
+          rows: [...store.calls.values()].filter((c) => c.status === "IN_CALL").map((c) => ({
+            call_id: c.call_id,
+            caller_id: c.caller_id,
+            callee_id: c.callee_id,
+          })),
+        };
+      }
       if (/FROM comms_call\s+WHERE \(status = 'RINGING' AND started_at/.test(sql)) {
         // The sweep's due query, run against the same clock the SQL uses.
         const now = Date.now();
@@ -164,6 +188,8 @@ let publishSpy;
 
 beforeEach(() => {
   thisSkipActiveLookup = 0;
+  mockRedis.sets.clear();
+  mockRedis.zsets.clear();
   publishSpy = jest.spyOn(realtime, "publishToUser").mockImplementation(() => {});
   require("../../src/jobs/queue-producer").enqueue.mockClear();
   require("../../src/shared/push/push.service").sendToUser.mockClear();
@@ -552,5 +578,90 @@ describe("ring ack and push escalation (PR-3)", () => {
     out = await service.escalateRing(makeClient({ store }), { callId: ringing.call_id, tenantSlug: "acme" });
     expect(out).toMatchObject({ pushed: false, reason: "already escalated" });
     expect(push.sendToUser).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("call liveness — the row's fourth way to end (FN-1)", () => {
+  const ON_KEY = "praxis:comms:online:acme:live";
+  const OFF_KEY = "praxis:comms:call-offline:acme:live";
+  const nowS = () => Math.floor(Date.now() / 1000);
+
+  /** An answered call, five minutes in: past the ring deadline's concern,
+   *  far from the 30-minute cap, so liveness is the only thing that can move
+   *  it. */
+  function inCall(store) {
+    const call = store.insert({ groupId: G1, callerId: U1, calleeId: U2 });
+    store.transition(call.call_id, "RINGING", {
+      status: "IN_CALL",
+      connected_at: new Date(Date.now() - 300_000).toISOString(),
+    });
+    return call;
+  }
+
+  test("a call whose both devices have been gone 60 s ends itself, reason disconnected", async () => {
+    const store = makeStore();
+    const call = inCall(store);
+    // Neither user has a socket, and the book says they have been gone for
+    // two minutes.
+    mockRedis.zsets.set(OFF_KEY, new Map([
+      [U1, nowS() - 120],
+      [U2, nowS() - 119],
+    ]));
+    const { moved } = await service.sweep(makeClient({ store }), { tenantSlug: "acme", env: "live" });
+    expect(moved).toBe(1);
+    const row = store.calls.get(call.call_id);
+    expect(row.status).toBe("ENDED");
+    expect(row.end_reason).toBe("disconnected");
+    expect(row.ended_at).toBeTruthy();
+  });
+
+  test("one device still online keeps the call alive, no matter how old the book is", async () => {
+    const store = makeStore();
+    const call = inCall(store);
+    mockRedis.sets.set(ON_KEY, new Set([`${U1}:socket-1`]));
+    mockRedis.zsets.set(OFF_KEY, new Map([[U2, nowS() - 600]]));
+    const { moved } = await service.sweep(makeClient({ store }), { tenantSlug: "acme", env: "live" });
+    expect(moved).toBe(0);
+    expect(store.calls.get(call.call_id).status).toBe("IN_CALL");
+  });
+
+  test("a fresh absence (under 60 s) does not end the call — the airplane row survives", async () => {
+    const store = makeStore();
+    const call = inCall(store);
+    // Nobody online; the first tick BOOKS the absence, it does not act on it…
+    const first = await service.sweep(makeClient({ store }), { tenantSlug: "acme", env: "live" });
+    expect(first.moved).toBe(0);
+    expect(store.calls.get(call.call_id).status).toBe("IN_CALL");
+    // …and a tick moments later still sees the absence as fresh.
+    const second = await service.sweep(makeClient({ store }), { tenantSlug: "acme", env: "live" });
+    expect(second.moved).toBe(0);
+    expect(store.calls.get(call.call_id).status).toBe("IN_CALL");
+  });
+
+  test("a RINGING row is the ring deadline's alone — liveness never touches it", async () => {
+    const store = makeStore();
+    const call = store.insert({ groupId: G1, callerId: U1, calleeId: U2 });
+    call.started_at = new Date(Date.now() - 10_000).toISOString(); // 50 s from NO_ANSWER
+    mockRedis.zsets.set(OFF_KEY, new Map([
+      [U1, nowS() - 300],
+      [U2, nowS() - 300],
+    ]));
+    const { moved } = await service.sweep(makeClient({ store }), { tenantSlug: "acme", env: "live" });
+    expect(moved).toBe(0);
+    expect(store.calls.get(call.call_id).status).toBe("RINGING");
+  });
+
+  test("a registry outage skips liveness and never breaks the ordinary deadlines", async () => {
+    const store = makeStore();
+    const call = store.insert({ groupId: G1, callerId: U1, calleeId: U2 });
+    call.started_at = new Date(Date.now() - 70_000).toISOString(); // due: NO_ANSWER
+    const redis = require("../../src/config/redis");
+    const spy = jest.spyOn(redis, "getClient").mockImplementation(() => {
+      throw new Error("redis down");
+    });
+    const { moved } = await service.sweep(makeClient({ store }), { tenantSlug: "acme", env: "live" });
+    spy.mockRestore();
+    expect(moved).toBe(1);
+    expect(store.calls.get(call.call_id).status).toBe("NO_ANSWER");
   });
 });

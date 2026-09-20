@@ -346,9 +346,28 @@ function attachPresence(socket) {
       .catch((err) => logger.warn({ err, userId }, "presence flush failed"));
   };
 
+  // The online registry the call-liveness sweep reads (field note FN-1): one
+  // SET per tenant+env, one member per SOCKET, so a user with two tabs on two
+  // replicas stays "online" while any tab is alive, and the last tab leaving
+  // removes the user cleanly. Best-effort: a registry hiccup must never fail a
+  // join/leave, and the sweep's 60 s offline grace plus the 30-minute cap both
+  // sit on the far side of a wrong read.
+  const touchOnline = (add) => {
+    try {
+      const { getClient } = require("../config/redis");
+      const member = `${userId}:${socket.id}`;
+      const onlineKey = `praxis:comms:online:${tenantSlug}:${env}`;
+      const op = add ? getClient().sadd(onlineKey, member) : getClient().srem(onlineKey, member);
+      void op.catch(() => {});
+    } catch {
+      /* @silent:storage — no Redis client yet (boot); the next socket event retries. */
+    }
+  };
+
   const n = (userSocketCount.get(key) || 0) + 1;
   userSocketCount.set(key, n);
   touch();
+  touchOnline(true);
   if (n === 1) {
     io.to(mailRoom(tenantSlug)).emit("comms:presence", { user_id: userId, online: true });
   }
@@ -356,6 +375,7 @@ function attachPresence(socket) {
   socket.on("comms:seen", () => touch());
 
   socket.on("disconnect", () => {
+    touchOnline(false);
     const left = (userSocketCount.get(key) || 1) - 1;
     if (left <= 0) {
       userSocketCount.delete(key);

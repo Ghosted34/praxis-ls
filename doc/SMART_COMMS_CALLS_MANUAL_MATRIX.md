@@ -1,11 +1,18 @@
 # Smart Comms — manual matrix (standing, scripted)
 
-> **SIGN-OFF PENDING.** No human has run this matrix on real devices yet. The
-> client is committed for the PR-3 review with every row marked `PENDING`, and
-> the programme is **not** allowed to claim §7.4.5 passed until somebody signs a
-> column below. This is a voice product: a green CI proves the state machine, the
-> aggregation and the media graph — it cannot hear a forklift, and it cannot ring
-> a real phone.
+> **SIGN-OFF PENDING.** No row is signed yet, and the programme is **not**
+> allowed to claim §7.4.5 passed until somebody signs a column below. This is a
+> voice product: a green CI proves the state machine, the aggregation and the
+> media graph — it cannot hear a forklift, and it cannot ring a real phone.
+>
+> **First real-hardware attempt — 2026-09-20 (owner, Android ↔ desktop, two
+> test accounts).** The media path worked — "for the few seconds I could
+> actually talk and hear clearly" — but two defects blocked the run before a
+> single row could be signed: no audible ring on a backgrounded or closed app
+> (FN-2), and a call that dies with both devices gone holding both users busy
+> for up to 30 minutes (FN-1). Both are fixed in the closing PR
+> (`doc/SMART_COMMS_CALLS_FIELD_NOTES.md`); every row below stays `PENDING`
+> until it is run on the fixed build and signed.
 
 Derived from `doc/SMART_COMMS_CALLS_ENGINEERING_GUIDE.md` §3.7 (the standing
 matrix), §5.7 (the PR-1 checklist) and §7.2/§7.4 (what PR-3 adds). The devices

@@ -34,6 +34,7 @@ import i18n from "@/lib/i18n";
 import { getCommsSocket } from "@/lib/comms-socket";
 import { ApiError } from "@/lib/api-client";
 import { tr } from "@/lib/i18n";
+import { tokenStore } from "@/lib/token-store";
 
 export type Phase = "idle" | "outgoing" | "incoming" | "connecting" | "in_call" | "ended";
 
@@ -443,6 +444,49 @@ export async function hangup(): Promise<void> {
     swallowServerEnded(err);
   }
   toIdleIfEnded(id);
+}
+
+/**
+ * Tell the server when THIS tab goes away mid-call (field note FN-1).
+ *
+ * The server row ends by a client report, by the 60 s ring deadline, by the
+ * 30-minute cap, or by the liveness sweep (both devices gone). The report is
+ * the only one that ends a call at once — and a page that is closing or
+ * reloading is a page that still gets a chance to make it. So it does:
+ * `pagehide` (it fires on close, on reload and on mobile bfcache, where
+ * `beforeunload` cannot be trusted) sends a `keepalive: true` hang-up, the
+ * one network call the browser owes a dying page.
+ *
+ * Best-effort by construction: if the network refuses, the row is still owned
+ * — the liveness sweep (both devices gone) or the cap ends it — and the other
+ * side gets a plain sentence instead of a frozen call and a busy trap.
+ */
+function keepaliveHangup(): void {
+  const call = state.call;
+  const { phase } = state;
+  if (!call) return;
+  if (phase !== "in_call" && phase !== "connecting" && phase !== "outgoing" && phase !== "incoming") return;
+  try {
+    const h = new Headers();
+    h.set("Content-Type", "application/json");
+    h.set("X-Praxis-Env", tokenStore.getEnv());
+    const t = tokenStore.getAccess();
+    if (t) h.set("Authorization", `Bearer ${t}`);
+    void fetch(`/api/tenant/comms/calls/${call.call_id}/hangup`, {
+      method: "POST",
+      headers: h,
+      body: JSON.stringify({ reason: "hangup" }),
+      keepalive: true,
+    }).catch(() => {
+      /* @silent:teardown — a dying page owes the network nothing; the sweep owns the row. */
+    });
+  } catch {
+    /* @silent:teardown — see above. */
+  }
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("pagehide", keepaliveHangup);
 }
 
 function setMuted(muted: boolean): void {

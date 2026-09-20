@@ -119,8 +119,12 @@ export function CommsLive() {
   React.useEffect(() => {
     if (call.phase !== "incoming") return;
     unlockAudio();
-    playNotifSound("urgent");
-    const t = setInterval(() => playNotifSound("urgent"), 2500);
+    // The telephone ring, not the notification blip (FN-2): this tab is alive
+    // even when hidden, and an alive tab may play audio — that is what makes a
+    // backgrounded app ring like a phone. A CLOSED page cannot play anything;
+    // that is the platform's ceiling and the notification tier's job.
+    playNotifSound("ring");
+    const t = setInterval(() => playNotifSound("ring"), 2500);
     return () => clearInterval(t);
   }, [call.phase, call.peerName]);
 
@@ -147,6 +151,8 @@ export function CommsLive() {
       toast.info(tr("Call declined"));
     } else if (r === "ice_failed" || r === "busy") {
       toast.error(tr("Could not connect the call"));
+    } else if (r === "disconnected") {
+      toast.info(tr("The call was lost — the connection ended"));
     } else {
       toast.info(tr("Call ended"));
     }

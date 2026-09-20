@@ -292,22 +292,33 @@ function attachCallSignals(socket) {
       logger.warn({ err, callId }, "call:ice relay failed"),
     );
   });
-  socket.on("call:ring_ack", ({ callId } = {}) => {
-    // PR-1: validated and logged only. The push escalation this stops is
-    // PR-3 (§4.6), but the client already sends it, and a signal that is
-    // accepted and ignored now and meaningful later is one less protocol
-    // change in the middle of a programme.
+  socket.on("call:ring_ack", ({ callId, channel } = {}) => {
+    // PR-3 (§4.6). The ack is what stops the other channels: it is written to
+    // the row (which the delayed push escalation re-reads before it sends) and
+    // broadcast to this user's other devices so the desk tab and the phone stop
+    // ringing together.
+    //
+    // The write goes through the SERVICE, not the repo, because the service is
+    // where the two rules live that make the ack meaningful: only the callee can
+    // ack a ring, and only the FIRST ack counts (a second device acking 20 ms
+    // later must not overwrite which channel landed).
+    //
+    // A failure here is swallowed on purpose: the ring times out on its own 60
+    // seconds later, so an unvalidated ack costs at most one push and never the
+    // call — and a warning per ack on a flaky network is a log nobody can read.
     if (typeof callId !== "string") return;
-    const callRepo = require("../modules/smartcomm/smartcomm.call.repo");
+    const callService = require("../modules/smartcomm/smartcomm.call.service");
     registry
-      .withTenantConnection(tenant, env, (c) => callRepo.isParticipant(c, { callId, userId }))
-      .then((ok) => {
-        if (ok) logger.debug({ callId, userId }, "call: ring acked");
-      })
+      .withTenantConnection(tenant, env, (c) =>
+        callService.ackRing(c, {
+          id: callId,
+          actor: { user_id: userId },
+          channel: typeof channel === "string" ? channel : "socket",
+          tenantSlug,
+        }),
+      )
       .catch(
-        /* @silent:db — a ring ack that cannot be validated is worth nothing to
-           anyone: the ring times out on its own 60 seconds later either way,
-           and a warning per unvalidable ack would flood on a flaky network. */
+        /* @silent:db — see above. */
         () => {},
       );
   });

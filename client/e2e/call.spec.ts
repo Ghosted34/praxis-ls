@@ -138,6 +138,11 @@ async function fakeComms(page: Page) {
   /* The call REST surface — the row is the server's word in this test. */
   let sawHangup = false;
   let sawDecline = false;
+  let sawAccept = false;
+  // What `GET /calls/:id` answers with. PR-3's deep-link tests set this: the
+  // whole point of the expired-push path is that the ROW, not the socket,
+  // decides whether there is still a ring to show.
+  let rowForGet: Record<string, unknown> = callRow("NO_ANSWER", { end_reason: "no_answer" });
   await page.route("**/api/tenant/smartcomm/**", async (route) => {
     const req = route.request();
     const path = new URL(req.url()).pathname.replace("/api/tenant/smartcomm", "");
@@ -159,6 +164,21 @@ async function fakeComms(page: Page) {
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({ ...callRow("RINGING"), ice: ICE_EMPTY }),
+      });
+    }
+    if (/^\/calls\/[^/]+$/.test(path) && method === "GET") {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(rowForGet),
+      });
+    }
+    if (/^\/calls\/[^/]+\/accept$/.test(path) && method === "POST") {
+      sawAccept = true;
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(callRow("IN_CALL", { connected_at: new Date().toISOString(), ice: ICE_EMPTY })),
       });
     }
     if (/^\/calls\/[^/]+\/hangup$/.test(path) && method === "POST") {
@@ -186,6 +206,10 @@ async function fakeComms(page: Page) {
     drainRemoteCandidates: () => remoteCandidates.splice(0),
     sawHangup: () => sawHangup,
     sawDecline: () => sawDecline,
+    sawAccept: () => sawAccept,
+    setRowForGet: (row: Record<string, unknown>) => {
+      rowForGet = row;
+    },
   };
 }
 
@@ -305,4 +329,111 @@ test("an incoming ring shows who and the 60 s window; declining closes it", asyn
   await ring.getByRole("button", { name: "Decline" }).click();
   await expect(page.getByRole("alertdialog")).toHaveCount(0);
   expect(comms.sawDecline()).toBe(true);
+});
+
+/* ── PR-3: ring acknowledgement, background/resume, the deep link ─────────── */
+
+/**
+ * Take the tab to the background and back, the way the corridor use case does
+ * it: the phone locks, the PWA is hidden, the screen comes back.
+ *
+ * Playwright cannot background a tab the way a phone can, so the two DOCUMENT
+ * facts the client reads are driven directly — `visibilityState` and `hidden` —
+ * plus the event that announces the change. Everything downstream of them is
+ * real: the socket stays connected, the peer connection stays up, and the
+ * session's own state machine is what has to survive.
+ */
+async function setVisibility(page: Page, state: "hidden" | "visible") {
+  await page.evaluate((s) => {
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => s });
+    Object.defineProperty(document, "hidden", { configurable: true, get: () => s === "hidden" });
+    document.dispatchEvent(new Event("visibilitychange"));
+  }, state);
+}
+
+test("a call survives the tab going to the background and coming back", async ({ page }) => {
+  await seedSession(page);
+  await fakeApi(page);
+  const comms = await fakeComms(page);
+
+  await page.goto("/comms?channel=ch-e2e-1");
+  await page.getByRole("button", { name: "Start a voice call" }).first().click();
+  const offer = (await comms.next("call:offer")) as { callId: string; sdp: string };
+  const answerSdp = await createCallee(page, offer.sdp);
+  comms.tell("call:accepted", { call_id: "call-e2e-1", by: { user_id: PARTNER.user_id } });
+  comms.tell("call:answer", { call_id: "call-e2e-1", sdp: answerSdp });
+
+  await expect
+    .poll(
+      async () => {
+        await pumpCandidates(page, comms);
+        return page.evaluate(() => {
+          const w = window as unknown as { __callee?: RTCPeerConnection };
+          return w.__callee?.iceConnectionState || "new";
+        });
+      },
+      { timeout: 15_000 },
+    )
+    .toBe("connected");
+  await expect(page.getByRole("timer")).toBeVisible({ timeout: 15_000 });
+
+  // Background: the tab is hidden, the media path is not touched by us, and the
+  // session must NOT tear the call down for it.
+  await setVisibility(page, "hidden");
+  await page.waitForTimeout(1500);
+  await setVisibility(page, "visible");
+
+  // Still in the call, still counting, and honest about the link: the quality
+  // dot is read from REAL getStats() samples, so its presence is the proof the
+  // sampler survived the round trip.
+  await expect(page.getByRole("timer")).toBeVisible();
+  await expect(page.getByText(/^(Good|Fair|Poor) connection$/)).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText("Reconnecting…")).toHaveCount(0);
+  await expect(page.getByText("Your microphone is on")).toBeVisible();
+
+  // And it still ends the normal way.
+  await page.getByRole("button", { name: "End call" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0, { timeout: 10_000 });
+  expect(comms.sawHangup()).toBe(true);
+});
+
+test("a ring is acknowledged on the socket channel — the ack that stops the push", async ({ page }) => {
+  await seedSession(page);
+  await fakeApi(page);
+  const comms = await fakeComms(page);
+
+  await page.goto("/comms?channel=ch-e2e-1");
+  await expect(page.getByText(PARTNER.name).first()).toBeVisible();
+
+  comms.tell("call:ringing", {
+    call_id: "call-e2e-3",
+    from: { user_id: PARTNER.user_id, name: PARTNER.name },
+    ring_timeout_s: 60,
+  });
+  await expect(page.getByRole("alertdialog")).toBeVisible();
+
+  // A visible tab rings in-app, so the channel it reports is `socket` — and
+  // that report is what makes the server stand its push escalation down.
+  const ack = (await comms.next("call:ring_ack")) as { callId: string; channel: string };
+  expect(ack.callId).toBe("call-e2e-3");
+  expect(ack.channel).toBe("socket");
+});
+
+test("an expired push opens the redial path, not a ring for a call that is over", async ({ page }) => {
+  await seedSession(page);
+  await fakeApi(page);
+  const comms = await fakeComms(page);
+  // The row says the 60-second window is long gone.
+  comms.setRowForGet(callRow("NO_ANSWER", { end_reason: "no_answer", callee_id: "u-1" }));
+
+  await page.goto("/comms?call=8f2f5a1e-3c22-4a53-9a2b-6e0f2c9d1a44&act=accept");
+
+  // No fake ring: an honest line and a way to call back.
+  await expect(page.getByText("That call has already ended")).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByRole("alertdialog")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Call again" }).click();
+  await expect(page.getByText("Calling…")).toBeVisible({ timeout: 10_000 });
+  const offer = (await comms.next("call:offer")) as { sdp: string };
+  expect(offer.sdp).toContain("v=0");
 });

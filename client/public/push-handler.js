@@ -49,6 +49,22 @@ function applyBadge(count) {
   }
 }
 
+/*
+ * The call ring's own words (Smart Comms PR-3, guide §4.6).
+ *
+ * The SERVER sends the ring in English, because every other server-side string
+ * in this codebase is English and the caller's NAME — the notification's title,
+ * the part that matters — needs no translation at all. Body and the two action
+ * labels are presentation, they are the same three phrases on every ring, and
+ * they belong on the device that knows the reader's language. So they live
+ * here, keyed by `navigator.language`, and the server's payload only says
+ * `kind: "call"`.
+ */
+const CALL_STRINGS = {
+  en: { body: "Incoming call", accept: "Accept", decline: "Decline" },
+  fr: { body: "Appel entrant", accept: "Répondre", decline: "Refuser" },
+};
+
 self.addEventListener("push", (event) => {
   let data = {};
   try {
@@ -57,8 +73,11 @@ self.addEventListener("push", (event) => {
     data = { title: "Notification", body: event.data ? event.data.text() : "" };
   }
   const title = data.title || "Praxis LS";
+  const lang = String((self.navigator && self.navigator.language) || "en").slice(0, 2);
+  const callKind = data.data && data.data.kind === "call";
+  const callWords = CALL_STRINGS[lang] || CALL_STRINGS.en;
   const options = {
-    body: data.body || "",
+    body: callKind ? callWords.body : data.body || "",
     tag: data.tag || undefined,
     // Only meaningful alongside a tag. Without it, a replacing notification
     // updates in place with no sound or vibration — indistinguishable, to
@@ -90,7 +109,11 @@ self.addEventListener("push", (event) => {
   };
   // Up to two, because that is what a notification shade will actually render.
   if (Array.isArray(data.actions) && data.actions.length) {
-    options.actions = data.actions.slice(0, 2);
+    options.actions = data.actions.slice(0, 2).map((a) =>
+      callKind && callWords[a.action]
+        ? { ...a, title: callWords[a.action] }
+        : a,
+    );
   }
 
   event.waitUntil(

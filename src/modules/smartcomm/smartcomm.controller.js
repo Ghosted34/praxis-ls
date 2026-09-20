@@ -315,7 +315,9 @@ module.exports = {
   // Membership is asserted in the call service (the channel is the
   // authorisation); the state machine is server-authoritative there too, so
   // the handlers stay thin.
-  createCall: C((c, req) => calls.createCall(c, { groupId: req.body.group_id, actor: actor(req) })),
+  createCall: C((c, req) => calls.createCall(c, {
+    groupId: req.body.group_id, actor: actor(req), tenantMeta: req.tenant, env: req.env,
+  })),
   acceptCall: A((c, req) => calls.acceptCall(c, { id: req.params.id, actor: actor(req) })),
   declineCall: A((c, req) => calls.declineCall(c, {
     id: req.params.id, actor: actor(req), tenantMeta: req.tenant, env: req.env,

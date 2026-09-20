@@ -41,4 +41,19 @@ module.exports = {
     const data = await req.identityDb((c) => service.setShell(c, { userId: req.user.user_id, ...req.body }));
     res.json({ data });
   }),
+
+  // The call preferences (PR-3). Same shape as the two sections above, and the
+  // same reason for living in the identity schema: which mic filter this person
+  // wants is a property of the person, not of the environment they are testing
+  // in — and a preference stored per-environment would get wiped with the
+  // sandbox on the next DROP SCHEMA.
+  getCalls: asyncHandler(async (req, res) => {
+    const data = await req.identityDb((c) => service.getCalls(c, req.user.user_id));
+    res.json({ data });
+  }),
+
+  putCalls: asyncHandler(async (req, res) => {
+    const data = await req.identityDb((c) => service.setCalls(c, { userId: req.user.user_id, ...req.body }));
+    res.json({ data });
+  }),
 };

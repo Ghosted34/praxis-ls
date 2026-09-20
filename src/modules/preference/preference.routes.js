@@ -7,6 +7,8 @@
  *   DELETE /me/preferences/appearance     clear all three → tenant default
  *   GET    /me/preferences/shell          ribbon + icon-rail arrangement
  *   PUT    /me/preferences/shell          partial update; null clears a key
+ *   GET    /me/preferences/calls          the noise-filter switch this user owns
+ *   PUT    /me/preferences/calls          partial update; null = tenant default
  *
  * The shell section has no DELETE. "Reset the rail" is `railPins: null`, which
  * the partial PUT already expresses, and a section-wide reset would also clear
@@ -25,7 +27,7 @@
 const express = require("express");
 const { authMiddleware } = require("../../middleware/auth");
 const controller = require("./preference.controller");
-const { validateAppearance, validateShell } = require("./preference.validator");
+const { validateAppearance, validateShell, validateCalls } = require("./preference.validator");
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -36,5 +38,8 @@ router.delete("/preferences/appearance", controller.resetAppearance);
 
 router.get("/preferences/shell", controller.getShell);
 router.put("/preferences/shell", validateShell, controller.putShell);
+
+router.get("/preferences/calls", controller.getCalls);
+router.put("/preferences/calls", validateCalls, controller.putCalls);
 
 module.exports = { basePath: "/me", feature: null, router };

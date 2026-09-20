@@ -103,3 +103,36 @@ export const fetchShellPrefs = async (): Promise<ShellPrefs> => {
 /** Partial — omit a key to leave it, send null to clear it back to unchosen. */
 export const saveShellPrefs = (patch: Partial<ShellPrefs>) =>
   tenant<ShellPrefs>("/me/preferences/shell", { method: "PUT", body: patch });
+
+/**
+ * The call preferences (Smart Comms PR-3, guide §4.4).
+ *
+ * ONE KEY, and its nullability is the whole design: the tenant sets the default
+ * for the yard (`comms.call_noise_suppression`), and this is the individual's
+ * override of it. `null` means "no opinion — follow the tenant", which is why
+ * the type is `boolean | null` and not `boolean`: a person who has never
+ * opened the screen must keep following the tenant if the tenant changes its
+ * mind, while a person who deliberately switched the filter off must not.
+ *
+ * The server clamps and coerces on write (preference.service.js); the client
+ * sends what the user chose and reads back the stored value.
+ */
+export type CallPrefs = {
+  /** true = filter on, false = filter off, null = follow the tenant default. */
+  noiseSuppression: boolean | null;
+};
+
+export const EMPTY_CALL_PREFS: CallPrefs = { noiseSuppression: null };
+
+export const fetchCallPrefs = async (): Promise<CallPrefs> => {
+  const p = ((await tenant<unknown>("/me/preferences/calls")) ?? {}) as Partial<CallPrefs>;
+  return {
+    noiseSuppression:
+      typeof p.noiseSuppression === "boolean" ? p.noiseSuppression : null,
+  };
+};
+
+/** Partial — omit to leave the preference alone, send null to follow the
+ *  tenant default again. */
+export const saveCallPrefs = (patch: Partial<CallPrefs>) =>
+  tenant<CallPrefs>("/me/preferences/calls", { method: "PUT", body: patch });

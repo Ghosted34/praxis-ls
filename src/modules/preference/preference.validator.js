@@ -74,7 +74,18 @@ function validate(schema) {
   };
 }
 
+/**
+ * The call preferences (PR-3). A single nullable boolean, and the nullability
+ * is the whole contract — see CALLS_KEYS in the service: null deletes the row
+ * and hands the decision back to the tenant's default, which is the difference
+ * between "I have not chosen" and "I chose off".
+ */
+const calls = z.object({
+  noiseSuppression: z.boolean().nullable().optional(),
+});
+
 const validateAppearance = validate(appearance);
 const validateShell = validate(shell);
+const validateCalls = validate(calls);
 
-module.exports = { validateAppearance, validateShell };
+module.exports = { validateAppearance, validateShell, validateCalls };

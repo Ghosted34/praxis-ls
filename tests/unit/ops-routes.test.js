@@ -67,6 +67,13 @@ jest.mock("../../src/services/platform/object-backup.service", () => ({
   syncTenantObjects: jest.fn(async () => ({ copied: 0 })),
   scanTenantIntegrity: jest.fn(async () => ({ clean: true })),
 }));
+jest.mock("../../src/services/platform/comms-metrics.service", () => ({
+  // PR-3's ops read. The service is tested on its own (comms-call-metrics.test.js);
+  // here it only has to exist so the ROUTE's gating and validation are what is
+  // being exercised.
+  overview: jest.fn(async ({ days }) => ({ fleet: { days }, tenants: [] })),
+  alertConfig: jest.fn(async () => ({ threshold: 3, window_hours: 24, source: "defaults" })),
+}));
 jest.mock("../../src/services/platform/uptime.service", () => ({
   availability: jest.fn(async () => []),
   incidents: jest.fn(async () => []),
@@ -134,6 +141,20 @@ describe("capability gating", () => {
     CAPS = new Set(["ops.read"]);
     app = makeApp();
     await request(app).get("/ops/health").expect(200);
+  });
+
+  test("GET /ops/comms/calls is an ops.read surface and passes its window", async () => {
+    await request(app).get("/ops/comms/calls").expect(403);
+    CAPS = new Set(["ops.read"]);
+    app = makeApp();
+    const comms = require("../../src/services/platform/comms-metrics.service");
+    const res = await request(app).get("/ops/comms/calls?days=7").expect(200);
+    expect(comms.overview).toHaveBeenCalledWith({ days: 7 });
+    expect(res.body.data.alert.threshold).toBe(3);
+    // The window is bounded at the validator: a page that asked for a decade
+    // would otherwise be a fleet-wide scan of every tenant's call table.
+    await request(app).get("/ops/comms/calls?days=0").expect(422);
+    await request(app).get("/ops/comms/calls?days=99999").expect(422);
   });
 
   test("ops.read does NOT let you trigger work", async () => {

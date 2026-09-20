@@ -510,6 +510,11 @@ export type Call = {
    *  False means: no recorder arms, no consent banner shows, because nothing is
    *  being recorded. Absent on the ring payload an older server sends. */
   recording_enabled?: boolean;
+  /** The tenant's RNNoise default (PR-3, §4.4). False means this tenant has
+   *  switched the yard filter off for everyone; the per-user preference can
+   *  still override it either way. Absent on a ring payload from an older
+   *  server, which is why the client treats "absent" as "on". */
+  noise_suppression?: boolean;
 };
 
 /** Dial on a DIRECT channel. The partner is resolved server-side; `ice` is

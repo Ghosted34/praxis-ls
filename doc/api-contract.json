@@ -2,11 +2,11 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 141,
-  "route_count": 1697,
+  "route_count": 1700,
   "tiers": {
     "public": 68,
-    "self-scoped": 105,
-    "gated": 1524
+    "self-scoped": 107,
+    "gated": 1525
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -910,6 +910,12 @@
       "tier": "gated"
     },
     "GET /api/platform/ops/backups/wal": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/platform/ops/comms/calls": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -2956,6 +2962,12 @@
       "tier": "self-scoped"
     },
     "GET /api/tenant/me/preferences/appearance": {
+      "auth": true,
+      "rbac": false,
+      "validated": false,
+      "tier": "self-scoped"
+    },
+    "GET /api/tenant/me/preferences/calls": {
       "auth": true,
       "rbac": false,
       "validated": false,
@@ -10036,6 +10048,12 @@
       "tier": "self-scoped"
     },
     "PUT /api/tenant/me/preferences/appearance": {
+      "auth": true,
+      "rbac": false,
+      "validated": true,
+      "tier": "self-scoped"
+    },
+    "PUT /api/tenant/me/preferences/calls": {
       "auth": true,
       "rbac": false,
       "validated": true,

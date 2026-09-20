@@ -281,3 +281,110 @@ describe("call session", () => {
     expect(result.current.lastError).toBe("That person is already on a call");
   });
 });
+
+/* ── PR-3: the ring channel, the push deep link, the honest path ─────────── */
+
+describe("the ring channel and the push deep link (PR-3)", () => {
+  it("a visible tab acks on the socket channel — the ack that stops the push", async () => {
+    const mod = await fresh();
+    act(() => mod.wireCallSocket());
+    renderHook(() => mod.useCall());
+    await ringIn();
+    // Let the ack's microtask chain run (presentRing is async, jsdom's document
+    // is visible, so it resolves to "socket" without touching notifications).
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(emitted("call:ring_ack")).toEqual([{ callId: "c1", channel: "socket" }]);
+  });
+
+  it("an expired push link offers the redial path instead of a dead ring", async () => {
+    const mod = await fresh();
+    act(() => mod.wireCallSocket());
+    const { result } = renderHook(() => mod.useCall());
+
+    // The row says the call is over: the push arrived after the 60 s window.
+    W.api.getCall = async () => W.row({ status: "NO_ANSWER", end_reason: "no_answer", callee_id: W.ME });
+    await act(async () => {
+      mod.initCallDeepLink("?call=8f2f5a1e-3c22-4a53-9a2b-6e0f2c9d1a44&act=accept");
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(result.current.phase).toBe("idle");
+    expect(result.current.redial).toEqual({ groupId: "g1", name: null });
+
+    // One tap on "Call again" dials the same conversation.
+    await act(async () => {
+      await mod.redial();
+    });
+    expect(result.current.phase).toBe("outgoing");
+    expect(result.current.redial).toBeNull();
+  });
+
+  it("a push that woke a cold app rebuilds the ring from the row, on the push channel", async () => {
+    const mod = await fresh();
+    act(() => mod.wireCallSocket());
+    const { result } = renderHook(() => mod.useCall());
+
+    W.api.getCall = async () =>
+      W.row({ status: "RINGING", caller_id: W.THEM, callee_id: W.ME, caller_name: "Aïcha" });
+    await act(async () => {
+      mod.initCallDeepLink("?call=8f2f5a1e-3c22-4a53-9a2b-6e0f2c9d1a44");
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(result.current.phase).toBe("incoming");
+    expect(result.current.redial).toBeNull();
+    expect(emitted("call:ring_ack")).toEqual([
+      { callId: "8f2f5a1e-3c22-4a53-9a2b-6e0f2c9d1a44", channel: "push" },
+    ]);
+  });
+
+  it("a link that is not a call id is ignored, not a ring out of nowhere", async () => {
+    const mod = await fresh();
+    act(() => mod.wireCallSocket());
+    const { result } = renderHook(() => mod.useCall());
+    await act(async () => {
+      mod.initCallDeepLink("?call=not-a-uuid&act=accept");
+      await Promise.resolve();
+    });
+    expect(result.current.phase).toBe("idle");
+    expect(result.current.redial).toBeNull();
+  });
+});
+
+/* ── PR-3: the overlay's noise switch (§4.4) ─────────────────────────────── */
+
+describe("the noise switch (PR-3)", () => {
+  it("off is instant; on is the engine's answer, and is never claimed early", async () => {
+    const mod = await fresh();
+    act(() => mod.wireCallSocket());
+    const { result } = renderHook(() => mod.useCall());
+
+    // Taken before any call, the switch still means something: it is the
+    // preference the NEXT call resolves, so it lands on the state at once.
+    await act(async () => {
+      await mod.setNoise(false);
+    });
+    expect(result.current.noise).toEqual({ enabled: false, status: "off", reason: null });
+
+    await act(async () => {
+      await mod.dial("g1", "Aïcha");
+    });
+    expect(result.current.phase).toBe("outgoing");
+
+    // Mid-call, ON: this jsdom has no WebAudio, so the engine cannot build the
+    // worklet graph. The session has to report THAT — unavailable, with the
+    // reason — rather than a hopeful "on" the overlay would render as a lie.
+    await act(async () => {
+      await mod.setNoise(true);
+    });
+    expect(result.current.noise).toEqual({
+      enabled: true,
+      status: "unavailable",
+      reason: "no_audio_context",
+    });
+  });
+});

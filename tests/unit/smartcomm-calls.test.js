@@ -8,6 +8,13 @@
  */
 const requestContext = require("../../src/config/request-context");
 const realtime = require("../../src/realtime");
+// PR-3: createCall queues the delayed ring escalation, and escalateRing pushes.
+// Both are mocked: this suite is about the service's decisions (who may ack,
+// which claim wins), not about BullMQ or a live push service.
+jest.mock("../../src/jobs/queue-producer", () => ({ enqueue: jest.fn(async () => ({})) }));
+jest.mock("../../src/shared/push/push.service", () => ({
+  sendToUser: jest.fn(async () => ({ sent: 1, failed: 0, total: 1 })),
+}));
 const service = require("../../src/modules/smartcomm/smartcomm.call.service");
 
 const U1 = "11111111-1111-1111-1111-111111111111";
@@ -44,6 +51,9 @@ function makeStore() {
         ended_at: null,
         duration_seconds: null,
         end_reason: null,
+        ring_ack_channel: null,
+        ring_ack_at: null,
+        ring_push_sent_at: null,
       };
       calls.set(row.call_id, row);
       return row;
@@ -101,6 +111,20 @@ function makeClient({ store, members = [], groupKind = "DIRECT" } = {}) {
         const updated = store.transition(callId, fromStatus, fields);
         return { rows: updated ? [updated] : [] };
       }
+      // ── PR-3: the two ring claims, both guarded UPDATEs ────────────────
+      if (/UPDATE comms_call\s+SET ring_ack_channel = \$2/.test(sql)) {
+        const [callId, channel] = params;
+        const row = store.calls.get(callId);
+        if (!row || row.ring_ack_at) return { rows: [] };
+        Object.assign(row, { ring_ack_channel: channel, ring_ack_at: new Date().toISOString() });
+        return { rows: [row] };
+      }
+      if (/UPDATE comms_call\s+SET ring_push_sent_at = now\(\)/.test(sql)) {
+        const row = store.calls.get(params[0]);
+        if (!row || row.ring_push_sent_at) return { rows: [] };
+        row.ring_push_sent_at = new Date().toISOString();
+        return { rows: [row] };
+      }
       if (/SELECT \* FROM comms_call WHERE call_id = \$1/.test(sql)) {
         const row = store.calls.get(params[0]);
         return { rows: row ? [row] : [] };
@@ -141,6 +165,8 @@ let publishSpy;
 beforeEach(() => {
   thisSkipActiveLookup = 0;
   publishSpy = jest.spyOn(realtime, "publishToUser").mockImplementation(() => {});
+  require("../../src/jobs/queue-producer").enqueue.mockClear();
+  require("../../src/shared/push/push.service").sendToUser.mockClear();
 });
 afterEach(() => {
   publishSpy.mockRestore();
@@ -417,5 +443,114 @@ describe("reads and TURN refresh", () => {
     await expect(
       inTenant(() => service.turnFor(makeClient({ store }), { id: call.call_id, actor: { user_id: "99999999-9999-9999-9999-999999999999" } })),
     ).rejects.toThrow(/not found/i);
+  });
+});
+
+/**
+ * PR-3 §4.6 — the ring escalation. The two claims in the table are the whole
+ * protocol: `ring_ack_at` is the durable stop (a delayed job re-reads it five
+ * seconds later), and `ring_push_sent_at` is the single-send claim, so a queue
+ * retry after a worker died mid-send cannot push twice.
+ */
+describe("ring ack and push escalation (PR-3)", () => {
+  const findEscalations = () => {
+    const { enqueue } = require("../../src/jobs/queue-producer");
+    return enqueue.mock.calls.filter((c) => c[0] === "comms-call-ring-escalate");
+  };
+
+  test("a dial queues exactly one delayed escalation, keyed on the call", async () => {
+    const store = makeStore();
+    await inTenant(() =>
+      service.createCall(makeClient({ store, members: [MEMBER1] }), {
+        groupId: G1,
+        actor: { user_id: U1, full_name: "A" },
+      }),
+    );
+    const calls = findEscalations();
+    expect(calls).toHaveLength(1);
+    expect(calls[0][3].delay).toBe(service.RING_PUSH_DELAY_MS);
+    expect(String(calls[0][3].jobId)).toContain("call-1");
+  });
+
+  test("the callee's first ack wins; a second device's ack is a quiet no-op", async () => {
+    const store = makeStore();
+    const call = store.insert({ groupId: G1, callerId: U1, calleeId: U2 });
+    const first = await service.ackRing(makeClient({ store }), {
+      id: call.call_id,
+      actor: { user_id: U2 },
+      channel: "notification",
+      tenantSlug: "acme",
+    });
+    expect(first.ring_ack_channel).toBe("notification");
+    const second = await service.ackRing(makeClient({ store }), {
+      id: call.call_id,
+      actor: { user_id: U2 },
+      channel: "push",
+      tenantSlug: "acme",
+    });
+    expect(second).toBeNull();
+    expect(store.calls.get(call.call_id).ring_ack_channel).toBe("notification");
+    // The first ack is broadcast to the user's own room — never to the caller.
+    const broadcast = publishSpy.mock.calls.find((c) => c[2] === "call:ring_ack");
+    expect(broadcast[1]).toBe(U2);
+  });
+
+  test("the caller cannot ack their own ring, and an unknown channel is not stored", async () => {
+    const store = makeStore();
+    const call = store.insert({ groupId: G1, callerId: U1, calleeId: U2 });
+    expect(
+      await service.ackRing(makeClient({ store }), { id: call.call_id, actor: { user_id: U1 } }),
+    ).toBeNull();
+    await service.ackRing(makeClient({ store }), {
+      id: call.call_id,
+      actor: { user_id: U2 },
+      channel: "carrier-pigeon",
+      tenantSlug: "acme",
+    });
+    // The vocabulary of the metric is closed: an unknown channel degrades to
+    // the one we can honestly claim, rather than inventing a bucket.
+    expect(store.calls.get(call.call_id).ring_ack_channel).toBe("socket");
+  });
+
+  test("escalation pushes once: it stands down on an ack, on a moved call, and on a retry", async () => {
+    const push = require("../../src/shared/push/push.service");
+    const store = makeStore();
+
+    const acked = store.insert({ groupId: G1, callerId: U1, calleeId: U2 });
+    store.calls.get(acked.call_id).ring_ack_at = new Date().toISOString();
+    let out = await service.escalateRing(makeClient({ store }), { callId: acked.call_id, tenantSlug: "acme" });
+    expect(out).toMatchObject({ pushed: false, reason: "already acknowledged" });
+
+    const ackedRow = store.calls.get(acked.call_id);
+    ackedRow.status = "NO_ANSWER"; // out of the active set, as the sweep would leave it
+
+
+    // The store enforces one ACTIVE call per party, so each row is moved OUT of
+    // the active set before the next one is created — which is also what the
+    // real table does.
+    const moved = store.insert({ groupId: G1, callerId: U1, calleeId: U2 });
+    store.calls.get(moved.call_id).status = "IN_CALL";
+    out = await service.escalateRing(makeClient({ store }), { callId: moved.call_id, tenantSlug: "acme" });
+    expect(out).toMatchObject({ pushed: false, reason: "no longer ringing" });
+
+    // The store's one-active-call guard is a property of the ACTIVE set, so a
+    // finished call has to leave it before the next one can be created.
+    store.calls.get(moved.call_id).status = "ENDED";
+
+
+    const ringing = store.insert({ groupId: G1, callerId: U1, calleeId: U2 });
+    out = await service.escalateRing(makeClient({ store }), { callId: ringing.call_id, tenantSlug: "acme" });
+    expect(out.pushed).toBe(true);
+    expect(push.sendToUser).toHaveBeenCalledTimes(1);
+    const payload = push.sendToUser.mock.calls[0][1];
+    expect(payload.user_id).toBe(U2);
+    expect(payload.tag).toBe(`call:${ringing.call_id}`);
+    expect(payload.actions.map((a) => a.action)).toEqual(["accept", "decline"]);
+    expect(payload.data).toMatchObject({ kind: "call", call_id: ringing.call_id, caller_id: U1 });
+
+    // A queue retry of the SAME job: the claim above stops the second send.
+    out = await service.escalateRing(makeClient({ store }), { callId: ringing.call_id, tenantSlug: "acme" });
+    expect(out).toMatchObject({ pushed: false, reason: "already escalated" });
+    expect(push.sendToUser).toHaveBeenCalledTimes(1);
   });
 });

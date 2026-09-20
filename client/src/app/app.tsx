@@ -370,6 +370,10 @@ const NumberingPage = lazyNamed(
   () => import("@/features/settings/numbering"),
   "NumberingPage",
 );
+const CallsPage = lazyNamed(
+  () => import("@/features/settings/calls-page"),
+  "CallsPage",
+);
 const CustomFieldsPage = lazyNamed(
   () => import("@/features/settings/custom-fields"),
   "CustomFieldsPage",
@@ -738,6 +742,9 @@ export function App() {
               <Route path="comms/:section" element={<CommsHub />} />
               {/* Settings & Admin (new) */}
               <Route path="settings/numbering" element={<NumberingPage />} />
+              {/* Smart Comms calls (PR-3): the tenant's noise-filter default and
+                  recording retention, plus the person's own preference. */}
+              <Route path="settings/calls" element={<CallsPage />} />
               <Route path="self-service" element={<SelfServicePage />} />
               <Route
                 path="settings/catalogue"

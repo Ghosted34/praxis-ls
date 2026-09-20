@@ -327,6 +327,83 @@ const qs = (params: Record<string, string | number | boolean | undefined | null>
   return s ? "?" + s : "";
 };
 
+/* ── Comms calls (WS-C3, Smart Comms PR-3 §7.2/§7.4.4) ────────────────────── */
+
+/**
+ * One aggregated day for one tenant+env. Written nightly by the metrics job
+ * from each tenant's OWN database; read here.
+ *
+ * The outcome counts are kept apart on purpose (started / answered / no answer
+ * / declined / busy / failed) rather than collapsed into one "success rate": a
+ * call nobody picked up is the product working, and an operator who cannot tell
+ * "nobody was at their desk" from "the media path failed" cannot act on either.
+ */
+export type CommsMetricRow = {
+  tenant_slug: string;
+  env: string;
+  metric_date: string;
+  calls_started: number;
+  calls_answered: number;
+  calls_no_answer: number;
+  calls_declined: number;
+  calls_busy: number;
+  calls_failed: number;
+  avg_duration_seconds: number | null;
+  transcription_failed: number;
+  transcription_failed_reasons: Record<string, number>;
+  ring_socket: number;
+  ring_notification: number;
+  ring_push: number;
+  ring_none: number;
+  transcription_alert_at: string | null;
+  computed_at: string;
+};
+
+export type CommsDaySeries = {
+  date: string;
+  started: number;
+  answered: number;
+  failed: number;
+  transcription_failed: number;
+};
+
+export type CommsFleet = {
+  days: number;
+  started: number;
+  answered: number;
+  failed: number;
+  transcription_failed: number;
+  ring_socket: number;
+  ring_notification: number;
+  ring_push: number;
+  /** Nobody acknowledged the ring — the honest "did it reach anyone" number. */
+  ring_none: number;
+  /** Weighted by answered calls, never a mean of per-tenant means. */
+  avg_duration_seconds: number | null;
+  series: CommsDaySeries[];
+  reasons: Record<string, number>;
+  last_computed_at: string | null;
+};
+
+export type CommsTenantRow = {
+  tenant_slug: string;
+  envs: string[];
+  started: number;
+  answered: number;
+  failed: number;
+  transcription_failed: number;
+  avg_duration_seconds: number | null;
+  rings: { socket: number; notification: number; push: number; none: number };
+  ring_acknowledged: number;
+  last_computed_at: string | null;
+};
+
+export type CommsCalls = {
+  fleet: CommsFleet;
+  tenants: CommsTenantRow[];
+  alert: { threshold: number; window_hours: number; source: string };
+};
+
 export const ops = {
   // Health
   fleetHealth: () => api<FleetHealth>("/ops/health"),
@@ -374,6 +451,10 @@ export const ops = {
     api<MaintenanceWindow>("/ops/maintenance", { method: "POST", body }),
   cancelMaintenance: (id: string) =>
     api<MaintenanceWindow>(`/ops/maintenance/${encodeURIComponent(id)}`, { method: "DELETE" }),
+
+  // Comms call health (WS-C3) — the aggregation is a nightly job, so this is a
+  // read of already-computed rows and the screen has no "collect now" button.
+  commsCalls: (days = 30) => api<CommsCalls>(`/ops/comms/calls${qs({ days })}`),
 
   // Entitlement & metering (WS-S3)
   usage: (period?: string) => api<FleetUsage>(`/ops/usage${qs({ period })}`),

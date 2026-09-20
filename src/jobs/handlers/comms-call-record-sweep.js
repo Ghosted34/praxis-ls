@@ -27,6 +27,7 @@
 const registry = require("../../services/tenant/registry.service");
 const repo = require("../../modules/smartcomm/smartcomm.call.repo");
 const pipeline = require("../../modules/smartcomm/smartcomm.call.pipeline.service");
+const callService = require("../../modules/smartcomm/smartcomm.call.service");
 const { logger } = require("../../config/logger");
 
 module.exports = async function commsCallRecordSweep(job) {
@@ -37,8 +38,14 @@ module.exports = async function commsCallRecordSweep(job) {
 
   return registry.withTenantConnection(tenantMeta, env, async (c) => {
     if (kind === "retain") {
-      const result = await pipeline.purgeExpiredAudio(c, { days: pipeline.RETENTION_DAYS });
-      logger.info({ ...result, env, tenant: tenantMeta.slug }, "call audio retention applied");
+      // PR-3: the window is the TENANT's (setting comms.call_recording, seeded
+      // by 14020 at D7's 30 days). Read here rather than at boot so a tenant
+      // that shortens its window sees the change on the next daily tick, and
+      // clamped by callSettings so a typo (900 days, or 0) cannot turn a
+      // retention sweep into either a no-op or an accidental purge.
+      const { recording_retention_days: days } = await callService.settingsFor(c);
+      const result = await pipeline.purgeExpiredAudio(c, { days });
+      logger.info({ ...result, days, env, tenant: tenantMeta.slug }, "call audio retention applied");
       return result;
     }
 

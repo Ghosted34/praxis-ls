@@ -32,6 +32,11 @@ const PROCESSORS = [
   // process restart, pocket, closed tab. 15 s granularity, see scheduler.
   { name: "comms-call-sweep", concurrency: 1, handler: require("./handlers/comms-call-sweep") },
   { name: "comms-call-sweep-scheduler", concurrency: 1, handler: require("./handlers/comms-call-sweep-scheduler") },
+  // The ring push escalation (PR-3, §4.6): the second channel, 5 s into a ring
+  // that has not been acknowledged. Concurrency 2 — the work is one HTTP round
+  // trip to a push service per ringing call, and a ring is a 60-second window
+  // in which a queue behind another tenant's slow push service costs the bell.
+  { name: "comms-call-ring-escalate", concurrency: 2, handler: require("./handlers/comms-call-ring-escalate") },
   /**
    * The call RECORD half (PR-2, guide §4.5). `call-transcribe` transcribes a
    * call's recorded parts and drafts the summary; concurrency 2 because the
@@ -205,6 +210,13 @@ const PROCESSORS = [
   // performance choice — the uptime denominator assumes ONE sample per
   // interval, and a second concurrent worker would double the numerator.
   { name: "health-collect", concurrency: 1, handler: require("./handlers/health-collect") },
+  // Smart Comms call metrics (PR-3, §7.2). concurrency 1 is a correctness
+  // requirement rather than a throughput one, the same way it is for the sweep:
+  // the aggregation opens one connection per tenant and writes a fixed row per
+  // day, so two concurrent runs would do the same work twice and — during the
+  // alert tick — race the dedupe stamp that stops a persistent condition paging
+  // every hour.
+  { name: "comms-call-metrics", concurrency: 1, handler: require("./handlers/comms-call-metrics") },
   // Backup + restore rehearsal (§3.2, WS-B1/B3). concurrency 1 is not a
   // throughput choice: parallel pg_dumps multiply I/O on a shared Postgres host,
   // and the entire reason this runs at 01:00 is to be cheap. A fleet backup that
@@ -494,6 +506,36 @@ async function scheduleRecurring() {
     removeOnComplete: true,
     removeOnFail: 20,
   });
+
+  // Smart Comms call metrics (PR-3, §7.2). Two cadences, deliberately:
+  //
+  //   00:20 UTC daily — the 7-day re-aggregation (which is also what repairs a
+  //   window in which the worker was down) and the 400-day purge. A wall-clock
+  //   pattern rather than an interval, so a restart does not drift the run —
+  //   the same reasoning as the error purge above. 20 past midnight rather than
+  //   on the hour: the 02:00 slot is taken by three other purges, and the day
+  //   being aggregated has to be over before it is counted.
+  //
+  //   Hourly — refresh today and evaluate the alarm. A daily evaluation would
+  //   make the alarm up to a day stale, and what it watches is a caller being
+  //   told their transcript is coming when it is not.
+  await enqueue("comms-call-metrics", "aggregate", {}, {
+    repeat: { pattern: "20 0 * * *", tz: "UTC" },
+    removeOnComplete: true,
+    removeOnFail: 20,
+  });
+
+  const commsMetricsEvery = config.COMMS_METRICS_ALERT_INTERVAL_MS;
+  if (!commsMetricsEvery || commsMetricsEvery <= 0) {
+    logger.info("call metrics alert evaluation disabled (COMMS_METRICS_ALERT_INTERVAL_MS=0) — the screen still aggregates nightly");
+  } else {
+    await enqueue("comms-call-metrics", "alert", {}, {
+      repeat: { every: commsMetricsEvery },
+      removeOnComplete: true,
+      removeOnFail: 50,
+    });
+    logger.info({ every: commsMetricsEvery }, "call metrics alert evaluator registered");
+  }
 
   const healthEvery = config.HEALTH_SAMPLE_INTERVAL_MS;
   if (!healthEvery || healthEvery <= 0) {

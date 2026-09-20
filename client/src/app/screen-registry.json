@@ -231,6 +231,15 @@
       ]
     },
     {
+      "id": "settings_calls",
+      "title": "Calls",
+      "route": "/settings/calls",
+      "area": "settings",
+      "module_key": "MOD-64",
+      "purpose": "Set the company's yard noise-filter default, the recording retention window, and your own noise-filter preference.",
+      "actions": []
+    },
+    {
       "id": "master_treasury_accounts",
       "title": "Treasury",
       "route": "/master/treasury-accounts",
@@ -1686,6 +1695,15 @@
       "actions": [
         "save_my_signature"
       ]
+    },
+    {
+      "id": "comms_calls",
+      "title": "Call audio",
+      "route": "/comms/calls",
+      "area": "comms",
+      "module_key": "MOD-64",
+      "purpose": "The company's call noise-filter default, recording retention, and your own noise-filter preference.",
+      "actions": []
     },
     {
       "id": "settings_email_signatures",

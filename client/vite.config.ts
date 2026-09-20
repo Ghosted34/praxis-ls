@@ -31,6 +31,13 @@ const ROUTE_LOCAL_VENDOR = [
   "world-atlas",
   "topojson-client",
   "pdfjs-dist",
+  // RNNoise (PR-3, guide §4.4): the wasm noise filter on the outbound call
+  // track. Its JavaScript is small, but it is loaded by a DYNAMIC import at
+  // call time precisely so that a user who never makes a call never downloads
+  // it — and a package left in the `vendor` bucket would defeat that, because
+  // `vendor` is a static dependency of the entry chunk, so the dynamic import
+  // would resolve to code the entry had already paid for.
+  "@sapphi-red/web-noise-suppressor",
   // Charts (MOD-76 Budget Reconciliation, and the Reporting Module after it).
   // Recharts renders SVG, so series colours are CSS custom properties and a
   // tenant's brand re-tints the charts natively — a canvas library would need

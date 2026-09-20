@@ -116,6 +116,13 @@ router.delete(
   c.removeEntitlement,
 );
 
+/* ── Smart Comms calls (guide §7.2) ─────────────────────────────────────── */
+// ops.read, not a new tier: this is a read of a table a job already populates,
+// which is what ops.read means everywhere else on this router. There is no
+// matching POST — the aggregation is a scheduled job on purpose, so a page load
+// never fans out across every tenant's database.
+router.get("/ops/comms/calls", requireCap("ops.read"), validateQuery("commsCalls"), c.commsCalls);
+
 /* ── Support telemetry (WS-M2) ──────────────────────────────────────────── */
 // support.read, not ops.read: this is the snapshot a triager opens next to a
 // ticket, and gating it on ops.read would mean the support role can see the

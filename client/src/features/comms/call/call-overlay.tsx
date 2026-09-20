@@ -16,7 +16,30 @@
 import { tr } from "@/lib/i18n";
 import { cn } from "@/lib/cn";
 import { PhoneDownIcon, MicIcon } from "@/components/ui/icons";
+import type { QualitySample } from "./call-engine";
 import type { Phase } from "./call-session";
+
+/** The dot's three states, in the house colour tokens (never colour alone —
+ *  the label carries the meaning too). */
+const QUALITY_DOT: Record<QualitySample["state"], string> = {
+  good: "bg-[rgb(var(--ok))]",
+  fair: "bg-[rgb(var(--warn))]",
+  poor: "bg-[rgb(var(--bad))]",
+};
+const QUALITY_LABEL: Record<QualitySample["state"], string> = {
+  good: "Good connection",
+  fair: "Fair connection",
+  poor: "Poor connection",
+};
+
+/** The honest one-liner for a filter that did not load (§4.4/§4.7). */
+function noiseUnavailable(reason: string | null): string {
+  if (reason === "no_audio_context" || reason === "worklet_unsupported") {
+    return tr("Yard noise filter unavailable on this browser");
+  }
+  if (reason === "wasm_load_failed") return tr("Yard noise filter could not load");
+  return tr("Yard noise filter unavailable");
+}
 
 function fmt(s: number): string {
   const m = Math.floor(s / 60);
@@ -36,13 +59,27 @@ type Props = {
    *  transcript may therefore be missing the last stretch of the call, and the
    *  person in the call is the only one who can still say so. */
   recordingLost?: number;
+  /** The measured link quality (§3.4). Null-ish samples render the last state
+   *  rather than a zero that would look perfect. */
+  quality?: QualitySample;
+  /** Media dropped and is being recovered — the call may still survive (§4.7). */
+  recovering?: boolean;
+  /** The outbound noise filter: what the user asked for and what happened. */
+  noise?: { enabled: boolean; status: "on" | "off" | "unavailable"; reason: string | null };
+  /** The peer's device is offline (no socket anywhere): on iOS, a force-quit
+   *  app cannot be rung at all, and the honest thing is to say so before the
+   *  60-second silence rather than pretend. */
+  peerOffline?: boolean;
   onHangup: () => void;
   onMute: () => void;
+  onToggleNoise?: (on: boolean) => void;
 };
 
 export function CallOverlay({
   name, phase, elapsedS, warning, muted,
-  recordingEnabled = false, recordingLost = 0, onHangup, onMute,
+  recordingEnabled = false, recordingLost = 0,
+  quality, recovering = false, noise, peerOffline = false,
+  onHangup, onMute, onToggleNoise,
 }: Props) {
   const status =
     phase === "outgoing" ? tr("Calling…") : phase === "connecting" ? tr("Connecting…") : null;
@@ -71,6 +108,35 @@ export function CallOverlay({
         {phase === "in_call" && (
           <p className="text-xs text-muted-foreground" aria-live="polite">
             {muted ? tr("Your microphone is muted") : tr("Your microphone is on")}
+          </p>
+        )}
+
+        {/* ── The quality dot (§3.4) ────────────────────────────────────────
+            Sampled from getStats(): inbound jitter, RTT, packet loss. The dot
+            is not decoration — it is the only way the person holding the phone
+            learns that the dropouts are the link and not the other person. */}
+        {quality && phase === "in_call" && (
+          <p className="flex items-center gap-1.5 text-xs text-muted-foreground" aria-live="polite">
+            <span aria-hidden className={cn("inline-block h-2 w-2 rounded-full", QUALITY_DOT[quality.state])} />
+            {tr(QUALITY_LABEL[quality.state])}
+          </p>
+        )}
+
+        {/* Media died and is being recovered. Says so, because a frozen screen
+            with a live-looking timer is the version of this moment that makes
+            people hang up on a call that was about to come back. */}
+        {recovering && (
+          <p role="status" aria-live="polite" className="text-xs text-[rgb(var(--warn))]">
+            {tr("Reconnecting…")}
+          </p>
+        )}
+
+        {/* The iOS honest line (§4.8): a force-quit PWA, or a device with no
+            socket anywhere, cannot be rung. The caller deserves to know before
+            the 60 s of silence, not after it. */}
+        {peerOffline && (phase === "outgoing" || phase === "connecting") && (
+          <p className="max-w-[80vw] text-center text-xs text-muted-foreground" aria-live="polite">
+            {tr("Their device looks offline — it may not ring until they open the app")}
           </p>
         )}
       </div>
@@ -140,6 +206,24 @@ export function CallOverlay({
         >
           <PhoneDownIcon width={28} height={28} />
         </button>
+        {/* The noise filter switch (§4.4): per-user, persisted, live. Shows
+            the outcome when it could not load instead of lying that it is on. */}
+        {noise && phase === "in_call" && (
+          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={noise.enabled}
+              onChange={(ev) => onToggleNoise?.(ev.target.checked)}
+              className="h-4 w-4 accent-[rgb(var(--brand-blue))]"
+            />
+            {tr("Yard noise filter")}
+          </label>
+        )}
+        {noise && noise.enabled && noise.status === "unavailable" && (
+          <p role="status" className="max-w-[80vw] text-center text-xs text-[rgb(var(--warn))]">
+            {noiseUnavailable(noise.reason)}
+          </p>
+        )}
         <p className="text-xs text-muted-foreground">{tr("End call")}</p>
       </div>
     </div>

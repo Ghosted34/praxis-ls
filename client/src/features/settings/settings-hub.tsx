@@ -198,6 +198,15 @@ const SECTIONS: Section[] = [
         desc: "Your channel & category preferences",
         icon: "comms",
       },
+      {
+        // Smart Comms calls (PR-3). Next to Notifications because both are
+        // about how the company reaches people — this one is the voice half:
+        // the yard noise filter, and how long call recordings are kept.
+        to: "/settings/calls",
+        label: "Calls",
+        desc: "Noise filtering on calls, and how long recordings are kept",
+        icon: "comms",
+      },
     ],
   },
   {

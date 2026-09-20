@@ -136,8 +136,20 @@ An inhouse voice call between two employees of the same tenant:
 ### 3.1 Merge order
 
 `PR-1 → PR-2 → PR-3`, strictly. Each PR is independently shippable behind the
-`calls` flag (off by default in production; on for Smart Logistics the moment
-its chapter's acceptance criteria pass — the Smart Mail pattern).
+`calls` flag — and that flag is **ON by default, not a rollout gate**: §1 row 2
+decides it (the tenant's kill switch), §3.2 and §5.1 repeat it, and `9134` /
+`9135` implement it (catalogue `default_state = 'on'`, included in every plan,
+so an ordinary projection lands it 'on' with no manual step).
+
+> **As built (PR-3), corrected.** This section originally read "off by default in
+> production; on for Smart Logistics the moment its chapter's acceptance
+> criteria pass — the Smart Mail pattern". That contradicted the row 2 decision
+> log, §3.2, §5.1 and the seeds shipped in PR-1/PR-2, which all say the
+> opposite; the code agreed with them, so the code was right and this sentence
+> was wrong. The Smart Mail pattern (off everywhere, on for the pilot tenant) is
+> for the `mail.*` keys, a programme that chose a per-tenant pilot. Calls did
+> not: there is nothing to switch on, and the closing PR *verifies* the
+> projection per tenant rather than writing anything by hand.
 
 ### 3.2 Gating & RBAC
 
@@ -825,6 +837,97 @@ recording retention (default 30 d, D7) and the RNNoise default (default ON).
 5. Manual matrix signed off for iOS PWA (reference device), Android, desktop.
 6. `npm run ci` green on both sides; guide as-built; v2 backlog accurate.
 
+### 7.5 As built (PR-3)
+
+What shipped, and where it differs from the plan above. Nothing here is
+aspirational: if a line is in this list, there is code behind it in this PR.
+
+**RNNoise (§4.4).** `@sapphi-red/web-noise-suppressor` — an RNNoise-derived
+AudioWorklet with the wasm shipped as its own asset — rather than the
+`webrtc-noise-suppression` class of plugin named in the plan. It is the same
+denoiser; it is the maintained packaging of it. The graph lives in
+`client/src/features/comms/call/noise-suppression.ts` and is attached OFF the
+media path: the call starts on the unfiltered mic track and the filtered track
+is swapped in with `replaceTrack`, so there is no renegotiation and no window in
+which the caller waits for a wasm fetch. **Every** failure path (no
+`AudioContext`, no worklet support, a blocked `addModule`, a failed wasm fetch)
+returns the unfiltered track plus a reason the overlay renders — a filter that
+could take a call down is worse than no filter. The package is excluded from the
+`vendor` chunk so a user who never calls never downloads it. The toggle is
+covered from both ends: `call-engine.test.ts` drives the mocked worklet
+(`replaceTrack` in place with no second SDP, `unavailable` leaving the raw track
+on the wire, teardown closing the context) and `call-session.test.ts` checks the
+honesty rule — off is instant, on is the engine's answer and is never claimed
+early.
+
+The switch is three-state on purpose: the tenant's default lives in
+`setting` (`comms.call_noise_suppression`, seeded ON by `14020`), the person's
+own choice lives in `/me/preferences/calls` as `true | false | null`, and
+`null` means *follow the tenant* — the same absent-≠-null rule the other
+preference sections use. A checkbox could not express it.
+
+**Ring escalation (§4.6).** The delayed push is a job, not a `setTimeout`:
+`createCall` enqueues `comms-call-ring-escalate` with a 5 s delay and a static
+job id, and the handler re-reads the ROW before sending — answered, declined,
+cancelled, swept or already acked all stand it down. The device's own ack
+(`call:ring_ack`, carrying `socket`/`notification`/`push`) is written to
+`ring_ack_at`/`ring_ack_channel`, broadcast to the user's other devices, and
+used both to stop the push and to build the ops screen's channel split. A device
+that could present nothing sends NO ack, so the escalation it would have
+suppressed still fires. The notification carries Answer/Decline actions and
+`tag: call:<id>` (so a second escalation replaces rather than stacks); its
+body and action labels are rendered on the device from `navigator.language`,
+while the server sends the caller's name as the title — a name needs no
+translation. An expired link is a **redial** offer, never a ring for a call that
+is over.
+
+**ICE and recovery (§4.4, §4.7).** `disconnected` mid-call arms a 10 s recovery
+window and (caller side) an ICE restart — `restartIce()` where it exists, a
+re-offer with `iceRestart: true` otherwise; `failed` mid-call gets one restart
+before the call is declared dead. `playoutDelayForSample` sets
+`playoutDelayHint` on the receivers from the measured RTT and jitter, floored at
+20 ms and capped at 500 ms, and is left alone when there is nothing to base it
+on. The quality dot is fed by a 2 s `getStats()` sampler (RTT from the
+nominated candidate pair, jitter and loss from inbound audio).
+
+**Push-cold accept.** A callee who accepted from a closed app never received the
+caller's offer — the socket message that carried it was published while no page
+was open. `call:accepted` therefore makes the CALLER re-send its local
+description when the callee has not answered. Without it, push-accept connects to
+silence; with it, one extra socket frame closes acceptance criterion 3.
+
+**Observability (§7.2).** `platform.comms_call_metric` (migration `0107`) holds
+one row per tenant+env+day: outcome counts, `avg_duration_seconds` stored with
+its denominator (so a range mean is weighted, not a mean of means),
+`transcription_failed` with a `transcription_failed_reasons` jsonb, and the four
+ring channels. The job aggregates the last 7 days nightly — repairs a worker that
+was down for a long weekend — and skips a broken tenant rather than aborting the
+fleet. The alert (`comms.transcription_sustained`, severity `page`) fires at the
+**rate**, deduped on the row's `transcription_alert_at`, because the per-call
+`notify` PR-2 already sends is the right level for one call and the wrong level
+for a provider outage. The console screen is `/ops/comms` in
+`platform-console/`; the tenant-facing half is one settings editor on the same
+screen.
+
+**What is NOT done here.** The human listening test and the standing device
+matrix — `doc/SMART_COMMS_CALLS_MANUAL_MATRIX.md` is committed with every row
+`PENDING`. A machine cannot hear a forklift, and this PR does not claim it
+can.
+
+**The flags, and a correction.** There is nothing to switch on: `calls` and
+`call_recording` are already ON by default, by design. `9134` / `9135` (PR-1,
+PR-2) put both in the platform catalogue with `default_state = 'on'` and include
+them in all three plans; the tenant migrations seed matching `feature_state`
+rows; so an ordinary `projectFeatures()` lands them 'on' with no manual step —
+verified in this session against a provisioned tenant (`live` and `sandbox` both
+show `state='on', source='plan'`). That is §1 row 2's locked decision: for these
+two keys the flag is the tenant's KILL SWITCH, not a rollout gate, and a
+hand-written `INSERT` would be overwritten by the next projection anyway. §3.1's
+old "off by default … on for Smart Logistics" sentence contradicted that and is
+corrected in place above. The closing PR verifies the projection per tenant
+(`scripts/tenant/feature-report.js --slug=…`) and the console override path;
+it does not insert flag rows.
+
 ---
 
 ## 8. Index set
@@ -844,6 +947,13 @@ PR-2: `POST /calls/:id/recording` · `POST /calls/:id/summary/send` ·
 `POST /calls/:id/summary/discard` · `POST /calls/:id/summary/regenerate` ·
 `GET /calls/:id/transcript` · `GET /calls/:id/summary`
 
+PR-3: `GET /calls/...` unchanged — the ring acknowledgement rides the socket
+(`call:ring_ack`, below) rather than adding a route the client would have to
+retry. Two new routes live OUTSIDE this prefix: the per-user noise preference
+(`GET|PUT /me/preferences/calls`, the identity surface the other preferences
+use) and the platform ops read (`GET /api/platform/ops/comms/calls`, console
+side, `ops.read`).
+
 ### 8.3 Socket events (comms namespace)
 
 `call:invite` `call:ringing` `call:ring_ack` `call:accepted` `call:declined`
@@ -855,29 +965,9 @@ PR-2: `POST /calls/:id/recording` · `POST /calls/:id/summary/send` ·
 `TURN_HOST` `TURN_PORT_TCP` `TURN_PORT_UDP` `TURN_TRANSPORTS`
 `TURN_CREDENTIAL_SECRET` `TURN_CREDENTIAL_TTL` `STUN_URLS`
 
-### 8.5 v2 backlog (group calls — the phase 2 this programme deliberately does not pay for)
-
-- **SFU:** self-hosted mediasoup service (fits the compose pattern) or LiveKit
-  Cloud; a media server enters the trust boundary — re-run the security pass
-  for it specifically.
-- **Model:** `comms_call` gains a participant set (N rows in
-  `comms_call_participant`); the DIRECT-channel 1:1 becomes a special case.
-- **Recording:** per-participant streams from the SFU (cleaner than browser
-  capture for attribution — the browser side of §4.5 may retire for group
-  calls, surviving as the 1:1 fallback).
-- **Summary:** same contract, one added field (`raised_by` becomes a name);
-  the draft flow is unchanged (organizer reviews).
-- **Signaling:** M:N `call:*` relay; admission control per tenant seat count.
-- **Video:** the constraint change in `call-engine.ts` plus a layout; no
-  signalling change.
-`
-`call:busy` `call:offer` `call:answer` `call:ice` `call:hangup` `call:ended`
-`call:summary_ready` `comms:presence`
-
-### 8.4 Env (new)
-
-`TURN_HOST` `TURN_PORT_TCP` `TURN_PORT_UDP` `TURN_TRANSPORTS`
-`TURN_CREDENTIAL_SECRET` `TURN_CREDENTIAL_TTL` `STUN_URLS`
+PR-3: `COMMS_TRANSCRIPTION_ALERT_THRESHOLD` ·
+`COMMS_TRANSCRIPTION_ALERT_WINDOW_HOURS` · `COMMS_METRICS_ALERT_INTERVAL_MS`
+(the vault's `ops.tuning` overrides all three) — see §7.5.
 
 ### 8.5 v2 backlog (group calls — the phase 2 this programme deliberately does not pay for)
 
@@ -892,5 +982,3 @@ PR-2: `POST /calls/:id/recording` · `POST /calls/:id/summary/send` ·
 - **Summary:** same contract, one added field (`raised_by` becomes a name);
   the draft flow is unchanged (organizer reviews).
 - **Signaling:** M:N `call:*` relay; admission control per tenant seat count.
-- **Video:** the constraint change in `call-engine.ts` plus a layout; no
-  signalling change.

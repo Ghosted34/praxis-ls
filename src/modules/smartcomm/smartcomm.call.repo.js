@@ -76,6 +76,53 @@ async function transition(client, { callId, fromStatus, status, fields = {} }) {
   return rows[0] || null;
 }
 
+/**
+ * Record the FIRST channel a ring landed on (PR-3, §4.6 / §7.4.4).
+ *
+ * `WHERE ring_ack_at IS NULL` is the whole concurrency story, and it is the
+ * same shape as `transition` above: two devices of the same callee (desk tab
+ * and phone) can ack within milliseconds of each other, and "which channel
+ * landed" is a fact about the ring, not about whichever socket spoke last. The
+ * guarded UPDATE means exactly one ack matches; the loser is told by the empty
+ * result that it did not, and can then stand down its own ring UI without
+ * re-broadcasting the ack — which is what a second writer would do.
+ *
+ * Returns the updated row, or null when an ack already existed.
+ */
+async function markRingAck(client, { callId, channel }) {
+  const { rows } = await client.query(
+    `UPDATE comms_call
+     SET ring_ack_channel = $2,
+         ring_ack_at = now()
+     WHERE call_id = $1
+       AND ring_ack_at IS NULL
+     RETURNING *`,
+    [callId, channel],
+  );
+  return rows[0] || null;
+}
+
+/**
+ * Claim the push escalation for this call, atomically.
+ *
+ * The delayed job is queued with a static id, so BullMQ de-duplicates the
+ * common case — but "the queue delivered this twice" (a retry after a worker
+ * died between the send and the ack of the job) must not become two pushes to a
+ * phone that is already ringing. The `WHERE ring_push_sent_at IS NULL` is the
+ * claim: exactly one caller receives the row and does the send.
+ */
+async function markRingPushSent(client, callId) {
+  const { rows } = await client.query(
+    `UPDATE comms_call
+     SET ring_push_sent_at = now()
+     WHERE call_id = $1
+       AND ring_push_sent_at IS NULL
+     RETURNING *`,
+    [callId],
+  );
+  return rows[0] || null;
+}
+
 /** Who is the other participant of this call, relative to `userId`. */
 async function otherParticipant(client, { callId, userId }) {
   const { rows } = await client.query(
@@ -577,6 +624,9 @@ module.exports = {
   listCallsForUser,
   touchPresence,
   lastSeen,
+  // The ring half (PR-3, §4.6).
+  markRingAck,
+  markRingPushSent,
   // The record half (PR-2).
   upsertRecordingPart,
   listRecordingParts,

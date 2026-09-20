@@ -29,13 +29,14 @@ import { useToast } from "@/components/ui/toast";
 import { getCommsSocket, disconnectCommsSocket } from "@/lib/comms-socket";
 import { unlockAudio, playNotifSound } from "@/lib/notif-sound";
 import {
-  useCall, answer, decline, hangup, setMuted, wireCallSocket, myUserId, closeSummaryDraft,
+  useCall, answer, decline, hangup, setMuted, setNoise, wireCallSocket, myUserId,
+  closeSummaryDraft, initCallDeepLink, redial, dismissRedial,
 } from "./call/call-session";
 import { CallOverlay } from "./call/call-overlay";
 import { IncomingRing } from "./call/incoming-ring";
 import { CallSummaryPanel } from "./call/summary-draft";
 import { acquireWakeLock, releaseWakeLock } from "./call/wake-keepalive";
-import { setOnline } from "./presence";
+import { setOnline, useOnline } from "./presence";
 
 /** 60 s client-side throttle for the seen beat — the server upserts either
  *  way, so the throttle is about honesty (and load), not correctness. */
@@ -51,12 +52,24 @@ export function CommsLive() {
   const toastedCall = React.useRef<string | null>(null);
   const toastedError = React.useRef<string | null>(null);
   const authed = status === "authed" && !!user;
+  // The peer's device: for the honest-offline sentence on the outgoing overlay
+  // (§4.8's iOS closed-app case). `myUserId()` tells us which side we are.
+  const peerId = call.call
+    ? myUserId() === call.call.caller_id
+      ? call.call.callee_id
+      : call.call.caller_id
+    : null;
+  const peerOnline = useOnline(peerId);
 
   /* ── Socket boot: connect, wire presence + calls, start the beat ─────── */
   React.useEffect(() => {
     if (!authed) return;
     const s = getCommsSocket();
     wireCallSocket();
+    // §4.6: a push tap lands here — `/comms?call=<id>&act=accept|decline`. The
+    // session decides whether that call is still answerable or has expired
+    // (the redial path); this only hands it the link.
+    initCallDeepLink(window.location.search);
 
     const onPresence = (p: { user_id: string; online: boolean }) => {
       setOnline(p.user_id, p.online);
@@ -96,33 +109,18 @@ export function CommsLive() {
     if (authed) beatRef.current();
   }, [location.pathname, authed]);
 
-  /* ── Ringtone while an incoming call rings — and the notification when
-         the tab is backgrounded (guide §4.6's in-app tiers; web push is
-         PR-3's job for the CLOSED-app tier). ──────────────────────────── */
+  /* ── Ringtone while an incoming call rings ────────────────────────────
+         The NOTIFICATION tier moved into the session's ring handler (PR-3,
+         §4.6) because it has to be announced to the server: the ack carries
+         which channel actually landed, and a notification raised here — after
+         the ack was already sent — would make the log claim `socket` for a
+         ring the person only ever saw in the shade. The tone stays, because it
+         is local to this tab and needs no server round trip. */
   React.useEffect(() => {
     if (call.phase !== "incoming") return;
     unlockAudio();
     playNotifSound("urgent");
     const t = setInterval(() => playNotifSound("urgent"), 2500);
-    try {
-      if (typeof Notification !== "undefined") {
-        if (Notification.permission === "granted" && document.hidden) {
-          new Notification(tv("Incoming call from {{name}}", { name: call.peerName || "" }), {
-            body: call.peerName || "",
-          });
-        } else if (Notification.permission === "default" && document.hidden) {
-          void Notification.requestPermission().catch(() => {
-            /* @silent:teardown — a denied permission prompt costs one
-               notification tier, not the ring; re-prompting on every
-               call would be worse. */
-          });
-        }
-      }
-    } catch {
-      /* @silent:teardown — a Notification API that throws (private mode,
-         mobile webview) loses a nicety, not the ring: the socket ring and
-         the sound above are the tiers that matter. */
-    }
     return () => clearInterval(t);
   }, [call.phase, call.peerName]);
 
@@ -185,9 +183,44 @@ export function CommsLive() {
           muted={call.muted}
           recordingEnabled={call.recordingEnabled}
           recordingLost={call.recordingLost}
+          quality={call.quality}
+          recovering={call.recovering}
+          noise={call.noise}
+          peerOffline={!peerOnline}
           onHangup={() => void hangup()}
           onMute={() => setMuted(!call.muted)}
+          onToggleNoise={(on) => void setNoise(on)}
         />
+      )}
+      {/* §4.6's expired-push path: the call is over, so there is no ring to
+          show — but there IS a person who just tapped "Answer", and a one-tap
+          way to call back is the honest ending. It sits above the toasts and
+          below the call surfaces, and it says the call ended rather than
+          showing a screen for a call that cannot happen. */}
+      {call.redial && (
+        <div
+          role="status"
+          className="fixed bottom-4 left-1/2 z-[65] flex w-[92vw] max-w-md -translate-x-1/2 items-center gap-3 rounded-lg border border-border bg-card p-3 shadow-[var(--shadow-l)] animate-fade-in"
+        >
+          <p className="min-w-0 flex-1 text-sm text-foreground">
+            {tr("That call has already ended")}
+          </p>
+          <button
+            type="button"
+            onClick={() => void redial()}
+            className="shrink-0 rounded-md border border-border px-3 py-1.5 text-xs text-foreground transition-colors hover:bg-accent"
+          >
+            {tr("Call again")}
+          </button>
+          <button
+            type="button"
+            onClick={dismissRedial}
+            className="shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:text-foreground"
+            aria-label={tr("Dismiss")}
+          >
+            ×
+          </button>
+        </div>
       )}
       {/* The caller's draft, opened by the socket event that says it is ready.
           It is a panel rather than a screen because the caller may be anywhere

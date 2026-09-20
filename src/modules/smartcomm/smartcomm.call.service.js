@@ -66,6 +66,48 @@ async function recordingEnabled(client) {
   }
 }
 
+/**
+ * The tenant's call settings (PR-3, §7.1) — the two rows 14020 seeds.
+ *
+ * Read through `setting` rather than a column on some new table because that is
+ * where every other tenant-level default lives (§3.5), and read HERE rather
+ * than in the client for the same reason the recording flag is: both ends must
+ * learn it from one place at one moment.
+ *
+ * FAILS OPEN TO THE PRODUCT DEFAULTS, and that is the opposite choice from
+ * `recordingEnabled` above — deliberately. The recording flag fails closed
+ * because a banner must not appear over a call that is not being recorded; a
+ * NOISE FILTER is the other way round: if the settings table cannot be read the
+ * honest answer is the shipped default (on, 30 days), and refusing to ring, to
+ * filter, or to sweep would turn a settings blip into an outage of the feature
+ * the settings belong to. Every value is clamped, because a setting is input:
+ * a 900-day retention window is a typo, not a policy.
+ */
+async function callSettings(client) {
+  const defaults = {
+    recording_retention_days: 30,
+    noise_suppression: true,
+  };
+  try {
+    const { rows } = await client.query(
+      `SELECT key, value FROM setting WHERE section = 'comms' AND key = ANY($1)`,
+      [["call_recording", "call_noise_suppression"]],
+    );
+    for (const row of rows) {
+      if (row.key === "call_recording" && row.value && row.value.retention_days !== undefined) {
+        const days = Math.trunc(Number(row.value.retention_days));
+        if (Number.isFinite(days)) defaults.recording_retention_days = Math.min(Math.max(days, 1), 365);
+      }
+      if (row.key === "call_noise_suppression" && row.value && row.value.enabled !== undefined) {
+        defaults.noise_suppression = row.value.enabled === true || row.value.enabled === "true";
+      }
+    }
+  } catch (err) {
+    logger.warn({ err }, "call: could not read the comms call settings — using the defaults");
+  }
+  return defaults;
+}
+
 async function assertMember(client, groupId, userId) {
   const m = await require("./smartcomm.repo").findMember(client, groupId, userId);
   if (!m) throw new AppError("NOT_A_MEMBER", "You are not a member of this channel", 403);
@@ -81,7 +123,7 @@ async function assertMember(client, groupId, userId) {
  * never a person, so there is no id to get wrong and no way to dial a user
  * who is not in the conversation.
  */
-async function createCall(client, { groupId, actor }) {
+async function createCall(client, { groupId, actor, tenantMeta = null, env = "live" }) {
   await assertMember(client, groupId, actor.user_id);
   const partner = await repo.directPartner(client, { groupId, userId: actor.user_id });
   if (!partner) {
@@ -139,6 +181,7 @@ async function createCall(client, { groupId, actor }) {
     [actor.user_id],
   );
   const recording = await recordingEnabled(client);
+  const settings = await callSettings(client);
   const ringPayload = {
     call_id: call.call_id,
     from: { user_id: actor.user_id, name: nameRows[0]?.full_name || null },
@@ -147,16 +190,35 @@ async function createCall(client, { groupId, actor }) {
     // banner that appears a second into the call is a banner that was not there
     // when the call started.
     recording_enabled: recording,
+    // PR-3: the ring is also where the tenant's noise-filter default arrives,
+    // for the same reason — an engine that starts unfiltered and is told about
+    // the filter 300 ms later has already sent 300 ms of forklift down the
+    // wire, and the yard is exactly where that matters.
+    noise_suppression: settings.noise_suppression,
   };
   rtToUser(partner.user_id, "call:ringing", ringPayload);
   rtToUser(actor.user_id, "call:ringing_sent", ringPayload);
+
+  // The push escalation (§4.6). A DELAYED JOB, not a timer in this process:
+  // the ring outlives the request that started it, and a deployment restart
+  // mid-ring must not lose the second channel. The job re-reads the row when it
+  // fires, so a callee who acked at t=1 s is never pushed at t=5 s — the ack,
+  // not the job's existence, is what stops it. Enqueue failure is logged and
+  // swallowed: the socket ring has already gone out, and the sweep's NO_ANSWER
+  // is the honest outcome if nothing else lands.
+  void enqueueRingEscalation({ callId: call.call_id, tenantMeta, env });
 
   logger.info({ callId: call.call_id, caller: actor.user_id, callee: partner.user_id }, "call: RINGING");
   // The dialer's ICE config rides the create response: the call does not need
   // to be "answered" before the caller's engine can start collecting ICE
   // candidates, and a second round trip here is setup latency on every call.
   const { iceConfigFor } = require("./smartcomm.turn.service");
-  return { ...call, ice: iceConfigFor(actor.user_id), recording_enabled: recording };
+  return {
+    ...call,
+    ice: iceConfigFor(actor.user_id),
+    recording_enabled: recording,
+    noise_suppression: settings.noise_suppression,
+  };
 }
 
 /** The callee answers. Must happen while the call is still RINGING — the
@@ -189,7 +251,13 @@ async function acceptCall(client, { id, actor }) {
   // fewer round trip in the second that decides whether the media path
   // forms before the caller gives up.
   const { iceConfigFor } = require("./smartcomm.turn.service");
-  return { ...updated, ice: iceConfigFor(actor.user_id), recording_enabled: await recordingEnabled(client) };
+  const settings = await callSettings(client);
+  return {
+    ...updated,
+    ice: iceConfigFor(actor.user_id),
+    recording_enabled: await recordingEnabled(client),
+    noise_suppression: settings.noise_suppression,
+  };
 }
 
 /** The callee refuses. A hang-up from the CALLEE while still RINGING is the
@@ -392,6 +460,189 @@ async function sweepOne(client, call, tenantSlug, { tenantMeta = null, env = "li
   }
 }
 
+/* ── The ring escalation (PR-3, §4.6) ────────────────────────────────────── */
+
+/** How long after the ring the push escalation fires without an ack. The
+ *  guide's number (§4.6): long enough that an app which is open answers on the
+ *  socket channel first — the ack is what stops this — and short enough that a
+ *  phone in a pocket is buzzing while the caller still believes it is ringing,
+ *  not after they have given up. */
+const RING_PUSH_DELAY_MS = 5000;
+
+/** The channels an ack may name. Anything else is refused rather than stored:
+ *  the ring-channel metric is only worth having if its vocabulary is closed
+ *  (see 14020's header — there is no CHECK on the column, so this is it). */
+const RING_CHANNELS = new Set(["socket", "notification", "push"]);
+
+/**
+ * Queue the push escalation for a ring. Never throws — see the call site.
+ *
+ * The static `jobId` gives in-flight de-duplication for free: a dial that is
+ * retried by a flaky client cannot queue two escalations for one ring.
+ */
+async function enqueueRingEscalation({ callId, tenantMeta, env = "live" }) {
+  if (!callId) return null;
+  try {
+    const { enqueue } = require("../../jobs/queue-producer");
+    return await enqueue(
+      "comms-call-ring-escalate",
+      "escalate",
+      { callId, tenantMeta, env },
+      {
+        jobId: `callring-${callId}`,
+        delay: RING_PUSH_DELAY_MS,
+        attempts: 1,
+        removeOnComplete: true,
+        removeOnFail: 50,
+      },
+    );
+  } catch (err) {
+    // Best-effort by contract. If this cannot be queued the ring still went out
+    // on the socket, the browser Notification tier is the client's, and the
+    // sweep closes the call at 60 s either way — a queue outage costs one
+    // channel, not the call.
+    logger.warn({ err, callId }, "call: could not enqueue the ring push escalation");
+    return null;
+  }
+}
+
+/**
+ * A device tells us the ring LANDED, and on which channel (§4.6's
+ * "`call:ring_ack` stops all channels", §7.4.4's channel split).
+ *
+ * Three things happen, in this order, and the order matters:
+ *
+ *   1. The row records the first ack (repo.markRingAck, guarded on
+ *      `ring_ack_at IS NULL`). That write is the durable stop for the push
+ *      escalation — the delayed job checks it when it fires.
+ *   2. The ack is broadcast to the OTHER devices of the same callee, so the
+ *      desk tab and the phone stop ringing together rather than each waiting
+ *      to time out. It goes to the user's own room, never to the caller: the
+ *      caller's UI is already saying "Ringing…" and has nothing to do with
+ *      which of the callee's devices heard it first.
+ *   3. Nothing else. Accepting the call is `acceptCall`; this is only "the bell
+ *      was heard", which is why a late ack on a call that has already moved on
+ *      is a quiet no-op rather than an error.
+ *
+ * Idempotent by construction: a second ack from a second device returns null
+ * from the guarded UPDATE and is not re-broadcast.
+ */
+async function ackRing(client, { id, actor, channel = "socket", tenantSlug = null }) {
+  const call = await repo.findCall(client, id);
+  if (!call || (call.caller_id !== actor.user_id && call.callee_id !== actor.user_id)) {
+    throw new AppError("NOT_FOUND", "Call not found", 404);
+  }
+  // Only a ring can be acknowledged, and only by the side that rings.
+  if (call.status !== "RINGING") return null;
+  if (call.caller_id === actor.user_id) return null;
+  const safeChannel = RING_CHANNELS.has(channel) ? channel : "socket";
+
+  const updated = await repo.markRingAck(client, { callId: id, channel: safeChannel });
+  if (!updated) return null;
+
+  const slug = tenantSlug || requestContext.getTenant();
+  rtToUser(
+    actor.user_id,
+    "call:ring_ack",
+    { call_id: id, channel: safeChannel, by: { user_id: actor.user_id } },
+    slug,
+  );
+  logger.info({ callId: id, channel: safeChannel }, "call: ring acked");
+  return updated;
+}
+
+/**
+ * The delayed escalation job's body: push the ring, once, if the bell was never
+ * heard.
+ *
+ * Every condition is re-read from the ROW rather than remembered from the
+ * request that queued this — that is the point of using a delayed job instead
+ * of a setTimeout. Between t=0 and t=5 s the call can have been answered
+ * (IN_CALL), declined (DECLINED), cancelled by the caller, swept to NO_ANSWER,
+ * or acked (ring_ack_at set). All of those are "do not push", and all of them
+ * are facts the row already knows.
+ *
+ * The push itself goes through the ordinary `sendToUser` path — the same
+ * subscriptions, the same pruning, the same VAPID handling every other
+ * notification uses — with the call's own payload: a deep link, a collapsing
+ * tag keyed on the call (so a second escalation of the same ring replaces
+ * rather than stacks), `requireInteraction`, and the two actions the Android
+ * and desktop shades render.
+ */
+async function escalateRing(client, { callId, tenantSlug = null }) {
+  const call = await repo.findCall(client, callId);
+  if (!call) return { pushed: false, reason: "call not found" };
+  if (call.status !== "RINGING") return { pushed: false, reason: "no longer ringing" };
+  if (call.ring_ack_at) return { pushed: false, reason: "already acknowledged" };
+
+  // The claim: whoever sets ring_push_sent_at owns the send. A queue retry that
+  // re-runs this job finds the stamp and stops.
+  const claimed = await repo.markRingPushSent(client, callId);
+  if (!claimed) return { pushed: false, reason: "already escalated" };
+
+  const { rows: nameRows } = await client.query(
+    "SELECT full_name FROM app_user WHERE user_id = $1",
+    [call.caller_id],
+  );
+  const callerName = nameRows[0]?.full_name || null;
+  const expiresAt = new Date(new Date(call.started_at).getTime() + RING_TIMEOUT_S * 1000).toISOString();
+
+  const push = require("../../shared/push/push.service");
+  const result = await push.sendToUser(client, {
+    user_id: call.callee_id,
+    // The server speaks English here like every other server-side string in
+    // this codebase; the service worker re-renders both languages from the
+    // device's own locale before showing it (client/public/push-handler.js).
+    // The title is the caller's NAME, which needs no translation at all.
+    title: callerName || "Praxis LS",
+    body: "Incoming call",
+    url: `/comms?call=${call.call_id}`,
+    tag: `call:${call.call_id}`,
+    renotify: true,
+    // A ring that auto-dismisses after a few seconds is a ring nobody answers;
+    // the OS holds it until the user acts or the call ends.
+    requireInteraction: true,
+    urgency: "high",
+    // The ring is worth 60 seconds of a phone's attention, not a day. Past the
+    // window this call cannot be answered anyway (§4.6: an expired ring is a
+    // chat, not a call), and a push that surfaces tomorrow would open a dead
+    // accept screen — the exact edge case PR-3 exists to close.
+    ttl: RING_TIMEOUT_S,
+    timestamp: Date.now(),
+    actions: [
+      { action: "accept", title: "Accept" },
+      { action: "decline", title: "Decline" },
+    ],
+    data: {
+      kind: "call",
+      call_id: call.call_id,
+      caller_id: call.caller_id,
+      caller_name: callerName,
+      expires_at: expiresAt,
+    },
+  });
+
+  logger.info(
+    {
+      callId: call.call_id,
+      // The tenant is on the line because this logger is the API process's, not
+      // the job's: a fleet-wide grep for one tenant's rings needs it there.
+      tenantSlug: tenantSlug || null,
+      env: process.env.NODE_ENV,
+      sent: result && result.sent,
+      reason: result && result.reason,
+    },
+    "call: ring push escalated",
+  );
+  return { pushed: true, delivery: result };
+}
+
+/** The tenant's call settings, for the sweeps and the clients that need the
+ *  numbers rather than the payload. */
+async function settingsFor(client) {
+  return callSettings(client);
+}
+
 /** Fresh ICE config for a call's participant — the credential is scoped to
  *  the USER (their id is in the username), so a refresh mid-call never
  *  reuses the other participant's, and neither can replay the other's. */
@@ -430,6 +681,8 @@ async function getCall(client, { id, actor }) {
 module.exports = {
   RING_TIMEOUT_S,
   MAX_CALL_S,
+  RING_PUSH_DELAY_MS,
+  RING_CHANNELS,
   createCall,
   acceptCall,
   declineCall,
@@ -439,4 +692,10 @@ module.exports = {
   listCalls,
   getCall,
   turnFor,
+  // PR-3.
+  callSettings,
+  settingsFor,
+  ackRing,
+  escalateRing,
+  enqueueRingEscalation,
 };

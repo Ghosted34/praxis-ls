@@ -33,6 +33,7 @@ const objects = require("../../../services/platform/object-backup.service");
 const uptime = require("../../../services/platform/uptime.service");
 const maintenance = require("../../../services/platform/maintenance.service");
 const support = require("../../../services/platform/support.service");
+const commsMetrics = require("../../../services/platform/comms-metrics.service");
 const entitlement = require("../../../services/platform/entitlement.service");
 const store = require("../../../services/platform/backup-storage.service");
 const registry = require("../../../services/tenant/registry.service");
@@ -239,6 +240,27 @@ const tenantUsage = asyncHandler(async (req, res) =>
   res.json({ data: await entitlement.statusFor(req.params.tenantId) }),
 );
 
+/* ── Smart Comms calls (§7.2) ───────────────────────────────────────────── */
+
+/**
+ * The call metrics screen's whole read: the fleet series, the per-tenant table
+ * and the split the acceptance criteria ask for.
+ *
+ * Read-only, and that is deliberate — the aggregation is a job (a page load must
+ * not fan out across every tenant's database), so there is no "collect now"
+ * button here the way there is for health. `alert` rides along so the screen can
+ * render the threshold that is actually in force, which is the difference
+ * between an operator trusting the number and guessing at it.
+ */
+const commsCalls = asyncHandler(async (req, res) =>
+  res.json({
+    data: {
+      ...(await commsMetrics.overview({ days: req.query.days || 30 })),
+      alert: await commsMetrics.alertConfig(),
+    },
+  }),
+);
+
 // The metric catalogue, so the console can render the picker from one source
 // rather than repeating the list — and so `metered: false` is visible rather
 // than a metric that silently always reads zero.
@@ -326,6 +348,7 @@ module.exports = {
   maintenanceList,
   maintenanceCreate,
   maintenanceCancel,
+  commsCalls,
   fleetUsage,
   tenantUsage,
   usageMetrics,

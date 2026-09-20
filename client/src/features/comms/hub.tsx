@@ -24,20 +24,27 @@ import { TeamChatPage } from "./team-chat";
 import { InboxPage } from "./inbox";
 import { CommsSetupPage } from "./setup/index";
 import { SignaturesPage } from "./signatures";
+import { CallsPage } from "@/features/settings/calls-page";
 
 const TABS = [
   { to: "/comms", label: "Chat", end: true },
   { to: "/comms/mail", label: "Mailbox", end: false },
   { to: "/comms/signatures", label: "Signatures", end: false },
+  { to: "/comms/calls", label: "Call audio", end: false },
   { to: "/comms/setup", label: "Setup", end: false },
 ] as const;
 
 export function CommsHub() {
   const { section } = useParams();
-  const isChat = !section || !["setup", "signatures", "mail"].includes(section);
+  const isChat = !section || !["setup", "signatures", "mail", "calls"].includes(section);
   const page =
     section === "setup" ? (
       <CommsSetupPage />
+    ) : section === "calls" ? (
+      /* The call settings, also reachable from Settings (PR-3). Here because
+         this is where somebody realises the yard filter exists — the same
+         screen, one fewer place to go looking. */
+      <CallsPage />
     ) : section === "signatures" ? (
       <SignaturesPage />
     ) : section === "mail" ? (

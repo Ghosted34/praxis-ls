@@ -173,6 +173,19 @@ async function opsTuning() {
       pick(v.health_pooler_maxwait_amber_ms, config.HEALTH_POOLER_MAXWAIT_AMBER_MS),
       100,
     ),
+    // Smart Comms calls (guide §7.2). The sustained-transcription-failure alarm
+    // is the one threshold in the programme that has no universally right
+    // answer: three failures in a day is a quiet Tuesday for a fleet making a
+    // thousand calls and a provider outage for a tenant making ten, and the
+    // cross-over is a property of the deployment rather than of the code.
+    commsTranscriptionAlertThreshold: num(
+      pick(v.comms_transcription_alert_threshold, config.COMMS_TRANSCRIPTION_ALERT_THRESHOLD),
+      3,
+    ),
+    commsTranscriptionAlertWindowHours: num(
+      pick(v.comms_transcription_alert_window_hours, config.COMMS_TRANSCRIPTION_ALERT_WINDOW_HOURS),
+      24,
+    ),
     uptimeProbePath: pick(v.uptime_probe_path, config.UPTIME_PROBE_PATH, "/api/health/ready"),
     uptimeProbeScheme: pick(v.uptime_probe_scheme, config.UPTIME_PROBE_SCHEME, "https"),
     uptimeProbeTimeoutMs: num(pick(v.uptime_probe_timeout_ms, config.UPTIME_PROBE_TIMEOUT_MS), 10_000),

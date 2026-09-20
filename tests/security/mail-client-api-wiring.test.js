@@ -70,7 +70,6 @@ const GRANDFATHERED = new Map(
     getDraft:
       "the Drafts list opens the row it already has, so nothing re-fetches by id",
     deleteLabel: "labels can be created and listed; no delete affordance yet",
-    putSetting: "generic settings writer, unused by the comms screens",
     updateSender: "the senders tab is read-only today",
     addCatalogueEntry: "the mailbox catalogue is read-only today",
     toggleCatalogueEntry: "the mailbox catalogue is read-only today",
@@ -162,9 +161,16 @@ describe("every mail endpoint with a client wrapper is reachable from a screen",
     // also WRONG, not merely stale — it read "superseded by the thread list",
     // and the queue is precisely the mail that is NOT in the thread list yet.
     //
-    // 21 is the current allowance. It can only shrink as endpoint screens land;
+    // 21 → 20. `putSetting` came off when the comms-call settings screen
+    // (`features/settings/calls-page.tsx`) wrote the tenant RNNoise default and
+    // the recording retention through it. Its entry read "generic settings
+    // writer, unused by the comms screens", and the calls screen is a comms
+    // screen, so the entry stopped being true. The cap follows the list down,
+    // one line of headroom, as before.
+    //
+    // 20 is the current allowance. It can only shrink as endpoint screens land;
     // adding a new wrapper here is deliberately rejected by this ratchet.
-    expect(GRANDFATHERED.size).toBeLessThanOrEqual(22);
+    expect(GRANDFATHERED.size).toBeLessThanOrEqual(21);
   });
 
   test("nothing sits on the list that is now wired", () => {

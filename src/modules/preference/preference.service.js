@@ -6,6 +6,9 @@
  *   appearance  the three typography tokens
  *   shell       how this user has arranged the application chrome — whether the
  *               ribbon is pinned open, and what they pinned to the icon rail
+ *   calls       the per-user half of the noise-filter switch (PR-3, guide
+ *               §4.4/§7.2): the tenant sets the default for the yard, the person
+ *               standing in the yard decides whether their own mic is filtered
  *
  * SCOPE, AND WHY `appearance` IS THIS NARROW. Only the three typography tokens
  * are user-overridable. Colour, logo and favicon are the COMPANY's identity, not
@@ -164,6 +167,57 @@ async function setShell(client, { userId, ...fields }) {
   return getShell(client, userId);
 }
 
+/* ── calls ─────────────────────────────────────────────────────────────────── */
+
+const CALLS_SECTION = "calls";
+
+/**
+ * API field → stored key.
+ *
+ * ONE KEY, and it is a tri-state on purpose: null means "inherit the tenant's
+ * default" (which is what an absent row is), true and false are the user's own
+ * decision. The same absent-≠-null contract as the two sections above, because
+ * a person who has never opened the screen and a person who deliberately turned
+ * the filter ON must not look identical to the caller — the first should follow
+ * the tenant if the tenant changes its mind, the second should not.
+ */
+const CALLS_KEYS = {
+  noiseSuppression: "noise_suppression",
+};
+
+/** This user's call preferences. Every key present; null = inherit. */
+async function getCalls(client, userId) {
+  const rows = await repo.getSection(client, userId, CALLS_SECTION);
+  const map = {};
+  for (const r of rows) map[r.key] = r.value;
+
+  const out = {};
+  for (const [field, key] of Object.entries(CALLS_KEYS)) out[field] = map[key] ?? null;
+  return out;
+}
+
+/**
+ * Partial update, same contract as the other two sections: absent = untouched,
+ * null = back to the tenant default. Values are coerced to a real boolean
+ * rather than stored as given — this one is read by the call engine while a mic
+ * is open, and a stored "false"-the-string would make `if (pref)` true and
+ * silently invert a privacy-adjacent switch.
+ */
+async function setCalls(client, { userId, ...fields }) {
+  const touched = Object.keys(CALLS_KEYS).filter((f) => fields[f] !== undefined);
+  if (touched.length === 0) return getCalls(client, userId);
+
+  for (const field of touched) {
+    const raw = fields[field];
+    if (raw === null) {
+      await repo.remove(client, userId, CALLS_SECTION, CALLS_KEYS[field]);
+      continue;
+    }
+    await repo.upsert(client, userId, CALLS_SECTION, CALLS_KEYS[field], raw === true || raw === "true");
+  }
+  return getCalls(client, userId);
+}
+
 module.exports = {
   SECTION,
   KEYS,
@@ -174,4 +228,8 @@ module.exports = {
   SHELL_KEYS,
   getShell,
   setShell,
+  CALLS_SECTION,
+  CALLS_KEYS,
+  getCalls,
+  setCalls,
 };

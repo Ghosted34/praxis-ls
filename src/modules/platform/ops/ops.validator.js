@@ -50,6 +50,13 @@ const QUERY_SCHEMAS = {
   uptime: z.object({
     days: z.coerce.number().int().positive().max(365).optional(),
   }),
+  // Smart Comms call metrics (§7.2). Capped at the metric table's own retention
+  // (400 days, migrations/platform/0107): a window the table cannot answer would
+  // read as "no calls", which is the one answer an ops screen must never give
+  // for a question it was not asked.
+  commsCalls: z.object({
+    days: z.coerce.number().int().positive().max(400).optional(),
+  }),
   maintenance: z.object({
     // Coerced from the string "true"/"false" a query string actually carries.
     include_past: z

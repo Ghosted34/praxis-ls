@@ -690,6 +690,14 @@ const Schema = z.object({
   HEALTH_POOL_UTILISATION_AMBER: int(80),
   HEALTH_POOLER_MAXWAIT_AMBER_MS: int(100),
 
+  // Smart Comms calls (guide §7.2): the sustained-transcription-failure alarm.
+  // Vault-first (Platform Console → ops.tuning) with these as the fallback —
+  // the right number depends on how many calls a deployment makes, which is not
+  // knowable from the code. Threshold is a count of calls whose transcript fell
+  // back to the browser capture inside the window.
+  COMMS_TRANSCRIPTION_ALERT_THRESHOLD: int(3),
+  COMMS_TRANSCRIPTION_ALERT_WINDOW_HOURS: int(24),
+
   // Uptime probing (WS-U1). The interval is also the DENOMINATOR of the
   // availability figure — a missing sample counts as downtime — so changing it
   // changes what past percentages mean. 0 disables probing.
@@ -833,6 +841,13 @@ const Schema = z.object({
   // own Host — a tenant whose public site lives on a domain the registry does not
   // know about. Comma-separated, bare hostnames.
   COMMS_LINK_EXTRA_OWN_HOSTS: z.string().default(""),
+
+  // How often the worker refreshes today's call metrics and evaluates the
+  // sustained-transcription-failure alarm (guide §7.2). 0 disables the
+  // evaluator only — the nightly aggregation still runs, so the ops screen
+  // keeps working and only the alarm goes quiet, which is the honest way round
+  // for a control an operator might turn off while debugging a noisy provider.
+  COMMS_METRICS_ALERT_INTERVAL_MS: int(3600000), // hourly
 
   // How often to renew push subscriptions (Graph webhooks expire ~3d). 0 disables.
   MAIL_WEBHOOK_RENEW_INTERVAL_MS: int(21600000), // 6h

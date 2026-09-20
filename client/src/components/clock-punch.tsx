@@ -188,7 +188,17 @@ export function useClockPunch() {
     hour: "2-digit",
     minute: "2-digit",
   });
-  const label = msg ? msg.text : clockedIn ? "On the clock" : timeStr;
+  // BEFORE: showed the current clock time even when off-shift, so the pill read
+  // "03:23" and gave no hint it was a clock-in control. Now the pill states the
+  // action when off-shift ("Clock in") and only reveals the timer when on-shift
+  // ("03:23 • On the clock") — which is what "timer can come up only when we
+  // have clocked in" asks for. The transient `msg` (off-site, no location…)
+  // still wins over both, because it is the result of the last punch.
+  const label = msg
+    ? msg.text
+    : clockedIn
+      ? `${timeStr} • On the clock`
+      : "Clock in";
   const action = canPunch ? (clockedIn ? "Clock out" : "Clock in") : "Time";
 
   return {
@@ -464,8 +474,8 @@ export function ClockPunch() {
       <button
         onClick={toggle}
         disabled={busy}
-        title={action}
-        aria-label={action}
+        title={`${action} · ${label}`}
+        aria-label={`${action}. ${clockedIn ? "On the clock" : "Not clocked in"}`}
         className="relative grid h-11 w-11 place-items-center rounded-full border bg-card text-foreground shadow-lg transition-colors duration-150 hover:bg-accent hover:text-primary-ink disabled:opacity-60"
       >
         <ClockIcon />

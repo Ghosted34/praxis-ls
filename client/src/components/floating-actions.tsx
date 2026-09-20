@@ -33,8 +33,10 @@
  */
 import * as React from "react";
 import { createPortal } from "react-dom";
+import { useNavigate } from "react-router-dom";
 import { ClockPunch } from "@/components/clock-punch";
 import { useQuickActions } from "@/components/quick-actions";
+import { applyPendingUpdate, useUpdateReady } from "@/lib/pwa-update";
 import { cn } from "@/lib/cn";
 
 type IP = React.SVGProps<SVGSVGElement>;
@@ -56,18 +58,35 @@ const BurstIcon = (p: IP) => (
     <circle cx="12" cy="12" r="2.5" />
   </svg>
 );
+const ReloadIcon = (p: IP) => (
+  <svg {...s(p)}>
+    <path d="M21 12a9 9 0 1 1-2.6-6.4" />
+    <path d="M21 3v7h-7" />
+  </svg>
+);
+const BellIcon = (p: IP) => (
+  <svg {...s(p)}>
+    <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
+    <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+  </svg>
+);
 
 export function FloatingActions({
   badge = 0,
   messageBadge = 0,
+  notificationBadge = 0,
 }: {
   badge?: number;
   /** Unread messages specifically — shown as a badge on the Messages action when open. */
   messageBadge?: number;
+  /** Unread notifications — shown on the Notifications row when open so the 43 on the FAB is accountable inside. */
+  notificationBadge?: number;
 }) {
   const [open, setOpen] = React.useState(false);
   const ref = React.useRef<HTMLDivElement>(null);
   const closeTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const navigate = useNavigate();
+  const updateReady = useUpdateReady();
 
   // Draggable position (FAB top-left, viewport px). null → default bottom-right
   // anchor. Persisted so it stays where the user drops it.
@@ -176,6 +195,22 @@ export function FloatingActions({
   const close = React.useCallback(() => setOpen(false), []);
   const actions = useQuickActions(close);
 
+  const handleReload = React.useCallback(() => {
+    close();
+    // Full service-worker reload — the same handover the "New version available"
+    // toast and the desktop NavRefresh hard-reload use. If a build is staged
+    // (`updateReady`) we ask the waiting worker to take over; otherwise a plain
+    // hard reload is exactly right. See lib/pwa-update.ts for the guarantee
+    // that this always ends in a reload even when the worker is gone.
+    if (updateReady) applyPendingUpdate();
+    else window.location.reload();
+  }, [close, updateReady]);
+
+  const handleNotifications = React.useCallback(() => {
+    close();
+    navigate("/notifications");
+  }, [close, navigate]);
+
   // Portal to <body> so position:fixed is viewport-relative. A transformed page
   // ancestor would otherwise become the containing block, so the drag math (which
   // uses viewport-relative pointer + rect coords) would land the FAB in the wrong
@@ -259,6 +294,58 @@ export function FloatingActions({
               </div>
             );
           })}
+          {/* ── Reload: full service-worker handover, like Ctrl+F5 / desktop NavRefresh hard reload ── */}
+          <div
+            className="flex items-center gap-3 animate-fade-in"
+            style={{ animationDelay: `${actions.length * 30}ms` }}
+          >
+            <span className="inline-flex items-center gap-2 rounded-full border bg-popover px-3.5 py-2 text-sm font-semibold leading-none text-foreground shadow-lg ring-1 ring-black/5 backdrop-blur-sm">
+              Reload
+              {updateReady && (
+                <span className="inline-flex h-5 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-bold leading-none text-primary-foreground">
+                  New
+                </span>
+              )}
+            </span>
+            <button
+              onClick={handleReload}
+              title={updateReady ? "Reload into new version" : "Reload app — hard reload"}
+              aria-label={updateReady ? "Reload into new version" : "Reload app"}
+              className="relative grid h-11 w-11 shrink-0 place-items-center rounded-full border-2 border-background bg-popover text-foreground shadow-xl ring-1 ring-black/10 transition-colors duration-150 hover:bg-accent hover:text-primary-ink"
+            >
+              <ReloadIcon />
+            </button>
+          </div>
+          {/* ── Notifications: so the 43 on the FAB is accountable inside ── */}
+          <div
+            className="flex items-center gap-3 animate-fade-in"
+            style={{ animationDelay: `${(actions.length + 1) * 30}ms` }}
+          >
+            <span className="inline-flex items-center gap-2 rounded-full border bg-popover px-3.5 py-2 text-sm font-semibold leading-none text-foreground shadow-lg ring-1 ring-black/5 backdrop-blur-sm">
+              Notifications
+              {notificationBadge > 0 && (
+                <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-bold leading-none text-primary-foreground">
+                  {notificationBadge > 99 ? "99+" : notificationBadge}
+                </span>
+              )}
+            </span>
+            <button
+              onClick={handleNotifications}
+              title="Notifications"
+              aria-label={notificationBadge > 0 ? `Notifications, ${notificationBadge} unread` : "Notifications"}
+              className="relative grid h-11 w-11 shrink-0 place-items-center rounded-full border-2 border-background bg-popover text-foreground shadow-xl ring-1 ring-black/10 transition-colors duration-150 hover:bg-accent hover:text-primary-ink"
+            >
+              <BellIcon />
+              {notificationBadge > 0 && (
+                <span
+                  aria-hidden
+                  className="absolute -right-1.5 -top-1.5 grid h-5 min-w-[20px] place-items-center rounded-full bg-primary px-1 text-[10px] font-bold leading-none text-primary-foreground ring-2 ring-background"
+                >
+                  {notificationBadge > 99 ? "99+" : notificationBadge}
+                </span>
+              )}
+            </button>
+          </div>
           {/* Clock-in lives inside the expanded cluster, not always-on. */}
           <ClockPunch />
         </div>

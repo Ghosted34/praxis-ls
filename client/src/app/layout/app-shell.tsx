@@ -163,24 +163,55 @@ function useUnreadCounts(env: string): {
 } {
   const qc = useQueryClient();
 
+  // Robust even when the two unread shapes have been swapped or one endpoint
+  // grows a second field: `/smartcomm/unread` is an array today but an object
+  // with `count` would still resolve; `/notifications/unread-count` is an
+  // object today but an array would still be summed. That is the "schema
+  // mismatch" the reporter saw — the FAB showed 43 (the summed total) while
+  // Messages showed 0 because one of the two resolves silently ate the shape.
   const num = (v: unknown): number => {
     if (typeof v === "number") return v;
     if (v && typeof v === "object") {
       const o = v as Record<string, unknown>;
-      const n = o.count ?? o.unread ?? o.total ?? o.n;
-      return typeof n === "number" ? n : 0;
+      const n =
+        o.count ??
+        o.unread ??
+        o.unread_count ??
+        o.unreadCount ??
+        o.total ??
+        o.n;
+      if (typeof n === "number") return n;
+      // The server nests the count under `data` when the fetch layer did not
+      // unwrap it (envelope vs plain), or under a differently-named field.
+      if (typeof o.data === "number") return o.data as number;
+      if (o.data && typeof o.data === "object") return num(o.data);
     }
     return 0;
   };
   // /smartcomm/unread returns per-channel rows [{group_id, unread}] → sum them;
-  // /notifications/unread-count returns { unread: N }.
-  const sumUnread = (v: unknown): number =>
-    Array.isArray(v)
-      ? v.reduce(
-          (s, r) => s + (Number((r as { unread?: unknown })?.unread) || 0),
-          0,
-        )
-      : num(v);
+  // /notifications/unread-count returns { unread: N }. Both helpers tolerate the
+  // other shape so a future backend rename cannot silently zero a badge.
+  const sumUnread = (v: unknown): number => {
+    if (Array.isArray(v)) {
+      return v.reduce((s, r) => {
+        if (typeof r === "number") return s + r;
+        if (r && typeof r === "object") {
+          const o = r as Record<string, unknown>;
+          const n =
+            o.unread ?? o.unread_count ?? o.unreadCount ?? o.count ?? o.total ?? o.n;
+          return s + (Number(n) || 0);
+        }
+        return s;
+      }, 0);
+    }
+    // Not an array — might already be a counted object or a bare number, or
+    // even an envelope `{ data: [...] }` if unwrapping changes.
+    if (v && typeof v === "object") {
+      const o = v as Record<string, unknown>;
+      if (Array.isArray(o.data)) return sumUnread(o.data);
+    }
+    return num(v);
+  };
 
   // `env` is in the key so flipping LIVE/TEST reads the other environment's
   // counts rather than showing stale ones.
@@ -1184,7 +1215,11 @@ export function AppShell() {
 
               The overlap is solved where it is caused: the composer publishes
               `--fab-floor` and the cluster anchors above it (floating-actions.tsx). */}
-          <FloatingActions badge={unread.messages + unread.notifications} messageBadge={unread.messages} />
+          <FloatingActions
+            badge={unread.messages + unread.notifications}
+            messageBadge={unread.messages}
+            notificationBadge={unread.notifications}
+          />
           {/* Env-switch interstitial. Shown from the confirmed switch until the
           browser has replaced the document (switchEnv above). `onReload` is
           the escape hatch the overlay offers if the reload was refused. */}

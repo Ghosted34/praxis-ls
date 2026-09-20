@@ -6,7 +6,7 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 1680 |
+| Routes | 1682 |
 | Modules mounted | 141 |
 | API version | v1 |
 
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 1680 mounted routes, grouped by path prefix.
+All 1682 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -2005,6 +2005,8 @@ All 1680 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/smartcomm/config/whatsapp/test` | — |
 | GET | `/api/tenant/smartcomm/erp/:kind/:id` | — |
 | GET | `/api/tenant/smartcomm/erp/search` | — |
+| GET | `/api/tenant/smartcomm/links/image` | — |
+| POST | `/api/tenant/smartcomm/links/preview` | — |
 | GET | `/api/tenant/smartcomm/media/:mediaId` | — |
 | POST | `/api/tenant/smartcomm/media/:mediaId/promote` | — |
 | POST | `/api/tenant/smartcomm/media/:mediaId/transcribe` | — |

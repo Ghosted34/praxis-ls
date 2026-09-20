@@ -14,6 +14,7 @@ const repo = require("./smartcomm.repo");
 const scheduled = require("./smartcomm.schedule.repo");
 const media = require("./smartcomm.media.service");
 const erp = require("./smartcomm.erp.service");
+const links = require("./smartcomm.links.service");
 const events = require("./smartcomm.events");
 const documents = require("../../services/documents/document.service");
 const { emitEvent, audit, resolveActorId } = require("../../shared/events/emit");
@@ -151,7 +152,7 @@ function attachmentSummary(attachments) {
  * "new message in Smart Comms". The chat card is still posted and still shows
  * up in the channel; only the duplicate notification is skipped.
  */
-async function postMessage(client, { groupId, body = null, mediaVaultId = null, replyTo = null, attachments = [], actor = {}, notifyMembers = true, scheduleId = null }) {
+async function postMessage(client, { groupId, body = null, mediaVaultId = null, replyTo = null, attachments = [], actor = {}, notifyMembers = true, scheduleId = null, tenantMeta = null, env = "live" }) {
   await client.query("BEGIN");
   try {
     if (scheduleId) {
@@ -174,6 +175,18 @@ async function postMessage(client, { groupId, body = null, mediaVaultId = null, 
     await emitEvent(client, { eventTypeKey: events.MESSAGE_POSTED, moduleKey: events.MODULE, entityRef: "comms_message:" + m.message_id, actorUserId: actor.user_id || null });
     if (scheduleId) await scheduled.sent(client, scheduleId, m.message_id);
     await client.query("COMMIT");
+    // The preview rows for a message a person just sent, written OUTSIDE the
+    // transaction on purpose. A link preview is bookkeeping about somebody
+    // else's web page: it must never be able to fail a send, hold the message's
+    // row locks while a third party is slow, or — worst — make a message
+    // undeliverable because a tenant's Redis is down. Everything here is wrapped,
+    // and the only consequence of any of it failing is that the card shows up on
+    // the first read instead of before it.
+    try {
+      await links.recordSentLinks(client, { body, m, tenantMeta, env });
+    } catch {
+      /* @silent:storage|parse|teardown */
+    }
     rtPublish(groupId, "comms:message", { group_id: groupId, message: m });
     // G22 — a posted message notifies the OTHER members through the same
     // preference-honouring channel every other module uses (IN_APP + optional
@@ -311,7 +324,7 @@ async function deleteMessage(client, { messageId, actor }) {
  * bubbles used to be one query because a bubble was a line of text; the cost of
  * making them rich is paid once per page, not once per bubble.
  */
-async function thread(client, { groupId, actor, limit, before, erpAllow = new Set() }) {
+async function thread(client, { groupId, actor, limit, before, erpAllow = new Set(), tenantMeta = null, env = "live" }) {
   await assertMember(client, groupId, actor.user_id);
   await repo.touchPresence(client, groupId, actor.user_id);
   // `before` is a query-string value and can arrive as an array (`?before=x&
@@ -356,6 +369,18 @@ async function thread(client, { groupId, actor, limit, before, erpAllow = new Se
     if (bucket) bucket.reactions.push({ emoji: r.emoji, count: r.count, users: r.users });
   }
 
+  // Link previews, resolved for THIS page, after the messages are in hand.
+  //
+  // A separate call rather than a JOIN, and never a fetch: a thread read is the
+  // hot path of the most-used screen in the product, and a card is worth at most
+  // one indexed lookup per distinct URL. Where a URL has no row yet — a message
+  // older than this feature, a link pasted by a producer that never queued a
+  // fetch — `previewsFor` creates the row and enqueues the work, so the reader
+  // sees nothing and the NEXT reader sees a card. A slow third-party site is
+  // therefore never able to make opening a chat slow, which is the property the
+  // split exists to buy.
+  const previews = await links.previewsFor(client, messages, { tenantMeta, env });
+
   return {
     group_id: groupId,
     messages: messages.map((m) => ({
@@ -363,7 +388,12 @@ async function thread(client, { groupId, actor, limit, before, erpAllow = new Se
       attachments: byMessage.get(m.message_id)?.attachments || [],
       reactions: byMessage.get(m.message_id)?.reactions || [],
       starred_by_me: starSet.has(m.message_id),
+      // The URLs in this bubble, in reading order. The CARD is not here: it lives
+      // once in `links.by_url`, because a link quoted nine times in one thread is
+      // nine references to one preview and not nine copies of a description.
+      link_urls: previews.byMessage[m.message_id] || [],
     })),
+    links: previews.byUrl,
   };
 }
 

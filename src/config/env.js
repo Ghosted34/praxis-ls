@@ -771,6 +771,52 @@ const Schema = z.object({
   // repaired automatically.
   MEDIA_RECONCILE_INTERVAL_MS: int(900000), // 15 min
 
+  /**
+   * Smart Comms link previews (doc/SMART_COMMS_LINKS.md).
+   *
+   * `COMMS_LINK_PREVIEWS` is the whole feature's kill switch, and it is an env
+   * var rather than a tenant setting on purpose: what it turns off is an OUTBOUND
+   * HTTP REQUEST made by the server on behalf of a chat message. An operator
+   * under a data-residency review, an air-gapped deploy, or an incident where a
+   * provider is blocking us needs to stop that with a restart, not with a
+   * permission grant. Off, links stay clickable (that half is client-side and
+   * needs no fetch) and simply have no card.
+   *
+   * The timeouts are floors on bad-web latency, not tuning: 6s is longer than
+   * about 99% of pages answer and shorter than the worker's own job timeout, and
+   * the byte cap is a head-metadata bound, not a page-size one — we read the
+   * `<head>` and stop.
+   */
+  COMMS_LINK_PREVIEWS: bool(true),
+  COMMS_LINK_FETCH_TIMEOUT_MS: int(6000),
+  COMMS_LINK_FETCH_MAX_BYTES: int(262144),
+  // An image is bigger than a `<head>` and is streamed to one reader at a time,
+  // so it gets its own cap. 2 MB is above every `og:image` in the wild that a
+  // 320px-wide card will display; a larger one is refused rather than resized,
+  // because a fetch-then-decode of an attacker-sized PNG is the DoS this caps.
+  COMMS_LINK_IMAGE_MAX_BYTES: int(2097152),
+  // How old a card may get before a READ marks it for background refresh
+  // (stale-while-revalidate: the reader always gets the stored card immediately,
+  // the refresh is what keeps tomorrow's reader honest).
+  COMMS_LINK_TTL_DAYS: int(7),
+  // First retry delay for a failed fetch; doubles per attempt to ~8x.
+  COMMS_LINK_RETRY_MINUTES: int(15),
+  // The playable media CARD (thumbnail, duration, "Watch on YouTube"). Not an
+  // iframe: `frame-src` is deliberately same-origin and blob only, asserted by
+  // tests/unit/csp-blob-media.test.js, and this flag does not change that. With
+  // this off, a YouTube link gets an ordinary preview card like any other page.
+  COMMS_LINK_EMBEDS: bool(true),
+  // How often the worker drains whatever the queue lost, per LIVE tenant: rows
+  // created but never fetched (a Redis restart, a producer with no queue access)
+  // and rows a reader marked stale. 0 disables the sweep — the feature still works
+  // entirely from the queue, so unlike media-reconcile a disabled sweep is a
+  // slower preview rather than an unrepaired inconsistency, and it logs at info.
+  COMMS_LINK_SWEEP_INTERVAL_MS: int(900000), // 15 min
+  // Hosts to treat as our own in addition to `APP_BASE_DOMAIN` and the request's
+  // own Host — a tenant whose public site lives on a domain the registry does not
+  // know about. Comma-separated, bare hostnames.
+  COMMS_LINK_EXTRA_OWN_HOSTS: z.string().default(""),
+
   // How often to renew push subscriptions (Graph webhooks expire ~3d). 0 disables.
   MAIL_WEBHOOK_RENEW_INTERVAL_MS: int(21600000), // 6h
 

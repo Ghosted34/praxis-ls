@@ -792,8 +792,13 @@ export type EntityLinkPrecision = "record" | "section";
 export type EntityLink = { url: string; precision: EntityLinkPrecision };
 
 export declare namespace entityRoute {
+  /** The URL shape for a type with a detail route: either a path `prefix` the id
+   *  is appended to, or a list `path` the id rides on as a `query` parameter. */
+  type DetailSpec =
+    | { prefix: string; query?: undefined }
+    | { path: string; query: string; prefix?: undefined };
   /** Types with a detail route; the id opens the record itself. */
-  const DETAIL: Readonly<Record<string, (id: string) => string>>;
+  const DETAIL: Readonly<Record<string, DetailSpec>>;
   /** Types with no detail route; the link opens the list that holds them. */
   const SECTION: Readonly<Record<string, string>>;
   /** "email_thread:39cb…" → { type, id }. Null for an empty ref. */
@@ -808,8 +813,59 @@ export declare namespace entityRoute {
   function linkFor(entityRef?: string | null): EntityLink | null;
   /** Just the path, for callers indifferent to how precise it is. */
   function urlFor(entityRef?: string | null): string | null;
+  /**
+   * The reverse of `urlFor`: a path, root-relative URL or absolute URL back to
+   * the record it addresses. Null for a section landing, which names no record.
+   */
+  function parseUrl(
+    href?: string | null,
+  ): { type: string; id: string; precision: "record" } | null;
   /** Every path this module can emit — what the router test asserts against. */
   function allRoutes(): string[];
+}
+
+/**
+ * What in a message body is a link, and where does it go.
+ *
+ * Shared because the API and the client must agree on it: the API decides which
+ * URLs to unfurl and what to store, the client decides what is clickable. See
+ * rules/link-detect.js.
+ */
+export type DetectedLinkKind = "web" | "app" | "mail";
+export type DetectedLink = {
+  /** Index into the body this link was found in. */
+  start: number;
+  end: number;
+  /** Exactly the characters the sender typed. */
+  raw: string;
+  kind: DetectedLinkKind;
+  /** Absolute URL for "web", `mailto:` for "mail", the in-app path for "app". */
+  href: string;
+  /** The record an in-app link names, when it names one. */
+  entity?: { type: string; id: string; precision: "record" } | null;
+  /** English surface copy for an in-app chip, run through `tr()` by the client. */
+  label?: string | null;
+};
+
+export declare namespace linkDetect {
+  const MAX_LINKS: number;
+  /** Entity type → the word a chip carries for it. */
+  const APP_LABEL: Readonly<Record<string, string>>;
+  /** Every link in a body, in the order they appear. */
+  function extractLinks(text?: string | null): DetectedLink[];
+  /** The cache/dedup key for a URL: canonical, no fragment. Null when refused. */
+  function normaliseUrl(href: string): string | null;
+  /** The distinct web URLs in a body — what the unfurl queue is fed. */
+  function webUrls(text?: string | null): string[];
+  /** The records the in-app links point at, as `entity_ref` strings. */
+  function entityRefs(text?: string | null): string[];
+  /** The in-app path for a URL on a host the caller owns, else null. */
+  function toAppPath(
+    href: string,
+    selfHosts?: ReadonlyArray<string>,
+  ): string | null;
+  /** Sentence punctuation peeled off a candidate's tail. */
+  function peelTail(candidate: string): string;
 }
 
 /**

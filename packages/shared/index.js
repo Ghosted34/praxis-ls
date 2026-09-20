@@ -16,6 +16,7 @@ const siteSettings = require("./schemas/site-settings");
 const ledger = require("./rules/ledger");
 const marks = require("./rules/marks");
 const entityRoute = require("./rules/entity-route");
+const linkDetect = require("./rules/link-detect");
 const notificationInterrupt = require("./rules/notification-interrupt");
 const notificationEmailDefault = require("./rules/notification-email-default");
 const workSchedule = require("./rules/work-schedule");
@@ -59,6 +60,10 @@ exports.siteSettings = siteSettings;
 // `notification.link_url` from it at write time and the client resolves it
 // again at draw time for every row written before that column existed.
 exports.entityRoute = entityRoute;
+// What in a message body is a link. Shared because the API decides which URLs to
+// spend a fetch on and what to store, and the client decides what is clickable —
+// two copies disagree and the visible failure is a message with nothing to click.
+exports.linkDetect = linkDetect;
 // Which notifications may interrupt — sound, hold the banner, vibrate.
 // Shared because the API stamps it onto the push payload, the socket
 // listener uses it to decide whether to make a noise, and the Preferences

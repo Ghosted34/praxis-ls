@@ -20,10 +20,19 @@ vi.mock("@/lib/fab-floor", () => ({
   useFabFloor: vi.fn(),
 }));
 
+const { previewLink } = vi.hoisted(() => ({ previewLink: vi.fn() }));
+
 vi.mock("@/lib/smartcomm-api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/smartcomm-api")>()),
   getChannelDraft: vi.fn().mockResolvedValue(null),
   clearChannelDraft: vi.fn().mockResolvedValue(undefined),
+  // Autosave runs on a timer after every change; leaving it real would put a fetch
+  // to a nonexistent API into every test in this file.
+  saveChannelDraft: vi.fn().mockResolvedValue(undefined),
+  previewLink,
+  // The composer's preview card asks for a picture the way a bubble's does. There
+  // is none in these tests, and the card is designed to render without one.
+  linkImageObjectUrl: vi.fn().mockResolvedValue(null),
 }));
 
 vi.mock("@/components/ui/toast", () => ({
@@ -126,5 +135,85 @@ describe("chat composer paste", () => {
         "That file type isn't accepted here — choose a file instead.",
       ),
     ).toBeInTheDocument();
+  });
+});
+
+/**
+ * The paste preview.
+ *
+ * The composer is the one place this feature waits for the third party, so what is
+ * worth pinning is WHEN it asks and when it keeps its hands off: once per URL after
+ * the typing stops, never for a draft nobody is editing, and never a second time
+ * for the same link. The card itself is tested in `message-links.test.tsx`.
+ */
+describe("chat composer link preview", () => {
+  const body = () => screen.getByRole("textbox", { name: "Message body" });
+  const type = (text: string) => fireEvent.change(body(), { target: { value: text } });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    previewLink.mockResolvedValue({});
+  });
+
+  it("asks once for the link that was typed, and shows its card", async () => {
+    previewLink.mockResolvedValue({
+      url: "https://a.example/x",
+      state: "OK",
+      card: { url: "https://a.example/x", state: "OK", title: "A page about things", description: null, site_name: "a.example", image_src: null, icon_src: null, media: null, fetched_at: null, stale: false },
+    });
+    render(<Composer channelId="channel-1" onSent={vi.fn()} />);
+    type("here: https://a.example/x");
+    await waitFor(() => expect(previewLink).toHaveBeenCalledTimes(1), { timeout: 2500 });
+    expect(previewLink).toHaveBeenCalledWith("https://a.example/x");
+    expect(await screen.findByText("A page about things")).toBeInTheDocument();
+    // More keystrokes on the same URL must not mean more fetches: the debounce is
+    // per draft, and a request per character is a way to be blocked by the site.
+    type("here: https://a.example/x, and that is all");
+    await new Promise((r) => setTimeout(r, 900));
+    expect(previewLink).toHaveBeenCalledTimes(1);
+  });
+
+  it("says nothing about a message with no link in it", async () => {
+    render(<Composer channelId="channel-1" onSent={vi.fn()} />);
+    type("the vessel is delayed two days");
+    await new Promise((r) => setTimeout(r, 900));
+    expect(previewLink).not.toHaveBeenCalled();
+  });
+
+  it("does not fetch for a draft it only restored — and does once it is edited", async () => {
+    const commsApi = await import("@/lib/smartcomm-api");
+    vi.mocked(commsApi.getChannelDraft).mockResolvedValueOnce({
+      draft_id: "d1",
+      body: "https://a.example/x",
+    } as never);
+    render(<Composer channelId="channel-1" onSent={vi.fn()} />);
+    await new Promise((r) => setTimeout(r, 900));
+    // The reader opened a chat and found their own unfinished words. Fetching the
+    // link in them would tell the destination site about a message that was never
+    // sent, from a click that meant nothing of the kind.
+    expect(previewLink).not.toHaveBeenCalled();
+    // The other half, which is what makes the first half a rule rather than an
+    // omission: the same URL, once the person touches it, is a live question and
+    // gets its card.
+    type("https://a.example/x ");
+    await waitFor(() => expect(previewLink).toHaveBeenCalledTimes(1), { timeout: 2500 });
+    expect(previewLink).toHaveBeenCalledWith("https://a.example/x");
+  });
+
+  it("shows no card when the page had nothing to say", async () => {
+    previewLink.mockResolvedValue({ url: "https://a.example/x", state: "EMPTY", card: null });
+    render(<Composer channelId="channel-1" onSent={vi.fn()} />);
+    type("https://a.example/x");
+    await waitFor(() => expect(previewLink).toHaveBeenCalledTimes(1), { timeout: 2500 });
+    expect(document.querySelector("[data-composer] .line-clamp-2")).toBeNull();
+  });
+
+  it("a fetch that fails leaves the draft alone", async () => {
+    previewLink.mockRejectedValue(new Error("offline"));
+    render(<Composer channelId="channel-1" onSent={vi.fn()} />);
+    type("https://a.example/x");
+    await waitFor(() => expect(previewLink).toHaveBeenCalledTimes(1), { timeout: 2500 });
+    expect(body()).toHaveValue("https://a.example/x");
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 });

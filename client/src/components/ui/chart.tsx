@@ -296,15 +296,29 @@ export function SeriesBars({
   series,
   height,
   formatValue,
+  onPointClick,
+  selectedLabel,
 }: {
   data: BarsPoint[];
   series: BarsSeries[];
   height?: number;
   formatValue?: (v: number) => string;
+  /** Optional direct manipulation for charts whose bars reveal detail. Always
+   *  pair it with labelled controls outside the SVG for keyboard access. */
+  onPointClick?: (point: BarsPoint, index: number) => void;
+  /** Keeps the selected cluster strong while de-emphasising its neighbours. */
+  selectedLabel?: string | null;
 }) {
   return (
     <React.Suspense fallback={<ChartFallback height={height} />}>
-      <ImplBars data={data} series={series} height={height} formatValue={formatValue} />
+      <ImplBars
+        data={data}
+        series={series}
+        height={height}
+        formatValue={formatValue}
+        onPointClick={onPointClick}
+        selectedLabel={selectedLabel}
+      />
     </React.Suspense>
   );
 }

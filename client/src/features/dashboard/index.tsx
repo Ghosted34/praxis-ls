@@ -169,18 +169,29 @@ export function DashboardPage() {
       */}
       <TowerFilters value={filters} page={data.page} onChange={setFilters} />
 
-      <div className="mb-3 flex flex-wrap items-center justify-end gap-2">
+      <div className="mb-3 flex flex-wrap items-center justify-end gap-2 lg:mb-3">
         <Button
           type="button"
           size="sm"
           variant="outline"
           onClick={() => setMeeting(true)}
+          className="hidden sm:inline-flex"
+        >
+          Meeting view
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          onClick={() => setMeeting(true)}
+          className="sm:hidden"
+          aria-label="Meeting view"
         >
           Meeting view
         </Button>
       </div>
 
-      <div className="mb-5 grid gap-4 xl:grid-cols-[1.62fr_1fr]">
+      <div className="mb-4 grid gap-3 lg:mb-5 lg:gap-4 xl:grid-cols-[1.62fr_1fr]">
         {map}
         {/*
           The right column answers whichever question is live: the itinerary of
@@ -204,7 +215,7 @@ export function DashboardPage() {
       </div>
 
       {data.activity.length > 0 && (
-        <div className="mb-5">
+        <div className="mb-4 lg:mb-5">
           <OperationalActivityPanel
             records={data.activity}
             selected={selected}

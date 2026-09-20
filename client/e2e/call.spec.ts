@@ -97,7 +97,9 @@ async function fakeComms(page: Page) {
   // connection exists; buffer them here and drain on demand.
   const remoteCandidates: unknown[] = [];
 
-  await page.routeWebSocket(/\/socket\.io/, (route) => {
+  // Anchored: same-origin socket.io path only — a regex that could match
+  // anywhere would route WS frames from ANY host through this fake.
+  await page.routeWebSocket(/^wss?:\/\/[^/]+\/socket\.io\//, (route) => {
     ws = route;
     // engine.io open packet, then the socket.io namespace connect ack.
     route.send(

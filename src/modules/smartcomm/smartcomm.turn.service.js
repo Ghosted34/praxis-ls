@@ -7,8 +7,8 @@
  * outlives the call that needed it: anyone who reads the .env (or the
  * compose file) can relay media through this tenant's TURN forever, from any
  * machine, on this tenant's bill. The REST credential scheme is the fix:
- * username = `<expiry-epoch>:<user>`, password = base64(HMAC-SHA1 of the
- * username under a shared secret), valid until the expiry. A credential for a
+ * username = `<expiry-epoch>`, password = base64(HMAC-SHA1 of the username
+ * under a shared secret), valid until the expiry. A credential for a
  * 31-minute call is worthless the moment the call is over, and rotating the
  * secret invalidates everything at once.
  *
@@ -31,11 +31,19 @@ const { logger } = require("../../config/logger");
 const DEFAULT_STUN = "stun:stun.l.google.com:19302";
 let warnedTurnMisconfigured = false;
 
-/** One time-limited credential for the coturn REST scheme, for `user`. */
-function turnCredential(user) {
+/** One time-limited credential for the coturn REST scheme.
+ *
+ * The username is the EXPIRY EPOCH and nothing else — that is what coturn's
+ * `use-auth-secret` scheme specifies (an optional extra field after it is
+ * cosmetic, and coturn ignores it). Scoping the credential to a user id adds
+ * nothing either: the credential is already worthless after the expiry and is
+ * minted fresh per call, and keeping participant ids out of the HMAC input
+ * keeps personal data out of the one place it would be echoed back by TURN
+ * servers in plaintext Allocate requests. */
+function turnCredential() {
   const ttl = Math.max(60, Number(config.TURN_CREDENTIAL_TTL) || 1860);
   const expiry = Math.floor(Date.now() / 1000) + ttl;
-  const username = `${expiry}:${user}`;
+  const username = `${expiry}`;
   const password = crypto
     .createHmac("sha1", String(config.TURN_CREDENTIAL_SECRET))
     .update(username)
@@ -44,9 +52,9 @@ function turnCredential(user) {
 }
 
 /**
- * The `iceServers` array for a call, for the user who is dialing (their id
- * scopes the credential — one credential per participant, so a participant's
- * leaked credential cannot be replayed by the other one).
+ * The `iceServers` array for a call, for the user who is dialing. `user`
+ * scopes the log line only — the credential itself is time-boxed and minted
+ * fresh per call, so it needs no participant identity in it.
  *
  * Returns STUN-only when TURN is not configured, and says so: a call on
  * hostile NATs will then fail to connect, and the UI's plain sentence

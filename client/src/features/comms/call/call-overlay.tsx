@@ -30,11 +30,20 @@ type Props = {
   elapsedS: number;
   warning: boolean;
   muted: boolean;
+  /** The tenant's recording switch (PR-2), as the call row reports it. */
+  recordingEnabled?: boolean;
+  /** Parts of this side's audio that never reached the server, if any. The
+   *  transcript may therefore be missing the last stretch of the call, and the
+   *  person in the call is the only one who can still say so. */
+  recordingLost?: number;
   onHangup: () => void;
   onMute: () => void;
 };
 
-export function CallOverlay({ name, phase, elapsedS, warning, muted, onHangup, onMute }: Props) {
+export function CallOverlay({
+  name, phase, elapsedS, warning, muted,
+  recordingEnabled = false, recordingLost = 0, onHangup, onMute,
+}: Props) {
   const status =
     phase === "outgoing" ? tr("Calling…") : phase === "connecting" ? tr("Connecting…") : null;
 
@@ -65,6 +74,34 @@ export function CallOverlay({ name, phase, elapsedS, warning, muted, onHangup, o
           </p>
         )}
       </div>
+
+      {/* ── The consent banner (PR-2, decision row 5) ──────────────────────
+          ALWAYS ON, on BOTH ends, for the whole call. Not a dismissible toast
+          and not a one-time notice: recording is a fact about the call that
+          each party is entitled to see the entire time it is true, and the
+          person who did NOT press dial is the one it most concerns. It renders
+          in the app language of the person reading it, independently on each
+          device — neither end's banner depends on the other end having loaded
+          anything. */}
+      {recordingEnabled && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="absolute top-4 left-1/2 flex max-w-[92vw] -translate-x-1/2 items-center gap-2 rounded-full border border-border bg-card/90 px-4 py-2 text-xs text-foreground shadow-[var(--shadow-s)]"
+        >
+          <span aria-hidden className="inline-block h-2 w-2 rounded-full bg-[rgb(var(--bad))]" />
+          {tr("This call is recorded and summarized — both parties are informed")}
+        </div>
+      )}
+
+      {recordingLost > 0 && (
+        <p
+          role="alert"
+          className="absolute top-20 left-1/2 max-w-[92vw] -translate-x-1/2 rounded-lg border border-[rgb(var(--warn))]/40 bg-[rgb(var(--warn))/0.12] px-3 py-1.5 text-center text-xs text-foreground"
+        >
+          {tr("Part of this call's audio could not be uploaded — the transcript may be incomplete.")}
+        </p>
+      )}
 
       {/* The one-minute-left banner (29:00). Colour + text: not colour alone. */}
       {warning && phase === "in_call" && (

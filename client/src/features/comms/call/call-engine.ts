@@ -101,6 +101,13 @@ export class CallEngine {
     this.isCaller = isCaller;
   }
 
+  /** The local mic stream, so the RECORDER (PR-2) can tap the same track the
+   *  call is using. A second getUserMedia would be a second permission prompt
+   *  and, on some devices, a second device open. Null once stopped. */
+  get stream(): MediaStream | null {
+    return this.localStream;
+  }
+
   get localMuted(): boolean {
     const t = this.localStream?.getAudioTracks()[0];
     return t ? !t.enabled : true;

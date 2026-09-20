@@ -14,6 +14,10 @@ const repo = require("./smartcomm.repo");
 const scheduled = require("./smartcomm.schedule.repo");
 const media = require("./smartcomm.media.service");
 const erp = require("./smartcomm.erp.service");
+// The call record half (PR-2). Required at the top for the card resolution
+// below; the pipeline requires THIS file lazily inside sendSummary, which is
+// what keeps the pair from being a load-time cycle.
+const pipeline = require("./smartcomm.call.pipeline.service");
 const links = require("./smartcomm.links.service");
 const events = require("./smartcomm.events");
 const documents = require("../../services/documents/document.service");
@@ -115,6 +119,17 @@ function attachmentRow(messageId, a) {
   if (kind === "MEDIA") {
     return { ...base, attachment_kind: "MEDIA", media_id: a.media_id || null };
   }
+  if (kind === "CALL") {
+    // A call summary card (PR-2). The card RESOLVES at read time, exactly like
+    // an ERP reference: the summary can be regenerated in the other language,
+    // and a reader must see the current draft, not the bytes that were frozen
+    // into the message. The message itself carries only the pointer.
+    return {
+      ...base,
+      attachment_kind: "CALL",
+      call_id: (a && a.call_id) || null,
+    };
+  }
   if (kind === "ERP") {
     return {
       ...base,
@@ -136,6 +151,7 @@ function attachmentSummary(attachments) {
   if (!list.length) return "Sent an attachment";
   if (list.some((a) => a && a.is_voice_note)) return "Sent a voice note";
   if (list.some((a) => a && a.attachment_kind === "ERP")) return "Shared a record";
+  if (list.some((a) => a && a.attachment_kind === "CALL")) return "Shared a call summary";
   const first = list[0] || {};
   if (first.kind === "IMAGE") return list.length > 1 ? `Sent ${list.length} photos` : "Sent a photo";
   if (first.kind === "VIDEO") return "Sent a video";
@@ -353,6 +369,14 @@ async function thread(client, { groupId, actor, limit, before, erpAllow = new Se
   const cards = await erp.resolveMany(client, [...seen.values()], erpAllow);
   const cardByKey = new Map([...seen.keys()].map((k, i) => [k, cards[i]]));
 
+  // Call summary cards (PR-2), resolved the same way and for the same reason:
+  // one lookup per distinct CALL on the page, and the card the reader sees is
+  // the CURRENT draft/record rather than what was frozen into the message —
+  // a summary can be regenerated in the other language after it was posted, and
+  // a reader must see the same thing the transcript link will show them.
+  const callIds = attachments.filter((a) => a.attachment_kind === "CALL" && a.call_id).map((a) => a.call_id);
+  const callCards = await pipeline.cardsForCallIds(client, callIds);
+
   const starSet = new Set(starred);
   const byMessage = new Map(ids.map((id) => [id, { attachments: [], reactions: [] }]));
   for (const a of attachments) {
@@ -361,7 +385,9 @@ async function thread(client, { groupId, actor, limit, before, erpAllow = new Se
     bucket.attachments.push(
       a.attachment_kind === "ERP"
         ? { ...a, erp_card: cardByKey.get(`${a.erp_kind}:${a.erp_id}`) || null }
-        : a,
+        : a.attachment_kind === "CALL"
+          ? { ...a, call_card: callCards.get(a.call_id) || null }
+          : a,
     );
   }
   for (const r of reactions) {

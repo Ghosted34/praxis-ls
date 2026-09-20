@@ -40,6 +40,32 @@ function rtToUser(userId, event, payload, slugOverride) {
   if (slug && userId) realtime.publishToUser(slug, userId, event, payload);
 }
 
+/**
+ * Is the recording half of calls on for this tenant (PR-2, decision row 2)?
+ *
+ * Read here rather than in the client so BOTH ends learn it from the same place
+ * at the same moment: the caller from its dial response, the callee from its
+ * ring payload. A callee whose app never asks the question would show no consent
+ * banner over a call that IS being recorded, which is the one failure this must
+ * not have.
+ *
+ * Fails CLOSED (false) on any error: an unreadable flag must not put a banner
+ * over a call that is not being recorded, and the recorder then simply does not
+ * arm. Never throws — a call is not cancelled because a flag could not be read.
+ */
+async function recordingEnabled(client) {
+  try {
+    const { rows } = await client.query(
+      "SELECT state FROM feature_state WHERE feature_key = $1",
+      ["call_recording"],
+    );
+    return !!rows[0] && rows[0].state === "on";
+  } catch (err) {
+    logger.warn({ err }, "call: could not read the recording flag");
+    return false;
+  }
+}
+
 async function assertMember(client, groupId, userId) {
   const m = await require("./smartcomm.repo").findMember(client, groupId, userId);
   if (!m) throw new AppError("NOT_A_MEMBER", "You are not a member of this channel", 403);
@@ -112,10 +138,15 @@ async function createCall(client, { groupId, actor }) {
     "SELECT full_name FROM app_user WHERE user_id = $1",
     [actor.user_id],
   );
+  const recording = await recordingEnabled(client);
   const ringPayload = {
     call_id: call.call_id,
     from: { user_id: actor.user_id, name: nameRows[0]?.full_name || null },
     ring_timeout_s: RING_TIMEOUT_S,
+    // The callee's consent banner depends on this arriving WITH the ring: a
+    // banner that appears a second into the call is a banner that was not there
+    // when the call started.
+    recording_enabled: recording,
   };
   rtToUser(partner.user_id, "call:ringing", ringPayload);
   rtToUser(actor.user_id, "call:ringing_sent", ringPayload);
@@ -125,7 +156,7 @@ async function createCall(client, { groupId, actor }) {
   // to be "answered" before the caller's engine can start collecting ICE
   // candidates, and a second round trip here is setup latency on every call.
   const { iceConfigFor } = require("./smartcomm.turn.service");
-  return { ...call, ice: iceConfigFor(actor.user_id) };
+  return { ...call, ice: iceConfigFor(actor.user_id), recording_enabled: recording };
 }
 
 /** The callee answers. Must happen while the call is still RINGING — the
@@ -158,12 +189,12 @@ async function acceptCall(client, { id, actor }) {
   // fewer round trip in the second that decides whether the media path
   // forms before the caller gives up.
   const { iceConfigFor } = require("./smartcomm.turn.service");
-  return { ...updated, ice: iceConfigFor(actor.user_id) };
+  return { ...updated, ice: iceConfigFor(actor.user_id), recording_enabled: await recordingEnabled(client) };
 }
 
 /** The callee refuses. A hang-up from the CALLEE while still RINGING is the
  *  same act, and `hangup` routes it here. */
-async function declineCall(client, { id, actor }) {
+async function declineCall(client, { id, actor, tenantMeta = null, env = "live" }) {
   const call = await repo.findCall(client, id);
   if (!call || (call.caller_id !== actor.user_id && call.callee_id !== actor.user_id)) {
     throw new AppError("NOT_FOUND", "Call not found", 404);
@@ -178,6 +209,8 @@ async function declineCall(client, { id, actor }) {
     status: terminal,
     reason,
     notifyEvent: terminal === "CANCELLED" ? "call:cancelled" : "call:declined",
+    tenantMeta,
+    env,
   });
 }
 
@@ -189,16 +222,18 @@ async function declineCall(client, { id, actor }) {
  * IN_CALL + anyone → ENDED (hangup)
  * FAILED           → ice_failed is set by the engine report below, not here.
  */
-async function hangup(client, { id, actor, reason = "hangup" }) {
+async function hangup(client, { id, actor, reason = "hangup", tenantMeta = null, env = "live" }) {
   const call = await repo.findCall(client, id);
   if (!call || (call.caller_id !== actor.user_id && call.callee_id !== actor.user_id)) {
     throw new AppError("NOT_FOUND", "Call not found", 404);
   }
   if (call.status === "RINGING") {
-    return declineCall(client, { id, actor });
+    return declineCall(client, { id, actor, tenantMeta, env });
   }
   if (call.status === "IN_CALL") {
-    return endCall(client, { id, fromStatus: "IN_CALL", status: "ENDED", reason });
+    return endCall(client, {
+      id, fromStatus: "IN_CALL", status: "ENDED", reason, tenantMeta, env,
+    });
   }
   throw new AppError("CALL_MOVED_ON", "This call has already ended", 409);
 }
@@ -206,7 +241,7 @@ async function hangup(client, { id, actor, reason = "hangup" }) {
 /** The client's engine exhausted ICE: media never connected. Only legal
  *  while the call is still RINGING or IN_CALL — a call that already ENDED is
  *  history, and "it failed" is not a second ending. */
-async function reportFailure(client, { id, actor }) {
+async function reportFailure(client, { id, actor, tenantMeta = null, env = "live" }) {
   const call = await repo.findCall(client, id);
   if (!call || (call.caller_id !== actor.user_id && call.callee_id !== actor.user_id)) {
     throw new AppError("NOT_FOUND", "Call not found", 404);
@@ -215,7 +250,9 @@ async function reportFailure(client, { id, actor }) {
   if (fromStatus !== "RINGING" && fromStatus !== "IN_CALL") {
     throw new AppError("CALL_MOVED_ON", "This call has already ended", 409);
   }
-  return endCall(client, { id, fromStatus, status: "FAILED", reason: "ice_failed" });
+  return endCall(client, {
+    id, fromStatus, status: "FAILED", reason: "ice_failed", tenantMeta, env,
+  });
 }
 
 /**
@@ -227,7 +264,9 @@ async function reportFailure(client, { id, actor }) {
  * controller answers 409, the client reads as "it ended first, sync state",
  * and re-fetches. No locks, no second chance for a stale transition.
  */
-async function endCall(client, { id, fromStatus, status, reason, notifyEvent, tenantSlug = null }) {
+async function endCall(client, {
+  id, fromStatus, status, reason, notifyEvent, tenantSlug = null, tenantMeta = null, env = "live",
+}) {
   const before = await repo.findCall(client, id);
   if (!before) throw new AppError("NOT_FOUND", "Call not found", 404);
 
@@ -266,8 +305,30 @@ async function endCall(client, { id, fromStatus, status, reason, notifyEvent, te
   rtToUser(before.caller_id, notifyEvent || "call:ended", payload, tenantSlug);
   rtToUser(before.callee_id, notifyEvent || "call:ended", payload, tenantSlug);
   logger.info({ callId: id, status, reason }, "call: terminal");
+
+  /**
+   * PR-2: the record half starts here (§4.5). A call that ended is a call with
+   * audio on two devices that are, at this second, still flushing it — so the
+   * enqueue is DELAYED, and the clients re-trigger the same job the moment
+   * their last part lands. The queue de-duplicates on the call id, and the
+   * daily sweep catches any call whose pipeline never started at all.
+   *
+   * Fire-and-forget on purpose: the terminal transition has already committed,
+   * and a queue that is down must not turn a clean hang-up into an error the
+   * user sees. `startPipeline` logs and returns null in that case.
+   */
+  if (updated && (status === "ENDED" || (status === "FAILED" && updated.connected_at))) {
+    await require("./smartcomm.call.pipeline.service").startPipeline({
+      callId: id, tenantMeta, env, delayMs: PIPELINE_START_DELAY_MS,
+    });
+  }
   return updated;
 }
+
+/** How long the pipeline waits after a hang-up before it looks for audio. Long
+ *  enough for both clients' part uploads to land, short enough that the caller's
+ *  "transcribing…" state resolves inside the §3.4 budget. */
+const PIPELINE_START_DELAY_MS = 20_000;
 
 /**
  * Duration for a finished call. The row's `connected_at` is the honest start
@@ -293,7 +354,7 @@ function durationSeconds(call, reason) {
  * replicas can never end one call twice. Returns how many it moved, so a
  * quiet tick is a 0, not an absence.
  */
-async function sweep(client, { tenantSlug = null } = {}) {
+async function sweep(client, { tenantSlug = null, tenantMeta = null, env = "live" } = {}) {
   const due = await client.query(
     `SELECT * FROM comms_call
      WHERE (status = 'RINGING' AND started_at <= now() - make_interval(secs => $1::int))
@@ -302,13 +363,13 @@ async function sweep(client, { tenantSlug = null } = {}) {
   );
   let moved = 0;
   for (const call of due.rows) {
-    const result = await sweepOne(client, call, tenantSlug);
+    const result = await sweepOne(client, call, tenantSlug, { tenantMeta, env });
     if (result) moved += 1;
   }
   return { moved };
 }
 
-async function sweepOne(client, call, tenantSlug) {
+async function sweepOne(client, call, tenantSlug, { tenantMeta = null, env = "live" } = {}) {
   const target = call.status === "RINGING"
     ? { status: "NO_ANSWER", reason: "no_answer", notifyEvent: "call:no_answer" }
     : { status: "ENDED", reason: "max_duration", notifyEvent: "call:ended" };
@@ -317,6 +378,8 @@ async function sweepOne(client, call, tenantSlug) {
       id: call.call_id,
       fromStatus: call.status,
       tenantSlug,
+      tenantMeta,
+      env,
       ...target,
     });
     return true;
@@ -359,7 +422,9 @@ async function getCall(client, { id, actor }) {
     [id],
   );
   if (!rows[0]) throw new AppError("NOT_FOUND", "Call not found", 404);
-  return rows[0];
+  // Every call row a client reads carries the recording switch, so a screen
+  // opened mid-call (or a reload) knows whether to show the consent banner.
+  return { ...rows[0], recording_enabled: await recordingEnabled(client) };
 }
 
 module.exports = {

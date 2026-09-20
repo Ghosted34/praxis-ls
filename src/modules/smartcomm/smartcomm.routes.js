@@ -170,6 +170,13 @@ router.post("/messages/:messageId/star", view, c.star);
 // state change, never anything the actor wrote.
 const { requireFeature } = require("../../middleware/feature-gate");
 const callsOn = requireFeature("calls");
+/**
+ * The RECORD flag (PR-2 decision row 2) on top of `calls`: calls can be live
+ * with recording off — a tenant that cannot keep audio still wants to talk —
+ * and that switch is the consent story's tenant half. Off, these routes answer
+ * 403 FEATURE_DISABLED and the recorder never arms or uploads.
+ */
+const recordOn = requireFeature("call_recording");
 router.post("/calls", create, callsOn, v.callCreate, c.createCall);
 router.post("/calls/:id/accept", view, callsOn, c.acceptCall);
 router.post("/calls/:id/decline", view, callsOn, c.declineCall);
@@ -181,5 +188,27 @@ router.get("/calls/:id", view, callsOn, c.getCall);
 // A refreshed TURN credential mid-call (the one minted at dial expires with
 // the call, plus margin).
 router.get("/calls/:id/turn", view, callsOn, c.callTurn);
+
+// ── The call record half (PR-2) ────────────────────────────────────────────
+//
+// Every route here is a PARTICIPANT route: the call service resolves the id to
+// a person and refuses a stranger with the same NOT_FOUND a nonexistent call
+// gets, so knowing a call id is never a way to read someone's conversation.
+// RBAC stays `view` for the same reason the PR-1 transitions do — the actor is
+// reporting on a call they are already in, and the only thing a route like
+// `/summary/send` writes is a message into a channel the caller is a member of.
+//
+// `singleFile("file")` is mounted BEFORE the validator on the multipart route,
+// and that order is load-bearing: the middleware is what parses the multipart
+// body into `req.body` for the validator to read, and what puts the buffer
+// where `readUpload` looks for it.
+router.post("/calls/:id/recording",
+  view, recordOn, singleFile("file"), v.callRecording, c.uploadCallRecording);
+router.post("/calls/:id/live-log", view, recordOn, v.callLiveLog, c.uploadCallLiveLog);
+router.get("/calls/:id/transcript", view, recordOn, c.getCallTranscript);
+router.get("/calls/:id/summary", view, recordOn, c.getCallSummary);
+router.post("/calls/:id/summary/send", view, recordOn, v.callSummarySend, c.sendCallSummary);
+router.post("/calls/:id/summary/discard", view, recordOn, c.discardCallSummary);
+router.post("/calls/:id/summary/regenerate", view, recordOn, v.callSummaryRegenerate, c.regenerateCallSummary);
 
 module.exports = { basePath: "/smartcomm", feature: "comms", router };

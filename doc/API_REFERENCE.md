@@ -6,7 +6,7 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 1690 |
+| Routes | 1697 |
 | Modules mounted | 141 |
 | API version | v1 |
 
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 1690 mounted routes, grouped by path prefix.
+All 1697 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -1983,6 +1983,13 @@ All 1690 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/smartcomm/calls/:id/decline` | — |
 | POST | `/api/tenant/smartcomm/calls/:id/fail` | — |
 | POST | `/api/tenant/smartcomm/calls/:id/hangup` | — |
+| POST | `/api/tenant/smartcomm/calls/:id/live-log` | — |
+| POST | `/api/tenant/smartcomm/calls/:id/recording` | — |
+| GET | `/api/tenant/smartcomm/calls/:id/summary` | — |
+| POST | `/api/tenant/smartcomm/calls/:id/summary/discard` | — |
+| POST | `/api/tenant/smartcomm/calls/:id/summary/regenerate` | — |
+| POST | `/api/tenant/smartcomm/calls/:id/summary/send` | — |
+| GET | `/api/tenant/smartcomm/calls/:id/transcript` | — |
 | GET | `/api/tenant/smartcomm/calls/:id/turn` | — |
 | GET | `/api/tenant/smartcomm/channels` | — |
 | POST | `/api/tenant/smartcomm/channels` | — |

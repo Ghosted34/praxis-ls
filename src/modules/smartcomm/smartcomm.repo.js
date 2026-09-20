@@ -238,7 +238,8 @@ async function listAttachmentsForMessages(client, messageIds) {
   if (!messageIds || !messageIds.length) return [];
   const { rows } = await client.query(
     `SELECT a.attachment_id, a.message_id, a.attachment_kind, a.vault_id, a.media_id,
-            a.erp_kind, a.erp_id, a.erp_label, a.filename, a.content_type, a.size_bytes,
+            a.erp_kind, a.erp_id, a.erp_label, a.call_id,
+            a.filename, a.content_type, a.size_bytes,
             a.created_at,
             m.kind AS media_kind, m.width, m.height, m.duration_ms, m.waveform,
             m.is_voice_note, m.transcript, m.transcript_status, m.original_name,

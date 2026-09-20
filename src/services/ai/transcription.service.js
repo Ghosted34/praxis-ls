@@ -23,8 +23,20 @@ const { logger } = require("../../config/logger");
  * error but a fluent TRANSLATION into the language it guessed. A transcript
  * that reads as confident English of a French instruction is worse than no
  * transcript, because nothing about it looks wrong.
+ *
+ * `detectLanguage: true` is the CALLER-PART path (Smart Comms PR-2, guide row
+ * 7): the request asks the vendor for `verbose_json`, the ONE response format
+ * that reports what language it decided the audio was in, and the answer comes
+ * back as `detected_language`. A call deliberately sends NO hint at all — a
+ * code-switched conversation is transcribed in 60–120 s parts, each part
+ * detected on its own, so a mid-call switch survives verbatim instead of being
+ * forced into whichever language the call started in. This is opt-in rather
+ * than the default because the hint is the right answer for every other caller
+ * in the product (a voice note is one language, and the reader said which).
  */
-async function transcribe({ audio, mimeType = "audio/mpeg", language = null, vendor = null }) {
+async function transcribe({
+  audio, mimeType = "audio/mpeg", language = null, vendor = null, detectLanguage = false,
+}) {
   // Synchronous transcription callers (mail dictation, vacancy intake,
   // training notes and Smart Comms) do not pass a vendor object. The queued AI
   // worker does, but requiring every caller to repeat that lookup made the
@@ -59,8 +71,21 @@ async function transcribe({ audio, mimeType = "audio/mpeg", language = null, ven
       ...(LANGUAGES.has(String(language || "").toLowerCase())
         ? { language: String(language).toLowerCase() }
         : {}),
+      // `verbose_json` is the only response format that carries the vendor's
+      // own language decision (see the header). Opt-in, so every existing
+      // caller keeps the plain `{ text }` answer it has always parsed.
+      ...(detectLanguage ? { response_format: "verbose_json" } : {}),
     });
-    return { text: (res && res.text) || "", audio_seconds: res.duration || 0, provider: "groq" };
+    return {
+      text: (res && res.text) || "",
+      audio_seconds: res.duration || 0,
+      provider: "groq",
+      // Absent unless `detectLanguage` asked for it: null, never a guess made
+      // up here from the hint we sent (the hint is what we ASKED for; this
+      // field is what the vendor HEARD, and conflating them would defeat the
+      // whole point of per-part detection).
+      detected_language: (res && (res.language || null)) || null,
+    };
   } catch (err) {
     logger.warn({ err }, "transcription failed");
     throw err;

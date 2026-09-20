@@ -17,7 +17,11 @@ module.exports = async function commsCallSweep(job) {
   if (!tenantMeta || (env !== "live" && env !== "sandbox")) {
     throw new Error("comms-call-sweep requires a live or sandbox tenant");
   }
+  // `tenantMeta`/`env` ride along for the PR-2 half: a call this sweep ends on
+  // the 30-minute cap is a call whose recording must still be transcribed, and
+  // the enqueue needs to name the tenant database to put the job in the right
+  // schema's queue entry.
   return registry.withTenantConnection(tenantMeta, env, (c) =>
-    callService.sweep(c, { tenantSlug: tenantMeta.slug }),
+    callService.sweep(c, { tenantSlug: tenantMeta.slug, tenantMeta, env }),
   );
 };

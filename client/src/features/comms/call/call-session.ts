@@ -20,8 +20,12 @@ import * as React from "react";
 import { CallEngine, RING_TIMEOUT_S } from "./call-engine";
 import {
   dialCall, acceptCall, declineCall, hangupCall, reportCallFailure, getCall,
+  uploadCallPart, uploadCallLiveLog,
   type Call, type CallStatus,
 } from "@/lib/smartcomm-api";
+import { CallRecorder } from "./call-recorder";
+import { LiveTranscript } from "./live-transcript";
+import i18n from "@/lib/i18n";
 import { getCommsSocket } from "@/lib/comms-socket";
 import { ApiError } from "@/lib/api-client";
 import { tr } from "@/lib/i18n";
@@ -43,11 +47,25 @@ export type SessionState = {
   endedReason: string | null;
   /** Transient error (dial failed) for the caller's screen. */
   lastError: string | null;
+  /** The tenant's recording switch, from the call row (PR-2). False means the
+   *  consent banner does not render — there is nothing to consent to. */
+  recordingEnabled: boolean;
+  /** Parts of this side's audio that never uploaded. Surfaced in the overlay;
+   *  the server's own state covers the other half of the same fact. */
+  recordingLost: number;
+  /** The call whose summary draft is waiting for the caller's review. Set by
+   *  the `call:summary_ready` socket event, cleared when the panel closes. */
+  draftCallId: string | null;
+  /** Set when a side fell back to the browser capture: the call record says so
+   *  and so does the person's screen, because a transcript nobody flagged is a
+   *  transcript everybody trusts. */
+  transcriptionIssue: { call_id: string; reason: string } | null;
 };
 
 const INITIAL: SessionState = {
   phase: "idle", call: null, peerName: null, ringSecondsLeft: 0,
   elapsedS: 0, muted: false, warning: false, endedReason: null, lastError: null,
+  recordingEnabled: false, recordingLost: 0, draftCallId: null, transcriptionIssue: null,
 };
 
 let state: SessionState = INITIAL;
@@ -57,6 +75,11 @@ let ringTimer: ReturnType<typeof setInterval> | null = null;
 let endTimer: ReturnType<typeof setTimeout> | null = null;
 /** The caller's offer, received before we have an engine to give it to. */
 let pendingOffer: { callId: string; sdp: string } | null = null;
+/** The record half (PR-2): one recorder and one live capture for the call this
+ *  tab is in, both owned here so they survive any component unmounting. */
+let recorder: CallRecorder | null = null;
+let liveCapture: LiveTranscript | null = null;
+
 const subs = new Set<() => void>();
 
 function set(patch: Partial<SessionState>) {
@@ -129,6 +152,10 @@ function startRingCountdown(onZero: () => void) {
   }, 1000);
 }
 
+function applyRow(row: Call) {
+  if (row.recording_enabled !== undefined) set({ recordingEnabled: row.recording_enabled });
+}
+
 function toIdleIfEnded(callId: string) {
   clearEndTimer();
   endTimer = setTimeout(() => {
@@ -145,11 +172,109 @@ function stopEngine() {
   clearRing();
 }
 
+/** The caller's app language, which is also the draft language (§4.10) and the
+ *  language the live recogniser runs in. */
+function appLanguage(): "en" | "fr" {
+  return String(i18n.language || "en").startsWith("fr") ? "fr" : "en";
+}
+
+/* ── The record half (PR-2) ──────────────────────────────────────────────── */
+
+/**
+ * Arm the recorder and the live capture, once media is actually up.
+ *
+ * Called from the engine's `onConnected`, so the record starts when the call
+ * does — the ring is not part of it, and a call that never connects has nothing
+ * to store. Both halves are best-effort and independent:
+ *
+ *   - no MediaRecorder (or a device that hands us no stream) → the live capture
+ *     still runs, and the flagged transcript is exactly what §4.5 step 3 is for;
+ *   - no SpeechRecognition → the audio still goes up, and the provider is the
+ *     only reader, which is the normal path anyway;
+ *   - neither → the call is a call, and the record says TRANSCRIPTION_FAILED
+ *     out loud rather than pretending it has words.
+ */
+function armRecording(call: Call, side: "caller" | "callee"): void {
+  // The kill switch. Off means no recorder AND no live capture: a tenant that
+  // has switched recording off must not have words captured either, which is
+  // the whole point of it being a separate flag from `calls`.
+  if (call.recording_enabled === false) return;
+  if (recorder || liveCapture) return;
+  const language = appLanguage();
+  const stream = engine?.stream || null;
+  const live = new LiveTranscript(language, {
+    flush: async (segments) => {
+      await uploadCallLiveLog(call.call_id, { side, language, live_segments: segments });
+    },
+  });
+  if (live.available) {
+    live.start();
+    liveCapture = live;
+  }
+  if (!stream) return;
+  const rec = new CallRecorder({
+    callId: call.call_id,
+    side,
+    language,
+    deps: {
+      upload: async (part, total) => {
+        const file = new File([part.blob], `${side}-${part.index}.webm`, {
+          type: part.blob.type || "audio/webm",
+        });
+        await uploadCallPart(call.call_id, file, {
+          side,
+          part_index: part.index,
+          part_count: total,
+          duration_ms: part.durationMs,
+          language,
+        });
+      },
+    },
+  });
+  try {
+    rec.arm(stream);
+    recorder = rec;
+  } catch {
+    /* @silent:teardown — this browser will not record (no MediaRecorder, a
+       device that refuses a second consumer of the track). The call is
+       unaffected: the live capture, where it exists, is the fallback, and the
+       server records TRANSCRIPTION_FAILED where it does not. */
+  }
+}
+
+/**
+ * Stop and upload. FIRE AND FORGET from every caller's point of view.
+ *
+ * Synchronously it stops the MediaRecorder and the recogniser — it must run
+ * while the mic is still open, since `stopEngine` is about to close the tracks —
+ * and the uploads then proceed on their own. PR-1's hang-up path is a REST call
+ * and a state change, and making it wait for twenty uploads on a corridor
+ * connection is exactly the flakiness this feature must not add.
+ */
+function finishRecording(): void {
+  const rec = recorder;
+  const live = liveCapture;
+  recorder = null;
+  liveCapture = null;
+  if (!rec && !live) return;
+  const finished = rec ? rec.finish() : Promise.resolve({ parts: 0, lost: 0 });
+  void Promise.all([finished, live ? live.stop() : Promise.resolve([])])
+    .then(([out]) => {
+      if (out && out.lost) set({ recordingLost: out.lost });
+    })
+    .catch(() => {
+      /* @silent:storage — the uploads already report their own failures per
+         part; a rejection here is the tail of the same fact, and the hang-up
+         has long since completed. */
+    });
+}
+
 /** Re-read the row after a locally-expired ring — the sweep has had 15 s to
  *  act at most, and the row says which way it went. */
 async function syncFromRow(callId: string) {
   try {
     const row = await getCall(callId);
+    applyRow(row);
     if (state.call?.call_id !== callId) return;
     if (row.status === "RINGING") {
       // We lost the race against the sweep's clock by a few seconds — keep
@@ -176,6 +301,7 @@ export async function dial(groupId: string, peerName: string | null): Promise<vo
   set({ ...INITIAL });
   try {
     const call = await dialCall(groupId);
+    applyRow(call);
     set({
       phase: "outgoing", call, peerName,
       ringSecondsLeft: RING_TIMEOUT_S,
@@ -201,6 +327,7 @@ export async function answer(): Promise<void> {
   set({ phase: "connecting" });
   try {
     const row = await acceptCall(call.call_id);
+    applyRow(row);
     set({ call: row, phase: "connecting" });
     const e = makeEngine(false, row.call_id);
     engine = e;
@@ -228,6 +355,7 @@ export async function decline(): Promise<void> {
   const call = state.call;
   if (!call) return;
   const id = call.call_id;
+  finishRecording();
   stopEngine();
   try {
     const row = await declineCall(id);
@@ -244,6 +372,9 @@ export async function hangup(): Promise<void> {
   const call = state.call;
   if (!call) return;
   const id = call.call_id;
+  // BEFORE stopEngine: the recorder's final chunk must be produced while the
+  // mic track is still open. Neither of these waits for an upload.
+  finishRecording();
   stopEngine();
   try {
     const row = await hangupCall(id);
@@ -274,11 +405,15 @@ function makeEngine(isCaller: boolean, callId: string) {
       },
       onIce: (candidate) => socket.emit("call:ice", { callId, candidate }),
       onConnected: () => {
-        if (state.call?.call_id === callId) set({ phase: "in_call" });
+        if (state.call?.call_id !== callId) return;
+        set({ phase: "in_call" });
+        // Media is up: this is the moment the record starts (PR-2).
+        if (state.call) armRecording(state.call, isCaller ? "caller" : "callee");
       },
       onFailed: () => {
         void (async () => {
           if (state.call?.call_id !== callId) return;
+          finishRecording();
           stopEngine();
           try {
             const row = await reportCallFailure(callId);
@@ -307,12 +442,13 @@ export function wireCallSocket(): void {
   wired = true;
   const s = getCommsSocket();
 
-  s.on("call:ringing", (p: { call_id: string; from: { user_id: string; name?: string | null }; ring_timeout_s?: number }) => {
+  s.on("call:ringing", (p: { call_id: string; from: { user_id: string; name?: string | null }; ring_timeout_s?: number; recording_enabled?: boolean }) => {
     // A ring we are already in a call for: the server would have refused the
     // dialer with 409, and if that check raced us the row resolves it — but
     // this tab physically has one call at a time, so the honest answer is to
     // stay in the one we are in. The dialer sees the busy end.
     if (state.phase !== "idle" && state.phase !== "ended") return;
+    set({ recordingEnabled: p.recording_enabled === true });
     set({
       phase: "incoming",
       call: {
@@ -322,6 +458,7 @@ export function wireCallSocket(): void {
         callee_id: currentUserId() || "",
         status: "RINGING",
         started_at: new Date().toISOString(),
+        recording_enabled: p.recording_enabled === true,
       },
       peerName: p.from.name || null,
       ringSecondsLeft: p.ring_timeout_s ?? RING_TIMEOUT_S,
@@ -366,6 +503,9 @@ export function wireCallSocket(): void {
 
   const onTerminal = (p: { call_id: string; status?: string; reason?: string; duration_seconds?: number | null; ended_at?: string | null }) => {
     if (state.call?.call_id !== p.call_id) return;
+    // The other end hung up, or the sweep ended the call: the recorder stops
+    // here too, and its tail is uploaded exactly as if we had pressed hang-up.
+    finishRecording();
     stopEngine();
     const row: Call | null = state.call
       ? {
@@ -379,6 +519,22 @@ export function wireCallSocket(): void {
     set({ phase: "ended", call: row, endedReason: p.reason ?? "hangup" });
     toIdleIfEnded(p.call_id);
   };
+  // ── The record half (PR-2) ──
+  //
+  // A draft landed for the caller: open the review panel. Nothing is posted by
+  // this event — it opens an editor, which is the only way a summary reaches a
+  // conversation (decision row 3).
+  s.on("call:summary_ready", (p: { call_id: string; status?: string }) => {
+    if (p && p.call_id) set({ draftCallId: p.call_id });
+  });
+
+  // A side fell back to the browser capture. The record says so, and so does
+  // this screen: a flagged transcript that only the database knows about is the
+  // silent degradation §4.5 exists to forbid.
+  s.on("call:transcription_failed", (p: { call_id: string; reason?: string }) => {
+    if (p && p.call_id) set({ transcriptionIssue: { call_id: p.call_id, reason: p.reason || "" } });
+  });
+
   // Every terminal path publishes one of these (call:ended covers ENDED and
   // FAILED; the named ones are the pre-connect outcomes).
   s.on("call:ended", onTerminal);
@@ -388,3 +544,10 @@ export function wireCallSocket(): void {
 }
 
 export { setMuted };
+
+/** Close the summary panel (after sending, discarding, or a deliberate
+ *  dismissal). The draft itself is untouched — this only closes a panel. */
+export function closeSummaryDraft(): void {
+  set({ draftCallId: null });
+}
+

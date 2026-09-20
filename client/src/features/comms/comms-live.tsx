@@ -29,10 +29,11 @@ import { useToast } from "@/components/ui/toast";
 import { getCommsSocket, disconnectCommsSocket } from "@/lib/comms-socket";
 import { unlockAudio, playNotifSound } from "@/lib/notif-sound";
 import {
-  useCall, answer, decline, hangup, setMuted, wireCallSocket, myUserId,
+  useCall, answer, decline, hangup, setMuted, wireCallSocket, myUserId, closeSummaryDraft,
 } from "./call/call-session";
 import { CallOverlay } from "./call/call-overlay";
 import { IncomingRing } from "./call/incoming-ring";
+import { CallSummaryPanel } from "./call/summary-draft";
 import { acquireWakeLock, releaseWakeLock } from "./call/wake-keepalive";
 import { setOnline } from "./presence";
 
@@ -182,8 +183,19 @@ export function CommsLive() {
           elapsedS={call.elapsedS}
           warning={call.warning}
           muted={call.muted}
+          recordingEnabled={call.recordingEnabled}
+          recordingLost={call.recordingLost}
           onHangup={() => void hangup()}
           onMute={() => setMuted(!call.muted)}
+        />
+      )}
+      {/* The caller's draft, opened by the socket event that says it is ready.
+          It is a panel rather than a screen because the caller may be anywhere
+          when the summary lands — exactly like the call itself. */}
+      {call.draftCallId && (
+        <CallSummaryPanel
+          callId={call.draftCallId}
+          onClose={closeSummaryDraft}
         />
       )}
     </>

@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 6× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (599)
+## All codes (609)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -92,6 +92,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `BAD_IMAGE` | 400 | 6× | — |
 | `BAD_INPUT` | 422 | 4× | — |
 | `BAD_KIND` | 422 | 3× | — |
+| `BAD_LANGUAGE` | 422 | 1× | — |
 | `BAD_LAYOUT` | 422 | 1× | — |
 | `BAD_LEGACY_KIND` | — | 1× | — |
 | `BAD_METHOD` | — | 1× | — |
@@ -139,6 +140,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `CALLEE_BUSY` | 409 | 1× | — |
 | `CALLER_BUSY` | 409 | 1× | — |
 | `CALL_MOVED_ON` | 409 | 4× | — |
+| `CALL_NOT_STARTED` | 409 | 1× | — |
 | `CAMPAIGN_ENDED` | 422 | 1× | — |
 | `CAPABILITY_REQUIRED` | 403 | 1× | — |
 | `CATALOGUE_TAKEN` | 409 | 1× | — |
@@ -219,7 +221,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `EXISTS` | 409 | 3× | — |
 | `FEATURE_DISABLED` | 403 | 3× | — |
 | `FIELD_NOT_WRITABLE` | — | 2× | — |
-| `FILE_TOO_LARGE` | 413 | 3× | — |
+| `FILE_TOO_LARGE` | 413 | 4× | — |
 | `FORBIDDEN` | 403 | 7× | `PERMISSION_DENIED` |
 | `FULLY_DISBURSED` | 422 | 1× | — |
 | `FULLY_PAID` | 422 | 2× | — |
@@ -327,6 +329,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | 403 | 6× | `PERMISSION_DENIED` |
 | `NOT_A_VOICE_NOTE` | 422 | 1× | — |
 | `NOT_BINDABLE` | 409 | 1× | — |
+| `NOT_CALLER` | 403 | 1× | — |
 | `NOT_CASH_ACCOUNT` | 422 | 1× | — |
 | `NOT_COMPLETED` | 409 | 1× | — |
 | `NOT_CONFIGURED` | 400 | 2× | — |
@@ -337,7 +340,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_EDITABLE` | 400 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 3× | — |
-| `NOT_FOUND` | 404, 422 | 698× | — |
+| `NOT_FOUND` | 404, 422 | 700× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_OPEN` | 409, 422 | 3× | — |
 | `NOT_OPERATIONAL` | 422 | 1× | — |
@@ -359,6 +362,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_VERIFIABLE` | 422 | 1× | — |
 | `NOT_VOIDABLE` | 409 | 1× | — |
 | `NOT_YOURS` | 403 | 2× | `PERMISSION_DENIED` |
+| `NOT_YOUR_SIDE` | 403 | 2× | — |
 | `NO_ACCEPTED_QUOTATION` | — | 1× | — |
 | `NO_ACCOUNT` | 500 | 2× | — |
 | `NO_ACTOR` | 401 | 4× | — |
@@ -387,7 +391,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NO_ENVELOPE` | 409 | 4× | — |
 | `NO_EXPENSE_ACCOUNT` | 422, 500 | 5× | — |
 | `NO_FIELD_SET` | 422 | 1× | — |
-| `NO_FILE` | 400 | 1× | — |
+| `NO_FILE` | 400 | 2× | — |
 | `NO_FINGERPRINT` | 422 | 1× | — |
 | `NO_FX_RATE` | 422 | 1× | — |
 | `NO_ITEMS` | 422 | 2× | — |
@@ -414,6 +418,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NO_SERVICE_TYPE` | — | 1× | — |
 | `NO_SIGNED_COPY` | 422 | 2× | — |
 | `NO_SLUG` | 422 | 1× | — |
+| `NO_SUMMARY` | 404 | 2× | — |
 | `NO_TARIFF` | 422 | 1× | — |
 | `NO_TEMPLATE` | 422 | 2× | — |
 | `NO_TENANT_CONTEXT` | 500 | 6× | — |
@@ -538,6 +543,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `SELF_ROLE_CHANGE` | 403 | 1× | — |
 | `SELF_SETTLE` | 422 | 1× | — |
 | `SENDER_NOT_AUTHORIZED` | 422 | 2× | — |
+| `SEND_FAILED` | 500 | 1× | — |
 | `SEND_RATE_LIMIT` | — | 2× | — |
 | `SESSION_EXPIRED` | 401 | 1× | — |
 | `SESSION_REVOKED` | 401 | 8× | — |
@@ -555,6 +561,10 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `STEPUP_REQUIRED` | 403 | 1× | — |
 | `STORAGE_LIMIT` | 413 | 1× | — |
 | `SUBMISSION_BLOCKED` | 422 | 1× | — |
+| `SUMMARY_ALREADY_SENT` | 409 | 1× | — |
+| `SUMMARY_DISCARDED` | 409 | 1× | — |
+| `SUMMARY_NOT_PENDING` | 409 | 1× | — |
+| `SUMMARY_NOT_PENDING_REVIEW` | 409 | 1× | — |
 | `SUPPLIER_NOT_VERIFIED` | — | 1× | — |
 | `SUPPLIER_REQUIRED` | 422 | 1× | — |
 | `SYSTEM_ACCOUNT` | 422 | 1× | — |

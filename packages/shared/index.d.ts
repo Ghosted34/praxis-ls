@@ -968,3 +968,62 @@ export declare const siteSettings: {
   SITE_MEDIA_PROVENANCE: string[];
   siteMediaUpload: z.ZodTypeAny;
 };
+
+/**
+ * The call summary contract (SMART_COMMS_CALLS_ENGINEERING_GUIDE §4.10).
+ *
+ * `schema` is the strict shape — the caller's own edit is validated with it,
+ * so an edit that violates the contract is a 422 rather than a stored draft
+ * nobody can render. `sanitise` is the forgiving coercion the pipeline uses on
+ * a provider's answer: it returns null rather than inventing a summary, which
+ * is what sends the flow down the labelled "transcript-only" path.
+ *
+ * `summary` is the draft-language prose; `key_points[].text` and
+ * `follow_ups[].text` are VERBATIM quotations in the language spoken and are
+ * never translated by either side.
+ */
+export declare namespace callSummary {
+  type Speaker = "caller" | "callee";
+  type Language = "en" | "fr";
+
+  type KeyPoint = { text: string; raised_by: Speaker };
+  type FollowUp = { text: string; owner: Speaker; due: string | null };
+
+  const LANGUAGES: readonly ["en", "fr"];
+
+  const LIMITS: {
+    summaryMax: number;
+    pointsMax: number;
+    followUpsMax: number;
+    textMax: number;
+  };
+
+  const language: z.ZodEnum<["en", "fr"]>;
+
+  const schema: z.ZodObject<{
+    summary: z.ZodString;
+    key_points: z.ZodArray<
+      z.ZodObject<{ text: z.ZodString; raised_by: z.ZodEnum<["caller", "callee"]> }>
+    >;
+    follow_ups: z.ZodArray<
+      z.ZodObject<{
+        text: z.ZodString;
+        owner: z.ZodEnum<["caller", "callee"]>;
+        due: z.ZodNullable<z.ZodEffects<z.ZodString, string, string>>;
+      }>
+    >;
+  }>;
+
+  /** Coerce a provider's answer into the contract, or null when it invented
+   *  nothing usable. Unknown keys are dropped; lists are capped. */
+  function sanitise(value: unknown): {
+    summary: string;
+    key_points: KeyPoint[];
+    follow_ups: FollowUp[];
+  } | null;
+
+  /** The first balanced `{…}` in a string (tolerates ```json fences). */
+  function extractJson(text: string): unknown;
+
+  function isLanguage(value: unknown): value is Language;
+}

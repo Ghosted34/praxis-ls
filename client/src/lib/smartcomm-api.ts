@@ -9,7 +9,7 @@ export type ChannelKind =
   "DEPARTMENT" | "PROJECT" | "DOSSIER" | "DIRECT" | "CLIENT";
 
 /** What a chat attachment points at. See migration 13794. */
-export type AttachmentKind = "VAULT" | "MEDIA" | "ERP";
+export type AttachmentKind = "VAULT" | "MEDIA" | "ERP" | "CALL";
 export type MediaKind = "IMAGE" | "AUDIO" | "VIDEO";
 export type TranscriptStatus = "NONE" | "PENDING" | "DONE" | "FAILED" | "UNAVAILABLE";
 export type ErpKind = "INVOICE" | "DOSSIER" | "CLIENT" | "PURCHASE_ORDER" | "SUPPLIER_INVOICE";
@@ -63,6 +63,10 @@ export type CommAttachment = {
   erp_id?: string | null;
   erp_label?: string | null;
   erp_card?: ErpCard | null;
+  /* CALL — the summary card a caller posts. The card is resolved at read time
+     (like an ERP reference), so a regenerated draft shows its current words. */
+  call_id?: string | null;
+  call_card?: CallCard | null;
 };
 
 /** What `POST /channels/:id/media` hands back, and what the composer echoes
@@ -502,6 +506,10 @@ export type Call = {
   channel_name?: string | null;
   caller_name?: string | null;
   callee_name?: string | null;
+  /** The tenant's recording kill switch, as the call row reports it (PR-2).
+   *  False means: no recorder arms, no consent banner shows, because nothing is
+   *  being recorded. Absent on the ring payload an older server sends. */
+  recording_enabled?: boolean;
 };
 
 /** Dial on a DIRECT channel. The partner is resolved server-side; `ice` is
@@ -521,6 +529,163 @@ export const reportCallFailure = (id: string) =>
   tenant<Call>(`/smartcomm/calls/${id}/fail`, { method: "POST" });
 export const listCalls = () => tenant<Call[]>(`/smartcomm/calls`);
 export const getCall = (id: string) => tenant<Call>(`/smartcomm/calls/${id}`);
+
+/* ── The call record half (Smart Comms PR-2) ─────────────────────────────────
+ * Recorded audio goes up in PARTS as they are cut (60–120 s), the browser's
+ * live capture rides along with it, and everything after the hang-up is a read:
+ * the transcript, the caller's draft, and the caller's one tap to send.
+ * `recording_enabled` on the call row is the tenant's kill switch — when it is
+ * false there is no recorder, no consent banner, and these routes 403.
+ */
+export type CallRecordSide = "caller" | "callee";
+export type CallTranscriptState = "PENDING" | "PROCESSING" | "CERTIFIED" | "TRANSCRIPTION_FAILED";
+export type CallProvenance = "groq" | "browser-live" | "transcript-only";
+
+export type CallSummaryKeyPoint = { text: string; raised_by: CallRecordSide };
+export type CallSummaryFollowUp = { text: string; owner: CallRecordSide; due: string | null };
+
+export type CallSummaryDraft = {
+  summary_id: string;
+  summary_text: string;
+  key_points: CallSummaryKeyPoint[];
+  follow_ups: CallSummaryFollowUp[];
+  language: "en" | "fr";
+  provenance: CallProvenance;
+  draft_status: "PENDING_REVIEW" | "SENT" | "DISCARDED";
+  sent_message_id: string | null;
+  update_available: boolean;
+  update_message_id: string | null;
+  regenerate_count: number;
+};
+
+export type CallSummaryView = {
+  call_id: string;
+  transcription_state: CallTranscriptState;
+  transcription_error: string | null;
+  recording_enabled: boolean;
+  is_caller: boolean;
+  summary: CallSummaryDraft | null;
+};
+
+export type CallTranscriptSide = {
+  side: CallRecordSide;
+  label: string;
+  name: string | null;
+  provider: "groq" | "browser-live" | null;
+  certified: boolean;
+  text: string | null;
+  parts: {
+    part_index: number;
+    text: string;
+    language: "en" | "fr";
+    provider: "groq" | "browser-live";
+    certified: boolean;
+  }[];
+};
+
+export type CallTranscriptView = {
+  call_id: string;
+  state: CallTranscriptState;
+  error: string | null;
+  certified: boolean;
+  provenance: "groq" | "browser-live";
+  text: string;
+  sides: CallTranscriptSide[];
+  parts: {
+    side: CallRecordSide;
+    part_index: number;
+    language: "en" | "fr";
+    provider: "groq" | "browser-live";
+    certified: boolean;
+  }[];
+};
+
+/** The card a chat reader sees for a posted call summary. Resolved on every
+ *  thread read, so it shows the record as it stands rather than as it stood
+ *  when the caller pressed send. */
+export type CallCard = {
+  call_id: string;
+  summary_text: string;
+  key_points: CallSummaryKeyPoint[];
+  follow_ups: CallSummaryFollowUp[];
+  language: "en" | "fr";
+  provenance: CallProvenance;
+  draft_status: "PENDING_REVIEW" | "SENT" | "DISCARDED";
+  update_available: boolean;
+  duration_seconds: number | null;
+  ended_at: string | null;
+  call_status: string;
+  transcription_state: CallTranscriptState | null;
+  transcription_error: string | null;
+  caller_name: string | null;
+  callee_name: string | null;
+};
+
+/** One recorded part. `live_segments` travels with the audio it belongs to: the
+ *  two together are what make the fallback (flagged browser text) possible for
+ *  the SAME span when the provider cannot read the bytes. */
+export const uploadCallPart = (
+  callId: string,
+  file: File,
+  fields: {
+    side: CallRecordSide;
+    part_index: number;
+    part_count: number;
+    duration_ms?: number;
+    language?: "en" | "fr";
+    live_segments?: unknown[];
+  },
+  onProgress?: (percent: number) => void,
+  signal?: AbortSignal,
+) =>
+  uploadFile<unknown>(`/tenant/smartcomm/calls/${callId}/recording`, file, {
+    field: "file",
+    fields: { ...fields },
+    onProgress,
+    signal,
+  });
+
+/** The live capture on its own — the upload that must still land when the
+ *  recorder produced no audio at all (§4.9). */
+export const uploadCallLiveLog = (
+  callId: string,
+  data: { side: CallRecordSide; language?: "en" | "fr"; live_segments: unknown[] },
+) =>
+  tenant<{ side: CallRecordSide; written: number }>(
+    `/smartcomm/calls/${callId}/live-log`,
+    { method: "POST", body: data },
+  );
+
+export const getCallTranscript = (callId: string) =>
+  tenant<CallTranscriptView>(`/smartcomm/calls/${callId}/transcript`);
+export const getCallSummary = (callId: string) =>
+  tenant<CallSummaryView>(`/smartcomm/calls/${callId}/summary`);
+export const sendCallSummary = (
+  callId: string,
+  data: { summary_text?: string; key_points?: CallSummaryKeyPoint[]; follow_ups?: CallSummaryFollowUp[] },
+) =>
+  tenant<{ call_id: string; is_update: boolean; message_id: string }>(
+    `/smartcomm/calls/${callId}/summary/send`,
+    { method: "POST", body: data },
+  );
+export const discardCallSummary = (callId: string) =>
+  tenant<{ call_id: string; draft_status: string }>(
+    `/smartcomm/calls/${callId}/summary/discard`,
+    { method: "POST" },
+  );
+/** The EN/FR toggle (§4.10). One language, and it is the whole request. */
+export const regenerateCallSummary = (callId: string, language: "en" | "fr") =>
+  tenant<{
+    call_id: string;
+    language: "en" | "fr";
+    provenance: CallProvenance;
+    summary: {
+      summary_text: string;
+      key_points: CallSummaryKeyPoint[];
+      follow_ups: CallSummaryFollowUp[];
+      draft_status: CallSummaryDraft["draft_status"];
+    };
+  }>(`/smartcomm/calls/${callId}/summary/regenerate`, { method: "POST", body: { language } });
 /** Refreshed TURN credential mid-call (the one minted at dial expires with
  *  the call, plus margin). */
 export const getCallTurn = (id: string) => tenant<IceConfig>(`/smartcomm/calls/${id}/turn`);

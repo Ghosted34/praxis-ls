@@ -1,6 +1,7 @@
 "use strict";
 const service = require("./smartcomm.service");
 const calls = require("./smartcomm.call.service");
+const callRecords = require("./smartcomm.call.pipeline.service");
 const schedule = require("./smartcomm.schedule.service");
 const cfg = require("./smartcomm.config.service");
 const erp = require("./smartcomm.erp.service");
@@ -192,6 +193,77 @@ module.exports = {
     res.json({ data });
   }),
 
+  // ── The call record half (PR-2) ─────────────────────────────────────────
+  /**
+   * One recorded PARTIC of a call, uploaded at hang-up.
+   *
+   * Multipart, like a voice note, and read through the same seam — the recorder
+   * has one buffer to hand over and a handful of numbers about it. `readUpload`
+   * is what lets a data-URL fallback exist for the recorder that could not get
+   * a MediaRecorder: on a browser where only the live capture worked, the audio
+   * never arrives and the flagged transcript is all that side has, which is the
+   * §4.5 fallback doing its job.
+   *
+   * The upload answers the PART, not the transcript: part 9 of 12 must return
+   * the instant it is stored, because the phone that sent it is about to send
+   * the next one. Transcription is the job's business (jobId-deduplicated per
+   * call), and the caller watches its state in the thread.
+   */
+  uploadCallRecording: asyncHandler(async (req, res) => {
+    const file = readUpload(req);
+    const body = req.body || {};
+    const data = await req.tenantDb((c) => callRecords.registerPart(c, {
+      callId: req.params.id,
+      actor: actor(req),
+      side: body.side,
+      partIndex: body.part_index,
+      partCount: body.part_count,
+      durationMs: body.duration_ms,
+      language: body.language || null,
+      file,
+      slug: req.tenant.slug,
+    }));
+    res.status(201).json({ data });
+  }),
+
+  /**
+   * The browser live capture on its own, for the side whose audio could not be
+   * uploaded at all (§4.9). Separate from `uploadCallRecording` because it is
+   * the one upload that must still land when MediaRecorder never produced a
+   * part — the fallback cannot be a rider on the thing that failed.
+   */
+  uploadCallLiveLog: A((c, req) => callRecords.registerLiveLog(c, {
+    callId: req.params.id,
+    actor: actor(req),
+    side: req.body.side,
+    segments: req.body.live_segments,
+    language: req.body.language || null,
+  })),
+
+  getCallTranscript: A((c, req) => callRecords.getTranscript(c, {
+    callId: req.params.id, actor: actor(req),
+  })),
+  getCallSummary: A((c, req) => callRecords.getSummary(c, {
+    callId: req.params.id, actor: actor(req),
+  })),
+  sendCallSummary: A((c, req) => callRecords.sendSummary(c, {
+    callId: req.params.id,
+    actor: actor(req),
+    summaryText: req.body.summary_text,
+    keyPoints: req.body.key_points,
+    followUps: req.body.follow_ups,
+    tenantMeta: req.tenant,
+    env: req.env,
+  })),
+  discardCallSummary: A((c, req) => callRecords.discardSummary(c, {
+    callId: req.params.id, actor: actor(req),
+  })),
+  regenerateCallSummary: A((c, req) => callRecords.regenerateSummary(c, {
+    callId: req.params.id,
+    actor: actor(req),
+    language: req.body.language,
+  })),
+
   /**
    * The bytes of one chat attachment, for a member of its channel.
    *
@@ -245,9 +317,19 @@ module.exports = {
   // the handlers stay thin.
   createCall: C((c, req) => calls.createCall(c, { groupId: req.body.group_id, actor: actor(req) })),
   acceptCall: A((c, req) => calls.acceptCall(c, { id: req.params.id, actor: actor(req) })),
-  declineCall: A((c, req) => calls.declineCall(c, { id: req.params.id, actor: actor(req) })),
-  hangupCall: A((c, req) => calls.hangup(c, { id: req.params.id, actor: actor(req), reason: (req.body && req.body.reason) || "hangup" })),
-  callFailed: A((c, req) => calls.reportFailure(c, { id: req.params.id, actor: actor(req) })),
+  declineCall: A((c, req) => calls.declineCall(c, {
+    id: req.params.id, actor: actor(req), tenantMeta: req.tenant, env: req.env,
+  })),
+  hangupCall: A((c, req) => calls.hangup(c, {
+    id: req.params.id,
+    actor: actor(req),
+    reason: (req.body && req.body.reason) || "hangup",
+    tenantMeta: req.tenant,
+    env: req.env,
+  })),
+  callFailed: A((c, req) => calls.reportFailure(c, {
+    id: req.params.id, actor: actor(req), tenantMeta: req.tenant, env: req.env,
+  })),
   listCalls: A((c, req) => calls.listCalls(c, actor(req))),
   getCall: A((c, req) => calls.getCall(c, { id: req.params.id, actor: actor(req) })),
   callTurn: A((c, req) => calls.turnFor(c, { id: req.params.id, actor: actor(req) })),

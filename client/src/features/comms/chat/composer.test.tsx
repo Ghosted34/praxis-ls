@@ -216,4 +216,44 @@ describe("chat composer link preview", () => {
     expect(body()).toHaveValue("https://a.example/x");
     expect(screen.queryByRole("alert")).toBeNull();
   });
+
+  // The strip, not the card: the composer's preview must never be the full card,
+  // because the full card is what used to push the input below the fold the
+  // moment a URL was typed. What renders here is a one-line strip with an ✕, and
+  // notably WITHOUT the card's "Open link" button — a control that opens a tab
+  // has no business living above a half-written sentence.
+  it("shows a dismissible strip, not the full card", async () => {
+    previewLink.mockResolvedValue({
+      url: "https://a.example/x",
+      state: "OK",
+      card: { url: "https://a.example/x", state: "OK", title: "A page about things", description: "More words about the things.", site_name: "a.example", image_src: null, icon_src: null, media: null, link_hash: null, fetched_at: null, stale: false },
+    });
+    render(<Composer channelId="channel-1" onSent={vi.fn()} />);
+    type("here: https://a.example/x");
+    expect(await screen.findByText("A page about things")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Open link/ })).toBeNull();
+    expect(screen.getByRole("button", { name: "Hide preview" })).toBeInTheDocument();
+  });
+
+  it("✕ hides the strip for that link — and a different link earns a new one", async () => {
+    previewLink.mockImplementation((url: string) =>
+      Promise.resolve({
+        url,
+        state: "OK",
+        card: { url, state: "OK", title: `Card for ${url}`, description: null, site_name: "a.example", image_src: null, icon_src: null, media: null, link_hash: null, fetched_at: null, stale: false },
+      }),
+    );
+    render(<Composer channelId="channel-1" onSent={vi.fn()} />);
+    type("https://a.example/x");
+    expect(await screen.findByText("Card for https://a.example/x")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Hide preview" }));
+    expect(screen.queryByText("Card for https://a.example/x")).toBeNull();
+    // Still typing around the same link must not resurrect what was dismissed…
+    type("https://a.example/x and some more words");
+    await new Promise((r) => setTimeout(r, 900));
+    expect(screen.queryByText("Card for https://a.example/x")).toBeNull();
+    // …but a different URL is a different question, and gets a fresh strip.
+    type("https://a.example/y");
+    expect(await screen.findByText("Card for https://a.example/y")).toBeInTheDocument();
+  });
 });

@@ -25,7 +25,7 @@ import { ErpCardView } from "./erp-card";
 import { ComposerActions } from "./composer-actions";
 import { MessageEditor } from "./message-editor";
 import { parseMessage } from "./message-format";
-import { LinkCard } from "./link-card";
+import { LinkPreviewStrip } from "./link-card";
 import { ScheduledMessages } from "./scheduled-messages";
 
 const ACCEPT =
@@ -81,6 +81,15 @@ export function Composer({
    */
   const [linkPreview, setLinkPreview] = React.useState<LinkPreview | null>(null);
   const previewFor = React.useRef<string | null>(null);
+  /**
+   * The URL whose strip was ✕'d, if any.
+   *
+   * Per-URL, not a boolean: dismissing the strip for one link is a statement
+   * about that link, so pasting a different one earns a fresh strip. And it is
+   * only about the composer — the sent message still gets its card, because the
+   * card on a bubble belongs to the reader, not to the drafting surface.
+   */
+  const [previewHiddenFor, setPreviewHiddenFor] = React.useState<string | null>(null);
   const [busy, setBusyState] = React.useState(false);
   const setBusy = (next: boolean) => {
     setBusyState(next);
@@ -170,6 +179,9 @@ export function Composer({
     if (!url) {
       previewFor.current = null;
       setLinkPreview(null);
+      // The dismissal was about a URL that is no longer in the draft. Pasting
+      // it again later is a new question, and it gets a new strip.
+      setPreviewHiddenFor(null);
       return;
     }
     if (previewFor.current === url) return;
@@ -441,14 +453,17 @@ export function Composer({
         </div>
       )}
 
-      {linkPreview && (
-        // The card, in the box, before the message exists. Not dismissible: it is
-        // a statement about the link in the text, so it goes away when the link
-        // goes away, and an "×" would imply it could be turned off while the link
-        // stayed — which would be a way to send a link the reader had decided not
-        // to look at.
-        <div className="border-b border-border px-3 py-2">
-          <LinkCard preview={linkPreview} tone="surface" />
+      {linkPreview && previewHiddenFor !== linkPreview.url && (
+        // One compact line above the input, WhatsApp-style — never the full
+        // card. The full card used to render here and it hijacked the composer:
+        // image plus title plus description pushed the text field below the
+        // fold the moment a URL was typed. The strip's ✕ hides it for THIS url
+        // only, and only in here — the sent message still carries its card.
+        <div className="border-b border-border px-3 py-1.5">
+          <LinkPreviewStrip
+            preview={linkPreview}
+            onDismiss={() => setPreviewHiddenFor(linkPreview.url)}
+          />
         </div>
       )}
 

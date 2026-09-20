@@ -166,6 +166,26 @@ describe("LinkCard — which previews render", () => {
     expect(container.querySelector("img")).toBeNull();
   });
 
+  // On tone="primary" the bubble's ground IS the tenant accent, so the one
+  // control on the card must invert to the theme surface (`bg-card`) rather than
+  // wear an accent tint that vanishes into the bubble — the exact defect a
+  // tenant with orange branding reported: an orange "Open link" on an orange
+  // bubble that did not read as a button at all.
+  it("inverts the Open link button against the sender's accent bubble", () => {
+    inRouter(<LinkCard preview={card()} tone="primary" />);
+    const button = screen.getByRole("button", { name: /Open link/ });
+    expect(button.className).toContain("bg-card");
+    expect(button.className).toContain("text-primary-ink");
+    expect(button.className).not.toContain("bg-primary-foreground/15");
+  });
+
+  // The card is a footnote, not the message: it is capped at 65% of the bubble
+  // so a pasted link never dominates the pane the way a full-width og:image did.
+  it("caps the card's width below the bubble's", () => {
+    const { container } = inRouter(<LinkCard preview={card()} tone="surface" />);
+    expect((container.firstElementChild as HTMLElement).className).toContain("max-w-[65%]");
+  });
+
   it("caps a link-flood at three cards, in order", () => {
     const links = Object.fromEntries(
       ["1", "2", "3", "4", "5"].map((n) => [`https://a.example/${n}`, card({ url: `https://a.example/${n}`, title: `Card ${n}` })]),

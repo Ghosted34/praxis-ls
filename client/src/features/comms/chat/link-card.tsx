@@ -150,7 +150,11 @@ export function LinkCard({
   return (
     <div
       className={cn(
-        "mt-1.5 overflow-hidden rounded-xl border text-[12px] leading-snug",
+        // 65% of the bubble, not 100%: a preview is a footnote to the sentence
+        // above it, and a card as wide as the conversation pane reads as the
+        // message instead of the aside. The text is not capped with it — the
+        // words stay at bubble width, only the decoration shrinks.
+        "mt-1.5 max-w-[65%] overflow-hidden rounded-xl border text-[12px] leading-snug",
         onSurface
           ? "border-border bg-muted/40"
           : "border-primary-foreground/25 bg-primary-foreground/10",
@@ -229,7 +233,14 @@ export function LinkCard({
             "mt-1.5 inline-flex max-w-full items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium transition-colors",
             onSurface
               ? "bg-primary/10 text-primary-ink hover:bg-primary/20"
-              : "bg-primary-foreground/15 text-primary-foreground hover:bg-primary-foreground/25",
+              : // On the sender's own bubble the ground IS the accent, so an
+                // accent-tinted button disappears into it (the exact failure a
+                // tenant with orange branding reported). `--card` is the theme's
+                // surface — white in light mode, the dark panel colour in dark —
+                // so the button inverts against the accent in both themes, and
+                // `--primary-ink` keeps the label in the brand colour at its
+                // AA-safe weight for whichever theme is active.
+                "bg-card text-primary-ink shadow-sm hover:bg-card/90",
           )}
         >
           <span className="truncate">
@@ -242,6 +253,78 @@ export function LinkCard({
         </button>
       </div>
     </div>
+  );
+}
+
+/**
+ * The composer's version of the card: one line, not a card.
+ *
+ * WhatsApp got this right and the first version here got it wrong. While a
+ * message is being typed, the input is the main character — a full card above
+ * it (image at og:image ratio, title, three lines of description) pushed the
+ * text field out of sight the moment a URL landed, and the person then had to
+ * scroll to find their own sentence. So the composer gets a strip: a small
+ * square thumbnail, the title, the site, an ✕ — the height of roughly one more
+ * toolbar row — and the full card stays where it belongs, on the message after
+ * it is sent.
+ *
+ * The ✕ is about the strip, not the message. Dismissing it clears the space in
+ * the composer; the sent message still earns its card, because the card on a
+ * bubble is a statement about the link in the text, and hiding a strip while
+ * drafting is not a decision about what the reader sees. The thumbnail arrives
+ * through the same authenticated proxy as every other preview image.
+ */
+export function LinkPreviewStrip({
+  preview,
+  onDismiss,
+}: {
+  preview: LinkPreview;
+  onDismiss: () => void;
+}) {
+  if (preview.state !== "OK") return null;
+  const title = preview.title || preview.site_name;
+  if (!title) return null;
+  const site = preview.site_name && preview.title ? preview.site_name : null;
+  return (
+    <div className="flex min-w-0 items-center gap-2.5 border-l-2 border-primary bg-muted/40 py-1.5 pl-2.5 pr-1.5 text-[12px] leading-snug">
+      <StripThumb preview={preview} />
+      <div className="min-w-0 flex-1">
+        <div className="truncate font-medium text-foreground">{title}</div>
+        {(site || preview.description) && (
+          <div className="truncate text-muted-foreground">
+            {site || preview.description}
+          </div>
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={onDismiss}
+        aria-label={tr("Hide preview")}
+        className="shrink-0 rounded-md px-2 py-1 text-muted-foreground transition-colors hover:text-foreground"
+      >
+        ✕
+      </button>
+    </div>
+  );
+}
+
+/** The strip's thumbnail: a fixed small square, or nothing. No aspect-ratio
+ *  reservation here — the strip is one line tall either way, so a picture that
+ *  never arrives costs no layout shift, only emptiness. */
+function StripThumb({ preview }: { preview: LinkPreview }) {
+  const hash = preview.link_hash || null;
+  const fetcher = React.useMemo(
+    () => (hash ? (signal: AbortSignal) => api.linkImageObjectUrl(hash, "image", signal) : null),
+    [hash],
+  );
+  const { url } = useObjectUrl(fetcher, { enabled: !!hash });
+  if (!hash || !url) return null;
+  return (
+    <img
+      src={url}
+      alt=""
+      className="h-9 w-9 shrink-0 rounded-md object-cover"
+    />
   );
 }
 

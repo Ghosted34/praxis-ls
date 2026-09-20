@@ -135,8 +135,15 @@ function establishmentLine(s) {
  * Tax and trade identifiers, registration rows winning over the legacy niu/rccm
  * columns. 0512 backfilled those columns into rows, so a divergence means
  * somebody edited the row — which is the newer intent.
+ *
+ * TRADE-REGISTER ROWS ONLY (PR-10 / A3): NIU, RCCM, EORI, SIREN… A VAT number
+ * used to be loop-added from the tax registrations here, which put a
+ * tax-registration fact on the trade-register line — and, worse, made the
+ * letterhead print a number the TAX module owns from a join the letterhead
+ * does not control. The tax registration carries it; a document that must
+ * print it composes it on the tax module's authority, not this one.
  */
-function identifiers(entity, registrations = [], taxRegistrations = []) {
+function identifiers(entity, registrations = []) {
   const out = [];
   const seen = new Set();
   const add = (kind, number) => {
@@ -147,35 +154,91 @@ function identifiers(entity, registrations = [], taxRegistrations = []) {
   };
 
   for (const r of registrations) if (r.number) add(r.kind, r.number);
-  // A VAT number lives on the tax registration, not the trade register.
-  for (const t of taxRegistrations) {
-    if (t.is_active === false || t.deregistered_on) continue;
-    if (t.tax_number) add(t.tax_kind === "VAT" ? "VAT" : t.tax_kind, t.tax_number);
-  }
   add("NIU", entity.niu);
   add("RCCM", entity.rccm);
   return out;
 }
 
 /**
+ * THE PRIMARY-ACCOUNT RESOLVER (PR-10 / A1) — the one rule both the Banking &
+ * treasury tab and the letterhead payment block ask.
+ *
+ *   1. `entity.remittance_account_id`, when it resolves to an ACTIVE account —
+ *      the operator's explicit choice, edited from the letterhead panel;
+ *   2. else the account flagged `is_primary`, but only when EXACTLY ONE
+ *      exists for the entity;
+ *   3. else nothing — `unset` when no account is flagged, `ambiguous` when
+ *      several are.
+ *
+ * WHY AMBIGUITY IS A STATE AND NOT A PICK. The Treasury module's primary
+ * clearing used to scope to (entity_id, category_id), so six accounts across
+ * six categories could each be "primary" at once. Picking any one of them
+ * would print an account the operator never chose; printing all six is the
+ * six-payment-blocks defect this resolver exists to end. So ambiguity renders
+ * NOTHING and surfaces as an explicit "no primary" state the tab can explain.
+ *
+ * WHY THE is_primary LEG IS NOT FILTERED ON is_active. 0516's migration creates
+ * the bank_block-carrying row `is_active = false, is_primary = true` — frozen
+ * for review until a treasurer activates it. Its details are the bank_block's
+ * own bytes, so printing it keeps those tenants' invoices unchanged; the
+ * remittance leg above stays strictly active because a pointer at a CLOSED
+ * account is a defect, not a fallback.
+ *
+ * PURE, like everything here: the tab, the letterhead endpoint, the preview
+ * and the invoice renderer all call this one function, so they cannot disagree
+ * about which account leads.
+ *
+ * @returns {{state: "account", account: object} | {state: "unset" | "ambiguous", account: null}}
+ */
+function resolvePrimaryAccount(entity, treasuryAccounts = []) {
+  const accounts = treasuryAccounts || [];
+  const e = entity || {};
+
+  if (e.remittance_account_id) {
+    const chosen = accounts.find(
+      (t) => String(t.treasury_account_id) === String(e.remittance_account_id),
+    );
+    if (chosen && chosen.is_active !== false) {
+      return { state: "account", account: chosen };
+    }
+    // A dangling or closed pointer falls through to the flag below rather than
+    // blanking the payment block: the letterhead panel still shows the stale
+    // pointer, and the operator can fix it with one save.
+  }
+
+  const primaries = accounts.filter((t) => t.is_primary === true);
+  if (primaries.length === 1) return { state: "account", account: primaries[0] };
+  if (primaries.length > 1) return { state: "ambiguous", account: null };
+  return { state: "unset", account: null };
+}
+
+/**
  * The payment block.
  *
- * Reads treasury_account — the source of truth since 0516 — and falls back to the
- * frozen `bank_block` jsonb only when no account is flagged for documents. The
- * fallback is what keeps existing tenants' invoices rendering unchanged on the
- * day this ships; it is not a second source of truth, because nothing writes it.
+ * Reads treasury_account — the source of truth since 0516 — and prints THE
+ * PRIMARY ACCOUNT ONLY (PR-10 / A0+A1), resolved by `resolvePrimaryAccount`
+ * above. Never every flagged account: a tenant with six accounts gets one
+ * payment block, and an entity whose primaries are ambiguous gets an explicit
+ * `no_primary` empty state so the designer says what is missing instead of
+ * printing a page of banks.
+ *
+ * The frozen `bank_block` jsonb remains the fallback for an entity with NO
+ * treasury accounts at all — the compatibility contract that kept existing
+ * tenants' invoices rendering unchanged the day 0516 shipped. Once Treasury
+ * owns a row for the entity, the resolver is the only path: printing a legacy
+ * block beside live Treasury accounts is exactly the drift this module stops.
  */
 function paymentBlock(entity, treasuryAccounts = []) {
-  const flagged = treasuryAccounts.filter((t) => t.show_on_documents && t.is_active !== false);
-  const remittance = entity.remittance_account_id
-    ? flagged.find((t) => String(t.treasury_account_id) === String(entity.remittance_account_id))
-    : null;
-  const ordered = remittance ? [remittance, ...flagged.filter((t) => t !== remittance)] : flagged;
+  const e = entity || {};
+  const primary = resolvePrimaryAccount(e, treasuryAccounts);
 
-  if (ordered.length) {
+  if (primary.state === "account") {
+    const t = primary.account;
     return {
       source: "treasury",
-      accounts: ordered.map((t) => ({
+      primary_state: "account",
+      accounts: [{
+        treasury_account_id: t.treasury_account_id,
         label: t.label,
         bank_name: t.bank_name || null,
         branch: t.branch || null,
@@ -183,28 +246,38 @@ function paymentBlock(entity, treasuryAccounts = []) {
         iban: t.iban || null,
         swift_bic: t.swift_bic || null,
         currency: t.currency || null,
-        beneficiary_name: t.beneficiary_name || entity.legal_name,
-      })),
+        // PR-10 / A2: holder_name is what Treasury writes (0520);
+        // beneficiary_name (0516) is the legacy spelling some rows still
+        // carry; the legal name is the last resort, as it always was.
+        holder_name: t.holder_name || t.beneficiary_name || e.legal_name || null,
+      }],
     };
   }
 
-  const b = entity.bank_block && typeof entity.bank_block === "object" ? entity.bank_block : {};
+  if (primary.state === "ambiguous" || (treasuryAccounts || []).length > 0) {
+    // `no_primary` and not `none`: the designer can tell the operator WHICH
+    // problem to fix (pick a primary in Treasury) rather than just "blank".
+    return { source: "no_primary", primary_state: primary.state, accounts: [] };
+  }
+
+  const b = e.bank_block && typeof e.bank_block === "object" ? e.bank_block : {};
   const legacy = {
     bank_name: b.bank_name || null,
     branch: b.branch || null,
     account_number: b.account_number || null,
     iban: b.iban || null,
     swift_bic: b.swift || b.swift_bic || null,
-    currency: entity.default_currency || null,
-    beneficiary_name: entity.legal_name,
+    currency: e.default_currency || null,
+    holder_name: e.legal_name || null,
+    beneficiary_name: e.legal_name,
     label: b.bank_name || "Bank account",
   };
   const hasAny = [legacy.bank_name, legacy.account_number, legacy.iban].some((v) => v && String(v).trim());
   return hasAny
     // `legacy` marks the fallback so the dossier can prompt the operator to move
     // it into Treasury rather than leaving it invisible forever.
-    ? { source: "bank_block_legacy", accounts: [legacy] }
-    : { source: "none", accounts: [] };
+    ? { source: "bank_block_legacy", primary_state: "unset", accounts: [legacy] }
+    : { source: "none", primary_state: "unset", accounts: [] };
 }
 
 const DEFAULT_CONFIG = {
@@ -230,17 +303,16 @@ function poBox(entity, addresses = []) {
  * @param {object}   [input.config]          entity_letterhead row (defaults applied)
  * @param {object[]} [input.addresses]       entity_address rows
  * @param {object[]} [input.registrations]   entity_registration rows
- * @param {object[]} [input.taxRegistrations] entity_tax_registration rows
  * @param {object[]} [input.treasuryAccounts] treasury_account rows
  * @param {object[]} [input.establishments]  entity_establishment rows
  * @param {string}   [lang]                  'fr' | 'en'; defaults to the entity's
  */
-function render({ entity, config, addresses = [], registrations = [], taxRegistrations = [], treasuryAccounts = [], establishments = [] }, lang) {
+function render({ entity, config, addresses = [], registrations = [], treasuryAccounts = [], establishments = [] }, lang) {
   const e = entity || {};
   const c = { ...DEFAULT_CONFIG, ...(config || {}) };
   const language = lang || e.default_language || "en";
 
-  const ids = identifiers(e, registrations, taxRegistrations);
+  const ids = identifiers(e, registrations);
   const address = registeredAddress(e, addresses);
   const capital = formatAmount(e.share_capital);
   const payment = paymentBlock(e, treasuryAccounts);
@@ -303,7 +375,9 @@ function render({ entity, config, addresses = [], registrations = [], taxRegistr
       c.show_registrations && !ids.length ? "registrations" : null,
       c.show_share_capital && !capital ? "share_capital" : null,
       c.show_contact && !contactLine ? "contact" : null,
-      c.show_bank_block && payment.source === "none" ? "payment_block" : null,
+      // `no_primary` is reported too (PR-10 / A1): "switched on, but no primary
+      // account was selected" is a different fix from "nothing behind it".
+      c.show_bank_block && (payment.source === "none" || payment.source === "no_primary") ? "payment_block" : null,
       c.show_legal_form && !e.legal_form ? "legal_form" : null,
       c.show_establishment && !establishment ? "establishment" : null,
     ].filter(Boolean),
@@ -312,6 +386,6 @@ function render({ entity, config, addresses = [], registrations = [], taxRegistr
 
 module.exports = {
   render, registeredAddress, registeredAddressRow, identifiers, paymentBlock,
-  addressLine, addressLines, formatAmount, poBox,
+  resolvePrimaryAccount, addressLine, addressLines, formatAmount, poBox,
   issuingEstablishment, establishmentLine, DEFAULT_CONFIG,
 };

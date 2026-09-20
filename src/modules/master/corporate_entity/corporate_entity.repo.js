@@ -666,22 +666,33 @@ async function usage(client, id) {
 /**
  * Treasury accounts for the entity — READ-ONLY here by design. Creating and
  * editing them belongs to MOD-09 (Treasury), and the dossier deep-links there
- * rather than duplicating the form. Account numbers never appear: `treasury_account`
- * stores a GL mapping and a label, not a number.
+ * rather than duplicating the form.
+ *
+ * PR-10 / A2 — THE HOLDER NAME. `treasury_account` has carried TWO spellings of
+ * "whose account is this": `beneficiary_name` (0516, the letterhead's own
+ * addition) and `holder_name` (0520, the Treasury module's, which is what
+ * every write path since then has populated). Selecting only the 0516 column —
+ * as this query did — meant the letterhead/360 paths could never read the
+ * holder Treasury actually owns. ONE source of truth now: `holder_name`,
+ * with `beneficiary_name` as a legacy fallback for rows written before 0520
+ * and never re-saved, coalesced HERE so no consumer has to know the history.
  */
 async function treasuryAccounts(client, id) {
-  // The bank-detail columns (0516) are selected because the letterhead's payment
-  // block is assembled from them — without them `paymentBlock` finds nothing on
-  // every row and silently falls back to the frozen `bank_block` forever, which
-  // defeats the whole point of making treasury_account the source of truth.
+  // The bank-detail columns are selected because the letterhead's payment
+  // block and the Banking & treasury tab are assembled from them — without
+  // them `paymentBlock` finds nothing on every row and silently falls back to
+  // the frozen `bank_block` forever, which defeats the whole point of making
+  // treasury_account the source of truth.
   //
-  // They are the finance-confidential fields, so every caller that serializes
-  // this list masks them unless the caller holds Treasury read: the dossier and
-  // the letterhead endpoint both run it through maskPaymentBlock (gate 14).
+  // PR-10 / A0: these columns are NOT masked on the corporate-entity 360 and
+  // letterhead surfaces (both MOD-01 `view` routes) — the owner's decision is
+  // that a MOD-01 viewer sees the details their own invoices print. Other
+  // surfaces (the Treasury module's own dossier, party banks) keep gate 14.
   const { rows } = await client.query(
     `SELECT treasury_account_id, kind, label, coa_code, currency, momo_network,
             is_active, is_primary, show_on_documents,
-            bank_name, branch, account_number, iban, swift_bic, beneficiary_name,
+            bank_name, branch, account_number, iban, swift_bic,
+            COALESCE(NULLIF(btrim(holder_name), ''), beneficiary_name) AS holder_name,
             created_at
        FROM treasury_account WHERE entity_id = $1 ORDER BY is_active DESC, kind, label`,
     [id],

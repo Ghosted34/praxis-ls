@@ -22,7 +22,9 @@
  *     verified_by + verified_at so "someone typed this in" and "we checked it
  *     against a bank letter" are distinguishable.
  *
- *   – "Set primary" is an atomic swap inside the entity + category.
+ *   – "Set primary" is an atomic swap inside the entity (PR-10 / A1: one
+ *     primary per ENTITY, not per (entity, category) — the letterhead payment
+ *     block and the entity Banking tab read it, and they need one answer).
  */
 "use strict";
 
@@ -32,6 +34,7 @@ const rules = require("./treasury_account.rules");
 const encryption = require("../../../services/encryption.service");
 const { emitEvent, audit, resolveActorId } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
+const { logger } = require("../../../config/logger");
 
 const ref = (id) => "treasury_account:" + id;
 const gwRef = (p) => "payment_gateway:" + p;
@@ -127,6 +130,12 @@ const SENSITIVE_FIELDS = [
  * Patch an account. category_id and coa_code are ignored (managed elsewhere);
  * kind stays in sync with category so nothing needs to be done there. Renaming
  * the account renames its CoA leaf too, so the trial balance stays legible.
+ *
+ * `is_primary` is NOT patchable (it is not in UPDATE_FIELDS): the flag changes
+ * only through POST /:id/primary or a deactivation-with-replacement, both of
+ * which clear the other primaries FOR THE ENTITY in one transaction
+ * (PR-10 / A1) — the generic write path cannot reintroduce the six-primaries
+ * defect the dedicated endpoints just fixed.
  */
 async function update(client, { id, patch = {}, actor = {} }) {
   const before = await repo.get(client, id);
@@ -224,8 +233,11 @@ async function setActive(client, { id, active, forceClearPrimary = false, replac
         if (!rep || !rep.is_active || rep.category_id !== before.category_id) {
           throw new AppError("BAD_REPLACEMENT", "Replacement account must be an active account in the same category", 422);
         }
-        await repo.clearPrimaryInCategory(client, {
-          entityId: rep.entity_id, categoryId: rep.category_id, exceptId: replacementAccountId,
+        // PR-10 / A1: entity-wide clearing — the replacement becomes THE
+        // primary, so no other account anywhere in the entity keeps a stale
+        // flag beside it.
+        await repo.clearPrimaryForEntity(client, {
+          entityId: rep.entity_id, exceptId: replacementAccountId,
         });
         await repo.update(client, replacementAccountId, { is_primary: true });
       } else if (forceClearPrimary === true) {
@@ -249,6 +261,12 @@ async function setActive(client, { id, active, forceClearPrimary = false, replac
       moduleKey: events.MODULE, entityRef: ref(id), after: row,
     });
     await client.query("COMMIT");
+    // PR-10 / A1: a deliberate clear (forceClearPrimary) may leave the entity
+    // with no primary — legal, but say so rather than let the letterhead's
+    // "No primary account selected" state arrive as a surprise.
+    if (active === false && before.is_primary === true && forceClearPrimary === true) {
+      await warnIfNoPrimary(client, before.entity_id);
+    }
     return repo.getWithCategory(client, id);
   } catch (err) {
     await client.query("ROLLBACK");
@@ -257,9 +275,37 @@ async function setActive(client, { id, active, forceClearPrimary = false, replac
 }
 
 /**
- * POST /:id/primary — atomic swap. Clears the previous primary in the same
- * (entity_id, category_id) then flips this one on. No-op if the row is
- * already primary.
+ * PR-10 / A1 — warn, never fail, when a change leaves an entity with no
+ * primary account at all.
+ *
+ * "No primary" is a legal state (a brand-new tenant, a deliberate clear), but
+ * it is the state the entity's letterhead payment block and Banking & treasury
+ * tab render as an explicit "No primary account selected" hint — and the state
+ * the primary-account resolver reports as `unset`. A WARNING makes the
+ * operator's next save the fix, without blocking a legitimate clear the way
+ * the deactivation guard (Audit #12) blocks a deliberate removal.
+ */
+async function warnIfNoPrimary(client, entityId) {
+  try {
+    const n = await repo.countPrimaries(client, entityId);
+    if (n === 0) {
+      logger.warn(
+        { entity_id: entityId },
+        "treasury_account: entity has no primary account — the letterhead payment block and the entity Banking tab will show their 'No primary account selected' state",
+      );
+    }
+  } catch (err) {
+    /* @silent:metrics — the warning is advisory; a broken count must not fail a committed change */
+    logger.debug({ err, entity_id: entityId }, "treasury_account: primary-count check skipped");
+  }
+}
+
+/**
+ * POST /:id/primary — atomic swap. Clears every OTHER primary FOR THE ENTITY
+ * (PR-10 / A1 — this used to clear only the same (entity_id, category_id), so
+ * an entity could accumulate one "primary" per category and the letterhead
+ * could not say which account an invoice should be paid into), then flips this
+ * one on. No-op if the row is already primary.
  */
 async function setPrimary(client, { id, actor = {} }) {
   const row = await repo.get(client, id);
@@ -267,8 +313,8 @@ async function setPrimary(client, { id, actor = {} }) {
   if (!row.category_id) throw new AppError("NO_CATEGORY", "cannot set primary on a row without a category", 422);
   await client.query("BEGIN");
   try {
-    await repo.clearPrimaryInCategory(client, {
-      entityId: row.entity_id, categoryId: row.category_id, exceptId: id,
+    await repo.clearPrimaryForEntity(client, {
+      entityId: row.entity_id, exceptId: id,
     });
     const next = await repo.update(client, id, { is_primary: true });
     await audit(client, {

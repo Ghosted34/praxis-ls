@@ -76,6 +76,7 @@ import { ApprovalsPage } from "./governance/approvals";
 import { ClientsPage as MasterClientsPage } from "./master/clients";
 import { SuppliersPage as MasterSuppliersPage } from "./master/suppliers";
 import { CorporateEntitiesPage } from "./masterdata/corporate-entities";
+import { EntityDossierPage } from "./masterdata/entity-360";
 import { ExpenseRatesPage } from "./masterdata/expense-rates";
 import { FinancialDictionaryPage } from "./masterdata/financial-dictionary";
 import { PurchaseRequestsPage } from "./procurement/purchase-requests";
@@ -93,6 +94,7 @@ import { BusinessPoliciesPage } from "./settings/business-policies";
 import { CurrenciesPage } from "./settings/currencies";
 import { TaxJurisdictionsPage } from "./settings/tax-jurisdictions";
 import { WebsitePagesPage } from "./settings/website-pages";
+import { WebsitePartnersPage } from "./settings/website-partners";
 import { WebsitePageEditorPage } from "./settings/website-page-editor";
 import * as aiControl from "./ai-control/pages";
 import * as costing from "./costing/pages";
@@ -236,9 +238,70 @@ const ENTITY_360 = {
     },
   ],
   documents: [],
-  tax_registrations: [],
-  tax_obligations: [],
-  treasury_accounts: [],
+  /*
+   * PR-10 / B.5: the Banking & treasury tab and the dossier's other PR-05/06
+   * surfaces are registered as screens of their own below, so this fixture
+   * now carries the rows they render: a tax registration + a generated tax
+   * obligation (PR-05), and a primary treasury account with its bank
+   * identity (PR-10 / A0 — the tab prints bank name, account number and
+   * holder for a MOD-01 viewer).
+   */
+  tax_registrations: [
+    {
+      tax_registration_id: "tr1",
+      country_code: "CM",
+      jurisdiction_name: "Cameroon",
+      tax_kind: "VAT",
+      tax_number: "M042116033580Q",
+      regime: "STANDARD",
+      filing_frequency: "MONTHLY",
+      filing_due_day: 15,
+      responsible_name: "Awa Fiscal",
+      registered_on: "2024-01-01",
+      is_primary: true,
+      is_active: true,
+    },
+  ],
+  tax_obligations: [
+    {
+      tax_calendar_id: "tc1",
+      obligation: "VAT return",
+      period_code: "2026-09",
+      due_on: "2026-10-15",
+      status: "PENDING",
+      country_code: "CM",
+      tax_kind: "VAT",
+    },
+  ],
+  treasury_accounts: [
+    {
+      treasury_account_id: "ta1",
+      kind: "BANK",
+      label: "Afriland — Main XAF",
+      coa_code: "521101",
+      currency: "XAF",
+      bank_name: "Afriland First Bank",
+      account_number: "10005000123456",
+      holder_name: "SmartBox SARL",
+      is_active: true,
+      is_primary: true,
+    },
+  ],
+  treasury_primary: {
+    state: "account",
+    account: {
+      treasury_account_id: "ta1",
+      kind: "BANK",
+      label: "Afriland — Main XAF",
+      coa_code: "521101",
+      currency: "XAF",
+      bank_name: "Afriland First Bank",
+      account_number: "10005000123456",
+      holder_name: "SmartBox SARL",
+      is_active: true,
+      is_primary: true,
+    },
+  },
   treasury_is_read_only: true,
   cap_table: {
     as_of: "2026-07-01",
@@ -898,6 +961,69 @@ const AREAS: Area[] = [
         routes: { "/entities": ENTITIES, "/entities/e1/360": ENTITY_360 },
         populatedProof: /SmartBox SARL/,
       },
+      /*
+       * PR-10 / B.5 — the dossier's tabbed surfaces were never in the register:
+       * only the default tab of the master–detail screen was scanned, so the
+       * PR-05 tax-obligation calendar, the PR-06 Public Story editor and the
+       * PR-10 Banking & treasury tab shipped un-scanned. Each is its own entry
+       * now, selected through the same `?tab=` deep link a compliance alert
+       * uses — which is also why the axe run exercises the tab-strip logic
+       * rather than a hand-mounted panel.
+       */
+      {
+        name: "Entity dossier · Tax & jurisdiction",
+        render: () => <EntityDossierPage />,
+        path: "/master/corporate-entities/e1?tab=Tax%20%26%20jurisdiction",
+        pattern: "/master/corporate-entities/:entityId",
+        routes: { "/entities/e1/360": ENTITY_360 },
+        // PR-05: the generated filing calendar is the surface this PR added.
+        populatedProof: /VAT return/,
+        // No "empty" state: a by-id dossier route has nothing to be empty
+        // WITH — a missing id is a 404, which the error state covers. The
+        // register's generic empty fixture (`[]`) is a shape `/entities/:id/360`
+        // never returns.
+        states: ["loading", "error", "populated"],
+      },
+      {
+        name: "Entity dossier · Banking & treasury",
+        render: () => <EntityDossierPage />,
+        path: "/master/corporate-entities/e1?tab=Banking%20%26%20treasury",
+        pattern: "/master/corporate-entities/:entityId",
+        routes: { "/entities/e1/360": ENTITY_360 },
+        // PR-10 / A0+A5: the primary account's bank identity, printed in full.
+        populatedProof: /10005000123456/,
+        states: ["loading", "error", "populated"],
+      },
+      {
+        name: "Entity dossier · Public story",
+        render: () => <EntityDossierPage />,
+        path: "/master/corporate-entities/e1?tab=Public%20story",
+        pattern: "/master/corporate-entities/:entityId",
+        routes: {
+          "/entities/e1/360": ENTITY_360,
+          "/site-settings/entities/e1/story": {
+            entity_id: "e1",
+            code: "SBX",
+            legal_name: "SmartBox SARL",
+            trading_name: "SmartBox",
+            country_code: "CM",
+            registration_status: "ACTIVE",
+            public_enabled: true,
+            public_summary_fr: "Transitaire à Douala.",
+            public_summary_en: "Freight forwarder in Douala.",
+            public_coverage: [{ country_code: "CM", label_en: "Cameroon" }],
+            public_focus: [
+              { service_type_key: "sea_freight", mode: "sea", label_en: "Sea freight" },
+            ],
+            public_cover_vault_id: null,
+          },
+          "/site-settings/service-types": [
+            { key: "sea_freight", label: { fr: "Fret maritime", en: "Sea freight" }, mode: "sea" },
+          ],
+        },
+        populatedProof: /Public story/i,
+        states: ["loading", "error", "populated"],
+      },
       {
         name: "Expense rates",
         render: () => <ExpenseRatesPage />,
@@ -1384,6 +1510,68 @@ const AREAS: Area[] = [
           ],
           "/entities": ENTITIES,
         },
+      },
+      {
+        /*
+         * PR-10 / B.5 — the partners screen mounts the shared asset-slot
+         * control (website-assets.tsx), which is the PR-06/07 cover and mark
+         * upload surface. It was never in the register, so the very control
+         * the media-compensation work rebuilt shipped un-scanned.
+         */
+        name: "Website partners",
+        render: () => <WebsitePartnersPage />,
+        routes: {
+          "/site-settings/partners": [
+            {
+              partner_id: "p1",
+              name: "Bolloré Logistics",
+              // One of the three real kinds — the screen keys its help text on
+              // this, so a bogus value takes the row down with it.
+              kind: "carrier",
+              url: "https://bollore.example",
+              logo_vault_id: null,
+              permission_note: null,
+              sort_order: 10,
+              is_active: true,
+            },
+          ],
+          "/site-settings/credentials": [
+            {
+              credential_id: "cr1",
+              name: "OEA — Authorised Economic Operator",
+              issuer: "WCO",
+              identifier: "OEA-CM-0042",
+              issued_on: "2025-02-01",
+              // Firmly in the past: an expired credential renders the
+              // "Expired — not shown on the site" pill — the expiry-surfacing
+              // behaviour this screen exists to provide — which is also the
+              // row-conditional TEXT the proof below can see. The names live
+              // in input values, which textContent never includes.
+              expires_on: "2024-01-31",
+              url: null,
+              logo_vault_id: null,
+              sort_order: 10,
+              is_active: true,
+            },
+          ],
+        },
+        /*
+         * Both fixtures must be proven to have reached the screen: the
+         * partner row by its kind help text, the credential row by its
+         * expired pill. Two lookaheads over one textContent, because a proof
+         * that only covers one route lets the other silently miss.
+         */
+        populatedProof:
+          /(?=[\s\S]*We move cargo on these lines)(?=[\s\S]*Expired — not shown on the site)/,
+        /*
+         * `rendersRows: false` because the `.border-dashed` marker the
+         * populated test uses for "is an EmptyState showing?" is ALSO the
+         * class of this screen's empty asset-slot drop zones (file-drop.tsx):
+         * a partner with no logo yet legitimately renders a dashed slot
+         * beside its data. The two-lookahead proof above says the rows
+         * arrived more directly than the dashed-border heuristic ever could.
+         */
+        rendersRows: false,
       },
       {
         name: "Website pages",
@@ -2017,7 +2205,16 @@ describe.each(CASES)(
       },
     );
 
-    it("empty state is clean and is not the developer default", async () => {
+    /*
+     * `runIf(has("empty"))` like its siblings above: `states` documents which
+     * states a screen HAS, and a screen that opted out of "empty" (a by-id
+     * dossier route, whose missing-id case is a 404 — an error state) was
+     * still run through this test's generic `[]` fixture, which is a shape
+     * such a route's API never returns. The opt-out was silently ignored.
+     */
+    it.runIf(has("empty"))(
+      "empty state is clean and is not the developer default",
+      async () => {
       const f: ScreenFixtures = {
         routes: Object.fromEntries(
           Object.keys(routes ?? {}).map((k) => [k, []]),

@@ -40,7 +40,7 @@ import { DateField } from "@/components/ui/date-field";
 import { Input } from "@/components/ui/input";
 import { Pill } from "@/components/ui/pill";
 import { SettingsCard, Field } from "@/components/settings/controls";
-import { ErrorState } from "@/components/ui/states";
+import { ErrorState, LoadingRow } from "@/components/ui/states";
 import { tr } from "@/lib/i18n";
 import { errMsg } from "@/lib/use-resource";
 import * as api from "@/lib/site-settings-api";
@@ -124,6 +124,16 @@ export function WebsitePartnersPage() {
     return (
       <ErrorState message={loadError} action={<Button onClick={load}>{tr("Try again")}</Button>} />
     );
+  }
+  // The wait must be announced, not implied. Before this, the screen rendered
+  // its full shell with "None yet." while the fetch was still in flight — a
+  // screen reader hears an empty feature, and a sighted operator reaches for
+  // "Add partner" against data that has not arrived. `LoadingRow` carries
+  // role="status", so the wait is spoken. Both lists arrive in one Promise.all,
+  // so one null pair is the whole initial load; after that `partners`/`creds`
+  // are arrays (possibly empty) and this branch never fires again.
+  if (partners === null && creds === null) {
+    return <LoadingRow label={tr("Loading partners and credentials…")} />;
   }
 
   return (

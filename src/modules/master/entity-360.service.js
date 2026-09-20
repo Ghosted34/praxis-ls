@@ -137,23 +137,18 @@ function maskEntityBank(entity, canSee) {
   };
 }
 
-/** The rendered payment block with every account identifier masked. */
-function maskPaymentBlock(preview, canSee) {
-  if (canSee || !preview || !preview.payment_block) return preview;
-  return {
-    ...preview,
-    payment_block: {
-      ...preview.payment_block,
-      accounts: (preview.payment_block.accounts || []).map((a) => ({
-        ...a,
-        account_number: maskAccount(a.account_number),
-        iban: maskAccount(a.iban),
-        swift_bic: maskAccount(a.swift_bic),
-        masked: true,
-      })),
-    },
-  };
-}
+/*
+ * PR-10 / A0 removed `maskPaymentBlock` — the rendered-payment-block mask that
+ * used to sit between the letterhead renderers and the response. Its only two
+ * call sites were the two surfaces the owner deliberately UNmasked (the
+ * Entity-360 Banking & treasury tab and the letterhead endpoint, both MOD-01
+ * `view` routes); nothing else serialized a rendered payment block, so the
+ * function was dead the moment the relaxation landed. `maskBank` — the ROW
+ * mask — remains: the Treasury module's own dossier, the party bank rows and
+ * the nested banks route keep gate 14, and `maskEntityBank` still masks the
+ * entity master's legacy `bank_block` jsonb. The relaxation is pinned by
+ * tests/unit/entity-primary-account.test.js.
+ */
 
 /**
  * A person row reduced to what a non-governance caller may see: that the role is
@@ -347,6 +342,11 @@ async function dossier(c, id, { governance = false, financials = false, capabili
   const ancestors = await repo.ancestors(c, id);
   const usage = await repo.usage(c, id);
   const treasury = await repo.treasuryAccounts(c, id);
+  // PR-10 / A1: the Banking & treasury tab asks THE resolver — the same
+  // function the letterhead's payment block runs — which account is primary.
+  // Serialized beside the rows so the client never re-derives the rule (and
+  // cannot drift from the invoice).
+  const treasuryPrimary = letterheadService.resolvePrimaryAccount(entity, treasury);
   const { documents, tax_registrations: taxRegistrations, letterhead } = await repo.documentsAndTax(c, id);
   const obligations = await repo.taxObligations(c, id);
 
@@ -417,9 +417,22 @@ async function dossier(c, id, { governance = false, financials = false, capabili
     registrations: visibleRegistrations,
     establishments,
     // Read-only. The client renders these with a deep link to MOD-09 rather than
-    // an edit form; see the module header. Masked for a caller without Treasury
-    // read — since 0516 these rows carry the account number and IBAN themselves.
-    treasury_accounts: treasury.map((t) => maskBank(t, financials)),
+    // an edit form; see the module header.
+    //
+    // PR-10 / A0 — NOT masked here. This route is MOD-01 `view`, and the
+    // owner's binding decision is that a MOD-01 viewer sees the bank details
+    // their own invoices print: bank name, account number and holder are
+    // visible on the Banking & treasury tab and the letterhead payment block
+    // to every caller of this endpoint. The financials (MOD-09 read) grant no
+    // longer widens or narrows these two surfaces — it still governs the
+    // Treasury module's own dossier and the party bank rows, which keep
+    // gate 14. The tab prints the PRIMARY account's identifiers only
+    // (`treasury_primary`); the other rows stay listed for discovery.
+    treasury_accounts: treasury,
+    // The resolver's answer: { state: "account", account } | { state: "unset"
+    // | "ambiguous", account: null }. "unset"/"ambiguous" is what the tab turns
+    // into the explicit "No primary account selected" hint.
+    treasury_primary: treasuryPrimary,
     treasury_is_read_only: true,
     cap_table: governance
       ? cap
@@ -436,14 +449,16 @@ async function dossier(c, id, { governance = false, financials = false, capabili
     // collections above just redacted, not a print path — the invoice renderer
     // keeps composing from the raw rows, because a commercial document MUST
     // carry its statutory mentions (CE-18).
+    //
+    // PR-10 / A0: the preview's PAYMENT BLOCK is NOT masked — the letterhead
+    // surface is one of the two places a MOD-01 viewer deliberately sees the
+    // bank details (the other is the Banking & treasury tab above), so the
+    // preview shows exactly what the document prints.
     letterhead_source: letterheadSource(visibleEntity, { addresses, registrations: visibleRegistrations }),
     letterhead_config: letterhead,
-    letterhead_preview: maskPaymentBlock(
-      letterheadService.render(
-        { entity: visibleEntity, config: letterhead, addresses, registrations: visibleRegistrations, taxRegistrations: visibleTaxRegistrations, treasuryAccounts: treasury, establishments },
-        entity.default_language,
-      ),
-      financials,
+    letterhead_preview: letterheadService.render(
+      { entity: visibleEntity, config: letterhead, addresses, registrations: visibleRegistrations, treasuryAccounts: treasury, establishments },
+      entity.default_language,
     ),
     renewals: renewalRules.renewals({ documents: visibleDocuments, registrations: visibleRegistrations, taxRegistrations: visibleTaxRegistrations }),
     readiness: rules.readiness(visibleEntity, { registrations: visibleRegistrations, addresses, people }),
@@ -484,5 +499,5 @@ module.exports = {
   dossier, canSeeGovernance, canSeeFinancials, canSeeRegistrations, capabilitiesFor, letterheadSource,
   redactPerson, redactDocument, DOCUMENT_CONFIDENTIAL_FIELDS,
   redactRegistration, redactTaxRegistration, redactTaxObligation, maskEntityRegistrations,
-  maskEntityBank, maskPaymentBlock, isoDate,
+  maskEntityBank, isoDate,
 };

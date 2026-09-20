@@ -45,7 +45,11 @@ function turnCredential() {
   const expiry = Math.floor(Date.now() / 1000) + ttl;
   const username = `${expiry}`;
   const password = crypto
-    .createHmac("sha1", String(config.TURN_CREDENTIAL_SECRET))
+    // SHA1 here is TURN's wire protocol, not a chosen cipher: RFC 5766
+    // MESSAGE-INTEGRITY is HMAC-SHA1 and coturn's `use-auth-secret` REST
+    // scheme computes exactly this digest over the expiry username. There is
+    // no stronger option that a stock coturn would accept.
+    .createHmac("sha1", String(config.TURN_CREDENTIAL_SECRET)) // codeql[js/weak-crypto]
     .update(username)
     .digest("base64");
   return { username, password, expiresAt: new Date(expiry * 1000).toISOString() };

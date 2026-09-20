@@ -43,7 +43,11 @@ import { useToast } from "@/components/ui/toast";
 import { SmartCountryPicker } from "@/components/smart-country-picker";
 import { TimezonePicker } from "@/components/timezone-picker";
 import { RegimePicker } from "@/components/regime-picker";
-import { ScanAttachment } from "@/components/scan-attachment";
+import { ScanAttachment, ScanCardActions } from "@/components/scan-attachment";
+import { SectionTabs } from "@/components/ui/section-tabs";
+import { ResponsiveList, RecordCard } from "@/components/ui/responsive-list";
+import { DropdownItem, DropdownSeparator } from "@/components/ui/dropdown-menu";
+import { MoreMenu } from "@/components/ui/more-menu";
 import {
   SCAN_ACCEPT,
   scanFileProblem,
@@ -109,6 +113,34 @@ const TABS = [
   "Public story",
 ] as const;
 type Tab = (typeof TABS)[number];
+
+/**
+ * What the same twelve sections are called on a phone.
+ *
+ * At 390px a scroll strip shows about two and a half tabs. Four of these names
+ * are two words long and three of those are joined by an ampersand, so the
+ * strip was spending its whole width on "Identity & registrations … Documents …"
+ * — two tabs of signpost for a reader who needs to see where they can go. The
+ * short forms are the FIRST word of each name, because that is the word that
+ * distinguishes it, and nothing else in the strip begins with the same one.
+ *
+ * The mapping lives here rather than inside `TABS` so the tab's VALUE — the
+ * `?tab=` parameter, the section heading, the deep-link target — keeps the full
+ * name everywhere. `letterhead-deep-link.test.tsx` links to
+ * `?tab=Banking %26 treasury`, and it must keep working.
+ *
+ * Omitted where the full name already fits in a phone-width tab: Overview,
+ * Documents, Structure, Letterhead, Renewals.
+ */
+const SHORT_LABEL: Partial<Record<Tab, string>> = {
+  "Identity & registrations": "Identity",
+  "Tax & jurisdiction": "Tax",
+  "People & shareholding": "People",
+  "Contacts & addresses": "Contacts",
+  "Banking & treasury": "Banking",
+  "Working calendar": "Calendar",
+  "Public story": "Story",
+};
 
 const RENEWAL_TONE: Record<string, Tone> = {
   EXPIRED: "bad",
@@ -1595,22 +1627,19 @@ export function EntityDossier({
         <EntityKpiDrill kind={drill} data={d.data} onClose={() => setDrill(null)} />
       )}
 
-      <nav
-        className="flex flex-wrap items-end gap-1 overflow-x-auto border-b"
-        aria-label="Entity sections"
-      >
-        {TABS.map((t) => (
-          <button
-            key={t}
-            type="button"
-            onClick={() => setTab(t)}
-            aria-current={tab === t ? "page" : undefined}
-            className={`-mb-px whitespace-nowrap border-b-2 px-3 py-2 text-sm ${tab === t ? "border-primary font-medium text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}
-          >
-            {t}
-          </button>
-        ))}
-      </nav>
+      {/* Twelve sections — the longest strip in the app, and on a phone it was
+          four rows of buttons between the KPI band and the record's actual
+          content. `SectionTabs` is the shared scroll strip: one row, active
+          section centred, fading at whichever edge has more. `sticky` because
+          every section under it is long enough to scroll past the strip. */}
+      <SectionTabs
+        label="Entity sections"
+        value={tab}
+        onChange={setTab}
+        sticky
+        className="mb-4"
+        tabs={TABS.map((t) => ({ value: t, label: t, shortLabel: SHORT_LABEL[t] }))}
+      />
 
       {tab === "Overview" && (
         <div className="grid gap-4 lg:grid-cols-2">
@@ -3171,6 +3200,146 @@ export function EntityDossierPage() {
 const docLabel = (d: api.EntityDocument) =>
   d.title || d.document_type_name || d.document_number || "Document";
 
+/**
+ * One administrative document on a phone — the card `ResponsiveList` renders
+ * below `md` (see `components/ui/responsive-list.tsx`).
+ *
+ * Nine table columns collapse into four lines without losing a fact: the title
+ * (which is what the reader calls the document), where it came from, the two
+ * statuses as pills, and the four identifying fields that decide whether it is
+ * still valid. The four controls the row used to wrap down its right-hand side
+ * are one visible View/Attach plus `⋯` — and the selection checkbox, which the
+ * cards have to carry because "tick these and share them as one ZIP" is a flow
+ * the phone has to be able to finish.
+ */
+function EntityDocumentCard({
+  doc,
+  selected,
+  onToggle,
+  canEdit,
+  canApprove,
+  verifyBusy,
+  onVerify,
+  onEdit,
+  onRemove,
+  onAttached,
+  onAttachError,
+}: {
+  doc: api.EntityDocument;
+  selected: boolean;
+  onToggle: () => void;
+  canEdit: boolean;
+  canApprove: boolean;
+  verifyBusy: string | null;
+  onVerify: () => void;
+  onEdit: () => void;
+  onRemove: () => void;
+  onAttached: (vaultId: string) => void | Promise<void>;
+  onAttachError: (message: string | null) => void;
+}) {
+  return (
+    <RecordCard
+      leading={
+        <input
+          type="checkbox"
+          className="h-4 w-4 accent-primary align-middle"
+          checked={selected}
+          aria-label={`${tr("Select")} ${docLabel(doc)}`}
+          onChange={onToggle}
+        />
+      }
+      title={doc.title || doc.document_type_name || tr("Untitled")}
+      subtitle={doc.establishment_name || undefined}
+      pills={
+        <>
+          <Pill tone={SCAN_TONE[doc.scan_status] || "mute"}>
+            {enumLabel(doc.scan_status)}
+          </Pill>
+          {!doc.vault_id && doc.physical_ref ? (
+            <Pill tone="mute">{tr("Paper")}</Pill>
+          ) : null}
+          <Pill
+            tone={
+              doc.verification_status === "VERIFIED"
+                ? "ok"
+                : doc.verification_status === "REJECTED"
+                  ? "bad"
+                  : "warn"
+            }
+          >
+            {enumLabel(doc.verification_status)}
+          </Pill>
+        </>
+      }
+      meta={[
+        [tr("Type"), doc.document_type_name || "—"],
+        [tr("Number"), doc.document_number || "—"],
+        [tr("Country"), doc.country_code || "—"],
+        [tr("Expires"), doc.expires_on ? dateDmy(doc.expires_on) : "—"],
+      ]}
+      actions={
+        canEdit ? (
+          <ScanCardActions
+            vaultId={doc.vault_id}
+            docType="ENTITY_DOCUMENT"
+            entityRef={`entity_document:${doc.document_id}`}
+            onAttached={onAttached}
+            onError={onAttachError}
+            menuLabel={tr("Document actions")}
+            menuItems={
+              <>
+                {canApprove &&
+                  doc.vault_id &&
+                  doc.verification_status !== "VERIFIED" && (
+                    <DropdownItem
+                      onSelect={onVerify}
+                      disabled={verifyBusy === doc.document_id}
+                    >
+                      {tr("Verify")}
+                    </DropdownItem>
+                  )}
+                <DropdownItem onSelect={onEdit}>{tr("Edit")}</DropdownItem>
+                <DropdownSeparator />
+                <DropdownItem destructive onSelect={onRemove}>
+                  {tr("Remove")}
+                </DropdownItem>
+              </>
+            }
+          />
+        ) : (
+          // Without edit rights the card keeps exactly the controls the row
+          // keeps: open the scan if there is one, and verify it if this reader
+          // is the approver. No file action, no edit, no remove — and no kebab
+          // holding an action this reader may not take.
+          <>
+            {doc.vault_id && (
+              <ScanAttachment
+                compact
+                vaultId={doc.vault_id}
+                docType="ENTITY_DOCUMENT"
+                entityRef={`entity_document:${doc.document_id}`}
+                onAttached={onAttached}
+                onError={onAttachError}
+                disabled
+              />
+            )}
+            {canApprove && doc.vault_id && doc.verification_status !== "VERIFIED" && (
+              <MoreMenu label={tr("Document actions")}>
+                <DropdownItem
+                  onSelect={onVerify}
+                  disabled={verifyBusy === doc.document_id}
+                >
+                  {tr("Verify")}
+                </DropdownItem>
+              </MoreMenu>
+            )}
+          </>
+        )
+      }
+    />
+  );
+}
+
 /** What the vault stored, mapped to the extension the download should carry. */
 const BLOB_EXT: Record<string, string> = {
   "application/pdf": ".pdf",
@@ -3563,6 +3732,29 @@ function DocumentsTab({
           </Button>
         </div>
       )}
+      {/* Nine columns — document, type, number, country, expiry, two statuses
+          and four controls — which on a phone is a horizontal scroll with the
+          row's subject off screen. Below `md` the same records are cards; the
+          selection checkbox comes with them, because ticking rows is how a
+          batch is shared or zipped and that has to work on a phone too. */}
+      <ResponsiveList
+        items={documents}
+        renderItem={(doc) => (
+          <EntityDocumentCard
+            doc={doc}
+            selected={selected.includes(doc.document_id)}
+            onToggle={() => toggleOne(doc.document_id)}
+            canEdit={canEdit}
+            canApprove={canApprove}
+            verifyBusy={verifyBusy}
+            onVerify={() => void verifyDocument(doc)}
+            onEdit={() => setAdding(doc)}
+            onRemove={() => onRemove(doc.document_id)}
+            onAttachError={setAttachError}
+            onAttached={(vaultId) => linkScan(doc, vaultId)}
+          />
+        )}
+      >
       <MiniTable
         empty={documents.length === 0}
         head={
@@ -3710,6 +3902,7 @@ function DocumentsTab({
           </tr>
         ))}
       </MiniTable>
+      </ResponsiveList>
 
       {documents.length === 0 && (
         <EmptyState

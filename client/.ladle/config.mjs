@@ -23,6 +23,16 @@ export default {
     // half a story.
     theme: { enabled: true, defaultState: "light" },
     a11y: { enabled: true },
-    width: { enabled: true, options: { desktop: 1280, wide: 1920 } },
+    // `phone` is the width the mobile work needs. Every responsive branch in
+    // this app is chosen by a real media query rather than a prop, so the only
+    // way to REVIEW one in the workbench is to actually make the viewport
+    // narrow — a 390px div on a 1280px page renders the desktop shell and looks
+    // like the fix did not work. 390 is the width the audit screenshotted
+    // (Samsung A-series Chrome), 834 is iPad portrait, where a nine-column
+    // table is still the wrong answer.
+    width: {
+      enabled: true,
+      options: { phone: 390, tablet: 834, desktop: 1280, wide: 1920 },
+    },
   },
 };

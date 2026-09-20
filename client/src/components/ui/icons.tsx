@@ -128,6 +128,23 @@ export const PencilIcon = (p: P) => (
     <path d="M4 20h4L18.5 9.5a2.12 2.12 0 0 0-3-3L5 17v3Z" />
   </svg>
 );
+/**
+ * Overflow — three dots, horizontally.
+ *
+ * The one glyph that needs no label: every phone OS and every mail client uses
+ * it, and it is what `<MoreMenu>` opens. Added here rather than reusing
+ * `app/layout/nav-icons.tsx`'s copy because that file is the shell's own set
+ * and a `components/ui` primitive reaching up into `app/layout` inverts the
+ * dependency the tree is built on — the reason both files have a `ChevronIcon`
+ * and neither imports the other's.
+ */
+export const MoreIcon = (p: P) => (
+  <svg {...base(p)}>
+    <circle cx="5" cy="12" r="1.4" />
+    <circle cx="12" cy="12" r="1.4" />
+    <circle cx="19" cy="12" r="1.4" />
+  </svg>
+);
 export const RefreshIcon = (p: P) => (
   <svg {...base(p)}>
     <path d="M21 12a9 9 0 1 1-3-6.7L21 8m0-5v5h-5" />

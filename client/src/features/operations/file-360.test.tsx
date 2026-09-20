@@ -185,9 +185,12 @@ describe("Operations file 360 · the page", () => {
     // A tab held in React state would pass a click-driven test and fail this
     // one, which is the whole point of putting it in the URL.
     expect(await screen.findByText("Budget vs actual")).toBeInTheDocument();
+    // The section strip is a `<nav>` of buttons (section-tabs.tsx), not the
+    // `<Segmented>` radio group it used to be — nine sections were never a
+    // segmented control. The active one says so with `aria-current`.
     expect(
-      screen.getByRole("radio", { name: /^Money$/ }),
-    ).toBeChecked();
+      screen.getByRole("button", { name: /^Money$/ }),
+    ).toHaveAttribute("aria-current", "page");
   });
 
   it("drills from a KPI tile into the tab that explains the figure", async () => {
@@ -209,13 +212,13 @@ describe("Operations file 360 · the page", () => {
     // `document_rows` array is empty. Counting the arrays would say "0" and the
     // tab would carry no count at all.
     expect(
-      await screen.findByRole("radio", { name: "Documents · 24" }),
+      await screen.findByRole("button", { name: "Documents 24" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("radio", { name: "Milestones · 4/10" }),
+      screen.getByRole("button", { name: "Milestones 4/10" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("radio", { name: "Queries · 2" }),
+      screen.getByRole("button", { name: "Queries 2" }),
     ).toBeInTheDocument();
   });
 
@@ -258,7 +261,7 @@ describe("Operations file 360 · the page", () => {
     // The tab is present and carries the true box count; deep-linked to it, the
     // file's equipment renders rather than a blank panel.
     expect(
-      await screen.findByRole("radio", { name: "Containers · 5" }),
+      await screen.findByRole("button", { name: "Containers 5" }),
     ).toBeInTheDocument();
     expect(await screen.findByText("40' High Cube")).toBeInTheDocument();
   });
@@ -267,7 +270,7 @@ describe("Operations file 360 · the page", () => {
     renderPage();
     await screen.findByRole("heading", { level: 1, name: "SBX-2026-0001" });
     // The default fixture does not capture containers — no tab, no dead click.
-    expect(screen.queryByRole("radio", { name: /Containers/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Containers/ })).toBeNull();
   });
 
   it("offers the lifecycle step the file is actually at", async () => {

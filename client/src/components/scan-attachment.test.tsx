@@ -27,7 +27,8 @@ vi.mock("@/lib/masterdata-api", () => ({
   ) => uploadVaultFile(file, fields, ctx),
 }));
 
-import { ScanAttachment } from "./scan-attachment";
+import { ScanAttachment, ScanCardActions } from "./scan-attachment";
+import { DropdownItem } from "@/components/ui/dropdown-menu";
 import { SCAN_MAX_BYTES } from "@/lib/vault-file";
 import { ApiError } from "@/lib/api-client";
 
@@ -154,5 +155,85 @@ describe("ScanAttachment", () => {
         }),
       }),
     );
+  });
+});
+
+/**
+ * THE PHONE CARD. On a desktop row the control is two links and a paste option
+ * beside them; on a 390px card the same row carried six wrapped controls, which
+ * is what the mobile audit screenshotted. `compact` is the one-control variant
+ * and `ScanCardActions` is the whole cluster — the visible action plus the `⋯`
+ * that holds the rest — because the two halves share a ref and cannot be kept in
+ * step from two call sites.
+ */
+describe("ScanCardActions · the phone card", () => {
+  it("shows ONE control per state: View when there is a file, Attach when there is not", () => {
+    const { unmount } = render(
+      <ScanCardActions
+        vaultId="vault-1"
+        docType="ENTITY_DOCUMENT"
+        entityRef="entity_document:d1"
+        onAttached={vi.fn()}
+        menuLabel="Document actions"
+      />,
+    );
+    expect(screen.getByRole("button", { name: "View" })).toBeInTheDocument();
+    // The picker is still MOUNTED — the menu drives it through `openRef`, and an
+    // input that unmounts between the click and the pick never opens — but it
+    // sits inside a `hidden` wrapper, so it is out of the accessibility tree and
+    // is not a second control competing for the same line. `display: none` does
+    // not stop a programmatic click from opening the dialog; that is the whole
+    // mechanism.
+    expect(screen.getByText("Replace").closest(".hidden")).not.toBeNull();
+    unmount();
+
+    render(
+      <ScanCardActions
+        docType="ENTITY_DOCUMENT"
+        entityRef="entity_document:d1"
+        onAttached={vi.fn()}
+        menuLabel="Document actions"
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "View" })).toBeNull();
+    expect(screen.getByLabelText("Attach scan")).toBeInTheDocument();
+  });
+
+  it("hides Replace behind the menu, and the menu item still opens the picker", async () => {
+    const user = userEvent.setup();
+    render(
+      <ScanCardActions
+        vaultId="vault-1"
+        docType="ENTITY_DOCUMENT"
+        entityRef="entity_document:d1"
+        onAttached={vi.fn()}
+        menuLabel="Document actions"
+        menuItems={<span />}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Document actions" }));
+    const replace = await screen.findByRole("menuitem", {
+      name: "Replace file",
+    });
+    expect(replace).toBeInTheDocument();
+  });
+
+  it("keeps the caller's items after the file action, so destructive ones stay last", async () => {
+    const user = userEvent.setup();
+    render(
+      <ScanCardActions
+        vaultId="vault-1"
+        docType="ENTITY_DOCUMENT"
+        entityRef="entity_document:d1"
+        onAttached={vi.fn()}
+        menuLabel="Document actions"
+        menuItems={<DropdownItem destructive>Remove</DropdownItem>}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Document actions" }));
+    const items = await screen.findAllByRole("menuitem");
+    expect(items.map((i) => i.textContent)).toEqual(["Replace file", "Remove"]);
   });
 });

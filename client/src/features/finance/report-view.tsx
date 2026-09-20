@@ -17,6 +17,7 @@ import { HubCrumb } from "@/components/tabbed-hub";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import { SkeletonTable } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { SectionTabs } from "@/components/ui/section-tabs";
 import { Input } from "@/components/ui/input";
 import { Field, Select } from "@/components/ui/modal";
 import * as fin from "@/lib/finance-api";
@@ -252,22 +253,13 @@ export function ReportTabs({
         description={description}
       />
 
-      <div className="mb-4 flex flex-wrap gap-1 border-b">
-        {tabs.map((t) => (
-          <button
-            key={t.key}
-            onClick={() => setActive(t.key)}
-            className={
-              "border-b-2 px-3 py-2 text-sm transition-colors " +
-              (active === t.key
-                ? "border-[rgb(var(--brand-orange))] font-semibold text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground")
-            }
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <SectionTabs
+        label="Report views"
+        value={active}
+        onChange={setActive}
+        className="mb-4"
+        tabs={tabs.map((t) => ({ value: t.key, label: t.label }))}
+      />
 
       {isCustom ? (
         activeTab.render!()

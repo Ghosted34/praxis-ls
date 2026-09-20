@@ -8,6 +8,7 @@
 import { pageShell } from "@/lib/layout";
 import { SplitPane } from "@/components/ui/split-pane";
 import { IndexRow } from "@/components/ui/index-row";
+import { SectionTabs } from "@/components/ui/section-tabs";
 import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { useUrlTab, useFieldHighlight, useDeepLinkEdit } from "@/lib/use-url-tab";
@@ -1880,20 +1881,17 @@ function EmployeeDetail({
         />
       )}
 
-      <div className="flex flex-wrap gap-1 border-b">
-        {TABS.map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${tab === t ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}
-          >
-            {t}
-            {counts[t] !== null && (
-              <span className="ml-1.5 micro">{counts[t]}</span>
-            )}
-          </button>
-        ))}
-      </div>
+      {/* One row on a phone — see `section-tabs.tsx`. `counts[t]` is null for a
+          section with no count to give, which is not the same as zero, so it
+          maps to an absent `count` rather than to 0. */}
+      <SectionTabs
+        label="Employee sections"
+        value={tab}
+        onChange={setTab}
+        sticky
+        className="mb-3"
+        tabs={TABS.map((t) => ({ value: t, label: t, count: counts[t] ?? undefined }))}
+      />
 
       {tab === "Profile" && (
         <div className="space-y-4">

@@ -35,7 +35,7 @@ import { Input } from "@/components/ui/input";
 import { Callout } from "@/components/ui/callout";
 import { Panel } from "@/components/ui/panel";
 import { Pill } from "@/components/ui/pill";
-import { Segmented } from "@/components/ui/segmented";
+import { SectionTabs } from "@/components/ui/section-tabs";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import { SkeletonTable } from "@/components/ui/skeleton";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
@@ -681,11 +681,14 @@ export function TransitOrder360({
   const count: Partial<Record<TransitOrder360Tab, string>> = {
     cargo: data.lines?.length ? String(data.lines.length) : undefined,
   };
+  // Four sections, one of which carries a count. The count used to be baked
+  // into the label string because `<Segmented>` takes a string; `SectionTabs`
+  // gives it its own badge, and gives the strip one row on a phone instead of
+  // the two a wrapping segmented control took.
   const tabs = TRANSIT_360_TABS.map((value) => ({
     value,
-    label: count[value]
-      ? `${tr(TAB_LABEL[value])} · ${count[value]}`
-      : tr(TAB_LABEL[value]),
+    label: tr(TAB_LABEL[value]),
+    count: count[value],
   }));
 
   const actions = (
@@ -778,11 +781,12 @@ export function TransitOrder360({
         )}
       </KpiRow>
 
-      <Segmented
-        label="Transit order 360 section"
+      <SectionTabs
+        label="Transit order sections"
         value={tab}
-        options={tabs}
         onChange={setTab}
+        sticky
+        tabs={tabs}
       />
 
       {tab === "details" && <DetailsTab order={data} onJump={setTab} />}

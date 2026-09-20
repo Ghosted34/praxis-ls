@@ -184,13 +184,15 @@ describe("Delivery note 360 · the page", () => {
     renderPage(`/operations/delivery-notes/${ID}?tab=cargo`);
 
     expect(await screen.findByText("TCLU1234567")).toBeInTheDocument();
-    expect(screen.getByRole("radio", { name: /^Cargo/ })).toBeChecked();
+    expect(
+      screen.getByRole("button", { name: /^Cargo/ }),
+    ).toHaveAttribute("aria-current", "page");
   });
 
   it("counts the cargo tab from the containers on the note", async () => {
     renderPage();
     expect(
-      await screen.findByRole("radio", { name: "Cargo · 2" }),
+      await screen.findByRole("button", { name: "Cargo 2" }),
     ).toBeInTheDocument();
   });
 

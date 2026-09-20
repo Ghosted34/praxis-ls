@@ -8,6 +8,7 @@ import * as React from "react";
 import { tr } from "@/lib/i18n";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
+import { SectionTabs } from "@/components/ui/section-tabs";
 import { Input } from "@/components/ui/input";
 import { Pill } from "@/components/ui/pill";
 import { EmptyState, ErrorState, LoadingRow } from "@/components/ui/states";
@@ -367,17 +368,13 @@ export function FinancialDictionarySettings({
       title="Dictionary settings"
       description="Seeded-but-editable values behind every dropdown."
     >
-      <div className="mb-4 flex flex-wrap gap-1 border-b">
-        {KINDS.map((k) => (
-          <button
-            key={k.kind}
-            onClick={() => setKind(k.kind)}
-            className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${kind === k.kind ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}
-          >
-            {k.label}
-          </button>
-        ))}
-      </div>
+      <SectionTabs
+        label="Dictionary kinds"
+        value={kind}
+        onChange={setKind}
+        className="mb-4"
+        tabs={KINDS.map((k) => ({ value: k.kind, label: k.label }))}
+      />
       <div className="max-h-[60vh] overflow-auto pr-1">
         <RefManager kind={kind} />
       </div>

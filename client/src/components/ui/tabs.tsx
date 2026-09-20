@@ -24,6 +24,21 @@
  * three throwaway requests. Manual means arrows move focus and Enter/Space
  * activates.
  *
+ * ── WHAT CHANGED ON A PHONE (Phase 6) ──────────────────────────────────────
+ *
+ * The strip used to be `flex-wrap`, which is fine at 1440px and produced a
+ * THREE-ROW wall of tabs on a 390px screen (the master-data hub in the mobile
+ * audit: Clients / Suppliers / Corporate entities / Treasury, then Currencies /
+ * Expense rates / Financial dictionary / Tax, then Service types). Eleven tabs
+ * above the content of a page whose whole job is to show that content.
+ *
+ * It is now `<ScrollStrip>` — one row, scrolled horizontally, the active tab
+ * centred, and a fade on whichever side has more. From `md` up it wraps exactly
+ * as before, so a desktop sees no change at all. The visuals moved to
+ * `TAB_TRIGGER` in `scroll-strip.tsx`, which `section-tabs.tsx` also uses, so
+ * the app has one tab look rather than the two it had (the hub's `gap-x-5` /
+ * `px-0.5` strip and the 360s' `gap-1` / `px-3` one).
+ *
  * @example
  * <Tabs
  *   value={tab}
@@ -31,7 +46,7 @@
  *   label="Dossier sections"
  *   tabs={[
  *     { value: "milestones", label: "Milestones", content: <Milestones /> },
- *     { value: "money", label: "Money", content: <Money /> },
+ *     { value: "money", label: "Money", count: 4, content: <Money /> },
  *   ]}
  * />
  *
@@ -44,12 +59,16 @@
 import * as React from "react";
 import * as RadixTabs from "@radix-ui/react-tabs";
 import { cn } from "@/lib/cn";
+import { ScrollStrip, TAB_TRIGGER, TabCount } from "@/components/ui/scroll-strip";
 
 export type TabItem = {
   value: string;
   label: React.ReactNode;
   content?: React.ReactNode;
   disabled?: boolean;
+  /** A count shown inside the tab ("Documents 12"). Omit for a plain label —
+   *  a zero is information and a missing count is not, so pass the value. */
+  count?: React.ReactNode;
 };
 
 /** The strip on its own, for hubs that render their panel elsewhere (TabbedHub
@@ -58,31 +77,43 @@ export function TabList({
   tabs,
   label,
   className,
+  sticky = false,
+  activeKey,
 }: {
   tabs: TabItem[];
   /** Accessible name for the strip. Not rendered. */
   label: string;
   className?: string;
+  /** Pin under the app bar on a phone. Used by the 360 sheets, where the tab
+   *  strip is the only way back to another section of a long record. */
+  sticky?: boolean;
+  /** Forwarded to `<ScrollStrip>` so a deep link lands with its tab in view.
+   *  Defaults to the active tab's value; pass `null` to switch it off. */
+  activeKey?: string | null;
 }) {
   return (
-    <RadixTabs.List
-      aria-label={label}
-      className={cn("mb-4 flex flex-wrap gap-x-5 border-b", className)}
-    >
-      {tabs.map((t) => (
-        <RadixTabs.Trigger
-          key={t.value}
-          value={t.value}
-          disabled={t.disabled}
-          className={cn(
-            "-mb-px whitespace-nowrap border-b-2 border-transparent px-0.5 pb-2.5 text-sm text-muted-foreground transition-colors",
-            "hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50",
-            "data-[state=active]:border-primary data-[state=active]:font-semibold data-[state=active]:text-foreground",
-          )}
-        >
-          {t.label}
-        </RadixTabs.Trigger>
-      ))}
+    <RadixTabs.List asChild aria-label={label}>
+      <ScrollStrip
+        className={cn("mb-4", className)}
+        sticky={sticky}
+        activeKey={activeKey === undefined ? undefined : (activeKey ?? null)}
+      >
+        {tabs.map((t) => (
+          <RadixTabs.Trigger
+            key={t.value}
+            value={t.value}
+            disabled={t.disabled}
+            // `ScrollStrip` reads this to centre the tab you are on — including
+            // on first paint, so `?tab=Renewals` opens with Renewals visible
+            // rather than scrolled off the right-hand edge.
+            data-strip-active={t.value === activeKey ? "true" : undefined}
+            className={TAB_TRIGGER}
+          >
+            {t.label}
+            <TabCount count={t.count} />
+          </RadixTabs.Trigger>
+        ))}
+      </ScrollStrip>
     </RadixTabs.List>
   );
 }
@@ -94,6 +125,7 @@ export function Tabs({
   label,
   className,
   listClassName,
+  sticky = false,
   children,
 }: {
   value: string;
@@ -102,6 +134,8 @@ export function Tabs({
   label: string;
   className?: string;
   listClassName?: string;
+  /** Pin the strip under the app bar while a panel scrolls. */
+  sticky?: boolean;
   /** Rendered between the strip and the panels — e.g. a toolbar. */
   children?: React.ReactNode;
 }) {
@@ -114,7 +148,13 @@ export function Tabs({
       activationMode="manual"
       className={className}
     >
-      <TabList tabs={tabs} label={label} className={listClassName} />
+      <TabList
+        tabs={tabs}
+        label={label}
+        className={listClassName}
+        sticky={sticky}
+        activeKey={value}
+      />
       {children}
       {tabs.map((t) =>
         t.content === undefined ? null : (

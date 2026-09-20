@@ -26,6 +26,12 @@ const { initRedis, createConnection, closeRedis } = require("../config/redis");
 const PROCESSORS = [
   { name: "comms-send-flush", concurrency: 1, handler: require("./handlers/comms-send-flush") },
   { name: "comms-send-scheduler", concurrency: 1, handler: require("./handlers/comms-send-scheduler") },
+  // 1:1 voice calls (PR-1): the sweep is the ONLY clock for the two call
+  // deadlines (60 s ring, 30 min cap). The row owns the deadline, so a call
+  // ends correctly even when the API process that started it is gone —
+  // process restart, pocket, closed tab. 15 s granularity, see scheduler.
+  { name: "comms-call-sweep", concurrency: 1, handler: require("./handlers/comms-call-sweep") },
+  { name: "comms-call-sweep-scheduler", concurrency: 1, handler: require("./handlers/comms-call-sweep-scheduler") },
   /**
    * Smart Comms link previews. Concurrency 2 rather than 1: the work is one
    * outbound HTTP request to a third party that may take seconds, and two
@@ -318,6 +324,12 @@ async function scheduleRecurring() {
   // source of truth; the tick also catches up after worker/Redis downtime.
   await require("./queue-producer").enqueue("comms-send-scheduler", "tick", {}, {
     repeat: { every: 30000 }, removeOnComplete: true, removeOnFail: 50,
+  });
+  // Calls ride their own tick: a 30-minute cap and a 60-second ring want
+  // closer granularity than chat's 30 s, and call deadlines must not stop
+  // if an unrelated automation interval is disabled.
+  await require("./queue-producer").enqueue("comms-call-sweep-scheduler", "tick", {}, {
+    repeat: { every: 15000 }, removeOnComplete: true, removeOnFail: 50,
   });
   const every = config.ORCHESTRATION_DISPATCH_INTERVAL_MS;
   if (!every || every <= 0) {

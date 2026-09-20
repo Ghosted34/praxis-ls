@@ -180,8 +180,13 @@ export type Channel = {
   unread?: number;
   member_count?: number;
   last_message?: CommMessage | null;
+  /** The other member's user id — DIRECT channels only. The dial target key. */
+  partner_user_id?: string | null;
   /** The other member's uploaded profile photo (/media URL) — DIRECT channels only. */
   partner_avatar_ref?: string | null;
+  /** The other member's last presence beat — DIRECT channels only. Render
+   *  day-first under the name when they are offline (see presence.ts). */
+  partner_last_seen_at?: string | null;
 };
 
 export type Colleague = {
@@ -189,6 +194,10 @@ export type Colleague = {
   full_name?: string | null;
   email: string;
   avatar_ref?: string | null;
+  /** Last app-open / return-from-background / navigation beat (server-upserted).
+   *  ISO on the wire; render day-first with the lastSeenText helper. The LIVE
+   *  presence dot is the socket, not this timestamp. */
+  last_seen_at?: string | null;
 };
 
 /* ── Outbound provider config (email) — set + live test ── */
@@ -459,6 +468,62 @@ export const listQuickPhrases = () => tenant<QuickPhrase[]>("/smartcomm/quick-re
 export const saveQuickPhrase = (data: { label: string; body: string }, id?: string) =>
   tenant<QuickPhrase>(`/smartcomm/quick-replies${id ? `/${id}` : ""}`, { method: id ? "PATCH" : "POST", body: data });
 export const deleteQuickPhrase = (id: string) => tenant(`/smartcomm/quick-replies/${id}`, { method: "DELETE" });
+
+/* ── 1:1 voice calls (Smart Comms PR-1) ──────────────────────────────────────
+ * The server owns the call row (RINGING → IN_CALL → terminal) and both timers;
+ * these calls only create, move, and read it. Media is P2P and never touches
+ * the API — `ice` below is the ONLY server→client network input the engine
+ * gets (STUN/TURN, time-limited TURN credential).
+ */
+export type CallStatus =
+  | "RINGING" | "IN_CALL"
+  | "ENDED" | "NO_ANSWER" | "CANCELLED" | "DECLINED" | "BUSY" | "FAILED";
+export type CallEndReason =
+  | "hangup" | "declined" | "cancelled" | "no_answer" | "busy" | "max_duration" | "ice_failed";
+
+export type IceServer = {
+  urls: string | string[];
+  username?: string;
+  credential?: string;
+};
+export type IceConfig = { iceServers: IceServer[]; turnConfigured: boolean };
+
+export type Call = {
+  call_id: string;
+  group_id: string;
+  caller_id: string;
+  callee_id: string;
+  status: CallStatus;
+  started_at: string;
+  connected_at?: string | null;
+  ended_at?: string | null;
+  duration_seconds?: number | null;
+  end_reason?: CallEndReason | null;
+  channel_name?: string | null;
+  caller_name?: string | null;
+  callee_name?: string | null;
+};
+
+/** Dial on a DIRECT channel. The partner is resolved server-side; `ice` is
+ *  the dialer's config for the engine to start collecting candidates. */
+export const dialCall = (groupId: string) =>
+  tenant<Call & { ice: IceConfig }>(`/smartcomm/calls`, { method: "POST", body: { group_id: groupId } });
+/** Accept carries the acceptor's own ICE config — the callee's engine starts
+ *  at answer time and needs TURN creds in the same response. */
+export const acceptCall = (id: string) =>
+  tenant<Call & { ice: IceConfig }>(`/smartcomm/calls/${id}/accept`, { method: "POST" });
+export const declineCall = (id: string) =>
+  tenant<Call>(`/smartcomm/calls/${id}/decline`, { method: "POST" });
+export const hangupCall = (id: string) =>
+  tenant<Call>(`/smartcomm/calls/${id}/hangup`, { method: "POST" });
+/** The engine exhausted ICE and media never connected. */
+export const reportCallFailure = (id: string) =>
+  tenant<Call>(`/smartcomm/calls/${id}/fail`, { method: "POST" });
+export const listCalls = () => tenant<Call[]>(`/smartcomm/calls`);
+export const getCall = (id: string) => tenant<Call>(`/smartcomm/calls/${id}`);
+/** Refreshed TURN credential mid-call (the one minted at dial expires with
+ *  the call, plus margin). */
+export const getCallTurn = (id: string) => tenant<IceConfig>(`/smartcomm/calls/${id}/turn`);
 
 export type ScheduledMessage = {
   schedule_id: string; group_id: string; body: string; attachments: PostedAttachment[];

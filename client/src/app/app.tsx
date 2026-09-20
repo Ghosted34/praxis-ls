@@ -4,6 +4,7 @@ import { useLang } from "@/lib/i18n";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { RequireAuth } from "@/app/auth/require-auth";
 import { useAuth } from "@/app/auth/auth-context";
+import { CommsLive } from "@/features/comms/comms-live";
 import { AppShell } from "@/app/layout/app-shell";
 import { NavTrailProvider } from "@/app/layout/nav-trail-provider";
 import { ShellProvider } from "@/app/layout/shell-providers";
@@ -566,6 +567,13 @@ export function App() {
                     RequireAuth because it is the authenticated app's history:
                     the login screen has nothing to step back through. */}
                     <NavTrailProvider>
+                      {/* Comms live (PR-1): the comms socket connects at app
+                          boot (presence + call rings work from any screen),
+                          the seen-beat throttle lives here, and the call
+                          overlays render here — outside every feature screen,
+                          because a call can ring while the user is in
+                          /finance. See features/comms/comms-live.tsx. */}
+                      <CommsLive />
                       <AppShell />
                     </NavTrailProvider>
                   </ShellProvider>

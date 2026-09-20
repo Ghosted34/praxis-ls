@@ -1,5 +1,6 @@
 "use strict";
 const service = require("./smartcomm.service");
+const calls = require("./smartcomm.call.service");
 const schedule = require("./smartcomm.schedule.service");
 const cfg = require("./smartcomm.config.service");
 const erp = require("./smartcomm.erp.service");
@@ -238,4 +239,16 @@ module.exports = {
     res.json({ data });
   }),
   certify: A((c, req) => service.certifiedExport(c, { groupId: req.params.id, actor: actor(req) })),
+  // ── 1:1 voice calls (PR-1) ───────────────────────────────────────────────
+  // Membership is asserted in the call service (the channel is the
+  // authorisation); the state machine is server-authoritative there too, so
+  // the handlers stay thin.
+  createCall: C((c, req) => calls.createCall(c, { groupId: req.body.group_id, actor: actor(req) })),
+  acceptCall: A((c, req) => calls.acceptCall(c, { id: req.params.id, actor: actor(req) })),
+  declineCall: A((c, req) => calls.declineCall(c, { id: req.params.id, actor: actor(req) })),
+  hangupCall: A((c, req) => calls.hangup(c, { id: req.params.id, actor: actor(req), reason: (req.body && req.body.reason) || "hangup" })),
+  callFailed: A((c, req) => calls.reportFailure(c, { id: req.params.id, actor: actor(req) })),
+  listCalls: A((c, req) => calls.listCalls(c, actor(req))),
+  getCall: A((c, req) => calls.getCall(c, { id: req.params.id, actor: actor(req) })),
+  callTurn: A((c, req) => calls.turnFor(c, { id: req.params.id, actor: actor(req) })),
 };

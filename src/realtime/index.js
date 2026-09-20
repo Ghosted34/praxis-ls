@@ -44,6 +44,17 @@ const mailRoom = (slug) => `t:${slug}:mail`;
  */
 const userRoom = (slug, uid) => `t:${slug}:u:${uid}`;
 
+/**
+ * Per-process count of a user's connected sockets, keyed "<slug>:<uid>".
+ *
+ * Presence math for one replica: a user with two tabs here is still online
+ * when one of them closes, and the `online: false` broadcast must wait for
+ * the LAST socket on this replica. Cross-replica accuracy comes for free —
+ * a disconnect fires on the replica that HELD the socket, so every socket's
+ * join/leave is announced exactly once through the adapter.
+ */
+const userSocketCount = new Map();
+
 /** Same origin policy as the HTTP CORS: base domain + its subdomains, explicit
  *  extras, and localhost in development. */
 function corsOrigin(origin, cb) {
@@ -209,6 +220,9 @@ function initSocket(httpServer) {
     socket.on("channel:typing", (groupId) =>
       socket.to(room(tenantSlug, groupId)).emit("channel:typing", { group_id: groupId, user_id: userId }),
     );
+
+    attachCallSignals(socket);
+    attachPresence(socket);
   });
 
   attachMailBridge();
@@ -227,6 +241,119 @@ function initSocket(httpServer) {
 
   logger.info("real-time (socket.io) ready");
   return io;
+}
+
+/**
+ * 1:1 call signaling (PR-1) — RELAY ONLY.
+ *
+ * The server carries the SDP offer/answer and ICE candidates between the two
+ * participants and nothing else: it never stores them, never parses them, and
+ * the media itself is P2P (guide D4 — our servers relay signaling only). The
+ * state machine (RINGING → IN_CALL → terminal) is not driven from here; it
+ * lives on the REST paths, because a state change writes a row and this file
+ * must not own two sources of truth for one call.
+ *
+ * Participant check per event, exactly like `channel:join`: the row is the
+ * authorisation and it is re-read every time, so a socket that is no longer a
+ * participant (removed from the channel mid-call, call already closed) stops
+ * being relayed to with no bookkeeping to get wrong. A non-participant's
+ * signal is answered with silence, not an error — an error here would be a
+ * probe for "is there a call I am not in".
+ */
+function attachCallSignals(socket) {
+  const { tenant, env, tenantSlug, userId } = socket.data;
+
+  async function relay(callId, event, extra) {
+    if (typeof callId !== "string") return;
+    const callRepo = require("../modules/smartcomm/smartcomm.call.repo");
+    const other = await registry.withTenantConnection(tenant, env, (c) =>
+      callRepo.otherParticipant(c, { callId, userId }),
+    );
+    if (!other) return;
+    publishToUser(tenantSlug, other.user_id, event, { call_id: callId, ...(extra || {}) });
+  }
+
+  socket.on("call:offer", ({ callId, sdp } = {}) => {
+    if (sdp) {
+      relay(callId, "call:offer", { sdp }).catch((err) =>
+        logger.warn({ err, callId }, "call:offer relay failed"),
+      );
+    }
+  });
+  socket.on("call:answer", ({ callId, sdp } = {}) => {
+    if (sdp) {
+      relay(callId, "call:answer", { sdp }).catch((err) =>
+        logger.warn({ err, callId }, "call:answer relay failed"),
+      );
+    }
+  });
+  socket.on("call:ice", ({ callId, candidate } = {}) => {
+    relay(callId, "call:ice", { candidate: candidate || null }).catch((err) =>
+      logger.warn({ err, callId }, "call:ice relay failed"),
+    );
+  });
+  socket.on("call:ring_ack", ({ callId } = {}) => {
+    // PR-1: validated and logged only. The push escalation this stops is
+    // PR-3 (§4.6), but the client already sends it, and a signal that is
+    // accepted and ignored now and meaningful later is one less protocol
+    // change in the middle of a programme.
+    if (typeof callId !== "string") return;
+    const callRepo = require("../modules/smartcomm/smartcomm.call.repo");
+    registry
+      .withTenantConnection(tenant, env, (c) => callRepo.isParticipant(c, { callId, userId }))
+      .then((ok) => {
+        if (ok) logger.debug({ callId, userId }, "call: ring acked");
+      })
+      .catch(
+        /* @silent:db — a ring ack that cannot be validated is worth nothing to
+           anyone: the ring times out on its own 60 seconds later either way,
+           and a warning per unvalidable ack would flood on a flaky network. */
+        () => {},
+      );
+  });
+}
+
+/**
+ * Presence + last seen (PR-1, guide §4.11).
+ *
+ * "Online now" = a socket is connected; the broadcast rides the tenant-wide
+ * room (mailRoom — every authenticated socket in the tenant already joins
+ * it, so presence needs no new room and no client change to hear it). The
+ * persistent half is comms_user_presence.last_seen_at, flushed on connect,
+ * on every `comms:seen` beat (the client throttles to one per 60 s), and on
+ * disconnect.
+ */
+function attachPresence(socket) {
+  const { tenant, env, tenantSlug, userId } = socket.data;
+  if (!userId) return;
+  const key = `${tenantSlug}:${userId}`;
+
+  const touch = () => {
+    const callRepo = require("../modules/smartcomm/smartcomm.call.repo");
+    registry
+      .withTenantConnection(tenant, env, (c) => callRepo.touchPresence(c, userId))
+      .catch((err) => logger.warn({ err, userId }, "presence flush failed"));
+  };
+
+  const n = (userSocketCount.get(key) || 0) + 1;
+  userSocketCount.set(key, n);
+  touch();
+  if (n === 1) {
+    io.to(mailRoom(tenantSlug)).emit("comms:presence", { user_id: userId, online: true });
+  }
+
+  socket.on("comms:seen", () => touch());
+
+  socket.on("disconnect", () => {
+    const left = (userSocketCount.get(key) || 1) - 1;
+    if (left <= 0) {
+      userSocketCount.delete(key);
+      touch();
+      io.to(mailRoom(tenantSlug)).emit("comms:presence", { user_id: userId, online: false });
+    } else {
+      userSocketCount.set(key, left);
+    }
+  });
 }
 
 /**

@@ -1,0 +1,283 @@
+/**
+ * Call session (PR-1) — the wiring between server, socket and engine.
+ *
+ * The state machine itself is the BACKEND's (covered in
+ * tests/unit/smartcomm-calls.test.js); what lives in THIS file is the tab's
+ * half: a ring arrives, we buffer the offer that precedes the answer, we
+ * hand the server the user's intent, and a terminal event from ANY writer
+ * (this tab, the other tab, the sweep) lands the session in the row's state.
+ * The fake socket and fake RTCPeerConnection are the whole world.
+ */
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { renderHook, act } from "@testing-library/react";
+
+// Everything the vi.mock factories need lives here: vitest hoists the
+// factories above this file's consts, and they may only see hoisted values.
+const W = vi.hoisted(() => {
+  const ME = "11111111-1111-1111-1111-111111111111";
+  const THEM = "22222222-2222-2222-2222-222222222222";
+  const ICE = { iceServers: [{ urls: ["stun:stun.example.com:3478"] }], turnConfigured: false };
+  const handlers: Record<string, Array<(p: unknown) => void>> = {};
+  const calls: Array<[string, unknown]> = [];
+  const socket = {
+    on: (ev: string, fn: (p: unknown) => void) => {
+      (handlers[ev] ||= []).push(fn);
+    },
+    off: () => {},
+    emit: (ev: string, payload: unknown) => {
+      calls.push([ev, payload]);
+    },
+    connected: true,
+  };
+  const row = (over: Record<string, unknown>) => ({
+    call_id: "c1", group_id: "g1", caller_id: ME, callee_id: THEM,
+    status: "RINGING", started_at: new Date().toISOString(), ...over,
+  });
+  // The api fakes are REPLACEABLE (not vi.fn — vi is not available inside
+  // hoisted): a test swaps one to throw, the next test restores it.
+  const api: Record<string, (id?: string) => Promise<Record<string, unknown>>> = {
+    dialCall: async () => row({ ice: ICE }),
+    acceptCall: async () => row({ status: "IN_CALL", connected_at: new Date().toISOString(), ice: ICE }),
+    declineCall: async () => row({ status: "DECLINED", end_reason: "declined" }),
+    hangupCall: async () => row({ status: "ENDED", end_reason: "hangup" }),
+    reportCallFailure: async () => row({ status: "FAILED", end_reason: "ice_failed" }),
+    getCall: async () => row({ status: "NO_ANSWER", end_reason: "no_answer" }),
+  };
+  return { ME, THEM, ICE, handlers, calls, socket, row, api };
+});
+
+vi.mock("@/lib/comms-socket", () => ({
+  getCommsSocket: () => W.socket,
+  disconnectCommsSocket: () => {},
+}));
+
+vi.mock("@/lib/smartcomm-api", () => ({
+  dialCall: (id: string) => W.api.dialCall(id),
+  acceptCall: (id: string) => W.api.acceptCall(id),
+  declineCall: (id: string) => W.api.declineCall(id),
+  hangupCall: (id: string) => W.api.hangupCall(id),
+  reportCallFailure: (id: string) => W.api.reportCallFailure(id),
+  getCall: (id: string) => W.api.getCall(id),
+}));
+
+/** Minimal RTCPeerConnection for jsdom: SDP in/out and the one state
+ *  transition the session can observe. */
+type FakePc = {
+  iceConnectionState: string;
+  onicecandidate: ((e: { candidate: unknown | null }) => void) | null;
+  ontrack: ((e: { streams: MediaStream[] }) => void) | null;
+  oniceconnectionstatechange: ((e: Event) => void) | null;
+  localSdp: string | null;
+  remoteSdp: string | null;
+  closed: boolean;
+};
+const pcs: FakePc[] = [];
+class FakePCT {
+  iceConnectionState = "new";
+  onicecandidate: FakePc["onicecandidate"] = null;
+  ontrack: FakePc["ontrack"] = null;
+  oniceconnectionstatechange: FakePc["oniceconnectionstatechange"] = null;
+  localSdp: string | null = null;
+  remoteSdp: string | null = null;
+  closed = false;
+  constructor() {
+    pcs.push(this as unknown as FakePc);
+  }
+  async setRemoteDescription(d: { type: string; sdp: string }) {
+    this.remoteSdp = d.sdp;
+  }
+  async createOffer() {
+    return { sdp: "OFFER" };
+  }
+  async createAnswer() {
+    return { sdp: "ANSWER" };
+  }
+  async setLocalDescription(d: { type: string; sdp: string }) {
+    this.localSdp = d.sdp;
+  }
+  addTrack() {
+    return {};
+  }
+  async addIceCandidate() {}
+  close() {
+    this.closed = true;
+  }
+}
+
+function fire(event: string, payload: unknown) {
+  for (const fn of W.handlers[event] || []) fn(payload);
+}
+
+function emitted(event: string): unknown[] {
+  return W.calls.filter((c) => c[0] === event).map((c) => c[1]);
+}
+
+async function fresh() {
+  vi.resetModules();
+  return import("./call-session");
+}
+
+/** Restore the api fakes to their defaults (tests that swapped one in). */
+function resetApi() {
+  const { ICE } = W;
+  const row = W.row;
+  W.api.dialCall = async () => row({ ice: ICE });
+  W.api.acceptCall = async () => row({ status: "IN_CALL", connected_at: new Date().toISOString(), ice: ICE });
+  W.api.declineCall = async () => row({ status: "DECLINED", end_reason: "declined" });
+  W.api.hangupCall = async () => row({ status: "ENDED", end_reason: "hangup" });
+  W.api.reportCallFailure = async () => row({ status: "FAILED", end_reason: "ice_failed" });
+  W.api.getCall = async () => row({ status: "NO_ANSWER", end_reason: "no_answer" });
+}
+
+beforeEach(() => {
+  for (const k of Object.keys(W.handlers)) delete W.handlers[k];
+  W.calls.length = 0;
+  pcs.length = 0;
+  resetApi();
+  vi.stubGlobal("RTCPeerConnection", FakePCT);
+  localStorage.setItem("praxis.user", JSON.stringify({ user_id: W.ME }));
+  Object.defineProperty(window.navigator, "mediaDevices", {
+    configurable: true,
+    value: {
+      getUserMedia: vi.fn(async () => ({
+        getAudioTracks: () => [{ enabled: true, stop: vi.fn() }],
+        getTracks: () => [{ enabled: true, stop: vi.fn() }],
+      })),
+    },
+  });
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  localStorage.removeItem("praxis.user");
+});
+
+async function ringIn(name = "Aïcha") {
+  act(() =>
+    fire("call:ringing", {
+      call_id: "c1",
+      from: { user_id: W.THEM, name },
+      ring_timeout_s: 60,
+    }),
+  );
+}
+
+describe("call session", () => {
+  it("a ring puts the session in incoming, with the caller's name and the 60 s window", async () => {
+    const mod = await fresh();
+    act(() => mod.wireCallSocket());
+    const { result } = renderHook(() => mod.useCall());
+    expect(result.current.phase).toBe("idle");
+
+    await ringIn("Aïcha Diallo");
+    expect(result.current.phase).toBe("incoming");
+    expect(result.current.peerName).toBe("Aïcha Diallo");
+    expect(result.current.ringSecondsLeft).toBe(60);
+  });
+
+  it("the offer that precedes the answer is buffered, then applied on answer", async () => {
+    const mod = await fresh();
+    act(() => mod.wireCallSocket());
+    const { result } = renderHook(() => mod.useCall());
+
+    await ringIn();
+    // The caller sent the offer the moment the ring went out — we have no
+    // engine yet, so it waits.
+    act(() => fire("call:offer", { call_id: "c1", sdp: "CALLER_OFFER" }));
+    expect(pcs).toHaveLength(0);
+
+    await act(async () => {
+      await mod.answer();
+    });
+    expect(pcs).toHaveLength(1);
+    expect(pcs[0].remoteSdp).toBe("CALLER_OFFER");
+    // The answer went out over the socket, with the engine's SDP.
+    expect(emitted("call:answer")).toEqual([{ callId: "c1", sdp: "ANSWER" }]);
+
+    // Media connects: the tab moves to in_call.
+    act(() => {
+      pcs[0].iceConnectionState = "connected";
+      pcs[0].oniceconnectionstatechange?.({} as Event);
+    });
+    expect(result.current.phase).toBe("in_call");
+  });
+
+  it("decline asks the server and lands the session in ended", async () => {
+    const mod = await fresh();
+    act(() => mod.wireCallSocket());
+    const { result } = renderHook(() => mod.useCall());
+
+    await ringIn();
+    await act(async () => {
+      await mod.decline();
+    });
+    expect(result.current.phase).toBe("ended");
+    expect(result.current.endedReason).toBe("declined");
+  });
+
+  it("a terminal event from ANY writer lands the session in the row's state", async () => {
+    const mod = await fresh();
+    act(() => mod.wireCallSocket());
+    const { result } = renderHook(() => mod.useCall());
+
+    await ringIn();
+    // The sweep ended it while the tab was looking away.
+    act(() =>
+      fire("call:ended", {
+        call_id: "c1",
+        status: "NO_ANSWER",
+        reason: "no_answer",
+        duration_seconds: 0,
+        ended_at: new Date().toISOString(),
+      }),
+    );
+    expect(result.current.phase).toBe("ended");
+    expect(result.current.endedReason).toBe("no_answer");
+  });
+
+  it("hang-up asks the server; a 409 (already ended) loses the race without throwing", async () => {
+    const mod = await fresh();
+    const { ApiError } = await import("@/lib/api-client");
+    W.api.hangupCall = async () => {
+      throw new ApiError("CALL_MOVED_ON", "This call has already ended", 409);
+    };
+    act(() => mod.wireCallSocket());
+    const { result } = renderHook(() => mod.useCall());
+
+    await ringIn();
+    await act(async () => {
+      await mod.hangup();
+    });
+    // The row closed first: the session must not claim a call that is gone.
+    expect(result.current.phase).not.toBe("in_call");
+  });
+
+  it("dial mints the offer over the socket in the same breath as the ring", async () => {
+    const mod = await fresh();
+    act(() => mod.wireCallSocket());
+    const { result } = renderHook(() => mod.useCall());
+
+    await act(async () => {
+      await mod.dial("g1", "Aïcha");
+    });
+    expect(result.current.phase).toBe("outgoing");
+    expect(result.current.peerName).toBe("Aïcha");
+    expect(emitted("call:offer")).toEqual([{ callId: "c1", sdp: "OFFER" }]);
+  });
+
+  it("a busy dial surfaces the translated error and returns to idle", async () => {
+    const mod = await fresh();
+    const { ApiError } = await import("@/lib/api-client");
+    W.api.dialCall = async () => {
+      throw new ApiError("CALLEE_BUSY", "That person is already on a call", 409);
+    };
+    act(() => mod.wireCallSocket());
+    const { result } = renderHook(() => mod.useCall());
+
+    await act(async () => {
+      await mod.dial("g1", "Aïcha");
+    });
+    expect(result.current.phase).toBe("idle");
+    expect(result.current.lastError).toBe("That person is already on a call");
+  });
+});

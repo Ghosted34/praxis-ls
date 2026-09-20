@@ -24,13 +24,23 @@
  * jsdom does not implement.
  */
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 // The app root wraps TooltipProvider (main.tsx) — so does this unit.
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 vi.mock("@/components/ui/chart-impl", () => ({
   __esModule: true,
-  SeriesBarsChart: () => <div data-testid="bars-impl" />,
+  SeriesBarsChart: ({
+    data,
+    onPointClick,
+  }: {
+    data: Array<{ label: string; values: Record<string, number> }>;
+    onPointClick?: (point: { label: string; values: Record<string, number> }, index: number) => void;
+  }) => (
+    <button data-testid="bars-impl" onClick={() => onPointClick?.(data[0], 0)}>
+      Mock bar
+    </button>
+  ),
   WaterfallChart: () => <div data-testid="waterfall-impl" />,
   TrendChart: () => <div data-testid="trend-impl" />,
 }));
@@ -93,6 +103,24 @@ describe("the lazy seam — one Suspense at a time", () => {
     );
     // The fallback lives first — the lazy promise has to flush — then the impl.
     expect(await screen.findByTestId("bars-impl")).toBeInTheDocument();
+  });
+
+  it("forwards a tapped bar's exact point to an interactive chart", async () => {
+    const onPointClick = vi.fn();
+    render(
+      <SeriesBars
+        data={[{ label: "JBS Praxis", values: { blocked: 2 } }]}
+        series={[{ key: "blocked", label: "Blocked", tone: "warn" }]}
+        selectedLabel="JBS Praxis"
+        onPointClick={onPointClick}
+      />,
+    );
+
+    fireEvent.click(await screen.findByTestId("bars-impl"));
+    expect(onPointClick).toHaveBeenCalledWith(
+      { label: "JBS Praxis", values: { blocked: 2 } },
+      0,
+    );
   });
 
   it("Waterfall resolves through the same seam, its labels declared by the caller", async () => {

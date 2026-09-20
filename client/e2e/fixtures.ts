@@ -133,6 +133,101 @@ const NAV_ACCESS = (() => {
   };
 })();
 
+const ANALYTICS = {
+  window: {
+    from: "2026-08-21T00:00:00.000Z",
+    to: "2026-09-21T00:00:00.000Z",
+    timezone: "Africa/Lagos",
+    clamped: false,
+    max_days: 370,
+  },
+  audience: "mine",
+  audiences: ["mine", "team"],
+  filters: {
+    status: null,
+    priority: null,
+    assigned_to: null,
+    scope_id: null,
+    dossier_id: null,
+  },
+  summary: {
+    open: 17,
+    overdue: 4,
+    blocked: 2,
+    completed: 23,
+    cancelled: 1,
+    total: 41,
+  },
+  throughput: [
+    { day: "2026-09-16", completed: 3 },
+    { day: "2026-09-17", completed: 5 },
+  ],
+  overdue_aging: [
+    { bucket: "<1", tasks: 1 },
+    { bucket: "1-2", tasks: 0 },
+    { bucket: "3-7", tasks: 2 },
+    { bucket: "8-30", tasks: 1 },
+    { bucket: "30+", tasks: 0 },
+  ],
+  workload: [
+    {
+      user_id: "u-1",
+      assignee_name: "Ops Lead",
+      open_tasks: 9,
+      overdue_tasks: 2,
+      blocked_tasks: 2,
+    },
+  ],
+  cycle_time: {
+    buckets: [
+      { bucket: "<1", tasks: 4, avg_days: 0.4 },
+      { bucket: "1-2", tasks: 6, avg_days: 1.5 },
+      { bucket: "3-7", tasks: 9, avg_days: 4.2 },
+      { bucket: "8-30", tasks: 3, avg_days: 12 },
+      { bucket: "30+", tasks: 1, avg_days: 44 },
+    ],
+    median_days: 3.5,
+  },
+  blocked: [
+    {
+      task_id: "task-blocked-1",
+      title: "File the customs declaration",
+      status: "TO_DO",
+      priority: "HIGH",
+      due_at: "2026-09-20T16:00:00.000Z",
+      assigned_to_name: "Ops Lead",
+      blocking_count: 2,
+      blockage_note:
+        "Customs release is pending the original certificate of origin from the supplier.",
+      blockage_eta: "2026-09-22T09:00:00.000Z",
+      blocked_since: "2026-09-10T09:00:00.000Z",
+      link_url: "/workspace/tasks?task=task-blocked-1",
+    },
+  ],
+  burndown: {
+    open_at_start: 12,
+    days: [
+      { day: "2026-09-16", created: 3, completed: 1, open: 14 },
+      { day: "2026-09-17", created: 0, completed: 5, open: 9 },
+    ],
+  },
+  composition: [{ status: "TO_DO", priority: "HIGH", tasks: 6 }],
+  by_file: [
+    {
+      dossier_id: "d-1",
+      dossier_ref: "SL-7Z3K9QW2M4XB-SM",
+      client_name: "Brasseries du Cameroun",
+      label: "SL-7Z3K9QW2M4XB-SM",
+      open_tasks: 6,
+      overdue_tasks: 2,
+      blocked_tasks: 1,
+      completed_tasks: 4,
+      total_tasks: 10,
+    },
+  ],
+  by_milestone: [],
+};
+
 const ROUTES: Record<string, unknown> = {
   "/tenant/auth/refresh": {
     access_token: "at",
@@ -146,6 +241,8 @@ const ROUTES: Record<string, unknown> = {
   "/tenant/comms/unread-count": { count: 0 },
   "/tenant/ai/status": { enabled: false },
   "/tenant/permissions/mine": NAV_ACCESS,
+  "/tenant/workspace/context": { timeZone: "Africa/Lagos" },
+  "/tenant/workspace/analytics": ANALYTICS,
   /*
    * Pinned open (the default), and the rail's one-time hint already spent.
    * `railHintSeen: false` would leave a 240ms shake running while the first

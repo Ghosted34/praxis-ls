@@ -27,6 +27,7 @@ import {
   YAxis,
 } from "recharts";
 import { CHART_INK, SERIES, type BarsPoint, type BarsSeries, type SeriesTone, type TrendPoint, type WaterfallPoint } from "@/components/ui/chart";
+import { useIsCompact } from "@/lib/use-media-query";
 
 /* ─── shared bits ───────────────────────────────────────────────────────── */
 
@@ -97,34 +98,93 @@ export function SeriesBarsChart({
   series,
   height = 240,
   formatValue,
+  onPointClick,
+  selectedLabel,
 }: {
   data: BarsPoint[];
   series: BarsSeries[];
   height?: number;
   formatValue?: (v: number) => string;
+  onPointClick?: (point: BarsPoint, index: number) => void;
+  selectedLabel?: string | null;
 }) {
+  const compact = useIsCompact();
+  const crowdedAxis = compact && data.length >= 4 && data.length <= 8;
   const rows = data.map((p) => ({ ...p, label: p.label }));
   return (
-    <div className="flex h-full flex-col" style={{ height }}>
+    <div
+      className="flex h-full min-w-0 max-w-full flex-col overflow-hidden"
+      style={{ height }}
+    >
       <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={rows} margin={{ top: 8, right: 8, bottom: 0, left: 8 }}>
+        <BarChart data={rows} margin={{ top: 8, right: 4, bottom: 0, left: 0 }}>
           <CartesianGrid stroke={CHART_INK.grid} vertical={false} />
-          <XAxis dataKey="label" tickFormatter={short} tick={AXIS_TICK} axisLine={false} tickLine={false} />
-          <YAxis tickFormatter={fmt(formatValue)} tick={AXIS_TICK} axisLine={false} tickLine={false} width={84} />
+          <XAxis
+            dataKey="label"
+            tickFormatter={short}
+            tick={AXIS_TICK}
+            axisLine={false}
+            tickLine={false}
+            // Four to eight categories fit a phone only when every label is
+            // angled into its own lane. Larger series keep Recharts' sampling
+            // rather than painting thirty unreadable dates on top of each other.
+            interval={crowdedAxis ? 0 : "preserveStartEnd"}
+            angle={crowdedAxis ? -35 : 0}
+            textAnchor={crowdedAxis ? "end" : "middle"}
+            height={crowdedAxis ? 58 : 30}
+          />
+          <YAxis
+            tickFormatter={fmt(formatValue)}
+            tick={AXIS_TICK}
+            axisLine={false}
+            tickLine={false}
+            // Counts need little room on a phone; formatted money keeps the
+            // wider gutter used by reconciliation charts.
+            width={formatValue ? 84 : 48}
+          />
           <RTooltip
             cursor={{ fill: CHART_INK.cursor }}
             content={<ChartTip formatValue={formatValue} />}
           />
           {series.map((s) => (
-            <Bar key={s.key} name={s.label} dataKey={(p: BarsPoint) => p.values[s.key] ?? 0} fill={SERIES[s.tone]} radius={[3, 3, 0, 0]} maxBarSize={28}>
-              {rows.map((p, i) => (
-                <Cell key={i} fill={SERIES[p.tones?.[s.key] ?? s.tone]} />
-              ))}
+            <Bar
+              key={s.key}
+              name={s.label}
+              dataKey={(p: BarsPoint) => p.values[s.key] ?? 0}
+              fill={SERIES[s.tone]}
+              radius={[3, 3, 0, 0]}
+              maxBarSize={28}
+              className={onPointClick ? "cursor-pointer" : undefined}
+              onClick={
+                onPointClick
+                  ? (_entry, index) => {
+                      const point = data[index];
+                      if (point) onPointClick(point, index);
+                    }
+                  : undefined
+              }
+            >
+              {rows.map((p, i) => {
+                const selected = !selectedLabel || p.label === selectedLabel;
+                return (
+                  <Cell
+                    key={i}
+                    fill={SERIES[p.tones?.[s.key] ?? s.tone]}
+                    fillOpacity={selected ? 1 : 0.3}
+                    stroke={
+                      p.label === selectedLabel ? CHART_INK.axis : undefined
+                    }
+                    strokeWidth={p.label === selectedLabel ? 2 : 0}
+                  />
+                );
+              })}
             </Bar>
           ))}
         </BarChart>
       </ResponsiveContainer>
-      <ChartLegend items={series.map((s) => ({ label: s.label, color: SERIES[s.tone] }))} />
+      <ChartLegend
+        items={series.map((s) => ({ label: s.label, color: SERIES[s.tone] }))}
+      />
     </div>
   );
 }

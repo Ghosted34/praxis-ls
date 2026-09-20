@@ -54,6 +54,19 @@ export const ArrowRightIcon = (p: P) => (
     <path d="m13 6 6 6-6 6" />
   </svg>
 );
+export const ArrowLeftIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M19 12H5" />
+    <path d="m11 18-6-6 6-6" />
+  </svg>
+);
+export const InfoIcon = (p: P) => (
+  <svg {...base(p)}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 11v6" />
+    <path d="M12 7.25h.01" />
+  </svg>
+);
 export const SunIcon = (p: P) => (
   <svg {...base(p)}>
     <circle cx="12" cy="12" r="4" />

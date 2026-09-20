@@ -26,7 +26,7 @@
  *    screen — asserted as text, because the boundary is a product decision
  *    that a well-meaning panel would erode one column at a time.
  */
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { screen, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { axe } from "jest-axe";
@@ -86,6 +86,8 @@ const ANALYTICS = {
       due_at: "2026-09-20T16:00:00.000Z",
       assigned_to_name: "JBS Praxis",
       blocking_count: 2,
+      blockage_note: "Customs release is pending the original certificate of origin from the supplier.",
+      blockage_eta: "2026-09-22T09:00:00.000Z",
       blocked_since: "2026-09-10T09:00:00.000Z",
       link_url: "/workspace/tasks?task=t-1",
     },
@@ -133,6 +135,10 @@ const ANALYTICS = {
 const at = (path = "/workspace/analytics", data: unknown = ANALYTICS) => ({
   path,
   routes: { "/workspace/analytics": data },
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
 });
 
 describe("Analytics — the four states", () => {
@@ -204,6 +210,102 @@ describe("Analytics — every chart has a table", () => {
     const group = screen.getByRole("radiogroup", { name: /Blocked by assignee/i });
     await user.click(within(group).getByRole("radio", { name: "Table" }));
     expect(await screen.findByText(/File the customs declaration/)).toBeInTheDocument();
+  });
+});
+
+describe("Analytics — chart guidance and blocked detail", () => {
+  it("gives every chart a concise, useful info control", async () => {
+    const user = userEvent.setup();
+    renderScreen(<AnalyticsPage />, at());
+    await screen.findByText("17");
+
+    const infoButtons = screen.getAllByRole("button", { name: /^About / });
+    expect(infoButtons).toHaveLength(7);
+
+    await user.click(
+      screen.getByRole("button", { name: "About Overdue aging" }),
+    );
+    expect(await screen.findByText("What it shows")).toBeInTheDocument();
+    expect(screen.getByText("Why it matters")).toBeInTheDocument();
+    expect(screen.getByText("How to use it")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Older bands signal growing delivery and escalation risk/,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("reveals complete blockage notes and task context from the chart's assignee control", async () => {
+    const user = userEvent.setup();
+    renderScreen(<AnalyticsPage />, at());
+    await screen.findByText("17");
+
+    await user.click(
+      screen.getByRole("button", {
+        name: /JBS Praxis.*blocked task.*with notes/i,
+      }),
+    );
+    const details = await screen.findByRole("region", {
+      name: "Blockage details for JBS Praxis",
+    });
+    expect(
+      within(details).getByText(
+        /original certificate of origin from the supplier/i,
+      ),
+    ).toBeInTheDocument();
+    expect(within(details).getByText(/Blocked since/i)).toBeInTheDocument();
+    expect(within(details).getByText(/Expected release/i)).toBeInTheDocument();
+    expect(
+      within(details).getByRole("button", { name: /Open task/i }),
+    ).toBeEnabled();
+  });
+
+  it("uses one full-width card with explicit paging on a phone, never a sideways swipe strip", async () => {
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn().mockImplementation(() => ({
+        matches: false,
+        media: "",
+        onchange: null,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    );
+
+    const user = userEvent.setup();
+    renderScreen(<AnalyticsPage />, at());
+    await screen.findByText("17");
+
+    const pager = await screen.findByRole("region", {
+      name: "Analytics charts",
+    });
+    expect(pager).toHaveTextContent("Chart 1 of 7");
+    expect(screen.getByTestId("active-analytics-card")).toHaveClass(
+      "w-full",
+      "max-w-full",
+      "overflow-hidden",
+    );
+    expect(screen.queryByText(/Swipe to see more/i)).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Throughput" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Overdue aging" }),
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Next" }));
+    expect(
+      await screen.findByRole("heading", { name: "Overdue aging" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("2 / 7")).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", { name: "About Overdue aging" }),
+    );
+    expect(
+      await screen.findByRole("dialog", { name: "About Overdue aging" }),
+    ).toBeInTheDocument();
   });
 });
 

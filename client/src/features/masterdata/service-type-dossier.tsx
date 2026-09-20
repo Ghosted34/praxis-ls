@@ -33,6 +33,7 @@ import { Pill } from "@/components/ui/pill";
 import { Stat } from "@/components/ui/stat";
 import { EmptyState, ErrorState, LoadingRow } from "@/components/ui/states";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
+import { SectionTabs } from "@/components/ui/section-tabs";
 import { InlineEdit } from "@/components/ui/inline-edit";
 import { useResource } from "@/lib/use-resource";
 import { useUrlTab } from "@/lib/use-url-tab";
@@ -1323,22 +1324,19 @@ export function ServiceTypeDossier({
         />
       </KpiRow>
 
-      {/* Tabs — ninth "Website" tab only when the website feature is on. */}
-      <div className="flex flex-wrap gap-1 border-b">
-        {tabs.map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-              tab === t
-                ? "border-primary text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            {t === "Website" ? tr("Website") : t}
-          </button>
-        ))}
-      </div>
+      {/* Tabs — ninth "Website" tab only when the website feature is on. One
+          row on a phone: `section-tabs.tsx`. */}
+      <SectionTabs
+        label="Service type sections"
+        value={tab}
+        onChange={setTab}
+        sticky
+        className="mb-4"
+        tabs={tabs.map((t) => ({
+          value: t,
+          label: t === "Website" ? tr("Website") : t,
+        }))}
+      />
 
       {tab === "Overview" && <OverviewTab d={d} onEditName={saveName} />}
       {tab === "Milestones" && (

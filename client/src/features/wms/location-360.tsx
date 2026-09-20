@@ -15,6 +15,7 @@ import { Modal, Field } from "@/components/ui/modal";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
+import { SectionTabs } from "@/components/ui/section-tabs";
 import { PageHeader } from "@/components/data-list";
 import { ScreenAi } from "@/components/screen-ai";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
@@ -239,18 +240,15 @@ function LocationDetail({
         />
       </KpiRow>
 
-      <div className="flex flex-wrap gap-1 border-b">
-        {TABS.map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${tab === t ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}
-          >
-            {t}
-            <span className="ml-1.5 micro">{tabCounts[t]}</span>
-          </button>
-        ))}
-      </div>
+      {/* One row on a phone — see `section-tabs.tsx`. */}
+      <SectionTabs
+        label="Location sections"
+        value={tab}
+        onChange={setTab}
+        sticky
+        className="mb-4"
+        tabs={TABS.map((t) => ({ value: t, label: t, count: tabCounts[t] }))}
+      />
 
       {tab === "Inventory" && (
         <MiniTable

@@ -105,12 +105,26 @@ function renderHub() {
   );
 }
 
-/** The strip's wrapper carries the desktop-hiding class, or does not. */
+/**
+ * The strip's wrapper carries the desktop-hiding class, or does not.
+ *
+ * WALKS THE ANCESTORS rather than reading `parentElement`. The tablist element
+ * is now the SCROLLER inside `ScrollStrip`, which adds a positioned wrapper of
+ * its own around it (the edge fades need a containing block that does not
+ * scroll with the tabs), so the `md:hidden` class sits two levels up rather than
+ * one. What this test is about — "is the strip hidden on desktop when the ribbon
+ * is carrying this area's sections" — is unchanged by an extra wrapper; which
+ * ancestor carries the class is not, and asserting the exact depth made the
+ * helper a test of the strip's internal markup instead of its visibility.
+ */
 function stripIsHiddenOnDesktop() {
   const strip = screen.getAllByRole("tablist", {
     name: "Warehouse sections",
   })[0];
-  return strip.parentElement!.className.includes("md:hidden");
+  for (let el = strip.parentElement; el; el = el.parentElement) {
+    if (el.classList.contains("md:hidden")) return true;
+  }
+  return false;
 }
 
 describe("the in-page strip yields to the ribbon, and only to the ribbon", () => {

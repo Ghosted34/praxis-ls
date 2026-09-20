@@ -45,7 +45,7 @@ import { DocButton } from "@/components/doc-button";
 import { VaultPreviewDialog, type VaultPreviewDocument } from "@/components/vault-preview-dialog";
 import { Stat } from "@/components/ui/stat";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
-import { Segmented } from "@/components/ui/segmented";
+import { SectionTabs } from "@/components/ui/section-tabs";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import { SkeletonTable } from "@/components/ui/skeleton";
 import { Pill } from "@/components/ui/pill";
@@ -929,13 +929,17 @@ export function OperationFile360({
     queries: d.queries?.count ? String(d.queries.count) : undefined,
     documents: docCount ? String(docCount) : undefined,
   };
+  // Nine sections, some with a count. They used to be a `<Segmented>` with the
+  // count baked into the label string — a radio group of nine on a phone, which
+  // wrapped onto three lines and read as a set of filters. `SectionTabs` is the
+  // shared section strip every other 360 uses: one scrollable row, the count in
+  // its own badge, the active section centred.
   const tabs = FILE_360_TABS.filter(
     (value) => value !== "containers" || capturesContainers,
   ).map((value) => ({
     value,
-    label: count[value]
-      ? `${tr(TAB_LABEL[value])} · ${count[value]}`
-      : tr(TAB_LABEL[value]),
+    label: tr(TAB_LABEL[value]),
+    count: count[value],
   }));
 
   return (
@@ -996,11 +1000,12 @@ export function OperationFile360({
           />
         )}
 
-      <Segmented
-        label="Operations file 360 section"
+      <SectionTabs
+        label="Operations file sections"
         value={activeTab}
-        options={tabs}
         onChange={setTab}
+        sticky
+        tabs={tabs}
       />
 
       {activeTab === "details" && (

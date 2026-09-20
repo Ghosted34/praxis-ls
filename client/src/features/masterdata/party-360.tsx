@@ -28,7 +28,10 @@ import { useResource, errMsg } from "@/lib/use-resource";
 import { money, num, dateFmt, enumLabel } from "@/lib/format";
 import { SmartCountryPicker } from "@/components/smart-country-picker";
 import { TimezonePicker } from "@/components/timezone-picker";
-import { ScanAttachment } from "@/components/scan-attachment";
+import { ScanAttachment, ScanCardActions } from "@/components/scan-attachment";
+import { SectionTabs } from "@/components/ui/section-tabs";
+import { ResponsiveList, RecordCard } from "@/components/ui/responsive-list";
+import { DropdownItem } from "@/components/ui/dropdown-menu";
 import {
   SCAN_ACCEPT,
   scanFileProblem,
@@ -106,6 +109,10 @@ const SCAN_TONE: Record<string, Tone> = {
   REJECTED: "bad",
   EXPIRED: "bad",
 };
+/** Shared by the table cell and the phone card so a verification that reads
+ *  amber in one shell cannot read grey in the other. */
+const verificationTone = (status?: string | null): Tone =>
+  status === "VERIFIED" ? "ok" : status === "REJECTED" ? "bad" : "warn";
 const DOSSIER_TONE: Record<string, Tone> = {
   OPEN: "blue",
   IN_PROGRESS: "warn",
@@ -1724,9 +1731,21 @@ export function PartyDossier({
         onClose={() => setKpiOpen(null)}
       />
 
-      {/* Tabs */}
-      <div className="flex flex-wrap gap-1 border-b">
-        {(isClient ? CLIENT_TABS : SUPPLIER_TABS).map((t) => {
+      {/* Tabs.
+          Nine sections (eight on a supplier, which has no Operations) — so on a
+          phone this was a three-row wall above the content, and the wall was
+          the first thing on the dossier's second screen. `SectionTabs` is the
+          shared scroll strip: one row, the active section centred, with a fade
+          on whichever side still has tabs. `sticky` matters more here than
+          anywhere: a document list runs several screens deep, and without the
+          pinned strip the only way to another section is back to the top. */}
+      <SectionTabs
+        label={isClient ? "Client sections" : "Supplier sections"}
+        value={tab}
+        onChange={setTab}
+        sticky
+        className="mb-3"
+        tabs={(isClient ? CLIENT_TABS : SUPPLIER_TABS).map((t) => {
           // `Operations` is a client-only field on the 360 response (only clients
           // have dossiers). Reading `d.dossiers.length` unconditionally throws on
           // the supplier branch — the intersection type hides it — so the
@@ -1743,20 +1762,9 @@ export function PartyDossier({
             Owners: d.beneficial_owners?.length ?? 0,
             ...(isClient ? { Operations: d.dossiers?.length ?? 0 } : {}),
           };
-          return (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${tab === t ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}
-            >
-              {t}
-              {counts[t] != null && (
-                <span className="ml-1.5 micro">{counts[t]}</span>
-              )}
-            </button>
-          );
+          return { value: t, label: t, count: counts[t] };
         })}
-      </div>
+      />
 
       {tab === "Overview" && (
         <div className="grid gap-4 lg:grid-cols-2">
@@ -1870,83 +1878,99 @@ export function PartyDossier({
             the file against the original so the record's verification status
             becomes Verified.
           </p>
-          <MiniTable
-            empty={d.documents.length === 0}
-            head={
-              <>
-                <Th>{tr("Type")}</Th>
-                <Th>{tr("Number")}</Th>
-                <Th>{tr("Expires")}</Th>
-                <Th>Scan</Th>
-                <Th>{tr("Verification")}</Th>
-                <Th r>{tr("File")}</Th>
-              </>
-            }
+          {/* One set of records, two shells (see `responsive-list.tsx`). The
+              phone branch is not a squeezed table: it is six columns of data
+              re-laid out as four lines, which is the only shape in which a
+              reader can compare two documents on a 390px screen. */}
+          <ResponsiveList
+            items={d.documents}
+            renderItem={(doc: api.PartyDocument) => (
+              <PartyDocumentCard
+                doc={doc}
+                kind={kind}
+                busy={busy}
+                onAttached={(vaultId) => linkScan(doc, vaultId)}
+                onError={setError}
+                onVerify={() =>
+                  void act(
+                    () =>
+                      api.verifyDocument(kind, partyId, doc.document_id),
+                    "Document verified",
+                  )
+                }
+              />
+            )}
           >
-            {d.documents.map((doc: api.PartyDocument) => (
-              <tr key={doc.document_id}>
-                <Td>{doc.document_type_name || "—"}</Td>
-                <Td>
-                  {doc.document_number ||
-                    (doc.physical_ref ? `📄 ${doc.physical_ref}` : "—")}
-                </Td>
-                <Td>{dateFmt(doc.expires_on)}</Td>
-                <Td>
-                  <Pill
-                    tone={SCAN_TONE[doc.scan_status || "PENDING"] || "mute"}
-                  >
-                    {enumLabel(doc.scan_status)}
-                  </Pill>
-                </Td>
-                <Td>
-                  <Pill
-                    tone={
-                      doc.verification_status === "VERIFIED"
-                        ? "ok"
-                        : doc.verification_status === "REJECTED"
-                          ? "bad"
-                          : "warn"
-                    }
-                  >
-                    {enumLabel(doc.verification_status)}
-                  </Pill>
-                </Td>
-                <Td r>
-                  <div className="flex flex-wrap justify-end gap-2">
-                    <ScanAttachment
-                      vaultId={doc.vault_id}
-                      docType={
-                        isClient ? "CLIENT_DOCUMENT" : "SUPPLIER_DOCUMENT"
-                      }
-                      entityRef={`${kind}_document:${doc.document_id}`}
-                      onAttached={(vaultId) => linkScan(doc, vaultId)}
-                      onError={setError}
-                    />
-                    {doc.vault_id && doc.verification_status !== "VERIFIED" && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        loading={busy}
-                        onClick={() =>
-                          void act(
-                            () =>
-                              api.verifyDocument(
-                                kind,
-                                partyId,
-                                doc.document_id,
-                              ),
-                            "Document verified",
-                          )
+            <MiniTable
+              empty={d.documents.length === 0}
+              head={
+                <>
+                  <Th>{tr("Type")}</Th>
+                  <Th>{tr("Number")}</Th>
+                  <Th>{tr("Expires")}</Th>
+                  <Th>Scan</Th>
+                  <Th>{tr("Verification")}</Th>
+                  <Th r>{tr("File")}</Th>
+                </>
+              }
+            >
+              {d.documents.map((doc: api.PartyDocument) => (
+                <tr key={doc.document_id}>
+                  <Td>{doc.document_type_name || "—"}</Td>
+                  <Td>
+                    {doc.document_number ||
+                      (doc.physical_ref ? `📄 ${doc.physical_ref}` : "—")}
+                  </Td>
+                  <Td>{dateFmt(doc.expires_on)}</Td>
+                  <Td>
+                    <Pill
+                      tone={SCAN_TONE[doc.scan_status || "PENDING"] || "mute"}
+                    >
+                      {enumLabel(doc.scan_status)}
+                    </Pill>
+                  </Td>
+                  <Td>
+                    <Pill tone={verificationTone(doc.verification_status)}>
+                      {enumLabel(doc.verification_status)}
+                    </Pill>
+                  </Td>
+                  <Td r>
+                    <div className="flex flex-wrap justify-end gap-2">
+                      <ScanAttachment
+                        vaultId={doc.vault_id}
+                        docType={
+                          isClient ? "CLIENT_DOCUMENT" : "SUPPLIER_DOCUMENT"
                         }
-                      >
-                        Verify
-                      </Button>
-                    )}
-                  </div>
-                </Td>
-              </tr>
-            ))}
-          </MiniTable>
+                        entityRef={`${kind}_document:${doc.document_id}`}
+                        onAttached={(vaultId) => linkScan(doc, vaultId)}
+                        onError={setError}
+                      />
+                      {doc.vault_id && doc.verification_status !== "VERIFIED" && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          loading={busy}
+                          onClick={() =>
+                            void act(
+                              () =>
+                                api.verifyDocument(
+                                  kind,
+                                  partyId,
+                                  doc.document_id,
+                                ),
+                              "Document verified",
+                            )
+                          }
+                        >
+                          Verify
+                        </Button>
+                      )}
+                    </div>
+                  </Td>
+                </tr>
+              ))}
+            </MiniTable>
+          </ResponsiveList>
         </Section>
       )}
 
@@ -2518,6 +2542,66 @@ export function PartyDossier({
 
 type Client360Invoice = api.Client360["invoices"][number];
 type SupplierBill = api.Supplier360["supplier_invoices"][number];
+
+/**
+ * One KYC document on a phone — the card `ResponsiveList` renders below `md`.
+ *
+ * Same six facts as the row above it, in the order a reader asks for them: what
+ * it is, whether it has been scanned and verified, which number and expiry date
+ * identify it, and what can be done to it. The two controls are the row's five
+ * — View (or Attach scan) visible, Verify and the file actions behind `⋯`.
+ */
+function PartyDocumentCard({
+  doc,
+  kind,
+  busy,
+  onAttached,
+  onError,
+  onVerify,
+}: {
+  doc: api.PartyDocument;
+  kind: "client" | "supplier";
+  busy: boolean;
+  onAttached: (vaultId: string) => void | Promise<void>;
+  onError: (message: string | null) => void;
+  onVerify: () => void;
+}) {
+  return (
+    <RecordCard
+      title={doc.document_type_name || "Untitled"}
+      subtitle={doc.document_number || doc.physical_ref || undefined}
+      pills={
+        <>
+          <Pill tone={SCAN_TONE[doc.scan_status || "PENDING"] || "mute"}>
+            {enumLabel(doc.scan_status)}
+          </Pill>
+          <Pill tone={verificationTone(doc.verification_status)}>
+            {enumLabel(doc.verification_status)}
+          </Pill>
+        </>
+      }
+      meta={[["Expires", dateFmt(doc.expires_on)]]}
+      actions={
+        <ScanCardActions
+          vaultId={doc.vault_id}
+          docType={kind === "client" ? "CLIENT_DOCUMENT" : "SUPPLIER_DOCUMENT"}
+          entityRef={`${kind}_document:${doc.document_id}`}
+          onAttached={onAttached}
+          onError={onError}
+          menuLabel={tr("Document actions")}
+          menuItems={
+            doc.vault_id &&
+            doc.verification_status !== "VERIFIED" && (
+              <DropdownItem onSelect={onVerify} disabled={busy}>
+                {tr("Verify")}
+              </DropdownItem>
+            )
+          }
+        />
+      }
+    />
+  );
+}
 
 function Empty() {
   return <div className="px-3 py-6 text-center micro">{tr("Nothing here yet.")}</div>;

@@ -344,6 +344,10 @@ return `{ rows | data, error, loading, reload }`.
 | Toggle                           | `<Checkbox>` / `<RadioGroup>`                                                             |                                                                                                                                                                 |
 | View switch                      | `<Segmented>` (2–5 fixed) · `<Chips>` (wrapping filters)                                  |                                                                                                                                                                 |
 | Tabs                             | `<Tabs>` / `<TabList>`                                                                    | Real `tablist`/`tab` semantics + arrow keys.                                                                                                                    |
+| Sections of one record           | `<SectionTabs>`                                                                           | A `<nav>` of buttons bound to `?tab=` — the 360 strip. One scrollable row on a phone; `sticky` to pin it. §3.16.                                                |
+| The strip itself                 | `<ScrollStrip>`                                                                           | Layout only. `data-strip-active="true"` marks the tab; the strip centres it and fades the edges it can scroll towards. Any new tab bar goes inside this.        |
+| A row's off-screen actions       | `<MoreMenu>`                                                                              | The `⋯`. One or two actions stay visible on the row; the rest live here, destructive last. §8.1.                                                                |
+| A collection that is a table on a desktop and cards on a phone | `<ResponsiveList>` + `<RecordCard>`                                      | Only one branch mounts — never `hidden md:block` over both. §3.16.                                                                                              |
 | Menu                             | `<DropdownMenu>` (actions) · `<Popover>` (content)                                        | A panel with its own buttons is a Popover, not a menu.                                                                                                          |
 | Status                           | `<Pill>` / `<StatusPill>`                                                                 | `StatusPill` picks its tone from the value.                                                                                                                     |
 | Figures                          | `<Stat>` (tile) · `<KpiRow>`+`<KpiTile>` (strip)                                          |                                                                                                                                                                 |
@@ -684,6 +688,12 @@ Four rules make it hold together:
    inline — there the strip is chrome above a table and the values are short
    counts.
 
+   **Below `md` the band is a two-up grid of cards and every tile is two-line,
+   whatever `stack` says** — §3.16. There is no basis on a compact tile at all,
+   and that is deliberate: the tile used to carry `basis-[13rem]`, which is a
+   main-size property, so in the row's phone-time `flex-col` it became a 208px
+   HEIGHT and a five-tile strip measured ~1100px on a 780px screen.
+
 Both entry points must land: whatever already deep-links to the list with
 `?focus=<id>` keeps working, so exchange that parameter for the route on desktop
 rather than leaving old links pointing at a list that has to find the row again.
@@ -693,6 +703,82 @@ rather than leaving old links pointing at a list that has to find the row again.
 view is a 360, the list needs it and it needs the form — and one file importing
 another both ways is a cycle. The operations screens are `<list>.tsx`,
 `<record>-form.tsx` and `<record>-360.tsx`, one job each.
+
+---
+
+### 3.16 A 360 on a phone — three rules
+
+A dossier is the densest screen in the product: a headline band, a dozen
+sections, and tables of child records under each one. At 1440px that reads
+well. At 390px the same markup produced three separate defects, all of them
+"correct at desktop, unusable in the hand", and all of them fixed by a shared
+primitive rather than by a screen's own CSS.
+
+**1. The KPI band is a two-up grid, not a column of cards.** `<KpiRow>`
+switches to `grid-cols-2` below `md`; each tile becomes a small card with a 3px
+leading edge, and every tile is two-line whatever `stack` says, because ~150px
+of usable width cannot hold a full-precision money figure and the word naming
+it side by side. Do not add a `basis-*` to a compact tile — `flex-basis` is a
+MAIN-SIZE property, and in a column it is a height (see §3.11 rule 4 for the
+208px tile that produced).
+
+**The accent rule, and it is the reason the band reads as data rather than as
+five more buttons: on a phone the default `accent` tone is `--brand-blue`, and
+orange stays the colour of ACTION.** The app spends orange on the one primary
+button, the active tab and links; a band of five orange-marked figures directly
+above an orange "Add document" is five things the reader thinks they can press.
+The semantic tones are untouched — `ok`/`warn`/`bad` colour the edge and the
+chip, because a figure that needs attention has to look like one. A tile that
+drills in gets a chevron, which is the whole affordance on a device with no
+hover state.
+
+**2. The section strip is one scrollable row.** `<SectionTabs>` — a named
+`<nav>`, a real `<button>` per section, `aria-current="page"` on the live one,
+its count as a badge INSIDE the button (a badge that is its own control is a
+20px mis-tap beside a 44px one). On a phone the strip scrolls horizontally, the
+active section is centred on first paint — so `?tab=Renewals` opens with
+Renewals visible rather than off the right-hand edge — and a measured fade
+appears only on a side that genuinely has more. From `md` up it wraps, exactly
+as it always did. Pass `sticky` when the sections under it are long: a document
+list runs several screens deep and without a pinned strip the only way to
+another section is back to the top.
+
+**Never `flex-wrap` a tab strip on a phone.** Twelve sections wrapped to four
+rows of buttons between the record's header and its content, and the wrap points
+moved whenever a label changed.
+
+**A section whose name does not fit gets a `shortLabel`, not a smaller font.**
+A strip shows two and a half tabs at 390px, so its value is the number of
+sections visible, not the completeness of each name: four two-word names joined
+by ampersands spend the whole width on signpost. Give `SectionTab.shortLabel` a
+shorter wording of the SAME idea — `"Identity & registrations"` → `"Identity"`,
+never a different noun and never an abbreviation the reader has to decode. The
+full `label` stays the `?tab=` value, the section heading, the accessible name
+(`aria-label`, so it is announced as the full name at every width) and every
+deep link. Omit it where the real name already fits — a short label is a fix,
+not a house style.
+
+**3. A collection of child records is a table on a desktop and cards on a
+phone.** `<ResponsiveList>` takes the existing `<table>` as `children` and a
+`renderItem` for the phone, and mounts **one** of them. `RecordCard` gives the
+card its fixed reading order — title, pills, facts, actions — so two screens
+cannot disagree about where the status goes.
+
+**Do not implement this with `hidden md:block` / `md:hidden`.** It renders both
+shells, so a screen reader on a phone announces every row action twice and a
+test that queries `getByRole("button", { name: "Verify" })` finds two matches.
+Same reasoning as §3.11 rule 1.
+
+**Actions on a card: one visible, the rest behind `⋯`.** `<MoreMenu>` opens the
+row's less-used actions; `<ScanCardActions>` is the document-row case of it,
+where the visible control changes with the record's own state (View when there
+is a file, Attach when there is not) and the menu offers Replace. A row that
+needs more than two visible controls on a phone is a row whose actions have not
+been ordered yet.
+
+**`"Paste a file"` is a keyboard affordance and is hidden under
+`@media (pointer: coarse)`** — not under a width breakpoint. A narrow desktop
+window still has a Ctrl+V and should keep the button.
 
 ---
 

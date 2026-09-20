@@ -40,7 +40,7 @@ import { SkeletonTable } from "@/components/ui/skeleton";
 import { Callout } from "@/components/ui/callout";
 import { Panel } from "@/components/ui/panel";
 import { Pill } from "@/components/ui/pill";
-import { Segmented } from "@/components/ui/segmented";
+import { SectionTabs } from "@/components/ui/section-tabs";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { DocButton } from "@/components/doc-button";
 import {
@@ -495,11 +495,14 @@ export function DeliveryNote360({
   const count: Partial<Record<DeliveryNote360Tab, string>> = {
     cargo: boxes ? String(boxes) : undefined,
   };
+  // Four sections, one of which carries a count. The count used to be baked
+  // into the label string because `<Segmented>` takes a string; `SectionTabs`
+  // gives it its own badge, and gives the strip one row on a phone instead of
+  // the two a wrapping segmented control took.
   const tabs = DELIVERY_360_TABS.map((value) => ({
     value,
-    label: count[value]
-      ? `${tr(TAB_LABEL[value])} · ${count[value]}`
-      : tr(TAB_LABEL[value]),
+    label: tr(TAB_LABEL[value]),
+    count: count[value],
   }));
 
   /*
@@ -634,11 +637,12 @@ export function DeliveryNote360({
         </KpiRow>
       )}
 
-      <Segmented
-        label="Delivery note 360 section"
+      <SectionTabs
+        label="Delivery note sections"
         value={tab}
-        options={tabs}
         onChange={setTab}
+        sticky
+        tabs={tabs}
       />
 
       {tab === "details" && <DetailsTab note={data} onJump={setTab} />}

@@ -19,7 +19,7 @@
  * which is also the production behaviour on the first frame.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useLocation } from "react-router-dom";
 
@@ -160,7 +160,12 @@ describe("Transit order 360 · the page", () => {
     renderPage(`/operations/transit-orders/${ID}?tab=cargo`);
 
     expect(await screen.findByText("Cement clinker")).toBeInTheDocument();
-    expect(screen.getByRole("radio", { name: /^Cargo/ })).toBeChecked();
+    // Scoped to the strip: the KPI band on this screen also carries a button
+    // whose name starts with "Cargo" (it drills into that tab).
+    expect(
+      within(screen.getByRole("navigation", { name: "Transit order sections" }))
+        .getByRole("button", { name: /^Cargo/ }),
+    ).toHaveAttribute("aria-current", "page");
   });
 
   it("says on the tile that the cargo does not reconcile", async () => {
@@ -203,7 +208,7 @@ describe("Transit order 360 · the page", () => {
   it("counts the cargo tab from the lines the response carries", async () => {
     renderPage();
     expect(
-      await screen.findByRole("radio", { name: "Cargo · 2" }),
+      await screen.findByRole("button", { name: "Cargo 2" }),
     ).toBeInTheDocument();
   });
 });

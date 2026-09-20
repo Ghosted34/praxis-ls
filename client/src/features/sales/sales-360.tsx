@@ -33,6 +33,7 @@ import { tenant } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Pill, StatusPill, type Tone } from "@/components/ui/pill";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
+import { SectionTabs } from "@/components/ui/section-tabs";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useResource, errMsg } from "@/lib/use-resource";
@@ -369,11 +370,11 @@ function DossierSkeleton({
         </div>
       </div>
 
-      <div className="mb-4 flex flex-col divide-y overflow-hidden rounded-[10px] border bg-card shadow-[var(--shadow-s)] sm:flex-row sm:flex-wrap sm:divide-x sm:divide-y-0">
+      <div className="mb-4 grid grid-cols-2 gap-2 md:flex md:flex-wrap md:divide-x md:overflow-hidden md:rounded-[10px] md:border md:bg-card md:shadow-[var(--shadow-s)]">
         {Array.from({ length: 4 }).map((_, i) => (
           <div
             key={i}
-            className="flex min-w-0 flex-1 basis-[9rem] items-center gap-2.5 px-4 py-2.5"
+            className="flex min-w-0 flex-col justify-center gap-1 rounded-lg border border-l-[3px] bg-card px-3 py-2.5 shadow-[var(--shadow-s)] md:flex-1 md:basis-[9rem] md:flex-row md:items-center md:gap-2.5 md:rounded-none md:border-0 md:px-4 md:shadow-none"
           >
             <Skeleton className="h-5 w-12" />
             <Skeleton className="h-3 w-20" />
@@ -383,11 +384,11 @@ function DossierSkeleton({
 
       {/* The real tab labels — they are known before the data is, and greying
           them out would be pretending otherwise. */}
-      <div className="flex flex-wrap gap-1 border-b">
+      <div className="scroll-strip flex snap-x gap-1 overflow-x-auto border-b md:flex-wrap md:overflow-x-visible">
         {tabs.map((t) => (
           <span
             key={t}
-            className="border-b-2 border-transparent px-3 py-2 text-sm font-medium text-muted-foreground/50"
+            className="snap-start whitespace-nowrap border-b-2 border-transparent px-3 py-2 text-sm font-medium text-muted-foreground/50"
           >
             {t}
           </span>
@@ -683,18 +684,15 @@ export function LeadDossier({
       </KpiRow>
       <MoneyNotice visible={k.money_visible} />
 
-      <div className="flex flex-wrap gap-1 border-b">
-        {LEAD_TABS.map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${tab === t ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}
-          >
-            {t}
-            {counts[t] != null && <span className="ml-1.5 micro">{counts[t]}</span>}
-          </button>
-        ))}
-      </div>
+      {/* One row on a phone — see `section-tabs.tsx`. */}
+      <SectionTabs
+        label="Lead sections"
+        value={tab}
+        onChange={setTab}
+        sticky
+        className="mb-4"
+        tabs={LEAD_TABS.map((t) => ({ value: t, label: t, count: counts[t] }))}
+      />
 
       {tab === "Overview" && (
         <div className="grid gap-4 lg:grid-cols-2">
@@ -1109,18 +1107,15 @@ export function IntakeDossier({
       </KpiRow>
       <MoneyNotice visible={k.money_visible} />
 
-      <div className="flex flex-wrap gap-1 border-b">
-        {INTAKE_TABS.map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${tab === t ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}
-          >
-            {t}
-            {counts[t] != null && <span className="ml-1.5 micro">{counts[t]}</span>}
-          </button>
-        ))}
-      </div>
+      {/* One row on a phone — see `section-tabs.tsx`. */}
+      <SectionTabs
+        label="Request sections"
+        value={tab}
+        onChange={setTab}
+        sticky
+        className="mb-4"
+        tabs={INTAKE_TABS.map((t) => ({ value: t, label: t, count: counts[t] }))}
+      />
 
       {tab === "Overview" && (
         <div className="grid gap-4 lg:grid-cols-2">

@@ -215,6 +215,7 @@ export function FilePicker({
   disabled = false,
   variant = "dropzone",
   trigger,
+  triggerClassName,
   className,
   onPaste = true,
 }: {
@@ -240,6 +241,17 @@ export function FilePicker({
   onPaste?: boolean;
   /** The clickable text, for variant="inline". */
   trigger?: React.ReactNode;
+  /**
+   * Replaces the trigger's own classes, for variant="inline".
+   *
+   * The default is an underlined `text-primary-ink` link, which is right inside
+   * a table row ("Replace", "Attach scan") and wrong on a phone card, where the
+   * control sits beside a bordered `⋯` and has to read as the same class of
+   * thing. The text is still a `<label>`, so this changes how it looks and not
+   * what it does — the input, the preview and the percentage all still come
+   * from here.
+   */
+  triggerClassName?: string;
   className?: string;
 }) {
   const inputRef = React.useRef<HTMLInputElement>(null);
@@ -388,14 +400,29 @@ export function FilePicker({
         >
           <label
             className={cn(
-              "cursor-pointer text-sm text-primary-ink underline underline-offset-2 hover:opacity-80",
+              triggerClassName ??
+                "cursor-pointer text-sm text-primary-ink underline underline-offset-2 hover:opacity-80",
               disabled && "pointer-events-none opacity-50",
             )}
           >
             {trigger ?? "Choose a file"}
             {input}
           </label>
-          {pasteControl}
+          {/*
+           * "Paste a file" IS A KEYBOARD AFFORDANCE, so it is hidden where there
+           * is no keyboard — a `(pointer: coarse)` device — rather than below a
+           * width breakpoint. A narrow desktop window is still a desktop: the
+           * person there has Ctrl+V and no reason to lose the button, and the
+           * phone that never had one stops paying for four words of chrome on
+           * every row. Same query, same reasoning, as the task board's
+           * `[@media(pointer:coarse)]:select-none`.
+           *
+           * The behaviour itself is untouched: a pasted file is still caught by
+           * the window listener on a touch device that has a clipboard.
+           */}
+          <span className="inline-flex [@media(pointer:coarse)]:hidden">
+            {pasteControl}
+          </span>
         </span>
         {message && (
           <span className="micro block text-destructive" role="status">

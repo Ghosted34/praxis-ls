@@ -82,7 +82,7 @@ function MiniTable({
   if (empty)
     return <div className="px-3 py-6 text-center micro">{tr("Nothing here yet.")}</div>;
   return (
-    <div className="overflow-hidden rounded-lg border">
+    <div className="overflow-x-auto rounded-lg border">
       <table className="w-full text-sm">
         <thead className="bg-muted/50 text-muted-foreground">
           <tr>{head}</tr>

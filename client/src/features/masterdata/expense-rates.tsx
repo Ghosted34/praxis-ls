@@ -196,7 +196,7 @@ function ProviderManager({ kind }: { kind: api.RateProviderKind }) {
       ) : (list.data || []).length === 0 ? (
         <EmptyState title={tr("Nothing yet")} hint="Add your first carrier." />
       ) : (
-        <div className="overflow-hidden rounded-lg border">
+        <div className="overflow-x-auto rounded-lg border">
           <table className="w-full text-sm">
             <tbody className="divide-y divide-border">
               {(list.data || []).map((r) => (
@@ -487,7 +487,7 @@ function DefaultRateGrid({
     );
   }
   return (
-    <div className="overflow-hidden rounded-xl border">
+    <div className="overflow-x-auto rounded-xl border">
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b bg-muted/50 text-left text-xs uppercase text-muted-foreground">
@@ -541,7 +541,7 @@ function CarrierRateGrid({
           hint="Add one below to start rating this item."
         />
       ) : !variesByEquipment ? (
-        <div className="overflow-hidden rounded-xl border">
+        <div className="overflow-x-auto rounded-xl border">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b bg-muted/50 text-left text-xs uppercase text-muted-foreground">

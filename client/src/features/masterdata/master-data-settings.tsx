@@ -69,7 +69,7 @@ function FieldConfigEditor({ side }: { side: Side }) {
         const inGroup = rows.filter((r) => (r.field_group || "OTHER") === g);
         if (inGroup.length === 0) return null;
         return (
-          <div key={g} className="rounded-lg border">
+          <div key={g} className="overflow-x-auto rounded-lg border">
             <div className="border-b bg-muted/50 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               {g}
             </div>
@@ -251,8 +251,11 @@ function RegistryManager({
       ) : (list.data || []).length === 0 ? (
         <EmptyState title={tr("Nothing yet")} hint="Add your first item." />
       ) : (
-        <div className="overflow-hidden rounded-lg border">
-          <table className="w-full text-sm">
+        /* overflow-x-auto, not overflow-hidden: the last column (Deactivate)
+           used to be clipped unreachable on narrow modals. min-w keeps the
+           columns readable and lets narrow windows scroll instead of squash. */
+        <div className="overflow-x-auto rounded-lg border">
+          <table className="w-full min-w-[560px] text-sm">
             <tbody className="divide-y divide-border">
               {(list.data || []).map((it) => (
                 <tr key={it.id}>
@@ -266,7 +269,7 @@ function RegistryManager({
                     {it.extra}
                     {it.is_system && <Pill tone="mute">{tr("System")}</Pill>}
                   </td>
-                  <td className="px-3 py-1.5 text-right">
+                  <td className="whitespace-nowrap px-3 py-1.5 text-right">
                     <button
                       onClick={() => toggle(it)}
                       className="text-sm text-primary-ink underline"
@@ -305,6 +308,9 @@ export function MasterDataSettings({
       onClose={onClose}
       title="Master data settings"
       description="Per-tenant field requirements, categories and KYC document types."
+      // `xl` so the registry tables get real width on desktop; on narrow
+      // windows the tables fall back to horizontal scroll (see wrappers below).
+      size="xl"
     >
       <div className="mb-4 flex items-center gap-2">
         {(["CLIENT", "SUPPLIER"] as Side[]).map((s) => (

@@ -25,7 +25,9 @@ import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { EmptyState, ErrorState, LoadingRow } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import { useResource, errMsg } from "@/lib/use-resource";
-import { money, num, dateFmt, enumLabel } from "@/lib/format";
+import { money, moneyCompact, num, dateFmt, enumLabel } from "@/lib/format";
+import { useIsCompact } from "@/lib/use-media-query";
+import { cn } from "@/lib/cn";
 import { SmartCountryPicker } from "@/components/smart-country-picker";
 import { TimezonePicker } from "@/components/timezone-picker";
 import { ScanAttachment, ScanCardActions } from "@/components/scan-attachment";
@@ -888,19 +890,42 @@ function AgingCard({
   aging: api.Aging;
   onOpen: (bucket: api.AgingBucket, label: string) => void;
 }) {
+  // A phone gives this card ~350px, and five columns make each box ~62px —
+  // wide enough for "759,812.50 XAF" to wrap MID-NUMBER, which reads as a
+  // wrong figure. The same defect the KPI strip fixed by going two-up on a
+  // phone (kpi-tile.tsx): below `md` the buckets sit two per row — Current,
+  // usually the largest figure, spans the top row alone — and the values use
+  // the compact formatter. Precision is not lost: the exact figure is on the
+  // bar just below, in the drill-down each box opens, and one long-press away
+  // via the title. Desktop keeps the five-across row, byte for byte.
+  const compact = useIsCompact();
   return (
     <div className="rounded-xl border bg-card p-4">
       <h4 className="mb-3 text-sm font-semibold text-foreground">{title}</h4>
-      <div className="grid grid-cols-5 gap-2 text-center">
-        {AGING_COLUMNS.map(({ key, label }) => (
+      <div
+        className={cn(
+          "grid gap-2 text-center",
+          compact ? "grid-cols-2" : "grid-cols-5",
+        )}
+      >
+        {AGING_COLUMNS.map(({ key, label }, i) => (
           <button
             key={key}
             type="button"
             onClick={() => onOpen(key, label)}
-            className="rounded-lg border p-2 transition-colors hover:border-primary hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            title={money(aging[key])}
+            className={cn(
+              "rounded-lg border p-2 transition-colors hover:border-primary hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
+              compact && i === 0 && "col-span-2",
+            )}
           >
-            <div className="num text-sm font-semibold text-foreground">
-              {money(aging[key])}
+            <div
+              className={cn(
+                "num font-semibold text-foreground",
+                compact ? "text-base" : "text-sm",
+              )}
+            >
+              {compact ? moneyCompact(aging[key]) : money(aging[key])}
             </div>
             <div className="micro">{label}</div>
           </button>

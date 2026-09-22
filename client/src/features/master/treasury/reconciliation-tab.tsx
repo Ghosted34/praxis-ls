@@ -67,7 +67,10 @@ function FootingBanner({ footing, currency }: { footing: recon.FootingResult; cu
     return (
       <Callout tone="bad" title={tr("This statement does not add up")}>
         <p className="micro text-muted-foreground">{footing.reason}</p>
-        <dl className="mt-2 grid grid-cols-3 gap-2">
+        {/* Full-precision money in three fixed columns wrapped mid-number on a
+            phone — the same defect the party 360's Aging card had. Stacked
+            below `sm`, three-across once three columns can hold the figure. */}
+        <dl className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
           <div>
             <dt className="micro text-muted-foreground">{tr("Sum of lines")}</dt>
             <dd className="text-sm tabular-nums">{money(footing.movement, currency)}</dd>

@@ -25,13 +25,14 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 6× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (609)
+## All codes (610)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
 | `2FA_NOT_IMPLEMENTED` | 501 | 1× | — |
 | `ACCOUNT_MISMATCH` | 422 | 1× | — |
 | `ACCOUNT_NOT_CASH_CAPABLE` | 422 | 1× | — |
+| `ACTIVATION_REQUIREMENTS_MISSING` | 422 | 1× | — |
 | `ACTUALS_LOCKED` | — | 1× | — |
 | `ADVANCE_NOT_CLEARED` | 422 | 2× | — |
 | `AI_ACTION_FORBIDDEN` | 403 | 1× | — |

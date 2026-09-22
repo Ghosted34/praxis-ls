@@ -1887,6 +1887,14 @@ export type DocumentType = Registry & {
   default_severity?: string;
   /** How far ahead of expiry this kind of document starts warning. */
   renewal_lead_days?: number | null;
+  /** Advisory: raises a flag when absent, never blocks activation (0512). */
+  is_required?: boolean;
+  /** The ACTIVATION set (14030): a flagged type is on the 360's "Required to
+   *  activate" checklist AND is what the verification gate demands. */
+  required_for_activation?: boolean;
+  /** ISO-2 jurisdiction the type is exempt OUTSIDE of ('CM' on the ACF), or
+   *  null for no exemption. Seeded product data, not a tenant toggle. */
+  exempt_outside_country?: string | null;
 };
 export const listClientTypes = () => tenant<ClientType[]>("/client-types");
 export const createClientType = (body: { code: string; name: string }) =>
@@ -1910,6 +1918,8 @@ export const createDocumentType = (body: {
   name: string;
   applies_to?: string;
   default_severity?: string;
+  /** 14030 — start a new type off gating activation. */
+  required_for_activation?: boolean;
 }) => tenant<DocumentType>("/party-document-types", { method: "POST", body });
 export const updateDocumentType = (id: string, body: Partial<DocumentType>) =>
   tenant<DocumentType>(`/party-document-types/${id}`, {
@@ -1941,7 +1951,11 @@ export type FieldConfigRow = {
   applies_to: "CLIENT" | "SUPPLIER";
   field_key: string;
   field_group: string | null;
+  /** Required to CREATE the record. */
   is_required: boolean;
+  /** Required to ACTIVATE it (14030) — a separate policy, enforced at the
+   *  verification gate rather than on the create form. */
+  required_for_activation: boolean;
   is_visible: boolean;
   is_custom?: boolean;
   sort_order: number;

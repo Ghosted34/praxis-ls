@@ -94,9 +94,18 @@ async function unblock(c, { kind, partyId, actor = {} }) {
 }
 
 /**
- * The verification / AVL-approval gate (Hard Rule 9). A client can only reach
- * VERIFIED, and a supplier AVL-APPROVED, once every mandatory document has a
- * verified digital scan — enforced here, so a missing scan cannot pass.
+ * The verification / AVL-approval gate (Hard Rule 9 + 14030). A client can only
+ * reach VERIFIED, and a supplier AVL-APPROVED, once:
+ *
+ *   1. every ACTIVATION document type has a verified digital scan in the vault
+ *      (`can_verify`), so a missing scan cannot pass; and
+ *   2. every field the tenant marked "required to activate" is filled.
+ *
+ * Both come from the SAME evaluation the 360 renders, so the checklist a user
+ * reads and the gate that refuses them cannot drift apart. The document set is
+ * `required_for_activation`, never `is_required` on its own: a type a tenant
+ * merely wants on file raises an advisory flag and gates nothing — which is the
+ * rule that stops a Bank RIB holding up a client nobody has billed yet.
  */
 async function verify(c, { kind, partyId, actor = {} }) {
   const k = cfg(kind);
@@ -107,6 +116,16 @@ async function verify(c, { kind, partyId, actor = {} }) {
       "SCAN_REQUIRED",
       "Cannot verify: every mandatory document needs a verified digital scan in the vault (Hard Rule 9).",
       422,
+    );
+  }
+  const missingFields = evalr.missing_activation_fields || [];
+  if (missingFields.length) {
+    const names = missingFields.map((f) => f.label).join(", ");
+    throw new AppError(
+      "ACTIVATION_REQUIREMENTS_MISSING",
+      `Cannot activate: ${names} ${missingFields.length === 1 ? "is" : "are"} required before a ${kind} can be activated.`,
+      422,
+      missingFields.reduce((acc, f) => ({ ...acc, [f.field_key]: ["required before activation"] }), {}),
     );
   }
   const set = kind === "supplier"

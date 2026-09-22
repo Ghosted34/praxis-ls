@@ -1,5 +1,5 @@
 "use strict";
-/** Party compliance engine (spec §4.1, Hard Rules 3 & 9; PR3 §3) — pure rules. */
+/** Party compliance engine (spec §4.1, Hard Rules 3 & 9; PR3 §3; 14030) — pure rules. */
 const {
   evaluate,
   stateFor,
@@ -7,16 +7,27 @@ const {
   docTypeApplies,
   isOnboarding,
   requiredTypes,
+  activationTypes,
+  advisorySeverity,
 } = require("../../src/modules/master/compliance/compliance.rules");
 
 const TODAY = "2026-08-06";
-// A REQUIRED, applies-to-all taxpayer card; and a NON-required optional contract.
+// 14030 split ONE flag into TWO answers, and the fixtures below keep them
+// distinct on purpose — a fixture that sets both cannot catch the regression
+// this ticket exists to fix (a Bank RIB gating activation):
+//
+//   required_for_activation → the ACTIVATION set: gates `canVerify`, and its
+//                             absence is an `onboarding` gap (the 360 checklist).
+//   is_required alone       → advisory: reported, WARN at most, gates nothing.
+// A REQUIRED-TO-ACTIVATE, applies-to-all taxpayer card; and a NON-required
+// optional contract.
 const taxType = {
   document_type_id: "dt-tax",
   name: "Taxpayer Card",
   applies_to: "BOTH",
   is_active: true,
   is_required: true,
+  required_for_activation: true,
   default_severity: "ESCALATED",
 };
 const contractType = {
@@ -35,13 +46,26 @@ const otherType = {
   is_required: false,
   default_severity: "INFO",
 };
-// A required doc scoped to one category / country / tier.
+// 14030: wanted on file, seeded ESCALATED, and NOT an activation requirement —
+// exactly the shape 0512 gave BANK_RIB. Its absence must never reach the
+// activation checklist and must never be louder than WARN.
+const advisoryType = {
+  document_type_id: "dt-rib",
+  name: "Bank RIB",
+  applies_to: "BOTH",
+  is_active: true,
+  is_required: true,
+  required_for_activation: false,
+  default_severity: "ESCALATED",
+};
+// A required-to-activate doc scoped to one category / country / tier.
 const customsType = {
   document_type_id: "dt-customs",
   name: "Customs Authorisation",
   applies_to: "SUPPLIER",
   is_active: true,
   is_required: true,
+  required_for_activation: true,
   default_severity: "ESCALATED",
   applies_to_categories: ["CUSTOMS_BROKER"],
 };
@@ -51,6 +75,7 @@ const frOnlyType = {
   applies_to: "BOTH",
   is_active: true,
   is_required: true,
+  required_for_activation: true,
   default_severity: "ESCALATED",
   applies_to_countries: ["FR"],
 };
@@ -60,8 +85,21 @@ const enhancedType = {
   applies_to: "BOTH",
   is_active: true,
   is_required: true,
+  required_for_activation: true,
   default_severity: "ESCALATED",
   kyc_tier: "ENHANCED",
+};
+// The ACF (Attestation de conformité fiscale, 14030): required to activate for
+// everyone EXCEPT a party provably operating outside Cameroon.
+const acfType = {
+  document_type_id: "dt-acf",
+  name: "Attestation de conformité fiscale",
+  applies_to: "CLIENT",
+  is_active: true,
+  is_required: true,
+  required_for_activation: true,
+  exempt_outside_country: "CM",
+  default_severity: "ESCALATED",
 };
 
 const withLegal = { legal_name: "Acme SA" };
@@ -156,8 +194,8 @@ describe("docTypeApplies", () => {
   });
 });
 
-describe("evaluate — required-ness & applicability (§3.1/§3.2)", () => {
-  it("escalates a missing REQUIRED document but stays silent on a non-required one", () => {
+describe("evaluate — the activation set vs advisory documents (14030)", () => {
+  it("escalates a missing REQUIRED-TO-ACTIVATE document and keeps its own severity", () => {
     const r = evaluate({
       appliesTo: "CLIENT",
       party: withLegal,
@@ -165,22 +203,96 @@ describe("evaluate — required-ness & applicability (§3.1/§3.2)", () => {
       docTypes: [taxType, contractType],
       today: TODAY,
     });
-    expect(hasFlag(r, "party.doc_missing", "ESCALATED")).toBe(true); // taxType (required)
+    expect(hasFlag(r, "party.doc_missing", "ESCALATED")).toBe(true); // taxType
     expect(countFlag(r, "party.doc_missing")).toBe(1); // contract is NOT flagged
     expect(r.compliance_state).toBe("ESCALATED"); // no reg status ⇒ not onboarding
     expect(r.can_verify).toBe(false);
+    // An activation gap IS the checklist item — that is what puts it under
+    // "Required to activate" on the 360.
+    expect(r.flags.find((f) => f.rule_key === "party.doc_missing").onboarding).toBe(true);
   });
 
-  it("OTHER / non-required types never raise a missing flag (kills 'Missing Other')", () => {
+  it("a merely is_required document raises an ADVISORY flag: WARN-capped, never onboarding, never gating", () => {
+    const r = evaluate({
+      appliesTo: "CLIENT",
+      party: withLegal,
+      documents: [],
+      docTypes: [advisoryType], // 0512's Bank RIB shape: is_required, not activation
+      today: TODAY,
+    });
+    // Reported — the tenant still wants it on file …
+    expect(hasFlag(r, "party.doc_missing", "WARN")).toBe(true);
+    expect(hasFlag(r, "party.doc_missing", "ESCALATED")).toBe(false); // … but capped at WARN
+    const f = r.flags.find((x) => x.rule_key === "party.doc_missing");
+    expect(f.advisory).toBe(true);
+    // … and it is NOT a checklist item, so it never appears under "Required to
+    // activate" and never becomes an onboarding gap.
+    expect(f.onboarding).toBeUndefined();
+    expect(r.flags.some((x) => x.onboarding)).toBe(false);
+    // The gate is the activation set, which is EMPTY here ⇒ the party may be
+    // verified with no Bank RIB at all. This is the regression the ticket fixes.
+    expect(r.can_verify).toBe(true);
+  });
+
+  it("an advisory gap on a DRAFT reads the neutral ONBOARDING, and WARN once the party is live", () => {
+    const base = {
+      appliesTo: "CLIENT",
+      documents: [],
+      docTypes: [advisoryType],
+      today: TODAY,
+    };
+    // Still onboarding ⇒ checklist work, not a compliance failure: the same
+    // neutral rollup a missing activation document gets. It is NOT an onboarding
+    // flag though (see the test above), so it cannot reach the activation list.
+    const early = evaluate({ ...base, party: draft });
+    expect(early.compliance_state).toBe("ONBOARDING");
+    expect(early.flags.some((f) => f.onboarding)).toBe(false);
+    // Live ⇒ the advisory surfaces at its capped severity, and nothing more.
+    const live = evaluate({ ...base, party: { ...withLegal, registration_status: "ACTIVE" } });
+    expect(live.compliance_state).toBe("WARN");
+    expect(live.flags).toHaveLength(1);
+  });
+
+  it("advisorySeverity caps an advisory at WARN and leaves real severities alone", () => {
+    expect(advisorySeverity("ESCALATED")).toBe("WARN");
+    expect(advisorySeverity("SOFT_BLOCK_RECOMMENDATION")).toBe("WARN");
+    expect(advisorySeverity("INFO")).toBe("INFO");
+    expect(advisorySeverity(undefined)).toBe("WARN");
+  });
+
+  it("activationTypes is the set canVerify enforces — required_for_activation, not is_required", () => {
+    const ctx = { appliesTo: "CLIENT" };
+    expect(activationTypes([taxType, advisoryType, contractType], ctx).map((d) => d.document_type_id)).toEqual(["dt-tax"]);
+    expect(requiredTypes([taxType, advisoryType], ctx).map((d) => d.document_type_id)).toEqual(["dt-tax", "dt-rib"]);
+  });
+
+  it("an empty activation set can_verify even with every advisory type missing", () => {
     const r = evaluate({
       appliesTo: "SUPPLIER",
       party: withLegal,
       documents: [],
-      docTypes: [otherType, contractType],
+      docTypes: [advisoryType],
       today: TODAY,
     });
-    expect(hasFlag(r, "party.doc_missing")).toBe(false);
-    expect(r.compliance_state).toBe("OK");
+    expect(r.can_verify).toBe(true);
+  });
+
+  it("turns a missing ACTIVATION FIELD into an onboarding checklist item (14030)", () => {
+    const r = evaluate({
+      appliesTo: "CLIENT",
+      party: withLegal,
+      documents: [],
+      docTypes: [],
+      missingActivationFields: [{ field_key: "niu", label: "NIU" }],
+      today: TODAY,
+    });
+    const f = r.flags.find((x) => x.rule_key === "party.field_missing");
+    expect(f).toBeTruthy();
+    expect(f.severity).toBe("WARN");
+    expect(f.onboarding).toBe(true);
+    expect(f.message).toBe("Missing NIU");
+    // It is a field, not a document: it must not disturb the document gate.
+    expect(r.can_verify).toBe(true);
   });
 
   it("does not flag a required doc that does not apply to the party's category (water supplier vs customs auth)", () => {
@@ -203,7 +315,63 @@ describe("evaluate — required-ness & applicability (§3.1/§3.2)", () => {
     });
     expect(hasFlag(broker, "party.doc_missing", "ESCALATED")).toBe(true);
   });
+});
 
+describe("evaluate — the ACF exemption (14030)", () => {
+  it("applies to a party in Cameroon, and to one whose country is unknown", () => {
+    for (const country of ["CM", undefined]) {
+      const r = evaluate({
+        appliesTo: "CLIENT",
+        party: country ? { ...withLegal, country_code: country } : withLegal,
+        documents: [],
+        docTypes: [acfType],
+        today: TODAY,
+      });
+      expect(hasFlag(r, "party.doc_missing", "ESCALATED")).toBe(true);
+      expect(r.can_verify).toBe(false);
+    }
+  });
+
+  it("is EXEMPT outside Cameroon — no flag, and no gate", () => {
+    const r = evaluate({
+      appliesTo: "CLIENT",
+      party: { ...withLegal, country_code: "FR" },
+      documents: [],
+      docTypes: [acfType],
+      today: TODAY,
+    });
+    expect(hasFlag(r, "party.doc_missing")).toBe(false);
+    expect(r.can_verify).toBe(true);
+    expect(
+      docTypeApplies(acfType, { appliesTo: "CLIENT", country: "FR" }),
+    ).toBe(false);
+    // Tax residency answers too when country_code is blank.
+    expect(
+      docTypeApplies(acfType, { appliesTo: "CLIENT", country: "CM" }),
+    ).toBe(true);
+  });
+
+  it("never exempts on an empty country, and ignores the exemption when the type is not flagged", () => {
+    expect(docTypeApplies(acfType, { appliesTo: "CLIENT", country: "" })).toBe(true);
+    expect(docTypeApplies(acfType, { appliesTo: "CLIENT" })).toBe(true);
+    const plain = { ...acfType, exempt_outside_country: null };
+    expect(docTypeApplies(plain, { appliesTo: "CLIENT", country: "FR" })).toBe(true);
+  });
+
+  it("OTHER / non-required types never raise a missing flag (kills 'Missing Other')", () => {
+    const r = evaluate({
+      appliesTo: "SUPPLIER",
+      party: withLegal,
+      documents: [],
+      docTypes: [otherType, contractType],
+      today: TODAY,
+    });
+    expect(hasFlag(r, "party.doc_missing")).toBe(false);
+    expect(r.compliance_state).toBe("OK");
+  });
+});
+
+describe("evaluate — applicability scoping (§3.2)", () => {
   it("honours country and tier scoping", () => {
     expect(
       hasFlag(

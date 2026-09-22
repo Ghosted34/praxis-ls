@@ -179,6 +179,9 @@ export function LocationsPage() {
                   {items.length} slot{items.length === 1 ? "" : "s"}
                 </span>
               </div>
+              {/* Table scrolls under a fixed zone header rather than being
+                  clipped by the card (overflow-hidden used to hide columns). */}
+              <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <tbody className="divide-y divide-border">
                   {items.map((l) => (
@@ -195,6 +198,7 @@ export function LocationsPage() {
                   ))}
                 </tbody>
               </table>
+              </div>
             </div>
           ))}
         </div>

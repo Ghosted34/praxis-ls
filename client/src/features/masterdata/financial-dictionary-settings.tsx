@@ -301,7 +301,7 @@ function RefManager({ kind }: { kind: api.DictRefKind }) {
       ) : (list.data || []).length === 0 ? (
         <EmptyState title={tr("Nothing yet")} hint="Add your first value." />
       ) : (
-        <div className="overflow-hidden rounded-lg border">
+        <div className="overflow-x-auto rounded-lg border">
           <table className="w-full text-sm">
             <tbody className="divide-y divide-border">
               {(list.data || []).map((r) => (

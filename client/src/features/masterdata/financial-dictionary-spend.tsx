@@ -704,7 +704,7 @@ export function CostEvolutionTab({ id }: { id: string }) {
 
           <RateStepLine points={s.points} currency={s.currency} />
 
-          <div className="mt-3 overflow-hidden rounded-lg border">
+          <div className="mt-3 overflow-x-auto rounded-lg border">
             <table className="w-full text-sm">
               <caption className="sr-only">
                 Effective-dated rate versions

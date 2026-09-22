@@ -370,7 +370,7 @@ function DictDossier({
       {tab === "Cost & evolution" && <CostEvolutionTab id={id} />}
 
       {tab === "OHADA posting" && (
-        <div className="overflow-hidden rounded-xl border">
+        <div className="overflow-x-auto rounded-xl border">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b bg-muted/50 text-left text-xs uppercase text-muted-foreground">

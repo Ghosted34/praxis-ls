@@ -329,7 +329,35 @@ d("a recorded call, end to end on a real schema (audit H1)", () => {
     expect(posted.rows).toHaveLength(1);
     const sent = (await q("SELECT draft_status, sent_message_id FROM comms_call_summary WHERE call_id = $1", [callId])).rows[0];
     expect(sent).toEqual({ draft_status: "SENT", sent_message_id: posted.rows[0].message_id });
-    expect((await as(caller).get(`/channels/${groupId}/messages`)).body.data.pending_call_summaries).toEqual([]);
+    const after = (await as(caller).get(`/channels/${groupId}/messages`)).body.data;
+    expect(after.pending_call_summaries).toEqual([]);
+
+    // C4 on real SQL: the posted message carries the card...
+    const cardOf = (page, messageId) => {
+      const m = (page.messages || page.items || page).find((x) => x.message_id === messageId);
+      return m && m.attachments.find((a) => a.attachment_kind === "CALL");
+    };
+    expect(cardOf(after, posted.rows[0].message_id).call_card)
+      .toEqual(expect.objectContaining({ summary_text: "They agreed the Friday delivery." }));
+    // ...a stranger cannot post one naming this call...
+    const stamp = `${Date.now()}-c4`;
+    const [stranger] = (await q(
+      "INSERT INTO app_user (email, full_name, password_hash) VALUES ($1, 'Eve', 'x') RETURNING user_id",
+      [`c4-${stamp}@example.test`],
+    )).rows.map((r) => r.user_id);
+    const own = (await q("INSERT INTO comms_group (kind, name) VALUES ('PROJECT', 'c4') RETURNING group_id")).rows[0].group_id;
+    await q("INSERT INTO comms_member (group_id, user_id) VALUES ($1, $2)", [own, stranger]);
+    const forged = await as(stranger).post(`/channels/${own}/messages`)
+      .send({ body: "look", attachments: [{ attachment_kind: "CALL", call_id: callId }] });
+    expect(forged.status).toBe(422);
+    // ...and a CALL row that got in some other way resolves to nothing.
+    const m = (await q(
+      "INSERT INTO comms_message (group_id, sender_user_id, body) VALUES ($1, $2, 'x') RETURNING message_id",
+      [own, stranger],
+    )).rows[0].message_id;
+    await q("INSERT INTO comms_attachment (message_id, attachment_kind, call_id) VALUES ($1, 'CALL', $2)", [m, callId]);
+    const theirs = (await as(stranger).get(`/channels/${own}/messages`)).body.data;
+    expect(cardOf(theirs, m).call_card).toBeNull();
   });
 
   it("O1: a part both providers fail is named in the draft and never retried automatically", async () => {

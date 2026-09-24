@@ -16,6 +16,9 @@ async function member(c, groupId, userId) {
 }
 async function validateAttachments(c, groupId, attachments, replyTo) {
   for (const a of attachments || []) {
+    // Only sendSummary writes a call card (audit C4); a schedule stored before
+    // the route refused them must not post one either.
+    if (a.attachment_kind === "CALL") throw new AppError("VALIDATION_ERROR", "Call summaries are shared from the call, not attached", 422);
     if (a.attachment_kind === "MEDIA") {
       if (!a.media_id || !await repo.mediaAllowed(c, a.media_id, groupId)) throw new AppError("VALIDATION_ERROR", "Media must belong to this conversation", 422);
     } else if (a.attachment_kind === "ERP") {

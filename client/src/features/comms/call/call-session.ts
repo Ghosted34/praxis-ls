@@ -503,7 +503,8 @@ function keepaliveHangup(): void {
     void fetch(callHangupUrl(call.call_id), {
       method: "POST",
       headers: h,
-      body: JSON.stringify({ reason: "hangup" }),
+      // No reason: the server decides how a call ended (audit B9).
+      body: "{}",
       keepalive: true,
     }).catch(() => {
       /* @silent:teardown — a dying page owes the network nothing; the sweep owns the row. */

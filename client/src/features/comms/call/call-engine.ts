@@ -26,6 +26,17 @@ import type { IceConfig } from "@/lib/smartcomm-api";
 export const RING_TIMEOUT_S = 60;
 export const MAX_CALL_S = 1800;
 export const MAX_CALL_WARN_S = MAX_CALL_S - 60;
+
+/** The peer connection's configuration from the server's ICE config. The
+ *  relay-only policy (audit C13) is passed through as given: when the tenant
+ *  asked for it, a call that cannot relay does not fall back to exposing
+ *  addresses. */
+export function rtcConfiguration(ice: IceConfig): RTCConfiguration {
+  return {
+    iceServers: ice.iceServers as RTCIceServer[],
+    iceTransportPolicy: ice.iceTransportPolicy === "relay" ? "relay" : "all",
+  };
+}
 /** Give the media path this long after the answer before declaring
  *  ice_failed — slow yards and cold NATs are normal, a minute is not. */
 export const ICE_GRACE_MS = 30_000;
@@ -401,7 +412,7 @@ export class CallEngine {
 
   private makeConnection(ice: IceConfig): PCT {
     if (this.connectionFactory) return this.connectionFactory();
-    return new RTCPeerConnection({ iceServers: ice.iceServers as any }) as unknown as PCT;
+    return new RTCPeerConnection(rtcConfiguration(ice)) as unknown as PCT;
   }
 
   private attachRemoteAudio(stream: MediaStream) {

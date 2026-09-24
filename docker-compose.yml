@@ -135,48 +135,66 @@ services:
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD}
 
-  # ── coturn — STUN/TURN for inhouse 1:1 calls (Smart Comms PR-1) ───────────
+  # ── coturn — STUN/TURN for inhouse 1:1 calls (Smart Comms) ──────────────
   #
-  # Opt-in behind the `turn` profile: a deployment that has not set
-  # TURN_HOST / TURN_CREDENTIAL_SECRET runs STUN-only (P2P still works on
-  # easy NATs and on LANs, which is most of inhouse), and the default
-  # `docker compose up` is unchanged for every existing tenant box.
+  # Opt-in behind the `turn` profile: without it calls are peer-to-peer only
+  # (STUN from STUN_URLS, else Google's as a stopgap), which fails on mobile
+  # carrier-grade NAT. Set it up once with scripts/turn-setup.sh; the steps
+  # and the reasons are in doc/TURN_PRODUCTION_SETUP.md. deploy.sh never
+  # touches this container.
   #
-  # Enabling it is: set TURN_CREDENTIAL_SECRET in .env, point TURN_HOST at
-  # whatever address the CLIENTS can reach (this box's public hostname), and
-  # `docker compose --profile turn up -d turn`.
+  # Host networking, because the relay needs a wide UDP port range. That is
+  # also why docker/coturn/docker-entrypoint.sh denies every private,
+  # loopback, link-local and Docker-bridge peer (audit C1): from this network
+  # namespace a relay to 127.0.0.1 or 172.17.0.1 would reach Postgres and
+  # Redis. The entrypoint writes the config (and the shared secret) to a
+  # private file, and refuses to start without the secret or the realm.
   #
-  # Why host networking: TURN must be reachable from the callers' BROWSERS
-  # (not from this box's API), and media relay needs a wide port range that
-  # `ports:` cannot map cleanly. On the single-VPS deployment this stack
-  # targets, host networking is the standard coturn shape: 3478 for
-  # allocation plus the relay range, all under time-limited credentials.
-  #
-  # SECURITY: `--use-auth-secret` means there is no static user to leak. The
-  # API mints `<expiry>:<user>` / HMAC-SHA1 credentials per call (TTL default
-  # 31 min, src/modules/smartcomm/smartcomm.turn.service.js); a credential
-  # stops working when the call does. The secret below is the same one the
-  # API signs with — set it once in .env, both sides read it.
+  # Firewall: allow TURN_PORT_UDP (udp+tcp), TURN_TLS_PORT (tcp) when set, and
+  # TURN_MIN_PORT..TURN_MAX_PORT (udp). Nothing else.
   turn:
-    image: coturn/coturn:latest
+    # Pinned by digest: a relay is a network boundary, and `latest` changed
+    # under us would be an unreviewed change to it.
+    image: coturn/coturn:4.18.0@sha256:bbefd3e1fdfdc0d58770fe01b581fd8b00d9f3a5580d00acb77cf719a6bc78e3
     container_name: praxis_turn
     profiles: ["turn"]
     network_mode: host
-    command:
-      [
-        "--use-auth-secret",
-        "--no-cli",
-        "--no-multicast-peers",
-        "--listening-port=3478",
-        "--min-port=49152",
-        "--max-port=65535",
-      ]
+    entrypoint: ["/bin/sh", "/usr/local/bin/praxis-turn-entrypoint.sh"]
+    volumes:
+      - ./docker/coturn/docker-entrypoint.sh:/usr/local/bin/praxis-turn-entrypoint.sh:ro
+      - ./scripts/turn-check.sh:/check/turn-check.sh:ro
+      # TLS (turns:): a directory holding a COPY of TURN_HOST's certificate
+      # and key, readable by the image's `nobody` user (Let's Encrypt's
+      # privkey is root-only). scripts/turn-setup.sh prepares it.
+      - ${TURN_TLS_DIR:-./docker/coturn/no-tls}:/etc/turn-tls:ro
     environment:
-      # The coturn image reads its shared secret from this variable when
-      # --use-auth-secret is set. Empty is refused by the API side (STUN-only
-      # mode kicks in), so there is no half-configured state where the relay
-      # accepts credentials nobody can mint.
-      TURNSHAREKEY: ${TURN_CREDENTIAL_SECRET}
+      # Empty values are refused by the entrypoint, not by compose: `:?` here
+      # would fail every `docker compose` command on a box without TURN.
+      TURN_CREDENTIAL_SECRET: ${TURN_CREDENTIAL_SECRET:-}
+      TURN_REALM: ${TURN_REALM:-}
+      TURN_EXTERNAL_IP: ${TURN_EXTERNAL_IP:-}
+      TURN_PORT_UDP: ${TURN_PORT_UDP:-3478}
+      TURN_TLS_PORT: ${TURN_TLS_PORT:-0}
+      TURN_TLS_CERT: ${TURN_TLS_CERT:-}
+      TURN_TLS_KEY: ${TURN_TLS_KEY:-}
+      TURN_MIN_PORT: ${TURN_MIN_PORT:-49152}
+      TURN_MAX_PORT: ${TURN_MAX_PORT:-65535}
+      TURN_USER_QUOTA: ${TURN_USER_QUOTA:-12}
+      TURN_TOTAL_QUOTA: ${TURN_TOTAL_QUOTA:-400}
+      TURN_MAX_BPS: ${TURN_MAX_BPS:-64000}
+    healthcheck:
+      # A real allocation with a credential signed like the API's, relaying to
+      # a documentation address. Listening on the port proves nothing: a
+      # relay that refuses every credential (audit C3) listens fine.
+      test:
+        [
+          "CMD-SHELL",
+          'timeout 15 turnutils_uclient -W "$$TURN_CREDENTIAL_SECRET" -u health -p "$$TURN_PORT_UDP" -e 203.0.113.10 -n 1 -m 1 -c 127.0.0.1 2>&1 | grep -q tot_send_msgs=1',
+        ]
+      interval: 5m
+      timeout: 20s
+      start_period: 10s
+      retries: 2
     restart: unless-stopped
     logging:
       driver: json-file

@@ -125,12 +125,6 @@ jest.mock("../../src/modules/smartcomm/smartcomm.call.repo", () => {
         && (x.status === "ENDED" || x.connected_at)
         && (x.transcription_attempts || 0) < maxAttempts
         && (!x.transcription_state || x.transcription_state === "PENDING")),
-    listLiveLog: async (c, { callId, side = null }) =>
-      on().live.filter((r) => r.call_id === callId && (!side || r.side === side)),
-    upsertLiveLog: async (c, { callId, side, segments }) => {
-      for (const s of segments) on().live.push({ call_id: callId, side, ...s });
-      return segments.length;
-    },
     insertTranscriptRows: async (c, { callId, side, rows }) => rows.map((r) => {
       for (const t of currentRows(callId, side)) {
         if (t.part_index === r.partIndex) {
@@ -555,11 +549,6 @@ describe("helpers", () => {
     expect(pipeline.provenanceOf({ llmOk: true, rows: [groq, live] })).toBe("browser-live");
   });
 
-  test("live-log normalisation drops malformed segments and never throws", () => {
-    const out = pipeline.normaliseSegments([{ text: "un" }, { text: "deux", seq: 0 }, { text: "  " }, "nope"], "fr");
-    expect(out.map((s) => s.text)).toEqual(["un"]);
-    expect(pipeline.normaliseSegments("{not json", "en")).toEqual([]);
-  });
 });
 
 describe("C7: the spoken transcript in the prompt is delimited, labelled untrusted, and capped", () => {
@@ -702,13 +691,6 @@ describe("registerPart — the upload rules", () => {
     expect(mockStore.current.calls.get(CALL).summary_language).toBe("en");
   });
 
-  test("the live log from an old cached client is still accepted, and builds nothing", async () => {
-    const out = await pipeline.registerLiveLog(client(), {
-      callId: CALL, actor: caller, side: "caller", segments: [{ seq: 0, text: "hi" }],
-    });
-    expect(out).toEqual({ side: "caller", written: 1 });
-    expect(jobs("call-finalise")).toHaveLength(0);
-  });
 });
 
 describe("completeSide — a side says it is done (A2)", () => {
@@ -1292,7 +1274,7 @@ describe("sendSummary — one transaction, one message (B7)", () => {
   });
 });
 
-describe("regenerateSummary — the EN/FR toggle on a draft only", () => {
+describe("regenerate — the EN/FR toggle is a queued job (C8)", () => {
   beforeEach(() => {
     mockStore.current.calls.set(CALL, endedCall({ caller_parts_declared: 1, callee_parts_declared: 0 }));
     settled("caller", 1, { text: "bonjour", language: "fr" });
@@ -1303,32 +1285,90 @@ describe("regenerateSummary — the EN/FR toggle on a draft only", () => {
     });
   });
 
-  test("flipping to FR redrafts the prose, names what is missing in French, and counts the flip", async () => {
-    const out = await pipeline.regenerateSummary(client({ names: NAMES }), { callId: CALL, actor: caller, language: "fr" });
-    expect(out.language).toBe("fr");
-    expect(out.summary.summary_text).toBe("Le résumé en français.\n\nAucun enregistrement du côté de Bruno Kamga.");
-    expect(mockStore.current.summaries.get(CALL).regenerate_count).toBe(1);
+  test("the request queues one job and calls no model", async () => {
+    const out = await pipeline.requestRegenerate(client(), { callId: CALL, actor: caller, language: "fr", tenantMeta, env: "live" });
+    expect(out).toEqual({ call_id: CALL, language: "fr", queued: true });
+    expect(llm.chat).not.toHaveBeenCalled();
+    const queued = jobs("call-summary-regenerate");
+    expect(queued).toHaveLength(1);
+    expect(queued[0][2]).toEqual(expect.objectContaining({ callId: CALL, language: "fr", userId: U1, env: "live" }));
+    expect(queued[0][3]).toEqual(expect.objectContaining({ jobId: `callregen-${CALL}-fr`, attempts: 1 }));
+  });
+
+  test("a failed rewrite is not kept, so its job id cannot swallow the next request", async () => {
+    // BullMQ ignores an add whose jobId still exists, failed jobs included: a
+    // kept failure would turn every later request for that language into a
+    // 202 that nothing ever answers.
+    await pipeline.requestRegenerate(client(), { callId: CALL, actor: caller, language: "fr", tenantMeta });
+    expect(jobs("call-summary-regenerate")[0][3]).toEqual(expect.objectContaining({ removeOnFail: true, removeOnComplete: true }));
+  });
+
+  test("the job id uses the row's call id, whatever spelling of it the URL used", async () => {
+    // Postgres matches a uuid written another way; the fake does the same.
+    const respelled = "CALL-1-RESPELLED";
+    mockStore.current.calls.set(respelled, mockStore.current.calls.get(CALL));
+    mockStore.current.summaries.set(respelled, mockStore.current.summaries.get(CALL));
+    const out = await pipeline.requestRegenerate(client(), { callId: respelled, actor: caller, language: "fr", tenantMeta });
+    expect(out.call_id).toBe(CALL);
+    expect(jobs("call-summary-regenerate")[0][3].jobId).toBe(`callregen-${CALL}-fr`);
+    expect(jobs("call-summary-regenerate")[0][2].callId).toBe(CALL);
+  });
+
+  test("the language must change: the draft's own language is 422 and queues nothing", async () => {
+    await expect(pipeline.requestRegenerate(client(), { callId: CALL, actor: caller, language: "en", tenantMeta }))
+      .rejects.toMatchObject({ code: "SAME_LANGUAGE", status: 422 });
+    expect(jobs("call-summary-regenerate")).toHaveLength(0);
+  });
+
+  test("a draft has a lifetime cap on rewrites", async () => {
+    pendingSummary({ regenerate_count: pipeline.REGENERATE_MAX });
+    await expect(pipeline.requestRegenerate(client(), { callId: CALL, actor: caller, language: "fr", tenantMeta }))
+      .rejects.toMatchObject({ code: "REGENERATE_LIMIT", status: 409 });
+  });
+
+  test("the callee cannot ask; a sent summary is not rewritten; only EN and FR exist", async () => {
+    await expect(pipeline.requestRegenerate(client(), { callId: CALL, actor: callee, language: "fr", tenantMeta }))
+      .rejects.toMatchObject({ code: "NOT_CALLER" });
+    await expect(pipeline.requestRegenerate(client(), { callId: CALL, actor: caller, language: "es", tenantMeta }))
+      .rejects.toMatchObject({ code: "BAD_LANGUAGE", status: 422 });
+    pendingSummary({ draft_status: "SENT" });
+    await expect(pipeline.requestRegenerate(client(), { callId: CALL, actor: caller, language: "fr", tenantMeta }))
+      .rejects.toMatchObject({ code: "SUMMARY_NOT_PENDING_REVIEW" });
+    expect(jobs("call-summary-regenerate")).toHaveLength(0);
+  });
+
+  test("the job redrafts in French, names what is missing, counts the flip and tells the caller", async () => {
+    const d = db();
+    let openDuringLlm = null;
+    llm.chat.mockImplementation(async () => {
+      openDuringLlm = d.state.open;
+      return { provider: "deepseek", text: JSON.stringify({ summary: "Le résumé en français.", key_points: [], follow_ups: [] }) };
+    });
+    const out = await pipeline.regenerateSummaryJob({ withDb: d.withDb, callId: CALL, language: "fr", userId: U1, tenantMeta, env: "live" });
+    expect(out).toEqual(expect.objectContaining({ language: "fr", draft_status: "PENDING_REVIEW" }));
+    const row = mockStore.current.summaries.get(CALL);
+    expect(row.summary_text).toBe("Le résumé en français.\n\nAucun enregistrement du côté de Bruno Kamga.");
+    expect(row.regenerate_count).toBe(1);
+    // D3: no tenant connection is held while the model works.
+    expect(openDuringLlm).toBe(0);
+    expect(rtTo(U1, "call:summary_ready")[0][4]).toEqual(expect.objectContaining({ call_id: CALL, redraft: true, language: "fr" }));
     expect(smartcomm.writeMessage).not.toHaveBeenCalled();
   });
 
-  test("B6: a draft sent while it was being rewritten is not overwritten", async () => {
+  test("B6: a draft sent while the job was rewriting it is left as sent", async () => {
     llm.chat.mockImplementation(async () => {
       mockStore.current.summaries.get(CALL).draft_status = "SENT";
       return { provider: "gemini", text: JSON.stringify({ summary: "x", key_points: [], follow_ups: [] }) };
     });
-    await expect(pipeline.regenerateSummary(client(), { callId: CALL, actor: caller, language: "fr" }))
-      .rejects.toMatchObject({ code: "SUMMARY_NOT_PENDING_REVIEW", status: 409 });
+    const out = await pipeline.regenerateSummaryJob({ withDb: db().withDb, callId: CALL, language: "fr", userId: U1, tenantMeta });
+    expect(out).toEqual({ skipped: "not_pending" });
     expect(mockStore.current.summaries.get(CALL).summary_text).toBe("The draft.");
   });
 
-  test("the callee cannot regenerate it; a sent summary is not regenerated; only EN and FR exist", async () => {
-    await expect(pipeline.regenerateSummary(client(), { callId: CALL, actor: callee, language: "fr" }))
-      .rejects.toMatchObject({ code: "NOT_CALLER" });
-    await expect(pipeline.regenerateSummary(client(), { callId: CALL, actor: caller, language: "es" }))
-      .rejects.toMatchObject({ code: "BAD_LANGUAGE", status: 422 });
-    pendingSummary({ draft_status: "SENT" });
-    await expect(pipeline.regenerateSummary(client(), { callId: CALL, actor: caller, language: "fr" }))
-      .rejects.toMatchObject({ code: "SUMMARY_NOT_PENDING_REVIEW" });
+  test("a job for a draft already sent or already in that language calls no model", async () => {
+    pendingSummary({ language: "fr" });
+    const out = await pipeline.regenerateSummaryJob({ withDb: db().withDb, callId: CALL, language: "fr", userId: U1, tenantMeta });
+    expect(out).toEqual({ skipped: "same_language" });
     expect(llm.chat).not.toHaveBeenCalled();
   });
 });
@@ -1377,6 +1417,38 @@ describe("reads", () => {
     expect(forCallee.is_caller).toBe(false);
     const off = await pipeline.getSummary(client({ featureState: "off" }), { callId: CALL, actor: caller });
     expect(off.recording_enabled).toBe(false);
+  });
+
+  test("C11: clients get a reason code, never the stored vendor text", async () => {
+    mockStore.current.calls.set(CALL, endedCall({
+      caller_parts_declared: 2, callee_parts_declared: 1, transcription_state: "TRANSCRIPTION_FAILED",
+      transcription_error: "groq: 401 Invalid API key gsk_live_123; gemini: 403 PERMISSION_DENIED",
+    }));
+    settled("caller", 1);
+    settled("caller", 2, { status: "FAILED" });
+    settled("callee", 1);
+    pendingSummary();
+    const summary = await pipeline.getSummary(client(), { callId: CALL, actor: caller });
+    const transcript = await pipeline.getTranscript(client({ names: NAMES }), { callId: CALL, actor: caller });
+    expect(summary.transcription_reason).toBe("PARTS_NOT_TRANSCRIBED");
+    expect(transcript.reason).toBe("PARTS_NOT_TRANSCRIBED");
+    for (const out of [summary, transcript]) {
+      expect(JSON.stringify(out)).not.toMatch(/gsk_live|PERMISSION_DENIED|groq:/);
+      expect(out).not.toHaveProperty("transcription_error");
+      expect(out).not.toHaveProperty("error");
+    }
+  });
+
+  test("C11: the reason codes", () => {
+    const failed = endedCall({ transcription_state: "TRANSCRIPTION_FAILED" });
+    expect(pipeline.transcriptionReason(endedCall({ transcription_state: "CERTIFIED" }), [])).toBeNull();
+    expect(pipeline.transcriptionReason(failed, [part("caller", 1, { transcript_status: "OK" })])).toBe("SIDE_NOT_RECORDED");
+    expect(pipeline.transcriptionReason(failed, [
+      part("caller", 1, { transcript_status: "FAILED" }), part("callee", 1, { transcript_status: "OK" }),
+    ])).toBe("PARTS_NOT_TRANSCRIBED");
+    expect(pipeline.transcriptionReason(failed, [
+      part("caller", 1, { transcript_status: "OK" }), part("callee", 1, { transcript_status: "OK" }),
+    ])).toBe("TRANSCRIPTION_FAILED");
   });
 
   test("O3: the caller's pending drafts for a conversation, for the pinned card; never the callee's view", async () => {

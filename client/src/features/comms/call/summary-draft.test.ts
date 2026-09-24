@@ -13,7 +13,7 @@ import type { CallSummaryView } from "@/lib/smartcomm-api";
 const view = (over: Partial<CallSummaryView> = {}, summary: Partial<CallSummaryView["summary"]> = {}): CallSummaryView => ({
   call_id: "c1",
   transcription_state: "CERTIFIED",
-  transcription_error: null,
+  transcription_reason: null,
   recording_enabled: true,
   is_caller: true,
   summary: over.summary === null ? null : {
@@ -84,7 +84,7 @@ describe("the caller edits the key points and follow-ups (O3)", () => {
 });
 
 describe("editing and regenerating", () => {
-  it("an edit is kept, and a regeneration replaces the prose in the other language", () => {
+  it("an edit is kept until a rewrite lands, and the rewritten draft replaces the prose (C8: a job, read back)", () => {
     let s = loaded();
     s = summaryDraftReducer(s, { type: "edit", text: "My own words." });
     expect(s.dirty).toBe(true);
@@ -93,21 +93,30 @@ describe("editing and regenerating", () => {
     expect(s.regenerating).toBe(true);
 
     s = summaryDraftReducer(s, {
-      type: "regenerated",
-      payload: {
+      type: "loaded",
+      view: view({}, {
         language: "fr",
-        provenance: "groq",
-        summary: {
-          summary_text: "Le résumé en français.",
-          key_points: [{ text: "Livraison confirmée", raised_by: "caller" }],
-          follow_ups: [],
-        },
-      },
+        summary_text: "Le résumé en français.",
+        key_points: [{ text: "Livraison confirmée", raised_by: "caller" }],
+      }),
     });
     expect(s.language).toBe("fr");
     expect(s.text).toBe("Le résumé en français.");
     expect(s.regenerating).toBe(false);
     expect(s.dirty).toBe(false);
+  });
+
+  it("a rewrite that fails puts the draft's own language back, so the caller can ask again", () => {
+    let s = loaded();
+    expect(s.language).toBe("en");
+    s = summaryDraftReducer(s, { type: "regenerate", language: "fr" });
+    expect(s.language).toBe("fr");
+    s = summaryDraftReducer(s, { type: "error", message: "Could not rewrite" });
+    expect(s.language).toBe("en");
+    expect(s.regenerating).toBe(false);
+    // …and French can be asked for again.
+    s = summaryDraftReducer({ ...s, status: "ready" }, { type: "regenerate", language: "fr" });
+    expect(s.regenerating).toBe(true);
   });
 
   it("a regeneration is refused while one is already running", () => {

@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 6× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (619)
+## All codes (625)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -139,6 +139,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `BREACHED_PASSWORD` | 422 | 1× | — |
 | `BUDGET_EXHAUSTED` | 422 | 1× | — |
 | `CALLEE_BUSY` | 409 | 1× | — |
+| `CALLEE_INACTIVE` | 422 | 1× | — |
 | `CALLER_BUSY` | 409 | 1× | — |
 | `CALL_MOVED_ON` | 409 | 4× | — |
 | `CALL_NOT_STARTED` | 409 | 1× | — |
@@ -220,7 +221,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `EVENT_FORBIDDEN` | 403 | 1× | — |
 | `EVERY_LINE_NEEDS_BUDGET` | — | 1× | — |
 | `EXISTS` | 409 | 3× | — |
-| `FEATURE_DISABLED` | 403 | 3× | — |
+| `FEATURE_DISABLED` | 403 | 4× | — |
 | `FIELD_NOT_WRITABLE` | — | 2× | — |
 | `FILE_TOO_LARGE` | 413 | 4× | — |
 | `FORBIDDEN` | 403 | 7× | `PERMISSION_DENIED` |
@@ -230,6 +231,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `GENERATION_UNAVAILABLE` | 502 | 1× | — |
 | `GENERATION_WINDOW_TOO_LARGE` | 500 | 1× | — |
 | `GL_POST_FAILED` | 422, 500 | 2× | — |
+| `GONE` | 410 | 1× | — |
 | `GUARDRAIL_BLOCKED` | 422 | 1× | — |
 | `GUARDRAIL_REASON_TOO_SHORT` | 422 | 1× | — |
 | `HARD_BLOCKED` | 409 | 1× | — |
@@ -341,7 +343,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_EDITABLE` | 400 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 3× | — |
-| `NOT_FOUND` | 404, 422 | 701× | — |
+| `NOT_FOUND` | 404, 422 | 702× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_OPEN` | 409, 422 | 3× | — |
 | `NOT_OPERATIONAL` | 422 | 1× | — |
@@ -363,7 +365,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_VERIFIABLE` | 422 | 1× | — |
 | `NOT_VOIDABLE` | 409 | 1× | — |
 | `NOT_YOURS` | 403 | 2× | `PERMISSION_DENIED` |
-| `NOT_YOUR_SIDE` | 403 | 3× | — |
+| `NOT_YOUR_SIDE` | 403 | 2× | — |
 | `NO_ACCEPTED_QUOTATION` | — | 1× | — |
 | `NO_ACCOUNT` | 500 | 2× | — |
 | `NO_ACTOR` | 401 | 4× | — |
@@ -503,6 +505,8 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `QES_NOT_CONFIGURED` | 409 | 4× | — |
 | `QES_PROVIDER_ERROR` | 502 | 2× | — |
 | `QES_PROVIDER_UNSUPPORTED` | 422 | 1× | — |
+| `QUEUE_UNAVAILABLE` | 503 | 1× | — |
+| `RATE_LIMITED` | 429 | 1× | — |
 | `REASON_REQUIRED` | 422 | 8× | — |
 | `RECIPIENT_REJECTED` | 422 | 2× | — |
 | `RECONCILIATION_DOES_NOT_BALANCE` | — | 1× | — |
@@ -517,6 +521,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `REF_IMMUTABLE` | 422 | 1× | — |
 | `REF_REQUIRED` | 422 | 2× | — |
 | `REF_WRITE_REQUIRED` | 500 | 1× | — |
+| `REGENERATE_LIMIT` | 409 | 1× | — |
 | `REGIE_OVER_RETIRED` | — | 1× | — |
 | `REGISTRATION_NUMBER_REQUIRED` | 422 | 1× | — |
 | `REJECTION_REASON_REQUIRED` | 422 | 1× | — |
@@ -538,6 +543,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `ROTATION_REJECTED` | 404 | 1× | — |
 | `RUN_EXISTS` | 409 | 1× | — |
 | `RUN_LOCKED` | 422 | 1× | — |
+| `SAME_LANGUAGE` | 422 | 1× | — |
 | `SAME_PASSWORD` | 422 | 1× | — |
 | `SCANNED_PDF` | 422 | 2× | — |
 | `SCAN_ENCODING_UNSUPPORTED` | — | 1× | — |
@@ -574,7 +580,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `SUMMARY_ALREADY_SENT` | 409 | 2× | — |
 | `SUMMARY_DISCARDED` | 409 | 1× | — |
 | `SUMMARY_NOT_PENDING` | 409 | 1× | — |
-| `SUMMARY_NOT_PENDING_REVIEW` | 409 | 2× | — |
+| `SUMMARY_NOT_PENDING_REVIEW` | 409 | 1× | — |
 | `SUPPLIER_NOT_VERIFIED` | — | 1× | — |
 | `SUPPLIER_REQUIRED` | 422 | 1× | — |
 | `SYSTEM_ACCOUNT` | 422 | 1× | — |
@@ -632,7 +638,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `USER_NOT_ACTIVE` | 422 | 1× | — |
 | `USE_APPROVE` | 422 | 1× | — |
 | `VACANCY_CLOSED` | — | 1× | — |
-| `VALIDATION_ERROR` | 422 | 270× | — |
+| `VALIDATION_ERROR` | 422 | 271× | — |
 | `VALIDATOR_NOT_LINE_MANAGER` | — | 1× | — |
 | `VARIANCE_UNEXPLAINED` | 422 | 1× | — |
 | `VEHICLE_COMMITTED` | — | 1× | — |

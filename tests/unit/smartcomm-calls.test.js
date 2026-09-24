@@ -114,6 +114,13 @@ function makeClient({ store, members = [], groupKind = "DIRECT" } = {}) {
         const [groupId, callerId, calleeId] = params;
         return { rows: [store.insert({ groupId, callerId, calleeId })] };
       }
+      if (/SET turn_token = COALESCE\(turn_token, \$2\)/.test(sql)) {
+        // PR-3 (C2): the call's relay token, only while the call is live.
+        const row = store.calls.get(params[0]);
+        if (!row || !["RINGING", "IN_CALL"].includes(row.status)) return { rows: [] };
+        row.turn_token = row.turn_token || params[1];
+        return { rows: [{ turn_token: row.turn_token }] };
+      }
       if (/UPDATE comms_call SET/.test(sql)) {
         const [callId, fromStatus, status] = params;
         const setClause = sql.split("SET ")[1].split(" WHERE")[0];
@@ -483,18 +490,17 @@ describe("reads and TURN refresh", () => {
     ).rejects.toThrow(/not found/i);
   });
 
-  test("a participant gets a TURN credential scoped to themselves", async () => {
+  test("a participant of a live call gets ICE config; the credential names the call, not the user", async () => {
+    // The credential's shape is proved in smartcomm-call-hardening.test.js
+    // (C2); here, only that the refresh works from the ordinary state machine.
     const store = makeStore();
     const call = store.insert({ groupId: G1, callerId: U1, calleeId: U2 });
     const ice = await inTenant(() =>
       service.turnFor(makeClient({ store }), { id: call.call_id, actor: { user_id: U2 } }),
     );
     expect(Array.isArray(ice.iceServers)).toBe(true);
-    if (ice.turnConfigured) {
-      const turn = ice.iceServers.find((s) => String(s.urls[0]).startsWith("turn:"));
-      expect(turn).toBeTruthy();
-      expect(String(turn.username)).toContain(U2);
-    }
+    expect(JSON.stringify(ice)).not.toContain(U2);
+    expect(store.calls.get(call.call_id).turn_token).toBeTruthy();
   });
 
   test("a stranger's TURN refresh is a 404, not a credential", async () => {

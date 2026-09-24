@@ -47,15 +47,23 @@ import {
 type TenantCallSettings = {
   noiseSuppression: boolean;
   retentionDays: number;
+  /** comms.call_privacy (audit C13): every call through the TURN relay. */
+  relayOnly: boolean;
 };
 
 const NOISE_KEY = "call_noise_suppression";
 const RECORDING_KEY = "call_recording";
+const PRIVACY_KEY = "call_privacy";
 const SECTION = "comms";
 
 function readBool(v: unknown, fallback: boolean): boolean {
   const raw = (v as { enabled?: unknown } | null)?.enabled;
   if (raw === undefined) return fallback;
+  return raw === true || raw === "true";
+}
+
+function readRelayOnly(v: unknown): boolean {
+  const raw = (v as { relay_only?: unknown } | null)?.relay_only;
   return raw === true || raw === "true";
 }
 
@@ -100,6 +108,10 @@ export function CallsPage() {
         setTenantError(errMsg(e));
         return null;
       }),
+      tenant<{ value?: unknown }>(`/settings/${SECTION}/${PRIVACY_KEY}`).catch((e) => {
+        setTenantError(errMsg(e));
+        return null;
+      }),
       // The user half is a preference, not a setting: it belongs to the person
       // and follows them across environments.
       fetchCallPrefs().catch((e) => {
@@ -107,11 +119,12 @@ export function CallsPage() {
         return null;
       }),
     ])
-      .then(([noise, recording, mine]) => {
+      .then(([noise, recording, privacy, mine]) => {
         if (!live) return;
         setTenantSettings({
           noiseSuppression: readBool(noise?.value, true),
           retentionDays: readDays(recording?.value, 30),
+          relayOnly: readRelayOnly(privacy?.value),
         });
         // A preference read that failed leaves this null AND raises the note
         // below, so the screen says which of the two happened rather than
@@ -136,6 +149,9 @@ export function CallsPage() {
       }
       if (patch.retentionDays !== undefined) {
         await putSetting(SECTION, RECORDING_KEY, { retention_days: next.retentionDays });
+      }
+      if (patch.relayOnly !== undefined) {
+        await putSetting(SECTION, PRIVACY_KEY, { relay_only: next.relayOnly });
       }
       setTenantSettings(next);
       setSaved(tr("Saved"));
@@ -249,6 +265,31 @@ export function CallsPage() {
             <strong>{effective ? tr("filter on") : tr("filter off")}</strong>
           </p>
         )}
+      </Card>
+
+      <Card title={tr("Call privacy")} className="mb-4">
+        <p className="text-sm text-muted-foreground">
+          {tr(
+            "A direct call lets each person's device learn the other's network address. Relay-only calls send the audio through your company's relay server instead, so no address is shared.",
+          )}
+        </p>
+        <div className="mt-4">
+          <Field
+            label={tr("Relay-only calls")}
+            hint={tr("Needs the call relay (TURN) set up for your company; without it, calls will not connect.")}
+          >
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={tenantSettings?.relayOnly ?? false}
+                disabled={busy}
+                onChange={(e) => void saveTenant({ relayOnly: e.target.checked })}
+                className="h-4 w-4 accent-[rgb(var(--brand-blue))]"
+              />
+              {tr("Send every call through the relay")}
+            </label>
+          </Field>
+        </div>
       </Card>
 
       <Card title={tr("Call recordings")}>

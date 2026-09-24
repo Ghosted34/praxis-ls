@@ -583,7 +583,8 @@ describe("the page goes away mid-call (FN-1)", () => {
     // keepalive is the whole point: it is the only network call a dying page
     // is owed, and without it the row is left to the 30-minute cap.
     expect(init.keepalive).toBe(true);
-    expect(init.body).toBe(JSON.stringify({ reason: "hangup" }));
+    // B9: the server decides how a call ended; the client sends no reason.
+    expect(init.body).toBe("{}");
     const headers = new Headers(init.headers);
     expect(headers.get("Content-Type")).toBe("application/json");
     // The env header rides from the token store, whatever the session set it

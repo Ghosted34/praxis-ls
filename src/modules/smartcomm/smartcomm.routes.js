@@ -177,7 +177,28 @@ const callsOn = requireFeature("calls");
  * 403 FEATURE_DISABLED and the recorder never arms or uploads.
  */
 const recordOn = requireFeature("call_recording");
-router.post("/calls", create, callsOn, v.callCreate, c.createCall);
+/**
+ * Rate limits on the call routes that ring a person or spend money (audit
+ * C6, C2, C8). Per caller for dialing and TURN credentials, per call for the
+ * summary rewrite (each rewrite is an LLM call) and per admin for part
+ * re-runs (each is a transcription). The service adds a per-callee dial
+ * limit, since only it knows who is being rung.
+ */
+const { makeLimiter } = require("../../shared/http/rate-limit");
+const byUser = (name) => (req) => `${name}:${(req.tenant && req.tenant.slug) || "-"}:${(req.user && req.user.user_id) || req.ip}`;
+const MINUTE = 60 * 1000;
+const dialLimiter = makeLimiter({ name: "call-dial", max: 8, windowMs: MINUTE, keyGenerator: byUser("dial") });
+const turnLimiter = makeLimiter({ name: "call-turn", max: 30, windowMs: 10 * MINUTE, keyGenerator: byUser("turn") });
+const rerunLimiter = makeLimiter({ name: "call-part-rerun", max: 10, windowMs: 10 * MINUTE, keyGenerator: byUser("rerun") });
+const regenerateLimiter = makeLimiter({
+  name: "call-regenerate",
+  max: 3,
+  windowMs: 10 * MINUTE,
+  // Postgres reads a uuid written upper-case, without hyphens or in braces
+  // as the same id; the key must too, or each spelling gets its own budget.
+  keyGenerator: (req) => `regen:${(req.tenant && req.tenant.slug) || "-"}:${String(req.params.id).toLowerCase().replace(/[^0-9a-f]/g, "")}`,
+});
+router.post("/calls", create, callsOn, dialLimiter, v.callCreate, c.createCall);
 router.post("/calls/:id/accept", view, callsOn, c.acceptCall);
 router.post("/calls/:id/decline", view, callsOn, c.declineCall);
 router.post("/calls/:id/hangup", view, callsOn, v.callHangup, c.hangupCall);
@@ -187,7 +208,7 @@ router.get("/calls", view, callsOn, c.listCalls);
 router.get("/calls/:id", view, callsOn, c.getCall);
 // A refreshed TURN credential mid-call (the one minted at dial expires with
 // the call, plus margin).
-router.get("/calls/:id/turn", view, callsOn, c.callTurn);
+router.get("/calls/:id/turn", view, callsOn, turnLimiter, c.callTurn);
 
 // ── The call record half (PR-2) ────────────────────────────────────────────
 //
@@ -208,12 +229,13 @@ router.post("/calls/:id/recording/complete", view, recordOn, v.callRecordingComp
 // Re-running a failed part spends provider credit, so it is a settings
 // admin's action (MOD-70 edit), still only on a call the admin took part in.
 router.post("/calls/:id/recording/:side/:part/rerun",
-  requirePermission("MOD-70", "edit"), recordOn, c.rerunCallRecordingPart);
-router.post("/calls/:id/live-log", view, recordOn, v.callLiveLog, c.uploadCallLiveLog);
+  requirePermission("MOD-70", "edit"), recordOn, rerunLimiter, c.rerunCallRecordingPart);
+// The browser live capture was retired in PR-1: 410 for any old client.
+router.post("/calls/:id/live-log", view, c.callLiveLogGone);
 router.get("/calls/:id/transcript", view, recordOn, c.getCallTranscript);
 router.get("/calls/:id/summary", view, recordOn, c.getCallSummary);
 router.post("/calls/:id/summary/send", view, recordOn, v.callSummarySend, c.sendCallSummary);
 router.post("/calls/:id/summary/discard", view, recordOn, c.discardCallSummary);
-router.post("/calls/:id/summary/regenerate", view, recordOn, v.callSummaryRegenerate, c.regenerateCallSummary);
+router.post("/calls/:id/summary/regenerate", view, recordOn, regenerateLimiter, v.callSummaryRegenerate, c.regenerateCallSummary);
 
 module.exports = { basePath: "/smartcomm", feature: "comms", router };

@@ -141,7 +141,13 @@ function initSocket(httpServer) {
     logger.warn("socket.io not installed — real-time disabled");
     return null;
   }
-  io = new Server(httpServer, { cors: { origin: corsOrigin, credentials: true } });
+  // Every client event is small: chat goes over HTTP, and the largest socket
+  // payload is a call's SDP (≤ 64 KB). socket.io's 1 MB default let one
+  // socket push megabytes per event (calls audit C5).
+  io = new Server(httpServer, {
+    cors: { origin: corsOrigin, credentials: true },
+    maxHttpBufferSize: SIGNAL_LIMITS.bufferBytes,
+  });
 
   /**
    * PERF S12. Attach the Redis adapter so `publish()` reaches every replica.
@@ -239,55 +245,121 @@ function initSocket(httpServer) {
 }
 
 /**
- * 1:1 call signaling (PR-1) — RELAY ONLY.
+ * 1:1 call signalling — relay only: SDP and ICE candidates between the two
+ * participants, never stored or interpreted. The state machine is on the REST
+ * paths.
  *
- * The server carries the SDP offer/answer and ICE candidates between the two
- * participants and nothing else: it never stores them, never parses them, and
- * the media itself is P2P (guide D4 — our servers relay signaling only). The
- * state machine (RINGING → IN_CALL → terminal) is not driven from here; it
- * lives on the REST paths, because a state change writes a row and this file
- * must not own two sources of truth for one call.
- *
- * Participant check per event, exactly like `channel:join`: the row is the
- * authorisation and it is re-read every time, so a socket that is no longer a
- * participant (removed from the channel mid-call, call already closed) stops
- * being relayed to with no bookkeeping to get wrong. A non-participant's
- * signal is answered with silence, not an error — an error here would be a
- * probe for "is there a call I am not in".
+ * Bounded (calls audit C5, D7):
+ *   - relayed only while the call is RINGING or IN_CALL;
+ *   - the counterpart is looked up once per call per socket and cached, not
+ *     once per candidate; the cache entry goes when a terminal call event
+ *     reaches this socket (on whichever replica holds it) or after
+ *     `cacheMs`, whichever is first;
+ *   - an SDP is a string of at most 64 KB; a candidate is its four known
+ *     fields, at most 2 KB, or null;
+ *   - a token bucket per socket, shared by every call event.
+ * A dropped signal gets no reply: an error would tell a prober there is a
+ * call it is not in.
  */
+const SIGNAL_LIMITS = Object.freeze({
+  sdpBytes: 64 * 1024,
+  candidateBytes: 2048,
+  bufferBytes: 128 * 1024,
+  burst: 120,
+  refillPerSecond: 20,
+  cacheMs: 30_000,
+  cacheEntries: 8,
+});
+const TERMINAL_CALL_EVENTS = new Set(["call:ended", "call:declined", "call:cancelled", "call:no_answer"]);
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function cleanSdp(sdp) {
+  if (typeof sdp !== "string" || !sdp || Buffer.byteLength(sdp) > SIGNAL_LIMITS.sdpBytes) return undefined;
+  return sdp;
+}
+
+/** null (end of candidates), the candidate's known fields, or undefined (drop). */
+function cleanCandidate(c) {
+  if (c === null || c === undefined) return null;
+  if (typeof c !== "object" || Array.isArray(c)) return undefined;
+  const out = {};
+  if (typeof c.candidate === "string") out.candidate = c.candidate;
+  if (typeof c.sdpMid === "string" || c.sdpMid === null) out.sdpMid = c.sdpMid;
+  if (Number.isInteger(c.sdpMLineIndex) || c.sdpMLineIndex === null) out.sdpMLineIndex = c.sdpMLineIndex;
+  if (typeof c.usernameFragment === "string" || c.usernameFragment === null) out.usernameFragment = c.usernameFragment;
+  if (Buffer.byteLength(JSON.stringify(out)) > SIGNAL_LIMITS.candidateBytes) return undefined;
+  return out;
+}
+
+function tokenBucket({ burst, refillPerSecond }, now = () => Date.now()) {
+  let tokens = burst;
+  let last = now();
+  return () => {
+    const t = now();
+    tokens = Math.min(burst, tokens + ((t - last) / 1000) * refillPerSecond);
+    last = t;
+    if (tokens < 1) return false;
+    tokens -= 1;
+    return true;
+  };
+}
+
+/** A client event's payload as an object. `null`, an array or a primitive
+ *  becomes `{}`: destructuring `null` throws inside socket.io's listener, and
+ *  an uncaught exception there exits the API process (server.js). */
+const asObject = (p) => (p && typeof p === "object" && !Array.isArray(p) ? p : {});
+
 function attachCallSignals(socket) {
   const { tenant, env, tenantSlug, userId } = socket.data;
+  const allow = tokenBucket(SIGNAL_LIMITS);
+  const counterparts = new Map(); // callId → { userId, at }
 
-  async function relay(callId, event, extra) {
-    if (typeof callId !== "string") return;
-    const callRepo = require("../modules/smartcomm/smartcomm.call.repo");
-    const other = await registry.withTenantConnection(tenant, env, (c) =>
-      callRepo.otherParticipant(c, { callId, userId }),
-    );
-    if (!other) return;
-    publishToUser(tenantSlug, env, other.user_id, event, { call_id: callId, ...(extra || {}) });
+  if (typeof socket.onAnyOutgoing === "function") {
+    socket.onAnyOutgoing((event, payload) => {
+      if (TERMINAL_CALL_EVENTS.has(event) && payload && payload.call_id) counterparts.delete(payload.call_id);
+    });
   }
 
-  socket.on("call:offer", ({ callId, sdp } = {}) => {
-    if (sdp) {
-      relay(callId, "call:offer", { sdp }).catch((err) =>
-        logger.warn({ err, callId }, "call:offer relay failed"),
-      );
-    }
-  });
-  socket.on("call:answer", ({ callId, sdp } = {}) => {
-    if (sdp) {
-      relay(callId, "call:answer", { sdp }).catch((err) =>
-        logger.warn({ err, callId }, "call:answer relay failed"),
-      );
-    }
-  });
-  socket.on("call:ice", ({ callId, candidate } = {}) => {
-    relay(callId, "call:ice", { candidate: candidate || null }).catch((err) =>
-      logger.warn({ err, callId }, "call:ice relay failed"),
+  async function counterpartFor(callId) {
+    const hit = counterparts.get(callId);
+    if (hit && Date.now() - hit.at < SIGNAL_LIMITS.cacheMs) return hit.userId;
+    counterparts.delete(callId);
+    const callRepo = require("../modules/smartcomm/smartcomm.call.repo");
+    const other = await registry.withTenantConnection(tenant, env, (c) =>
+      callRepo.liveCounterpart(c, { callId, userId }),
     );
+    if (!other) return null;
+    if (counterparts.size >= SIGNAL_LIMITS.cacheEntries) counterparts.delete(counterparts.keys().next().value);
+    counterparts.set(callId, { userId: other.user_id, at: Date.now() });
+    return other.user_id;
+  }
+
+  function relay(event, callId, extra) {
+    if (typeof callId !== "string" || !UUID.test(callId) || !allow()) return;
+    counterpartFor(callId)
+      .then((other) => {
+        if (other) publishToUser(tenantSlug, env, other, event, { call_id: callId, ...extra });
+      })
+      .catch((err) => logger.warn({ err, callId }, `${event} relay failed`));
+  }
+
+  socket.on("call:offer", (p) => {
+    const { callId, sdp } = asObject(p);
+    const clean = cleanSdp(sdp);
+    if (clean !== undefined) relay("call:offer", callId, { sdp: clean });
   });
-  socket.on("call:ring_ack", ({ callId, channel } = {}) => {
+  socket.on("call:answer", (p) => {
+    const { callId, sdp } = asObject(p);
+    const clean = cleanSdp(sdp);
+    if (clean !== undefined) relay("call:answer", callId, { sdp: clean });
+  });
+  socket.on("call:ice", (p) => {
+    const { callId, candidate } = asObject(p);
+    const clean = cleanCandidate(candidate);
+    if (clean !== undefined) relay("call:ice", callId, { candidate: clean });
+  });
+  socket.on("call:ring_ack", (p) => {
+    const { callId, channel } = asObject(p);
     // PR-3 (§4.6). The ack is what stops the other channels: it is written to
     // the row (which the delayed push escalation re-reads before it sends) and
     // broadcast to this user's other devices so the desk tab and the phone stop
@@ -301,7 +373,7 @@ function attachCallSignals(socket) {
     // A failure here is swallowed on purpose: the ring times out on its own 60
     // seconds later, so an unvalidated ack costs at most one push and never the
     // call — and a warning per ack on a flaky network is a log nobody can read.
-    if (typeof callId !== "string") return;
+    if (typeof callId !== "string" || !UUID.test(callId) || !allow()) return;
     const callService = require("../modules/smartcomm/smartcomm.call.service");
     registry
       .withTenantConnection(tenant, env, (c) =>
@@ -460,6 +532,8 @@ module.exports = {
   publish,
   publishToUser,
   joinPersonalRooms,
+  attachCallSignals,
+  SIGNAL_LIMITS,
   isReady: () => io !== null,
   resetEmitterForTests: () => { emitter = null; },
 };

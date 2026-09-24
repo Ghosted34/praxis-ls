@@ -47,6 +47,8 @@ const PROCESSORS = [
    */
   { name: "call-transcribe-part", concurrency: 4, handler: require("./handlers/call-transcribe-part") },
   { name: "call-finalise", concurrency: 2, handler: require("./handlers/call-finalise") },
+  // The EN/FR rewrite of a summary draft (audit C8), off the request path.
+  { name: "call-summary-regenerate", concurrency: 2, handler: require("./handlers/call-summary-regenerate") },
   { name: "comms-call-record-sweep", concurrency: 1, handler: require("./handlers/comms-call-record-sweep") },
   { name: "comms-call-record-sweep-scheduler", concurrency: 1, handler: require("./handlers/comms-call-record-sweep-scheduler") },
   /**

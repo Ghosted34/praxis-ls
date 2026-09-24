@@ -65,9 +65,43 @@ export function CallSummaryEditor({
 
   const dirty = React.useRef(false);
   dirty.current = state.dirty;
+
+  // The rewrite is a job (audit C8): after the request, the draft is re-read
+  // until it is in the language asked for, or has stopped being a draft.
+  const rewriteTo = React.useRef<"en" | "fr" | null>(null);
+  const checkRewrite = React.useCallback(async () => {
+    const target = rewriteTo.current;
+    if (!target) return;
+    try {
+      const view = await api.getCallSummary(callId);
+      const s = view.summary;
+      if (!s || s.language === target || s.draft_status !== "PENDING_REVIEW") {
+        rewriteTo.current = null;
+        dispatch({ type: "loaded", view });
+      }
+    } catch {
+      /* @silent:parse — the next poll asks again; the timeout below says so. */
+    }
+  }, [callId]);
+
   React.useEffect(() => {
-    if (refreshKey && !dirty.current) void load();
-  }, [refreshKey, load]);
+    if (!refreshKey) return;
+    if (rewriteTo.current) void checkRewrite();
+    else if (!dirty.current) void load();
+  }, [refreshKey, load, checkRewrite]);
+
+  React.useEffect(() => {
+    if (!state.regenerating) return;
+    const poll = setInterval(() => void checkRewrite(), 2000);
+    const giveUp = setTimeout(() => {
+      rewriteTo.current = null;
+      dispatch({ type: "error", message: tr("Could not rewrite the summary. Try again.") });
+    }, 90_000);
+    return () => {
+      clearInterval(poll);
+      clearTimeout(giveUp);
+    };
+  }, [state.regenerating, checkRewrite]);
 
   // A draft that is still being written is worth waiting for.
   React.useEffect(() => {
@@ -79,8 +113,8 @@ export function CallSummaryEditor({
   const regenerate = async (language: "en" | "fr") => {
     dispatch({ type: "regenerate", language });
     try {
-      const out = await api.regenerateCallSummary(callId, language);
-      dispatch({ type: "regenerated", payload: out });
+      await api.regenerateCallSummary(callId, language);
+      rewriteTo.current = language;
     } catch {
       dispatch({ type: "error", message: tr("Could not rewrite the summary. Try again.") });
     }

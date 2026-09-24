@@ -6,9 +6,9 @@
  * expanded. Nothing is pinned when nothing is waiting.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { screen, fireEvent } from "@testing-library/react";
+import { screen, fireEvent, waitFor } from "@testing-library/react";
 import { axe } from "jest-axe";
-import { renderScreen, apiClientMock, authContextMock } from "@/test/screen-harness";
+import { renderScreen, apiClientMock, authContextMock, fixtures } from "@/test/screen-harness";
 import type { PendingCallSummary } from "@/lib/smartcomm-api";
 
 vi.mock("@/lib/api-client", async () => apiClientMock());
@@ -32,7 +32,7 @@ const summaryView = {
   group_id: "g1",
   gaps: [{ side: "callee", from_s: 240, to_s: 360, parts: [3] }],
   transcription_state: "TRANSCRIPTION_FAILED",
-  transcription_error: null,
+  transcription_reason: null,
   recording_enabled: true,
   is_caller: true,
   summary: {
@@ -101,4 +101,28 @@ describe("the draft pinned above the composer (O3)", () => {
     );
     expect(container.querySelector("section")).toBeNull();
   });
+
+  it("C8: switching to French queues the rewrite and shows it when the job has written it", async () => {
+    const routes: Record<string, unknown> = {
+      "/smartcomm/calls/c1/summary/regenerate": { call_id: "c1", language: "fr", queued: true },
+      "/smartcomm/calls/c1/summary": summaryView,
+    };
+    renderScreen(
+      <PinnedCallSummary drafts={[draft()]} openCallId="c1" onOpenChange={() => {}} onChanged={() => {}} />,
+      { routes: routes as never },
+    );
+    expect(await screen.findByDisplayValue("You agreed the Friday delivery.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("radio", { name: "French" }));
+    expect(await screen.findByText("Rewriting…")).toBeTruthy();
+    // The job has not run yet: the English draft stays, still rewriting.
+    await new Promise((r) => setTimeout(r, 2300));
+    expect(screen.getByText("Rewriting…")).toBeTruthy();
+    // The job writes the French draft; the next poll shows it.
+    fixtures.current.routes!["/smartcomm/calls/c1/summary"] = {
+      ...summaryView,
+      summary: { ...summaryView.summary, language: "fr", summary_text: "Vous avez convenu de la livraison." },
+    } as never;
+    expect(await screen.findByDisplayValue("Vous avez convenu de la livraison.", {}, { timeout: 4000 })).toBeTruthy();
+    await waitFor(() => expect(screen.queryByText("Rewriting…")).toBeNull());
+  }, 10_000);
 });

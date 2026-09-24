@@ -62,6 +62,9 @@ register({
 // every shared-mailbox grant they hold. `offboardUser` existed and had no
 // caller, so those grants outlived the account.
 register(require("./user-deactivated-offboard-mail"));
+// …and their devices stop receiving pushes (calls audit C6): a suspended
+// employee's phone no longer rings for calls or shows chat notifications.
+register(require("./user-deactivated-drop-push"));
 
 // ── Mail dossier drawer (PR-3 §7.5) ──
 // The four events the guide names as making a cached drawer wrong. Registered

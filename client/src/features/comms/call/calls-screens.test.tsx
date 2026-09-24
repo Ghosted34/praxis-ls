@@ -31,7 +31,7 @@ const row = (over: Record<string, unknown>) => ({
 const summaryView = (over: Record<string, unknown> = {}) => ({
   call_id: "c1",
   transcription_state: "CERTIFIED",
-  transcription_error: null,
+  transcription_reason: null,
   recording_enabled: true,
   is_caller: true,
   summary: {
@@ -178,7 +178,7 @@ describe("a call's page", () => {
       ...at,
       routes: {
         "/smartcomm/calls/c1/transcript": {
-          call_id: "c1", state: "TRANSCRIPTION_FAILED", error: null, certified: true, provenance: "groq",
+          call_id: "c1", state: "TRANSCRIPTION_FAILED", reason: null, certified: true, provenance: "groq",
           text: "Caller:\n[en] hello", parts: [],
           sides: [
             { side: "caller", label: "Caller", name: "Awa Diallo", provider: "groq", certified: true, text: "[en] hello",

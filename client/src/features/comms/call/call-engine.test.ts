@@ -9,7 +9,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import {
   CallEngine, openMic, MAX_CALL_S, MAX_CALL_WARN_S,
-  qualityFor, playoutDelayForSample, readStats,
+  qualityFor, playoutDelayForSample, readStats, rtcConfiguration,
 } from "./call-engine";
 
 /**
@@ -383,5 +383,14 @@ describe("the noise filter (PR-3)", () => {
     // The mic indicator on a phone follows the AudioContext: leaving one open
     // after the call is a battery and privacy cost (§4.8).
     expect(stopFilter).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("rtcConfiguration (audit C13)", () => {
+  it("passes the tenant's relay-only policy to the peer connection", () => {
+    expect(rtcConfiguration({ ...ICE, iceTransportPolicy: "relay" }).iceTransportPolicy).toBe("relay");
+  });
+  it("defaults to every candidate when the server says nothing", () => {
+    expect(rtcConfiguration(ICE)).toEqual({ iceServers: ICE.iceServers, iceTransportPolicy: "all" });
   });
 });

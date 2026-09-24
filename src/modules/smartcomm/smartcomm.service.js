@@ -392,8 +392,10 @@ async function thread(client, { groupId, actor, limit, before, erpAllow = new Se
   // the CURRENT draft/record rather than what was frozen into the message —
   // a summary can be regenerated in the other language after it was posted, and
   // a reader must see the same thing the transcript link will show them.
-  const callIds = attachments.filter((a) => a.attachment_kind === "CALL" && a.call_id).map((a) => a.call_id);
-  const callCards = await pipeline.cardsForCallIds(client, callIds);
+  const callRefs = attachments
+    .filter((a) => a.attachment_kind === "CALL" && a.call_id)
+    .map((a) => ({ call_id: a.call_id, message_id: a.message_id }));
+  const callCards = await pipeline.cardsForCallIds(client, callRefs);
 
   const starSet = new Set(starred);
   const byMessage = new Map(ids.map((id) => [id, { attachments: [], reactions: [] }]));
@@ -404,7 +406,7 @@ async function thread(client, { groupId, actor, limit, before, erpAllow = new Se
       a.attachment_kind === "ERP"
         ? { ...a, erp_card: cardByKey.get(`${a.erp_kind}:${a.erp_id}`) || null }
         : a.attachment_kind === "CALL"
-          ? { ...a, call_card: callCards.get(a.call_id) || null }
+          ? { ...a, call_card: callCards.get(`${a.message_id}:${a.call_id}`) || null }
           : a,
     );
   }

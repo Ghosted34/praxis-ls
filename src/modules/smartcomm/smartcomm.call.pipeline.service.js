@@ -66,7 +66,6 @@ const PART_NOMINAL_SECONDS = 120;
 /** A 30-minute call of two people talking non-stop is ~55k characters. */
 const MAX_PROMPT_TRANSCRIPT_CHARS = 60_000;
 const SUMMARY_MAX_TOKENS = 2048;
-const MAX_LIVE_SEGMENTS = 2000;
 /** D7: audio is kept 30 days (tenant-overridable). */
 const RETENTION_DAYS = 30;
 
@@ -521,58 +520,6 @@ async function completeSide(client, { callId, actor, side, parts, tenantMeta = n
   return { call_id: callId, side, parts, received };
 }
 
-/** Normalise a live-capture body from an old cached client. Stored for the
- *  record only, never used to build a transcript (owner decision O1).
- *  Anything malformed is dropped rather than failing the request. */
-function normaliseSegments(raw, fallbackLanguage) {
-  let list = raw;
-  if (typeof raw === "string") {
-    try {
-      list = JSON.parse(raw);
-    } catch {
-      /* @silent:parse — a live-log body that is not JSON is dropped; the audio
-         upload in the same request is the part that matters, and failing the
-         whole request over the fallback's bookkeeping would lose the audio. */
-      return [];
-    }
-  }
-  if (!Array.isArray(list)) return [];
-  const seen = new Set();
-  const out = [];
-  for (const s of list.slice(0, MAX_LIVE_SEGMENTS)) {
-    if (!s || typeof s !== "object") continue;
-    const text = String(s.text ?? "").trim();
-    if (!text) continue;
-    const seq = Number.isInteger(Number(s.seq)) && Number(s.seq) >= 0 ? Number(s.seq) : out.length;
-    if (seen.has(seq)) continue;
-    seen.add(seq);
-    const language = DRAFT_LANGUAGES.includes(s.language) ? s.language : fallbackLanguage;
-    const started = Number(s.started_ms);
-    const ended = Number(s.ended_ms);
-    out.push({
-      seq,
-      text: text.slice(0, 2000),
-      language,
-      startedMs: Number.isFinite(started) && started >= 0 ? Math.round(started) : null,
-      endedMs: Number.isFinite(ended) && ended >= 0 ? Math.round(ended) : null,
-    });
-  }
-  return out;
-}
-
-/** The retired browser live capture, still accepted from old cached clients
- *  so their uploads do not fail. Nothing reads it to build a transcript. */
-async function registerLiveLog(client, { callId, actor, side, segments, language = null }) {
-  const { side: mine } = await participantCall(client, callId, actor.user_id);
-  if (side !== mine) {
-    throw new AppError("NOT_YOUR_SIDE", "You can only upload your own side of a call", 403);
-  }
-  const fallback = DRAFT_LANGUAGES.includes(language) ? language : "en";
-  const normalised = normaliseSegments(segments, fallback);
-  const written = await repo.upsertLiveLog(client, { callId, side, segments: normalised });
-  return { side, written };
-}
-
 /* ── The part job ───────────────────────────────────────────────────────── */
 
 const errText = (err) => String((err && err.message) || err || "failed").slice(0, 200);
@@ -876,7 +823,7 @@ async function finaliseCall({
     });
     if (!verdict.certified) {
       if (announce) {
-        const payload = { call_id: callId, reason: verdict.failures.join(" · ").slice(0, 200) };
+        const payload = { call_id: callId, reason: transcriptionReason({ ...call, transcription_state: verdict.state }, parts) };
         rtToUser(call.caller_id, "call:transcription_failed", payload, rt);
         rtToUser(call.callee_id, "call:transcription_failed", payload, rt);
       }
@@ -1137,6 +1084,18 @@ async function sweepStalled(client, { tenantMeta = null, env = "live" } = {}) {
   return { parts: stalled.length, closed: closed.length, calls: calls.size };
 }
 
+/**
+ * Why a transcript is incomplete, as a code a client can translate (audit
+ * C11). The stored `transcription_error` and each part's `error` can hold a
+ * provider's own message; they stay in the database and the server logs.
+ */
+function transcriptionReason(call, parts) {
+  if (!call || call.transcription_state !== "TRANSCRIPTION_FAILED") return null;
+  if (SIDES.some((side) => !parts.some((p) => p.side === side))) return "SIDE_NOT_RECORDED";
+  if (parts.some((p) => p.transcript_status === "FAILED")) return "PARTS_NOT_TRANSCRIBED";
+  return "TRANSCRIPTION_FAILED";
+}
+
 /* ── Reads ──────────────────────────────────────────────────────────────── */
 
 /** Per-part status for the call page: what was recorded, and what is missing. */
@@ -1170,7 +1129,7 @@ async function getTranscript(client, { callId, actor }) {
   return {
     call_id: callId,
     state: call.transcription_state || "PENDING",
-    error: call.transcription_error || null,
+    reason: transcriptionReason(call, parts),
     certified: rows.length > 0 && !anyFlagged,
     provenance: transcriptProvenance(rows),
     text: built.text,
@@ -1198,7 +1157,7 @@ async function getSummary(client, { callId, actor }) {
     call_id: callId,
     group_id: call.group_id,
     transcription_state: call.transcription_state || "PENDING",
-    transcription_error: call.transcription_error || null,
+    transcription_reason: transcriptionReason(call, parts),
     recording_enabled: recording,
     is_caller: call.caller_id === actor.user_id,
     gaps: transcriptGaps({ call, parts }),
@@ -1220,25 +1179,46 @@ async function getSummary(client, { callId, actor }) {
   };
 }
 
-/** The card a chat reader sees, resolved live for a page of attachments (the
- *  erp-card pattern). One map keyed by call_id, built from one query. */
-async function cardsForCallIds(client, callIds) {
-  const ids = [...new Set((callIds || []).filter(Boolean))];
-  if (!ids.length) return new Map();
+/**
+ * The card a chat reader sees, resolved live for a page of CALL attachments.
+ * A card resolves only for the message that posted it: the summary must be
+ * SENT and the attachment's message must be its `sent_message_id` or
+ * `update_message_id` (audit C4). Any other message naming the call id gets
+ * nothing. Keyed `<message_id>:<call_id>`.
+ */
+const cardKey = (messageId, callId) => `${messageId}:${callId}`;
+async function cardsForCallIds(client, refs) {
+  const wanted = (refs || []).filter((r) => r && r.call_id && r.message_id);
+  if (!wanted.length) return new Map();
   const { rows } = await client.query(
     `SELECT s.call_id, s.summary_text, s.key_points, s.follow_ups, s.language,
             s.provenance, s.draft_status, s.update_available,
+            s.sent_message_id, s.update_message_id,
             c.duration_seconds, c.ended_at, c.status AS call_status,
-            c.transcription_state, c.transcription_error,
+            c.transcription_state,
             cu.full_name AS caller_name, bu.full_name AS callee_name
        FROM comms_call_summary s
        JOIN comms_call c ON c.call_id = s.call_id
        LEFT JOIN app_user cu ON cu.user_id = c.caller_id
        LEFT JOIN app_user bu ON bu.user_id = c.callee_id
-      WHERE s.call_id = ANY($1::uuid[])`,
-    [ids],
+      WHERE s.call_id = ANY($1::uuid[])
+        AND s.draft_status = 'SENT'
+        AND (s.sent_message_id = ANY($2::uuid[]) OR s.update_message_id = ANY($2::uuid[]))`,
+    [[...new Set(wanted.map((r) => r.call_id))], [...new Set(wanted.map((r) => r.message_id))]],
   );
-  return new Map(rows.map((r) => [r.call_id, r]));
+  const byCall = new Map(rows.map((r) => [r.call_id, r]));
+  const cards = new Map();
+  for (const { call_id: callId, message_id: messageId } of wanted) {
+    const row = byCall.get(callId);
+    if (!row || row.draft_status !== "SENT") continue;
+    if (row.sent_message_id !== messageId && row.update_message_id !== messageId) continue;
+    const card = { ...row };
+    delete card.sent_message_id;
+    delete card.update_message_id;
+    delete card.transcription_error;
+    cards.set(cardKey(messageId, callId), card);
+  }
+  return cards;
 }
 
 /** The caller's drafts waiting in a conversation, for the pinned card (O3). */
@@ -1360,12 +1340,22 @@ async function discardSummary(client, { callId, actor }) {
   return { call_id: callId, draft_status: row.draft_status };
 }
 
+/** Rewrites a draft may have in its life (audit C8). */
+const REGENERATE_MAX = 6;
+
 /**
  * POST /calls/:id/summary/regenerate { language } — the EN/FR toggle (§4.10).
- * PENDING_REVIEW only; a draft sent meanwhile is not overwritten (B6).
+ *
+ * Queues the rewrite and answers at once (audit C8): the model is called by
+ * the `call-summary-regenerate` job, never inside the request. Only the
+ * caller, only a PENDING_REVIEW draft, only a different language, and at
+ * most REGENERATE_MAX times; the route also rate-limits per call.
  */
-async function regenerateSummary(client, { callId, actor, language }) {
+async function requestRegenerate(client, { callId, actor, language, tenantMeta = null, env = "live" }) {
   await callerCall(client, callId, actor.user_id);
+  if (!DRAFT_LANGUAGES.includes(language)) {
+    throw new AppError("BAD_LANGUAGE", "That language is not supported", 422);
+  }
   const summary = await repo.getSummary(client, callId);
   if (!summary) throw new AppError("NO_SUMMARY", "There is no summary for this call yet", 404);
   if (summary.draft_status !== "PENDING_REVIEW") {
@@ -1375,50 +1365,80 @@ async function regenerateSummary(client, { callId, actor, language }) {
       409,
     );
   }
-  if (!DRAFT_LANGUAGES.includes(language)) {
-    throw new AppError("BAD_LANGUAGE", "That language is not supported", 422);
+  if (summary.language === language) {
+    throw new AppError("SAME_LANGUAGE", "The draft is already in that language", 422);
   }
+  if (Number(summary.regenerate_count) >= REGENERATE_MAX) {
+    throw new AppError("REGENERATE_LIMIT", `A draft can be rewritten ${REGENERATE_MAX} times`, 409);
+  }
+  // The row's id, not the URL's spelling of it, so one call has one job id.
+  const canonicalId = summary.call_id || callId;
+  const jobId = `callregen-${canonicalId}-${language}`;
+  const queued = await enqueueSafely(jobId, (enqueue) => enqueue("call-summary-regenerate", "regenerate", {
+    callId: canonicalId, language, userId: actor.user_id, tenantMeta, env,
+  }, {
+    jobId,
+    attempts: 1,
+    removeOnComplete: true,
+    // Not kept: BullMQ ignores an add whose jobId exists, failed jobs
+    // included, so a kept failure would swallow every later request.
+    removeOnFail: true,
+  }));
+  if (!queued) {
+    throw new AppError("QUEUE_UNAVAILABLE", "The summary could not be rewritten right now. Try again.", 503);
+  }
+  return { call_id: canonicalId, language, queued: true };
+}
 
-  const call = await repo.findCall(client, callId);
-  const names = await participantNames(client, call);
-  const rows = await repo.listCurrentTranscripts(client, callId);
-  const parts = await repo.listRecordingParts(client, callId);
+/**
+ * The `call-summary-regenerate` job body: read, call the model with no
+ * connection held (D3), then write through the guarded upsert (B6) and tell
+ * the caller's open screens.
+ */
+async function regenerateSummaryJob({ withDb, callId, language, userId, tenantMeta = null, env = "live" }) {
+  const read = await withDb(async (c) => {
+    const call = await repo.findCall(c, callId);
+    const summary = await repo.getSummary(c, callId);
+    if (!call || !summary || summary.draft_status !== "PENDING_REVIEW") return { skipped: "not_pending" };
+    if (summary.language === language) return { skipped: "same_language" };
+    return {
+      call,
+      names: await participantNames(c, call),
+      rows: await repo.listCurrentTranscripts(c, callId),
+      parts: await repo.listRecordingParts(c, callId),
+    };
+  });
+  if (!read.call) return read;
+  const { call, names, rows, parts } = read;
   const drafted = await draftSummary({ call, names, rows, parts, language });
-  const stored = await repo.upsertSummaryDraft(client, {
-    callId,
-    summaryText: drafted.summary_text,
-    keyPoints: drafted.key_points,
-    followUps: drafted.follow_ups,
-    language: drafted.language,
-    provenance: drafted.provenance,
+
+  const stored = await withDb(async (c) => {
+    const row = await repo.upsertSummaryDraft(c, {
+      callId,
+      summaryText: drafted.summary_text,
+      keyPoints: drafted.key_points,
+      followUps: drafted.follow_ups,
+      language: drafted.language,
+      provenance: drafted.provenance,
+    });
+    // Sent or discarded while the model worked (B6): left as it is.
+    if (!row) return null;
+    if (drafted.llm) await recordSummaryUsage(c, { call, out: drafted.llm });
+    await repo.bumpRegenerateCount(c, { callId, language: drafted.language });
+    await emitEvent(c, {
+      eventTypeKey: events.CALL_SUMMARY_DRAFTED,
+      moduleKey: events.MODULE,
+      entityRef: cref(callId),
+      actorUserId: await resolveActorId(c, userId),
+    });
+    return row;
   });
-  if (!stored) {
-    throw new AppError(
-      "SUMMARY_NOT_PENDING_REVIEW",
-      "Only a draft that has not been sent can be regenerated",
-      409,
-    );
-  }
-  if (drafted.llm) await recordSummaryUsage(client, { call, out: drafted.llm });
-  await repo.bumpRegenerateCount(client, { callId, language: drafted.language });
-  await emitEvent(client, {
-    eventTypeKey: events.CALL_SUMMARY_DRAFTED,
-    moduleKey: events.MODULE,
-    entityRef: cref(callId),
-    actorUserId: await resolveActorId(client, actor.user_id),
-  });
+  if (!stored) return { skipped: "not_pending" };
+  rtToUser(call.caller_id, "call:summary_ready", {
+    call_id: callId, status: stored.draft_status, provenance: drafted.provenance, language: drafted.language, redraft: true,
+  }, { slug: (tenantMeta && tenantMeta.slug) || null, env });
   logger.info({ callId, language: drafted.language }, "call: summary draft regenerated");
-  return {
-    call_id: callId,
-    language: drafted.language,
-    provenance: drafted.provenance,
-    summary: {
-      summary_text: drafted.summary_text,
-      key_points: drafted.key_points,
-      follow_ups: drafted.follow_ups,
-      draft_status: stored.draft_status,
-    },
-  };
+  return { call_id: callId, language: drafted.language, provenance: drafted.provenance, draft_status: stored.draft_status };
 }
 
 /**
@@ -1484,7 +1504,6 @@ module.exports = {
   recordingEnabled,
   registerPart,
   completeSide,
-  registerLiveLog,
   // jobs
   transcribePartJob,
   finaliseCall,
@@ -1501,7 +1520,10 @@ module.exports = {
   // the caller's actions
   sendSummary,
   discardSummary,
-  regenerateSummary,
+  requestRegenerate,
+  regenerateSummaryJob,
+  REGENERATE_MAX,
+  transcriptionReason,
   rerunPart,
   // pure helpers (the contract, tested directly)
   toEnFr,
@@ -1515,7 +1537,6 @@ module.exports = {
   transcriptProvenance,
   provenanceOf,
   summaryPrompt,
-  normaliseSegments,
   // constants
   SIDES,
   RETENTION_DAYS,

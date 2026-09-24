@@ -212,14 +212,26 @@ Numbering and reversibility gates apply (`npm run db:check:idempotency`, CI).
 already stores it, env for deployment facts)
 
 ```
-TURN_HOST=<turn host or internal service name>
+TURN_HOST=<public TURN hostname the clients reach>
 TURN_PORT_TCP=3478
 TURN_PORT_UDP=3478
 TURN_TRANSPORTS=udp,tcp
-TURN_CREDENTIAL_SECRET=__rotate_me__   # HMAC secret for time-limited TURN REST credentials
-TURN_CREDENTIAL_TTL=1860               # 31 min: 30 min call + margin
-STUN_URLS=stun:turn.<internal>:3478    # comma-sep; compose default uses the coturn service
+TURN_CREDENTIAL_SECRET=<openssl rand -hex 32>   # shared by the API and coturn
+TURN_REALM=<TURN_HOST>
+TURN_EXTERNAL_IP=<public IP, behind cloud NAT only>
+TURN_TLS_PORT=0                                  # 443 or 5349 with TURN_TLS_CERT / TURN_TLS_KEY
+TURN_MIN_PORT=49152
+TURN_MAX_PORT=65535
+TURN_USER_QUOTA=12
+TURN_TOTAL_QUOTA=400
+TURN_MAX_BPS=64000
+STUN_URLS=                                       # empty: TURN_HOST's STUN, else Google's (stopgap)
+TURN_TLS_DIR=                                    # host dir with a nobody-readable cert copy
 ```
+
+`.env.example` documents each one. The credential TTL is not configured: it
+is the call's remaining allowance plus 60 s (§5.5). Production setup: `doc/TURN_PRODUCTION_SETUP.md`
+and `scripts/turn-setup.sh`.
 
 No media secrets: media is P2P; the only credential that exists is the
 short-TTL TURN credential (§5.5).
@@ -463,8 +475,7 @@ already held; it did not until PR-2.)
 rows (the retired in-call capture). They are read and rendered as before,
 labelled "generated from the in-call browser capture (unverified)", and a
 later certified run retires them (kept for audit, no longer current). The
-`/live-log` upload route still accepts old cached clients; nothing reads it
-to build a transcript.
+`/live-log` upload route answers 410 Gone (calls audit PR-3).
 
 **Processors.** Call audio goes to Groq, and to Google (Gemini) when Groq
 fails. Transcripts go to Google (Gemini) for the summary, and to DeepSeek only
@@ -530,9 +541,9 @@ parallel, not sequence:
 
 The in-call browser recogniser was removed on 2026-09-24 (owner decision A-1):
 it sent live microphone audio to Google through the Web Speech API, chimed on
-Android, and its text was never certifiable. `comms_call_live_log` and the
-`/live-log` route remain so old calls and old cached clients keep working;
-nothing builds a transcript from it.
+Android, and its text was never certifiable. `comms_call_live_log` keeps the
+rows old calls already have; the `/live-log` route answers 410 Gone since
+calls audit PR-3, and nothing builds a transcript from it.
 
 ### 4.10 Summary contract (LLM)
 
@@ -624,15 +635,15 @@ PR-2; a PR-1 call is a normal call.)
 - `→ src/modules/smartcomm/smartcomm.call.repo.js`
 - `→ src/modules/smartcomm/smartcomm.call.events.js`
 - `→ src/modules/smartcomm/smartcomm.turn.service.js` — time-limited TURN REST
-  credentials (HMAC with `TURN_CREDENTIAL_SECRET`, TTL 1860 s). Static
-  public credentials are **MUST NOT**.
+  credentials (HMAC with `TURN_CREDENTIAL_SECRET`, per call, TTL = the call's
+  remaining time + 60 s; §5.5). Static public credentials are **MUST NOT**.
 - `→ src/realtime/index.js` — `call:*` events (§4.3) + `comms:presence`
   (tenant room; live state in Redis so multi-instance behaves).
 - `→ src/modules/smartcomm/smartcomm.routes.js` — endpoints below (or
   `smartcomm.call.routes.js` if the routes file exceeds its sensible size —
   reviewer's call, keep the existing prefix `/api/tenant/comms`).
 - `→ .env.example` — §3.6.
-- `→ docker-compose.yml` (+ `docker-compose.wal.yml` parity) — `coturn`
+- `→ docker-compose.yml` — `coturn`
   service (udp/tcp 3478, 5349 for TLS if the firewall demands it), internal by
   default.
 
@@ -681,9 +692,16 @@ PR-2; a PR-1 call is a normal call.)
 
 ### 5.5 TURN security
 
-Credentials are per-call, TTL 1860 s, scoped to the callee+caller transport
-session. `coturn` runs with `use-auth-secret` + `web-auth-secret` HMAC mode.
-**MUST NOT** ship a static `--user` in compose.
+(Rewritten by calls audit PR-3, C1–C3.) Credentials are minted only for a
+RINGING or IN_CALL call. The username is `<expiry>:<turn_token>`, a random
+token stored on the call row, so relay logs name the call and never a person;
+the TTL is the call's remaining allowance plus 60 s. `coturn` runs from
+`docker/coturn/docker-entrypoint.sh` with `use-auth-secret` and
+`static-auth-secret` (the API's `TURN_CREDENTIAL_SECRET`), denies private,
+loopback, link-local, CGNAT and ULA peers, has no TCP relay, and has
+per-credential and total quotas and a bandwidth cap. `scripts/turn-check.sh`
+proves allocation and the refusals on a deployed relay. **MUST NOT** ship a
+static `--user` in compose.
 
 ### 5.6 Tests
 
@@ -1057,7 +1075,10 @@ side, `ops.read`).
 ### 8.4 Env (new)
 
 `TURN_HOST` `TURN_PORT_TCP` `TURN_PORT_UDP` `TURN_TRANSPORTS`
-`TURN_CREDENTIAL_SECRET` `TURN_CREDENTIAL_TTL` `STUN_URLS`
+`TURN_CREDENTIAL_SECRET` `STUN_URLS`; since calls audit PR-3 also
+`TURN_REALM` `TURN_EXTERNAL_IP` `TURN_TLS_PORT` `TURN_TLS_CERT` `TURN_TLS_KEY`
+`TURN_MIN_PORT` `TURN_MAX_PORT` `TURN_USER_QUOTA` `TURN_TOTAL_QUOTA`
+`TURN_MAX_BPS` (and `TURN_CREDENTIAL_TTL` is gone).
 
 PR-3: `COMMS_TRANSCRIPTION_ALERT_THRESHOLD` ·
 `COMMS_TRANSCRIPTION_ALERT_WINDOW_HOURS` · `COMMS_METRICS_ALERT_INTERVAL_MS`

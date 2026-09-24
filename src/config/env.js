@@ -337,13 +337,19 @@ const Schema = z.object({
   REDIS_PASSWORD: z.string().default(""),
 
   /**
-   * Inhouse calls (Smart Comms PR-1): STUN/TURN for WebRTC media.
+   * Inhouse calls: STUN/TURN for WebRTC media (calls audit C1, C2, C3, C12).
    *
-   * `TURN_HOST` empty = STUN-only (local dev, easy NATs). When set, the
-   * compose `coturn` service sits behind it and every credential issued to a
-   * client is time-limited (TTL, HMAC with TURN_CREDENTIAL_SECRET) — a static
-   * public TURN user is a credential leak that outlives the call that needed
-   * it. See src/modules/smartcomm/smartcomm.turn.service.js and the guide §5.5.
+   * `TURN_HOST` empty = no relay; STUN then comes from `STUN_URLS` only, and
+   * with both empty the client gets no STUN server at all (never a public
+   * one by default). With `TURN_HOST` set, its port also serves STUN. Each
+   * credential is minted for one live call (`<expiry>:<call token>`, HMAC
+   * with TURN_CREDENTIAL_SECRET) and expires with the call's remaining time
+   * plus a minute. See smartcomm.turn.service.js.
+   *
+   * The rest configure the compose `turn` service
+   * (docker/coturn/docker-entrypoint.sh): the realm, the public address
+   * behind cloud NAT, the TLS listener (`turns:`, 0 = off), the relay port
+   * range and the quotas. They are read here too so one schema lists them.
    */
   STUN_URLS: z.string().default(""),
   TURN_HOST: z.string().default(""),
@@ -351,7 +357,17 @@ const Schema = z.object({
   TURN_PORT_UDP: int(3478),
   TURN_TRANSPORTS: z.string().default("udp,tcp"),
   TURN_CREDENTIAL_SECRET: z.string().default(""),
-  TURN_CREDENTIAL_TTL: int(1860),
+  TURN_REALM: z.string().default(""),
+  TURN_EXTERNAL_IP: z.string().default(""),
+  TURN_TLS_PORT: int(0),
+  TURN_TLS_CERT: z.string().default(""),
+  TURN_TLS_KEY: z.string().default(""),
+  TURN_TLS_DIR: z.string().default(""),
+  TURN_MIN_PORT: int(49152),
+  TURN_MAX_PORT: int(65535),
+  TURN_USER_QUOTA: int(12),
+  TURN_TOTAL_QUOTA: int(400),
+  TURN_MAX_BPS: int(64000),
 
   JWT_ACCESS_SECRET: z.string().default("__dev_access__"),
   JWT_REFRESH_SECRET: z.string().default("__dev_refresh__"),

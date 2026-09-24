@@ -32,13 +32,13 @@ async function findActiveCall(client, userId) {
  *  `{ call: null, busyWith }` when a partial unique index rejected the insert
  *  because one of the two users is already on a call (guide D8). The service
  *  decides which of the two users it was and says so in the error. */
-async function insertCall(client, { groupId, callerId, calleeId }) {
+async function insertCall(client, { groupId, callerId, calleeId, turnToken = null }) {
   try {
     const { rows } = await client.query(
-      `INSERT INTO comms_call (group_id, caller_id, callee_id, status)
-       VALUES ($1, $2, $3, 'RINGING')
+      `INSERT INTO comms_call (group_id, caller_id, callee_id, status, turn_token)
+       VALUES ($1, $2, $3, 'RINGING', $4)
        RETURNING *`,
-      [groupId, callerId, calleeId],
+      [groupId, callerId, calleeId, turnToken],
     );
     return { call: rows[0], busyWith: null };
   } catch (err) {
@@ -129,14 +129,30 @@ async function markRingPushSent(client, callId) {
   return rows[0] || null;
 }
 
-/** Who is the other participant of this call, relative to `userId`. */
-async function otherParticipant(client, { callId, userId }) {
+/** The other participant of a LIVE call (RINGING or IN_CALL), relative to
+ *  `userId`; null for a stranger or a call that has ended (audit C5). */
+async function liveCounterpart(client, { callId, userId }) {
   const { rows } = await client.query(
     `SELECT CASE WHEN caller_id = $2 THEN callee_id ELSE caller_id END AS user_id
-     FROM comms_call WHERE call_id = $1 AND (caller_id = $2 OR callee_id = $2)`,
+     FROM comms_call
+     WHERE call_id = $1 AND (caller_id = $2 OR callee_id = $2)
+       AND status IN ('RINGING','IN_CALL')`,
     [callId, userId],
   );
   return rows[0] || null;
+}
+
+/** The call's relay-credential token (audit C2). A call gets it at insert;
+ *  this backfills a call dialled before migration 14060, and only while it is
+ *  RINGING or IN_CALL. Null otherwise. */
+async function ensureTurnToken(client, { callId, token }) {
+  const { rows } = await client.query(
+    `UPDATE comms_call SET turn_token = COALESCE(turn_token, $2)
+     WHERE call_id = $1 AND status IN ('RINGING','IN_CALL')
+     RETURNING turn_token`,
+    [callId, token],
+  );
+  return rows[0] ? rows[0].turn_token : null;
 }
 
 /** Does `userId` participate in this call at all (any status)? */
@@ -149,19 +165,32 @@ async function isParticipant(client, { callId, userId }) {
   return rows.length > 0;
 }
 
-/** The other member of a DIRECT channel (the dial target when the icon is
- *  on the channel header). Null for non-DIRECT channels or channels with
- *  more than one other member — the header icon only renders on DIRECT. */
+/** The other member of a DIRECT channel, if their account is ACTIVE (audit
+ *  C6: a deactivated employee's phone is never rung). Null for a group
+ *  channel, and for a direct channel whose other member is not active.
+ *
+ *  The status is read from `live.app_user` in both environments: identity is
+ *  pinned to live, and `sandbox.app_user` is a mirror whose status is never
+ *  updated after the row is copied (shared/db/sandbox-user-mirror.js). */
 async function directPartner(client, { groupId, userId }) {
   const { rows } = await client.query(
     `SELECT m.user_id
      FROM comms_group g
      JOIN comms_member m ON m.group_id = g.group_id
+     JOIN live.app_user u ON u.user_id = m.user_id AND u.status = 'ACTIVE'
      WHERE g.group_id = $1 AND g.kind = 'DIRECT' AND m.user_id <> $2
      LIMIT 1`,
     [groupId, userId],
   );
   return rows[0] || null;
+}
+
+async function isDirectChannel(client, groupId) {
+  const { rows } = await client.query(
+    "SELECT 1 AS ok FROM comms_group WHERE group_id = $1 AND kind = 'DIRECT'",
+    [groupId],
+  );
+  return rows.length > 0;
 }
 
 /** The user's calls, newest first, with what the Calls list badges: the
@@ -488,46 +517,6 @@ async function listUnfinalisedCalls(client, { limit = 25, maxAttempts, afterMinu
   return rows;
 }
 
-/**
- * Write a side's live capture segments (idempotent by seq). Old cached
- * clients still send these; nothing builds a transcript from them.
- */
-async function upsertLiveLog(client, { callId, side, segments }) {
-  if (!segments.length) return 0;
-  let written = 0;
-  const CHUNK = 200;
-  for (let i = 0; i < segments.length; i += CHUNK) {
-    const slice = segments.slice(i, i + CHUNK);
-    const values = [];
-    const params = [callId, side];
-    for (const s of slice) {
-      const base = params.length;
-      params.push(s.seq, s.text, s.language, s.startedMs ?? null, s.endedMs ?? null);
-      values.push(`($1, $2, $${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5})`);
-    }
-    const { rowCount } = await client.query(
-      `INSERT INTO comms_call_live_log
-         (call_id, side, seq, text, language, started_ms, ended_ms)
-       VALUES ${values.join(", ")}
-       ON CONFLICT (call_id, side, seq) DO UPDATE SET
-         text = EXCLUDED.text, language = EXCLUDED.language,
-         started_ms = EXCLUDED.started_ms, ended_ms = EXCLUDED.ended_ms`,
-      params,
-    );
-    written += rowCount;
-  }
-  return written;
-}
-
-async function listLiveLog(client, { callId, side = null }) {
-  const { rows } = await client.query(
-    `SELECT * FROM comms_call_live_log
-     WHERE call_id = $1 AND ($2::text IS NULL OR side = $2)
-     ORDER BY side, seq`,
-    [callId, side],
-  );
-  return rows;
-}
 
 /** Transcript rows for a side, in order — the CURRENT set only. */
 async function listCurrentTranscripts(client, callId, side = null) {
@@ -749,14 +738,16 @@ async function pendingDraftsInChannel(client, { groupId, userId, limit = 5 }) {
 }
 
 module.exports = {
+  ensureTurnToken,
   ACTIVE_STATUSES,
   findActiveCall,
   insertCall,
   findCall,
   transition,
-  otherParticipant,
+  liveCounterpart,
   isParticipant,
   directPartner,
+  isDirectChannel,
   listCallsForUser,
   touchPresence,
   lastSeen,
@@ -780,8 +771,6 @@ module.exports = {
   bumpTranscriptionAttempts,
   markFinalised,
   listUnfinalisedCalls,
-  upsertLiveLog,
-  listLiveLog,
   listCurrentTranscripts,
   insertTranscriptRows,
   setSummaryLanguage,

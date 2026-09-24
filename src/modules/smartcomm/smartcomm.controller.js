@@ -237,20 +237,6 @@ module.exports = {
     env: req.env,
   })),
 
-  /**
-   * The browser live capture on its own, for the side whose audio could not be
-   * uploaded at all (§4.9). Separate from `uploadCallRecording` because it is
-   * the one upload that must still land when MediaRecorder never produced a
-   * part — the fallback cannot be a rider on the thing that failed.
-   */
-  uploadCallLiveLog: A((c, req) => callRecords.registerLiveLog(c, {
-    callId: req.params.id,
-    actor: actor(req),
-    side: req.body.side,
-    segments: req.body.live_segments,
-    language: req.body.language || null,
-  })),
-
   getCallTranscript: A((c, req) => callRecords.getTranscript(c, {
     callId: req.params.id, actor: actor(req),
   })),
@@ -269,11 +255,19 @@ module.exports = {
   discardCallSummary: A((c, req) => callRecords.discardSummary(c, {
     callId: req.params.id, actor: actor(req),
   })),
-  regenerateCallSummary: A((c, req) => callRecords.regenerateSummary(c, {
-    callId: req.params.id,
-    actor: actor(req),
-    language: req.body.language,
-  })),
+  // 202: the rewrite is a job; `call:summary_ready` (redraft) says it is done.
+  regenerateCallSummary: asyncHandler(async (req, res) => {
+    const data = await req.tenantDb((c) => callRecords.requestRegenerate(c, {
+      callId: req.params.id,
+      actor: actor(req),
+      language: req.body.language,
+      tenantMeta: req.tenant,
+      env: req.env,
+    }));
+    res.status(202).json({ data });
+  }),
+  /** The browser live capture was retired in PR-1 and nothing reads it. */
+  callLiveLogGone: (_req, _res, next) => next(new AppError("GONE", "The live transcript upload has been retired", 410)),
 
   /**
    * The bytes of one chat attachment, for a member of its channel.
@@ -333,12 +327,9 @@ module.exports = {
   declineCall: A((c, req) => calls.declineCall(c, {
     id: req.params.id, actor: actor(req), tenantMeta: req.tenant, env: req.env,
   })),
+  // The body's `reason` is ignored: the server decides it (audit B9).
   hangupCall: A((c, req) => calls.hangup(c, {
-    id: req.params.id,
-    actor: actor(req),
-    reason: (req.body && req.body.reason) || "hangup",
-    tenantMeta: req.tenant,
-    env: req.env,
+    id: req.params.id, actor: actor(req), tenantMeta: req.tenant, env: req.env,
   })),
   callFailed: A((c, req) => calls.reportFailure(c, {
     id: req.params.id, actor: actor(req), tenantMeta: req.tenant, env: req.env,

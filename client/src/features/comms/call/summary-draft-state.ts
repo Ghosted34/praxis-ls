@@ -36,6 +36,10 @@ export type DraftState = {
   /** The caller changed something since the last server round-trip. */
   dirty: boolean;
   regenerating: boolean;
+  /** The draft's language before a rewrite was asked for; put back if the
+   *  rewrite fails, because the server refuses a rewrite into the language
+   *  the draft is already in. */
+  languageBefore: "en" | "fr" | null;
   error: string | null;
 };
 
@@ -50,6 +54,7 @@ export const EMPTY: DraftState = {
   gaps: [],
   dirty: false,
   regenerating: false,
+  languageBefore: null,
   error: null,
 };
 
@@ -58,14 +63,6 @@ export type DraftAction =
   | { type: "loadedSummary"; view: CallSummaryView }
   | { type: "edit"; text?: string; points?: CallSummaryKeyPoint[]; followUps?: CallSummaryFollowUp[] }
   | { type: "regenerate"; language: "en" | "fr" }
-  | {
-    type: "regenerated";
-    payload: {
-      language: "en" | "fr";
-      provenance: CallProvenance;
-      summary: { summary_text: string; key_points: CallSummaryKeyPoint[]; follow_ups: CallSummaryFollowUp[] };
-    };
-  }
   | { type: "send" }
   | { type: "sent"; isUpdate: boolean }
   | { type: "discard" }
@@ -136,22 +133,8 @@ export const summaryDraftReducer = (state: DraftState, action: DraftAction): Dra
       // PENDING_REVIEW only — the same rule the API enforces, stated here so a
       // button press cannot produce a 409 the caller has to read.
       if (state.status !== "ready" || state.regenerating) return state;
-      return { ...state, regenerating: true, language: action.language, error: null };
+      return { ...state, regenerating: true, languageBefore: state.language, language: action.language, error: null };
     }
-    case "regenerated":
-      return {
-        ...state,
-        regenerating: false,
-        status: "ready",
-        language: action.payload.language,
-        text: action.payload.summary.summary_text,
-        points: action.payload.summary.key_points,
-        followUps: action.payload.summary.follow_ups,
-        provenance: action.payload.provenance,
-        // A regeneration REPLACES the prose, so an un-sent edit is gone by
-        // definition: the caller asked for the other language.
-        dirty: false,
-      };
     case "send": {
       if (state.status !== "ready" || state.regenerating) return state;
       if (!state.text.trim()) return state;
@@ -167,7 +150,15 @@ export const summaryDraftReducer = (state: DraftState, action: DraftAction): Dra
     case "error":
       // The draft is NOT lost: an error keeps the text so the caller can retry
       // rather than re-reading a summary the server may already have stored.
-      return { ...state, status: "error", regenerating: false, error: action.message };
+      // A failed rewrite puts the draft's own language back (see languageBefore).
+      return {
+        ...state,
+        status: "error",
+        regenerating: false,
+        language: state.regenerating && state.languageBefore ? state.languageBefore : state.language,
+        languageBefore: null,
+        error: action.message,
+      };
     default:
       return state;
   }

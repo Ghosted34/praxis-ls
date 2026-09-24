@@ -20,15 +20,15 @@ to get right.
 | Severity | Count | Meaning |
 | --- | --- | --- |
 | CRITICAL | 7 | Wrong for every user or every call, or loses/corrupts data. Fix first. |
-| HIGH | 31 | Security hole, cross-tenant scale failure, or a feature that does not work in real use. |
-| MEDIUM | 36 | Real defect with a narrower blast radius. |
-| LOW | 9 | Hygiene, misleading docs, minor leaks. |
+| HIGH | 33 | Security hole, cross-tenant scale failure, or a feature that does not work in real use. |
+| MEDIUM | 40 | Real defect with a narrower blast radius. |
+| LOW | 12 | Hygiene, misleading docs, minor leaks. |
 
 ---
 
 ## How to use this document (read first if you are fixing a PR)
 
-The fix is split into **six PRs** (§3), done **one at a time, in order**. Each
+The fix is split into **seven PRs** (§3), done **one at a time, in order**. Each
 PR is done in its own chat, starting from the latest `main` after the previous
 PR has merged. Several PRs edit the same files, so running them in parallel
 causes conflicts.
@@ -36,7 +36,9 @@ causes conflicts.
 If you are the agent working on one of them:
 
 1. **Read, in this order:** `CLAUDE.md`; §0 and §1 of this document; your PR's
-   section in §3; §4 if you are on PR-2 or PR-5; every entry in the **Progress
+   section in §3; the owner decisions in §2 O (they override everything else)
+   and the PR-1 findings in §2 N; §4 if you are on PR-2 or PR-5; every entry in
+   the **Progress
    log (§6)**. Earlier PRs may have changed a file, a name or a plan you depend
    on, and the log is where they said so.
 2. **Check the previous PR is merged.** Its Progress row must say `MERGED`. If
@@ -320,6 +322,54 @@ F = call UI, G = privacy, H = tests and docs.
   quiet hours).
 - Fix: include the counterpart and time. Localise via the service worker the
   way ring strings are. Respect quiet hours.
+
+*A12–A15 were added on 2026-09-24 after the owner reported that calls only
+ring while the app is open on both laptop and phone.*
+
+**A12 · HIGH · One open tab stops every other device from ringing**
+- Where: `smartcomm.call.service.js:577` (push waits 5 s), `:637-659` (the
+  ack is per call, not per device), `:679-688` (the push is skipped once any
+  ack exists); `client/src/features/comms/call/call-session.ts:587-601` and
+  `ring-surface.ts:154-166` (a visible tab acks `socket`; a hidden tab with
+  notification permission acks `notification`).
+- What: the ring push waits 5 seconds and is then cancelled for all of the
+  callee's devices if any single tab confirmed the ring. An open laptop tab,
+  even a background one, therefore silences the phone. This is why calls only
+  ring on the devices where the app is open.
+- Fix: push to every device at the moment the call starts. Keep the ack for
+  the ring-channel metric only; it never suppresses another device. Cancel
+  rings explicitly when the call is answered, declined or ends (PR-4).
+
+**A13 · HIGH · An app opened mid-ring never learns about the call**
+- Where: `call-session.ts` `wireCallSocket` and `comms-live.tsx`. The client
+  only learns of a ring from the `call:ringing` socket event. There is no
+  "what is ringing for me" read on connect, reconnect or return to the
+  foreground (`hydrateFromLink` runs only for a deep link).
+- What: the ring is announced before the app has connected, so a person who
+  opens the app because their phone buzzed sees nothing.
+- Fix: add `GET /smartcomm/calls/ringing`. Read it on connect, reconnect and
+  `visibilitychange`, merge it with socket events, and have rings expire on
+  the client after the ring window so a stale ring cannot persist.
+
+**A14 · MEDIUM · The ring push doesn't behave like a ring**
+- Where: `smartcomm.call.service.js:698-730` (no `vibrate` pattern, sent
+  once); `client/public/push-handler.js:68-124` (always shows an OS
+  notification, even when the app is on screen).
+- What: a closed phone gets one silent-looking notification. When the app is
+  open, the OS notification is stacked on top of the in-app ring.
+- Fix: send a vibration pattern, and re-alert with `renotify` every 15 s until
+  the call is answered or ends (capped at 4). The service worker hands the
+  ring to a visible page (`postMessage`) instead of showing a notification.
+
+**A15 · MEDIUM · Nothing checks that a device can ring**
+- Where: generic prompts only, in `client/src/components/pwa/push-opt-in.tsx`
+  and `install-banner.tsx`.
+- What: no call-specific "allow this device to ring" prompt, no warning that
+  this device cannot ring (permission denied, no push subscription, iPhone not
+  installed to the home screen), and no way to test it.
+- Fix: a call push check in Settings → Calls. It shows whether this device can
+  ring, explains how to fix it (including Add to Home Screen on iPhone), and
+  has a "Test ring" button that sends a real ring push to this device.
 
 ### B. Backend correctness (state machine and record pipeline)
 
@@ -929,23 +979,121 @@ F = call UI, G = privacy, H = tests and docs.
   code.
 - Fix: cut the narrative to short "why" notes and move guarantees into tests.
 
+### N. Found while building PR-1 (#476)
+
+PR-1's Progress entry (§6) logged these. They are routed to the PR that owns
+the area.
+
+**N1 · MEDIUM · Chat and mail rooms don't separate live from sandbox**
+- Where: `src/realtime/index.js`. Channel rooms `t:<slug>:c:<groupId>` and the
+  tenant mail room carry no env.
+- What: if a sandbox schema shares group ids with live, sandbox chat,
+  `mail:new` and presence events reach live sockets. PR-1 fixed this for user
+  rooms only.
+- Fix: env in every room name. → PR-5.
+
+**N2 · LOW · Duplicate `mail:new` per API replica**
+- Where: `attachMailBridge` in `src/realtime/index.js`.
+- What: it re-emits each bus message with `io.to(...)` on every replica. With
+  the Redis adapter attached, that is one duplicate per replica.
+- Fix: `io.local.to(...)`. → PR-5.
+
+**N3 · MEDIUM · Hardcoded Gemini defaults name retired models**
+- Where:
+  - `src/config/env.js:372` (`GEMINI_MODEL` defaults to `gemini-1.5-pro`);
+  - `src/services/ai/vision.service.js:24` (falls back to `gemini-1.5-pro`);
+  - `client/src/features/ai-control/pages.tsx:717` (prefills
+    `gemini-1.5-flash`).
+- What: these apply only when the platform `gemini` credential is missing,
+  inactive or unreadable. Vendors resolve platform-first
+  (`llm.service.js` `resolveVendor`, `ai-vendor.service.js` `getConfig`). On
+  2026-09-24 the credential in Platform Console → Integrations names
+  `gemini-2.5-flash`, so production uses that. But a platform-DB outage or a
+  deactivated credential would fall back to a retired model, and the Gemini
+  transcription (O1) and summary (O2) would fail with a 404.
+- Fix: current defaults in all three places, and a health check that reports
+  when the configured model does not exist. → PR-2; PR-7's platform check keeps
+  watching it.
+
+**N4 · LOW · "Transcription failed" is never shown**
+- Where: `transcriptionIssue` in `client/src/features/comms/call/call-session.ts`.
+- What: it is set by `call:transcription_failed` but rendered nowhere.
+- Fix: → PR-6.
+
+**N5 · LOW · The failure alarm still blames a browser capture that no longer exists**
+- Where: `src/services/platform/comms-metrics.service.js:372`.
+- What: the subject says calls "fell back to the browser capture".
+- Fix: → PR-5.
+
+### O. Owner decisions (2026-09-24)
+
+These are decisions, not defects. They **override** anything else in this
+document that conflicts with them.
+
+**O1 · Transcription: Groq once, then Gemini. No browser, no retries.** Each
+part gets one Groq attempt. On any Groq error (rate limit, timeout, server
+error, bad key), the same part goes to Gemini once. If Gemini also fails, the
+part fails; neither provider is retried automatically. The browser's live
+speech capture is never used to build a transcript. A Gemini transcript is made
+from the stored audio, so it counts as certified. *Consequence:* call audio goes
+to Google whenever Groq fails, which must be disclosed (G2). → **Done in PR-1
+(#476)**, where it is recorded as "A-1". PR-2's per-part jobs must keep it.
+
+**O2 · Summaries: Gemini first, DeepSeek as last resort.** Only the call summary
+changes order; the rest of Praxis AI keeps its current order. If both fail, the
+draft is the labelled transcript ("summary unavailable"). → **Done in PR-1
+(#476)**, where it is recorded as "A-2".
+
+**O3 · The draft lands in the conversation.** After a call, the caller sees the
+summary draft **pinned above the composer** of that conversation, with **Review
+& send**: edit the summary, key points and follow-ups, switch EN/FR, Send or
+Discard. The notification opens that conversation. PR-1 already removed the
+floating panel and built a call page with the editor. → **PR-2** pins that
+editor above the composer; PR-6 gives it its final design.
+
+**O4 · Ring like pixie-girl-hub's WhatsApp calls, but better, and never
+glass.** Reference implementation in `tomblakeasaah196/pixie-girl-hub`:
+`src/modules/calls/calls.push.js`, `apps/admin/public/sw.js`,
+`apps/admin/src/lib/call-alert.ts`,
+`apps/admin/src/components/calls/{CallLayer,IncomingCallToast,InThreadCallBanner,ActiveCallBar,CallPushGate}.tsx`,
+`docs/WHATSAPP_CALLING.md`. Attach that repo to your session to read it.
+Copy its **behaviour**, not its styling: it uses translucent `dropglass`
+surfaces, which this product does not. → PR-4 (delivery), PR-6 (screens).
+
+**O5 · Test calls: a new permission right, a manual test and a platform
+check.** A new permission right, **Test**, sits beside Read, Create, Update,
+Delete, Approve, Validate, Disburse and Export in the permission matrix. No
+role holds it by default. Holding it on Smart Comms (MOD-64) allows running the
+full call-pipeline test from Comms → Setup. That test spends provider credit,
+so it is capped at **3 runs per tenant per day**. A minimal automatic check
+runs on its own and reports **only to the platform console**
+(admin.praxisls.com) as a notification plus a section under Health, never in
+tenant apps. → PR-7.
+
 ---
 
-## 3. The fix, as six PRs
+## 3. The fix, as seven PRs
 
 | PR | Title prefix | Covers | Size |
 | --- | --- | --- | --- |
-| PR-1 | `fix(comms): stop phantom call notifications` | A1, A4, A5, A6, A9, A10, A11, B1, B2, B5, B10, E14, plus owner decisions A-1/A-2 (which close D10, E9, E10 and C7's live-log vector) | M |
-| PR-2 | `fix(comms): rebuild the call recorder and transcription pipeline` | A2, A3, B4, B6, B7, B11–B14, C7 (prompt delimiting only), D3, E11, H1 | L |
+| PR-1 | `fix(comms): stop phantom call notifications; Gemini fallback for transcripts and summaries` | **Done (#476).** O1, O2, A1, A4, A5, A6, A9, A10, A11, B1, B2, B5, B10, D10, E9, E10, E14, and C7's live-log half | L |
+| PR-2 | `fix(comms): rebuild the call recorder and transcription pipeline` | O3, A2, A3, B4, B6, B7, B11–B14, C7 (prompt delimiting), D3, E11, H1, N3 | L |
 | PR-3 | `fix(comms): harden calls — TURN, credentials, relay, IDOR, rate limits` | B8, B9, C1–C6, C8, C10–C13, D7 | M |
-| PR-4 | `fix(comms): reliable call engine — negotiation, audio, rings` | A7, A8, E1–E8, E13 | L |
-| PR-5 | `perf(comms): scale calls and transcription across tenants` | B3, C9, D1, D2, D4–D6, D8, D9, D11, D12, E12 | L |
-| PR-6 | `feat(comms): new call screen and privacy defaults` | F1–F10, G1–G5, H2, C6 (do-not-disturb) | L |
+| PR-4 | `fix(comms): reliable call engine and rings on every device` | O4 (delivery), A7, A8, A12–A15, E1–E8, E13 | L |
+| PR-5 | `perf(comms): scale calls and transcription across tenants` | B3, C9, D1, D2, D4–D6, D8, D9, D11, D12, E12, N1, N2, N5 | L |
+| PR-6 | `feat(comms): new call screen and privacy defaults` | O3 (design), O4 (screens), F1–F10, G1–G5, H2, C6 (do-not-disturb), A11 (quiet hours), N4 | L |
+| PR-7 | `feat(comms): test calls — Test permission, pipeline diagnostics, platform check` | O5 | L |
 
-All six PRs also apply H3 and H4 to the files they touch. Together they cover
-all 83 findings.
+All seven PRs also apply H3 and H4 to the files they touch. Together they cover
+all 87 audit findings, the 5 PR-1 findings (N1–N5) and the owner decisions
+O1–O5.
 
 ### PR-1 · Stop the phantom notifications and calls
+
+**Status: done and merged in #476.** This section is the plan it started from.
+Where this section and PR-1's Progress entry (§6) disagree, the entry is what
+was built. The pinned summary (O3) was decided after PR-1 started and moved to
+PR-2.
 
 **Goal.** No notification is ever sent from the nightly job. Calls with no audio
 never reach the AI. The summary notification opens the summary. A closed tab
@@ -1092,19 +1240,26 @@ parsing, the keepalive URL); a realtime room test.
 ### PR-2 · Rebuild the recorder and the transcription pipeline
 
 **Goal.** Every recorded part is a valid audio file. Each part is transcribed as
-it arrives, during the call. The summary is ready about a minute after hang-up,
-whatever the call's length. Retries are per part, capped, and never re-bill
-finished work. Summary state changes are race-free.
+it arrives, during the call, using PR-1's Groq → Gemini order (O1). The summary
+is ready about a minute after hang-up, whatever the call's length. It waits for
+the caller **pinned above the composer** of the conversation (O3). Nothing
+re-bills finished work, and a provider failure never turns into an automatic
+retry loop. Summary state changes are race-free.
 
-**Depends on:** PR-1 merged. Read its Progress entry: the job `origin` flag and
-the `NO_RECORDING` state are used here.
+**Depends on:** PR-1 merged (#476). Read its Progress entry: the job `origin`
+flag, `notified_at`, the `NO_RECORDING` state, the Gemini transcription service
+(`src/services/ai/gemini-transcription.service.js`, WebM → FLAC through
+ffmpeg), the provenance values and `CallSummaryEditor` are used here.
 
 **Main files:** `client/src/features/comms/call/{call-recorder,call-session}.ts`,
 `client/src/lib/smartcomm-api.ts`,
 `src/modules/smartcomm/smartcomm.call.{pipeline.service,repo,service}.js`,
 `smartcomm.{validator,controller,routes}.js`, `src/jobs/handlers/call-transcribe.js`
 (split into per-part and finalise handlers), `src/jobs/workers.js`, new tenant
-migration(s), `tests/unit/smartcomm-call-records.test.js`, a new integration test.
+migration(s), `tests/unit/smartcomm-call-records.test.js`, a new integration test,
+`client/src/features/comms/team-chat.tsx` (the composer area),
+`client/src/features/comms/call/{summary-draft,call-record}.tsx`,
+`src/config/env.js` (N3).
 
 **Steps**
 1. **Valid parts (A3).**
@@ -1118,7 +1273,8 @@ migration(s), `tests/unit/smartcomm-call-records.test.js`, a new integration tes
      MP4 `ftyp`, Ogg `OggS`) before accepting a part.
 2. **Transcribe during the call (A2; design in §4).**
    - Each accepted part enqueues a `call-transcribe-part` job with jobId
-     `callpart-<call>-<side>-<part>`.
+     `callpart-<call>-<side>-<part>`. The job runs O1 exactly: one Groq
+     attempt, then Gemini once, then the part is failed.
    - The result is stored per part. Plain columns on `comms_call_recording` are
      allowed.
    - A new `POST /smartcomm/calls/:id/recording/complete { side, parts }`
@@ -1128,12 +1284,19 @@ migration(s), `tests/unit/smartcomm-call-records.test.js`, a new integration tes
    - It assembles the transcript and certifies only when every declared part is
      certified. Otherwise the draft is labelled with the missing minutes. It
      then drafts the summary and notifies once (PR-1's `notified_at`).
-3. **Idempotent reprocessing (B4, B5).**
-   - Only parts that failed are retried; a certified part is never sent to the
-     provider again.
-   - Attempts are capped per part and per call on every branch, including stale
+3. **Idempotent reprocessing (B4, B5, O1).**
+   - A part that failed on both providers is **not** retried automatically
+     (O1). The transcript says which minutes are missing. An admin can re-run
+     a failed part manually from the call page, which runs O1 once more.
+   - The only automatic re-run is for work that never happened: a part whose
+     job never ran, or a finalise that never ran because a worker died. Those
+     are capped per part and per call on every branch, including stale
      `PROCESSING`.
+   - A certified part is never sent to a provider again.
    - Inserting a certified row retires whatever row is current for that part.
+   - The daily record sweep keeps only the audio retention and these never-ran
+     cases. PR-1 left it re-sending failed calls, at one Groq request per
+     failing part a day; that stops here.
 4. **Race-free drafts (B6, B7).**
    - Guard the draft upsert with
      `ON CONFLICT … DO UPDATE … WHERE comms_call_summary.draft_status = 'PENDING_REVIEW'`.
@@ -1176,13 +1339,40 @@ migration(s), `tests/unit/smartcomm-call-records.test.js`, a new integration tes
      certified transcript, one notification and a readable summary.
    - Add a Playwright check that decodes every recorded part independently
      with `decodeAudioData`.
-10. **Docs.** Rewrite guide §4.5 to the new trigger model, and remove the claims
+10. **The draft lands in the conversation (O3).**
+    - In a DIRECT conversation where the caller has a `PENDING_REVIEW` draft,
+      show it **pinned above the composer** as "Call summary — Review & send".
+      It expands to PR-1's `CallSummaryEditor` (summary, key points,
+      follow-ups, EN/FR, Send, Discard with confirmation).
+    - The thread read returns the caller's pending draft for that
+      conversation, so the card is there when the conversation opens.
+      `call:summary_ready` refreshes it live.
+    - Only the caller sees it. The callee sees the summary once it is sent.
+    - The summary notification opens the conversation with the card
+      expanded. The call page (`/comms/calls/:callId`) stays as the record,
+      and links to the conversation.
+    - Design stays within the primitives; PR-6 does the final look.
+11. **Gemini model (N3).**
+    - Replace the retired defaults with a current audio-capable model in all
+      three places N3 lists: `env.js`, `vision.service.js` and the
+      `ai-control` prefill. Check Google's current model list; do not guess.
+      The platform credential (`gemini-2.5-flash` today) stays what
+      production uses.
+    - Add a boot or health check that logs, and shows in the platform AI
+      Vendors screen, when the configured Gemini model does not exist.
+12. **Docs.** Rewrite guide §4.5 to the new trigger model, and remove the claims
     that "clients re-trigger the job when the last part lands" and "no code path
     posts without this write in the same transaction".
 
 **Acceptance.**
 - Calls of 5, 15 and 29 minutes on Chrome Android, Safari iOS and desktop all
-  reach `CERTIFIED`.
+  reach `CERTIFIED`, and still do with the Groq key disabled (Gemini carries
+  every part).
+- A part that fails on both providers is never retried automatically, and the
+  draft names the missing minutes.
+- Staying in the conversation after a 10-minute call, the caller sees the
+  draft pinned above the composer within 2 minutes of hang-up. Sending it posts
+  exactly one message, and the card disappears.
 - The summary is ready within 2 minutes of hang-up for a 29-minute call.
 - Re-running finalise or reprocess never calls the provider for a certified
   part (asserted by a test).
@@ -1262,10 +1452,13 @@ limited to live calls and bounded. The server decides every recorded outcome.
 - A dial flood returns 429.
 - `npm run ci` is green, and `/security-review` has been run on the diff.
 
-### PR-4 · Call engine reliability
+### PR-4 · Call engine reliability and rings on every device
 
-**Goal.** Calls connect first time, survive network changes, always play audio,
-and ring correctly on every device, including the notification buttons.
+**Goal.** Calls connect first time, survive network changes and always play
+audio. A call rings on **every** device of the callee, including a closed or
+backgrounded installed app on phone and laptop. The rings stop everywhere the
+moment the call is answered or ends, and the notification's Answer/Decline
+work. This follows pixie-girl-hub's behaviour (O4) and goes further.
 
 **Depends on:** PR-3 merged (relay payload shapes may have changed; read its
 entry).
@@ -1273,8 +1466,12 @@ entry).
 **Main files:** `client/src/features/comms/call/{call-engine,call-session,noise-suppression,wake-keepalive,ring-surface}.ts`,
 `client/src/features/comms/comms-live.tsx`, `client/public/push-handler.js`,
 `src/server.js` (CSP), `src/modules/smartcomm/smartcomm.call.service.js`
-(call-ended push, noise default), `src/realtime/index.js` (signal event
-shape, if changed).
+(ring pushes, noise default), `smartcomm.{routes,controller}.js` (the ringing
+read), `src/jobs/handlers/comms-call-ring-escalate.js` (becomes the re-alert
+job), `src/realtime/index.js` (signal event shape, if changed),
+`client/src/features/settings/calls-page.tsx` (device check). Reference:
+pixie-girl-hub's `calls.push.js`, `sw.js`, `call-alert.ts`, `CallLayer.tsx`
+and `CallPushGate.tsx` (O4).
 
 **Steps**
 1. **Perfect negotiation (E1–E3).**
@@ -1309,28 +1506,78 @@ shape, if changed).
      another device, it stops ringing and shows "Answered on another
      device", not "Missed call".
    - Handle `call:ringing_sent` in the caller's other tabs.
-5. **Rings (A7, A8).**
-   - On every terminal transition where a ring push was sent, send a
-     data-only `kind: "call_end"` push that closes tag `call:<id>`.
-   - The service worker maps `event.action`: `accept` opens
-     `/comms?ring=<id>&act=accept`; `decline` opens `…&act=decline`, and the
-     app declines and closes.
-   - An expired ring, when tapped, opens `/comms/calls/<id>` instead of a
-     ring.
-6. **Screen on the cheek (E13).** Do not hold a screen wake lock by default.
+5. **Rings reach every device (A12, A14, O4).**
+   - At dial, push the ring to **every** device of the callee immediately:
+     `kind: "call_ring"`, `urgency: "high"`, TTL equal to the time left in the
+     ring, `requireInteraction`, `renotify`, a vibration pattern such as
+     `[600, 250, 600, 250, 600]`, and Answer/Decline actions.
+   - Re-alert every 15 s with `renotify` until the call is answered, declined or
+     ends (at most 4 re-alerts). The existing delayed job becomes this
+     re-alert job and re-reads the row before each send.
+   - `call:ring_ack` is kept **only** for the ring-channel metric. It never
+     suppresses a push to another device.
+   - The service worker hands a ring to a visible page (`postMessage`) instead
+     of showing an OS notification, so an open app rings in-app with no
+     duplicate. Hidden or closed, it shows the notification.
+6. **Rings stop everywhere (A7, E8).**
+   - When the call is answered, declined or ends, send a cancel push to the
+     callee's devices. The service worker **replaces** the ring notification
+     in place (same tag) with a visible, non-sticky one: "Answered on another
+     device", "Missed call — <name>" or "Call ended".
+   - The replacement is deliberate: a push that shows nothing breaks the
+     browsers' user-visible-push rule, and iOS revokes subscriptions that do
+     it (pixie-girl-hub notes the same risk).
+   - In-app, other devices stop ringing on `call:accepted`, `call:ended` or
+     the cancel `postMessage`.
+7. **Answer/Decline from the notification (A8).**
+   - The service worker maps `event.action`. If a window is open, focus it and
+     `postMessage` the intent, so the app is not reloaded and no live call is
+     dropped. Otherwise open `/comms?ring=<id>&act=accept|decline`.
+   - The intent survives a login redirect, and the app performs it if the call
+     is still ringing.
+   - An expired ring, when tapped, opens the call's conversation instead.
+8. **Never miss a ring the app wasn't open for (A13).**
+   - Add `GET /smartcomm/calls/ringing` (calls ringing for me).
+   - The client reads it on socket connect, reconnect and return to the
+     foreground, and merges it with socket events.
+   - A ring expires on the client at the end of its window, so a ring can
+     never stick.
+9. **Every device knows whether it can ring (A15).**
+   - Settings → Calls gets a "This device" check: notification permission,
+     push subscription, whether the app is installed (iPhone requires Add to
+     Home Screen), whether audio is unlocked. Each shows a fix.
+   - A **Test ring** button sends a real ring push to this device only.
+   - A one-time, call-specific prompt ("Allow this device to ring for calls")
+     appears for users who can take calls, with iPhone install guidance
+     instead of a dead-end prompt (see pixie-girl-hub's `CallPushGate`).
+   - In-app ring extras: flash the tab title (`📞 <name> is calling`), and
+     show "Tap to enable ring sound" when audio is blocked.
+10. **Screen on the cheek (E13).** Do not hold a screen wake lock by default.
    If device tests show the call dies with the screen off, keep the lock and add
    a "controls locked" state that ignores taps until a deliberate unlock
    gesture.
 
 **Tests:** the engine unit tests (glare, buffered candidates, restart offer
 sent); Playwright two-page tests (a call connects; `context.setOffline` toggled
-mid-call and the call recovers; a double-tap dial creates one call);
-service-worker action tests.
+mid-call and the call recovers; a double-tap dial creates one call); tests that
+the ring push goes to every device even when one acked, that re-alerts stop
+when the call is answered, and that the cancel replaces the notification; the
+ringing read; service-worker action and `postMessage` tests.
 
 **Acceptance.**
+- With the app open on the laptop and **closed** on the phone, both ring, and
+  answering on one stops the other within 2 s.
+- With the app closed everywhere, the phone buzzes every 15 s until answered or
+  missed. Answer from the lock screen connects; Decline declines without
+  opening a call screen.
+- Opening the app mid-ring shows the ring.
+- **Test ring** works on Android, desktop and an installed iPhone app.
 - The engine rows of `doc/SMART_COMMS_CALLS_MANUAL_MATRIX.md` pass on Chrome
-  Android, Safari iOS and desktop, including a Wi-Fi→4G switch mid-call and
-  Answer/Decline from the lock screen.
+  Android, Safari iOS and desktop, including a Wi-Fi→4G switch mid-call.
+- **Platform limit:** no installed web app can show a native full-screen call
+  screen or loop a ringtone while fully closed. That needs a native shell
+  (CallKit on iPhone, full-screen call alerts on Android) and is out of scope.
+  Laptops must have the browser running in the background for push to arrive.
 - `npm run ci` is green.
 
 ### PR-5 · Scale calls and transcription across tenants
@@ -1362,7 +1609,8 @@ limits with a measured latency target (§4).
    - Per-tenant fairness: a Redis token bucket per tenant, or per-tenant queues
      served round-robin. BullMQ groups need BullMQ Pro, so do not assume them.
    - Priorities: parts of live calls, then finalise, then reprocess.
-   - A 429 delays the job by `retry-after` without spending an attempt.
+   - A Groq 429, or a full Groq limiter, routes the part to Gemini immediately
+     (O1). A Gemini 429 fails the part, and it is counted in the 429 metric.
    - A per-tenant daily audio-minute budget through the governance service.
    - Spread any remaining daily work by a hash of the tenant slug.
 3. **Metrics without fan-out (D4, D5, D11, D12).**
@@ -1385,6 +1633,10 @@ limits with a measured latency target (§4).
 6. **Observability.** Export the age of the oldest transcription job, the
    hang-up→summary latency (p50/p95) and the provider 429 rate, per tenant.
    Alert on latency, not on failure counts.
+7. **From PR-1 (N1, N2, N5).** Put the env in every room name (channel,
+   mail, presence), not just user rooms. Make the mail bridge re-emit with
+   `io.local.to(...)`. Correct the failure alarm's wording: there is no
+   browser capture any more.
 
 **Acceptance.**
 - A load script (in `scripts/`) simulating 10, 50 and 200 tenants: ring
@@ -1397,18 +1649,37 @@ limits with a measured latency target (§4).
 ### PR-6 · New call screen and privacy defaults
 
 **Goal.** A calm, solid, tenant-branded call experience that does not block the
-ERP, and privacy-respecting defaults a tenant can defend.
+ERP, laid out like pixie-girl-hub's calls but with no glass anywhere (O4). The
+summary draft pinned above the composer gets its final design (O3). Privacy
+defaults a tenant can defend.
 
 **Depends on:** PR-5 merged.
 
-**Main files:** `client/src/features/comms/call/{call-overlay,incoming-ring,summary-draft,call-summary-card}.tsx`,
+**Main files:** `client/src/features/comms/call/{call-overlay,incoming-ring,summary-draft,call-summary-card,call-record,calls-list}.tsx`,
 a new in-call bar component in the app shell, `client/src/features/settings/calls-page.tsx`,
 `client/src/features/comms/team-chat.tsx`, `client/src/lib/i18n-dict.ts`,
 migrations and seeds for defaults, the consent copy, the AI and transcript
 retention code, `doc/SMART_COMMS_CALLS_MANUAL_MATRIX.md`.
 
 **Steps**
-1. **Screens (F1–F5, F9).**
+1. **Layout (O4).** Take pixie-girl-hub's structure, not its surfaces:
+   - **Incoming call:** a solid card, top-right on desktop and top-centre on a
+     phone. It shows the caller's name and avatar, how long it has been
+     ringing, the recording notice, and large Decline and Answer buttons. On a
+     phone it can expand to a full solid screen. It never covers the app on
+     desktop.
+   - **In the caller's conversation:** a ring banner at the top of that thread
+     replaces the card, so there is only ever one Answer button. Once
+     answered, it becomes the live-call strip.
+   - **Active call:** a floating bar (name, timer, mute, open conversation,
+     hang up) that survives navigation. On a phone, tapping it opens a full
+     solid call screen with the quality indicator and noise switch.
+   - **Summary draft (O3):** the pinned card above the composer gets its final
+     design: calm, solid, with the provenance label and clear Send and
+     Discard.
+   - pixie-girl-hub's translucent `dropglass` class and blur are **not**
+     copied.
+2. **Screens (F1–F5, F9).**
    - Opaque `bg-background` surfaces with token borders; no `backdrop-filter`,
      no translucent layers.
    - Accents use the tenant `--primary`/`text-primary-ink`; hang-up and answer
@@ -1420,37 +1691,179 @@ retention code, `doc/SMART_COMMS_CALLS_MANUAL_MATRIX.md`.
    - Honour reduced motion.
    - Pass the gates: `check:palette`, `check:contrast`, `check:motion`, and
      the axe tests in `screens.axe.test.tsx`.
-2. **Consent and review (F6, F7, F8, G5).**
+3. **Consent and review (F6, F7, F8, G5).**
    - The ring screen states that the call will be recorded.
    - The callee can choose "Answer without recording". The server records the
      choice on the call, and neither side arms the recorder.
    - Key points and follow-ups can be edited and removed.
    - Discard uses `useConfirm` with `destructive`.
    - Due dates use `dateDmy`.
-3. **Gating (F10, C6).**
+4. **Gating (F10, C6).**
    - The phone icon renders only when `calls` is on for the tenant and the
      user may create in MOD-64.
-   - Add a per-user do-not-disturb setting for calls.
-4. **Privacy defaults (G1–G4).**
+   - Add a per-user do-not-disturb setting for calls. It also gives the call
+     notifications quiet hours (A11's deferred part).
+   - Show the "transcription failed" state that is set but never rendered
+     (N4), in the call page and the pinned draft.
+5. **Privacy defaults (G1–G4).**
    - `call_recording` defaults to OFF in the catalogue. For tenants still on
      `source = 'default'`, flip it off in a migration, after the owner signs
      off.
    - Add a tenant-admin switch on the Calls settings page (MOD-70 edit).
    - Name the outside companies that actually receive call data in the consent
      text and a "How calls are processed" panel, reading the configured
-     transcription and LLM vendors rather than hard-coding them. Add them to
+     transcription and LLM vendors rather than hard-coding them. Since O1 and
+     O2, that includes Google (Gemini) for transcription whenever Groq fails,
+     Gemini for summaries, and DeepSeek as the summary fallback. Add them to
      the tenant DPA doc.
    - A transcript retention setting with a sweep, and an audited admin erasure
      of a user's call records.
    - A "hide my last seen" setting.
-5. **Release gate (H2).** Run every row of the manual matrix and record the
+6. **Release gate (H2).** Run every row of the manual matrix and record the
    results. `call_recording` must not be enabled by default for any new tenant
    until the matrix passes.
 
 **Acceptance.**
 - The screens pass the frontend gates and a light/dark visual check.
+- On desktop, an incoming call never hides the screen the user is working on;
+  an active call leaves the app fully usable.
 - A tenant created after this PR has recording off.
 - The matrix has no PENDING cells.
+- `npm run ci` is green.
+
+
+### PR-7 · Test calls: the Test permission, pipeline diagnostics and the platform check
+
+**Goal.** Anyone holding the new **Test** right can prove, from Comms → Setup,
+that every step of a call works on their device and on the server. The run uses
+the real code, creates no fake call, and names the exact step that is broken. A
+minimal automatic check tells the platform team (not tenants) when a provider,
+the worker or the relay breaks (O5).
+
+**Depends on:** PR-6 merged. By then every step being tested exists in its
+final form. Read every Progress entry, because each PR changed something this
+PR tests.
+
+**Main files:** a tenant migration (the `can_test` column and the diagnostics
+run table), `src/middleware/rbac.js`, `src/shared/cache/identity-cache.js`,
+`src/modules/security/permission/permission.{repo,validator}.js`,
+`src/services/ai/action-authz.js`, `client/src/lib/rbac.ts`,
+`client/src/features/security/permission-matrix-page.tsx`, a new
+`src/modules/smartcomm/smartcomm.diagnostics.{service,repo}.js` with its routes,
+the production call and pipeline services (each gains a diagnostics mode), a new
+Setup tab in `client/src/features/comms/setup/`, reference audio fixtures, a
+platform migration and job for the automatic check,
+`platform-console/src/features/ops/OpsHealth.tsx`, and the console notification
+feed read by `platform-console/src/components/NotificationBell.tsx`.
+
+**Steps**
+1. **The Test permission right.**
+   - Tenant migration: `ALTER TABLE permission ADD COLUMN IF NOT EXISTS
+     can_test boolean NOT NULL DEFAULT false`. This is a plain column, which
+     the migration rules allow. Follow migration 12771's pattern and add a
+     column comment, but **no backfill**: no role holds Test until someone
+     grants it, because every run spends money.
+   - Add `test: "can_test"` to `ACTION_COLUMN` in `rbac.js`. Carry the column
+     through every place the other eight rights are listed:
+     `identity-cache.js`, `permission.repo.js` (the column list and the
+     `COALESCE` upsert, so saving other rights never clears it),
+     `permission.validator.js`, `action-authz.js` and `client/src/lib/rbac.ts`
+     (with its test).
+   - In the permission matrix, add a legend entry and a popover row: "Test —
+     run live checks that spend provider credit". The cell dot counts it like
+     the others.
+   - The CEO bypass in `rbac.js` passes every right by design (PRD §3), so the
+     CEO can always test. Keep that and say so in the matrix legend's tooltip.
+   - Run `node scripts/generate-api-docs.js` for the validator change.
+2. **The manual run (Comms → Setup → "Test calls").**
+   - `POST /smartcomm/diagnostics/runs` requires
+     `requirePermission("MOD-64", "test")` and the `calls` feature. Without
+     the right, the tab is hidden and the route returns 403.
+   - **Cap: 3 runs per tenant per day**, counted in the run table and enforced
+     by the server. The fourth returns 429 with the time the next run is
+     available, and the button shows the same.
+   - It runs the steps in this order, each with status, time, plain-language
+     cause, fix hint and error code:
+
+     | # | Step | Proves | Pass when |
+     |---|---|---|---|
+     | 1 | Server and worker | A job goes through the real queue and worker | Round trip ≤ 5 s |
+     | 2 | Schedules | The nightly job is at a daytime hour in the tenant's time zone; the per-call ring and cap jobs are being processed | Next run shown in local time; no overdue ring or cap job |
+     | 3 | Live signals | The worker can reach this screen (the missing-summary bug) | Received ≤ 5 s |
+     | 4 | Ring to this device | A real ring push reaches this device and the service worker reports it back; the device check (A15) is green | Received ≤ 10 s |
+     | 5 | Microphone | Permission, device, live level meter while the user reads a sentence | Voice level detected |
+     | 6 | Audio | Remote audio would play; the noise filter loads and is not silent | Both OK, or a clear reason |
+     | 7 | Connection | STUN finds a public address; a TURN credential is minted; a 10-second test call to itself through the relay | Relay connects; RTT, jitter and loss shown |
+     | 8 | Recording | 3 short parts of the user's voice; each decodes on its own; each uploads and passes the container check | All 3 |
+     | 9 | Transcription | Bundled English and French reference clips go to Groq, then the same clips are **forced** through Gemini; the user's own parts go through the normal order (O1) | ≥ 85% word match, correct language, time per provider |
+     | 10 | Summary | Gemini summarises the reference transcript, then DeepSeek is **forced** (O2) | Both pass the shared summary schema, in the requested language, with key points quoted from the transcript |
+     | 11 | Clean-up | Test audio and objects deleted | Nothing left |
+
+   - **Real code, separate records.** Each production function used here gains
+     a diagnostics mode. It runs the same code but writes results to the run
+     instead of the call tables. A run must leave **zero** rows in `comms_call*`,
+     call metrics, chats and call notifications (asserted by tests).
+   - Forcing a provider is possible only in diagnostics.
+   - Storage goes under `tenant_<slug>/comms/diagnostics/<run>/` and is
+     deleted at the end.
+   - Usage is recorded under a `diagnostics` feature line. A full run is about
+     4–6 transcription requests and 2 AI summaries: cents.
+   - Progress streams live over the socket (PR-1's worker emitter), with
+     polling as a fallback.
+   - **Result screen:** green, amber or red per step. **Copy report** produces
+     a plain-text report (run id, versions, timings, errors; never audio or
+     secrets) to paste to support or an AI agent. Past runs are listed for
+     people with the Test right.
+   - Runs are stored in a new tenant table `comms_call_diagnostic_run`: run
+     id, user, env, started and finished, status, steps as jsonb, report. It is
+     a new table, so constraints are allowed. Keep runs 90 days.
+   - Reference clips: about 20 s each, EN and FR, with known text. Record them
+     in-house, or generate them with TTS so there are no licence issues.
+     Commit them as fixtures with their expected text.
+3. **The automatic platform check (reported to admin.praxisls.com only).**
+   - A worker job `comms-call-canary` runs **once a day** at a daytime hour
+     (configurable cron and time zone; default 10:00 Africa/Douala). It is
+     platform-wide, not per tenant, so it costs one small run a day.
+   - It is minimal: the queue round trip; the worker's live-signal emitter;
+     scheduler registrations (next nightly run is daytime, no midnight
+     repeatable); one short English clip through Groq and the same clip forced
+     through Gemini; one Gemini summary with DeepSeek forced as well; a TURN
+     relay allocation from the server.
+   - It also runs cheap per-tenant checks that spend no provider credit:
+     tenant DB reachable; no call stuck `RINGING` or `IN_CALL` past its
+     deadline; no transcript stuck `PROCESSING` for more than an hour.
+   - Results go to a new platform table `platform.comms_call_canary_run`.
+   - **Reporting:** a "Calls pipeline" section on the console Health page
+     (`/ops`) shows the latest run, per-check status and history.
+   - A failure, and the recovery after one, lands as a notification on the
+     console bell (the Error Center in-house feed `NotificationBell.tsx`
+     reads). It also goes out through `alerts.raise` with severity `notify`.
+   - **Nothing is shown in tenant apps.**
+4. **Docs.** A short "Test calls" page in the engineering guide: what each step
+   proves, what a red step usually means, and how to read a report.
+
+**Tests:**
+- RBAC: `test` maps to `can_test`; saving other rights never clears it; a role
+  without it gets 403.
+- The 3-per-day cap, including a concurrent-request race.
+- A run writes zero rows to the call tables, metrics and notifications.
+- Each step turns red on its own injected failure (bad Groq key, bad Gemini
+  key, stopped worker, wrong TURN secret, push permission denied, blocked mic),
+  and only that step.
+- The canary job writes its run and raises one bell notification on failure and
+  one on recovery.
+
+**Acceptance.**
+- The Test right appears in the permission matrix and no role holds it by
+  default; the CEO can always run.
+- A user with the right, on a healthy stack, gets 11 green steps in under 2
+  minutes.
+- Breaking any one dependency turns exactly its step red, with a hint that
+  names the fix.
+- A fourth run in a day is refused with the next available time.
+- The platform console shows the daily check under Health, and a deliberate
+  Groq-key break raises a bell notification there and nothing in the tenant
+  app.
 - `npm run ci` is green.
 
 ---
@@ -1486,16 +1899,18 @@ day**. Both sides are transcribed separately, so that is 24,000 audio-minutes
    30 minutes. At hang-up only the last part is left, so the summary arrives in
    about a minute whether the call lasted 3 minutes or 30. Load follows talk
    time, with no post-call spike and no midnight spike.
-2. **One rate limiter for the provider, fair shares for tenants.** A global
-   limiter sized to the provider's per-key limits (requests per minute and
-   audio-seconds per hour; check your plan, since audio-seconds is usually the
-   binding one), and a per-tenant token bucket so one busy tenant cannot starve
-   the others.
-3. **Priorities.** Live calls first, then finalising, then retries. A 429 waits
-   for `retry-after` and is not counted as a failure. **Conflict to resolve in
-   PR-5:** owner decision A-1 (PR-1) sends a part to Gemini on any Groq error,
-   429 included. Keep that unless the owner decides otherwise; a limiter can
-   still stop the 429s happening.
+2. **One rate limiter per provider, fair shares for tenants.** A limiter for
+   Groq and one for Gemini, each sized to that provider's per-key limits
+   (requests per minute and audio-seconds per hour; check your plan, since
+   audio-seconds is usually the binding one). A per-tenant token bucket stops
+   one busy tenant starving the others.
+3. **Priorities, and what a failure means (O1).** Live calls first, then
+   finalising. Any Groq failure, including a 429, sends that part to Gemini
+   immediately. Groq is on a free tier and will hit its limits at busy times,
+   so Gemini is the working backup, not a rare path. A Gemini failure fails
+   the part, with no retry. The limiters are therefore what keeps failures
+   rare: when Groq's limiter is full, send the part straight to Gemini rather
+   than wait.
 4. **No database connection held while waiting on the provider.** Workers can
    then run 10–20 requests each without draining tenant pools.
 5. **Scale workers by queue lag.** Run transcription as its own worker
@@ -1517,7 +1932,8 @@ day**. Both sides are transcribed separately, so that is 24,000 audio-minutes
    Groq fails a part**, and summaries go to Gemini first with **DeepSeek only
    as the last resort** (G2). Size the Gemini quota for Groq's worst hour, not
    its average. Use multiple provider keys or an enterprise tier, and consider
-   letting large tenants bring their own key.
+   letting large tenants bring their own key. PR-7's platform check shows each
+   provider's health daily.
 
 **Cost** is priced per audio-hour. At a few cents per audio-hour (check the
 provider's current price), 400 audio-hours a day is tens of dollars a day across
@@ -1559,12 +1975,14 @@ factual. The next agent relies on them.
 | PR | Status | Branch | GitHub PR | Merged | Notes |
 | --- | --- | --- | --- | --- | --- |
 | Audit (this document) | MERGED | `claude/integration-audit-report-u6twc5` | #474 | 2026-09-24 | Report, PR plan, scale design |
-| PR-1 | OPEN | `claude/magical-einstein-xqhkn1` | #476 | — | Includes owner decisions A-1 (Groq → Gemini transcription, no browser capture) and A-2 (Gemini → DeepSeek summaries) |
+| PR-1 | MERGED | `claude/magical-einstein-xqhkn1` | #476 | 2026-09-24 | Includes owner decisions A-1 (Groq → Gemini transcription, no browser capture) and A-2 (Gemini → DeepSeek summaries) |
 | PR-2 | NOT STARTED | — | — | — | |
 | PR-3 | NOT STARTED | — | — | — | |
 | PR-4 | NOT STARTED | — | — | — | |
 | PR-5 | NOT STARTED | — | — | — | |
 | PR-6 | NOT STARTED | — | — | — | |
+| PR-7 | NOT STARTED | — | — | — | |
+| Plan update (O1–O5, A12–A15, N1–N5, PR-7) | OPEN | `claude/integration-audit-report-u6twc5` | #475 | — | Owner decisions, ringing findings, PR-1 findings, test calls |
 
 Status values: `NOT STARTED` → `IN PROGRESS` → `OPEN` (PR raised) → `MERGED`.
 Use `BLOCKED` with a reason in Notes if you stop.
@@ -1746,3 +2164,23 @@ Use `BLOCKED` with a reason in Notes if you stop.
   `ENOENT` on `migrations/tenant/99999_gate_probe.sql`, which
   `tests/unit/constraint-guards.test.js` writes and deletes in the real
   migrations directory while another jest worker reads it.
+
+### Plan update · 2026-09-24 · OPEN (#475)
+- Rebuilt on top of PR-1's merged version of this document; PR-1's text and
+  its log entry are kept as written.
+- Added A12–A15: rings only reached devices with the app open, because one
+  open tab suppressed every other device's push, and an app opened mid-ring
+  never learned of the call.
+- Added the owner decisions O1–O5 (§2 O); they override the rest of the plan.
+  O1 and O2 are PR-1's "A-1" and "A-2", and are done.
+- Added N1–N5 from PR-1's new findings (§2 N) and routed them: N3 to PR-2, N1,
+  N2 and N5 to PR-5, N4 to PR-6. A11's deferred quiet hours go to PR-6.
+- PR-2 now also pins the summary above the composer (O3), never auto-retries a
+  part that failed on both providers, and fixes the Gemini model default (N3).
+- PR-4: rings reach every device, following pixie-girl-hub (O4), plus a
+  device check and Test ring.
+- PR-6: pixie-girl-hub's layout, with solid surfaces.
+- New PR-7: the Test permission right, the 3-per-day pipeline test in Comms →
+  Setup, and a daily platform check reported only to admin.praxisls.com.
+- §4 item 3: PR-1 left the rate-limit question open; the owner's O1 decides it
+  (any Groq failure goes to Gemini at once).

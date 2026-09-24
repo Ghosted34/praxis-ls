@@ -419,6 +419,10 @@ export const en = {
       sub: "Sea, air and hinterland logistics across the OHADA/CEMAC region — with one team, one platform, and total visibility.",
       cta: "Request a quote",
       cta2: "Track a shipment",
+      /* The cue under the hero's figure rail. Decorative and aria-hidden — it
+         names a gesture rather than a destination — but it is still a visible
+         sentence, so it is a dictionary string and not a literal. */
+      scrollCue: "Scroll to explore",
     },
     track: {
       kicker: "Shipment visibility",
@@ -1310,6 +1314,7 @@ export const fr = {
       sub: "Logistique maritime, aérienne et terrestre dans la région OHADA/CEMAC — une équipe, une plateforme, une visibilité totale.",
       cta: "Demander un devis",
       cta2: "Suivre un envoi",
+      scrollCue: "Faire défiler",
     },
     track: {
       kicker: "Visibilité des envois",

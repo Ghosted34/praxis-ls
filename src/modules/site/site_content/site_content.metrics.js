@@ -192,6 +192,136 @@ register({
   },
 });
 
+register({
+  key: "dossiers.tonnage_total",
+  unit: "t",
+  /**
+   * Gross weight across every completed file, in METRIC TONNES.
+   *
+   * ── WHY THE CASE EXPRESSION IS THE WHOLE METRIC ──────────────────────────
+   *
+   * `dossier.weight_unit` is `CHECK (… IN ('KG','TON','LB'))` (0660), so the
+   * column this sums is three different quantities depending on a sibling
+   * column. `SUM(gross_weight)` would be a number with no unit at all — and it
+   * would LOOK fine, because it is a plausible magnitude either way. A desk
+   * that records in kilogrammes and a desk that records in tonnes inside one
+   * tenant is the normal case, not the edge one.
+   *
+   * 'TON' is read as the metric tonne. That is the reading for the corridor
+   * this product serves — OHADA's seventeen member states are metric — and it
+   * is stated here rather than assumed because the short ton is 907 kg and the
+   * difference would be a ten-percent overstatement nobody could see.
+   *
+   * A row with a weight but NO unit contributes nothing rather than being
+   * assumed to be kilogrammes. Same treatment, same reason, as the NULL volumes
+   * above: guessing the unit is how a public figure becomes confidently wrong.
+   */
+  async resolve(client) {
+    const { rows } = await client.query(
+      `SELECT COALESCE(SUM(
+                CASE weight_unit
+                  WHEN 'KG'  THEN gross_weight / 1000.0
+                  WHEN 'TON' THEN gross_weight
+                  WHEN 'LB'  THEN gross_weight * 0.00045359237
+                END
+              ), 0)::float AS total
+         FROM dossier_visible
+        WHERE status = 'COMPLETED'
+          AND gross_weight IS NOT NULL
+          AND weight_unit IS NOT NULL`,
+    );
+    return rows[0] ? Math.round(rows[0].total) : 0;
+  },
+});
+
+register({
+  key: "coverage.countries_count",
+  unit: null,
+  /**
+   * How many countries the tenant's PUBLIC entities sit in or say they cover.
+   *
+   * ── WHY THIS SOURCE AND NOT THE DOSSIERS ─────────────────────────────────
+   *
+   * A count of countries touched by completed files would be the livelier
+   * number and it is not available: nothing on `dossier` carries a country.
+   * The only countries the system knows are the ones a human deliberately
+   * published — `corporate_entity.country_code` for where an entity IS, and
+   * `public_coverage` for where it says it operates (13787).
+   *
+   * That is the better source anyway, and not merely the available one. This
+   * figure is a CLAIM about reach, and a claim should come from somebody
+   * choosing to make it rather than from an aggregate that quietly grows the
+   * first time a file is opened for a one-off destination.
+   *
+   * ── AND IT IS THE SAME DEFINITION THE MAP DRAWS ──────────────────────────
+   *
+   * `coveredCountries()` in `public-web/src/lib/site-api.ts` unions exactly
+   * these two sources for the coverage scene. One definition, two renderers:
+   * a hero that said "12 countries" over a map with nine marks on it would be
+   * the kind of contradiction a visitor notices and cannot unsee.
+   *
+   * `public_enabled` gates it, so a tenant who has published no entity gets
+   * null and their literal stands — which is correct, since they have made no
+   * claim for this to count.
+   */
+  async resolve(client) {
+    const { rows } = await client.query(
+      `WITH codes AS (
+         SELECT upper(country_code) AS code
+           FROM corporate_entity
+          WHERE public_enabled AND country_code IS NOT NULL
+          UNION
+         SELECT upper(c->>'country_code') AS code
+           FROM corporate_entity e
+           CROSS JOIN LATERAL jsonb_array_elements(e.public_coverage) AS c
+          WHERE e.public_enabled AND c->>'country_code' IS NOT NULL
+       )
+       SELECT COUNT(*)::int AS n FROM codes WHERE code <> ''`,
+    );
+    const n = rows[0] ? rows[0].n : 0;
+    // Zero is "nothing published", not "we operate in no countries". The
+    // literal is the better answer there, so this declines to measure.
+    return n > 0 ? n : null;
+  },
+});
+
+register({
+  key: "company.years_active",
+  unit: null,
+  /**
+   * Years since the tenant says they were founded — `site_about.founded_year`,
+   * which a human typed on Settings → Website › About.
+   *
+   * ── WHY A METRIC AT ALL, WHEN THE TENANT COULD JUST TYPE "25" ────────────
+   *
+   * Because "25+" is the figure on a freight homepage most likely to be one
+   * year stale, every year, forever. It is the only one on the list whose true
+   * value changes without anybody doing any work — no file is opened, no cargo
+   * moves, and on the 1st of January the website is wrong. Binding it to the
+   * founding year is the difference between a number that ages and a number
+   * that does not.
+   *
+   * Null when `founded_year` is unset, which is the default: the tenant's
+   * literal then stands, exactly as it does for a clearance clock nobody has
+   * marked. There is no fallback to an invented founding date.
+   *
+   * The CHECK on the column (1800–2200) makes a negative result unreachable
+   * from valid data; the GREATEST is for a row that predates the constraint.
+   */
+  async resolve(client) {
+    const { rows } = await client.query(
+      `SELECT GREATEST(
+                0,
+                (EXTRACT(YEAR FROM now())::int - founded_year)
+              )::int AS n
+         FROM site_about
+        WHERE founded_year IS NOT NULL
+        LIMIT 1`,
+    );
+    return rows[0] ? rows[0].n : null;
+  },
+});
+
 /*
  * ── DELIBERATELY NOT REGISTERED ───────────────────────────────────────────
  *

@@ -116,13 +116,24 @@
  * is what guarantees the stripe reads as light for a tenant whose primary is
  * navy or forest; the accent only decides its colour.
  *
- * NOTE, for whoever reads this next: the hero's eyebrow and accent WORD are
- * still `--brand-orange` (section-head.tsx, `onDark`), so on a tenant whose
- * primary is not orange the beam and the accent word disagree. The fix is one
- * token — `--primary-ink-dark`, which theme.ts already computes AA-corrected
- * for dark grounds, per tenant — but it repaints every dark band on the site
- * and belongs in its own change with `check:contrast` run against it, not
- * smuggled in behind a hero animation. */
+ * AND THE TYPE BESIDE IT AGREES NOW, WHICH IT DID NOT. This note used to end
+ * by saying the eyebrow and the accent WORD were still `--brand-orange`, so on
+ * a tenant whose primary is not orange "the beam and the accent word
+ * disagree" — with the fix named as a follow-up too wide to smuggle in behind
+ * a hero animation.
+ *
+ * The follow-up was taken, and the premise turned out to be worse than the
+ * note said. `--brand-orange` is not Praxis's on this app at all:
+ * `app/branding.tsx` → `applyBrand` writes it from the tenant's own primary.
+ * So those four pieces of type were not the wrong BRAND's colour, they were
+ * the tenant's raw FILL used as type on carbon — 2.12:1 for a navy tenant, and
+ * unreachable by `check:contrast`, which reads stylesheets and never sees a
+ * value written at runtime.
+ *
+ * `--primary-ink-hero` is that colour walked to AA against this band's own
+ * ground, derived per tenant in the shared palette engine and shipped with the
+ * rest of `GET /public/site/theme`. The beam keeps `--primary` — it is light,
+ * not type — and the two now come from one input, so they cannot disagree. */
 .hero-beam-track {
   position: absolute;
   inset: 0;
@@ -322,16 +333,16 @@
 @keyframes hero-word-light-accent {
   0%,
   1% {
-    color: rgb(var(--brand-orange));
+    color: var(--primary-ink-hero);
   }
   4% {
     color: var(--hero-foreground);
   }
   8% {
-    color: rgb(var(--brand-orange));
+    color: var(--primary-ink-hero);
   }
   100% {
-    color: rgb(var(--brand-orange));
+    color: var(--primary-ink-hero);
   }
 }
 
@@ -729,7 +740,14 @@
    readable, and legibility is not the part of this that is decoration. */
 @supports not (backdrop-filter: blur(1px)) {
   .track-widget {
-    background: color-mix(in srgb, var(--primary) 7%, var(--hero));
+    /* `--hero-plate-solid` rather than a fourth guess at the same colour. It is
+       what `--hero-plate` over `--hero` actually flattens to, computed per
+       tenant by the palette engine with the same sRGB mixes this file paints
+       with — and it is the ground `--primary-ink-hero` was measured against, so
+       an engine with no `backdrop-filter` gets the pane the contrast was
+       derived for rather than one that merely looks similar. The 7 % mix that
+       was here resolved to a different colour from both. */
+    background: var(--hero-plate-solid);
   }
 }
 
@@ -844,10 +862,19 @@
     transparent
   );
 
-  /* One clock for the whole band: the beam's pass, and the plate edge that
-     catches it as it leaves. Two animations that are supposed to be one event
-     must not be two numbers. */
+  /* One clock for the whole band: the beam's pass, the plate edge that catches
+     it as it leaves, and the cue's falling dot at a quarter of it. Animations
+     that are supposed to be one scene must not be three numbers. */
   --beam-cycle: 11s;
+
+  /* The reader's own travel through this band, 0…1, written by
+     `useScrollScrub` on the band itself. Declared here so every rule that
+     reads it resolves a real number before any scroll has happened — and so
+     `check-motion.mjs`, which resolves custom properties before measuring,
+     sees the same value the browser does. Every consumer also carries its own
+     `, 0` fallback, because this sheet lands with a component and the band it
+     styles can render one frame ahead of the hook that writes it. */
+  --exit: 0;
 
   /* ── HOW BRIGHT THE BEAM IS ALLOWED TO BE, AND WHERE THE NUMBER CAME FROM
      *
@@ -879,4 +906,280 @@
      * white is the case the floors were measured against. */
   --beam-peak: 22%;
   --beam-flank: 13%;
+}
+
+/* ══ THE DEPARTURE ══════════════════════════════════════════════════════
+ *
+ * The one input this band has never read: the scroll.
+ *
+ * Everything above happens in the first 820 ms or on a loop. After that the
+ * hero was a still picture with a light crossing it, and the reader's own
+ * movement — the one input every visitor supplies, on every device, without
+ * being asked — changed nothing at all. `WeightScrub` on the headline was the
+ * sole exception and it is near-settled before a reader at the top of the page
+ * has moved, because its range is measured from the viewport and this band
+ * starts already inside it.
+ *
+ * `--exit` (0…1) is written on the band by `useScrollScrub`, and every rule
+ * below is a function of it. One number, so the layers cannot drift out of
+ * step with each other — the same argument `--hdr` makes for the header.
+ *
+ * ── THE RANGE IS start: 0 / end: 0.5, AND F-28 IS WHY ─────────────────────
+ *
+ * The default range finishes when the element's bottom leaves the top of the
+ * screen, which for a band the reader starts ON means the interesting part
+ * happens after they can no longer see it. §9.1's timeline shipped its first
+ * draft permanently invisible for exactly that reason. Here the span is
+ * `height - 0.5vh`, so on a full-height band the whole departure completes
+ * within half a screen of scrolling — while most of the band is still there to
+ * watch it.
+ *
+ * ── REDUCED MOTION ───────────────────────────────────────────────────────
+ *
+ * `useScrollScrub` sets `--exit` to its `settled` value ONCE and attaches no
+ * listener. The settled value here is 0, not 1, and that is the whole
+ * reduced-motion decision rather than an off-by-one: a departure has no end
+ * state a reader should be left looking at. "Settled" for this effect is the
+ * band as it composes at rest — the one every other rule in this file already
+ * renders — and 1 would hand somebody who asked for less motion a hero that is
+ * permanently half gone.
+ */
+.hero-band {
+  display: flex;
+  flex-direction: column;
+  /* The bar overlays this band (see `PageShell overlayHeader`), so the content
+     clears it here rather than the layout reserving space for it. The fallback
+     is the resting height of the two rows, for the frame before the header's
+     ResizeObserver has published a measurement. */
+  padding-top: var(--site-header-h, 7rem);
+}
+
+/* Cinematic only where there is room for it.
+ *
+ * At `lg` the copy and the plate are two columns, so a full-height band gives
+ * the composition air and the track field is still beside the headline rather
+ * than under it. Below `lg` the two STACK — and a 100svh band there would put a
+ * screenful of copy above the one control half this audience came for, which
+ * is the audience arithmetic in `hero.tsx` being spent for a framing. So the
+ * small screens keep a content-height band, which is what they already had. */
+@media (min-width: 1024px) {
+  .hero-band {
+    min-height: 100svh;
+  }
+}
+
+/* The grid takes the slack, so the foot below it sits on the bottom edge. */
+.hero-band > .hero-grid {
+  flex: 1 1 auto;
+}
+
+/* ── the layers that leave ───────────────────────────────────────────────── */
+
+/* The photograph, pushed in and held back.
+ *
+ * It travels DOWN as the page travels up, which is what parallax is: the far
+ * layer moving less than the near one. The scale is what stops the translate
+ * revealing the band's own ground under the image's bottom edge — 8 % of
+ * travel needs about 8 % of over-size — so the two numbers are one decision
+ * and have to move together. */
+.hero-art {
+  transform: translate3d(0, calc(var(--exit, 0) * 8%), 0)
+    scale(calc(1 + var(--exit, 0) * 0.08));
+  /* No transition: `--exit` is rewritten every frame by the scrub, so a
+     transition here would fight the input rather than smooth it. The same rule
+     `.hero-plate-glare` states for the pointer. */
+  will-change: transform;
+}
+
+/* THE BAND SINKS AS IT LEAVES, AND THE DIRECTION IS THE SAFETY ARGUMENT.
+ *
+ * A wash of the band's own ground, fading UP over the art as the reader goes.
+ * It is what makes the departure read as the scene going dark rather than as
+ * elements sliding about independently.
+ *
+ * It can only ever DARKEN, and that is why it needs no derivation. Every piece
+ * of copy on this band is light type on carbon, so a layer that moves the
+ * ground toward carbon moves contrast the safe way — the measured floors in
+ * `hero.tsx` are a lower bound that this can only raise. That is the same
+ * structural argument `.hero-light` makes in the other direction (lightening
+ * cannot take an image past white, and white is the case that was measured),
+ * and it is the reason neither of them re-derives anything.
+ *
+ * It sits above the art and the scrims and BELOW the copy, so the type's own
+ * colour is untouched. */
+.hero-sink {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: var(--hero);
+  opacity: calc(var(--exit, 0) * 0.62);
+}
+
+/* The copy leaves faster than the picture behind it, which is the parallax
+   read from the near side. Gone at `--exit` 0.87 rather than at 1: the last
+   tenth of the travel is the band empty and dark, so the section below arrives
+   into space rather than pushing the headline off the top. */
+.hero-copy {
+  transform: translate3d(0, calc(var(--exit, 0) * -30px), 0);
+  opacity: calc(1 - var(--exit, 0) * 1.15);
+}
+
+/* A THIRD ELEMENT FOR THE PLATE, AND A THIRD IS NOT ONE TOO MANY.
+ *
+ * `.tilt-plate` owns `transform` and rewrites it every frame from the pointer.
+ * `.hero-plate-enter` owns `transform` for the entrance, on its own element,
+ * because sharing the property with the tilt meant whichever won the cascade
+ * wiped the other — that note is above, with the measurement. The departure is
+ * the same problem a third time, and it takes the same answer: one property,
+ * one owner, one element. Stacking it onto the entrance wrapper would mean a
+ * transition and a per-frame write on one property, which is the conflict this
+ * file already documents rather than a new one.
+ *
+ * `pointer-events` is NOT reset here. The entrance wrapper inside is
+ * `pointer-events: none` and `.track-widget` turns it back on; adding a third
+ * `auto` on the outside would re-open the Chromium `preserve-3d` hit-test bug
+ * that the pairing above exists to close. */
+.hero-plate-exit {
+  transform: translate3d(0, calc(var(--exit, 0) * -18px), 0)
+    scale(calc(1 - var(--exit, 0) * 0.04));
+  opacity: calc(1 - var(--exit, 0) * 1.25);
+}
+
+/* The light show stops when the scene does. A beam still crossing a band the
+   reader has left is the same waste `data-live` exists to prevent, one layer
+   up: that one answers "is the band on screen", this one answers "is the
+   reader still looking at it". */
+.hero-band .hero-beam-track {
+  opacity: calc(1 - var(--exit, 0) * 1.7);
+}
+
+/* ══ THE FOOT: THE TENANT'S FIGURES, AND THE CUE ════════════════════════
+ *
+ * A baseline rail under the composition — three figures the tenant authored,
+ * and a hint that there is more below.
+ *
+ * ── WHY THE FIGURES ARE HERE AT ALL ──────────────────────────────────────
+ *
+ * They were already on the page, one band down, in the proof strip. Promoting
+ * three of them costs no new data, no new endpoint and no new claim: the same
+ * `stat_counters` block, the same server-side metric resolution, and the strip
+ * below renders the remainder so nothing is printed twice. What changes is
+ * that a visitor now sees a number before they have decided whether to scroll,
+ * which is the whole argument the strip's own note makes for existing.
+ *
+ * ── AND WHY IT CAN BE ABSENT ─────────────────────────────────────────────
+ *
+ * Same rule as the strip, for the same reason: no figures, no rail. Not a row
+ * of dashes and not a skeleton — a placeholder here would hold a hole open on
+ * the front door of every tenant who has not written any, which is most of
+ * them on day one. The band is `flex-direction: column` and this is the last
+ * child, so its absence costs nothing above it. */
+.hero-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1.5rem 2rem;
+  padding-bottom: 2.5rem;
+  border-top: 1px solid var(--hero-line);
+  padding-top: 1.5rem;
+  margin-top: 2.5rem;
+  /* Leaves with the copy rather than with the picture: it is type, and it
+     belongs to the near layer. Slightly later than the copy so the rail is the
+     last thing to go, which reads as the composition emptying from the top. */
+  transform: translate3d(0, calc(var(--exit, 0) * -16px), 0);
+  opacity: calc(1 - var(--exit, 0) * 1.4);
+}
+
+.hero-figures {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem 2.5rem;
+}
+
+/* The rule between figures, and only where there IS a row. At the narrowest
+   width the group wraps and a left rule on the second cell would draw a
+   divider in the middle of nothing — the same rule the proof strip's grid
+   follows, stated the same way. */
+.hero-figure + .hero-figure {
+  border-left: 1px solid var(--hero-line);
+  padding-left: 2.5rem;
+}
+
+/* Smaller than the strip's. These sit under a 68px headline and beside a
+   quarter-screen plate, so a figure at the strip's size competes with the H1
+   for the same glance; at this size it is a caption with weight. */
+.hero-figure .stat-figure {
+  font-size: clamp(1.375rem, 2.2vw, 1.75rem);
+}
+
+/* THE CUE, WHICH STOPS BEING TRUE THE MOMENT IT IS TAKEN.
+ *
+ * It fades on the reader's first scroll rather than on a timer — advice that
+ * is still on screen after it has been followed is the page talking over
+ * itself. `--exit` is already the number for "has the reader begun", so this
+ * costs one declaration and no state.
+ *
+ * `aria-hidden`, and it is not laziness. It names a gesture rather than a
+ * destination: a screen-reader user moves by landmark and heading and is
+ * already past it, and "scroll down to explore" read aloud is an instruction
+ * in the wrong modality. The content it points at is a labelled landmark of
+ * its own. */
+.hero-cue {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--hero-muted);
+  opacity: calc(1 - var(--exit, 0) * 3);
+  transition: opacity var(--dur-response) var(--ease-standard);
+}
+
+/* The travelling dot. Continuous, and on the exemption list with the beam —
+   it is the one thing on the band whose whole content is "there is more this
+   way", and a static arrow says that less well than a moving one.
+ *
+ * It rides `--beam-cycle`'s own clock divided down rather than a number of its
+ * own, so the band still has ONE timebase. */
+.hero-cue-rail {
+  position: relative;
+  display: block;
+  width: 1px;
+  height: 2.25rem;
+  overflow: hidden;
+  background: var(--hero-line);
+}
+
+.hero-cue-rail::after {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  height: 40%;
+  background: linear-gradient(
+    180deg,
+    transparent,
+    var(--primary-ink-hero) 60%,
+    transparent
+  );
+  animation: hero-cue-fall calc(var(--beam-cycle) / 4) var(--ease-standard)
+    infinite;
+  /* Paused unless the band says it is on screen, exactly as the beam is. */
+  animation-play-state: paused;
+}
+
+.band-hero[data-live="true"] .hero-cue-rail::after {
+  animation-play-state: running;
+}
+
+/* Base style IS the settled state: the dot parked above the rail, out of
+   sight. So the reduced-motion umbrella's single unfilled iteration leaves an
+   empty hairline rather than a dot frozen halfway down it. */
+@keyframes hero-cue-fall {
+  0% {
+    transform: translateY(-100%);
+  }
+  60%,
+  100% {
+    transform: translateY(250%);
+  }
 }

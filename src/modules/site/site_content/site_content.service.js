@@ -95,14 +95,44 @@ async function resolveMetricsFor(client, blocks) {
  * The renderer reads `value` and nothing else — it is never handed a decision
  * about which of two numbers to trust. `metric_key` is dropped from the public
  * payload: it names an internal query and tells a visitor nothing.
+ *
+ * ── AND A BOUND STAT WITH NOTHING TO SAY IS DROPPED, NOT PUBLISHED AS 0 ───
+ *
+ * `value` is `z.number()` and always present, so a stat has no "absent" state
+ * to fall into: a figure bound to a metric that cannot answer falls back to
+ * its literal, and a literal nobody has typed is 0. The site then publishes
+ * "0 Countries served" on the tenant's own front door — which is not a missing
+ * number, it is a false one, and it is the exact harm §1.2 rule 7 and the
+ * proof strip's own note are about.
+ *
+ * It became reachable the moment figures were seeded rather than typed. A
+ * tenant is provisioned with a catalogue of bound figures so they have
+ * something to drag in the editor on day one, and three of the eight metrics
+ * genuinely cannot answer until somebody does unrelated work — there is no
+ * `founded_year` until About is filled in, no countries until an entity is
+ * published, no clearance clock until Operations marks the two stages on a
+ * template. Every one of those would have shipped as a zero.
+ *
+ * So: bound, unresolved, and never given a literal of its own → the item is
+ * removed. Bound and resolved, or carrying a literal the tenant actually
+ * typed, → published as before. This is the only place the distinction can be
+ * drawn, because `metric_key` does not survive into the payload.
  */
 function applyMetrics(block, resolved) {
   if (block.type !== "stat_counters") return block;
-  const items = ((block.content && block.content.items) || []).map((item) => {
+  const items = [];
+  for (const item of (block.content && block.content.items) || []) {
     const { metric_key: key, ...rest } = item || {};
     const live = key ? resolved.get(key) : undefined;
-    return live === undefined ? rest : { ...rest, value: live };
-  });
+    if (live !== undefined) {
+      items.push({ ...rest, value: live });
+      continue;
+    }
+    // A literal of 0 under a metric binding is a seed's placeholder, not a
+    // claim. Without the binding it is a number somebody chose, and stands.
+    if (key && !(Number(rest.value) > 0)) continue;
+    items.push(rest);
+  }
   return { ...block, content: { ...block.content, items } };
 }
 

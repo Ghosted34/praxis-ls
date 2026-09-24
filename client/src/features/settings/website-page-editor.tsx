@@ -57,6 +57,21 @@ import * as api from "@/lib/site-content-api";
 /* Named for the band a reader sees, not for the type in the database. A tenant
    looking for the headline on their homepage is looking for "Hero", not for
    `hero`; and "Figures" is what the row under it is, whatever the column says. */
+/**
+ * How many figures the homepage hero takes off the top of a `stat_counters`
+ * block. Mirrors `HERO_FIGURE_COUNT` in
+ * `public-web/src/lib/site-api.ts`, which is where the split is implemented
+ * and reasoned about.
+ *
+ * Duplicated rather than imported because these are two separate apps that
+ * install their own dependencies — the same reason `public-web` carries its own
+ * copy of the upload engine. Three is a layout fact about a band this app does
+ * not render, so it is unlikely to move; if it ever does, it moves in both,
+ * and the editor saying "the first three" while the site takes four is a lie a
+ * tenant would catch before any gate did.
+ */
+const HERO_FIGURE_COUNT = 3;
+
 const BLOCK_LABEL: Record<string, string> = {
   hero: "Hero",
   stat_counters: "Figures",
@@ -723,19 +738,25 @@ function ItemFrame({
   total,
   onMove,
   onRemove,
+  badge,
   children,
 }: {
   index: number;
   total: number;
   onMove: (delta: number) => void;
   onRemove: () => void;
+  /** A word about this item's POSITION — "Hero" on the figures that ride the
+   *  hero rail. Beside the index rather than in the body, because it describes
+   *  where the item lands and not what it says. */
+  badge?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
     <div className="rounded-lg border bg-muted/30 p-3">
       <div className="mb-2 flex items-center justify-between">
-        <span className="font-mono text-[11px] text-muted-foreground">
+        <span className="flex items-center gap-2 font-mono text-[11px] text-muted-foreground">
           {String(index + 1).padStart(2, "0")}
+          {badge}
         </span>
         <div className="flex gap-1">
           <Button
@@ -872,11 +893,35 @@ function CounterItems({
 
   return (
     <div className="flex flex-col gap-3">
+      {/* ORDER IS THE CONTROL, SO THE ORDER HAS TO BE EXPLAINED.
+ 
+          The homepage splits this one list across two bands: the first three
+          figures are the hero's baseline rail, the rest fall into the proof
+          strip below it. Nothing is duplicated and nothing is discarded, so
+          the up/down arrows are how a marketing person decides what a visitor
+          reads in the first screenful.
+ 
+          That is not guessable from a list of figures, and a rule nobody is
+          told reads as arbitrary — somebody would reorder, see their number
+          move bands, and file it as a bug. The alternative was an `on_hero`
+          flag per item, which costs a migration and invents two states the
+          design has no answer for (six flagged, or none). */}
+      <Callout tone="info" title={tr("The first three are the hero")}>
+        {tr(
+          "Figures 01–03 sit under the headline on the homepage; the rest appear in the band below it. Reorder to change which three a visitor sees first.",
+        )}
+      </Callout>
+
       {items.map((item, i) => (
         <ItemFrame
           key={i}
           index={i}
           total={items.length}
+          badge={
+            i < HERO_FIGURE_COUNT ? (
+              <Pill tone="orange">{tr("Hero")}</Pill>
+            ) : null
+          }
           onMove={(d) => {
             setSaved(false);
             setItems((s) => moved(s, i, i + d));

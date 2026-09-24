@@ -548,6 +548,81 @@ describe("the services panel", () => {
   });
 });
 
+describe("the bar over the band", () => {
+  it("is off by default, so eleven other routes did not quietly change", async () => {
+    // `PageShell` opts in per page and only the homepage does. A default-on
+    // overlay would pull `<main>` up under the header on every route in the
+    // app — including the ones whose first band is page-coloured, where the
+    // bar would wear hero colours over it.
+    await mount();
+    expect(header()).toHaveAttribute("data-overlay", "false");
+  });
+
+  it("takes the hero's colour family rather than cross-fading to the page's", () => {
+    /* THE HOLE THIS CLOSES, AND WHY IT IS ASSERTED AGAINST THE STYLESHEET.
+ 
+       The obvious overlay keeps the bar's labels at `--foreground` and fades
+       its fill in from `--background` as `--hdr` rises. `--foreground` follows
+       the PAGE; the band underneath is `--hero`, which is carbon in BOTH
+       themes and deliberately never follows it. In the light theme that is
+       dark ink on carbon — an invisible nav, not a dim one.
+ 
+       It is unreachable today only because `FORCE_DARK` pins this app to dark,
+       and that lock is one line in `lib/theme-mode.ts` whose own header
+       explains how to flip it. `check:contrast` cannot catch it either: it
+       measures the tokens a rule NAMES, and the failing rule would name
+       `--foreground` on `--background`, which passes.
+ 
+       So the assertion is that the overlay re-points the subtree to the hero
+       family, which makes the pair constant at every scroll position and the
+       one the contrast gate already measures at 17:1.
+ 
+       Comments are stripped first — the note beside the rule discusses
+       `--foreground` and `--hero-foreground` in prose several times over, so
+       matching the raw file would pass with the declarations deleted. That is
+       the failure mode the sibling `.nav-panel-host` test in this file records
+       having hit for real. */
+    const css = readFileSync(
+      join(__dirname, "..", "..", "index.css"),
+      "utf8",
+    ).replace(/\/\*[\s\S]*?\*\//g, "");
+
+    const rule = css.match(
+      /\.site-shell\[data-overlay="true"\]\s+\.site-header\s*\{[\s\S]*?\}/,
+    );
+    expect(rule).not.toBeNull();
+    expect(rule![0]).toMatch(/--foreground:\s*var\(--hero-foreground\)/);
+    expect(rule![0]).toMatch(/--border:\s*var\(--hero-line\)/);
+    // The fill is the hero's ground scaled by --hdr, never the page's.
+    expect(rule![0]).toMatch(/background:[^;]*var\(--hero\)/);
+    expect(rule![0]).not.toMatch(/background:[^;]*var\(--background\)/);
+  });
+
+  it("pulls main up by the SAME property the header publishes", () => {
+    /* The pull-up and the hero's own padding must read one number or the
+       composition moves. `--site-header-h` is measured and republished through
+       the whole condense, so a hardcoded offset in either place would be
+       correct at exactly one scroll position — and 6rem, the number that used
+       to be hardcoded around this app, is SHORTER than the bar really is,
+       which is the bug that sliced pinned headings in half. */
+    const css = readFileSync(
+      join(__dirname, "..", "..", "index.css"),
+      "utf8",
+    ).replace(/\/\*[\s\S]*?\*\//g, "");
+    const rule = css.match(/\.main-under-header\s*\{[\s\S]*?\}/);
+    expect(rule).not.toBeNull();
+    expect(rule![0]).toMatch(/var\(--site-header-h/);
+
+    const hero = readFileSync(
+      join(__dirname, "hero.css"),
+      "utf8",
+    ).replace(/\/\*[\s\S]*?\*\//g, "");
+    const band = hero.match(/\.hero-band\s*\{[\s\S]*?\}/);
+    expect(band).not.toBeNull();
+    expect(band![0]).toMatch(/padding-top:\s*var\(--site-header-h/);
+  });
+});
+
 describe("the chrome that is decoration", () => {
   it("is hidden from assistive technology, all of it", async () => {
     await mount();

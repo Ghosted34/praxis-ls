@@ -6,9 +6,12 @@ import { cn } from "@/lib/cn";
 import { TrackWidget } from "./track-widget";
 import { SectionHead } from "./section-head";
 import { RouteCanvas } from "./route-canvas";
-import { usePointerLight, useTilt } from "@/lib/motion";
+import { usePointerLight, useScrollScrub, useTilt } from "@/lib/motion";
 import { useInView, useRevealed } from "@/components/ui/reveal";
 import { StagedLines, WeightScrub } from "@/components/ui/type";
+import { CountUp } from "@/components/ui/count-up";
+import { getLang } from "@/lib/i18n";
+import { pickBilingual, type StatCounter } from "@/lib/site-api";
 import { p } from "@/lib/base-path";
 /*
  * THIS BAND'S OWN STYLESHEET, AND WHY IT IS AN IMPORT RATHER THAN MORE OF
@@ -173,8 +176,28 @@ const scrimCss = (scrim: { shape: string; stops: ReadonlyArray<{ at: string; alp
 /** Exported for the test that holds the floors. */
 export const HERO_SCRIMS = { stacked: SCRIM_STACKED, split: SCRIM_SPLIT, css: scrimCss };
 
-export function Hero({ copy = null }: { copy?: HeroCopy | null }) {
+export function Hero({
+  copy = null,
+  figures = [],
+}: {
+  copy?: HeroCopy | null;
+  /**
+   * The tenant's own figures for the baseline rail — the first three of their
+   * home page's `stat_counters`, already resolved against the live metric
+   * server-side (`heroCounters` in `lib/site-api.ts`).
+   *
+   * A PROP rather than a read inside this component, for the same reason
+   * `copy` is one: `marketing-page.tsx` already holds the shared home-page
+   * promise, and a second `useHomePage()` here would put a data dependency on
+   * the LCP element to save passing an array. It also keeps this component
+   * renderable from a test with no fetch at all.
+   *
+   * Empty is the normal case and draws nothing. See `.hero-foot`.
+   */
+  figures?: StatCounter[];
+}) {
   const { t } = useTranslation();
+  const lang = getLang();
   const { branding, login } = useBranding();
   /*
    * ONE CONTRACT, TWO INPUTS.
@@ -198,6 +221,32 @@ export function Hero({ copy = null }: { copy?: HeroCopy | null }) {
   const lightRef = usePointerLight<HTMLElement>();
   const tilt = useTilt<HTMLElement>({ max: 18 });
   /*
+   * AND THE THIRD INPUT, WHICH THIS BAND HAS NEVER READ: THE SCROLL.
+   *
+   * `--exit` (0…1) is the reader's own travel through the band, and every
+   * departure rule in `hero.css` is a function of it — the art holding back,
+   * the copy leaving ahead of it, the plate receding, the ground going dark,
+   * the beam stopping. One number, so the layers cannot drift apart.
+   *
+   * `start: 0, end: 0.5` rather than the default range, and F-28 is the
+   * reason: the default finishes when the element's bottom leaves the top of
+   * the screen, which on a band the reader starts ON puts the whole effect
+   * where nobody can see it. §9.1's timeline shipped invisible for exactly
+   * that. This span is `height - 0.5vh`, so the departure completes within
+   * half a screen of scrolling, while most of the band is still there.
+   *
+   * `settled: 0` is the reduced-motion decision and it is deliberately not 1.
+   * A departure has no end state a reader should be parked in; "settled" for
+   * this effect is the band as it composes at rest, and 1 would hand somebody
+   * who asked for less motion a permanently half-gone hero.
+   */
+  const exitRef = useScrollScrub<HTMLElement>({
+    start: 0,
+    end: 0.5,
+    prop: "--exit",
+    settled: 0,
+  });
+  /*
    * TWO OBSERVERS, TWO DIFFERENT QUESTIONS, BOTH SHARED.
    *
    * `useRevealed` answers "has this arrived yet" once and unobserves — it
@@ -220,8 +269,9 @@ export function Hero({ copy = null }: { copy?: HeroCopy | null }) {
     (el: HTMLElement | null) => {
       (lightRef as React.MutableRefObject<HTMLElement | null>).current = el;
       (tilt.ref as React.MutableRefObject<HTMLElement | null>).current = el;
+      (exitRef as React.MutableRefObject<HTMLElement | null>).current = el;
     },
-    [lightRef, tilt.ref],
+    [lightRef, tilt.ref, exitRef],
   );
   // The tenant's own marketing artwork first; their login backdrop second.
   //
@@ -244,7 +294,7 @@ export function Hero({ copy = null }: { copy?: HeroCopy | null }) {
          `.band-hero[data-live="true"]`, and a reader of either file can see at a
          glance that nothing animates until the band says it is visible. */
       data-live={live ? "true" : "false"}
-      className="band-hero vignette relative overflow-hidden"
+      className="band-hero hero-band vignette relative overflow-hidden"
     >
       {image ? (
         <>
@@ -252,7 +302,7 @@ export function Hero({ copy = null }: { copy?: HeroCopy | null }) {
             src={image}
             alt=""
             aria-hidden
-            className="absolute inset-0 h-full w-full object-cover"
+            className="hero-art absolute inset-0 h-full w-full object-cover"
           />
           {/*
             THE LIGHT, WHICH THIS BAND HAS BEEN DESCRIBING AND NOT RENDERING.
@@ -334,6 +384,25 @@ export function Hero({ copy = null }: { copy?: HeroCopy | null }) {
           />        </>
       ) : null}
 
+      {/* THE BAND GOING DARK AS THE READER LEAVES.
+
+          Mounted here — after the scrims, before the copy — and the position
+          is the whole safety argument, exactly as it is for the light and the
+          beam above. It paints OVER the photograph and its scrims and UNDER
+          every piece of type, so no copy on this band ever changes colour.
+
+          And it only DARKENS. Every piece of copy here is light type on
+          carbon, so a wash toward carbon moves contrast the safe way: the
+          measured floors in `SCRIM_FLOOR` are a lower bound this can only
+          raise, never spend. That is why it needs no derivation of its own —
+          the same structural argument `.hero-light` makes in the opposite
+          direction, where lightening cannot take an image past the white the
+          floors were measured against.
+
+          Outside both image branches because it is the BAND leaving, not the
+          photograph: a tenant with no upload gets the same departure. */}
+      <div aria-hidden className="hero-sink" />
+
       {/* Structure, not decoration — and now alive.
  
           This was `RouteGraphic`, a static SVG whose dashes marched. It said
@@ -356,9 +425,9 @@ export function Hero({ copy = null }: { copy?: HeroCopy | null }) {
 
       <div
         ref={enterRef}
-        className="wrap tilt-stage relative grid items-center gap-10 py-14 md:py-20 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] lg:py-24"
+        className="hero-grid wrap tilt-stage relative grid items-center gap-10 py-14 md:py-20 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] lg:py-24"
       >
-        <div className="max-w-prose">
+        <div className="hero-copy max-w-prose">
           {/* The shared heading block. This hero was the LAST hand-rolled
               eyebrow + h1 in the app — the most-seen heading on the site, and
               the one a sweep is most likely to skip because it lives in a
@@ -520,6 +589,20 @@ export function Hero({ copy = null }: { copy?: HeroCopy | null }) {
             that only appears once the pointer moves. Two transforms, two
             elements, `preserve-3d` on the wrapper so it does not flatten the
             rotation it contains. */}
+        {/* A THIRD WRAPPER, AND A THIRD IS NOT ONE TOO MANY.
+
+            `.tilt-plate` owns `transform` and rewrites it every frame from the
+            pointer. `.hero-plate-enter` owns `transform` for the entrance, on
+            its own element, because sharing the property meant whichever won
+            the cascade wiped the other — the note below carries the
+            measurement. The departure is that same problem a third time and
+            takes the same answer: one property, one owner, one element.
+
+            It deliberately does NOT reset `pointer-events`. The entrance
+            wrapper inside is `none` and `.track-widget` turns it back on; a
+            third `auto` out here would re-open the Chromium `preserve-3d`
+            hit-test bug that pairing exists to close. */}
+        <div className="hero-plate-exit">
         <div
           className={cn(
             "hero-plate-enter hero-enter-plate",
@@ -543,19 +626,26 @@ export function Hero({ copy = null }: { copy?: HeroCopy | null }) {
                   `.track-widget`), so its accent type takes the same swap the
                   hero eyebrow beside it takes: `.micro` carries the light-theme
                   muted ink, which measures 3.37:1 on this ground and fails.
-                  `--brand-orange` is 6.44:1 here.
- 
-                  It is Praxis's orange rather than the tenant's for the same
-                  reason the eyebrow and the accent word are — that colour was
-                  measured on carbon and `--primary-ink` was not. The beam and
-                  the glass tint DO use the tenant's `--primary`, because those
-                  are light rather than type and carry no contrast duty. The
-                  note on `.hero-beam-track` records the follow-up that would
-                  make all four of them the tenant's. */}
+                  AND ALL FOUR ARE THE TENANT'S NOW, WHICH THE NOTE HERE USED
+                  TO CALL A FOLLOW-UP. This was `rgb(var(--brand-orange))`,
+                  described as "Praxis's orange rather than the tenant's". On
+                  this app that was never true — `applyBrand` sets
+                  `--brand-orange` from the tenant's own primary — so it was the
+                  tenant's raw FILL used as type: 6.33:1 for an orange tenant
+                  and 2.12:1 for a navy one, invisible to every gate because the
+                  value only ever existed at runtime.
+
+                  `--primary-ink-hero` is that same colour walked to AA against
+                  THIS GROUND — the plate, flattened, which is the lighter of
+                  the band's two grounds and therefore the one that binds. The
+                  beam and the glass tint keep `--primary`: they are light
+                  rather than type and carry no contrast duty, and they now
+                  agree with the type beside them because both come from the one
+                  input. */}
               <p
                 className={cn(
                   "micro",
-                  "text-[rgb(var(--brand-orange))]", // ink-on-dark: 6.44:1 on the carbon under --hero-plate; --primary-ink is ~3.4:1 there
+                  "text-[var(--primary-ink-hero)]",
                 )}
               >
                 {t("site.track.kicker")}
@@ -577,7 +667,7 @@ export function Hero({ copy = null }: { copy?: HeroCopy | null }) {
                 to="/portal/login"
                 className={cn(
                   "mt-4 inline-flex text-sm underline-offset-4 hover:underline",
-                  "text-[rgb(var(--brand-orange))]", // ink-on-dark: 6.44:1 on the carbon under --hero-plate; --primary-ink is ~3.4:1 there
+                  "text-[var(--primary-ink-hero)]",
                 )}
               >
                 {t("site.chrome.portalEntry")}
@@ -585,7 +675,60 @@ export function Hero({ copy = null }: { copy?: HeroCopy | null }) {
             </div>
           </div>
         </div>
+        </div>
       </div>
+
+      {/* ── THE FOOT: THE TENANT'S OWN FIGURES, AND THE CUE ────────────────
+
+          ABSENT RATHER THAN EMPTY. A tenant who has authored no figures gets
+          no rail — not a row of dashes, not a skeleton. The band is a flex
+          column and this is its last child, so its absence costs nothing above
+          it, and a placeholder would hold a hole open on the front door of
+          every tenant who has not written any, which is most of them on day
+          one. Same rule as the proof strip below, for the same reason.
+
+          NOTHING HERE IS INVENTED. These are the first three items of the
+          tenant's own `stat_counters` block, with the server having already
+          replaced each literal with the live metric where the block named one
+          — and having DROPPED any bound figure whose metric cannot answer yet,
+          so a seeded "Countries covered" does not publish as 0. The strip
+          below renders the remainder, so no number appears twice in one
+          screenful. */}
+      {figures.length ? (
+        <div className="hero-foot wrap">
+          <ul className="hero-figures">
+            {figures.map((f, i) => (
+              <li
+                key={`${pickBilingual(f.label, lang)}-${i}`}
+                className="hero-figure"
+              >
+                <p className="stat-figure">
+                  <CountUp value={f.value} />
+                  {f.unit ? (
+                    <span className="ml-1.5 text-[0.6em] font-semibold uppercase text-[var(--hero-muted)]">
+                      {f.unit}
+                    </span>
+                  ) : null}
+                </p>
+                <p className="stat-label mt-1.5">
+                  {pickBilingual(f.label, lang)}
+                </p>
+              </li>
+            ))}
+          </ul>
+
+          {/* Decorative, and `aria-hidden` for a reason rather than for
+              convenience: it names a GESTURE, not a destination. A
+              screen-reader user moves by landmark and heading and is already
+              past it, and "scroll to explore" read aloud is an instruction in
+              the wrong modality. Everything it points at is a labelled
+              landmark of its own. */}
+          <p aria-hidden className="hero-cue micro">
+            <span className="hero-cue-rail" />
+            {t("site.hero.scrollCue")}
+          </p>
+        </div>
+      ) : null}
     </section>
   );
 }

@@ -144,6 +144,48 @@ export const statCounters = (page: SitePage | null): StatCounter[] =>
   );
 
 /**
+ * How many figures ride the HERO, and why the split is an index rather than a
+ * flag on the item.
+ *
+ * ── THREE, AND NOT A NUMBER THE TENANT CHOOSES ────────────────────────────
+ *
+ * The hero rail is a baseline under a headline, not a table. Three figures is
+ * what fits on one line at 390px without wrapping into something that competes
+ * with the H1 above it, and it is also about the number a reader takes in
+ * without deciding to read — which is the whole job of a figure on a front
+ * door. A fourth is the one nobody looks at; a fifth makes the band a report.
+ *
+ * ── AND WHY ORDER DECIDES, RATHER THAN AN `on_hero` FLAG ──────────────────
+ *
+ * The obvious shape is a boolean per item, and it costs a schema change, a
+ * migration, a form control, and a new way for a tenant to produce a state the
+ * design has no answer for — six flagged figures, or none. Order already
+ * exists, the editor already has drag handles on it, and "the first three are
+ * the ones on the hero" is a rule a person can hold in their head while
+ * dragging. The editor says so in as many words, because a rule nobody is told
+ * is a rule that reads as arbitrary.
+ *
+ * The remainder is NOT discarded — `proofCounters` picks it up in the band
+ * directly below, so reordering promotes and demotes rather than deleting. A
+ * figure appearing in both places would be the one outcome worth avoiding: the
+ * same number twice in one screenful reads as a bug in the tenant's data.
+ */
+export const HERO_FIGURE_COUNT = 3;
+
+/** The figures on the hero's baseline rail: the first three, in the tenant's
+ *  own order. Empty for a tenant who has authored none, which is the default
+ *  and the reason the rail renders nothing rather than a placeholder. */
+export const heroCounters = (page: SitePage | null): StatCounter[] =>
+  statCounters(page).slice(0, HERO_FIGURE_COUNT);
+
+/** Everything the hero did not take, for the proof strip below it. Capped at
+ *  four because that is what its own grid draws; a tenant with more than seven
+ *  figures has written a report, and the band that would show it is the one
+ *  this product does not have. */
+export const proofCounters = (page: SitePage | null): StatCounter[] =>
+  statCounters(page).slice(HERO_FIGURE_COUNT, HERO_FIGURE_COUNT + 4);
+
+/**
  * ── THE OVERRIDE READERS ───────────────────────────────────────────────────
  *
  * Everything below reads a block the tenant authored and hands it to a band

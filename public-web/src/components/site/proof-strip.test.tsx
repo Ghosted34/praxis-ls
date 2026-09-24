@@ -28,6 +28,33 @@ const counters = (items: unknown[]) => ({
   content: { items },
 });
 
+/**
+ * The three figures the HERO takes off the top of the list, so that whatever a
+ * test puts after them is what reaches THIS band.
+ *
+ * ── WHY EVERY FIGURE TEST BELOW NOW GOES THROUGH THIS ─────────────────────
+ *
+ * The strip used to read the first four `stat_counters`. The hero now carries a
+ * baseline rail of the first three and this band renders the remainder, so one
+ * ordered list feeds two bands and no figure is printed twice in a screenful.
+ *
+ * That makes a one-item fixture a test of the HERO, not of this band — it would
+ * assert an empty strip while passing for the wrong reason. Padding is the
+ * smaller change than re-pointing each test: every assertion below is still
+ * about the property it was written for (the server's number wins, the label
+ * falls back FR↔EN, the band is a named landmark), and only the fixture moved.
+ *
+ * The padding is deliberately unlike anything a test asserts on, so a fixture
+ * leaking into an expectation fails loudly instead of matching by accident.
+ */
+const promoted = (items: unknown[]) =>
+  counters([
+    { label: { fr: "Rail un", en: "Rail one" }, value: 901 },
+    { label: { fr: "Rail deux", en: "Rail two" }, value: 902 },
+    { label: { fr: "Rail trois", en: "Rail three" }, value: 903 },
+    ...items,
+  ]);
+
 const chips = (items: unknown[]) => ({
   block_id: "b2",
   type: "stat_chips",
@@ -101,7 +128,7 @@ describe("a tenant who has authored nothing", () => {
 describe("a tenant who has", () => {
   it("shows the figure the server resolved, with its unit and its label", async () => {
     payload = page([
-      counters([
+      promoted([
         {
           label: { fr: "Volume géré", en: "CBM managed" },
           unit: "CBM",
@@ -118,7 +145,7 @@ describe("a tenant who has", () => {
 
   it("names the band, so it is a landmark rather than a region", async () => {
     payload = page([
-      counters([{ label: { fr: "Dossiers", en: "Files" }, value: 12 }]),
+      promoted([{ label: { fr: "Dossiers", en: "Files" }, value: 12 }]),
     ]);
     await mount();
     expect(
@@ -139,12 +166,42 @@ describe("a tenant who has", () => {
     expect(screen.getByText("Certification")).toBeInTheDocument();
   });
 
+  it("leaves the hero's three alone, and draws only what is left", async () => {
+    /* THE SPLIT, ASSERTED FROM THIS SIDE.
+ 
+       Both halves matter and they fail in opposite directions. If this band
+       started reading from the top again, a tenant's two headline numbers
+       would appear twice within one screenful — which a visitor reads as the
+       site being broken rather than as emphasis. If the slice were off by one,
+       a figure would vanish from the page entirely, and nothing else in the
+       tree would notice because both bands render "what they were given".
+ 
+       Four figures in, one figure out, and it is the FOURTH. */
+    payload = page([
+      promoted([{ label: { fr: "Quatrième", en: "Fourth" }, value: 44 }]),
+    ]);
+    await mount();
+    expect(screen.getByText("Fourth")).toBeInTheDocument();
+    for (const promotedLabel of ["Rail one", "Rail two", "Rail three"]) {
+      expect(screen.queryByText(promotedLabel)).toBeNull();
+    }
+  });
+
+  it("is absent when the tenant authored exactly the three the hero takes", async () => {
+    // Not an empty strip and not a hairline with nothing under it: the band
+    // renders nothing at all, exactly as it does for a tenant with no figures.
+    // This is the common case once a tenant has filled the rail.
+    payload = page([promoted([])]);
+    const { container } = await mount();
+    expect(container).toBeEmptyDOMElement();
+  });
+
   it("falls back to the other language rather than to a blank", async () => {
     // FR is required upstream and EN is optional, so a half-translated block is
     // the normal case — and blanking a label because of it would make the
     // published band worse than the untranslated one.
     payload = page([
-      counters([{ label: { fr: "Clients servis", en: null }, value: 40 }]),
+      promoted([{ label: { fr: "Clients servis", en: null }, value: 40 }]),
     ]);
     await mount();
     expect(screen.getByText("Clients servis")).toBeInTheDocument();

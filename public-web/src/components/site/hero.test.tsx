@@ -160,7 +160,15 @@ describe("the pass", () => {
     expect(frames).not.toMatch(/#[0-9a-f]{3,8}\b/i);
     expect(frames).toContain("var(--hero-foreground)");
     expect(frames).toContain("var(--primary)");
-    expect(frames).toContain("rgb(var(--brand-orange))");
+    /* The accent word's resting colour is the hero's own AA-corrected ink, not
+       `--brand-orange`. That token is the tenant's raw FILL on this app —
+       `applyBrand` overwrites its declared value at runtime — so using it as
+       type measured 2.12:1 for a navy-primary tenant, and no gate could see it
+       because the failing value never appears in a stylesheet. Asserted here
+       because a keyframe is exactly the kind of place the fill would come
+       back: it reads as a colour rather than as a contrast decision. */
+    expect(frames).toContain("var(--primary-ink-hero)");
+    expect(frames).not.toContain("--brand-orange");
   });
 });
 
@@ -234,6 +242,120 @@ describe("the hero", () => {
     );
     expect(accent).toBeTruthy();
     expect(accent?.className).toContain("hero-word-light-accent");
+  });
+});
+
+describe("the departure", () => {
+  beforeEach(() => setMotion(false));
+  afterEach(cleanup);
+
+  it("settles at 0 under reduced motion, not at 1", () => {
+    /* THE REDUCED-MOTION DECISION, AND IT IS NOT AN OFF-BY-ONE.
+ 
+       Every other scrub in this app settles at its END state, because that is
+       what §1.2 rule 1 asks for: the animation's finished frame, rendered
+       immediately. A DEPARTURE has no end state a reader should be parked in.
+       Settling this one at 1 would hand somebody who asked their system for
+       less motion a hero that is permanently 62 % sunk, its copy at zero
+       opacity and its plate shrunk — the band's own resting composition
+       replaced by the state it passes through on the way out.
+ 
+       So `settled: 0` is the deliberate inversion, and it is asserted here
+       because it reads like a mistake: the next person to "fix" it to match
+       every other call site would blank the front door for exactly the
+       audience the rule exists to protect. */
+    const source = read("./hero.tsx");
+    const call = source.slice(
+      source.indexOf("useScrollScrub<HTMLElement>({"),
+      source.indexOf("const bandRef"),
+    );
+    expect(call).toContain('prop: "--exit"');
+    expect(call).toMatch(/settled:\s*0\b/);
+    // …and the range is narrowed, per F-28: the default finishes after the
+    // band has left the screen, which is where §9.1's timeline shipped.
+    expect(call).toMatch(/start:\s*0\b/);
+    expect(call).toMatch(/end:\s*0\.5\b/);
+  });
+
+  it("darkens the band rather than lightening it, which is what makes it free", () => {
+    /* The sink is the one departure layer that paints over the copy's ground,
+       so it is the one that could spend the scrim's measured contrast. It
+       cannot, and the reason is structural rather than careful: every piece of
+       copy here is light type on carbon, and this washes TOWARD carbon. A
+       future edit to a lighter colour — or to `screen`, which is what the
+       beam's first draft reached for — would take the eyebrow down the same
+       way that draft took it to 1.9:1, and no gate in this repo could see it.
+ 
+       Asserted as the ground token and nothing else: any literal here is a
+       colour a tenant re-brand cannot move, and any blend mode is a different
+       effect wearing this one's name. */
+    const rule = css.slice(css.indexOf(".hero-sink {"));
+    const body = rule.slice(0, rule.indexOf("}"));
+    expect(body).toContain("background: var(--hero)");
+    expect(body).not.toMatch(/#[0-9a-f]{3,8}\b/i);
+    expect(body).not.toContain("mix-blend-mode");
+  });
+
+  it("mounts the sink under the copy, which is the whole safety argument", () => {
+    // Paint order, exactly as it is for the beam above: the sink renders
+    // before the grid that holds the headline, so it darkens the GROUND and
+    // never the type. Moving this block after the grid would tint every word
+    // on the band and no test would otherwise notice.
+    const source = read("./hero.tsx");
+    expect(source.indexOf('className="hero-sink"')).toBeLessThan(
+      source.indexOf('className="hero-grid'),
+    );
+  });
+});
+
+describe("the figure rail", () => {
+  beforeEach(() => setMotion(false));
+  afterEach(cleanup);
+
+  const withFigures = (figures: React.ComponentProps<typeof Hero>["figures"]) =>
+    render(
+      <MemoryRouter>
+        <Hero figures={figures} />
+      </MemoryRouter>,
+    );
+
+  it("draws nothing at all for a tenant who has authored no figures", () => {
+    // The default, and for most tenants the permanent state. Not a row of
+    // dashes and not a skeleton: a placeholder here holds a hole open on the
+    // front door of every tenant who has written none, which is the same harm
+    // as an invented number in the honest direction. Same rule as the proof
+    // strip, asserted separately because this band could regress on its own.
+    withFigures([]);
+    expect(document.querySelector(".hero-foot")).toBeNull();
+    expect(document.querySelector(".hero-cue")).toBeNull();
+  });
+
+  it("shows the tenant's own label, figure and unit", () => {
+    withFigures([
+      { label: { fr: "Volume géré", en: "CBM managed" }, unit: "CBM", value: 41850 },
+    ]);
+    // Grouping belongs to the reader's locale; the digits are ours.
+    expect(screen.getByText(/41.?850/)).toBeInTheDocument();
+    expect(screen.getByText("CBM")).toBeInTheDocument();
+    expect(screen.getByText("CBM managed")).toBeInTheDocument();
+  });
+
+  it("keeps the cue out of the accessibility tree", () => {
+    // It names a GESTURE rather than a destination. A screen-reader user moves
+    // by landmark and heading and is already past it, so "scroll to explore"
+    // announced aloud is an instruction in the wrong modality — and everything
+    // it points at is a labelled landmark of its own.
+    withFigures([{ label: { fr: "Dossiers", en: "Files" }, value: 12 }]);
+    const cue = document.querySelector(".hero-cue");
+    expect(cue).not.toBeNull();
+    expect(cue).toHaveAttribute("aria-hidden");
+  });
+
+  it("still keeps exactly one h1 with the rail mounted", () => {
+    // N10. The rail adds two more paragraphs to the band a crawler reads
+    // first, and a figure promoted to a heading would be the easy mistake.
+    withFigures([{ label: { fr: "Dossiers", en: "Files" }, value: 12 }]);
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
   });
 });
 

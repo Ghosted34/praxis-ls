@@ -232,17 +232,79 @@ describe("the metric definitions", () => {
   // dossier_visible too, so it counts here.
   const dossierMetrics = [
     "dossiers.volume_cbm_total", "dossiers.completed_count",
+    "dossiers.tonnage_total",
     "clients.served_count", "operations.avg_clearance_hours",
   ];
 
-  it("registers the four settled metrics", () => {
+  /**
+   * THE CENSUS, AND WHY IT IS AN EXACT LIST RATHER THAN A COUNT.
+   *
+   * A metric is a number that goes on a client's public website, and the
+   * registry's own header states the friction deliberately: adding one is a
+   * pull request, so that somebody looks at how it is computed. An exact list
+   * is what makes a new key show up in a diff as a decision rather than as a
+   * length changing from 5 to 6.
+   *
+   * THREE WERE ADDED FOR THE HERO'S FIGURE RAIL. The rail carries three
+   * figures and the registry held five, so a tenant choosing what a visitor
+   * reads first was choosing from barely more than fits. Eight is what the
+   * editor's "Live figure" list now offers against three slots. The three are
+   * `company.years_active` (the only figure on a freight homepage whose true
+   * value changes with nobody doing any work, and therefore the one most
+   * certain to be stale if typed), `coverage.countries_count` (the same union
+   * of entity and coverage codes the map draws, so a hero claiming twelve over
+   * a map with nine marks cannot happen) and `dossiers.tonnage_total`.
+   */
+  it("registers the eight settled metrics", () => {
     expect(metrics.metricKeys().sort()).toEqual([
       "clients.served_count",
+      "company.years_active",
+      "coverage.countries_count",
       "dossiers.completed_count",
+      "dossiers.tonnage_total",
       "dossiers.volume_cbm_total",
       "operations.avg_clearance_hours",
       "services.published_count",
     ]);
+  });
+
+  it("normalises tonnage by its unit, because the column is three quantities", () => {
+    /* `dossier.weight_unit` is CHECK (… IN ('KG','TON','LB')), so a bare
+       SUM(gross_weight) is a number with no unit at all — and it would look
+       perfectly plausible either way, which is what makes it dangerous. A desk
+       recording in kilogrammes and a desk recording in tonnes inside one
+       tenant is the normal case.
+
+       A row with a weight but NO unit is excluded rather than assumed to be
+       kilogrammes: guessing the unit is how a public figure becomes
+       confidently wrong. */
+    const frag = src.slice(src.indexOf('key: "dossiers.tonnage_total"'));
+    const query = frag.slice(0, frag.indexOf("},\n});"));
+    expect(query).toMatch(/WHEN 'KG'\s+THEN gross_weight \/ 1000/);
+    expect(query).toMatch(/WHEN 'TON'\s+THEN gross_weight/);
+    expect(query).toMatch(/WHEN 'LB'\s+THEN gross_weight \* 0\.00045359237/);
+    expect(query).toMatch(/weight_unit IS NOT NULL/);
+  });
+
+  it("declines to measure the two that would otherwise publish a zero", async () => {
+    /* Both need work nobody has necessarily done — a founded year on Settings
+       › Website › About, and a published corporate entity. The editor creates
+       a new figure with a literal of "0", so a resolver answering 0 rather
+       than null would fall through to that literal and put "0 Countries
+       covered" on the tenant's own front door. Not a missing number: a false
+       one.
+
+       So they answer null, which `applyMetrics` treats as "drop the figure".
+       That pairing is what makes a metric safe to offer in the editor at all
+       — a tenant binds one, sees nothing until it is true, and never has to
+       know it was the literal showing. */
+    const none = { query: async () => ({ rows: [] }) };
+    await expect(metrics.resolveMetric(none, "company.years_active")).resolves.toBeNull();
+
+    const nothingPublished = { query: async () => ({ rows: [{ n: 0 }] }) };
+    await expect(
+      metrics.resolveMetric(nothingPublished, "coverage.countries_count"),
+    ).resolves.toBeNull();
   });
 
   it("counts from dossier_visible, never the base table", () => {

@@ -25,11 +25,37 @@ export function PageShell({
   children,
   label,
   footer = true,
+  overlayHeader = false,
 }: {
   children: React.ReactNode;
   /** Accessible name for the main landmark — the page's purpose. */
   label?: string;
   footer?: boolean;
+  /**
+   * Run the first band FULL-BLEED UNDER the header instead of below it.
+   *
+   * ── WHY IT IS A PROP AND NOT THE DEFAULT ─────────────────────────────────
+   *
+   * The bar and the band beneath it read as two stacked rectangles, and on the
+   * homepage that is the flattest moment on a page whose hero is otherwise
+   * lit, parallaxed and pointer-tracked. Overlaying fixes it — but only where
+   * the band underneath is dark and full-bleed, because an overlaying bar
+   * takes the HERO's colour family (see `.site-shell[data-overlay]` in
+   * index.css) and a bar in hero colours over a page-coloured band is the same
+   * two-objects problem with worse contrast.
+   *
+   * Every §8 page opens with a dark plate and could take this. None of them
+   * does yet, deliberately: this pass is scoped to the homepage, and turning
+   * it on elsewhere is a per-page decision somebody should look at with the
+   * band in front of them rather than a default that quietly changes twelve
+   * routes at once.
+   *
+   * The pull-up and the hero's own `padding-top` read the SAME measured
+   * property, so the composition does not move — only the paint does. That is
+   * what keeps anchor offsets and sticky asides elsewhere on the site correct
+   * without touching any of them.
+   */
+  overlayHeader?: boolean;
 }) {
   const { t } = useTranslation();
   const lang = getLang();
@@ -44,11 +70,11 @@ export function PageShell({
       <a href="#main" className="skip-link">
         {t("site.chrome.skip")}
       </a>
-      <SiteHeader />
+      <SiteHeader overlay={overlayHeader} />
       <main
         id="main"
         aria-label={label || branding.name || undefined}
-        className="flex-1"
+        className={overlayHeader ? "main-under-header flex-1" : "flex-1"}
       >
         {children}
       </main>

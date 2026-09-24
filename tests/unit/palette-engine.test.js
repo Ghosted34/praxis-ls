@@ -90,6 +90,83 @@ describe("palette engine — accessibility", () => {
   });
 });
 
+describe("palette engine — the hero band's accent ink", () => {
+  /**
+   * WHY THIS TOKEN HAS TESTS OF ITS OWN WHEN THE MATRIX ABOVE ALREADY COVERS IT.
+   *
+   * The matrix asserts the pair clears AA, which is the outcome. These assert
+   * the two PROPERTIES the outcome rests on, and both are one careless edit
+   * away from silently reverting to the defect this replaced:
+   *
+   *   · It does not follow the theme. `--hero` is carbon in both, so an ink
+   *     that differed between them would be the band following the page — the
+   *     exact failure `--hero-plate` was rebuilt to end (F-48). A future author
+   *     deriving this inside the theme loop against `card` would get two
+   *     values, both passing their own theme's audit, and the light one would
+   *     paint on carbon.
+   *   · The ground is the PLATE, not the band. An ink walked against bare
+   *     carbon passes on the band and can still fail on the plate floating on
+   *     it, which is where the track widget's kicker and portal link sit.
+   */
+  test("is the same colour in both themes, because the band is", () => {
+    for (const [name, input] of Object.entries(PALETTES)) {
+      const p = derivePalette(input);
+      expect({ name, ink: p.light["--primary-ink-hero"] }).toEqual({
+        name,
+        ink: p.dark["--primary-ink-hero"],
+      });
+      expect({ name, ground: p.light["--hero-plate-solid"] }).toEqual({
+        name,
+        ground: p.dark["--hero-plate-solid"],
+      });
+    }
+  });
+
+  test("clears AA on the bare band as well as on the plate it was derived against", () => {
+    // The plate is the lighter ground and therefore binds, so passing there
+    // implies passing on carbon. Asserted rather than assumed: it is only true
+    // while the plate stays a LIGHTENING mix over the band, and the mix is a
+    // pair of tunable percentages in hero.css.
+    for (const [name, input] of Object.entries(PALETTES)) {
+      const dark = derivePalette(input).dark;
+      const onBand = contrast(dark["--primary-ink-hero"], "#0a0a0a");
+      expect({ name, ok: onBand >= 4.5 }).toEqual({ name, ok: true });
+    }
+  });
+
+  test("leaves an orange tenant exactly where they were, and rescues a navy one", () => {
+    /* The regression half and the point half, in one test.
+
+       Orange is the shipped default: if this token moved it, every existing
+       tenant's hero would change colour on deploy for a defect they never had.
+       #FF5A00 measures 6.33:1 on carbon unaided — the asymmetry
+       BRAND_GUIDELINES §3 records — so the walk must be a no-op for it.
+
+       Navy is the case the whole change exists for. #0C4A7A was the tenant's
+       raw fill painted as type on carbon, and nothing in the tree could see
+       it: `check:contrast` reads stylesheets, and this value only ever existed
+       at runtime, written by `applyBrand` into `--brand-orange`. */
+    const orange = derivePalette({ primary: "#FF5A00" }).dark;
+    expect(orange["--primary-ink-hero"].toLowerCase()).toBe("#ff5a00");
+
+    const navy = derivePalette({ primary: "#0C4A7A" }).dark;
+    const ground = navy["--hero-plate-solid"];
+    expect(contrast("#0C4A7A", ground)).toBeLessThan(2);
+    expect(contrast(navy["--primary-ink-hero"], ground)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  test("reports the correction once, not once per theme", () => {
+    // A corrections list that named one ground twice would read as two
+    // problems in the settings preview that shows it.
+    const { meta } = derivePalette({ primary: "#0C4A7A" });
+    const rows = meta.corrections.filter(
+      (c) => c.token === "--primary-ink-hero",
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].theme).toBe("both");
+  });
+});
+
 describe("palette engine — the ERP must not move", () => {
   /** The literals in client/src/index.css. Copied deliberately: if someone
    *  changes the engine's anchors, this fails and names the file to check. */

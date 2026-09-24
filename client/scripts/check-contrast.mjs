@@ -563,17 +563,35 @@ const APP_PAIRS = {
     ["--hero-muted on --hero (light)", "hero-muted", "hero", lightBody, AA_NORMAL],
     ["--hero-muted on --hero (dark)", "hero-muted", "hero", darkBody, AA_NORMAL],
     /*
-     * THE EYEBROW, WHICH IS THE ONE THAT INVERTS.
+     * THE EYEBROW, WHICH USED TO BE THE ONE PLACE A FILL TOKEN WAS CORRECT IN A
+     * TEXT POSITION — AND WAS NOT.
      *
-     * On a light ground accent-as-text must be `--primary-ink` (the whole point
-     * of the ink step-down). On the hero's carbon it is the opposite way round:
-     * `--primary-ink` is ~3.4:1 there and the brand fill itself is 6.33:1. That
-     * asymmetry is a property of the colour, and `hero.tsx` documents it — so it
-     * is measured here rather than trusted, because it is the one place in
-     * either app where naming the FILL token in a text position is correct.
+     * The reasoning these rows carried was: on a light ground accent-as-text
+     * must be `--primary-ink`, but on the hero's carbon it inverts, because
+     * `--primary-ink` is ~3.4:1 there and the brand fill is 6.33:1. Half of
+     * that is still true and is why `--primary-ink` cannot be the answer here.
+     * The other half was wrong in a way these very rows could not show: they
+     * measured `--brand-orange` AS DECLARED IN THE STYLESHEET, #FF5A00, and on
+     * `public-web` that token does not keep its declared value —
+     * `app/branding.tsx` → `applyBrand` overwrites it at runtime with the
+     * tenant's own primary. So the gate was measuring Praxis's orange and the
+     * page was painting a tenant's navy, at 2.12:1.
+     *
+     * `--primary-ink-hero` closes it at the source rather than here: the shared
+     * palette engine walks the tenant's colour to AA against this band's own
+     * ground, per tenant, and carries the pair in its own `AA_PAIRS` so it is
+     * measured for every palette in `tests/unit/palette-engine.test.js`. These
+     * rows stay because the STATIC default must agree with the derived value —
+     * the same rule `--primary-ink-light` follows — and because the plate is a
+     * second, lighter ground that the band's rows would not catch.
      */
-    ["--brand-orange as eyebrow on --hero (light)", "brand-orange", "hero", lightBody, AA_NORMAL],
-    ["--brand-orange as eyebrow on --hero (dark)", "brand-orange", "hero", darkBody, AA_NORMAL],
+    ["--primary-ink-hero as eyebrow on --hero (light)", "primary-ink-hero", "hero", lightBody, AA_NORMAL],
+    ["--primary-ink-hero as eyebrow on --hero (dark)", "primary-ink-hero", "hero", darkBody, AA_NORMAL],
+    // …and on the plate floating on it, which is the lighter of the two grounds
+    // and therefore the one the engine derives against.
+    ["--primary-ink-hero on --hero-plate-solid (light)", "primary-ink-hero", "hero-plate-solid", lightBody, AA_NORMAL],
+    ["--primary-ink-hero on --hero-plate-solid (dark)", "primary-ink-hero", "hero-plate-solid", darkBody, AA_NORMAL],
+    ["--hero-muted on --hero-plate-solid (dark)", "hero-muted", "hero-plate-solid", darkBody, AA_NORMAL],
     /*
      * ── THE FOUR MODES ON THE HERO PLATE, AT THE NON-TEXT FLOOR ───────────
      *

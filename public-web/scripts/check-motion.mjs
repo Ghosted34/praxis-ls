@@ -117,6 +117,10 @@ const EXEMPT = [
     "the headline catching the pass: each word turns to the tenant's accent and back as the beam reaches it, on the same --beam-cycle with a per-word delay. Both endpoints are measured colours on an unchanged ground (--hero-foreground 12.1:1, --primary 6.33:1 on carbon), so unlike a blend it spends no contrast. Paused unless the band is on screen, and it declares no fill-mode, so under the reduced-motion umbrella a word reverts to its inherited resting colour",
   ],
   [
+    /^\.hero-cue-rail/,
+    "the scroll cue's falling dot: a 1px rail down which a lit segment travels, on --beam-cycle divided by four so the band keeps one timebase. It is the only element whose entire content is 'there is more below', and a static arrow states that less well than a moving one. Paused unless the band reports itself on screen (data-live, useInView), and its BASE style is already the settled state — the segment parked above the rail and clipped out of sight — so the reduced-motion umbrella's single unfilled iteration leaves an empty hairline rather than a dot frozen mid-fall. It carries no text and is aria-hidden, so nothing about it is information a reader could miss",
+  ],
+  [
     /^\.hero-beam/,
     "the hero's pass: one raked beam every --beam-cycle and the plate edge that catches it as it leaves — one event, two selectors, one token. Paused unless the band reports itself on screen (data-live, useInView), and both declare a BASE style that is already the settled state — beam parked off-screen at zero opacity, ring at zero — so the reduced-motion umbrella's single unfilled 0.001ms iteration leaves the band correct rather than mid-flash. The focus-hold on the same element is the reader's own state and replaces the pass rather than overlapping it",
   ],

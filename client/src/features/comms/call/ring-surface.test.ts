@@ -7,7 +7,7 @@
  * server skip the one tier that might have reached the person.
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { presentRing, parseCallLink, ringTag, ringUrl } from "./ring-surface";
+import { presentRing, parseCallLink, parseSummaryLink, ringTag, ringUrl } from "./ring-surface";
 
 const RING = { callId: "8f2f5a1e-3c22-4a53-9a2b-6e0f2c9d1a44", peerName: "Ada" };
 
@@ -54,23 +54,33 @@ describe("presentRing", () => {
   });
 });
 
-describe("the deep link", () => {
-  it("accepts a call link, with or without an action", () => {
-    const id = "8f2f5a1e-3c22-4a53-9a2b-6e0f2c9d1a44";
-    expect(parseCallLink(`?call=${id}`)).toEqual({ callId: id, action: null });
-    expect(parseCallLink(`?call=${id}&act=accept`)).toEqual({ callId: id, action: "accept" });
-    expect(parseCallLink(`?act=decline&call=${id}`)).toEqual({ callId: id, action: "decline" });
+describe("the deep links: ?ring= rings, ?call= opens the summary (A6)", () => {
+  const id = "8f2f5a1e-3c22-4a53-9a2b-6e0f2c9d1a44";
+
+  it("a ring link, with or without an action", () => {
+    expect(parseCallLink(`?ring=${id}`)).toEqual({ callId: id, action: null });
+    expect(parseCallLink(`?ring=${id}&act=accept`)).toEqual({ callId: id, action: "accept" });
+    expect(parseCallLink(`?act=decline&ring=${id}`)).toEqual({ callId: id, action: "decline" });
+  });
+
+  it("?call= is never a ring: it is the old summary-notification link", () => {
+    expect(parseCallLink(`?call=${id}`)).toBeNull();
+    expect(parseCallLink(`?call=${id}&act=accept`)).toBeNull();
+    expect(parseSummaryLink(`?call=${id}`)).toBe(id);
+    expect(parseSummaryLink(`?ring=${id}`)).toBeNull();
   });
 
   it("refuses anything that is not a call id — the app routes on this", () => {
     expect(parseCallLink("")).toBeNull();
-    expect(parseCallLink("?call=")).toBeNull();
-    expect(parseCallLink("?call=not-a-uuid")).toBeNull();
-    expect(parseCallLink("?callx=8f2f5a1e-3c22-4a53-9a2b-6e0f2c9d1a44")).toBeNull();
+    expect(parseCallLink("?ring=")).toBeNull();
+    expect(parseCallLink("?ring=not-a-uuid")).toBeNull();
+    expect(parseCallLink(`?ringx=${id}`)).toBeNull();
+    expect(parseSummaryLink("?call=not-a-uuid")).toBeNull();
   });
 
-  it("the URL the push opens is the one the parser accepts", () => {
+  it("the URL a ring notification opens is the one the parser accepts", () => {
     const url = ringUrl(RING.callId, "accept");
+    expect(url).toBe(`/comms?ring=${RING.callId}&act=accept`);
     expect(parseCallLink(url.slice(url.indexOf("?")))).toEqual({
       callId: RING.callId,
       action: "accept",

@@ -1671,9 +1671,7 @@
         "list_mail_thread",
         "client_mail_timeline",
         "send_mail",
-        "reply_mail",
-        "comms_call_transcript",
-        "comms_call_summary"
+        "reply_mail"
       ]
     },
     {
@@ -1698,12 +1696,26 @@
     },
     {
       "id": "comms_calls",
-      "title": "Call audio",
+      "title": "Calls",
       "route": "/comms/calls",
       "area": "comms",
       "module_key": "MOD-64",
-      "purpose": "The company's call noise-filter default, recording retention, and your own noise-filter preference.",
-      "actions": []
+      "purpose": "Your 1:1 calls, newest first: who, when, how long, how it ended, and whether a summary is waiting for you to review. A summary drafted by the daily sweep sends no push, so its badge here is how you find it. Call settings (noise filter, retention) are at /settings/calls.",
+      "actions": [
+        "list_comms_calls"
+      ]
+    },
+    {
+      "id": "comms_call_record",
+      "title": "Call",
+      "route": "/comms/calls/:callId",
+      "area": "comms",
+      "module_key": "MOD-64",
+      "purpose": "One call: its summary draft (the caller reviews, edits and sends it; nothing posts by itself) and its attributed transcript. Where the summary notification links.",
+      "actions": [
+        "comms_call_transcript",
+        "comms_call_summary"
+      ]
     },
     {
       "id": "settings_email_signatures",

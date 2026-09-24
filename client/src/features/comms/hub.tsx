@@ -5,6 +5,9 @@
  *                   search, the Master Composer). Connecting and managing
  *                   mailboxes (Microsoft 365 / Google / IMAP-SMTP) lives under
  *                   Comms → Setup.
+ *   /comms/calls  → the user's calls, and /comms/calls/:callId one call's
+ *                   summary and transcript. Call settings live at
+ *                   /settings/calls.
  *   /comms/setup  → everything about how email is configured, in sub-tabs:
  *                   My mailbox (everyone) · Mailboxes, Send points and
  *                   Senders & channels (administrators). PR-0 moved tenant mail
@@ -24,27 +27,27 @@ import { TeamChatPage } from "./team-chat";
 import { InboxPage } from "./inbox";
 import { CommsSetupPage } from "./setup/index";
 import { SignaturesPage } from "./signatures";
-import { CallsPage } from "@/features/settings/calls-page";
+import { CallsListPage } from "./call/calls-list";
+import { CallRecordPage } from "./call/call-record";
 
 const TABS = [
   { to: "/comms", label: "Chat", end: true },
   { to: "/comms/mail", label: "Mailbox", end: false },
   { to: "/comms/signatures", label: "Signatures", end: false },
-  { to: "/comms/calls", label: "Call audio", end: false },
+  { to: "/comms/calls", label: "Calls", end: false },
   { to: "/comms/setup", label: "Setup", end: false },
 ] as const;
 
 export function CommsHub() {
-  const { section } = useParams();
+  const { section: sectionParam, callId } = useParams();
+  // `/comms/calls/:callId` has no `:section`; it is the Calls tab all the same.
+  const section = callId ? "calls" : sectionParam;
   const isChat = !section || !["setup", "signatures", "mail", "calls"].includes(section);
   const page =
     section === "setup" ? (
       <CommsSetupPage />
     ) : section === "calls" ? (
-      /* The call settings, also reachable from Settings (PR-3). Here because
-         this is where somebody realises the yard filter exists — the same
-         screen, one fewer place to go looking. */
-      <CallsPage />
+      callId ? <CallRecordPage /> : <CallsListPage />
     ) : section === "signatures" ? (
       <SignaturesPage />
     ) : section === "mail" ? (

@@ -49,9 +49,10 @@ type RingPresentation = {
  *  client-side half of the same contract). */
 export const ringTag = (callId: string) => `call:${callId}`;
 
-/** The deep link a push opens, and the one an action carries. */
+/** The deep link a ring notification opens, and the one an action carries.
+ *  `?ring=`, never `?call=`: that one is the summary link (audit A6). */
 export function ringUrl(callId: string, action?: "accept" | "decline"): string {
-  const q = new URLSearchParams({ call: callId });
+  const q = new URLSearchParams({ ring: callId });
   if (action) q.set("act", action);
   return `/comms?${q.toString()}`;
 }
@@ -165,17 +166,33 @@ export async function presentRing(
   return shown ? "notification" : null;
 }
 
+const CALL_ID = /^[0-9a-f-]{36}$/i;
+
 /**
- * Parse a call deep link. Returns null for anything that is not one — the app
- * routes on this and a false positive would open a call screen out of nowhere.
+ * Parse a RING deep link (`?ring=<id>[&act=…]`). Returns null for anything
+ * else, `?call=` included: the app routes on this, and a false positive opens
+ * a call screen (or a redial offer) out of nowhere (audit A6).
  */
 export function parseCallLink(search: string): { callId: string; action: "accept" | "decline" | null } | null {
   try {
     const params = new URLSearchParams(search || "");
-    const callId = params.get("call");
-    if (!callId || !/^[0-9a-f-]{36}$/i.test(callId)) return null;
+    const callId = params.get("ring");
+    if (!callId || !CALL_ID.test(callId)) return null;
     const act = params.get("act");
     return { callId, action: act === "accept" || act === "decline" ? act : null };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The old summary-notification link (`/comms?call=<id>`), still in people's
+ * notification shades. It opens the call's summary page, never a ring.
+ */
+export function parseSummaryLink(search: string): string | null {
+  try {
+    const callId = new URLSearchParams(search || "").get("call");
+    return callId && CALL_ID.test(callId) ? callId : null;
   } catch {
     return null;
   }

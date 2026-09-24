@@ -2,6 +2,7 @@
 const service = require("./smartcomm.service");
 const validator = require("./smartcomm.validator");
 const pipeline = require("./smartcomm.call.pipeline.service");
+const calls = require("./smartcomm.call.service");
 module.exports = {
   entity: "comms_group", module_key: "MOD-64", screens: [],
   reads: [
@@ -13,6 +14,7 @@ module.exports = {
     // carries its PROVENANCE with it, because "the transcript says" means
     // something different when the words came from the browser's in-call
     // recogniser rather than from a certified transcription of the audio.
+    { key: "list_comms_calls", service: (c, p, caller) => calls.listCalls(c, caller), permission: { module: "MOD-64", action: "view" }, describe: "The user's own 1:1 calls, newest first, with the other person, duration, outcome, transcription state and summary status (call ids for the two reads below)." },
     { key: "comms_call_transcript", service: (c, p, caller) => pipeline.getTranscript(c, { callId: p.call_id, actor: caller }), permission: { module: "MOD-64", action: "view" }, describe: "The attributed transcript of one of the user's own calls, with its state and provenance (participants only)." },
     { key: "comms_call_summary", service: (c, p, caller) => pipeline.getSummary(c, { callId: p.call_id, actor: caller }), permission: { module: "MOD-64", action: "view" }, describe: "The summary draft or posted summary of one of the user's own calls, with its language and provenance (participants only)." },
   ],

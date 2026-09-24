@@ -1,0 +1,54 @@
+/**
+ * How a call reads in the Calls list and on its page. Pure, so the list, the
+ * record and their tests share one vocabulary.
+ */
+import { tr } from "@/lib/i18n";
+import type { Tone } from "@/components/ui/pill";
+import type { Call, CallListRow, CallTranscriptState } from "@/lib/smartcomm-api";
+
+/** The other person's name, from this user's side of the call. */
+export function peerOf(call: Pick<Call, "caller_id" | "caller_name" | "callee_name">, me: string | null): string | null {
+  return (call.caller_id === me ? call.callee_name : call.caller_name) || null;
+}
+
+/** "4:05", or null for a call that never connected. */
+export function callDuration(seconds?: number | null): string | null {
+  const s = Math.max(0, Math.round(Number(seconds) || 0));
+  if (!s) return null;
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
+/** What happened to the call, in the reader's words. */
+export function callOutcome(call: Pick<Call, "status" | "end_reason">, isCaller: boolean): string {
+  switch (call.status) {
+    case "RINGING": return tr("Ringing");
+    case "IN_CALL": return tr("In progress");
+    case "NO_ANSWER": return isCaller ? tr("No answer") : tr("Missed");
+    case "CANCELLED": return isCaller ? tr("Cancelled") : tr("Missed");
+    case "DECLINED": return tr("Declined");
+    case "BUSY": return tr("Busy");
+    case "FAILED": return tr("Could not connect");
+    default:
+      return call.end_reason === "disconnected" ? tr("Connection lost") : tr("Ended");
+  }
+}
+
+/** The record pipeline's state as a label and a tone, or null when there is nothing to say. */
+export function stateBadge(state?: CallTranscriptState | null): { label: string; tone: Tone } | null {
+  switch (state) {
+    case "PENDING":
+    case "PROCESSING": return { label: tr("Transcribing…"), tone: "blue" };
+    case "TRANSCRIPTION_FAILED": return { label: tr("Transcript failed"), tone: "bad" };
+    case "NO_RECORDING": return { label: tr("Not recorded"), tone: "mute" };
+    default: return null;
+  }
+}
+
+/** The summary's badge on a list row: what, if anything, is waiting for this user. */
+export function summaryBadge(row: CallListRow, isCaller: boolean): { label: string; tone: Tone } | null {
+  if (!isCaller || !row.draft_status) return null;
+  if (row.draft_status === "PENDING_REVIEW") return { label: tr("Summary to review"), tone: "warn" };
+  if (row.draft_status === "SENT" && row.summary_update_available) return { label: tr("Update available"), tone: "warn" };
+  if (row.draft_status === "SENT") return { label: tr("Summary sent"), tone: "ok" };
+  return null;
+}

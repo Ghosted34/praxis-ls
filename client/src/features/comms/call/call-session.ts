@@ -25,7 +25,7 @@ import { presentRing, dismissRingNotification, parseCallLink, type RingChannel }
 import { fetchCallPrefs, saveCallPrefs } from "@/lib/preferences";
 import {
   dialCall, acceptCall, declineCall, hangupCall, reportCallFailure, getCall,
-  uploadCallPart,
+  uploadCallPart, callHangupUrl,
   type Call, type CallStatus,
 } from "@/lib/smartcomm-api";
 import { CallRecorder } from "./call-recorder";
@@ -58,9 +58,9 @@ export type SessionState = {
   /** Parts of this side's audio that never uploaded. Surfaced in the overlay;
    *  the server's own state covers the other half of the same fact. */
   recordingLost: number;
-  /** The call whose summary draft is waiting for the caller's review. Set by
-   *  the `call:summary_ready` socket event, cleared when the panel closes. */
-  draftCallId: string | null;
+  /** A summary just became ready (or gained an update). The shell shows a
+   *  toast pointing at the Calls page; nothing opens over the user's work. */
+  summaryNotice: { call_id: string; status: string } | null;
   /** Set when a side fell back to the browser capture: the call record says so
    *  and so does the person's screen, because a transcript nobody flagged is a
    *  transcript everybody trusts. */
@@ -82,7 +82,7 @@ export type SessionState = {
 const INITIAL: SessionState = {
   phase: "idle", call: null, peerName: null, ringSecondsLeft: 0,
   elapsedS: 0, muted: false, warning: false, endedReason: null, lastError: null,
-  recordingEnabled: false, recordingLost: 0, draftCallId: null, transcriptionIssue: null,
+  recordingEnabled: false, recordingLost: 0, summaryNotice: null, transcriptionIssue: null,
   noise: { enabled: true, status: "off", reason: null },
   quality: { state: "good", rttMs: null, jitterMs: null, lossPct: null },
   recovering: false, redial: null,
@@ -439,7 +439,7 @@ function keepaliveHangup(): void {
     h.set("X-Praxis-Env", tokenStore.getEnv());
     const t = tokenStore.getAccess();
     if (t) h.set("Authorization", `Bearer ${t}`);
-    void fetch(`/api/tenant/comms/calls/${call.call_id}/hangup`, {
+    void fetch(callHangupUrl(call.call_id), {
       method: "POST",
       headers: h,
       body: JSON.stringify({ reason: "hangup" }),
@@ -639,13 +639,10 @@ export function wireCallSocket(): void {
     set({ phase: "ended", call: row, endedReason: p.reason ?? "hangup" });
     toIdleIfEnded(p.call_id);
   };
-  // ── The record half (PR-2) ──
-  //
-  // A draft landed for the caller: open the review panel. Nothing is posted by
-  // this event — it opens an editor, which is the only way a summary reaches a
-  // conversation (decision row 3).
+  // A draft landed for the caller. It has its own page (/comms/calls/<id>);
+  // this only records a notice for the shell's toast (audit A6).
   s.on("call:summary_ready", (p: { call_id: string; status?: string }) => {
-    if (p && p.call_id) set({ draftCallId: p.call_id });
+    if (p && p.call_id) set({ summaryNotice: { call_id: p.call_id, status: p.status || "PENDING_REVIEW" } });
   });
 
   // A side fell back to the browser capture. The record says so, and so does
@@ -720,7 +717,8 @@ function remainingRingSeconds(row: Call): number {
 }
 
 /**
- * A call deep link (`/comms?call=<id>&act=accept|decline`) — §4.6.
+ * A ring deep link (`/comms?ring=<id>&act=accept|decline`) — §4.6. The old
+ * `?call=` link is a summary link and never reaches here (audit A6).
  *
  * Two situations produce one of these, and they need different handling:
  *
@@ -791,9 +789,8 @@ async function hydrateFromLink(link: { callId: string; action: "accept" | "decli
 
 export { setMuted };
 
-/** Close the summary panel (after sending, discarding, or a deliberate
- *  dismissal). The draft itself is untouched — this only closes a panel. */
-export function closeSummaryDraft(): void {
-  set({ draftCallId: null });
+/** The shell has shown the summary notice. */
+export function clearSummaryNotice(): void {
+  set({ summaryNotice: null });
 }
 

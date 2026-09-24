@@ -166,6 +166,25 @@ async function fakeComms(page: Page) {
         body: JSON.stringify({ ...callRow("RINGING"), ice: ICE_EMPTY }),
       });
     }
+    if (/^\/calls\/[^/]+\/summary$/.test(path) && method === "GET") {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          call_id: rowForGet.call_id,
+          transcription_state: "CERTIFIED",
+          transcription_error: null,
+          recording_enabled: true,
+          is_caller: true,
+          summary: {
+            summary_id: "s-e2e", summary_text: "We agreed the Friday delivery.",
+            key_points: [], follow_ups: [], language: "en", provenance: "groq",
+            draft_status: "PENDING_REVIEW", sent_message_id: null,
+            update_available: false, update_message_id: null, regenerate_count: 0,
+          },
+        }),
+      });
+    }
     if (/^\/calls\/[^/]+$/.test(path) && method === "GET") {
       return route.fulfill({
         status: 200,
@@ -426,7 +445,7 @@ test("an expired push opens the redial path, not a ring for a call that is over"
   // The row says the 60-second window is long gone.
   comms.setRowForGet(callRow("NO_ANSWER", { end_reason: "no_answer", callee_id: "u-1" }));
 
-  await page.goto("/comms?call=8f2f5a1e-3c22-4a53-9a2b-6e0f2c9d1a44&act=accept");
+  await page.goto("/comms?ring=8f2f5a1e-3c22-4a53-9a2b-6e0f2c9d1a44&act=accept");
 
   // No fake ring: an honest line and a way to call back.
   await expect(page.getByText("That call has already ended")).toBeVisible({ timeout: 10_000 });
@@ -436,4 +455,25 @@ test("an expired push opens the redial path, not a ring for a call that is over"
   await expect(page.getByText("Calling…")).toBeVisible({ timeout: 10_000 });
   const offer = (await comms.next("call:offer")) as { sdp: string };
   expect(offer.sdp).toContain("v=0");
+});
+
+test("an old summary-notification link (?call=) opens the call's page, never a ring or a redial", async ({ page }) => {
+  // Calls audit A6: the summary push used to link /comms?call=<id>, which the
+  // app read as a ring, and offered "Call again" for a call nobody missed.
+  await seedSession(page);
+  await fakeApi(page);
+  const comms = await fakeComms(page);
+  const id = "8f2f5a1e-3c22-4a53-9a2b-6e0f2c9d1a44";
+  comms.setRowForGet(callRow("ENDED", {
+    call_id: id, end_reason: "hangup", duration_seconds: 312,
+    caller_name: "E2E User", callee_name: PARTNER.name, recording_enabled: true,
+  }));
+
+  await page.goto(`/comms?call=${id}`);
+
+  await expect(page).toHaveURL(new RegExp(`/comms/calls/${id}$`));
+  await expect(page.getByRole("heading", { name: `Call with ${PARTNER.name}` })).toBeVisible();
+  await expect(page.getByLabel("Summary", { exact: true })).toHaveValue("We agreed the Friday delivery.");
+  await expect(page.getByText("That call has already ended")).toHaveCount(0);
+  await expect(page.getByRole("alertdialog")).toHaveCount(0);
 });

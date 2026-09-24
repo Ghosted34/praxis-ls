@@ -65,6 +65,32 @@ const CALL_STRINGS = {
   fr: { body: "Appel entrant", accept: "Répondre", decline: "Refuser" },
 };
 
+/*
+ * The call-summary push (calls audit A11). The server sends English plus
+ * `data.kind = "call_summary"` and the facts; the sentence is rebuilt here in
+ * the device's language, with a day-first date in the device's own timezone.
+ */
+const CALL_SUMMARY_STRINGS = {
+  en: { title: "Call summary ready", with: "Your call with {name}", plain: "Your call", when: " on {date} at {time}", tail: ". Review and send the summary." },
+  fr: { title: "Résumé d'appel prêt", with: "Votre appel avec {name}", plain: "Votre appel", when: " le {date} à {time}", tail: ". Relisez et envoyez le résumé." },
+};
+
+function callSummaryText(d, lang) {
+  const w = CALL_SUMMARY_STRINGS[lang] || CALL_SUMMARY_STRINGS.en;
+  const locale = lang === "fr" ? "fr-FR" : "en-GB";
+  let when = "";
+  const at = d.ended_at ? new Date(d.ended_at) : null;
+  if (at && !Number.isNaN(at.getTime())) {
+    const date = new Intl.DateTimeFormat(locale, { day: "2-digit", month: "2-digit", year: "numeric" }).format(at);
+    const time = new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(at);
+    when = w.when.replace("{date}", date).replace("{time}", time);
+  }
+  const secs = Number(d.duration_seconds) || 0;
+  const minutes = secs > 0 ? ` (${Math.max(1, Math.round(secs / 60))} min)` : "";
+  const who = d.peer_name ? w.with.replace("{name}", d.peer_name) : w.plain;
+  return { title: w.title, body: who + when + minutes + w.tail };
+}
+
 self.addEventListener("push", (event) => {
   let data = {};
   try {
@@ -72,12 +98,13 @@ self.addEventListener("push", (event) => {
   } catch (_e) {
     data = { title: "Notification", body: event.data ? event.data.text() : "" };
   }
-  const title = data.title || "Praxis LS";
   const lang = String((self.navigator && self.navigator.language) || "en").slice(0, 2);
   const callKind = data.data && data.data.kind === "call";
   const callWords = CALL_STRINGS[lang] || CALL_STRINGS.en;
+  const summary = data.data && data.data.kind === "call_summary" ? callSummaryText(data.data, lang) : null;
+  const title = (summary && summary.title) || data.title || "Praxis LS";
   const options = {
-    body: callKind ? callWords.body : data.body || "",
+    body: summary ? summary.body : callKind ? callWords.body : data.body || "",
     tag: data.tag || undefined,
     // Only meaningful alongside a tag. Without it, a replacing notification
     // updates in place with no sound or vibration — indistinguishable, to

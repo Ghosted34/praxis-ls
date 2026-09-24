@@ -51,7 +51,9 @@ vi.mock("@/lib/comms-socket", () => ({
   disconnectCommsSocket: () => {},
 }));
 
-vi.mock("@/lib/smartcomm-api", () => ({
+vi.mock("@/lib/smartcomm-api", async (importOriginal) => ({
+  // The real module underneath, so the keep-alive uses the real URL helper.
+  ...(await importOriginal<typeof import("@/lib/smartcomm-api")>()),
   dialCall: (id: string) => W.api.dialCall(id),
   acceptCall: (id: string) => W.api.acceptCall(id),
   declineCall: (id: string) => W.api.declineCall(id),
@@ -306,7 +308,7 @@ describe("the ring channel and the push deep link (PR-3)", () => {
     // The row says the call is over: the push arrived after the 60 s window.
     W.api.getCall = async () => W.row({ status: "NO_ANSWER", end_reason: "no_answer", callee_id: W.ME });
     await act(async () => {
-      mod.initCallDeepLink("?call=8f2f5a1e-3c22-4a53-9a2b-6e0f2c9d1a44&act=accept");
+      mod.initCallDeepLink("?ring=8f2f5a1e-3c22-4a53-9a2b-6e0f2c9d1a44&act=accept");
       await Promise.resolve();
       await Promise.resolve();
     });
@@ -330,7 +332,7 @@ describe("the ring channel and the push deep link (PR-3)", () => {
     W.api.getCall = async () =>
       W.row({ status: "RINGING", caller_id: W.THEM, callee_id: W.ME, caller_name: "Aïcha" });
     await act(async () => {
-      mod.initCallDeepLink("?call=8f2f5a1e-3c22-4a53-9a2b-6e0f2c9d1a44");
+      mod.initCallDeepLink("?ring=8f2f5a1e-3c22-4a53-9a2b-6e0f2c9d1a44");
       await Promise.resolve();
       await Promise.resolve();
     });
@@ -342,16 +344,49 @@ describe("the ring channel and the push deep link (PR-3)", () => {
     ]);
   });
 
+  it("an old summary link (?call=) never rings and never offers a redial (A6)", async () => {
+    const mod = await fresh();
+    act(() => mod.wireCallSocket());
+    const { result } = renderHook(() => mod.useCall());
+    // Even a row that is still RINGING must not be turned into a ring by it.
+    W.api.getCall = async () =>
+      W.row({ status: "RINGING", caller_id: W.THEM, callee_id: W.ME, caller_name: "Aïcha" });
+    await act(async () => {
+      mod.initCallDeepLink("?call=8f2f5a1e-3c22-4a53-9a2b-6e0f2c9d1a44&act=accept");
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(result.current.phase).toBe("idle");
+    expect(result.current.redial).toBeNull();
+    expect(result.current.lastError).toBeNull();
+    expect(emitted("call:ring_ack")).toEqual([]);
+  });
+
   it("a link that is not a call id is ignored, not a ring out of nowhere", async () => {
     const mod = await fresh();
     act(() => mod.wireCallSocket());
     const { result } = renderHook(() => mod.useCall());
     await act(async () => {
-      mod.initCallDeepLink("?call=not-a-uuid&act=accept");
+      mod.initCallDeepLink("?ring=not-a-uuid&act=accept");
       await Promise.resolve();
     });
     expect(result.current.phase).toBe("idle");
     expect(result.current.redial).toBeNull();
+  });
+});
+
+/* ── A6: the summary has its own page; the socket event only says so ─────── */
+
+describe("call:summary_ready (A6)", () => {
+  it("records a notice for the toast and opens nothing", async () => {
+    const mod = await fresh();
+    act(() => mod.wireCallSocket());
+    const { result } = renderHook(() => mod.useCall());
+    act(() => fire("call:summary_ready", { call_id: "c9", status: "PENDING_REVIEW" }));
+    expect(result.current.summaryNotice).toEqual({ call_id: "c9", status: "PENDING_REVIEW" });
+    expect("draftCallId" in result.current).toBe(false);
+    act(() => mod.clearSummaryNotice());
+    expect(result.current.summaryNotice).toBeNull();
   });
 });
 
@@ -458,7 +493,7 @@ describe("the page goes away mid-call (FN-1)", () => {
       vi.stubGlobal("fetch", prevFetch);
     }
     return fakeFetch.mock.calls.filter(([url]) =>
-      String(url).includes(`/calls/${callId}/hangup`),
+      String(url).includes(`/${callId}/hangup`),
     );
   }
 
@@ -476,6 +511,9 @@ describe("the page goes away mid-call (FN-1)", () => {
 
     const hangups = pageHideAndCollect(PH_ID);
     expect(hangups.length).toBeGreaterThanOrEqual(1);
+    // A10: this was /api/tenant/comms/calls/…, a route that does not exist, so
+    // every closed tab left a 30-minute phantom call.
+    expect(String(hangups[0][0])).toBe(`/api/tenant/smartcomm/calls/${PH_ID}/hangup`);
     const init = hangups[0][1] as RequestInit;
     expect(init.method).toBe("POST");
     // keepalive is the whole point: it is the only network call a dying page

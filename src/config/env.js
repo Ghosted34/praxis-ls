@@ -369,7 +369,9 @@ const Schema = z.object({
   DEEPSEEK_BASE_URL: z.string().default("https://api.deepseek.com"),
   DEEPSEEK_MODEL: z.string().default("deepseek-chat"),
   GEMINI_API_KEY: z.string().default(""),
-  GEMINI_MODEL: z.string().default("gemini-1.5-pro"),
+  // Only used when the platform `gemini` credential is missing or unreadable;
+  // that credential is the source of truth (calls audit N3).
+  GEMINI_MODEL: z.string().default("gemini-2.5-flash"),
   GROQ_API_KEY: z.string().default(""),
   WHISPER_BASE_URL: z.string().default(""),
   AI_MONTHLY_CAP_XAF: int(0),

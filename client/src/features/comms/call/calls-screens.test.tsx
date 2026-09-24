@@ -101,8 +101,10 @@ describe("a call's page", () => {
     expect(await screen.findByRole("heading", { name: "Call with Bruno Kamga" })).toBeTruthy();
     expect(await screen.findByDisplayValue("You confirmed the delivery for Friday.")).toBeTruthy();
     expect(screen.getByText("Transcribed from the call recording")).toBeTruthy();
-    // Day-first, not the ISO the API sends.
-    expect(screen.getByText(/30\/09\/2026/)).toBeTruthy();
+    // Day-first, not the ISO the API sends, and editable (O3).
+    expect(screen.getByDisplayValue("30/09/2026")).toBeTruthy();
+    expect(screen.getByRole("textbox", { name: "Key point 1" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Remove follow-up 1" })).toBeTruthy();
     expect(screen.getByRole("button", { name: /Send to conversation/ })).toBeTruthy();
     expect(await axe(container)).toHaveNoViolations();
   });
@@ -149,13 +151,54 @@ describe("a call's page", () => {
     expect(screen.queryByText("This call was not recorded, so there is no summary.")).toBeNull();
   });
 
-  it("a failed call with no draft says it is retried, not 'Transcribing…' for ever", async () => {
+  it("a failed call with no draft says so, and no longer promises a daily retry (O1)", async () => {
     renderScreen(<CallRecordPage />, {
       ...at,
       routes: { "/smartcomm/calls/c1": row({ transcription_state: "TRANSCRIPTION_FAILED", draft_status: null, recording_enabled: true }) },
     });
-    expect(await screen.findByText("The transcript could not be produced yet. It is retried once a day.")).toBeTruthy();
+    expect(await screen.findByText("The transcript could not be produced, so there is no summary.")).toBeTruthy();
+    expect(screen.queryByText(/retried once a day/)).toBeNull();
     expect(screen.queryByText("Transcribing the call…")).toBeNull();
+  });
+
+  it("links back to the conversation, with the caller's pending draft opened there (O3)", async () => {
+    renderScreen(<CallRecordPage />, {
+      ...at,
+      routes: {
+        "/smartcomm/calls/c1/summary": summaryView(),
+        "/smartcomm/calls/c1": row({ recording_enabled: true, draft_status: "PENDING_REVIEW" }),
+      },
+    });
+    const link = await screen.findByRole("link", { name: "Open the conversation" });
+    expect(link.getAttribute("href")).toBe("/comms?channel=g1&summary=c1");
+  });
+
+  it("names the minutes with no transcript, and offers an administrator the re-run of a failed part", async () => {
+    renderScreen(<CallRecordPage />, {
+      ...at,
+      routes: {
+        "/smartcomm/calls/c1/transcript": {
+          call_id: "c1", state: "TRANSCRIPTION_FAILED", error: null, certified: true, provenance: "groq",
+          text: "Caller:\n[en] hello", parts: [],
+          sides: [
+            { side: "caller", label: "Caller", name: "Awa Diallo", provider: "groq", certified: true, text: "[en] hello",
+              parts: [{ part_index: 1, text: "hello", language: "en", provider: "groq", certified: true }] },
+            { side: "callee", label: "Callee", name: null, provider: null, certified: false, text: null, parts: [] },
+          ],
+          recording: [
+            { side: "caller", part_index: 1, status: "OK", duration_seconds: 120, provider: "groq", purged: false },
+            { side: "caller", part_index: 2, status: "FAILED", duration_seconds: 120, provider: null, purged: false },
+          ],
+          gaps: [{ side: "caller", from_s: 120, to_s: 240, parts: [2] }],
+        },
+        "/smartcomm/calls/c1/summary": summaryView({ transcription_state: "TRANSCRIPTION_FAILED" }),
+        "/smartcomm/calls/c1": row({ recording_enabled: true, transcription_state: "TRANSCRIPTION_FAILED", draft_status: "PENDING_REVIEW" }),
+      },
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Show transcript" }));
+    expect(await screen.findByText("Some minutes of this call could not be transcribed:")).toBeTruthy();
+    expect(screen.getByText(/Caller · 02:00–04:00/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Re-run part 2" })).toBeTruthy();
   });
 
   it("a call with no recording says so, and offers no transcript", async () => {

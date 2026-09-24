@@ -7,7 +7,7 @@
  * has to say 422.
  */
 import { describe, it, expect } from "vitest";
-import { summaryDraftReducer, type DraftState } from "./summary-draft-state";
+import { EMPTY, summaryDraftReducer, type DraftState } from "./summary-draft-state";
 import type { CallSummaryView } from "@/lib/smartcomm-api";
 
 const view = (over: Partial<CallSummaryView> = {}, summary: Partial<CallSummaryView["summary"]> = {}): CallSummaryView => ({
@@ -33,10 +33,7 @@ const view = (over: Partial<CallSummaryView> = {}, summary: Partial<CallSummaryV
   ...over,
 }) as CallSummaryView;
 
-const loaded = (v: CallSummaryView = view()) => summaryDraftReducer(
-  { status: "waiting", language: "en", text: "", points: [], followUps: [], provenance: "groq", updateAvailable: false, dirty: false, regenerating: false, error: null },
-  { type: "loaded", view: v },
-);
+const loaded = (v: CallSummaryView = view()) => summaryDraftReducer(EMPTY, { type: "loaded", view: v });
 
 describe("loading a draft", () => {
   it("a PENDING_REVIEW draft is editable, with the quotations as they were spoken", () => {
@@ -63,6 +60,26 @@ describe("loading a draft", () => {
     const s = loaded(view({ summary: null }));
     expect(s.status).toBe("waiting");
     expect(s.text).toBe("");
+  });
+});
+
+describe("the minutes with no transcript", () => {
+  it("are carried from the read, whatever the draft's state", () => {
+    const gaps = [{ side: "caller" as const, from_s: 120, to_s: 240, parts: [2] }];
+    expect(loaded(view({ gaps })).gaps).toEqual(gaps);
+    expect(loaded(view({ gaps, summary: null })).gaps).toEqual(gaps);
+    expect(loaded(view()).gaps).toEqual([]);
+  });
+});
+
+describe("the caller edits the key points and follow-ups (O3)", () => {
+  it("a key point can be reworded or removed, and a follow-up re-owned and re-dated", () => {
+    let s = loaded();
+    s = summaryDraftReducer(s, { type: "edit", points: [] });
+    expect(s.points).toEqual([]);
+    s = summaryDraftReducer(s, { type: "edit", followUps: [{ text: "Envoyer le BL", owner: "callee", due: "2026-10-02" }] });
+    expect(s.followUps).toEqual([{ text: "Envoyer le BL", owner: "callee", due: "2026-10-02" }]);
+    expect(s.dirty).toBe(true);
   });
 });
 

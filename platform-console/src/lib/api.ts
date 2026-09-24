@@ -315,6 +315,17 @@ export const platform = {
     api<AiVendor>(`/ai-vendors/${encodeURIComponent(vendor)}`, { method: "PUT", body }),
   testAiVendor: (vendor: string) =>
     api<SettingTestResult>(`/ai-vendors/${encodeURIComponent(vendor)}/test`, { method: "POST" }),
+  /** Does the configured Gemini model still exist at Google (calls audit N3)? */
+  geminiModelCheck: (refresh = false) =>
+    api<GeminiModelCheck>(`/ai-vendors/gemini/model-check${refresh ? "?refresh=1" : ""}`),
+};
+
+export type GeminiModelCheck = {
+  status: "ok" | "missing" | "unusable" | "unconfigured" | "error";
+  model: string | null;
+  checked_at: string;
+  detail?: string | null;
+  http_status?: number | null;
 };
 
 export type AiVendor = {

@@ -2,11 +2,11 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 141,
-  "route_count": 1700,
+  "route_count": 1703,
   "tiers": {
     "public": 68,
     "self-scoped": 107,
-    "gated": 1525
+    "gated": 1528
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -784,6 +784,12 @@
       "tier": "gated"
     },
     "GET /api/platform/ai-vendors": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/platform/ai-vendors/gemini/model-check": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -9082,6 +9088,18 @@
       "tier": "gated"
     },
     "POST /api/tenant/smartcomm/calls/:id/recording": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/smartcomm/calls/:id/recording/:side/:part/rerun": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/smartcomm/calls/:id/recording/complete": {
       "auth": true,
       "rbac": true,
       "validated": false,

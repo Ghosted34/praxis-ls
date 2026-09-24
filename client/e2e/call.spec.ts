@@ -22,6 +22,8 @@
  * socket), the call reaches in-call with real media (timer), and hang-up
  * tears the session down through the server row.
  */
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { test, expect, type Page, type WebSocketRoute } from "@playwright/test";
 import { fakeApi, seedSession } from "./fixtures";
 
@@ -71,8 +73,11 @@ type Frame = [string, unknown];
  * client EMITTED (`next("call:offer")`) and lets the test deliver server
  * events (`tell("call:answer", …)`).
  */
-async function fakeComms(page: Page) {
+async function fakeComms(page: Page, opts: { pingIntervalMs?: number; pendingSummaries?: unknown[] } = {}) {
   const emitted: Frame[] = [];
+  /** The recorded parts this tab uploaded (the file bytes), and its declarations. */
+  const recordedParts: Buffer[] = [];
+  const completes: unknown[] = [];
   const pending: Array<(f: Frame) => void> = [];
   let ws: WebSocketRoute | null = null;
   const unsent: string[] = []; // server→client frames queued before connect
@@ -103,7 +108,7 @@ async function fakeComms(page: Page) {
     ws = route;
     // engine.io open packet, then the socket.io namespace connect ack.
     route.send(
-      `0${JSON.stringify({ sid: "sv-e2e", upgrades: [], pingInterval: 25000, pingTimeout: 20000 })}`,
+      `0${JSON.stringify({ sid: "sv-e2e", upgrades: [], pingInterval: opts.pingIntervalMs ?? 25000, pingTimeout: 20000 })}`,
     );
     for (const f of unsent.splice(0)) route.send(f);
     route.onMessage((message) => {
@@ -166,6 +171,21 @@ async function fakeComms(page: Page) {
         body: JSON.stringify({ ...callRow("RINGING"), ice: ICE_EMPTY }),
       });
     }
+    if (/^\/calls\/[^/]+\/recording$/.test(path) && method === "POST") {
+      recordedParts.push(multipartFile(req.postDataBuffer(), req.headers()["content-type"] || ""));
+      return route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ data: {} }) });
+    }
+    if (/^\/calls\/[^/]+\/recording\/complete$/.test(path) && method === "POST") {
+      completes.push(req.postDataJSON());
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: {} }) });
+    }
+    if (path === `/channels/${CHANNEL.group_id}/messages` && method === "GET" && opts.pendingSummaries) {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ group_id: CHANNEL.group_id, messages: [], pending_call_summaries: opts.pendingSummaries }),
+      });
+    }
     if (/^\/calls\/[^/]+\/summary$/.test(path) && method === "GET") {
       return route.fulfill({
         status: 200,
@@ -226,10 +246,48 @@ async function fakeComms(page: Page) {
     sawHangup: () => sawHangup,
     sawDecline: () => sawDecline,
     sawAccept: () => sawAccept,
+    recordedParts: () => recordedParts,
+    completes: () => completes,
     setRowForGet: (row: Record<string, unknown>) => {
       rowForGet = row;
     },
   };
+}
+
+/** The one file in a multipart/form-data body. */
+function multipartFile(body: Buffer | null, contentType: string): Buffer {
+  const boundary = /boundary=([^;]+)/.exec(contentType)?.[1];
+  if (!body || !boundary) return Buffer.alloc(0);
+  const delimiter = Buffer.from(`--${boundary}`);
+  let at = body.indexOf(delimiter);
+  while (at !== -1) {
+    const next = body.indexOf(delimiter, at + delimiter.length);
+    if (next === -1) break;
+    const section = body.subarray(at + delimiter.length, next);
+    const headerEnd = section.indexOf("\r\n\r\n");
+    const headers = section.subarray(0, headerEnd).toString("latin1");
+    if (/filename=/.test(headers)) return section.subarray(headerEnd + 4, section.length - 2);
+    at = next;
+  }
+  return Buffer.alloc(0);
+}
+
+/** Decode each recording on its own in the page, as a player or provider would. */
+async function decodeEach(page: Page, files: Buffer[]) {
+  return page.evaluate(async (b64s) => {
+    const out: Array<{ ok: boolean; seconds?: number; error?: string }> = [];
+    for (const b64 of b64s) {
+      const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+      const ctx = new OfflineAudioContext(1, 48_000, 48_000);
+      try {
+        const audio = await ctx.decodeAudioData(bytes.buffer);
+        out.push({ ok: true, seconds: audio.duration });
+      } catch (e) {
+        out.push({ ok: false, error: String(e) });
+      }
+    }
+    return out;
+  }, files.map((f) => f.toString("base64")));
 }
 
 /** Create the answering peer connection IN THE PAGE and return its answer SDP. */
@@ -476,4 +534,89 @@ test("an old summary-notification link (?call=) opens the call's page, never a r
   await expect(page.getByLabel("Summary", { exact: true })).toHaveValue("We agreed the Friday delivery.");
   await expect(page.getByText("That call has already ended")).toHaveCount(0);
   await expect(page.getByRole("alertdialog")).toHaveCount(0);
+});
+
+/* ── Calls audit PR-2: the recorder and the pinned draft ─────────────────── */
+
+test("every recorded part decodes on its own (audit A3)", async ({ page }) => {
+  // The part boundary is a 120 s timer; the fake clock moves it, the fake
+  // microphone and MediaRecorder are Chromium's own. A long ping interval
+  // keeps the fast-forward from looking like a dead socket.
+  await page.clock.install();
+  await seedSession(page);
+  await fakeApi(page);
+  const comms = await fakeComms(page, { pingIntervalMs: 60 * 60 * 1000 });
+
+  await page.goto("/comms?channel=ch-e2e-1");
+  await page.getByRole("button", { name: "Start a voice call" }).first().click();
+  const offer = (await comms.next("call:offer")) as { callId: string; sdp: string };
+  const answerSdp = await createCallee(page, offer.sdp);
+  comms.tell("call:accepted", { call_id: "call-e2e-1", by: { user_id: PARTNER.user_id } });
+  comms.tell("call:answer", { call_id: "call-e2e-1", sdp: answerSdp });
+  await expect
+    .poll(
+      async () => {
+        await pumpCandidates(page, comms);
+        return page.evaluate(() => (window as unknown as { __callee?: RTCPeerConnection }).__callee?.iceConnectionState || "new");
+      },
+      { timeout: 15_000 },
+    )
+    .toBe("connected");
+  await expect(page.getByRole("timer")).toBeVisible({ timeout: 15_000 });
+
+  // Two part boundaries, each after real audio, then hang up for the third.
+  for (let i = 1; i <= 2; i += 1) {
+    await page.waitForTimeout(1500);
+    await page.clock.fastForward(120_000);
+    await expect.poll(() => comms.recordedParts().length, { timeout: 10_000 }).toBe(i);
+  }
+  await page.waitForTimeout(1500);
+  await page.getByRole("button", { name: "End call" }).click();
+  await expect.poll(() => comms.completes().length, { timeout: 15_000 }).toBe(1);
+
+  const parts = comms.recordedParts();
+  expect(parts).toHaveLength(3);
+  expect(comms.completes()[0]).toEqual({ side: "caller", parts: 3 });
+  for (const p of parts) expect([...p.subarray(0, 4)]).toEqual([0x1a, 0x45, 0xdf, 0xa3]);
+  const decoded = await decodeEach(page, parts);
+  expect(decoded.map((d) => d.ok)).toEqual([true, true, true]);
+  for (const d of decoded) expect(d.seconds).toBeGreaterThan(0.5);
+
+  // Control: a chunk cut from the middle of one continuous recording (what
+  // the old recorder uploaded as part 2) does not decode.
+  const headerless = readFileSync(fileURLToPath(new URL("../../tests/fixtures/audio/chrome-opus-headerless.webm", import.meta.url)));
+  expect((await decodeEach(page, [headerless]))[0].ok).toBe(false);
+});
+
+test("the summary link opens the conversation with the draft pinned above the composer (O3)", async ({ page }) => {
+  await seedSession(page);
+  await fakeApi(page);
+  await fakeComms(page, {
+    pendingSummaries: [{
+      call_id: "call-e2e-1", drafted_at: "2026-09-24T13:06:00.000Z", started_at: "2026-09-24T13:00:00.000Z",
+      ended_at: "2026-09-24T13:10:12.000Z", duration_seconds: 612, provenance: "groq", transcription_state: "CERTIFIED",
+    }],
+  });
+
+  await page.goto("/comms?channel=ch-e2e-1&summary=call-e2e-1");
+
+  const pinned = page.getByRole("region", { name: "Call summary — Review & send" });
+  await expect(pinned).toBeVisible();
+  await expect(pinned.getByLabel("Summary", { exact: true })).toHaveValue("We agreed the Friday delivery.");
+  await expect(pinned.getByRole("button", { name: /Send to conversation/ })).toBeVisible();
+  await expect(pinned.getByRole("button", { name: "Hide" })).toHaveAttribute("aria-expanded", "true");
+
+  // Above the composer, not over the thread or in a floating panel, and the
+  // composer stays on screen: on a short window the editor scrolls inside the
+  // card rather than pushing the composer below the fold.
+  const composer = page.getByRole("textbox", { name: /message/i }).last();
+  const [card, box] = await Promise.all([pinned.boundingBox(), composer.boundingBox()]);
+  expect(card && box && card.y + card.height <= box.y + 1).toBe(true);
+  const viewport = page.viewportSize();
+  expect(box && viewport && box.y + box.height <= viewport.height).toBe(true);
+
+  // Collapsing keeps it pinned, and takes ?summary= off the address.
+  await pinned.getByRole("button", { name: "Hide" }).click();
+  await expect(pinned.getByRole("button", { name: "Review & send" })).toBeVisible();
+  await expect(page).not.toHaveURL(/summary=/);
 });

@@ -193,21 +193,10 @@ module.exports = {
     res.json({ data });
   }),
 
-  // ── The call record half (PR-2) ─────────────────────────────────────────
+  // ── The call record half ────────────────────────────────────────────────
   /**
-   * One recorded PARTIC of a call, uploaded at hang-up.
-   *
-   * Multipart, like a voice note, and read through the same seam — the recorder
-   * has one buffer to hand over and a handful of numbers about it. `readUpload`
-   * is what lets a data-URL fallback exist for the recorder that could not get
-   * a MediaRecorder: on a browser where only the live capture worked, the audio
-   * never arrives and the flagged transcript is all that side has, which is the
-   * §4.5 fallback doing its job.
-   *
-   * The upload answers the PART, not the transcript: part 9 of 12 must return
-   * the instant it is stored, because the phone that sent it is about to send
-   * the next one. Transcription is the job's business (jobId-deduplicated per
-   * call), and the caller watches its state in the thread.
+   * One recorded part, uploaded as it closes (a complete audio file). Answers
+   * the PART at once; its transcription is a job of its own.
    */
   uploadCallRecording: asyncHandler(async (req, res) => {
     const file = readUpload(req);
@@ -222,9 +211,31 @@ module.exports = {
       language: body.language || null,
       file,
       slug: req.tenant.slug,
+      tenantMeta: req.tenant,
+      env: req.env,
     }));
     res.status(201).json({ data });
   }),
+
+  /** A side declares it has finished recording, and how many parts it made. */
+  completeCallRecording: A((c, req) => callRecords.completeSide(c, {
+    callId: req.params.id,
+    actor: actor(req),
+    side: req.body.side,
+    parts: req.body.parts,
+    tenantMeta: req.tenant,
+    env: req.env,
+  })),
+
+  /** An admin re-runs a part that failed on both providers (never automatic). */
+  rerunCallRecordingPart: A((c, req) => callRecords.rerunPart(c, {
+    callId: req.params.id,
+    actor: actor(req),
+    side: req.params.side,
+    partIndex: Number(req.params.part),
+    tenantMeta: req.tenant,
+    env: req.env,
+  })),
 
   /**
    * The browser live capture on its own, for the side whose audio could not be

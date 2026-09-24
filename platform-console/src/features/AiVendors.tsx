@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { fmtDateDmy } from "@/lib/format";
-import { platform, type AiVendor } from "@/lib/api";
+import { platform, type AiVendor, type GeminiModelCheck } from "@/lib/api";
 import { useAsync } from "@/lib/useAsync";
 import { useToast } from "@/components/Toast";
 import { Button, Card, Empty, Field, Loading, Pill } from "@/components/ui";
@@ -56,6 +56,36 @@ function TestButton({ vendor }: { vendor: string }) {
   );
 }
 
+/**
+ * Whether the configured Gemini model still exists (calls audit N3). Google
+ * retires model ids; a retired one fails every Gemini request, which takes out
+ * the call transcription fallback, call summaries and document vision.
+ */
+export function GeminiModelStatus({ refreshKey = 0 }: { refreshKey?: number }) {
+  const [check, setCheck] = useState<GeminiModelCheck | null>(null);
+  const [failed, setFailed] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    platform.geminiModelCheck(refreshKey > 0)
+      .then((c) => { if (live) { setCheck(c); setFailed(null); } })
+      .catch((e: unknown) => { if (live) setFailed(e instanceof Error ? e.message : String(e)); });
+    return () => { live = false; };
+  }, [refreshKey]);
+  if (failed) return <Pill tone="warn">Model not checked · {failed.slice(0, 60)}</Pill>;
+  if (!check) return <span className="muted" style={{ fontSize: 12 }}>Checking model…</span>;
+  if (check.status === "ok") return <Pill tone="ok">Model {check.model} is available</Pill>;
+  if (check.status === "missing") {
+    return (
+      <span role="alert">
+        <Pill tone="bad">Model {check.model} does not exist at Google — set a current model</Pill>
+      </span>
+    );
+  }
+  if (check.status === "unusable") return <Pill tone="bad">Model {check.model} cannot generate content</Pill>;
+  if (check.status === "unconfigured") return <Pill tone="warn">No Gemini key, so the model was not checked</Pill>;
+  return <Pill tone="warn">Model not checked{check.http_status ? ` · ${check.http_status}` : ""}</Pill>;
+}
+
 function VendorCard({ v, onSaved }: { v: AiVendor; onSaved: () => void }) {
   const { toast } = useToast();
   const [f, setF] = useState({
@@ -65,6 +95,7 @@ function VendorCard({ v, onSaved }: { v: AiVendor; onSaved: () => void }) {
     is_active: v.is_active,
   });
   const [busy, setBusy] = useState(false);
+  const [saves, setSaves] = useState(0);
   const set = (k: "current_model" | "endpoint_url" | "api_key") => (e: React.ChangeEvent<HTMLInputElement>) => setF({ ...f, [k]: e.target.value });
   const save = async () => {
     setBusy(true);
@@ -77,6 +108,7 @@ function VendorCard({ v, onSaved }: { v: AiVendor; onSaved: () => void }) {
       });
       toast(`${v.display_name || v.vendor} saved`);
       setF({ ...f, api_key: "" });
+      setSaves((n) => n + 1);
       onSaved();
     } catch (e) {
       toast(e instanceof Error ? e.message : "Save failed");
@@ -104,6 +136,7 @@ function VendorCard({ v, onSaved }: { v: AiVendor; onSaved: () => void }) {
         <span className="row" style={{ gap: 8 }}>
           {v.has_key ? <Pill tone="ok">Key set</Pill> : <Pill tone="warn">No key</Pill>}
           {v.last_rotated_at && <span className="muted" style={{ fontSize: 12 }}>rotated {fmtDateDmy(v.last_rotated_at)}</span>}
+          {v.vendor === "gemini" && <GeminiModelStatus refreshKey={saves} />}
         </span>
         <Button variant="primary" onClick={save} loading={busy}>Save</Button>
       </div>

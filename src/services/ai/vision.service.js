@@ -21,7 +21,7 @@ async function extract({ image, mimeType = "image/jpeg", prompt, vendor = null }
 
   const { GoogleGenerativeAI } = require("@google/generative-ai");
   const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: (vendor && vendor.model) || config.GEMINI_MODEL || "gemini-1.5-pro" });
+  const model = genAI.getGenerativeModel({ model: (vendor && vendor.model) || config.GEMINI_MODEL || "gemini-2.5-flash" });
   const instruction =
     (prompt || "Extract the key fields from this logistics document") +
     ". Respond ONLY with a compact JSON object of field:value pairs.";

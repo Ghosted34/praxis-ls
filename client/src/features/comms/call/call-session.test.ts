@@ -43,7 +43,8 @@ const W = vi.hoisted(() => {
     reportCallFailure: async () => row({ status: "FAILED", end_reason: "ice_failed" }),
     getCall: async () => row({ status: "NO_ANSWER", end_reason: "no_answer" }),
   };
-  return { ME, THEM, ICE, handlers, calls, socket, row, api };
+  const completes: Array<[string, unknown]> = [];
+  return { ME, THEM, ICE, handlers, calls, socket, row, api, completes };
 });
 
 vi.mock("@/lib/comms-socket", () => ({
@@ -60,6 +61,10 @@ vi.mock("@/lib/smartcomm-api", async (importOriginal) => ({
   hangupCall: (id: string) => W.api.hangupCall(id),
   reportCallFailure: (id: string) => W.api.reportCallFailure(id),
   getCall: (id: string) => W.api.getCall(id),
+  completeCallRecording: async (id: string, body: unknown) => {
+    W.completes.push([id, body]);
+    return { call_id: id, ...(body as object), received: 0 };
+  },
 }));
 
 /** Minimal RTCPeerConnection for jsdom: SDP in/out and the one state
@@ -134,6 +139,7 @@ function resetApi() {
 beforeEach(() => {
   for (const k of Object.keys(W.handlers)) delete W.handlers[k];
   W.calls.length = 0;
+  W.completes.length = 0;
   pcs.length = 0;
   resetApi();
   vi.stubGlobal("RTCPeerConnection", FakePCT);
@@ -387,6 +393,64 @@ describe("call:summary_ready (A6)", () => {
     expect("draftCallId" in result.current).toBe(false);
     act(() => mod.clearSummaryNotice());
     expect(result.current.summaryNotice).toBeNull();
+  });
+});
+
+describe("call:summary_ready refreshes the pinned draft (O3)", () => {
+  it("every event bumps the tick; a redraft is not a new notice", async () => {
+    const mod = await fresh();
+    act(() => mod.wireCallSocket());
+    const { result } = renderHook(() => mod.useCall());
+    act(() => fire("call:summary_ready", { call_id: "c9", status: "PENDING_REVIEW", redraft: true }));
+    expect(result.current.summaryTick).toBe(1);
+    expect(result.current.summaryNotice).toBeNull();
+    act(() => fire("call:summary_ready", { call_id: "c9", status: "PENDING_REVIEW" }));
+    expect(result.current.summaryTick).toBe(2);
+    expect(result.current.summaryNotice).toEqual({ call_id: "c9", status: "PENDING_REVIEW" });
+  });
+});
+
+/* ── The side declaration (audit A2) ─────────────────────────────────────── */
+
+describe("the recorded side is declared when the call ends (A2)", () => {
+  async function connectedCall(mod: Awaited<ReturnType<typeof fresh>>) {
+    await ringIn();
+    W.api.acceptCall = async () =>
+      W.row({ status: "IN_CALL", connected_at: new Date().toISOString(), ice: W.ICE, recording_enabled: true });
+    await act(async () => {
+      await mod.answer();
+    });
+    act(() => {
+      pcs[0].iceConnectionState = "connected";
+      pcs[0].oniceconnectionstatechange?.({} as Event);
+    });
+  }
+
+  it("a browser that cannot record still declares its side, with zero parts, so the server need not wait", async () => {
+    // jsdom has no MediaRecorder: the recorder cannot start.
+    const mod = await fresh();
+    act(() => mod.wireCallSocket());
+    await connectedCall(mod);
+    await act(async () => {
+      await mod.hangup();
+    });
+    await act(async () => {
+      await mod.callUploads().idle();
+    });
+    expect(W.completes).toEqual([["c1", { side: "callee", parts: 0 }]]);
+  });
+
+  it("a call that never connected declares nothing", async () => {
+    const mod = await fresh();
+    act(() => mod.wireCallSocket());
+    await ringIn();
+    await act(async () => {
+      await mod.decline();
+    });
+    await act(async () => {
+      await mod.callUploads().idle();
+    });
+    expect(W.completes).toEqual([]);
   });
 });
 

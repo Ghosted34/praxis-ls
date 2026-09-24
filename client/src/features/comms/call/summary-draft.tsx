@@ -2,38 +2,45 @@
  * The caller's summary draft editor (decision row 3: nothing posts a summary
  * by itself; the caller reads, edits and sends).
  *
- * Embeddable: the call's own page (/comms/calls/:id, call-record.tsx) renders
- * it inline. It used to be a floating panel that only a socket event could
- * open, and the event never arrived from the worker (calls audit A6).
- *
- * The prose is the caller's to rewrite, and the EN/FR switch regenerates it.
- * Key points and follow-ups are quotations and stay in the language spoken.
- * The state machine lives in summary-draft-state.ts.
+ * Embedded twice: pinned above the composer of the conversation (owner
+ * decision O3, pinned-call-summary.tsx) and on the call's own page
+ * (call-record.tsx). The caller edits the prose, the key points and the
+ * follow-ups, switches EN/FR (which redrafts the prose), then sends or
+ * discards. Key points and follow-ups stay in the language spoken. Minutes
+ * that could not be transcribed are named. The state machine lives in
+ * summary-draft-state.ts.
  */
 import * as React from "react";
 // The same shared schema the send endpoint parses, so the button can say what
 // is wrong before the caller meets a 422.
 import { callSummary } from "@shared";
-import { tr } from "@/lib/i18n";
-import { dateDmy } from "@/lib/format";
+import { tr, tv } from "@/lib/i18n";
 import { useToast } from "@/components/ui/toast";
 import { useConfirm } from "@/components/ui/use-confirm";
 import { Button } from "@/components/ui/button";
-import { Field } from "@/components/ui/modal";
+import { Field, Select as NativeSelect } from "@/components/ui/modal";
+import { Input } from "@/components/ui/input";
+import { DateField } from "@/components/ui/date-field";
+import { TrashIcon } from "@/components/ui/icons";
 import { Textarea } from "@/components/ui/textarea";
 import { Segmented } from "@/components/ui/segmented";
 import { Callout } from "@/components/ui/callout";
 import * as api from "@/lib/smartcomm-api";
 import { EMPTY, summaryDraftReducer } from "./summary-draft-state";
 import { provenanceLabel } from "./call-provenance";
+import { gapsSentence } from "./call-labels";
 
 export function CallSummaryEditor({
   callId,
   onChanged,
+  refreshKey,
 }: {
   callId: string;
   /** After a send or a discard, so the page around it can refresh. */
   onChanged?: () => void;
+  /** Bumped when the server redrafted the summary; re-read unless the caller
+   *  has unsent edits, which a redraft must never overwrite. */
+  refreshKey?: number;
 }) {
   const toast = useToast();
   const [confirm, confirmDialog] = useConfirm();
@@ -55,6 +62,12 @@ export function CallSummaryEditor({
   React.useEffect(() => {
     void load();
   }, [load]);
+
+  const dirty = React.useRef(false);
+  dirty.current = state.dirty;
+  React.useEffect(() => {
+    if (refreshKey && !dirty.current) void load();
+  }, [refreshKey, load]);
 
   // A draft that is still being written is worth waiting for.
   React.useEffect(() => {
@@ -136,6 +149,9 @@ export function CallSummaryEditor({
 
       {editing && (
         <>
+          {state.gaps.length > 0 && (
+            <Callout tone="warn">{gapsSentence(state.gaps)}</Callout>
+          )}
           {state.updateAvailable && (
             <Callout tone="info">
               {tr("The certified transcript is ready — you can post an updated summary.")}
@@ -169,35 +185,82 @@ export function CallSummaryEditor({
           </div>
 
           {state.points.length > 0 && (
-            <div>
-              <p className="text-xs font-medium text-muted-foreground">{tr("Key points")}</p>
-              <ul className="mt-1 space-y-1">
-                {state.points.map((p, i) => (
-                  <li key={`${p.text}-${i}`} className="text-sm text-foreground">
-                    {p.text}{" "}
-                    <span className="text-micro text-muted-foreground">({p.raised_by === "caller" ? tr("you") : tr("them")})</span>
-                  </li>
-                ))}
-              </ul>
-              <p className="mt-1 text-micro text-muted-foreground">{tr("Quoted as spoken — these are never translated.")}</p>
-            </div>
+            <fieldset className="space-y-2">
+              <legend className="text-xs font-medium text-muted-foreground">{tr("Key points")}</legend>
+              {state.points.map((p, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <Input
+                    aria-label={tv("Key point {{n}}", { n: i + 1 })}
+                    value={p.text}
+                    maxLength={callSummary.LIMITS.textMax}
+                    onChange={(e) => dispatch({
+                      type: "edit",
+                      points: state.points.map((x, j) => (j === i ? { ...x, text: e.target.value } : x)),
+                    })}
+                  />
+                  <span className="shrink-0 text-micro text-muted-foreground">
+                    {p.raised_by === "caller" ? tr("you") : tr("them")}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    icon={null}
+                    aria-label={tv("Remove key point {{n}}", { n: i + 1 })}
+                    onClick={() => dispatch({ type: "edit", points: state.points.filter((_, j) => j !== i) })}
+                  >
+                    <TrashIcon width={16} height={16} />
+                  </Button>
+                </div>
+              ))}
+              <p className="text-micro text-muted-foreground">{tr("Quoted as spoken — these are never translated.")}</p>
+            </fieldset>
           )}
 
           {state.followUps.length > 0 && (
-            <div>
-              <p className="text-xs font-medium text-muted-foreground">{tr("Follow-ups")}</p>
-              <ul className="mt-1 space-y-1">
-                {state.followUps.map((f, i) => (
-                  <li key={`${f.text}-${i}`} className="text-sm text-foreground">
-                    {f.text}{" "}
-                    <span className="text-micro text-muted-foreground">
-                      ({f.owner === "caller" ? tr("you") : tr("them")}
-                      {f.due ? ` · ${dateDmy(f.due)}` : ""})
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
+            <fieldset className="space-y-2">
+              <legend className="text-xs font-medium text-muted-foreground">{tr("Follow-ups")}</legend>
+              {state.followUps.map((f, i) => {
+                const update = (patch: Partial<typeof f>) => dispatch({
+                  type: "edit",
+                  followUps: state.followUps.map((x, j) => (j === i ? { ...x, ...patch } : x)),
+                });
+                return (
+                  <div key={i} className="flex flex-wrap items-center gap-2">
+                    <Input
+                      className="min-w-[12rem] flex-1"
+                      aria-label={tv("Follow-up {{n}}", { n: i + 1 })}
+                      value={f.text}
+                      maxLength={callSummary.LIMITS.textMax}
+                      onChange={(e) => update({ text: e.target.value })}
+                    />
+                    <NativeSelect
+                      className="w-auto"
+                      aria-label={tv("Who does follow-up {{n}}", { n: i + 1 })}
+                      value={f.owner}
+                      onChange={(e) => update({ owner: e.target.value === "callee" ? "callee" : "caller" })}
+                    >
+                      <option value="caller">{tr("You")}</option>
+                      <option value="callee">{tr("Them")}</option>
+                    </NativeSelect>
+                    <DateField
+                      className="w-[9.5rem]"
+                      aria-label={tv("Due date of follow-up {{n}}", { n: i + 1 })}
+                      value={f.due || ""}
+                      onChange={(iso) => update({ due: iso || null })}
+                    />
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      icon={null}
+                      aria-label={tv("Remove follow-up {{n}}", { n: i + 1 })}
+                      onClick={() => dispatch({ type: "edit", followUps: state.followUps.filter((_, j) => j !== i) })}
+                    >
+                      <TrashIcon width={16} height={16} />
+                    </Button>
+                  </div>
+                );
+              })}
+            </fieldset>
           )}
 
           {state.error && <Callout tone="bad">{state.error}</Callout>}

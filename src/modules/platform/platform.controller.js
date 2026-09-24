@@ -324,6 +324,10 @@ const aiVendorSet = asyncHandler(async (req, res) => {
   res.json({ data });
 });
 const aiVendorTest = asyncHandler(async (req, res) => res.json({ data: await aiVendors.test(req.params.vendor) }));
+// Calls audit N3: does the configured Gemini model still exist at Google?
+const aiGeminiModelCheck = asyncHandler(async (req, res) => res.json({
+  data: await require("../../services/ai/gemini-model-check.service").checkGeminiModel({ force: req.query.refresh === "1" }),
+}));
 
 module.exports = {
   login,
@@ -381,4 +385,5 @@ module.exports = {
   aiVendorsList,
   aiVendorSet,
   aiVendorTest,
+  aiGeminiModelCheck,
 };

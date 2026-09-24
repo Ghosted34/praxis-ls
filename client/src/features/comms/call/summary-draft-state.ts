@@ -17,6 +17,7 @@ import type {
   CallSummaryFollowUp,
   CallSummaryKeyPoint,
   CallSummaryView,
+  CallTranscriptGap,
 } from "@/lib/smartcomm-api";
 
 export type DraftStatus = "waiting" | "ready" | "sending" | "sent" | "discarded" | "error";
@@ -30,6 +31,8 @@ export type DraftState = {
   provenance: CallProvenance;
   /** A later, better record is available and the caller may post an update. */
   updateAvailable: boolean;
+  /** Stretches of the call with no transcript (named in the draft too). */
+  gaps: CallTranscriptGap[];
   /** The caller changed something since the last server round-trip. */
   dirty: boolean;
   regenerating: boolean;
@@ -44,6 +47,7 @@ export const EMPTY: DraftState = {
   followUps: [],
   provenance: "groq",
   updateAvailable: false,
+  gaps: [],
   dirty: false,
   regenerating: false,
   error: null,
@@ -51,6 +55,7 @@ export const EMPTY: DraftState = {
 
 export type DraftAction =
   | { type: "loaded"; view: CallSummaryView }
+  | { type: "loadedSummary"; view: CallSummaryView }
   | { type: "edit"; text?: string; points?: CallSummaryKeyPoint[]; followUps?: CallSummaryFollowUp[] }
   | { type: "regenerate"; language: "en" | "fr" }
   | {
@@ -70,6 +75,10 @@ export type DraftAction =
 export const summaryDraftReducer = (state: DraftState, action: DraftAction): DraftState => {
   switch (action.type) {
     case "loaded": {
+      const loaded = summaryDraftReducer(state, { type: "loadedSummary", view: action.view });
+      return { ...loaded, gaps: action.view.gaps || [] };
+    }
+    case "loadedSummary": {
       const s = action.view.summary;
       if (!s) {
         // No draft yet (still transcribing, or the pipeline has not finished).
@@ -95,6 +104,7 @@ export const summaryDraftReducer = (state: DraftState, action: DraftAction): Dra
         };
       }
       return {
+        ...EMPTY,
         status: "ready",
         language: s.language,
         text: s.summary_text,

@@ -1,30 +1,88 @@
 /**
- * One call: who, when, how long, its summary and its transcript
- * (calls audit A6: the summary notification needed somewhere to land).
+ * One call: who, when, how long, its summary and its transcript. The record
+ * of the call; the draft itself is also pinned in the conversation (owner
+ * decision O3), which is where the summary notification lands.
  *
  * The house record shape (FRONTEND_GUIDE §3.11): one body, `CallRecord`, in
- * two shells. `CallRecordPage` is the route `/comms/calls/:callId`, which is
- * where the summary notification links; `CallRecordModal` is the phone sheet
- * the Calls list opens with `?focus=`. The body fetches everything by id.
+ * two shells. `CallRecordPage` is the route `/comms/calls/:callId`;
+ * `CallRecordModal` is the phone sheet the Calls list opens with `?focus=`.
+ * The body fetches everything by id.
  */
 import * as React from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { tr, tv } from "@/lib/i18n";
 import { dateTimeFmt } from "@/lib/format";
 import { Dialog } from "@/components/ui/dialog";
 import { Panel } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
+import { Callout } from "@/components/ui/callout";
+import { useToast } from "@/components/ui/toast";
+import { useCanUseModule } from "@/lib/route-access";
 import { LoadingRow } from "@/components/ui/states";
 import { ScreenError } from "@/components/connection/screen-error";
 import { Record360Header, Record360Page } from "@/components/record-360";
 import * as api from "@/lib/smartcomm-api";
-import type { Call, CallTranscriptView } from "@/lib/smartcomm-api";
+import type { Call, CallRecordSide, CallTranscriptView } from "@/lib/smartcomm-api";
 import { myUserId } from "./call-session";
 import { CallSummaryEditor } from "./summary-draft";
-import { callDuration, callOutcome, peerOf } from "./call-labels";
+import { callDuration, callOutcome, clockOf, peerOf } from "./call-labels";
 import { CallStatePill } from "./call-state-pill";
 
 export const CALLS_PATH = "/comms/calls";
+
+/**
+ * The minutes with no transcript. A part that failed on both providers is
+ * never retried automatically (owner decision O1); a settings administrator
+ * can run it once more from here.
+ */
+function MissingMinutes({ callId, view, onRerun }: {
+  callId: string;
+  view: CallTranscriptView;
+  onRerun: () => void;
+}) {
+  const toast = useToast();
+  const canRerun = useCanUseModule("MOD-70");
+  const [queued, setQueued] = React.useState<string[]>([]);
+  const gaps = view.gaps || [];
+  if (!gaps.length) return null;
+  const partOf = (side: CallRecordSide, n: number) =>
+    (view.recording || []).find((p) => p.side === side && p.part_index === n);
+  const rerun = async (side: CallRecordSide, n: number) => {
+    try {
+      await api.rerunCallPart(callId, side, n);
+      setQueued((q) => [...q, `${side}:${n}`]);
+      toast.success(tr("Sent for transcription again. The transcript updates when it is done."));
+      onRerun();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : tr("Could not re-run that part."));
+    }
+  };
+  return (
+    <Callout tone="warn">
+      <p>{tr("Some minutes of this call could not be transcribed:")}</p>
+      <ul className="mt-1 space-y-1">
+        {gaps.map((g) => (
+          <li key={`${g.side}-${g.from_s}`} className="flex flex-wrap items-center gap-2">
+            <span>
+              {g.side === "caller" ? tr("Caller") : tr("Callee")} · {clockOf(g.from_s)}–{clockOf(g.to_s)}
+            </span>
+            {canRerun && g.parts.map((n) => {
+              const p = partOf(g.side, n);
+              if (!p || p.status !== "FAILED" || p.purged) return null;
+              const done = queued.includes(`${g.side}:${n}`);
+              return (
+                <Button key={n} size="sm" variant="outline" icon={null} disabled={done}
+                  onClick={() => void rerun(g.side, n)}>
+                  {done ? tr("Queued") : tv("Re-run part {{n}}", { n })}
+                </Button>
+              );
+            })}
+          </li>
+        ))}
+      </ul>
+    </Callout>
+  );
+}
 
 /** The attributed transcript, loaded when asked for. */
 function TranscriptSection({ callId }: { callId: string }) {
@@ -55,6 +113,7 @@ function TranscriptSection({ callId }: { callId: string }) {
       {!open && <p className="text-sm text-muted-foreground">{tr("Transcripts are long; open it when you need it.")}</p>}
       {open && error && <ScreenError message={error} what={tr("Transcript")} onRetry={load} />}
       {open && !error && !view && <LoadingRow />}
+      {open && view && <div className="mb-3"><MissingMinutes callId={callId} view={view} onRerun={load} /></div>}
       {open && view && (
         view.sides.every((s) => !s.parts.length) ? (
           <p className="text-sm text-muted-foreground">{tr("No words were transcribed for this call.")}</p>
@@ -128,6 +187,14 @@ export function CallRecord({ callId, variant }: { callId: string; variant: "page
           ]}
         />
       )}
+      <p className="text-sm">
+        <Link
+          to={`/comms?channel=${call.group_id}${isCaller && call.draft_status === "PENDING_REVIEW" ? `&summary=${call.call_id}` : ""}`}
+          className="text-primary-ink hover:underline"
+        >
+          {tr("Open the conversation")}
+        </Link>
+      </p>
       <Panel title={tr("Call summary")}>
         {!recorded ? (
           <p className="text-sm text-muted-foreground">
@@ -135,7 +202,7 @@ export function CallRecord({ callId, variant }: { callId: string; variant: "page
           </p>
         ) : failedWithoutDraft ? (
           <p className="text-sm text-muted-foreground">
-            {tr("The transcript could not be produced yet. It is retried once a day.")}
+            {tr("The transcript could not be produced, so there is no summary.")}
           </p>
         ) : isCaller ? (
           <CallSummaryEditor callId={callId} onChanged={load} />

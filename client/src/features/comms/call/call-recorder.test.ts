@@ -1,179 +1,232 @@
 /**
- * The call recorder (PR-2) — part assembly, and the two promises that make it
- * safe to put on a live call: hanging up never waits for the network, and a
- * part that failed is COUNTED rather than thrown.
+ * The call recorder (calls audit A3): every part is a complete file.
  *
- * The MediaRecorder here is a stub, deliberately: what this file is testing is
- * the arithmetic of part boundaries (which is what the vendor sees and what the
- * transcript's language chips come from) and the upload discipline, neither of
- * which needs a browser.
+ * The fake MediaRecorder behaves like the real one where it matters: started
+ * without a timeslice it delivers ONE blob when stopped, and that blob begins
+ * with the container header. Started with a timeslice it delivers the header
+ * in its first chunk only, which is how the old recorder's parts 2..N ended up
+ * undecodable. The browser-level proof (each part decoded on its own) is
+ * client/e2e/call-recorder.spec.ts.
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   CallRecorder,
-  groupChunks,
   pickMimeType,
-  PART_MIN_MS,
   PART_TARGET_MS,
-  CHUNK_MS,
+  RECORDER_BITS_PER_SECOND,
+  MAX_PART_BYTES,
   type RecorderPart,
 } from "./call-recorder";
 
-const chunk = (bytes = 64) => ({ blob: new Blob([new Uint8Array(bytes)]), ms: CHUNK_MS });
-
-type Handler = ((e: { data: Blob }) => void) | null;
+const HEADER = [0x1a, 0x45, 0xdf, 0xa3];
+const log: string[] = [];
 
 class FakeMediaRecorder {
   static isTypeSupported = (t: string) => t.startsWith("audio/webm");
-  static constructed = 0;
+  static made: FakeMediaRecorder[] = [];
+  static payload = 64;
   state = "inactive";
-  ondataavailable: Handler = null;
+  ondataavailable: ((e: { data: Blob }) => void) | null = null;
   onstop: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  timeslice: number | undefined;
+  readonly n: number;
   constructor(public stream: unknown, public opts: Record<string, unknown> = {}) {
-    FakeMediaRecorder.constructed += 1;
+    FakeMediaRecorder.made.push(this);
+    this.n = FakeMediaRecorder.made.length;
   }
-  start() {
+  start(timeslice?: number) {
+    this.timeslice = timeslice;
     this.state = "recording";
+    log.push(`start ${this.n}`);
   }
   stop() {
     this.state = "inactive";
-    this.onstop?.();
-  }
-  /** Simulate the browser handing over one timeslice of audio. */
-  emit(bytes = 64) {
-    this.ondataavailable?.({ data: new Blob([new Uint8Array(bytes)]) });
+    log.push(`stop ${this.n}`);
+    // Asynchronously, like a browser: the data, then the stop event.
+    queueMicrotask(() => {
+      const bytes = new Uint8Array(HEADER.length + FakeMediaRecorder.payload);
+      bytes.fill(this.n);
+      bytes.set(HEADER, 0);
+      this.ondataavailable?.({ data: new Blob([bytes], { type: "audio/webm;codecs=opus" }) });
+      this.onstop?.();
+    });
   }
 }
 
-const stream = {} as unknown as MediaStream;
+class FakeTrack {
+  static clones: FakeTrack[] = [];
+  applyConstraints = vi.fn(async () => {});
+  stop = vi.fn();
+  clone() {
+    const t = new FakeTrack();
+    FakeTrack.clones.push(t);
+    return t;
+  }
+}
+const micTrack = new FakeTrack();
+const micStream = { getAudioTracks: () => [micTrack] } as unknown as MediaStream;
 
-function makeRecorder(over: { upload?: (p: RecorderPart, total: number) => Promise<void> } = {}) {
-  const upload = vi.fn(over.upload ?? (async () => {}));
+let clock = 0;
+function makeRecorder(over: { onPart?: (p: RecorderPart) => Promise<void> | void } = {}) {
+  const parts: RecorderPart[] = [];
+  const lost: number[] = [];
+  const onPart = vi.fn(over.onPart ?? (async (p: RecorderPart) => { parts.push(p); }));
   const rec = new CallRecorder({
     callId: "c1",
     side: "caller",
     language: "fr",
-    deps: { upload },
+    deps: { onPart, onLost: (i) => lost.push(i), now: () => clock },
   });
-  return { rec, upload };
+  return { rec, parts, lost, onPart };
+}
+
+function firstBytes(blob: Blob): Promise<number[]> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve([...new Uint8Array(reader.result as ArrayBuffer)].slice(0, 4));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsArrayBuffer(blob.slice(0, 4));
+  });
 }
 
 beforeEach(() => {
-  FakeMediaRecorder.constructed = 0;
-  (globalThis as unknown as { MediaRecorder: unknown }).MediaRecorder = FakeMediaRecorder;
+  vi.useFakeTimers();
+  clock = 0;
+  log.length = 0;
+  FakeMediaRecorder.made = [];
+  FakeMediaRecorder.payload = 64;
+  FakeTrack.clones = [];
+  vi.stubGlobal("MediaRecorder", FakeMediaRecorder);
+  vi.stubGlobal("MediaStream", class {
+    constructor(public tracks: unknown[]) {}
+    getAudioTracks() {
+      return this.tracks;
+    }
+  });
 });
 
-describe("part assembly", () => {
-  it("cuts on a chunk boundary at or past the target, never mid-chunk", () => {
-    // 25 chunks of 5 s = 125 s: one full 120 s part, then the 5 s remainder.
-    const parts = groupChunks(Array.from({ length: 25 }, () => chunk()), PART_TARGET_MS);
-    expect(parts.map((p) => p.durationMs)).toEqual([120_000, 5_000]);
-    expect(parts.map((p) => p.index)).toEqual([1, 2]);
-    // Every chunk is in exactly one part: nothing is dropped at a boundary.
-    expect(parts.reduce((n, p) => n + p.durationMs, 0)).toBe(125_000);
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
+
+describe("every part is a complete file (A3)", () => {
+  it("one MediaRecorder per part, started with no timeslice, so each part carries its own header", async () => {
+    const { rec, parts } = makeRecorder();
+    await rec.arm(micStream);
+    clock = PART_TARGET_MS;
+    await vi.advanceTimersByTimeAsync(PART_TARGET_MS);
+    clock = PART_TARGET_MS * 2;
+    await vi.advanceTimersByTimeAsync(PART_TARGET_MS);
+    clock = PART_TARGET_MS * 2 + 37_000;
+    const out = await rec.finish();
+
+    expect(FakeMediaRecorder.made).toHaveLength(3);
+    expect(FakeMediaRecorder.made.every((m) => m.timeslice === undefined)).toBe(true);
+    expect(out).toEqual({ parts: 3, lost: 0 });
+    expect(parts.map((p) => p.index)).toEqual([1, 2, 3]);
+    vi.useRealTimers(); // jsdom's FileReader runs on timers
+    for (const p of parts) expect(await firstBytes(p.blob)).toEqual(HEADER);
+    // Each part is exactly one recorder's output, never a slice of another's.
+    expect(parts.map((p) => p.blob.size)).toEqual([68, 68, 68]);
   });
 
-  it("a stream shorter than the target is ONE part, not zero parts", () => {
-    const parts = groupChunks([chunk(), chunk(), chunk()], PART_TARGET_MS);
-    expect(parts).toHaveLength(1);
-    expect(parts[0].durationMs).toBe(15_000);
+  it("the next recorder starts before the previous one stops, so no audio falls between parts", async () => {
+    const { rec } = makeRecorder();
+    await rec.arm(micStream);
+    await vi.advanceTimersByTimeAsync(PART_TARGET_MS);
+    expect(log).toEqual(["start 1", "start 2", "stop 1"]);
+    await rec.finish();
   });
 
-  it("parts land inside the 60–120 s band the guide asks for", () => {
-    const parts = groupChunks(Array.from({ length: 24 }, () => chunk()), PART_TARGET_MS);
-    expect(parts).toHaveLength(1);
-    expect(parts[0].durationMs).toBeGreaterThanOrEqual(60_000);
-    expect(parts[0].durationMs).toBeLessThanOrEqual(120_000);
+  it("a part's duration is measured, not assumed", async () => {
+    const { rec, parts } = makeRecorder();
+    clock = 1_000;
+    await rec.arm(micStream);
+    clock = 1_000 + PART_TARGET_MS + 850; // a throttled background timer
+    await vi.advanceTimersByTimeAsync(PART_TARGET_MS);
+    clock += 12_345;
+    await rec.finish();
+    expect(parts.map((p) => p.durationMs)).toEqual([PART_TARGET_MS + 850, 12_345]);
+  });
+
+  it("mono Opus at 32 kbps, from the recorder's own clone of the microphone", async () => {
+    const { rec } = makeRecorder();
+    await rec.arm(micStream);
+    expect(RECORDER_BITS_PER_SECOND).toBe(32_000);
+    expect(FakeMediaRecorder.made[0].opts).toEqual({ mimeType: "audio/webm;codecs=opus", audioBitsPerSecond: 32_000 });
+    expect(FakeTrack.clones).toHaveLength(1);
+    expect(FakeTrack.clones[0].applyConstraints).toHaveBeenCalledWith({ channelCount: 1 });
+    expect(micTrack.applyConstraints).not.toHaveBeenCalled();
+    await rec.finish();
+    // Its own track stops; the call's microphone is not the recorder's to stop.
+    expect(FakeTrack.clones[0].stop).toHaveBeenCalled();
+    expect(micTrack.stop).not.toHaveBeenCalled();
   });
 });
 
 describe("the recorder on a live call", () => {
-  it("uploads nothing until a part is actually closed", async () => {
-    const { rec, upload } = makeRecorder();
-    rec.arm(stream);
-    const mr = FakeMediaRecorder as unknown as { constructed: number };
-    expect(mr.constructed).toBe(1);
-
-    for (let i = 0; i < 10; i += 1) (rec as unknown as { recorder: FakeMediaRecorder }).recorder.emit();
-    expect(upload).not.toHaveBeenCalled();
-
-    // 14 more chunks cross the 120 s target: ONE part goes up, and the caller's
-    // call is not waiting for it.
-    for (let i = 0; i < 14; i += 1) (rec as unknown as { recorder: FakeMediaRecorder }).recorder.emit();
-    expect(upload).toHaveBeenCalledTimes(1);
-    const [part, total] = upload.mock.calls[0];
-    expect(part.index).toBe(1);
-    expect(part.durationMs).toBe(PART_TARGET_MS);
-    expect(total).toBe(1);
-  });
-
-  it("hanging up flushes the tail, and finish() resolves once the uploads settle", async () => {
-    const { rec, upload } = makeRecorder();
-    rec.arm(stream);
-    const mr = (rec as unknown as { recorder: FakeMediaRecorder }).recorder;
-    for (let i = 0; i < 24; i += 1) mr.emit();
-    for (let i = 0; i < 5; i += 1) mr.emit();
-
-    const out = await rec.finish();
-    expect(upload).toHaveBeenCalledTimes(2);
-    expect(upload.mock.calls[1][0].durationMs).toBe(25_000);
-    expect(upload.mock.calls[1][1]).toBe(2);
-    expect(out).toEqual({ parts: 2, lost: 0 });
-  });
-
-  it("a part is never cut below the minimum while the call is running", async () => {
-    const { rec, upload } = makeRecorder();
-    rec.arm(stream);
-    const mr = (rec as unknown as { recorder: FakeMediaRecorder }).recorder;
-    for (let i = 0; i < 23; i += 1) mr.emit(); // 115 s — inside the band, not closed
-    expect((rec as unknown as { closed: RecorderPart[] }).closed).toHaveLength(0);
-    expect(upload).not.toHaveBeenCalled();
-    mr.emit(); // 120 s — the target, and the cut
-    const closed = (rec as unknown as { closed: RecorderPart[] }).closed;
-    expect(closed).toHaveLength(1);
-    expect(closed[0].durationMs).toBeGreaterThanOrEqual(PART_MIN_MS);
-    expect(closed[0].durationMs).toBeLessThanOrEqual(PART_TARGET_MS);
-  });
-
-  it("a call that ends early still uploads its short tail — the minimum is a floor, not a filter", async () => {
-    const { rec, upload } = makeRecorder();
-    rec.arm(stream);
-    const mr = (rec as unknown as { recorder: FakeMediaRecorder }).recorder;
-    for (let i = 0; i < 4; i += 1) mr.emit(); // 20 s
+  it("hands nothing over until a part closes, and never touches the network itself", async () => {
+    const { rec, onPart } = makeRecorder();
+    await rec.arm(micStream);
+    await vi.advanceTimersByTimeAsync(PART_TARGET_MS - 1);
+    expect(onPart).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(onPart).toHaveBeenCalledTimes(1);
     await rec.finish();
-    expect(upload).toHaveBeenCalledTimes(1);
-    expect(upload.mock.calls[0][0].durationMs).toBe(20_000);
   });
 
-  it("a part that fails to upload is COUNTED, and the side keeps recording", async () => {
-    let calls = 0;
-    const { rec } = makeRecorder({
-      upload: async () => {
-        calls += 1;
-        if (calls === 1) throw new Error("network");
+  it("a part too large to upload is counted as lost, and still takes its number", async () => {
+    FakeMediaRecorder.payload = MAX_PART_BYTES + 1;
+    const { rec, parts, lost } = makeRecorder();
+    await rec.arm(micStream);
+    await vi.advanceTimersByTimeAsync(PART_TARGET_MS);
+    FakeMediaRecorder.payload = 64;
+    const out = await rec.finish();
+    expect(lost).toEqual([1]);
+    expect(parts.map((p) => p.index)).toEqual([2]);
+    expect(out).toEqual({ parts: 2, lost: 1 });
+  });
+
+  it("a part the outbox could not take is counted, and the parts after it still go", async () => {
+    let first = true;
+    const kept: number[] = [];
+    const { rec, lost } = makeRecorder({
+      onPart: async (p) => {
+        if (first) {
+          first = false;
+          throw new Error("storage refused");
+        }
+        kept.push(p.index);
       },
     });
-    rec.arm(stream);
-    const mr = (rec as unknown as { recorder: FakeMediaRecorder }).recorder;
-    for (let i = 0; i < 48; i += 1) mr.emit();
+    await rec.arm(micStream);
+    await vi.advanceTimersByTimeAsync(PART_TARGET_MS);
     const out = await rec.finish();
-    expect(out.parts).toBe(2);
+    expect(lost).toEqual([1]);
+    expect(kept).toEqual([2]);
     expect(out.lost).toBe(1);
-    expect(rec.lostParts).toBe(1);
   });
 
-  it("arming twice is a no-op, and finishing before arming is safe", async () => {
+  it("finish is safe to call twice, and after it nothing more is recorded", async () => {
     const { rec } = makeRecorder();
-    rec.arm(stream);
-    rec.arm(stream);
-    expect(FakeMediaRecorder.constructed).toBe(1);
-    const empty = new CallRecorder({ callId: "c9", side: "callee", language: "en", deps: { upload: async () => {} } });
-    expect(await empty.finish()).toEqual({ parts: 0, lost: 0 });
+    await rec.arm(micStream);
+    const a = await rec.finish();
+    const b = await rec.finish();
+    expect(a).toEqual(b);
+    await vi.advanceTimersByTimeAsync(PART_TARGET_MS * 3);
+    expect(FakeMediaRecorder.made).toHaveLength(1);
   });
 
-  it("the container is chosen from what the browser actually supports", () => {
+  it("a browser without MediaRecorder rejects arm; the caller declares zero parts", async () => {
+    vi.stubGlobal("MediaRecorder", undefined);
+    const { rec } = makeRecorder();
+    await expect(rec.arm(micStream)).rejects.toThrow("no-media-recorder");
+    expect(await rec.finish()).toEqual({ parts: 0, lost: 0 });
+  });
+
+  it("prefers WebM/Opus when the browser has it", () => {
     expect(pickMimeType()).toBe("audio/webm;codecs=opus");
-    (FakeMediaRecorder as unknown as { isTypeSupported: (t: string) => boolean }).isTypeSupported = (t: string) => t === "audio/mp4";
-    expect(pickMimeType()).toBe("audio/mp4");
   });
 });

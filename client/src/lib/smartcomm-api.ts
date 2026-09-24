@@ -294,6 +294,9 @@ export const getThread = (id: string) =>
     group_id: string;
     messages: CommMessage[];
     links?: ThreadLinks;
+    /** The reader's own call-summary drafts in this conversation, newest
+     *  first: pinned above the composer until sent or discarded. */
+    pending_call_summaries?: PendingCallSummary[];
   }>(`/smartcomm/channels/${id}/messages`);
 export const postMessage = (
   id: string,
@@ -551,9 +554,9 @@ export const listCalls = () => tenant<CallListRow[]>(`/smartcomm/calls`);
 export const getCall = (id: string) => tenant<Call>(`/smartcomm/calls/${id}`);
 
 /* ── The call record half (Smart Comms PR-2) ─────────────────────────────────
- * Recorded audio goes up in PARTS as they are cut (60–120 s), the browser's
- * live capture rides along with it, and everything after the hang-up is a read:
- * the transcript, the caller's draft, and the caller's one tap to send.
+ * Recorded audio goes up in PARTS as they are cut (every 120 s, each a
+ * complete file), each side then says how many it made, and everything after
+ * that is a read: the transcript, the caller's draft, and the caller's send.
  * `recording_enabled` on the call row is the tenant's kill switch — when it is
  * false there is no recorder, no consent banner, and these routes 403.
  */
@@ -584,8 +587,26 @@ export type CallSummaryDraft = {
   regenerate_count: number;
 };
 
+/** A stretch of one side's recording with no transcript: a part that failed
+ *  on both providers, is still pending, or never arrived. Seconds from the
+ *  start of that side's recording. */
+export type CallTranscriptGap = { side: CallRecordSide; from_s: number; to_s: number; parts: number[] };
+
+/** A caller's draft waiting in a conversation (the pinned card). */
+export type PendingCallSummary = {
+  call_id: string;
+  drafted_at: string;
+  started_at: string;
+  ended_at: string | null;
+  duration_seconds: number | null;
+  provenance: CallProvenance;
+  transcription_state: CallTranscriptState | null;
+};
+
 export type CallSummaryView = {
   call_id: string;
+  group_id: string;
+  gaps: CallTranscriptGap[];
   transcription_state: CallTranscriptState;
   transcription_error: string | null;
   recording_enabled: boolean;
@@ -624,6 +645,16 @@ export type CallTranscriptView = {
     provider: CallTranscriptProvider;
     certified: boolean;
   }[];
+  /** Every recorded part and where it stands. */
+  recording?: {
+    side: CallRecordSide;
+    part_index: number;
+    status: "PENDING" | "OK" | "FAILED";
+    duration_seconds: number;
+    provider: CallTranscriptProvider | null;
+    purged: boolean;
+  }[];
+  gaps?: CallTranscriptGap[];
 };
 
 /** The card a chat reader sees for a posted call summary. Resolved on every
@@ -667,6 +698,19 @@ export const uploadCallPart = (
     onProgress,
     signal,
   });
+
+/** This side has finished recording and made `parts` parts (0 is allowed). */
+export const completeCallRecording = (callId: string, body: { side: CallRecordSide; parts: number }) =>
+  tenant<{ call_id: string; side: CallRecordSide; parts: number; received: number }>(
+    `/smartcomm/calls/${callId}/recording/complete`,
+    { method: "POST", body },
+  );
+/** An admin runs a failed part through Groq, then Gemini, once more. */
+export const rerunCallPart = (callId: string, side: CallRecordSide, part: number) =>
+  tenant<{ call_id: string; side: CallRecordSide; part_index: number; status: string }>(
+    `/smartcomm/calls/${callId}/recording/${side}/${part}/rerun`,
+    { method: "POST" },
+  );
 
 export const getCallTranscript = (callId: string) =>
   tenant<CallTranscriptView>(`/smartcomm/calls/${callId}/transcript`);

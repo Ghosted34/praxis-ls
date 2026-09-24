@@ -42,10 +42,12 @@ const summary = {
   // Deliberately the old generic copy: the worker must build the sentence from
   // `data`, not repeat whatever English the server sent.
   body: "Review and send the summary of your call.",
-  url: "/comms/calls/8f2f5a1e-3c22-4a53-9a2b-6e0f2c9d1a44",
+  // The conversation, with the pinned draft open (owner decision O3).
+  url: "/comms?channel=5d0c1f7e-1b1d-4a39-8f0e-2b6c3d9e4f10&summary=8f2f5a1e-3c22-4a53-9a2b-6e0f2c9d1a44",
   data: {
     kind: "call_summary",
     call_id: "8f2f5a1e-3c22-4a53-9a2b-6e0f2c9d1a44",
+    group_id: "5d0c1f7e-1b1d-4a39-8f0e-2b6c3d9e4f10",
     peer_name: "Bruno Kamga",
     ended_at: "2026-09-24T13:05:00.000Z",
     duration_seconds: 312,

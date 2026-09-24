@@ -1,92 +1,43 @@
 /**
- * Call recorder (Smart Comms PR-2) — one MediaRecorder per SIDE, cut into parts.
+ * Call recorder — one side of one call, as a series of complete audio files
+ * (doc/SMART_COMMS_CALLS_AUDIT.md A3).
  *
- * ── WHY PARTS AND NOT ONE FILE ──────────────────────────────────────────────
+ * A MediaRecorder started with a timeslice writes the container header into
+ * its FIRST chunk only, so any later slice of that stream is undecodable on its
+ * own. This recorder therefore starts a new MediaRecorder at every part
+ * boundary (on the same track, before the old one stops, so no audio falls in
+ * between) and records each without a timeslice: every part is a whole file
+ * with its own header, and each is transcribed as soon as it is uploaded.
  *
- * The transcription provider takes a FILE. A 27-minute call is ~25 MB per side
- * on a corridor connection, and one failed upload of it loses the entire side's
- * transcript. So the recorder cuts at 60–120 s, uploads each part as it closes,
- * and a part that fails is a part that failed — not a call. This is the client
- * half of §4.5 step 1, and it is also why the language boundary of a
- * code-switched call lands on a part boundary: each part is detected on its own.
- *
- * ── THE FOUR PROPERTIES THAT MATTER ─────────────────────────────────────────
- *
- *   1. NOTHING IS UPLOADED BEFORE THE CALL CONNECTS. The recorder arms when
- *      media is up (`arm()`), so the dead air of a 40-second ring is not in the
- *      record, and a call that never connected has nothing to store.
- *   2. A CHUNK THAT ARRIVES WHILE THE PREVIOUS UPLOAD IS IN FLIGHT IS BUFFERED,
- *      not dropped. `onmessage` sets `bufferedMs`; the timer only decides when a
- *      part is CLOSED, and closing never waits for the network.
- *   3. HANGING UP NEVER WAITS FOR US. `finish()` is fire-and-forget from the
- *      caller's point of view: PR-1's hang-up path is a REST call and a state
- *      change, and a recorder that made it wait for 20 uploads would be the
- *      flaky-call bug this feature was supposed to be careful not to reintroduce.
- *   4. WHAT CANNOT BE UPLOADED IS SAID OUT LOUD. `onLost` reports parts that
- *      never made it, and the UI shows them; the server's own state
- *      (TRANSCRIPTION_FAILED) covers the other end of the same fact.
- *
- * The browser live capture that used to ride along with each part was removed
- * (owner decision A-1): the uploaded audio is the only transcript source.
+ * Nothing here touches the network. A closed part is handed to `onPart` (the
+ * durable upload outbox, call-upload-outbox.ts), so hanging up never waits on
+ * an upload and a part survives a closed tab.
  */
 
-/** Close a part once it reaches this. Inside the 60–120 s window §4.5 asks for. */
+/** A part's length: the 120 s the server expects, cut by the recorder itself. */
 export const PART_TARGET_MS = 120_000;
-/** Never let a part be shorter than this unless the call is ending. */
-export const PART_MIN_MS = 60_000;
-/** How often MediaRecorder hands us bytes. Small enough that a part is a whole
- *  number of chunks even when the timer and the callback disagree. */
-export const CHUNK_MS = 5_000;
-/** A ceiling per part, matching the server's own bound: past this the bytes are
- *  a client bug (raw PCM, a stuck device) and uploading them wastes the call. */
+/** Mono Opus at this rate is ~240 KB a minute; browsers default far higher. */
+export const RECORDER_BITS_PER_SECOND = 32_000;
+/** The server's per-part ceiling. A bigger part is a device fault, not audio. */
 export const MAX_PART_BYTES = 12 * 1024 * 1024;
 
-export type RecorderChunk = { blob: Blob; ms: number };
-export type RecorderPart = { index: number; blob: Blob; durationMs: number };
+export type RecorderPart = {
+  /** 1-based, in recording order, with no gaps. */
+  index: number;
+  blob: Blob;
+  /** Measured from when the part started to when it was stopped. */
+  durationMs: number;
+  mimeType: string;
+};
 
-/**
- * Group buffered chunks into parts.
- *
- * PURE, and exported for exactly that reason: part boundaries are the contract
- * between the client and the transcript (one part = one vendor call = one
- * language answer), and a rule this load-bearing should be testable without a
- * MediaRecorder, a browser, or a network.
- *
- * The cut happens on a CHUNK boundary at or past `targetMs` — never mid-chunk —
- * so the part's duration is honest. A chunk bigger than the target gets a part
- * of its own rather than a cut through it.
- */
-export function groupChunks(chunks: RecorderChunk[], targetMs = PART_TARGET_MS): RecorderPart[] {
-  const parts: RecorderPart[] = [];
-  let current: RecorderChunk[] = [];
-  let ms = 0;
-  const close = () => {
-    if (!current.length) return;
-    parts.push({
-      index: parts.length + 1,
-      blob: new Blob(current.map((c) => c.blob), { type: current[0].blob.type }),
-      durationMs: ms,
-    });
-    current = [];
-    ms = 0;
-  };
-  for (const chunk of chunks) {
-    current.push(chunk);
-    ms += chunk.ms;
-    if (ms >= targetMs) close();
-  }
-  close();
-  return parts;
-}
-
-/** What the recorder needs from the outside world, all injectable for tests. */
 export type RecorderDeps = {
-  /** Upload ONE part. Resolves with the server's answer, rejects on failure. */
-  upload: (part: RecorderPart, total: number) => Promise<void>;
-  /** Supply the live capture for a part (may be empty). */
-  liveSegments?: () => unknown[];
+  /** Take a closed part (persist it, queue its upload). */
+  onPart: (part: RecorderPart) => void | Promise<void>;
+  /** A part that could not be kept (too large, or the device produced nothing usable). */
+  onLost?: (index: number) => void;
   onRecorder?: (recorder: MediaRecorder | null) => void;
-  audioBitsPerSecond?: number;
+  now?: () => number;
+  partMs?: number;
 };
 
 /** The container the browser will actually give us, in preference order. */
@@ -102,31 +53,59 @@ export function pickMimeType(): string {
   return candidates.find((t) => MR.isTypeSupported(t)) || "";
 }
 
+type Segment = {
+  rec: MediaRecorder;
+  chunks: Blob[];
+  startedAt: number;
+  stopped: Promise<void>;
+};
+
 /**
- * One side's recorder for one call.
- *
- * Lifecycle: `arm(stream)` → parts upload as they close → `finish()` on
- * hang-up. Every method is safe to call twice and safe to call after `finish()`
- * — the overlay can unmount, the socket can deliver the terminal event, and the
- * user can press hang-up, in any order.
+ * The track the recorder records: a clone of the call's microphone, asked to
+ * be mono. A clone so the recorder can stop its own track at the end without
+ * touching the call's, and so the constraint never reaches the call's audio.
+ */
+async function recordingStream(stream: MediaStream): Promise<{ stream: MediaStream; own: MediaStreamTrack | null }> {
+  const track = typeof stream.getAudioTracks === "function" ? stream.getAudioTracks()[0] : undefined;
+  if (!track || typeof track.clone !== "function" || typeof MediaStream === "undefined") {
+    return { stream, own: null };
+  }
+  const own = track.clone();
+  if (own.readyState === "ended") {
+    // A device that will not share its capture: record the call's own track.
+    own.stop();
+    return { stream, own: null };
+  }
+  try {
+    await own.applyConstraints({ channelCount: 1 });
+  } catch {
+    /* @silent:teardown — a device that cannot be asked for mono records what it
+       has; the bitrate cap still bounds the size. */
+  }
+  return { stream: new MediaStream([own]), own };
+}
+
+/**
+ * Lifecycle: `arm(stream)` when media is up → a part closes every
+ * PART_TARGET_MS → `finish()` on hang-up closes the last one. Every method is
+ * safe to call twice and after `finish()`.
  */
 export class CallRecorder {
   readonly callId: string;
   readonly side: "caller" | "callee";
   readonly language: "en" | "fr";
   private deps: RecorderDeps;
-  private recorder: MediaRecorder | null = null;
-  private buffered: RecorderChunk[] = [];
-  private bufferedMs = 0;
-  private closed: RecorderPart[] = [];
-  private uploads: Promise<void>[] = [];
+  private stream: MediaStream | null = null;
+  private ownTrack: MediaStreamTrack | null = null;
+  private mimeType = "";
+  private current: Segment | null = null;
+  private timer: ReturnType<typeof setTimeout> | null = null;
+  /** Closes run one after another, so part numbers follow recording order. */
+  private closing: Promise<void> = Promise.resolve();
+  private parts = 0;
   private lost = 0;
+  private armed = false;
   private stopped = false;
-  private timer: ReturnType<typeof setInterval> | null = null;
-  /** Total parts the SIDE produced, known only at the end — but a part
-   *  uploaded earlier must still declare one, so the count is sent as the
-   *  running total and corrected on the final upload (see `send`). */
-  private sentCount = 0;
 
   constructor(opts: {
     callId: string;
@@ -140,105 +119,133 @@ export class CallRecorder {
     this.deps = opts.deps;
   }
 
-  /** Parts whose upload failed. The UI reports these; the server's own state
-   *  covers the same fact from its side, and neither is allowed to be silent. */
+  private now(): number {
+    return this.deps.now ? this.deps.now() : Date.now();
+  }
+
+  /** Parts that could not be kept. */
   get lostParts(): number {
     return this.lost;
   }
 
   get isRecording(): boolean {
-    return !!this.recorder && this.recorder.state === "recording";
+    return !!this.current && this.current.rec.state === "recording";
+  }
+
+  /** Parts closed so far: after `finish()`, the side's declared count. */
+  get partCount(): number {
+    return this.parts;
   }
 
   /**
-   * Start recording the local side. Throws when the browser has no
-   * MediaRecorder — the caller turns that into the honest UI state ("this
-   * browser cannot record; the call is still being transcribed from the live
-   * capture where one exists").
+   * Start recording the local side. Rejects when the browser has no
+   * MediaRecorder; the call is unaffected and the side declares zero parts.
    */
-  arm(stream: MediaStream): void {
-    if (this.recorder || this.stopped) return;
+  async arm(stream: MediaStream): Promise<void> {
+    if (this.armed || this.stopped) return;
     if (typeof MediaRecorder === "undefined") throw new Error("no-media-recorder");
-    const mimeType = pickMimeType();
-    const rec = new MediaRecorder(stream, {
-      ...(mimeType ? { mimeType } : {}),
-      ...(this.deps.audioBitsPerSecond ? { audioBitsPerSecond: this.deps.audioBitsPerSecond } : {}),
-    });
-    this.recorder = rec;
-    this.deps.onRecorder?.(rec);
+    this.armed = true;
+    const source = await recordingStream(stream);
+    this.stream = source.stream;
+    this.ownTrack = source.own;
+    if (this.stopped) {
+      this.ownTrack?.stop();
+      return;
+    }
+    this.mimeType = pickMimeType();
+    this.current = this.startSegment();
+    this.schedule();
+  }
 
+  private startSegment(): Segment {
+    const rec = new MediaRecorder(this.stream as MediaStream, {
+      ...(this.mimeType ? { mimeType: this.mimeType } : {}),
+      audioBitsPerSecond: RECORDER_BITS_PER_SECOND,
+    });
+    const chunks: Blob[] = [];
     rec.ondataavailable = (e: BlobEvent) => {
-      if (!e.data || !e.data.size) return;
-      this.buffered.push({ blob: e.data, ms: CHUNK_MS });
-      this.bufferedMs += CHUNK_MS;
-      // Close on the same schedule the chunk arrives on, so the part boundary
-      // is a chunk boundary by construction rather than by luck.
-      if (this.bufferedMs >= PART_TARGET_MS) this.closePart();
+      if (e.data && e.data.size) chunks.push(e.data);
     };
-    rec.onstop = () => this.closePart();
-    rec.start(CHUNK_MS);
-    // A part that has not been closed by its own cadence (a browser that
-    // coalesces chunks) is closed here.
-    this.timer = setInterval(() => {
-      if (this.bufferedMs >= PART_TARGET_MS) this.closePart();
-    }, CHUNK_MS);
-  }
-
-  /** Map a closed part onto the wire. `total` is the running count: the server
-   *  stores it for display ("part 9 of 12") and never uses it to decide when to
-   *  transcribe — the pipeline reads what is actually there. */
-  private send(part: RecorderPart, total: number): void {
-    this.sentCount = Math.max(this.sentCount, total);
-    const run = (async () => {
-      await this.deps.upload(part, total);
-    })().catch(() => {
-      // A part that failed to upload is COUNTED, not thrown: the remaining
-      // parts are the difference between a transcript with a hole and no
-      // transcript at all, and one network blip must not end the side.
-      this.lost += 1;
+    const stopped = new Promise<void>((resolve) => {
+      rec.onstop = () => resolve();
+      rec.onerror = () => resolve();
     });
-    this.uploads.push(run);
+    // No timeslice: the whole part arrives as one file when it is stopped.
+    rec.start();
+    this.deps.onRecorder?.(rec);
+    return { rec, chunks, startedAt: this.now(), stopped };
   }
 
-  private closePart(): void {
-    if (!this.buffered.length) return;
-    // A part below the minimum is only closed when the call is ENDING (finish
-    // closes the tail). Otherwise the chunks stay buffered for the next cut,
-    // which is what keeps a part in the 60–120 s band on a slow device.
-    if (this.bufferedMs < PART_MIN_MS && !this.stopped) return;
-    // Everything buffered goes into ONE part here — the sizing decision has
-    // already been made by the caller of this function (`bufferedMs` crossed the
-    // target, or the call is ending).
-    const [part] = groupChunks(this.buffered, Number.POSITIVE_INFINITY);
-    if (!part) return;
-    this.buffered = [];
-    this.bufferedMs = 0;
-    this.closed.push(part);
-    this.send(part, this.closed.length);
+  private schedule(): void {
+    this.timer = setTimeout(() => this.rotate(), this.deps.partMs ?? PART_TARGET_MS);
+  }
+
+  /** A part boundary: the next recorder is running before this one stops. */
+  private rotate(): void {
+    if (this.stopped || !this.current) return;
+    const old = this.current;
+    try {
+      this.current = this.startSegment();
+    } catch {
+      /* @silent:teardown — the track ended (device unplugged); the part that
+         is closing below is the last one this recorder can make. */
+      this.current = null;
+    }
+    if (this.current) this.schedule();
+    this.close(old);
+  }
+
+  private close(seg: Segment): void {
+    const stoppedAt = this.now();
+    try {
+      if (seg.rec.state !== "inactive") seg.rec.stop();
+    } catch {
+      /* @silent:teardown — a recorder the browser already stopped has
+         delivered its data; the wait below resolves on its own event. */
+    }
+    this.closing = this.closing.then(async () => {
+      await seg.stopped;
+      const blob = new Blob(seg.chunks, { type: seg.chunks[0]?.type || this.mimeType || "audio/webm" });
+      if (!blob.size) return;
+      this.parts += 1;
+      const index = this.parts;
+      if (blob.size > MAX_PART_BYTES) {
+        this.lost += 1;
+        this.deps.onLost?.(index);
+        return;
+      }
+      try {
+        await this.deps.onPart({
+          index,
+          blob,
+          durationMs: Math.max(0, stoppedAt - seg.startedAt),
+          mimeType: blob.type,
+        });
+      } catch {
+        // Counted, never thrown: one part that could not be queued must not
+        // stop the parts after it.
+        this.lost += 1;
+        this.deps.onLost?.(index);
+      }
+    });
   }
 
   /**
-   * Stop recording and upload the tail. Resolves when every part has been
-   * attempted — the CALLER never has to await this (see the header), but a test
-   * and the "how many parts were lost" report both need the answer.
+   * Stop recording and close the last part. Resolves once every part has been
+   * handed over; the caller never has to wait for this before hanging up.
    */
   async finish(): Promise<{ parts: number; lost: number }> {
     if (!this.stopped) {
       this.stopped = true;
-      if (this.timer) clearInterval(this.timer);
+      if (this.timer) clearTimeout(this.timer);
       this.timer = null;
-      try {
-        if (this.recorder && this.recorder.state !== "inactive") this.recorder.stop();
-        else this.closePart();
-      } catch {
-        /* @silent:teardown — a recorder already stopped (the stream ended, the
-           tab lost the device) has nothing left to stop; the tail below is
-           what matters, and it runs either way. */
-      }
-      this.closePart();
+      const seg = this.current;
+      this.current = null;
+      if (seg) this.close(seg);
       this.deps.onRecorder?.(null);
     }
-    await Promise.all(this.uploads);
-    return { parts: this.sentCount, lost: this.lost };
+    await this.closing;
+    this.ownTrack?.stop();
+    return { parts: this.parts, lost: this.lost };
   }
 }

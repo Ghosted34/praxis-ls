@@ -38,13 +38,15 @@ const PROCESSORS = [
   // in which a queue behind another tenant's slow push service costs the bell.
   { name: "comms-call-ring-escalate", concurrency: 2, handler: require("./handlers/comms-call-ring-escalate") },
   /**
-   * The call RECORD half (guide §4.5). `call-transcribe` transcribes a call's
-   * parts (Groq, then Gemini) and drafts the summary; concurrency 2 because the
-   * work is mostly waiting on third parties. The record sweep retries failed
-   * or unfinished calls (never notifying) and applies audio retention;
-   * concurrency 1, since neither is a deadline.
+   * The call RECORD half (guide §4.5). `call-transcribe-part` transcribes one
+   * part as it uploads (Groq once, then Gemini once); `call-finalise` drafts
+   * the summary once every part has a result. Both mostly wait on third
+   * parties and hold no DB connection while they do. The record sweep
+   * restarts work that never ran (never notifying) and applies audio
+   * retention; concurrency 1, since neither is a deadline.
    */
-  { name: "call-transcribe", concurrency: 2, handler: require("./handlers/call-transcribe") },
+  { name: "call-transcribe-part", concurrency: 4, handler: require("./handlers/call-transcribe-part") },
+  { name: "call-finalise", concurrency: 2, handler: require("./handlers/call-finalise") },
   { name: "comms-call-record-sweep", concurrency: 1, handler: require("./handlers/comms-call-record-sweep") },
   { name: "comms-call-record-sweep-scheduler", concurrency: 1, handler: require("./handlers/comms-call-record-sweep-scheduler") },
   /**

@@ -169,6 +169,7 @@ function attachmentSummary(attachments) {
  * up in the channel; only the duplicate notification is skipped.
  */
 async function postMessage(client, { groupId, body = null, mediaVaultId = null, replyTo = null, attachments = [], actor = {}, notifyMembers = true, scheduleId = null, tenantMeta = null, env = "live" }) {
+  let m;
   await client.query("BEGIN");
   try {
     if (scheduleId) {
@@ -180,119 +181,136 @@ async function postMessage(client, { groupId, body = null, mediaVaultId = null, 
       body = queued.body; attachments = queued.attachments; replyTo = queued.reply_to;
       await require("./smartcomm.schedule.service").validateAttachments(client, groupId, attachments, replyTo);
     }
-    await assertMember(client, groupId, actor.user_id);
-    if (!body && !mediaVaultId && (!attachments || !attachments.length)) throw new AppError("EMPTY_MESSAGE", "a message needs a body or media", 422);
-    const m = await repo.insertMessage(client, { group_id: groupId, sender_user_id: actor.user_id || null, body, media_vault_id: mediaVaultId, reply_to_message_id: replyTo });
-    for (const a of attachments || []) {
-      /// eslint-disable-next-line no-await-in-loop
-      await repo.addAttachment(client, attachmentRow(m.message_id, a));
-    }
-    await repo.updateChannel(client, groupId, {}); // bump updated_at
-    await emitEvent(client, { eventTypeKey: events.MESSAGE_POSTED, moduleKey: events.MODULE, entityRef: "comms_message:" + m.message_id, actorUserId: actor.user_id || null });
+    m = await writeMessage(client, { groupId, body, mediaVaultId, replyTo, attachments, actor });
     if (scheduleId) await scheduled.sent(client, scheduleId, m.message_id);
     await client.query("COMMIT");
-    // The preview rows for a message a person just sent, written OUTSIDE the
-    // transaction on purpose. A link preview is bookkeeping about somebody
-    // else's web page: it must never be able to fail a send, hold the message's
-    // row locks while a third party is slow, or — worst — make a message
-    // undeliverable because a tenant's Redis is down. Everything here is wrapped,
-    // and the only consequence of any of it failing is that the card shows up on
-    // the first read instead of before it.
-    try {
-      await links.recordSentLinks(client, { body, m, tenantMeta, env });
-    } catch {
-      /* @silent:storage|parse|teardown */
-    }
-    rtPublish(groupId, "comms:message", { group_id: groupId, message: m });
-    // G22 — a posted message notifies the OTHER members through the same
-    // preference-honouring channel every other module uses (IN_APP + optional
-    // EMAIL/PUSH per user preference). Best-effort and AFTER commit: a notify
-    // failure must never fail the message itself. The sender is excluded — you
-    // already know you wrote it.
-    try {
-      const others = notifyMembers ? await repo.memberUserIds(client, groupId, actor.user_id || null) : [];
-      if (others.length) {
-        // `../notification/…`, NOT `../../`. This file sits at
-        // src/modules/smartcomm/ — one level shallower than every OTHER
-        // notification caller (src/modules/<area>/<sub>/), which is where the
-        // `../../` was copied from. From here it resolved to
-        // src/notification/notification.service, a directory that has never
-        // existed, so this line threw MODULE_NOT_FOUND into the best-effort
-        // catch below and Smart Comms notified NOBODY — no in-app row, no
-        // push, no email — silently, for every message ever posted.
-        //
-        // The catch is right to be there (a notify failure must not fail the
-        // message) and is exactly what hid this: a require error and a push
-        // service being briefly unreachable are indistinguishable to it.
-        await require("../notification/notification.service").notifyMany(client, others, {
-          eventTypeKey: "comms.message_posted",
-          // The SENDER is the headline and the message is the body — the shape
-          // every messaging app uses, and the one that reads correctly on a
-          // lock screen. It used to put the message text in BOTH, so a
-          // notification showed the same sentence twice and never said who
-          // wrote it.
-          // `req.user` carries `display_name`, not `full_name` (middleware/auth.js).
-          // Falling back to the message text keeps this no worse than what it
-          // replaced for a caller that passes neither — a system-posted card,
-          // say, which has no human sender to name.
-          title: String(
-            (actor && (actor.display_name || actor.email))
-            || body
-            || "New message in Smart Comms",
-          ).slice(0, 90),
-          // A lock screen that says "Sent an attachment" for a voice note tells
-          // the reader nothing about whether to pick up the phone. Naming the
-          // format costs nothing and is the difference between acting now and
-          // opening the app to find out.
-          body: body ? String(body).slice(0, 500) : attachmentSummary(attachments),
-          entityRef: "comms_message:" + m.message_id,
-          category: "comms",
-          // Straight into the channel the message was posted in. `?channel=`
-          // is the param the chat page already reads (features/comms/team-chat.tsx),
-          // so no client change is needed to make this land.
-          url: `/comms?channel=${groupId}`,
-          // Collapse per CHANNEL: a fast back-and-forth in one channel becomes
-          // one notification showing the latest message, while a message in a
-          // different channel stays its own. `renotify` keeps the replacement
-          // audible rather than silently swapping the text.
-          pushTag: `comms:${groupId}`,
-          renotify: true,
-          // Somebody in the company is talking to this person right now.
-          urgency: "high",
-          // Same reliability promise mail has made since it was written: a
-          // notification that reaches NO device must reach the person some
-          // other way. Chat was the one conversational channel without it, so
-          // a colleague messaging someone with no registered device produced
-          // an in-app row they would see whenever they next happened to open
-          // the app — which, for the channel people use when they need an
-          // answer now, is indistinguishable from not being told.
-          //
-          // It is not an email per message. `deliverOutbound` sends it only
-          // when push reached ZERO devices, and two carve-outs there already
-          // hold: nothing is sent to someone who SILENCED this category (that
-          // would route around an opt-out they made on purpose), and nothing
-          // is sent when the deploy has no VAPID keypair at all (an operations
-          // problem an email per notification would bury while flooding every
-          // inbox).
-          //
-          // What it does not bound is VOLUME for a recipient who has push
-          // available and has simply never opted a device in: `pushTag`
-          // collapses a fast exchange into one BANNER, but the email leg has
-          // no equivalent, so twenty messages in one channel are twenty
-          // emails. Mail lives with the same shape and its volume is bounded
-          // by real mail arriving; chat's is not. If that bites, the fix is a
-          // per-(user, channel) cooldown on the fallback leg rather than
-          // removing it — see the note on this in doc/PUSH_NOTIFICATIONS.md.
-          emailFallback: true,
-          pushData: { kind: "comms", group_id: groupId, message_id: m.message_id },
-        });
-      }
-    } catch {
-      /* @silent:storage|parse|teardown */
-      /* notify is best-effort — never mask the message that succeeded */
-    }
-    return m;
   } catch (err) { await client.query("ROLLBACK"); throw err; }
+  await announceMessage(client, { groupId, body, attachments, m, actor, notifyMembers, tenantMeta, env });
+  return m;
+}
+
+/**
+ * The message's rows: the message, its attachments, the channel bump and the
+ * event. No transaction of its own, so a caller can make it part of a larger
+ * one (the call summary's send, audit B7); nothing here reaches outside the
+ * database. `announceMessage` does that, after the commit.
+ */
+async function writeMessage(client, { groupId, body = null, mediaVaultId = null, replyTo = null, attachments = [], actor = {} }) {
+  await assertMember(client, groupId, actor.user_id);
+  if (!body && !mediaVaultId && (!attachments || !attachments.length)) throw new AppError("EMPTY_MESSAGE", "a message needs a body or media", 422);
+  const m = await repo.insertMessage(client, { group_id: groupId, sender_user_id: actor.user_id || null, body, media_vault_id: mediaVaultId, reply_to_message_id: replyTo });
+  for (const a of attachments || []) {
+    /// eslint-disable-next-line no-await-in-loop
+    await repo.addAttachment(client, attachmentRow(m.message_id, a));
+  }
+  await repo.updateChannel(client, groupId, {}); // bump updated_at
+  await emitEvent(client, { eventTypeKey: events.MESSAGE_POSTED, moduleKey: events.MODULE, entityRef: "comms_message:" + m.message_id, actorUserId: actor.user_id || null });
+  return m;
+}
+
+/** After the commit: link previews, the realtime broadcast and the members'
+ *  notifications. Best-effort throughout; the message is already sent. */
+async function announceMessage(client, { groupId, body = null, attachments = [], m, actor = {}, notifyMembers = true, tenantMeta = null, env = "live" }) {
+  // The preview rows for a message a person just sent, written OUTSIDE the
+  // transaction on purpose. A link preview is bookkeeping about somebody
+  // else's web page: it must never be able to fail a send, hold the message's
+  // row locks while a third party is slow, or — worst — make a message
+  // undeliverable because a tenant's Redis is down. Everything here is wrapped,
+  // and the only consequence of any of it failing is that the card shows up on
+  // the first read instead of before it.
+  try {
+    await links.recordSentLinks(client, { body, m, tenantMeta, env });
+  } catch {
+    /* @silent:storage|parse|teardown */
+  }
+  rtPublish(groupId, "comms:message", { group_id: groupId, message: m });
+  // G22 — a posted message notifies the OTHER members through the same
+  // preference-honouring channel every other module uses (IN_APP + optional
+  // EMAIL/PUSH per user preference). Best-effort and AFTER commit: a notify
+  // failure must never fail the message itself. The sender is excluded — you
+  // already know you wrote it.
+  try {
+    const others = notifyMembers ? await repo.memberUserIds(client, groupId, actor.user_id || null) : [];
+    if (others.length) {
+      // `../notification/…`, NOT `../../`. This file sits at
+      // src/modules/smartcomm/ — one level shallower than every OTHER
+      // notification caller (src/modules/<area>/<sub>/), which is where the
+      // `../../` was copied from. From here it resolved to
+      // src/notification/notification.service, a directory that has never
+      // existed, so this line threw MODULE_NOT_FOUND into the best-effort
+      // catch below and Smart Comms notified NOBODY — no in-app row, no
+      // push, no email — silently, for every message ever posted.
+      //
+      // The catch is right to be there (a notify failure must not fail the
+      // message) and is exactly what hid this: a require error and a push
+      // service being briefly unreachable are indistinguishable to it.
+      await require("../notification/notification.service").notifyMany(client, others, {
+        eventTypeKey: "comms.message_posted",
+        // The SENDER is the headline and the message is the body — the shape
+        // every messaging app uses, and the one that reads correctly on a
+        // lock screen. It used to put the message text in BOTH, so a
+        // notification showed the same sentence twice and never said who
+        // wrote it.
+        // `req.user` carries `display_name`, not `full_name` (middleware/auth.js).
+        // Falling back to the message text keeps this no worse than what it
+        // replaced for a caller that passes neither — a system-posted card,
+        // say, which has no human sender to name.
+        title: String(
+          (actor && (actor.display_name || actor.email))
+          || body
+          || "New message in Smart Comms",
+        ).slice(0, 90),
+        // A lock screen that says "Sent an attachment" for a voice note tells
+        // the reader nothing about whether to pick up the phone. Naming the
+        // format costs nothing and is the difference between acting now and
+        // opening the app to find out.
+        body: body ? String(body).slice(0, 500) : attachmentSummary(attachments),
+        entityRef: "comms_message:" + m.message_id,
+        category: "comms",
+        // Straight into the channel the message was posted in. `?channel=`
+        // is the param the chat page already reads (features/comms/team-chat.tsx),
+        // so no client change is needed to make this land.
+        url: `/comms?channel=${groupId}`,
+        // Collapse per CHANNEL: a fast back-and-forth in one channel becomes
+        // one notification showing the latest message, while a message in a
+        // different channel stays its own. `renotify` keeps the replacement
+        // audible rather than silently swapping the text.
+        pushTag: `comms:${groupId}`,
+        renotify: true,
+        // Somebody in the company is talking to this person right now.
+        urgency: "high",
+        // Same reliability promise mail has made since it was written: a
+        // notification that reaches NO device must reach the person some
+        // other way. Chat was the one conversational channel without it, so
+        // a colleague messaging someone with no registered device produced
+        // an in-app row they would see whenever they next happened to open
+        // the app — which, for the channel people use when they need an
+        // answer now, is indistinguishable from not being told.
+        //
+        // It is not an email per message. `deliverOutbound` sends it only
+        // when push reached ZERO devices, and two carve-outs there already
+        // hold: nothing is sent to someone who SILENCED this category (that
+        // would route around an opt-out they made on purpose), and nothing
+        // is sent when the deploy has no VAPID keypair at all (an operations
+        // problem an email per notification would bury while flooding every
+        // inbox).
+        //
+        // What it does not bound is VOLUME for a recipient who has push
+        // available and has simply never opted a device in: `pushTag`
+        // collapses a fast exchange into one BANNER, but the email leg has
+        // no equivalent, so twenty messages in one channel are twenty
+        // emails. Mail lives with the same shape and its volume is bounded
+        // by real mail arriving; chat's is not. If that bites, the fix is a
+        // per-(user, channel) cooldown on the fallback leg rather than
+        // removing it — see the note on this in doc/PUSH_NOTIFICATIONS.md.
+        emailFallback: true,
+        pushData: { kind: "comms", group_id: groupId, message_id: m.message_id },
+      });
+    }
+  } catch {
+    /* @silent:storage|parse|teardown */
+    /* notify is best-effort — never mask the message that succeeded */
+  }
 }
 
 /**
@@ -406,9 +424,13 @@ async function thread(client, { groupId, actor, limit, before, erpAllow = new Se
   // therefore never able to make opening a chat slow, which is the property the
   // split exists to buy.
   const previews = await links.previewsFor(client, messages, { tenantMeta, env });
+  // The caller's call-summary drafts for this conversation, pinned above the
+  // composer (owner decision O3). First page only: an older page is history.
+  const pendingCallSummaries = cursor ? [] : await pipeline.pendingDrafts(client, { groupId, actor });
 
   return {
     group_id: groupId,
+    pending_call_summaries: pendingCallSummaries,
     messages: messages.map((m) => ({
       ...m,
       attachments: byMessage.get(m.message_id)?.attachments || [],
@@ -596,7 +618,7 @@ const findDossierChannel = (client, { dossierId }) => repo.findDossierChannel(cl
 module.exports = {
   listChannels, getChannel, createChannel, setArchived, findDossierChannel,
   addMember, removeMember, listMembers, setPinned, setMuted,
-  postMessage, editMessage, deleteMessage, thread,
+  postMessage, writeMessage, announceMessage, editMessage, deleteMessage, thread,
   react, star, starred, search, markRead, unread,
   getDraft, saveDraft, clearDraft,
   listQuickReplies, createQuickReply, updateQuickReply, deleteQuickReply,

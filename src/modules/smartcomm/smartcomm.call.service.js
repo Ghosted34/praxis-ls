@@ -379,29 +379,15 @@ async function endCall(client, {
   rtToUser(before.callee_id, notifyEvent || "call:ended", payload, { slug: tenantSlug, env });
   logger.info({ callId: id, status, reason }, "call: terminal");
 
-  /**
-   * PR-2: the record half starts here (§4.5). A call that ended is a call with
-   * audio on two devices that are, at this second, still flushing it — so the
-   * enqueue is DELAYED, and the clients re-trigger the same job the moment
-   * their last part lands. The queue de-duplicates on the call id, and the
-   * daily sweep catches any call whose pipeline never started at all.
-   *
-   * Fire-and-forget on purpose: the terminal transition has already committed,
-   * and a queue that is down must not turn a clean hang-up into an error the
-   * user sees. `startPipeline` logs and returns null in that case.
-   */
+  // The record half (audit PR-2): each part is transcribed as it uploads and
+  // each side declares when it is done, which starts finalise. This delayed
+  // job is the deadline for a side that never declares. Fire-and-forget: the
+  // transition has committed, and a queue outage must not fail the hang-up.
   if (updated && (status === "ENDED" || (status === "FAILED" && updated.connected_at))) {
-    await require("./smartcomm.call.pipeline.service").startPipeline({
-      callId: id, tenantMeta, env, delayMs: PIPELINE_START_DELAY_MS,
-    });
+    await require("./smartcomm.call.pipeline.service").scheduleDeadline({ callId: id, tenantMeta, env });
   }
   return updated;
 }
-
-/** How long the pipeline waits after a hang-up before it looks for audio. Long
- *  enough for both clients' part uploads to land, short enough that the caller's
- *  "transcribing…" state resolves inside the §3.4 budget. */
-const PIPELINE_START_DELAY_MS = 20_000;
 
 /**
  * Talk time: from `connected_at` (a call that rang 40 s and talked 30 min
@@ -801,6 +787,8 @@ module.exports = {
   listCalls,
   getCall,
   turnFor,
+  // The one recording-flag helper (audit B14): the pipeline reads it too.
+  recordingEnabled,
   // PR-3.
   callSettings,
   settingsFor,

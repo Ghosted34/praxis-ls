@@ -1,11 +1,11 @@
 /**
  * Worker job: the daily call-record sweep, per tenant and env (sandbox too).
  *
- *   "reprocess"  re-enqueues calls whose transcript failed or whose pipeline
- *                never finished, as `call-transcribe` jobs with origin "sweep".
- *                A sweep run never notifies anyone (audit A4); its drafts wait
- *                in the Calls list. Calls that never connected or have no
- *                recording are NO_RECORDING and are not selected (A5, B5).
+ *   "reprocess"  restarts only work that never happened: a part whose job
+ *                never ran or died, and a finalise that never ran, each within
+ *                its cap (pipeline.sweepStalled). A part that failed on both
+ *                providers is never retried automatically (owner decision O1).
+ *                A sweep run never notifies anyone (audit A4).
  *   "retain"     deletes recorded audio past the tenant's retention window;
  *                transcripts and summaries are kept.
  *
@@ -14,7 +14,6 @@
 "use strict";
 
 const registry = require("../../services/tenant/registry.service");
-const repo = require("../../modules/smartcomm/smartcomm.call.repo");
 const pipeline = require("../../modules/smartcomm/smartcomm.call.pipeline.service");
 const callService = require("../../modules/smartcomm/smartcomm.call.service");
 const { logger } = require("../../config/logger");
@@ -38,26 +37,10 @@ module.exports = async function commsCallRecordSweep(job) {
       return result;
     }
 
-    const failed = await repo.listFailedTranscriptions(c, { limit: 25 });
-    const unfinished = await repo.listUntranscribedEndedCalls(c, { limit: 25 });
-    const seen = new Set();
-    let enqueued = 0;
-    for (const call of [...failed, ...unfinished]) {
-      if (seen.has(call.call_id)) continue;
-      seen.add(call.call_id);
-      // `startPipeline` is fire-and-forget by contract: a queue outage here
-      // costs one day, and the next tick tries again.
-      await pipeline.startPipeline({
-        callId: call.call_id, tenantMeta, env, delayMs: 0, origin: "sweep",
-      });
-      enqueued += 1;
+    const result = await pipeline.sweepStalled(c, { tenantMeta, env });
+    if (result.parts || result.calls || result.closed) {
+      logger.info({ ...result, env, tenant: tenantMeta.slug }, "call record sweep: restarted work that never ran");
     }
-    if (enqueued) {
-      logger.info(
-        { env, tenant: tenantMeta.slug, failed: failed.length, unfinished: unfinished.length, enqueued },
-        "call record sweep: reprocessing",
-      );
-    }
-    return { failed: failed.length, unfinished: unfinished.length, enqueued };
+    return result;
   });
 };

@@ -25,10 +25,11 @@ import { presentRing, dismissRingNotification, parseCallLink, type RingChannel }
 import { fetchCallPrefs, saveCallPrefs } from "@/lib/preferences";
 import {
   dialCall, acceptCall, declineCall, hangupCall, reportCallFailure, getCall,
-  uploadCallPart, callHangupUrl,
+  uploadCallPart, completeCallRecording, callHangupUrl,
   type Call, type CallStatus,
 } from "@/lib/smartcomm-api";
 import { CallRecorder } from "./call-recorder";
+import { UploadOutbox, indexedDbStore, itemId, type OutboxItem } from "./call-upload-outbox";
 import i18n from "@/lib/i18n";
 import { getCommsSocket } from "@/lib/comms-socket";
 import { ApiError } from "@/lib/api-client";
@@ -61,6 +62,9 @@ export type SessionState = {
   /** A summary just became ready (or gained an update). The shell shows a
    *  toast pointing at the Calls page; nothing opens over the user's work. */
   summaryNotice: { call_id: string; status: string } | null;
+  /** Bumped on every `call:summary_ready`, so an open conversation re-reads
+   *  its pinned draft (owner decision O3). */
+  summaryTick: number;
   /** Set when a side fell back to the browser capture: the call record says so
    *  and so does the person's screen, because a transcript nobody flagged is a
    *  transcript everybody trusts. */
@@ -82,7 +86,7 @@ export type SessionState = {
 const INITIAL: SessionState = {
   phase: "idle", call: null, peerName: null, ringSecondsLeft: 0,
   elapsedS: 0, muted: false, warning: false, endedReason: null, lastError: null,
-  recordingEnabled: false, recordingLost: 0, summaryNotice: null, transcriptionIssue: null,
+  recordingEnabled: false, recordingLost: 0, summaryNotice: null, summaryTick: 0, transcriptionIssue: null,
   noise: { enabled: true, status: "off", reason: null },
   quality: { state: "good", rttMs: null, jitterMs: null, lossPct: null },
   recovering: false, redial: null,
@@ -98,6 +102,9 @@ let pendingOffer: { callId: string; sdp: string } | null = null;
 /** The recorder for the call this tab is in, owned here so it survives any
  *  component unmounting. */
 let recorder: CallRecorder | null = null;
+/** The call and side this tab is recording, set when media connects, so the
+ *  side is declared at the end even if the recorder never started (0 parts). */
+let recording: { callId: string; side: "caller" | "callee" } | null = null;
 /** undefined = this tab has not asked yet; null = the user has no opinion and
  *  follows the tenant default (the same absent-≠-null contract the server
  *  keeps — see preference.service.js). */
@@ -229,16 +236,60 @@ function appLanguage(): "en" | "fr" {
   return String(i18n.language || "en").startsWith("fr") ? "fr" : "en";
 }
 
-/* ── The record half (PR-2) ──────────────────────────────────────────────── */
+/* ── The record half ─────────────────────────────────────────────────────── */
+
+/** Where a queued part or declaration goes. */
+async function sendRecordingItem(item: OutboxItem): Promise<void> {
+  if (item.kind === "complete") {
+    await completeCallRecording(item.callId, { side: item.side, parts: item.parts });
+    return;
+  }
+  const ext = item.mimeType.includes("mp4") ? "mp4" : item.mimeType.includes("ogg") ? "ogg" : "webm";
+  const file = new File([item.blob], `${item.side}-${item.index}.${ext}`, {
+    type: item.mimeType || "audio/webm",
+  });
+  await uploadCallPart(item.callId, file, {
+    side: item.side,
+    part_index: item.index,
+    part_count: item.index,
+    duration_ms: Math.min(125_000, Math.round(item.durationMs)),
+    language: item.language,
+  });
+}
+
+let outbox: UploadOutbox | null = null;
+/** The upload queue, created on first use (IndexedDB is opened lazily). */
+export function callUploads(): UploadOutbox {
+  if (!outbox) {
+    outbox = new UploadOutbox({
+      store: indexedDbStore(),
+      send: sendRecordingItem,
+      onLost: (item) => {
+        if (item.kind === "part" && state.call?.call_id === item.callId) {
+          set({ recordingLost: state.recordingLost + 1 });
+        }
+      },
+    });
+  }
+  return outbox;
+}
+
+/** On app load: upload what a closed tab left behind (audit E11). */
+export function resumeCallUploads(): void {
+  void callUploads().resume().catch(() => {
+    /* @silent:storage — nothing stored, or storage refused: nothing to resume. */
+  });
+}
 
 /**
  * Arm the recorder once media is up, so a call that never connects stores
- * nothing. Recording only: the browser speech recogniser is no longer started
- * (owner decision A-1). The server transcribes the uploaded audio.
+ * nothing. Each part is a complete file (audit A3) and goes to the outbox as
+ * soon as it closes, so it is transcribed during the call.
  */
 function armRecording(call: Call, side: "caller" | "callee"): void {
   if (call.recording_enabled === false) return;
-  if (recorder) return;
+  if (recorder || recording) return;
+  recording = { callId: call.call_id, side };
   const language = appLanguage();
   const stream = engine?.stream || null;
   if (!stream) return;
@@ -247,46 +298,56 @@ function armRecording(call: Call, side: "caller" | "callee"): void {
     side,
     language,
     deps: {
-      upload: async (part, total) => {
-        const file = new File([part.blob], `${side}-${part.index}.webm`, {
-          type: part.blob.type || "audio/webm",
-        });
-        await uploadCallPart(call.call_id, file, {
-          side,
-          part_index: part.index,
-          part_count: total,
-          duration_ms: part.durationMs,
-          language,
-        });
-      },
+      onPart: (part) => callUploads().add({
+        id: itemId({ kind: "part", callId: call.call_id, side, index: part.index }),
+        kind: "part",
+        callId: call.call_id,
+        side,
+        index: part.index,
+        blob: part.blob,
+        durationMs: part.durationMs,
+        mimeType: part.mimeType,
+        language,
+        createdAt: Date.now(),
+        attempts: 0,
+      }),
+      onLost: () => set({ recordingLost: state.recordingLost + 1 }),
     },
   });
-  try {
-    rec.arm(stream);
-    recorder = rec;
-  } catch {
+  recorder = rec;
+  rec.arm(stream).catch(() => {
     /* @silent:teardown — this browser will not record (no MediaRecorder, or a
        device that refuses a second consumer of the track). The call is
-       unaffected, and the server marks the call NO_RECORDING. */
-  }
+       unaffected; the side declares zero parts when it ends. */
+    if (recorder === rec) recorder = null;
+  });
 }
 
 /**
- * Stop and upload, fire and forget. It must run while the mic is still open
- * (`stopEngine` is about to close the tracks); the uploads then proceed on
- * their own, so hang-up never waits on them.
+ * Stop recording and declare the side, fire and forget. It must run while the
+ * mic is still open (`stopEngine` is about to close the tracks); the last part
+ * and the declaration then go through the outbox on their own.
  */
 function finishRecording(): void {
   const rec = recorder;
+  const target = recording;
   recorder = null;
-  if (!rec) return;
-  void rec.finish()
-    .then((out) => {
-      if (out && out.lost) set({ recordingLost: out.lost });
-    })
+  recording = null;
+  if (!target) return;
+  const declare = (parts: number) => callUploads().add({
+    id: itemId({ kind: "complete", callId: target.callId, side: target.side }),
+    kind: "complete",
+    callId: target.callId,
+    side: target.side,
+    parts,
+    createdAt: Date.now(),
+    attempts: 0,
+  });
+  void (rec ? rec.finish() : Promise.resolve({ parts: 0, lost: 0 }))
+    .then((out) => declare(out.parts))
     .catch(() => {
-      /* @silent:storage — each part upload reports its own failure; a rejection
-         here is the tail of the same fact, after the hang-up completed. */
+      /* @silent:storage — the outbox keeps what it could not send, and the
+         server's deadline finalises a side that never declared. */
     });
 }
 
@@ -520,6 +581,7 @@ export function wireCallSocket(): void {
   if (wired) return;
   wired = true;
   const s = getCommsSocket();
+  resumeCallUploads();
 
   s.on("call:ringing", (p: { call_id: string; from: { user_id: string; name?: string | null }; ring_timeout_s?: number; recording_enabled?: boolean; noise_suppression?: boolean }) => {
     // A ring we are already in a call for: the server would have refused the
@@ -641,8 +703,11 @@ export function wireCallSocket(): void {
   };
   // A draft landed for the caller. It has its own page (/comms/calls/<id>);
   // this only records a notice for the shell's toast (audit A6).
-  s.on("call:summary_ready", (p: { call_id: string; status?: string }) => {
-    if (p && p.call_id) set({ summaryNotice: { call_id: p.call_id, status: p.status || "PENDING_REVIEW" } });
+  s.on("call:summary_ready", (p: { call_id: string; status?: string; redraft?: boolean }) => {
+    if (!p || !p.call_id) return;
+    set({ summaryTick: state.summaryTick + 1 });
+    // A redraft (late parts) refreshes the pinned card; it is not news.
+    if (!p.redraft) set({ summaryNotice: { call_id: p.call_id, status: p.status || "PENDING_REVIEW" } });
   });
 
   // A side fell back to the browser capture. The record says so, and so does

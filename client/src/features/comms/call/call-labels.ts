@@ -2,9 +2,9 @@
  * How a call reads in the Calls list and on its page. Pure, so the list, the
  * record and their tests share one vocabulary.
  */
-import { tr } from "@/lib/i18n";
+import { tr, tv } from "@/lib/i18n";
 import type { Tone } from "@/components/ui/pill";
-import type { Call, CallListRow, CallTranscriptState } from "@/lib/smartcomm-api";
+import type { Call, CallListRow, CallTranscriptGap, CallTranscriptState } from "@/lib/smartcomm-api";
 
 /** The other person's name, from this user's side of the call. */
 export function peerOf(call: Pick<Call, "caller_id" | "caller_name" | "callee_name">, me: string | null): string | null {
@@ -51,4 +51,24 @@ export function summaryBadge(row: CallListRow, isCaller: boolean): { label: stri
   if (row.draft_status === "SENT" && row.summary_update_available) return { label: tr("Update available"), tone: "warn" };
   if (row.draft_status === "SENT") return { label: tr("Summary sent"), tone: "ok" };
   return null;
+}
+
+/** "02:05" from seconds into a side's recording. */
+export function clockOf(seconds: number): string {
+  const s = Math.max(0, Math.round(seconds));
+  return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+}
+
+/**
+ * The minutes with no transcript, for the caller (the editor is the caller's):
+ * "02:00–04:00 on your side". Empty when nothing is missing.
+ */
+export function gapsSentence(gaps: CallTranscriptGap[]): string {
+  if (!gaps.length) return "";
+  const spans = gaps
+    .map((g) => tv(g.side === "caller" ? "{{from}}–{{to}} on your side" : "{{from}}–{{to}} on their side", {
+      from: clockOf(g.from_s), to: clockOf(g.to_s),
+    }))
+    .join(", ");
+  return tv("Not transcribed: {{spans}}. The draft says so; an administrator can re-run those minutes from the call record.", { spans });
 }

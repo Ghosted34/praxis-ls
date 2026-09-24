@@ -869,6 +869,13 @@ jobs:
           docker logs pgbouncer 2>&1 | tail -30 || true
           docker rm -f pgbouncer || true
 
+      - name: Install ffmpeg
+        # tests/integration/call-pipeline.test.js decodes every uploaded call
+        # part with ffmpeg, the way a transcription provider would, so a
+        # headerless part (calls audit A3) fails it. Without ffmpeg it checks
+        # the container header only.
+        run: command -v ffmpeg || (sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ffmpeg)
+
       - name: Integration suites against the real database
         # These 11 tests have been dark since they were written. Three of the
         # four suites need only a database and now get one; mail-imap.test.js

@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 6× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (610)
+## All codes (619)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -363,7 +363,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_VERIFIABLE` | 422 | 1× | — |
 | `NOT_VOIDABLE` | 409 | 1× | — |
 | `NOT_YOURS` | 403 | 2× | `PERMISSION_DENIED` |
-| `NOT_YOUR_SIDE` | 403 | 2× | — |
+| `NOT_YOUR_SIDE` | 403 | 3× | — |
 | `NO_ACCEPTED_QUOTATION` | — | 1× | — |
 | `NO_ACCOUNT` | 500 | 2× | — |
 | `NO_ACTOR` | 401 | 4× | — |
@@ -458,6 +458,11 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `OVER_RETIRED` | 422 | 2× | — |
 | `PARENT_POSTABLE` | 422 | 2× | — |
 | `PARTICIPANT_FORBIDDEN` | 403 | 1× | — |
+| `PART_AUDIO_DELETED` | 409 | 1× | — |
+| `PART_COUNT_TOO_LOW` | 409 | 1× | — |
+| `PART_NOT_DECLARED` | 409 | 1× | — |
+| `PART_NOT_FAILED` | 409 | 1× | — |
+| `PART_NOT_FOUND` | 404 | 2× | — |
 | `PASSKEY_NOT_FOUND` | 404 | 1× | — |
 | `PASSWORD_REQUIRED` | — | 1× | — |
 | `PERIOD_CLOSED` | 422 | 1× | — |
@@ -503,6 +508,9 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `RECONCILIATION_DOES_NOT_BALANCE` | — | 1× | — |
 | `RECONCILIATION_LOCKED` | 409 | 1× | — |
 | `RECONCILIATION_UNSETTLED` | — | 1× | — |
+| `RECORDING_CLOSED` | 409 | 1× | — |
+| `RECORDING_NOT_AUDIO` | — | 1× | — |
+| `RECORDING_TOO_LARGE` | 413 | 1× | — |
 | `REFERENCED` | 409 | 2× | — |
 | `REF_COLLISION_RETRY_EXHAUSTED` | 500 | 1× | — |
 | `REF_ENTITY_REQUIRED` | 422 | 2× | — |
@@ -516,6 +524,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `REPORTING_CYCLE` | 422 | 2× | — |
 | `REQUEST_CLOSED` | 409 | 1× | — |
 | `REQUIRED_FIELDS_MISSING` | — | 1× | — |
+| `RERUN_LIMIT` | 409 | 1× | — |
 | `RESERVED_HOST` | 409 | 1× | — |
 | `RESTORE_NOT_SUPPORTED` | 422 | 1× | — |
 | `RESULT_SET_TOO_LARGE` | 500 | 1× | — |
@@ -544,11 +553,11 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `SELF_ROLE_CHANGE` | 403 | 1× | — |
 | `SELF_SETTLE` | 422 | 1× | — |
 | `SENDER_NOT_AUTHORIZED` | 422 | 2× | — |
-| `SEND_FAILED` | 500 | 1× | — |
 | `SEND_RATE_LIMIT` | — | 2× | — |
 | `SESSION_EXPIRED` | 401 | 1× | — |
 | `SESSION_REVOKED` | 401 | 8× | — |
 | `SETUP_REQUIRED` | 400 | 1× | — |
+| `SIDE_ALREADY_COMPLETE` | 409 | 1× | — |
 | `SIGNER_IDENTITY_NOT_ACCEPTED` | — | 1× | — |
 | `SLUG_TAKEN` | 422 | 3× | — |
 | `SMTP_AUTH_FAILED` | 502 | 1× | — |
@@ -562,10 +571,10 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `STEPUP_REQUIRED` | 403 | 1× | — |
 | `STORAGE_LIMIT` | 413 | 1× | — |
 | `SUBMISSION_BLOCKED` | 422 | 1× | — |
-| `SUMMARY_ALREADY_SENT` | 409 | 1× | — |
+| `SUMMARY_ALREADY_SENT` | 409 | 2× | — |
 | `SUMMARY_DISCARDED` | 409 | 1× | — |
 | `SUMMARY_NOT_PENDING` | 409 | 1× | — |
-| `SUMMARY_NOT_PENDING_REVIEW` | 409 | 1× | — |
+| `SUMMARY_NOT_PENDING_REVIEW` | 409 | 2× | — |
 | `SUPPLIER_NOT_VERIFIED` | — | 1× | — |
 | `SUPPLIER_REQUIRED` | 422 | 1× | — |
 | `SYSTEM_ACCOUNT` | 422 | 1× | — |

@@ -11,12 +11,11 @@ module.exports = {
     { key: "search_comms", service: (c, p, caller) => service.search(c, { actor: caller, term: p.q }), permission: { module: "MOD-64", action: "view" }, describe: "Search messages across the user's channels." },
     // The call record half (PR-2), READ-ONLY on purpose. The assistant may read
     // a call it is a participant of — the same rule the screen enforces — and it
-    // carries its PROVENANCE with it, because "the transcript says" means
-    // something different when the words came from the browser's in-call
-    // recogniser rather than from a certified transcription of the audio.
+    // carries its PROVENANCE and its missing minutes with it, because "the
+    // transcript says" means less when part of the call was not transcribed.
     { key: "list_comms_calls", service: (c, p, caller) => calls.listCalls(c, caller), permission: { module: "MOD-64", action: "view" }, describe: "The user's own 1:1 calls, newest first, with the other person, duration, outcome, transcription state and summary status (call ids for the two reads below)." },
-    { key: "comms_call_transcript", service: (c, p, caller) => pipeline.getTranscript(c, { callId: p.call_id, actor: caller }), permission: { module: "MOD-64", action: "view" }, describe: "The attributed transcript of one of the user's own calls, with its state and provenance (participants only)." },
-    { key: "comms_call_summary", service: (c, p, caller) => pipeline.getSummary(c, { callId: p.call_id, actor: caller }), permission: { module: "MOD-64", action: "view" }, describe: "The summary draft or posted summary of one of the user's own calls, with its language and provenance (participants only)." },
+    { key: "comms_call_transcript", service: (c, p, caller) => pipeline.getTranscript(c, { callId: p.call_id, actor: caller }), permission: { module: "MOD-64", action: "view" }, describe: "The attributed transcript of one of the user's own calls, with its state, provenance, each recorded part's status and the minutes that could not be transcribed (participants only)." },
+    { key: "comms_call_summary", service: (c, p, caller) => pipeline.getSummary(c, { callId: p.call_id, actor: caller }), permission: { module: "MOD-64", action: "view" }, describe: "The summary draft or posted summary of one of the user's own calls, with its language, provenance and the minutes missing from its transcript (participants only)." },
   ],
   writes: [
     { key: "create_comms_channel", service: (c, p, actor) => service.createChannel(c, { data: p, actor }), schema: validator.schemas.channel, permission: { module: "MOD-64", action: "create" }, confirm: true, describe: "Create a channel (department/project/file/direct/client)." },

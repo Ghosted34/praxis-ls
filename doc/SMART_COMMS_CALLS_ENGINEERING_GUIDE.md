@@ -187,11 +187,13 @@ so an ordinary projection lands it 'on' with no manual step).
 - Ring-to-answer path: socket ring must reach an open app in **< 2 s**; the 60 s
   ring window is shared with the push escalation (§4.6).
 - Call-setup (accept → audio flowing): **< 3 s** on good networks (ICE + SRTP).
-- Summary delivery (hang-up → draft in caller's composer): **< 90 s** typical
-  (two ~7 MB uploads + two Groq calls at ~200× realtime + one LLM call). The
-  caller sees a live "transcribing…" state on the call record, not a black box.
+- Summary delivery (hang-up → draft pinned above the caller's composer):
+  **< 2 min** for a 30-minute call (every part but the last was transcribed
+  during the call; what is left is one ~0.5 MB part per side, its Groq call,
+  and one LLM call). The caller sees a live "transcribing…" state on the call
+  record, not a black box.
 - Recording size: mono Opus ≈ 32 kbps → **≈ 7 MB per side per 30-min call**,
-  carried as 60–120 s parts (~1–2 MB each, §4.5) — each part is one Groq call
+  carried as 120 s parts (~0.5 MB each, §4.5) — each part is one Groq call
   with its own detected language.
 
 ### 3.5 Migration numbering
@@ -387,40 +389,75 @@ remote track ─▶ <audio autoplay playsinline> (keep-alive, §4.8)
 
 ### 4.5 The transcript pipeline
 
-The pipeline after `ENDED`, as a job (`src/jobs/handlers/call-transcribe.js`),
-in `src/modules/smartcomm/smartcomm.call.pipeline.service.js`:
+Rebuilt in the calls audit's PR-2 (doc/SMART_COMMS_CALLS_AUDIT.md). The work
+happens while the call is still going, part by part, so the summary is ready
+about a minute after hang-up whatever the call's length. Code:
+`src/modules/smartcomm/smartcomm.call.pipeline.service.js`, jobs
+`call-transcribe-part` and `call-finalise`.
 
 ```
-1. Clients upload each side's recording in 60–120 s parts → object storage
-   (same driver as voice notes). No live-capture log is sent any more.
-2. Job, per side, per part, with no forced language (row 7):
-   Groq once (the SDK's own retries off). On ANY Groq error, the same stored
-   part goes to Gemini once (verbatim, language reported, temperature 0,
-   strict JSON; webm/mp4/ogg converted to FLAC with ffmpeg first, because the
-   Gemini API does not take them). No retries inside the job.
-   ├─ every part OK → transcript rows, provider 'groq' or 'gemini' per part,
-   │  certified TRUE (both read the stored audio)
-   └─ a part fails on both → that side has no rows this run (never a mixture
-      of transcribed and missing parts), the call is TRANSCRIPTION_FAILED,
-      ops is alerted once, and the daily reprocess tries again.
-3. Summary: llm.service.js with Gemini first and DeepSeek as the last resort,
-   §4.10 contract, language en/fr.
+1. Record. Each side records 120 s parts. Every part is its own MediaRecorder,
+   started with no timeslice, so every part is a complete file with its own
+   header (a timesliced stream only has a header in its first chunk). The next
+   recorder starts before the previous one stops. Mono Opus, 32 kbps. Parts go
+   through an IndexedDB outbox that retries with backoff and resumes on the
+   next app load, so the last part survives a tab closed at hang-up.
+2. Upload (POST /calls/:id/recording). The server checks the container
+   signature (WebM EBML, MP4 ftyp, Ogg OggS), accepts only calls that connected
+   and are IN_CALL or ended less than 15 minutes ago, caps a part at 125 s and
+   12 MB and a side at 50 MB, writes the row and then the bytes in one
+   transaction, under a key fixed by (call, side, part). A part that already
+   has a result is acknowledged and left alone.
+3. Transcribe, one job per part (`callpart-<call>-<side>-<part>`), as soon as
+   it is uploaded. Owner decision O1: Groq once (SDK retries off); on ANY Groq
+   error the same stored part goes to Gemini once (webm/mp4/ogg converted to
+   FLAC first); if Gemini fails too the part has FAILED. Nothing retries it
+   automatically. Each part's result is stored on its recording row and its
+   words as a certified transcript row. No database connection is held while
+   a provider works.
+4. Declare (POST /calls/:id/recording/complete { side, parts }). Each side
+   says how many parts it made, 0 included, when its recorder stops.
+5. Finalise (`callfinal-<call>`), queued the moment both sides have declared
+   and every declared part has a result. At hang-up a deadline finalise is
+   also queued for ended_at + 10 min (`callfinaldl-<call>`), for a side that
+   never declares; it starts any part whose job never ran and waits for it.
+   Finalise assembles the attributed transcript. It is CERTIFIED only when
+   every declared part of both sides is; otherwise it is TRANSCRIPTION_FAILED
+   and the draft names the minutes that are missing ("Not transcribed:
+   02:00–04:00 (Awa Diallo).").
+6. Summary: Gemini first, DeepSeek as the last resort (O2), §4.10 contract.
+   The transcript goes to the model between <transcript> delimiters, labelled
+   untrusted, capped at 60,000 characters.
    ├─ SUCCESS → summary row, draft_status PENDING_REVIEW
    └─ FAILURE → provenance 'transcript-only', summary_text = the attributed
       transcript, labelled "summary unavailable — provider down".
-4. One notification to the CALLER (socket `call:summary_ready`, in-app row,
-   push), claimed once on comms_call_summary.notified_at and linking to
-   /comms/calls/<id>. Only the hang-up run notifies: a run started by the
-   daily sweep drafts silently, and the draft is found through its badge in
-   Comms › Calls.
+   A draft is only written over a PENDING_REVIEW draft; one sent or discarded
+   meanwhile is left as it is.
+7. One notification to the CALLER, claimed once on
+   comms_call_summary.notified_at, opening the conversation with the draft
+   pinned above the composer (/comms?channel=<group>&summary=<call>, owner
+   decision O3). A finalise started by the daily sweep never notifies.
 ```
 
-**When it runs.** A delayed job after hang-up (origin "hangup"), and the
-daily sweep (origin "sweep"), which is a cron: COMMS_CALL_RECORD_SWEEP_CRON
-(default `0 10 * * *`) in COMMS_CALL_RECORD_SWEEP_TZ (default Africa/Douala).
-It used to be `every: 24h`, which BullMQ aligns to 00:00 UTC. Calls with
-nothing to transcribe (recording off, nothing uploaded, never connected) end
-as NO_RECORDING and are never picked again.
+**Re-runs.** Finalise is idempotent: with nothing new since `finalised_at` it
+calls no provider and no LLM. A part that settles later (an admin's re-run)
+redrafts a PENDING_REVIEW draft without a second push. The only automatic
+re-runs are for work that never happened: a part whose job never ran or died
+(3 runs, then it is closed as failed) and a finalise that never ran (5 runs).
+The daily sweep, a cron (COMMS_CALL_RECORD_SWEEP_CRON, default `0 10 * * *`
+in COMMS_CALL_RECORD_SWEEP_TZ, default Africa/Douala), restarts those and
+applies audio retention; it does not touch a part that failed on both
+providers. An administrator (MOD-70 edit) can re-run such a part from the
+call's page (POST /calls/:id/recording/:side/:part/rerun), at most 3 times.
+Calls with nothing to transcribe (recording off, nothing uploaded, never
+connected) end as NO_RECORDING and are never picked again.
+
+**Sending.** `POST /calls/:id/summary/send` runs in one transaction: it claims
+the draft (PENDING_REVIEW → SENDING, with the caller's final words), writes
+the message, and marks the draft SENT with it. A second tap finds nothing to
+claim; a failed write rolls the claim back. The message's broadcast and
+notifications go out after the commit. (Migration 14010's comment says this
+already held; it did not until PR-2.)
 
 **Old calls.** Calls from before the change may still have `browser-live`
 rows (the retired in-call capture). They are read and rendered as before,
@@ -469,7 +506,7 @@ parallel, not sequence:
 | Ring timeout | "No answer — [name] was offline / didn't answer." + chat CTA |
 | Callee busy | "[Name] is already on a call." |
 | 30:00 cap | "Time's up — 30-minute limit. The summary is being prepared." (the pipeline runs) |
-| Transcription failed | call record: "Transcript failed". The daily sweep retries without notifying; a new or updated draft shows as a badge in Comms › Calls. |
+| Transcription failed | the draft names the minutes that could not be transcribed; the call record shows "Transcript failed" and lists them. Nothing retries a part that failed on both providers; an administrator can re-run it from the call record. |
 | Summary LLM down | draft labelled "summary unavailable — provider down" + raw attributed transcript, still sendable |
 | Call lost — both devices gone (FN-1) | "The call was lost — the connection ended." Dial is available at once; the row is `ENDED(disconnected)`. |
 
@@ -703,10 +740,11 @@ one tap. Groq down → the browser capture carries the call, flagged honestly.
   by part with **no forced language** (row 7), merges the attributed
   transcript, drives the summary in the caller's app language with the
   verbatim rule (§4.10), writes the rows, notifies.
-- `→ src/jobs/handlers/call-transcribe.js` — the job (enqueue on `ENDED`);
-  governance-gated (`calls`), usage recorded against `voice` (D9), daily
-  reprocess sweep (a working-hours cron that never notifies), ops alert on a
-  call's first failure (§4.5).
+- `→ src/jobs/handlers/call-transcribe-part.js` and `call-finalise.js` — the
+  per-part transcription and the finalise (§4.5, rebuilt in the calls audit's
+  PR-2); governance-gated (`calls`), usage recorded against `voice` (D9), ops
+  alert on a call's first failure. They replace the whole-call
+  `call-transcribe` job.
 - `→ src/modules/smartcomm/smartcomm.routes.js` —
   - `POST /api/tenant/smartcomm/calls/:id/recording` `{ side }` (upload via the
     existing media service, same path as voice notes) + `live_segments` jsonb
@@ -730,11 +768,10 @@ one tap. Groq down → the browser capture carries the call, flagged honestly.
 
 ### 6.3 Frontend
 
-- `→ client/src/features/comms/call/call-recorder.ts` — **two**
-  `MediaRecorder`s (local mic stream + remote track), the house
-  `pickMimeType()` logic from `voice-recorder.tsx` (webm/opus, Safari
-  mp4/aac), chunks to IndexedDB every ~5 s (crash-tolerant), final blob at
-  hang-up, upload per side.
+- `→ client/src/features/comms/call/call-recorder.ts` — this device's side
+  only, one `MediaRecorder` per 120 s part (§4.5), the house `pickMimeType()`
+  logic (webm/opus, Safari mp4/aac); `call-upload-outbox.ts` keeps each part
+  in IndexedDB until the server acknowledges it.
 - ~~`client/src/features/comms/call/live-transcript.ts`~~ — removed with §4.9.
 - **Consent banner (decision 2):** both ends see, from the first second of the
   call, "This call is recorded and summarized — both parties are informed" in
@@ -987,7 +1024,8 @@ writes no override.
 ### 8.1 Migrations
 
 `14000_comms_calls.sql` (PR-1) · `14010_comms_call_records.sql` (PR-2) ·
-`14020_comms_call_settings.sql` (PR-3)
+`14020_comms_call_settings.sql` (PR-3) · calls audit: `14040_comms_call_vocab_and_notified.sql`,
+`14050_comms_call_part_pipeline.sql`
 
 ### 8.2 Endpoints (all under `/api/tenant/smartcomm`, membership-checked)
 
@@ -998,6 +1036,10 @@ PR-1: `POST /calls` · `POST /calls/:id/accept` · `POST /calls/:id/decline` ·
 PR-2: `POST /calls/:id/recording` · `POST /calls/:id/summary/send` ·
 `POST /calls/:id/summary/discard` · `POST /calls/:id/summary/regenerate` ·
 `GET /calls/:id/transcript` · `GET /calls/:id/summary`
+
+Calls audit PR-2: `POST /calls/:id/recording/complete` ·
+`POST /calls/:id/recording/:side/:part/rerun` (MOD-70 edit). The thread read
+(`GET /channels/:id/messages`) carries `pending_call_summaries`.
 
 PR-3: `GET /calls/...` unchanged — the ring acknowledgement rides the socket
 (`call:ring_ack`, below) rather than adding a route the client would have to

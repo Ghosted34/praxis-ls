@@ -1976,7 +1976,7 @@ factual. The next agent relies on them.
 | --- | --- | --- | --- | --- | --- |
 | Audit (this document) | MERGED | `claude/integration-audit-report-u6twc5` | #474 | 2026-09-24 | Report, PR plan, scale design |
 | PR-1 | MERGED | `claude/magical-einstein-xqhkn1` | #476 | 2026-09-24 | Includes owner decisions A-1 (Groq → Gemini transcription, no browser capture) and A-2 (Gemini → DeepSeek summaries) |
-| PR-2 | NOT STARTED | — | — | — | |
+| PR-2 | OPEN | `claude/wizardly-ptolemy-dyazt1` | #477 | — | Per-part recorder and transcription, finalise, race-free drafts, pinned draft (O3), N3; migration 14050 |
 | PR-3 | NOT STARTED | — | — | — | |
 | PR-4 | NOT STARTED | — | — | — | |
 | PR-5 | NOT STARTED | — | — | — | |
@@ -2184,3 +2184,196 @@ Use `BLOCKED` with a reason in Notes if you stop.
   Setup, and a daily platform check reported only to admin.praxisls.com.
 - §4 item 3: PR-1 left the rate-limit question open; the owner's O1 decides it
   (any Groq failure goes to Gemini at once).
+
+### PR-2 · 2026-09-24 · OPEN (#477)
+- Owner decisions:
+  - **O1** kept exactly in the per-part jobs. `call-transcribe-part` runs
+    Groq once (`maxRetries: 0`), then Gemini once, then marks the part
+    FAILED, and the queue has `attempts: 1`. A settled part is never sent to a
+    provider again, and the sweep never touches a FAILED part. The one
+    exception is a person: an admin (MOD-70 edit, who must also be a
+    participant) can re-run a failed part from the call page, at most 3
+    times. `smartcomm-call-records.test.js` ("O1 exactly", "a second run
+    calls no provider"), `tests/integration/call-pipeline.test.js` ("never
+    retried automatically").
+  - **O3** built. The thread read returns `pending_call_summaries` (the
+    caller's own PENDING_REVIEW drafts, and only while recording is on).
+    `pinned-call-summary.tsx` sits above the composer in `team-chat.tsx`, and
+    "Review & send" opens `CallSummaryEditor` there. Key points and
+    follow-ups (text, owner, due date via `DateField`) can now be edited or
+    removed. The notification opens `/comms?channel=<g>&summary=<c>`, and the
+    call page links back to the conversation. `call:summary_ready` bumps
+    `summaryTick`, so an open conversation re-reads its card. Tests:
+    `pinned-call-summary.test.tsx`, `calls-screens.test.tsx`,
+    `call-session.test.ts`, e2e `call.spec.ts` ("the summary link opens the
+    conversation with the draft pinned above the composer"). That e2e test
+    also asserts the composer stays on screen with the card open on a 720 px
+    window: the card shrinks and its editor scrolls. It failed before that
+    fix. The card was looked at in light and dark.
+- Fixed, each with the test that proves it. The new tests were also run
+  against `main`'s code: 80 of 100 backend unit tests, every new client test
+  and the integration suite fail there. The 20 that pass on `main` are PR-1
+  guards carried over.
+  - A3: one MediaRecorder per 120 s part, started with no timeslice; the next
+    one starts before the previous one stops. The server refuses a part
+    without a WebM/MP4/Ogg header (422 `RECORDING_NOT_AUDIO`). Tests:
+    `call-recorder.test.ts`; `smartcomm-call-records.test.js`; e2e "every
+    recorded part decodes on its own" (real Chromium, `decodeAudioData` per
+    part, with a headerless control that must fail); the integration stub,
+    which refuses headerless audio and decodes each part with ffmpeg where
+    it is installed.
+  - A2: each upload enqueues its part job
+    (`callpart-<call>-<side>-<part>`). `POST /calls/:id/recording/complete`
+    stores `<side>_parts_declared`. Finalise (`callfinal-<call>`) runs once
+    both sides have declared and every declared part has a result. The
+    hang-up queues a deadline finalise at +10 min (`callfinaldl-<call>`),
+    after which an undeclared side counts what it uploaded. The call is
+    CERTIFIED only if every declared part is. Tests: `finaliseReady`,
+    `completeSide`, "the last part's result starts finalise", the
+    integration suite.
+  - B4: a part's result lands only on a PENDING part. Inserting a transcript
+    row retires whatever row is current for that part, whatever its
+    provider. Finalise with nothing new since `finalised_at` calls no
+    provider and no LLM. Automatic re-runs are capped on every branch: 3 per
+    part, 5 finalises per call, stale PROCESSING included.
+    `smartcomm-call-repo.test.js`, `smartcomm-call-records.test.js`
+    ("re-running finalise…"), integration.
+  - B5: the sweep selects only unfinalised calls that connected, within the
+    cap. `smartcomm-call-repo.test.js`.
+  - B6: the draft upsert has `WHERE draft_status = 'PENDING_REVIEW'`;
+    finalise and regenerate leave a sent or discarded draft alone.
+    `smartcomm-call-records.test.js` (both B6 tests), `smartcomm-call-repo.test.js`.
+  - B7: `sendSummary` is one transaction. It claims PENDING_REVIEW → SENDING
+    with the caller's final words, writes the message, and marks it SENT;
+    the broadcast and notifications happen after the commit. To allow this,
+    `postMessage` is split into `writeMessage` (the rows, inside the
+    transaction) and `announceMessage` (links, socket, notifications). Its
+    other callers are unchanged. Unit tests for the order, the rollback and
+    a double tap; integration: two concurrent sends on real Postgres give
+    one 200, one 409 and one message.
+  - B11: the validator caps a part at 125 000 ms, the repo at 125 s, and the
+    row and the bytes are written in one transaction, row first.
+  - B12: the storage key is fixed by (call, side, part), so a re-upload
+    replaces its object.
+  - B13: uploads and declarations are accepted only for connected calls that
+    are IN_CALL or ended within 15 minutes; 50 MB per side; no part number
+    above the declared count.
+  - B14: one `recordingEnabled` helper (`call.service`, fails closed); the
+    pipeline calls it.
+  - C7 (prompt half): the transcript is sent inside `<transcript>`
+    delimiters, labelled untrusted, capped at 60 000 characters, with a
+    2 048-token output cap.
+  - D3: part and finalise jobs read in one short connection, call the
+    provider or LLM with none held, then write in another. The unit tests
+    count open connections during every provider and LLM call.
+  - E11: `call-upload-outbox.ts` keeps each part in IndexedDB, then the
+    side's declaration, until acknowledged. It retries with backoff on
+    network/408/429/5xx, drops on any other 4xx, and resumes on the next app
+    load (`wireCallSocket`). `call-upload-outbox.test.ts`.
+  - H1: `tests/integration/call-pipeline.test.js` runs real routes, real
+    handlers and real Postgres with five real WebM parts. It checks one
+    certified transcript, one notification row and a readable summary,
+    pinned for the caller only. CI now installs ffmpeg in the job that runs
+    the integration suites.
+  - N3: the defaults are now `gemini-2.5-flash` (`env.js`,
+    `vision.service.js`, the ai-control prefill).
+    `gemini-model-check.service.js` asks Google's `models/{id}` endpoint and
+    logs at API boot (ERROR if the model is missing).
+    `GET /api/platform/ai-vendors/gemini/model-check` feeds a status pill on
+    the console's Gemini card. `gemini-model-check.test.js`.
+- Not fixed / deferred:
+  - The E11 point "uploads compete with the call's audio": each part is now
+    ~0.5 MB at 32 kbps, sent one at a time, but there is no bandwidth
+    shaping. → PR-4 if device tests show it matters.
+  - `/live-log` stays, because cached pre-PR-1 builds still call it. Remove
+    it once no supported build does.
+  - The per-provider limiters, per-tenant fairness, budgets and lag alerts
+    (§4 items 2, 3, 7, 8). → PR-5. `call-transcribe-part` is where they go.
+  - The consent text naming Groq, Gemini and DeepSeek (G2). → PR-6.
+  - The device acceptance matrix (5/15/29 minutes × Chrome Android, Safari
+    iOS, desktop; the same with the Groq key off). It needs real phones, so
+    it is listed for the owner in the PR body.
+- Deviations from §3:
+  - 14050 drops two 14010 CHECKs the plan did not mention.
+    `comms_call_summary_draft_status_check` would refuse `SENDING`, and
+    `comms_call_recording_duration_seconds_check` (≤ 120) would refuse a
+    121–125 s part. Both sets now live in `smartcomm.call.vocab.js`
+    (`DRAFT_STATUSES`, `PART_MAX_SECONDS`). Names were read from
+    `pg_constraint`.
+  - The per-call byte cap is enforced per side (50 MB each), so one side
+    cannot use up the other's share.
+  - Key points and follow-ups became editable because O3 requires it (this
+    is F7's editing half). PR-6 keeps the final design.
+  - The draft's prose gains a closing "Not transcribed: …" sentence in the
+    draft language when minutes are missing, so the posted message says so
+    too; the caller can edit it out. A transcript-only draft is cut to the
+    1 200-character contract. Before this, a long one could not be sent
+    without editing (`send` validates it).
+  - A part stored with a timer throttled for minutes is reported as 125 s,
+    so the minute labels for that part can be short.
+  - The old whole-call job `call-transcribe` is removed (the orphan-wiring
+    gate refuses a queue nothing enqueues). A call whose job was still
+    queued at deploy time is finalised by the daily sweep's
+    never-finalised branch, silently: no push, found by its badge.
+  - The recorder records its own clone of the mic track, asked for mono,
+    and stops only that clone.
+- Schema:
+  - Migration 14050 adds:
+    - `comms_call`: `caller_parts_declared`, `callee_parts_declared`,
+      `caller_completed_at`, `callee_completed_at`, `finalised_at`;
+    - `comms_call_recording`: `provider`, `transcribe_started_at`,
+      `transcribed_at`, `job_runs`, `manual_runs`;
+    - the index `ix_comms_call_recording_pending`.
+    It drops the two CHECKs above and closes as FAILED the still-PENDING
+    parts 2..N of pre-PR-2 calls, which have no header, so the part sweep
+    never bills Groq for them.
+  - New `draft_status` value `SENDING`, never visible outside the send
+    transaction.
+  - New queues: `call-transcribe-part` (concurrency 4, attempts 1) and
+    `call-finalise` (concurrency 2, attempts 2).
+  - New routes: `POST /calls/:id/recording/complete`,
+    `POST /calls/:id/recording/:side/:part/rerun` (MOD-70 edit) and
+    `GET /api/platform/ai-vendors/gemini/model-check`.
+  - The thread read gains `pending_call_summaries`. `call:summary_ready`
+    gains `group_id` and, on a redraft, `redraft: true`.
+- New findings:
+  - gemini-2.5-flash. Google's documentation sites are blocked from this
+    environment; search results quoting the Gemini API deprecations page
+    say the 2.5 models are not deprecated and are served until further
+    notice, but only to accounts that already use them, and Google Cloud's
+    lifecycle page lists 2026-10-20. Nothing here is broken today, and the
+    new check turns the console card red if the model goes. Choose the
+    successor for the platform credential before then (PR-7's platform
+    check keeps watching).
+  - `postMessage` used to issue a ROLLBACK after its COMMIT when an
+    after-commit step threw (a Postgres warning, no harm). The split removes
+    it.
+  - `transcription_error` and `comms_call_recording.error` still hold vendor
+    text. The UI shows statuses only, but `getSummary` and `getTranscript`
+    still return `transcription_error`. That is C11 → PR-3.
+- For the next PR (PR-3):
+  - `regenerateSummary` still calls the LLM inside the request (C8). It now
+    uses the guarded upsert and records usage.
+  - `cardsForCallIds` is unchanged (C4).
+  - The client still sends a hang-up `reason` (B9).
+  - The re-run route is new surface for PR-3's rate-limit review.
+  - `smartcomm.service.writeMessage` is the transactional half of
+    `postMessage`; C4's "reject CALL attachments on the generic route"
+    belongs in the route/validator, not there, because `sendSummary` uses
+    `writeMessage`.
+- Gates: `npm run ci` passed 47/47 (431 s) on `0fd3b69`, run alone on a
+  clean tree. The first run failed one gate: the orphan-wiring sweep, which
+  needs a literal `enqueue("<queue>"` and caught the removed whole-call job;
+  it is fixed. `npm run ci` skips some jobs; these were run by hand on local
+  Postgres 16 + pgvector:
+  - provisioning a tenant from nothing, with 14050 applied twice (the second
+    run applied 0 files);
+  - live/sandbox schema parity;
+  - the AI catalogue sync and `--check`, for live and sandbox;
+  - `tests/integration/call-pipeline.test.js` and `call-liveness.test.js`
+    (5/5, three runs, plus one without ffmpeg);
+  - Playwright `call.spec.ts`, 8/8 against a production build.
+  Not run: the Docker build, PgBouncer, the desktop layout gate and the AI
+  golden set. The device matrix is the owner's (PR body, "For the owner to
+  run"). Nothing here touched production, and the §0 parking SQL was not
+  run.

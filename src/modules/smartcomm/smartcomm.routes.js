@@ -204,6 +204,11 @@ router.get("/calls/:id/turn", view, callsOn, c.callTurn);
 // where `readUpload` looks for it.
 router.post("/calls/:id/recording",
   view, recordOn, singleFile("file"), v.callRecording, c.uploadCallRecording);
+router.post("/calls/:id/recording/complete", view, recordOn, v.callRecordingComplete, c.completeCallRecording);
+// Re-running a failed part spends provider credit, so it is a settings
+// admin's action (MOD-70 edit), still only on a call the admin took part in.
+router.post("/calls/:id/recording/:side/:part/rerun",
+  requirePermission("MOD-70", "edit"), recordOn, c.rerunCallRecordingPart);
 router.post("/calls/:id/live-log", view, recordOn, v.callLiveLog, c.uploadCallLiveLog);
 router.get("/calls/:id/transcript", view, recordOn, c.getCallTranscript);
 router.get("/calls/:id/summary", view, recordOn, c.getCallSummary);

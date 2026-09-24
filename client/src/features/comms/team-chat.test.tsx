@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter, useNavigate } from "react-router-dom";
 import { TeamChatPage } from "./team-chat";
 
@@ -32,6 +33,9 @@ vi.mock("@/lib/use-resource", () => ({
 vi.mock("./inbox/composer/new-message", () => ({ NewMessageDialog: () => null }));
 vi.mock("./chat/composer", () => ({ Composer: () => <div>Message composer</div> }));
 vi.mock("./chat/forward-dialog", () => ({ ForwardDialog: () => null }));
+// The thread reads the tenant's hero image for its backdrop; with no provider in
+// this harness, a null branding falls back to the washed logistics pattern.
+vi.mock("@/app/branding/branding-context", () => ({ useBranding: () => ({ branding: null }) }));
 /**
  * The bubble as a contract, not a rendering.
  *
@@ -64,21 +68,32 @@ beforeEach(() => {
 });
 
 describe("chat containment and information panel", () => {
-  it("defaults open and remembers a collapsed desktop pane on remount", () => {
+  it("toggles and remembers the desktop info pane from the ⋮ menu", async () => {
+    // Desktop: the "Conversation info" item toggles the persistent side pane.
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })),
+    );
+    const user = userEvent.setup();
     const view = render(chat());
-    fireEvent.click(screen.getByRole("button", { name: "Hide info" }));
-    expect(screen.getByRole("button", { name: "Show info" })).toHaveAttribute("aria-expanded", "false");
+    expect(localStorage.getItem("comms:info-open")).toBeNull(); // default open
+    await user.click(screen.getByRole("button", { name: "Conversation menu" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Conversation info" }));
     expect(localStorage.getItem("comms:info-open")).toBe("false");
     view.unmount();
     render(chat());
-    expect(screen.getByRole("button", { name: "Show info" })).toHaveAttribute("aria-expanded", "false");
+    expect(localStorage.getItem("comms:info-open")).toBe("false");
   });
 
-  it("opens a right-edge dialog without replacing the thread, closes with Escape", async () => {
+  it("opens a right-edge dialog from the ⋮ menu on a phone, closes with Escape", async () => {
+    // matchMedia defaults to matches:false (phone) from beforeEach, so the same
+    // menu item opens the drawer rather than toggling the side pane.
+    const user = userEvent.setup();
     render(chat());
     const composer = screen.getByText("Message composer");
-    fireEvent.click(screen.getByRole("button", { name: "Info" }));
-    expect(screen.getByRole("dialog", { name: "Conversation info" })).toHaveClass("right-0", "h-dvh");
+    await user.click(screen.getByRole("button", { name: "Conversation menu" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Conversation info" }));
+    expect(await screen.findByRole("dialog", { name: "Conversation info" })).toHaveClass("right-0", "h-dvh");
     fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(screen.getByText("Message composer")).toBe(composer);

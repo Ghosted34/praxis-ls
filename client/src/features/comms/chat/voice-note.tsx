@@ -149,13 +149,11 @@ export function VoiceNote({
   tone?: BubbleTone;
 }) {
   const onFill = tone === "primary";
-  /** Secondary text, on whichever ground this bubble painted. */
+  /** Secondary text, on whichever ground this bubble painted. Bubbles are tinted
+   *  SURFACES now (see message-bubble.tsx), so this resolves to the surface
+   *  token; the interactive controls below are real pill buttons (index.css
+   *  `.chat-pill`) rather than tinted text a reader could mistake for a label. */
   const meta = onFill ? "text-primary-foreground/80" : "text-muted-foreground";
-  /** A control drawn as text. `--primary-ink` is the accent step-down for a
-   *  surface; on the accent itself the ink IS `--primary-foreground`. */
-  const link = onFill
-    ? "text-primary-foreground underline-offset-2 hover:underline"
-    : "text-primary-ink underline-offset-2 hover:underline";
 
   const mediaId = attachment.media_id || "";
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
@@ -412,14 +410,14 @@ export function VoiceNote({
      * collapsed the player to a 10px stub, smaller than the play button it is
      * supposed to dwarf, which the layout gate caught in a real browser.
      */
-    <div className="w-[280px] max-w-full space-y-1.5">
-      <div className="flex items-center gap-2 rounded-lg border border-border bg-card px-2.5 py-2">
+    <div className="w-[300px] max-w-full space-y-2">
+      <div className="voice-wave flex items-center gap-2.5 px-3 py-2.5">
         <button
           type="button"
           onClick={toggle}
           disabled={loading}
           aria-label={playing ? tr("Pause voice note") : tr("Play voice note")}
-          className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground disabled:opacity-60"
+          className="voice-wave-play grid h-10 w-10 shrink-0 place-items-center rounded-full transition-transform hover:scale-[1.04] disabled:opacity-60"
         >
           <span aria-hidden className="text-sm leading-none">
             {loading ? "…" : playing ? "❚❚" : "▶"}
@@ -433,7 +431,7 @@ export function VoiceNote({
           // loaded this starts it, afterwards it moves within it. A label that
           // only said "seek" described the half that was broken.
           aria-label={tr("Play from a point in the voice note")}
-          className="flex h-8 flex-1 items-end gap-[2px]"
+          className="flex h-9 flex-1 items-center gap-[2px]"
         >
           {bars.map((v, i) => {
             const played = i / bars.length <= progress;
@@ -441,10 +439,10 @@ export function VoiceNote({
               <span
                 key={i}
                 className={cn(
-                  "flex-1 rounded-full transition-colors",
-                  played ? "bg-primary" : "bg-border",
+                  "w-full flex-1 rounded-full transition-colors",
+                  played ? "voice-bar-on" : "voice-bar-off",
                 )}
-                style={{ height: `${Math.max(12, Math.min(100, v))}%` }}
+                style={{ height: `${Math.max(14, Math.min(100, v))}%` }}
               />
             );
           })}
@@ -458,7 +456,7 @@ export function VoiceNote({
           type="button"
           onClick={cycleSpeed}
           aria-label={tr("Playback speed")}
-          className="shrink-0 rounded px-1 text-micro tabular-nums text-muted-foreground hover:text-foreground"
+          className="shrink-0 rounded-full border border-border px-2 py-0.5 text-micro font-semibold tabular-nums text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
         >
           {speed}×
         </button>
@@ -556,7 +554,6 @@ export function VoiceNote({
         clipReady={!!url}
         loadClip={loadQuietly}
         meta={meta}
-        link={link}
       />
     </div>
   );
@@ -579,7 +576,6 @@ function Transcript({
   clipReady,
   loadClip,
   meta,
-  link,
 }: {
   attachment: CommAttachment;
   audio: React.RefObject<HTMLAudioElement | null>;
@@ -588,7 +584,6 @@ function Transcript({
   clipReady: boolean;
   loadClip: () => void;
   meta: string;
-  link: string;
 }) {
   const mediaId = attachment.media_id || "";
   const [asked, setAsked] = React.useState(false);
@@ -658,13 +653,15 @@ function Transcript({
   const cycleLang = () =>
     setLang((l) => (SPEECH_LANGS.find((x) => x.value !== l) ?? SPEECH_LANGS[0]).value);
 
+  // A real, tappable chip — not tinted text lost in the line. It carries the
+  // two-letter language and toggles it; the pill shape names it as a control.
   const langChip = (
     <button
       type="button"
       onClick={cycleLang}
       aria-label={tr("Language of this recording")}
       title={tr("Language of this recording")}
-      className={cn("shrink-0 rounded px-1 text-micro tabular-nums", link)}
+      className="chat-pill chat-pill--ghost shrink-0 tabular-nums"
     >
       {SPEECH_LANGS.find((x) => x.value === lang)?.label ?? "EN"}
     </button>
@@ -675,8 +672,11 @@ function Transcript({
   // words are shown, until somebody presses this.
   if (!asked) {
     return (
-      <div className="flex items-center gap-2">
-        <button type="button" onClick={transcribe} className={cn("text-micro", link)}>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <button type="button" onClick={transcribe} className="chat-pill chat-pill--accent">
+          <span aria-hidden className="text-[11px] leading-none">
+            {known.status === "DONE" ? "≡" : "✦"}
+          </span>
           {known.status === "DONE" ? tr("Show transcript") : tr("Transcribe")}
         </button>
         {langChip}
@@ -691,7 +691,7 @@ function Transcript({
       {pending && <p className={cn("text-micro italic", meta)}>{tr("Transcribing…")}</p>}
 
       {!pending && known.status === "DONE" && known.text && (
-        <p className="rounded-lg bg-muted px-2.5 py-1.5 text-sm text-foreground">{known.text}</p>
+        <p className="rounded-xl border border-border bg-muted/70 px-3 py-2 text-sm leading-relaxed text-foreground">{known.text}</p>
       )}
       {!pending && known.status === "DONE" && !known.text && (
         <p className={cn("text-micro italic", meta)}>{tr("No speech was found in this clip.")}</p>
@@ -713,8 +713,15 @@ function Transcript({
           </p>
           {listener.supported ? (
             <>
-              <div className="flex items-center gap-2">
-                <button type="button" onClick={listen} className={cn("text-micro", link)}>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={listen}
+                  className={cn(
+                    "chat-pill",
+                    listener.listening ? "chat-pill--solid" : "chat-pill--accent",
+                  )}
+                >
                   {listener.listening
                     ? tr("Stop listening")
                     : waitingForClip
@@ -742,7 +749,7 @@ function Transcript({
           working — the same reason dictation runs with interim results on. */}
       {listener.heard && (
         <div className="space-y-0.5">
-          <p className="rounded-lg bg-muted px-2.5 py-1.5 text-sm text-foreground">
+          <p className="rounded-xl border border-border bg-muted/70 px-3 py-2 text-sm leading-relaxed text-foreground">
             {listener.heard}
           </p>
           {!listener.listening && (

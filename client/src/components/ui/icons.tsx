@@ -158,6 +158,14 @@ export const MoreIcon = (p: P) => (
     <circle cx="19" cy="12" r="1.4" />
   </svg>
 );
+/** Three VERTICAL dots — the WhatsApp-style overflow / kebab menu trigger. */
+export const MoreVerticalIcon = (p: P) => (
+  <svg {...base(p)} fill="currentColor" stroke="none">
+    <circle cx="12" cy="5" r="1.6" />
+    <circle cx="12" cy="12" r="1.6" />
+    <circle cx="12" cy="19" r="1.6" />
+  </svg>
+);
 export const RefreshIcon = (p: P) => (
   <svg {...base(p)}>
     <path d="M21 12a9 9 0 1 1-3-6.7L21 8m0-5v5h-5" />

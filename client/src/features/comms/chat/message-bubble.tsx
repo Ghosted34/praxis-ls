@@ -209,7 +209,11 @@ export function MessageBubble({
        * whether it is hidden or simply empty.
        */
       data-revealed={revealed ? "true" : undefined}
-      className={cn("group relative flex", mine ? "justify-end" : "justify-start")}
+      // `animate-rise-in` is a 0.2s soft slide+fade, once, on mount. The list is
+      // keyed by message_id, so a poll that returns the same messages does not
+      // remount them and only a genuinely NEW message animates in. Reduced-motion
+      // is honoured by the global kill in index.css.
+      className={cn("group relative flex animate-rise-in", mine ? "justify-end" : "justify-start")}
       onPointerDown={onPointerDown}
       onPointerUp={onPointerUp}
       onPointerCancel={() => {
@@ -289,23 +293,27 @@ export function MessageBubble({
 
         <div
           className={cn(
-            "rounded-2xl px-3 py-2 text-sm",
+            // The finish (tint, tail, ambient shadow) lives on the .msg-bubble
+            // classes in index.css so the accent tint can be a color-mix of the
+            // TENANT's --primary over the theme's base; the spacing stays here.
+            "text-sm",
             deleted
-              ? "border border-dashed border-border bg-transparent text-muted-foreground"
+              ? "msg-bubble msg-bubble--deleted px-3.5 py-2.5"
               : mine
-                ? "bg-primary text-primary-foreground"
-                : "border border-border bg-card",
+                ? "msg-bubble msg-bubble--mine px-3.5 py-2.5"
+                : "msg-bubble msg-bubble--theirs px-3.5 py-2.5",
           )}
         >
           {!mine && !deleted && senderName && (
-            <div className="mb-0.5 text-[11px] font-medium text-primary-ink">{senderName}</div>
+            <div className="mb-0.5 text-[11px] font-semibold text-primary-ink">{senderName}</div>
           )}
 
           {repliedTo && !deleted && (
             <div
               className={cn(
-                "mb-1.5 border-l-2 pl-2 text-[11px]",
-                mine ? "border-primary-foreground/40 text-primary-foreground/80" : "border-primary text-muted-foreground",
+                // Both bubbles are now tinted SURFACES (not a solid accent fill),
+                // so the quote uses the accent bar + muted text in either case.
+                "mb-1.5 rounded-md border-l-2 border-primary/60 bg-primary/10 py-1 pl-2 pr-2 text-[11px] text-muted-foreground",
               )}
             >
               <span className="line-clamp-2 break-words">
@@ -325,20 +333,20 @@ export function MessageBubble({
                   <Attachments
                     attachments={attachments}
                     onPromote={promote}
-                    // The ground this bubble just painted. A child cannot see
-                    // it, and `--muted-foreground` on `bg-primary` is 1.01:1 in
-                    // dark mode — see `BubbleTone`.
-                    tone={mine ? "primary" : "surface"}
+                    // Both bubbles are now a tint of the accent over the theme's
+                    // base surface (see .msg-bubble--mine/--theirs), so children
+                    // read on a SURFACE in both cases — which also retires the old
+                    // "--muted-foreground on solid --primary is 1.01:1 in dark"
+                    // hazard that the `tone` split was invented for.
+                    tone="surface"
                   />
                 </div>
               )}
-              {message.body && <MessageText body={message.body} mine={mine} />}
+              {/* mine={false}: the ground is a tinted surface, not a solid accent
+                  fill, so text and links take the surface (primary-ink) styling. */}
+              {message.body && <MessageText body={message.body} mine={false} />}
               {message.link_urls?.length ? (
-                <LinkCards
-                  urls={message.link_urls}
-                  links={links}
-                  tone={mine ? "primary" : "surface"}
-                />
+                <LinkCards urls={message.link_urls} links={links} tone="surface" />
               ) : null}
             </>
           )}
@@ -346,8 +354,7 @@ export function MessageBubble({
           {!deleted && (
             <div
               className={cn(
-                "mt-0.5 flex items-center justify-end gap-1 text-[10px]",
-                mine ? "text-primary-foreground/70" : "text-muted-foreground",
+                "mt-1 flex items-center justify-end gap-1 text-[10px] text-muted-foreground",
               )}
             >
               {message.starred_by_me && <span aria-label={tr("Starred")} title={tr("Starred")}>★</span>}

@@ -166,24 +166,22 @@ describe("LinkCard — which previews render", () => {
     expect(container.querySelector("img")).toBeNull();
   });
 
-  // On tone="primary" the bubble's ground IS the tenant accent, so the one
-  // control on the card must invert to the theme surface (`bg-card`) rather than
-  // wear an accent tint that vanishes into the bubble — the exact defect a
-  // tenant with orange branding reported: an orange "Open link" on an orange
-  // bubble that did not read as a button at all.
-  it("inverts the Open link button against the sender's accent bubble", () => {
+  // Bubbles are tinted SURFACES now (see message-bubble.tsx), and the card's one
+  // control is a solid brand pill (--primary + --primary-foreground via
+  // .chat-pill--solid) whatever bubble it sits in — so it never dissolves into an
+  // accent ground the way the old accent-tinted "Open link" did on a tenant's
+  // orange bubble.
+  it("gives the Open link button a solid brand fill that reads as a button", () => {
     inRouter(<LinkCard preview={card()} tone="primary" />);
     const button = screen.getByRole("button", { name: /Open link/ });
-    expect(button.className).toContain("bg-card");
-    expect(button.className).toContain("text-primary-ink");
-    expect(button.className).not.toContain("bg-primary-foreground/15");
+    expect(button.className).toContain("chat-pill--solid");
   });
 
-  // The card is a footnote, not the message: it is capped at 65% of the bubble
-  // so a pasted link never dominates the pane the way a full-width og:image did.
-  it("caps the card's width below the bubble's", () => {
+  // The card is a footnote, not the message: it is capped at a readable width so
+  // a pasted link never dominates the pane the way a full-width og:image did.
+  it("caps the card at a readable width so a link never dominates the pane", () => {
     const { container } = inRouter(<LinkCard preview={card()} tone="surface" />);
-    expect((container.firstElementChild as HTMLElement).className).toContain("max-w-[65%]");
+    expect((container.firstElementChild as HTMLElement).className).toContain("max-w-[300px]");
   });
 
   it("caps a link-flood at three cards, in order", () => {

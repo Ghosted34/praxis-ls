@@ -104,7 +104,15 @@ function PreviewImage({
   return (
     <div
       ref={ref}
-      className={cn("relative w-full overflow-hidden rounded-t-xl bg-muted/40", className)}
+      // The pulse is honest here, not the "skeleton that never fills" this file's
+      // header warns against: PreviewImage only renders when a `link_hash`/image
+      // is genuinely expected, so a shimmer says "this picture is coming", which
+      // it is. It stops the moment the blob lands.
+      className={cn(
+        "relative w-full overflow-hidden rounded-t-2xl bg-muted/40",
+        !url && "animate-pulse",
+        className,
+      )}
       style={{ aspectRatio: ratio }}
     >
       {url ? (
@@ -149,28 +157,22 @@ export function LinkCard({
 
   return (
     <div
-      className={cn(
-        // 65% of the bubble, not 100%: a preview is a footnote to the sentence
-        // above it, and a card as wide as the conversation pane reads as the
-        // message instead of the aside. The text is not capped with it — the
-        // words stay at bubble width, only the decoration shrinks.
-        "mt-1.5 max-w-[65%] overflow-hidden rounded-xl border text-[12px] leading-snug",
-        onSurface
-          ? "border-border bg-muted/40"
-          : "border-primary-foreground/25 bg-primary-foreground/10",
-      )}
+      // A polished, self-contained card (see .chat-linkcard): elevated surface,
+      // token border, ambient shadow. Capped near bubble width so a preview
+      // still reads as a footnote to the sentence above it, not the message.
+      className="chat-linkcard mt-2 max-w-[300px] text-[12px] leading-snug"
     >
       <PreviewImage preview={preview} />
-      <div className="px-2.5 py-2">
+      <div className="px-3 py-2.5">
         {preview.site_name || media ? (
           <div
             className={cn(
-              "mb-0.5 flex items-center gap-1.5 text-[11px] uppercase tracking-wide",
+              "mb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide",
               onSurface ? "text-muted-foreground" : "text-primary-foreground/80",
             )}
           >
             {media ? (
-              <span aria-hidden className="text-[12px] leading-none">
+              <span aria-hidden className="text-[12px] leading-none text-primary-ink">
                 {media.kind === "MAPS" ? "📍" : "▶"}
               </span>
             ) : null}
@@ -178,7 +180,7 @@ export function LinkCard({
               {media ? tr(MEDIA_LABEL[media.kind]) : preview.site_name}
             </span>
             {length ? (
-              <span className="ml-auto shrink-0 rounded bg-muted/60 px-1 font-mono text-[10px] normal-case tabular-nums">
+              <span className="ml-auto shrink-0 rounded-full bg-primary/10 px-1.5 py-0.5 font-mono text-[10px] normal-case tabular-nums text-primary-ink">
                 {length}
               </span>
             ) : null}
@@ -229,19 +231,9 @@ export function LinkCard({
             e.stopPropagation();
             openExternally(media?.open_url || preview.url);
           }}
-          className={cn(
-            "mt-1.5 inline-flex max-w-full items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium transition-colors",
-            onSurface
-              ? "bg-primary/10 text-primary-ink hover:bg-primary/20"
-              : // On the sender's own bubble the ground IS the accent, so an
-                // accent-tinted button disappears into it (the exact failure a
-                // tenant with orange branding reported). `--card` is the theme's
-                // surface — white in light mode, the dark panel colour in dark —
-                // so the button inverts against the accent in both themes, and
-                // `--primary-ink` keeps the label in the brand colour at its
-                // AA-safe weight for whichever theme is active.
-                "bg-card text-primary-ink shadow-sm hover:bg-card/90",
-          )}
+          // A full-width solid pill: unmistakably the card's one action, and the
+          // same brand button (--primary + --primary-foreground) in both themes.
+          className="chat-pill chat-pill--solid mt-2 flex w-full justify-center"
         >
           <span className="truncate">
             {media ? tr(MEDIA_ACTION[media.kind] || "Open link") : tr("Open link")}

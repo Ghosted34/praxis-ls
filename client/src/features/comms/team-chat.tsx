@@ -16,7 +16,9 @@ import { ErrorState } from "@/components/ui/states";
 import { useResource, errMsg } from "@/lib/use-resource";
 import { useAuth } from "@/app/auth/auth-context";
 import { cn } from "@/lib/cn";
-import { PlusIcon, PhoneIcon } from "@/components/ui/icons";
+import { PlusIcon, PhoneIcon, MoreVerticalIcon, InfoIcon } from "@/components/ui/icons";
+import { DropdownMenu, DropdownItem } from "@/components/ui/dropdown-menu";
+import { useBranding } from "@/app/branding/branding-context";
 import * as api from "@/lib/smartcomm-api";
 import { getCommsSocket, useCommsChannel } from "@/lib/comms-socket";
 import { useOnline, lastSeenText } from "./presence";
@@ -374,8 +376,10 @@ function ChannelRow({
       type="button"
       onClick={onClick}
       className={cn(
-        "flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left transition-colors",
-        active ? "bg-accent" : "hover:bg-accent/60",
+        "flex w-full items-center gap-2.5 rounded-2xl px-2.5 py-2.5 text-left transition-colors",
+        active
+          ? "bg-primary/10 ring-1 ring-inset ring-primary/25"
+          : "hover:bg-accent/60",
       )}
     >
       <Avatar
@@ -388,7 +392,7 @@ function ChannelRow({
             className={cn(
               "flex items-center gap-1 truncate text-[12.5px]",
               unread > 0
-                ? "font-medium text-foreground"
+                ? "font-semibold text-foreground"
                 : "text-muted-foreground",
             )}
           >
@@ -436,10 +440,10 @@ function ChannelRow({
           {unread > 0 && (
             <span
               className={cn(
-                "grid h-4 min-w-[16px] shrink-0 place-items-center rounded-full px-1 text-[9px] font-bold",
+                "grid h-[18px] min-w-[18px] shrink-0 place-items-center rounded-full px-1 text-[9px] font-bold",
                 c.is_muted
                   ? "bg-[rgb(var(--ink-3)/0.4)] text-primary-foreground"
-                  : "bg-primary text-primary-foreground",
+                  : "chat-unread-dot text-primary-foreground",
               )}
             >
               {unread}
@@ -647,7 +651,7 @@ export function TeamChatPage() {
     <section className="animate-fade-in flex min-h-0 flex-1 flex-col">
       {/* Size from the shell's remaining space, never from a guessed viewport offset. */}
       <div className={cn(
-        "grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)] grid-cols-1 overflow-hidden rounded-2xl border border-border bg-card shadow-sm md:grid-cols-[320px_minmax(0,1fr)]",
+        "chat-shell grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)] grid-cols-1 overflow-hidden rounded-2xl border border-border bg-card md:grid-cols-[320px_minmax(0,1fr)]",
         infoOpen && "lg:grid-cols-[320px_minmax(0,1fr)_300px]",
       )}>
         {/* conversation list */}
@@ -666,18 +670,19 @@ export function TeamChatPage() {
                 </span>
               )}
             </div>
-            {/* Labeled, not a bare glyph: the previous 16px "+" read as a
-                generic "add" control and the compose entry was invisible to
-                new users. Text at md+, icon-only below (WS feedback). */}
-            <Button
-              size="sm"
+            {/* A sleek accent-gradient pill in place of the solid orange block —
+                icon-only on a phone, icon + label from md up (WS feedback that a
+                bare "+" read as a generic "add"). */}
+            <button
+              type="button"
               onClick={() => setNewKind("menu")}
               title={tr("New conversation")}
               aria-label={tr("New conversation")}
-              icon={<PlusIcon width={16} height={16} />}
+              className="chat-new-btn inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-[13px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:px-3.5"
             >
+              <PlusIcon width={16} height={16} />
               <span className="hidden md:inline">{tr("New")}</span>
-            </Button>
+            </button>
           </div>
           <div className="px-3 py-2">
             <Input
@@ -692,9 +697,9 @@ export function TeamChatPage() {
                 key={f.key}
                 onClick={() => setFilter(f.key)}
                 className={cn(
-                  "shrink-0 rounded-lg px-2.5 py-1 text-[11px] font-medium transition-colors",
+                  "shrink-0 rounded-full px-3 py-1 text-[11px] font-semibold transition-colors",
                   filter === f.key
-                    ? "bg-primary text-primary-foreground"
+                    ? "chat-pill--solid"
                     : "text-muted-foreground hover:bg-accent hover:text-foreground",
                 )}
               >
@@ -776,7 +781,6 @@ export function TeamChatPage() {
                 n.delete("channel");
                 setParams(n);
               }}
-              infoOpen={infoOpen}
               onToggleInfo={toggleInfo}
               onOpenMobileInfo={() => setMobileInfoOpen(true)}
               onSent={() => channels.reload()}
@@ -840,11 +844,9 @@ function Thread({
   channels,
   onBack,
   onSent,
-  infoOpen,
   onToggleInfo,
   onOpenMobileInfo,
 }: {
-  infoOpen: boolean;
   onToggleInfo: () => void;
   onOpenMobileInfo: () => void;
   channelId: string;
@@ -857,6 +859,11 @@ function Thread({
 }) {
   const ch = useResource(() => api.getChannel(channelId), [channelId]);
   const thread = useResource(() => api.getThread(channelId), [channelId]);
+  // The thread's backdrop: the tenant's hero image if they have one, otherwise
+  // the washed logistics blueprint every tenant gets (see index.css
+  // .chat-thread-bg). Either way it is barely visible under a heavy wash.
+  const { branding } = useBranding();
+  const heroImage = branding?.hero?.imageUrl || null;
   // The caller's call-summary drafts for this conversation, pinned above the
   // composer (owner decision O3). `?summary=<call>` opens one: that is where
   // the summary notification lands.
@@ -993,7 +1000,7 @@ function Thread({
 
   return (
     <>
-      <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2.5">
+      <div className="flex shrink-0 items-center gap-2.5 border-b border-border bg-card/70 px-3 py-2.5 backdrop-blur-sm">
         <button
           className="text-muted-foreground hover:text-foreground md:hidden"
           onClick={onBack}
@@ -1006,35 +1013,74 @@ function Thread({
           src={ch.data?.kind === "DIRECT" ? ch.data?.partner_avatar_ref : null}
           size="sm"
         />
-        <span className="min-w-0 flex-1 truncate text-sm font-semibold">
-          {ch.data?.name || "Conversation"}
-        </span>
-        {ch.data?.kind && (
-          <span className="micro">· {ch.data.kind.toLowerCase()}</span>
-        )}
-        {/* The dial affordance lives on the DIRECT header itself — where the
-            eyes already are when choosing whom to call. The partner is
-            resolved server-side from the channel; the UI only names the
-            channel (guide D8 — no person id to get wrong). */}
+        {/* Name, and — for a DIRECT thread — a WhatsApp-style presence line under
+            it. The "· direct" kind label is gone: product jargon has no place in
+            the one line a person reads to know whom they are talking to. */}
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-semibold">
+            {ch.data?.name || "Conversation"}
+          </div>
+          {ch.data?.kind === "DIRECT" && ch.data.partner_user_id && (
+            <PartnerPresence
+              userId={ch.data.partner_user_id}
+              lastSeenAt={ch.data.partner_last_seen_at}
+            />
+          )}
+        </div>
+        {/* The call icon stays out front (WhatsApp keeps the phone on the header),
+            as a clean circular icon button. The partner is resolved server-side
+            from the channel; the UI only names the channel (guide D8). */}
         {ch.data?.kind === "DIRECT" && (
           <button
             type="button"
-            className="shrink-0 rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             aria-label={tr("Start a voice call")}
             title={tr("Start a voice call")}
             onClick={() => {
               if (ch.data) void dial(ch.data.group_id, ch.data.name);
             }}
           >
-            <PhoneIcon width={16} height={16} />
+            <PhoneIcon width={18} height={18} />
           </button>
         )}
-        <Button size="sm" variant="ghost" className="hidden shrink-0 lg:inline-flex"
-          aria-expanded={infoOpen} aria-controls="chat-info-panel" onClick={onToggleInfo}>
-          {tr(infoOpen ? "Hide info" : "Show info")}
-        </Button>
-        <Button size="sm" variant="ghost" className="shrink-0 lg:hidden"
-          aria-haspopup="dialog" onClick={onOpenMobileInfo}>{tr("Info")}</Button>
+        {/* Everything else folds into the WhatsApp ⋮ menu. The info pane toggle
+            used to be two always-visible buttons; it is one menu item now, which
+            opens the side pane on desktop and the drawer on a phone. */}
+        <DropdownMenu
+          trigger={
+            <button
+              type="button"
+              aria-label={tr("Conversation menu")}
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <MoreVerticalIcon width={18} height={18} />
+            </button>
+          }
+        >
+          <DropdownItem
+            onSelect={() => {
+              if (window.matchMedia("(min-width: 1024px)").matches) onToggleInfo();
+              else onOpenMobileInfo();
+            }}
+          >
+            <span className="flex items-center gap-2">
+              <InfoIcon width={15} height={15} />
+              {tr("Conversation info")}
+            </span>
+          </DropdownItem>
+          {ch.data?.kind === "DIRECT" && (
+            <DropdownItem
+              onSelect={() => {
+                if (ch.data) void dial(ch.data.group_id, ch.data.name);
+              }}
+            >
+              <span className="flex items-center gap-2">
+                <PhoneIcon width={15} height={15} />
+                {tr("Start a voice call")}
+              </span>
+            </DropdownItem>
+          )}
+        </DropdownMenu>
       </div>
 
       <div
@@ -1043,7 +1089,15 @@ function Thread({
           const el = event.currentTarget;
           nearBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 160;
         }}
-        className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain bg-[rgb(var(--ink-3)/0.04)] px-4 py-3"
+        className={cn(
+          "chat-thread-bg min-h-0 flex-1 space-y-2.5 overflow-y-auto overscroll-contain px-3 py-4 sm:px-6",
+          heroImage && "chat-thread-bg--photo",
+        )}
+        style={
+          heroImage
+            ? ({ "--chat-thread-image": `url("${heroImage}")` } as React.CSSProperties)
+            : undefined
+        }
         // A tap on the empty scroller — beside a bubble, in the gap between two —
         // is the reader saying "not this one". The bubbles themselves stop nothing,
         // so this only fires for the background.

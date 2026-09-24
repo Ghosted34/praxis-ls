@@ -2447,3 +2447,228 @@
     outline-color: var(--ring);
   }
 }
+
+/* ============================================================================
+ * SMART COMMS — chat thread redesign
+ *
+ * A premium, WhatsApp-grade finish for the in-house chat: tinted bubbles, a
+ * washed logistics backdrop, glass-lifted panels, a stylised voice player and
+ * link cards, and controls that actually read as buttons.
+ *
+ * WHITE-LABEL FIRST. Every tint is `color-mix(... var(--primary) ...)`, so a
+ * bubble is the TENANT's accent over the theme's own base surface — never a
+ * hardcoded orange. The base stays `--card`, so text keeps ordinary surface
+ * tokens (this is also what retires the old "invisible text on a solid accent
+ * fill" hazard the bubble/voice/link comments were written around).
+ *
+ * PERFORMANCE. The calls audit (§F1) flags full-surface `backdrop-filter` on a
+ * SCROLLING pane as a low-end-Android battery drain. So depth on the message
+ * list is done with tint + border + ambient shadow, and real blur is reserved
+ * for small, static strips. Motion stays inside the 250ms budget and under the
+ * global reduced-motion kill.
+ * ========================================================================== */
+:root {
+  /* Accent-over-base tint strength for the two bubble sides. */
+  --chat-tint-mine: 16%;
+  --chat-tint-theirs: 5%;
+  /* Soft, wide ambient shadow: a bubble lifts off the backdrop with no hard
+     edge. Retuned for the dark theme below (the app's --shadow-* use a navy
+     that all but vanishes on --background). */
+  --chat-shadow: 0 1px 1px rgb(16 30 52 / 0.05), 0 8px 20px -10px rgb(16 30 52 / 0.22);
+  --chat-panel-shadow: 0 12px 36px -18px rgb(16 30 52 / 0.28);
+  /* The active thread's lift away from the sidebars: a hair of accent ring and
+     a coloured ambient glow, both derived from the tenant's own --primary. */
+  --chat-active-glow:
+    0 0 0 1px color-mix(in srgb, var(--primary) 12%, transparent),
+    0 24px 64px -36px color-mix(in srgb, var(--primary) 55%, transparent);
+  /* Washed logistics backdrop: a faint blueprint of shipping routes, location
+     pins and container stacks. A tenant hero photo overrides --chat-thread-image
+     (see .chat-thread-bg--photo); otherwise every tenant gets this line-art. */
+  --chat-thread-pattern: url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20width%3D'260'%20height%3D'260'%20viewBox%3D'0%200%20260%20260'%20fill%3D'none'%20stroke%3D'%231f2f4d'%20stroke-width%3D'1.4'%20stroke-linecap%3D'round'%20stroke-linejoin%3D'round'%3E%3Cpath%20d%3D'M14%20224%20C%2078%20180%20150%20214%20246%20150'%20stroke-dasharray%3D'5%208'%2F%3E%3Cpath%20d%3D'M20%2060%20C%2092%2092%20150%2044%20240%2080'%20stroke-dasharray%3D'5%208'%20opacity%3D'.75'%2F%3E%3Ccircle%20cx%3D'14'%20cy%3D'224'%20r%3D'3'%2F%3E%3Ccircle%20cx%3D'246'%20cy%3D'150'%20r%3D'3'%2F%3E%3Ccircle%20cx%3D'20'%20cy%3D'60'%20r%3D'2.4'%20opacity%3D'.7'%2F%3E%3Ccircle%20cx%3D'240'%20cy%3D'80'%20r%3D'2.4'%20opacity%3D'.7'%2F%3E%3Cpath%20d%3D'M128%2096%20c0%2010%20-10%2015%20-10%2024%20a10%2010%200%201%200%2020%200%20c0%20-9%20-10%20-14%20-10%20-24%20z'%20opacity%3D'.5'%2F%3E%3Ccircle%20cx%3D'128'%20cy%3D'122'%20r%3D'2.6'%20opacity%3D'.6'%2F%3E%3Cg%20opacity%3D'.5'%3E%3Crect%20x%3D'176'%20y%3D'196'%20width%3D'40'%20height%3D'18'%20rx%3D'2'%2F%3E%3Crect%20x%3D'186'%20y%3D'176'%20width%3D'40'%20height%3D'18'%20rx%3D'2'%2F%3E%3Cline%20x1%3D'196'%20y1%3D'196'%20x2%3D'196'%20y2%3D'214'%2F%3E%3Cline%20x1%3D'206'%20y1%3D'176'%20x2%3D'206'%20y2%3D'194'%2F%3E%3C%2Fg%3E%3Cg%20opacity%3D'.45'%3E%3Crect%20x%3D'40'%20y%3D'150'%20width%3D'34'%20height%3D'16'%20rx%3D'2'%2F%3E%3Cline%20x1%3D'57'%20y1%3D'150'%20x2%3D'57'%20y2%3D'166'%2F%3E%3C%2Fg%3E%3Ccircle%20cx%3D'96'%20cy%3D'150'%20r%3D'1.6'%20opacity%3D'.5'%2F%3E%3Ccircle%20cx%3D'150'%20cy%3D'60'%20r%3D'1.6'%20opacity%3D'.5'%2F%3E%3Ccircle%20cx%3D'70'%20cy%3D'210'%20r%3D'1.6'%20opacity%3D'.5'%2F%3E%3C%2Fsvg%3E");
+  --chat-thread-image: var(--chat-thread-pattern);
+  --chat-thread-size: 260px 260px;
+  --chat-thread-opacity: 0.55;
+}
+
+.dark {
+  --chat-shadow: 0 1px 1px rgb(0 0 0 / 0.35), 0 10px 26px -12px rgb(0 0 0 / 0.6);
+  --chat-panel-shadow: 0 16px 44px -20px rgb(0 0 0 / 0.66);
+  --chat-thread-pattern: url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20width%3D'260'%20height%3D'260'%20viewBox%3D'0%200%20260%20260'%20fill%3D'none'%20stroke%3D'%23aab8cf'%20stroke-width%3D'1.4'%20stroke-linecap%3D'round'%20stroke-linejoin%3D'round'%3E%3Cpath%20d%3D'M14%20224%20C%2078%20180%20150%20214%20246%20150'%20stroke-dasharray%3D'5%208'%2F%3E%3Cpath%20d%3D'M20%2060%20C%2092%2092%20150%2044%20240%2080'%20stroke-dasharray%3D'5%208'%20opacity%3D'.75'%2F%3E%3Ccircle%20cx%3D'14'%20cy%3D'224'%20r%3D'3'%2F%3E%3Ccircle%20cx%3D'246'%20cy%3D'150'%20r%3D'3'%2F%3E%3Ccircle%20cx%3D'20'%20cy%3D'60'%20r%3D'2.4'%20opacity%3D'.7'%2F%3E%3Ccircle%20cx%3D'240'%20cy%3D'80'%20r%3D'2.4'%20opacity%3D'.7'%2F%3E%3Cpath%20d%3D'M128%2096%20c0%2010%20-10%2015%20-10%2024%20a10%2010%200%201%200%2020%200%20c0%20-9%20-10%20-14%20-10%20-24%20z'%20opacity%3D'.5'%2F%3E%3Ccircle%20cx%3D'128'%20cy%3D'122'%20r%3D'2.6'%20opacity%3D'.6'%2F%3E%3Cg%20opacity%3D'.5'%3E%3Crect%20x%3D'176'%20y%3D'196'%20width%3D'40'%20height%3D'18'%20rx%3D'2'%2F%3E%3Crect%20x%3D'186'%20y%3D'176'%20width%3D'40'%20height%3D'18'%20rx%3D'2'%2F%3E%3Cline%20x1%3D'196'%20y1%3D'196'%20x2%3D'196'%20y2%3D'214'%2F%3E%3Cline%20x1%3D'206'%20y1%3D'176'%20x2%3D'206'%20y2%3D'194'%2F%3E%3C%2Fg%3E%3Cg%20opacity%3D'.45'%3E%3Crect%20x%3D'40'%20y%3D'150'%20width%3D'34'%20height%3D'16'%20rx%3D'2'%2F%3E%3Cline%20x1%3D'57'%20y1%3D'150'%20x2%3D'57'%20y2%3D'166'%2F%3E%3C%2Fg%3E%3Ccircle%20cx%3D'96'%20cy%3D'150'%20r%3D'1.6'%20opacity%3D'.5'%2F%3E%3Ccircle%20cx%3D'150'%20cy%3D'60'%20r%3D'1.6'%20opacity%3D'.5'%2F%3E%3Ccircle%20cx%3D'70'%20cy%3D'210'%20r%3D'1.6'%20opacity%3D'.5'%2F%3E%3C%2Fsvg%3E");
+  --chat-thread-image: var(--chat-thread-pattern);
+  --chat-thread-opacity: 0.5;
+}
+
+/* ── the washed backdrop ──────────────────────────────────────────────────
+ * The image rides a ::before at low opacity, so the base colour dominates and
+ * the texture is "barely there". Content is lifted above it with an explicit
+ * stacking context. */
+.chat-thread-bg {
+  position: relative;
+  background-color: var(--background);
+  isolation: isolate;
+}
+.chat-thread-bg::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image: var(--chat-thread-image);
+  background-repeat: repeat;
+  background-position: center;
+  background-size: var(--chat-thread-size);
+  opacity: var(--chat-thread-opacity);
+}
+/* A tenant hero photo: cover, don't tile, and wash harder — a photograph needs
+   a far heavier wash than line-art to stay a backdrop rather than a picture. */
+.chat-thread-bg--photo {
+  --chat-thread-size: cover;
+  --chat-thread-opacity: 0.08;
+}
+.chat-thread-bg--photo::before {
+  background-repeat: no-repeat;
+}
+.chat-thread-bg > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* ── the shell + the active thread's lift ─────────────────────────────────── */
+.chat-shell {
+  box-shadow: var(--chat-panel-shadow);
+}
+.chat-active-thread {
+  box-shadow: var(--chat-active-glow);
+}
+
+/* ── message bubbles ──────────────────────────────────────────────────────
+ * Fluidly rounded, with one sharp corner as a geometric "tail" on the sender's
+ * side. The tint is the accent over --card; the border is a whisper of the same
+ * accent (mine) or the neutral token (theirs). */
+.msg-bubble {
+  position: relative;
+  border-radius: 20px;
+  box-shadow: var(--chat-shadow);
+}
+.msg-bubble--mine {
+  background-color: var(--card);
+  background-image: linear-gradient(
+    0deg,
+    color-mix(in srgb, var(--primary) var(--chat-tint-mine), transparent),
+    color-mix(in srgb, var(--primary) var(--chat-tint-mine), transparent)
+  );
+  border: 1px solid color-mix(in srgb, var(--primary) 24%, transparent);
+  border-bottom-right-radius: 7px;
+  color: var(--card-foreground);
+}
+.msg-bubble--theirs {
+  background-color: var(--card);
+  background-image: linear-gradient(
+    0deg,
+    color-mix(in srgb, var(--primary) var(--chat-tint-theirs), transparent),
+    color-mix(in srgb, var(--primary) var(--chat-tint-theirs), transparent)
+  );
+  border: 1px solid var(--border);
+  border-bottom-left-radius: 7px;
+  color: var(--card-foreground);
+}
+.msg-bubble--deleted {
+  background: transparent;
+  border: 1px dashed var(--border);
+  box-shadow: none;
+  color: var(--muted-foreground);
+}
+
+/* ── stylised voice player ────────────────────────────────────────────────
+ * An inset panel with a gradient play control and a gradient-filled waveform. */
+.voice-wave {
+  border-radius: 16px;
+  background-color: color-mix(in srgb, var(--foreground) 4%, var(--card));
+  border: 1px solid var(--border);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05);
+}
+.voice-wave-play {
+  background-image: linear-gradient(140deg, color-mix(in srgb, var(--primary) 88%, white), var(--primary));
+  color: var(--primary-foreground);
+  box-shadow: 0 6px 16px -8px color-mix(in srgb, var(--primary) 78%, transparent);
+}
+.voice-bar-on {
+  background-image: linear-gradient(to top, var(--primary), color-mix(in srgb, var(--primary) 60%, white));
+}
+.voice-bar-off {
+  background-color: color-mix(in srgb, var(--foreground) 18%, transparent);
+}
+
+/* ── pill controls: the things that used to be text ───────────────────────── */
+.chat-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border-radius: 9999px;
+  padding: 0.3rem 0.72rem;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  border: 1px solid transparent;
+  transition: background-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+.chat-pill--accent {
+  background-color: color-mix(in srgb, var(--primary) 14%, var(--card));
+  border-color: color-mix(in srgb, var(--primary) 30%, transparent);
+  color: var(--primary-ink);
+}
+.chat-pill--accent:hover {
+  background-color: color-mix(in srgb, var(--primary) 22%, var(--card));
+}
+.chat-pill--solid {
+  background-image: linear-gradient(140deg, color-mix(in srgb, var(--primary) 88%, white), var(--primary));
+  color: var(--primary-foreground);
+  box-shadow: 0 6px 16px -8px color-mix(in srgb, var(--primary) 70%, transparent);
+}
+.chat-pill--solid:hover {
+  filter: brightness(1.05);
+}
+.chat-pill--ghost {
+  background-color: color-mix(in srgb, var(--foreground) 5%, transparent);
+  border-color: var(--border);
+  color: var(--muted-foreground);
+}
+.chat-pill--ghost:hover {
+  color: var(--foreground);
+  border-color: color-mix(in srgb, var(--foreground) 20%, transparent);
+}
+
+/* ── sidebar: sleek gradient New button + glowing unread dot ───────────────── */
+.chat-new-btn {
+  background-image: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--primary) 86%, white),
+    var(--primary) 52%,
+    color-mix(in srgb, var(--primary) 80%, black)
+  );
+  color: var(--primary-foreground);
+  box-shadow: 0 8px 20px -10px color-mix(in srgb, var(--primary) 72%, transparent);
+  transition: filter 0.18s ease, box-shadow 0.18s ease;
+}
+.chat-new-btn:hover {
+  filter: brightness(1.05);
+  box-shadow: 0 10px 24px -10px color-mix(in srgb, var(--primary) 82%, transparent);
+}
+.chat-unread-dot {
+  background-color: var(--primary);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--primary) 16%, transparent),
+    0 0 10px 0 color-mix(in srgb, var(--primary) 70%, transparent);
+}
+
+/* ── link card: a polished, structured grid card ──────────────────────────── */
+.chat-linkcard {
+  border-radius: 16px;
+  overflow: hidden;
+  background-color: color-mix(in srgb, var(--foreground) 3%, var(--card));
+  border: 1px solid var(--border);
+  box-shadow: var(--chat-shadow);
+}
+/* Loading placeholders reuse Tailwind's `animate-pulse` in the markup — the
+   motion gate does not scan Tailwind's own keyframes, and a second copy of a
+   shimmer here would only be one more timed declaration to keep under budget. */

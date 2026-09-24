@@ -263,6 +263,13 @@ jobs:
         # per-app matrix below.
         run: npm run check:fonts
 
+      - name: Install ffmpeg
+        # The call pipeline converts browser WebM/Opus to FLAC before Gemini
+        # (the Docker image installs ffmpeg too). tests/unit/gemini-transcription
+        # proves that conversion on a real recording and FAILS rather than
+        # skips under CI, so the binary must be here.
+        run: command -v ffmpeg || (sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ffmpeg)
+
       - name: Test
         # TC-CI3 — coverage is MEASURED here, and the summary is printed.
         #

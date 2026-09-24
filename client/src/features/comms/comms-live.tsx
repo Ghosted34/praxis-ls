@@ -22,7 +22,7 @@
  * only connects, subscribes, and unmounts cleanly on logout.
  */
 import * as React from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { tr, tv } from "@/lib/i18n";
 import { useAuth } from "@/app/auth/auth-context";
 import { useToast } from "@/components/ui/toast";
@@ -30,11 +30,11 @@ import { getCommsSocket, disconnectCommsSocket } from "@/lib/comms-socket";
 import { unlockAudio, playNotifSound } from "@/lib/notif-sound";
 import {
   useCall, answer, decline, hangup, setMuted, setNoise, wireCallSocket, myUserId,
-  closeSummaryDraft, initCallDeepLink, redial, dismissRedial,
+  clearSummaryNotice, initCallDeepLink, redial, dismissRedial,
 } from "./call/call-session";
+import { parseSummaryLink } from "./call/ring-surface";
 import { CallOverlay } from "./call/call-overlay";
 import { IncomingRing } from "./call/incoming-ring";
-import { CallSummaryPanel } from "./call/summary-draft";
 import { acquireWakeLock, releaseWakeLock } from "./call/wake-keepalive";
 import { setOnline, useOnline } from "./presence";
 
@@ -45,6 +45,11 @@ const SEEN_BEAT_MS = 60_000;
 export function CommsLive() {
   const { status, user } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
+  // Read through a ref: the socket effect below must not re-run (and reconnect)
+  // every time navigation hands out a new `navigate`.
+  const navigateRef = React.useRef(navigate);
+  navigateRef.current = navigate;
   const toast = useToast();
   const call = useCall();
   const lastBeat = React.useRef(0);
@@ -66,10 +71,13 @@ export function CommsLive() {
     if (!authed) return;
     const s = getCommsSocket();
     wireCallSocket();
-    // §4.6: a push tap lands here — `/comms?call=<id>&act=accept|decline`. The
-    // session decides whether that call is still answerable or has expired
-    // (the redial path); this only hands it the link.
-    initCallDeepLink(window.location.search);
+    // A ring push lands as `/comms?ring=<id>&act=…`; the session decides
+    // whether it can still be answered. `/comms?call=<id>` is the OLD summary
+    // notification link, still in people's shades: it opens the call's page
+    // and is never treated as a ring (audit A6).
+    const legacySummary = parseSummaryLink(window.location.search);
+    if (legacySummary) navigateRef.current(`/comms/calls/${legacySummary}`, { replace: true });
+    else initCallDeepLink(window.location.search);
 
     const onPresence = (p: { user_id: string; online: boolean }) => {
       setOnline(p.user_id, p.online);
@@ -159,6 +167,20 @@ export function CommsLive() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [call.phase, call.call?.call_id]);
 
+  /* ── A summary gained an update: say where it is ──────────────────────
+         Only the update: a first draft also arrives as a notification, whose
+         toast already honours the user's interrupt preference, and a second
+         toast here would ignore it. An update has no notification of its own. */
+  React.useEffect(() => {
+    const n = call.summaryNotice;
+    if (!n) return;
+    if (n.status === "UPDATE_AVAILABLE") {
+      toast.info(tr("An updated call summary is available. Open Comms › Calls to post it."));
+    }
+    clearSummaryNotice();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [call.summaryNotice]);
+
   /* ── Dial failures the user should hear (busy, no mic, …) ────────────── */
   React.useEffect(() => {
     if (call.phase !== "idle" || !call.lastError) return;
@@ -227,15 +249,6 @@ export function CommsLive() {
             ×
           </button>
         </div>
-      )}
-      {/* The caller's draft, opened by the socket event that says it is ready.
-          It is a panel rather than a screen because the caller may be anywhere
-          when the summary lands — exactly like the call itself. */}
-      {call.draftCallId && (
-        <CallSummaryPanel
-          callId={call.draftCallId}
-          onClose={closeSummaryDraft}
-        />
       )}
     </>
   );

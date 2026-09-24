@@ -32,17 +32,21 @@ let io = null;
 const room = (slug, groupId) => `t:${slug}:c:${groupId}`;
 const mailRoom = (slug) => `t:${slug}:mail`;
 /**
- * One room per USER, for their own notifications.
- *
- * Notifications are the one payload here that is addressed to a person rather
- * than to a channel or a tenant, so they cannot ride `mailRoom` — that reaches
- * every authenticated socket in the tenant, and "your cash request was
- * rejected" is not everyone's business. The room is derived from the socket's
- * AUTHENTICATED user id, never from anything the client sends, so a client
- * cannot join someone else's by asking: there is no `notification:join` event
- * to ask with.
+ * One room per USER and ENVIRONMENT, for what is addressed to a person
+ * (notifications, calls). Derived from the socket's authenticated user id and
+ * env, never from anything the client sends. The env is in the name because a
+ * user's live and sandbox (training) tabs are different audiences: without it
+ * a sandbox call rang live devices (calls audit A9).
  */
-const userRoom = (slug, uid) => `t:${slug}:u:${uid}`;
+const ENVS = new Set(["live", "sandbox"]);
+const userRoom = (slug, env, uid) => `t:${slug}:${env}:u:${uid}`;
+
+/** The rooms every authenticated socket joins on connect. */
+function joinPersonalRooms(socket) {
+  const { tenantSlug, env, userId } = socket.data;
+  socket.join(mailRoom(tenantSlug));
+  if (userId && ENVS.has(env)) socket.join(userRoom(tenantSlug, env, userId));
+}
 
 /**
  * Per-process count of a user's connected sockets, keyed "<slug>:<uid>".
@@ -187,19 +191,10 @@ function initSocket(httpServer) {
   io.on("connection", (socket) => {
     const { tenantSlug, env, userId, tenant } = socket.data;
 
-    // Every authenticated socket joins its tenant's mail room, so inbound-mail
-    // notifications (published from the worker via the Redis bus) reach the
-    // Comms → Mail view live. Membership is tenant-scoped; the API still enforces
-    // per-record access when the client re-fetches.
-    socket.join(mailRoom(tenantSlug));
-
-    // …and their own notification room. Joined here rather than on request for
-    // two reasons: there is no client-supplied id to get wrong, and a user who
-    // has the app open should be told the moment something lands, not whenever
-    // the next 60-second badge poll happens to come round. That poll is what
-    // this replaces as the live path; it stays as the reconciler for a socket
-    // that was down when the notification was written.
-    if (userId) socket.join(userRoom(tenantSlug, userId));
+    // The tenant mail room (inbound-mail events) and the user's own room for
+    // their env. Joined here, not on request, so there is no client-supplied
+    // id to get wrong. The 60-second badge poll stays as the reconciler.
+    joinPersonalRooms(socket);
 
     socket.on("channel:join", async (groupId, ack) => {
       try {
@@ -270,7 +265,7 @@ function attachCallSignals(socket) {
       callRepo.otherParticipant(c, { callId, userId }),
     );
     if (!other) return;
-    publishToUser(tenantSlug, other.user_id, event, { call_id: callId, ...(extra || {}) });
+    publishToUser(tenantSlug, env, other.user_id, event, { call_id: callId, ...(extra || {}) });
   }
 
   socket.on("call:offer", ({ callId, sdp } = {}) => {
@@ -315,6 +310,7 @@ function attachCallSignals(socket) {
           actor: { user_id: userId },
           channel: typeof channel === "string" ? channel : "socket",
           tenantSlug,
+          env,
         }),
       )
       .catch(
@@ -427,17 +423,43 @@ function publish(tenantSlug, groupId, event, payload) {
 }
 
 /**
- * Emit to ONE user's notification room, on every app instance.
- *
- * Best-effort by design and silent when the socket server is not up (workers,
- * tests, a cold boot): the notification row is already committed and the badge
- * poll still reconciles, so a missed live event costs latency, never the
- * notification. That is the same contract `publish` has, and it is why neither
- * is ever awaited inside a transaction.
+ * The worker has no socket server, so it publishes through the Redis emitter
+ * onto the same channels the API's redis adapter subscribes to (calls audit
+ * A6: `call:summary_ready` from the pipeline job reached nobody). Created on
+ * first use from the shared Redis client.
  */
-function publishToUser(tenantSlug, userId, event, payload) {
-  if (!io || !tenantSlug || !userId) return;
-  io.to(userRoom(tenantSlug, userId)).emit(event, payload);
+let emitter = null;
+function getEmitter() {
+  if (!emitter) {
+    const { Emitter } = require("@socket.io/redis-emitter");
+    emitter = new Emitter(require("../config/redis").getClient());
+  }
+  return emitter;
 }
 
-module.exports = { initSocket, publish, publishToUser, isReady: () => io !== null };
+/**
+ * Emit to ONE user's room for ONE environment, on every app instance: through
+ * the socket server in the API, through the Redis emitter in the worker. `env`
+ * is required; a publish without a valid one goes nowhere rather than to the
+ * live room. Best-effort and never awaited inside a transaction: the row is
+ * committed and the badge poll reconciles, so a missed event costs latency.
+ */
+function publishToUser(tenantSlug, env, userId, event, payload) {
+  if (!tenantSlug || !userId || !ENVS.has(env)) return;
+  const target = userRoom(tenantSlug, env, userId);
+  try {
+    if (io) io.to(target).emit(event, payload);
+    else getEmitter().to(target).emit(event, payload);
+  } catch (err) {
+    logger.warn({ err, event }, "realtime: publish to user failed");
+  }
+}
+
+module.exports = {
+  initSocket,
+  publish,
+  publishToUser,
+  joinPersonalRooms,
+  isReady: () => io !== null,
+  resetEmitterForTests: () => { emitter = null; },
+};

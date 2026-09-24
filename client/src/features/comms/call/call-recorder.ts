@@ -26,10 +26,8 @@
  *      never made it, and the UI shows them; the server's own state
  *      (TRANSCRIPTION_FAILED) covers the other end of the same fact.
  *
- * The live capture (live-transcript.ts) is a SEPARATE concern with its own
- * failure mode, and it rides along with each part's upload as `live_segments`.
- * Where the recogniser is unavailable, the audio still is — and where the audio
- * is not, the words still are.
+ * The browser live capture that used to ride along with each part was removed
+ * (owner decision A-1): the uploaded audio is the only transcript source.
  */
 
 /** Close a part once it reaches this. Inside the 60–120 s window §4.5 asks for. */

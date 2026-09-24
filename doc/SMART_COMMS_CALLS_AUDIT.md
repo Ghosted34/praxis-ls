@@ -871,8 +871,13 @@ F = call UI, G = privacy, H = tests and docs.
   (per the pipeline's own header); live microphone audio goes to Google through
   the Web Speech API; STUN goes to Google. The banner says only "recorded and
   summarized". There are cross-border transfers and no processor disclosure.
+- Update (PR-1, owner decisions A-1/A-2): Web Speech is removed. Call audio now
+  goes to Groq, **and to Google (Gemini) when Groq fails** on a part.
+  Transcripts go to Google (Gemini) for the summary, and to DeepSeek **only as
+  the last resort** when Gemini is down. The disclosure below must name all
+  three.
 - Fix: list the processors in the consent text and the tenant DPA, allow
-  region-pinned vendors, and remove Web Speech (E10).
+  region-pinned vendors, and remove Web Speech (E10, done in PR-1).
 
 **G3 · MEDIUM · Transcripts and summaries are kept forever, and audio retention is broken**
 - What: text is kept indefinitely by design, with no erasure path for a data
@@ -930,8 +935,8 @@ F = call UI, G = privacy, H = tests and docs.
 
 | PR | Title prefix | Covers | Size |
 | --- | --- | --- | --- |
-| PR-1 | `fix(comms): stop phantom call notifications` | A1, A4, A5, A6, A9, A10, A11, B1, B2, B5, B10, E14 | M |
-| PR-2 | `fix(comms): rebuild the call recorder and transcription pipeline` | A2, A3, B4, B6, B7, B11–B14, C7, D3, D10, E9–E11, H1 | L |
+| PR-1 | `fix(comms): stop phantom call notifications` | A1, A4, A5, A6, A9, A10, A11, B1, B2, B5, B10, E14, plus owner decisions A-1/A-2 (which close D10, E9, E10 and C7's live-log vector) | M |
+| PR-2 | `fix(comms): rebuild the call recorder and transcription pipeline` | A2, A3, B4, B6, B7, B11–B14, C7 (prompt delimiting only), D3, E11, H1 | L |
 | PR-3 | `fix(comms): harden calls — TURN, credentials, relay, IDOR, rate limits` | B8, B9, C1–C6, C8, C10–C13, D7 | M |
 | PR-4 | `fix(comms): reliable call engine — negotiation, audio, rings` | A7, A8, E1–E8, E13 | L |
 | PR-5 | `perf(comms): scale calls and transcription across tenants` | B3, C9, D1, D2, D4–D6, D8, D9, D11, D12, E12 | L |
@@ -947,6 +952,30 @@ never reach the AI. The summary notification opens the summary. A closed tab
 ends its call. Sandbox calls stay in the sandbox.
 
 **Depends on:** this document merged to `main`.
+
+**Owner decisions (2026-09-24), done first in this PR.** They override this
+plan where the two conflict.
+
+- **A-1 · Transcription: Groq once, then Gemini. No browser fallback, no
+  retries.** Each part gets one Groq attempt (the SDK's own retries off). On
+  any Groq error the same stored part goes to Gemini once. If Gemini also
+  fails, the part fails; neither provider is retried inside the job. Gemini
+  transcribes verbatim in the language spoken (never translated), reports
+  en/fr, runs at temperature 0 with a strict JSON reply, and reuses the
+  platform `gemini` credential (env `GEMINI_API_KEY` fallback). The Gemini
+  Developer API does not accept `audio/webm`, so browser audio is converted to
+  FLAC with ffmpeg on the server. A Gemini transcript comes from the stored
+  audio, so it is certified; every transcript row records its real provider.
+  The 14010 CHECKs on `provider`/`certified` and `provenance` are dropped and
+  the closed sets are enforced in code. The browser live capture is never used
+  to build a transcript; old `browser-live` rows still render; the client no
+  longer starts the speech recogniser; `/live-log` stays for old cached
+  clients. Gemini usage is recorded through `governance.recordUsage` with
+  provider `gemini`.
+- **A-2 · Summaries: Gemini first, DeepSeek last resort.** `llm.chat` gains an
+  optional `fallbackVendor` (default: today's FALLBACK), and the call summary
+  calls it with `vendorName: "gemini", fallbackVendor: "deepseek"`. The rest
+  of Praxis AI keeps DeepSeek → Gemini.
 
 **Main files:** `src/jobs/workers.js`, `src/jobs/handlers/comms-call-record-sweep*.js`,
 `src/jobs/handlers/call-transcribe.js`,
@@ -1125,11 +1154,13 @@ migration(s), `tests/unit/smartcomm-call-records.test.js`, a new integration tes
    - Add a per-call byte cap, and reject `part_index` above the declared
      `parts`.
    - Keep one `recordingEnabled` helper that fails closed.
-6. **Remove the browser speech capture (C7, D10, E9, E10).**
-   - Delete `live-transcript.ts` from the call path, and remove the
-     `/live-log` write route.
-   - Keep reading existing `browser-live` rows, so old calls still render.
-   - Update the consent text accordingly.
+6. **The browser speech capture is already gone (PR-1, owner decision A-1).**
+   It no longer feeds the transcript and the client no longer starts it, which
+   closes D10, E9, E10 and C7's live-log vector. What is left for this PR: in
+   the summary prompt, delimit and label the spoken transcript as untrusted
+   text and cap its tokens (the rest of C7). Remove the `/live-log` write route
+   only once no supported client build still calls it. The consent-text update
+   belongs to PR-6 (G2).
 7. **Release DB connections during vendor calls (D3).** Read state in one short
    `withTenantConnection`, release it, call the provider, then write in another
    short connection.
@@ -1443,7 +1474,8 @@ day**. Both sides are transcribed separately, so that is 24,000 audio-minutes
   2. runs on **one queue of concurrency 2 for every tenant**;
   3. piles everything left over onto one midnight run;
   4. treats a provider rate limit (429) as a failure, which triggers the
-     browser fallback and then nightly reprocessing.
+     browser fallback and then nightly reprocessing. (Since PR-1 a Groq 429
+     sends that part to Gemini once instead; there is no browser fallback.)
 - At 10 tenants that becomes hours of backlog at peak, 429 storms at
   midnight, and the nightly notification loop multiplied by ten.
 
@@ -1460,7 +1492,10 @@ day**. Both sides are transcribed separately, so that is 24,000 audio-minutes
    binding one), and a per-tenant token bucket so one busy tenant cannot starve
    the others.
 3. **Priorities.** Live calls first, then finalising, then retries. A 429 waits
-   for `retry-after` and is not counted as a failure.
+   for `retry-after` and is not counted as a failure. **Conflict to resolve in
+   PR-5:** owner decision A-1 (PR-1) sends a part to Gemini on any Groq error,
+   429 included. Keep that unless the owner decides otherwise; a limiter can
+   still stop the 429s happening.
 4. **No database connection held while waiting on the provider.** Workers can
    then run 10–20 requests each without draining tenant pools.
 5. **Scale workers by queue lag.** Run transcription as its own worker
@@ -1476,10 +1511,13 @@ day**. Both sides are transcribed separately, so that is 24,000 audio-minutes
 8. **Measure the right thing.** Target: 95% of summaries ready within 2 minutes
    of hang-up. Alert on the age of the oldest job and the 429 rate, per tenant.
    Failure counts on their own are not enough.
-9. **Beyond ~50 tenants.** Add a second transcription provider as a fallback
-   (it keeps transcripts certified, unlike the browser capture). Use multiple
-   provider keys or an enterprise tier, and consider letting large tenants bring
-   their own key.
+9. **Beyond ~50 tenants.** A second transcription provider now exists (PR-1:
+   Gemini, one attempt when Groq fails; its transcripts are certified). Note
+   what that means for data: **call audio goes to Google (Gemini) whenever
+   Groq fails a part**, and summaries go to Gemini first with **DeepSeek only
+   as the last resort** (G2). Size the Gemini quota for Groq's worst hour, not
+   its average. Use multiple provider keys or an enterprise tier, and consider
+   letting large tenants bring their own key.
 
 **Cost** is priced per audio-hour. At a few cents per audio-hour (check the
 provider's current price), 400 audio-hours a day is tens of dollars a day across
@@ -1499,7 +1537,7 @@ provider's current price), 400 audio-hours a day is tens of dollars a day across
 | Client engine signalling | **Rebuild** (perfect negotiation) | ICE restart, candidate buffering and the double offer are structural. |
 | Recorder | **Rebuild** | The part model is incompatible with how browser recorders produce files. |
 | Call and ring screens | **Rebuild** | Glassmorphism, white-label breaks, overlapping layout, no minimise. |
-| Web Speech live capture | **Remove** | Privacy, Android chimes, timer leaks; not needed once A3 is fixed. |
+| Web Speech live capture | **Removed** (PR-1, A-1) | Privacy, Android chimes, timer leaks; Gemini is the fallback now. |
 | 15-second per-tenant sweep | **Replace** with per-call delayed jobs | Does not scale across tenants (D1). |
 | RNNoise filter | **Park**, default OFF | Cannot load under the current CSP; can silence iOS. Re-enable after device tests. |
 | coturn service | **Reconfigure** | Security holes and probably non-functional as written. |
@@ -1520,8 +1558,8 @@ factual. The next agent relies on them.
 
 | PR | Status | Branch | GitHub PR | Merged | Notes |
 | --- | --- | --- | --- | --- | --- |
-| Audit (this document) | OPEN | `claude/integration-audit-report-u6twc5` | #474 | — | Report, PR plan, scale design |
-| PR-1 | NOT STARTED | — | — | — | |
+| Audit (this document) | MERGED | `claude/integration-audit-report-u6twc5` | #474 | 2026-09-24 | Report, PR plan, scale design |
+| PR-1 | OPEN | `claude/magical-einstein-xqhkn1` | #476 | — | Includes owner decisions A-1 (Groq → Gemini transcription, no browser capture) and A-2 (Gemini → DeepSeek summaries) |
 | PR-2 | NOT STARTED | — | — | — | |
 | PR-3 | NOT STARTED | — | — | — | |
 | PR-4 | NOT STARTED | — | — | — | |
@@ -1552,3 +1590,159 @@ Use `BLOCKED` with a reason in Notes if you stop.
 - For PR-1: merge this document first, so the PR-1 chat can read it from
   `main`. The §0 parking SQL is optional and can be run before PR-1 ships;
   record here if it was run and on which tenants.
+
+### PR-1 · 2026-09-24 · OPEN (#476)
+- Owner decisions, done first:
+  - **A-1** Transcription is Groq once (SDK retries off), then Gemini once on
+    any Groq error; no retries in the job, no browser fallback. New
+    `src/services/ai/gemini-transcription.service.js`: native generateContent
+    on the platform `gemini` credential's host (env `GEMINI_API_KEY`
+    fallback), verbatim, en/fr reported, temperature 0, strict JSON schema.
+    The Gemini Developer API does not accept `audio/webm` (webm is
+    Vertex-only), so webm/mp4/ogg are converted to 16 kHz mono FLAC with
+    ffmpeg. Proven on a real Chromium MediaRecorder WebM/Opus fixture
+    (`tests/fixtures/audio/`). Rows record `groq` or `gemini`, both certified.
+    Gemini usage goes through `governance.recordUsage` with provider
+    `gemini`. The client no longer starts the speech recogniser;
+    `live-transcript.ts` is deleted; `/live-log` stays for old clients.
+    Closes D10, E9, E10 and C7's live-log vector. Tests:
+    `gemini-transcription.test.js`, `smartcomm-call-records.test.js`
+    ("Groq once, then Gemini once"), `transcription-platform-vendor.test.js`,
+    `call-session.test.ts` (no recogniser), `summary-draft.test.ts` (label).
+  - **A-2** `llm.chat` takes `fallbackVendor` (default FALLBACK); the call
+    summary uses gemini → deepseek. Tests: `ai-llm-fallback-vendor.test.js`,
+    `smartcomm-call-records.test.js`.
+- Fixed, each with the test that proves it:
+  - A1: cron `COMMS_CALL_RECORD_SWEEP_CRON` (`0 10 * * *`) in
+    `COMMS_CALL_RECORD_SWEEP_TZ` (Africa/Douala); boot removes every other
+    repeatable on the queue. `call-record-sweep-schedule.test.js` (BullMQ's
+    own `getNextMillis`: 09:00Z, not 00:00Z). Also checked on real
+    BullMQ + Redis: the old repeatable and its pending 00:00Z run are removed.
+  - A4: `origin` hangup | sweep through the job; only hangup notifies,
+    claimed once on `comms_call_summary.notified_at`; ops alert on a call's
+    first failure only. `smartcomm-call-records.test.js` ("notify once"),
+    `call-record-jobs.test.js`, `smartcomm-call-repo.test.js`.
+  - A5: recording off, nothing uploaded after the grace, or never connected →
+    terminal `NO_RECORDING`, before any attempt is counted; no words → no LLM.
+    `smartcomm-call-records.test.js` ("no audio, no pipeline").
+  - A6: `?ring=` for rings, `?call=` redirects to `/comms/calls/<id>` and
+    never rings; Calls list (`/comms/calls`) and the call's page
+    (`/comms/calls/:callId`, editor inline, transcript); worker socket
+    events through `@socket.io/redis-emitter`; `call:summary_ready` is a
+    toast. `ring-surface.test.ts`, `call-session.test.ts`,
+    `calls-screens.test.tsx`, `realtime-user-rooms.test.js`, e2e
+    `call.spec.ts` (old link opens the page).
+  - A9: user rooms are `t:<slug>:<env>:u:<uid>`; every publisher passes the
+    env. `realtime-user-rooms.test.js` (real emitter → real redis adapter),
+    `smartcomm-calls.test.js`, `notification-interrupt.test.js`. Also run
+    end to end on real Redis with two `socket.io-client` tabs.
+  - A10: keepalive URL from `callHangupUrl` (the same helper as
+    `hangupCall`). `smartcomm-api.test.ts` (matches the router),
+    `call-session.test.ts` (exact URL).
+  - A11: the push names the other person, a day-first time and the minutes,
+    links to the call's page, and the service worker renders it in French or
+    English. `smartcomm-call-records.test.js`,
+    `push-handler-call-summary.test.ts`.
+  - B1: 14040 drops `comms_call_end_reason_check`; the repo holds the set.
+    `smartcomm-call-repo.test.js`, `tests/integration/call-liveness.test.js`
+    (real schema, with a control that reproduces 23514).
+  - B2: `Math.max`. `smartcomm-calls.test.js`.
+  - B5: never-connected calls excluded in SQL and marked `NO_RECORDING`; a
+    governance refusal counts an attempt. `smartcomm-call-repo.test.js`,
+    `smartcomm-call-records.test.js`.
+  - B10: see deviations. `smartcomm-calls.test.js`.
+  - E14: call history exists (the Calls list uses `listCalls`).
+- Not fixed / deferred:
+  - A11 quiet hours: there is no quiet-hours mechanism in the notification
+    service. The summary push is now sent only by the hang-up run, within a
+    minute of the caller's own call, never by the sweep. A general setting
+    belongs with PR-6's do-not-disturb.
+  - E14 remainder: `getCallTurn` and `call:ringing_sent` stay unused; PR-4
+    uses them (its steps 1 and 4).
+  - A2 is PR-2's. Until then, a call whose parts land after the 20 s hang-up
+    job gets its draft from the 10:00 sweep, silently, found by its badge.
+- Deviations from §3:
+  - B10: the dead `max_duration` branch was removed, not activated. Passing
+    `reason` would let a client-sent `max_duration` record a 10 s call as
+    30:00, because the client still picks the reason until PR-3 (B9). The cap
+    end still records exactly 1800 through the clamp.
+  - A5: no audio parts means `NO_RECORDING` even if a live log exists (A-1).
+  - Step 5: the floating `CallSummaryPanel` is gone (nothing could open it
+    once the socket event became a toast). `CallSummaryEditor` is embedded in
+    `call-record.tsx`, which follows the house record pattern (page on
+    desktop, `?focus=` sheet on a phone). `call:summary_ready` toasts only for
+    an update: a first draft already arrives as a notification whose toast
+    honours the user's interrupt preference, and a second toast would ignore
+    it. The toast is text-only (`Toast` has no action slot by design); the
+    notification row and push carry the link. The page shows a draft whenever
+    one exists (`getCall` returns `draft_status`), so an old call whose only
+    words came from the browser capture keeps its draft after it becomes
+    `NO_RECORDING`.
+    The editor now uses `Field`/`Textarea`/`Segmented`/`Button`/`Callout`,
+    confirms Discard (`useConfirm`, destructive) and shows due dates with
+    `dateDmy`; the call overlay and ring screens are untouched (PR-6).
+  - Step 6: the request context gains `env`; worker jobs without one run in
+    live, so their announcements go to live rooms.
+  - A `list_comms_calls` AI read was added; `comms_call_transcript` and
+    `comms_call_summary` moved to the new `comms_call_record` screen.
+- Schema and config: migration 14040 drops `comms_call_end_reason_check`,
+  `comms_call_transcript_provider_check`, `ck_comms_call_transcript_certified`
+  and `comms_call_summary_provenance_check` (names read from `pg_constraint`),
+  adds `comms_call_summary.notified_at`, and backfills `NO_RECORDING` for
+  calls over a day old with no recording. New values: transcription state
+  `NO_RECORDING`, provider and provenance `gemini`. New env
+  `COMMS_CALL_RECORD_SWEEP_CRON` / `_TZ`. New dependency
+  `@socket.io/redis-emitter@^5.1.0`. ffmpeg is needed at runtime (already in
+  the Docker image) and in CI `build-test` (install step added).
+- New findings:
+  - Channel rooms `t:<slug>:c:<groupId>` and the tenant mail room
+    (`mail:new`, presence) have no env (`src/realtime/index.js:32-33`). If a
+    sandbox schema shares group ids with live, sandbox chat events reach live
+    sockets. Suggest PR-5 (it owns presence).
+  - `attachMailBridge` re-emits each bus message with `io.to(...)` on every
+    API replica; with the redis adapter attached that is one duplicate
+    `mail:new` per replica. Should be `io.local.to(...)`
+    (`src/realtime/index.js`, `attachMailBridge`).
+  - `GEMINI_MODEL` defaults to `gemini-1.5-pro` (`src/config/env.js:372`),
+    which Google has retired. The platform `gemini` credential must name a
+    current audio-capable model, or the Gemini fallback (and the chat
+    fallback) fails with 404.
+  - `transcriptionIssue` in `call-session.ts` is set by
+    `call:transcription_failed` and rendered nowhere.
+  - The sustained-failure alarm's subject still says calls "fell back to the
+    browser capture" (`src/services/platform/comms-metrics.service.js:372`);
+    there is no browser fallback now. PR-5 owns the metrics.
+  - Until A3 (PR-2), parts 2..N are headerless, so they fail on Groq and on
+    Gemini (ffmpeg refuses them before any request is sent). Each nightly
+    retry of such a call still costs one Groq request per failing part, up
+    to the 20-attempt cap. The §0 parking SQL is still worth running.
+- For the next PR (PR-2):
+  - Job data carries `origin` ("hangup" | "sweep"); `processCall(…, { origin })`;
+    only a non-sweep run claims `notified_at` and notifies. A finalise job
+    should notify through the same claim.
+  - `NO_RECORDING` is terminal and has no CHECK; the client type has it.
+  - Keep A-1's contract in per-part jobs: Groq once (`maxRetries: 0`), then
+    Gemini once, no retry loops. §4 notes the 429 conflict for PR-5.
+  - The browser capture removal is done; do not redo step 6 beyond the
+    prompt-delimiting half of C7.
+  - `publishToUser(slug, env, userId, event, payload)`. Worker publishes work.
+  - Client: `CallSummaryEditor` (`summary-draft.tsx`), `call-record.tsx`,
+    `calls-list.tsx`, `call-labels.ts`. `listCalls` rows carry
+    `draft_status`, `notified_at`, `summary_update_available`.
+  - The §0 parking SQL was not run by this PR.
+- Gates: `npm run ci` 47/47 passed (414 s) on `57457a0`, run alone on a clean
+  tree. Of the jobs it skips, these were run by hand: provisioning and
+  migration replay on local Postgres 16 + pgvector (re-run applied 0 files),
+  live/sandbox schema parity, AI catalogue sync + `--check` for live and
+  sandbox, `RUN_DB_TESTS=1` `tests/integration/call-liveness.test.js`, and
+  Playwright `call.spec.ts` 6/6 against a production build. Also checked by
+  hand: the repeatable removal on real BullMQ + Redis, the worker emitter →
+  redis adapter → two `socket.io-client` tabs (live/sandbox) on real Redis,
+  and the Calls list and call page in light and dark. `npm audit`: the same
+  highs as `main`, none from the new dependency. Not run: the Docker build,
+  PgBouncer, the AI golden-set eval, the full desktop layout gate. The §0
+  parking SQL was not run, and nothing here touched production.
+  A pre-existing flake seen once: `tests/db/query-columns.test.js` can hit
+  `ENOENT` on `migrations/tenant/99999_gate_probe.sql`, which
+  `tests/unit/constraint-guards.test.js` writes and deletes in the real
+  migrations directory while another jest worker reads it.

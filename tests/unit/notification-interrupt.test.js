@@ -40,9 +40,11 @@ jest.mock("../../src/realtime", () => ({
   publishToUser: (...a) => mockPublishToUser(...a),
   publish: jest.fn(),
 }));
+const mockEnv = { current: "live" };
 jest.mock("../../src/config/request-context", () => ({
   get: () => ({ requestId: "r-1" }),
   getTenant: () => "acme",
+  getEnv: () => mockEnv.current,
 }));
 
 const svc = require("../../src/modules/notification/notification.service");
@@ -98,7 +100,7 @@ describe("a user's own preference wins", () => {
       title: "Cash request approved", category: "approvals", priority: "NORMAL",
     });
     const byUser = Object.fromEntries(
-      mockPublishToUser.mock.calls.map(([, uid, , p]) => [uid, p.interrupt]),
+      mockPublishToUser.mock.calls.map(([, , uid, , p]) => [uid, p.interrupt]),
     );
     expect(byUser["u-1"]).toBe(true);
     expect(byUser["u-2"]).toBe(false);
@@ -126,8 +128,9 @@ describe("the live announcement", () => {
     // "Your cash request was rejected" is not everyone's business. The room is
     // derived server-side from the authenticated user id.
     await svc.notify(DB, { userId: "u-1", title: "Cash request rejected", category: "approvals" });
-    const [slug, userId, event, payload] = liveArgs();
+    const [slug, env, userId, event, payload] = liveArgs();
     expect(slug).toBe("acme");
+    expect(env).toBe("live");
     expect(userId).toBe("u-1");
     expect(event).toBe("notification:new");
     expect(payload).toMatchObject({ notification_id: "n-1", interrupt: true });
@@ -135,7 +138,17 @@ describe("the live announcement", () => {
 
   it("carries the link so the toast can point somewhere", async () => {
     await svc.notify(DB, { userId: "u-1", title: "New lead", entityRef: "lead:42", category: "sales" });
-    expect(liveArgs()[3].link_url).toBe("/sales/leads/42");
+    expect(liveArgs()[4].link_url).toBe("/sales/leads/42");
+  });
+
+  it("goes to the room of the environment it was written in (calls audit A9)", async () => {
+    mockEnv.current = "sandbox";
+    try {
+      await svc.notify(DB, { userId: "u-1", title: "Training approval", category: "approvals" });
+      expect(liveArgs()[1]).toBe("sandbox");
+    } finally {
+      mockEnv.current = "live";
+    }
   });
 
   it("never fails the notification when the socket layer throws", async () => {

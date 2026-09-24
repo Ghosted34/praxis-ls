@@ -1,54 +1,22 @@
 /**
- * Smart Comms calls — the BRAIN (PR-2, guide §4.5 / §4.9 / §4.10).
- *
- * Everything that happens to a call after it ends lives here: the recorded parts
- * are transcribed part by part with NO forced language, the attributed
- * transcript is assembled, the summary draft is written into the CALLER's app
+ * Smart Comms calls: everything that happens to a call after it ends. The
+ * recorded parts are transcribed with no forced language, the attributed
+ * transcript is assembled, the summary draft is written in the caller's app
  * language, and the caller is told it is ready.
  *
- * ── THE TRANSCRIPT-NEVER-DIES CHAIN, IN CODE ───────────────────────────────
+ * Transcription, per part (owner decision A-1): Groq once; on any Groq error,
+ * the same part goes to Gemini once. Nothing is retried inside a job. If both
+ * fail the part fails and its side has no transcript for this run (never a
+ * mixture of transcribed and missing parts). Both providers work from the
+ * stored audio, so both produce certified rows, and each row names its real
+ * provider. The browser live capture is never used to build a transcript;
+ * old calls keep their `browser-live` rows and still render them.
  *
- *   1. per side, per 60–120 s part: `transcription.service.transcribe` with
- *      `detectLanguage` and no hint (row 7). Three attempts per part, backoff
- *      between them; the vendor's own language answer is stored on the part.
- *   2. ALL PARTS OK  → transcript rows, provider 'groq', certified TRUE.
- *      ANY PART FAILS → the WHOLE SIDE falls back (step 3). A transcript with a
- *      hole in it is worse than a complete flagged one: a reader cannot tell
- *      which sentences are missing.
- *   3. FALLBACK: the side's live capture (§4.9) becomes transcript rows
- *      covering the SAME part spans, provider 'browser-live', certified FALSE.
- *      The call goes TRANSCRIPTION_FAILED — visible in the call record, alerted
- *      to ops, and picked up by the daily reprocess.
- *   4. REPROCESS (this file, re-entered by the sweep): the certified rows land,
- *      the flagged rows are RETIRED (never deleted — what the caller was told at
- *      the time is part of the record), and the draft is regenerated only while
- *      it is still PENDING_REVIEW. A SENT summary is never rewritten: the caller
- *      is OFFERED an optional update message instead.
- *   5. SUMMARY: `llm.service` (DeepSeek → Gemini). Down → the draft IS the
- *      attributed transcript, provenance 'transcript-only', labelled in the UI
- *      as "summary unavailable — provider down". Still sendable. The transcript
- *      exists either way — that is the guarantee.
+ * Summary (owner decision A-2): Gemini first, DeepSeek as the last resort. If
+ * neither answers, the attributed transcript is the draft ('transcript-only').
  *
- * The ONLY no-transcript state that exists is Groq down AND no browser
- * recogniser AND the upload failed. It is not silent: the call record says
- * TRANSCRIPTION_FAILED with the reason, both ends are told over the socket, ops
- * is alerted, and the reprocess keeps trying.
- *
- * ── PROVENANCE IS LAW ──────────────────────────────────────────────────────
- *
- * A 'browser-live' summary is visibly labelled "generated from the in-call
- * browser capture (unverified)". Certified rows are always provider-produced
- * from the vaulted bytes (the CHECK constraint in migration 14010 makes that
- * true in the schema, not merely here). Browser words are never certified into
- * the record — the standing rule from chat/browser-transcribe.ts.
- *
- * ── NO AUTO-POST PATH ─────────────────────────────────────────────────────
- *
- * Nothing in this file writes a chat message except `sendSummary`, which
- * requires the CALLER as the actor and a draft the caller has reviewed. There is
- * no scheduled, no automatic and no "helpful" variant. That is decision row 3,
- * and it is why `sendSummary` is the only function here that touches
- * `comms_message` at all.
+ * Nothing here posts to a conversation except `sendSummary`, which needs the
+ * caller as the actor (decision row 3).
  */
 "use strict";
 
@@ -56,10 +24,12 @@ const crypto = require("crypto");
 const { callSummary } = require("@praxis/shared");
 const storage = require("../../services/storage.service");
 const transcription = require("../../services/ai/transcription.service");
+const geminiTranscription = require("../../services/ai/gemini-transcription.service");
 const llm = require("../../services/ai/llm.service");
 const governance = require("../ai/governance/governance.service");
 const alerts = require("../../services/platform/alert-routing.service");
 const repo = require("./smartcomm.call.repo");
+const { CERTIFIED_PROVIDERS } = require("./smartcomm.call.vocab");
 const events = require("./smartcomm.events");
 const { emitEvent, audit, resolveActorId } = require("../../shared/events/emit");
 const { AppError } = require("../../utils/errors");
@@ -70,10 +40,6 @@ const { logger } = require("../../config/logger");
 const SIDES = ["caller", "callee"];
 /** D6: two languages, no free-text field. */
 const DRAFT_LANGUAGES = ["en", "fr"];
-/** 3 attempts per part (§4.5 step 2). */
-const PART_RETRIES = 3;
-/** Between attempts. Short: the job already has BullMQ's own backoff on top. */
-const RETRY_BACKOFF_MS = 800;
 /**
  * How long the pipeline waits for a side's uploads before deciding they are not
  * coming. Uploads fire at hang-up and the last one re-enqueues immediately, so
@@ -133,80 +99,6 @@ function isPipelineEligible(call) {
 }
 
 /**
- * The part spans of a side, as [startMs, endMs) windows.
- *
- * Derived from the parts' own durations rather than from wall-clock times:
- * a part boundary IS the language boundary (row 7), and the live capture's
- * timestamps are relative to the side's recording start, so this is the only
- * arithmetic that lets a segment be attributed to the span it belongs to.
- */
-function partSpans(parts) {
-  let at = 0;
-  return parts.map((p) => {
-    const start = at;
-    at += Math.max(0, Number(p.duration_seconds) || 0) * 1000;
-    return { partIndex: p.part_index, startMs: start, endMs: at };
-  });
-}
-
-/**
- * Group a side's live-capture segments into the part spans they belong to.
- *
- * A segment that straddles a boundary is attributed to the span containing its
- * MIDPOINT — the recogniser's segment is a sentence-ish chunk, and splitting one
- * across two spans would be a word cut in half. A segment with no timestamps
- * (an old client, a recogniser that never reported an offset) is appended to the
- * LAST span, which keeps the text rather than discarding words the fallback is
- * going to need.
- */
-function groupSegmentsByPart(segments, spans) {
-  const buckets = new Map(spans.map((s) => [s.partIndex, []]));
-  if (!spans.length) return buckets;
-  const last = spans[spans.length - 1];
-  for (const seg of segments) {
-    const start = Number.isFinite(Number(seg.started_ms)) ? Number(seg.started_ms) : null;
-    const end = Number.isFinite(Number(seg.ended_ms)) ? Number(seg.ended_ms) : start;
-    if (start === null) {
-      buckets.get(last.partIndex).push(seg);
-      continue;
-    }
-    const mid = (start + (end === null ? start : end)) / 2;
-    const span = spans.find((s) => mid >= s.startMs && mid < s.endMs) || last;
-    buckets.get(span.partIndex).push(seg);
-  }
-  return buckets;
-}
-
-/**
- * The fallback rows for ONE side (§4.5 step 3): the live capture, cut along the
- * recorded part spans, one row per span.
- *
- * `language` is the recogniser's language — the app language of the side that
- * ran it (the two recognisers cannot run in one browser, and the fallback is
- * therefore strong in that language and best-effort in the other; that is why
- * it is flagged). A span with no words at all still produces a row with an empty
- * text: "this span was captured and contained nothing" is honest information,
- * and it is also what lets the caller see the SHAPE of what was lost.
- */
-function fallbackRowsForSide({ side, parts, segments, language }) {
-  const spans = partSpans(parts);
-  const buckets = groupSegmentsByPart(segments, spans);
-  return spans.map((span) => {
-    const segs = buckets.get(span.partIndex) || [];
-    const text = segs.map((s) => String(s.text || "").trim()).filter(Boolean).join(" ").trim();
-    const rowLanguage = segs.find((s) => DRAFT_LANGUAGES.includes(s.language))?.language || language;
-    return {
-      side,
-      partIndex: span.partIndex,
-      text,
-      language: DRAFT_LANGUAGES.includes(rowLanguage) ? rowLanguage : "en",
-      provider: "browser-live",
-      certified: false,
-    };
-  });
-}
-
-/**
  * The attributed transcript (guide §4.2): `Caller:` then `Callee:`, each in part
  * order, each part carrying its detected language.
  *
@@ -250,19 +142,25 @@ function buildAttributedTranscript({ rows, names = {} }) {
 }
 
 /**
- * What the draft is WORTH (§4.10 / the UI labels).
+ * Where a transcript's words came from, for the UI label.
  *
- *   groq             every current transcript row is certified
- *   browser-live     at least one side fell back to the in-call capture
- *   transcript-only  the LLM was down and the transcript IS the draft
- *
- * The LLM being down outranks the transcript's provenance: the sentence the
- * caller needs to read is "summary unavailable — provider down", and burying it
- * under a provenance note about audio would be the wrong headline.
+ *   browser-live  any current row is from the in-call capture (old calls only)
+ *   gemini        certified, and at least one part went to Gemini
+ *   groq          certified, every part from Groq
  */
-function provenanceOf({ llmOk, certified }) {
-  if (!llmOk) return "transcript-only";
-  return certified ? "groq" : "browser-live";
+function transcriptProvenance(rows) {
+  if (rows.some((r) => r.certified !== true)) return "browser-live";
+  return rows.some((r) => r.provider === "gemini") ? "gemini" : "groq";
+}
+
+/**
+ * What the draft is worth. The LLM being down (or there being no words to
+ * summarise) outranks the transcript's provenance: the sentence the caller
+ * needs is "summary unavailable".
+ */
+function provenanceOf({ llmOk, rows }) {
+  if (!llmOk || !rows.length) return "transcript-only";
+  return transcriptProvenance(rows);
 }
 
 /** The prompt (§4.10). Exported so the language rules are testable as text. */
@@ -299,9 +197,10 @@ function summaryPrompt({ transcript, meta }) {
 }
 
 /* ── Realtime (best-effort, exactly like the call state machine's) ────────── */
-function rtToUser(userId, event, payload, slugOverride) {
-  const slug = slugOverride || requestContext.getTenant();
-  if (slug && userId) realtime.publishToUser(slug, userId, event, payload);
+function rtToUser(userId, event, payload, { slug = null, env = null } = {}) {
+  const tenant = slug || requestContext.getTenant();
+  const scope = env || requestContext.getEnv();
+  if (tenant && userId) realtime.publishToUser(tenant, scope, userId, event, payload);
 }
 
 /** Is the recording half of calls switched on for this tenant? The tenant
@@ -399,9 +298,9 @@ async function registerPart(client, {
   return part;
 }
 
-/** Normalise the live capture the client uploads (§4.9). Anything malformed is
- *  dropped rather than failing the upload: the audio is the side's real
- *  material, and the live log is the fallback behind it. */
+/** Normalise a live-capture body from an old cached client. Stored for the
+ *  record only, never used to build a transcript (owner decision A-1).
+ *  Anything malformed is dropped rather than failing the request. */
 function normaliseSegments(raw, fallbackLanguage) {
   let list = raw;
   if (typeof raw === "string") {
@@ -439,8 +338,8 @@ function normaliseSegments(raw, fallbackLanguage) {
 }
 
 /**
- * The browser live capture, uploaded at hang-up (both the audio upload's
- * companion body and, on a retry, on its own).
+ * The retired browser live capture, still accepted from old cached clients so
+ * their uploads do not fail. Nothing reads it to build a transcript.
  */
 async function registerLiveLog(client, { callId, actor, side, segments, language = null }) {
   const { side: mine } = await participantCall(client, callId, actor.user_id);
@@ -466,60 +365,55 @@ async function participantNames(client, call) {
   return { caller: byId.get(call.caller_id) || null, callee: byId.get(call.callee_id) || null };
 }
 
-/** The per-part attempt loop: 3 tries, backoff between them, no forced
- *  language, and the vendor's own detected language carried out. */
+const errText = (err) => String((err && err.message) || err || "failed").slice(0, 200);
+
+/**
+ * One part, one Groq attempt, then one Gemini attempt (owner decision A-1).
+ * No language hint (row 7): a hint forces a code-switched call into one
+ * language, and Whisper's failure mode is a fluent translation.
+ */
 async function transcribePart({ part, vendor }) {
-  let lastError = null;
   let audio;
   try {
     audio = await storage.get(part.vault_ref);
   } catch (err) {
-    // The bytes are gone or unreadable: retrying the provider will not help,
-    // so this is a hard failure for the part, said plainly.
+    // The bytes are gone: no provider can help, so no provider is called.
     logger.warn({ err, recording_id: part.recording_id }, "call: part bytes unreadable");
-    return { ok: false, error: "recording unreadable" };
+    return { ok: false, attempts: 0, error: "recording unreadable" };
   }
-  for (let attempt = 1; attempt <= PART_RETRIES; attempt += 1) {
-    try {
-      const out = await transcription.transcribe({
-        audio,
-        mimeType: part.media_type,
-        // NO language hint: row 7 — per-part auto-detect, and a hint would
-        // force a code-switched call into one language (or, worse, translate
-        // it silently — see transcription.service.js's own warning).
-        language: null,
-        vendor,
-        detectLanguage: true,
-      });
-      return { ok: true, result: out };
-    } catch (err) {
-      lastError = err;
-      logger.warn(
-        { err, recording_id: part.recording_id, attempt, of: PART_RETRIES },
-        "call: part transcription attempt failed",
-      );
-      if (attempt < PART_RETRIES) {
-        await delay(RETRY_BACKOFF_MS * 2 ** (attempt - 1));
-      }
-    }
+  let groqError;
+  try {
+    const out = await transcription.transcribe({
+      audio,
+      mimeType: part.media_type,
+      language: null,
+      vendor,
+      detectLanguage: true,
+      maxRetries: 0,
+    });
+    return { ok: true, attempts: 1, result: { ...out, provider: "groq" } };
+  } catch (err) {
+    groqError = err;
+    logger.warn({ err, recording_id: part.recording_id }, "call: groq failed; trying gemini once");
   }
-  return { ok: false, error: (lastError && lastError.message) || "transcription failed" };
+  try {
+    const out = await geminiTranscription.transcribe({ audio, mimeType: part.media_type });
+    return { ok: true, attempts: 2, result: out };
+  } catch (err) {
+    logger.warn({ err, recording_id: part.recording_id }, "call: gemini failed too; the part fails");
+    return { ok: false, attempts: 2, error: `groq: ${errText(groqError)}; gemini: ${errText(err)}` };
+  }
 }
 
-const delay = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
-
 /**
- * ONE side, part by part. Returns either the certified rows or the flagged
- * fallback rows — never a mixture (§4.5 step 2).
+ * One side, part by part. Returns every part's certified rows, or no rows and
+ * the reason: a side with a hole is not certified, and nothing fills the hole.
  */
 async function transcribeSide(client, {
-  side, parts, segments, vendor, language, userId, conversationId,
+  side, parts, vendor, language, userId, conversationId,
 }) {
   const mine = parts.filter((p) => p.side === side).sort((a, b) => a.part_index - b.part_index);
   if (!mine.length) {
-    // No audio for this side at all. That is not a transcription failure
-    // (nothing was there to transcribe) — it is the one visible hole, and the
-    // caller of this function says so out loud.
     return { side, certified: false, rows: [], reason: "no recording was uploaded for this side" };
   }
 
@@ -527,20 +421,17 @@ async function transcribeSide(client, {
   for (const part of mine) {
     const outcome = await transcribePart({ part, vendor });
     if (!outcome.ok) {
-      // The WHOLE side falls back. Marking only this part and keeping the rest
-      // would leave a transcript that reads as complete and is not.
       await repo.setPartResult(client, {
         recordingId: part.recording_id,
         status: "FAILED",
         language: null,
         error: outcome.error,
-        attempts: Number(part.attempts || 0) + PART_RETRIES,
+        attempts: Number(part.attempts || 0) + outcome.attempts,
       });
-      const flagged = fallbackRowsForSide({ side, parts: mine, segments, language });
       return {
         side,
         certified: false,
-        rows: flagged,
+        rows: [],
         reason: `part ${part.part_index} could not be transcribed (${outcome.error})`,
       };
     }
@@ -551,19 +442,21 @@ async function transcribeSide(client, {
       status: "OK",
       language: detected,
       error: null,
-      attempts: Number(part.attempts || 0) + 1,
+      attempts: Number(part.attempts || 0) + outcome.attempts,
     });
-    // D9: voice-to-text is voice-to-text — the call pipeline bills the same
-    // `voice` line the voice notes do, so a tenant's spend has one home.
+    // D9: the call pipeline bills the same `voice` line as voice notes.
     await recordVoiceUsage(client, {
-      userId, conversationId, seconds: outcome.result.audio_seconds, provider: outcome.result.provider,
+      userId,
+      conversationId,
+      result: outcome.result,
+      fallbackSeconds: Number(part.duration_seconds) || 0,
     });
     rows.push({
       side,
       partIndex: Number(part.part_index),
       text: String(outcome.result.text || "").trim(),
       language: detected,
-      provider: "groq",
+      provider: outcome.result.provider,
       certified: true,
     });
   }
@@ -572,39 +465,57 @@ async function transcribeSide(client, {
 
 /** Usage recording is bookkeeping: a failure to record it must not fail the
  *  transcription that has ALREADY happened and been paid for. */
-async function recordVoiceUsage(client, { userId, conversationId, seconds, provider }) {
+async function recordVoiceUsage(client, { userId, conversationId, result, fallbackSeconds }) {
+  const usage = result.usage || {};
   try {
     await governance.recordUsage(client, {
       userId,
       featureKey: "voice",
       conversationId,
-      provider: provider || "groq",
+      provider: result.provider || "groq",
+      model: result.model || null,
       callType: "transcribe",
-      audioSeconds: seconds || 0,
+      audioSeconds: result.audio_seconds || fallbackSeconds || 0,
+      inputTokens: usage.promptTokenCount || 0,
+      outputTokens: usage.candidatesTokenCount || 0,
     });
   } catch (err) {
     logger.warn({ err }, "call: recording voice usage failed");
   }
 }
 
+/** Statuses a call cannot leave. RINGING and IN_CALL are the only live ones. */
+const TERMINAL_STATUSES = new Set(["ENDED", "FAILED", "NO_ANSWER", "CANCELLED", "DECLINED", "BUSY"]);
+
+/** A terminal state for a call with nothing to transcribe (audit A5): no LLM,
+ *  no alert, no notification, and never selected by the sweep again. */
+async function markNoRecording(client, callId, reason) {
+  await repo.setTranscriptionState(client, { callId, state: "NO_RECORDING", error: null });
+  return { skipped: "no_recording", reason };
+}
+
 /**
- * The job body (§4.5, steps 2–5).
- *
- * Idempotent by state, not by luck: a call already CERTIFIED with a draft is
- * left alone; a call mid-PROCESSING is skipped while that run is alive; and
- * every write is keyed on the call. Two enqueues (the hang-up and the last
- * upload) therefore cost one pipeline run, which is why the queue de-duplicates
- * on the call id as well.
+ * The job body. `origin` is "hangup" (the job enqueued when the call ended) or
+ * "sweep" (the daily reprocess). A sweep run never notifies anyone: no push, no
+ * in-app row, no socket event (audit A4). Idempotent by state: a CERTIFIED call
+ * with a draft, a NO_RECORDING call and a live PROCESSING run are left alone.
  */
-async function processCall(client, { callId, tenantMeta = null, env = "live", user = null, slug = null }) {
-  // The tenant slug decides whether a socket message and the ops alert can be
-  // addressed at all, and it arrives by two different routes (the job passes
-  // tenantMeta, a request passes req.tenant). Deriving it here means neither
-  // caller can accidentally produce a silent notification by forgetting one.
+async function processCall(client, {
+  callId, tenantMeta = null, env = "live", user = null, slug = null, origin = "hangup",
+}) {
   const tenant = slug || (tenantMeta && tenantMeta.slug) || null;
+  // Where realtime events go: this tenant, and this call's env (audit A9).
+  const rt = { slug: tenant, env };
+  const announce = origin !== "sweep";
   const call = await repo.findCall(client, callId);
   if (!call) return { skipped: "missing" };
-  if (!isPipelineEligible(call)) return { skipped: "not_ended", status: call.status };
+  if (call.transcription_state === "NO_RECORDING") return { skipped: "no_recording" };
+  if (!isPipelineEligible(call)) {
+    // A call that never connected has no audio. Marking it keeps it out of
+    // the sweep's oldest-first window for good (audit B5).
+    if (TERMINAL_STATUSES.has(call.status)) return markNoRecording(client, callId, "never_connected");
+    return { skipped: "not_ended", status: call.status };
+  }
 
   if (call.transcription_state === "PROCESSING" && call.transcription_updated_at
       && Date.now() - Date.parse(call.transcription_updated_at) < PROCESSING_STALE_MS) {
@@ -615,43 +526,43 @@ async function processCall(client, { callId, tenantMeta = null, env = "live", us
     return { skipped: "certified", summary_status: existingSummary.draft_status };
   }
 
-  // The governance gate (D9 / §3.2). A refusal is an ANSWER, not an error: it
-  // is recorded on the call with its reason, so the caller sees "transcript
-  // being retried" rather than a spinner, and the daily reprocess re-tries when
-  // the plan or the budget allows it again.
+  // No audio, no pipeline (audit A5), decided before any attempt is counted.
+  if (!(await recordingEnabled(client))) return markNoRecording(client, callId, "recording_off");
+  const parts = await repo.listRecordingParts(client, callId);
+  const withinGrace = call.ended_at
+    && Date.now() - Date.parse(call.ended_at) < UPLOAD_GRACE_MS;
+  // A side with nothing uploaded yet may still be flushing. The hang-up
+  // enqueue is delayed for that; the daily sweep catches what it leaves.
+  const missing = SIDES.filter((side) => !parts.some((p) => p.side === side));
+  if (missing.length && withinGrace) {
+    return { waiting: true, missing, ended_at: call.ended_at };
+  }
+  if (!parts.length) return markNoRecording(client, callId, "no_parts");
+
+  // The governance gate (D9). A refusal is recorded on the call and counted as
+  // an attempt, so the daily retry of a refused call is bounded too.
   const gate = await governance.canUseFeature(client, {
     userId: call.caller_id,
     featureKey: "calls",
   });
   if (!gate.allowed) {
+    await repo.bumpTranscriptionAttempts(client, callId);
     await repo.setTranscriptionState(client, {
       callId,
       state: "TRANSCRIPTION_FAILED",
       error: gate.reason || "Call transcription is not available on this plan right now",
     });
-    rtToUser(call.caller_id, "call:transcription_failed", {
-      call_id: callId, reason: gate.reason || "unavailable",
-    }, tenant);
-    rtToUser(call.callee_id, "call:transcription_failed", {
-      call_id: callId, reason: gate.reason || "unavailable",
-    }, tenant);
+    if (announce) {
+      const payload = { call_id: callId, reason: gate.reason || "unavailable" };
+      rtToUser(call.caller_id, "call:transcription_failed", payload, rt);
+      rtToUser(call.callee_id, "call:transcription_failed", payload, rt);
+    }
     return { blocked: true, reason: gate.reason };
   }
 
-  const parts = await repo.listRecordingParts(client, callId);
-  const liveRows = await repo.listLiveLog(client, { callId });
   const names = await participantNames(client, call);
   const draftLanguage = DRAFT_LANGUAGES.includes(call.summary_language) ? call.summary_language : "en";
-
-  // Nothing uploaded yet for a side that the client said it would upload. The
-  // hang-up enqueue is deliberately delayed and the last upload re-triggers the
-  // job; the daily sweep catches anything this leaves behind.
-  const missing = SIDES.filter((s) => !parts.some((p) => p.side === s));
-  const withinGrace = call.ended_at
-    && Date.now() - Date.parse(call.ended_at) < UPLOAD_GRACE_MS;
-  if (missing.length && withinGrace && !liveRows.length) {
-    return { waiting: true, missing, ended_at: call.ended_at };
-  }
+  const firstFailure = call.transcription_state !== "TRANSCRIPTION_FAILED";
 
   await repo.bumpTranscriptionAttempts(client, callId);
   await repo.setTranscriptionState(client, { callId, state: "PROCESSING" });
@@ -667,26 +578,21 @@ async function processCall(client, { callId, tenantMeta = null, env = "live", us
 
   const perSide = {};
   for (const side of SIDES) {
-    const segments = liveRows.filter((r) => r.side === side);
     perSide[side] = await transcribeSide(client, {
       side,
       parts,
-      segments,
       vendor,
       language: draftLanguage,
       userId: call.caller_id,
       conversationId: null,
     });
     if (perSide[side].rows.length) {
-      // Certified rows land FIRST, then the flagged ones are retired — so a
-      // reader never sees a moment with no current rows, and a crash between
-      // the two leaves the certified set current, which is the safe direction.
+      // Certified rows land first, then an old call's browser-capture rows are
+      // retired, so a reader never sees a moment with no current rows.
       await repo.insertTranscriptRows(client, {
         callId, side, rows: perSide[side].rows,
       });
-      if (perSide[side].certified) {
-        await repo.retireFlaggedRows(client, { callId, side });
-      }
+      await repo.retireFlaggedRows(client, { callId, side });
     }
   }
 
@@ -716,13 +622,14 @@ async function processCall(client, { callId, tenantMeta = null, env = "live", us
   });
 
   if (!allCertified) {
-    // Visible on both ends, alerted to ops, and retried by the sweep. This is
-    // the ONE failure path of the never-dies guarantee, so it is the loudest
-    // thing in this file.
-    const payload = { call_id: callId, reason: failures.join(" · ").slice(0, 200) };
-    rtToUser(call.caller_id, "call:transcription_failed", payload, tenant);
-    rtToUser(call.callee_id, "call:transcription_failed", payload, tenant);
-    await raiseOpsAlert({ call, failures, tenantMeta, env });
+    // Visible on both ends and retried by the sweep. Ops hears about a call's
+    // FIRST failure only, not every nightly re-run of it (audit A4).
+    if (announce) {
+      const payload = { call_id: callId, reason: failures.join(" · ").slice(0, 200) };
+      rtToUser(call.caller_id, "call:transcription_failed", payload, rt);
+      rtToUser(call.callee_id, "call:transcription_failed", payload, rt);
+    }
+    if (firstFailure) await raiseOpsAlert({ call, failures, tenantMeta, env });
   }
 
   // ── The summary draft ──
@@ -740,19 +647,20 @@ async function processCall(client, { callId, tenantMeta = null, env = "live", us
   }
 
   const drafted = await draftSummary(client, {
-    call, names, transcript: credited, language: draftLanguage, everyRowCertified, failures,
+    call, names, transcript: credited, rows: current, language: draftLanguage, failures,
   });
 
   if (existingSummary && existingSummary.draft_status === "SENT") {
-    // §4.5 step 3: a SENT summary is NEVER rewritten. The caller is offered an
-    // optional update — and only when the record actually improved.
-    const improved = everyRowCertified && existingSummary.provenance !== "groq";
-    const contentChanged = drafted.provenance === "groq" && existingSummary.provenance !== "groq";
-    if (improved || contentChanged) {
+    // A SENT summary is never rewritten. The caller is offered an optional
+    // update, and only when the record went from unverified to certified.
+    const improved = everyRowCertified && !CERTIFIED_PROVIDERS.includes(existingSummary.provenance);
+    if (improved) {
       await repo.markUpdateAvailable(client, callId);
-      rtToUser(call.caller_id, "call:summary_ready", {
-        call_id: callId, status: "UPDATE_AVAILABLE", provenance: drafted.provenance,
-      }, tenant);
+      if (announce) {
+        rtToUser(call.caller_id, "call:summary_ready", {
+          call_id: callId, status: "UPDATE_AVAILABLE", provenance: drafted.provenance,
+        }, rt);
+      }
     }
     return {
       call_id: callId,
@@ -776,7 +684,11 @@ async function processCall(client, { callId, tenantMeta = null, env = "live", us
     entityRef: cref(callId),
     actorUserId: null,
   });
-  await notifySummaryReady(client, { call, summary: stored, slug: tenant });
+  // Notify once per call (audit A4): the claim on notified_at is atomic, and a
+  // sweep run never claims, so a sweep-made draft waits in the Calls list.
+  if (announce && await repo.claimSummaryNotification(client, callId)) {
+    await notifySummaryReady(client, { call, summary: stored, names, rt });
+  }
 
   logger.info(
     { callId, state: stored ? "ready" : "none", provenance: drafted.provenance, language: drafted.language },
@@ -791,23 +703,21 @@ async function processCall(client, { callId, tenantMeta = null, env = "live", us
 }
 
 /**
- * Ops alert for the one visible failure path (§4.5 step 3).
- *
- * Never throws: an alerting failure must not be able to turn a degraded call
- * into a failed job, because that would lose the retry too.
+ * Ops alert for a call's first transcription failure. Never throws: an
+ * alerting failure must not turn a degraded call into a failed job.
  */
 async function raiseOpsAlert({ call, failures, tenantMeta, env = "live" }) {
   try {
     await alerts.raise({
       event: "comms.transcription_failed",
-      subject: `Call transcript fell back to the browser capture (${failures[0] || "reason unknown"})`,
+      subject: `Call transcript failed on Groq and Gemini (${failures[0] || "reason unknown"})`,
       detail: {
         env,
         call_id: call.call_id,
         caller_id: call.caller_id,
         callee_id: call.callee_id,
         failures,
-        note: "The flagged transcript is live and the caller has a draft. The daily reprocess retries the certified version.",
+        note: "The call is TRANSCRIPTION_FAILED. The daily reprocess retries it and notifies nobody.",
       },
       tenant: (tenantMeta && tenantMeta.slug) || requestContext.getTenant() || null,
     });
@@ -825,7 +735,18 @@ async function raiseOpsAlert({ call, failures, tenantMeta, env = "live" }) {
  * down". Still sendable: the caller gets the words they said, which is the
  * whole point of the guarantee.
  */
-async function draftSummary(client, { call, names, transcript, language, everyRowCertified, failures }) {
+async function draftSummary(client, { call, names, transcript, rows, language, failures }) {
+  // No words, no summary: asking the model anyway is how "(no words were
+  // captured)" became a confident summary of a call (audit A5).
+  if (!rows.length) {
+    return {
+      provenance: "transcript-only",
+      language,
+      summary_text: `No speech was captured for this call (${failures.join(" · ") || "no transcript"}).`,
+      key_points: [],
+      follow_ups: [],
+    };
+  }
   const prompt = summaryPrompt({
     transcript: transcript.text,
     meta: {
@@ -846,6 +767,9 @@ async function draftSummary(client, { call, names, transcript, language, everyRo
       ],
       responseFormat: { type: "json_object" },
       temperature: 0.2,
+      // Owner decision A-2: Gemini first, DeepSeek only as the last resort.
+      vendorName: "gemini",
+      fallbackVendor: "deepseek",
     });
   } catch (err) {
     logger.warn({ err, callId: call.call_id }, "call: summary LLM call threw");
@@ -866,7 +790,7 @@ async function draftSummary(client, { call, names, transcript, language, everyRo
       logger.warn({ err, callId: call.call_id }, "call: summary usage recording failed");
     }
     return {
-      provenance: provenanceOf({ llmOk: true, certified: everyRowCertified }),
+      provenance: provenanceOf({ llmOk: true, rows }),
       language,
       summary_text: parsed.summary,
       // VERBATIM: stored exactly as the model returned them (only trimmed), in
@@ -878,7 +802,7 @@ async function draftSummary(client, { call, names, transcript, language, everyRo
   }
 
   return {
-    provenance: provenanceOf({ llmOk: false, certified: everyRowCertified }),
+    provenance: provenanceOf({ llmOk: false, rows }),
     language,
     summary_text: transcript.text
       || `No speech was captured for this call (${failures.join(" · ") || "no transcript"}).`,
@@ -902,24 +826,59 @@ async function recordSummaryUsage(client, { call, out }) {
   });
 }
 
-/** The caller hears it: socket (live badge), then the notification fan-out
- *  (in-app row + push per preference, §4.5 step 5). Best-effort by design —
- *  the draft is already stored, and a push failure must not lose it. */
-async function notifySummaryReady(client, { call, summary, slug = null }) {
+/** "24/09/2026" and "14:05" in the tenant's timezone (hr.timezone), day-first. */
+function dayFirst(iso, timeZone) {
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return null;
+  const date = new Intl.DateTimeFormat("en-GB", {
+    timeZone, day: "2-digit", month: "2-digit", year: "numeric",
+  }).format(at);
+  const time = new Intl.DateTimeFormat("en-GB", {
+    timeZone, hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+  }).format(at);
+  return { date, time };
+}
+
+/**
+ * Tell the caller (socket + one notification with its push). The copy names
+ * the other person, a day-first time and the duration (audit A11); the service
+ * worker re-renders it in the device's language from `pushData`. Best-effort:
+ * the draft is already stored, and a failed push must not lose it.
+ */
+async function notifySummaryReady(client, { call, summary, names, rt = {} }) {
   rtToUser(call.caller_id, "call:summary_ready", {
     call_id: call.call_id,
     status: summary.draft_status,
     provenance: summary.provenance,
-  }, slug);
+  }, rt);
   try {
+    const { timezoneOf } = require("../hr/attendance/attendance.reconcile");
+    const when = call.ended_at ? dayFirst(call.ended_at, await timezoneOf(client)) : null;
+    const peer = (names && names.callee) || null;
+    const minutes = Number(call.duration_seconds) > 0
+      ? Math.max(1, Math.round(Number(call.duration_seconds) / 60))
+      : null;
+    const body = [
+      peer ? `Your call with ${peer}` : "Your call",
+      when ? ` on ${when.date} at ${when.time}` : "",
+      minutes ? ` (${minutes} min)` : "",
+      ". Review and send the summary.",
+    ].join("");
     await require("../notification/notification.service").notifyMany(client, [call.caller_id], {
       eventTypeKey: "comms.call_summary_ready",
       title: "Call summary ready",
-      body: "Review and send the summary of your call.",
+      body,
       entityRef: cref(call.call_id),
       category: "comms",
-      url: `/comms?call=${call.call_id}`,
+      url: `/comms/calls/${call.call_id}`,
       pushTag: `comms:call:${call.call_id}`,
+      pushData: {
+        kind: "call_summary",
+        call_id: call.call_id,
+        peer_name: peer,
+        ended_at: call.ended_at || null,
+        duration_seconds: Number(call.duration_seconds) || null,
+      },
     });
   } catch (err) {
     /* @silent:storage|parse|teardown */
@@ -930,20 +889,19 @@ async function notifySummaryReady(client, { call, summary, slug = null }) {
 /* ── Starting the pipeline ──────────────────────────────────────────────── */
 
 /**
- * Enqueue the transcription of one call. Called on the ENDED transition and
- * again when a side finishes uploading; the queue de-duplicates on the call id,
- * so the second call is a no-op while the first is in flight.
- *
- * `delayMs` exists for the ENDED enqueue specifically: the moment a call ends,
- * the clients are still flushing their parts, and a pipeline that starts
- * immediately would find no audio and (correctly, but uselessly) fall back.
+ * Enqueue the transcription of one call: from the ENDED transition (origin
+ * "hangup", delayed while the clients flush their parts) and from the daily
+ * sweep (origin "sweep", which never notifies). The queue de-duplicates on the
+ * call id. Nothing re-enqueues from the upload path yet (audit A2, PR-2).
  */
-async function startPipeline({ callId, tenantMeta = null, env = "live", user = null, delayMs = 0 }) {
+async function startPipeline({
+  callId, tenantMeta = null, env = "live", user = null, delayMs = 0, origin = "hangup",
+}) {
   if (!callId) return null;
   try {
     const { enqueue } = require("../../jobs/queue-producer");
     return await enqueue("call-transcribe", "transcribe", {
-      callId, tenantMeta, env, user,
+      callId, tenantMeta, env, user, origin,
     }, {
       jobId: `calltranscribe-${callId}`,
       delay: delayMs,
@@ -985,7 +943,7 @@ async function getTranscript(client, { callId, actor }) {
     state: call.transcription_state || "PENDING",
     error: call.transcription_error || null,
     certified: rows.length > 0 && !anyFlagged,
-    provenance: anyFlagged ? "browser-live" : "groq",
+    provenance: transcriptProvenance(rows),
     text: built.text,
     sides: built.sides,
     parts: rows.map((r) => ({
@@ -1194,11 +1152,10 @@ async function regenerateSummary(client, { callId, actor, language }) {
     rows,
     names: { caller: names.caller, callee: names.callee },
   });
-  const everyRowCertified = rows.length > 0 && rows.every((r) => r.certified === true);
   const failures = rows.length ? [] : ["no transcript rows"];
 
   const drafted = await draftSummary(client, {
-    call, names, transcript, language, everyRowCertified, failures,
+    call, names, transcript, rows, language, failures,
   });
   const stored = await repo.upsertSummaryDraft(client, {
     callId,
@@ -1277,15 +1234,12 @@ module.exports = {
   // pure helpers (the contract, tested directly)
   toEnFr,
   sideOf,
-  partSpans,
-  groupSegmentsByPart,
-  fallbackRowsForSide,
   buildAttributedTranscript,
+  transcriptProvenance,
   provenanceOf,
   summaryPrompt,
   normaliseSegments,
   // constants
-  PART_RETRIES,
   UPLOAD_GRACE_MS,
   RETENTION_DAYS,
   SIDES,

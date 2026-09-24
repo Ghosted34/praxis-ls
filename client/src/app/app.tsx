@@ -739,6 +739,7 @@ export function App() {
               <Route path="vault/:section" element={<VaultHub />} />
               {/* Comms — Smart Comms hub */}
               <Route path="comms" element={<CommsHub />} />
+              <Route path="comms/calls/:callId" element={<CommsHub />} />
               <Route path="comms/:section" element={<CommsHub />} />
               {/* Settings & Admin (new) */}
               <Route path="settings/numbering" element={<NumberingPage />} />

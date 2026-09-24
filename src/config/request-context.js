@@ -22,7 +22,7 @@
 
 const { AsyncLocalStorage } = require("node:async_hooks");
 
-/** @typedef {{ tenant?: string, userId?: string, requestId?: string, crossTenant?: boolean }} RequestContext */
+/** @typedef {{ tenant?: string, userId?: string, requestId?: string, env?: string, crossTenant?: boolean }} RequestContext */
 
 const storage = new AsyncLocalStorage();
 
@@ -47,6 +47,12 @@ function getTenant() {
   return ctx.tenant || null;
 }
 
+/** The tenant environment ("live" | "sandbox") the request or job runs in, or null. */
+function getEnv() {
+  const ctx = storage.getStore();
+  return (ctx && ctx.env) || null;
+}
+
 /** The acting user id, or null. */
 function getUserId() {
   const ctx = storage.getStore();
@@ -59,4 +65,4 @@ function getRequestId() {
   return (ctx && ctx.requestId) || null;
 }
 
-module.exports = { run, get, getTenant, getUserId, getRequestId };
+module.exports = { run, get, getTenant, getEnv, getUserId, getRequestId };

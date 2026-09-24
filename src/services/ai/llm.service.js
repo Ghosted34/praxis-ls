@@ -365,11 +365,13 @@ function classifyVendorError(err) {
   return "transient";
 }
 
-async function chat({ client, messages, tools, temperature = 0.2, vendorName = PRIMARY, responseFormat, maxTokens = config.AI_MAX_TOKENS, timeoutMs, singleVendor = false }) {
+async function chat({ client, messages, tools, temperature = 0.2, vendorName = PRIMARY, fallbackVendor = FALLBACK, responseFormat, maxTokens = config.AI_MAX_TOKENS, timeoutMs, singleVendor = false }) {
   // `singleVendor` drops the fallback hop. Only for calls that are OPTIONAL to
   // the turn (the summariser): trying a second vendor doubles the worst-case
   // wait for work whose failure costs nothing but a retry next turn.
-  const chain = singleVendor ? [vendorName] : [...new Set([vendorName, FALLBACK])];
+  // `fallbackVendor` lets a caller that starts on FALLBACK still have a second
+  // hop (call summaries: gemini → deepseek). Everyone else keeps the default.
+  const chain = singleVendor ? [vendorName] : [...new Set([vendorName, fallbackVendor])];
   let configError = null;
   // Audit H2. This layer is the ONLY one that can see a fallback happen — by
   // the time the orchestrator has a result, a degraded turn and a clean one

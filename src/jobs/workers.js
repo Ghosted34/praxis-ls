@@ -38,13 +38,11 @@ const PROCESSORS = [
   // in which a queue behind another tenant's slow push service costs the bell.
   { name: "comms-call-ring-escalate", concurrency: 2, handler: require("./handlers/comms-call-ring-escalate") },
   /**
-   * The call RECORD half (PR-2, guide §4.5). `call-transcribe` transcribes a
-   * call's recorded parts and drafts the summary; concurrency 2 because the
-   * work is mostly waiting on two third parties (the transcription vendor per
-   * part, then the LLM). The record sweep is the daily reprocess of everything
-   * that fell back to the browser capture, plus the 30-day audio retention —
-   * concurrency 1 on both, since neither is a deadline and a stampede of
-   * vendor calls is what concurrency 5 would buy.
+   * The call RECORD half (guide §4.5). `call-transcribe` transcribes a call's
+   * parts (Groq, then Gemini) and drafts the summary; concurrency 2 because the
+   * work is mostly waiting on third parties. The record sweep retries failed
+   * or unfinished calls (never notifying) and applies audio retention;
+   * concurrency 1, since neither is a deadline.
    */
   { name: "call-transcribe", concurrency: 2, handler: require("./handlers/call-transcribe") },
   { name: "comms-call-record-sweep", concurrency: 1, handler: require("./handlers/comms-call-record-sweep") },
@@ -278,6 +276,10 @@ function startWorkers() {
                   tenant: tenantSlug,
                   userId: ctx && ctx.user_id,
                   requestId: ctx && ctx.request_id,
+                  // The schema this job works in, for anything it announces
+                  // to a user's room (calls audit A9). Jobs without an env
+                  // open the live schema, so live is the honest default.
+                  env: job.data && job.data.env === "sandbox" ? "sandbox" : "live",
                 },
                 () => p.handler(job),
               )
@@ -355,17 +357,23 @@ async function scheduleRecurring() {
   await require("./queue-producer").enqueue("comms-call-sweep-scheduler", "tick", {}, {
     repeat: { every: 15000 }, removeOnComplete: true, removeOnFail: 50,
   });
-  /**
-   * The call RECORD tick (PR-2): daily, and deliberately NOT on the 15 s clock
-   * the deadlines use. Nothing here is a deadline — a flagged transcript is
-   * already readable and already alerted, and retention is a 30-day window —
-   * while every retry spends the tenant's transcription budget for real. A
-   * daily cadence is what makes both the spend and the PR-3 failure-rate signal
-   * honest.
-   */
-  await require("./queue-producer").enqueue("comms-call-record-sweep-scheduler", "tick", {}, {
-    repeat: { every: 24 * 60 * 60 * 1000 }, removeOnComplete: true, removeOnFail: 50,
-  });
+  // The call RECORD tick: daily, on a working-hours cron in the corridor's
+  // timezone (audit A1: `every: 24h` ran at 00:00 UTC). It never notifies
+  // anyone (audit A4); it retries and applies audio retention.
+  {
+    const recordSweep = {
+      pattern: config.COMMS_CALL_RECORD_SWEEP_CRON || "0 10 * * *",
+      tz: config.COMMS_CALL_RECORD_SWEEP_TZ || "Africa/Douala",
+    };
+    const removed = await require("./call-record-sweep-schedule").removeStaleRepeatables(
+      require("./queue-producer").getQueue("comms-call-record-sweep-scheduler"),
+      recordSweep,
+    );
+    if (removed) logger.info({ removed }, "call record sweep: removed stale repeatables");
+    await require("./queue-producer").enqueue("comms-call-record-sweep-scheduler", "tick", {}, {
+      repeat: recordSweep, removeOnComplete: true, removeOnFail: 50,
+    });
+  }
   const every = config.ORCHESTRATION_DISPATCH_INTERVAL_MS;
   if (!every || every <= 0) {
     logger.info("orchestration scheduler disabled (ORCHESTRATION_DISPATCH_INTERVAL_MS=0)");

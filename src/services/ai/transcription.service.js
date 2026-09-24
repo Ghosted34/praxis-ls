@@ -35,7 +35,7 @@ const { logger } = require("../../config/logger");
  * in the product (a voice note is one language, and the reader said which).
  */
 async function transcribe({
-  audio, mimeType = "audio/mpeg", language = null, vendor = null, detectLanguage = false,
+  audio, mimeType = "audio/mpeg", language = null, vendor = null, detectLanguage = false, maxRetries,
 }) {
   // Synchronous transcription callers (mail dictation, vacancy intake,
   // training notes and Smart Comms) do not pass a vendor object. The queued AI
@@ -59,7 +59,9 @@ async function transcribe({
   if (!Buffer.isBuffer(audio) || audio.length === 0) throw new Error("transcribe needs a non-empty audio Buffer");
 
   const OpenAI = require("openai");
-  const groq = new OpenAI({ apiKey, baseURL });
+  // `maxRetries` is the SDK's own retry count (2 when omitted). The call
+  // pipeline passes 0: one Groq attempt, then Gemini (owner decision A-1).
+  const groq = new OpenAI({ apiKey, baseURL, ...(maxRetries !== undefined ? { maxRetries } : {}) });
   const model = (enabledVendor && enabledVendor.model) || "whisper-large-v3";
   try {
     const res = await groq.audio.transcriptions.create({

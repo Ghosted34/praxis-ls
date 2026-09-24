@@ -435,18 +435,20 @@ function resolveDestination({ url, entityRef }) {
  * written. The poll stays exactly as it is: it is now the RECONCILER for a tab
  * that was asleep or a socket that was down, rather than the only path.
  *
- * Best-effort and never awaited into the caller's transaction — `publishToUser`
- * no-ops when the socket server is not up (workers, tests). A missed live event
+ * Best-effort and never awaited into the caller's transaction. In the worker
+ * it goes out through the Redis emitter (realtime/index.js). A missed live event
  * costs latency; the notification itself is already committed.
  */
 function announce(recipients, notification, inserted) {
   try {
     const slug = requestContext.getTenant();
-    if (!slug || !inserted || !inserted.length) return;
+    // The row lives in this env's schema, so only this env's tabs hear it.
+    const env = requestContext.getEnv();
+    if (!slug || !env || !inserted || !inserted.length) return;
     const byUser = new Map(recipients.map((r) => [r.userId, r]));
     for (const row of inserted) {
       const r = byUser.get(row.user_id);
-      realtime.publishToUser(slug, row.user_id, "notification:new", {
+      realtime.publishToUser(slug, env, row.user_id, "notification:new", {
         notification_id: row.notification_id,
         title: notification.title,
         body: notification.body ?? null,

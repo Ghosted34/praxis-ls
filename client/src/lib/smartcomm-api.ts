@@ -483,7 +483,8 @@ export type CallStatus =
   | "RINGING" | "IN_CALL"
   | "ENDED" | "NO_ANSWER" | "CANCELLED" | "DECLINED" | "BUSY" | "FAILED";
 export type CallEndReason =
-  | "hangup" | "declined" | "cancelled" | "no_answer" | "busy" | "max_duration" | "ice_failed";
+  | "hangup" | "declined" | "cancelled" | "no_answer" | "busy" | "max_duration" | "ice_failed"
+  | "disconnected";
 
 export type IceServer = {
   urls: string | string[];
@@ -515,6 +516,10 @@ export type Call = {
    *  still override it either way. Absent on a ring payload from an older
    *  server, which is why the client treats "absent" as "on". */
   noise_suppression?: boolean;
+  /** Where the record pipeline is for this call (the row's own column). */
+  transcription_state?: CallTranscriptState | null;
+  /** The summary's status, when the call has one (list and detail reads). */
+  draft_status?: CallSummaryDraft["draft_status"] | null;
 };
 
 /** Dial on a DIRECT channel. The partner is resolved server-side; `ice` is
@@ -527,12 +532,22 @@ export const acceptCall = (id: string) =>
   tenant<Call & { ice: IceConfig }>(`/smartcomm/calls/${id}/accept`, { method: "POST" });
 export const declineCall = (id: string) =>
   tenant<Call>(`/smartcomm/calls/${id}/decline`, { method: "POST" });
+/** The hang-up route, shared with the keep-alive `fetch` a closing page sends
+ *  (call-session.ts), so the two can never point at different URLs (audit A10). */
+export const callHangupPath = (id: string) => `/smartcomm/calls/${id}/hangup`;
+export const callHangupUrl = (id: string) => `/api/tenant${callHangupPath(id)}`;
 export const hangupCall = (id: string) =>
-  tenant<Call>(`/smartcomm/calls/${id}/hangup`, { method: "POST" });
+  tenant<Call>(callHangupPath(id), { method: "POST" });
 /** The engine exhausted ICE and media never connected. */
 export const reportCallFailure = (id: string) =>
   tenant<Call>(`/smartcomm/calls/${id}/fail`, { method: "POST" });
-export const listCalls = () => tenant<Call[]>(`/smartcomm/calls`);
+/** One row of the Calls list: the call, plus what its badges need. */
+export type CallListRow = Call & {
+  channel_name?: string | null;
+  notified_at?: string | null;
+  summary_update_available?: boolean | null;
+};
+export const listCalls = () => tenant<CallListRow[]>(`/smartcomm/calls`);
 export const getCall = (id: string) => tenant<Call>(`/smartcomm/calls/${id}`);
 
 /* ── The call record half (Smart Comms PR-2) ─────────────────────────────────
@@ -543,8 +558,14 @@ export const getCall = (id: string) => tenant<Call>(`/smartcomm/calls/${id}`);
  * false there is no recorder, no consent banner, and these routes 403.
  */
 export type CallRecordSide = "caller" | "callee";
-export type CallTranscriptState = "PENDING" | "PROCESSING" | "CERTIFIED" | "TRANSCRIPTION_FAILED";
-export type CallProvenance = "groq" | "browser-live" | "transcript-only";
+/** NO_RECORDING: nothing was recorded (recording off, no audio uploaded, or
+ *  the call never connected). Terminal; shown as "Not recorded". */
+export type CallTranscriptState =
+  | "PENDING" | "PROCESSING" | "CERTIFIED" | "TRANSCRIPTION_FAILED" | "NO_RECORDING";
+/** Where a transcript's words came from. groq and gemini both transcribe the
+ *  stored audio; browser-live is the retired in-call capture (old calls only). */
+export type CallTranscriptProvider = "groq" | "gemini" | "browser-live";
+export type CallProvenance = CallTranscriptProvider | "transcript-only";
 
 export type CallSummaryKeyPoint = { text: string; raised_by: CallRecordSide };
 export type CallSummaryFollowUp = { text: string; owner: CallRecordSide; due: string | null };
@@ -576,14 +597,14 @@ export type CallTranscriptSide = {
   side: CallRecordSide;
   label: string;
   name: string | null;
-  provider: "groq" | "browser-live" | null;
+  provider: CallTranscriptProvider | null;
   certified: boolean;
   text: string | null;
   parts: {
     part_index: number;
     text: string;
     language: "en" | "fr";
-    provider: "groq" | "browser-live";
+    provider: CallTranscriptProvider;
     certified: boolean;
   }[];
 };
@@ -593,14 +614,14 @@ export type CallTranscriptView = {
   state: CallTranscriptState;
   error: string | null;
   certified: boolean;
-  provenance: "groq" | "browser-live";
+  provenance: CallTranscriptProvider;
   text: string;
   sides: CallTranscriptSide[];
   parts: {
     side: CallRecordSide;
     part_index: number;
     language: "en" | "fr";
-    provider: "groq" | "browser-live";
+    provider: CallTranscriptProvider;
     certified: boolean;
   }[];
 };
@@ -626,9 +647,7 @@ export type CallCard = {
   callee_name: string | null;
 };
 
-/** One recorded part. `live_segments` travels with the audio it belongs to: the
- *  two together are what make the fallback (flagged browser text) possible for
- *  the SAME span when the provider cannot read the bytes. */
+/** One recorded part of this side's audio. */
 export const uploadCallPart = (
   callId: string,
   file: File,
@@ -638,7 +657,6 @@ export const uploadCallPart = (
     part_count: number;
     duration_ms?: number;
     language?: "en" | "fr";
-    live_segments?: unknown[];
   },
   onProgress?: (percent: number) => void,
   signal?: AbortSignal,
@@ -649,17 +667,6 @@ export const uploadCallPart = (
     onProgress,
     signal,
   });
-
-/** The live capture on its own — the upload that must still land when the
- *  recorder produced no audio at all (§4.9). */
-export const uploadCallLiveLog = (
-  callId: string,
-  data: { side: CallRecordSide; language?: "en" | "fr"; live_segments: unknown[] },
-) =>
-  tenant<{ side: CallRecordSide; written: number }>(
-    `/smartcomm/calls/${callId}/live-log`,
-    { method: "POST", body: data },
-  );
 
 export const getCallTranscript = (callId: string) =>
   tenant<CallTranscriptView>(`/smartcomm/calls/${callId}/transcript`);

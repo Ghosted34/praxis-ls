@@ -11,6 +11,7 @@
 "use strict";
 
 const { atomically } = require("../../shared/db/tx");
+const vocab = require("./smartcomm.call.vocab");
 
 const ACTIVE_STATUSES = ["RINGING", "IN_CALL"];
 
@@ -59,8 +60,13 @@ async function findCall(client, callId) {
 }
 
 /** Guarded transition: only moves the row if it is still `fromStatus`.
- *  Returns the updated row, or null when someone got there first. */
+ *  Returns the updated row, or null when someone got there first. The
+ *  end-reason set is enforced here since 14040 dropped its CHECK (audit B1). */
 async function transition(client, { callId, fromStatus, status, fields = {} }) {
+  if (fields.end_reason !== undefined && fields.end_reason !== null
+      && !vocab.END_REASONS.includes(fields.end_reason)) {
+    throw new Error(`invalid call end reason: ${fields.end_reason}`);
+  }
   const setCols = ["status = $" + 3];
   const params = [callId, fromStatus, status];
   for (const [col, value] of Object.entries(fields)) {
@@ -158,15 +164,19 @@ async function directPartner(client, { groupId, userId }) {
   return rows[0] || null;
 }
 
+/** The user's calls, newest first, with what the Calls list badges: the
+ *  transcription state (on the row) and the summary's status. */
 async function listCallsForUser(client, userId, { limit = 50 } = {}) {
   const { rows } = await client.query(
     `SELECT c.*, g.name AS channel_name,
             cu.full_name AS caller_name,
-            bu.full_name AS callee_name
+            bu.full_name AS callee_name,
+            s.draft_status, s.notified_at, s.update_available AS summary_update_available
      FROM comms_call c
      JOIN comms_group g ON g.group_id = c.group_id
      JOIN app_user cu ON cu.user_id = c.caller_id
      JOIN app_user bu ON bu.user_id = c.callee_id
+     LEFT JOIN comms_call_summary s ON s.call_id = c.call_id
      WHERE c.caller_id = $1 OR c.callee_id = $1
      ORDER BY c.started_at DESC
      LIMIT $2`,
@@ -326,7 +336,9 @@ async function listFailedTranscriptions(client, { limit = 25, maxAttempts = 20 }
 
 /**
  * Calls whose pipeline never finished: the ENDED row exists and the state is
- * NULL/PENDING, OR the state is PROCESSING and has gone stale.
+ * NULL/PENDING, OR the state is PROCESSING and has gone stale. A FAILED call
+ * that never connected has no audio and is excluded (audit B5: 25 of them
+ * used to fill every nightly batch).
  *
  * The second half matters more than it looks. PROCESSING is written before the
  * first vendor call and cleared by the last write of the run; a worker killed
@@ -343,6 +355,7 @@ async function listUntranscribedEndedCalls(client, { limit = 25 } = {}) {
   const { rows } = await client.query(
     `SELECT * FROM comms_call
      WHERE status IN ('ENDED','FAILED')
+       AND (status = 'ENDED' OR connected_at IS NOT NULL)
        AND ended_at IS NOT NULL
        AND (
          ((transcription_state IS NULL OR transcription_state = 'PENDING')
@@ -433,6 +446,11 @@ async function listCurrentTranscripts(client, callId, side = null) {
  */
 async function insertTranscriptRows(client, { callId, side, rows: parts }) {
   if (!parts.length) return [];
+  // The CHECKs 14040 dropped, held here instead.
+  const bad = parts.find((p) => !vocab.isValidTranscriptRow(p));
+  if (bad) {
+    throw new Error(`invalid transcript row: provider=${bad.provider} certified=${bad.certified}`);
+  }
   return atomically(client, async () => {
     // Only the rows being replaced — a part that is NOT in this set keeps
     // whatever it has (the pipeline retires the remainder explicitly after
@@ -496,6 +514,9 @@ async function hasFlaggedRows(client, callId) {
 async function upsertSummaryDraft(client, {
   callId, summaryText, keyPoints, followUps, language, provenance,
 }) {
+  if (!vocab.SUMMARY_PROVENANCES.includes(provenance)) {
+    throw new Error(`invalid summary provenance: ${provenance}`);
+  }
   const { rows } = await client.query(
     `INSERT INTO comms_call_summary
        (call_id, summary_text, key_points, follow_ups, language, provenance)
@@ -540,6 +561,18 @@ async function applySummaryEdit(client, { callId, summaryText, keyPoints, follow
      WHERE call_id = $1
      RETURNING *`,
     [callId, summaryText, JSON.stringify(keyPoints || []), JSON.stringify(followUps || [])],
+  );
+  return rows[0] || null;
+}
+
+/** Claim the one "summary ready" notification for a call (audit A4). Exactly
+ *  one caller gets the row back; everyone after that gets null. */
+async function claimSummaryNotification(client, callId) {
+  const { rows } = await client.query(
+    `UPDATE comms_call_summary SET notified_at = now()
+     WHERE call_id = $1 AND notified_at IS NULL
+     RETURNING *`,
+    [callId],
   );
   return rows[0] || null;
 }
@@ -647,6 +680,7 @@ module.exports = {
   upsertSummaryDraft,
   applySummaryEdit,
   getSummary,
+  claimSummaryNotification,
   markSummarySent,
   markSummaryUpdateSent,
   markUpdateAvailable,

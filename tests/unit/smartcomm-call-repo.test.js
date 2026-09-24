@@ -80,3 +80,23 @@ describe("the call list (A6, E14)", () => {
     expect(sql).toMatch(/s\.notified_at/);
   });
 });
+
+describe("the call read (A6)", () => {
+  test("carries the summary's status, so the call page can show a draft even on a call later marked NO_RECORDING", async () => {
+    const service = require("../../src/modules/smartcomm/smartcomm.call.service");
+    const seen = [];
+    const c = {
+      query: async (text, params) => {
+        seen.push(String(text));
+        if (/SELECT 1 AS ok FROM comms_call/.test(text)) return { rows: [{ ok: 1 }] };
+        if (/FROM feature_state/.test(text)) return { rows: [{ state: "on" }] };
+        return { rows: [{ call_id: params[0], draft_status: "PENDING_REVIEW" }] };
+      },
+    };
+    const call = await service.getCall(c, { id: "c1", actor: { user_id: "u1" } });
+    expect(call.draft_status).toBe("PENDING_REVIEW");
+    const detail = seen.find((q) => /FROM comms_call c/.test(q));
+    expect(detail).toMatch(/LEFT JOIN comms_call_summary s ON s\.call_id = c\.call_id/);
+    expect(detail).toMatch(/s\.draft_status/);
+  });
+});

@@ -771,11 +771,13 @@ async function getCall(client, { id, actor }) {
   const { rows } = await client.query(
     `SELECT c.*, g.name AS channel_name,
             cu.full_name AS caller_name,
-            bu.full_name AS callee_name
+            bu.full_name AS callee_name,
+            s.draft_status
      FROM comms_call c
      JOIN comms_group g ON g.group_id = c.group_id
      JOIN app_user cu ON cu.user_id = c.caller_id
      JOIN app_user bu ON bu.user_id = c.callee_id
+     LEFT JOIN comms_call_summary s ON s.call_id = c.call_id
      WHERE c.call_id = $1`,
     [id],
   );

@@ -518,6 +518,8 @@ export type Call = {
   noise_suppression?: boolean;
   /** Where the record pipeline is for this call (the row's own column). */
   transcription_state?: CallTranscriptState | null;
+  /** The summary's status, when the call has one (list and detail reads). */
+  draft_status?: CallSummaryDraft["draft_status"] | null;
 };
 
 /** Dial on a DIRECT channel. The partner is resolved server-side; `ice` is
@@ -542,8 +544,6 @@ export const reportCallFailure = (id: string) =>
 /** One row of the Calls list: the call, plus what its badges need. */
 export type CallListRow = Call & {
   channel_name?: string | null;
-  transcription_state?: CallTranscriptState | null;
-  draft_status?: CallSummaryDraft["draft_status"] | null;
   notified_at?: string | null;
   summary_update_available?: boolean | null;
 };

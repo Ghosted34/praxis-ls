@@ -298,9 +298,9 @@ async function registerPart(client, {
   return part;
 }
 
-/** Normalise the live capture the client uploads (§4.9). Anything malformed is
- *  dropped rather than failing the upload: the audio is the side's real
- *  material, and the live log is the fallback behind it. */
+/** Normalise a live-capture body from an old cached client. Stored for the
+ *  record only, never used to build a transcript (owner decision A-1).
+ *  Anything malformed is dropped rather than failing the request. */
 function normaliseSegments(raw, fallbackLanguage) {
   let list = raw;
   if (typeof raw === "string") {
@@ -338,8 +338,8 @@ function normaliseSegments(raw, fallbackLanguage) {
 }
 
 /**
- * The browser live capture, uploaded at hang-up (both the audio upload's
- * companion body and, on a retry, on its own).
+ * The retired browser live capture, still accepted from old cached clients so
+ * their uploads do not fail. Nothing reads it to build a transcript.
  */
 async function registerLiveLog(client, { callId, actor, side, segments, language = null }) {
   const { side: mine } = await participantCall(client, callId, actor.user_id);
@@ -703,23 +703,21 @@ async function processCall(client, {
 }
 
 /**
- * Ops alert for the one visible failure path (§4.5 step 3).
- *
- * Never throws: an alerting failure must not be able to turn a degraded call
- * into a failed job, because that would lose the retry too.
+ * Ops alert for a call's first transcription failure. Never throws: an
+ * alerting failure must not turn a degraded call into a failed job.
  */
 async function raiseOpsAlert({ call, failures, tenantMeta, env = "live" }) {
   try {
     await alerts.raise({
       event: "comms.transcription_failed",
-      subject: `Call transcript fell back to the browser capture (${failures[0] || "reason unknown"})`,
+      subject: `Call transcript failed on Groq and Gemini (${failures[0] || "reason unknown"})`,
       detail: {
         env,
         call_id: call.call_id,
         caller_id: call.caller_id,
         callee_id: call.callee_id,
         failures,
-        note: "The flagged transcript is live and the caller has a draft. The daily reprocess retries the certified version.",
+        note: "The call is TRANSCRIPTION_FAILED. The daily reprocess retries it and notifies nobody.",
       },
       tenant: (tenantMeta && tenantMeta.slug) || requestContext.getTenant() || null,
     });

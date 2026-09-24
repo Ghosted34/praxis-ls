@@ -107,7 +107,12 @@ export function CallRecord({ callId, variant }: { callId: string; variant: "page
   const me = myUserId();
   const isCaller = call.caller_id === me;
   const peer = peerOf(call, me) || tr("Unknown");
-  const recorded = call.recording_enabled !== false && call.transcription_state !== "NO_RECORDING";
+  // A draft is shown whenever one exists: an old call whose only words came
+  // from the retired browser capture is NO_RECORDING now, and still has one.
+  const hasDraft = !!call.draft_status;
+  const recorded = hasDraft
+    || (call.recording_enabled !== false && call.transcription_state !== "NO_RECORDING");
+  const failedWithoutDraft = !hasDraft && call.transcription_state === "TRANSCRIPTION_FAILED";
 
   return (
     <div className="space-y-4">
@@ -127,6 +132,10 @@ export function CallRecord({ callId, variant }: { callId: string; variant: "page
         {!recorded ? (
           <p className="text-sm text-muted-foreground">
             {tr("This call was not recorded, so there is no summary.")}
+          </p>
+        ) : failedWithoutDraft ? (
+          <p className="text-sm text-muted-foreground">
+            {tr("The transcript could not be produced yet. It is retried once a day.")}
           </p>
         ) : isCaller ? (
           <CallSummaryEditor callId={callId} onChanged={load} />

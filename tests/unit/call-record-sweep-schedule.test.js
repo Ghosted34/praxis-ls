@@ -39,20 +39,13 @@ describe("the schedule", () => {
 });
 
 describe("registration removes the old repeatable first", () => {
-  test("the old every-24h entry is removed and the cron is registered", async () => {
+  test("the old every-24h entry is removed", async () => {
     const queue = fakeQueue([
       { key: "comms-call-record-sweep-scheduler::::86400000", name: "tick", every: "86400000", pattern: null, tz: null },
     ]);
-    const enqueue = jest.fn(async () => ({}));
-    const out = await schedule.scheduleCallRecordSweep({
-      getQueue: () => queue, enqueue, pattern: "0 10 * * *", tz: "Africa/Douala",
-    });
+    const removed = await schedule.removeStaleRepeatables(queue, { pattern: "0 10 * * *", tz: "Africa/Douala" });
     expect(queue.removed).toEqual(["comms-call-record-sweep-scheduler::::86400000"]);
-    expect(out.removed).toBe(1);
-    expect(enqueue).toHaveBeenCalledWith(
-      "comms-call-record-sweep-scheduler", "tick", {},
-      expect.objectContaining({ repeat: { pattern: "0 10 * * *", tz: "Africa/Douala" } }),
-    );
+    expect(removed).toBe(1);
   });
 
   test("a changed cron replaces the previous one; the current one is kept", async () => {
@@ -61,16 +54,19 @@ describe("registration removes the old repeatable first", () => {
       { key: "k-current", name: "tick", every: null, pattern: "0 10 * * *", tz: "Africa/Douala" },
       { key: "k-other-tz", name: "tick", every: null, pattern: "0 10 * * *", tz: "UTC" },
     ]);
-    const enqueue = jest.fn(async () => ({}));
-    await schedule.scheduleCallRecordSweep({
-      getQueue: () => queue, enqueue, pattern: "0 10 * * *", tz: "Africa/Douala",
-    });
+    await schedule.removeStaleRepeatables(queue, { pattern: "0 10 * * *", tz: "Africa/Douala" });
     expect(queue.removed.sort()).toEqual(["k-old-cron", "k-other-tz"]);
   });
 
-  test("the worker registers the sweep through this helper, not a bare every-24h enqueue", () => {
+  test("the worker prunes, then registers the cron, and never the every-24h repeat", () => {
     const src = require("fs").readFileSync(require.resolve("../../src/jobs/workers.js"), "utf8");
-    expect(src).toMatch(/scheduleCallRecordSweep\(/);
+    const recurring = src.slice(src.indexOf("async function scheduleRecurring"));
+    const prune = recurring.indexOf("removeStaleRepeatables(");
+    const register = recurring.indexOf('enqueue("comms-call-record-sweep-scheduler"');
+    expect(prune).toBeGreaterThan(-1);
+    expect(register).toBeGreaterThan(prune);
+    expect(recurring).toMatch(/COMMS_CALL_RECORD_SWEEP_CRON/);
+    expect(recurring).toMatch(/repeat:\s*recordSweep/);
     expect(src).not.toMatch(/comms-call-record-sweep-scheduler"[\s\S]{0,120}every:\s*24\s*\*\s*60\s*\*\s*60\s*\*\s*1000/);
   });
 });

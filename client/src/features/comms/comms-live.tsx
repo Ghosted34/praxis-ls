@@ -167,15 +167,16 @@ export function CommsLive() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [call.phase, call.call?.call_id]);
 
-  /* ── A summary is ready: say where it is (it has its own page now) ──── */
+  /* ── A summary gained an update: say where it is ──────────────────────
+         Only the update: a first draft also arrives as a notification, whose
+         toast already honours the user's interrupt preference, and a second
+         toast here would ignore it. An update has no notification of its own. */
   React.useEffect(() => {
     const n = call.summaryNotice;
     if (!n) return;
-    toast.info(
-      n.status === "UPDATE_AVAILABLE"
-        ? tr("An updated call summary is available. Open Comms › Calls to post it.")
-        : tr("Your call summary is ready. Open Comms › Calls to review and send it."),
-    );
+    if (n.status === "UPDATE_AVAILABLE") {
+      toast.info(tr("An updated call summary is available. Open Comms › Calls to post it."));
+    }
     clearSummaryNotice();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [call.summaryNotice]);

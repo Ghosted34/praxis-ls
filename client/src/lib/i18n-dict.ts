@@ -2968,7 +2968,7 @@ export const en = {
     "No calls yet": "No calls yet",
     "Start a call from the phone icon on a direct conversation.": "Start a call from the phone icon on a direct conversation.",
     "An updated call summary is available. Open Comms › Calls to post it.": "An updated call summary is available. Open Comms › Calls to post it.",
-    "Your call summary is ready. Open Comms › Calls to review and send it.": "Your call summary is ready. Open Comms › Calls to review and send it.",
+    "The transcript could not be produced yet. It is retried once a day.": "The transcript could not be produced yet. It is retried once a day.",
   },
   dataRoom: {
     staffDesc: "Document requests from external auditors — share vault documents in answer.",
@@ -5988,7 +5988,7 @@ export const fr: Dict = {
     "No calls yet": "Aucun appel pour l'instant",
     "Start a call from the phone icon on a direct conversation.": "Lancez un appel depuis l'icône téléphone d'une conversation directe.",
     "An updated call summary is available. Open Comms › Calls to post it.": "Un résumé d'appel mis à jour est disponible. Ouvrez Comms › Appels pour le publier.",
-    "Your call summary is ready. Open Comms › Calls to review and send it.": "Votre résumé d'appel est prêt. Ouvrez Comms › Appels pour le relire et l'envoyer.",
+    "The transcript could not be produced yet. It is retried once a day.": "La transcription n'a pas encore pu être produite. Une nouvelle tentative a lieu chaque jour.",
   },
   dataRoom: {
     staffDesc: "Demandes de documents des auditeurs externes — partagez les documents du coffre en réponse.",

@@ -136,6 +136,28 @@ describe("a call's page", () => {
     expect(screen.queryByRole("button", { name: /Send to conversation/ })).toBeNull();
   });
 
+  it("an old call now marked NO_RECORDING still opens the draft it has", async () => {
+    renderScreen(<CallRecordPage />, {
+      ...at,
+      routes: {
+        "/smartcomm/calls/c1/summary": summaryView({ provenance: "browser-live" }),
+        "/smartcomm/calls/c1": row({ transcription_state: "NO_RECORDING", draft_status: "PENDING_REVIEW", recording_enabled: true }),
+      },
+    });
+    expect(await screen.findByDisplayValue("You confirmed the delivery for Friday.")).toBeTruthy();
+    expect(screen.getByText("Generated from the in-call browser capture (unverified)")).toBeTruthy();
+    expect(screen.queryByText("This call was not recorded, so there is no summary.")).toBeNull();
+  });
+
+  it("a failed call with no draft says it is retried, not 'Transcribing…' for ever", async () => {
+    renderScreen(<CallRecordPage />, {
+      ...at,
+      routes: { "/smartcomm/calls/c1": row({ transcription_state: "TRANSCRIPTION_FAILED", draft_status: null, recording_enabled: true }) },
+    });
+    expect(await screen.findByText("The transcript could not be produced yet. It is retried once a day.")).toBeTruthy();
+    expect(screen.queryByText("Transcribing the call…")).toBeNull();
+  });
+
   it("a call with no recording says so, and offers no transcript", async () => {
     renderScreen(<CallRecordPage />, {
       ...at,

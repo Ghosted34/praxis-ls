@@ -34,8 +34,13 @@ vi.mock("./inbox/composer/new-message", () => ({ NewMessageDialog: () => null })
 vi.mock("./chat/composer", () => ({ Composer: () => <div>Message composer</div> }));
 vi.mock("./chat/forward-dialog", () => ({ ForwardDialog: () => null }));
 // The thread reads the tenant's hero image for its backdrop; with no provider in
-// this harness, a null branding falls back to the washed logistics pattern.
+// this harness, a null branding falls back to the default static wash.
 vi.mock("@/app/branding/branding-context", () => ({ useBranding: () => ({ branding: null }) }));
+// The appearance control (beside "New") toasts on wallpaper changes; there is no
+// ToastProvider in this isolated render, so stub the hook.
+vi.mock("@/components/ui/toast", () => ({
+  useToast: () => ({ success: () => {}, error: () => {}, info: () => {} }),
+}));
 /**
  * The bubble as a contract, not a rendering.
  *

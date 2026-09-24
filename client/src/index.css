@@ -2481,56 +2481,44 @@
   --chat-active-glow:
     0 0 0 1px color-mix(in srgb, var(--primary) 12%, transparent),
     0 24px 64px -36px color-mix(in srgb, var(--primary) 55%, transparent);
-  /* Washed logistics backdrop: a faint blueprint of shipping routes, location
-     pins and container stacks. A tenant hero photo overrides --chat-thread-image
-     (see .chat-thread-bg--photo); otherwise every tenant gets this line-art. */
-  --chat-thread-pattern: url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20width%3D'260'%20height%3D'260'%20viewBox%3D'0%200%20260%20260'%20fill%3D'none'%20stroke%3D'%231f2f4d'%20stroke-width%3D'1.4'%20stroke-linecap%3D'round'%20stroke-linejoin%3D'round'%3E%3Cpath%20d%3D'M14%20224%20C%2078%20180%20150%20214%20246%20150'%20stroke-dasharray%3D'5%208'%2F%3E%3Cpath%20d%3D'M20%2060%20C%2092%2092%20150%2044%20240%2080'%20stroke-dasharray%3D'5%208'%20opacity%3D'.75'%2F%3E%3Ccircle%20cx%3D'14'%20cy%3D'224'%20r%3D'3'%2F%3E%3Ccircle%20cx%3D'246'%20cy%3D'150'%20r%3D'3'%2F%3E%3Ccircle%20cx%3D'20'%20cy%3D'60'%20r%3D'2.4'%20opacity%3D'.7'%2F%3E%3Ccircle%20cx%3D'240'%20cy%3D'80'%20r%3D'2.4'%20opacity%3D'.7'%2F%3E%3Cpath%20d%3D'M128%2096%20c0%2010%20-10%2015%20-10%2024%20a10%2010%200%201%200%2020%200%20c0%20-9%20-10%20-14%20-10%20-24%20z'%20opacity%3D'.5'%2F%3E%3Ccircle%20cx%3D'128'%20cy%3D'122'%20r%3D'2.6'%20opacity%3D'.6'%2F%3E%3Cg%20opacity%3D'.5'%3E%3Crect%20x%3D'176'%20y%3D'196'%20width%3D'40'%20height%3D'18'%20rx%3D'2'%2F%3E%3Crect%20x%3D'186'%20y%3D'176'%20width%3D'40'%20height%3D'18'%20rx%3D'2'%2F%3E%3Cline%20x1%3D'196'%20y1%3D'196'%20x2%3D'196'%20y2%3D'214'%2F%3E%3Cline%20x1%3D'206'%20y1%3D'176'%20x2%3D'206'%20y2%3D'194'%2F%3E%3C%2Fg%3E%3Cg%20opacity%3D'.45'%3E%3Crect%20x%3D'40'%20y%3D'150'%20width%3D'34'%20height%3D'16'%20rx%3D'2'%2F%3E%3Cline%20x1%3D'57'%20y1%3D'150'%20x2%3D'57'%20y2%3D'166'%2F%3E%3C%2Fg%3E%3Ccircle%20cx%3D'96'%20cy%3D'150'%20r%3D'1.6'%20opacity%3D'.5'%2F%3E%3Ccircle%20cx%3D'150'%20cy%3D'60'%20r%3D'1.6'%20opacity%3D'.5'%2F%3E%3Ccircle%20cx%3D'70'%20cy%3D'210'%20r%3D'1.6'%20opacity%3D'.5'%2F%3E%3C%2Fsvg%3E");
-  --chat-thread-image: var(--chat-thread-pattern);
-  --chat-thread-size: 260px 260px;
-  --chat-thread-opacity: 0.55;
+  /* Chat backdrop: a subtle STATIC wash painted on the scroller itself (see
+     .chat-thread-bg); a per-device wallpaper is set inline via
+     --chat-thread-image and washed by --chat-wash. */
+  --chat-wash: 84%;
 }
 
 .dark {
   --chat-shadow: 0 1px 1px rgb(0 0 0 / 0.35), 0 10px 26px -12px rgb(0 0 0 / 0.6);
   --chat-panel-shadow: 0 16px 44px -20px rgb(0 0 0 / 0.66);
-  --chat-thread-pattern: url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20width%3D'260'%20height%3D'260'%20viewBox%3D'0%200%20260%20260'%20fill%3D'none'%20stroke%3D'%23aab8cf'%20stroke-width%3D'1.4'%20stroke-linecap%3D'round'%20stroke-linejoin%3D'round'%3E%3Cpath%20d%3D'M14%20224%20C%2078%20180%20150%20214%20246%20150'%20stroke-dasharray%3D'5%208'%2F%3E%3Cpath%20d%3D'M20%2060%20C%2092%2092%20150%2044%20240%2080'%20stroke-dasharray%3D'5%208'%20opacity%3D'.75'%2F%3E%3Ccircle%20cx%3D'14'%20cy%3D'224'%20r%3D'3'%2F%3E%3Ccircle%20cx%3D'246'%20cy%3D'150'%20r%3D'3'%2F%3E%3Ccircle%20cx%3D'20'%20cy%3D'60'%20r%3D'2.4'%20opacity%3D'.7'%2F%3E%3Ccircle%20cx%3D'240'%20cy%3D'80'%20r%3D'2.4'%20opacity%3D'.7'%2F%3E%3Cpath%20d%3D'M128%2096%20c0%2010%20-10%2015%20-10%2024%20a10%2010%200%201%200%2020%200%20c0%20-9%20-10%20-14%20-10%20-24%20z'%20opacity%3D'.5'%2F%3E%3Ccircle%20cx%3D'128'%20cy%3D'122'%20r%3D'2.6'%20opacity%3D'.6'%2F%3E%3Cg%20opacity%3D'.5'%3E%3Crect%20x%3D'176'%20y%3D'196'%20width%3D'40'%20height%3D'18'%20rx%3D'2'%2F%3E%3Crect%20x%3D'186'%20y%3D'176'%20width%3D'40'%20height%3D'18'%20rx%3D'2'%2F%3E%3Cline%20x1%3D'196'%20y1%3D'196'%20x2%3D'196'%20y2%3D'214'%2F%3E%3Cline%20x1%3D'206'%20y1%3D'176'%20x2%3D'206'%20y2%3D'194'%2F%3E%3C%2Fg%3E%3Cg%20opacity%3D'.45'%3E%3Crect%20x%3D'40'%20y%3D'150'%20width%3D'34'%20height%3D'16'%20rx%3D'2'%2F%3E%3Cline%20x1%3D'57'%20y1%3D'150'%20x2%3D'57'%20y2%3D'166'%2F%3E%3C%2Fg%3E%3Ccircle%20cx%3D'96'%20cy%3D'150'%20r%3D'1.6'%20opacity%3D'.5'%2F%3E%3Ccircle%20cx%3D'150'%20cy%3D'60'%20r%3D'1.6'%20opacity%3D'.5'%2F%3E%3Ccircle%20cx%3D'70'%20cy%3D'210'%20r%3D'1.6'%20opacity%3D'.5'%2F%3E%3C%2Fsvg%3E");
-  --chat-thread-image: var(--chat-thread-pattern);
-  --chat-thread-opacity: 0.5;
 }
 
-/* ── the washed backdrop ──────────────────────────────────────────────────
- * The image rides a ::before at low opacity, so the base colour dominates and
- * the texture is "barely there". Content is lifted above it with an explicit
- * stacking context. */
+/* ── the backdrop ─────────────────────────────────────────────────────────
+ * Painted on the scroller ELEMENT, not a ::before — so with the default
+ * background-attachment it stays fixed to the pane and does NOT scroll with the
+ * messages. A stable wallpaper, whichever way you scroll (the ::before version
+ * only covered the first screen, which is why the pattern "ended at the top").
+ * Default: a subtle static accent wash. A chosen photo rides under a strong
+ * overlay (--chat-wash), so it is barely visible. */
 .chat-thread-bg {
-  position: relative;
   background-color: var(--background);
-  isolation: isolate;
-}
-.chat-thread-bg::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  background-image: var(--chat-thread-image);
-  background-repeat: repeat;
-  background-position: center;
-  background-size: var(--chat-thread-size);
-  opacity: var(--chat-thread-opacity);
-}
-/* A tenant hero photo: cover, don't tile, and wash harder — a photograph needs
-   a far heavier wash than line-art to stay a backdrop rather than a picture. */
-.chat-thread-bg--photo {
-  --chat-thread-size: cover;
-  --chat-thread-opacity: 0.08;
-}
-.chat-thread-bg--photo::before {
+  background-image: radial-gradient(
+    140% 100% at 50% 0%,
+    color-mix(in srgb, var(--primary) 6%, transparent),
+    transparent 62%
+  );
   background-repeat: no-repeat;
+  background-position: center top;
 }
-.chat-thread-bg > * {
-  position: relative;
-  z-index: 1;
+.chat-thread-bg--photo {
+  background-image:
+    linear-gradient(
+      color-mix(in srgb, var(--background) var(--chat-wash), transparent),
+      color-mix(in srgb, var(--background) var(--chat-wash), transparent)
+    ),
+    var(--chat-thread-image, none);
+  background-repeat: no-repeat, no-repeat;
+  background-position: center, center;
+  background-size: cover, cover;
 }
 
 /* ── the shell + the active thread's lift ─────────────────────────────────── */

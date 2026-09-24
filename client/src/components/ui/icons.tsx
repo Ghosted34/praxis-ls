@@ -158,6 +158,15 @@ export const MoreIcon = (p: P) => (
     <circle cx="19" cy="12" r="1.4" />
   </svg>
 );
+/** A paint palette — the "chat appearance" (wallpaper + accent) control. */
+export const PaletteIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M12 3a9 9 0 1 0 0 18 2.4 2.4 0 0 0 2.4-2.4c0-.63-.24-1.2-.63-1.62-.38-.42-.63-.99-.63-1.62a2 2 0 0 1 2-2H17a4 4 0 0 0 4-4c0-3.87-4.03-6.34-9-6.34z" />
+    <circle cx="7.5" cy="10.5" r="1" fill="currentColor" stroke="none" />
+    <circle cx="12" cy="7.5" r="1" fill="currentColor" stroke="none" />
+    <circle cx="16.5" cy="10.5" r="1" fill="currentColor" stroke="none" />
+  </svg>
+);
 /** Three VERTICAL dots — the WhatsApp-style overflow / kebab menu trigger. */
 export const MoreVerticalIcon = (p: P) => (
   <svg {...base(p)} fill="currentColor" stroke="none">

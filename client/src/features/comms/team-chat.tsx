@@ -18,7 +18,8 @@ import { useAuth } from "@/app/auth/auth-context";
 import { cn } from "@/lib/cn";
 import { PlusIcon, PhoneIcon, MoreVerticalIcon, InfoIcon } from "@/components/ui/icons";
 import { DropdownMenu, DropdownItem } from "@/components/ui/dropdown-menu";
-import { useBranding } from "@/app/branding/branding-context";
+import { useChatAppearance } from "./chat/chat-appearance-store";
+import { ChatAppearanceButton } from "./chat/chat-appearance";
 import * as api from "@/lib/smartcomm-api";
 import { getCommsSocket, useCommsChannel } from "@/lib/comms-socket";
 import { useOnline, lastSeenText } from "./presence";
@@ -554,6 +555,9 @@ export function TeamChatPage() {
     catch { return true; /* @silent:storage — use the first-visit default */ }
   });
   const [mobileInfoOpen, setMobileInfoOpen] = React.useState(false);
+  // Per-device wallpaper + brand accent (see chat-appearance). Read once here and
+  // threaded down: the accent recolours the shell, the wallpaper the thread.
+  const appearance = useChatAppearance();
   const toggleInfo = () => {
     const next = !infoOpen;
     setInfoOpen(next);
@@ -650,10 +654,13 @@ export function TeamChatPage() {
   return (
     <section className="animate-fade-in flex min-h-0 flex-1 flex-col">
       {/* Size from the shell's remaining space, never from a guessed viewport offset. */}
-      <div className={cn(
-        "chat-shell grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)] grid-cols-1 overflow-hidden rounded-2xl border border-border bg-card md:grid-cols-[320px_minmax(0,1fr)]",
-        infoOpen && "lg:grid-cols-[320px_minmax(0,1fr)_300px]",
-      )}>
+      <div
+        style={appearance.shellStyle}
+        className={cn(
+          "chat-shell grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)] grid-cols-1 overflow-hidden rounded-2xl border border-border bg-card md:grid-cols-[320px_minmax(0,1fr)]",
+          infoOpen && "lg:grid-cols-[320px_minmax(0,1fr)_300px]",
+        )}
+      >
         {/* conversation list */}
         <div
           className={cn(
@@ -670,19 +677,23 @@ export function TeamChatPage() {
                 </span>
               )}
             </div>
-            {/* A sleek accent-gradient pill in place of the solid orange block —
-                icon-only on a phone, icon + label from md up (WS feedback that a
-                bare "+" read as a generic "add"). */}
-            <button
-              type="button"
-              onClick={() => setNewKind("menu")}
-              title={tr("New conversation")}
-              aria-label={tr("New conversation")}
-              className="chat-new-btn inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-[13px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:px-3.5"
-            >
-              <PlusIcon width={16} height={16} />
-              <span className="hidden md:inline">{tr("New")}</span>
-            </button>
+            <div className="flex items-center gap-1.5">
+              {/* Wallpaper + brand accent, WhatsApp-style, right where the eye is. */}
+              <ChatAppearanceButton appearance={appearance} />
+              {/* A sleek accent-gradient pill in place of the solid orange block —
+                  icon-only on a phone, icon + label from md up (WS feedback that a
+                  bare "+" read as a generic "add"). */}
+              <button
+                type="button"
+                onClick={() => setNewKind("menu")}
+                title={tr("New conversation")}
+                aria-label={tr("New conversation")}
+                className="chat-new-btn inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-[13px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:px-3.5"
+              >
+                <PlusIcon width={16} height={16} />
+                <span className="hidden md:inline">{tr("New")}</span>
+              </button>
+            </div>
           </div>
           <div className="px-3 py-2">
             <Input
@@ -784,6 +795,7 @@ export function TeamChatPage() {
               onToggleInfo={toggleInfo}
               onOpenMobileInfo={() => setMobileInfoOpen(true)}
               onSent={() => channels.reload()}
+              wallpaper={appearance.wallpaper}
             />
           ) : (
             <div className="flex flex-1 items-center justify-center p-6 text-center micro">
@@ -846,6 +858,7 @@ function Thread({
   onSent,
   onToggleInfo,
   onOpenMobileInfo,
+  wallpaper,
 }: {
   onToggleInfo: () => void;
   onOpenMobileInfo: () => void;
@@ -856,14 +869,11 @@ function Thread({
   channels: api.Channel[];
   onBack: () => void;
   onSent: () => void;
+  /** The per-device chat wallpaper (data URL) or tenant hero image, if any. */
+  wallpaper?: string | null;
 }) {
   const ch = useResource(() => api.getChannel(channelId), [channelId]);
   const thread = useResource(() => api.getThread(channelId), [channelId]);
-  // The thread's backdrop: the tenant's hero image if they have one, otherwise
-  // the washed logistics blueprint every tenant gets (see index.css
-  // .chat-thread-bg). Either way it is barely visible under a heavy wash.
-  const { branding } = useBranding();
-  const heroImage = branding?.hero?.imageUrl || null;
   // The caller's call-summary drafts for this conversation, pinned above the
   // composer (owner decision O3). `?summary=<call>` opens one: that is where
   // the summary notification lands.
@@ -1091,11 +1101,11 @@ function Thread({
         }}
         className={cn(
           "chat-thread-bg min-h-0 flex-1 space-y-2.5 overflow-y-auto overscroll-contain px-3 py-4 sm:px-6",
-          heroImage && "chat-thread-bg--photo",
+          wallpaper && "chat-thread-bg--photo",
         )}
         style={
-          heroImage
-            ? ({ "--chat-thread-image": `url("${heroImage}")` } as React.CSSProperties)
+          wallpaper
+            ? ({ "--chat-thread-image": `url("${wallpaper}")` } as React.CSSProperties)
             : undefined
         }
         // A tap on the empty scroller — beside a bubble, in the gap between two —

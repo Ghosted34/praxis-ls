@@ -318,7 +318,7 @@ module.exports = {
   createCall: C((c, req) => calls.createCall(c, {
     groupId: req.body.group_id, actor: actor(req), tenantMeta: req.tenant, env: req.env,
   })),
-  acceptCall: A((c, req) => calls.acceptCall(c, { id: req.params.id, actor: actor(req) })),
+  acceptCall: A((c, req) => calls.acceptCall(c, { id: req.params.id, actor: actor(req), env: req.env })),
   declineCall: A((c, req) => calls.declineCall(c, {
     id: req.params.id, actor: actor(req), tenantMeta: req.tenant, env: req.env,
   })),

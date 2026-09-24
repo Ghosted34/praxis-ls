@@ -36,13 +36,13 @@ const MAX_CALL_S = 1800;
  *  under the 30-minute cap that remains the backstop if the registry is down. */
 const LIVENESS_OFFLINE_S = 60;
 
-/** Push to ONE user's room on every replica (best-effort, no-op when the
- *  socket server is down — the row is already committed). The sweep runs
- *  from the worker, where the ambient request context does not exist, so a
- *  slug may be threaded in from the job. */
-function rtToUser(userId, event, payload, slugOverride) {
-  const slug = slugOverride || requestContext.getTenant();
-  if (slug && userId) realtime.publishToUser(slug, userId, event, payload);
+/** Push to ONE user's room for the call's env, on every replica
+ *  (best-effort; the row is already committed). Callers pass the env the call
+ *  lives in; a request or job context supplies it otherwise (audit A9). */
+function rtToUser(userId, event, payload, { slug = null, env = null } = {}) {
+  const tenant = slug || requestContext.getTenant();
+  const scope = env || requestContext.getEnv();
+  if (tenant && userId) realtime.publishToUser(tenant, scope, userId, event, payload);
 }
 
 /**
@@ -201,8 +201,8 @@ async function createCall(client, { groupId, actor, tenantMeta = null, env = "li
     // wire, and the yard is exactly where that matters.
     noise_suppression: settings.noise_suppression,
   };
-  rtToUser(partner.user_id, "call:ringing", ringPayload);
-  rtToUser(actor.user_id, "call:ringing_sent", ringPayload);
+  rtToUser(partner.user_id, "call:ringing", ringPayload, { env });
+  rtToUser(actor.user_id, "call:ringing_sent", ringPayload, { env });
 
   // The push escalation (§4.6). A DELAYED JOB, not a timer in this process:
   // the ring outlives the request that started it, and a deployment restart
@@ -229,7 +229,7 @@ async function createCall(client, { groupId, actor, tenantMeta = null, env = "li
 /** The callee answers. Must happen while the call is still RINGING — the
  *  five-second grace in the guide is the UI's, not the row's: a ring that
  *  timed out is NO_ANSWER and cannot be answered after. */
-async function acceptCall(client, { id, actor }) {
+async function acceptCall(client, { id, actor, env = "live" }) {
   const call = await repo.findCall(client, id);
   if (!call || (call.caller_id !== actor.user_id && call.callee_id !== actor.user_id)) {
     throw new AppError("NOT_FOUND", "Call not found", 404);
@@ -248,8 +248,8 @@ async function acceptCall(client, { id, actor }) {
   }
   const other = call.caller_id;
   const payload = { call_id: id, by: { user_id: actor.user_id } };
-  rtToUser(other, "call:accepted", payload);
-  rtToUser(actor.user_id, "call:accepted", payload);
+  rtToUser(other, "call:accepted", payload, { env });
+  rtToUser(actor.user_id, "call:accepted", payload, { env });
   logger.info({ callId: id }, "call: IN_CALL");
   // The callee's engine starts NOW (the mic opens at answer time), and its
   // ICE config rides this response the same way the dialer's did — one
@@ -346,7 +346,7 @@ async function endCall(client, {
   const fields = { end_reason: reason };
   if (status === "ENDED" || status === "FAILED") {
     fields.ended_at = new Date().toISOString();
-    fields.duration_seconds = durationSeconds(before, status === "IN_CALL" ? reason : null);
+    fields.duration_seconds = durationSeconds(before);
   }
   const updated = await repo.transition(client, { callId: id, fromStatus, status, fields });
   if (!updated) {
@@ -375,8 +375,8 @@ async function endCall(client, {
     duration_seconds: updated.duration_seconds ?? null,
     ended_at: updated.ended_at ?? null,
   };
-  rtToUser(before.caller_id, notifyEvent || "call:ended", payload, tenantSlug);
-  rtToUser(before.callee_id, notifyEvent || "call:ended", payload, tenantSlug);
+  rtToUser(before.caller_id, notifyEvent || "call:ended", payload, { slug: tenantSlug, env });
+  rtToUser(before.callee_id, notifyEvent || "call:ended", payload, { slug: tenantSlug, env });
   logger.info({ callId: id, status, reason }, "call: terminal");
 
   /**
@@ -404,17 +404,16 @@ async function endCall(client, {
 const PIPELINE_START_DELAY_MS = 20_000;
 
 /**
- * Duration for a finished call. The row's `connected_at` is the honest start
- * (a call that rang 40 s and talked 30 min lasted 30 min, not 30:40). A call
- * that never connected has none, and the sweep's max_duration end uses the
- * full cap rather than pretending to measure it.
+ * Talk time: from `connected_at` (a call that rang 40 s and talked 30 min
+ * lasted 30 min), clamped to the cap, so the sweep's max_duration end records
+ * exactly 1800. It is never derived from the end reason: until PR-3 (B9) the
+ * client can still send one, and "max_duration" after 10 s must stay 10 s
+ * (audit B10 removed the dead branch that would have trusted it).
  */
-function durationSeconds(call, reason) {
-  if (!call.connected_at) return reason === "max_duration" ? MAX_CALL_S : 0;
-  const end = reason === "max_duration"
-    ? new Date(new Date(call.connected_at).getTime() + MAX_CALL_S * 1000)
-    : new Date();
-  return Math.max(0, Math.min(MAX_CALL_S, Math.round((end - new Date(call.connected_at)) / 1000)));
+function durationSeconds(call) {
+  if (!call.connected_at) return 0;
+  const measured = Math.round((Date.now() - new Date(call.connected_at).getTime()) / 1000);
+  return Math.max(0, Math.min(MAX_CALL_S, measured));
 }
 
 /**
@@ -543,7 +542,9 @@ async function sweepLiveness(client, { tenantSlug = null, tenantMeta = null, env
     const outCaller = offlineSince[call.caller_id];
     const outCallee = offlineSince[call.callee_id];
     if (outCaller === undefined || outCallee === undefined) continue;
-    if (Math.min(outCaller, outCallee) > nowS - LIVENESS_OFFLINE_S) continue;
+    // BOTH gone for the full window (audit B2: `min` ended the call when only
+    // one had been gone that long and the other had just blinked).
+    if (Math.max(outCaller, outCallee) > nowS - LIVENESS_OFFLINE_S) continue;
     try {
       const ended = await endCall(client, {
         id: call.call_id,
@@ -634,7 +635,7 @@ async function enqueueRingEscalation({ callId, tenantMeta, env = "live" }) {
  * Idempotent by construction: a second ack from a second device returns null
  * from the guarded UPDATE and is not re-broadcast.
  */
-async function ackRing(client, { id, actor, channel = "socket", tenantSlug = null }) {
+async function ackRing(client, { id, actor, channel = "socket", tenantSlug = null, env = "live" }) {
   const call = await repo.findCall(client, id);
   if (!call || (call.caller_id !== actor.user_id && call.callee_id !== actor.user_id)) {
     throw new AppError("NOT_FOUND", "Call not found", 404);
@@ -647,12 +648,11 @@ async function ackRing(client, { id, actor, channel = "socket", tenantSlug = nul
   const updated = await repo.markRingAck(client, { callId: id, channel: safeChannel });
   if (!updated) return null;
 
-  const slug = tenantSlug || requestContext.getTenant();
   rtToUser(
     actor.user_id,
     "call:ring_ack",
     { call_id: id, channel: safeChannel, by: { user_id: actor.user_id } },
-    slug,
+    { slug: tenantSlug, env },
   );
   logger.info({ callId: id, channel: safeChannel }, "call: ring acked");
   return updated;
@@ -703,7 +703,7 @@ async function escalateRing(client, { callId, tenantSlug = null }) {
     // The title is the caller's NAME, which needs no translation at all.
     title: callerName || "Praxis LS",
     body: "Incoming call",
-    url: `/comms?call=${call.call_id}`,
+    url: `/comms?ring=${call.call_id}`,
     tag: `call:${call.call_id}`,
     renotify: true,
     // A ring that auto-dismisses after a few seconds is a ring nobody answers;

@@ -1,26 +1,15 @@
 /**
- * Worker job: the daily call-record sweep (Smart Comms PR-2, §4.5 step 3 + D7).
+ * Worker job: the daily call-record sweep, per tenant and env (sandbox too).
  *
- * Three jobs in one tick, all of them about records that already exist:
+ *   "reprocess"  re-enqueues calls whose transcript failed or whose pipeline
+ *                never finished, as `call-transcribe` jobs with origin "sweep".
+ *                A sweep run never notifies anyone (audit A4); its drafts wait
+ *                in the Calls list. Calls that never connected or have no
+ *                recording are NO_RECORDING and are not selected (A5, B5).
+ *   "retain"     deletes recorded audio past the tenant's retention window;
+ *                transcripts and summaries are kept.
  *
- *   "reprocess"  every call whose transcript fell back to the browser capture,
- *                and every call whose pipeline never finished (a worker died
- *                mid-run, Redis was down at hang-up, the last upload never
- *                arrived). Both are re-enqueued as ordinary `call-transcribe`
- *                jobs — this sweep decides WHAT to retry, never how.
- *
- *   "retain"     the D7 audio window: recorded audio older than 30 days is
- *                deleted; the transcript and the summary are permanent.
- *
- * The reprocess is the half of the never-dies guarantee that makes it a
- * guarantee rather than an apology: a flagged transcript is a temporary state,
- * and when the provider is reachable again the certified version replaces it and
- * the caller is told. `abandoned` is the honest ceiling — a call that has failed
- * twenty times is not coming back on the twenty-first, and the attempt counter is
- * on the row so this is a decision the database can be asked about.
- *
- * Runs in the sandbox schema too (it has calls in it, from training), exactly
- * like comms-call-sweep.
+ * Scheduled by src/jobs/call-record-sweep-schedule.js (a working-hours cron).
  */
 "use strict";
 
@@ -59,7 +48,7 @@ module.exports = async function commsCallRecordSweep(job) {
       // `startPipeline` is fire-and-forget by contract: a queue outage here
       // costs one day, and the next tick tries again.
       await pipeline.startPipeline({
-        callId: call.call_id, tenantMeta, env, delayMs: 0,
+        callId: call.call_id, tenantMeta, env, delayMs: 0, origin: "sweep",
       });
       enqueued += 1;
     }

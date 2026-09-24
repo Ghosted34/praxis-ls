@@ -255,12 +255,34 @@ describe("dial (createCall)", () => {
     expect(result.caller_id).toBe(U1);
     expect(result.callee_id).toBe(U2);
     expect(Array.isArray(result.ice.iceServers)).toBe(true);
-    const toCallee = publishSpy.mock.calls.find((c) => c[1] === U2 && c[2] === "call:ringing");
+    const toCallee = publishSpy.mock.calls.find((c) => c[2] === U2 && c[3] === "call:ringing");
     expect(toCallee).toBeTruthy();
     expect(toCallee[0]).toBe("acme");
-    expect(toCallee[3].call_id).toBe(result.call_id);
-    const toCaller = publishSpy.mock.calls.find((c) => c[1] === U1 && c[2] === "call:ringing_sent");
+    expect(toCallee[1]).toBe("live");
+    expect(toCallee[4].call_id).toBe(result.call_id);
+    const toCaller = publishSpy.mock.calls.find((c) => c[2] === U1 && c[3] === "call:ringing_sent");
     expect(toCaller).toBeTruthy();
+  });
+});
+
+describe("sandbox calls stay in the sandbox (A9)", () => {
+  test("a sandbox dial rings only the callee's sandbox room", async () => {
+    const store = makeStore();
+    await requestContext.run({ tenant: "acme", userId: U1, env: "sandbox" }, () =>
+      service.createCall(makeClient({ store, members: [MEMBER1] }), { groupId: G1, actor: { user_id: U1 }, env: "sandbox" }),
+    );
+    const rings = publishSpy.mock.calls.filter((c) => c[3] === "call:ringing");
+    expect(rings).toHaveLength(1);
+    expect(rings[0].slice(0, 3)).toEqual(["acme", "sandbox", U2]);
+  });
+
+  test("the worker's sweep ends a sandbox call in the sandbox rooms", async () => {
+    const store = makeStore();
+    const call = store.insert({ groupId: G1, callerId: U1, calleeId: U2 });
+    call.started_at = new Date(Date.now() - 61_000).toISOString();
+    await service.sweep(makeClient({ store }), { tenantSlug: "acme", env: "sandbox" });
+    const ends = publishSpy.mock.calls.filter((c) => c[3] === "call:no_answer");
+    expect(ends.map((c) => c[1])).toEqual(["sandbox", "sandbox"]);
   });
 });
 
@@ -294,7 +316,7 @@ describe("answer (acceptCall)", () => {
     );
     expect(updated.status).toBe("IN_CALL");
     expect(updated.connected_at).toBeTruthy();
-    expect(publishSpy.mock.calls.filter((c) => c[2] === "call:accepted")).toHaveLength(2);
+    expect(publishSpy.mock.calls.filter((c) => c[3] === "call:accepted")).toHaveLength(2);
   });
 
   test("a ring that timed out cannot be answered after", async () => {
@@ -322,7 +344,7 @@ describe("hang-up and decline", () => {
     );
     expect(updated.status).toBe("CANCELLED");
     expect(updated.end_reason).toBe("cancelled");
-    expect(publishSpy.mock.calls.some((c) => c[2] === "call:cancelled")).toBe(true);
+    expect(publishSpy.mock.calls.some((c) => c[3] === "call:cancelled")).toBe(true);
   });
 
   test("the callee hanging up mid-ring is a DECLINED", async () => {
@@ -332,7 +354,7 @@ describe("hang-up and decline", () => {
     );
     expect(updated.status).toBe("DECLINED");
     expect(updated.end_reason).toBe("declined");
-    expect(publishSpy.mock.calls.some((c) => c[2] === "call:declined")).toBe(true);
+    expect(publishSpy.mock.calls.some((c) => c[3] === "call:declined")).toBe(true);
   });
 
   test("a call in progress ends with a measured duration", async () => {
@@ -346,7 +368,19 @@ describe("hang-up and decline", () => {
     expect(updated.status).toBe("ENDED");
     expect(updated.end_reason).toBe("hangup");
     expect(updated.duration_seconds).toBe(41);
-    expect(publishSpy.mock.calls.filter((c) => c[2] === "call:ended")).toHaveLength(2);
+    expect(publishSpy.mock.calls.filter((c) => c[3] === "call:ended")).toHaveLength(2);
+  });
+
+  test("a client-claimed max_duration after 10 s records 10 s, not the 30-minute cap (B10)", async () => {
+    // The end reason still comes from the request body until PR-3 (B9), so the
+    // duration must never be derived from it.
+    const { store, call } = await ringing();
+    await inTenant(() => service.acceptCall(makeClient({ store }), { id: call.call_id, actor: { user_id: U2 } }));
+    store.calls.get(call.call_id).connected_at = new Date(Date.now() - 10 * 1000).toISOString();
+    const updated = await inTenant(() =>
+      service.hangup(makeClient({ store }), { id: call.call_id, actor: { user_id: U1 }, reason: "max_duration" }),
+    );
+    expect(updated.duration_seconds).toBe(10);
   });
 
   test("a second hang-up loses the race and says so (409)", async () => {
@@ -407,10 +441,10 @@ describe("the sweep — the only clock", () => {
     expect(row.end_reason).toBe("max_duration");
     expect(row.duration_seconds).toBe(1800);
     // The worker has no ambient tenant: the job's slug must reach the publish.
-    const ended = publishSpy.mock.calls.find((c) => c[2] === "call:ended" && c[1] === U1);
+    const ended = publishSpy.mock.calls.find((c) => c[3] === "call:ended" && c[2] === U1);
     expect(ended).toBeTruthy();
     expect(ended[0]).toBe("acme");
-    expect(ended[3].reason).toBe("max_duration");
+    expect(ended[4].reason).toBe("max_duration");
   });
 
   test("fresh calls are nobody's business", async () => {
@@ -517,8 +551,8 @@ describe("ring ack and push escalation (PR-3)", () => {
     expect(second).toBeNull();
     expect(store.calls.get(call.call_id).ring_ack_channel).toBe("notification");
     // The first ack is broadcast to the user's own room — never to the caller.
-    const broadcast = publishSpy.mock.calls.find((c) => c[2] === "call:ring_ack");
-    expect(broadcast[1]).toBe(U2);
+    const broadcast = publishSpy.mock.calls.find((c) => c[3] === "call:ring_ack");
+    expect(broadcast[2]).toBe(U2);
   });
 
   test("the caller cannot ack their own ring, and an unknown channel is not stored", async () => {
@@ -573,6 +607,8 @@ describe("ring ack and push escalation (PR-3)", () => {
     expect(payload.tag).toBe(`call:${ringing.call_id}`);
     expect(payload.actions.map((a) => a.action)).toEqual(["accept", "decline"]);
     expect(payload.data).toMatchObject({ kind: "call", call_id: ringing.call_id, caller_id: U1 });
+    // A ring links with ?ring=; ?call= now means "open this call's summary" (A6).
+    expect(payload.url).toBe(`/comms?ring=${ringing.call_id}`);
 
     // A queue retry of the SAME job: the claim above stops the second send.
     out = await service.escalateRing(makeClient({ store }), { callId: ringing.call_id, tenantSlug: "acme" });
@@ -613,6 +649,18 @@ describe("call liveness — the row's fourth way to end (FN-1)", () => {
     expect(row.status).toBe("ENDED");
     expect(row.end_reason).toBe("disconnected");
     expect(row.ended_at).toBeTruthy();
+  });
+
+  test("one device gone 2 minutes and the other only just gone keeps the call alive (B2: both, not either)", async () => {
+    const store = makeStore();
+    const call = inCall(store);
+    mockRedis.zsets.set(OFF_KEY, new Map([
+      [U1, nowS() - 120],
+      [U2, nowS() - 5],
+    ]));
+    const { moved } = await service.sweep(makeClient({ store }), { tenantSlug: "acme", env: "live" });
+    expect(moved).toBe(0);
+    expect(store.calls.get(call.call_id).status).toBe("IN_CALL");
   });
 
   test("one device still online keeps the call alive, no matter how old the book is", async () => {

@@ -161,6 +161,7 @@ jest.mock("../../src/modules/smartcomm/smartcomm.call.repo", () => {
         update_available: false,
         update_message_id: (existing && existing.update_message_id) || null,
         regenerate_count: (existing && existing.regenerate_count) || 0,
+        notified_at: (existing && existing.notified_at) || null,
       };
       on().summaries.set(callId, row);
       return row;
@@ -172,6 +173,12 @@ jest.mock("../../src/modules/smartcomm/smartcomm.call.repo", () => {
       return row;
     },
     getSummary: async (c, callId) => on().summaries.get(callId) || null,
+    claimSummaryNotification: async (c, callId) => {
+      const row = on().summaries.get(callId);
+      if (!row || row.notified_at) return null;
+      row.notified_at = new Date().toISOString();
+      return row;
+    },
     markSummarySent: async (c, { callId, messageId }) => {
       const row = on().summaries.get(callId);
       Object.assign(row, { draft_status: "SENT", sent_message_id: messageId, update_available: false });
@@ -221,6 +228,9 @@ jest.mock("../../src/jobs/queue-producer", () => ({ enqueue: jest.fn(async () =>
 jest.mock("../../src/modules/smartcomm/smartcomm.service", () => ({
   postMessage: jest.fn(async () => ({ message_id: "msg-1" })),
 }));
+jest.mock("../../src/modules/notification/notification.service", () => ({
+  notifyMany: jest.fn(async () => 1),
+}));
 
 const storage = require("../../src/services/storage.service");
 const transcription = require("../../src/services/ai/transcription.service");
@@ -231,6 +241,7 @@ const alerts = require("../../src/services/platform/alert-routing.service");
 const realtime = require("../../src/realtime");
 const { enqueue } = require("../../src/jobs/queue-producer");
 const smartcomm = require("../../src/modules/smartcomm/smartcomm.service");
+const notifications = require("../../src/modules/notification/notification.service");
 const pipeline = require("../../src/modules/smartcomm/smartcomm.call.pipeline.service");
 
 const U1 = "11111111-1111-1111-1111-111111111111";
@@ -314,8 +325,9 @@ beforeEach(() => {
   smartcomm.postMessage.mockResolvedValue({ message_id: "msg-1" });
 });
 
+// publishToUser(slug, env, userId, event, payload)
 const rtTo = (userId, event) =>
-  realtime.publishToUser.mock.calls.filter((c) => c[1] === userId && c[2] === event);
+  realtime.publishToUser.mock.calls.filter((c) => c[2] === userId && c[3] === event);
 
 /* ── The pure helpers: the contract, tested directly ─────────────────────── */
 
@@ -705,6 +717,165 @@ describe("processCall — Groq once, then Gemini once (owner decision A-1)", () 
   });
 });
 
+describe("notify once, never from the sweep (A4, A11)", () => {
+  const groqOk = { text: "bonjour", audio_seconds: 60, provider: "groq", detected_language: "fr" };
+
+  beforeEach(() => {
+    mockStore.current.calls.set(CALL, endedCall({
+      ended_at: "2026-09-24T13:05:00.000Z", duration_seconds: 312,
+    }));
+    mockStore.current.parts.push(part("caller", 1), part("callee", 1));
+    transcription.transcribe.mockResolvedValue(groqOk);
+    llm.chat.mockResolvedValue({
+      provider: "gemini",
+      text: JSON.stringify({ summary: "Draft.", key_points: [], follow_ups: [] }),
+    });
+  });
+
+  test("a hang-up run pushes once, with the call's name, a day-first time, the duration and its own link", async () => {
+    await pipeline.processCall(client({ names: NAMES }), { callId: CALL, origin: "hangup", slug: "acme" });
+
+    expect(notifications.notifyMany).toHaveBeenCalledTimes(1);
+    const [, recipients, n] = notifications.notifyMany.mock.calls[0];
+    expect(recipients).toEqual([U1]);
+    expect(n.url).toBe(`/comms/calls/${CALL}`);
+    expect(n.title).toBe("Call summary ready");
+    // 13:05 UTC is 14:05 in Douala (the tenant's hr.timezone default).
+    expect(n.body).toBe("Your call with Bruno Kamga on 24/09/2026 at 14:05 (5 min). Review and send the summary.");
+    // The service worker re-renders these in the device's own language.
+    expect(n.pushData).toEqual({
+      kind: "call_summary",
+      call_id: CALL,
+      peer_name: "Bruno Kamga",
+      ended_at: "2026-09-24T13:05:00.000Z",
+      duration_seconds: 312,
+    });
+    expect(mockStore.current.summaries.get(CALL).notified_at).toBeTruthy();
+    expect(rtTo(U1, "call:summary_ready")).toHaveLength(1);
+  });
+
+  test("a sandbox call's events go to the sandbox rooms only (A9)", async () => {
+    await pipeline.processCall(client({ names: NAMES }), { callId: CALL, origin: "hangup", slug: "acme", env: "sandbox" });
+    const ready = rtTo(U1, "call:summary_ready");
+    expect(ready).toHaveLength(1);
+    expect(ready[0].slice(0, 2)).toEqual(["acme", "sandbox"]);
+  });
+
+  test("notified_at is claimed once: a second run for the same draft does not push again", async () => {
+    transcription.transcribe.mockRejectedValue(new Error("upstream 502"));
+    geminiTranscription.transcribe.mockRejectedValue(new Error("upstream 503"));
+    await pipeline.processCall(client({ names: NAMES }), { callId: CALL, origin: "hangup", slug: "acme" });
+    // A duplicate hang-up job, or a manual re-run: the draft is re-written,
+    // the caller is not told twice.
+    await pipeline.processCall(client({ names: NAMES }), { callId: CALL, origin: "hangup", slug: "acme" });
+    expect(notifications.notifyMany).toHaveBeenCalledTimes(1);
+    expect(rtTo(U1, "call:summary_ready")).toHaveLength(1);
+  });
+
+  test("a sweep run drafts but tells nobody: no push, no in-app row, no socket event", async () => {
+    const out = await pipeline.processCall(client({ names: NAMES }), { callId: CALL, origin: "sweep" });
+    expect(out.state).toBe("CERTIFIED");
+    expect(mockStore.current.summaries.get(CALL).draft_status).toBe("PENDING_REVIEW");
+    expect(notifications.notifyMany).not.toHaveBeenCalled();
+    expect(realtime.publishToUser).not.toHaveBeenCalled();
+    // Unclaimed: the draft waits in the Calls list with its badge.
+    expect(mockStore.current.summaries.get(CALL).notified_at).toBeNull();
+  });
+
+  test("a sweep re-run of a failed call raises no second ops alert and no socket event", async () => {
+    transcription.transcribe.mockRejectedValue(new Error("upstream 502"));
+    geminiTranscription.transcribe.mockRejectedValue(new Error("upstream 503"));
+    await pipeline.processCall(client({ names: NAMES }), { callId: CALL, origin: "hangup", tenantMeta: { slug: "acme" } });
+    expect(alerts.raise).toHaveBeenCalledTimes(1);
+    const socketEventsAfterFirst = realtime.publishToUser.mock.calls.length;
+
+    await pipeline.processCall(client({ names: NAMES }), { callId: CALL, origin: "sweep", tenantMeta: { slug: "acme" } });
+    expect(alerts.raise).toHaveBeenCalledTimes(1);
+    expect(realtime.publishToUser.mock.calls.length).toBe(socketEventsAfterFirst);
+    expect(notifications.notifyMany).toHaveBeenCalledTimes(1);
+  });
+
+  test("the origin rides the job: hang-up by default, sweep when the sweep enqueues", async () => {
+    await pipeline.startPipeline({ callId: CALL, tenantMeta: { slug: "acme" } });
+    await pipeline.startPipeline({ callId: CALL, tenantMeta: { slug: "acme" }, origin: "sweep" });
+    expect(enqueue.mock.calls[0][2].origin).toBe("hangup");
+    expect(enqueue.mock.calls[1][2].origin).toBe("sweep");
+  });
+});
+
+describe("no audio, no pipeline (A5, B5)", () => {
+  const tenMinutesAgo = () => new Date(Date.now() - 600_000).toISOString();
+  const nothingHappened = () => {
+    expect(transcription.transcribe).not.toHaveBeenCalled();
+    expect(geminiTranscription.transcribe).not.toHaveBeenCalled();
+    expect(llm.chat).not.toHaveBeenCalled();
+    expect(alerts.raise).not.toHaveBeenCalled();
+    expect(notifications.notifyMany).not.toHaveBeenCalled();
+    expect(mockStore.current.summaries.size).toBe(0);
+  };
+
+  test("recording off for the tenant: NO_RECORDING, and no attempt is counted", async () => {
+    mockStore.current.calls.set(CALL, endedCall());
+    mockStore.current.parts.push(part("caller", 1), part("callee", 1));
+    const out = await pipeline.processCall(client({ featureState: "off" }), { callId: CALL });
+    expect(out).toEqual(expect.objectContaining({ skipped: "no_recording" }));
+    const call = mockStore.current.calls.get(CALL);
+    expect(call.transcription_state).toBe("NO_RECORDING");
+    expect(call.transcription_attempts).toBe(0);
+    nothingHappened();
+  });
+
+  test("nothing uploaded once the grace has passed: NO_RECORDING, even with an old live log", async () => {
+    mockStore.current.calls.set(CALL, endedCall({ ended_at: tenMinutesAgo() }));
+    mockStore.current.live.push({ call_id: CALL, side: "caller", seq: 0, text: "browser words", language: "en" });
+    await pipeline.processCall(client(), { callId: CALL });
+    expect(mockStore.current.calls.get(CALL).transcription_state).toBe("NO_RECORDING");
+    nothingHappened();
+  });
+
+  test("nothing uploaded yet, inside the grace: it waits, and marks nothing", async () => {
+    mockStore.current.calls.set(CALL, endedCall({ ended_at: new Date(Date.now() - 30_000).toISOString() }));
+    const out = await pipeline.processCall(client(), { callId: CALL });
+    expect(out.waiting).toBe(true);
+    expect(mockStore.current.calls.get(CALL).transcription_state).toBeNull();
+  });
+
+  test("a call that never connected is closed as NO_RECORDING rather than skipped forever", async () => {
+    mockStore.current.calls.set(CALL, endedCall({ status: "FAILED", connected_at: null, ended_at: tenMinutesAgo() }));
+    await pipeline.processCall(client(), { callId: CALL });
+    expect(mockStore.current.calls.get(CALL).transcription_state).toBe("NO_RECORDING");
+    nothingHappened();
+  });
+
+  test("NO_RECORDING is terminal: a later run does nothing", async () => {
+    mockStore.current.calls.set(CALL, endedCall({ transcription_state: "NO_RECORDING", ended_at: tenMinutesAgo() }));
+    mockStore.current.parts.push(part("caller", 1));
+    const out = await pipeline.processCall(client(), { callId: CALL });
+    expect(out).toEqual({ skipped: "no_recording" });
+    nothingHappened();
+  });
+
+  test("audio that no provider could read: no words, so the LLM is never asked to invent a summary", async () => {
+    mockStore.current.calls.set(CALL, endedCall());
+    mockStore.current.parts.push(part("caller", 1), part("callee", 1));
+    transcription.transcribe.mockRejectedValue(new Error("upstream 502"));
+    geminiTranscription.transcribe.mockRejectedValue(new Error("could not convert audio/webm for Gemini"));
+    await pipeline.processCall(client({ names: NAMES }), { callId: CALL });
+    expect(llm.chat).not.toHaveBeenCalled();
+    const summary = mockStore.current.summaries.get(CALL);
+    expect(summary.provenance).toBe("transcript-only");
+    expect(summary.summary_text).toMatch(/No speech was captured/);
+  });
+
+  test("a governance refusal counts as an attempt, so the retry list is bounded", async () => {
+    mockStore.current.calls.set(CALL, endedCall());
+    mockStore.current.parts.push(part("caller", 1), part("callee", 1));
+    governance.canUseFeature.mockResolvedValue({ allowed: false, reason: "AI budget exhausted" });
+    await pipeline.processCall(client(), { callId: CALL });
+    expect(mockStore.current.calls.get(CALL).transcription_attempts).toBe(1);
+  });
+});
+
 describe("processCall — guards", () => {
   test("a SENT summary is never rewritten; the caller is OFFERED an update instead", async () => {
     mockStore.current.calls.set(CALL, endedCall({ transcription_state: "TRANSCRIPTION_FAILED" }));
@@ -734,7 +905,7 @@ describe("processCall — guards", () => {
     expect(summary.sent_message_id).toBe("msg-9");
     expect(summary.update_available).toBe(true);
     const [readyEvent] = rtTo(U1, "call:summary_ready");
-    expect(readyEvent[3].status).toBe("UPDATE_AVAILABLE");
+    expect(readyEvent[4].status).toBe("UPDATE_AVAILABLE");
   });
 
   test("a DISCARDED draft is a decision: the pipeline does not regenerate it behind the caller's back", async () => {
@@ -777,7 +948,7 @@ describe("processCall — guards", () => {
 
   test("a governance refusal is an answer, not a crash: recorded, visible, and retried later", async () => {
     mockStore.current.calls.set(CALL, endedCall());
-    mockStore.current.parts.push(part("caller", 1));
+    mockStore.current.parts.push(part("caller", 1), part("callee", 1));
     governance.canUseFeature.mockResolvedValue({ allowed: false, reason: "AI budget exhausted" });
     const out = await pipeline.processCall(client(), { callId: CALL, tenantMeta: { slug: "acme" } });
     expect(out.blocked).toBe(true);

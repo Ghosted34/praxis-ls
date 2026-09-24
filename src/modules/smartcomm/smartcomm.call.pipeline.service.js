@@ -197,9 +197,10 @@ function summaryPrompt({ transcript, meta }) {
 }
 
 /* ── Realtime (best-effort, exactly like the call state machine's) ────────── */
-function rtToUser(userId, event, payload, slugOverride) {
-  const slug = slugOverride || requestContext.getTenant();
-  if (slug && userId) realtime.publishToUser(slug, userId, event, payload);
+function rtToUser(userId, event, payload, { slug = null, env = null } = {}) {
+  const tenant = slug || requestContext.getTenant();
+  const scope = env || requestContext.getEnv();
+  if (tenant && userId) realtime.publishToUser(tenant, scope, userId, event, payload);
 }
 
 /** Is the recording half of calls switched on for this tenant? The tenant
@@ -483,24 +484,38 @@ async function recordVoiceUsage(client, { userId, conversationId, result, fallba
   }
 }
 
+/** Statuses a call cannot leave. RINGING and IN_CALL are the only live ones. */
+const TERMINAL_STATUSES = new Set(["ENDED", "FAILED", "NO_ANSWER", "CANCELLED", "DECLINED", "BUSY"]);
+
+/** A terminal state for a call with nothing to transcribe (audit A5): no LLM,
+ *  no alert, no notification, and never selected by the sweep again. */
+async function markNoRecording(client, callId, reason) {
+  await repo.setTranscriptionState(client, { callId, state: "NO_RECORDING", error: null });
+  return { skipped: "no_recording", reason };
+}
+
 /**
- * The job body (§4.5, steps 2–5).
- *
- * Idempotent by state, not by luck: a call already CERTIFIED with a draft is
- * left alone; a call mid-PROCESSING is skipped while that run is alive; and
- * every write is keyed on the call. Two enqueues (the hang-up and the last
- * upload) therefore cost one pipeline run, which is why the queue de-duplicates
- * on the call id as well.
+ * The job body. `origin` is "hangup" (the job enqueued when the call ended) or
+ * "sweep" (the daily reprocess). A sweep run never notifies anyone: no push, no
+ * in-app row, no socket event (audit A4). Idempotent by state: a CERTIFIED call
+ * with a draft, a NO_RECORDING call and a live PROCESSING run are left alone.
  */
-async function processCall(client, { callId, tenantMeta = null, env = "live", user = null, slug = null }) {
-  // The tenant slug decides whether a socket message and the ops alert can be
-  // addressed at all, and it arrives by two different routes (the job passes
-  // tenantMeta, a request passes req.tenant). Deriving it here means neither
-  // caller can accidentally produce a silent notification by forgetting one.
+async function processCall(client, {
+  callId, tenantMeta = null, env = "live", user = null, slug = null, origin = "hangup",
+}) {
   const tenant = slug || (tenantMeta && tenantMeta.slug) || null;
+  // Where realtime events go: this tenant, and this call's env (audit A9).
+  const rt = { slug: tenant, env };
+  const announce = origin !== "sweep";
   const call = await repo.findCall(client, callId);
   if (!call) return { skipped: "missing" };
-  if (!isPipelineEligible(call)) return { skipped: "not_ended", status: call.status };
+  if (call.transcription_state === "NO_RECORDING") return { skipped: "no_recording" };
+  if (!isPipelineEligible(call)) {
+    // A call that never connected has no audio. Marking it keeps it out of
+    // the sweep's oldest-first window for good (audit B5).
+    if (TERMINAL_STATUSES.has(call.status)) return markNoRecording(client, callId, "never_connected");
+    return { skipped: "not_ended", status: call.status };
+  }
 
   if (call.transcription_state === "PROCESSING" && call.transcription_updated_at
       && Date.now() - Date.parse(call.transcription_updated_at) < PROCESSING_STALE_MS) {
@@ -511,41 +526,43 @@ async function processCall(client, { callId, tenantMeta = null, env = "live", us
     return { skipped: "certified", summary_status: existingSummary.draft_status };
   }
 
-  // The governance gate (D9 / §3.2). A refusal is an ANSWER, not an error: it
-  // is recorded on the call with its reason, so the caller sees "transcript
-  // being retried" rather than a spinner, and the daily reprocess re-tries when
-  // the plan or the budget allows it again.
+  // No audio, no pipeline (audit A5), decided before any attempt is counted.
+  if (!(await recordingEnabled(client))) return markNoRecording(client, callId, "recording_off");
+  const parts = await repo.listRecordingParts(client, callId);
+  const withinGrace = call.ended_at
+    && Date.now() - Date.parse(call.ended_at) < UPLOAD_GRACE_MS;
+  // A side with nothing uploaded yet may still be flushing. The hang-up
+  // enqueue is delayed for that; the daily sweep catches what it leaves.
+  const missing = SIDES.filter((side) => !parts.some((p) => p.side === side));
+  if (missing.length && withinGrace) {
+    return { waiting: true, missing, ended_at: call.ended_at };
+  }
+  if (!parts.length) return markNoRecording(client, callId, "no_parts");
+
+  // The governance gate (D9). A refusal is recorded on the call and counted as
+  // an attempt, so the daily retry of a refused call is bounded too.
   const gate = await governance.canUseFeature(client, {
     userId: call.caller_id,
     featureKey: "calls",
   });
   if (!gate.allowed) {
+    await repo.bumpTranscriptionAttempts(client, callId);
     await repo.setTranscriptionState(client, {
       callId,
       state: "TRANSCRIPTION_FAILED",
       error: gate.reason || "Call transcription is not available on this plan right now",
     });
-    rtToUser(call.caller_id, "call:transcription_failed", {
-      call_id: callId, reason: gate.reason || "unavailable",
-    }, tenant);
-    rtToUser(call.callee_id, "call:transcription_failed", {
-      call_id: callId, reason: gate.reason || "unavailable",
-    }, tenant);
+    if (announce) {
+      const payload = { call_id: callId, reason: gate.reason || "unavailable" };
+      rtToUser(call.caller_id, "call:transcription_failed", payload, rt);
+      rtToUser(call.callee_id, "call:transcription_failed", payload, rt);
+    }
     return { blocked: true, reason: gate.reason };
   }
 
-  const parts = await repo.listRecordingParts(client, callId);
   const names = await participantNames(client, call);
   const draftLanguage = DRAFT_LANGUAGES.includes(call.summary_language) ? call.summary_language : "en";
-
-  // A side with nothing uploaded yet may still be flushing. The hang-up
-  // enqueue is delayed for that; the daily sweep catches what it leaves.
-  const missing = SIDES.filter((s) => !parts.some((p) => p.side === s));
-  const withinGrace = call.ended_at
-    && Date.now() - Date.parse(call.ended_at) < UPLOAD_GRACE_MS;
-  if (missing.length && withinGrace) {
-    return { waiting: true, missing, ended_at: call.ended_at };
-  }
+  const firstFailure = call.transcription_state !== "TRANSCRIPTION_FAILED";
 
   await repo.bumpTranscriptionAttempts(client, callId);
   await repo.setTranscriptionState(client, { callId, state: "PROCESSING" });
@@ -605,11 +622,14 @@ async function processCall(client, { callId, tenantMeta = null, env = "live", us
   });
 
   if (!allCertified) {
-    // Visible on both ends, alerted to ops, and retried by the sweep.
-    const payload = { call_id: callId, reason: failures.join(" · ").slice(0, 200) };
-    rtToUser(call.caller_id, "call:transcription_failed", payload, tenant);
-    rtToUser(call.callee_id, "call:transcription_failed", payload, tenant);
-    await raiseOpsAlert({ call, failures, tenantMeta, env });
+    // Visible on both ends and retried by the sweep. Ops hears about a call's
+    // FIRST failure only, not every nightly re-run of it (audit A4).
+    if (announce) {
+      const payload = { call_id: callId, reason: failures.join(" · ").slice(0, 200) };
+      rtToUser(call.caller_id, "call:transcription_failed", payload, rt);
+      rtToUser(call.callee_id, "call:transcription_failed", payload, rt);
+    }
+    if (firstFailure) await raiseOpsAlert({ call, failures, tenantMeta, env });
   }
 
   // ── The summary draft ──
@@ -636,9 +656,11 @@ async function processCall(client, { callId, tenantMeta = null, env = "live", us
     const improved = everyRowCertified && !CERTIFIED_PROVIDERS.includes(existingSummary.provenance);
     if (improved) {
       await repo.markUpdateAvailable(client, callId);
-      rtToUser(call.caller_id, "call:summary_ready", {
-        call_id: callId, status: "UPDATE_AVAILABLE", provenance: drafted.provenance,
-      }, tenant);
+      if (announce) {
+        rtToUser(call.caller_id, "call:summary_ready", {
+          call_id: callId, status: "UPDATE_AVAILABLE", provenance: drafted.provenance,
+        }, rt);
+      }
     }
     return {
       call_id: callId,
@@ -662,7 +684,11 @@ async function processCall(client, { callId, tenantMeta = null, env = "live", us
     entityRef: cref(callId),
     actorUserId: null,
   });
-  await notifySummaryReady(client, { call, summary: stored, slug: tenant });
+  // Notify once per call (audit A4): the claim on notified_at is atomic, and a
+  // sweep run never claims, so a sweep-made draft waits in the Calls list.
+  if (announce && await repo.claimSummaryNotification(client, callId)) {
+    await notifySummaryReady(client, { call, summary: stored, names, rt });
+  }
 
   logger.info(
     { callId, state: stored ? "ready" : "none", provenance: drafted.provenance, language: drafted.language },
@@ -712,6 +738,17 @@ async function raiseOpsAlert({ call, failures, tenantMeta, env = "live" }) {
  * whole point of the guarantee.
  */
 async function draftSummary(client, { call, names, transcript, rows, language, failures }) {
+  // No words, no summary: asking the model anyway is how "(no words were
+  // captured)" became a confident summary of a call (audit A5).
+  if (!rows.length) {
+    return {
+      provenance: "transcript-only",
+      language,
+      summary_text: `No speech was captured for this call (${failures.join(" · ") || "no transcript"}).`,
+      key_points: [],
+      follow_ups: [],
+    };
+  }
   const prompt = summaryPrompt({
     transcript: transcript.text,
     meta: {
@@ -791,24 +828,59 @@ async function recordSummaryUsage(client, { call, out }) {
   });
 }
 
-/** The caller hears it: socket (live badge), then the notification fan-out
- *  (in-app row + push per preference, §4.5 step 5). Best-effort by design —
- *  the draft is already stored, and a push failure must not lose it. */
-async function notifySummaryReady(client, { call, summary, slug = null }) {
+/** "24/09/2026" and "14:05" in the tenant's timezone (hr.timezone), day-first. */
+function dayFirst(iso, timeZone) {
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return null;
+  const date = new Intl.DateTimeFormat("en-GB", {
+    timeZone, day: "2-digit", month: "2-digit", year: "numeric",
+  }).format(at);
+  const time = new Intl.DateTimeFormat("en-GB", {
+    timeZone, hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+  }).format(at);
+  return { date, time };
+}
+
+/**
+ * Tell the caller (socket + one notification with its push). The copy names
+ * the other person, a day-first time and the duration (audit A11); the service
+ * worker re-renders it in the device's language from `pushData`. Best-effort:
+ * the draft is already stored, and a failed push must not lose it.
+ */
+async function notifySummaryReady(client, { call, summary, names, rt = {} }) {
   rtToUser(call.caller_id, "call:summary_ready", {
     call_id: call.call_id,
     status: summary.draft_status,
     provenance: summary.provenance,
-  }, slug);
+  }, rt);
   try {
+    const { timezoneOf } = require("../hr/attendance/attendance.reconcile");
+    const when = call.ended_at ? dayFirst(call.ended_at, await timezoneOf(client)) : null;
+    const peer = (names && names.callee) || null;
+    const minutes = Number(call.duration_seconds) > 0
+      ? Math.max(1, Math.round(Number(call.duration_seconds) / 60))
+      : null;
+    const body = [
+      peer ? `Your call with ${peer}` : "Your call",
+      when ? ` on ${when.date} at ${when.time}` : "",
+      minutes ? ` (${minutes} min)` : "",
+      ". Review and send the summary.",
+    ].join("");
     await require("../notification/notification.service").notifyMany(client, [call.caller_id], {
       eventTypeKey: "comms.call_summary_ready",
       title: "Call summary ready",
-      body: "Review and send the summary of your call.",
+      body,
       entityRef: cref(call.call_id),
       category: "comms",
-      url: `/comms?call=${call.call_id}`,
+      url: `/comms/calls/${call.call_id}`,
       pushTag: `comms:call:${call.call_id}`,
+      pushData: {
+        kind: "call_summary",
+        call_id: call.call_id,
+        peer_name: peer,
+        ended_at: call.ended_at || null,
+        duration_seconds: Number(call.duration_seconds) || null,
+      },
     });
   } catch (err) {
     /* @silent:storage|parse|teardown */
@@ -819,20 +891,19 @@ async function notifySummaryReady(client, { call, summary, slug = null }) {
 /* ── Starting the pipeline ──────────────────────────────────────────────── */
 
 /**
- * Enqueue the transcription of one call. Called on the ENDED transition and
- * again when a side finishes uploading; the queue de-duplicates on the call id,
- * so the second call is a no-op while the first is in flight.
- *
- * `delayMs` exists for the ENDED enqueue specifically: the moment a call ends,
- * the clients are still flushing their parts, and a pipeline that starts
- * immediately would find no audio and (correctly, but uselessly) fall back.
+ * Enqueue the transcription of one call: from the ENDED transition (origin
+ * "hangup", delayed while the clients flush their parts) and from the daily
+ * sweep (origin "sweep", which never notifies). The queue de-duplicates on the
+ * call id. Nothing re-enqueues from the upload path yet (audit A2, PR-2).
  */
-async function startPipeline({ callId, tenantMeta = null, env = "live", user = null, delayMs = 0 }) {
+async function startPipeline({
+  callId, tenantMeta = null, env = "live", user = null, delayMs = 0, origin = "hangup",
+}) {
   if (!callId) return null;
   try {
     const { enqueue } = require("../../jobs/queue-producer");
     return await enqueue("call-transcribe", "transcribe", {
-      callId, tenantMeta, env, user,
+      callId, tenantMeta, env, user, origin,
     }, {
       jobId: `calltranscribe-${callId}`,
       delay: delayMs,

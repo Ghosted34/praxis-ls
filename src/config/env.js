@@ -443,6 +443,10 @@ const Schema = z.object({
   // default puts "midnight" at Douala midnight rather than UTC. Empty FX_SYNC_CRON
   // disables the daily sync (manual "Sync now" still works).
   FX_SYNC_TZ: z.string().default("Africa/Douala"),
+  // The daily call-record sweep (retries + audio retention). A working-hours
+  // cron in the corridor's timezone: `every: 24h` ran at 00:00 UTC (audit A1).
+  COMMS_CALL_RECORD_SWEEP_CRON: z.string().default("0 10 * * *"),
+  COMMS_CALL_RECORD_SWEEP_TZ: z.string().default("Africa/Douala"),
   ENABLE_WORKERS: bool(false),
 
   // Monthly leave accrual (MOD-15). 02:00 on the 1st, in the FX timezone — the

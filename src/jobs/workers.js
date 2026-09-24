@@ -278,6 +278,10 @@ function startWorkers() {
                   tenant: tenantSlug,
                   userId: ctx && ctx.user_id,
                   requestId: ctx && ctx.request_id,
+                  // The schema this job works in, for anything it announces
+                  // to a user's room (calls audit A9). Jobs without an env
+                  // open the live schema, so live is the honest default.
+                  env: job.data && job.data.env === "sandbox" ? "sandbox" : "live",
                 },
                 () => p.handler(job),
               )
@@ -355,17 +359,19 @@ async function scheduleRecurring() {
   await require("./queue-producer").enqueue("comms-call-sweep-scheduler", "tick", {}, {
     repeat: { every: 15000 }, removeOnComplete: true, removeOnFail: 50,
   });
-  /**
-   * The call RECORD tick (PR-2): daily, and deliberately NOT on the 15 s clock
-   * the deadlines use. Nothing here is a deadline — a flagged transcript is
-   * already readable and already alerted, and retention is a 30-day window —
-   * while every retry spends the tenant's transcription budget for real. A
-   * daily cadence is what makes both the spend and the PR-3 failure-rate signal
-   * honest.
-   */
-  await require("./queue-producer").enqueue("comms-call-record-sweep-scheduler", "tick", {}, {
-    repeat: { every: 24 * 60 * 60 * 1000 }, removeOnComplete: true, removeOnFail: 50,
-  });
+  // The call RECORD tick: daily, on a working-hours cron in the corridor's
+  // timezone (audit A1: `every: 24h` ran at 00:00 UTC). It never notifies
+  // anyone (audit A4); it retries and applies audio retention.
+  {
+    const { getQueue, enqueue: enq } = require("./queue-producer");
+    const { removed } = await require("./call-record-sweep-schedule").scheduleCallRecordSweep({
+      getQueue,
+      enqueue: enq,
+      pattern: config.COMMS_CALL_RECORD_SWEEP_CRON || "0 10 * * *",
+      tz: config.COMMS_CALL_RECORD_SWEEP_TZ || "Africa/Douala",
+    });
+    if (removed) logger.info({ removed }, "call record sweep: removed stale repeatables");
+  }
   const every = config.ORCHESTRATION_DISPATCH_INTERVAL_MS;
   if (!every || every <= 0) {
     logger.info("orchestration scheduler disabled (ORCHESTRATION_DISPATCH_INTERVAL_MS=0)");

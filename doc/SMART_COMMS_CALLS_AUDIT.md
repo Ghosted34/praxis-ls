@@ -871,8 +871,13 @@ F = call UI, G = privacy, H = tests and docs.
   (per the pipeline's own header); live microphone audio goes to Google through
   the Web Speech API; STUN goes to Google. The banner says only "recorded and
   summarized". There are cross-border transfers and no processor disclosure.
+- Update (PR-1, owner decisions A-1/A-2): Web Speech is removed. Call audio now
+  goes to Groq, **and to Google (Gemini) when Groq fails** on a part.
+  Transcripts go to Google (Gemini) for the summary, and to DeepSeek **only as
+  the last resort** when Gemini is down. The disclosure below must name all
+  three.
 - Fix: list the processors in the consent text and the tenant DPA, allow
-  region-pinned vendors, and remove Web Speech (E10).
+  region-pinned vendors, and remove Web Speech (E10, done in PR-1).
 
 **G3 · MEDIUM · Transcripts and summaries are kept forever, and audio retention is broken**
 - What: text is kept indefinitely by design, with no erasure path for a data
@@ -930,8 +935,8 @@ F = call UI, G = privacy, H = tests and docs.
 
 | PR | Title prefix | Covers | Size |
 | --- | --- | --- | --- |
-| PR-1 | `fix(comms): stop phantom call notifications` | A1, A4, A5, A6, A9, A10, A11, B1, B2, B5, B10, E14 | M |
-| PR-2 | `fix(comms): rebuild the call recorder and transcription pipeline` | A2, A3, B4, B6, B7, B11–B14, C7, D3, D10, E9–E11, H1 | L |
+| PR-1 | `fix(comms): stop phantom call notifications` | A1, A4, A5, A6, A9, A10, A11, B1, B2, B5, B10, E14, plus owner decisions A-1/A-2 (which close D10, E9, E10 and C7's live-log vector) | M |
+| PR-2 | `fix(comms): rebuild the call recorder and transcription pipeline` | A2, A3, B4, B6, B7, B11–B14, C7 (prompt delimiting only), D3, E11, H1 | L |
 | PR-3 | `fix(comms): harden calls — TURN, credentials, relay, IDOR, rate limits` | B8, B9, C1–C6, C8, C10–C13, D7 | M |
 | PR-4 | `fix(comms): reliable call engine — negotiation, audio, rings` | A7, A8, E1–E8, E13 | L |
 | PR-5 | `perf(comms): scale calls and transcription across tenants` | B3, C9, D1, D2, D4–D6, D8, D9, D11, D12, E12 | L |
@@ -947,6 +952,30 @@ never reach the AI. The summary notification opens the summary. A closed tab
 ends its call. Sandbox calls stay in the sandbox.
 
 **Depends on:** this document merged to `main`.
+
+**Owner decisions (2026-09-24), done first in this PR.** They override this
+plan where the two conflict.
+
+- **A-1 · Transcription: Groq once, then Gemini. No browser fallback, no
+  retries.** Each part gets one Groq attempt (the SDK's own retries off). On
+  any Groq error the same stored part goes to Gemini once. If Gemini also
+  fails, the part fails; neither provider is retried inside the job. Gemini
+  transcribes verbatim in the language spoken (never translated), reports
+  en/fr, runs at temperature 0 with a strict JSON reply, and reuses the
+  platform `gemini` credential (env `GEMINI_API_KEY` fallback). The Gemini
+  Developer API does not accept `audio/webm`, so browser audio is converted to
+  FLAC with ffmpeg on the server. A Gemini transcript comes from the stored
+  audio, so it is certified; every transcript row records its real provider.
+  The 14010 CHECKs on `provider`/`certified` and `provenance` are dropped and
+  the closed sets are enforced in code. The browser live capture is never used
+  to build a transcript; old `browser-live` rows still render; the client no
+  longer starts the speech recogniser; `/live-log` stays for old cached
+  clients. Gemini usage is recorded through `governance.recordUsage` with
+  provider `gemini`.
+- **A-2 · Summaries: Gemini first, DeepSeek last resort.** `llm.chat` gains an
+  optional `fallbackVendor` (default: today's FALLBACK), and the call summary
+  calls it with `vendorName: "gemini", fallbackVendor: "deepseek"`. The rest
+  of Praxis AI keeps DeepSeek → Gemini.
 
 **Main files:** `src/jobs/workers.js`, `src/jobs/handlers/comms-call-record-sweep*.js`,
 `src/jobs/handlers/call-transcribe.js`,
@@ -1125,11 +1154,13 @@ migration(s), `tests/unit/smartcomm-call-records.test.js`, a new integration tes
    - Add a per-call byte cap, and reject `part_index` above the declared
      `parts`.
    - Keep one `recordingEnabled` helper that fails closed.
-6. **Remove the browser speech capture (C7, D10, E9, E10).**
-   - Delete `live-transcript.ts` from the call path, and remove the
-     `/live-log` write route.
-   - Keep reading existing `browser-live` rows, so old calls still render.
-   - Update the consent text accordingly.
+6. **The browser speech capture is already gone (PR-1, owner decision A-1).**
+   It no longer feeds the transcript and the client no longer starts it, which
+   closes D10, E9, E10 and C7's live-log vector. What is left for this PR: in
+   the summary prompt, delimit and label the spoken transcript as untrusted
+   text and cap its tokens (the rest of C7). Remove the `/live-log` write route
+   only once no supported client build still calls it. The consent-text update
+   belongs to PR-6 (G2).
 7. **Release DB connections during vendor calls (D3).** Read state in one short
    `withTenantConnection`, release it, call the provider, then write in another
    short connection.
@@ -1443,7 +1474,8 @@ day**. Both sides are transcribed separately, so that is 24,000 audio-minutes
   2. runs on **one queue of concurrency 2 for every tenant**;
   3. piles everything left over onto one midnight run;
   4. treats a provider rate limit (429) as a failure, which triggers the
-     browser fallback and then nightly reprocessing.
+     browser fallback and then nightly reprocessing. (Since PR-1 a Groq 429
+     sends that part to Gemini once instead; there is no browser fallback.)
 - At 10 tenants that becomes hours of backlog at peak, 429 storms at
   midnight, and the nightly notification loop multiplied by ten.
 
@@ -1460,7 +1492,10 @@ day**. Both sides are transcribed separately, so that is 24,000 audio-minutes
    binding one), and a per-tenant token bucket so one busy tenant cannot starve
    the others.
 3. **Priorities.** Live calls first, then finalising, then retries. A 429 waits
-   for `retry-after` and is not counted as a failure.
+   for `retry-after` and is not counted as a failure. **Conflict to resolve in
+   PR-5:** owner decision A-1 (PR-1) sends a part to Gemini on any Groq error,
+   429 included. Keep that unless the owner decides otherwise; a limiter can
+   still stop the 429s happening.
 4. **No database connection held while waiting on the provider.** Workers can
    then run 10–20 requests each without draining tenant pools.
 5. **Scale workers by queue lag.** Run transcription as its own worker
@@ -1476,10 +1511,13 @@ day**. Both sides are transcribed separately, so that is 24,000 audio-minutes
 8. **Measure the right thing.** Target: 95% of summaries ready within 2 minutes
    of hang-up. Alert on the age of the oldest job and the 429 rate, per tenant.
    Failure counts on their own are not enough.
-9. **Beyond ~50 tenants.** Add a second transcription provider as a fallback
-   (it keeps transcripts certified, unlike the browser capture). Use multiple
-   provider keys or an enterprise tier, and consider letting large tenants bring
-   their own key.
+9. **Beyond ~50 tenants.** A second transcription provider now exists (PR-1:
+   Gemini, one attempt when Groq fails; its transcripts are certified). Note
+   what that means for data: **call audio goes to Google (Gemini) whenever
+   Groq fails a part**, and summaries go to Gemini first with **DeepSeek only
+   as the last resort** (G2). Size the Gemini quota for Groq's worst hour, not
+   its average. Use multiple provider keys or an enterprise tier, and consider
+   letting large tenants bring their own key.
 
 **Cost** is priced per audio-hour. At a few cents per audio-hour (check the
 provider's current price), 400 audio-hours a day is tens of dollars a day across
@@ -1499,7 +1537,7 @@ provider's current price), 400 audio-hours a day is tens of dollars a day across
 | Client engine signalling | **Rebuild** (perfect negotiation) | ICE restart, candidate buffering and the double offer are structural. |
 | Recorder | **Rebuild** | The part model is incompatible with how browser recorders produce files. |
 | Call and ring screens | **Rebuild** | Glassmorphism, white-label breaks, overlapping layout, no minimise. |
-| Web Speech live capture | **Remove** | Privacy, Android chimes, timer leaks; not needed once A3 is fixed. |
+| Web Speech live capture | **Removed** (PR-1, A-1) | Privacy, Android chimes, timer leaks; Gemini is the fallback now. |
 | 15-second per-tenant sweep | **Replace** with per-call delayed jobs | Does not scale across tenants (D1). |
 | RNNoise filter | **Park**, default OFF | Cannot load under the current CSP; can silence iOS. Re-enable after device tests. |
 | coturn service | **Reconfigure** | Security holes and probably non-functional as written. |

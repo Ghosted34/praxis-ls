@@ -21,7 +21,9 @@ task list.
 > instructions, and they are law in this document:
 >
 > - *"When Groq fails we must continue with the browser. We should never have a
->   situation of no transcripts."* → §4.5 (the transcript-never-dies guarantee).
+>   situation of no transcripts."* → §4.5. **Superseded 2026-09-24** by owner
+>   decision A-1 (doc/SMART_COMMS_CALLS_AUDIT.md, PR-1): when Groq fails the
+>   same audio goes to Gemini; the browser capture is removed.
 > - *"We must try our utmost best to always have it ring… even if out of the
 >   app."* → §4.6 (the ring-through matrix).
 
@@ -54,7 +56,7 @@ _(v2)_ is explicitly out of scope for this programme and is listed in §8.5.
 | 1 | Scope                             | **B** — 1:1 P2P now; group calls (SFU) documented as an explicit phase 2                               | Direct P2P mesh (WhatsApp/Signal/Telegram architecture for 1:1). No media server in this programme. v2 backlog §8.5. |
 | 2 | Recording & consent               | **A** — always-on, live banner on both ends, tenant-level kill switch                                   | Banner is part of the call overlay from day one. Governance `calls` feature key, default ON, tenant admin can disable. |
 | 3 | Summary approval                  | **A** — caller reviews an editable draft, one tap to send                                              | The pipeline never posts to chat itself. It produces a `PENDING_REVIEW` draft for the caller. No auto-post path exists in code. |
-| 4 | Recording mode                    | **A** — two streams (caller + callee separately) → speaker-attributed transcript. **Plus binding:** Groq failure MUST fall through to the browser transcript — never a no-transcript state | Two `MediaRecorder`s per client, one Groq call per 60–120 s part (row 7), attributed `Caller: / Callee:` transcript. The fallback chain in §4.5 is a hard rule with an alert on the one visible failure path. |
+| 4 | Recording mode                    | **A** — two streams (caller + callee separately) → speaker-attributed transcript. **Plus binding:** Groq failure MUST fall through to the browser transcript — never a no-transcript state | Two `MediaRecorder`s per client, one Groq call per 60–120 s part (row 7), attributed `Caller: / Callee:` transcript. The fallback chain in §4.5 is a hard rule with an alert on the one visible failure path. **Superseded 2026-09-24 (owner decision A-1, doc/SMART_COMMS_CALLS_AUDIT.md PR-1):** a Groq failure falls through to Gemini on the same stored audio, once; the browser live capture is removed. |
 | 5 | TURN infrastructure               | **A** — self-hosted `coturn` in docker-compose, STUN + TURN                                             | New compose service, `TURN_*` env per BUILD_CONVENTIONS, time-limited REST credentials (no static public creds). |
 | 6 | Incoming call when app closed     | **A** — web push (best-effort) + presence dots & last-seen. **Plus binding:** try our utmost best to ring even out of app | Escalating ring: socket → system notification → web push, all in flight before the 60 s ring window closes. Presence is the honest floor. §4.6. |
 | 7 | Code-switched calls (EN↔FR mid-call) | **A** — chunked auto-detect: each side's audio transcribed in 60–120 s parts, each part auto-detected, merged with per-part language markers | The pipeline sends **no forced language** for calls. A mid-call switch is a part boundary — both languages survive verbatim. §4.5. |
@@ -98,9 +100,8 @@ An inhouse voice call between two employees of the same tenant:
    the **caller's** composer, editable, one tap to send. If the caller sends it,
    the channel gets a summary card from the caller; the full transcript stays in
    the vault behind a member-gated link.
-5. **The never-dies guarantee.** Groq fails → retry → browser live-capture
-   transcript takes over, flagged honestly. There is no silent no-transcript
-   state. §4.5.
+5. **The transcript fallback.** Groq fails → the same audio goes to Gemini,
+   once. Both fail → the call says TRANSCRIPTION_FAILED, visibly. §4.5.
 
 ### 2.2 We are not building (this programme)
 
@@ -173,8 +174,8 @@ so an ordinary projection lands it 'on' with no manual step).
 
 | Concern        | Provider(s)                                                                              | Fallback chain                                                                 |
 | -------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| Transcription  | Groq/Whisper (existing `services/ai/transcription.service.js`, en/fr hints)               | 3 retries w/ backoff → browser live-capture transcript (flagged) → visible `TRANSCRIPTION_FAILED` + ops alert + auto reprocess (§4.5) |
-| Summary        | `services/ai/llm.service.js` (DeepSeek primary, Gemini fallback)                          | If the LLM is down: draft is the raw attributed transcript, labelled "summary unavailable — provider down". The transcript still exists. |
+| Transcription  | Groq/Whisper (`services/ai/transcription.service.js`), then Gemini (`services/ai/gemini-transcription.service.js`) | One Groq attempt per part → one Gemini attempt on the same stored audio → visible `TRANSCRIPTION_FAILED` + ops alert + daily reprocess (§4.5). No browser fallback. |
+| Summary        | `services/ai/llm.service.js`, called with Gemini first and DeepSeek as the last resort    | If both are down: draft is the raw attributed transcript, labelled "summary unavailable — provider down". The transcript still exists. |
 | TURN/STUN      | Self-hosted `coturn` (PR-1)                                                               | STUN-only paths still work for easy NATs; TURN down → clear "can't connect" sentence, never silence |
 | Ring           | Socket → browser Notification API → web push (existing VAPID infra)                        | §4.6 matrix; presence is the floor, never faked |
 
@@ -317,7 +318,7 @@ comms_call_transcript (
   side            text NOT NULL,          -- 'caller' | 'callee'
   text            text NOT NULL,
   language        text NOT NULL,          -- 'en' | 'fr'
-  provider        text NOT NULL,          -- 'groq' | 'browser-live'
+  provider        text NOT NULL,          -- 'groq' | 'gemini' | 'browser-live' (old calls)
   certified       boolean NOT NULL,       -- true only for provider-from-vaulted-bytes (D5)
   created_at      timestamptz NOT NULL
 )
@@ -328,7 +329,7 @@ comms_call_summary (
   summary_text    text NOT NULL,
   key_points      jsonb NOT NULL,         -- [{ "text", "raised_by": "caller"|"callee" }]
   follow_ups      jsonb NOT NULL,         -- [{ "text", "owner": "caller"|"callee", "due": null|"YYYY-MM-DD" }]
-  provenance      text NOT NULL,          -- 'groq' | 'browser-live' | 'transcript-only'
+  provenance      text NOT NULL,          -- 'groq' | 'gemini' | 'browser-live' | 'transcript-only'
   draft_status    text NOT NULL,          -- PENDING_REVIEW | SENT | DISCARDED
   sent_message_id uuid,                   -- set when the caller posts it
   created_at      timestamptz NOT NULL
@@ -384,63 +385,43 @@ remote track ─▶ <audio autoplay playsinline> (keep-alive, §4.8)
   off-switch in the call overlay. This is the "better than a phone in a yard"
   layer; the baseline AEC/NS/AGC is what every app ships.
 
-### 4.5 The transcript-never-dies guarantee (binding)
+### 4.5 The transcript pipeline
 
-The pipeline after `ENDED`, as a job (`src/jobs/handlers/call-transcribe.js`,
-modelled on `ai-transcribe.js` — same governance, same usage recording, same
-"every exit marks the record" discipline):
+The pipeline after `ENDED`, as a job (`src/jobs/handlers/call-transcribe.js`),
+in `src/modules/smartcomm/smartcomm.call.pipeline.service.js`:
 
 ```
-1. Clients upload, at hang-up:
-   - each side's recording SPLIT INTO 60–120 s PARTS (the recorder already
-     holds ~5 s chunks; the client groups them — no server-side audio
-     processing) → vault (media service, same path as voice notes)
-   - both side LIVE segment logs → comms_call_live_log (captured during the
-     call by the browser recogniser, §4.9)
-2. Job, per side, per part: existing transcription.service.js with **no forced
-   language** (the hint is omitted — row 7), 3 retries w/ backoff per part;
-   each response's detected language is stored on the part row.
-   ├─ ALL PARTS OK → transcript rows (provider 'groq', certified TRUE)
-   └─ ANY PART FAILS → step 3 for that side (a transcript with one hole is
-      worse than a complete flagged one — the whole side falls back)
-3. FAILURE: that side's live log (§4.9) → transcript rows covering the same
-   spans (provider 'browser-live', certified FALSE, one row per part span).
-   Call row marked TRANSCRIPTION_FAILED (retryable) → ops alert.
-   Auto-reprocess: job retry + daily sweep — when Groq is reachable again,
-   the certified transcript REPLACES the flagged one (new row; the old row
-   stays for audit). If the summary draft is still PENDING_REVIEW it is
-   regenerated and the caller is re-notified; if already SENT, the caller is
-   offered an optional "updated summary" message — never a silent rewrite of
-   a sent message.
-4. Summary: llm.service.js (DeepSeek → Gemini), §4.10 contract, language en/fr.
+1. Clients upload each side's recording in 60–120 s parts → object storage
+   (same driver as voice notes). No live-capture log is sent any more.
+2. Job, per side, per part, with no forced language (row 7):
+   Groq once (the SDK's own retries off). On ANY Groq error, the same stored
+   part goes to Gemini once (verbatim, language reported, temperature 0,
+   strict JSON; webm/mp4/ogg converted to FLAC with ffmpeg first, because the
+   Gemini API does not take them). No retries inside the job.
+   ├─ every part OK → transcript rows, provider 'groq' or 'gemini' per part,
+   │  certified TRUE (both read the stored audio)
+   └─ a part fails on both → that side has no rows this run (never a mixture
+      of transcribed and missing parts), the call is TRANSCRIPTION_FAILED,
+      ops is alerted once, and the daily reprocess tries again.
+3. Summary: llm.service.js with Gemini first and DeepSeek as the last resort,
+   §4.10 contract, language en/fr.
    ├─ SUCCESS → summary row, draft_status PENDING_REVIEW
-   └─ FAILURE → summary row, provenance 'transcript-only', summary_text =
-      the attributed transcript, labelled in the UI "summary unavailable —
-      provider down". The draft is still sendable. The transcript exists.
-5. call:summary_ready + push + browser notification to the CALLER.
+   └─ FAILURE → provenance 'transcript-only', summary_text = the attributed
+      transcript, labelled "summary unavailable — provider down".
+4. call:summary_ready + one push to the CALLER (see PR-1 in the audit for
+   when a push is and is not sent).
 ```
 
-**The only no-transcript state that exists** is: Groq down **and** the browser
-recogniser unavailable (Firefox desktop — the recogniser is
-Chrome/Edge/Safari-only) **and** the upload failed. That state is not silent:
-the call record shows `TRANSCRIPTION_FAILED` with the reason, the caller sees
-the sentence in the UI, and ops gets the alert. "Never a no-transcript state"
-is satisfied in the only sense that is honest: it is caught, shown, alerted,
-and auto-healed.
+**Old calls.** Calls from before the change may still have `browser-live`
+rows (the retired in-call capture). They are read and rendered as before,
+labelled "generated from the in-call browser capture (unverified)", and a
+later certified run retires them (kept for audit, no longer current). The
+`/live-log` upload route still accepts old cached clients; nothing reads it
+to build a transcript.
 
-**Provenance is law.** A `browser-live` summary is visibly labelled
-"generated from the in-call browser capture (unverified)". This honours the
-standing rule in `client/src/features/comms/chat/browser-transcribe.ts`
-(browser words are never certified into the record) while still delivering
-text. Certified rows are always provider-produced from vaulted bytes.
-
-**Code-switching and the fallback (stated plainly).** The live recogniser runs
-in a single language — the caller's app language (two recognisers cannot run
-at once in any shipping browser). On a code-switched call the fallback is
-therefore strong in the app language and best-effort in the other. That is
-exactly why the fallback is flagged and why the reprocess upgrade exists: the
-flag says what the text is worth, and the retry replaces it with the
-certified, per-part-detected version as soon as Groq is reachable.
+**Processors.** Call audio goes to Groq, and to Google (Gemini) when Groq
+fails. Transcripts go to Google (Gemini) for the summary, and to DeepSeek only
+when Gemini is down.
 
 ### 4.6 The ring-through matrix (binding: try our utmost best)
 
@@ -498,16 +479,13 @@ parallel, not sequence:
    doubles as the media-session anchor so the OS treats the call as playing
    media (the same reason voice notes already use an `<audio>` element).
 
-### 4.9 Live-capture segment log (the fallback's raw material)
+### 4.9 Live-capture segment log (removed)
 
-During every IN_CALL, each client also runs the browser recogniser
-(`webkitSpeechRecognition`, en or fr per the app language, same source as
-`components/ai/speech.ts`) on its **own** mic and appends timestamped segments
-to an in-memory ring buffer persisted to IndexedDB every ~5 s. This costs
-nothing (no key, no vendor), is local-only, and is exactly the data §4.5 step 3
-consumes. It is **not** shown in the call UI (no transcription theatre during a
-call — the call UI is a call UI) and is never displayed as a transcript
-anywhere; it is only uploaded at hang-up as fallback raw material.
+The in-call browser recogniser was removed on 2026-09-24 (owner decision A-1):
+it sent live microphone audio to Google through the Web Speech API, chimed on
+Android, and its text was never certifiable. `comms_call_live_log` and the
+`/live-log` route remain so old calls and old cached clients keep working;
+nothing builds a transcript from it.
 
 ### 4.10 Summary contract (LLM)
 
@@ -744,8 +722,7 @@ one tap. Groq down → the browser capture carries the call, flagged honestly.
   `pickMimeType()` logic from `voice-recorder.tsx` (webm/opus, Safari
   mp4/aac), chunks to IndexedDB every ~5 s (crash-tolerant), final blob at
   hang-up, upload per side.
-- `→ client/src/features/comms/call/live-transcript.ts` — §4.9 (recogniser,
-  en/fr, IndexedDB segments, uploaded at hang-up; invisible in the call UI).
+- ~~`client/src/features/comms/call/live-transcript.ts`~~ — removed with §4.9.
 - **Consent banner (decision 2):** both ends see, from the first second of the
   call, "This call is recorded and summarized — both parties are informed" in
   the overlay. Not dismissible during the call.

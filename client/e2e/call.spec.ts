@@ -73,8 +73,21 @@ type Frame = [string, unknown];
  * client EMITTED (`next("call:offer")`) and lets the test deliver server
  * events (`tell("call:answer", …)`).
  */
-async function fakeComms(page: Page, opts: { pingIntervalMs?: number; pendingSummaries?: unknown[] } = {}) {
+async function fakeComms(
+  page: Page,
+  opts: {
+    pingIntervalMs?: number;
+    pendingSummaries?: unknown[];
+    /** Every client→server event, for a test that relays between two pages. */
+    onEmit?: (event: string, payload: unknown) => void;
+    /** What GET /calls/ringing answers (the ringing read, audit A13). */
+    ringing?: unknown[];
+    /** The row accept answers with (a different callee, say). */
+    acceptRow?: () => Record<string, unknown>;
+  } = {},
+) {
   const emitted: Frame[] = [];
+  let dials = 0;
   /** The recorded parts this tab uploaded (the file bytes), and its declarations. */
   const recordedParts: Buffer[] = [];
   const completes: unknown[] = [];
@@ -127,6 +140,7 @@ async function fakeComms(page: Page, opts: { pingIntervalMs?: number; pendingSum
           return;
         }
         const [event, payload] = parsed;
+        opts.onEmit?.(event, payload);
         if (event === "call:ice") {
           remoteCandidates.push((payload as { candidate: unknown }).candidate);
           return;
@@ -164,7 +178,11 @@ async function fakeComms(page: Page, opts: { pingIntervalMs?: number; pendingSum
         ]),
       });
     }
+    if (path === "/calls/ringing" && method === "GET") {
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(opts.ringing ?? []) });
+    }
     if (path === "/calls" && method === "POST") {
+      dials += 1;
       return route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -217,7 +235,7 @@ async function fakeComms(page: Page, opts: { pingIntervalMs?: number; pendingSum
       return route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify(callRow("IN_CALL", { connected_at: new Date().toISOString(), ice: ICE_EMPTY })),
+        body: JSON.stringify(opts.acceptRow?.() ?? callRow("IN_CALL", { connected_at: new Date().toISOString(), ice: ICE_EMPTY })),
       });
     }
     if (/^\/calls\/[^/]+\/hangup$/.test(path) && method === "POST") {
@@ -246,6 +264,7 @@ async function fakeComms(page: Page, opts: { pingIntervalMs?: number; pendingSum
     sawHangup: () => sawHangup,
     sawDecline: () => sawDecline,
     sawAccept: () => sawAccept,
+    dials: () => dials,
     recordedParts: () => recordedParts,
     completes: () => completes,
     setRowForGet: (row: Record<string, unknown>) => {
@@ -474,7 +493,7 @@ test("a call survives the tab going to the background and coming back", async ({
   expect(comms.sawHangup()).toBe(true);
 });
 
-test("a ring is acknowledged on the socket channel — the ack that stops the push", async ({ page }) => {
+test("a ring is acknowledged on the socket channel (the ring-channel metric)", async ({ page }) => {
   await seedSession(page);
   await fakeApi(page);
   const comms = await fakeComms(page);
@@ -489,8 +508,8 @@ test("a ring is acknowledged on the socket channel — the ack that stops the pu
   });
   await expect(page.getByRole("alertdialog")).toBeVisible();
 
-  // A visible tab rings in-app, so the channel it reports is `socket` — and
-  // that report is what makes the server stand its push escalation down.
+  // A visible tab rings in-app, so the channel it reports is `socket`. Since
+  // PR-4 the ack only feeds the metric: it stops no other device ringing.
   const ack = (await comms.next("call:ring_ack")) as { callId: string; channel: string };
   expect(ack.callId).toBe("call-e2e-3");
   expect(ack.channel).toBe("socket");
@@ -619,4 +638,151 @@ test("the summary link opens the conversation with the draft pinned above the co
   await pinned.getByRole("button", { name: "Hide" }).click();
   await expect(pinned.getByRole("button", { name: "Review & send" })).toBeVisible();
   await expect(page).not.toHaveURL(/summary=/);
+});
+
+/* ── PR-4: two real devices, the network dropping, a double tap, a late app ── */
+
+type Comms = Awaited<ReturnType<typeof fakeComms>>;
+
+/**
+ * The signalling server between two pages: what one page's socket emits, the
+ * other page's socket receives, in the relay's wire shape (`call_id`). Every
+ * other part of both pages is the real app.
+ */
+function relayTo(target: () => Comms | null) {
+  return (event: string, payload: unknown) => {
+    const p = (payload || {}) as { callId?: string; sdp?: string; candidate?: unknown };
+    const to = target();
+    if (!to || !p.callId) return;
+    if (event === "call:offer" || event === "call:answer") to.tell(event, { call_id: p.callId, sdp: p.sdp });
+    else if (event === "call:ice") to.tell("call:ice", { call_id: p.callId, candidate: p.candidate ?? null });
+    else if (event === "call:ready") to.tell("call:ready", { call_id: p.callId });
+  };
+}
+
+/** Sign a page in as the partner (u-9): the callee's own device. */
+async function signInAsPartner(page: Page) {
+  const partner = { user_id: PARTNER.user_id, email: "aicha@smartls.test", display_name: PARTNER.name, full_name: PARTNER.name, role: "ADMIN", avatar_url: null };
+  await page.route("**/api/tenant/auth/**", (route) => {
+    const path = new URL(route.request().url()).pathname;
+    const body = path.endsWith("/refresh") ? { access_token: "at", refresh_token: "rt", user: partner } : partner;
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+  });
+}
+
+async function twoDevices(browser: import("@playwright/test").Browser) {
+  const ctxA = await browser.newContext({ permissions: ["microphone", "notifications"] });
+  const ctxB = await browser.newContext({ permissions: ["microphone", "notifications"] });
+  const caller = await ctxA.newPage();
+  const callee = await ctxB.newPage();
+  let a: Comms | null = null;
+  let b: Comms | null = null;
+  await seedSession(caller);
+  await fakeApi(caller);
+  a = await fakeComms(caller, { onEmit: relayTo(() => b) });
+  await seedSession(callee);
+  await fakeApi(callee);
+  await signInAsPartner(callee);
+  b = await fakeComms(callee, { onEmit: relayTo(() => a) });
+  return { ctxA, ctxB, caller, callee, a: a!, b: b!, close: async () => { await ctxA.close(); await ctxB.close(); } };
+}
+
+async function connectTwo(d: Awaited<ReturnType<typeof twoDevices>>) {
+  await d.caller.goto("/comms?channel=ch-e2e-1");
+  await d.callee.goto("/comms");
+  await d.caller.getByRole("button", { name: "Start a voice call" }).first().click();
+  await expect(d.caller.getByText("Calling…")).toBeVisible();
+  // The caller's offer (and its candidates) reach the callee while it rings.
+  await d.a.next("call:offer");
+  d.b.tell("call:ringing", { call_id: "call-e2e-1", group_id: CHANNEL.group_id, from: { user_id: "u-1", name: "Ops Lead" }, ring_timeout_s: 60 });
+  const ring = d.callee.getByRole("alertdialog");
+  await expect(ring).toBeVisible();
+  await ring.getByRole("button", { name: "Answer" }).click();
+  d.a.tell("call:accepted", { call_id: "call-e2e-1", by: { user_id: PARTNER.user_id } });
+  await expect(d.caller.getByRole("timer")).toBeVisible({ timeout: 20_000 });
+  await expect(d.callee.getByRole("timer")).toBeVisible({ timeout: 20_000 });
+}
+
+test("two devices: a call connects with the real app on both ends (E1–E3)", async ({ browser }) => {
+  const d = await twoDevices(browser);
+  try {
+    await connectTwo(d);
+    // The callee said it was listening, and nothing re-offered blindly.
+    expect(await d.b.next("call:ready")).toEqual({ callId: "call-e2e-1" });
+    await expect(d.caller.getByText("Your microphone is on")).toBeVisible();
+    await expect(d.callee.getByText("Your microphone is on")).toBeVisible();
+
+    await d.caller.getByRole("button", { name: "End call" }).click();
+    d.b.tell("call:ended", { call_id: "call-e2e-1", status: "ENDED", reason: "hangup" });
+    await expect(d.caller.getByRole("dialog")).toHaveCount(0, { timeout: 10_000 });
+    await expect(d.callee.getByRole("dialog")).toHaveCount(0, { timeout: 10_000 });
+  } finally {
+    await d.close();
+  }
+});
+
+test("two devices: the callee's network drops for a few seconds and the call carries on", async ({ browser }) => {
+  const d = await twoDevices(browser);
+  try {
+    await connectTwo(d);
+    await d.ctxB.setOffline(true);
+    await d.callee.waitForTimeout(3_000);
+    await d.ctxB.setOffline(false);
+    await d.callee.waitForTimeout(2_000);
+    // Both still in the call, no failure line, and it ends the normal way.
+    await expect(d.caller.getByRole("timer")).toBeVisible();
+    await expect(d.callee.getByRole("timer")).toBeVisible();
+    await expect(d.callee.getByText("Could not connect the call")).toHaveCount(0);
+    await expect(d.callee.getByText("The call was lost — the connection ended")).toHaveCount(0);
+    await expect(d.callee.getByText("Reconnecting…")).toHaveCount(0, { timeout: 25_000 });
+    await d.callee.getByRole("button", { name: "End call" }).click();
+    await expect(d.callee.getByRole("dialog")).toHaveCount(0, { timeout: 10_000 });
+    expect(d.b.sawHangup()).toBe(true);
+  } finally {
+    await d.close();
+  }
+});
+
+test("a double tap on dial creates one call (E7)", async ({ page }) => {
+  await seedSession(page);
+  await fakeApi(page);
+  const comms = await fakeComms(page);
+  await page.goto("/comms?channel=ch-e2e-1");
+  await page.getByRole("button", { name: "Start a voice call" }).first().dblclick();
+  await expect(page.getByText("Calling…")).toBeVisible();
+  await comms.next("call:offer");
+  await page.waitForTimeout(500);
+  expect(comms.dials()).toBe(1);
+});
+
+test("an app opened mid-ring shows the ring the socket never delivered (A13)", async ({ page }) => {
+  await seedSession(page);
+  await fakeApi(page);
+  await fakeComms(page, {
+    ringing: [{
+      ...callRow("RINGING", { call_id: "call-e2e-9", caller_id: PARTNER.user_id, callee_id: "u-1" }),
+      caller_name: PARTNER.name,
+      ring_seconds_left: 45,
+      recording_enabled: false,
+      noise_suppression: false,
+    }],
+  });
+  await page.goto("/comms");
+  const ring = page.getByRole("alertdialog");
+  await expect(ring).toBeVisible();
+  await expect(ring.getByText(PARTNER.name, { exact: true })).toBeVisible();
+});
+
+test("answered on another device: this device stops ringing and says so (E8)", async ({ page }) => {
+  await seedSession(page);
+  await fakeApi(page);
+  const comms = await fakeComms(page);
+  await page.goto("/comms?channel=ch-e2e-1");
+  await expect(page.getByText(PARTNER.name).first()).toBeVisible();
+  comms.tell("call:ringing", { call_id: "call-e2e-4", from: { user_id: PARTNER.user_id, name: PARTNER.name }, ring_timeout_s: 60 });
+  await expect(page.getByRole("alertdialog")).toBeVisible();
+  // The same person answered on their phone.
+  comms.tell("call:accepted", { call_id: "call-e2e-4", by: { user_id: "u-1" } });
+  await expect(page.getByRole("alertdialog")).toHaveCount(0);
+  await expect(page.getByText("Answered on another device")).toBeVisible();
 });

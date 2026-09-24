@@ -23,8 +23,18 @@ let visibilityHandler: (() => void) | null = null;
 let audioCtx: AudioContext | null = null;
 let gainNode: GainNode | null = null;
 
-/** Request a wake lock for the duration of a call. Safe to call when the
- *  platform has no wake lock (falls back to the audio keep-alive). */
+/**
+ * What a voice call holds by default (calls audit E13): the audio keep-alive
+ * only, never a SCREEN wake lock. A screen kept on against the cheek taps
+ * Mute and Hang up; the web has no proximity sensor to turn it off.
+ */
+export function acquireCallKeepAlive(): void {
+  startAudioKeepAlive();
+}
+
+/** Request a screen wake lock. Not used for voice calls (E13); kept for a
+ *  "keep the screen on" choice if device tests show a call dies with the
+ *  screen off. Falls back to the audio keep-alive. */
 export async function acquireWakeLock(): Promise<void> {
   const nav = navigator as Navigator & {
     wakeLock?: { request: (type: "screen") => Promise<{ release: () => Promise<void> }> };

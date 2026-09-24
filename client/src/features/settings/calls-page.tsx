@@ -1,12 +1,14 @@
 /**
  * Settings → Calls (Smart Comms PR-3, guide §4.4/§7.2).
  *
- * TWO SWITCHES, TWO AUDIENCES, and that is the whole design of this screen:
+ * "This device" comes first: whether a call can ring here with the app
+ * closed, each missing piece with its fix, and a Test ring (audit A15).
+ *
+ * Then TWO SWITCHES, TWO AUDIENCES:
  *
  *   1. THE TENANT'S DEFAULT for the yard noise filter
- *      (`comms.call_noise_suppression`). ON by default, because the corridor
- *      has forklifts and the person who needs the filter is standing in a
- *      loading bay, not reading this page.
+ *      (`comms.call_noise_suppression`). Off by default until the filter is
+ *      verified on devices (audit E5); a company can turn it on here.
  *   2. THE PERSON'S OWN preference (`/me/preferences/calls`). It can follow the
  *      tenant (null — the honest "no opinion"), or override it either way. That
  *      is why the control is three-state and not a checkbox: a checkbox cannot
@@ -31,7 +33,7 @@ import { putSetting } from "@/lib/mail-api";
 import { errMsg } from "@/lib/use-resource";
 import { PageHeader } from "@/components/data-list";
 import { HubCrumb } from "@/components/tabbed-hub";
-import { Card } from "@/components/ui/card";
+import { Panel } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field } from "@/components/ui/modal";
@@ -42,6 +44,7 @@ import {
   saveCallPrefs,
   type CallPrefs,
 } from "@/lib/preferences";
+import { DeviceRingCard } from "./device-ring-card";
 
 /** The tenant's call settings, as `setting` rows under section `comms`. */
 type TenantCallSettings = {
@@ -122,7 +125,7 @@ export function CallsPage() {
       .then(([noise, recording, privacy, mine]) => {
         if (!live) return;
         setTenantSettings({
-          noiseSuppression: readBool(noise?.value, true),
+          noiseSuppression: readBool(noise?.value, false),
           retentionDays: readDays(recording?.value, 30),
           relayOnly: readRelayOnly(privacy?.value),
         });
@@ -179,14 +182,14 @@ export function CallsPage() {
   if (loading) return <PageSkeleton rows={4} cols={2} />;
 
   const mine = prefs?.noiseSuppression ?? null;
-  const effective = mine === null ? (tenantSettings?.noiseSuppression ?? true) : mine;
+  const effective = mine === null ? (tenantSettings?.noiseSuppression ?? false) : mine;
 
   return (
     <div className={pageShell.wide}>
       <HubCrumb area="settings" to="/settings" />
       <PageHeader
         title={tr("Calls")}
-        description={tr("Voice-call audio handling and how long recordings are kept.")}
+        description={tr("Whether this device can ring, voice-call audio handling, and how long recordings are kept.")}
       />
 
       {error && (
@@ -203,10 +206,9 @@ export function CallsPage() {
         </div>
       )}
 
-      <Card
-        title={tr("Yard noise filter")}
-        className="mb-4"
-      >
+      <DeviceRingCard />
+
+      <Panel title={tr("Yard noise filter")} className="mb-4">
         <p className="text-sm text-muted-foreground">
           {tr(
             "Removes steady background noise — engines, forklifts, a loading bay — from what the other side hears. Every call already has the browser's baseline noise suppression; this is the stronger filter the corridor needs.",
@@ -218,7 +220,7 @@ export function CallsPage() {
             <label className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
-                checked={tenantSettings?.noiseSuppression ?? true}
+                checked={tenantSettings?.noiseSuppression ?? false}
                 disabled={busy}
                 onChange={(e) => void saveTenant({ noiseSuppression: e.target.checked })}
                 className="h-4 w-4 accent-[rgb(var(--brand-blue))]"
@@ -265,9 +267,9 @@ export function CallsPage() {
             <strong>{effective ? tr("filter on") : tr("filter off")}</strong>
           </p>
         )}
-      </Card>
+      </Panel>
 
-      <Card title={tr("Call privacy")} className="mb-4">
+      <Panel title={tr("Call privacy")} className="mb-4">
         <p className="text-sm text-muted-foreground">
           {tr(
             "A direct call lets each person's device learn the other's network address. Relay-only calls send the audio through your company's relay server instead, so no address is shared.",
@@ -290,9 +292,9 @@ export function CallsPage() {
             </label>
           </Field>
         </div>
-      </Card>
+      </Panel>
 
-      <Card title={tr("Call recordings")}>
+      <Panel title={tr("Call recordings")}>
         <p className="text-sm text-muted-foreground">
           {tr(
             "Audio is kept only long enough to transcribe and summarize it. The transcript itself lives on with the conversation — the recording does not.",
@@ -316,7 +318,7 @@ export function CallsPage() {
             />
           </Field>
         </div>
-      </Card>
+      </Panel>
 
       {saved && (
         <p className="mt-3 text-xs text-ok" role="status">

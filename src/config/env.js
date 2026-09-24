@@ -339,17 +339,19 @@ const Schema = z.object({
   /**
    * Inhouse calls: STUN/TURN for WebRTC media (calls audit C1, C2, C3, C12).
    *
-   * `TURN_HOST` empty = no relay; STUN then comes from `STUN_URLS` only, and
-   * with both empty the client gets no STUN server at all (never a public
-   * one by default). With `TURN_HOST` set, its port also serves STUN. Each
+   * `TURN_HOST` empty = no relay; STUN then comes from `STUN_URLS`, and with
+   * both empty from Google's public server (owner decision, PR-3; logged
+   * once). With `TURN_HOST` set, its port also serves STUN. Each
    * credential is minted for one live call (`<expiry>:<call token>`, HMAC
    * with TURN_CREDENTIAL_SECRET) and expires with the call's remaining time
    * plus a minute. See smartcomm.turn.service.js.
    *
    * The rest configure the compose `turn` service
    * (docker/coturn/docker-entrypoint.sh): the realm, the public address
-   * behind cloud NAT, the TLS listener (`turns:`, 0 = off), the relay port
-   * range and the quotas. They are read here too so one schema lists them.
+   * behind cloud NAT ("public" or "public/private"), the one address to bind
+   * (so TLS can take 443 on a second IP), the TLS listener (`turns:`, 0 =
+   * off), the relay port range and the quotas. They are read here too so one
+   * schema lists them.
    */
   STUN_URLS: z.string().default(""),
   TURN_HOST: z.string().default(""),
@@ -359,6 +361,7 @@ const Schema = z.object({
   TURN_CREDENTIAL_SECRET: z.string().default(""),
   TURN_REALM: z.string().default(""),
   TURN_EXTERNAL_IP: z.string().default(""),
+  TURN_LISTENING_IP: z.string().default(""),
   TURN_TLS_PORT: int(0),
   TURN_TLS_CERT: z.string().default(""),
   TURN_TLS_KEY: z.string().default(""),

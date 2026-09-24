@@ -50,20 +50,184 @@ function applyBadge(count) {
 }
 
 /*
- * The call ring's own words (Smart Comms PR-3, guide §4.6).
+ * The call ring's own words (calls audit A14, PR-4). The server sends English
+ * and `data.kind`; the words are the device's, keyed by `navigator.language`,
+ * and the caller's NAME (the title) needs no translation.
  *
- * The SERVER sends the ring in English, because every other server-side string
- * in this codebase is English and the caller's NAME — the notification's title,
- * the part that matters — needs no translation at all. Body and the two action
- * labels are presentation, they are the same three phrases on every ring, and
- * they belong on the device that knows the reader's language. So they live
- * here, keyed by `navigator.language`, and the server's payload only says
- * `kind: "call"`.
+ *   kind "call_ring"    a call is ringing for this person ("call" = older server)
+ *   kind "call_cancel"  that ring is over: answered, declined, missed, ended
+ *   kind "call_test"    Settings → Calls → Test ring
  */
 const CALL_STRINGS = {
-  en: { body: "Incoming call", accept: "Accept", decline: "Decline" },
-  fr: { body: "Appel entrant", accept: "Répondre", decline: "Refuser" },
+  en: {
+    body: "Incoming call", accept: "Answer", decline: "Decline",
+    answered: "Answered on another device", answeredHere: "Call answered",
+    missed: "Missed call", ended: "Call ended",
+    test: "Test ring", testBody: "This device can ring for calls.",
+  },
+  fr: {
+    body: "Appel entrant", accept: "Répondre", decline: "Refuser",
+    answered: "Répondu sur un autre appareil", answeredHere: "Appel répondu",
+    missed: "Appel manqué", ended: "Appel terminé",
+    test: "Sonnerie de test", testBody: "Cet appareil peut sonner pour les appels.",
+  },
 };
+
+/** The ring cadence on devices that vibrate (Android; iOS ignores it). */
+const RING_VIBRATE = [600, 250, 600, 250, 600];
+
+const isRingKind = (kind) => kind === "call_ring" || kind === "call";
+
+/*
+ * Safari (and every installed iPhone/iPad app, which runs on WebKit) revokes
+ * a push subscription after pushes that show nothing, even with the app on
+ * screen. There, a ring or cancel always shows something; elsewhere a
+ * visible page takes the ring in-app instead of a notification on top.
+ */
+function mustShowEveryPush() {
+  const ua = String((self.navigator && self.navigator.userAgent) || "");
+  return /AppleWebKit/.test(ua) && !/Chrome|Chromium|CriOS|Edg|OPR|Android|Firefox|FxiOS/.test(ua);
+}
+
+function windowClients() {
+  return self.clients.matchAll({ type: "window", includeUncontrolled: true });
+}
+
+function hasVisibleClient(clients) {
+  return clients.some((c) => c.visibilityState === "visible" || c.focused === true);
+}
+
+function tellClients(clients, message) {
+  for (const client of clients) {
+    try {
+      client.postMessage(message);
+    } catch (_e) {
+      /* a client can go away between matchAll and postMessage */
+    }
+  }
+}
+
+const conversationUrl = (d) => (d && d.group_id ? `/comms?channel=${d.group_id}` : "/comms");
+
+/*
+ * Rings this worker has already seen cancelled, with the line that replaced
+ * them. The ring push and its cancel are separate sends and can arrive out of
+ * order; a ring that lands after its cancel shows the cancel's line instead of
+ * pinning a dead call to the lock screen. In memory only: the race is
+ * milliseconds, and the lines' 60 s expiry covers a worker that restarted.
+ */
+const cancelledRings = new Map();
+function rememberCancel(callId, title) {
+  if (!callId) return;
+  cancelledRings.set(callId, title);
+  if (cancelledRings.size > 50) cancelledRings.delete(cancelledRings.keys().next().value);
+}
+
+/** Close ring notifications whose window has passed (audit A7): a ring
+ *  pinned to the lock screen for hours invites answering a dead call. */
+async function closeExpiredRings() {
+  try {
+    if (typeof self.registration.getNotifications !== "function") return;
+    const open = await self.registration.getNotifications();
+    const now = Date.now();
+    for (const n of open) {
+      const d = n.data || {};
+      const expires = Date.parse(d.expires_at || "");
+      if (isRingKind(d.kind) && Number.isFinite(expires) && expires <= now) n.close();
+    }
+  } catch (_e) {
+    /* nothing to tidy */
+  }
+}
+
+function missedTitle(d, words) {
+  return d && d.caller_name ? `${words.missed} — ${d.caller_name}` : words.missed;
+}
+
+/** A quiet line in place of the ring (same tag, so it replaces it). */
+function showRingOutcome(title, tag, d, timestamp) {
+  return self.registration.showNotification(title, {
+    body: "",
+    tag,
+    renotify: false,
+    requireInteraction: false,
+    silent: true,
+    timestamp,
+    data: { url: conversationUrl(d), kind: "call_cancel", call_id: d.call_id, group_id: d.group_id || null },
+    icon: "/icons/app-icon-192.png",
+    badge: "/icons/app-icon-192.png",
+  });
+}
+
+async function handleCallRing(data, words) {
+  const d = data.data || {};
+  const tag = data.tag || (d.call_id ? `call:${d.call_id}` : undefined);
+  const timestamp = typeof data.timestamp === "number" ? data.timestamp : Date.now();
+  if (cancelledRings.has(d.call_id)) {
+    return showRingOutcome(cancelledRings.get(d.call_id), tag, d, timestamp);
+  }
+  const clients = await windowClients();
+  tellClients(clients, { type: "praxis:call-ring", data: d });
+  const expires = Date.parse(d.expires_at || "");
+  if (Number.isFinite(expires) && expires <= Date.now()) {
+    // Delivered after the ring window (a phone that was off): it was missed.
+    return showRingOutcome(missedTitle(d, words), tag, d, timestamp);
+  }
+  if (hasVisibleClient(clients) && !mustShowEveryPush()) return undefined;
+  const actions = Array.isArray(data.actions) && data.actions.length
+    ? data.actions.slice(0, 2).map((a) => (words[a.action] ? { ...a, title: words[a.action] } : a))
+    : [{ action: "accept", title: words.accept }, { action: "decline", title: words.decline }];
+  return self.registration.showNotification(data.title || words.body, {
+    body: words.body,
+    tag,
+    renotify: true,
+    requireInteraction: true,
+    vibrate: Array.isArray(data.vibrate) && data.vibrate.length ? data.vibrate : RING_VIBRATE,
+    timestamp,
+    actions,
+    data: { url: data.url || `/comms?ring=${d.call_id}`, ...d, kind: "call_ring" },
+    icon: "/icons/app-icon-192.png",
+    badge: "/icons/app-icon-192.png",
+  });
+}
+
+async function handleCallCancel(data, words) {
+  const d = data.data || {};
+  const tag = data.tag || (d.call_id ? `call:${d.call_id}` : undefined);
+  const clients = await windowClients();
+  tellClients(clients, { type: "praxis:call-cancel", data: d });
+  const visible = hasVisibleClient(clients);
+  let title = words.ended;
+  if (d.outcome === "answered") title = visible ? words.answeredHere : words.answered;
+  else if (d.outcome === "missed") title = missedTitle(d, words);
+  rememberCancel(d.call_id, title);
+  if (visible && !mustShowEveryPush()) {
+    if (tag && typeof self.registration.getNotifications === "function") {
+      const open = await self.registration.getNotifications({ tag });
+      for (const n of open) n.close();
+    }
+    return undefined;
+  }
+  const timestamp = typeof data.timestamp === "number" ? data.timestamp : Date.now();
+  return showRingOutcome(title, tag, d, timestamp);
+}
+
+async function handleCallTest(data, words) {
+  const clients = await windowClients();
+  tellClients(clients, { type: "praxis:call-test" });
+  // Always shown: the test is whether this device can SHOW a ring.
+  return self.registration.showNotification(words.test, {
+    body: words.testBody,
+    tag: data.tag || "call:test",
+    renotify: true,
+    requireInteraction: false,
+    vibrate: RING_VIBRATE,
+    timestamp: Date.now(),
+    data: { url: data.url || "/settings/calls", kind: "call_test" },
+    icon: "/icons/app-icon-192.png",
+    badge: "/icons/app-icon-192.png",
+  });
+}
 
 /*
  * The call-summary push (calls audit A11). The server sends English plus
@@ -99,12 +263,24 @@ self.addEventListener("push", (event) => {
     data = { title: "Notification", body: event.data ? event.data.text() : "" };
   }
   const lang = String((self.navigator && self.navigator.language) || "en").slice(0, 2);
-  const callKind = data.data && data.data.kind === "call";
+  const kind = data.data && data.data.kind;
   const callWords = CALL_STRINGS[lang] || CALL_STRINGS.en;
-  const summary = data.data && data.data.kind === "call_summary" ? callSummaryText(data.data, lang) : null;
+
+  if (isRingKind(kind) || kind === "call_cancel" || kind === "call_test") {
+    const handle = isRingKind(kind) ? handleCallRing : kind === "call_cancel" ? handleCallCancel : handleCallTest;
+    event.waitUntil(
+      closeExpiredRings()
+        .then(() => handle(data, callWords))
+        .catch(() => undefined)
+        .then(() => applyBadge(data.badgeCount)),
+    );
+    return;
+  }
+
+  const summary = kind === "call_summary" ? callSummaryText(data.data, lang) : null;
   const title = (summary && summary.title) || data.title || "Praxis LS";
   const options = {
-    body: summary ? summary.body : callKind ? callWords.body : data.body || "",
+    body: summary ? summary.body : data.body || "",
     tag: data.tag || undefined,
     // Only meaningful alongside a tag. Without it, a replacing notification
     // updates in place with no sound or vibration — indistinguishable, to
@@ -136,20 +312,52 @@ self.addEventListener("push", (event) => {
   };
   // Up to two, because that is what a notification shade will actually render.
   if (Array.isArray(data.actions) && data.actions.length) {
-    options.actions = data.actions.slice(0, 2).map((a) =>
-      callKind && callWords[a.action]
-        ? { ...a, title: callWords[a.action] }
-        : a,
-    );
+    options.actions = data.actions.slice(0, 2);
   }
 
   event.waitUntil(
-    Promise.all([
-      self.registration.showNotification(title, options),
-      applyBadge(data.badgeCount),
-    ]),
+    closeExpiredRings().then(() =>
+      Promise.all([
+        self.registration.showNotification(title, options),
+        applyBadge(data.badgeCount),
+      ]),
+    ),
   );
 });
+
+/**
+ * Focus an open window and let the page act (no navigation, so a call live in
+ * that window is not dropped); otherwise open one at `url`.
+ */
+async function focusAndTell(message, url) {
+  const clients = await windowClients();
+  for (const client of clients) {
+    if (!("focus" in client)) continue;
+    try {
+      await client.focus();
+    } catch (_e) {
+      /* focusing can be refused; the message still lands */
+    }
+    client.postMessage(message);
+    return undefined;
+  }
+  if (self.clients.openWindow) return self.clients.openWindow(url);
+  return undefined;
+}
+
+/** A tap on a ring: Answer, Decline or the body (audit A8, PR-4 step 7). */
+function ringClick(d, action) {
+  const expires = Date.parse(d.expires_at || "");
+  if (Number.isFinite(expires) && expires <= Date.now()) {
+    // The ring is over: open the conversation, not a dead call.
+    const url = conversationUrl(d);
+    return focusAndTell({ type: "praxis:navigate", url }, url);
+  }
+  const act = action === "accept" || action === "decline" ? action : null;
+  const q = new URLSearchParams({ ring: d.call_id });
+  if (act) q.set("act", act);
+  return focusAndTell({ type: "praxis:call-action", call_id: d.call_id, act }, `/comms?${q.toString()}`);
+}
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
@@ -157,9 +365,18 @@ self.addEventListener("notificationclick", (event) => {
   // Focusing the app anyway would be the opposite of what was asked.
   if (event.action === "dismiss") return;
 
-  const target =
-    (event.notification.data && event.notification.data.url) ||
-    "/notifications";
+  const d = event.notification.data || {};
+  if (isRingKind(d.kind) && d.call_id) {
+    event.waitUntil(ringClick(d, event.action));
+    return;
+  }
+  if (d.kind === "call_cancel" || d.kind === "call_test") {
+    const url = d.url || "/comms";
+    event.waitUntil(focusAndTell({ type: "praxis:navigate", url }, url));
+    return;
+  }
+
+  const target = d.url || "/notifications";
   event.waitUntil(
     self.clients
       .matchAll({ type: "window", includeUncontrolled: true })

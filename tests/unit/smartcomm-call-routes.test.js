@@ -79,6 +79,7 @@ function limitersOn(method, path) {
 describe("the call routes that ring or spend are rate-limited", () => {
   test.each([
     ["post", "/calls", "call-dial"],
+    ["post", "/calls/test-ring", "call-test-ring"],
     ["get", "/calls/:id/turn", "call-turn"],
     ["post", "/calls/:id/summary/regenerate", "call-regenerate"],
     ["post", "/calls/:id/recording/:side/:part/rerun", "call-part-rerun"],
@@ -131,5 +132,46 @@ describe("B9 at the route: an old client's hang-up reason is accepted and ignore
     const res = await request(app()).post(`/calls/${CALL}/hangup`).send({ reason: "max_duration" });
     expect(res.status).toBe(200);
     expect(spy.mock.calls[0][1]).not.toHaveProperty("reason");
+  });
+});
+
+describe("PR-4: the ringing read and the test ring", () => {
+  test("GET /calls/ringing is the ringing read, not a call id", async () => {
+    const spy = jest.spyOn(calls, "listRinging").mockResolvedValue([{ call_id: CALL, ring_seconds_left: 40 }]);
+    const get = jest.spyOn(calls, "getCall");
+    const res = await request(app()).get("/calls/ringing");
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([{ call_id: CALL, ring_seconds_left: 40 }]);
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(get).not.toHaveBeenCalled();
+  });
+
+  test("a test ring needs this device's push endpoint, and nothing else", async () => {
+    const spy = jest.spyOn(calls, "testRing").mockResolvedValue({ sent: 1, failed: 0, total: 1 });
+    const a = app("test-ring-shape");
+    expect((await request(a).post("/calls/test-ring").send({})).status).toBe(422);
+    expect((await request(a).post("/calls/test-ring").send({ endpoint: "not a url" })).status).toBe(422);
+    expect((await request(a).post("/calls/test-ring").send({ endpoint: "https://push.example/abc", user_id: "x" })).status).toBe(422);
+    const ok = await request(a).post("/calls/test-ring").send({ endpoint: "https://push.example/abc" });
+    expect(ok.status).toBe(200);
+    expect(ok.body.data).toEqual({ sent: 1, failed: 0, total: 1 });
+    expect(spy.mock.calls[0][1]).toEqual({ actor: expect.objectContaining({ user_id: expect.any(String) }), endpoint: "https://push.example/abc" });
+  });
+
+  test("a test-ring flood is 429", async () => {
+    jest.spyOn(calls, "testRing").mockResolvedValue({ sent: 1, failed: 0, total: 1 });
+    const a = app("test-ring-flood");
+    const statuses = [];
+    for (let i = 0; i < 7; i += 1) {
+      statuses.push((await request(a).post("/calls/test-ring").send({ endpoint: "https://push.example/abc" })).status);
+    }
+    expect(statuses.slice(0, 5)).toEqual(Array(5).fill(200));
+    expect(statuses.slice(5)).toEqual([429, 429]);
+  });
+
+  test("accept passes the tenant, so the ring's cancel push can be queued", async () => {
+    const spy = jest.spyOn(calls, "acceptCall").mockResolvedValue({ call_id: CALL });
+    await request(app("accept-tenant")).post(`/calls/${CALL}/accept`);
+    expect(spy.mock.calls[0][1]).toMatchObject({ id: CALL, tenantMeta: { slug: "accept-tenant" } });
   });
 });

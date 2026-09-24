@@ -28,6 +28,8 @@ module.exports = {
     // transcript says" means less when part of the call was not transcribed.
     { key: "list_comms_calls", service: async (c, p, caller) => { await requireFeature(c, "calls"); return calls.listCalls(c, caller); }, permission: { module: "MOD-64", action: "view" }, describe: "The user's own 1:1 calls, newest first, with the other person, duration, outcome, transcription state and summary status (call ids for the two reads below)." },
     { key: "comms_call_transcript", service: async (c, p, caller) => { await requireFeature(c, "call_recording"); return pipeline.getTranscript(c, { callId: p.call_id, actor: caller }); }, permission: { module: "MOD-64", action: "view" }, describe: "The attributed transcript of one of the user's own calls, with its state, provenance, each recorded part's status and the minutes that could not be transcribed (participants only)." },
+    // Not tools: the ringing read (GET /calls/ringing) and the test ring are
+    // this device's plumbing (PR-4), with nothing for an assistant to act on.
     { key: "comms_call_summary", service: async (c, p, caller) => { await requireFeature(c, "call_recording"); return pipeline.getSummary(c, { callId: p.call_id, actor: caller }); }, permission: { module: "MOD-64", action: "view" }, describe: "The summary draft or posted summary of one of the user's own calls, with its language, provenance and the minutes missing from its transcript (participants only)." },
   ],
   writes: [

@@ -185,7 +185,7 @@ so an ordinary projection lands it 'on' with no manual step).
   connection-quality dot from `getStats()` RTT + jitter samples; > 600 ms =
   "poor connection" (the call continues — degrading is a human decision).
 - Ring-to-answer path: socket ring must reach an open app in **< 2 s**; the 60 s
-  ring window is shared with the push escalation (§4.6).
+  ring window is shared with the ring pushes (§4.6).
 - Call-setup (accept → audio flowing): **< 3 s** on good networks (ICE + SRTP).
 - Summary delivery (hang-up → draft pinned above the caller's composer):
   **< 2 min** for a 30-minute call (every part but the last was transcribed
@@ -365,8 +365,8 @@ echoed back as errors — silence for lies).
 | Event (sender → receiver)     | Payload                              | Server action                                   |
 | ----------------------------- | ------------------------------------ | ----------------------------------------------- |
 | `call:invite`  (caller → server) | `{ callId }`                      | already created by `POST /calls`; forwards ring |
-| `call:ringing` (server → callee user room `t:<slug>:<env>:u:<uid>`; the env keeps sandbox rings off live tabs) | `{ callId, from }` | — (also triggers push escalation, §4.6) |
-| `call:ring_ack` (callee → server) | `{ callId }`                    | starts the push-stop clock                      |
+| `call:ringing` (server → callee user room `t:<slug>:<env>:u:<uid>`; the env keeps sandbox rings off live tabs) | `{ callId, from }` | — (the ring push goes to every device at the same moment, §4.6) |
+| `call:ring_ack` (callee → server) | `{ callId, channel }`           | records the ring-channel metric only; stops nothing (PR-4) |
 | `call:accepted` (callee → server) | `{ callId }`                    | status IN_CALL; notifies caller                 |
 | `call:declined` / `call:busy` (callee → server) | `{ callId, reason? }` | terminal status; notifies caller |
 | `call:offer` / `call:answer` (participant → server) | `{ callId, sdp }` | relay to the other participant; **never stored** |
@@ -489,7 +489,7 @@ parallel, not sequence:
 | Caller sees | App open, tab visible | App open, tab backgrounded | App closed (same device) | App closed / offline |
 | --- | --- | --- | --- | --- |
 | Channel | `call:ringing` on socket → in-app ring + ringtone | socket ring → in-app ring + **browser Notification** + ringtone | **web push** (FCM data message on Android, APNs on iOS) with the call payload + display fallback | presence dot says offline → the invite UI shows "offline — last seen 14:02" **before** the ring starts, and offers "send a message instead" |
-| Fires when | t=0 | t=0 | t=5 s (no `call:ring_ack`) — never waits for the socket to be declared dead | n/a |
+| Fires when | t=0 | t=0 | t=0 to every device, then every 15 s while it rings (at most 4 re-alerts) — since PR-4; PR-3 waited 5 s and skipped the push if any device acked | n/a |
 | Caller UI | "Ringing…" with cancel | same | same (the caller does not know or care which channel will land) | rings anyway; 60 s → NO_ANSWER → UI suggests chat |
 | Answer path | tap accept | tap accept / notification action | push tap → deep link `/comms?ring=<id>` → accept UI (if still RINGING) or "timed out — start a new call?" one-tap | — |
 
@@ -500,7 +500,11 @@ parallel, not sequence:
   `sendToUser` path is used verbatim.
 - **High-priority data message** with `{ callId, callerId, expiresAt }`; the
   client discards expired rings (a 90-second-old ring is a chat, not a call).
-- **`call:ring_ack`** from any channel stops the others.
+- **Rings stop everywhere when the call is answered, declined or ends**, not
+  when one device acks: a cancel push replaces the ring on every device, and
+  `call:accepted` / the terminal events stop open tabs (PR-4). `call:ring_ack`
+  only records which channel landed. (PR-3 had the ack stop the others, which
+  let one open laptop tab silence the phone: audit A12.)
 - **Presence:** `comms:presence` on the tenant room from socket join/leave +
   30 s heartbeat; `last_seen_at` flushed to `comms_user_presence` on heartbeat
   and disconnect. The member list and the dial UI both render it.
@@ -943,12 +947,16 @@ honesty rule — off is instant, on is the engine's answer and is never claimed
 early.
 
 The switch is three-state on purpose: the tenant's default lives in
-`setting` (`comms.call_noise_suppression`, seeded ON by `14020`), the person's
+`setting` (`comms.call_noise_suppression`, seeded ON by `14020`; turned OFF by
+`14070` in calls-audit PR-4 until the filter is verified on devices), the person's
 own choice lives in `/me/preferences/calls` as `true | false | null`, and
 `null` means *follow the tenant* — the same absent-≠-null rule the other
 preference sections use. A checkbox could not express it.
 
-**Ring escalation (§4.6).** The delayed push is a job, not a `setTimeout`:
+**Ring escalation (§4.6).** *Superseded by calls-audit PR-4: the ring push now
+goes to every device at t=0 and re-alerts every 15 s; the ack is the metric only;
+a cancel push replaces the ring when it ends (see §4.6 and
+`doc/SMART_COMMS_CALLS_AUDIT.md` §6). What PR-3 delivered:* The delayed push is a job, not a `setTimeout`:
 `createCall` enqueues `comms-call-ring-escalate` with a 5 s delay and a static
 job id, and the handler re-reads the ROW before sending — answered, declined,
 cancelled, swept or already acked all stand it down. The device's own ack

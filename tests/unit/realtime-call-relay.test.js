@@ -165,6 +165,30 @@ describe("C5: a per-socket rate limit", () => {
   });
 });
 
+describe("PR-4: the callee's `call:ready` (E3)", () => {
+  test("is relayed to the other participant with nothing but the call id", async () => {
+    mockDb.call.status = "IN_CALL";
+    const s = fakeSocket();
+    s.data.userId = U2;
+    realtime.attachCallSignals(s);
+    s.emit("call:ready", { callId: CALL, sdp: "smuggled" });
+    await flush();
+    const ready = mockEmits.filter((e) => e.room === `t:acme:live:u:${U1}` && e.event === "call:ready");
+    expect(ready).toHaveLength(1);
+    expect(ready[0].payload).toEqual({ call_id: CALL });
+  });
+
+  test("is dropped for a call that is over, like every signal", async () => {
+    mockDb.call.status = "ENDED";
+    const s = fakeSocket();
+    s.data.userId = U2;
+    realtime.attachCallSignals(s);
+    s.emit("call:ready", { callId: CALL });
+    await flush();
+    expect(mockEmits.filter((e) => e.event === "call:ready")).toHaveLength(0);
+  });
+});
+
 describe("C5: the socket server's buffer is bounded", () => {
   test("maxHttpBufferSize is far below socket.io's 1 MB default and fits a 64 KB SDP", () => {
     const http = require("http");
@@ -192,3 +216,4 @@ describe("a malformed event cannot take the process down", () => {
     expect(mockDb.connections).toBe(0);
   });
 });
+

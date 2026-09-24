@@ -109,24 +109,42 @@ async function markRingAck(client, { callId, channel }) {
 }
 
 /**
- * Claim the push escalation for this call, atomically.
- *
- * The delayed job is queued with a static id, so BullMQ de-duplicates the
- * common case — but "the queue delivered this twice" (a retry after a worker
- * died between the send and the ack of the job) must not become two pushes to a
- * phone that is already ringing. The `WHERE ring_push_sent_at IS NULL` is the
- * claim: exactly one caller receives the row and does the send.
+ * Claim ring push number `alert` (0 = the ring at dial, then each re-alert)
+ * while the call still rings. `ring_alerts` counts the pushes sent, so only
+ * the run that finds it at `alert` sends; a queue retry finds it moved on.
+ * The first claim also stamps `ring_push_sent_at` (the cancel push needs to
+ * know a ring went out).
  */
-async function markRingPushSent(client, callId) {
+async function claimRingAlert(client, { callId, alert }) {
   const { rows } = await client.query(
     `UPDATE comms_call
-     SET ring_push_sent_at = now()
+     SET ring_alerts = $2 + 1,
+         ring_push_sent_at = COALESCE(ring_push_sent_at, now())
      WHERE call_id = $1
-       AND ring_push_sent_at IS NULL
+       AND status = 'RINGING'
+       AND COALESCE(ring_alerts, 0) = $2
      RETURNING *`,
-    [callId],
+    [callId, alert],
   );
   return rows[0] || null;
+}
+
+/** The calls ringing for `userId` now, with the caller's name and the seconds
+ *  left in the window by the database clock (the sweep's clock). */
+async function listRingingForUser(client, { userId, windowS }) {
+  const { rows } = await client.query(
+    `SELECT c.*, u.full_name AS caller_name,
+            GREATEST(0, CEIL(EXTRACT(EPOCH FROM
+              (c.started_at + make_interval(secs => $2::int) - now()))))::int AS ring_seconds_left
+     FROM comms_call c
+     JOIN app_user u ON u.user_id = c.caller_id
+     WHERE c.callee_id = $1
+       AND c.status = 'RINGING'
+       AND c.started_at > now() - make_interval(secs => $2::int)
+     ORDER BY c.started_at DESC`,
+    [userId, windowS],
+  );
+  return rows;
 }
 
 /** The other participant of a LIVE call (RINGING or IN_CALL), relative to
@@ -751,9 +769,10 @@ module.exports = {
   listCallsForUser,
   touchPresence,
   lastSeen,
-  // The ring half (PR-3, §4.6).
+  // The ring half (PR-3 ack; PR-4 pushes and the ringing read).
   markRingAck,
-  markRingPushSent,
+  claimRingAlert,
+  listRingingForUser,
   // The record half.
   upsertRecordingPart,
   findRecordingPart,

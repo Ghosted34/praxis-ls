@@ -1,32 +1,28 @@
 /**
- * 1:1 call session (Smart Comms PR-1) — the ONE call this tab is in.
+ * 1:1 call session — the ONE call this tab is in.
  *
- * Module-level by necessity: a ring can arrive while the user is on ANY screen
- * (/finance, /wms, anywhere), so the state cannot live in a chat component.
- * The shape is a small external store — `useCall()` (useSyncExternalStore) —
- * written by socket events and by the three user actions (dial, answer,
- * hang-up), rendered by the overlays in comms-live.tsx.
+ * Module-level by necessity: a ring can arrive while the user is on any
+ * screen, so the state cannot live in a chat component. `useCall()` reads a
+ * small external store written by socket events, the service worker and the
+ * user's actions (dial, answer, decline, hang-up); comms-live renders it.
  *
- * Division of labour, kept strict:
- *   - the SERVER row is the truth (state machine + both timers; the sweep
- *     ends calls this tab forgets about),
- *   - this module routes user intent to REST and server signals to the UI,
- *   - the ENGINE (call-engine.ts) owns one RTCPeerConnection and the mic.
- * A client that lies about state changes nothing: every transition it
- * requests is a guarded UPDATE the server may refuse with 409, and the
- * socket then re-syncs this store to the row.
+ * The server row is the truth (state machine and timers); this module routes
+ * user intent to REST and server signals to the UI; the engine owns the
+ * RTCPeerConnection and the mic. A transition the server refuses (409) is
+ * re-synced from the row or the terminal socket event.
  */
 import * as React from "react";
 import {
-  CallEngine, RING_TIMEOUT_S,
+  CallEngine, RING_TIMEOUT_S, openMic, primeRemoteAudio, primeNoiseContext,
   type NoiseFilterReason, type NoiseFilterStatus, type QualitySample,
 } from "./call-engine";
 import { presentRing, dismissRingNotification, parseCallLink, type RingChannel } from "./ring-surface";
+import { takeCallIntent } from "./call-intent";
 import { fetchCallPrefs, saveCallPrefs } from "@/lib/preferences";
 import {
-  dialCall, acceptCall, declineCall, hangupCall, reportCallFailure, getCall,
-  uploadCallPart, completeCallRecording, callHangupUrl,
-  type Call, type CallStatus,
+  dialCall, acceptCall, declineCall, hangupCall, reportCallFailure, getCall, getCallTurn,
+  getRingingCalls, uploadCallPart, completeCallRecording, callHangupUrl,
+  type Call, type CallStatus, type RingingCall,
 } from "@/lib/smartcomm-api";
 import { CallRecorder } from "./call-recorder";
 import { UploadOutbox, indexedDbStore, itemId, type OutboxItem } from "./call-upload-outbox";
@@ -36,13 +32,19 @@ import { ApiError } from "@/lib/api-client";
 import { tr } from "@/lib/i18n";
 import { tokenStore } from "@/lib/token-store";
 
-export type Phase = "idle" | "outgoing" | "incoming" | "connecting" | "in_call" | "ended";
+/** `dialing` is the moment between the tap and the server's answer: set
+ *  synchronously, so a double tap cannot dial twice (audit E7). */
+export type Phase = "idle" | "dialing" | "outgoing" | "incoming" | "connecting" | "in_call" | "ended";
+
+/** Why a call ended, as the toast says it. The server's reasons, plus
+ *  `answered_elsewhere` for a ring picked up on another device (audit E8). */
+export type EndedReason = string;
 
 export type SessionState = {
   phase: Phase;
   call: Call | null;
   peerName: string | null;
-  /** Local 60 s ring countdown — UX only; the server sweep is the truth. */
+  /** Local ring countdown — UX only; the server sweep is the truth. */
   ringSecondsLeft: number;
   /** Seconds since media connected — the UI clock. */
   elapsedS: number;
@@ -50,73 +52,92 @@ export type SessionState = {
   /** True from 29:00 (the one-minute warning). */
   warning: boolean;
   /** Terminal reason for the toast; cleared when the session returns to idle. */
-  endedReason: string | null;
-  /** Transient error (dial failed) for the caller's screen. */
+  endedReason: EndedReason | null;
+  /** Transient error (dial failed, no microphone) for the caller's screen. */
   lastError: string | null;
-  /** The tenant's recording switch, from the call row (PR-2). False means the
-   *  consent banner does not render — there is nothing to consent to. */
+  /** The tenant's recording switch, from the call row (PR-2). */
   recordingEnabled: boolean;
-  /** Parts of this side's audio that never uploaded. Surfaced in the overlay;
-   *  the server's own state covers the other half of the same fact. */
+  /** Parts of this side's audio that never uploaded. */
   recordingLost: number;
-  /** A summary just became ready (or gained an update). The shell shows a
-   *  toast pointing at the Calls page; nothing opens over the user's work. */
+  /** A summary just became ready (or gained an update), for the shell's toast. */
   summaryNotice: { call_id: string; status: string } | null;
   /** Bumped on every `call:summary_ready`, so an open conversation re-reads
    *  its pinned draft (owner decision O3). */
   summaryTick: number;
-  /** Set when a side fell back to the browser capture: the call record says so
-   *  and so does the person's screen, because a transcript nobody flagged is a
-   *  transcript everybody trusts. */
+  /** A transcription failure on a call, by reason code (rendered by PR-6). */
   transcriptionIssue: { call_id: string; reason: string } | null;
-  /** The outbound noise filter on THIS call (PR-3, §4.4): what the user asked
-   *  for (`enabled` — the effective tenant-default-or-override), and what the
-   *  worklet actually did (`status`, `reason`). */
+  /** The outbound noise filter: what the user asked for and what happened. */
   noise: { enabled: boolean; status: NoiseFilterStatus; reason: NoiseFilterReason | null };
-  /** The quality dot's latest getStats() sample (§3.4). */
+  /** The quality dot's latest getStats() sample. */
   quality: QualitySample;
-  /** Media dropped mid-call and is being recovered — the overlay says
-   *  "reconnecting…" instead of pretending nothing happened (§4.7). */
+  /** Media dropped mid-call and is being recovered. */
   recovering: boolean;
-  /** An expired push opened a call that is already over: the one-tap redial
-   *  path (§4.6), cleared by dialing again or dismissing it. */
+  /** The browser refused to play the other side's voice (audit E4): the call
+   *  screen shows "Tap to hear". */
+  audioBlocked: boolean;
+  /** An expired ring link opened a call that is already over: one-tap redial. */
   redial: { groupId: string; name: string | null } | null;
+  /** A call this user is making or taking on ANOTHER device
+   *  (`call:ringing_sent`, `call:accepted`), so this tab can say so. */
+  elsewhere: { callId: string; peerName: string | null; status: "ringing" | "in_call" } | null;
+  /** This person can take calls here (the ringing read answered); null until
+   *  it has been asked, false when calls are off or not theirs to use. */
+  callsAvailable: boolean | null;
 };
 
 const INITIAL: SessionState = {
   phase: "idle", call: null, peerName: null, ringSecondsLeft: 0,
   elapsedS: 0, muted: false, warning: false, endedReason: null, lastError: null,
   recordingEnabled: false, recordingLost: 0, summaryNotice: null, summaryTick: 0, transcriptionIssue: null,
-  noise: { enabled: true, status: "off", reason: null },
+  noise: { enabled: false, status: "off", reason: null },
   quality: { state: "good", rttMs: null, jitterMs: null, lossPct: null },
-  recovering: false, redial: null,
+  recovering: false, audioBlocked: false, redial: null, elsewhere: null, callsAvailable: null,
 };
+
+/** After the local countdown reaches zero, how long a still-RINGING row is
+ *  believed before this tab ends the ring itself (one sweep interval): a
+ *  ring can never stick (audit A13). */
+export const RING_EXPIRY_GRACE_MS = 15_000;
+/** The ringing read is not repeated more often than this. */
+const RECONCILE_MIN_MS = 2_000;
+/** A local ring younger than this is kept even if the ringing read (which
+ *  may have raced it) does not list it. */
+const RECONCILE_GRACE_MS = 4_000;
 
 let state: SessionState = INITIAL;
 let engine: CallEngine | null = null;
 let engineReady = false;
 let ringTimer: ReturnType<typeof setInterval> | null = null;
+let ringExpiryTimer: ReturnType<typeof setTimeout> | null = null;
 let endTimer: ReturnType<typeof setTimeout> | null = null;
+/** When this tab started ringing for the current call (reconcile's grace). */
+let ringStartedAt = 0;
 /** The caller's offer, received before we have an engine to give it to. */
 let pendingOffer: { callId: string; sdp: string } | null = null;
-/** The recorder for the call this tab is in, owned here so it survives any
- *  component unmounting. */
+/** The caller's candidates, received while the phone was still ringing. */
+let pendingIce: { callId: string; candidates: Array<unknown | null> } | null = null;
+/** Rings this tab has answered, declined or seen end: never presented again,
+ *  even while the row still says RINGING for a moment. */
+const handledRings = new Set<string>();
+/** The recorder for the call this tab is in. */
 let recorder: CallRecorder | null = null;
-/** The call and side this tab is recording, set when media connects, so the
- *  side is declared at the end even if the recorder never started (0 parts). */
+/** The call and side this tab is recording, set when media connects. */
 let recording: { callId: string; side: "caller" | "callee" } | null = null;
-/** undefined = this tab has not asked yet; null = the user has no opinion and
- *  follows the tenant default (the same absent-≠-null contract the server
- *  keeps — see preference.service.js). */
+/** undefined = not asked yet; null = follows the tenant default. */
 let userNoisePref: boolean | null | undefined;
-/** The tenant's default for the yard, from the call row (createCall and
- *  acceptCall both carry `noise_suppression`). True until a row says otherwise:
- *  the guide's default is ON because the corridor has forklifts. */
-let tenantNoiseDefault = true;
-/** A call deep link from a push tap, kept until the ring resolves. */
+/** The tenant's default for the yard filter, from the call row. Off until a
+ *  row says otherwise (audit E5: off until verified on devices). */
+let tenantNoiseDefault = false;
+/** A ring deep link or notification action, kept until the ring resolves. */
 let pendingLink: { callId: string; action: "accept" | "decline" | null } | null = null;
 
 const subs = new Set<() => void>();
+
+/** The phase now. Read through a call after an await: TypeScript keeps a
+ *  narrowing of `state.phase` across awaits that the world does not. */
+function phaseNow(): Phase {
+  return state.phase;
+}
 
 function set(patch: Partial<SessionState>) {
   state = { ...state, ...patch };
@@ -146,7 +167,7 @@ export function myUserId(): string | null {
 }
 const currentUserId = myUserId;
 
-/** The server's error text, translated for the two cases it can be. */
+/** The server's error text, translated for the cases it can be. */
 function errText(err: unknown): string {
   if (err instanceof ApiError) {
     if (err.code === "CALLER_BUSY") return tr("You are already on a call");
@@ -156,30 +177,44 @@ function errText(err: unknown): string {
   return tr("Could not connect the call");
 }
 
+/** Why the microphone could not be opened, in words a person can act on. */
+function micErrText(err: unknown): string {
+  const name = err instanceof Error ? err.name : "";
+  if (name === "NotAllowedError" || name === "SecurityError") {
+    return tr("Microphone blocked — allow it for this site to make and take calls");
+  }
+  if (name === "NotFoundError" || (err instanceof Error && err.message === "no-media-device")) {
+    return tr("No microphone found on this device");
+  }
+  return tr("The microphone could not be opened");
+}
+
 function clearRing() {
   if (ringTimer) clearInterval(ringTimer);
   ringTimer = null;
+  if (ringExpiryTimer) clearTimeout(ringExpiryTimer);
+  ringExpiryTimer = null;
 }
 function clearEndTimer() {
   if (endTimer) clearTimeout(endTimer);
   endTimer = null;
 }
-/** A 409 on a transition means the SERVER already ended the call (sweep,
- *  other end); the socket event carries the row. Nothing else to do. */
+/** A 409 on a transition means the server already ended the call; the
+ *  socket event carries the row. */
 function swallowServerEnded(_err: unknown): void {
   /* @silent:teardown — the terminal socket event re-syncs this store; a
-     second transition for a call the row already closed is exactly the
-     race the guarded UPDATE exists to lose. */
+     second transition for a call the row already closed is the race the
+     guarded UPDATE exists to lose. */
 }
 
-/** Local ring countdown; at zero the server's sweep owns the outcome, so we
- *  just re-read the row. */
+/** Local ring countdown; at zero the row is re-read. */
 function startRingCountdown(onZero: () => void) {
   clearRing();
   ringTimer = setInterval(() => {
     const left = state.ringSecondsLeft - 1;
     if (left <= 0) {
-      clearRing();
+      if (ringTimer) clearInterval(ringTimer);
+      ringTimer = null;
       set({ ringSecondsLeft: 0 });
       onZero();
     } else {
@@ -190,7 +225,7 @@ function startRingCountdown(onZero: () => void) {
 
 function applyRow(row: Call) {
   if (row.recording_enabled !== undefined) set({ recordingEnabled: row.recording_enabled });
-  if (row.noise_suppression !== undefined) tenantNoiseDefault = row.noise_suppression !== false;
+  if (row.noise_suppression !== undefined) tenantNoiseDefault = row.noise_suppression === true;
 }
 
 /** The effective filter setting: the person's override, else the tenant's. */
@@ -200,9 +235,7 @@ function resolveNoiseEnabled(): boolean {
     : userNoisePref;
 }
 
-/** Load the per-user override once per tab. A failure leaves it `undefined`,
- *  which resolves to the tenant default — a settings blip must not silence the
- *  yard filter, and it must not block a ring either. */
+/** Load the per-user override once per tab; a failure follows the tenant. */
 function ensureNoisePref(): void {
   if (userNoisePref !== undefined) return;
   fetchCallPrefs()
@@ -210,8 +243,7 @@ function ensureNoisePref(): void {
       userNoisePref = p.noiseSuppression;
     })
     .catch(() => {
-      /* @silent:parse — the default above is the honest fallback; there is no
-         second action to take on a preference read that failed. */
+      /* @silent:parse — the tenant default is the honest fallback. */
     });
 }
 
@@ -228,10 +260,22 @@ function stopEngine() {
   engine?.stop();
   engine = null;
   engineReady = false;
+  pendingOffer = null;
+  pendingIce = null;
   clearRing();
 }
 
-/** The caller's app language, which is also the draft language (§4.10). */
+/** Things primed inside the tap that no engine took over: release them. */
+function releasePrimed(audio: HTMLAudioElement | null, noise: AudioContext | null) {
+  if (audio) audio.srcObject = null;
+  if (noise) {
+    void noise.close().catch(() => {
+      /* @silent:teardown — a context that never started. */
+    });
+  }
+}
+
+/** The caller's app language, which is also the draft language. */
 function appLanguage(): "en" | "fr" {
   return String(i18n.language || "en").startsWith("fr") ? "fr" : "en";
 }
@@ -351,88 +395,246 @@ function finishRecording(): void {
     });
 }
 
-/** Re-read the row after a locally-expired ring — the sweep has had 15 s to
- *  act at most, and the row says which way it went. */
+/** A ring this tab is showing ended without this tab acting: say how. */
+function endRingLocally(callId: string, reason: EndedReason) {
+  if (state.call?.call_id !== callId || state.phase !== "incoming") return;
+  handledRings.add(callId);
+  stopEngine();
+  void dismissRingNotification(callId);
+  set({ phase: "ended", endedReason: reason });
+  toIdleIfEnded(callId);
+}
+
+/** Re-read the row after the local countdown reached zero. A row that still
+ *  says RINGING is believed for one sweep interval more, then the ring ends
+ *  here regardless (audit A13: a ring can never stick). */
 async function syncFromRow(callId: string) {
+  let row: Call | null = null;
   try {
-    const row = await getCall(callId);
-    applyRow(row);
-    if (state.call?.call_id !== callId) return;
-    if (row.status === "RINGING") {
-      // We lost the race against the sweep's clock by a few seconds — keep
-      // ringing until the row really moves; the next beat will see it.
-      return;
-    }
-    stopEngine();
-    set({
-      phase: "ended",
-      call: row,
-      endedReason: row.end_reason ?? "no_answer",
-    });
-    toIdleIfEnded(callId);
+    row = await getCall(callId);
   } catch {
-    /* @silent:parse — a 404/403 here means the row is gone or we never had
-       it; idle is the honest state, and the row is never re-created. */
+    /* @silent:parse — a 404/403 means the row is gone or never ours; the
+       expiry below ends the ring. */
   }
+  if (state.call?.call_id !== callId) return;
+  if (row) applyRow(row);
+  if (row && row.status === "RINGING") {
+    if (!ringExpiryTimer) {
+      ringExpiryTimer = setTimeout(() => {
+        ringExpiryTimer = null;
+        if (state.call?.call_id !== callId) return;
+        if (state.phase === "incoming") endRingLocally(callId, "no_answer");
+        else if (state.phase === "outgoing") {
+          stopEngine();
+          set({ phase: "ended", endedReason: "no_answer" });
+          toIdleIfEnded(callId);
+        }
+      }, RING_EXPIRY_GRACE_MS);
+    }
+    return;
+  }
+  handledRings.add(callId);
+  stopEngine();
+  set({
+    phase: "ended",
+    call: row ?? state.call,
+    endedReason: row?.end_reason ?? "no_answer",
+  });
+  toIdleIfEnded(callId);
+}
+
+/** How much of the 60-second window is left on a row we are ringing from. */
+function remainingRingSeconds(row: Call): number {
+  const started = Date.parse(row.started_at || "");
+  if (!Number.isFinite(started)) return RING_TIMEOUT_S;
+  const used = Math.floor((Date.now() - started) / 1000);
+  return Math.max(1, Math.min(RING_TIMEOUT_S, RING_TIMEOUT_S - used));
+}
+
+type IncomingRing = {
+  call: Call;
+  peerName: string | null;
+  secondsLeft: number;
+  noiseSuppression?: boolean;
+};
+
+/**
+ * Show a ring on this tab: from the socket, from the ringing read, from a
+ * push the service worker handed over, or from a deep link. Returns false
+ * when this tab is busy or has already dealt with that call.
+ */
+function presentIncoming(ring: IncomingRing): boolean {
+  const id = ring.call.call_id;
+  if (handledRings.has(id)) return false;
+  if (state.call?.call_id === id && state.phase !== "ended") return false;
+  if (state.phase !== "idle" && state.phase !== "ended") return false;
+  if (ring.secondsLeft <= 0) return false;
+  if (ring.noiseSuppression !== undefined) tenantNoiseDefault = ring.noiseSuppression === true;
+  clearEndTimer();
+  ringStartedAt = Date.now();
+  // Candidates for an earlier ring are not this call's.
+  if (pendingIce && pendingIce.callId !== id) pendingIce = null;
+  set({
+    ...INITIAL,
+    summaryTick: state.summaryTick,
+    elsewhere: state.elsewhere,
+    callsAvailable: state.callsAvailable,
+    phase: "incoming",
+    call: ring.call,
+    peerName: ring.peerName,
+    ringSecondsLeft: ring.secondsLeft,
+    recordingEnabled: ring.call.recording_enabled === true,
+    noise: { enabled: resolveNoiseEnabled(), status: "off", reason: null },
+  });
+  startRingCountdown(() => void syncFromRow(id));
+  return true;
+}
+
+/** Tell the server which channel this ring landed on (the ring-channel
+ *  metric only; it stops nothing on any other device — audit A12). */
+function ackRing(callId: string, channel: RingChannel) {
+  getCommsSocket().emit("call:ring_ack", { callId, channel });
 }
 
 /* ── Actions ─────────────────────────────────────────────────────────────── */
 
+/**
+ * Dial. Runs from the tap: the audio element and the noise filter's context
+ * are primed synchronously (autoplay rules, audit E4/E5), the phase moves to
+ * `dialing` before the first await (a double tap is one call, E7), and the
+ * mic is opened BEFORE the server rings anyone (E6). If the engine then
+ * fails, the call is hung up rather than left ringing.
+ */
 export async function dial(groupId: string, peerName: string | null): Promise<void> {
-  if (state.phase !== "idle") return;
+  if (state.phase !== "idle" && state.phase !== "ended") return;
   ensureNoisePref();
-  set({ ...INITIAL });
+  const wantNoise = resolveNoiseEnabled();
+  const audio = primeRemoteAudio();
+  const noiseCtx = wantNoise ? primeNoiseContext() : null;
+  clearEndTimer();
+  set({
+    ...INITIAL,
+    summaryTick: state.summaryTick,
+    elsewhere: state.elsewhere,
+    callsAvailable: state.callsAvailable,
+    phase: "dialing",
+    peerName,
+    noise: { enabled: wantNoise, status: "off", reason: null },
+  });
+
+  let mic: MediaStream;
   try {
-    const call = await dialCall(groupId);
-    applyRow(call);
-    set({
-      phase: "outgoing", call, peerName,
-      ringSecondsLeft: RING_TIMEOUT_S,
-    });
-    startRingCountdown(() => void syncFromRow(call.call_id));
-    const e = makeEngine(true, call.call_id);
-    engine = e;
-    try {
-      await e.start(call.ice);
-      engineReady = true;
-    } catch (err) {
-      stopEngine();
-      set({ phase: "idle", lastError: errText(err) });
-    }
+    mic = await openMic();
   } catch (err) {
+    releasePrimed(audio, noiseCtx);
+    if (phaseNow() === "dialing") set({ phase: "idle", lastError: micErrText(err) });
+    return;
+  }
+
+  let call: Call & { ice: import("@/lib/smartcomm-api").IceConfig };
+  try {
+    call = await dialCall(groupId);
+  } catch (err) {
+    mic.getTracks().forEach((t) => t.stop());
+    releasePrimed(audio, noiseCtx);
+    if (phaseNow() === "dialing") set({ phase: "idle", lastError: errText(err) });
+    return;
+  }
+
+  // Hung up while the server was creating the ring: cancel it.
+  if (phaseNow() !== "dialing") {
+    mic.getTracks().forEach((t) => t.stop());
+    releasePrimed(audio, noiseCtx);
+    void hangupCall(call.call_id).catch(swallowServerEnded);
+    return;
+  }
+
+  applyRow(call);
+  set({ phase: "outgoing", call, ringSecondsLeft: RING_TIMEOUT_S });
+  startRingCountdown(() => void syncFromRow(call.call_id));
+  const e = makeEngine(true, call.call_id, { audio, noiseCtx });
+  engine = e;
+  try {
+    await e.start(call.ice, mic);
+    engineReady = true;
+  } catch (err) {
+    stopEngine();
+    void hangupCall(call.call_id).catch(swallowServerEnded);
     set({ phase: "idle", lastError: errText(err) });
   }
 }
 
+/**
+ * Answer. Same order as dial: prime in the tap, `connecting` at once, the
+ * mic before the server hears "accepted" (E6). A mic that will not open
+ * leaves the call ringing for the person's other devices; an engine that
+ * fails after the accept reports the failure, so nobody is left IN_CALL.
+ */
 export async function answer(): Promise<void> {
   const call = state.call;
   if (!call || state.phase !== "incoming") return;
+  const id = call.call_id;
   ensureNoisePref();
-  void dismissRingNotification(call.call_id);
-  set({ phase: "connecting" });
+  const wantNoise = resolveNoiseEnabled();
+  const audio = primeRemoteAudio();
+  const noiseCtx = wantNoise ? primeNoiseContext() : null;
+  handledRings.add(id);
+  clearRing();
+  set({ phase: "connecting", noise: { enabled: wantNoise, status: "off", reason: null } });
+  void dismissRingNotification(id);
+
+  let mic: MediaStream;
   try {
-    const row = await acceptCall(call.call_id);
-    applyRow(row);
-    set({ call: row, phase: "connecting" });
-    const e = makeEngine(false, row.call_id);
-    engine = e;
-    try {
-      await e.start(row.ice);
-      engineReady = true;
-      // The offer almost certainly already arrived (the caller sends it the
-      // moment the ring does) — hand it over now that the connection exists.
-      if (pendingOffer && pendingOffer.callId === row.call_id) {
-        const sdp = pendingOffer.sdp;
-        pendingOffer = null;
-        await e.applyRemoteOffer(sdp);
-      }
-    } catch (err) {
-      stopEngine();
-      set({ phase: "idle", lastError: errText(err) });
-    }
+    mic = await openMic();
   } catch (err) {
+    releasePrimed(audio, noiseCtx);
+    set({ phase: "idle", lastError: micErrText(err) });
+    return;
+  }
+
+  let row: Call & { ice: import("@/lib/smartcomm-api").IceConfig };
+  try {
+    row = await acceptCall(id);
+  } catch (err) {
+    mic.getTracks().forEach((t) => t.stop());
+    releasePrimed(audio, noiseCtx);
     stopEngine();
     set({ phase: "idle", lastError: errText(err) });
+    return;
+  }
+  if (state.call?.call_id !== id || phaseNow() !== "connecting") {
+    // Ended while the accept was in flight (a terminal event won).
+    mic.getTracks().forEach((t) => t.stop());
+    releasePrimed(audio, noiseCtx);
+    return;
+  }
+  applyRow(row);
+  set({ call: row });
+  const e = makeEngine(false, id, { audio, noiseCtx });
+  engine = e;
+  try {
+    await e.start(row.ice, mic);
+    engineReady = true;
+    const buffered = pendingIce && pendingIce.callId === id ? pendingIce.candidates : [];
+    pendingIce = null;
+    for (const c of buffered) void e.addRemoteIceCandidate(c);
+    if (pendingOffer && pendingOffer.callId === id) {
+      const sdp = pendingOffer.sdp;
+      pendingOffer = null;
+      await e.applyRemoteDescription({ type: "offer", sdp });
+    }
+    // Listening now: the caller re-sends its offer if we never got it (E3).
+    getCommsSocket().emit("call:ready", { callId: id });
+  } catch {
+    stopEngine();
+    try {
+      const failed = await reportCallFailure(id);
+      set({ phase: "ended", call: failed, endedReason: failed.end_reason ?? "ice_failed" });
+    } catch (err) {
+      swallowServerEnded(err);
+      set({ phase: "ended", endedReason: "ice_failed" });
+    }
+    toIdleIfEnded(id);
   }
 }
 
@@ -440,6 +642,7 @@ export async function decline(): Promise<void> {
   const call = state.call;
   if (!call) return;
   const id = call.call_id;
+  handledRings.add(id);
   finishRecording();
   stopEngine();
   void dismissRingNotification(id);
@@ -450,16 +653,25 @@ export async function decline(): Promise<void> {
     }
   } catch (err) {
     swallowServerEnded(err);
+    if (state.call?.call_id === id && state.phase === "incoming") {
+      set({ phase: "ended", endedReason: "declined" });
+    }
   }
   toIdleIfEnded(id);
 }
 
 export async function hangup(): Promise<void> {
+  // Before the server has answered the dial there is no call to end: going
+  // idle is the cancel, and dial() hangs up the call when it arrives.
+  if (state.phase === "dialing") {
+    set({ phase: "idle" });
+    return;
+  }
   const call = state.call;
   if (!call) return;
   const id = call.call_id;
-  // BEFORE stopEngine: the recorder's final chunk must be produced while the
-  // mic track is still open. Neither of these waits for an upload.
+  handledRings.add(id);
+  // BEFORE stopEngine: the recorder's final chunk needs the open mic.
   finishRecording();
   stopEngine();
   void dismissRingNotification(id);
@@ -472,6 +684,12 @@ export async function hangup(): Promise<void> {
     swallowServerEnded(err);
   }
   toIdleIfEnded(id);
+}
+
+/** "Tap to hear": play the other side's voice from a fresh gesture (E4). */
+export async function resumeAudio(): Promise<void> {
+  const ok = await engine?.resumeAudio();
+  if (ok) set({ audioBlocked: false });
 }
 
 /**
@@ -493,7 +711,10 @@ function keepaliveHangup(): void {
   const call = state.call;
   const { phase } = state;
   if (!call) return;
-  if (phase !== "in_call" && phase !== "connecting" && phase !== "outgoing" && phase !== "incoming") return;
+  // Not a ring this tab is only showing: the server reads a callee's
+  // hang-up while ringing as a decline, and the person's other devices are
+  // still ringing (audit A12).
+  if (phase !== "in_call" && phase !== "connecting" && phase !== "outgoing") return;
   try {
     const h = new Headers();
     h.set("Content-Type", "application/json");
@@ -519,14 +740,16 @@ if (typeof window !== "undefined") {
 }
 
 function setMuted(muted: boolean): void {
-  // Exported below — comms-live wires the overlay mute button to it.
-
   engine?.setMuted(muted);
 }
 
 /* ── Engine construction (both roles share the wiring) ──────────────────── */
 
-function makeEngine(isCaller: boolean, callId: string) {
+function makeEngine(
+  isCaller: boolean,
+  callId: string,
+  primed: { audio: HTMLAudioElement | null; noiseCtx: AudioContext | null },
+) {
   const socket = getCommsSocket();
   const e = new CallEngine(
     {
@@ -557,22 +780,119 @@ function makeEngine(isCaller: boolean, callId: string) {
         })();
       },
       onTick: (s) => set({ elapsedS: s }),
-      // ── PR-3: quality dot, noise filter state, media recovery ──────────
       onQuality: (sample) => set({ quality: sample }),
       onNoiseFilter: (status, reason) =>
         set({ noise: { enabled: e.noiseWanted, status, reason } }),
       onRecovering: (recovering) => set({ recovering }),
+      onAudioBlocked: (blocked) => set({ audioBlocked: blocked }),
       onWarnMaxDuration: () => set({ warning: true }),
       onMaxDuration: () => void hangup(),
       onLocalMuted: (m) => set({ muted: m }),
     },
     isCaller,
   );
-  // BEFORE start() — the engine reads this when it decides whether to build the
-  // worklet graph on the outbound track (§4.4).
   e.noiseWanted = resolveNoiseEnabled();
+  e.audioElement = primed.audio;
+  e.noiseContext = primed.noiseCtx;
+  // A fresh TURN credential before an ICE restart (PR-3's GET /calls/:id/turn).
+  e.refreshIce = () => getCallTurn(callId);
   set({ noise: { enabled: e.noiseWanted, status: "off", reason: null } });
   return e;
+}
+
+/* ── Rings the socket did not deliver (audit A13) ───────────────────────── */
+
+let lastReconcile = 0;
+let reconciling: Promise<void> | null = null;
+
+function ringFromRow(r: RingingCall): IncomingRing {
+  return {
+    call: {
+      call_id: r.call_id,
+      group_id: r.group_id,
+      caller_id: r.caller_id,
+      callee_id: r.callee_id,
+      status: "RINGING",
+      started_at: r.started_at,
+      caller_name: r.caller_name ?? null,
+      recording_enabled: r.recording_enabled === true,
+    },
+    peerName: r.caller_name ?? null,
+    secondsLeft: Math.max(0, Math.min(RING_TIMEOUT_S, Math.floor(r.ring_seconds_left))),
+    noiseSuppression: r.noise_suppression,
+  };
+}
+
+/**
+ * Ask the server what is ringing for me, and merge it with what this tab
+ * shows: a ring the socket never delivered (the app opened because the phone
+ * buzzed) appears; a ring the server no longer lists ends. Runs on socket
+ * connect and reconnect, on return to the foreground, and when the service
+ * worker hands over a push.
+ */
+export function reconcileRinging(force = false): Promise<void> {
+  if (reconciling) return reconciling;
+  const now = Date.now();
+  if (!force && now - lastReconcile < RECONCILE_MIN_MS) return Promise.resolve();
+  lastReconcile = now;
+  reconciling = (async () => {
+    let rows: RingingCall[];
+    try {
+      rows = await getRingingCalls();
+    } catch (err) {
+      // 403: calls are off for this tenant, or not this person's to use.
+      if (err instanceof ApiError && err.status === 403) set({ callsAvailable: false });
+      /* @silent:parse — offline or signed out: the socket and the next
+         foreground try again. */
+      return;
+    }
+    if (state.callsAvailable !== true) set({ callsAvailable: true });
+    const current = state.call?.call_id;
+    if (state.phase === "incoming" && current && !rows.some((r) => r.call_id === current)
+        && Date.now() - ringStartedAt > RECONCILE_GRACE_MS) {
+      void syncFromRow(current);
+    }
+    for (const r of rows) {
+      if (presentIncoming(ringFromRow(r))) {
+        const viaPush = pendingLink?.callId === r.call_id;
+        ackRing(r.call_id, viaPush ? "push" : "socket");
+        break;
+      }
+    }
+  })().finally(() => {
+    reconciling = null;
+  });
+  return reconciling;
+}
+
+/* ── The service worker's half (audit A8, A14, PR-4 steps 5–7) ──────────── */
+
+type WorkerMessage =
+  | { type: "praxis:call-ring"; data?: { call_id?: string } }
+  | { type: "praxis:call-cancel"; data?: { call_id?: string; outcome?: string } }
+  | { type: "praxis:call-action"; call_id?: string; act?: string };
+
+/** Why a ring ended, from a cancel push's outcome. */
+function reasonForOutcome(outcome: string | undefined): EndedReason {
+  if (outcome === "answered") return "answered_elsewhere";
+  if (outcome === "declined") return "declined";
+  if (outcome === "missed") return "no_answer";
+  return "ended";
+}
+
+function onWorkerMessage(msg: WorkerMessage) {
+  if (!msg || typeof msg !== "object") return;
+  if (msg.type === "praxis:call-ring") {
+    // A push reached a visible app: ring in-app from the server's truth.
+    void reconcileRinging(true);
+  } else if (msg.type === "praxis:call-cancel") {
+    const id = msg.data?.call_id;
+    if (id) endRingLocally(id, reasonForOutcome(msg.data?.outcome));
+  } else if (msg.type === "praxis:call-action") {
+    const id = msg.call_id;
+    const act = msg.act === "accept" || msg.act === "decline" ? msg.act : null;
+    if (id) actOnCallIntent({ callId: id, action: act });
+  }
 }
 
 /* ── Server → this tab (wired once, app lifetime) ───────────────────────── */
@@ -584,18 +904,11 @@ export function wireCallSocket(): void {
   const s = getCommsSocket();
   resumeCallUploads();
 
-  s.on("call:ringing", (p: { call_id: string; from: { user_id: string; name?: string | null }; ring_timeout_s?: number; recording_enabled?: boolean; noise_suppression?: boolean }) => {
-    // A ring we are already in a call for: the server would have refused the
-    // dialer with 409, and if that check raced us the row resolves it — but
-    // this tab physically has one call at a time, so the honest answer is to
-    // stay in the one we are in. The dialer sees the busy end.
-    if (state.phase !== "idle" && state.phase !== "ended") return;
-    set({ recordingEnabled: p.recording_enabled === true });
-    set({
-      phase: "incoming",
+  s.on("call:ringing", (p: { call_id: string; group_id?: string; from: { user_id: string; name?: string | null }; ring_timeout_s?: number; recording_enabled?: boolean; noise_suppression?: boolean }) => {
+    const shown = presentIncoming({
       call: {
         call_id: p.call_id,
-        group_id: "",
+        group_id: p.group_id || "",
         caller_id: p.from.user_id,
         callee_id: currentUserId() || "",
         status: "RINGING",
@@ -603,17 +916,13 @@ export function wireCallSocket(): void {
         recording_enabled: p.recording_enabled === true,
       },
       peerName: p.from.name || null,
-      ringSecondsLeft: p.ring_timeout_s ?? RING_TIMEOUT_S,
+      secondsLeft: p.ring_timeout_s ?? RING_TIMEOUT_S,
+      noiseSuppression: p.noise_suppression,
     });
-    if (p.noise_suppression !== undefined) tenantNoiseDefault = p.noise_suppression !== false;
-    startRingCountdown(() => void syncFromRow(p.call_id));
-
-    // §4.6: say which channel actually reached this device, and do it fast —
-    // the server's push escalation fires at t≈5 s and stands down on the ack.
-    // A ring the person was already looking at is `socket`; a hidden tab that
-    // got a real system notification is `notification`; an app that was opened
-    // BY the push deep link is `push` (the ring is being shown because the tap
-    // woke this tab, and the ack says so).
+    if (!shown) return;
+    // Which channel reached this device, for the ring-channel metric: a
+    // visible tab is `socket`, a hidden one that showed a notification is
+    // `notification`, an app opened from the push is `push`.
     const viaPush = pendingLink?.callId === p.call_id;
     void (async () => {
       const channel: RingChannel | null = viaPush
@@ -623,28 +932,23 @@ export function wireCallSocket(): void {
             peerName: p.from.name || null,
             recordingEnabled: p.recording_enabled === true,
           });
-      // null = nothing was presented on this device (hidden tab, notifications
-      // not permitted). NO ACK: the escalation at t=5 s is then still live, and
-      // the push is the tier that can actually reach them.
-      if (channel) s.emit("call:ring_ack", { callId: p.call_id, channel });
+      if (channel) ackRing(p.call_id, channel);
       if (viaPush) pendingLink = null;
     })();
   });
 
-  // The same user's OTHER device heard the bell first (§4.6 "stops all
-  // channels"): take this tab's notification down, so the desk tab and the
-  // phone are never both ringing for a call one of them has already answered.
-  s.on("call:ring_ack", (p: { call_id: string; channel?: string }) => {
-    if (p && p.call_id) void dismissRingNotification(p.call_id);
+  // The caller's other tabs: this user is calling from another device.
+  s.on("call:ringing_sent", (p: { call_id: string; to?: { user_id: string; name?: string | null } }) => {
+    if (!p || !p.call_id || state.call?.call_id === p.call_id) return;
+    set({ elsewhere: { callId: p.call_id, peerName: p.to?.name ?? null, status: "ringing" } });
   });
 
   s.on("call:offer", (p: { call_id: string; sdp: string }) => {
     if (state.call?.call_id !== p.call_id) return;
     if (engineReady && engine) {
-      engine.applyRemoteOffer(p.sdp).catch(() => {
-        /* @silent:parse — a remote SDP that does not apply (duplicated
-           event, or the call already closed) changes nothing we can act
-           on; the engine's own ICE path reports a real failure. */
+      engine.applyRemoteDescription({ type: "offer", sdp: p.sdp }).catch(() => {
+        /* @silent:parse — a description that does not apply (the call closed,
+           a stale glare); the ICE timers report a real failure. */
       });
     } else {
       pendingOffer = { callId: p.call_id, sdp: p.sdp };
@@ -653,40 +957,49 @@ export function wireCallSocket(): void {
 
   s.on("call:answer", (p: { call_id: string; sdp: string }) => {
     if (!engineReady || !engine || state.call?.call_id !== p.call_id) return;
-    engine.applyRemoteAnswer(p.sdp).catch(() => {
-      /* @silent:parse — same as the offer path: a late/duplicated SDP is a
-         no-op, a real media failure surfaces through ICE state. */
+    engine.applyRemoteDescription({ type: "answer", sdp: p.sdp }).catch(() => {
+      /* @silent:parse — a late or duplicated answer is a no-op. */
     });
   });
 
   s.on("call:ice", (p: { call_id: string; candidate: unknown | null }) => {
-    if (!engine || state.call?.call_id !== p.call_id) return;
-    void engine.addRemoteIceCandidate(p.candidate);
+    if (state.call?.call_id !== p.call_id) return;
+    if (engine) {
+      void engine.addRemoteIceCandidate(p.candidate);
+      return;
+    }
+    // Still ringing here: keep them for the engine the answer creates (E2).
+    if (!pendingIce || pendingIce.callId !== p.call_id) pendingIce = { callId: p.call_id, candidates: [] };
+    pendingIce.candidates.push(p.candidate);
   });
 
-  s.on("call:accepted", () => {
-    // The callee's answer to the ROW (the media path is forming). The UI's
-    // "connecting" → "in_call" move happens on the engine's onConnected;
-    // this event only ever corrects a tab that missed it.
-    if (state.phase === "outgoing" && state.call) {
-      set({ phase: "connecting" });
+  // The callee's engine is listening (E3).
+  s.on("call:ready", (p: { call_id: string }) => {
+    if (!p || state.call?.call_id !== p.call_id) return;
+    engine?.peerReady();
+  });
+
+  s.on("call:accepted", (p: { call_id: string }) => {
+    const id = p && p.call_id;
+    if (!id) return;
+    if (state.call?.call_id !== id) {
+      if (state.elsewhere?.callId === id) set({ elsewhere: { ...state.elsewhere, status: "in_call" } });
+      return;
     }
-    // §4.6, the case that only exists with push: a callee who accepted from a
-    // COLD app never received our offer — the socket message that carried it
-    // was published while their phone had no page open. Accept is the signal
-    // that they are there now, so we re-send the local description. One extra
-    // message, and it is the difference between "push accept works" and "it
-    // connects to silence".
-    const sdp = engine?.localSdp;
-    if (sdp && engine && !engine.hasRemoteAnswer) {
-      getCommsSocket().emit("call:offer", { callId: state.call?.call_id, sdp });
+    // This device was ringing and another device of mine answered (E8).
+    if (state.phase === "incoming") {
+      endRingLocally(id, "answered_elsewhere");
+      return;
     }
+    if (state.phase === "outgoing") set({ phase: "connecting" });
   });
 
   const onTerminal = (p: { call_id: string; status?: string; reason?: string; duration_seconds?: number | null; ended_at?: string | null }) => {
+    if (state.elsewhere?.callId === p.call_id) set({ elsewhere: null });
     if (state.call?.call_id !== p.call_id) return;
-    // The other end hung up, or the sweep ended the call: the recorder stops
-    // here too, and its tail is uploaded exactly as if we had pressed hang-up.
+    handledRings.add(p.call_id);
+    // The other end hung up, or the sweep ended the call: the recorder's
+    // tail is uploaded exactly as if we had pressed hang-up.
     finishRecording();
     stopEngine();
     void dismissRingNotification(p.call_id);
@@ -702,51 +1015,53 @@ export function wireCallSocket(): void {
     set({ phase: "ended", call: row, endedReason: p.reason ?? "hangup" });
     toIdleIfEnded(p.call_id);
   };
-  // A draft landed for the caller. It has its own page (/comms/calls/<id>);
-  // this only records a notice for the shell's toast (audit A6).
   s.on("call:summary_ready", (p: { call_id: string; status?: string; redraft?: boolean }) => {
     if (!p || !p.call_id) return;
     set({ summaryTick: state.summaryTick + 1 });
-    // A redraft (late parts) refreshes the pinned card; it is not news.
     if (!p.redraft) set({ summaryNotice: { call_id: p.call_id, status: p.status || "PENDING_REVIEW" } });
   });
-
-  // A side fell back to the browser capture. The record says so, and so does
-  // this screen: a flagged transcript that only the database knows about is the
-  // silent degradation §4.5 exists to forbid.
   s.on("call:transcription_failed", (p: { call_id: string; reason?: string }) => {
     if (p && p.call_id) set({ transcriptionIssue: { call_id: p.call_id, reason: p.reason || "" } });
   });
-
-  // Every terminal path publishes one of these (call:ended covers ENDED and
-  // FAILED; the named ones are the pre-connect outcomes).
   s.on("call:ended", onTerminal);
   s.on("call:cancelled", onTerminal);
   s.on("call:declined", onTerminal);
   s.on("call:no_answer", onTerminal);
+
+  // A13: every moment this tab may have missed a `call:ringing` — now (the
+  // socket may have connected before these handlers existed), each
+  // (re)connect, the return to the foreground, and the network coming back.
+  s.on("connect", () => void reconcileRinging(true));
+  void reconcileRinging(true);
+  if (typeof document !== "undefined") {
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") void reconcileRinging();
+    });
+  }
+  if (typeof window !== "undefined") {
+    window.addEventListener("focus", () => void reconcileRinging());
+    window.addEventListener("online", () => void reconcileRinging(true));
+  }
+  if (typeof navigator !== "undefined" && navigator.serviceWorker?.addEventListener) {
+    navigator.serviceWorker.addEventListener("message", (ev: MessageEvent) => onWorkerMessage(ev.data as WorkerMessage));
+  }
 }
 
-/* ── PR-3: the noise switch, the push deep link, the redial path ────────── */
+/* ── The noise switch, the redial path ──────────────────────────────────── */
 
 /**
- * The overlay's noise switch (§4.4/§7.2: "off-switch in the call overlay").
- *
- * Live: the worklet is swapped onto the outbound track through `replaceTrack`,
- * so the peer connection never renegotiates. Persisted: the same value goes to
- * `/me/preferences/calls`, so the next call starts where this one was left —
- * and `false` is a choice, not a return to the tenant default. Sending `null`
- * (the reset) is a settings-screen action, not something a mid-call tap does.
+ * The overlay's noise switch: live (replaceTrack, no renegotiation) and
+ * persisted to `/me/preferences/calls`. Called from the tap, so turning it on
+ * mid-call can start a fresh AudioContext in the gesture.
  */
 export async function setNoise(enabled: boolean): Promise<void> {
   ensureNoisePref();
   userNoisePref = enabled;
-  // `enabled` is what the person asked for; `status` is what the audio graph is
-  // ACTUALLY doing, and the engine announces that through `onNoiseFilter` (the
-  // sink wired in `connectEvents`) once the worklet has loaded — or failed to.
-  // So this write only keeps the two
-  // honest: turning the filter OFF is instant and final — the graph is torn down
-  // before the promise settles — while turning it ON is not, because the module
-  // still has to load and can come back "unavailable" instead.
+  if (enabled && engine && (!engine.noiseContext || engine.noiseContext.state === "closed")) {
+    engine.noiseContext = primeNoiseContext();
+  }
+  // `enabled` is what the person asked for; `status` is what the audio graph
+  // is doing, which the engine reports once the worklet has loaded or failed.
   set({
     noise: {
       enabled,
@@ -755,8 +1070,7 @@ export async function setNoise(enabled: boolean): Promise<void> {
     },
   });
   void saveCallPrefs({ noiseSuppression: enabled }).catch(() => {
-    /* @silent:storage — the switch took effect for THIS call either way; the
-       persistence is a convenience, and re-prompting mid-call would be worse. */
+    /* @silent:storage — the switch took effect for this call either way. */
   });
   await engine?.setNoiseSuppression(enabled);
 }
@@ -766,7 +1080,7 @@ export function dismissRedial(): void {
   set({ redial: null });
 }
 
-/** One-tap redial after an expired push opened a call that is already over. */
+/** One-tap redial after an expired ring link opened a call that is over. */
 export async function redial(): Promise<void> {
   const r = state.redial;
   if (!r) return;
@@ -774,76 +1088,79 @@ export async function redial(): Promise<void> {
   await dial(r.groupId, r.name);
 }
 
-/** How much of the 60-second window is left on a row we are ringing from. */
-function remainingRingSeconds(row: Call): number {
-  const started = Date.parse(row.started_at || "");
-  if (!Number.isFinite(started)) return RING_TIMEOUT_S;
-  const used = Math.floor((Date.now() - started) / 1000);
-  return Math.max(1, Math.min(RING_TIMEOUT_S, RING_TIMEOUT_S - used));
+/* ── Ring links and notification actions (audit A8, PR-4 step 7) ────────── */
+
+/**
+ * The app's boot, signed in: act on a ring link (`/comms?ring=<id>&act=…`)
+ * in the URL, or on one kept across a login redirect (call-intent.ts). The
+ * old `?call=` summary link never reaches here (audit A6). Never throws.
+ */
+export function initCallDeepLink(search: string): void {
+  const link = parseCallLink(search) ?? takeCallIntent();
+  if (!link) return;
+  actOnCallIntent({ callId: link.callId, action: link.action });
 }
 
 /**
- * A ring deep link (`/comms?ring=<id>&act=accept|decline`) — §4.6. The old
- * `?call=` link is a summary link and never reaches here (audit A6).
- *
- * Two situations produce one of these, and they need different handling:
- *
- *   1. THE APP WAS CLOSED and the push woke it. The socket ring that went out
- *      60 seconds ago is long gone, so the ROW is the only source of truth:
- *      still RINGING → rebuild the ring locally (this is the ring the person
- *      tapped, and it must be answerable); already terminal → the honest redial
- *      path rather than a screen for a call that cannot happen.
- *   2. THE APP WAS OPEN and the notification action carried the link. The
- *      socket ring is already in the store; nothing to rebuild.
- *
- * Never throws: called during boot, where an exception would take the app down
- * over a stale link.
+ * A ring link, or a notification's Answer/Decline handed over by the service
+ * worker without a reload. The row decides: still ringing for me → ring
+ * (and answer or decline if asked); over → the redial offer, never a ring.
  */
-export function initCallDeepLink(search: string): void {
-  const link = parseCallLink(search);
-  if (!link) return;
+export function actOnCallIntent(link: { callId: string; action: "accept" | "decline" | null }): void {
   pendingLink = link;
   void hydrateFromLink(link);
 }
 
 async function hydrateFromLink(link: { callId: string; action: "accept" | "decline" | null }): Promise<void> {
-  // The socket beat us to it (the ordinary open-app case): the handler above
-  // has the ring, and the pending link only decides the ack channel.
-  if (state.call?.call_id === link.callId) {
+  // The socket (or the ringing read) already has this ring.
+  if (state.call?.call_id === link.callId && state.phase === "incoming") {
     if (link.action === "accept") await answer();
     if (link.action === "decline") await decline();
+    pendingLink = null;
     return;
   }
+  if (state.call?.call_id === link.callId && state.phase !== "ended") return;
   if (state.phase !== "idle" && state.phase !== "ended") return;
 
   let row: Call | null = null;
   try {
     row = await getCall(link.callId);
   } catch {
-    /* @silent:parse — an unknown/forbidden call id is the same outcome as an
-       expired one: nothing to answer. */
+    /* @silent:parse — an unknown or forbidden id is the same as an expired
+       one: nothing to answer. */
   }
-  // The socket may have delivered the ring while we were reading the row.
-  if (state.call?.call_id === link.callId) return;
-
-  if (row && row.status === "RINGING" && row.callee_id === (currentUserId() || "")) {
-    set({
-      phase: "incoming",
-      call: row,
-      peerName: row.caller_name || null,
-      ringSecondsLeft: remainingRingSeconds(row),
-    });
-    startRingCountdown(() => void syncFromRow(link.callId));
-    getCommsSocket().emit("call:ring_ack", { callId: link.callId, channel: "push" });
-    // The ring is only worth rebuilding if it can still be answered: the count
-    // left is whatever the server's own clock says, not a fresh 60 s.
+  if (state.call?.call_id === link.callId && phaseNow() === "incoming") {
     if (link.action === "accept") await answer();
     if (link.action === "decline") await decline();
+    pendingLink = null;
     return;
   }
 
-  // Expired (or never ours). The one-tap redial path, and an honest line about
-  // what happened — never a ring for a call that is over.
+  if (row && row.status === "RINGING" && row.callee_id === (currentUserId() || "")) {
+    if (link.action === "decline") {
+      // Decline from the notification: no ring screen on the way.
+      pendingLink = null;
+      handledRings.add(link.callId);
+      void dismissRingNotification(link.callId);
+      try {
+        const declined = await declineCall(link.callId);
+        set({ phase: "ended", call: declined, peerName: row.caller_name || null, endedReason: declined.end_reason ?? "declined" });
+        toIdleIfEnded(link.callId);
+      } catch (err) {
+        swallowServerEnded(err);
+      }
+      return;
+    }
+    handledRings.delete(link.callId);
+    const shown = presentIncoming({ call: row, peerName: row.caller_name || null, secondsLeft: remainingRingSeconds(row) });
+    if (shown) ackRing(link.callId, "push");
+    pendingLink = null;
+    if (shown && link.action === "accept") await answer();
+    return;
+  }
+
+  // Over (or never ours): the one-tap redial path, never a ring.
+  pendingLink = null;
   void dismissRingNotification(link.callId);
   const groupId = row?.group_id || null;
   if (groupId) {
@@ -860,3 +1177,7 @@ export function clearSummaryNotice(): void {
   set({ summaryNotice: null });
 }
 
+/** The shell has shown the "on another device" status. */
+export function clearElsewhere(): void {
+  set({ elsewhere: null });
+}

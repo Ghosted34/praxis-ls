@@ -1,25 +1,17 @@
 /**
- * 1:1 voice call engine (Smart Comms PR-1) — the P2P half.
+ * 1:1 voice call engine — the P2P half. Media is peer-to-peer; this process
+ * never sees audio. The engine opens the mic, drives one RTCPeerConnection,
+ * reports connection or failure to the session, and runs the client's 29:00
+ * warning and 30:00 hang-up (the server sweep is the authority).
  *
- * Media goes peer-to-peer (Opus over the WebRTC data path); this process never
- * sees audio. The engine's jobs are exactly four:
+ * Signalling is the "perfect negotiation" pattern (calls audit E1–E3): every
+ * description goes out from `negotiationneeded`, the callee is polite (it
+ * rolls back on glare), the caller is impolite (it ignores a colliding
+ * offer), and remote candidates wait until there is a remote description.
+ * Only the caller opens the first negotiation. Either side can restart ICE.
  *
- *   1. open the mic with the house constraints (echoCancellation +
- *      noiseSuppression + autoGainControl — the WhatsApp-parity baseline for
- *      an office floor),
- *   2. drive one RTCPeerConnection per side (caller creates the offer, callee
- *      answers, both trickle ICE),
- *   3. report connection/failure UP to the server row (`call:connected` is
- *      the accept path, `ice_failed` closes a call that never connected),
- *   4. run the two CLIENT-side UX clocks: the 29:00 "one minute left" warning
- *      and the 30:00 hang-up. The SERVER sweep is the authority (a closed tab
- *      still gets its call ended by the row); these timers are for the tabs
- *      that are still open, which deserve the warning before the floor.
- *
- * Signaling is not owned here: `onSignal`/`onIce` hand the SDP and candidates
- * to the session (use-call), which routes them over the comms socket. That
- * keeps this file testable without a socket and the socket code free of
- * WebRTC.
+ * Signalling transport is not owned here: `onSignal`/`onIce` hand SDP and
+ * candidates to the session, which routes them over the comms socket.
  */
 import type { IceConfig } from "@/lib/smartcomm-api";
 
@@ -41,12 +33,14 @@ export function rtcConfiguration(ice: IceConfig): RTCConfiguration {
  *  ice_failed — slow yards and cold NATs are normal, a minute is not. */
 export const ICE_GRACE_MS = 30_000;
 
-/** Recovery window after ICE goes `disconnected` mid-call (PR-3). Shorter than
- *  the setup grace because the connection is PROVEN here: if it cannot come
- *  back in ten seconds, the person on the other end is talking to silence and
- *  the honest thing is to say so (§4.7) rather than leave the UI showing a call
- *  that is not happening. */
-export const ICE_RECOVERY_MS = 10_000;
+/** Recovery window after ICE drops mid-call. A Wi-Fi → 4G switch needs the
+ *  socket to reconnect (socket.io backs off up to ~5 s) before the restart
+ *  offer can even travel, then a fresh ICE check; ten seconds was not enough. */
+export const ICE_RECOVERY_MS = 20_000;
+
+/** Refresh the TURN credential before an ICE restart when it expires within
+ *  this long (GET /calls/:id/turn). */
+export const TURN_REFRESH_MARGIN_MS = 5 * 60_000;
 
 /** How often the quality sampler reads getStats(). Two seconds is the web
  *  default for this (the WebRTC samples use 1–2 s), and the dot is a slow
@@ -63,7 +57,11 @@ export type NoiseFilterReason =
   | "no_audio_track"
   | "worklet_unsupported"
   | "wasm_load_failed"
-  | "init_failed";
+  | "init_failed"
+  /** The AudioContext would not start (no gesture, or the OS refused). */
+  | "suspended"
+  /** The filter sent silence while the microphone heard speech (audit E5). */
+  | "silent_output";
 
 export type Quality = "good" | "fair" | "poor";
 
@@ -173,6 +171,9 @@ export type EngineEvents = {
   /** The media path dropped and is being recovered (PR-3): the UI may say
    *  "reconnecting…" rather than pretending nothing happened. */
   onRecovering?: (recovering: boolean) => void;
+  /** The browser refused to play the remote audio (autoplay rules, audit E4):
+   *  the call screen offers "Tap to hear". False once it plays. */
+  onAudioBlocked?: (blocked: boolean) => void;
 };
 
 const MIC_CONSTRAINTS: MediaStreamConstraints = {
@@ -180,21 +181,26 @@ const MIC_CONSTRAINTS: MediaStreamConstraints = {
   video: false,
 };
 
+export type SessionDescription = { type: "offer" | "answer"; sdp: string };
+
 type PCT = {
-  setRemoteDescription(d: { type: "offer" | "answer"; sdp: string }): Promise<void>;
+  setRemoteDescription(d: SessionDescription): Promise<void>;
   createOffer(options?: { iceRestart?: boolean }): Promise<{ sdp?: string }>;
   createAnswer(): Promise<{ sdp?: string }>;
-  setLocalDescription(d: { type: "offer" | "answer"; sdp: string }): Promise<void>;
+  setLocalDescription(d?: { type: "offer" | "answer" | "rollback"; sdp?: string }): Promise<void>;
   addTrack(track: MediaStreamTrack, stream: MediaStream): unknown;
-  addIceCandidate(c: unknown): Promise<void>;
+  addIceCandidate(c?: unknown): Promise<void>;
   close(): void;
   onicecandidate: ((e: { candidate: unknown | null }) => void) | null;
   oniceconnectionstatechange: ((e: Event) => void) | null;
+  onnegotiationneeded?: (() => void) | null;
   ontrack: ((e: { streams: MediaStream[] }) => void) | null;
-  addEventListener?: (type: string, fn: () => void) => void;
   iceConnectionState?: string;
-  /** Optional on purpose: the PR-1 fakes do not implement them, and a browser
-   *  without getStats() must still be able to make a call. */
+  signalingState?: string;
+  localDescription?: { type: string; sdp: string } | null;
+  remoteDescription?: { type: string; sdp: string } | null;
+  getConfiguration?: () => RTCConfiguration;
+  setConfiguration?: (c: RTCConfiguration) => void;
   getStats?: () => Promise<unknown>;
   getSenders?: () => Array<{ track?: MediaStreamTrack | null; replaceTrack?: (t: MediaStreamTrack | null) => Promise<void> }>;
   getReceivers?: () => Array<{ playoutDelayHint?: number | null }>;
@@ -215,21 +221,33 @@ export class CallEngine {
   private endTimer: ReturnType<typeof setTimeout> | null = null;
   private iceGraceTimer: ReturnType<typeof setTimeout> | null = null;
   private failed = false;
-  /** Has the callee's answer been applied? (PR-3: the push-accept path needs to
-   *  know whether a re-offer is required.) */
-  private answered = false;
-  /** The offer we put on the wire, kept for the re-offer after a push-cold
-   *  accept — by then `localDescription` may have moved on. */
-  private lastOfferSdp: string | null = null;
   private warnSent = false;
-  private remoteAudio: HTMLAudioElement | null = null;
   /** Injected for tests — the session can swap in a fake connection. */
   connectionFactory?: () => PCT;
 
-  /* ── PR-3: the noise filter, the quality sampler and ICE recovery ─────── */
-  /** What the tenant default + the user's preference asked for. Kept even if
-   *  the filter failed, so a later retry is possible without re-asking. */
+  /* ── Perfect negotiation (audit E1–E3) ─────────────────────────────────── */
+  private makingOffer = false;
+  private ignoreOffer = false;
+  private isSettingRemoteAnswerPending = false;
+  /** Remote candidates that arrived before a remote description. */
+  private pendingCandidates: Array<unknown | null> = [];
+  private hasRemoteDescription = false;
+  /** Has an answer to one of our offers been applied? */
+  private answered = false;
+  private ice: IceConfig | null = null;
+  /** A fresh ICE config for this call (GET /calls/:id/turn), set by the session. */
+  refreshIce?: () => Promise<IceConfig>;
+
+  /* ── Audio out (audit E4) ──────────────────────────────────────────────── */
+  /** An <audio> element created and started inside the dial/answer gesture,
+   *  so autoplay rules let it play the remote track later. */
+  audioElement: HTMLAudioElement | null = null;
+
+  /* ── Noise filter, quality sampler, recovery (PR-3) ────────────────────── */
+  /** What the tenant default + the user's preference asked for. */
   noiseWanted = false;
+  /** An AudioContext created and resumed inside a gesture, for the filter. */
+  noiseContext: AudioContext | null = null;
   private noiseStatus: NoiseFilterStatus = "off";
   private noiseReason: NoiseFilterReason | null = null;
   private noiseStop: (() => void) | null = null;
@@ -245,9 +263,12 @@ export class CallEngine {
     this.isCaller = isCaller;
   }
 
-  /** The local mic stream, so the RECORDER (PR-2) can tap the same track the
-   *  call is using. A second getUserMedia would be a second permission prompt
-   *  and, on some devices, a second device open. Null once stopped. */
+  /** The callee yields on glare; the caller does not. */
+  private get polite(): boolean {
+    return !this.isCaller;
+  }
+
+  /** The local mic stream, so the recorder taps the track the call uses. */
   get stream(): MediaStream | null {
     return this.localStream;
   }
@@ -257,16 +278,9 @@ export class CallEngine {
     return t ? !t.enabled : true;
   }
 
-  /** True once the remote answer has been applied. */
+  /** True once an answer to one of our offers has been applied. */
   get hasRemoteAnswer(): boolean {
     return this.answered;
-  }
-
-  /** Our current local description, for a re-offer (push-cold accept). */
-  get localSdp(): string | null {
-    const local = (this.pc as unknown as { localDescription?: { sdp?: string } } | null)
-      ?.localDescription;
-    return local?.sdp || this.lastOfferSdp;
   }
 
   /** The noise filter's current state, for the overlay. */
@@ -274,18 +288,12 @@ export class CallEngine {
     return { status: this.noiseStatus, reason: this.noiseReason };
   }
 
-  /** The track the peer connection is actually sending: the filtered copy when
-   *  the filter is on, the raw mic otherwise. The RECORDER (PR-2) taps the raw
-   *  one on purpose — see the call site in call-session. */
+  /** The track the peer connection is actually sending. */
   get outboundTrack(): MediaStreamTrack | null {
     return this.pc?.getSenders?.()?.[0]?.track ?? this.localStream?.getAudioTracks()[0] ?? null;
   }
 
-  /**
-   * Turn the filter on or off mid-call (§7.2's "overlay switch during the
-   * call"). Never rejects: the worst outcome is `unavailable`, which the
-   * overlay renders as a sentence.
-   */
+  /** Turn the filter on or off mid-call. Never rejects. */
   async setNoiseSuppression(enabled: boolean): Promise<NoiseFilterStatus> {
     this.noiseWanted = enabled;
     if (!enabled) {
@@ -307,92 +315,145 @@ export class CallEngine {
   }
 
   /**
-   * Open the mic and (caller) start the offer. The callee opens the mic NOW
-   * too — a call that rings 40 s and connects should not spend the first
-   * second of media negotiating the camera roll.
+   * Start the connection on an open mic. The session opens the mic before it
+   * dials or accepts (audit E6) and passes it in; without one this opens it.
+   * The caller's offer goes out from `negotiationneeded` once the track is
+   * added; the callee waits for that offer.
    */
-  async start(ice: IceConfig): Promise<void> {
-    this.localStream = await openMic();
+  async start(ice: IceConfig, mic?: MediaStream): Promise<void> {
+    this.ice = ice;
+    this.localStream = mic ?? (await openMic());
     this.originalTrack = this.localStream.getAudioTracks()[0] || null;
-    this.pc = this.makeConnection(ice);
-    this.localStream.getAudioTracks().forEach((t) => this.pc!.addTrack(t, this.localStream!));
+    const pc = this.makeConnection(ice);
+    this.pc = pc;
 
-    // PR-3, rule 2: the filter is attached OFF the media path. The unfiltered
-    // track is already on the connection and the offer is created below, so the
-    // call starts on the baseline stack and upgrades itself a few hundred
-    // milliseconds in. On a yard connection that difference is the call.
-    if (this.noiseWanted) {
-      void this.attachNoise();
-    }
-
-    this.pc.onicecandidate = (e) => this.events.onIce?.(e.candidate || null);
-    this.pc.ontrack = (e) => {
-      // The event's streams array carries the remote track(s); an empty one
-      // (a mid-call renegotiation) leaves the existing stream untouched.
+    pc.onnegotiationneeded = () => void this.negotiate();
+    pc.onicecandidate = (e) => this.events.onIce?.(e.candidate || null);
+    pc.ontrack = (e) => {
+      // An empty streams array (a mid-call renegotiation) keeps the stream.
       if (e.streams.length > 0) this.remoteStream = e.streams[0];
       if (!this.remoteStream) return;
       this.attachRemoteAudio(this.remoteStream);
       this.events.onRemoteStream?.(this.remoteStream);
     };
-    this.pc.oniceconnectionstatechange = () => this.iceStateChanged();
+    pc.oniceconnectionstatechange = () => this.iceStateChanged();
+    this.phase = this.isCaller ? "dialing" : "connecting";
+    this.localStream.getAudioTracks().forEach((t) => pc.addTrack(t, this.localStream!));
 
-    if (this.isCaller) {
-      this.phase = "dialing";
-      const offer = await this.pc.createOffer();
-      if (!offer.sdp) throw new Error("no offer SDP");
-      await this.pc.setLocalDescription({ type: "offer", sdp: offer.sdp });
-      this.lastOfferSdp = offer.sdp;
-      this.events.onSignal?.(offer.sdp, "offer");
-      this.phase = "connecting";
-    } else {
-      this.phase = "connecting";
+    // The filter is attached off the media path: the call starts on the raw
+    // track and swaps the filtered one in with replaceTrack (no renegotiation).
+    if (this.noiseWanted) void this.attachNoise();
+  }
+
+  /**
+   * A description from the other side — the heart of perfect negotiation.
+   * Throws only for a description that could not be applied; a colliding
+   * offer the impolite side ignores and a duplicate are not errors.
+   */
+  async applyRemoteDescription(desc: SessionDescription): Promise<void> {
+    const pc = this.pc;
+    if (!pc) throw new Error("engine not started");
+    // The same offer again (the caller re-sent it after `call:ready`, or the
+    // socket delivered it twice): answer it again, do not renegotiate.
+    if (desc.type === "offer" && pc.signalingState === "stable" && pc.remoteDescription?.sdp === desc.sdp) {
+      const local = pc.localDescription;
+      if (local && local.type === "answer") this.events.onSignal?.(local.sdp, "answer");
+      return;
     }
-  }
+    const readyForOffer =
+      !this.makingOffer && (pc.signalingState === "stable" || this.isSettingRemoteAnswerPending);
+    const offerCollision = desc.type === "offer" && !readyForOffer;
+    this.ignoreOffer = !this.polite && offerCollision;
+    if (this.ignoreOffer) return;
 
-  /** A remote offer (callee side): answer it. */
-  async applyRemoteOffer(sdp: string): Promise<void> {
-    if (!this.pc) throw new Error("engine not started");
-    await this.pc.setRemoteDescription({ type: "offer", sdp });
-    const answer = await this.pc.createAnswer();
-    if (!answer.sdp) throw new Error("no answer SDP");
-    await this.pc.setLocalDescription({ type: "answer", sdp: answer.sdp });
-    this.events.onSignal?.(answer.sdp, "answer");
-    this.armIceGrace();
-  }
-
-  /** A remote answer (caller side): the other end is in. */
-  async applyRemoteAnswer(sdp: string): Promise<void> {
-    if (!this.pc) throw new Error("engine not started");
-    this.answered = true;
-    await this.pc.setRemoteDescription({ type: "answer", sdp });
-    this.armIceGrace();
-  }
-
-  async addRemoteIceCandidate(candidate: unknown | null): Promise<void> {
-    if (!this.pc || candidate === null) return;
+    this.isSettingRemoteAnswerPending = desc.type === "answer";
     try {
-      await this.pc.addIceCandidate(candidate);
+      // The polite side on glare: drop our offer first. Explicit, because
+      // older engines do not roll back implicitly.
+      if (offerCollision) {
+        try {
+          await pc.setLocalDescription({ type: "rollback" });
+        } catch {
+          /* @silent:parse — our offer was not set after all; nothing to roll back. */
+        }
+      }
+      await pc.setRemoteDescription(desc);
+    } finally {
+      this.isSettingRemoteAnswerPending = false;
+    }
+    this.hasRemoteDescription = true;
+    if (desc.type === "answer") this.answered = true;
+    await this.flushCandidates();
+
+    if (desc.type === "offer") {
+      await this.setLocal();
+      const answer = pc.localDescription;
+      if (answer?.sdp) this.events.onSignal?.(answer.sdp, "answer");
+    }
+    if (!this.connectedAt) this.armIceGrace();
+  }
+
+  /** A remote offer (kept for callers of the pre-PR-4 API). */
+  applyRemoteOffer(sdp: string): Promise<void> {
+    return this.applyRemoteDescription({ type: "offer", sdp });
+  }
+
+  /** A remote answer (kept for callers of the pre-PR-4 API). */
+  applyRemoteAnswer(sdp: string): Promise<void> {
+    return this.applyRemoteDescription({ type: "answer", sdp });
+  }
+
+  /**
+   * A remote candidate. Buffered until the remote description is set (audit
+   * E2); `null` is end-of-candidates. A candidate for an offer we ignored is
+   * dropped.
+   */
+  async addRemoteIceCandidate(candidate: unknown | null): Promise<void> {
+    if (!this.pc || this.phase === "ended") return;
+    if (!this.hasRemoteDescription || this.isSettingRemoteAnswerPending) {
+      this.pendingCandidates.push(candidate);
+      return;
+    }
+    await this.applyCandidate(candidate);
+  }
+
+  /**
+   * The callee says it is listening (`call:ready`, sent once its engine is
+   * up). If our offer has had no answer — it went out while their app was
+   * closed — send the current one again. Nothing else re-offers (audit E3).
+   */
+  peerReady(): void {
+    const pc = this.pc;
+    if (!this.isCaller || !pc || this.phase === "ended") return;
+    if (pc.signalingState !== "have-local-offer") return;
+    const local = pc.localDescription;
+    if (local?.type === "offer" && local.sdp) this.events.onSignal?.(local.sdp, "offer");
+  }
+
+  /** Play the remote audio after "Tap to hear" (a fresh gesture). */
+  async resumeAudio(): Promise<boolean> {
+    const el = this.audioElement;
+    if (!el) return false;
+    try {
+      await el.play();
+      this.events.onAudioBlocked?.(false);
+      return true;
     } catch {
-      /* @silent:parse — an out-of-order or post-close ICE candidate is not
-         data we can act on: the candidates that matter (host, srflx) were
-         already applied, and the spec-correct answer to "too late" is to drop
-         it. Throwing would take a live call down for a race nobody can fix
-         from the UI. */
+      /* @silent:teardown — still refused; the "Tap to hear" control stays up. */
+      this.events.onAudioBlocked?.(true);
+      return false;
     }
   }
 
-  /** Tear everything down. Idempotent — the UI may call it on hang-up, on
-   *  failure and on unmount of the overlay, and all three must be safe. */
+  /** Tear everything down. Idempotent. */
   stop() {
     if (this.phase === "ended") return;
     this.phase = "ended";
     this.clearTimers();
     this.clearStats();
     this.clearRecovery();
-    // The AudioContext goes with the call. A context left open holds the audio
-    // session — and, on a phone, the microphone indicator — for a call that is
-    // over, which is both a battery cost and a privacy one (§4.8's teardown
-    // discipline).
+    this.clearIceGrace();
+    this.pendingCandidates = [];
     this.noiseStop?.();
     this.noiseStop = null;
     try {
@@ -403,10 +464,21 @@ export class CallEngine {
     this.pc = null;
     this.localStream?.getTracks().forEach((t) => t.stop());
     this.localStream = null;
-    if (this.remoteAudio) {
-      this.remoteAudio.srcObject = null;
-      this.remoteAudio = null;
+    if (this.audioElement) {
+      try {
+        this.audioElement.pause();
+      } catch {
+        // @silent:teardown — a detached element may refuse pause; it is being dropped.
+      }
+      this.audioElement.srcObject = null;
+      this.audioElement = null;
     }
+    if (this.noiseContext && this.noiseContext.state !== "closed") {
+      void this.noiseContext.close().catch(() => {
+        /* @silent:teardown — closing a context that is already closing. */
+      });
+    }
+    this.noiseContext = null;
     this.remoteStream = null;
   }
 
@@ -415,23 +487,91 @@ export class CallEngine {
     return new RTCPeerConnection(rtcConfiguration(ice)) as unknown as PCT;
   }
 
+  /** `negotiationneeded`: make our offer and send it. */
+  private async negotiate(): Promise<void> {
+    const pc = this.pc;
+    if (!pc || this.phase === "ended") return;
+    // The callee answers the caller's offer; it only offers itself once a
+    // negotiation exists (an ICE restart), never to open the call.
+    if (!this.isCaller && !this.hasRemoteDescription) return;
+    try {
+      this.makingOffer = true;
+      await this.setLocal();
+      const offer = pc.localDescription;
+      if (offer?.type === "offer" && offer.sdp) {
+        this.events.onSignal?.(offer.sdp, "offer");
+        if (this.isCaller && this.phase === "dialing") this.phase = "connecting";
+      }
+    } catch {
+      /* @silent:parse — the state moved under us (a remote offer arrived
+         mid-offer, or the call ended); the other side's description or the
+         ICE timers decide what happens next. */
+    } finally {
+      this.makingOffer = false;
+    }
+  }
+
+  /** setLocalDescription() with no argument, or the explicit form for an
+   *  engine that does not have the implicit one. */
+  private async setLocal(): Promise<void> {
+    const pc = this.pc!;
+    try {
+      await pc.setLocalDescription();
+      return;
+    } catch (err) {
+      if (!(err instanceof TypeError)) throw err;
+    }
+    const made = pc.signalingState === "have-remote-offer" ? await pc.createAnswer() : await pc.createOffer();
+    if (!made.sdp) throw new Error("no local SDP");
+    await pc.setLocalDescription({
+      type: pc.signalingState === "have-remote-offer" ? "answer" : "offer",
+      sdp: made.sdp,
+    });
+  }
+
+  private async flushCandidates(): Promise<void> {
+    const queued = this.pendingCandidates;
+    this.pendingCandidates = [];
+    for (const c of queued) await this.applyCandidate(c);
+  }
+
+  private async applyCandidate(candidate: unknown | null): Promise<void> {
+    try {
+      // No argument = end-of-candidates.
+      await (candidate === null ? this.pc!.addIceCandidate() : this.pc!.addIceCandidate(candidate));
+    } catch {
+      /* @silent:parse — a candidate for an offer we ignored, or one for an ICE
+         generation that has moved on, cannot be applied and changes nothing;
+         a real failure surfaces through the ICE state. */
+    }
+  }
+
   private attachRemoteAudio(stream: MediaStream) {
-    // The <audio> element is created here, not in a component: the element
-    // must outlive React re-renders, and autoplay policy is satisfied because
-    // the user gesture (dial / answer) is still in the page's gesture chain
-    // on the connecting side.
-    const el = new Audio();
-    el.srcObject = stream;
+    const el = this.audioElement ?? (typeof Audio !== "undefined" ? new Audio() : null);
+    if (!el) return;
+    this.audioElement = el;
     el.autoplay = true;
-    this.remoteAudio = el;
+    el.srcObject = stream;
+    let playing: Promise<void> | undefined;
+    try {
+      playing = el.play();
+    } catch {
+      playing = Promise.reject(new Error("play refused"));
+    }
+    void Promise.resolve(playing)
+      .then(() => this.events.onAudioBlocked?.(false))
+      .catch(() => {
+        /* @silent:teardown — autoplay refused: reported, and the call screen
+           offers "Tap to hear" (audit E4). */
+        if (this.audioElement === el) this.events.onAudioBlocked?.(true);
+      });
   }
 
   private iceStateChanged() {
-    const state = String((this.pc as unknown as { iceConnectionState?: string })?.iceConnectionState || "");
+    const state = String(this.pc?.iceConnectionState || "");
     if (state === "connected" || state === "completed") {
-      // A recovery that worked, or the first connection. Either way the path is
-      // up: clear the recovery window, tell the UI, and only count the call's
-      // ONE clock start the first time (a restart must not reset 30:00).
+      // The first connection, or a recovery that worked. The call's clock
+      // starts once; a restart must not reset 30:00.
       this.clearRecovery();
       if (this.connectedAt) return;
       this.connectedAt = Date.now();
@@ -441,30 +581,15 @@ export class CallEngine {
       this.startClock();
       this.startStats();
     } else if (state === "disconnected") {
-      if (this.connectedAt) {
-        // MID-CALL disconnect: the corridor case (wifi → 4G, a lift, a yard
-        // dead spot). "disconnected" is transient and the guide says the answer
-        // is an ICE restart, not a failure report — so restart and give it the
-        // recovery window.
-        this.beginRecovery();
-      }
-      // Before the first connection this is the setup path: the ice-grace timer
-      // armed at answer time is already counting, and restarting ICE during
-      // setup would re-offer over an offer that has not been answered yet.
+      // Mid-call: restart ICE (a network change). Before the first connection
+      // the setup grace timer is already counting.
+      if (this.connectedAt) this.beginRecovery();
     } else if (state === "failed") {
-      // A hard failure mid-call still gets ONE restart before the call is
-      // declared dead — `failed` is the browser giving up on the current
-      // candidate pairs, not proof that no path exists (the TURN relay has not
-      // been tried yet on many of these).
-      if (this.connectedAt && this.restartAttempts < 2) {
-        this.beginRecovery(true);
-      } else {
-        this.fail("ice_failed");
-      }
+      if (this.connectedAt && this.restartAttempts < 2) this.beginRecovery(true);
+      else this.fail("ice_failed");
     }
   }
 
-  /** Media is back, or was never lost: stand the recovery UI down. */
   private clearRecovery() {
     if (this.recoveryTimer) clearTimeout(this.recoveryTimer);
     this.recoveryTimer = null;
@@ -475,61 +600,66 @@ export class CallEngine {
     if (this.connectedAt) this.restartAttempts = 0;
   }
 
-  /**
-   * The network path died mid-call: try an ICE restart, then fail honestly.
-   *
-   * `restartIce()` is the browser's own API (Chrome/Safari/Firefox all have it
-   * now) and the fallback is the older, universal form: a fresh offer with
-   * `iceRestart: true`, sent through the same signaling as the first one. Only
-   * the CALLER re-offers — the callee answering a restart would be a second
-   * offer racing the first, and the callee's engine gets the new offer through
-   * `applyRemoteOffer`, which is why the recovery is asymmetric. A callee whose
-   * path died still arms this timer and still fails honestly if nothing arrives.
-   */
+  /** The path died mid-call: restart ICE, and fail honestly if it does not
+   *  come back within ICE_RECOVERY_MS. Either side may restart; glare is
+   *  settled by the polite/impolite roles. */
   private beginRecovery(force = false) {
     if (this.phase === "ended") return;
     if (!this.recovering) {
       this.recovering = true;
       this.events.onRecovering?.(true);
     }
-    if (this.isCaller && (force || this.restartAttempts < 2)) {
+    if (force || this.restartAttempts < 2) {
       this.restartAttempts += 1;
-      void this.attemptIceRestart();
+      void this.restartIce();
     }
     if (!this.recoveryTimer) {
       this.recoveryTimer = setTimeout(() => this.fail("ice_failed"), ICE_RECOVERY_MS);
     }
   }
 
-  private async attemptIceRestart(): Promise<void> {
-    if (!this.pc) return;
+  /** Refresh the TURN credential if it is close to expiry, then restart. */
+  private async restartIce(): Promise<void> {
+    await this.refreshIceIfStale();
+    const pc = this.pc;
+    if (!pc || this.phase === "ended") return;
     try {
-      const pc = this.pc as unknown as { restartIce?: () => void };
       if (typeof pc.restartIce === "function") {
-        // The browser mints the restart offer itself and fires
-        // `negotiationneeded`; our `onSignal` path is not involved.
+        // `negotiationneeded` fires and negotiate() sends the offer.
         pc.restartIce();
         return;
       }
-      const offer = await this.pc.createOffer({ iceRestart: true });
+      if (pc.signalingState !== "stable") return;
+      this.makingOffer = true;
+      const offer = await pc.createOffer({ iceRestart: true });
       if (!offer.sdp) return;
-      await this.pc.setLocalDescription({ type: "offer", sdp: offer.sdp });
+      await pc.setLocalDescription({ type: "offer", sdp: offer.sdp });
       this.events.onSignal?.(offer.sdp, "offer");
     } catch {
       /* @silent:parse — a restart that cannot be minted leaves the recovery
-         timer to decide the outcome, which is the same failure the user would
-         have seen anyway. There is no second action to take here. */
+         timer to decide; there is no second action to take here. */
+    } finally {
+      this.makingOffer = false;
     }
   }
 
-  /**
-   * The quality sampler (§3.4/§4.4): inbound jitter, RTT and loss from
-   * getStats(), plus the playoutDelayHint it implies.
-   *
-   * Never throws: a browser without getStats() (or a fake in a test) leaves
-   * the dot where it was rather than taking the call down. The stats call
-   * itself is the only cost, and it runs at 2 s.
-   */
+  private async refreshIceIfStale(): Promise<void> {
+    const expiresAt = this.ice?.expiresAt ? Date.parse(this.ice.expiresAt) : NaN;
+    if (!this.refreshIce || !Number.isFinite(expiresAt)) return;
+    if (expiresAt - Date.now() > TURN_REFRESH_MARGIN_MS) return;
+    try {
+      const fresh = await this.refreshIce();
+      const pc = this.pc;
+      if (!pc || this.phase === "ended") return;
+      this.ice = fresh;
+      pc.setConfiguration?.({ ...(pc.getConfiguration?.() ?? {}), ...rtcConfiguration(fresh) });
+    } catch {
+      /* @silent:parse — the refresh failed (rate limit, network); the restart
+         still runs on the credential we have. */
+    }
+  }
+
+  /** The quality sampler: jitter, RTT and loss from getStats(). Never throws. */
   private startStats() {
     if (this.statsTimer || !this.pc?.getStats) return;
     const tick = async () => {
@@ -544,15 +674,14 @@ export class CallEngine {
             try {
               receiver.playoutDelayHint = hint;
             } catch {
-              /* @silent:parse — the property is non-standard; a browser that
-                 refuses it keeps its own buffer, which is the default we would
-                 have had anyway. */
+              /* @silent:parse — a non-standard property the browser refuses;
+                 its own buffer stays. */
             }
           }
         }
       } catch {
-        /* @silent:parse — a stats read that fails changes nothing the user can
-           see; the next tick tries again. */
+        /* @silent:parse — a failed stats read changes nothing visible; the
+           next tick tries again. */
       }
     };
     this.statsTimer = setInterval(() => void tick(), STATS_INTERVAL_MS);
@@ -564,32 +693,22 @@ export class CallEngine {
   }
 
   /**
-   * Build the filtered graph and swap the OUTGOING track onto it.
-   *
-   * `replaceTrack` rather than a renegotiation: the peer connection never
-   * learns the filter arrived, which is exactly right — the SDP is unchanged
-   * (same codec, same m-line), so there is no re-offer, no ICE churn and no
-   * window in which the call is renegotiating while the user is mid-sentence.
-   * The media recorder keeps tapping the RAW stream (see call-session), because
-   * a certified transcript should be of what was said, not of what the filter
-   * thought was said.
+   * Build the filtered graph and swap the outgoing track onto it with
+   * replaceTrack (no renegotiation). The recorder keeps tapping the raw
+   * stream. If the filter turns out to send silence, fall back (audit E5).
    */
   private async attachNoise(): Promise<NoiseFilterStatus> {
     const stream = this.localStream;
     if (!stream) return "off";
     if (this.noiseStatus === "on") return "on";
     const { applyNoiseSuppression } = await import("./noise-suppression");
-    // `stop()` is idempotent but not atomic: it can null localStream in the
-    // middle of this dynamic import (dial → immediate hang-up is exactly that
-    // race). Building a filter on a dead stream — or reporting a filter state
-    // to a session that is already gone — is a lie, so the captured reference
-    // must still be the live one at every await boundary.
+    // stop() can run during either await (dial → immediate hang-up).
     if (this.localStream !== stream) return "off";
-    const result = await applyNoiseSuppression(stream);
+    const context = this.noiseContext;
+    const result = await applyNoiseSuppression(stream, context ? { createContext: () => context } : {}, {
+      onSilent: () => void this.silentFilter(),
+    });
     if (this.localStream !== stream) {
-      // The call ended while the graph was being built: release what was just
-      // built rather than leaking a worklet on a stream whose tracks are
-      // stopped, and leave the session's state alone.
       result.stop();
       return "off";
     }
@@ -606,8 +725,7 @@ export class CallEngine {
       try {
         await sender.replaceTrack(filteredTrack);
       } catch {
-        // The swap failed: keep the unfiltered track rather than a track
-        // nothing is sending.
+        // Keep the raw track rather than a track nothing is sending.
         result.stop();
         this.noiseStop = null;
         this.noiseStatus = "unavailable";
@@ -622,7 +740,16 @@ export class CallEngine {
     return "on";
   }
 
-  /** Back to the raw mic (the overlay switch, and teardown). */
+  /** The filter sent silence over speech: back to the raw microphone. */
+  private async silentFilter(): Promise<void> {
+    if (this.noiseStatus !== "on") return;
+    await this.detachNoise();
+    this.noiseStatus = "unavailable";
+    this.noiseReason = "silent_output";
+    this.events.onNoiseFilter?.("unavailable", "silent_output");
+  }
+
+  /** Back to the raw mic (the overlay switch, a silent filter, teardown). */
   private async detachNoise(): Promise<void> {
     this.noiseStop?.();
     this.noiseStop = null;
@@ -631,8 +758,7 @@ export class CallEngine {
       try {
         await sender.replaceTrack(this.originalTrack);
       } catch {
-        /* @silent:teardown — the connection is going away (or the sender is
-           gone); the track it holds stops existing with it. */
+        /* @silent:teardown — the connection or sender is going away. */
       }
     }
   }
@@ -675,6 +801,60 @@ export class CallEngine {
     if (this.endTimer) clearTimeout(this.endTimer);
     this.tickTimer = this.warnTimer = this.endTimer = null;
   }
+}
+
+/**
+ * An <audio> element for the remote voice, created and started inside the
+ * dial/answer click (audit E4). Autoplay rules (iOS above all) let an element
+ * play later only if the person started it; there is nothing to play yet, so
+ * it plays an empty stream. Null where there is no Audio (tests, SSR).
+ */
+export function primeRemoteAudio(): HTMLAudioElement | null {
+  if (typeof Audio === "undefined") return null;
+  try {
+    const el = new Audio();
+    el.autoplay = true;
+    el.setAttribute("playsinline", "");
+    if (typeof MediaStream !== "undefined") el.srcObject = new MediaStream();
+    const started = el.play();
+    if (started && typeof started.catch === "function") {
+      started.catch(() => {
+        /* @silent:teardown — nothing to play yet; the element is primed either way. */
+      });
+    }
+    return el;
+  } catch {
+    /* @silent:teardown — no audio element here; the engine makes its own. */
+    return null;
+  }
+}
+
+/**
+ * The noise filter's AudioContext, created at 48 kHz (RNNoise's rate) and
+ * resumed inside the gesture (audit E5). A context made later, after an
+ * await, starts suspended on most browsers and sends silence.
+ */
+export function primeNoiseContext(): AudioContext | null {
+  if (typeof window === "undefined") return null;
+  const Ctor =
+    (window as unknown as { AudioContext?: typeof AudioContext }).AudioContext ||
+    (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!Ctor) return null;
+  let ctx: AudioContext;
+  try {
+    ctx = new Ctor({ sampleRate: 48_000 });
+  } catch {
+    try {
+      ctx = new Ctor();
+    } catch {
+      /* @silent:teardown — no context: the filter reports "unavailable". */
+      return null;
+    }
+  }
+  void ctx.resume().catch(() => {
+    /* @silent:teardown — the filter checks the state and reports "suspended". */
+  });
+  return ctx;
 }
 
 /**

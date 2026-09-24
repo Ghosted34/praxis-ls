@@ -2,11 +2,11 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 141,
-  "route_count": 1703,
+  "route_count": 1705,
   "tiers": {
     "public": 68,
     "self-scoped": 107,
-    "gated": 1528
+    "gated": 1530
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -4330,6 +4330,12 @@
       "tier": "gated"
     },
     "GET /api/tenant/smartcomm/calls/:id/turn": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/smartcomm/calls/ringing": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -9118,6 +9124,12 @@
       "tier": "gated"
     },
     "POST /api/tenant/smartcomm/calls/:id/summary/send": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/smartcomm/calls/test-ring": {
       "auth": true,
       "rbac": true,
       "validated": false,

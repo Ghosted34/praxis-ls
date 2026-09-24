@@ -32,10 +32,11 @@ const PROCESSORS = [
   // process restart, pocket, closed tab. 15 s granularity, see scheduler.
   { name: "comms-call-sweep", concurrency: 1, handler: require("./handlers/comms-call-sweep") },
   { name: "comms-call-sweep-scheduler", concurrency: 1, handler: require("./handlers/comms-call-sweep-scheduler") },
-  // The ring push escalation (PR-3, §4.6): the second channel, 5 s into a ring
-  // that has not been acknowledged. Concurrency 2 — the work is one HTTP round
-  // trip to a push service per ringing call, and a ring is a 60-second window
-  // in which a queue behind another tenant's slow push service costs the bell.
+  // The ring's pushes (PR-4): to every device of the callee at dial, a
+  // re-alert every 15 s while it rings, and the cancel when it ends. The queue
+  // keeps its PR-3 name. Concurrency 2 — each job is one round of push-service
+  // calls, and a ring is a 60-second window in which a queue behind another
+  // tenant's slow push service costs the bell.
   { name: "comms-call-ring-escalate", concurrency: 2, handler: require("./handlers/comms-call-ring-escalate") },
   /**
    * The call RECORD half (guide §4.5). `call-transcribe-part` transcribes one

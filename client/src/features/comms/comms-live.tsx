@@ -13,7 +13,8 @@
  *   - it renders the call surfaces (ring, overlay) which live HERE, outside
  *     any feature screen, because a call can be ringing while the user is in
  *     /finance or /wms,
- *   - it owns the wake keep-alive for the duration of a live call,
+ *   - it owns the audio keep-alive for the duration of a live call (never a
+ *     screen wake lock: audit E13),
  *   - it turns terminal call events into toasts (the honest end-of-call line,
  *     including "missed" and "no answer" — a call that ended is said to have
  *     ended, in the language the user reads in).
@@ -27,15 +28,17 @@ import { tr, tv } from "@/lib/i18n";
 import { useAuth } from "@/app/auth/auth-context";
 import { useToast } from "@/components/ui/toast";
 import { getCommsSocket, disconnectCommsSocket } from "@/lib/comms-socket";
-import { unlockAudio, playNotifSound } from "@/lib/notif-sound";
+import { unlockAudio, playNotifSound, isAudioBlocked } from "@/lib/notif-sound";
 import {
   useCall, answer, decline, hangup, setMuted, setNoise, wireCallSocket, myUserId,
-  clearSummaryNotice, initCallDeepLink, redial, dismissRedial,
+  clearSummaryNotice, initCallDeepLink, redial, dismissRedial, resumeAudio, clearElsewhere,
 } from "./call/call-session";
 import { parseSummaryLink } from "./call/ring-surface";
 import { CallOverlay } from "./call/call-overlay";
 import { IncomingRing } from "./call/incoming-ring";
-import { acquireWakeLock, releaseWakeLock } from "./call/wake-keepalive";
+import { CallRingPrompt } from "./call/call-ring-prompt";
+import { startRingingTitle, stopRingingTitle } from "./call/ring-title";
+import { acquireCallKeepAlive, releaseWakeLock } from "./call/wake-keepalive";
 import { setOnline, useOnline } from "./presence";
 
 /** 60 s client-side throttle for the seen beat — the server upserts either
@@ -101,10 +104,23 @@ export function CommsLive() {
     };
     document.addEventListener("visibilitychange", onVis);
 
+    // The service worker opens a place in THIS window (an expired ring's
+    // conversation) through the router, not a reload that would drop a call.
+    const sw = typeof navigator !== "undefined" ? navigator.serviceWorker : undefined;
+    const onWorker = (ev: MessageEvent) => {
+      const msg = ev.data as { type?: string; url?: string } | null;
+      if (msg?.type === "praxis:navigate" && typeof msg.url === "string"
+          && msg.url.startsWith("/") && !msg.url.startsWith("//")) {
+        navigateRef.current(msg.url);
+      }
+    };
+    sw?.addEventListener?.("message", onWorker);
+
     return () => {
       s.off("comms:presence", onPresence);
       s.off("connect", onConnect);
       document.removeEventListener("visibilitychange", onVis);
+      sw?.removeEventListener?.("message", onWorker);
       beatRef.current = () => {};
       // Logout: the socket is authenticated as THIS user, and the next user
       // on this browser (shift change) must not inherit the old user's ring.
@@ -124,6 +140,7 @@ export function CommsLive() {
          the ack was already sent — would make the log claim `socket` for a
          ring the person only ever saw in the shade. The tone stays, because it
          is local to this tab and needs no server round trip. */
+  const [ringSoundBlocked, setRingSoundBlocked] = React.useState(false);
   React.useEffect(() => {
     if (call.phase !== "incoming") return;
     unlockAudio();
@@ -132,13 +149,22 @@ export function CommsLive() {
     // backgrounded app ring like a phone. A CLOSED page cannot play anything;
     // that is the platform's ceiling and the notification tier's job.
     playNotifSound("ring");
-    const t = setInterval(() => playNotifSound("ring"), 2500);
-    return () => clearInterval(t);
+    setRingSoundBlocked(isAudioBlocked());
+    const t = setInterval(() => {
+      playNotifSound("ring");
+      setRingSoundBlocked(isAudioBlocked());
+    }, 2500);
+    // The tab title says who is calling, for a ringing tab among many.
+    startRingingTitle(call.peerName ? tv("📞 {{name}} is calling", { name: call.peerName }) : tr("📞 Incoming call"));
+    return () => {
+      clearInterval(t);
+      stopRingingTitle();
+    };
   }, [call.phase, call.peerName]);
 
-  /* ── Wake keep-alive for the duration of live media ──────────────────── */
+  /* ── Audio keep-alive for the duration of live media (no screen lock) ── */
   React.useEffect(() => {
-    if (call.phase === "in_call") void acquireWakeLock();
+    if (call.phase === "in_call") acquireCallKeepAlive();
     else releaseWakeLock();
   }, [call.phase]);
 
@@ -150,7 +176,9 @@ export function CommsLive() {
     const name = call.peerName || "";
     const r = call.endedReason;
     const iWasCaller = myUserId() === call.call.caller_id;
-    if (r === "no_answer") {
+    if (r === "answered_elsewhere") {
+      toast.info(tr("Answered on another device"));
+    } else if (r === "no_answer") {
       if (iWasCaller) toast.info(tv("No answer", {}));
       else toast.info(tv("Missed call — {{name}}", { name }));
     } else if (r === "cancelled") {
@@ -200,12 +228,19 @@ export function CommsLive() {
           secondsLeft={call.ringSecondsLeft}
           onAccept={() => void answer()}
           onDecline={() => void decline()}
+          soundBlocked={ringSoundBlocked}
+          onEnableSound={() => {
+            unlockAudio();
+            setRingSoundBlocked(false);
+          }}
         />
       )}
-      {(call.phase === "outgoing" || call.phase === "connecting" || call.phase === "in_call") && (
+      {(call.phase === "dialing" || call.phase === "outgoing" || call.phase === "connecting" || call.phase === "in_call") && (
         <CallOverlay
           name={call.peerName}
           phase={call.phase}
+          audioBlocked={call.audioBlocked}
+          onTapToHear={() => void resumeAudio()}
           elapsedS={call.elapsedS}
           warning={call.warning}
           muted={call.muted}
@@ -225,6 +260,29 @@ export function CommsLive() {
           way to call back is the honest ending. It sits above the toasts and
           below the call surfaces, and it says the call ended rather than
           showing a screen for a call that cannot happen. */}
+      {/* The same person is on a call on another of their devices. A line,
+          not a call screen: this tab is not in that call. */}
+      {call.elsewhere && call.phase === "idle" && (
+        <div
+          role="status"
+          className="fixed bottom-4 left-1/2 z-[64] flex w-[92vw] max-w-md -translate-x-1/2 items-center gap-3 rounded-lg border border-border bg-card p-3 shadow-[var(--shadow-l)] animate-fade-in"
+        >
+          <p className="min-w-0 flex-1 text-sm text-foreground">
+            {call.elsewhere.peerName
+              ? tv("On a call with {{name}} on another device", { name: call.elsewhere.peerName })
+              : tr("On a call on another device")}
+          </p>
+          <button
+            type="button"
+            onClick={clearElsewhere}
+            className="shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:text-foreground"
+            aria-label={tr("Dismiss")}
+          >
+            ×
+          </button>
+        </div>
+      )}
+      <CallRingPrompt callsAvailable={call.callsAvailable} />
       {call.redial && (
         <div
           role="status"

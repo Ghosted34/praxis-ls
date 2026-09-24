@@ -66,20 +66,32 @@ export type NoiseResult =
  * rather than an inlined base64 blob in the entry chunk, are not buried inside
  * the graph builder.
  */
-const defaultDeps: Required<NoiseDeps> = {
-  createContext: () => {
-    if (typeof window === "undefined") return null;
-    const Ctor =
-      (window as unknown as { AudioContext?: typeof AudioContext }).AudioContext ||
-      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!Ctor) return null;
+/** An AudioContext at 48 kHz, the rate RNNoise is built for (audit E5);
+ *  the device rate where a rate cannot be asked for. */
+export function defaultCreateContext(): AudioContext | null {
+  if (typeof window === "undefined") return null;
+  const Ctor =
+    (window as unknown as { AudioContext?: typeof AudioContext }).AudioContext ||
+    (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!Ctor) return null;
+  try {
+    return new Ctor({ sampleRate: 48_000 });
+  } catch {
     try {
       return new Ctor();
     } catch {
       // Constructible-looking but refused (autoplay policy, no audio device).
       return null;
     }
-  },
+  }
+}
+
+/** How long a context gets to leave "suspended" before the filter gives up:
+ *  resume() without a gesture can stay pending for ever. */
+const RESUME_WAIT_MS = 1_000;
+
+const defaultDeps: Required<NoiseDeps> = {
+  createContext: defaultCreateContext,
   loadUrls: async () => {
     const [worklet, wasm, simd] = await Promise.all([
       import("@sapphi-red/web-noise-suppressor/rnnoiseWorklet.js?url"),
@@ -121,10 +133,13 @@ function passthrough(
  *
  * Never throws and never rejects: every failure is a `status: "unavailable"`
  * carrying a reason, because the caller's next line is always "start the call".
+ * `onSilent` fires if the filter later turns out to send silence over speech
+ * (audit E5); the caller then goes back to the raw track.
  */
 export async function applyNoiseSuppression(
   stream: MediaStream,
   deps: NoiseDeps = {},
+  opts: { onSilent?: () => void } = {},
 ): Promise<NoiseResult> {
   const d = { ...defaultDeps, ...deps };
   const track = stream.getAudioTracks()[0];
@@ -136,6 +151,22 @@ export async function applyNoiseSuppression(
   try {
     ctx = d.createContext();
     if (!ctx) return passthrough(stream, "unavailable", "no_audio_context");
+    // A suspended context renders nothing: a filter on one sends silence
+    // while the overlay says "on" (audit E5).
+    if (ctx.state === "suspended") {
+      await Promise.race([
+        ctx.resume().catch(() => {
+          /* @silent:teardown — refused: the state check below reports it. */
+        }),
+        new Promise((r) => setTimeout(r, RESUME_WAIT_MS)),
+      ]);
+      if ((ctx.state as string) === "suspended") {
+        void ctx.close().catch(() => {
+          /* @silent:teardown — discarding a context that never started. */
+        });
+        return passthrough(stream, "unavailable", "suspended");
+      }
+    }
 
     const urls = await d.loadUrls();
     const lib = await d.loadLib();
@@ -157,11 +188,13 @@ export async function applyNoiseSuppression(
       return passthrough(stream, "unavailable", "no_audio_track");
     }
 
+    const stopWatch = opts.onSilent ? watchGraph(ctx, source, node, opts.onSilent) : () => {};
     return {
       status: "on",
       stream: sink.stream,
       reason: null,
       stop: () => {
+        stopWatch();
         try {
           node?.disconnect();
           node?.destroy?.();
@@ -190,6 +223,90 @@ export async function applyNoiseSuppression(
     });
     return passthrough(stream, "unavailable", reasonFor(err));
   }
+}
+
+/** RMS level of what an analyser hears right now, 0..1. */
+function level(analyser: AnalyserNode, buf: Float32Array<ArrayBuffer>): number {
+  analyser.getFloatTimeDomainData(buf);
+  let sum = 0;
+  for (let i = 0; i < buf.length; i += 1) sum += buf[i] * buf[i];
+  return Math.sqrt(sum / buf.length);
+}
+
+/** Tap the graph's input and output with analysers and watch them. */
+function watchGraph(
+  ctx: AudioContext,
+  source: AudioNode,
+  node: AudioNode,
+  onSilent: () => void,
+): () => void {
+  if (typeof ctx.createAnalyser !== "function") return () => {};
+  const input = ctx.createAnalyser();
+  const output = ctx.createAnalyser();
+  source.connect(input);
+  node.connect(output);
+  const inBuf = new Float32Array(input.fftSize);
+  const outBuf = new Float32Array(output.fftSize);
+  const stop = watchForSilentOutput({
+    readInput: () => level(input, inBuf),
+    readOutput: () => level(output, outBuf),
+    onSilent,
+  });
+  return () => {
+    stop();
+    try {
+      input.disconnect();
+      output.disconnect();
+    } catch {
+      // @silent:teardown — the graph is already torn down.
+    }
+  };
+}
+
+/** Speech on the mic is louder than this (RMS). */
+const SPEECH_LEVEL = 0.01;
+/** The filter's output counts as silent below this. */
+const SILENT_LEVEL = 0.0005;
+
+/**
+ * Watch a filter for sending silence while the microphone hears speech
+ * (audit E5): 1.5 s of speech in and nothing out calls `onSilent` once. The
+ * first time speech comes out, the filter is proven and the watch ends; two
+ * minutes without speech ends it too. Returns a stop function.
+ */
+export function watchForSilentOutput({
+  readInput,
+  readOutput,
+  onSilent,
+  sampleMs = 250,
+  silentForMs = 1_500,
+  giveUpMs = 120_000,
+}: {
+  readInput: () => number;
+  readOutput: () => number;
+  onSilent: () => void;
+  sampleMs?: number;
+  silentForMs?: number;
+  giveUpMs?: number;
+}): () => void {
+  let silentMs = 0;
+  let elapsed = 0;
+  const timer = setInterval(() => {
+    elapsed += sampleMs;
+    const speaking = readInput() > SPEECH_LEVEL;
+    if (speaking && readOutput() > SILENT_LEVEL) return stop();
+    if (speaking) silentMs += sampleMs;
+    if (silentMs >= silentForMs) {
+      stop();
+      onSilent();
+      return;
+    }
+    if (elapsed >= giveUpMs) stop();
+  }, sampleMs);
+  function stop() {
+    clearInterval(timer);
+  }
+  return stop;
 }
 
 /**

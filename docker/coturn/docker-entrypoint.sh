@@ -13,9 +13,14 @@
 #     static-auth-secret). coturn never read the old TURNSHAREKEY variable, so
 #     every minted credential was refused (C3).
 #   - The relay cannot reach private, loopback, link-local (cloud metadata),
-#     CGNAT or Docker-bridge addresses, nor this host's own public address
-#     (C1). With network_mode: host, a relay to 172.17.0.1 or 127.0.0.1 would
-#     otherwise reach Postgres and Redis.
+#     CGNAT or Docker-bridge addresses (C1). With network_mode: host, a relay
+#     to 172.17.0.1 or 127.0.0.1 would otherwise reach Postgres and Redis.
+#   - The one exception is the relay's own addresses (allowed-peer-ip), so a
+#     call where BOTH callers are relayed (client -> TURN -> TURN -> client,
+#     common on mobile data) works. coturn checks allowed-peer-ip before
+#     denied-peer-ip, so an allowed address wins inside a denied range; it
+#     checks loopback, multicast and 169.254/16 before both, so those stay
+#     refused whatever is allowed (4.18.0, good_peer_addr).
 #   - No TCP relay (RFC 6062): WebRTC relays UDP; a TCP relay is a port
 #     scanner for anyone holding a credential.
 #   - Per-user and total allocation quotas and a per-session bandwidth cap.
@@ -27,6 +32,9 @@
 #
 # The image runs as `nobody`: the TLS certificate and key must be readable
 # by that user (a copy, not Let's Encrypt's root-only privkey).
+#
+# TURN_LISTENING_IP binds coturn to that one address (listening and relay),
+# so it can take 443 on a second IP while nginx keeps 443 on the main one.
 #
 # Required: TURN_CREDENTIAL_SECRET, TURN_REALM. Anything else has a default.
 # The container refuses to start without them rather than starting a relay
@@ -51,6 +59,7 @@ fi
 : "${TURN_TOTAL_QUOTA:=400}"
 : "${TURN_MAX_BPS:=64000}"
 : "${TURN_EXTERNAL_IP:=}"
+: "${TURN_LISTENING_IP:=}"
 : "${TURN_TLS_CERT:=}"
 : "${TURN_TLS_KEY:=}"
 : "${TURN_CONF:=/tmp/turnserver.conf}"
@@ -62,6 +71,21 @@ for n in "$TURN_PORT_UDP" "$TURN_TLS_PORT" "$TURN_MIN_PORT" "$TURN_MAX_PORT" \
     ''|*[!0-9]*) echo "FATAL: TURN numeric setting '$n' is not a number." >&2; exit 1 ;;
   esac
 done
+
+# TURN_EXTERNAL_IP is "public" or, behind 1:1 cloud NAT, "public/private".
+case "$TURN_EXTERNAL_IP" in */*/*|/*|*/) echo "FATAL: TURN_EXTERNAL_IP must be 'public' or 'public/private'." >&2; exit 1 ;; esac
+EXT_PUBLIC="${TURN_EXTERNAL_IP%%/*}"
+EXT_PRIVATE=""
+case "$TURN_EXTERNAL_IP" in */*) EXT_PRIVATE="${TURN_EXTERNAL_IP#*/}" ;; esac
+for ip in "$EXT_PUBLIC" "$EXT_PRIVATE" "$TURN_LISTENING_IP"; do
+  case "$ip" in
+    *[!0-9A-Fa-f:.]*) echo "FATAL: TURN address '$ip' is not an IP address." >&2; exit 1 ;;
+  esac
+done
+case "$TURN_LISTENING_IP" in
+  0.0.0.0|::|127.*|::1)
+    echo "FATAL: TURN_LISTENING_IP must be the address clients reach, not '$TURN_LISTENING_IP'." >&2; exit 1 ;;
+esac
 
 umask 077
 {
@@ -101,12 +125,20 @@ umask 077
       fe80::-febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff; do
     echo "denied-peer-ip=$range"
   done
-  if [ -n "$TURN_EXTERNAL_IP" ]; then
-    # Behind cloud NAT the relay must advertise the public address, and a
-    # peer at that address is this host: refuse it like loopback.
-    echo "external-ip=$TURN_EXTERNAL_IP"
-    echo "denied-peer-ip=${TURN_EXTERNAL_IP%%/*}"
+  if [ -n "$TURN_LISTENING_IP" ]; then
+    echo "listening-ip=$TURN_LISTENING_IP"
+    echo "relay-ip=$TURN_LISTENING_IP"
   fi
+  # Behind cloud NAT the relay advertises the public address. coturn maps a
+  # peer at the public part of "public/private" to the private part before
+  # checking it, which is why the private part is allowed too.
+  [ -z "$TURN_EXTERNAL_IP" ] || echo "external-ip=$TURN_EXTERNAL_IP"
+  seen=" "
+  for ip in $EXT_PUBLIC $EXT_PRIVATE $TURN_LISTENING_IP; do
+    case "$seen" in *" $ip "*) continue ;; esac
+    seen="$seen$ip "
+    echo "allowed-peer-ip=$ip"
+  done
   if [ "$TURN_TLS_PORT" != "0" ]; then
     if [ -z "$TURN_TLS_CERT" ] || [ -z "$TURN_TLS_KEY" ]; then
       echo "FATAL: TURN_TLS_PORT is set but TURN_TLS_CERT / TURN_TLS_KEY are not." >&2

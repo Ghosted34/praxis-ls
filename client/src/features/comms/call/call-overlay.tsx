@@ -16,6 +16,7 @@
 import { tr } from "@/lib/i18n";
 import { cn } from "@/lib/cn";
 import { PhoneDownIcon, MicIcon } from "@/components/ui/icons";
+import { Button } from "@/components/ui/button";
 import type { QualitySample } from "./call-engine";
 import type { Phase } from "./call-session";
 
@@ -70,6 +71,9 @@ type Props = {
    *  app cannot be rung at all, and the honest thing is to say so before the
    *  60-second silence rather than pretend. */
   peerOffline?: boolean;
+  /** The browser refused to play the other side's voice (audit E4). */
+  audioBlocked?: boolean;
+  onTapToHear?: () => void;
   onHangup: () => void;
   onMute: () => void;
   onToggleNoise?: (on: boolean) => void;
@@ -78,11 +82,13 @@ type Props = {
 export function CallOverlay({
   name, phase, elapsedS, warning, muted,
   recordingEnabled = false, recordingLost = 0,
-  quality, recovering = false, noise, peerOffline = false,
-  onHangup, onMute, onToggleNoise,
+  quality, recovering = false, noise, peerOffline = false, audioBlocked = false,
+  onTapToHear, onHangup, onMute, onToggleNoise,
 }: Props) {
   const status =
-    phase === "outgoing" ? tr("Calling…") : phase === "connecting" ? tr("Connecting…") : null;
+    phase === "dialing" || phase === "outgoing"
+      ? tr("Calling…")
+      : phase === "connecting" ? tr("Connecting…") : null;
 
   return (
     <div
@@ -129,6 +135,13 @@ export function CallOverlay({
           <p role="status" aria-live="polite" className="text-xs text-[rgb(var(--warn))]">
             {tr("Reconnecting…")}
           </p>
+        )}
+
+        {/* Autoplay refused the other side's voice: one tap plays it (E4). */}
+        {audioBlocked && (
+          <Button size="sm" onClick={onTapToHear} icon={null} className="mt-2">
+            {tr("Tap to hear")}
+          </Button>
         )}
 
         {/* The iOS honest line (§4.8): a force-quit PWA, or a device with no

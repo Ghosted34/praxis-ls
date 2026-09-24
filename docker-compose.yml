@@ -173,6 +173,7 @@ services:
       TURN_CREDENTIAL_SECRET: ${TURN_CREDENTIAL_SECRET:-}
       TURN_REALM: ${TURN_REALM:-}
       TURN_EXTERNAL_IP: ${TURN_EXTERNAL_IP:-}
+      TURN_LISTENING_IP: ${TURN_LISTENING_IP:-}
       TURN_PORT_UDP: ${TURN_PORT_UDP:-3478}
       TURN_TLS_PORT: ${TURN_TLS_PORT:-0}
       TURN_TLS_CERT: ${TURN_TLS_CERT:-}
@@ -185,11 +186,12 @@ services:
     healthcheck:
       # A real allocation with a credential signed like the API's, relaying to
       # a documentation address. Listening on the port proves nothing: a
-      # relay that refuses every credential (audit C3) listens fine.
+      # relay that refuses every credential (audit C3) listens fine. With
+      # TURN_LISTENING_IP the relay is not on loopback, so ask that address.
       test:
         [
           "CMD-SHELL",
-          'timeout 15 turnutils_uclient -W "$$TURN_CREDENTIAL_SECRET" -u health -p "$$TURN_PORT_UDP" -e 203.0.113.10 -n 1 -m 1 -c 127.0.0.1 2>&1 | grep -q tot_send_msgs=1',
+          'timeout 15 turnutils_uclient -W "$$TURN_CREDENTIAL_SECRET" -u health -p "$$TURN_PORT_UDP" -e 203.0.113.10 -n 1 -m 1 -c "$${TURN_LISTENING_IP:-127.0.0.1}" 2>&1 | grep -q tot_send_msgs=1',
         ]
       interval: 5m
       timeout: 20s

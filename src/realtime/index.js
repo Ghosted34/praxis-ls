@@ -358,21 +358,17 @@ function attachCallSignals(socket) {
     const clean = cleanCandidate(candidate);
     if (clean !== undefined) relay("call:ice", callId, { candidate: clean });
   });
+  // PR-4 (E3): the callee's engine is listening; the caller re-sends its
+  // offer if it has no answer. No payload beyond the call id.
+  socket.on("call:ready", (p) => {
+    relay("call:ready", asObject(p).callId, {});
+  });
   socket.on("call:ring_ack", (p) => {
     const { callId, channel } = asObject(p);
-    // PR-3 (§4.6). The ack is what stops the other channels: it is written to
-    // the row (which the delayed push escalation re-reads before it sends) and
-    // broadcast to this user's other devices so the desk tab and the phone stop
-    // ringing together.
-    //
-    // The write goes through the SERVICE, not the repo, because the service is
-    // where the two rules live that make the ack meaningful: only the callee can
-    // ack a ring, and only the FIRST ack counts (a second device acking 20 ms
-    // later must not overwrite which channel landed).
-    //
-    // A failure here is swallowed on purpose: the ring times out on its own 60
-    // seconds later, so an unvalidated ack costs at most one push and never the
-    // call — and a warning per ack on a flaky network is a log nobody can read.
+    // Which channel a ring landed on, for the ring-channel metric only: it
+    // stops no push and no other device (audit A12). Through the service,
+    // which holds the rules (only the callee acks; the first ack counts).
+    // A failure is swallowed: it costs a metric row, never the call.
     if (typeof callId !== "string" || !UUID.test(callId) || !allow()) return;
     const callService = require("../modules/smartcomm/smartcomm.call.service");
     registry
@@ -381,8 +377,6 @@ function attachCallSignals(socket) {
           id: callId,
           actor: { user_id: userId },
           channel: typeof channel === "string" ? channel : "socket",
-          tenantSlug,
-          env,
         }),
       )
       .catch(

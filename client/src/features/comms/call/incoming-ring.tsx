@@ -26,9 +26,12 @@ type Props = {
   secondsLeft: number;
   onAccept: () => void;
   onDecline: () => void;
+  /** The ring tone is silent until the page is tapped (autoplay rules). */
+  soundBlocked?: boolean;
+  onEnableSound?: () => void;
 };
 
-export function IncomingRing({ name, secondsLeft, onAccept, onDecline }: Props) {
+export function IncomingRing({ name, secondsLeft, onAccept, onDecline, soundBlocked = false, onEnableSound }: Props) {
   return (
     <div
       role="alertdialog"
@@ -45,6 +48,15 @@ export function IncomingRing({ name, secondsLeft, onAccept, onDecline }: Props) 
       <p className="font-mono text-lg tabular-nums text-muted-foreground" role="timer" aria-label={fmt(secondsLeft)}>
         {fmt(secondsLeft)}
       </p>
+      {soundBlocked && (
+        <button
+          type="button"
+          onClick={onEnableSound}
+          className="rounded-md border border-border px-3 py-1.5 text-xs text-foreground transition-colors hover:bg-accent"
+        >
+          {tr("Tap to enable ring sound")}
+        </button>
+      )}
       <div className="flex items-center gap-10">
         <button
           type="button"

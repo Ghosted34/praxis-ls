@@ -1,35 +1,22 @@
 /**
- * The ring's client-side channels (Smart Comms PR-3, guide §4.6).
+ * The ring's client-side channels (calls audit PR-4).
  *
- * The server escalates; this is what each DEVICE does when a ring reaches it,
- * and it exists because "the best channel" is a property of the device, not of
- * the call:
+ * The ring push goes to every device of the callee at dial (a closed or hidden
+ * app shows it; a visible one is handed it by the service worker). This is the
+ * open tab's half:
  *
- *   tab visible     the in-app ring IS the ring. It acknowledges on
- *                   `socket`, and the server's push escalation stands down.
- *   tab hidden      the service worker shows a real system notification —
- *                   with the Accept/Decline actions the shade renders, which
- *                   the page-level `new Notification()` cannot carry. It
- *                   acknowledges `notification`.
+ *   tab visible     the in-app ring IS the ring; it acks `socket`.
+ *   tab hidden      it also shows the ring notification itself, with the
+ *                   same tag as the push (one notification, not two); it acks
+ *                   `notification`.
  *   app opened
- *   from a push     the deep link is followed into the app, which
- *                   acknowledges `push` once the accept screen is actually up.
+ *   from a push     the deep link rebuilds the ring; it acks `push`.
  *
- * ── WHY THE ACK IS SENT FROM HERE AND NOT BY THE SERVER ─────────────────────
+ * The ack is the ring-channel metric only: it stops nothing on any device
+ * (audit A12). Rings stop when the call is answered, declined or ends.
  *
- * "Which channel landed" is only knowable on the device that was rung — the
- * server knows which channel it SENT on, and sending is not landing (a push
- * with a dead subscription is sent and lands nowhere). The ack is the device's
- * evidence, which is why §7.4.4's distribution is built from it.
- *
- * ── AND WHY NOTHING HERE THROWS ─────────────────────────────────────────────
- *
- * Every branch can fail on a real phone: no service worker, notifications
- * denied, a browser that refuses `showNotification` outside a user gesture. A
- * ring that stops because the *notification* failed would be the worst of all
- * outcomes — so each surface is attempted, its failure swallowed, and the
- * in-app ring is always there underneath it. The ack is sent for whichever
- * surface actually succeeded.
+ * Nothing here throws: a notification that fails must not lose the in-app
+ * ring underneath it.
  */
 import { tr, tv } from "@/lib/i18n";
 
@@ -44,9 +31,9 @@ type RingPresentation = {
   recordingEnabled?: boolean;
 };
 
-/** The tag every ring notification shares, so a second escalation of the same
- *  ring REPLACES rather than stacks (the server sets it too; this is the
- *  client-side half of the same contract). */
+/** The tag every ring notification shares, so a re-alert, the page's own
+ *  notification and the cancel all REPLACE rather than stack (the server
+ *  sets the same tag). */
 export const ringTag = (callId: string) => `call:${callId}`;
 
 /** The deep link a ring notification opens, and the one an action carries.
@@ -64,34 +51,27 @@ function title(p: RingPresentation): string {
 }
 
 /**
- * Show the system notification, preferring the service worker.
- *
- * PERMISSION IS NOT REQUESTED HERE. A ring is a 60-second window and the
- * escalation clock is already running; a permission prompt raised by the ring
- * would block the ack that stops the push. The prompt belongs to a moment the
- * person chose (the call screen explains the tiers before it matters — PR-1's
- * flow already asks on first dial), and until it is answered the honest
- * behaviour is: tab visible → ring in-app; tab hidden → no ack, so the push
- * escalation at t=5 s still runs and the device's push is what reaches them.
- *
- * The service worker path is the one that matters: `registration.showNotification`
- * is the only API that renders ACTION BUTTONS, survives the tab being closed by
- * the user minutes later, and (on Android) puts the ring in the shade where a
- * call belongs. `new Notification()` is kept as the fallback for a browser
- * without a registration (or a dev origin without HTTPS, where there is no
- * service worker at all).
- *
- * Returns true when a notification was actually shown.
+ * Show the ring notification from a hidden tab, preferring the service
+ * worker (the only API with action buttons). Permission is never requested
+ * here: a prompt raised by a ring gets a reflex "Block" (the one-time call
+ * prompt and Settings → Calls ask instead). `new Notification()` is the
+ * fallback where there is no registration. Returns true when one was shown.
  */
 export async function showRingNotification(p: RingPresentation): Promise<boolean> {
   const body = p.recordingEnabled
     ? tr("This call is recorded and summarized — both parties are informed")
     : tr("Tap to answer");
-  const options: NotificationOptions & { actions?: Array<{ action: string; title: string }> } = {
+  const options: NotificationOptions & {
+    actions?: Array<{ action: string; title: string }>;
+    renotify?: boolean;
+    vibrate?: number[];
+  } = {
     body,
     tag: ringTag(p.callId),
     requireInteraction: true,
-    data: { url: ringUrl(p.callId), kind: "call", call_id: p.callId, expires_at: p.expiresAt },
+    renotify: true,
+    vibrate: [600, 250, 600, 250, 600],
+    data: { url: ringUrl(p.callId), kind: "call_ring", call_id: p.callId, expires_at: p.expiresAt },
     actions: [
       { action: "accept", title: tr("Answer") },
       { action: "decline", title: tr("Decline") },
@@ -119,14 +99,11 @@ export async function showRingNotification(p: RingPresentation): Promise<boolean
   } catch {
     /* @silent:teardown — same: the in-app ring is the floor. */
   }
-  // Nothing was shown. THE CALLER MUST NOT ACK THIS: an ack is what stops the
-  // push escalation, and a device that showed the user nothing has not heard
-  // the bell (see the note above about permission).
+  // Nothing was shown: no ack, because this device did not present the ring.
   return false;
 }
 
-/** Take the notification down — on answer, on decline, on a terminal event, and
- *  when another device of the same user acknowledged the ring first. */
+/** Take the notification down — on answer, on decline, on a terminal event. */
 export async function dismissRingNotification(callId: string): Promise<void> {
   try {
     if (typeof navigator === "undefined" || !navigator.serviceWorker?.getRegistrations) return;
@@ -143,14 +120,9 @@ export async function dismissRingNotification(callId: string): Promise<void> {
 }
 
 /**
- * Present the ring on the best channel this device has, and say which one it
- * was.
- *
- * The precedence is the guide's matrix read from the device's side: a visible
- * tab rings in-app (the richest surface — it can be answered, declined and
- * shows the countdown), and only a hidden one reaches for the system
- * notification. `pageVisible` is injectable so that decision is testable
- * without a DOM.
+ * Present the ring on the best channel this tab has, and say which one it
+ * was: a visible tab rings in-app, a hidden one also shows the notification.
+ * `pageVisible` is injectable so the decision is testable without a DOM.
  */
 export async function presentRing(
   p: RingPresentation,
@@ -159,10 +131,7 @@ export async function presentRing(
   const visible = deps.pageVisible ? deps.pageVisible() : typeof document !== "undefined" && !document.hidden;
   if (visible) return "socket";
   const shown = await showRingNotification(p);
-  // `null` = this device could not present the ring at all. The caller then
-  // sends no ack, the server's push escalation fires at t=5 s, and if this
-  // device has a working subscription the ring reaches it there — which is
-  // precisely the tier the ack exists to protect.
+  // null = nothing shown here; the push (sent to every device) still is.
   return shown ? "notification" : null;
 }
 

@@ -1,15 +1,20 @@
 #!/bin/sh
 # TURN relay check (Smart Comms calls, audit C1 and C3).
 #
-# Proves, against a running coturn, the two things the deployment promises:
+# Proves, against a running coturn, what the deployment promises:
 #   1. a credential signed with TURN_CREDENTIAL_SECRET gets an allocation and
 #      can relay to a public peer, and a wrong secret cannot allocate;
-#   2. the relay refuses the cloud-metadata address and the Docker bridge
+#   2. relay to relay works: two allocations on this server reach each other,
+#      which is the path when BOTH callers are relayed (mobile data);
+#   3. the relay refuses the cloud-metadata address and the Docker bridge
 #      (and loopback and RFC 1918), so a credential is not a way into the host.
+#      Its own private address is allowed (2), its subnet neighbour is not.
 #
 # Usage (on the TURN host, with the same .env the stack uses):
 #   TURN_CREDENTIAL_SECRET=... scripts/turn-check.sh [host] [port]
-# Defaults: host 127.0.0.1, port ${TURN_PORT_UDP:-3478}. Needs
+# Defaults: host ${TURN_LISTENING_IP:-127.0.0.1}, port ${TURN_PORT_UDP:-3478}.
+# TURN_EXTERNAL_IP and TURN_LISTENING_IP, when set, name the relay's own
+# addresses (inside the container they are). Needs
 # turnutils_uclient (in the coturn image: `docker compose --profile turn exec
 # turn sh /check/turn-check.sh`, or the `coturn` package on the host).
 #
@@ -18,7 +23,7 @@
 # so each run is judged by what it printed.
 set -u
 
-HOST="${1:-127.0.0.1}"
+HOST="${1:-${TURN_LISTENING_IP:-127.0.0.1}}"
 PORT="${2:-${TURN_PORT_UDP:-3478}}"
 SECRET="${TURN_CREDENTIAL_SECRET:-}"
 UCLIENT="${TURNUTILS_UCLIENT:-turnutils_uclient}"
@@ -53,9 +58,39 @@ else
   fail "a credential signed with the wrong secret was not refused"
 fi
 
+# -y: two allocations, each sending to the other's relayed address. A 403
+# here is the relay refusing its own address.
+out=$(timeout 12 "$UCLIENT" -W "$SECRET" -u "${tag}y" -p "$PORT" -y -n 1 -m 1 -c "$HOST" 2>&1)
+if echo "$out" | grep -q "tot_recv_msgs=[1-9]" && ! echo "$out" | grep -q "403"; then
+  pass "relay to relay (both callers relayed through this server)"
+else
+  fail "relay to relay failed — a call where both sides are relayed cannot connect:"
+  echo "$out" | grep -i "error" | head -3
+fi
+
+# The relay's own addresses, and for each private one its neighbour (the
+# next host on the same subnet), which must stay refused.
+ext="${TURN_EXTERNAL_IP:-}"
+own="${ext%%/*} ${ext#*/} ${TURN_LISTENING_IP:-}"
+is_private4() {
+  case "$1" in
+    10.*|192.168.*|172.1[6-9].*|172.2[0-9].*|172.3[01].*) return 0 ;;
+    100.6[4-9].*|100.[7-9][0-9].*|100.1[01][0-9].*|100.12[0-7].*) return 0 ;;
+  esac
+  return 1
+}
+neighbours=""
+for a in $own; do
+  is_private4 "$a" || continue
+  last="${a##*.}"
+  if [ "$last" -lt 254 ]; then n="${a%.*}.$((last + 1))"; else n="${a%.*}.$((last - 1))"; fi
+  case "$neighbours " in *" $n "*) ;; *) neighbours="$neighbours $n" ;; esac
+done
+
 i=0
-for peer in 169.254.169.254 172.17.0.1 127.0.0.1 10.0.0.1 192.168.1.1; do
+for peer in 169.254.169.254 172.17.0.1 127.0.0.1 10.0.0.1 192.168.1.1 $neighbours; do
   i=$((i + 1))
+  case " $own " in *" $peer "*) echo "SKIP: peer $peer is this relay's own address"; continue ;; esac
   out=$(run "${tag}p$i" "$SECRET" "$peer")
   if echo "$out" | grep -q "403"; then
     pass "peer $peer refused (403 Forbidden IP)"

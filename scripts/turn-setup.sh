@@ -7,7 +7,12 @@
 #
 #   sudo scripts/turn-setup.sh --host turn.example.com \
 #        [--tls-from /etc/letsencrypt/live/turn.example.com] [--tls-port 5349] \
-#        [--external-ip 203.0.113.7] [--apply-firewall] [--no-restart-api]
+#        [--listening-ip 203.0.113.8] [--external-ip 203.0.113.7[/10.0.0.5]] \
+#        [--apply-firewall] [--no-restart-api]
+#
+#   --listening-ip  bind the relay to this one address only (listening and
+#                   relay). That is how it takes 443 on a second IP while
+#                   nginx keeps 443 on the main one.
 #
 # It is NOT a deploy step: it writes a secret, can change the firewall and
 # restarts the API, none of which belongs in an unattended run on every
@@ -17,7 +22,7 @@
 #   --env-only   write .env and stop (no TLS copy, firewall, Docker or API).
 set -eu
 
-HOST=""; TLS_FROM=""; TLS_PORT="5349"; EXTERNAL_IP=""; APPLY_FW=0; RESTART_API=1; ENV_ONLY=0
+HOST=""; TLS_FROM=""; TLS_PORT="5349"; EXTERNAL_IP=""; LISTEN_IP=""; APPLY_FW=0; RESTART_API=1; ENV_ONLY=0
 ENV_FILE="${ENV_FILE:-.env}"
 TLS_DIR="${TURN_TLS_TARGET_DIR:-/etc/praxis/turn-tls}"
 
@@ -27,10 +32,11 @@ while [ $# -gt 0 ]; do
     --tls-from) TLS_FROM="$2"; shift 2 ;;
     --tls-port) TLS_PORT="$2"; shift 2 ;;
     --external-ip) EXTERNAL_IP="$2"; shift 2 ;;
+    --listening-ip) LISTEN_IP="$2"; shift 2 ;;
     --apply-firewall) APPLY_FW=1; shift ;;
     --no-restart-api) RESTART_API=0; shift ;;
     --env-only) ENV_ONLY=1; shift ;;
-    -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,/^set -eu/{/^#/p;}' "$0"; exit 0 ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
 done
@@ -39,8 +45,41 @@ die() { echo "FATAL: $*" >&2; exit 1; }
 [ -n "$HOST" ] || die "--host is required (the public DNS name clients reach, e.g. turn.example.com)"
 case "$HOST" in *[!A-Za-z0-9.-]*) die "--host '$HOST' is not a hostname" ;; esac
 case "$TLS_PORT" in ''|*[!0-9]*) die "--tls-port must be a number" ;; esac
-[ "$TLS_PORT" != "443" ] || echo "WARNING: 443 is usually nginx's on this host; 5349 avoids the clash." >&2
+case "$LISTEN_IP" in *[!0-9A-Fa-f:.]*) die "--listening-ip '$LISTEN_IP' is not an IP address" ;; esac
+case "$EXTERNAL_IP" in *[!0-9A-Fa-f:./]*) die "--external-ip '$EXTERNAL_IP' is not 'public' or 'public/private'" ;; esac
 [ -f "$ENV_FILE" ] || die "$ENV_FILE not found — run from the app directory"
+# A re-run keeps the address an earlier run bound.
+[ -n "$LISTEN_IP" ] || LISTEN_IP="$(sed -n 's/^TURN_LISTENING_IP=//p' "$ENV_FILE" | tail -n 1)"
+case "$LISTEN_IP" in *[!0-9A-Fa-f:.]*) die "TURN_LISTENING_IP '$LISTEN_IP' in $ENV_FILE is not an IP address" ;; esac
+
+nginx_here() { command -v nginx >/dev/null 2>&1 || pgrep -x nginx >/dev/null 2>&1; }
+if [ "$TLS_PORT" = "443" ] && [ -z "$LISTEN_IP" ] && nginx_here; then
+  echo "WARNING: nginx is on this host and holds 443. Give the relay its own IP with" >&2
+  echo "         --listening-ip (doc/TURN_PRODUCTION_SETUP.md, 'TLS on 443'), or use 5349." >&2
+fi
+
+# The TLS port must be free where the relay will bind it: on the listening IP,
+# or anywhere without one. A wildcard listener (nginx's plain `listen 443`)
+# holds the port on every address. coturn's own listener is not a clash.
+if [ -n "$TLS_FROM" ] && command -v ss >/dev/null 2>&1; then
+  holders="$(ss -ltnpH 2>/dev/null | grep -v '"turnserver"' | awk '{print $4}' | while read -r local; do
+    port="${local##*:}"; addr="${local%:*}"; addr="${addr#[}"; addr="${addr%]}"; addr="${addr%%%*}"
+    [ "$port" = "$TLS_PORT" ] || continue
+    if [ -z "$LISTEN_IP" ]; then echo "$local"; continue; fi
+    case "$addr" in
+      "$LISTEN_IP"|'*') echo "$local" ;;
+      0.0.0.0) case "$LISTEN_IP" in *:*) ;; *) echo "$local" ;; esac ;;
+      ::) case "$LISTEN_IP" in *:*) echo "$local" ;; esac ;;
+    esac
+  done)"
+  if [ -n "$holders" ]; then
+    where="${LISTEN_IP:-this host}"
+    die "TCP port $TLS_PORT is already taken on $where by: $(echo "$holders" | tr '\n' ' ')
+       coturn cannot bind it. If that is nginx, change its 'listen $TLS_PORT' lines to
+       'listen <main-ip>:$TLS_PORT' (doc/TURN_PRODUCTION_SETUP.md, 'TLS on 443'),
+       'nginx -t && systemctl reload nginx', then run this again."
+  fi
+fi
 if [ "$ENV_ONLY" = 0 ]; then
   [ -f docker-compose.yml ] || die "docker-compose.yml not found — run from the app directory"
   [ "$(id -u)" = 0 ] || die "run as root (it copies the certificate and may change the firewall)"
@@ -73,14 +112,19 @@ set_env TURN_REALM "$HOST"
 [ -n "$(get_env TURN_PORT_UDP)" ] || set_env TURN_PORT_UDP 3478
 [ -n "$(get_env TURN_PORT_TCP)" ] || set_env TURN_PORT_TCP 3478
 
-if [ -z "$EXTERNAL_IP" ] && [ "$ENV_ONLY" = 0 ] && command -v curl >/dev/null; then
+if [ -z "$EXTERNAL_IP" ] && [ -z "$LISTEN_IP" ] && [ "$ENV_ONLY" = 0 ] && command -v curl >/dev/null; then
   public="$(curl -fsS --max-time 5 https://api.ipify.org 2>/dev/null || true)"
   if [ -n "$public" ] && ! ip -4 -o addr show 2>/dev/null | grep -q " $public/"; then
-    EXTERNAL_IP="$public"
-    echo "the public IP $public is not on a network interface (cloud NAT): setting TURN_EXTERNAL_IP"
+    # 1:1 cloud NAT: "public/private" lets coturn map a peer at the public
+    # address back to this host, so relay to relay does not depend on the
+    # cloud hairpinning traffic to its own public IP.
+    private="$(ip -4 route get 1.1.1.1 2>/dev/null | sed -n 's/.* src \([0-9.]*\).*/\1/p')"
+    EXTERNAL_IP="$public${private:+/$private}"
+    echo "the public IP $public is not on a network interface (cloud NAT): TURN_EXTERNAL_IP=$EXTERNAL_IP"
   fi
 fi
 [ -z "$EXTERNAL_IP" ] || set_env TURN_EXTERNAL_IP "$EXTERNAL_IP"
+[ -z "$LISTEN_IP" ] || set_env TURN_LISTENING_IP "$LISTEN_IP"
 
 if [ -n "$TLS_FROM" ]; then
   set_env TURN_TLS_PORT "$TLS_PORT"
@@ -133,7 +177,7 @@ fi
 # ── Start and prove ─────────────────────────────────────────────────────────
 docker compose --profile turn up -d --force-recreate turn
 sleep 3
-if ! docker compose --profile turn exec -T turn sh /check/turn-check.sh 127.0.0.1 "$udp"; then
+if ! docker compose --profile turn exec -T turn sh /check/turn-check.sh "${LISTEN_IP:-127.0.0.1}" "$udp"; then
   die "the relay check failed — see: docker compose logs turn"
 fi
 

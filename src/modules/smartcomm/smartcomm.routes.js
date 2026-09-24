@@ -190,6 +190,8 @@ const MINUTE = 60 * 1000;
 const dialLimiter = makeLimiter({ name: "call-dial", max: 8, windowMs: MINUTE, keyGenerator: byUser("dial") });
 const turnLimiter = makeLimiter({ name: "call-turn", max: 30, windowMs: 10 * MINUTE, keyGenerator: byUser("turn") });
 const rerunLimiter = makeLimiter({ name: "call-part-rerun", max: 10, windowMs: 10 * MINUTE, keyGenerator: byUser("rerun") });
+// A test ring is a real, high-urgency push: a few per person are plenty.
+const testRingLimiter = makeLimiter({ name: "call-test-ring", max: 5, windowMs: 10 * MINUTE, keyGenerator: byUser("testring") });
 const regenerateLimiter = makeLimiter({
   name: "call-regenerate",
   max: 3,
@@ -199,6 +201,10 @@ const regenerateLimiter = makeLimiter({
   keyGenerator: (req) => `regen:${(req.tenant && req.tenant.slug) || "-"}:${String(req.params.id).toLowerCase().replace(/[^0-9a-f]/g, "")}`,
 });
 router.post("/calls", create, callsOn, dialLimiter, v.callCreate, c.createCall);
+// PR-4. Declared before `/calls/:id`, which would otherwise read "ringing"
+// and "test-ring" as call ids.
+router.get("/calls/ringing", view, callsOn, c.listRingingCalls);
+router.post("/calls/test-ring", view, callsOn, testRingLimiter, v.callTestRing, c.testRing);
 router.post("/calls/:id/accept", view, callsOn, c.acceptCall);
 router.post("/calls/:id/decline", view, callsOn, c.declineCall);
 router.post("/calls/:id/hangup", view, callsOn, v.callHangup, c.hangupCall);

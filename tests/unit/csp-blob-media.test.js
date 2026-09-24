@@ -93,3 +93,12 @@ describe("CSP permits the blob: URLs this client actually creates", () => {
     ).toBe(scriptSrc);
   });
 });
+
+describe("the call noise filter's WebAssembly (calls audit E5)", () => {
+  it("script-src allows WebAssembly compilation ('wasm-unsafe-eval'), and still not eval", () => {
+    const { buildScriptSrc } = require("../../src/server");
+    const src = buildScriptSrc(helmet.contentSecurityPolicy.getDefaultDirectives(), []);
+    expect(src).toContain("'wasm-unsafe-eval'");
+    expect(src).not.toContain("'unsafe-eval'");
+  });
+});

@@ -747,9 +747,27 @@ export const regenerateCallSummary = (callId: string, language: "en" | "fr") =>
     `/smartcomm/calls/${callId}/summary/regenerate`,
     { method: "POST", body: { language } },
   );
-/** Refreshed TURN credential mid-call (the one minted at dial expires with
- *  the call, plus margin). */
+/** Refreshed TURN credential for a live call, fetched before an ICE restart
+ *  when the one minted at dial is close to expiry. */
 export const getCallTurn = (id: string) => tenant<IceConfig>(`/smartcomm/calls/${id}/turn`);
+
+/** One call ringing for me, from the ringing read (audit A13). */
+export type RingingCall = Call & {
+  caller_name: string | null;
+  /** Seconds left in the ring window, by the server's clock. */
+  ring_seconds_left: number;
+  recording_enabled: boolean;
+  noise_suppression: boolean;
+};
+/** Calls ringing for me now: read on connect, reconnect and return to the
+ *  foreground, so an app opened mid-ring shows the ring. */
+export const getRingingCalls = () => tenant<RingingCall[]>(`/smartcomm/calls/ringing`);
+
+/** What a test ring did (the push service's answer for this device). */
+export type TestRingResult = { sent: number; failed: number; total: number; pruned?: number; reason?: string };
+/** A real ring push to THIS device only (Settings → Calls, audit A15). */
+export const sendTestRing = (endpoint: string) =>
+  tenant<TestRingResult>(`/smartcomm/calls/test-ring`, { method: "POST", body: { endpoint } });
 
 export type ScheduledMessage = {
   schedule_id: string; group_id: string; body: string; attachments: PostedAttachment[];

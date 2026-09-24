@@ -1996,8 +1996,8 @@ factual. The next agent relies on them.
 | Audit (this document) | MERGED | `claude/integration-audit-report-u6twc5` | #474 | 2026-09-24 | Report, PR plan, scale design |
 | PR-1 | MERGED | `claude/magical-einstein-xqhkn1` | #476 | 2026-09-24 | Includes owner decisions A-1 (Groq → Gemini transcription, no browser capture) and A-2 (Gemini → DeepSeek summaries) |
 | PR-2 | MERGED | `claude/wizardly-ptolemy-dyazt1` | #477 | 2026-09-24 | Per-part recorder and transcription, finalise, race-free drafts, pinned draft (O3), N3; migration 14050 |
-| PR-3 | OPEN | `claude/tender-davinci-v1eh8y` | #479 | — | TURN, credentials, relay, IDOR, rate limits; migration 14060; null-payload crash in the relay |
-| PR-4 | NOT STARTED | — | — | — | |
+| PR-3 | MERGED | `claude/tender-davinci-v1eh8y` | #479 | 2026-09-24 | TURN, credentials, relay, IDOR, rate limits; migration 14060; null-payload crash in the relay |
+| PR-4 | OPEN | `claude/smart-comms-pr-4-9e8q91` | #481 | — | Perfect negotiation, rings on every device (push at dial, re-alerts, cancel everywhere), ringing read, Answer/Decline, device check + Test ring, noise default off, no screen wake lock; TURN relay-to-relay and TLS on 443 (owner's Step 0/0b); migration 14070 |
 | PR-5 | NOT STARTED | — | — | — | |
 | PR-6 | NOT STARTED | — | — | — | |
 | PR-7 | NOT STARTED | — | — | — | |
@@ -2603,3 +2603,221 @@ premium, WhatsApp-grade finish. Branch `claude/message-ui-redesign-gzxylv`
   run: the Docker build, PgBouncer, the desktop layout gate, the AI golden
   set, and the Settings → Calls card in light and dark. Nothing touched
   production; the §0 parking SQL was not run.
+
+### PR-4 · 2026-09-24 · OPEN (#481)
+- Before the plan (owner's Step 0 and 0b), each with its test:
+  - **Relay to relay.** PR-3's entrypoint denied the relay's own public
+    address, so a call with both callers relayed (client → TURN → TURN →
+    client, normal on mobile data) got `403 Forbidden IP` on the relay leg.
+    The entrypoint now writes `allowed-peer-ip` for the relay's own
+    addresses (the public external IP, the private part of `public/private`,
+    and `TURN_LISTENING_IP`) and keeps every deny range. Checked in coturn
+    4.18.0's source (`good_peer_addr`): `allowed-peer-ip` is checked before
+    `denied-peer-ip`, so an allowed address wins inside a denied range;
+    multicast, loopback, `0.0.0.0` and 169.254/16 (and IPv6 link-local and
+    ULA) are refused before both, so no allow can re-open them. The order of
+    config lines does not matter. `scripts/turn-check.sh` checks relay to
+    relay (`turnutils_uclient -y`) and probes the next address after the
+    relay's own private one, which must stay 403.
+    `tests/integration/turn-relay.test.js` (`RUN_TURN_TESTS=1`, real coturn
+    4.6.1) runs both layouts (public IP on the interface, and 1:1 NAT
+    `public/private`); on PR-3's entrypoint the relay-to-relay check fails
+    with 403, on this one all checks pass, including 169.254.169.254,
+    172.17.0.1, 127.0.0.1, 10.0.0.1, 192.168.1.1 and the neighbour.
+    `tests/unit/turn-deployment.test.js`: 22 of its new tests fail on PR-3's
+    code.
+  - **TURN over TLS on 443.** `TURN_LISTENING_IP` makes coturn bind that one
+    address (`listening-ip` and `relay-ip`), so it can take 443 on a second
+    IP while nginx keeps 443 on the main one; the IP is also self-allowed.
+    `turn-setup.sh --listening-ip <ip>` writes it, and before changing
+    anything stops with the holder's address when the TLS port is already
+    taken on that IP (`ss -ltnpH`; a wildcard `listen 443` counts, coturn's
+    own listener does not). The blanket 443 warning now shows only when
+    nginx is on the host and no IP of its own is given. The compose health
+    check and `turn-check.sh` ask the listening IP. `doc/TURN_PRODUCTION_SETUP.md`
+    documents both layouts (a second IP, with the nginx `listen <main-ip>:443`
+    change; a dedicated host) and when 443 is worth it. TURN is not routed
+    through nginx.
+- Fixed, each with the test that proves it. The new tests were written
+  first and run against the code before their fix: on `main`, 22 of the 44
+  session tests fail, and the new engine (glare, buffering, restart,
+  refresh, audio), noise (48 kHz, suspended, silence), service-worker (15 of
+  17) and server tests (16 ring tests, the route, relay and CSP tests) fail;
+  the ones that pass there are guards (the ack still records its channel,
+  the answering device is not told it answered elsewhere, an in-call
+  hang-up has no ring to cancel, mute, the old summary link).
+  - E1–E3: perfect negotiation in `call-engine.ts` (callee polite, caller
+    impolite, `makingOffer` / `ignoreOffer` / `isSettingRemoteAnswerPending`,
+    explicit rollback). Only the caller opens the first negotiation; the
+    callee's `call:ready` makes the caller re-send its offer only while it has
+    no answer; the blind re-offer on `call:accepted` is gone; a duplicate
+    offer is answered again. Either side restarts ICE; before a restart the
+    engine refreshes TURN through `GET /calls/:id/turn` when the credential
+    is within 5 minutes of expiry. `call-engine.test.ts` on a realistic fake
+    peer connection (`client/src/test/fake-peer-connection.ts`): a two-engine
+    glare test, buffered candidates, restart offer, refresh only when stale,
+    no implicit `setLocalDescription`. `call-session.test.ts` (ready,
+    buffered candidates across the ring). Playwright: two browser contexts
+    with the real app on both ends connect.
+  - E2: remote candidates wait for the remote description, then apply in
+    order, end-of-candidates included; the session keeps the caller's
+    candidates while the callee rings.
+  - E4: an `<audio>` element primed in the dial/answer tap plays the remote
+    voice; a refused `play()` sets `audioBlocked` and the call screen shows
+    **Tap to hear**.
+  - E5: the filter's AudioContext is 48 kHz and resumed in the tap; a context
+    that stays suspended is reported "unavailable"; a filter that sends
+    silence while the mic hears speech falls back to the raw track;
+    `script-src` has `'wasm-unsafe-eval'` (`server.buildScriptSrc`,
+    `csp-blob-media.test.js`); the tenant default is off (`callSettings`, and
+    migration 14070 flips a value still at the 14020 seed).
+  - E6/E7: dial and answer open the mic first; `dialing` is set before the
+    first await (a double tap is one POST — unit and Playwright); an engine
+    failure after the dial hangs up, after the accept reports the failure.
+  - E8: a ringing device told `call:accepted` stops and says "Answered on
+    another device" (unit and Playwright); `call:ringing_sent` shows "On a call
+    with X on another device" in the caller's other tabs.
+  - A12: the ring push goes to every device of the callee at dial; the ack is
+    the ring-channel metric only (no broadcast, suppresses nothing).
+  - A14: the push is a ring (`call_ring`, urgency high, TTL = time left,
+    sticky, renotify, vibrate `[600,250,600,250,600]`, Answer/Decline) and
+    re-alerts every 15 s while the row rings, at most 4, each claimed on
+    `comms_call.ring_alerts` (unit and real Postgres). The service worker
+    hands a ring to a visible page instead of a notification (not on
+    WebKit, see deviations).
+  - A7: a cancel push replaces the ring in place on every device when it is
+    answered, declined, cancelled, missed or failed; the service worker
+    shows a quiet, non-sticky line ("Answered on another device", "Missed
+    call — <name>", "Call ended"), closes expired rings on every push, and a
+    ring push that lands after its own cancel shows the cancel's line.
+  - A8: Answer/Decline in an open window are handed over by `postMessage`
+    (no reload, so no live call is dropped); otherwise the app opens with
+    `?ring=<id>&act=…`, kept across a login redirect (`call-intent.ts`,
+    sessionStorage, 90 s). Decline declines without a ring screen. An expired
+    ring opens the conversation. `push-handler-call-ring.test.ts` runs the
+    real worker script.
+  - A13: `GET /smartcomm/calls/ringing` (real Postgres test for the SQL); the
+    client reads it at wiring, on socket (re)connect, focus, online and return
+    to the foreground; a ring the server no longer lists ends; a ring whose
+    row still rings 15 s after its window ends here anyway. Playwright: an app
+    opened mid-ring shows the ring.
+  - A15: Settings → Calls → **This device** (notifications, push
+    registration, installed app, ring sound, each with its fix) and **Send a
+    test ring** (`POST /smartcomm/calls/test-ring`, one of the caller's own
+    subscriptions, 5 per 10 minutes); a one-time "Allow this device to ring
+    for calls" prompt for people who can take calls, with iPhone install
+    guidance; the tab title flashes who is calling; "Tap to enable ring
+    sound" on the ring.
+  - E13: a call holds the audio keep-alive only, never a screen wake lock.
+  - E14 remainder (from PR-1): `getCallTurn` and `call:ringing_sent` are used.
+- Not fixed / deferred:
+  - E11's "uploads compete with the call's audio" (handed over by PR-2 "if
+    device tests show it matters"): still no device evidence either way;
+    left with the owner's P8/I4 runs.
+  - A8's original suggestion of a per-call token so the service worker
+    declines without opening the app is not built: §3 step 7 chose opening
+    the app with the intent, and that path declines without a call screen.
+  - A native full-screen call screen or a looping ringtone with the app fully
+    closed: the platform limit §3 names (CallKit / full-screen intents need a
+    native shell).
+  - PR-3's new findings, as routed by the owner: `src/shared/http/rate-limit.js`
+    (no store when Redis is down) → the owner's separate PR; the stale
+    sandbox `app_user` mirror → PR-5; `call-pipeline.test.js` needing ffmpeg
+    → PR-7 (it passes here with ffmpeg installed); the silent catch at
+    `client/src/features/comms/call/call-upload-outbox.ts:110` → PR-5 (this PR
+    does not edit that file).
+- Deviations from §3:
+  - Step 0: coturn itself whitelists the private part of `public/private`
+    (4.6.1 and 4.18.0 both log "Whitelisting external-ip private part"), so
+    what actually broke relay to relay was the self-block of the public
+    address in the single-address form `turn-setup.sh` wrote behind NAT.
+    The explicit allow keeps both stated, and `turn-setup.sh` now writes
+    `public/private` behind 1:1 NAT so the relay leg does not depend on the
+    cloud hairpinning to its own public IP.
+  - Step 0b: `TURN_LISTENING_IP` refuses loopback and `0.0.0.0`; a re-run of
+    `turn-setup.sh` keeps the listening IP already in `.env`.
+  - Step 1: the recovery window is 20 s (was 10 s): a Wi-Fi → 4G switch needs
+    the socket to reconnect before the restart offer can travel. The TURN
+    credential lasts until the call's cap + 60 s, so the refresh before a
+    restart rarely fires; it is there for a call near its end.
+  - Step 4: a microphone refused on **answer** leaves the call ringing on the
+    person's other devices instead of declining it; "any engine failure
+    sends hangup/decline/fail" is applied to failures after the server
+    transition, which is where a live call could be left behind.
+  - Step 5: the queue keeps its PR-3 name (`comms-call-ring-escalate`) so a
+    job queued across the deploy still runs; its jobs are `ring` (alert n)
+    and `cancel`, and a PR-3 `escalate` job runs as alert 0. "At most 4
+    re-alerts" is 3 in practice: the window closes before the 4th.
+  - Steps 5/6 on WebKit: Safari and every installed iPhone/iPad app revoke a
+    push subscription after pushes that show nothing, even with the app on
+    screen, so there the service worker always shows the ring (on top of the
+    in-app ring) and a cancel line ("Call answered" on the device that
+    answered). Elsewhere the visible page takes the ring and nothing is
+    stacked on it.
+  - Step 6: "declined" reads "Call ended" (the plan's three phrases).
+  - Closing a tab that is only ringing no longer sends the keep-alive
+    hang-up: the server read it as a decline, which ended the ring on every
+    device (A12's cousin, found while building step 5).
+  - The ringing read and the test ring are not AI tools (device plumbing);
+    `smartcomm.ai.js` says so in a comment. The catalogue check is unchanged.
+- Schema and config: migration 14070 adds `comms_call.ring_alerts` (plain
+  integer), rewrites the 14020 comments on `ring_ack_at` / `ring_push_sent_at`
+  (they said the ack stops the push), and flips `comms.call_noise_suppression`
+  from the seeded `{"enabled": true}` to `{"enabled": false}`. New env
+  `TURN_LISTENING_IP`. New routes `GET /calls/ringing`, `POST /calls/test-ring`
+  (limiter `call-test-ring`). New socket event `call:ready` (relayed with the
+  call id only). `call:ringing` carries `group_id`; `call:ringing_sent`
+  carries `to {user_id, name}`. Push kinds `call_ring`, `call_cancel`,
+  `call_test` (the worker still accepts PR-3's `call`). `push.sendToUser`
+  takes `endpoint`. Removed: `escalateRing`, `enqueueRingEscalation`,
+  `RING_PUSH_DELAY_MS`, `repo.markRingPushSent`. Page ↔ worker messages:
+  `praxis:call-ring`, `praxis:call-cancel`, `praxis:call-action`,
+  `praxis:call-test`, `praxis:navigate`.
+- New findings:
+  - Settings → Calls used `<Card title=…>`; `Card` has no title prop, so it
+    became an HTML tooltip and the three cards had no visible heading or
+    padding (PR-3). Fixed here (`Panel`), since this PR edits that page.
+  - The pagehide keep-alive "hung up" a call that was only ringing on the
+    closing tab, which the server records as a decline for every device.
+    Fixed (above).
+  - The ringing read ran only on the socket's `connect`, and on a fresh load
+    the socket can connect before the session wires its handlers; found by
+    the Playwright test, fixed, unit test added.
+  - `doc/SMART_COMMS_CALLS_MANUAL_MATRIX.md` Q3 described a "keep your screen
+    on" hint that was never built; withdrawn. R4, R7 and Q2 are rewritten for
+    PR-4, and section 5b (P1–P11) holds this PR's device runs.
+  - Playwright's `context.setOffline` does not touch WebRTC media on
+    loopback, so the e2e network-drop test proves the signalling and session
+    survive a drop, not an ICE restart. The restart is proven on the fake peer
+    connection; a real Wi-Fi → 4G restart is the owner's P8.
+- For the next PR (PR-5):
+  - Ring pushes run on `comms-call-ring-escalate` (jobs `ring` / `cancel`,
+    concurrency 2). `endCall` queues the cancel for any ring that ends, so
+    per-call deadline jobs (D1) need no change to keep missed-call cancels.
+  - The client calls `GET /calls/ringing` at wiring, on every socket connect,
+    `focus`, `online` and return to the foreground (throttled to one per 2 s
+    per tab); it is an indexed read (`uq_comms_call_one_active_callee`).
+  - `call:ring_ack` is no longer broadcast; the ring-channel metric still
+    reads `ring_ack_channel`.
+  - Presence (E12) is untouched.
+- For PR-6: the new controls use existing components and tokens, not a final
+  design: **Tap to hear** (overlay), **Tap to enable ring sound** (ring), the
+  "on another device" line, the ring prompt and the This-device panel.
+  `endedReason` gains `answered_elsewhere`.
+- Gates: `npm run ci` 47/47 passed (335 s) on `6dca1b5`, run alone on a
+  clean tree; the first run failed only `public-web-csp-cors.test.js`,
+  whose SEC-M8 guard matched the `scriptSrc` source text that the
+  `buildScriptSrc` refactor moved (now asserted through the function),
+  fixed. Backend jest 9,939 passed / 108 skipped; client vitest 3,138
+  passed / 10 skipped. Run by hand, because `npm run ci` skips them:
+  Playwright `e2e/call.spec.ts` 13/13, three runs in a row, against a
+  production build; on local Postgres 16 + pgvector, provisioning a tenant
+  from nothing (14070 in live and sandbox; the replay applied 0 files),
+  live/sandbox schema parity, the AI catalogue sync and `--check`, and
+  `tests/integration/call-{rings,hardening,liveness,pipeline}.test.js`
+  (11/11, with ffmpeg); `RUN_TURN_TESTS=1 tests/integration/
+  turn-relay.test.js` 3/3 on coturn 4.6.1 in both layouts (relay to relay
+  fails with 403 on PR-3's entrypoint). Not run: the Docker build,
+  PgBouncer, the desktop layout gate, the AI golden-set eval, anything on
+  a real phone (the owner's checklist on #481). Nothing touched
+  production; the §0 SQL was not run.

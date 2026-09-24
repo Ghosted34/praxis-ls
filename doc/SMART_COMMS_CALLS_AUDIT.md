@@ -1520,8 +1520,8 @@ factual. The next agent relies on them.
 
 | PR | Status | Branch | GitHub PR | Merged | Notes |
 | --- | --- | --- | --- | --- | --- |
-| Audit (this document) | OPEN | `claude/integration-audit-report-u6twc5` | #474 | — | Report, PR plan, scale design |
-| PR-1 | NOT STARTED | — | — | — | |
+| Audit (this document) | MERGED | `claude/integration-audit-report-u6twc5` | #474 | 2026-09-24 | Report, PR plan, scale design |
+| PR-1 | IN PROGRESS | `claude/magical-einstein-xqhkn1` | — | — | Includes owner decisions A-1 (Groq → Gemini transcription, no browser capture) and A-2 (Gemini → DeepSeek summaries) |
 | PR-2 | NOT STARTED | — | — | — | |
 | PR-3 | NOT STARTED | — | — | — | |
 | PR-4 | NOT STARTED | — | — | — | |

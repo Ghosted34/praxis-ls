@@ -8,7 +8,8 @@
  * worlds it touches: object storage, the transcription vendor and the LLM.
  *
  * The point of the suite is the CONTRACT, not the plumbing: part assembly, the
- * whole-side fallback, the summary's language rules, and the caller's guards.
+ * Groq-then-Gemini provider order, the summary's language rules, and the
+ * caller's guards.
  */
 const mockStore = { current: null };
 
@@ -208,6 +209,7 @@ jest.mock("../../src/services/storage.service", () => ({
   delete: jest.fn(async () => {}),
 }));
 jest.mock("../../src/services/ai/transcription.service", () => ({ transcribe: jest.fn() }));
+jest.mock("../../src/services/ai/gemini-transcription.service", () => ({ transcribe: jest.fn() }));
 jest.mock("../../src/services/ai/llm.service", () => ({ chat: jest.fn() }));
 jest.mock("../../src/modules/ai/governance/governance.service", () => ({
   canUseFeature: jest.fn(async () => ({ allowed: true })),
@@ -222,6 +224,7 @@ jest.mock("../../src/modules/smartcomm/smartcomm.service", () => ({
 
 const storage = require("../../src/services/storage.service");
 const transcription = require("../../src/services/ai/transcription.service");
+const geminiTranscription = require("../../src/services/ai/gemini-transcription.service");
 const llm = require("../../src/services/ai/llm.service");
 const governance = require("../../src/modules/ai/governance/governance.service");
 const alerts = require("../../src/services/platform/alert-routing.service");
@@ -302,6 +305,8 @@ const NAMES = [
 beforeEach(() => {
   mockStore.current = blankState();
   transcription.transcribe.mockReset();
+  geminiTranscription.transcribe.mockReset();
+  geminiTranscription.transcribe.mockRejectedValue(new Error("gemini not expected in this test"));
   llm.chat.mockReset();
   governance.canUseFeature.mockResolvedValue({ allowed: true });
   storage.get.mockResolvedValue(Buffer.from("audio-bytes"));
@@ -332,67 +337,6 @@ describe("language + side helpers", () => {
     // Never connected — nothing was recorded, and nothing should be pretended.
     expect(pipeline.isPipelineEligible(endedCall({ status: "FAILED", connected_at: null }))).toBe(false);
     expect(pipeline.isPipelineEligible(endedCall({ status: "CANCELLED" }))).toBe(false);
-  });
-
-  test("a part's span is derived from the parts' own durations", () => {
-    const spans = pipeline.partSpans([part("caller", 1, { duration: 60 }), part("caller", 2, { duration: 90 })]);
-    expect(spans).toEqual([
-      { partIndex: 1, startMs: 0, endMs: 60_000 },
-      { partIndex: 2, startMs: 60_000, endMs: 150_000 },
-    ]);
-  });
-});
-
-describe("the live capture is cut along the part spans", () => {
-  const spans = [
-    { partIndex: 1, startMs: 0, endMs: 60_000 },
-    { partIndex: 2, startMs: 60_000, endMs: 120_000 },
-  ];
-
-  test("a segment goes to the span containing its MIDPOINT, so a sentence is never cut in half", () => {
-    const buckets = pipeline.groupSegmentsByPart(
-      [
-        { seq: 0, text: "bonjour", started_ms: 0, ended_ms: 2_000 },
-        // Straddles the 60 s boundary; midpoint 60.5 s belongs to part 2.
-        { seq: 1, text: "on continue", started_ms: 59_000, ended_ms: 62_000 },
-        { seq: 2, text: "au revoir", started_ms: 119_000, ended_ms: 120_000 },
-      ],
-      spans,
-    );
-    expect(buckets.get(1).map((s) => s.text)).toEqual(["bonjour"]);
-    expect(buckets.get(2).map((s) => s.text)).toEqual(["on continue", "au revoir"]);
-  });
-
-  test("a segment with no timestamps is kept in the LAST span rather than dropped", () => {
-    const buckets = pipeline.groupSegmentsByPart([{ seq: 0, text: "sans horodatage" }], spans);
-    expect(buckets.get(2).map((s) => s.text)).toEqual(["sans horodatage"]);
-  });
-
-  test("the fallback rows cover the same spans, one row each, always flagged", () => {
-    const rows = pipeline.fallbackRowsForSide({
-      side: "caller",
-      parts: [part("caller", 1, { duration: 60 }), part("caller", 2, { duration: 60 })],
-      segments: [
-        { seq: 0, text: "bonjour", language: "fr", started_ms: 0, ended_ms: 2_000 },
-        { seq: 1, text: "au revoir", language: "fr", started_ms: 61_000, ended_ms: 62_000 },
-      ],
-      language: "fr",
-    });
-    expect(rows).toHaveLength(2);
-    expect(rows.every((r) => r.provider === "browser-live" && r.certified === false)).toBe(true);
-    expect(rows.map((r) => r.text)).toEqual(["bonjour", "au revoir"]);
-    expect(rows.map((r) => r.language)).toEqual(["fr", "fr"]);
-  });
-
-  test("a span the recogniser heard nothing in still becomes a row: the hole is visible, not silent", () => {
-    const rows = pipeline.fallbackRowsForSide({
-      side: "callee",
-      parts: [part("callee", 1, { duration: 60 }), part("callee", 2, { duration: 60 })],
-      segments: [{ seq: 0, text: "", language: "en", started_ms: 61_000, ended_ms: 62_000 }],
-      language: "en",
-    });
-    expect(rows).toHaveLength(2);
-    expect(rows[0].text).toBe("");
   });
 });
 
@@ -425,9 +369,17 @@ describe("the attributed transcript", () => {
   });
 
   test("provenance: the LLM being down outranks the transcript's own provenance", () => {
-    expect(pipeline.provenanceOf({ llmOk: false, certified: true })).toBe("transcript-only");
-    expect(pipeline.provenanceOf({ llmOk: true, certified: true })).toBe("groq");
-    expect(pipeline.provenanceOf({ llmOk: true, certified: false })).toBe("browser-live");
+    const groq = { provider: "groq", certified: true };
+    const gem = { provider: "gemini", certified: true };
+    const live = { provider: "browser-live", certified: false };
+    expect(pipeline.provenanceOf({ llmOk: false, rows: [groq] })).toBe("transcript-only");
+    expect(pipeline.provenanceOf({ llmOk: true, rows: [groq, groq] })).toBe("groq");
+    // Gemini transcribed from the stored audio too, so it is certified; the
+    // provenance names it because the audio went to a second processor.
+    expect(pipeline.provenanceOf({ llmOk: true, rows: [groq, gem] })).toBe("gemini");
+    // Old calls keep their browser-capture rows, and still read as unverified.
+    expect(pipeline.provenanceOf({ llmOk: true, rows: [groq, live] })).toBe("browser-live");
+    expect(pipeline.provenanceOf({ llmOk: true, rows: [] })).toBe("transcript-only");
   });
 });
 
@@ -565,6 +517,9 @@ describe("processCall — the certified path", () => {
     // NO language hint is ever sent for a call (guide row 7).
     expect(transcription.transcribe.mock.calls.every((c) => c[0].language === null)).toBe(true);
     expect(transcription.transcribe.mock.calls.every((c) => c[0].detectLanguage === true)).toBe(true);
+    // One Groq attempt per part: the SDK's own retries are off too (A-1).
+    expect(transcription.transcribe.mock.calls.every((c) => c[0].maxRetries === 0)).toBe(true);
+    expect(geminiTranscription.transcribe).not.toHaveBeenCalled();
 
     const rows = mockStore.current.transcripts.filter((t) => t.is_current);
     expect(rows).toHaveLength(4);
@@ -583,6 +538,14 @@ describe("processCall — the certified path", () => {
     expect(rtTo(U1, "call:summary_ready")).toHaveLength(1);
     expect(governance.recordUsage).toHaveBeenCalled();
     expect(alerts.raise).not.toHaveBeenCalled();
+  });
+
+  test("the summary goes to Gemini first, with DeepSeek only as the last resort (A-2)", async () => {
+    await pipeline.processCall(client({ names: NAMES }), { callId: CALL });
+    expect(llm.chat).toHaveBeenCalledTimes(1);
+    expect(llm.chat.mock.calls[0][0]).toEqual(expect.objectContaining({
+      vendorName: "gemini", fallbackVendor: "deepseek",
+    }));
   });
 
   test("the draft is written in the CALLER's app language, whatever language was spoken", async () => {
@@ -612,84 +575,130 @@ describe("processCall — the certified path", () => {
   });
 });
 
-describe("processCall — the whole-side fallback (§4.5)", () => {
+describe("processCall — Groq once, then Gemini once (owner decision A-1)", () => {
+  const groqOk = { text: "bonjour", audio_seconds: 60, provider: "groq", detected_language: "fr" };
+  const geminiOk = {
+    text: "à bientôt", audio_seconds: 58, provider: "gemini", model: "gemini-2.5-flash",
+    detected_language: "fr", usage: { promptTokenCount: 1900, candidatesTokenCount: 12 },
+  };
+  const isCallerPart2 = (args) => args.audio && args.audio.toString() === "caller-2";
+
   beforeEach(() => {
     mockStore.current.calls.set(CALL, endedCall());
-    // Part 1 of each side is fine; part 2 of the CALLER fails all three tries.
     mockStore.current.parts.push(part("caller", 1), part("caller", 2), part("callee", 1));
+    // An old client's live log is still on the call. It must never become words.
     mockStore.current.live.push(
-      { call_id: CALL, side: "caller", seq: 0, text: "bonjour", language: "fr", started_ms: 1_000, ended_ms: 2_000 },
-      { call_id: CALL, side: "caller", seq: 1, text: "à bientôt", language: "fr", started_ms: 61_000, ended_ms: 62_000 },
+      { call_id: CALL, side: "caller", seq: 0, text: "browser words", language: "fr", started_ms: 1_000, ended_ms: 2_000 },
     );
-    transcription.transcribe.mockImplementation(async ({ audio, vendor } = {}) => {
-      void audio;
-      void vendor;
-      const failed = transcription.transcribe.mock.calls.length;
-      // Calls 1 (caller part 1), 4 (callee part 1) succeed; the three attempts
-      // against caller part 2 (calls 2–4 shifted by the first success) fail.
-      if (failed === 2 || failed === 3 || failed === 4) throw new Error("upstream 502");
-      return { text: "bonjour", audio_seconds: 60, provider: "groq", detected_language: "fr" };
-    });
+    storage.get.mockImplementation(async (ref) =>
+      Buffer.from(ref.includes("caller_002") ? "caller-2" : "other"));
     llm.chat.mockResolvedValue({
-      provider: "deepseek",
-      text: JSON.stringify({ summary: "Fallback draft.", key_points: [], follow_ups: [] }),
+      provider: "gemini",
+      text: JSON.stringify({ summary: "Draft.", key_points: [], follow_ups: [] }),
     });
   });
 
-  test("one bad part fails its WHOLE side: flagged rows covering every span, part marked FAILED", async () => {
+  test("a Groq error sends that same part to Gemini once, and Groq is not retried", async () => {
+    transcription.transcribe.mockImplementation(async (args) => {
+      if (isCallerPart2(args)) throw Object.assign(new Error("rate limited"), { status: 429 });
+      return groqOk;
+    });
+    geminiTranscription.transcribe.mockResolvedValue(geminiOk);
+
+    const out = await pipeline.processCall(client({ names: NAMES }), { callId: CALL });
+
+    expect(out.state).toBe("CERTIFIED");
+    // Three parts, three Groq requests: the failed one was not tried again.
+    expect(transcription.transcribe).toHaveBeenCalledTimes(3);
+    expect(geminiTranscription.transcribe).toHaveBeenCalledTimes(1);
+    expect(geminiTranscription.transcribe.mock.calls[0][0]).toEqual(expect.objectContaining({
+      mimeType: "audio/webm",
+    }));
+    expect(geminiTranscription.transcribe.mock.calls[0][0].audio.toString()).toBe("caller-2");
+
+    const rows = mockStore.current.transcripts.filter((t) => t.is_current);
+    expect(rows).toHaveLength(3);
+    const viaGemini = rows.find((r) => r.side === "caller" && r.part_index === 2);
+    // Produced from the stored audio, so certified, with the REAL provider.
+    expect(viaGemini).toEqual(expect.objectContaining({ provider: "gemini", certified: true, text: "à bientôt", language: "fr" }));
+    expect(rows.filter((r) => r.provider === "groq")).toHaveLength(2);
+    expect(rows.some((r) => r.provider === "browser-live")).toBe(false);
+
+    const failedOnce = mockStore.current.parts.find((p) => p.side === "caller" && p.part_index === 2);
+    expect(failedOnce.transcript_status).toBe("OK");
+    expect(failedOnce.attempts).toBe(2);
+
+    expect(mockStore.current.summaries.get(CALL).provenance).toBe("gemini");
+  });
+
+  test("Gemini usage is recorded through governance with provider gemini", async () => {
+    transcription.transcribe.mockImplementation(async (args) => {
+      if (isCallerPart2(args)) throw new Error("upstream 502");
+      return groqOk;
+    });
+    geminiTranscription.transcribe.mockResolvedValue(geminiOk);
+
+    await pipeline.processCall(client({ names: NAMES }), { callId: CALL });
+
+    const voice = governance.recordUsage.mock.calls.map((c) => c[1]).filter((u) => u.featureKey === "voice");
+    expect(voice.filter((u) => u.provider === "groq")).toHaveLength(2);
+    expect(voice.filter((u) => u.provider === "gemini")).toEqual([expect.objectContaining({
+      provider: "gemini",
+      model: "gemini-2.5-flash",
+      callType: "transcribe",
+      audioSeconds: 58,
+      inputTokens: 1900,
+      outputTokens: 12,
+    })]);
+  });
+
+  test("Groq and Gemini both failing fails the part: no retries, no browser words, the side has no transcript", async () => {
+    transcription.transcribe.mockImplementation(async (args) => {
+      if (isCallerPart2(args)) throw new Error("upstream 502");
+      return groqOk;
+    });
+    geminiTranscription.transcribe.mockRejectedValue(new Error("could not convert audio/webm for Gemini"));
+
     const out = await pipeline.processCall(client({ names: NAMES }), {
       callId: CALL, tenantMeta: { slug: "acme" },
     });
 
     expect(out.state).toBe("TRANSCRIPTION_FAILED");
-    expect(out.sides.caller).toBe("flagged");
-    expect(out.sides.callee).toBe("certified");
-
-    const callerRows = mockStore.current.transcripts.filter((t) => t.side === "caller" && t.is_current);
-    // Two parts → two rows, both from the browser capture: never a mixture.
-    expect(callerRows).toHaveLength(2);
-    expect(callerRows.every((r) => r.provider === "browser-live" && r.certified === false)).toBe(true);
-    expect(callerRows.map((r) => r.text)).toEqual(["bonjour", "à bientôt"]);
-
-    // The callee's certified words are unaffected.
-    const calleeRows = mockStore.current.transcripts.filter((t) => t.side === "callee" && t.is_current);
-    expect(calleeRows.every((r) => r.certified === true)).toBe(true);
+    expect(transcription.transcribe).toHaveBeenCalledTimes(3);
+    expect(geminiTranscription.transcribe).toHaveBeenCalledTimes(1);
 
     const failedPart = mockStore.current.parts.find((p) => p.side === "caller" && p.part_index === 2);
     expect(failedPart.transcript_status).toBe("FAILED");
-    expect(failedPart.attempts).toBe(3);
+    expect(failedPart.attempts).toBe(2);
+    expect(failedPart.error).toMatch(/groq: upstream 502/);
+    expect(failedPart.error).toMatch(/gemini: could not convert/);
 
-    // Visible on both ends, alerted to ops, retried by the sweep.
-    expect(mockStore.current.calls.get(CALL).transcription_state).toBe("TRANSCRIPTION_FAILED");
-    expect(rtTo(U1, "call:transcription_failed")).toHaveLength(1);
-    expect(rtTo(U2, "call:transcription_failed")).toHaveLength(1);
-    expect(alerts.raise).toHaveBeenCalledWith(expect.objectContaining({
-      event: "comms.transcription_failed",
-      tenant: "acme",
-    }));
+    // Never a mixture, and never the live log: the caller side has no rows.
+    expect(mockStore.current.transcripts.filter((t) => t.side === "caller")).toHaveLength(0);
+    expect(mockStore.current.transcripts.some((t) => t.provider === "browser-live")).toBe(false);
+    const calleeRows = mockStore.current.transcripts.filter((t) => t.side === "callee" && t.is_current);
+    expect(calleeRows.every((r) => r.certified === true)).toBe(true);
 
-    // The draft exists anyway, visibly labelled with what it is worth.
-    const summary = mockStore.current.summaries.get(CALL);
-    expect(summary.provenance).toBe("browser-live");
-    expect(summary.draft_status).toBe("PENDING_REVIEW");
+    const call = mockStore.current.calls.get(CALL);
+    expect(call.transcription_state).toBe("TRANSCRIPTION_FAILED");
+    expect(call.transcription_error).toMatch(/caller: part 2/);
   });
 
-  test("the reprocess REPLACES the flagged rows: certified lands, flagged is retired, not deleted", async () => {
-    // First run: fallback.
-    await pipeline.processCall(client({ names: NAMES }), { callId: CALL });
-    const flaggedBefore = mockStore.current.transcripts.filter((t) => t.provider === "browser-live");
-    expect(flaggedBefore).toHaveLength(2);
+  test("an old call's browser-capture rows are still read, and a later certified run retires them", async () => {
+    mockStore.current.calls.get(CALL).transcription_state = "TRANSCRIPTION_FAILED";
+    mockStore.current.transcripts.push(
+      { transcript_id: "t1", call_id: CALL, side: "caller", part_index: 1, text: "old words", language: "fr", provider: "browser-live", certified: false, is_current: true, superseded_at: null },
+      { transcript_id: "t2", call_id: CALL, side: "caller", part_index: 2, text: "old words", language: "fr", provider: "browser-live", certified: false, is_current: true, superseded_at: null },
+    );
+    const before = await pipeline.getTranscript(client({ names: NAMES }), { callId: CALL, actor: caller });
+    expect(before.provenance).toBe("browser-live");
+    expect(before.text).toContain("old words");
 
-    // The vendor recovers.
-    transcription.transcribe.mockResolvedValue({
-      text: "bonjour", audio_seconds: 60, provider: "groq", detected_language: "fr",
-    });
+    transcription.transcribe.mockResolvedValue(groqOk);
     await pipeline.processCall(client({ names: NAMES }), { callId: CALL });
 
     const current = mockStore.current.transcripts.filter((t) => t.is_current);
     expect(current.every((r) => r.certified === true)).toBe(true);
-    // The flagged rows are still in the table — what the caller was told at the
-    // time is part of the record — but they are no longer current.
     const retired = mockStore.current.transcripts.filter((t) => t.provider === "browser-live" && !t.is_current);
     expect(retired).toHaveLength(2);
     expect(mockStore.current.calls.get(CALL).transcription_state).toBe("CERTIFIED");

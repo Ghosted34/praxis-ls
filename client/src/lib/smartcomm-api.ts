@@ -544,7 +544,9 @@ export const getCall = (id: string) => tenant<Call>(`/smartcomm/calls/${id}`);
  */
 export type CallRecordSide = "caller" | "callee";
 export type CallTranscriptState = "PENDING" | "PROCESSING" | "CERTIFIED" | "TRANSCRIPTION_FAILED";
-export type CallProvenance = "groq" | "browser-live" | "transcript-only";
+/** Where a transcript's words came from. groq and gemini both transcribe the
+ *  stored audio; browser-live is the retired in-call capture (old calls only). */
+export type CallProvenance = "groq" | "gemini" | "browser-live" | "transcript-only";
 
 export type CallSummaryKeyPoint = { text: string; raised_by: CallRecordSide };
 export type CallSummaryFollowUp = { text: string; owner: CallRecordSide; due: string | null };
@@ -626,9 +628,7 @@ export type CallCard = {
   callee_name: string | null;
 };
 
-/** One recorded part. `live_segments` travels with the audio it belongs to: the
- *  two together are what make the fallback (flagged browser text) possible for
- *  the SAME span when the provider cannot read the bytes. */
+/** One recorded part of this side's audio. */
 export const uploadCallPart = (
   callId: string,
   file: File,
@@ -638,7 +638,6 @@ export const uploadCallPart = (
     part_count: number;
     duration_ms?: number;
     language?: "en" | "fr";
-    live_segments?: unknown[];
   },
   onProgress?: (percent: number) => void,
   signal?: AbortSignal,
@@ -649,17 +648,6 @@ export const uploadCallPart = (
     onProgress,
     signal,
   });
-
-/** The live capture on its own — the upload that must still land when the
- *  recorder produced no audio at all (§4.9). */
-export const uploadCallLiveLog = (
-  callId: string,
-  data: { side: CallRecordSide; language?: "en" | "fr"; live_segments: unknown[] },
-) =>
-  tenant<{ side: CallRecordSide; written: number }>(
-    `/smartcomm/calls/${callId}/live-log`,
-    { method: "POST", body: data },
-  );
 
 export const getCallTranscript = (callId: string) =>
   tenant<CallTranscriptView>(`/smartcomm/calls/${callId}/transcript`);

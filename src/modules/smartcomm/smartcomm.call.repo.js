@@ -11,6 +11,7 @@
 "use strict";
 
 const { atomically } = require("../../shared/db/tx");
+const vocab = require("./smartcomm.call.vocab");
 
 const ACTIVE_STATUSES = ["RINGING", "IN_CALL"];
 
@@ -433,6 +434,11 @@ async function listCurrentTranscripts(client, callId, side = null) {
  */
 async function insertTranscriptRows(client, { callId, side, rows: parts }) {
   if (!parts.length) return [];
+  // The CHECKs 14040 dropped, held here instead.
+  const bad = parts.find((p) => !vocab.isValidTranscriptRow(p));
+  if (bad) {
+    throw new Error(`invalid transcript row: provider=${bad.provider} certified=${bad.certified}`);
+  }
   return atomically(client, async () => {
     // Only the rows being replaced — a part that is NOT in this set keeps
     // whatever it has (the pipeline retires the remainder explicitly after
@@ -496,6 +502,9 @@ async function hasFlaggedRows(client, callId) {
 async function upsertSummaryDraft(client, {
   callId, summaryText, keyPoints, followUps, language, provenance,
 }) {
+  if (!vocab.SUMMARY_PROVENANCES.includes(provenance)) {
+    throw new Error(`invalid summary provenance: ${provenance}`);
+  }
   const { rows } = await client.query(
     `INSERT INTO comms_call_summary
        (call_id, summary_text, key_points, follow_ups, language, provenance)

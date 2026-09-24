@@ -355,6 +355,50 @@ describe("the ring channel and the push deep link (PR-3)", () => {
   });
 });
 
+/* ── Owner decision A-1: no browser speech capture during calls ──────────── */
+
+describe("the browser live capture is gone (A-1)", () => {
+  it("a recorded call that connects never starts the browser speech recogniser", async () => {
+    const constructed = vi.fn();
+    class FakeRecognition {
+      continuous = false;
+      interimResults = false;
+      lang = "";
+      onresult: unknown = null;
+      onerror: unknown = null;
+      onend: unknown = null;
+      constructor() {
+        constructed();
+      }
+      start() {}
+      stop() {}
+      abort() {}
+    }
+    vi.stubGlobal("SpeechRecognition", FakeRecognition);
+    vi.stubGlobal("webkitSpeechRecognition", FakeRecognition);
+
+    const mod = await fresh();
+    act(() => mod.wireCallSocket());
+    const { result } = renderHook(() => mod.useCall());
+    await ringIn();
+    W.api.acceptCall = async () =>
+      W.row({ status: "IN_CALL", connected_at: new Date().toISOString(), ice: W.ICE, recording_enabled: true });
+    await act(async () => {
+      await mod.answer();
+    });
+    act(() => {
+      pcs[0].iceConnectionState = "connected";
+      pcs[0].oniceconnectionstatechange?.({} as Event);
+    });
+    expect(result.current.phase).toBe("in_call");
+    expect(constructed).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await mod.hangup();
+    });
+  });
+});
+
 /* ── PR-3: the overlay's noise switch (§4.4) ─────────────────────────────── */
 
 describe("the noise switch (PR-3)", () => {

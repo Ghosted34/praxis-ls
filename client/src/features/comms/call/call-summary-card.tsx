@@ -12,9 +12,9 @@
  *
  * ── THE LABEL IS THE HONESTY ────────────────────────────────────────────────
  *
- * Three provenances, three sentences, and none of them is buried:
+ * Three sentences, and none of them is buried:
  *
- *   certified transcript  the provider read the recorded audio
+ *   certified transcript  a provider (Groq or Gemini) read the recorded audio
  *   browser capture       the in-call recogniser carried the call, so the words
  *                         may be partial and are marked unverified
  *   provider down         the transcript IS the draft — the caller was told so
@@ -33,12 +33,7 @@ import { tr } from "@/lib/i18n";
 import { dateDmy } from "@/lib/format";
 import * as api from "@/lib/smartcomm-api";
 import type { CallCard, CallTranscriptView } from "@/lib/smartcomm-api";
-
-const PROVENANCE_LABEL: Record<CallCard["provenance"], string> = {
-  groq: "Transcribed from the call recording",
-  "browser-live": "Generated from the in-call browser capture (unverified)",
-  "transcript-only": "Summary unavailable — provider down",
-};
+import { provenanceLabel } from "./call-provenance";
 
 function minutes(seconds?: number | null): string | null {
   const s = Number(seconds) || 0;
@@ -146,7 +141,7 @@ export function CallSummaryCardView({
           {[when, dur].filter(Boolean).join(" · ")}
         </p>
       </div>
-      <p className="mt-0.5 text-micro text-muted-foreground">{tr(PROVENANCE_LABEL[card.provenance] || PROVENANCE_LABEL.groq)}</p>
+      <p className="mt-0.5 text-micro text-muted-foreground">{provenanceLabel(card.provenance)}</p>
 
       <p className="mt-2 whitespace-pre-wrap text-sm text-foreground">{card.summary_text}</p>
 

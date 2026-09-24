@@ -25,11 +25,10 @@ import { presentRing, dismissRingNotification, parseCallLink, type RingChannel }
 import { fetchCallPrefs, saveCallPrefs } from "@/lib/preferences";
 import {
   dialCall, acceptCall, declineCall, hangupCall, reportCallFailure, getCall,
-  uploadCallPart, uploadCallLiveLog,
+  uploadCallPart,
   type Call, type CallStatus,
 } from "@/lib/smartcomm-api";
 import { CallRecorder } from "./call-recorder";
-import { LiveTranscript } from "./live-transcript";
 import i18n from "@/lib/i18n";
 import { getCommsSocket } from "@/lib/comms-socket";
 import { ApiError } from "@/lib/api-client";
@@ -96,10 +95,9 @@ let ringTimer: ReturnType<typeof setInterval> | null = null;
 let endTimer: ReturnType<typeof setTimeout> | null = null;
 /** The caller's offer, received before we have an engine to give it to. */
 let pendingOffer: { callId: string; sdp: string } | null = null;
-/** The record half (PR-2): one recorder and one live capture for the call this
- *  tab is in, both owned here so they survive any component unmounting. */
+/** The recorder for the call this tab is in, owned here so it survives any
+ *  component unmounting. */
 let recorder: CallRecorder | null = null;
-let liveCapture: LiveTranscript | null = null;
 /** undefined = this tab has not asked yet; null = the user has no opinion and
  *  follows the tenant default (the same absent-≠-null contract the server
  *  keeps — see preference.service.js). */
@@ -226,8 +224,7 @@ function stopEngine() {
   clearRing();
 }
 
-/** The caller's app language, which is also the draft language (§4.10) and the
- *  language the live recogniser runs in. */
+/** The caller's app language, which is also the draft language (§4.10). */
 function appLanguage(): "en" | "fr" {
   return String(i18n.language || "en").startsWith("fr") ? "fr" : "en";
 }
@@ -235,36 +232,15 @@ function appLanguage(): "en" | "fr" {
 /* ── The record half (PR-2) ──────────────────────────────────────────────── */
 
 /**
- * Arm the recorder and the live capture, once media is actually up.
- *
- * Called from the engine's `onConnected`, so the record starts when the call
- * does — the ring is not part of it, and a call that never connects has nothing
- * to store. Both halves are best-effort and independent:
- *
- *   - no MediaRecorder (or a device that hands us no stream) → the live capture
- *     still runs, and the flagged transcript is exactly what §4.5 step 3 is for;
- *   - no SpeechRecognition → the audio still goes up, and the provider is the
- *     only reader, which is the normal path anyway;
- *   - neither → the call is a call, and the record says TRANSCRIPTION_FAILED
- *     out loud rather than pretending it has words.
+ * Arm the recorder once media is up, so a call that never connects stores
+ * nothing. Recording only: the browser speech recogniser is no longer started
+ * (owner decision A-1). The server transcribes the uploaded audio.
  */
 function armRecording(call: Call, side: "caller" | "callee"): void {
-  // The kill switch. Off means no recorder AND no live capture: a tenant that
-  // has switched recording off must not have words captured either, which is
-  // the whole point of it being a separate flag from `calls`.
   if (call.recording_enabled === false) return;
-  if (recorder || liveCapture) return;
+  if (recorder) return;
   const language = appLanguage();
   const stream = engine?.stream || null;
-  const live = new LiveTranscript(language, {
-    flush: async (segments) => {
-      await uploadCallLiveLog(call.call_id, { side, language, live_segments: segments });
-    },
-  });
-  if (live.available) {
-    live.start();
-    liveCapture = live;
-  }
   if (!stream) return;
   const rec = new CallRecorder({
     callId: call.call_id,
@@ -289,37 +265,28 @@ function armRecording(call: Call, side: "caller" | "callee"): void {
     rec.arm(stream);
     recorder = rec;
   } catch {
-    /* @silent:teardown — this browser will not record (no MediaRecorder, a
+    /* @silent:teardown — this browser will not record (no MediaRecorder, or a
        device that refuses a second consumer of the track). The call is
-       unaffected: the live capture, where it exists, is the fallback, and the
-       server records TRANSCRIPTION_FAILED where it does not. */
+       unaffected, and the server marks the call NO_RECORDING. */
   }
 }
 
 /**
- * Stop and upload. FIRE AND FORGET from every caller's point of view.
- *
- * Synchronously it stops the MediaRecorder and the recogniser — it must run
- * while the mic is still open, since `stopEngine` is about to close the tracks —
- * and the uploads then proceed on their own. PR-1's hang-up path is a REST call
- * and a state change, and making it wait for twenty uploads on a corridor
- * connection is exactly the flakiness this feature must not add.
+ * Stop and upload, fire and forget. It must run while the mic is still open
+ * (`stopEngine` is about to close the tracks); the uploads then proceed on
+ * their own, so hang-up never waits on them.
  */
 function finishRecording(): void {
   const rec = recorder;
-  const live = liveCapture;
   recorder = null;
-  liveCapture = null;
-  if (!rec && !live) return;
-  const finished = rec ? rec.finish() : Promise.resolve({ parts: 0, lost: 0 });
-  void Promise.all([finished, live ? live.stop() : Promise.resolve([])])
-    .then(([out]) => {
+  if (!rec) return;
+  void rec.finish()
+    .then((out) => {
       if (out && out.lost) set({ recordingLost: out.lost });
     })
     .catch(() => {
-      /* @silent:storage — the uploads already report their own failures per
-         part; a rejection here is the tail of the same fact, and the hang-up
-         has long since completed. */
+      /* @silent:storage — each part upload reports its own failure; a rejection
+         here is the tail of the same fact, after the hang-up completed. */
     });
 }
 

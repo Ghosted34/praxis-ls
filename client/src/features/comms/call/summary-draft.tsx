@@ -34,19 +34,8 @@ import { tr } from "@/lib/i18n";
 import { cn } from "@/lib/cn";
 import { useToast } from "@/components/ui/toast";
 import * as api from "@/lib/smartcomm-api";
-import type { CallProvenance } from "@/lib/smartcomm-api";
 import { EMPTY, summaryDraftReducer } from "./summary-draft-state";
-
-const PROVENANCE_LABEL: Record<CallProvenance, string> = {
-  groq: "Transcribed from the call recording",
-  "browser-live": "Generated from the in-call browser capture (unverified)",
-  "transcript-only": "Summary unavailable — provider down",
-};
-
-/** How the draft reads out loud, whether or not it may be edited. */
-function provenanceLabel(provenance: CallProvenance): string {
-  return tr(PROVENANCE_LABEL[provenance] || PROVENANCE_LABEL.groq);
-}
+import { provenanceLabel } from "./call-provenance";
 
 /** The caller's editor for one call's draft. `callId` is the whole input: the
  *  panel re-reads the view, because the pipeline may still be finishing. */

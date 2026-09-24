@@ -148,3 +148,12 @@ describe("sending", () => {
     expect(summaryDraftReducer(sent, { type: "discard" }).status).toBe("sent");
   });
 });
+
+describe("provenance labels", () => {
+  it("a Gemini transcript reads as the call recording, like a Groq one (A-1)", async () => {
+    const { provenanceLabel } = await import("./call-provenance");
+    expect(provenanceLabel("gemini")).toBe("Transcribed from the call recording");
+    expect(provenanceLabel("gemini")).toBe(provenanceLabel("groq"));
+    expect(provenanceLabel("browser-live")).toMatch(/unverified/);
+  });
+});

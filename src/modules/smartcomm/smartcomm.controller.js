@@ -340,6 +340,10 @@ module.exports = {
   callFailed: A((c, req) => calls.reportFailure(c, {
     id: req.params.id, actor: actor(req), tenantMeta: req.tenant, env: req.env,
   })),
+  // FN-2: "my audio is still up", over HTTP because the socket may not be.
+  callAlive: A((c, req) => calls.recordMediaBeat(c, {
+    id: req.params.id, actor: actor(req), tenantMeta: req.tenant, env: req.env,
+  })),
   listCalls: A((c, req) => calls.listCalls(c, actor(req))),
   callProcessing: A((c) => calls.processingDisclosure(c)),
   callCapabilities: asyncHandler(async (req, res) => {

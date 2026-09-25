@@ -42,6 +42,14 @@ export const ICE_RECOVERY_MS = 20_000;
  *  this long (GET /calls/:id/turn). */
 export const TURN_REFRESH_MARGIN_MS = 5 * 60_000;
 
+/**
+ * How often a browser tells the server its media path is up (field note
+ * FN-2). The server's key lives for PRESENCE.mediaBeatS = 75 s, so three
+ * beats may be lost — a throttled background tab, a slow request, a retry —
+ * before the call looks silent to the liveness sweep.
+ */
+export const MEDIA_BEAT_MS = 20_000;
+
 /** How often the quality sampler reads getStats(). Two seconds is the web
  *  default for this (the WebRTC samples use 1–2 s), and the dot is a slow
  *  human signal — a faster poll buys nothing but CPU on a phone that is already

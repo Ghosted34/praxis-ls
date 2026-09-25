@@ -34,6 +34,8 @@ vi.mock("@/lib/preferences", () => ({
 }));
 const api = vi.hoisted(() => ({
   caps: { calls: true, can_dial: true, recording: false, settings_admin: false },
+  /** Whether this deployment has a TURN relay at all (FN-2 / audit C13). */
+  relayConfigured: true,
   erase: vi.fn(async (_id: string) => ({ user_id: "u2", calls: 3, audio_parts: 5, audio_failed: 0, transcripts: 3, drafts: 1 })),
 }));
 vi.mock("@/lib/smartcomm-api", async (orig) => ({
@@ -47,6 +49,7 @@ vi.mock("@/lib/smartcomm-api", async (orig) => ({
     ],
     summary: [{ vendor: "deepseek", role: "last_resort", name: "DeepSeek", country: "China" }],
     network: [],
+    relay_configured: api.relayConfigured,
   })),
   eraseUserCallRecords: (id: string) => api.erase(id),
 }));
@@ -66,6 +69,7 @@ describe("Settings → Calls: relay-only calls (C13)", () => {
     prefs.save.mockClear();
     api.erase.mockClear();
     api.caps = { calls: true, can_dial: true, recording: false, settings_admin: true };
+    api.relayConfigured = true;
     for (const k of Object.keys(settings)) delete settings[k];
   });
 
@@ -81,6 +85,34 @@ describe("Settings → Calls: relay-only calls (C13)", () => {
     settings.call_privacy = { relay_only: true };
     renderPage();
     expect(await screen.findByRole("checkbox", { name: /send every call through the relay/i })).toBeChecked();
+  });
+
+  /**
+   * The switch is honoured literally: with no relay configured, relay-only
+   * calls do not fall back to peer-to-peer, they simply do not connect. So it
+   * must not be reachable in a deployment that has no relay — the admin who
+   * turns it on would be switching calls off, and nothing on the screen said
+   * so.
+   */
+  it("cannot be switched on when no relay is configured, and says why", async () => {
+    api.relayConfigured = false;
+    renderPage();
+    const box = await screen.findByRole("checkbox", { name: /send every call through the relay/i });
+    expect(box).toBeDisabled();
+    expect(screen.getByText(/no call relay is configured/i)).toBeInTheDocument();
+    await userEvent.click(box);
+    expect(putSetting).not.toHaveBeenCalled();
+  });
+
+  /** A tenant already on relay-only keeps the one action that fixes calls. */
+  it("can still be switched OFF when no relay is configured", async () => {
+    api.relayConfigured = false;
+    settings.call_privacy = { relay_only: true };
+    renderPage();
+    const box = await screen.findByRole("checkbox", { name: /send every call through the relay/i });
+    expect(box).not.toBeDisabled();
+    await userEvent.click(box);
+    await waitFor(() => expect(putSetting).toHaveBeenCalledWith("comms", "call_privacy", { relay_only: false }));
   });
 });
 

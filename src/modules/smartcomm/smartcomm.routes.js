@@ -190,6 +190,10 @@ const MINUTE = 60 * 1000;
 const dialLimiter = makeLimiter({ name: "call-dial", max: 8, windowMs: MINUTE, keyGenerator: byUser("dial") });
 const turnLimiter = makeLimiter({ name: "call-turn", max: 30, windowMs: 10 * MINUTE, keyGenerator: byUser("turn") });
 const rerunLimiter = makeLimiter({ name: "call-part-rerun", max: 10, windowMs: 10 * MINUTE, keyGenerator: byUser("rerun") });
+// The in-call media beat (FN-2): one every 20 s per participant, so 3/min is
+// the honest rate. 12 leaves room for a retry and a second device without
+// letting a loop hammer Redis.
+const aliveLimiter = makeLimiter({ name: "call-alive", max: 12, windowMs: MINUTE, keyGenerator: byUser("alive") });
 // A test ring is a real, high-urgency push: a few per person are plenty.
 const testRingLimiter = makeLimiter({ name: "call-test-ring", max: 5, windowMs: 10 * MINUTE, keyGenerator: byUser("testring") });
 const regenerateLimiter = makeLimiter({
@@ -237,6 +241,9 @@ router.post("/calls/:id/decline", view, callsOn, c.declineCall);
 router.post("/calls/:id/hangup", view, callsOn, v.callHangup, c.hangupCall);
 // ICE exhausted — the engine gives up before the call ever connected.
 router.post("/calls/:id/fail", view, callsOn, c.callFailed);
+// FN-2. Deliberately NOT a socket event: this is what a browser sends when
+// its socket is the thing that died.
+router.post("/calls/:id/alive", view, callsOn, aliveLimiter, c.callAlive);
 router.get("/calls", view, callsOn, c.listCalls);
 router.get("/calls/:id", view, callsOn, c.getCall);
 // A refreshed TURN credential mid-call (the one minted at dial expires with

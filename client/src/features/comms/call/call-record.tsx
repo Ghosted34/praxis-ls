@@ -25,7 +25,7 @@ import * as api from "@/lib/smartcomm-api";
 import type { Call, CallRecordSide, CallTranscriptView } from "@/lib/smartcomm-api";
 import { myUserId } from "./call-session";
 import { CallSummaryEditor } from "./summary-draft";
-import { callDuration, callOutcome, clockOf, peerOf } from "./call-labels";
+import { callDuration, callOutcome, clockOf, endReasonSentence, peerOf } from "./call-labels";
 import { CallStatePill } from "./call-state-pill";
 
 export const CALLS_PATH = "/comms/calls";
@@ -171,6 +171,8 @@ export function CallRecord({ callId, variant }: { callId: string; variant: "page
   const hasDraft = !!call.draft_status;
   const recorded = hasDraft
     || (call.recording_enabled !== false && call.transcription_state !== "NO_RECORDING");
+  // Why the call ended, when nobody chose it (FN-2). Null for a hang-up.
+  const endedSentence = endReasonSentence(call);
   const failedWithoutDraft = !hasDraft && call.transcription_state === "TRANSCRIPTION_FAILED";
 
   return (
@@ -187,6 +189,7 @@ export function CallRecord({ callId, variant }: { callId: string; variant: "page
           ]}
         />
       )}
+      {endedSentence && <Callout tone="info">{endedSentence}</Callout>}
       <p className="text-sm">
         <Link
           to={`/comms?channel=${call.group_id}${isCaller && call.draft_status === "PENDING_REVIEW" ? `&summary=${call.call_id}` : ""}`}

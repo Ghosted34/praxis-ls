@@ -81,7 +81,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  *  so a string passes through untouched. */
 const dayKey = (d) => (typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : new Date(d).toISOString().slice(0, 10));
 
-async function upsertRow({ slug, env, day, row, reasons }) {
+async function upsertRow({ slug, env, day, row, reasons, endReasons }) {
   await platformDb.query(
     `INSERT INTO platform.comms_call_metric (
        tenant_slug, env, metric_date,
@@ -89,8 +89,9 @@ async function upsertRow({ slug, env, day, row, reasons }) {
        calls_busy, calls_failed, avg_duration_seconds,
        transcription_failed, transcription_failed_reasons,
        ring_socket, ring_notification, ring_push, ring_none,
+       ended_reasons,
        computed_at
-     ) VALUES ($1,$2,$3::date,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13,$14,$15,$16, now())
+     ) VALUES ($1,$2,$3::date,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13,$14,$15,$16,$17::jsonb, now())
      ON CONFLICT (tenant_slug, env, metric_date) DO UPDATE SET
        calls_started    = EXCLUDED.calls_started,
        calls_answered   = EXCLUDED.calls_answered,
@@ -105,6 +106,7 @@ async function upsertRow({ slug, env, day, row, reasons }) {
        ring_notification = EXCLUDED.ring_notification,
        ring_push        = EXCLUDED.ring_push,
        ring_none        = EXCLUDED.ring_none,
+       ended_reasons    = EXCLUDED.ended_reasons,
        computed_at      = now()`,
     [
       slug, env, day,
@@ -112,6 +114,7 @@ async function upsertRow({ slug, env, day, row, reasons }) {
       row.calls_busy, row.calls_failed, row.avg_duration_seconds,
       row.transcription_failed, JSON.stringify(reasons || {}),
       row.ring_socket, row.ring_notification, row.ring_push, row.ring_none,
+      JSON.stringify(endReasons || {}),
     ],
   );
 }
@@ -171,10 +174,42 @@ async function aggregateTenant({ tenantMeta, env = "live", days = REGRESSION_DAY
       reasons.get(key)[r.reason] = r.n;
     }
 
+    // How calls ENDED (FN-2), its own query for the same reason as the one
+    // above: putting end_reason in the GROUP BY of the outcome scan would
+    // split every other column in this table by reason.
+    //
+    // Answered calls only. A ring that timed out already has its own column
+    // (`calls_no_answer`), and counting it here too would make the reasons
+    // read as a breakdown of calls_started, which they are not.
+    const { rows: endByDay } = await client.query(
+      `SELECT (started_at AT TIME ZONE 'UTC')::date::text  AS metric_date,
+              COALESCE(end_reason, 'reason not recorded')  AS reason,
+              count(*)::int                                AS n
+         FROM comms_call
+        WHERE started_at >= $1
+          AND connected_at IS NOT NULL
+          AND status IN ('ENDED', 'FAILED')
+        GROUP BY 1, 2`,
+      [from.toISOString()],
+    );
+    const endReasons = new Map();
+    for (const r of endByDay) {
+      const key = dayKey(r.metric_date);
+      if (!endReasons.has(key)) endReasons.set(key, {});
+      endReasons.get(key)[r.reason] = r.n;
+    }
+
     let written = 0;
     for (const row of rows) {
       const day = dayKey(row.metric_date);
-      await upsertRow({ slug: tenantMeta.slug, env, day, row, reasons: reasons.get(day) || {} });
+      await upsertRow({
+        slug: tenantMeta.slug,
+        env,
+        day,
+        row,
+        reasons: reasons.get(day) || {},
+        endReasons: endReasons.get(day) || {},
+      });
       written += 1;
     }
     return { written, days: days };
@@ -267,7 +302,7 @@ async function overview({ days = 30 } = {}) {
             calls_busy, calls_failed, avg_duration_seconds,
             transcription_failed, transcription_failed_reasons,
             ring_socket, ring_notification, ring_push, ring_none,
-            transcription_alert_at, computed_at
+            ended_reasons, transcription_alert_at, computed_at
        FROM platform.comms_call_metric
       WHERE metric_date >= (now() AT TIME ZONE 'UTC')::date - ($1::int - 1)
       ORDER BY metric_date DESC, tenant_slug`,
@@ -276,7 +311,9 @@ async function overview({ days = 30 } = {}) {
 
   const fleet = { days: window, started: 0, answered: 0, failed: 0, transcription_failed: 0,
     ring_socket: 0, ring_notification: 0, ring_push: 0, ring_none: 0,
-    duration_weighted: 0, avg_duration_seconds: null, series: [], reasons: {}, last_computed_at: null };
+    duration_weighted: 0, avg_duration_seconds: null, series: [], reasons: {},
+    // How answered calls ended, fleet-wide (FN-2). Keyed by end_reason.
+    end_reasons: {}, last_computed_at: null };
   const byDay = new Map();
   const byTenant = new Map();
 
@@ -295,6 +332,9 @@ async function overview({ days = 30 } = {}) {
 
     for (const [reason, n] of Object.entries(r.transcription_failed_reasons || {})) {
       fleet.reasons[reason] = (fleet.reasons[reason] || 0) + n;
+    }
+    for (const [reason, n] of Object.entries(r.ended_reasons || {})) {
+      fleet.end_reasons[reason] = (fleet.end_reasons[reason] || 0) + n;
     }
 
     const d = byDay.get(r.metric_date) || { date: r.metric_date, started: 0, answered: 0, failed: 0, transcription_failed: 0 };

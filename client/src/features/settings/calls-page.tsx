@@ -321,6 +321,13 @@ export function CallsPage() {
   const mine = prefs?.noiseSuppression ?? null;
   const effective = mine === null ? (tenantSettings?.noiseSuppression ?? false) : mine;
   const tenantLocked = busy || tenantSettings === null || !!tenantError || (caps !== null && !caps.settings_admin);
+  /**
+   * Relay-only cannot be switched ON into a deployment with no relay: the
+   * switch is honoured literally, so every call would simply fail to connect.
+   * A tenant who already has it on keeps the ability to switch it OFF, which
+   * is the one action that fixes calls for them right now.
+   */
+  const relayBlocked = processing !== null && !processing.relay_configured && !tenantSettings?.relayOnly;
   const quiet = prefs?.quietHours ?? null;
 
   return (
@@ -419,6 +426,13 @@ export function CallsPage() {
             "A direct call lets each person's device learn the other's network address. Relay-only calls send the audio through your company's relay server instead, so no address is shared.",
           )}
         </p>
+        {relayBlocked && (
+          <Callout tone="warn" title={tr("No call relay is configured")} className="mt-4">
+            {tr(
+              "This deployment has no relay server set up yet, so relay-only calls would not connect at all. An administrator has to configure the relay before this can be switched on.",
+            )}
+          </Callout>
+        )}
         <div className="mt-4">
           <Field
             label={tr("Relay-only calls")}
@@ -426,7 +440,7 @@ export function CallsPage() {
           >
             <Checkbox
               checked={tenantSettings?.relayOnly ?? false}
-              disabled={tenantLocked}
+              disabled={tenantLocked || relayBlocked}
               onCheckedChange={(v) => void saveTenant({ relayOnly: v })}
               label={tr("Send every call through the relay")}
             />

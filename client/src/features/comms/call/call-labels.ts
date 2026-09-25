@@ -27,9 +27,41 @@ export function callOutcome(call: Pick<Call, "status" | "end_reason">, isCaller:
     case "CANCELLED": return isCaller ? tr("Cancelled") : tr("Missed");
     case "DECLINED": return tr("Declined");
     case "BUSY": return tr("Busy");
-    case "FAILED": return tr("Could not connect");
+    case "FAILED": return call.end_reason === "ice_failed" ? tr("Connection failed") : tr("Could not connect");
     default:
-      return call.end_reason === "disconnected" ? tr("Connection lost") : tr("Ended");
+      if (call.end_reason === "disconnected") return tr("Connection lost");
+      if (call.end_reason === "max_duration") return tr("Ended at the time limit");
+      return tr("Ended");
+  }
+}
+
+/**
+ * Why a call ended, as a sentence, for the call's own page (audit D1's three
+ * server-side enders plus the engine's).
+ *
+ * Only for the endings a person did not choose. A call someone hung up needs
+ * no explanation, and a sentence under every call would make the one that
+ * matters invisible. Returns null when there is nothing worth saying.
+ *
+ * This exists because the alternative is a support ticket: "the call just
+ * stopped" is indistinguishable, from the outside, from a hang-up, a network
+ * drop and the 30-minute cap, and the reason was previously only in a
+ * database column.
+ */
+export function endReasonSentence(call: Pick<Call, "status" | "end_reason">): string | null {
+  switch (call.end_reason) {
+    case "disconnected":
+      return tr("This call ended because both devices lost their connection. The audio travels directly between the two devices, so a call ends when neither can be reached.");
+    case "max_duration":
+      return tr("This call reached the 30-minute limit and was ended automatically.");
+    case "ice_failed":
+      return tr("The audio connection could not be established or recovered. This is usually a network that blocks direct connections; if it keeps happening, your administrator may need to configure the call relay.");
+    case "no_answer":
+      return tr("Nobody answered within a minute.");
+    case "busy":
+      return tr("The person was already on another call.");
+    default:
+      return null;
   }
 }
 

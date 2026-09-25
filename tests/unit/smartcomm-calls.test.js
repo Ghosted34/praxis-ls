@@ -780,11 +780,11 @@ describe("call liveness — the row's fourth way to end (FN-1)", () => {
     return call;
   }
 
-  test("a call whose both devices have been gone 60 s ends itself, reason disconnected", async () => {
+  test("a call whose both devices have been gone the full window ends itself, reason disconnected", async () => {
     const store = makeStore();
     const call = inCall(store);
-    await goneSince(U1, 120_000);
-    await goneSince(U2, 119_000);
+    await goneSince(U1, 400_000);
+    await goneSince(U2, 399_000);
     const { moved } = await service.sweep(makeClient({ store }), { tenantSlug: "acme", env: "live" });
     expect(moved).toBe(1);
     const row = store.calls.get(call.call_id);
@@ -796,7 +796,7 @@ describe("call liveness — the row's fourth way to end (FN-1)", () => {
   test("one device gone 2 minutes and the other only just gone keeps the call alive (B2: both, not either)", async () => {
     const store = makeStore();
     const call = inCall(store);
-    await goneSince(U1, 120_000);
+    await goneSince(U1, 400_000);
     await goneSince(U2, 5_000);
     const { moved } = await service.sweep(makeClient({ store }), { tenantSlug: "acme", env: "live" });
     expect(moved).toBe(0);
@@ -819,14 +819,14 @@ describe("call liveness — the row's fourth way to end (FN-1)", () => {
     // U1's only socket was last refreshed 2 minutes ago by a replica that died:
     // its score is in the past, so it no longer makes U1 online.
     await mockRedis.zadd(onKey(U1), Date.now() - 30_000, "dead-replica-socket");
-    await goneSince(U1, 120_000);
-    await goneSince(U2, 120_000);
+    await goneSince(U1, 400_000);
+    await goneSince(U2, 400_000);
     const { moved } = await service.sweep(makeClient({ store }), { tenantSlug: "acme", env: "live" });
     expect(moved).toBe(1);
     expect(store.calls.get(call.call_id).end_reason).toBe("disconnected");
   });
 
-  test("a fresh absence (under 60 s) does not end the call — the airplane row survives", async () => {
+  test("a fresh absence (inside the window) does not end the call — the airplane row survives", async () => {
     const store = makeStore();
     const call = inCall(store);
     // Nobody online and no record yet: the first check records the absence…
@@ -864,27 +864,27 @@ describe("call liveness — the row's fourth way to end (FN-1)", () => {
     expect(store.calls.get(other.call_id).status).toBe("IN_CALL");
   });
 
-  test("the liveness job ends a call both sides left over 60 s ago", async () => {
+  test("the liveness job ends a call both sides left longer than the window ago", async () => {
     const store = makeStore();
     const call = inCall(store);
-    await goneSince(U1, 70_000);
-    await goneSince(U2, 65_000);
+    await goneSince(U1, 400_000);
+    await goneSince(U2, 395_000);
     const out = await service.checkLiveness(makeClient({ store }), { callId: call.call_id, tenantMeta: TENANT, env: "live" });
     expect(out.moved).toBe(true);
     expect(store.calls.get(call.call_id).end_reason).toBe("disconnected");
   });
 
-  test("the liveness job checks again when both will have been gone 60 s", async () => {
+  test("the liveness job checks again when both will have been gone the full window", async () => {
     const store = makeStore();
     const call = inCall(store);
-    await goneSince(U1, 60_000);
-    await goneSince(U2, 20_000);
+    await goneSince(U1, 180_000);
+    await goneSince(U2, 140_000);
     const enqueue = require("../../src/jobs/queue-producer").enqueue;
     const out = await service.checkLiveness(makeClient({ store }), { callId: call.call_id, tenantMeta: TENANT, env: "live" });
     expect(out).toEqual({ moved: false, reason: "rechecking" });
     const again = enqueue.mock.calls.find((c) => c[0] === "comms-call-clock" && c[1] === "liveness");
     expect(again).toBeTruthy();
-    // Due ~40 s from now (U2's 60 s window), not another full minute.
+    // Due ~40 s from now (U2's 180 s window has 40 s left), not a fresh one.
     expect(again[3].delay).toBeGreaterThan(38_000);
     expect(again[3].delay).toBeLessThan(42_000);
   });

@@ -15,6 +15,15 @@
  * user per 5 minutes (C9). `presence:call:…` names the user's live call, so a
  * disconnect can queue that call's liveness check without a database read.
  *
+ * `presence:media:…` is the one key NOT about sockets (field note FN-2). A
+ * socket is not the call: the audio is peer-to-peer and this process cannot
+ * see it, so a dropped WebSocket over a perfectly healthy media path used to
+ * read as "this person is gone". Each browser beats over HTTP while its ICE
+ * connection is up, naming the call it is in; liveness asks this key before
+ * ending a call whose sockets have both gone quiet. The beat travels on a
+ * different transport from the socket precisely so that losing one does not
+ * silence the other.
+ *
  * Every function takes the Redis client and throws on a Redis error; callers
  * decide which way a failure falls.
  */
@@ -27,6 +36,10 @@ const PRESENCE = Object.freeze({
   contactsCacheS: 300,
   offlineMemoryS: 3600,
   activeCallS: 1900,
+  /** A media beat counts for this long. Three missed beats plus slack, so a
+   *  throttled background tab or one slow request never reads as dead audio
+   *  (the client beats every MEDIA_BEAT_MS = 20 s; call-engine.ts). */
+  mediaBeatS: 75,
 });
 
 const keyOf = {
@@ -35,6 +48,7 @@ const keyOf = {
   flush: (slug, env, uid) => `presence:flush:${slug}:${env}:${uid}`,
   contacts: (slug, env, uid) => `presence:contacts:${slug}:${env}:${uid}`,
   call: (slug, env, uid) => `presence:call:${slug}:${env}:${uid}`,
+  media: (slug, env, uid) => `presence:media:${slug}:${env}:${uid}`,
 };
 
 /**
@@ -156,6 +170,36 @@ async function activeCall(redis, { slug, env, userId }) {
   return redis.get(keyOf.call(slug, env, userId));
 }
 
+/**
+ * This user's browser says its media path for `callId` is up, right now
+ * (FN-2). The value is the call id, not a flag: a beat left over from the
+ * previous call must not keep the next one alive, and the TTL alone cannot
+ * tell the two apart.
+ */
+async function markMediaAlive(redis, { slug, env, userId, callId }) {
+  await redis.set(keyOf.media(slug, env, userId), callId, "EX", PRESENCE.mediaBeatS);
+}
+
+/** `{ uid: true|false }`: whose media is beating for THIS call. */
+async function mediaAlive(redis, { slug, env, userIds, callId }) {
+  const ids = [...new Set(userIds.filter(Boolean))];
+  if (!ids.length || !callId) return {};
+  const p = redis.pipeline();
+  for (const uid of ids) p.get(keyOf.media(slug, env, uid));
+  const res = await p.exec();
+  const out = {};
+  ids.forEach((uid, i) => { out[uid] = res[i][1] === callId; });
+  return out;
+}
+
+/** Forget the beats of a call that has ended, so nothing survives it. */
+async function clearMediaAlive(redis, { slug, env, userIds, callId }) {
+  for (const uid of userIds.filter(Boolean)) {
+    const key = keyOf.media(slug, env, uid);
+    if ((await redis.get(key)) === callId) await redis.del(key);
+  }
+}
+
 module.exports = {
   PRESENCE,
   keyOf,
@@ -170,4 +214,7 @@ module.exports = {
   setActiveCall,
   clearActiveCall,
   activeCall,
+  markMediaAlive,
+  mediaAlive,
+  clearMediaAlive,
 };

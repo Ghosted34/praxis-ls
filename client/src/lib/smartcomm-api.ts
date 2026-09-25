@@ -553,6 +553,8 @@ export type CallProcessing = {
   transcription: CallProcessor[];
   summary: CallProcessor[];
   network: CallProcessor[];
+  /** Whether a relay of the company's own (TURN) is configured at all. */
+  relay_configured: boolean;
 };
 export const fetchCallProcessing = () => tenant<CallProcessing>(`/smartcomm/calls/processing`);
 
@@ -575,6 +577,14 @@ export const acceptCall = (id: string, opts: { record?: boolean } = {}) =>
   });
 export const declineCall = (id: string) =>
   tenant<Call>(`/smartcomm/calls/${id}/decline`, { method: "POST" });
+/**
+ * "My audio is still up" (field note FN-2). Sent over HTTP on purpose: the
+ * server's liveness sweep reads socket presence, and the case this exists for
+ * is a dead socket over a live media path — a corridor 4G handover, a phone
+ * that backgrounded the tab, a socket replica that went away.
+ */
+export const reportCallAlive = (id: string) =>
+  tenant<{ recorded: boolean; status: string }>(`/smartcomm/calls/${id}/alive`, { method: "POST" });
 /** The hang-up route, shared with the keep-alive `fetch` a closing page sends
  *  (call-session.ts), so the two can never point at different URLs (audit A10). */
 export const callHangupPath = (id: string) => `/smartcomm/calls/${id}/hangup`;

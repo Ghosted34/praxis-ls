@@ -26,6 +26,7 @@ const PROCESSING = {
     { vendor: "deepseek", role: "last_resort", name: "DeepSeek", country: "China" },
   ],
   network: [],
+  relay_configured: true,
 };
 
 /** No glass (F1): no blur, no translucent grounds. */

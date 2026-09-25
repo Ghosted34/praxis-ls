@@ -39,6 +39,10 @@ module.exports = {
     // run needs the person's own device (the ring, the microphone, the
     // relay) and spends provider credit under a 3-a-day cap, and the Test
     // right is granted to people, not to the assistant.
+    // The media beat (POST /calls/:id/alive, FN-2) is not a tool for the
+    // plainest reason of all: it is one browser reporting on its own
+    // RTCPeerConnection, and the assistant does not have one. A beat it could
+    // send would be a claim about media nobody is carrying.
     { key: "comms_call_summary", service: async (c, p, caller) => { await requireFeature(c, "call_recording"); return pipeline.getSummary(c, { callId: p.call_id, actor: caller }); }, permission: { module: "MOD-64", action: "view" }, describe: "The summary draft or posted summary of one of the user's own calls, with its language, provenance and the minutes missing from its transcript (participants only)." },
   ],
   writes: [

@@ -119,4 +119,4 @@ function usesGoogleStun() {
   return !String(config.STUN_URLS || "").trim() && !config.TURN_HOST;
 }
 
-module.exports = { newCallToken, turnCredential, signedLabel, iceConfigFor, usesGoogleStun };
+module.exports = { newCallToken, turnCredential, signedLabel, iceConfigFor, usesGoogleStun, turnConfigured };

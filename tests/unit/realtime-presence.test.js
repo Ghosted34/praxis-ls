@@ -161,7 +161,7 @@ describe("last seen is throttled on the server (C9)", () => {
 });
 
 describe("a disconnect mid-call queues that call's liveness check (D1)", () => {
-  test("the last socket leaving queues a check 60 s out", async () => {
+  test("the last socket leaving queues a check one liveness window out", async () => {
     await redis.set(`presence:call:acme:live:${A}`, "call-9");
     const s = fakeSocket(A, "s1");
     realtime.attachPresence(s);
@@ -171,8 +171,9 @@ describe("a disconnect mid-call queues that call's liveness check (D1)", () => {
     const job = enqueue.mock.calls.find((c) => c[0] === "comms-call-clock");
     expect(job[1]).toBe("liveness");
     expect(job[2]).toMatchObject({ callId: "call-9", env: "live" });
-    expect(job[3].delay).toBeGreaterThan(59_000);
-    expect(job[3].delay).toBeLessThan(61_000);
+    const { LIVENESS_OFFLINE_S } = require("../../src/modules/smartcomm/smartcomm.call.service");
+    expect(job[3].delay).toBeGreaterThan(LIVENESS_OFFLINE_S * 1000 - 1_000);
+    expect(job[3].delay).toBeLessThan(LIVENESS_OFFLINE_S * 1000 + 1_000);
   });
 
   test("no call, no check", async () => {

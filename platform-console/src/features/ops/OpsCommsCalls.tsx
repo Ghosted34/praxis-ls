@@ -35,6 +35,26 @@ import { OpsNav } from "./OpsNav";
 
 const WINDOWS = [7, 30, 90];
 
+/**
+ * `comms_call.end_reason` in operator words (FN-2). `hangup` is the healthy
+ * majority and is shown for scale; the other three are the signal, because
+ * each names a different fault:
+ *
+ *   disconnected  the liveness sweep ended it — both devices unreachable
+ *   ice_failed    the media path never came back; often a missing TURN relay
+ *   max_duration  the 30-minute cap, which is a product question, not a fault
+ */
+const END_REASON_LABEL: Record<string, string> = {
+  hangup: "Somebody hung up",
+  disconnected: "Both devices lost connection",
+  ice_failed: "Audio path failed",
+  max_duration: "Hit the 30-minute cap",
+  "reason not recorded": "Reason not recorded",
+};
+
+/** The endings nobody chose: what an operator is actually looking for. */
+const UNCHOSEN = new Set(["disconnected", "ice_failed"]);
+
 function dur(seconds: number | null | undefined): string {
   if (seconds == null) return "—";
   const m = Math.floor(seconds / 60);
@@ -160,6 +180,39 @@ export function OpsCommsCalls() {
               shows it carrying the load.
             </div>
           </Card>
+
+          {Object.keys(fleet.end_reasons || {}).length > 0 && (
+            <Card title="How answered calls ended" style={{ marginBottom: 16 }}>
+              <table className="table">
+                <thead>
+                  <tr><th>Ending</th><th style={{ textAlign: "right" }}>Calls</th><th style={{ textAlign: "right" }}>Share</th></tr>
+                </thead>
+                <tbody>
+                  {Object.entries(fleet.end_reasons)
+                    .sort((a, b) => b[1] - a[1])
+                    .map(([reason, n]) => (
+                      <tr key={reason}>
+                        <td>
+                          {END_REASON_LABEL[reason] || reason}
+                          {UNCHOSEN.has(reason) && n > 0 && <> <Pill tone="warn">look</Pill></>}
+                        </td>
+                        <td style={{ textAlign: "right" }}>{n}</td>
+                        <td style={{ textAlign: "right" }}>
+                          {pct(n, Object.values(fleet.end_reasons).reduce((a, b) => a + b, 0))}
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+              <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>
+                Answered calls only — a ring that timed out is counted in Started, not here.
+                A rising <strong>Audio path failed</strong> across tenants usually means no TURN
+                relay is configured, so calls between mobile networks cannot connect. A rising
+                <strong> Both devices lost connection</strong> is a network or socket problem
+                rather than a media one.
+              </div>
+            </Card>
+          )}
 
           {Object.keys(fleet.reasons || {}).length > 0 && (
             <Card title="Why the transcript fell back" style={{ marginBottom: 16 }}>

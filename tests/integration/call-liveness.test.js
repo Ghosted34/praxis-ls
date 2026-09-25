@@ -57,11 +57,13 @@ d("call liveness against the real schema (audit B1)", () => {
        RETURNING call_id`,
       [group.rows[0].group_id, a, b],
     );
-    // Both devices gone for two minutes (presence, PR-5).
-    const gone = String(Date.now() - 120_000);
+    // Both devices gone for longer than LIVENESS_OFFLINE_S (180 s, FN-2), and
+    // neither beating that its media is up — the abandoned call this suite is
+    // about. `mediaBeat` below is the same call with a live beat.
+    const gone = String(Date.now() - 400_000);
     await mockRedis.set(`presence:off:citenant:live:${a}`, gone);
     await mockRedis.set(`presence:off:citenant:live:${b}`, gone);
-    return call.rows[0].call_id;
+    return { callId: call.rows[0].call_id, a, b };
   }
 
   const inRollback = async (fn) => {
@@ -76,7 +78,7 @@ d("call liveness against the real schema (audit B1)", () => {
   it("ends the abandoned call ENDED(disconnected)", async () => {
     const service = require("../../src/modules/smartcomm/smartcomm.call.service");
     await inRollback(async () => {
-      const callId = await abandonedCall();
+      const { callId } = await abandonedCall();
       const { moved } = await service.sweep(client, { tenantSlug: "citenant", env: "live" });
       expect(moved).toBeGreaterThanOrEqual(1);
       const { rows } = await client.query(
@@ -85,6 +87,39 @@ d("call liveness against the real schema (audit B1)", () => {
       );
       expect(rows[0]).toEqual(expect.objectContaining({ status: "ENDED", end_reason: "disconnected" }));
       expect(rows[0].duration_seconds).toBeGreaterThanOrEqual(299);
+    });
+  });
+
+  /**
+   * FN-2. The sweep reads SOCKET presence, and a socket is not the call: the
+   * audio is peer-to-peer and this process never sees it. A browser whose
+   * socket died over a live media path beats over HTTP instead, and that beat
+   * has to outrank the sockets — otherwise the sweep ends a call that two
+   * people are still talking on, which is what it did at 60 s.
+   */
+  it("does NOT end a call whose media is still beating, though both sockets are gone", async () => {
+    const service = require("../../src/modules/smartcomm/smartcomm.call.service");
+    await inRollback(async () => {
+      const { callId, a } = await abandonedCall();
+      // One side is enough: the audio has two ends, so either one reporting a
+      // live path means the call is up.
+      await mockRedis.set(`presence:media:citenant:live:${a}`, callId);
+      await service.sweep(client, { tenantSlug: "citenant", env: "live" });
+      const { rows } = await client.query("SELECT status FROM comms_call WHERE call_id = $1", [callId]);
+      expect(rows[0].status).toBe("IN_CALL");
+    });
+  });
+
+  it("ends it once the beat is for a DIFFERENT call (a leftover must not keep it alive)", async () => {
+    const service = require("../../src/modules/smartcomm/smartcomm.call.service");
+    await inRollback(async () => {
+      const { callId, a } = await abandonedCall();
+      await mockRedis.set(`presence:media:citenant:live:${a}`, "00000000-0000-0000-0000-000000000000");
+      await service.sweep(client, { tenantSlug: "citenant", env: "live" });
+      const { rows } = await client.query(
+        "SELECT status, end_reason FROM comms_call WHERE call_id = $1", [callId],
+      );
+      expect(rows[0]).toEqual(expect.objectContaining({ status: "ENDED", end_reason: "disconnected" }));
     });
   });
 

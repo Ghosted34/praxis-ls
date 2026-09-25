@@ -355,6 +355,8 @@ export type CommsMetricRow = {
   ring_notification: number;
   ring_push: number;
   ring_none: number;
+  /** end_reason → count, answered calls only (FN-2). */
+  ended_reasons: Record<string, number>;
   transcription_alert_at: string | null;
   computed_at: string;
 };
@@ -382,6 +384,9 @@ export type CommsFleet = {
   avg_duration_seconds: number | null;
   series: CommsDaySeries[];
   reasons: Record<string, number>;
+  /** How ANSWERED calls ended: hangup, disconnected, max_duration,
+   *  ice_failed. The three that nobody chose are the operator's signal. */
+  end_reasons: Record<string, number>;
   last_computed_at: string | null;
 };
 

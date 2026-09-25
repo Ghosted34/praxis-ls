@@ -35,10 +35,19 @@ const cref = (id) => "comms_call:" + id;
 const RING_TIMEOUT_S = 60;
 const MAX_CALL_S = 1800;
 /** How long BOTH participants may be socket-less before an in-call call ends
- *  itself `disconnected` (field note FN-1). Beyond the matrix's 20 s
+ *  itself `disconnected` (field notes FN-1, FN-2). Beyond the matrix's 20 s
  *  airplane row (which drops one device — the other is still online), well
- *  under the 30-minute cap that remains the backstop if presence is down. */
-const LIVENESS_OFFLINE_S = 60;
+ *  under the 30-minute cap that remains the backstop if presence is down.
+ *
+ *  Was 60 s. A corridor 4G handover drops the socket for longer than that
+ *  while the audio keeps flowing, and socket.io's own reconnect backs off to
+ *  ~5 s before the first retry even travels, so 60 s ended calls that were
+ *  fine. Three minutes is past every handover we have measured and still a
+ *  tenth of the cap. */
+const LIVENESS_OFFLINE_S = 180;
+/** When both sockets are gone but a browser is still beating that its media
+ *  is up, look again this often rather than ending the call (FN-2). */
+const LIVENESS_MEDIA_RECHECK_S = 60;
 /** Dial limits (audit C6). Per caller is the route's limiter; per callee is
  *  here, where the callee is known: a colleague cannot be rung more than this
  *  in a minute, by anyone. */
@@ -630,7 +639,68 @@ async function livenessVerdict(call, { tenantSlug, env }, now = Date.now()) {
   if (a === null || b === null || a === undefined || b === undefined) return { gone: false, reason: "online" };
   // BOTH gone for the full window (audit B2: the later of the two counts).
   const dueAt = Math.max(a, b) + LIVENESS_OFFLINE_S * 1000;
-  return { gone: dueAt <= now, dueAt };
+  if (dueAt > now) return { gone: false, dueAt };
+  // The sockets say gone. The sockets are not the call: the audio is
+  // peer-to-peer and never reaches this process, so before ending something
+  // that may still be carrying a conversation, ask the browsers (FN-2).
+  const media = await mediaStillFlowing(call, { tenantSlug, env });
+  if (media.alive) {
+    return { gone: false, dueAt: now + LIVENESS_MEDIA_RECHECK_S * 1000, reason: media.reason };
+  }
+  return { gone: true, dueAt };
+}
+
+/**
+ * Is either browser still beating that its media path for THIS call is up
+ * (FN-2)? A beat is an HTTP POST, so it survives exactly the failure that
+ * makes this question worth asking: a dead WebSocket over live audio.
+ *
+ * Any failure answers "still flowing", for the same reason a presence failure
+ * answers "not gone": liveness must never be the thing that ends a healthy
+ * call, and the 30-minute cap is the backstop that cannot be argued with.
+ */
+async function mediaStillFlowing(call, { tenantSlug, env }) {
+  try {
+    const beats = await presence.mediaAlive(require("../../config/redis").getClient(), {
+      slug: tenantSlug, env, userIds: [call.caller_id, call.callee_id], callId: call.call_id,
+    });
+    const alive = beats[call.caller_id] === true || beats[call.callee_id] === true;
+    return { alive, reason: alive ? "media alive" : "media silent" };
+  } catch (err) {
+    logger.warn({ err, callId: call.call_id }, "call liveness: media beats unreadable — not ending the call");
+    return { alive: true, reason: "media unknown" };
+  }
+}
+
+/**
+ * POST /calls/:id/alive — one browser's "my audio is up" beat (FN-2).
+ *
+ * Deliberately not a socket event: the socket is the thing that may be down.
+ * Deliberately not trusted to KEEP a call alive on its own either — it only
+ * answers the liveness sweep, and the 30-minute cap still ends the call
+ * whatever any client claims. A beat for a call that is not in progress, or
+ * from somebody who is not in it, is the same 404 as everything else here.
+ */
+async function recordMediaBeat(client, { id, actor, tenantMeta = null, env = "live" }) {
+  const call = await repo.findCall(client, id);
+  if (!call || (call.caller_id !== actor.user_id && call.callee_id !== actor.user_id)) {
+    throw new AppError("NOT_FOUND", "Call not found", 404);
+  }
+  if (call.status !== "IN_CALL") return { recorded: false, status: call.status };
+  const slug = (tenantMeta && tenantMeta.slug) || requestContext.getTenant();
+  if (!slug) return { recorded: false, status: call.status };
+  try {
+    await presence.markMediaAlive(require("../../config/redis").getClient(), {
+      slug, env, userId: actor.user_id, callId: call.call_id,
+    });
+  } catch (err) {
+    // The beat is an optimisation on top of presence, not a promise to the
+    // caller: a Redis blip costs this call a longer liveness window, nothing
+    // that the client can or should do anything about.
+    logger.debug({ err, callId: id }, "call: media beat not recorded");
+    return { recorded: false, status: call.status };
+  }
+  return { recorded: true, status: call.status };
 }
 
 async function endDisconnected(client, call, { tenantSlug, tenantMeta, env }) {
@@ -684,12 +754,17 @@ async function rememberActiveCall(call, { slug, env }) {
 
 async function forgetActiveCall(call, { slug, env }) {
   if (!slug || !call) return;
+  const redis = require("../../config/redis").getClient();
+  const users = { slug, env, userIds: [call.caller_id, call.callee_id], callId: call.call_id };
   try {
-    await presence.clearActiveCall(require("../../config/redis").getClient(), {
-      slug, env, userIds: [call.caller_id, call.callee_id], callId: call.call_id,
-    });
+    await presence.clearActiveCall(redis, users);
   } catch {
     /* @silent:storage — the key expires on its own (PRESENCE.activeCallS). */
+  }
+  try {
+    await presence.clearMediaAlive(redis, users);
+  } catch {
+    /* @silent:storage — the key expires on its own (PRESENCE.mediaBeatS). */
   }
 }
 
@@ -1016,9 +1091,14 @@ async function vendorConfigured(vendor) {
 
 async function processingDisclosure(client) {
   const pick = async (vendor, role) => ((await vendorConfigured(vendor)) ? [{ vendor, role, ...PROCESSORS[vendor] }] : []);
-  const { usesGoogleStun } = require("./smartcomm.turn.service");
+  const { usesGoogleStun, turnConfigured } = require("./smartcomm.turn.service");
   return {
     recording_enabled: await recordingEnabled(client),
+    // Whether a relay of the company's own exists at all. Settings → Calls
+    // reads it to stop "Relay-only calls" being switched on into a
+    // deployment that has no relay, where the switch keeps its promise by
+    // connecting no calls at all (audit C13).
+    relay_configured: turnConfigured(),
     transcription: [...(await pick("groq", "first")), ...(await pick("gemini", "when_first_fails"))],
     summary: [...(await pick("gemini", "first")), ...(await pick("deepseek", "last_resort"))],
     // Connection set-up only (no audio): Google's STUN sees the callers'
@@ -1082,6 +1162,8 @@ module.exports = {
   capCall,
   checkLiveness,
   LIVENESS_OFFLINE_S,
+  LIVENESS_MEDIA_RECHECK_S,
+  recordMediaBeat,
   listCalls,
   getCall,
   turnFor,

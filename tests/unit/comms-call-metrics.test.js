@@ -268,7 +268,11 @@ describe("the hourly refresh reads no tenant database (audit D4)", () => {
     const live = db.opsQuery.mock.calls.map((x) => x[1]).find((p) => p[1] === "live");
     expect(live.slice(0, 11)).toEqual(["acme", "live", "2026-09-25", 5, 3, 2, 0, 0, 0, 300, 1]);
     expect(JSON.parse(live[11])).toEqual({ PARTS_NOT_TRANSCRIBED: 1 });
-    expect(live.slice(12)).toEqual([2, 0, 1, 2]); // ring_none = started - acked
+    expect(live.slice(12, 16)).toEqual([2, 0, 1, 2]); // ring_none = started - acked
+    // The counter path has no end_reason breakdown to offer (FN-2): only the
+    // nightly tenant aggregation can see `comms_call.end_reason`, so today's
+    // hourly row carries an empty map rather than a wrong one.
+    expect(JSON.parse(live[16])).toEqual({});
 
     // The job's hourly tick uses the counters, never the fleet fan-out.
     db.opsQuery.mockResolvedValue({ rows: [], rowCount: 0 });

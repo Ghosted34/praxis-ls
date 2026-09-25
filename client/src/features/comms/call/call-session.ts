@@ -13,14 +13,14 @@
  */
 import * as React from "react";
 import {
-  CallEngine, RING_TIMEOUT_S, openMic, primeRemoteAudio, primeNoiseContext,
+  CallEngine, RING_TIMEOUT_S, MEDIA_BEAT_MS, openMic, primeRemoteAudio, primeNoiseContext,
   type NoiseFilterReason, type NoiseFilterStatus, type QualitySample,
 } from "./call-engine";
 import { presentRing, dismissRingNotification, parseCallLink, type RingChannel } from "./ring-surface";
 import { takeCallIntent } from "./call-intent";
 import { fetchCallPrefs, saveCallPrefs } from "@/lib/preferences";
 import {
-  dialCall, acceptCall, declineCall, hangupCall, reportCallFailure, getCall, getCallTurn,
+  dialCall, acceptCall, declineCall, hangupCall, reportCallFailure, reportCallAlive, getCall, getCallTurn,
   getRingingCalls, uploadCallPart, completeCallRecording, callHangupUrl,
   type Call, type CallStatus, type RingingCall,
 } from "@/lib/smartcomm-api";
@@ -120,6 +120,7 @@ let pendingIce: { callId: string; candidates: Array<unknown | null> } | null = n
  *  even while the row still says RINGING for a moment. */
 const handledRings = new Set<string>();
 /** The recorder for the call this tab is in. */
+let mediaBeatTimer: ReturnType<typeof setInterval> | null = null;
 let recorder: CallRecorder | null = null;
 /** The call and side this tab is recording, set when media connects. */
 let recording: { callId: string; side: "caller" | "callee" } | null = null;
@@ -256,12 +257,47 @@ function toIdleIfEnded(callId: string) {
   }, 4000);
 }
 
+/**
+ * Tell the server our media is up, every MEDIA_BEAT_MS, for as long as it is
+ * (field note FN-2).
+ *
+ * The server's liveness sweep reads SOCKET presence, and a socket is not the
+ * call: the audio is peer-to-peer and the server never sees it. A 4G handover
+ * in the corridor drops the socket for tens of seconds with the conversation
+ * still going, and the sweep used to end those calls. This beat is the only
+ * thing that can tell it otherwise, so it goes over HTTP — the socket is the
+ * transport that may be down.
+ *
+ * It stops while the engine is recovering, because then the media really is
+ * not up and a beat would be a lie that keeps a dead call alive to the cap.
+ */
+function startMediaBeat(callId: string) {
+  stopMediaBeat();
+  const beat = () => {
+    if (state.call?.call_id !== callId || state.phase !== "in_call" || state.recovering) return;
+    void reportCallAlive(callId).catch(() => {
+      /* @silent:parse — the beat did not land (offline, a rate limit, a 404
+         on a call the server has already closed). The defined fallback is the
+         server's own liveness window, which tolerates three missed beats, and
+         the 30-minute cap behind it. There is no second action to take. */
+    });
+  };
+  beat();
+  mediaBeatTimer = setInterval(beat, MEDIA_BEAT_MS);
+}
+
+function stopMediaBeat() {
+  if (mediaBeatTimer) clearInterval(mediaBeatTimer);
+  mediaBeatTimer = null;
+}
+
 function stopEngine() {
   engine?.stop();
   engine = null;
   engineReady = false;
   pendingOffer = null;
   pendingIce = null;
+  stopMediaBeat();
   clearRing();
 }
 
@@ -763,8 +799,10 @@ function makeEngine(
       onConnected: () => {
         if (state.call?.call_id !== callId) return;
         set({ phase: "in_call" });
-        // Media is up: this is the moment the record starts (PR-2).
+        // Media is up: this is the moment the record starts (PR-2)...
         if (state.call) armRecording(state.call, isCaller ? "caller" : "callee");
+        // ...and the moment the server can be told so (FN-2).
+        startMediaBeat(callId);
       },
       onFailed: () => {
         void (async () => {

@@ -178,6 +178,26 @@ async function fakeComms(
         ]),
       });
     }
+    // PR-6 (F10, G2): what the app may offer, and who processes call data.
+    if (path === "/calls/capabilities" && method === "GET") {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ calls: true, can_dial: true, recording: true, settings_admin: false }),
+      });
+    }
+    if (path === "/calls/processing" && method === "GET") {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          recording_enabled: true,
+          transcription: [{ vendor: "groq", role: "first", name: "Groq", country: "United States" }],
+          summary: [{ vendor: "gemini", role: "first", name: "Google (Gemini)", country: "United States" }],
+          network: [],
+        }),
+      });
+    }
     if (path === "/calls/ringing" && method === "GET") {
       return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(opts.ringing ?? []) });
     }
@@ -363,6 +383,9 @@ test("dial → the offer goes out → real media connects → hang-up closes it"
 
   // Dial from the thread header affordance.
   await page.getByRole("button", { name: "Start a voice call" }).first().click();
+  // PR-6 (O4): in the call's own conversation the call is the thread strip;
+  // the full call screen (timer, quality, microphone) is one tap away.
+  await page.getByRole("button", { name: "Open the call" }).click();
   await expect(page.getByText("Calling…")).toBeVisible();
   await expect(page.getByText(PARTNER.name).first()).toBeVisible();
 
@@ -419,7 +442,8 @@ test("an incoming ring shows who and the 60 s window; declining closes it", asyn
 
   const ring = page.getByRole("alertdialog");
   await expect(ring).toBeVisible();
-  await expect(page.getByText("Incoming call from Aïcha Diallo")).toBeVisible();
+  await expect(ring.getByText("Aïcha Diallo", { exact: true })).toBeVisible();
+  await expect(ring.getByText(/Incoming voice call · ringing 0:0\d/)).toBeVisible();
   await expect(ring.getByText("Decline")).toBeVisible();
 
   await ring.getByRole("button", { name: "Decline" }).click();
@@ -454,6 +478,9 @@ test("a call survives the tab going to the background and coming back", async ({
 
   await page.goto("/comms?channel=ch-e2e-1");
   await page.getByRole("button", { name: "Start a voice call" }).first().click();
+  // PR-6 (O4): in the call's own conversation the call is the thread strip;
+  // the full call screen (timer, quality, microphone) is one tap away.
+  await page.getByRole("button", { name: "Open the call" }).click();
   const offer = (await comms.next("call:offer")) as { callId: string; sdp: string };
   const answerSdp = await createCallee(page, offer.sdp);
   comms.tell("call:accepted", { call_id: "call-e2e-1", by: { user_id: PARTNER.user_id } });
@@ -568,6 +595,9 @@ test("every recorded part decodes on its own (audit A3)", async ({ page }) => {
 
   await page.goto("/comms?channel=ch-e2e-1");
   await page.getByRole("button", { name: "Start a voice call" }).first().click();
+  // PR-6 (O4): in the call's own conversation the call is the thread strip;
+  // the full call screen (timer, quality, microphone) is one tap away.
+  await page.getByRole("button", { name: "Open the call" }).click();
   const offer = (await comms.next("call:offer")) as { callId: string; sdp: string };
   const answerSdp = await createCallee(page, offer.sdp);
   comms.tell("call:accepted", { call_id: "call-e2e-1", by: { user_id: PARTNER.user_id } });
@@ -692,6 +722,7 @@ async function connectTwo(d: Awaited<ReturnType<typeof twoDevices>>) {
   await d.callee.goto("/comms");
   await d.caller.getByRole("button", { name: "Start a voice call" }).first().click();
   await expect(d.caller.getByText("Calling…")).toBeVisible();
+  await d.caller.getByRole("button", { name: "Open the call" }).click();
   // The caller's offer (and its candidates) reach the callee while it rings.
   await d.a.next("call:offer");
   d.b.tell("call:ringing", { call_id: "call-e2e-1", group_id: CHANNEL.group_id, from: { user_id: "u-1", name: "Ops Lead" }, ring_timeout_s: 60 });
@@ -771,6 +802,25 @@ test("an app opened mid-ring shows the ring the socket never delivered (A13)", a
   const ring = page.getByRole("alertdialog");
   await expect(ring).toBeVisible();
   await expect(ring.getByText(PARTNER.name, { exact: true })).toBeVisible();
+});
+
+test("a ring for the open conversation is the thread strip: one Answer button, no card (PR-6, O4)", async ({ page }) => {
+  await seedSession(page);
+  await fakeApi(page);
+  const comms = await fakeComms(page);
+  await page.goto("/comms?channel=ch-e2e-1");
+  await expect(page.getByText(PARTNER.name).first()).toBeVisible();
+  comms.tell("call:ringing", {
+    call_id: "call-e2e-5", group_id: CHANNEL.group_id,
+    from: { user_id: PARTNER.user_id, name: PARTNER.name }, ring_timeout_s: 60,
+  });
+  const strip = page.getByRole("region", { name: `Incoming call from ${PARTNER.name}` });
+  await expect(strip).toBeVisible();
+  await expect(page.getByRole("alertdialog")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Answer", exact: true })).toHaveCount(1);
+  await strip.getByRole("button", { name: "Decline" }).click();
+  await expect(strip).toHaveCount(0);
+  expect(comms.sawDecline()).toBe(true);
 });
 
 test("answered on another device: this device stops ringing and says so (E8)", async ({ page }) => {

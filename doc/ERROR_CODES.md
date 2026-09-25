@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 6× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (625)
+## All codes (628)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -139,6 +139,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `BREACHED_PASSWORD` | 422 | 1× | — |
 | `BUDGET_EXHAUSTED` | 422 | 1× | — |
 | `CALLEE_BUSY` | 409 | 1× | — |
+| `CALLEE_DND` | 409 | 1× | — |
 | `CALLEE_INACTIVE` | 422 | 1× | — |
 | `CALLER_BUSY` | 409 | 1× | — |
 | `CALL_MOVED_ON` | 409 | 4× | — |
@@ -513,7 +514,9 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `RECONCILIATION_LOCKED` | 409 | 1× | — |
 | `RECONCILIATION_UNSETTLED` | — | 1× | — |
 | `RECORDING_CLOSED` | 409 | 1× | — |
+| `RECORDING_DECLINED` | 409 | 1× | — |
 | `RECORDING_NOT_AUDIO` | — | 1× | — |
+| `RECORDING_OFF` | 409 | 1× | — |
 | `RECORDING_TOO_LARGE` | 413 | 1× | — |
 | `REFERENCED` | 409 | 2× | — |
 | `REF_COLLISION_RETRY_EXHAUSTED` | 500 | 1× | — |

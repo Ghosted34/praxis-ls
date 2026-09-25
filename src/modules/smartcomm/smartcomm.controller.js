@@ -325,6 +325,7 @@ module.exports = {
   })),
   acceptCall: A((c, req) => calls.acceptCall(c, {
     id: req.params.id, actor: actor(req), tenantMeta: req.tenant, env: req.env,
+    record: !(req.body && req.body.record === false),
   })),
   declineCall: A((c, req) => calls.declineCall(c, {
     id: req.params.id, actor: actor(req), tenantMeta: req.tenant, env: req.env,
@@ -337,6 +338,26 @@ module.exports = {
     id: req.params.id, actor: actor(req), tenantMeta: req.tenant, env: req.env,
   })),
   listCalls: A((c, req) => calls.listCalls(c, actor(req))),
+  callProcessing: A((c) => calls.processingDisclosure(c)),
+  callCapabilities: asyncHandler(async (req, res) => {
+    const [canDial, settingsAdmin] = await require("../../middleware/rbac").readPermissions(req, [
+      ["MOD-64", "create"], ["MOD-70", "edit"],
+    ]);
+    const data = await req.tenantDb(async (c) => {
+      const { rows } = await c.query("SELECT state FROM feature_state WHERE feature_key = $1", ["calls"]);
+      const on = !!rows[0] && rows[0].state === "on";
+      return {
+        calls: on,
+        can_dial: on && canDial === true,
+        recording: on && (await calls.recordingEnabled(c)),
+        settings_admin: settingsAdmin === true,
+      };
+    });
+    res.json({ data });
+  }),
+  eraseUserCallRecords: A((c, req) => require("./smartcomm.call.pipeline.service").eraseUserCallRecords(c, {
+    userId: req.body.user_id, actor: actor(req),
+  })),
   getCall: A((c, req) => calls.getCall(c, { id: req.params.id, actor: actor(req) })),
   callTurn: A((c, req) => calls.turnFor(c, { id: req.params.id, actor: actor(req) })),
   // PR-4: what is ringing for me (A13), and a ring to this device only (A15).

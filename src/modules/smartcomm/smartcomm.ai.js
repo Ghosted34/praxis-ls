@@ -30,6 +30,11 @@ module.exports = {
     { key: "comms_call_transcript", service: async (c, p, caller) => { await requireFeature(c, "call_recording"); return pipeline.getTranscript(c, { callId: p.call_id, actor: caller }); }, permission: { module: "MOD-64", action: "view" }, describe: "The attributed transcript of one of the user's own calls, with its state, provenance, each recorded part's status and the minutes that could not be transcribed (participants only)." },
     // Not tools: the ringing read (GET /calls/ringing) and the test ring are
     // this device's plumbing (PR-4), with nothing for an assistant to act on.
+    // Nor are PR-6's capability and processing reads (what the screen may
+    // offer, which vendors are configured) or accept's `record: false`: the
+    // assistant does not answer calls. The admin erasure (POST
+    // /calls/erase-user) is deliberately NOT a write here — an irreversible,
+    // audited deletion is a person's decision on the settings screen.
     { key: "comms_call_summary", service: async (c, p, caller) => { await requireFeature(c, "call_recording"); return pipeline.getSummary(c, { callId: p.call_id, actor: caller }); }, permission: { module: "MOD-64", action: "view" }, describe: "The summary draft or posted summary of one of the user's own calls, with its language, provenance and the minutes missing from its transcript (participants only)." },
   ],
   writes: [

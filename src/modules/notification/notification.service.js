@@ -471,6 +471,7 @@ async function notifyMany(client, userIds, {
   eventTypeKey = null, title, body = null, entityRef = null, priority = "NORMAL", category = null,
   url = null, pushTag = undefined, renotify = false, requireInteraction = false,
   urgency = "normal", pushData = null, actions = null, emailFallback = false, force = false, ctx = {},
+  silentFor = [],
 } = {}) {
   const ids = [...new Set((userIds || []).filter(Boolean))];
   if (ids.length === 0 || !title) return 0;
@@ -513,10 +514,13 @@ async function notifyMany(client, userIds, {
   //    or security) exactly as it did before — a user who silenced a category
   //    in the product has not asked to be woken by it on a phone.
   const inAppSet = new Set(inAppUsers);
+  // `silentFor`: people inside their quiet hours get the in-app row only
+  // (calls audit A11). Never applied to security or forced notifications.
+  const silent = new Set(forced || isSecurity ? [] : silentFor);
   const recipients = ids.map((userId) => ({
     userId,
-    email: wantsEmail(userId),
-    push: forced || isSecurity || inAppSet.has(userId),
+    email: wantsEmail(userId) && !silent.has(userId),
+    push: forced || isSecurity || (inAppSet.has(userId) && !silent.has(userId)),
     badgeCount: badges.get(userId) ?? null,
     interrupt: wantsInterrupt(userId),
   })).filter((r) => r.email || r.push);

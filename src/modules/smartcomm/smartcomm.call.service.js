@@ -63,6 +63,10 @@ function rtToUser(userId, event, payload, { slug = null, env = null } = {}) {
 
 /**
  * Is the recording half of calls on for this tenant (PR-2, decision row 2)?
+ * Two switches, both required (PR-6, audit G1): the platform feature
+ * `call_recording` (is recording available to this tenant) AND the tenant's
+ * own opt-in, `comms.call_recording.enabled`, which a MOD-70 admin sets in
+ * Settings → Calls and which starts OFF for a new tenant (14090).
  *
  * Read here rather than in the client so BOTH ends learn it from the same place
  * at the same moment: the caller from its dial response, the callee from its
@@ -77,14 +81,25 @@ function rtToUser(userId, event, payload, { slug = null, env = null } = {}) {
 async function recordingEnabled(client) {
   try {
     const { rows } = await client.query(
-      "SELECT state FROM feature_state WHERE feature_key = $1",
+      `SELECT state,
+              (SELECT s.value -> 'enabled' FROM setting s
+                WHERE s.section = 'comms' AND s.key = 'call_recording') AS tenant_enabled
+         FROM feature_state WHERE feature_key = $1`,
       ["call_recording"],
     );
-    return !!rows[0] && rows[0].state === "on";
+    const t = rows[0] && rows[0].tenant_enabled;
+    return !!rows[0] && rows[0].state === "on" && (t === true || t === "true");
   } catch (err) {
     logger.warn({ err }, "call: could not read the recording flag");
     return false;
   }
+}
+
+/** Is THIS call being recorded: the tenant's switches, and not declined by
+ *  the callee when answering (audit G5). */
+async function recordingForCall(client, call) {
+  if (call && call.recording_declined_at) return false;
+  return recordingEnabled(client);
 }
 
 /**
@@ -111,6 +126,9 @@ async function callSettings(client) {
     noise_suppression: false,
     // comms.call_privacy (audit C13): relay-only calls, off by default.
     relay_only: false,
+    // comms.call_recording.transcript_retention_days (audit G3): absent keeps
+    // transcripts and summaries; a number deletes them after that many days.
+    transcript_retention_days: null,
   };
   try {
     const { rows } = await client.query(
@@ -121,6 +139,11 @@ async function callSettings(client) {
       if (row.key === "call_recording" && row.value && row.value.retention_days !== undefined) {
         const days = Math.trunc(Number(row.value.retention_days));
         if (Number.isFinite(days)) defaults.recording_retention_days = Math.min(Math.max(days, 1), 365);
+      }
+      if (row.key === "call_recording" && row.value && row.value.transcript_retention_days !== undefined
+          && row.value.transcript_retention_days !== null) {
+        const days = Math.trunc(Number(row.value.transcript_retention_days));
+        if (Number.isFinite(days)) defaults.transcript_retention_days = Math.min(Math.max(days, 30), 3650);
       }
       if (row.key === "call_noise_suppression" && row.value && row.value.enabled !== undefined) {
         defaults.noise_suppression = row.value.enabled === true || row.value.enabled === "true";
@@ -182,6 +205,19 @@ async function createCall(client, { groupId, actor, tenantMeta = null, env = "li
       throw new AppError("CALLEE_INACTIVE", "That person's account is not active", 422);
     }
     throw new AppError("NOT_A_DIRECT_CHANNEL", "Calls are available on direct conversations", 422);
+  }
+  // Do not disturb (PR-6, audit C6): the callee has asked not to be rung.
+  // Read fail-open: a preference that cannot be read must not stop a call.
+  let prefs = {};
+  try {
+    prefs = (await repo.callPrefsFor(client, [partner.user_id]))[partner.user_id] || {};
+  } catch (err) {
+    logger.warn({ err }, "call: could not read the callee's call preferences");
+  }
+  if (prefs.do_not_disturb === true) {
+    throw new AppError("CALLEE_DND", "That person has calls on do not disturb", 409, {
+      user_message: "That person is not taking calls right now. Send them a message instead.",
+    });
   }
   await assertCalleeNotFlooded(partner.user_id, env);
 
@@ -285,7 +321,7 @@ async function createCall(client, { groupId, actor, tenantMeta = null, env = "li
 /** The callee answers. Must happen while the call is still RINGING — the
  *  five-second grace in the guide is the UI's, not the row's: a ring that
  *  timed out is NO_ANSWER and cannot be answered after. */
-async function acceptCall(client, { id, actor, tenantMeta = null, env = "live" }) {
+async function acceptCall(client, { id, actor, tenantMeta = null, env = "live", record = true }) {
   const call = await repo.findCall(client, id);
   if (!call || (call.caller_id !== actor.user_id && call.callee_id !== actor.user_id)) {
     throw new AppError("NOT_FOUND", "Call not found", 404);
@@ -293,17 +329,25 @@ async function acceptCall(client, { id, actor, tenantMeta = null, env = "live" }
   if (call.caller_id === actor.user_id) {
     throw new AppError("BAD_ROLE", "The caller cannot answer their own call", 422);
   }
+  // "Answer without recording" (PR-6, audit G5): the callee's choice is on
+  // the row, so the pipeline refuses this call's parts and neither end arms.
+  const fields = { connected_at: new Date().toISOString() };
+  if (record === false) {
+    fields.recording_declined_at = fields.connected_at;
+    fields.recording_declined_by = actor.user_id;
+  }
   const updated = await repo.transition(client, {
     callId: id,
     fromStatus: "RINGING",
     status: "IN_CALL",
-    fields: { connected_at: new Date().toISOString() },
+    fields,
   });
   if (!updated) {
     throw new AppError("CALL_MOVED_ON", "This call has already ended", 409);
   }
+  const recording = await recordingForCall(client, updated);
   const other = call.caller_id;
-  const payload = { call_id: id, by: { user_id: actor.user_id } };
+  const payload = { call_id: id, by: { user_id: actor.user_id }, recording_enabled: recording };
   rtToUser(other, "call:accepted", payload, { env });
   // The callee's own room too: their other devices stop ringing (audit E8).
   rtToUser(actor.user_id, "call:accepted", payload, { env });
@@ -319,7 +363,7 @@ async function acceptCall(client, { id, actor, tenantMeta = null, env = "live" }
   return {
     ...publicCall(updated),
     ice: await iceFor(client, updated, settings),
-    recording_enabled: await recordingEnabled(client),
+    recording_enabled: recording,
     noise_suppression: settings.noise_suppression,
   };
 }
@@ -942,6 +986,45 @@ async function turnFor(client, { id, actor }) {
   return iceFor(client, call);
 }
 
+/**
+ * "How calls are processed" (PR-6, audit G2): the outside companies that
+ * actually receive this tenant's call data, read from the configured vendors
+ * rather than hard-coded. Order is the pipeline's (owner decisions O1, O2):
+ * transcription Groq, then Google (Gemini) when Groq fails; summaries Google
+ * (Gemini), then DeepSeek as the last resort. A vendor with neither an active
+ * platform credential nor an environment key is left out: it receives nothing.
+ */
+const PROCESSORS = Object.freeze({
+  groq: { name: "Groq", country: "United States" },
+  gemini: { name: "Google (Gemini)", country: "United States" },
+  deepseek: { name: "DeepSeek", country: "China" },
+});
+
+async function vendorConfigured(vendor) {
+  const { config } = require("../../config/env");
+  const envKey = { groq: config.GROQ_API_KEY, gemini: config.GEMINI_API_KEY, deepseek: config.DEEPSEEK_API_KEY }[vendor];
+  try {
+    const cfg = await require("../../services/platform/ai-vendor.service").getConfig(vendor);
+    if (cfg && cfg.is_active !== false && cfg.api_key) return true;
+  } catch (err) {
+    logger.warn({ err, vendor }, "call: could not read a vendor for the processing disclosure");
+  }
+  return !!envKey;
+}
+
+async function processingDisclosure(client) {
+  const pick = async (vendor, role) => ((await vendorConfigured(vendor)) ? [{ vendor, role, ...PROCESSORS[vendor] }] : []);
+  const { usesGoogleStun } = require("./smartcomm.turn.service");
+  return {
+    recording_enabled: await recordingEnabled(client),
+    transcription: [...(await pick("groq", "first")), ...(await pick("gemini", "when_first_fails"))],
+    summary: [...(await pick("gemini", "first")), ...(await pick("deepseek", "last_resort"))],
+    // Connection set-up only (no audio): Google's STUN sees the callers'
+    // network addresses when no relay of the company's own is configured.
+    network: usesGoogleStun() ? [{ vendor: "google_stun", role: "connection_setup", name: "Google (STUN)", country: "United States" }] : [],
+  };
+}
+
 /** A call row as clients read it: without the relay token, and without the
  *  stored transcription error, which can hold vendor text (audit C11). */
 function publicCall(row) {
@@ -976,7 +1059,7 @@ async function getCall(client, { id, actor }) {
   if (!rows[0]) throw new AppError("NOT_FOUND", "Call not found", 404);
   // Every call row a client reads carries the recording switch, so a screen
   // opened mid-call (or a reload) knows whether to show the consent banner.
-  return { ...publicCall(rows[0]), recording_enabled: await recordingEnabled(client) };
+  return { ...publicCall(rows[0]), recording_enabled: await recordingForCall(client, rows[0]) };
 }
 
 module.exports = {
@@ -1004,6 +1087,8 @@ module.exports = {
   publicCall,
   // The one recording-flag helper (audit B14): the pipeline reads it too.
   recordingEnabled,
+  recordingForCall,
+  processingDisclosure,
   // PR-3.
   callSettings,
   settingsFor,

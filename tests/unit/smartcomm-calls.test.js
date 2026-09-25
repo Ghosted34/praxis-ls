@@ -726,7 +726,7 @@ describe("the ringing read (A13)", () => {
             }],
           };
         }
-        if (/feature_state/.test(sql)) return { rows: [{ state: "on" }] };
+        if (/feature_state/.test(sql)) return { rows: [{ state: "on", tenant_enabled: true }] };
         return { rows: [] };
       }),
     };
@@ -1067,5 +1067,113 @@ describe("day counters at each transition (audit D4)", () => {
     await service.sweep(makeClient({ store }), { tenantSlug: "acme", env: "sandbox" });
     expect(await counter("calls_no_answer", "sandbox")).toBe("1");
     expect(await counter("calls_no_answer", "live")).toBeNull();
+  });
+});
+
+/* ── PR-6: privacy defaults, consent and do not disturb ───────────────────── */
+
+describe("recording is the tenant's own opt-in (audit G1)", () => {
+  const flagClient = (state, tenantEnabled) => ({
+    query: async (sql) => (/FROM feature_state/.test(sql)
+      ? { rows: state ? [{ state, tenant_enabled: tenantEnabled }] : [] }
+      : { rows: [] }),
+  });
+
+  test("the platform feature alone does not record: the tenant must have switched it on", async () => {
+    expect(await service.recordingEnabled(flagClient("on", false))).toBe(false);
+    expect(await service.recordingEnabled(flagClient("on", null))).toBe(false);
+    expect(await service.recordingEnabled(flagClient("on", true))).toBe(true);
+    expect(await service.recordingEnabled(flagClient("off", true))).toBe(false);
+  });
+
+  test("the read names the tenant setting", async () => {
+    let sql = "";
+    await service.recordingEnabled({ query: async (s) => { sql = s; return { rows: [] }; } });
+    expect(sql).toMatch(/section = 'comms' AND s\.key = 'call_recording'/);
+    expect(sql).toMatch(/value -> 'enabled'/);
+  });
+});
+
+describe("answer without recording (audit G5)", () => {
+  const recordingOn = (store) => {
+    const base = makeClient({ store });
+    return {
+      query: async (sql, params) => (/FROM feature_state/.test(sql)
+        ? { rows: [{ state: "on", tenant_enabled: true }] }
+        : base.query(sql, params)),
+    };
+  };
+
+  test("the choice is stored on the call, the answer says not recording, and so does the caller's event", async () => {
+    const store = makeStore();
+    const call = store.insert({ groupId: G1, callerId: U1, calleeId: U2 });
+    const out = await inTenant(() => service.acceptCall(recordingOn(store), {
+      id: call.call_id, actor: { user_id: U2 }, tenantMeta: TENANT, record: false,
+    }));
+    expect(out.recording_enabled).toBe(false);
+    const row = store.calls.get(call.call_id);
+    expect(row.recording_declined_at).toBeTruthy();
+    expect(row.recording_declined_by).toBe(U2);
+    const toCaller = publishSpy.mock.calls.find((c) => c[2] === U1 && c[3] === "call:accepted");
+    expect(toCaller[4]).toMatchObject({ recording_enabled: false });
+  });
+
+  test("answering normally records as the tenant has it", async () => {
+    const store = makeStore();
+    const call = store.insert({ groupId: G1, callerId: U1, calleeId: U2 });
+    const out = await inTenant(() => service.acceptCall(recordingOn(store), {
+      id: call.call_id, actor: { user_id: U2 }, tenantMeta: TENANT,
+    }));
+    expect(out.recording_enabled).toBe(true);
+    expect(store.calls.get(call.call_id).recording_declined_at).toBeUndefined();
+  });
+
+  test("a declined call reads as not recorded for either side", async () => {
+    expect(await service.recordingForCall({ query: async () => ({ rows: [{ state: "on", tenant_enabled: true }] }) },
+      { recording_declined_at: new Date().toISOString() })).toBe(false);
+  });
+});
+
+describe("do not disturb (audit C6)", () => {
+  test("a callee with calls on do not disturb is not rung", async () => {
+    const store = makeStore();
+    const base = makeClient({ store, members: [MEMBER1] });
+    const client = {
+      query: async (sql, params) => (/FROM live\.user_preference/.test(sql)
+        ? { rows: [{ user_id: U2, key: "do_not_disturb", value: true }] }
+        : base.query(sql, params)),
+    };
+    await expect(inTenant(() => service.createCall(client, { groupId: G1, actor: { user_id: U1 }, tenantMeta: TENANT })))
+      .rejects.toMatchObject({ code: "CALLEE_DND", status: 409 });
+    expect(store.calls.size).toBe(0);
+    expect(publishSpy.mock.calls.filter((c) => c[3] === "call:ringing")).toHaveLength(0);
+  });
+
+  test("an unreadable preference does not stop the call", async () => {
+    const store = makeStore();
+    const base = makeClient({ store, members: [MEMBER1] });
+    const client = {
+      query: async (sql, params) => {
+        if (/FROM live\.user_preference/.test(sql)) throw new Error("boom");
+        return base.query(sql, params);
+      },
+    };
+    await inTenant(() => service.createCall(client, { groupId: G1, actor: { user_id: U1 }, tenantMeta: TENANT }));
+    expect(store.calls.size).toBe(1);
+  });
+});
+
+describe("how calls are processed (audit G2)", () => {
+  test("names only the vendors that are configured, in the pipeline's order", async () => {
+    const vendors = require("../../src/services/platform/ai-vendor.service");
+    const spy = jest.spyOn(vendors, "getConfig").mockImplementation(async (v) =>
+      (v === "deepseek" ? null : { vendor: v, api_key: "k", is_active: true }));
+    // The test environment sets no vendor keys, so the platform credentials decide.
+    const out = await service.processingDisclosure({ query: async () => ({ rows: [{ state: "on", tenant_enabled: true }] }) });
+    spy.mockRestore();
+    expect(out.recording_enabled).toBe(true);
+    expect(out.transcription.map((p) => [p.vendor, p.role])).toEqual([["groq", "first"], ["gemini", "when_first_fails"]]);
+    expect(out.summary.map((p) => [p.vendor, p.role])).toEqual([["gemini", "first"]]);
+    expect(out.transcription[1].name).toBe("Google (Gemini)");
   });
 });

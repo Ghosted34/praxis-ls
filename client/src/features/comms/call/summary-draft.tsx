@@ -28,7 +28,7 @@ import { Callout } from "@/components/ui/callout";
 import * as api from "@/lib/smartcomm-api";
 import { EMPTY, summaryDraftReducer } from "./summary-draft-state";
 import { provenanceLabel } from "./call-provenance";
-import { gapsSentence } from "./call-labels";
+import { gapsSentence, transcriptionReasonSentence } from "./call-labels";
 
 export function CallSummaryEditor({
   callId,
@@ -183,6 +183,9 @@ export function CallSummaryEditor({
 
       {editing && (
         <>
+          {transcriptionReasonSentence(state.reason) && (
+            <Callout tone="warn">{transcriptionReasonSentence(state.reason)}</Callout>
+          )}
           {state.gaps.length > 0 && (
             <Callout tone="warn">{gapsSentence(state.gaps)}</Callout>
           )}

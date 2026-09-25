@@ -12,7 +12,7 @@ import {
   SendIcon,
 } from "@/components/ui/icons";
 
-type Variant = "default" | "outline" | "ghost" | "destructive";
+type Variant = "default" | "outline" | "ghost" | "destructive" | "confirm";
 type Size = "default" | "sm" | "lg" | "icon";
 
 // Auto-icon: infer a leading icon from a button's verb so action buttons read as
@@ -45,6 +45,10 @@ const variants: Record<Variant, string> = {
   outline: "btn-surface",
   ghost: "hover:bg-accent hover:text-accent-foreground",
   destructive: "bg-destructive text-destructive-foreground hover:opacity-90",
+  // The affirmative counterpart of `destructive` (Answer on a ring): the ok
+  // token as the ground, the page background as the ink — AA in both themes
+  // (scripts/check-contrast.mjs measures the pair).
+  confirm: "bg-ok text-background hover:opacity-90",
 };
 const sizes: Record<Size, string> = {
   default: "h-10 px-[17px] py-2 text-[13px]",

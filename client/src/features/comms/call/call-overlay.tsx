@@ -1,52 +1,29 @@
 /**
- * The in-call overlay (Smart Comms PR-1) — the surface for the three phases a
- * call has once the ring is done: outgoing (waiting for the answer),
- * connecting (SDP/ICE in flight) and in_call (media is up).
+ * The call screen (calls audit PR-6; O4, F1–F5, F9): outgoing, connecting and
+ * in the call.
  *
- * It is a full-bleed layer, not a panel: a call is a modality, the way a
- * payment is, and the thing behind it (whatever screen the user was on) is
- * not the call. The server owns the state; this only renders it and the one
- * control that matters from anywhere — hang-up — plus mute, because a loud
- * yard and a call are the same moment.
+ * Solid and never a blocking layer on a desktop: a card at the bottom right,
+ * so the dispatcher can open the shipment they are talking about. On a phone
+ * it is a full solid screen. Either way, Minimise turns it into the docked
+ * in-call bar (active-call-bar.tsx), which survives navigation.
  *
- * The 29:00 banner is the UX half of the 30-minute cap: the SERVER sweep ends
- * the call at the cap no matter what, but a tab that is still open deserves
- * the warning first, in the language the user reads in.
+ * Every banner sits in the layout flow (F3), colours are tokens (F2), the
+ * timer's accessible name does not change every second (F9), and motion is
+ * left to the reduced-motion-aware utilities.
+ *
+ * The 29:00 line is the UX half of the 30-minute cap; the call's own clock
+ * job ends it at the cap regardless.
  */
 import { tr } from "@/lib/i18n";
-import { cn } from "@/lib/cn";
-import { PhoneDownIcon, MicIcon } from "@/components/ui/icons";
+import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { Callout } from "@/components/ui/callout";
+import { Checkbox } from "@/components/ui/checkbox";
+import { PhoneDownIcon, MicIcon, MicOffIcon, MinimizeIcon } from "@/components/ui/icons";
 import type { QualitySample } from "./call-engine";
 import type { Phase } from "./call-session";
-
-/** The dot's three states, in the house colour tokens (never colour alone —
- *  the label carries the meaning too). */
-const QUALITY_DOT: Record<QualitySample["state"], string> = {
-  good: "bg-[rgb(var(--ok))]",
-  fair: "bg-[rgb(var(--warn))]",
-  poor: "bg-[rgb(var(--bad))]",
-};
-const QUALITY_LABEL: Record<QualitySample["state"], string> = {
-  good: "Good connection",
-  fair: "Fair connection",
-  poor: "Poor connection",
-};
-
-/** The honest one-liner for a filter that did not load (§4.4/§4.7). */
-function noiseUnavailable(reason: string | null): string {
-  if (reason === "no_audio_context" || reason === "worklet_unsupported") {
-    return tr("Yard noise filter unavailable on this browser");
-  }
-  if (reason === "wasm_load_failed") return tr("Yard noise filter could not load");
-  return tr("Yard noise filter unavailable");
-}
-
-function fmt(s: number): string {
-  const m = Math.floor(s / 60);
-  const r = s % 60;
-  return `${m}:${String(r).padStart(2, "0")}`;
-}
+import { RecordingNotice, QualityLine } from "./call-parts";
+import { fmtClock, noiseUnavailable } from "./call-time";
 
 type Props = {
   name: string | null;
@@ -54,191 +31,125 @@ type Props = {
   elapsedS: number;
   warning: boolean;
   muted: boolean;
-  /** The tenant's recording switch (PR-2), as the call row reports it. */
+  /** Is this call being recorded (the tenant's switch, and not declined). */
   recordingEnabled?: boolean;
-  /** Parts of this side's audio that never reached the server, if any. The
-   *  transcript may therefore be missing the last stretch of the call, and the
-   *  person in the call is the only one who can still say so. */
+  /** Who processes the audio, for the recording notice (G2). */
+  processors?: string;
+  /** Parts of this side's audio that never reached the server. */
   recordingLost?: number;
-  /** The measured link quality (§3.4). Null-ish samples render the last state
-   *  rather than a zero that would look perfect. */
   quality?: QualitySample;
-  /** Media dropped and is being recovered — the call may still survive (§4.7). */
+  /** Media dropped and is being recovered (§4.7). */
   recovering?: boolean;
-  /** The outbound noise filter: what the user asked for and what happened. */
   noise?: { enabled: boolean; status: "on" | "off" | "unavailable"; reason: string | null };
-  /** The peer's device is offline (no socket anywhere): on iOS, a force-quit
-   *  app cannot be rung at all, and the honest thing is to say so before the
-   *  60-second silence rather than pretend. */
+  /** The other device looks offline: it may not ring (§4.8). */
   peerOffline?: boolean;
-  /** The browser refused to play the other side's voice (audit E4). */
+  /** The browser refused to play the other side's voice (E4). */
   audioBlocked?: boolean;
   onTapToHear?: () => void;
   onHangup: () => void;
   onMute: () => void;
   onToggleNoise?: (on: boolean) => void;
+  onMinimise?: () => void;
 };
 
 export function CallOverlay({
   name, phase, elapsedS, warning, muted,
-  recordingEnabled = false, recordingLost = 0,
+  recordingEnabled = false, processors = "", recordingLost = 0,
   quality, recovering = false, noise, peerOffline = false, audioBlocked = false,
-  onTapToHear, onHangup, onMute, onToggleNoise,
+  onTapToHear, onHangup, onMute, onToggleNoise, onMinimise,
 }: Props) {
+  const who = name || tr("Someone");
   const status =
     phase === "dialing" || phase === "outgoing"
       ? tr("Calling…")
       : phase === "connecting" ? tr("Connecting…") : null;
 
   return (
-    <div
+    <section
       role="dialog"
-      aria-modal="true"
-      aria-label={name ? `${tr("Voice call")} — ${name}` : tr("Voice call")}
-      className="fixed inset-0 z-[70] flex flex-col items-center justify-between bg-[rgb(var(--background)/0.97)] px-6 py-10 backdrop-blur-sm animate-fade-in"
+      aria-modal="false"
+      aria-label={`${tr("Voice call")} — ${who}`}
+      data-call-surface="screen"
+      className="fixed inset-0 z-[70] flex flex-col gap-4 overflow-y-auto bg-background p-6 text-foreground md:inset-auto md:bottom-4 md:right-4 md:max-h-[calc(100vh-2rem)] md:w-[380px] md:rounded-2xl md:border md:border-border md:p-4 md:shadow-[var(--shadow-l)]"
     >
-      {/* Header: who, and what phase the server says. */}
-      <div className="flex flex-col items-center gap-2 pt-4 text-center">
-        <p className="text-lg font-semibold text-foreground">{name || "—"}</p>
-        {status ? (
-          <p className="text-sm text-muted-foreground">{status}</p>
-        ) : (
-          <p
-            className="font-mono text-5xl tabular-nums text-foreground"
-            role="timer"
-            aria-label={fmt(elapsedS)}
-          >
-            {fmt(elapsedS)}
+      <header className="flex items-start gap-3">
+        <Avatar name={who} />
+        <div className="min-w-0 flex-1">
+          <h2 className="truncate text-base font-semibold">{who}</h2>
+          {status ? (
+            <p className="text-sm text-muted-foreground" aria-live="polite">{status}</p>
+          ) : (
+            <p className="font-mono text-2xl tabular-nums" role="timer" aria-label={tr("Call duration")}>
+              {fmtClock(elapsedS)}
+            </p>
+          )}
+        </div>
+        {onMinimise && (
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onMinimise} aria-label={tr("Minimise call")} icon={null}>
+            <MinimizeIcon width={16} height={16} />
+          </Button>
+        )}
+      </header>
+
+      {/* Banners, in the flow: none can cover another or the timer (F3). */}
+      <div className="flex flex-col gap-2">
+        {recordingEnabled && <RecordingNotice detail={processors} />}
+        {recordingLost > 0 && (
+          <Callout tone="warn">
+            {tr("Part of this call's audio could not be uploaded — the transcript may be incomplete.")}
+          </Callout>
+        )}
+        {warning && phase === "in_call" && <Callout tone="warn">{tr("1 minute left")}</Callout>}
+        {recovering && (
+          <p role="status" aria-live="polite" className="text-xs text-warn">{tr("Reconnecting…")}</p>
+        )}
+        {peerOffline && (phase === "outgoing" || phase === "connecting") && (
+          <p className="text-xs text-muted-foreground" aria-live="polite">
+            {tr("Their device looks offline — it may not ring until they open the app")}
           </p>
         )}
+        {audioBlocked && (
+          <Button size="sm" onClick={onTapToHear} icon={null} className="self-start">
+            {tr("Tap to hear")}
+          </Button>
+        )}
+        {quality && phase === "in_call" && <QualityLine quality={quality} />}
         {phase === "in_call" && (
           <p className="text-xs text-muted-foreground" aria-live="polite">
             {muted ? tr("Your microphone is muted") : tr("Your microphone is on")}
           </p>
         )}
-
-        {/* ── The quality dot (§3.4) ────────────────────────────────────────
-            Sampled from getStats(): inbound jitter, RTT, packet loss. The dot
-            is not decoration — it is the only way the person holding the phone
-            learns that the dropouts are the link and not the other person. */}
-        {quality && phase === "in_call" && (
-          <p className="flex items-center gap-1.5 text-xs text-muted-foreground" aria-live="polite">
-            <span aria-hidden className={cn("inline-block h-2 w-2 rounded-full", QUALITY_DOT[quality.state])} />
-            {tr(QUALITY_LABEL[quality.state])}
-          </p>
-        )}
-
-        {/* Media died and is being recovered. Says so, because a frozen screen
-            with a live-looking timer is the version of this moment that makes
-            people hang up on a call that was about to come back. */}
-        {recovering && (
-          <p role="status" aria-live="polite" className="text-xs text-[rgb(var(--warn))]">
-            {tr("Reconnecting…")}
-          </p>
-        )}
-
-        {/* Autoplay refused the other side's voice: one tap plays it (E4). */}
-        {audioBlocked && (
-          <Button size="sm" onClick={onTapToHear} icon={null} className="mt-2">
-            {tr("Tap to hear")}
-          </Button>
-        )}
-
-        {/* The iOS honest line (§4.8): a force-quit PWA, or a device with no
-            socket anywhere, cannot be rung. The caller deserves to know before
-            the 60 s of silence, not after it. */}
-        {peerOffline && (phase === "outgoing" || phase === "connecting") && (
-          <p className="max-w-[80vw] text-center text-xs text-muted-foreground" aria-live="polite">
-            {tr("Their device looks offline — it may not ring until they open the app")}
-          </p>
-        )}
       </div>
 
-      {/* ── The consent banner (PR-2, decision row 5) ──────────────────────
-          ALWAYS ON, on BOTH ends, for the whole call. Not a dismissible toast
-          and not a one-time notice: recording is a fact about the call that
-          each party is entitled to see the entire time it is true, and the
-          person who did NOT press dial is the one it most concerns. It renders
-          in the app language of the person reading it, independently on each
-          device — neither end's banner depends on the other end having loaded
-          anything. */}
-      {recordingEnabled && (
-        <div
-          role="status"
-          aria-live="polite"
-          className="absolute top-4 left-1/2 flex max-w-[92vw] -translate-x-1/2 items-center gap-2 rounded-full border border-border bg-card/90 px-4 py-2 text-xs text-foreground shadow-[var(--shadow-s)]"
-        >
-          <span aria-hidden className="inline-block h-2 w-2 rounded-full bg-[rgb(var(--bad))]" />
-          {tr("This call is recorded and summarized — both parties are informed")}
+      {noise && phase === "in_call" && (
+        <div className="flex flex-col gap-1">
+          <Checkbox
+            checked={noise.enabled}
+            onCheckedChange={(on) => onToggleNoise?.(on)}
+            label={tr("Yard noise filter")}
+          />
+          {noise.enabled && noise.status === "unavailable" && (
+            <p role="status" className="text-xs text-warn">{noiseUnavailable(noise.reason)}</p>
+          )}
         </div>
       )}
 
-      {recordingLost > 0 && (
-        <p
-          role="alert"
-          className="absolute top-20 left-1/2 max-w-[92vw] -translate-x-1/2 rounded-lg border border-[rgb(var(--warn))]/40 bg-[rgb(var(--warn))/0.12] px-3 py-1.5 text-center text-xs text-foreground"
-        >
-          {tr("Part of this call's audio could not be uploaded — the transcript may be incomplete.")}
-        </p>
-      )}
-
-      {/* The one-minute-left banner (29:00). Colour + text: not colour alone. */}
-      {warning && phase === "in_call" && (
-        <div
-          role="alert"
-          className="absolute top-24 left-1/2 -translate-x-1/2 rounded-lg border border-[rgb(var(--warn))]/40 bg-[rgb(var(--warn))/0.12] px-4 py-2 text-sm text-foreground animate-fade-in"
-        >
-          {tr("1 minute left")}
-        </div>
-      )}
-
-      {/* Controls: mute + hang-up. Hang-up is always reachable, full-size, and
-          red — the one button a user must never have to look for. */}
-      <div className="flex flex-col items-center gap-8 pb-6">
+      <div className="mt-auto flex items-center gap-2 md:mt-0">
         {phase === "in_call" && (
-          <button
-            type="button"
+          <Button
+            variant="outline"
             onClick={onMute}
             aria-pressed={muted}
-            aria-label={muted ? tr("Unmute") : tr("Mute")}
-            className={cn(
-              "flex h-14 w-14 items-center justify-center rounded-full border transition-colors",
-              muted
-                ? "border-[rgb(var(--brand-blue))]/50 bg-[rgb(var(--brand-blue))/0.15] text-foreground"
-                : "border-border bg-card text-foreground hover:opacity-90",
-            )}
+            className="flex-1"
+            icon={muted ? <MicOffIcon width={16} height={16} /> : <MicIcon width={16} height={16} />}
           >
-            <MicIcon width={22} height={22} />
-          </button>
+            {muted ? tr("Unmute") : tr("Mute")}
+          </Button>
         )}
-        <button
-          type="button"
-          onClick={onHangup}
-          aria-label={tr("End call")}
-          className="flex h-16 w-16 items-center justify-center rounded-full bg-[rgb(var(--bad))] text-white shadow-[var(--shadow-l)] transition-transform active:scale-95"
-        >
-          <PhoneDownIcon width={28} height={28} />
-        </button>
-        {/* The noise filter switch (§4.4): per-user, persisted, live. Shows
-            the outcome when it could not load instead of lying that it is on. */}
-        {noise && phase === "in_call" && (
-          <label className="flex items-center gap-2 text-xs text-muted-foreground">
-            <input
-              type="checkbox"
-              checked={noise.enabled}
-              onChange={(ev) => onToggleNoise?.(ev.target.checked)}
-              className="h-4 w-4 accent-[rgb(var(--brand-blue))]"
-            />
-            {tr("Yard noise filter")}
-          </label>
-        )}
-        {noise && noise.enabled && noise.status === "unavailable" && (
-          <p role="status" className="max-w-[80vw] text-center text-xs text-[rgb(var(--warn))]">
-            {noiseUnavailable(noise.reason)}
-          </p>
-        )}
-        <p className="text-xs text-muted-foreground">{tr("End call")}</p>
+        <Button variant="destructive" onClick={onHangup} className="flex-1" icon={<PhoneDownIcon width={16} height={16} />}>
+          {tr("End call")}
+        </Button>
       </div>
-    </div>
+    </section>
   );
 }

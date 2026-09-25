@@ -49,6 +49,18 @@ d("channel list partner (real schema, audit D9)", () => {
     expect(byId.get(dm).partner_last_seen_at).toBeTruthy();
     expect(byId.get(grp)).toEqual(expect.objectContaining({ partner_user_id: null, partner_avatar_ref: null, partner_last_seen_at: null }));
 
+    // PR-6 (audit G4): the partner hides their last seen.
+    await client.query(
+      `INSERT INTO live.user_preference (user_id, section, key, value) VALUES ($1, 'calls', 'hide_last_seen', 'true'::jsonb)
+       ON CONFLICT (user_id, section, key) DO UPDATE SET value = EXCLUDED.value`,
+      [partner],
+    );
+    const hidden = (await repo.listChannelsForUser(client, me, {})).find((r) => r.group_id === dm);
+    expect(hidden.partner_last_seen_at).toBeNull();
+    expect(hidden.partner_user_id).toBe(partner);
+    const colleagues = await repo.listColleagues(client, { limit: 500 });
+    expect(colleagues.find((u) => u.user_id === partner).last_seen_at).toBeNull();
+
     const plan = await client.query(
       `EXPLAIN SELECT 1 FROM comms_group g JOIN comms_member m ON m.group_id = g.group_id AND m.user_id = $1
        LEFT JOIN LATERAL (SELECT u.user_id FROM comms_member pm JOIN app_user u ON u.user_id = pm.user_id

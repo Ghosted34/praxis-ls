@@ -198,7 +198,9 @@ export function CallRecord({ callId, variant }: { callId: string; variant: "page
       <Panel title={tr("Call summary")}>
         {!recorded ? (
           <p className="text-sm text-muted-foreground">
-            {tr("This call was not recorded, so there is no summary.")}
+            {call.recording_declined_at
+              ? tr("This call was answered without recording, so there is no summary.")
+              : tr("This call was not recorded, so there is no summary.")}
           </p>
         ) : failedWithoutDraft ? (
           <p className="text-sm text-muted-foreground">

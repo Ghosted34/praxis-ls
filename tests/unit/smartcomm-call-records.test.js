@@ -26,6 +26,26 @@ jest.mock("../../src/modules/smartcomm/smartcomm.call.repo", () => {
     on().parts.find((p) => p.call_id === callId && p.side === side && p.part_index === partIndex) || null;
   const byId = (recordingId) => on().parts.find((x) => x.recording_id === recordingId);
   return {
+    // PR-6: call preferences, text retention and erasure.
+    callPrefsFor: async (c, ids) => Object.fromEntries(ids.filter((id) => (on().prefs || {})[id]).map((id) => [id, on().prefs[id]])),
+    callsWithExpiredText: async (c, { olderThanDays, limit = 500 }) => [...on().calls.values()]
+      .filter((x) => Number(x.age_days || 0) >= olderThanDays
+        && (on().transcripts.some((t) => t.call_id === x.call_id)
+          || (on().summaries.get(x.call_id) && on().summaries.get(x.call_id).draft_status !== "SENT")))
+      .slice(0, limit).map((x) => x.call_id),
+    deleteCallText: async (c, ids) => {
+      const before = on().transcripts.length;
+      on().transcripts = on().transcripts.filter((t) => !ids.includes(t.call_id));
+      let drafts = 0;
+      for (const id of ids) {
+        const s = on().summaries.get(id);
+        if (s && s.draft_status !== "SENT") { on().summaries.delete(id); drafts += 1; }
+      }
+      return { transcripts: before - on().transcripts.length, drafts };
+    },
+    callIdsForUser: async (c, userId) => [...on().calls.values()]
+      .filter((x) => x.caller_id === userId || x.callee_id === userId).map((x) => x.call_id),
+    unpurgedPartsForCalls: async (c, ids) => on().parts.filter((p) => ids.includes(p.call_id) && !p.purged_at),
     findCall: async (c, callId) => on().calls.get(callId) || null,
     listRecordingParts: async (c, callId) =>
       partsOf(callId).slice().sort((a, b) => (a.side < b.side ? -1 : a.side > b.side ? 1 : a.part_index - b.part_index)),
@@ -407,7 +427,7 @@ function client({ featureState = "on", names = [], cards = [] } = {}) {
       // `atomically` opens (and commits or rolls back) its own.
       if (/^SAVEPOINT/.test(sql)) throw Object.assign(new Error("no transaction"), { code: "25P01" });
       if (/FROM feature_state WHERE feature_key/.test(sql)) {
-        return { rows: featureState === "on" ? [{ state: "on" }] : [] };
+        return { rows: featureState === "on" ? [{ state: "on", tenant_enabled: true }] : [] };
       }
       if (/FROM app_user WHERE user_id = ANY/.test(sql)) return { rows: names };
       if (/FROM comms_call_summary s/.test(sql)) return { rows: cards };
@@ -1599,5 +1619,114 @@ describe("reads", () => {
     expect(await pipeline.pendingDrafts(client(), { groupId: GROUP, actor: caller }))
       .toEqual([expect.objectContaining({ call_id: CALL, duration_seconds: 300 })]);
     expect(await pipeline.pendingDrafts(client(), { groupId: GROUP, actor: callee })).toEqual([]);
+  });
+});
+
+/* ── PR-6: consent, quiet hours, text retention and erasure ─────────────── */
+
+describe("answer without recording and the tenant's switch (audit G1, G5)", () => {
+  const upload = (over = {}, c = client()) => pipeline.registerPart(c, {
+    callId: CALL, actor: caller, side: "caller", partIndex: 1, partCount: 1, durationMs: 118_400,
+    file: { buffer: WEBM, mimetype: "audio/webm" }, slug: "acme", tenantMeta, env: "live", ...over,
+  });
+
+  test("a part of a call answered without recording is refused, and nothing is stored", async () => {
+    mockStore.current.calls.set(CALL, endedCall({ status: "IN_CALL", ended_at: null, recording_declined_at: new Date().toISOString() }));
+    await expect(upload()).rejects.toMatchObject({ code: "RECORDING_DECLINED", status: 409 });
+    expect(storage.put).not.toHaveBeenCalled();
+    expect(mockStore.current.parts).toHaveLength(0);
+  });
+
+  test("with the tenant's own switch off, a part is refused", async () => {
+    mockStore.current.calls.set(CALL, endedCall({ status: "IN_CALL", ended_at: null }));
+    await expect(upload({}, client({ featureState: "off" }))).rejects.toMatchObject({ code: "RECORDING_OFF", status: 409 });
+    expect(storage.put).not.toHaveBeenCalled();
+  });
+
+  test("finalise marks a declined call NO_RECORDING and drafts nothing", async () => {
+    mockStore.current.calls.set(CALL, endedCall({ recording_declined_at: new Date().toISOString() }));
+    const out = await pipeline.finaliseCall({ withDb: db().withDb, callId: CALL, tenantMeta, env: "live", origin: "upload", deadline: true });
+    expect(out).toEqual({ skipped: "no_recording", reason: "declined" });
+    expect(mockStore.current.calls.get(CALL).transcription_state).toBe("NO_RECORDING");
+    expect(llm.chat).not.toHaveBeenCalled();
+  });
+
+  test("the summary read says not recorded for a declined call", async () => {
+    mockStore.current.calls.set(CALL, endedCall({ recording_declined_at: new Date().toISOString() }));
+    const out = await pipeline.getSummary(client(), { callId: CALL, actor: caller });
+    expect(out.recording_enabled).toBe(false);
+  });
+});
+
+describe("quiet hours (audit A11)", () => {
+  test("a window that crosses midnight wraps; an equal pair is no window", () => {
+    const at = (iso) => new Date(iso);
+    const w = { from: "22:00", to: "07:00" };
+    expect(pipeline.withinWindow(w, at("2026-09-25T23:30:00Z"), "UTC")).toBe(true);
+    expect(pipeline.withinWindow(w, at("2026-09-25T06:59:00Z"), "UTC")).toBe(true);
+    expect(pipeline.withinWindow(w, at("2026-09-25T07:00:00Z"), "UTC")).toBe(false);
+    expect(pipeline.withinWindow(w, at("2026-09-25T12:00:00Z"), "UTC")).toBe(false);
+    // Douala is UTC+1: 21:30Z is 22:30 there.
+    expect(pipeline.withinWindow(w, at("2026-09-25T21:30:00Z"), "Africa/Douala")).toBe(true);
+    expect(pipeline.withinWindow({ from: "09:00", to: "17:00" }, at("2026-09-25T10:00:00Z"), "UTC")).toBe(true);
+    expect(pipeline.withinWindow({ from: "08:00", to: "08:00" }, at("2026-09-25T08:00:00Z"), "UTC")).toBe(false);
+  });
+
+  test("inside the caller's quiet hours the summary notification is in-app only", async () => {
+    settled("caller", 1);
+    settled("caller", 2);
+    settled("callee", 1);
+    mockStore.current.calls.set(CALL, endedCall({ caller_parts_declared: 2, callee_parts_declared: 1 }));
+    llmReply({ summary: "Done.", key_points: [], follow_ups: [] });
+    mockStore.current.prefs = { [U1]: { quiet_hours: { from: "00:00", to: "23:59" } } };
+    await pipeline.finaliseCall({ withDb: db().withDb, callId: CALL, tenantMeta, env: "live", origin: "complete" });
+    const [, ids, opts] = notifications.notifyMany.mock.calls[0];
+    expect(ids).toEqual([U1]);
+    expect(opts.silentFor).toEqual([U1]);
+  });
+
+  test("outside them it is delivered as before", async () => {
+    settled("caller", 1);
+    settled("caller", 2);
+    settled("callee", 1);
+    mockStore.current.calls.set(CALL, endedCall({ caller_parts_declared: 2, callee_parts_declared: 1 }));
+    llmReply({ summary: "Done.", key_points: [], follow_ups: [] });
+    await pipeline.finaliseCall({ withDb: db().withDb, callId: CALL, tenantMeta, env: "live", origin: "complete" });
+    expect(notifications.notifyMany.mock.calls[0][2].silentFor).toEqual([]);
+  });
+});
+
+describe("text retention and erasure (audit G3)", () => {
+  test("text past the window goes; a sent summary stays with its message", async () => {
+    mockStore.current.calls.set("old", endedCall({ call_id: "old", age_days: 400 }));
+    mockStore.current.calls.set("sent", endedCall({ call_id: "sent", age_days: 400 }));
+    mockStore.current.calls.set("new", endedCall({ call_id: "new", age_days: 3 }));
+    mockStore.current.transcripts.push({ call_id: "old", text: "x" }, { call_id: "new", text: "y" }, { call_id: "sent", text: "z" });
+    mockStore.current.summaries.set("old", { call_id: "old", draft_status: "PENDING_REVIEW" });
+    mockStore.current.summaries.set("sent", { call_id: "sent", draft_status: "SENT" });
+    const out = await pipeline.purgeExpiredText(client(), { days: 365 });
+    expect(out).toEqual({ calls: 2, transcripts: 2, drafts: 1 });
+    expect(mockStore.current.transcripts.map((t) => t.call_id)).toEqual(["new"]);
+    expect(mockStore.current.summaries.get("sent")).toBeTruthy();
+    expect(mockStore.current.summaries.get("old")).toBeUndefined();
+  });
+
+  test("no window, nothing deleted", async () => {
+    mockStore.current.transcripts.push({ call_id: CALL, text: "x" });
+    expect(await pipeline.purgeExpiredText(client(), { days: null })).toEqual({ calls: 0, transcripts: 0, drafts: 0 });
+    expect(mockStore.current.transcripts).toHaveLength(1);
+  });
+
+  test("an admin's erasure removes one person's audio and text, and is audited with the counts", async () => {
+    mockStore.current.calls.set(CALL, endedCall());
+    mockStore.current.parts.push(part("caller", 1), part("callee", 1));
+    mockStore.current.transcripts.push({ call_id: CALL, text: "x" });
+    mockStore.current.summaries.set(CALL, { call_id: CALL, draft_status: "PENDING_REVIEW" });
+    const c = client();
+    const out = await pipeline.eraseUserCallRecords(c, { userId: U2, actor: { user_id: U1 } });
+    expect(out).toEqual({ user_id: U2, calls: 1, audio_parts: 2, audio_failed: 0, transcripts: 1, drafts: 1 });
+    expect(storage.delete).toHaveBeenCalledTimes(2);
+    expect(mockStore.current.parts.every((p) => p.purged_at)).toBe(true);
+    expect(c.seen.some((q) => /audit|immutable/i.test(q))).toBe(true);
   });
 });

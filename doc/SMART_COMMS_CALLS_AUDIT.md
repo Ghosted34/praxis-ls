@@ -1998,8 +1998,8 @@ factual. The next agent relies on them.
 | PR-2 | MERGED | `claude/wizardly-ptolemy-dyazt1` | #477 | 2026-09-24 | Per-part recorder and transcription, finalise, race-free drafts, pinned draft (O3), N3; migration 14050 |
 | PR-3 | MERGED | `claude/tender-davinci-v1eh8y` | #479 | 2026-09-24 | TURN, credentials, relay, IDOR, rate limits; migration 14060; null-payload crash in the relay |
 | PR-4 | MERGED | `claude/smart-comms-pr-4-9e8q91` | #481 | 2026-09-24 | Perfect negotiation, rings on every device (push at dial, re-alerts, cancel everywhere), ringing read, Answer/Decline, device check + Test ring, noise default off, no screen wake lock; TURN relay-to-relay and TLS on 443 (owner's Step 0/0b); migration 14070 |
-| PR-5 | OPEN | `claude/smart-comms-pr-5-jzgkt1` | #482 | — | Per-call clocks, Redis presence, fair/limited transcription, fair ring queue, metrics from counters, latency alarm, bounded queries, env in every room; rate-limit memory fallback, sandbox status mirror; `scripts/load-calls.js`; migration 14080 |
-| PR-6 | NOT STARTED | — | — | — | |
+| PR-5 | MERGED | `claude/smart-comms-pr-5-jzgkt1` | #482 | 2026-09-25 | Per-call clocks, Redis presence, fair/limited transcription, fair ring queue, metrics from counters, latency alarm, bounded queries, env in every room; rate-limit memory fallback, sandbox status mirror; `scripts/load-calls.js`; migration 14080 |
+| PR-6 | IN REVIEW | `claude/smart-comms-pr-5-jzgkt1` (restarted from `main` after #482) | #483 | — | Solid ring card, call screen, docked bar and thread strip (O4); answer without recording; recording is the tenant's opt-in; processors named; DND, quiet hours, hide last seen; transcript retention and erasure; N4; F10 gating; migration 14090 |
 | PR-7 | NOT STARTED | — | — | — | |
 | Plan update (O1–O5, A12–A15, N1–N5, PR-7) | MERGED | `claude/integration-audit-report-u6twc5` | #475 | 2026-09-24 | Owner decisions, ringing findings, PR-1 findings, test calls |
 | Chat UI redesign (**parallel, not a plan PR**) | MERGED | `claude/message-ui-redesign-gzxylv` | #478 | 2026-09-24 | Cosmetic chat-thread restyle. Touches `team-chat.tsx` **header + sidebar + thread scroller only** — NOT the composer area (PR-2) and adds no feature gating (PR-6). See the log entry below before PR-2/PR-6. |
@@ -3005,3 +3005,124 @@ premium, WhatsApp-grade finish. Branch `claude/message-ui-redesign-gzxylv`
 - Gates: see the PR body (`npm run ci`, the integration suites on local
   Postgres with ffmpeg, the load script). Nothing touched production; the
   §0 SQL was not run.
+
+### PR-6 · 2026-09-25 · OPEN (#483)
+- Fixed, each with the test that proves it (written first; they fail on
+  PR-5's code):
+  - F1, F2, F3, F9 (O4): the ring card (`incoming-ring.tsx`), the call screen
+    (`call-overlay.tsx`), the docked bar (`active-call-bar.tsx`, new) and the
+    thread strip (`thread-call-strip.tsx`, new) are solid `bg-background` /
+    `bg-card` with token borders: no `backdrop-filter`, no alpha surfaces
+    (also removed from `call-summary-card.tsx`), no `--brand-blue`, no
+    `text-white`. Answer is the new `confirm` Button variant (`--background`
+    on `--ok`, added to `check-contrast.mjs`: 5.27 light / 7.20 dark), hang-up
+    is `destructive`. Banners are in the layout flow; animation is
+    `motion-safe:` only; the timer has a fixed label ("Call duration"); an
+    unknown caller reads "Someone", never an empty name.
+    `call-surfaces.test.tsx` (incl. axe), `thread-call-strip.test.tsx`.
+  - F4 (O4): Minimise turns the call screen into the docked bar, which lives
+    in the app shell and survives navigation; desktop never covers the app
+    (ring card top-right 380 px, call panel bottom-right); a phone's ring can
+    expand to a full solid screen. In the caller's open conversation the ring
+    strip replaces the card, so there is one Answer button, and becomes the
+    live strip once answered (`comms-live.tsx` hides the card and the bar for
+    that thread); the strip's **Open the call** shows the full call screen
+    and the strip steps aside while it is open, so End call is never on
+    screen twice (`call-view.ts`). The ring card is an `alertdialog`.
+    `thread-call-strip.test.tsx`, and `e2e/call.spec.ts` (updated for the
+    in-thread strip and the capability read; a new case for the in-thread
+    ring; 65/65 e2e locally).
+  - F5: `Checkbox` for every checkbox (call screen noise filter, Settings →
+    Calls), `Button` with an icon for every "×"/"✕" glyph. `useConfirm` for
+    Discard was already PR-2's.
+  - F6, G5: the ring states the call will be recorded and names who processes
+    it; **Answer without recording** sends `POST /calls/:id/accept`
+    `{record:false}`; the server stamps `comms_call.recording_declined_at/_by`,
+    tells both sides `recording_enabled: false`, and refuses the call's parts
+    (409 `RECORDING_DECLINED`), so neither recorder arms and nothing is sent
+    to a vendor. `smartcomm-calls.test.js` ("answer without recording"),
+    `smartcomm-call-records.test.js`, `call-session.test.ts`,
+    `calls-screens.test.tsx` (the call page says it was answered without
+    recording).
+  - F7, F8: key points and follow-ups were already editable and removable
+    with `DateField` due dates (PR-2); the posted card shows due dates with
+    `dateDmy`. Verified, not changed.
+  - F10: the phone icon (header, ⋮ menu, InfoPane) renders only when
+    `GET /smartcomm/calls/capabilities` says `can_dial` (calls feature on AND
+    MOD-64 create); the Comms hub's Calls tab only while calls are on;
+    Settings → Calls tells a person without MOD-70 edit that the company half
+    is read-only instead of showing the 403. `team-chat.test.tsx` (F10 cases),
+    `hub-calls-tab.test.tsx`, `calls-page.test.tsx`,
+    `smartcomm-call-routes.test.js` (capabilities).
+  - C6 (do not disturb), A11 (quiet hours): `/me/preferences/calls` gains
+    `doNotDisturb`, `quietHours {from,to}` and `hideLastSeen`. A dial to a
+    DND callee is refused with 409 `CALLEE_DND` before anything rings (the
+    read fails open). Inside quiet hours, in the callee's time zone, a summary
+    notification is in-app only (`notifyMany` `silentFor`; never for
+    security/forced). `smartcomm-calls.test.js`, `user-preference.test.js`,
+    `notification-delivery-reliability.test.js`,
+    `smartcomm-call-records.test.js` ("quiet hours").
+  - G1: recording is the tenant's opt-in, `comms.call_recording.enabled`
+    (migration 14090), read beside the `call_recording` feature; both must be
+    on. Settings → Calls has the switch (MOD-70 edit). Every save writes the
+    merged `call_recording` value — the old page's retention save replaced
+    the whole value (a defect found here: it would have dropped `enabled`).
+    `calls-page.test.tsx`, `smartcomm-calls.test.js`.
+  - G2: `GET /smartcomm/calls/processing` lists the vendors that are
+    configured (Groq, then Google (Gemini) when Groq fails; Google (Gemini),
+    then DeepSeek as last resort; Google STUN when no TURN of our own). The
+    ring's consent line and Settings → Calls → "How calls are processed" read
+    it. New `doc/CALLS_DATA_PROCESSING.md` is the sub-processor annex the
+    tenant DPA cites. `smartcomm-call-routes.test.js`, `calls-page.test.tsx`.
+  - G3: `transcript_retention_days` (30–3650, absent = keep) and the daily
+    record sweep deletes transcripts, live notes and unsent drafts past it;
+    `POST /smartcomm/calls/erase-user` (MOD-70 edit) erases one person's call
+    records for both sides, audited as `CALL_RECORDS_ERASED`, behind a
+    destructive `useConfirm` in Settings → Calls.
+    `smartcomm-call-records.test.js`, `calls-page.test.tsx`.
+  - G4: "Hide my last seen" removes the person's last-seen from the channel
+    list and colleagues (`smartcomm-channel-list-sql.test.js`,
+    `smartcomm-channel-partner.test.js`). Presence was already DIRECT-only
+    (PR-5).
+  - N4: the pinned draft shows the transcription reason
+    (`transcriptionReasonSentence`, incl. `OVER_BUDGET`), the posted card
+    says when part of the call could not be transcribed, and a failure mid
+    call is a toast. The call page already said so (PR-2).
+- Not fixed / deferred:
+  - H2: the manual matrix is the owner's (device runs). §5c of
+    `doc/SMART_COMMS_CALLS_MANUAL_MATRIX.md` adds rows S1–S13 for this PR.
+    The gate is held in code: recording is off for every new tenant.
+  - Light/dark visual check: done in jsdom (tokens only, contrast gate), not
+    on a device; it is matrix row S13.
+- Deviations from §3:
+  - G1 is a tenant setting, not a catalogue default. Changing the
+    `call_recording` catalogue default re-projects every existing tenant on
+    the next migrate (`provisioning.projectFeatures`), which is the owner's
+    sign-off step, not a migration's. 14090 turns it off for new tenants
+    only (a tenant with no users at migrate time). **Owner, to run after
+    signing off (not run here):**
+    `UPDATE setting SET value = value || '{"enabled": false}'::jsonb WHERE section = 'comms' AND key = 'call_recording';`
+    per tenant schema, live and sandbox.
+  - `Switch` and `IconButton` do not exist in `components/ui`; `Checkbox` and
+    `Button size="icon"` with an `aria-label` are what FRONTEND_GUIDE §3.5
+    offers. No new primitive.
+  - The "Call audio" tab of F10 no longer exists (PR-3 moved it to Settings →
+    Calls); F10 is applied there.
+  - The tenant DPA is not in the repo; the annex is.
+  - pixie-girl-hub could not be cloned in this session (the request was
+    refused by the session's permission policy); the layout follows §3's
+    written description of it.
+  - Erasure leaves summaries already sent to a conversation (they are
+    messages) and runs in the environment it is called in.
+- Schema: migration 14090 (`comms_call.recording_declined_at`,
+  `recording_declined_by`; `comms.call_recording.enabled` seeded). New
+  routes `GET /calls/capabilities`, `GET /calls/processing`,
+  `POST /calls/erase-user`; accept takes `{record?}`. New AppErrors
+  `CALLEE_DND`, `RECORDING_DECLINED`, `RECORDING_OFF`. New audit event
+  `CALL_RECORDS_ERASED`. AI manifest: documented as not tools (the erasure
+  is deliberately a person's decision).
+- For the next PR (PR-7): `recordingForCall(client, call)` is the one
+  question "is this call recorded"; a test call should go through it. The
+  capability read is cached per session in `call-capabilities.ts`
+  (`resetCallCapabilities` on logout).
+- Gates: see the PR body. Nothing touched production; no owner SQL was run.

@@ -211,6 +211,12 @@ d("a recorded call, end to end on a real schema (audit H1)", () => {
       `INSERT INTO feature_state (feature_key, state, source) VALUES ('call_recording', 'on', 'default')
        ON CONFLICT (feature_key) DO UPDATE SET state = 'on'`,
     );
+    // PR-6 (audit G1): recording is also the tenant's own opt-in, off for a
+    // tenant provisioned after 14090 (CI's is), so switch it on as an admin would.
+    await q(
+      `INSERT INTO setting (section, key, value) VALUES ('comms', 'call_recording', '{"retention_days": 30, "enabled": true}'::jsonb)
+       ON CONFLICT (section, key) DO UPDATE SET value = setting.value || '{"enabled": true}'::jsonb`,
+    );
 
     app = express();
     app.use(express.json());

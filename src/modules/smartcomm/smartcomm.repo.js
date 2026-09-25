@@ -22,8 +22,13 @@ const PARTNER_SQL =
   "partner.last_seen_at AS partner_last_seen_at";
 /** One lateral join per DIRECT row, not three correlated subqueries (calls
  *  audit D9). A group channel gets no partner (the WHERE is on g.kind). */
+/** "Hide my last seen" (PR-6, audit G4) is a live preference: honoured here. */
+const HIDDEN_LAST_SEEN =
+  "EXISTS (SELECT 1 FROM live.user_preference hp WHERE hp.user_id = pm.user_id " +
+  "  AND hp.section = 'calls' AND hp.key = 'hide_last_seen' AND hp.value = 'true'::jsonb)";
 const PARTNER_JOIN =
-  "LEFT JOIN LATERAL (SELECT u.user_id, u.avatar_ref, p.last_seen_at " +
+  "LEFT JOIN LATERAL (SELECT u.user_id, u.avatar_ref, " +
+  "  CASE WHEN " + HIDDEN_LAST_SEEN + " THEN NULL ELSE p.last_seen_at END AS last_seen_at " +
   "  FROM comms_member pm JOIN app_user u ON u.user_id = pm.user_id " +
   "  LEFT JOIN comms_user_presence p ON p.user_id = pm.user_id " +
   "  WHERE g.kind = 'DIRECT' AND pm.group_id = g.group_id AND pm.user_id <> $1 LIMIT 1) partner ON true ";
@@ -376,7 +381,11 @@ async function deleteQuickReply(client, id, userId) {
 async function listColleagues(client, q = {}) {
   const { limit, offset } = page(q);
   return (await client.query(
-    `SELECT u.user_id, u.full_name, u.email, u.status, u.avatar_ref, p.last_seen_at
+    `SELECT u.user_id, u.full_name, u.email, u.status, u.avatar_ref,
+            CASE WHEN EXISTS (SELECT 1 FROM live.user_preference hp WHERE hp.user_id = u.user_id
+                               AND hp.section = 'calls' AND hp.key = 'hide_last_seen'
+                               AND hp.value = 'true'::jsonb)
+                 THEN NULL ELSE p.last_seen_at END AS last_seen_at
        FROM app_user u
        LEFT JOIN comms_user_presence p ON p.user_id = u.user_id
       WHERE u.status = 'ACTIVE'

@@ -66,7 +66,7 @@ function TranscriptPanel({ callId, onClose }: { callId: string; onClose: () => v
   }, [callId]);
 
   return (
-    <div className="mt-2 rounded-lg border border-border bg-background/60 p-3">
+    <div className="mt-2 rounded-lg border border-border bg-background p-3">
       <div className="flex items-center justify-between">
         <p className="text-micro font-medium text-muted-foreground">
           {tr("Transcript")}
@@ -124,7 +124,7 @@ export function CallSummaryCardView({
 
   if (!card || !id) {
     return (
-      <div className="rounded-xl border border-border bg-card/60 px-3 py-2 text-xs text-muted-foreground">
+      <div className="rounded-xl border border-border bg-card px-3 py-2 text-xs text-muted-foreground">
         {label || tr("Call summary")} — {tr("this record is no longer available")}
       </div>
     );
@@ -134,7 +134,7 @@ export function CallSummaryCardView({
   const when = card.ended_at ? dateDmy(card.ended_at) : null;
 
   return (
-    <div className="rounded-xl border border-border bg-card/60 px-3 py-2">
+    <div className="rounded-xl border border-border bg-card px-3 py-2">
       <div className="flex items-center justify-between gap-2">
         <p className="text-xs font-semibold text-foreground">{tr("Call summary")}</p>
         <p className="text-micro text-muted-foreground">

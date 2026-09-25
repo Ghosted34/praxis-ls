@@ -150,6 +150,11 @@ const schemas = {
   // Clients built before PR-3 send a `reason`; it is accepted and ignored
   // (audit B9: the server decides how a call ended).
   callHangup: z.object({ reason: z.string().max(32).optional() }).strict(),
+  // PR-6 (audit G5): `record: false` answers without recording. Absent means
+  // record as the tenant has it; a client from before PR-6 sends no body.
+  callAccept: z.object({ record: z.boolean().optional() }).strict(),
+  // PR-6 (audit G3): whose call records to erase.
+  callEraseUser: z.object({ user_id: z.string().uuid() }).strict(),
   // A test ring goes to one of the caller's OWN subscriptions, named by its
   // push endpoint (the service looks it up under the caller's user id).
   callTestRing: z.object({ endpoint: z.string().url().max(2048) }).strict(),
@@ -210,4 +215,4 @@ const schemas = {
   callSummaryRegenerate: z.object({ language: z.enum(["en", "fr"]) }).strict(),
 };
 const mw = (k) => (req, _res, next) => { const p = schemas[k].safeParse(req.body); if (!p.success) return next(new AppError("VALIDATION_ERROR", "Invalid body", 422, p.error.flatten().fieldErrors)); req.body = p.data; return next(); };
-module.exports = { transcribe: mw("transcribe"), callRecording: mw("callRecording"), callRecordingComplete: mw("callRecordingComplete"), callSummarySend: mw("callSummarySend"), callSummaryRegenerate: mw("callSummaryRegenerate"), linkPreview: mw("linkPreview"), scheduled: mw("scheduled"), reschedule: mw("reschedule"), mediaUpload: mw("mediaUpload"), promote: mw("promote"), channel: mw("channel"), member: mw("member"), message: mw("message"), editMessage: mw("editMessage"), react: mw("react"), draft: mw("draft"), quickReply: mw("quickReply"), flag: mw("flag"), emailTest: mw("emailTest"), emailDnsCheck: mw("emailDnsCheck"), emailTestSend: mw("emailTestSend"), quickReplyPatch: mw("quickReplyPatch"), whatsappConfig: mw("whatsappConfig"), emailConfig: mw("emailConfig"), callCreate: mw("callCreate"), callHangup: mw("callHangup"), callTestRing: mw("callTestRing"), schemas };
+module.exports = { transcribe: mw("transcribe"), callRecording: mw("callRecording"), callRecordingComplete: mw("callRecordingComplete"), callSummarySend: mw("callSummarySend"), callSummaryRegenerate: mw("callSummaryRegenerate"), linkPreview: mw("linkPreview"), scheduled: mw("scheduled"), reschedule: mw("reschedule"), mediaUpload: mw("mediaUpload"), promote: mw("promote"), channel: mw("channel"), member: mw("member"), message: mw("message"), editMessage: mw("editMessage"), react: mw("react"), draft: mw("draft"), quickReply: mw("quickReply"), flag: mw("flag"), emailTest: mw("emailTest"), emailDnsCheck: mw("emailDnsCheck"), emailTestSend: mw("emailTestSend"), quickReplyPatch: mw("quickReplyPatch"), whatsappConfig: mw("whatsappConfig"), emailConfig: mw("emailConfig"), callCreate: mw("callCreate"), callHangup: mw("callHangup"), callAccept: mw("callAccept"), callEraseUser: mw("callEraseUser"), callTestRing: mw("callTestRing"), schemas };

@@ -31,10 +31,13 @@ module.exports = async function commsCallRecordSweep(job) {
       // that shortens its window sees the change on the next daily tick, and
       // clamped by callSettings so a typo (900 days, or 0) cannot turn a
       // retention sweep into either a no-op or an accidental purge.
-      const { recording_retention_days: days } = await callService.settingsFor(c);
+      const { recording_retention_days: days, transcript_retention_days: textDays } = await callService.settingsFor(c);
       const result = await pipeline.purgeExpiredAudio(c, { days });
       logger.info({ ...result, days, env, tenant: tenantMeta.slug }, "call audio retention applied");
-      return result;
+      // PR-6 (audit G3): the tenant's text window, when it has chosen one.
+      const text = textDays ? await pipeline.purgeExpiredText(c, { days: textDays }) : null;
+      if (text) logger.info({ ...text, days: textDays, env, tenant: tenantMeta.slug }, "call text retention applied");
+      return text ? { ...result, text } : result;
     }
 
     const result = await pipeline.sweepStalled(c, { tenantMeta, env });

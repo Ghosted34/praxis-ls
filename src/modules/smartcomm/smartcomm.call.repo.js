@@ -245,6 +245,29 @@ async function touchPresence(client, userId) {
   return rows[0];
 }
 
+/**
+ * Call preferences for some users (PR-6): do not disturb, quiet hours, hide
+ * last seen. Read from LIVE, like `directPartner`'s status check: preferences
+ * are identity-level (preference.controller uses the identity database), and a
+ * sandbox call must honour a person's real choice. `{ uid: { key: value } }`.
+ */
+async function callPrefsFor(client, userIds) {
+  const ids = [...new Set(userIds.filter(Boolean))];
+  if (!ids.length) return {};
+  const { rows } = await client.query(
+    `SELECT user_id, key, value FROM live.user_preference
+      WHERE section = 'calls' AND user_id = ANY($1::uuid[])
+        AND key = ANY($2::text[])`,
+    [ids, ["do_not_disturb", "quiet_hours", "hide_last_seen"]],
+  );
+  const out = {};
+  for (const r of rows) {
+    out[r.user_id] = out[r.user_id] || {};
+    out[r.user_id][r.key] = r.value;
+  }
+  return out;
+}
+
 /** The people this user has a DIRECT conversation with: who hears their
  *  presence, and whose presence their snapshot carries. */
 async function directContacts(client, userId) {
@@ -473,6 +496,52 @@ async function partsAwaitingPurge(client, { olderThanDays, limit = 500, skip = [
      ORDER BY r.created_at
      LIMIT $2`,
     [olderThanDays, limit, skip],
+  );
+  return rows;
+}
+
+/** Calls whose text is past the retention window (PR-6, G3): ended long
+ *  enough ago and still holding a transcript or an unsent draft. */
+async function callsWithExpiredText(client, { olderThanDays, limit = 500 }) {
+  const { rows } = await client.query(
+    `SELECT c.call_id FROM comms_call c
+      WHERE COALESCE(c.ended_at, c.started_at) <= now() - make_interval(days => $1::int)
+        AND (EXISTS (SELECT 1 FROM comms_call_transcript t WHERE t.call_id = c.call_id)
+             OR EXISTS (SELECT 1 FROM comms_call_summary s WHERE s.call_id = c.call_id
+                         AND s.draft_status <> 'SENT'))
+      ORDER BY c.started_at
+      LIMIT $2`,
+    [olderThanDays, limit],
+  );
+  return rows.map((r) => r.call_id);
+}
+
+/** Delete a set of calls' transcripts and unsent drafts. A SENT summary is a
+ *  message in the conversation and stays. */
+async function deleteCallText(client, callIds) {
+  const t = await client.query("DELETE FROM comms_call_transcript WHERE call_id = ANY($1::uuid[])", [callIds]);
+  // The retired browser live log (PR-1) is text about the call too.
+  await client.query("DELETE FROM comms_call_live_log WHERE call_id = ANY($1::uuid[])", [callIds]);
+  const s = await client.query(
+    "DELETE FROM comms_call_summary WHERE call_id = ANY($1::uuid[]) AND draft_status <> 'SENT'",
+    [callIds],
+  );
+  return { transcripts: t.rowCount || 0, drafts: s.rowCount || 0 };
+}
+
+async function callIdsForUser(client, userId) {
+  const { rows } = await client.query(
+    "SELECT call_id FROM comms_call WHERE caller_id = $1 OR callee_id = $1",
+    [userId],
+  );
+  return rows.map((r) => r.call_id);
+}
+
+async function unpurgedPartsForCalls(client, callIds) {
+  const { rows } = await client.query(
+    `SELECT recording_id, vault_ref FROM comms_call_recording
+      WHERE call_id = ANY($1::uuid[]) AND purged_at IS NULL`,
+    [callIds],
   );
   return rows;
 }
@@ -786,6 +855,11 @@ module.exports = {
   listCallsForUser,
   touchPresence,
   directContacts,
+  callPrefsFor,
+  callsWithExpiredText,
+  deleteCallText,
+  callIdsForUser,
+  unpurgedPartsForCalls,
   lastSeen,
   // The ring half (PR-3 ack; PR-4 pushes and the ringing read).
   markRingAck,

@@ -17,6 +17,8 @@ import { useResource, errMsg } from "@/lib/use-resource";
 import { useAuth } from "@/app/auth/auth-context";
 import { cn } from "@/lib/cn";
 import { PlusIcon, PhoneIcon, MoreVerticalIcon, InfoIcon } from "@/components/ui/icons";
+import { ThreadCallStrip } from "./call/thread-call-strip";
+import { useCallCapabilities } from "./call/call-capabilities";
 import { DropdownMenu, DropdownItem } from "@/components/ui/dropdown-menu";
 import { useChatAppearance } from "./chat/chat-appearance-store";
 import { ChatAppearanceButton } from "./chat/chat-appearance";
@@ -486,6 +488,7 @@ function PartnerPresence({
 }
 
 function InfoPane({ channel }: { channel: api.Channel | null }) {
+  const canDial = useCallCapabilities()?.can_dial === true;
   if (!channel)
     return (
       <div className="flex flex-1 items-center justify-center p-6 text-center micro">
@@ -511,15 +514,16 @@ function InfoPane({ channel }: { channel: api.Channel | null }) {
               lastSeenAt={channel.partner_last_seen_at}
             />
             {/* The member-area dial affordance (the top one lives on the
-                thread header) — the same action, the same row it sits on. */}
-            <button
+                thread header) — the same action, the same row it sits on.
+                Only where calls are on and this person may dial (F10). */}
+            {canDial && <button
               type="button"
               onClick={() => void dial(channel.group_id, channel.name)}
               className="mt-1 inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-[12px] text-foreground transition-colors hover:bg-accent"
             >
               <PhoneIcon width={14} height={14} />
               {tr("Start a voice call")}
-            </button>
+            </button>}
           </>
         )}
       </div>
@@ -874,6 +878,8 @@ function Thread({
 }) {
   const ch = useResource(() => api.getChannel(channelId), [channelId]);
   const thread = useResource(() => api.getThread(channelId), [channelId]);
+  // The phone icon only where calls are on and this person may dial (F10).
+  const canDial = useCallCapabilities()?.can_dial === true;
   // The caller's call-summary drafts for this conversation, pinned above the
   // composer (owner decision O3). `?summary=<call>` opens one: that is where
   // the summary notification lands.
@@ -1040,7 +1046,7 @@ function Thread({
         {/* The call icon stays out front (WhatsApp keeps the phone on the header),
             as a clean circular icon button. The partner is resolved server-side
             from the channel; the UI only names the channel (guide D8). */}
-        {ch.data?.kind === "DIRECT" && (
+        {ch.data?.kind === "DIRECT" && canDial && (
           <button
             type="button"
             className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -1078,7 +1084,7 @@ function Thread({
               {tr("Conversation info")}
             </span>
           </DropdownItem>
-          {ch.data?.kind === "DIRECT" && (
+          {ch.data?.kind === "DIRECT" && canDial && (
             <DropdownItem
               onSelect={() => {
                 if (ch.data) void dial(ch.data.group_id, ch.data.name);
@@ -1092,6 +1098,9 @@ function Thread({
           )}
         </DropdownMenu>
       </div>
+
+      {/* The call of this conversation: the ring banner, then the live strip (O4). */}
+      <ThreadCallStrip groupId={channelId} />
 
       <div
         ref={scrollerRef}

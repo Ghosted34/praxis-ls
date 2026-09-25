@@ -72,3 +72,22 @@ export function gapsSentence(gaps: CallTranscriptGap[]): string {
     .join(", ");
   return tv("Not transcribed: {{spans}}. The draft says so; an administrator can re-run those minutes from the call record.", { spans });
 }
+
+/**
+ * Why a call's transcript is incomplete, in words (audit N4). The server sends
+ * a code (C11), never a provider's own message.
+ */
+export function transcriptionReasonSentence(reason: string | null | undefined): string | null {
+  switch (reason) {
+    case "SIDE_NOT_RECORDED":
+      return tr("One side of this call was not recorded, so the transcript has only the other side.");
+    case "PARTS_NOT_TRANSCRIBED":
+      return tr("Part of this call could not be transcribed.");
+    case "OVER_BUDGET":
+      return tr("Part of this call was not transcribed: your company's daily call transcription allowance was used up.");
+    case "TRANSCRIPTION_FAILED":
+      return tr("This call could not be transcribed.");
+    default:
+      return null;
+  }
+}

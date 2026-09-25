@@ -32,14 +32,21 @@ import { unlockAudio, playNotifSound, isAudioBlocked } from "@/lib/notif-sound";
 import {
   useCall, answer, decline, hangup, setMuted, setNoise, wireCallSocket, myUserId,
   clearSummaryNotice, initCallDeepLink, redial, dismissRedial, resumeAudio, clearElsewhere,
+  clearTranscriptionIssue,
 } from "./call/call-session";
+import { transcriptionReasonSentence } from "./call/call-labels";
 import { parseSummaryLink } from "./call/ring-surface";
 import { CallOverlay } from "./call/call-overlay";
+import { ActiveCallBar } from "./call/active-call-bar";
+import { useCallProcessing, processorsSentence, resetCallCapabilities } from "./call/call-capabilities";
 import { IncomingRing } from "./call/incoming-ring";
 import { CallRingPrompt } from "./call/call-ring-prompt";
 import { startRingingTitle, stopRingingTitle } from "./call/ring-title";
 import { acquireCallKeepAlive, releaseWakeLock } from "./call/wake-keepalive";
 import { setOnline, useOnline, replaceOnline } from "./presence";
+import { Button } from "@/components/ui/button";
+import { XIcon } from "@/components/ui/icons";
+import { useCallView, setCallView } from "./call/call-view";
 
 /** 60 s client-side throttle for the seen beat — the server upserts either
  *  way, so the throttle is about honesty (and load), not correctness. */
@@ -68,6 +75,21 @@ export function CommsLive() {
       : call.call.caller_id
     : null;
   const peerOnline = useOnline(peerId);
+  // PR-6 (O4): the call's own conversation, when it is the open screen, shows
+  // the ring banner / live strip itself (thread-call-strip.tsx).
+  const openChannel = location.pathname === "/comms"
+    ? new URLSearchParams(location.search).get("channel")
+    : null;
+  const inThread = !!openChannel && call.call?.group_id === openChannel;
+  // Full call screen, docked bar, or — in the call's own conversation — the
+  // thread strip alone (call-view.ts). A new call starts at "auto".
+  const view = useCallView();
+  React.useEffect(() => {
+    if (call.phase === "idle" || call.phase === "ended") setCallView("auto");
+  }, [call.phase]);
+  const showFull = view === "full" || (view === "auto" && !inThread);
+  const processing = useCallProcessing(call.recordingEnabled && call.phase !== "idle" && call.phase !== "ended");
+  const processors = processorsSentence(processing);
 
   /* ── Socket boot: connect, wire presence + calls, start the beat ─────── */
   React.useEffect(() => {
@@ -133,6 +155,7 @@ export function CommsLive() {
       // Logout: the socket is authenticated as THIS user, and the next user
       // on this browser (shift change) must not inherit the old user's ring.
       disconnectCommsSocket();
+      resetCallCapabilities();
     };
   }, [authed]);
 
@@ -217,6 +240,16 @@ export function CommsLive() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [call.summaryNotice]);
 
+  /* ── A call's transcript is incomplete (audit N4: set, never shown) ──── */
+  React.useEffect(() => {
+    const issue = call.transcriptionIssue;
+    if (!issue) return;
+    const line = transcriptionReasonSentence(issue.reason);
+    if (line) toast.info(line);
+    clearTranscriptionIssue();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [call.transcriptionIssue]);
+
   /* ── Dial failures the user should hear (busy, no mic, …) ────────────── */
   React.useEffect(() => {
     if (call.phase !== "idle" || !call.lastError) return;
@@ -230,11 +263,14 @@ export function CommsLive() {
 
   return (
     <>
-      {call.phase === "incoming" && (
+      {call.phase === "incoming" && !inThread && (
         <IncomingRing
           name={call.peerName}
           secondsLeft={call.ringSecondsLeft}
+          recordingEnabled={call.recordingEnabled}
+          processing={processing}
           onAccept={() => void answer()}
+          onAcceptWithoutRecording={() => void answer({ record: false })}
           onDecline={() => void decline()}
           soundBlocked={ringSoundBlocked}
           onEnableSound={() => {
@@ -243,10 +279,27 @@ export function CommsLive() {
           }}
         />
       )}
-      {(call.phase === "dialing" || call.phase === "outgoing" || call.phase === "connecting" || call.phase === "in_call") && (
+      {(call.phase === "dialing" || call.phase === "outgoing" || call.phase === "connecting" || call.phase === "in_call")
+        && view === "bar" && !inThread && (
+        <ActiveCallBar
+          name={call.peerName}
+          phase={call.phase}
+          elapsedS={call.elapsedS}
+          muted={call.muted}
+          recordingEnabled={call.recordingEnabled}
+          onMute={() => setMuted(!call.muted)}
+          onHangup={() => void hangup()}
+          onExpand={() => setCallView("full")}
+          onOpenConversation={call.call ? () => navigateRef.current(`/comms?channel=${call.call?.group_id}`) : undefined}
+        />
+      )}
+      {(call.phase === "dialing" || call.phase === "outgoing" || call.phase === "connecting" || call.phase === "in_call")
+        && showFull && (
         <CallOverlay
           name={call.peerName}
           phase={call.phase}
+          processors={processors}
+          onMinimise={() => setCallView("bar")}
           audioBlocked={call.audioBlocked}
           onTapToHear={() => void resumeAudio()}
           elapsedS={call.elapsedS}
@@ -273,47 +326,33 @@ export function CommsLive() {
       {call.elsewhere && call.phase === "idle" && (
         <div
           role="status"
-          className="fixed bottom-4 left-1/2 z-[64] flex w-[92vw] max-w-md -translate-x-1/2 items-center gap-3 rounded-lg border border-border bg-card p-3 shadow-[var(--shadow-l)] animate-fade-in"
+          className="fixed bottom-4 left-1/2 z-[64] flex w-[92vw] max-w-md -translate-x-1/2 items-center gap-3 rounded-lg border border-border bg-card p-3 shadow-[var(--shadow-l)] motion-safe:animate-fade-in"
         >
           <p className="min-w-0 flex-1 text-sm text-foreground">
             {call.elsewhere.peerName
               ? tv("On a call with {{name}} on another device", { name: call.elsewhere.peerName })
               : tr("On a call on another device")}
           </p>
-          <button
-            type="button"
-            onClick={clearElsewhere}
-            className="shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:text-foreground"
-            aria-label={tr("Dismiss")}
-          >
-            ×
-          </button>
+          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={clearElsewhere} aria-label={tr("Dismiss")} icon={null}>
+            <XIcon width={14} height={14} />
+          </Button>
         </div>
       )}
       <CallRingPrompt callsAvailable={call.callsAvailable} />
       {call.redial && (
         <div
           role="status"
-          className="fixed bottom-4 left-1/2 z-[65] flex w-[92vw] max-w-md -translate-x-1/2 items-center gap-3 rounded-lg border border-border bg-card p-3 shadow-[var(--shadow-l)] animate-fade-in"
+          className="fixed bottom-4 left-1/2 z-[65] flex w-[92vw] max-w-md -translate-x-1/2 items-center gap-3 rounded-lg border border-border bg-card p-3 shadow-[var(--shadow-l)] motion-safe:animate-fade-in"
         >
           <p className="min-w-0 flex-1 text-sm text-foreground">
             {tr("That call has already ended")}
           </p>
-          <button
-            type="button"
-            onClick={() => void redial()}
-            className="shrink-0 rounded-md border border-border px-3 py-1.5 text-xs text-foreground transition-colors hover:bg-accent"
-          >
+          <Button variant="outline" size="sm" className="shrink-0" onClick={() => void redial()} icon={null}>
             {tr("Call again")}
-          </button>
-          <button
-            type="button"
-            onClick={dismissRedial}
-            className="shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:text-foreground"
-            aria-label={tr("Dismiss")}
-          >
-            ×
-          </button>
+          </Button>
+          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={dismissRedial} aria-label={tr("Dismiss")} icon={null}>
+            <XIcon width={14} height={14} />
+          </Button>
         </div>
       )}
     </>

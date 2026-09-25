@@ -18,6 +18,7 @@ import type {
   CallSummaryKeyPoint,
   CallSummaryView,
   CallTranscriptGap,
+  CallTranscriptReason,
 } from "@/lib/smartcomm-api";
 
 export type DraftStatus = "waiting" | "ready" | "sending" | "sent" | "discarded" | "error";
@@ -33,6 +34,8 @@ export type DraftState = {
   updateAvailable: boolean;
   /** Stretches of the call with no transcript (named in the draft too). */
   gaps: CallTranscriptGap[];
+  /** Why the transcript is incomplete, when it is (audit N4). */
+  reason: CallTranscriptReason | null;
   /** The caller changed something since the last server round-trip. */
   dirty: boolean;
   regenerating: boolean;
@@ -52,6 +55,7 @@ export const EMPTY: DraftState = {
   provenance: "groq",
   updateAvailable: false,
   gaps: [],
+  reason: null,
   dirty: false,
   regenerating: false,
   languageBefore: null,
@@ -73,7 +77,7 @@ export const summaryDraftReducer = (state: DraftState, action: DraftAction): Dra
   switch (action.type) {
     case "loaded": {
       const loaded = summaryDraftReducer(state, { type: "loadedSummary", view: action.view });
-      return { ...loaded, gaps: action.view.gaps || [] };
+      return { ...loaded, gaps: action.view.gaps || [], reason: action.view.transcription_reason ?? null };
     }
     case "loadedSummary": {
       const s = action.view.summary;

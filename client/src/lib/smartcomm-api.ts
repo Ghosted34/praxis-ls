@@ -531,7 +531,28 @@ export type Call = {
   transcription_state?: CallTranscriptState | null;
   /** The summary's status, when the call has one (list and detail reads). */
   draft_status?: CallSummaryDraft["draft_status"] | null;
+  /** The callee answered without recording (PR-6, audit G5). */
+  recording_declined_at?: string | null;
 };
+
+/** What this person's app may offer (PR-6, audit F10). */
+export type CallCapabilities = { calls: boolean; can_dial: boolean; recording: boolean; settings_admin: boolean };
+export const fetchCallCapabilities = () => tenant<CallCapabilities>(`/smartcomm/calls/capabilities`);
+
+/** One outside company that receives call data (PR-6, audit G2). */
+export type CallProcessor = { vendor: string; role: string; name: string; country: string };
+export type CallProcessing = {
+  recording_enabled: boolean;
+  transcription: CallProcessor[];
+  summary: CallProcessor[];
+  network: CallProcessor[];
+};
+export const fetchCallProcessing = () => tenant<CallProcessing>(`/smartcomm/calls/processing`);
+
+/** A settings admin erases one person's call records (PR-6, audit G3). */
+export type CallErasure = { user_id: string; calls: number; audio_parts: number; audio_failed: number; transcripts: number; drafts: number };
+export const eraseUserCallRecords = (userId: string) =>
+  tenant<CallErasure>(`/smartcomm/calls/erase-user`, { method: "POST", body: { user_id: userId } });
 
 /** Dial on a DIRECT channel. The partner is resolved server-side; `ice` is
  *  the dialer's config for the engine to start collecting candidates. */
@@ -539,8 +560,12 @@ export const dialCall = (groupId: string) =>
   tenant<Call & { ice: IceConfig }>(`/smartcomm/calls`, { method: "POST", body: { group_id: groupId } });
 /** Accept carries the acceptor's own ICE config — the callee's engine starts
  *  at answer time and needs TURN creds in the same response. */
-export const acceptCall = (id: string) =>
-  tenant<Call & { ice: IceConfig }>(`/smartcomm/calls/${id}/accept`, { method: "POST" });
+export const acceptCall = (id: string, opts: { record?: boolean } = {}) =>
+  tenant<Call & { ice: IceConfig }>(`/smartcomm/calls/${id}/accept`, {
+    method: "POST",
+    // `record: false` answers without recording (PR-6, audit G5).
+    ...(opts.record === false ? { body: { record: false } } : {}),
+  });
 export const declineCall = (id: string) =>
   tenant<Call>(`/smartcomm/calls/${id}/decline`, { method: "POST" });
 /** The hang-up route, shared with the keep-alive `fetch` a closing page sends

@@ -29,6 +29,7 @@ import { CommsSetupPage } from "./setup/index";
 import { SignaturesPage } from "./signatures";
 import { CallsListPage } from "./call/calls-list";
 import { CallRecordPage } from "./call/call-record";
+import { useCallCapabilities } from "./call/call-capabilities";
 
 const TABS = [
   { to: "/comms", label: "Chat", end: true },
@@ -43,6 +44,10 @@ export function CommsHub() {
   // `/comms/calls/:callId` has no `:section`; it is the Calls tab all the same.
   const section = callId ? "calls" : sectionParam;
   const isChat = !section || !["setup", "signatures", "mail", "calls"].includes(section);
+  // F10: no Calls tab while the tenant has calls off. A deep link to a call
+  // still opens it — its record answers for itself.
+  const callsOn = useCallCapabilities()?.calls === true;
+  const tabs = TABS.filter((t) => t.to !== "/comms/calls" || callsOn || section === "calls");
   const page =
     section === "setup" ? (
       <CommsSetupPage />
@@ -67,7 +72,7 @@ export function CommsHub() {
         className="mb-4 flex shrink-0 items-end gap-1 border-b border-border"
         aria-label="Comms sections"
       >
-        {TABS.map((t) => (
+        {tabs.map((t) => (
           <NavLink
             key={t.to}
             to={t.to}

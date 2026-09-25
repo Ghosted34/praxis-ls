@@ -392,6 +392,10 @@ function pillRules() {
 /** Plain text-on-opaque-surface pairs.
  *  [label, fg token, bg token, theme, min, optional fg opacity] */
 const TEXT_PAIRS = [
+  // Button variant "confirm" (the call ring's Answer): --background ink on
+  // an --ok ground.
+  ["button confirm: --background on --ok (light)", "background", "ok", lightBody, AA_NORMAL],
+  ["button confirm: --background on --ok (dark)", "background", "ok", darkBody, AA_NORMAL],
   // The .micro caption — the audit's worst offender at 3.01:1 / 2.78:1.
   [".micro on --card (light)", "ink-3", "card", lightBody, AA_NORMAL],
   [

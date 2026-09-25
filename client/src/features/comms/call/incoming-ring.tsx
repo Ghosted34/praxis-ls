@@ -1,86 +1,108 @@
 /**
- * The incoming-call ring (Smart Comms PR-1).
+ * The incoming call (calls audit PR-6; O4, F1, F2, F6, F9, G5).
  *
- * A ring is a decision with a deadline: answer or it's over. The 60-second
- * window is the server's (the sweep ends the row at 60 s whether or not this
- * tab is awake), and the countdown shown here is that same clock rendered —
- * not a second, independent timer the UI keeps in its own head. When it hits
- * zero the socket delivers the terminal state and this surface unmounts; the
- * "missed call" toast does the rest.
+ * A solid card, never a layer over the app: top-right on a desktop, so the
+ * screen the person is working on stays usable, and top-centre on a phone,
+ * where it can open to a full solid screen. It says who is calling, how long
+ * it has rung, whether the call will be recorded and by whom its audio is
+ * processed, and offers Decline, Answer and (when the call would be recorded)
+ * Answer without recording.
  *
- * "Do our utmost best to always have it ring" (the locked Q6): while this
- * tab is OPEN this surface IS the ring (plus the repeated tone, which
- * comms-live owns). Backgrounded, the Notification tier fires. Closed, PR-3's
- * web-push tier takes over — and beyond that, presence is the honest floor:
- * a dot that says "not here, last seen X", never a fake ring.
+ * The 60-second window is the server's (the ring's own clock job ends the
+ * row); the time shown here is that same window, rendered. In the caller's
+ * own conversation the thread's banner replaces this card (comms-live), so
+ * there is only ever one Answer button.
  */
+import * as React from "react";
 import { tr, tv } from "@/lib/i18n";
-import { PhoneIcon, PhoneDownIcon } from "@/components/ui/icons";
-
-function fmt(s: number): string {
-  return `0:${String(Math.max(0, s)).padStart(2, "0")}`;
-}
+import { cn } from "@/lib/cn";
+import { Avatar } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import { PhoneIcon, PhoneDownIcon, ExpandIcon, MinimizeIcon } from "@/components/ui/icons";
+import type { CallProcessing } from "@/lib/smartcomm-api";
+import { processorsSentence } from "./call-capabilities";
+import { RecordingNotice } from "./call-parts";
+import { RING_WINDOW_S, ringingFor } from "./call-time";
 
 type Props = {
   name: string | null;
   secondsLeft: number;
+  /** Would this call be recorded if answered normally (the ring payload). */
+  recordingEnabled?: boolean;
+  processing?: CallProcessing | null;
   onAccept: () => void;
+  onAcceptWithoutRecording?: () => void;
   onDecline: () => void;
   /** The ring tone is silent until the page is tapped (autoplay rules). */
   soundBlocked?: boolean;
   onEnableSound?: () => void;
 };
 
-export function IncomingRing({ name, secondsLeft, onAccept, onDecline, soundBlocked = false, onEnableSound }: Props) {
+export function IncomingRing({
+  name, secondsLeft, recordingEnabled = false, processing = null,
+  onAccept, onAcceptWithoutRecording, onDecline, soundBlocked = false, onEnableSound,
+}: Props) {
+  const [full, setFull] = React.useState(false);
+  const who = name || tr("Someone");
+  const titleId = React.useId();
   return (
-    <div
+    <section
+      // An incoming call asks for an answer now: alertdialog, announced as
+      // soon as it appears. Modal only when it has taken the whole screen.
       role="alertdialog"
-      aria-modal="true"
-      aria-label={name ? tv("Incoming call from {{name}}", { name }) : tr("Voice call")}
-      className="fixed inset-0 z-[70] flex flex-col items-center justify-center gap-6 bg-[rgb(var(--background)/0.97)] px-6 backdrop-blur-sm animate-fade-in"
-    >
-      <PhoneIcon width={44} height={44} className="text-brand-blue-ink" />
-      <div className="flex flex-col items-center gap-1 text-center">
-        <p className="text-xl font-semibold text-foreground">{name || "—"}</p>
-        <p className="text-sm text-muted-foreground">{tv("Incoming call from {{name}}", { name: name || "" })}</p>
-      </div>
-      {/* The shared 60 s window, rendered. */}
-      <p className="font-mono text-lg tabular-nums text-muted-foreground" role="timer" aria-label={fmt(secondsLeft)}>
-        {fmt(secondsLeft)}
-      </p>
-      {soundBlocked && (
-        <button
-          type="button"
-          onClick={onEnableSound}
-          className="rounded-md border border-border px-3 py-1.5 text-xs text-foreground transition-colors hover:bg-accent"
-        >
-          {tr("Tap to enable ring sound")}
-        </button>
+      aria-modal={full ? "true" : "false"}
+      aria-labelledby={titleId}
+      data-call-surface="ring"
+      className={cn(
+        "fixed z-[70] flex flex-col gap-3 border border-border bg-background text-foreground shadow-[var(--shadow-l)]",
+        full
+          ? "inset-0 justify-center rounded-none p-6 md:inset-auto md:right-4 md:top-4 md:w-[380px] md:rounded-2xl md:p-4"
+          : "inset-x-2 top-2 rounded-2xl p-4 md:inset-x-auto md:right-4 md:top-4 md:w-[380px]",
       )}
-      <div className="flex items-center gap-10">
-        <button
-          type="button"
-          onClick={onDecline}
-          aria-label={tr("Decline")}
-          className="flex flex-col items-center gap-2"
+    >
+      <div className="flex items-start gap-3">
+        <Avatar name={who} />
+        <div className="min-w-0 flex-1">
+          <h2 id={titleId} className="truncate text-base font-semibold">{who}</h2>
+          <p className="text-xs text-muted-foreground">
+            {tr("Incoming voice call")} · {tv("ringing {{time}}", { time: ringingFor(RING_WINDOW_S - secondsLeft) })}
+          </p>
+        </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 md:hidden"
+          onClick={() => setFull((v) => !v)}
+          aria-label={full ? tr("Smaller") : tr("Full screen")}
+          icon={null}
         >
-          <span className="flex h-16 w-16 items-center justify-center rounded-full bg-[rgb(var(--bad))] text-white shadow-[var(--shadow-l)] transition-transform active:scale-95">
-            <PhoneDownIcon width={28} height={28} />
-          </span>
-          <span className="text-xs text-muted-foreground">{tr("Decline")}</span>
-        </button>
-        <button
-          type="button"
-          onClick={onAccept}
-          aria-label={tr("Answer")}
-          className="flex flex-col items-center gap-2"
-        >
-          <span className="flex h-16 w-16 animate-pulse items-center justify-center rounded-full bg-[rgb(var(--ok))] text-white shadow-[var(--shadow-l)] transition-transform active:scale-95">
-            <PhoneIcon width={28} height={28} />
-          </span>
-          <span className="text-xs text-muted-foreground">{tr("Answer")}</span>
-        </button>
+          {full ? <MinimizeIcon width={16} height={16} /> : <ExpandIcon width={16} height={16} />}
+        </Button>
       </div>
-    </div>
+
+      {recordingEnabled && (
+        <RecordingNotice future detail={processorsSentence(processing)} />
+      )}
+
+      {soundBlocked && (
+        <Button variant="outline" size="sm" onClick={onEnableSound} icon={null} className="self-start">
+          {tr("Tap to enable ring sound")}
+        </Button>
+      )}
+
+      <div className="grid grid-cols-2 gap-2">
+        <Button variant="destructive" onClick={onDecline} icon={<PhoneDownIcon width={16} height={16} />}>
+          {tr("Decline")}
+        </Button>
+        <Button variant="confirm" onClick={onAccept} icon={<PhoneIcon width={16} height={16} />}>
+          {tr("Answer")}
+        </Button>
+      </div>
+      {recordingEnabled && onAcceptWithoutRecording && (
+        <Button variant="outline" size="sm" onClick={onAcceptWithoutRecording} icon={null}>
+          {tr("Answer without recording")}
+        </Button>
+      )}
+    </section>
   );
 }

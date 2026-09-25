@@ -210,4 +210,17 @@ describe("a call's page", () => {
     expect(screen.getAllByText("Not recorded").length).toBeGreaterThan(0);
     expect(screen.queryByRole("button", { name: "Show transcript" })).toBeNull();
   });
+
+  it("a call answered without recording says that, not just 'not recorded' (PR-6, F7)", async () => {
+    renderScreen(<CallRecordPage />, {
+      ...at,
+      routes: {
+        "/smartcomm/calls/c1": row({
+          transcription_state: "NO_RECORDING", recording_enabled: false, recording_declined_at: "2026-09-25T08:00:00Z",
+        }),
+      },
+    });
+    expect(await screen.findByText("This call was answered without recording, so there is no summary.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Show transcript" })).toBeNull();
+  });
 });

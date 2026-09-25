@@ -80,8 +80,16 @@ function validate(schema) {
  * and hands the decision back to the tenant's default, which is the difference
  * between "I have not chosen" and "I chose off".
  */
+const HHMM = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
 const calls = z.object({
   noiseSuppression: z.boolean().nullable().optional(),
+  // PR-6: calls never ring this person (audit C6's do-not-disturb).
+  doNotDisturb: z.boolean().nullable().optional(),
+  // PR-6: call notifications arrive in-app only inside this window, in the
+  // company's timezone (audit A11's quiet hours).
+  quietHours: z.object({ from: HHMM, to: HHMM }).strict().nullable().optional(),
+  // PR-6: colleagues see no "last seen" for this person (audit G4).
+  hideLastSeen: z.boolean().nullable().optional(),
 });
 
 const validateAppearance = validate(appearance);

@@ -345,6 +345,11 @@ function recordingEnabled(client) {
   return require("./smartcomm.call.service").recordingEnabled(client);
 }
 
+/** This call's: the tenant's switches, and not declined by the callee (G5). */
+function recordingForCall(client, call) {
+  return require("./smartcomm.call.service").recordingForCall(client, call);
+}
+
 /* ── Queue ──────────────────────────────────────────────────────────────── */
 
 /** Best-effort: a queue outage costs latency, and the record sweep picks up
@@ -453,6 +458,18 @@ async function registerPart(client, {
     throw new AppError("NOT_YOUR_SIDE", "You can only upload your own side of a call", 403);
   }
   assertRecordingWindow(call);
+  // PR-6: nothing is stored for a call the callee answered without
+  // recording, or while the tenant's own switch is off (G1, G5).
+  if (call.recording_declined_at) {
+    throw new AppError("RECORDING_DECLINED", "This call was answered without recording", 409, {
+      user_message: "This call is not being recorded.",
+    });
+  }
+  if (!(await recordingEnabled(client))) {
+    throw new AppError("RECORDING_OFF", "Call recording is switched off for this company", 409, {
+      user_message: "Call recording is switched off for your company.",
+    });
+  }
   if (!file || !Buffer.isBuffer(file.buffer) || file.buffer.length === 0) {
     throw new AppError("NO_FILE", "No audio in this upload", 400);
   }
@@ -667,8 +684,10 @@ async function transcribePartJob({ withDb, callId, side, partIndex, tenantMeta =
     if (part.transcript_status !== "PENDING") return { skipped: "settled", status: part.transcript_status };
     const call = await repo.findCall(c, callId);
     if (!call) return { skipped: "missing" };
-    if (!(await recordingEnabled(c))) {
-      await failPart(c, part, "recording is switched off for this company");
+    if (call.recording_declined_at || !(await recordingEnabled(c))) {
+      await failPart(c, part, call.recording_declined_at
+        ? "the call was answered without recording"
+        : "recording is switched off for this company");
       return { skipped: "recording_off", settled: true };
     }
     const allowed = await governance.canUseFeature(c, { userId: call.caller_id, featureKey: "calls" });
@@ -832,6 +851,7 @@ async function finaliseCall({
         && Date.now() - Date.parse(call.transcription_updated_at) < STALE_MINUTES * 60_000) {
       return { skipped: "in_flight" };
     }
+    if (call.recording_declined_at) return markNoRecording(c, callId, "declined");
     if (!(await recordingEnabled(c))) return markNoRecording(c, callId, "recording_off");
     let parts = await repo.listRecordingParts(c, callId);
     if (!finaliseReady(call, parts)) {
@@ -1110,6 +1130,43 @@ function summaryLink(call) {
  * worker re-renders it in the device's language from `pushData`. Best-effort:
  * the draft is already stored, and a failed push must not lose it.
  */
+/** "HH:mm" → minutes since midnight. */
+const minutesOf = (hhmm) => {
+  const [h, m] = String(hhmm).split(":").map(Number);
+  return h * 60 + m;
+};
+
+/**
+ * Is `now`, in the company's timezone, inside the window `{from, to}`? A
+ * window that crosses midnight (22:00 → 07:00) wraps.
+ */
+function withinWindow(window, now, timeZone) {
+  if (!window || !window.from || !window.to) return false;
+  const parts = new Intl.DateTimeFormat("en-GB", { // @date-format:parts — only formatToParts() is read
+    timeZone, hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+  }).formatToParts(now);
+  const hh = Number(parts.find((p) => p.type === "hour").value);
+  const mm = Number(parts.find((p) => p.type === "minute").value);
+  const t = hh * 60 + mm;
+  const from = minutesOf(window.from);
+  const to = minutesOf(window.to);
+  if (from === to) return false;
+  return from < to ? t >= from && t < to : t >= from || t < to;
+}
+
+/** Is this user inside their quiet hours now? Fails open to "no". */
+async function inQuietHours(client, userId, now = new Date()) {
+  try {
+    const prefs = (await repo.callPrefsFor(client, [userId]))[userId] || {};
+    if (!prefs.quiet_hours) return false;
+    const { timezoneOf } = require("../hr/attendance/attendance.reconcile");
+    return withinWindow(prefs.quiet_hours, now, await timezoneOf(client));
+  } catch (err) {
+    logger.warn({ err }, "call: could not read quiet hours");
+    return false;
+  }
+}
+
 async function notifySummaryReady(client, { call, summary, names, rt = {} }) {
   rtToUser(call.caller_id, "call:summary_ready", {
     call_id: call.call_id,
@@ -1130,7 +1187,11 @@ async function notifySummaryReady(client, { call, summary, names, rt = {} }) {
       minutes ? ` (${minutes} min)` : "",
       ". Review and send the summary.",
     ].join("");
+    // Quiet hours (PR-6, A11): inside the caller's window the notification
+    // lands in-app only, with no push and no email.
+    const quiet = await inQuietHours(client, call.caller_id);
     await require("../notification/notification.service").notifyMany(client, [call.caller_id], {
+      silentFor: quiet ? [call.caller_id] : [],
       eventTypeKey: "comms.call_summary_ready",
       title: "Call summary ready",
       body,
@@ -1245,7 +1306,7 @@ async function getTranscript(client, { callId, actor }) {
 async function getSummary(client, { callId, actor }) {
   const { call } = await participantCall(client, callId, actor.user_id);
   const summary = await repo.getSummary(client, callId);
-  const recording = await recordingEnabled(client);
+  const recording = await recordingForCall(client, call);
   const parts = await repo.listRecordingParts(client, callId);
   return {
     call_id: callId,
@@ -1578,6 +1639,70 @@ async function rerunPart(client, { callId, actor, side, partIndex, tenantMeta = 
  * and summaries are the record and stay. A row is marked purged only when
  * its bytes are really gone or already missing.
  */
+/**
+ * Text retention (PR-6, audit G3): the tenant's
+ * `comms.call_recording.transcript_retention_days`, absent = keep. Deletes the
+ * transcripts and the UNSENT summary drafts of calls that ended before the
+ * window; a SENT summary is a message in the conversation now and is kept
+ * with it. The call row itself (who, when, how long) stays: it is the call
+ * history, not the content. Batched like the audio purge.
+ */
+async function purgeExpiredText(client, { days, batch = PURGE_BATCH, maxBatches = PURGE_MAX_BATCHES } = {}) {
+  if (!days) return { calls: 0, transcripts: 0, drafts: 0 };
+  let calls = 0;
+  let transcripts = 0;
+  let drafts = 0;
+  for (let b = 0; b < maxBatches; b += 1) {
+    const ids = await repo.callsWithExpiredText(client, { olderThanDays: days, limit: batch });
+    if (!ids.length) break;
+    const out = await repo.deleteCallText(client, ids);
+    calls += ids.length;
+    transcripts += out.transcripts;
+    drafts += out.drafts;
+    if (ids.length < batch) break;
+  }
+  return { calls, transcripts, drafts };
+}
+
+/**
+ * An admin's erasure of one person's call records (PR-6, audit G3), for a
+ * data-subject request: every call they took part in loses its audio (the
+ * objects are deleted, the rows marked purged), its transcripts and its
+ * unsent drafts. Audited with the counts. Sent summaries are messages in a
+ * conversation and follow the chat's own erasure, not this one.
+ */
+async function eraseUserCallRecords(client, { userId, actor }) {
+  const callIds = await repo.callIdsForUser(client, userId);
+  let audio = 0;
+  let failed = 0;
+  const parts = callIds.length ? await repo.unpurgedPartsForCalls(client, callIds) : [];
+  const gone = [];
+  for (let i = 0; i < parts.length; i += PURGE_CONCURRENCY) {
+    await Promise.all(parts.slice(i, i + PURGE_CONCURRENCY).map(async (p) => {
+      try {
+        await storage.delete(p.vault_ref);
+        gone.push(p.recording_id);
+      } catch (err) {
+        failed += 1;
+        logger.warn({ err, recording_id: p.recording_id }, "call: erasure could not delete one part");
+      }
+    }));
+  }
+  audio = await repo.markPartsPurged(client, gone);
+  const text = callIds.length ? await repo.deleteCallText(client, callIds) : { transcripts: 0, drafts: 0 };
+  const result = { user_id: userId, calls: callIds.length, audio_parts: audio, audio_failed: failed, ...text };
+  const actorId = await resolveActorId(client, actor && actor.user_id);
+  await audit(client, {
+    actorUserId: actorId,
+    action: events.CALL_RECORDS_ERASED,
+    moduleKey: events.MODULE,
+    entityRef: `app_user:${userId}`,
+    after: result,
+  });
+  logger.info(result, "call: records erased for a user");
+  return result;
+}
+
 /** Audio purge batches (audit D9): 500 parts a read, 8 deletes at a time,
  *  and at most PURGE_MAX_BATCHES a run; what is left waits for tomorrow. */
 const PURGE_BATCH = 500;
@@ -1626,6 +1751,10 @@ module.exports = {
   OVER_BUDGET,
   USAGE_CALL_TYPE,
   transcribePart,
+  purgeExpiredText,
+  eraseUserCallRecords,
+  withinWindow,
+  inQuietHours,
   isPipelineEligible,
   purgeExpiredAudio,
   // reads

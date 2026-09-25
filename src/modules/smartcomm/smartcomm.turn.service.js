@@ -103,4 +103,9 @@ function iceConfigFor({ token, ttlSeconds, relayOnly = false }) {
   };
 }
 
-module.exports = { newCallToken, turnCredential, iceConfigFor };
+/** Whether calls fall back to Google's public STUN (for the disclosure). */
+function usesGoogleStun() {
+  return !String(config.STUN_URLS || "").trim() && !config.TURN_HOST;
+}
+
+module.exports = { newCallToken, turnCredential, iceConfigFor, usesGoogleStun };

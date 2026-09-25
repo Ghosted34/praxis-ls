@@ -15,6 +15,8 @@ const fixture = vi.hoisted(() => ({
   // Typed because the fixture is shared with the mock above and `undefined` alone
   // would make every assignment below a type error.
   links: undefined as undefined | Record<string, { state: string; title?: string }>,
+  /** PR-6 (F10): what the calls UI may offer this person. */
+  caps: { calls: true, can_dial: true, recording: false, settings_admin: false },
 }));
 vi.mock("@/app/auth/auth-context", () => ({ useAuth: () => ({ user: { id: "me" } }) }));
 vi.mock("@/lib/comms-socket", () => ({
@@ -25,6 +27,8 @@ vi.mock("@/lib/smartcomm-api", () => ({
   listChannels: () => [fixture.channel], listColleagues: () => [],
   getChannel: () => fixture.channel, getThread: () => ({ messages: fixture.messages, links: fixture.links }),
   markRead: () => Promise.resolve(),
+  fetchCallCapabilities: async () => fixture.caps,
+  fetchCallProcessing: async () => ({ recording_enabled: false, transcription: [], summary: [], network: [] }),
 }));
 vi.mock("@/lib/use-resource", () => ({
   useResource: (load: () => unknown) => ({ data: load(), loading: false, reload: vi.fn() }),
@@ -65,11 +69,28 @@ vi.mock("./chat/message-bubble", () => ({
 }));
 const chat = () => <MemoryRouter initialEntries={["/comms?channel=one"]}><TeamChatPage /></MemoryRouter>;
 
-beforeEach(() => {
+beforeEach(async () => {
+  (await import("./call/call-capabilities")).resetCallCapabilities();
+  fixture.caps = { calls: true, can_dial: true, recording: false, settings_admin: false };
   localStorage.clear();
   fixture.messages = [{ message_id: "m1", body: "Hello" }];
   fixture.links = undefined;
   vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
+});
+
+describe("the phone icon is offered only where it works (audit F10)", () => {
+  it("shows when calls are on and this person may dial", async () => {
+    render(chat());
+    expect(await screen.findByRole("button", { name: "Start a voice call" })).toBeInTheDocument();
+  });
+
+  it("is absent when calls are off for the tenant or the person may not dial", async () => {
+    fixture.caps = { calls: false, can_dial: false, recording: false, settings_admin: false };
+    render(chat());
+    await waitFor(() => expect(screen.getByText("Message composer")).toBeInTheDocument());
+    await new Promise((r) => setTimeout(r, 0));
+    expect(screen.queryByRole("button", { name: "Start a voice call" })).not.toBeInTheDocument();
+  });
 });
 
 describe("chat containment and information panel", () => {

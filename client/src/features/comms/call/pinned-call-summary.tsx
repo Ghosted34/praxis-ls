@@ -15,6 +15,7 @@ import { PhoneIcon } from "@/components/ui/icons";
 import type { PendingCallSummary } from "@/lib/smartcomm-api";
 import { CallSummaryEditor } from "./summary-draft";
 import { callDuration } from "./call-labels";
+import { provenanceLabel } from "./call-provenance";
 
 export function PinnedCallSummary({
   drafts,
@@ -53,8 +54,13 @@ export function PinnedCallSummary({
           <p className="truncate text-sm font-semibold text-foreground">{tr("Call summary — Review & send")}</p>
           <p className="truncate text-micro text-muted-foreground">
             {meta}
+            {draft.provenance ? ` · ${provenanceLabel(draft.provenance)}` : ""}
             {others > 0 ? ` · ${tv("{{n}} more waiting", { n: others })}` : ""}
           </p>
+          {/* N4: a draft made from an incomplete transcript says so here too. */}
+          {draft.transcription_state === "TRANSCRIPTION_FAILED" && (
+            <p className="text-micro text-warn">{tr("Part of this call could not be transcribed.")}</p>
+          )}
         </div>
         {others > 0 && (
           <Link to="/comms/calls" className="shrink-0 text-micro text-primary-ink hover:underline">

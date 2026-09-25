@@ -16,6 +16,19 @@
  *      would either pin every user to the setting as it was on their first
  *      login or ignore the tenant's change of mind forever.
  *
+ * CALL RECORDING (calls audit PR-6, G1–G4). `comms.call_recording` holds the
+ * tenant's opt-in (`enabled`, off unless the company turns it on), how long
+ * the audio is kept (`retention_days`) and how long transcripts are kept
+ * (`transcript_retention_days`, empty = with the conversation). The three live
+ * in ONE setting value, so every save writes the merged value: a PUT replaces
+ * the whole value, and saving the audio days alone used to drop the other two.
+ * "How calls are processed" names the outside companies that receive call
+ * data, read from the server's configured vendors rather than written here.
+ *
+ * The person's own call preferences (do not disturb, quiet hours, hide my
+ * last seen) and a settings admin's audited erasure of one person's call
+ * records close the page.
+ *
  * The tenant's RECORDING RETENTION (`comms.call_recording.retention_days`,
  * seeded at 30 by 14020) sits here too: it is the same setting section, it is
  * the same reader (`callSettings` in the call service) and it is the number a
@@ -27,7 +40,7 @@
  */
 import * as React from "react";
 import { pageShell } from "@/lib/layout";
-import { tr } from "@/lib/i18n";
+import { tr, tv } from "@/lib/i18n";
 import { tenant } from "@/lib/api-client";
 import { putSetting } from "@/lib/mail-api";
 import { errMsg } from "@/lib/use-resource";
@@ -37,6 +50,10 @@ import { Panel } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field } from "@/components/ui/modal";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Callout } from "@/components/ui/callout";
+import { SearchSelect, type Row } from "@/components/ui/search-select";
+import { useConfirm } from "@/components/ui/use-confirm";
 import { ErrorState } from "@/components/ui/states";
 import { PageSkeleton } from "@/components/ui/skeleton";
 import {
@@ -44,12 +61,23 @@ import {
   saveCallPrefs,
   type CallPrefs,
 } from "@/lib/preferences";
+import {
+  eraseUserCallRecords,
+  fetchCallCapabilities,
+  fetchCallProcessing,
+  type CallCapabilities,
+  type CallProcessing,
+  type CallProcessor,
+} from "@/lib/smartcomm-api";
 import { DeviceRingCard } from "./device-ring-card";
 
-/** The tenant's call settings, as `setting` rows under section `comms`. */
 type TenantCallSettings = {
   noiseSuppression: boolean;
+  /** comms.call_recording.enabled — the company's opt-in (G1). */
+  recordingEnabled: boolean;
   retentionDays: number;
+  /** comms.call_recording.transcript_retention_days; null = with the conversation. */
+  transcriptDays: number | null;
   /** comms.call_privacy (audit C13): every call through the TURN relay. */
   relayOnly: boolean;
 };
@@ -58,6 +86,8 @@ const NOISE_KEY = "call_noise_suppression";
 const RECORDING_KEY = "call_recording";
 const PRIVACY_KEY = "call_privacy";
 const SECTION = "comms";
+const TRANSCRIPT_MIN = 30;
+const TRANSCRIPT_MAX = 3650;
 
 function readBool(v: unknown, fallback: boolean): boolean {
   const raw = (v as { enabled?: unknown } | null)?.enabled;
@@ -76,9 +106,54 @@ function readDays(v: unknown, fallback: number): number {
   return Math.min(Math.max(Math.trunc(raw), 1), 365);
 }
 
+function readTranscriptDays(v: unknown): number | null {
+  const raw = (v as { transcript_retention_days?: unknown } | null)?.transcript_retention_days;
+  if (raw === null || raw === undefined || raw === "") return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return null;
+  return Math.min(Math.max(Math.trunc(n), TRANSCRIPT_MIN), TRANSCRIPT_MAX);
+}
+
+function asObject(v: unknown): Record<string, unknown> {
+  return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+}
+
+const ROLE_LABEL: Record<string, string> = {
+  first: "First choice",
+  when_first_fails: "When the first fails",
+  last_resort: "Last resort",
+  connection_setup: "Connection set-up only (no audio)",
+};
+
+function ProcessorList({ title, rows }: { title: string; rows: CallProcessor[] }) {
+  if (rows.length === 0) return null;
+  return (
+    <div>
+      <h3 className="text-sm font-semibold">{title}</h3>
+      <ul className="mt-1 space-y-1 text-sm">
+        {rows.map((p) => (
+          <li key={`${p.vendor}-${p.role}`}>
+            <span className="font-medium">{p.name}</span>{" "}
+            <span className="text-muted-foreground">
+              · {tr(ROLE_LABEL[p.role] ?? p.role)} · {p.country}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+const userText = (u: Row) => String(u.full_name ?? u.name ?? u.email ?? u.user_id ?? "");
+
 export function CallsPage() {
   const [tenantSettings, setTenantSettings] = React.useState<TenantCallSettings | null>(null);
+  /** The stored comms.call_recording value, whole: every save merges into it. */
+  const recordingRaw = React.useRef<Record<string, unknown>>({});
   const [prefs, setPrefs] = React.useState<CallPrefs | null>(null);
+  const [caps, setCaps] = React.useState<CallCapabilities | null>(null);
+  const [processing, setProcessing] = React.useState<CallProcessing | null>(null);
+  const [processingError, setProcessingError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   /** A refused read of the COMPANY settings, kept apart from the screen's own
@@ -93,6 +168,9 @@ export function CallsPage() {
   const [prefsError, setPrefsError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
   const [saved, setSaved] = React.useState<string | null>(null);
+  const [eraseUser, setEraseUser] = React.useState<{ id: string; name: string } | null>(null);
+  const [erased, setErased] = React.useState<string | null>(null);
+  const [confirm, confirmDialog] = useConfirm();
 
   React.useEffect(() => {
     let live = true;
@@ -121,18 +199,33 @@ export function CallsPage() {
         setPrefsError(errMsg(e));
         return null;
       }),
+      // Who may do what here. A failed read hides the admin-only erasure
+      // rather than offering a button the server would refuse.
+      fetchCallCapabilities().catch(() => {
+        /* @silent:parse — no answer means no admin controls; the server refuses them anyway. */
+        return null;
+      }),
+      fetchCallProcessing().catch((e) => {
+        setProcessingError(errMsg(e));
+        return null;
+      }),
     ])
-      .then(([noise, recording, privacy, mine]) => {
+      .then(([noise, recording, privacy, mine, capabilities, disclosure]) => {
         if (!live) return;
+        recordingRaw.current = asObject(recording?.value);
         setTenantSettings({
           noiseSuppression: readBool(noise?.value, false),
+          recordingEnabled: readBool(recording?.value, false),
           retentionDays: readDays(recording?.value, 30),
+          transcriptDays: readTranscriptDays(recording?.value),
           relayOnly: readRelayOnly(privacy?.value),
         });
         // A preference read that failed leaves this null AND raises the note
         // below, so the screen says which of the two happened rather than
         // pretending the person has no opinion.
         setPrefs(mine);
+        setCaps(capabilities);
+        setProcessing(disclosure);
       })
       .catch((e) => live && setError(errMsg(e)))
       .finally(() => live && setLoading(false));
@@ -150,13 +243,24 @@ export function CallsPage() {
       if (patch.noiseSuppression !== undefined) {
         await putSetting(SECTION, NOISE_KEY, { enabled: next.noiseSuppression });
       }
-      if (patch.retentionDays !== undefined) {
-        await putSetting(SECTION, RECORDING_KEY, { retention_days: next.retentionDays });
+      if (patch.recordingEnabled !== undefined || patch.retentionDays !== undefined || patch.transcriptDays !== undefined) {
+        // One value, three fields: write them all, over whatever else is stored.
+        const value = {
+          ...recordingRaw.current,
+          enabled: next.recordingEnabled,
+          retention_days: next.retentionDays,
+          transcript_retention_days: next.transcriptDays,
+        };
+        await putSetting(SECTION, RECORDING_KEY, value);
+        recordingRaw.current = value;
       }
       if (patch.relayOnly !== undefined) {
         await putSetting(SECTION, PRIVACY_KEY, { relay_only: next.relayOnly });
       }
       setTenantSettings(next);
+      if (patch.recordingEnabled !== undefined) {
+        setProcessing((p) => (p ? { ...p, recording_enabled: next.recordingEnabled } : p));
+      }
       setSaved(tr("Saved"));
     } catch (e) {
       setError(errMsg(e));
@@ -165,13 +269,46 @@ export function CallsPage() {
     }
   };
 
-  const saveMine = async (value: boolean | null) => {
+  const saveMine = async (patch: Partial<CallPrefs>) => {
     setBusy(true);
     setError(null);
     try {
-      const stored = await saveCallPrefs({ noiseSuppression: value });
+      const stored = await saveCallPrefs(patch);
       setPrefs(stored);
       setSaved(tr("Saved"));
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const erase = async () => {
+    if (!eraseUser) return;
+    const ok = await confirm({
+      title: tv("Erase {{name}}'s call records?", { name: eraseUser.name }),
+      body: tr(
+        "Deletes the audio, transcripts, live notes and unsent summary drafts of every call this person took part in, for both sides of each call. Summaries already sent to a conversation stay there. This cannot be undone.",
+      ),
+      confirmLabel: tr("Erase call records"),
+      cancelLabel: tr("Keep them"),
+      destructive: true,
+    });
+    if (!ok) return;
+    setBusy(true);
+    setError(null);
+    setErased(null);
+    try {
+      const r = await eraseUserCallRecords(eraseUser.id);
+      setErased(
+        tv("Erased {{calls}} calls: {{parts}} audio parts, {{transcripts}} transcripts, {{drafts}} drafts.", {
+          calls: r.calls,
+          parts: r.audio_parts,
+          transcripts: r.transcripts,
+          drafts: r.drafts,
+        }),
+      );
+      setEraseUser(null);
     } catch (e) {
       setError(errMsg(e));
     } finally {
@@ -183,13 +320,15 @@ export function CallsPage() {
 
   const mine = prefs?.noiseSuppression ?? null;
   const effective = mine === null ? (tenantSettings?.noiseSuppression ?? false) : mine;
+  const tenantLocked = busy || tenantSettings === null || !!tenantError || (caps !== null && !caps.settings_admin);
+  const quiet = prefs?.quietHours ?? null;
 
   return (
     <div className={pageShell.wide}>
       <HubCrumb area="settings" to="/settings" />
       <PageHeader
         title={tr("Calls")}
-        description={tr("Whether this device can ring, voice-call audio handling, and how long recordings are kept.")}
+        description={tr("Whether this device can ring, recording and privacy, and your own call preferences.")}
       />
 
       {error && (
@@ -198,13 +337,21 @@ export function CallsPage() {
         </div>
       )}
 
-      {tenantError && (
+      {/* F10: company settings are MOD-70's. Someone without it is told so
+          plainly, not shown the 403 the read came back with. */}
+      {caps && !caps.settings_admin ? (
+        <div className="mb-3">
+          <Callout tone="info">
+            {tr("Company call settings are shown for reference. Only a settings administrator can change them.")}
+          </Callout>
+        </div>
+      ) : tenantError ? (
         <div className="mb-3">
           <ErrorState
             message={`${tr("Company default")}: ${tenantError}`}
           />
         </div>
-      )}
+      ) : null}
 
       <DeviceRingCard />
 
@@ -217,16 +364,12 @@ export function CallsPage() {
 
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <Field label={tr("Company default")} hint={tr("Applies to everyone who has not chosen for themselves.")}>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={tenantSettings?.noiseSuppression ?? false}
-                disabled={busy}
-                onChange={(e) => void saveTenant({ noiseSuppression: e.target.checked })}
-                className="h-4 w-4 accent-[rgb(var(--brand-blue))]"
-              />
-              {tr("Filter calls by default")}
-            </label>
+            <Checkbox
+              checked={tenantSettings?.noiseSuppression ?? false}
+              disabled={tenantLocked}
+              onCheckedChange={(v) => void saveTenant({ noiseSuppression: v })}
+              label={tr("Filter calls by default")}
+            />
           </Field>
 
           <Field
@@ -243,8 +386,9 @@ export function CallsPage() {
                   key={String(opt.value)}
                   size="sm"
                   variant={mine === opt.value ? "default" : "ghost"}
+                  aria-pressed={mine === opt.value}
                   disabled={busy || prefs === null}
-                  onClick={() => void saveMine(opt.value)}
+                  onClick={() => void saveMine({ noiseSuppression: opt.value })}
                 >
                   {opt.label}
                 </Button>
@@ -280,51 +424,183 @@ export function CallsPage() {
             label={tr("Relay-only calls")}
             hint={tr("Needs the call relay (TURN) set up for your company; without it, calls will not connect.")}
           >
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={tenantSettings?.relayOnly ?? false}
-                disabled={busy}
-                onChange={(e) => void saveTenant({ relayOnly: e.target.checked })}
-                className="h-4 w-4 accent-[rgb(var(--brand-blue))]"
-              />
-              {tr("Send every call through the relay")}
-            </label>
-          </Field>
-        </div>
-      </Panel>
-
-      <Panel title={tr("Call recordings")}>
-        <p className="text-sm text-muted-foreground">
-          {tr(
-            "Audio is kept only long enough to transcribe and summarize it. The transcript itself lives on with the conversation — the recording does not.",
-          )}
-        </p>
-        <div className="mt-4 max-w-xs">
-          <Field label={tr("Keep recordings for (days)")} hint={tr("1–365 days. Default 30.")}>
-            <Input
-              type="number"
-              min={1}
-              max={365}
-              className="num text-right"
-              value={tenantSettings?.retentionDays ?? 30}
-              disabled={busy}
-              onChange={(e) => {
-                const days = Number(e.target.value);
-                if (Number.isFinite(days)) {
-                  void saveTenant({ retentionDays: Math.min(Math.max(Math.trunc(days), 1), 365) });
-                }
-              }}
+            <Checkbox
+              checked={tenantSettings?.relayOnly ?? false}
+              disabled={tenantLocked}
+              onCheckedChange={(v) => void saveTenant({ relayOnly: v })}
+              label={tr("Send every call through the relay")}
             />
           </Field>
         </div>
       </Panel>
+
+      <Panel title={tr("Call recording")} className="mb-4">
+        <p className="text-sm text-muted-foreground">
+          {tr(
+            "When recording is on, each call's audio is transcribed and summarised for the conversation. Both people are told before they answer, and the person called can answer without recording.",
+          )}
+        </p>
+        <div className="mt-4 space-y-4">
+          <Checkbox
+            checked={tenantSettings?.recordingEnabled ?? false}
+            disabled={tenantLocked}
+            onCheckedChange={(v) => void saveTenant({ recordingEnabled: v })}
+            label={tr("Record and summarise calls")}
+            hint={tr("Off unless your company turns it on. It also needs the call recording feature switched on for your company.")}
+          />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label={tr("Keep recordings for (days)")} hint={tr("1–365 days. Default 30. Audio is kept only long enough to transcribe and summarise it.")}>
+              <Input
+                key={`audio-${tenantSettings?.retentionDays ?? 30}`}
+                type="number"
+                min={1}
+                max={365}
+                className="num text-right"
+                defaultValue={tenantSettings?.retentionDays ?? 30}
+                disabled={tenantLocked}
+                onBlur={(e) => {
+                  const days = Number(e.target.value);
+                  if (!Number.isFinite(days) || e.target.value === "") return;
+                  const next = Math.min(Math.max(Math.trunc(days), 1), 365);
+                  if (next !== tenantSettings?.retentionDays) void saveTenant({ retentionDays: next });
+                }}
+              />
+            </Field>
+            <Field
+              label={tr("Keep transcripts for (days)")}
+              hint={tv("Empty keeps them with the conversation. {{min}}–{{max}} days otherwise.", { min: TRANSCRIPT_MIN, max: TRANSCRIPT_MAX })}
+            >
+              <Input
+                key={`text-${tenantSettings?.transcriptDays ?? "none"}`}
+                type="number"
+                min={TRANSCRIPT_MIN}
+                max={TRANSCRIPT_MAX}
+                className="num text-right"
+                defaultValue={tenantSettings?.transcriptDays ?? ""}
+                disabled={tenantLocked}
+                onBlur={(e) => {
+                  const text = e.target.value.trim();
+                  const next = text === ""
+                    ? null
+                    : Math.min(Math.max(Math.trunc(Number(text)), TRANSCRIPT_MIN), TRANSCRIPT_MAX);
+                  if (next !== null && !Number.isFinite(next)) return;
+                  if (next !== (tenantSettings?.transcriptDays ?? null)) void saveTenant({ transcriptDays: next });
+                }}
+              />
+            </Field>
+          </div>
+        </div>
+      </Panel>
+
+      <Panel title={tr("How calls are processed")} className="mb-4">
+        {processingError ? (
+          <ErrorState message={processingError} />
+        ) : processing ? (
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              {processing.recording_enabled
+                ? tr("Recording is on. These outside companies receive call data:")
+                : tr("Recording is off, so no call audio leaves Praxis. If it is turned on, these outside companies receive call data:")}
+            </p>
+            <ProcessorList title={tr("Transcription (the call's audio)")} rows={processing.transcription} />
+            <ProcessorList title={tr("Summary (the transcript)")} rows={processing.summary} />
+            <ProcessorList title={tr("Network")} rows={processing.network} />
+            {processing.transcription.length === 0 && processing.summary.length === 0 && (
+              <p className="text-sm">{tr("No transcription or summary provider is configured, so calls are not transcribed.")}</p>
+            )}
+          </div>
+        ) : null}
+      </Panel>
+
+      <Panel title={tr("My call preferences")} className="mb-4">
+        {prefs === null ? (
+          <p className="text-sm text-warn" role="status">
+            {tr("Your call preferences could not be read, so they cannot be changed right now.")}
+          </p>
+        ) : (
+          <div className="space-y-4">
+            <Checkbox
+              checked={prefs.doNotDisturb === true}
+              disabled={busy}
+              onCheckedChange={(v) => void saveMine({ doNotDisturb: v })}
+              label={tr("Do not disturb")}
+              hint={tr("Calls to you are refused and the caller is told you are not taking calls.")}
+            />
+            <div>
+              <Checkbox
+                checked={quiet !== null}
+                disabled={busy}
+                onCheckedChange={(v) => void saveMine({ quietHours: v ? { from: "20:00", to: "07:00" } : null })}
+                label={tr("Quiet hours")}
+                hint={tr("Call summaries still arrive in the app, without an email or a push notification during these hours.")}
+              />
+              {quiet && (
+                <div className="mt-2 grid max-w-sm grid-cols-2 gap-3 pl-6">
+                  <Field label={tr("From")}>
+                    <Input
+                      type="time"
+                      value={quiet.from}
+                      disabled={busy}
+                      onChange={(e) => e.target.value && void saveMine({ quietHours: { ...quiet, from: e.target.value } })}
+                    />
+                  </Field>
+                  <Field label={tr("To")}>
+                    <Input
+                      type="time"
+                      value={quiet.to}
+                      disabled={busy}
+                      onChange={(e) => e.target.value && void saveMine({ quietHours: { ...quiet, to: e.target.value } })}
+                    />
+                  </Field>
+                </div>
+              )}
+            </div>
+            <Checkbox
+              checked={prefs.hideLastSeen === true}
+              disabled={busy}
+              onCheckedChange={(v) => void saveMine({ hideLastSeen: v })}
+              label={tr("Hide my last seen")}
+              hint={tr("Colleagues see whether you are online now, but not when you were last active.")}
+            />
+          </div>
+        )}
+      </Panel>
+
+      {caps?.settings_admin && (
+        <Panel title={tr("Erase a person's call records")}>
+          <p className="text-sm text-muted-foreground">
+            {tr("For a data-protection request. The erasure is recorded in the audit log.")}
+          </p>
+          <div className="mt-4 flex flex-wrap items-end gap-3">
+            <Field label={tr("Person")} className="min-w-[16rem] flex-1">
+              <SearchSelect
+                path="/users"
+                label={tr("Person")}
+                value={eraseUser?.name ?? null}
+                placeholder={tr("Search users…")}
+                getLabel={userText}
+                getKey={(u) => String(u.user_id)}
+                onSelect={(u) => setEraseUser({ id: String(u.user_id), name: userText(u) })}
+              />
+            </Field>
+            <Button variant="destructive" disabled={busy || !eraseUser} onClick={() => void erase()}>
+              {tr("Erase call records")}
+            </Button>
+          </div>
+          {erased && (
+            <div className="mt-3">
+              <Callout tone="ok">{erased}</Callout>
+            </div>
+          )}
+        </Panel>
+      )}
 
       {saved && (
         <p className="mt-3 text-xs text-ok" role="status">
           {saved}
         </p>
       )}
+      {confirmDialog}
     </div>
   );
 }

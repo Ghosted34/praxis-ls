@@ -127,6 +127,32 @@ device where the quirks live.
 
 ---
 
+## 5c. PR-6 — the call screens and privacy defaults (release gate H2)
+
+**This section is the H2 release gate.** Recording stays off for every tenant
+that has not turned it on (`comms.call_recording.enabled`, migration 14090), and
+**no one may make it on-by-default for new tenants until every row here and in
+§1–§5b is signed.** Turn recording on for the test tenant in Settings → Calls
+before running S5–S8.
+
+| # | Script | A | B | C | D |
+| --- | --- | --- | --- | --- | --- |
+| S1 | Desktop, working in any screen: a call arrives. The ring card is **top-right**, solid, and the page behind it is still usable (scroll, type). It shows the name, avatar, "ringing 0:0x" counting up, and large Decline / Answer. | — | — | PENDING | PENDING |
+| S2 | Phone: the ring card is **top-centre**; **Full screen** turns it into a solid full-screen ring; **Smaller** returns it. | PENDING | PENDING | — | — |
+| S3 | Have the caller's conversation open when the call arrives: a ring strip sits at the top of the thread and **no** card appears — one Answer button on screen. Answer: the strip becomes the live strip (name, clock, mute, End call). | PENDING | PENDING | PENDING | PENDING |
+| S4 | In a call, **Minimise**, then navigate to three other screens: the docked bar follows (name, clock, mute, open conversation, End call), and tapping it opens the full call screen again. | PENDING | PENDING | PENDING | PENDING |
+| S5 | Recording on: the ring says the call **will be recorded and summarised** and names the companies that process it. Answer: a red dot and "recorded" show on both sides. | PENDING | PENDING | PENDING | PENDING |
+| S6 | Recording on: callee taps **Answer without recording**. Both sides talk normally; neither shows the red dot; after hang-up there is no transcript and no summary draft, and the call record says it was not recorded. | PENDING | PENDING | PENDING | PENDING |
+| S7 | After a recorded call, in the pinned summary draft: edit a key point, remove a follow-up, change a due date (it reads dd/mm/yyyy). **Discard** asks first in the app's own red dialog. | PENDING | PENDING | PENDING | PENDING |
+| S8 | Force a transcription failure (remove the vendor keys on the test server): the pinned draft and the call page both say the call **could not be transcribed**, not a blank summary. | PENDING | PENDING | PENDING | PENDING |
+| S9 | Callee turns on **Do not disturb** (Settings → Calls). Caller dials: the call is refused at once with "not taking calls"; nothing rings anywhere. | PENDING | PENDING | PENDING | PENDING |
+| S10 | Callee sets **Quiet hours** around now; a summary arrives inside them: it shows in the app, with no email and no push. | PENDING | PENDING | PENDING | PENDING |
+| S11 | Callee turns on **Hide my last seen**: the caller sees online/offline but no "last seen" time. | PENDING | PENDING | PENDING | PENDING |
+| S12 | A user without MOD-64 create, or on a tenant with calls off: **no** phone icon anywhere in chat; with calls off there is no Calls tab in Comms. | PENDING | PENDING | PENDING | PENDING |
+| S13 | Light and dark theme, and with "reduce motion" on: ring card, call screen, bar and strips are solid (no blur), readable, and do not animate under reduced motion. | PENDING | PENDING | PENDING | PENDING |
+
+---
+
 ## 6. Sign-off
 
 A row is only signed by a human who did it on the device in that column. Copy

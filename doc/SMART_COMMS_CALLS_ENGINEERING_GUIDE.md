@@ -484,7 +484,10 @@ later certified run retires them (kept for audit, no longer current). The
 
 **Processors.** Call audio goes to Groq, and to Google (Gemini) when Groq
 fails. Transcripts go to Google (Gemini) for the summary, and to DeepSeek only
-when Gemini is down.
+when Gemini is down. Since PR-6 nothing is recorded until the tenant turns
+recording on, the callee can answer without recording, and the list people see
+is read from the configured vendors — see `doc/CALLS_DATA_PROCESSING.md`, the
+sub-processor annex the tenant DPA cites.
 
 ### 4.6 The ring-through matrix (binding: try our utmost best)
 

@@ -570,7 +570,9 @@ export async function dial(groupId: string, peerName: string | null): Promise<vo
  * leaves the call ringing for the person's other devices; an engine that
  * fails after the accept reports the failure, so nobody is left IN_CALL.
  */
-export async function answer(): Promise<void> {
+/** Answer the ringing call. `record: false` answers without recording
+ *  (PR-6, audit G5): the server stores the choice and neither side records. */
+export async function answer(opts: { record?: boolean } = {}): Promise<void> {
   const call = state.call;
   if (!call || state.phase !== "incoming") return;
   const id = call.call_id;
@@ -594,7 +596,7 @@ export async function answer(): Promise<void> {
 
   let row: Call & { ice: import("@/lib/smartcomm-api").IceConfig };
   try {
-    row = await acceptCall(id);
+    row = await acceptCall(id, { record: opts.record });
   } catch (err) {
     mic.getTracks().forEach((t) => t.stop());
     releasePrimed(audio, noiseCtx);
@@ -979,9 +981,14 @@ export function wireCallSocket(): void {
     engine?.peerReady();
   });
 
-  s.on("call:accepted", (p: { call_id: string }) => {
+  s.on("call:accepted", (p: { call_id: string; recording_enabled?: boolean }) => {
     const id = p && p.call_id;
     if (!id) return;
+    // The callee may have answered without recording (PR-6, audit G5): the
+    // caller must neither arm the recorder nor show the recorded banner.
+    if (state.call?.call_id === id && p.recording_enabled === false) {
+      set({ call: { ...state.call, recording_enabled: false }, recordingEnabled: false });
+    }
     if (state.call?.call_id !== id) {
       if (state.elsewhere?.callId === id) set({ elsewhere: { ...state.elsewhere, status: "in_call" } });
       return;
@@ -1173,6 +1180,11 @@ async function hydrateFromLink(link: { callId: string; action: "accept" | "decli
 export { setMuted };
 
 /** The shell has shown the summary notice. */
+/** The "transcription failed" line has been shown (audit N4). */
+export function clearTranscriptionIssue(): void {
+  set({ transcriptionIssue: null });
+}
+
 export function clearSummaryNotice(): void {
   set({ summaryNotice: null });
 }

@@ -48,7 +48,7 @@ const W = vi.hoisted(() => {
   };
   const completes: Array<[string, unknown]> = [];
   const hits: Record<string, number> = {};
-  return { ME, THEM, ICE, handlers, calls, socket, row, api, completes, hits };
+  return { ME, THEM, ICE, handlers, calls, socket, row, api, completes, hits, acceptOpts: undefined as unknown };
 });
 
 vi.mock("@/lib/comms-socket", () => ({
@@ -60,7 +60,7 @@ vi.mock("@/lib/smartcomm-api", async (importOriginal) => ({
   // The real module underneath, so the keep-alive uses the real URL helper.
   ...(await importOriginal<typeof import("@/lib/smartcomm-api")>()),
   dialCall: (id: string) => ((W.hits.dialCall = (W.hits.dialCall || 0) + 1), W.api.dialCall(id)),
-  acceptCall: (id: string) => ((W.hits.acceptCall = (W.hits.acceptCall || 0) + 1), W.api.acceptCall(id)),
+  acceptCall: (id: string, opts?: unknown) => ((W.hits.acceptCall = (W.hits.acceptCall || 0) + 1), (W.acceptOpts = opts), W.api.acceptCall(id)),
   declineCall: (id: string) => ((W.hits.declineCall = (W.hits.declineCall || 0) + 1), W.api.declineCall(id)),
   hangupCall: (id: string) => ((W.hits.hangupCall = (W.hits.hangupCall || 0) + 1), W.api.hangupCall(id)),
   reportCallFailure: (id: string) => ((W.hits.reportCallFailure = (W.hits.reportCallFailure || 0) + 1), W.api.reportCallFailure(id)),
@@ -1012,5 +1012,45 @@ describe("the ringing read on a fresh load (A13)", () => {
       await settle();
     });
     expect(result.current.phase).toBe("incoming");
+  });
+});
+
+describe("answer without recording (PR-6, audit G5)", () => {
+  it("the callee's choice reaches the server, and this side neither records nor shows the banner", async () => {
+    const mod = await fresh();
+    act(() => mod.wireCallSocket());
+    await ringIn();
+    W.api.acceptCall = async () =>
+      W.row({ status: "IN_CALL", connected_at: new Date().toISOString(), ice: W.ICE, recording_enabled: false });
+    await act(async () => {
+      await mod.answer({ record: false });
+    });
+    expect(W.acceptOpts).toEqual({ record: false });
+    const { result } = renderHook(() => mod.useCall());
+    expect(result.current.recordingEnabled).toBe(false);
+  });
+
+  it("a plain answer asks for nothing special", async () => {
+    const mod = await fresh();
+    act(() => mod.wireCallSocket());
+    await ringIn();
+    await act(async () => {
+      await mod.answer();
+    });
+    expect(W.acceptOpts).toEqual({ record: undefined });
+  });
+
+  it("the caller learns from call:accepted that the callee declined the recording", async () => {
+    const mod = await fresh();
+    act(() => mod.wireCallSocket());
+    W.api.dialCall = async () => W.row({ ice: W.ICE, recording_enabled: true, caller_id: W.ME, callee_id: W.THEM });
+    await act(async () => {
+      await mod.dial("g1", "Bruno");
+    });
+    const { result } = renderHook(() => mod.useCall());
+    expect(result.current.recordingEnabled).toBe(true);
+    act(() => fire("call:accepted", { call_id: "c1", recording_enabled: false }));
+    expect(result.current.recordingEnabled).toBe(false);
+    expect(result.current.call?.recording_enabled).toBe(false);
   });
 });

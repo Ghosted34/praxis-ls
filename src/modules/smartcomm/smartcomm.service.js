@@ -32,7 +32,7 @@ const gref = (id) => "comms_group:" + id;
  *  socket server isn't running). Scoped to the ambient request's tenant. */
 function rtPublish(groupId, event, payload) {
   const slug = requestContext.getTenant();
-  if (slug) realtime.publish(slug, groupId, event, payload);
+  if (slug) realtime.publish(slug, requestContext.getEnv(), groupId, event, payload);
 }
 
 async function assertMember(client, groupId, userId) {
@@ -66,8 +66,23 @@ async function createChannel(client, { data, actor = {} }) {
     await emitEvent(client, { eventTypeKey: events.GROUP_CREATED, moduleKey: events.MODULE, entityRef: gref(g.group_id), actorUserId: actor.user_id || null });
     await audit(client, { actorUserId: actor.user_id || null, action: events.GROUP_CREATED, moduleKey: events.MODULE, entityRef: gref(g.group_id), after: g });
     await client.query("COMMIT");
+    if (g.kind === "DIRECT") await forgetContacts([actor.user_id, ...(data.member_ids || [])]);
     return g;
   } catch (err) { await client.query("ROLLBACK"); throw err; }
+}
+
+/** A new DIRECT channel changes who hears whose presence: drop the cached
+ *  contact lists (smartcomm.presence.js). Best-effort; they expire in 5 min. */
+async function forgetContacts(userIds) {
+  const slug = requestContext.getTenant();
+  if (!slug) return;
+  try {
+    await require("./smartcomm.presence").dropContacts(require("../../config/redis").getClient(), {
+      slug, env: requestContext.getEnv(), userIds,
+    });
+  } catch {
+    /* @silent:storage — the cached lists expire within 5 minutes. */
+  }
 }
 async function setArchived(client, { id, archived, actor }) {
   await assertMember(client, id, actor.user_id);

@@ -468,6 +468,30 @@ const Schema = z.object({
   // cron in the corridor's timezone: `every: 24h` ran at 00:00 UTC (audit A1).
   COMMS_CALL_RECORD_SWEEP_CRON: z.string().default("0 10 * * *"),
   COMMS_CALL_RECORD_SWEEP_TZ: z.string().default("Africa/Douala"),
+  // Calls at scale (audit PR-5, doc/SMART_COMMS_CALLS_AUDIT.md §4). Each call's
+  // deadlines are its own delayed jobs; the safety sweep only visits tenants
+  // with recent calls. Concurrencies are per worker process.
+  COMMS_CALL_SAFETY_SWEEP_MS: int(300000),
+  COMMS_CALL_CLOCK_CONCURRENCY: int(8),
+  COMMS_CALL_RING_CONCURRENCY: int(16),
+  CALL_TRANSCRIBE_CONCURRENCY: int(8),
+  // Finalise drafts the summary; it waits on the LLM holding no connection.
+  CALL_FINALISE_CONCURRENCY: int(4),
+  // One limiter per provider key, shared by every worker (Redis). Size them to
+  // the plan on the key: Groq's free tier is 20 requests a minute and 7,200
+  // audio-seconds an hour. A full Groq limiter sends the part to Gemini (O1).
+  GROQ_TRANSCRIBE_RPM: int(20),
+  GROQ_TRANSCRIBE_AUDIO_SECONDS_PER_HOUR: int(7200),
+  GEMINI_TRANSCRIBE_RPM: int(60),
+  // Per-tenant fair share of transcription: parts a minute, and the burst.
+  CALL_TRANSCRIBE_TENANT_PER_MIN: int(12),
+  CALL_TRANSCRIBE_TENANT_BURST: int(20),
+  // A tenant's daily call audio budget, in minutes (0 turns it off).
+  CALL_AUDIO_DAILY_MINUTES: int(3000),
+  // The latency alarm (per tenant): p95 hang-up→summary, and the oldest
+  // waiting part.
+  COMMS_CALL_SUMMARY_P95_ALERT_S: int(120),
+  COMMS_CALL_BACKLOG_ALERT_AGE_S: int(600),
   ENABLE_WORKERS: bool(false),
 
   // Monthly leave accrual (MOD-15). 02:00 on the 1st, in the FX timezone — the

@@ -39,7 +39,7 @@ import { IncomingRing } from "./call/incoming-ring";
 import { CallRingPrompt } from "./call/call-ring-prompt";
 import { startRingingTitle, stopRingingTitle } from "./call/ring-title";
 import { acquireCallKeepAlive, releaseWakeLock } from "./call/wake-keepalive";
-import { setOnline, useOnline } from "./presence";
+import { setOnline, useOnline, replaceOnline } from "./presence";
 
 /** 60 s client-side throttle for the seen beat — the server upserts either
  *  way, so the throttle is about honesty (and load), not correctness. */
@@ -86,6 +86,12 @@ export function CommsLive() {
       setOnline(p.user_id, p.online);
     };
     s.on("comms:presence", onPresence);
+    // The server's snapshot on every (re)connect seeds the dots (audit E12);
+    // a disconnect clears them, since nothing keeps them true meanwhile.
+    const onSnapshot = (p: { users?: Record<string, boolean> }) => replaceOnline(p?.users ?? {});
+    const onDrop = () => replaceOnline({});
+    s.on("comms:presence_snapshot", onSnapshot);
+    s.on("disconnect", onDrop);
 
     const beat = () => {
       const now = Date.now();
@@ -118,6 +124,8 @@ export function CommsLive() {
 
     return () => {
       s.off("comms:presence", onPresence);
+      s.off("comms:presence_snapshot", onSnapshot);
+      s.off("disconnect", onDrop);
       s.off("connect", onConnect);
       document.removeEventListener("visibilitychange", onVis);
       sw?.removeEventListener?.("message", onWorker);

@@ -10,6 +10,7 @@
 "use strict";
 
 const registry = require("../../services/tenant/registry.service");
+const { withTenantSlot } = require("../tenant-db-slots");
 const pipeline = require("../../modules/smartcomm/smartcomm.call.pipeline.service");
 const { logger } = require("../../config/logger");
 
@@ -20,7 +21,8 @@ module.exports = async function callFinalise(job) {
   if (!callId || !tenantMeta || (env !== "live" && env !== "sandbox")) {
     throw new Error("call-finalise requires callId + a live or sandbox tenant");
   }
-  const withDb = (fn) => registry.withTenantConnection(tenantMeta, env, fn);
+  // At most TENANT_POOL_MAX - 2 of the tenant's connections (tenant-db-slots).
+  const withDb = (fn) => withTenantSlot(tenantMeta.slug, () => registry.withTenantConnection(tenantMeta, env, fn));
   const result = await pipeline.finaliseCall({
     withDb, callId, tenantMeta, env, origin, deadline: deadline === true, user,
   });

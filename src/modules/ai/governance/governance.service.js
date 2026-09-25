@@ -247,6 +247,26 @@ async function recordUsage(client, { userId = null, featureKey = null, conversat
 const listUsage = (client, q) => repo.listUsage(client, q);
 
 /**
+ * A daily audio budget (calls audit §4 item 7): may `seconds` more audio of
+ * this feature and call type be transcribed today (UTC)? `capMinutes` 0 means
+ * no budget. Read from the usage ledger, so it counts what was actually sent
+ * to a provider; `ix_aiusage_feature (feature_key, occurred_at)` serves it.
+ */
+async function audioBudget(client, { featureKey, callType, seconds = 0, capMinutes = 0 }) {
+  if (!capMinutes || capMinutes <= 0) return { allowed: true, used_seconds: null, cap_seconds: null };
+  const { rows } = await client.query(
+    `SELECT COALESCE(sum(audio_seconds), 0)::bigint AS used
+       FROM ai_usage_ledger
+      WHERE feature_key = $1 AND call_type = $2
+        AND occurred_at >= date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'`,
+    [featureKey, callType],
+  );
+  const used = Number(rows[0] && rows[0].used) || 0;
+  const cap = capMinutes * 60;
+  return { allowed: used + Math.max(0, seconds) <= cap, used_seconds: used, cap_seconds: cap };
+}
+
+/**
  * AI health (audit H2) — the quality signals, as opposed to the cost ones.
  *
  * Read through THIS module rather than letting the panel reach into
@@ -301,6 +321,6 @@ module.exports = {
   recentHealthEvents,
   listFeatures, setFeature, testVendor,
   grantAccess, revokeAccess, listGrants,
-  budgetStatus, setBudget, canUseFeature, isFeatureEnabled, recordUsage, listUsage,
+  budgetStatus, setBudget, canUseFeature, isFeatureEnabled, recordUsage, listUsage, audioBudget,
   listVendors, getVendor, setVendor, getVendorConfig,
 };

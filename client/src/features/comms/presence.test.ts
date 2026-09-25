@@ -9,7 +9,7 @@
 import { describe, it, expect, afterAll } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import i18n from "@/lib/i18n";
-import { setOnline, useOnline, lastSeenText } from "./presence";
+import { setOnline, useOnline, lastSeenText, replaceOnline } from "./presence";
 
 /** Noon UTC today/yesterday/N days ago — noon never crosses a date line in
  *  the pinned test zone, so "today"/"yesterday" are stable assertions. */
@@ -88,6 +88,29 @@ describe("the live dot store", () => {
     act(() => setOnline("u2", true)); // same value — the store keeps its object
     expect(result.current).toBe(true);
     act(() => setOnline("u2", false));
+    expect(result.current).toBe(false);
+  });
+});
+
+describe("the snapshot on connect (audit E12)", () => {
+  it("seeds the store: a contact already online shows online without waiting for a change", () => {
+    const { result } = renderHook(() => useOnline("s1"));
+    expect(result.current).toBe(false);
+    act(() => replaceOnline({ s1: true }));
+    expect(result.current).toBe(true);
+  });
+
+  it("replaces the whole map, so a dot left stale by a reconnect is cleared", () => {
+    const stale = renderHook(() => useOnline("s2"));
+    act(() => setOnline("s2", true));
+    act(() => replaceOnline({ s3: true }));
+    expect(stale.result.current).toBe(false);
+  });
+
+  it("an empty snapshot (a disconnect) clears every dot", () => {
+    const { result } = renderHook(() => useOnline("s4"));
+    act(() => setOnline("s4", true));
+    act(() => replaceOnline({}));
     expect(result.current).toBe(false);
   });
 });

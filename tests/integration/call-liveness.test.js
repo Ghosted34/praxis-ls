@@ -7,7 +7,7 @@
  * call stayed IN_CALL until the 30-minute cap. Migration 14040 drops the CHECK
  * and the repo holds the closed set instead.
  *
- * Redis (the online/offline book) and the queue are faked; the call row, the
+ * Redis (presence, an in-memory stand-in) and the queue are faked; the call row, the
  * transition and the event/audit writes are real. Everything runs in one
  * transaction that is rolled back.
  *
@@ -15,15 +15,11 @@
  * the tenant schema); self-skips otherwise, like every suite in this directory.
  */
 
-const mockBook = { offline: new Map() };
-jest.mock("../../src/config/redis", () => ({
-  getClient: () => ({
-    smembers: async () => [],
-    zrange: async () => [...mockBook.offline.entries()].flat(),
-    zadd: async (k, score, member) => { mockBook.offline.set(member, score); return 1; },
-    zrem: async (k, ...members) => { for (const m of members) mockBook.offline.delete(m); return members.length; },
-  }),
-}));
+jest.mock("../../src/config/redis", () => {
+  const fake = require("../helpers/fake-redis").createFakeRedis();
+  return { getClient: () => fake, __fake: fake };
+});
+const mockRedis = require("../../src/config/redis").__fake;
 jest.mock("../../src/jobs/queue-producer", () => ({ enqueue: jest.fn(async () => null) }));
 jest.mock("../../src/realtime", () => ({ publishToUser: jest.fn(), publish: jest.fn() }));
 
@@ -61,9 +57,10 @@ d("call liveness against the real schema (audit B1)", () => {
        RETURNING call_id`,
       [group.rows[0].group_id, a, b],
     );
-    // Both devices gone for two minutes.
-    const gone = Math.floor(Date.now() / 1000) - 120;
-    mockBook.offline = new Map([[a, gone], [b, gone]]);
+    // Both devices gone for two minutes (presence, PR-5).
+    const gone = String(Date.now() - 120_000);
+    await mockRedis.set(`presence:off:citenant:live:${a}`, gone);
+    await mockRedis.set(`presence:off:citenant:live:${b}`, gone);
     return call.rows[0].call_id;
   }
 

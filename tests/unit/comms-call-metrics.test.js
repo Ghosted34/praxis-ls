@@ -31,6 +31,10 @@ jest.mock("../../src/services/platform/db", () => ({
 jest.mock("../../src/services/platform/alert-routing.service", () => ({
   raise: jest.fn(async () => ({ delivered: true, reason: "sent" })),
 }));
+jest.mock("../../src/config/redis", () => {
+  const fake = require("../helpers/fake-redis").createFakeRedis();
+  return { getClient: () => fake, __fake: fake };
+});
 jest.mock("../../src/services/platform/runtime-config.service", () => ({
   opsTuning: jest.fn(async () => ({ source: "defaults" })),
 }));
@@ -44,6 +48,7 @@ const TENANT = { slug: "smartls", tenant_id: "11111111-1111-4111-8111-1111111111
 
 beforeEach(() => {
   jest.clearAllMocks();
+  require("../../src/config/redis").__fake._reset();
   db.opsQuery.mockResolvedValue({ rows: [], rowCount: 0 });
   db.query.mockImplementation((...a) => db.opsQuery(...a));
   registry.listActiveTenants.mockResolvedValue([]);
@@ -232,5 +237,114 @@ describe("evaluateTranscriptionAlert", () => {
 
     const cfg = await metrics.alertConfig();
     expect(cfg).toEqual({ threshold: 5, window_hours: 72, source: "vault" });
+  });
+});
+
+/* ── PR-5: counters, UTC days, live-only alarm, latency ──────────────────── */
+
+describe("the hourly refresh reads no tenant database (audit D4)", () => {
+  const signals = require("../../src/modules/smartcomm/smartcomm.call.signals");
+  const NOW = new Date("2026-09-25T14:00:00Z");
+  const started = "2026-09-25T09:30:00Z";
+
+  test("today's rows come from the day counters the call service increments", async () => {
+    const c = (field, by = 1, env = "live") => signals.count({ slug: "acme", env, field, by, startedAt: started });
+    await c("calls_started", 5);
+    await c("calls_answered", 3);
+    await c("calls_no_answer", 2);
+    await c("answered_ended", 2);
+    await c("duration_sum", 600);
+    await c("ring_socket", 2);
+    await c("ring_push", 1);
+    await c("transcription_failed", 1);
+    await c("reason:PARTS_NOT_TRANSCRIBED", 1);
+    await c("calls_started", 1, "sandbox");
+
+    const handler = require("../../src/jobs/handlers/comms-call-metrics");
+    const spy = jest.spyOn(metrics, "refreshFromCounters");
+    const out = await metrics.refreshFromCounters({ now: NOW });
+    expect(out).toEqual({ written: 2, source: "counters" });
+    expect(registry.withTenantConnection).not.toHaveBeenCalled();
+    const live = db.opsQuery.mock.calls.map((x) => x[1]).find((p) => p[1] === "live");
+    expect(live.slice(0, 11)).toEqual(["acme", "live", "2026-09-25", 5, 3, 2, 0, 0, 0, 300, 1]);
+    expect(JSON.parse(live[11])).toEqual({ PARTS_NOT_TRANSCRIBED: 1 });
+    expect(live.slice(12)).toEqual([2, 0, 1, 2]); // ring_none = started - acked
+
+    // The job's hourly tick uses the counters, never the fleet fan-out.
+    db.opsQuery.mockResolvedValue({ rows: [], rowCount: 0 });
+    await handler({ name: "alert" });
+    expect(spy).toHaveBeenCalled();
+    expect(registry.listActiveTenants).not.toHaveBeenCalled();
+  });
+});
+
+describe("UTC days (audit D11)", () => {
+  test("the aggregation computes the day in SQL, in UTC, as text", async () => {
+    const client = { query: jest.fn(async () => ({ rows: [] })) };
+    registry.withTenantConnection.mockImplementation(async (_m, _e, fn) => fn(client));
+    await metrics.aggregateTenant({ tenantMeta: TENANT, env: "live" });
+    for (const [sql] of client.query.mock.calls) {
+      expect(sql).toContain("(started_at AT TIME ZONE 'UTC')::date::text");
+      expect(sql).not.toContain("date_trunc('day', started_at)");
+    }
+  });
+
+  test("a text day is written as it came, whatever the process timezone", async () => {
+    const client = {
+      query: jest.fn(async (sql) => (/transcription_error/.test(sql) ? { rows: [] }
+        : { rows: [{ metric_date: "2026-09-19", calls_started: 1, calls_answered: 0, calls_no_answer: 1, calls_declined: 0, calls_busy: 0, calls_failed: 0, avg_duration_seconds: null, transcription_failed: 0, ring_socket: 0, ring_notification: 0, ring_push: 0, ring_none: 1 }] })),
+    };
+    registry.withTenantConnection.mockImplementation(async (_m, _e, fn) => fn(client));
+    await metrics.aggregateTenant({ tenantMeta: TENANT, env: "live" });
+    expect(db.opsQuery.mock.calls[0][1][2]).toBe("2026-09-19");
+  });
+});
+
+describe("the failure alarm is per tenant and env, live only (D5, N5)", () => {
+  test("the read groups by (tenant, env) and keeps only live", async () => {
+    db.opsQuery.mockResolvedValue({ rows: [] });
+    await metrics.evaluateTranscriptionAlert({ threshold: 3, windowHours: 24 });
+    const [sql] = db.opsQuery.mock.calls[0];
+    expect(sql).toMatch(/GROUP BY tenant_slug, env/);
+    expect(sql).toMatch(/env = 'live'/);
+  });
+
+  test("the subject no longer blames a browser capture that does not exist", async () => {
+    db.opsQuery
+      .mockResolvedValueOnce({ rows: [metricRow({ failed: 4, env: "live" })] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 });
+    await metrics.evaluateTranscriptionAlert({ threshold: 3, windowHours: 24 });
+    const { subject } = alerts.raise.mock.calls[0][0];
+    expect(subject).not.toMatch(/browser/i);
+    expect(subject).toBe("4 calls could not be fully transcribed in the last 24h (threshold 3)");
+  });
+});
+
+describe("the latency alarm (§4 item 8)", () => {
+  const signals = require("../../src/modules/smartcomm/smartcomm.call.signals");
+
+  test("pages once when a live tenant's p95 hang-up→summary is over target", async () => {
+    for (let i = 0; i < 19; i += 1) await signals.summaryLatency({ slug: "slow", env: "live", callId: `c${i}`, seconds: 60 });
+    await signals.summaryLatency({ slug: "slow", env: "live", callId: "late", seconds: 400 });
+    await signals.summaryLatency({ slug: "fine", env: "live", callId: "f", seconds: 40 });
+    await signals.summaryLatency({ slug: "demo", env: "sandbox", callId: "d", seconds: 900 });
+    let out = await metrics.evaluateLatencyAlert({ p95Seconds: 120, backlogSeconds: 600 });
+    expect(out.raised.map((r) => r.tenant)).toEqual([]);
+    // p95 of 20 samples is the 19th value: 60 s. Add one more slow call.
+    await signals.summaryLatency({ slug: "slow", env: "live", callId: "late2", seconds: 500 });
+    out = await metrics.evaluateLatencyAlert({ p95Seconds: 120, backlogSeconds: 600 });
+    expect(out.raised).toEqual([expect.objectContaining({ tenant: "slow", slow: true })]);
+    expect(alerts.raise.mock.calls[0][0].event).toBe("comms.transcription_latency");
+    out = await metrics.evaluateLatencyAlert({ p95Seconds: 120, backlogSeconds: 600 });
+    expect(out.raised).toEqual([]);
+  });
+
+  test("pages when a tenant's oldest waiting part is older than its limit", async () => {
+    await signals.partQueued({ slug: "stuck", env: "live", jobId: "p1", now: Date.now() - 20 * 60_000 });
+    const out = await metrics.evaluateLatencyAlert({ p95Seconds: 120, backlogSeconds: 600 });
+    expect(out.raised).toEqual([expect.objectContaining({ tenant: "stuck", stuck: true })]);
+    const s = out.signals.find((x) => x.tenant === "stuck");
+    expect(s.oldest_waiting_s).toBeGreaterThanOrEqual(1199);
   });
 });

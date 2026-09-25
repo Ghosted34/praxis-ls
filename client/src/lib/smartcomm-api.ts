@@ -611,7 +611,7 @@ export type PendingCallSummary = {
   transcription_state: CallTranscriptState | null;
 };
 
-export type CallTranscriptReason = "SIDE_NOT_RECORDED" | "PARTS_NOT_TRANSCRIBED" | "TRANSCRIPTION_FAILED";
+export type CallTranscriptReason = "SIDE_NOT_RECORDED" | "PARTS_NOT_TRANSCRIBED" | "OVER_BUDGET" | "TRANSCRIPTION_FAILED";
 
 export type CallSummaryView = {
   call_id: string;

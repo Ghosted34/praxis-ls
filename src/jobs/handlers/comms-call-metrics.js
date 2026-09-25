@@ -5,8 +5,10 @@
  *
  *   "aggregate"  rebuild the last seven days of every tenant's call metrics.
  *                Daily, 00:20 UTC.
- *   "alert"      refresh TODAY and evaluate the sustained-transcription-failure
- *                alarm. Hourly.
+ *   "alert"      refresh TODAY from the Redis day counters (no tenant database
+ *                is read: audit D4) and evaluate the alarms: sustained
+ *                transcription failure (live only, per tenant and env) and
+ *                latency (p95 hang-up→summary, oldest waiting part). Hourly.
  *   "purge"      the 400-day retention for the metric rows. Daily, with the
  *                aggregation.
  *
@@ -47,13 +49,17 @@ module.exports = async function commsCallMetrics(job) {
   if (kind === "alert") {
     // Today's rows first: the alarm reads the aggregated table, so evaluating
     // before refreshing would page on yesterday's numbers with today's date on
-    // them. One day back, not seven — the daily tick owns the repair window.
-    const refreshed = await metrics.aggregateFleet({ days: 1 });
+    // them. From the counters: the daily tick owns the repair window.
+    const refreshed = await metrics.refreshFromCounters({ days: 1 });
     const decision = await metrics.evaluateTranscriptionAlert();
     if (decision.raised.length) {
       logger.warn({ raised: decision.raised, ...decision }, "[comms-call-metrics] sustained transcription failure");
     }
-    return { refreshed, decision };
+    const latency = await metrics.evaluateLatencyAlert();
+    if (latency.raised.length) {
+      logger.warn({ raised: latency.raised }, "[comms-call-metrics] call summaries are late");
+    }
+    return { refreshed, decision, latency: { raised: latency.raised, tenants: latency.signals.length } };
   }
 
   const result = await metrics.aggregateFleet({ days: metrics.REGRESSION_DAYS });

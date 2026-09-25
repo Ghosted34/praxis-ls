@@ -5,10 +5,10 @@
  * and closes it (ENDED / NO_ANSWER / CANCELLED / DECLINED / BUSY / FAILED).
  * Clients are renderers — a client that lies about the state changes nothing,
  * because every transition is a guarded UPDATE that only matches the status
- * it is leaving, and the timers are re-derived from the ROWS by the sweep
- * (jobs/handlers/comms-call-sweep.js) rather than held in memory. A process
- * restart therefore loses no deadline: the next sweep sees the row and
- * finishes what the dead process was owed.
+ * it is leaving. Each call's deadlines are delayed jobs of its own
+ * (smartcomm.call.clock.js, audit D1), re-checked against the ROW when they
+ * fire, and a 5-minute safety sweep over tenants with calls backs them up. A
+ * process restart therefore loses no deadline.
  *
  * Media never touches this process. This file deals in state and socket
  * signals only; the actual audio is P2P (STUN, TURN as the last tier).
@@ -23,22 +23,34 @@ const realtime = require("../../realtime");
 const requestContext = require("../../config/request-context");
 const { logger } = require("../../config/logger");
 
+const clock = require("./smartcomm.call.clock");
+const presence = require("./smartcomm.presence");
+const signals = require("./smartcomm.call.signals");
+
 const cref = (id) => "comms_call:" + id;
 
-/** The two timers, as constants on the row rather than in memory. The sweep
- *  (every 15 s) is the only clock; the clients run the same constants for the
- *  UX (29:00 warning, hang-up at 30:00). */
+/** The two timers, as constants on the row. Each call's clock jobs enforce
+ *  them; the clients run the same constants for the UX (29:00 warning,
+ *  hang-up at 30:00). */
 const RING_TIMEOUT_S = 60;
 const MAX_CALL_S = 1800;
 /** How long BOTH participants may be socket-less before an in-call call ends
  *  itself `disconnected` (field note FN-1). Beyond the matrix's 20 s
  *  airplane row (which drops one device — the other is still online), well
- *  under the 30-minute cap that remains the backstop if the registry is down. */
+ *  under the 30-minute cap that remains the backstop if presence is down. */
 const LIVENESS_OFFLINE_S = 60;
 /** Dial limits (audit C6). Per caller is the route's limiter; per callee is
  *  here, where the callee is known: a colleague cannot be rung more than this
  *  in a minute, by anyone. */
 const DIAL_LIMITS = Object.freeze({ perCalleePerMinute: 6 });
+
+/** A day counter for the platform metrics (audit D4), on the call's UTC
+ *  start day. Best-effort, like every signal. */
+function countCall(call, field, { slug = null, env = "live", by = 1 } = {}) {
+  return signals.count({
+    slug: slug || requestContext.getTenant(), env, field, by, startedAt: call && call.started_at,
+  });
+}
 
 /** Push to ONE user's room for the call's env, on every replica
  *  (best-effort; the row is already committed). Callers pass the env the call
@@ -252,6 +264,12 @@ async function createCall(client, { groupId, actor, tenantMeta = null, env = "li
   // window (audit A12), through a job so a restart mid-ring loses nothing; the
   // job queues its own re-alerts.
   void enqueueRingPush({ callId: call.call_id, tenantMeta, env, alert: 0 });
+  // The ring's own deadline (D1); the tenant joins the safety sweep's set.
+  await countCall(call, "calls_started", { slug: tenantMeta && tenantMeta.slug, env });
+  await clock.markTenantActive(tenantMeta, env);
+  await clock.scheduleRingDeadline({
+    callId: call.call_id, tenantMeta, env, ringTimeoutS: RING_TIMEOUT_S, startedAt: call.started_at,
+  });
 
   logger.info({ callId: call.call_id, caller: actor.user_id, callee: partner.user_id }, "call: RINGING");
   // The dialer's ICE config rides the create response, so its engine can
@@ -290,6 +308,11 @@ async function acceptCall(client, { id, actor, tenantMeta = null, env = "live" }
   // The callee's own room too: their other devices stop ringing (audit E8).
   rtToUser(actor.user_id, "call:accepted", payload, { env });
   void enqueueRingCancel({ callId: id, outcome: "answered", tenantMeta, env });
+  // The 30-minute cap (D1), and the live call each side's disconnect checks.
+  await countCall(updated, "calls_answered", { slug: tenantMeta && tenantMeta.slug, env });
+  await clock.markTenantActive(tenantMeta, env);
+  await clock.scheduleCap({ callId: id, tenantMeta, env, maxCallS: MAX_CALL_S, connectedAt: updated.connected_at });
+  await rememberActiveCall(updated, { slug: tenantMeta && tenantMeta.slug, env });
   logger.info({ callId: id }, "call: IN_CALL");
   // The callee's engine starts now, so its ICE config rides this response.
   const settings = await callSettings(client);
@@ -419,7 +442,16 @@ async function endCall(client, {
   };
   rtToUser(before.caller_id, notifyEvent || "call:ended", payload, { slug: tenantSlug, env });
   rtToUser(before.callee_id, notifyEvent || "call:ended", payload, { slug: tenantSlug, env });
-  logger.info({ callId: id, status, reason }, "call: terminal");
+  logger.info({ callId: id, status, reason, env }, "call: terminal");
+  const counted = { slug: tenantSlug || (tenantMeta && tenantMeta.slug), env };
+  if (TERMINAL_COUNTERS[status]) await countCall(updated, TERMINAL_COUNTERS[status], counted);
+  if ((status === "ENDED" || status === "FAILED") && updated.connected_at) {
+    await countCall(updated, "answered_ended", counted);
+    await countCall(updated, "duration_sum", { ...counted, by: Number(updated.duration_seconds) || 0 });
+  }
+  if (fromStatus === "IN_CALL") {
+    await forgetActiveCall(before, { slug: tenantSlug || (tenantMeta && tenantMeta.slug), env });
+  }
   // A ring that ends unanswered: replace it on the callee's devices (A7).
   if (fromStatus === "RINGING") {
     void enqueueRingCancel({ callId: id, outcome: CANCEL_OUTCOMES[status] || "ended", tenantMeta, env });
@@ -447,16 +479,16 @@ function durationSeconds(call) {
 }
 
 /**
- * The sweep (jobs/handlers/comms-call-sweep.js) — the ONLY clock.
+ * The safety sweep (jobs/handlers/comms-call-sweep.js), every 5 minutes, for
+ * a tenant in the active set only. Each call's own clock jobs are the primary
+ * deadlines (D1); this catches a job that was never queued or was lost.
  *
- * Per tenant+env, per tick: ring calls older than RING_TIMEOUT_S become
- * NO_ANSWER, and in-call calls older than MAX_CALL_S become
- * ENDED(max_duration). In-call calls whose two devices have both been gone
- * for LIVENESS_OFFLINE_S become ENDED(disconnected) — the row's fourth way to
- * end (sweepLiveness, FN-1). Each is a guarded transition, so a sweep that
- * races a real hang-up loses silently, and a deployment with several API/
- * worker replicas can never end one call twice. Returns how many it moved, so
- * a quiet tick is a 0, not an absence.
+ * Ends ring calls older than RING_TIMEOUT_S (NO_ANSWER), in-call calls older
+ * than MAX_CALL_S (ENDED max_duration) and in-call calls whose two
+ * participants have both been gone for LIVENESS_OFFLINE_S (ENDED
+ * disconnected). Every end is a guarded transition, so racing a real hang-up
+ * or another replica is harmless. Returns how many it moved and how many
+ * calls are still live, so the scheduler can drop an idle tenant.
  */
 async function sweep(client, { tenantSlug = null, tenantMeta = null, env = "live" } = {}) {
   const due = await client.query(
@@ -470,11 +502,16 @@ async function sweep(client, { tenantSlug = null, tenantMeta = null, env = "live
     const result = await sweepOne(client, call, tenantSlug, { tenantMeta, env });
     if (result) moved += 1;
   }
-  // The fourth way to end (FN-1): both devices gone. Runs on a quiet tick too
-  // — an abandoned call has no deadline of its own; this check IS its
-  // deadline.
-  moved += await sweepLiveness(client, { tenantSlug, tenantMeta, env });
-  return { moved };
+  const { rows: live } = await client.query(
+    "SELECT call_id, caller_id, callee_id, status FROM comms_call WHERE status IN ('RINGING','IN_CALL')",
+  );
+  let disconnected = 0;
+  for (const call of live) {
+    if (call.status !== "IN_CALL") continue;
+    const verdict = await livenessVerdict(call, { tenantSlug, env });
+    if (verdict.gone && await endDisconnected(client, call, { tenantSlug, tenantMeta, env })) disconnected += 1;
+  }
+  return { moved: moved + disconnected, live: live.length - disconnected };
 }
 
 async function sweepOne(client, call, tenantSlug, { tenantMeta = null, env = "live" } = {}) {
@@ -500,102 +537,116 @@ async function sweepOne(client, call, tenantSlug, { tenantMeta = null, env = "li
   }
 }
 
+/** The ring's deadline job: NO_ANSWER if the row still rings and is due. */
+async function expireRing(client, { callId, tenantMeta = null, env = "live" }) {
+  const call = await repo.findCall(client, callId);
+  if (!call || call.status !== "RINGING") return { moved: false, reason: "not ringing" };
+  const dueAt = new Date(call.started_at).getTime() + RING_TIMEOUT_S * 1000;
+  if (dueAt > Date.now()) {
+    await clock.scheduleRingDeadline({ callId, tenantMeta, env, ringTimeoutS: RING_TIMEOUT_S, startedAt: call.started_at });
+    return { moved: false, reason: "not due" };
+  }
+  return { moved: await sweepOne(client, call, tenantMeta && tenantMeta.slug, { tenantMeta, env }) };
+}
+
+/** The 30-minute cap job: ENDED(max_duration) if still in the call. */
+async function capCall(client, { callId, tenantMeta = null, env = "live" }) {
+  const call = await repo.findCall(client, callId);
+  if (!call || call.status !== "IN_CALL") return { moved: false, reason: "not in a call" };
+  const dueAt = new Date(call.connected_at).getTime() + MAX_CALL_S * 1000;
+  if (dueAt > Date.now()) {
+    await clock.scheduleCap({ callId, tenantMeta, env, maxCallS: MAX_CALL_S, connectedAt: call.connected_at });
+    return { moved: false, reason: "not due" };
+  }
+  return { moved: await sweepOne(client, call, tenantMeta && tenantMeta.slug, { tenantMeta, env }) };
+}
+
 /**
- * The row's fourth way to end (field note FN-1).
+ * Are both participants gone, and for long enough (field note FN-1)?
  *
- * A call ends by client report, by the 60 s ring deadline, or by the
- * 30-minute cap. The fourth way is what the first real-hardware run exposed:
- * BOTH devices gone — the window closed, the phone's OS killed the
- * backgrounded page — nobody is left to report, and the cap would hold the
- * call IN_CALL, and both users BUSY, for up to 30 minutes.
- *
- * The rule: a participant is "gone" while their sockets are absent from the
- * online registry (realtime/index.js keeps one SET per tenant+env, one member
- * per socket). An IN_CALL call whose two participants have both been gone for
- * LIVENESS_OFFLINE_S ends ENDED(disconnected). The 60 s sits beyond the
- * matrix's airplane row (I3 drops ONE device for 20 s — the other is still in
- * the set, so the rule cannot fire). Every read here fails toward "leave it
- * alone": liveness must never be what ends a healthy call, so a registry
- * outage skips the pass and the 30-minute cap remains the backstop.
+ * A participant is gone while none of their sockets is live in presence
+ * (smartcomm.presence.js, TTL-bound, so a crashed replica's sockets stop
+ * counting within 90 s). `{ gone, dueAt }`: `dueAt` is when both will have
+ * been gone for LIVENESS_OFFLINE_S. Any presence failure answers "not gone":
+ * liveness must never be what ends a healthy call, and the cap remains.
  */
-async function sweepLiveness(client, { tenantSlug = null, tenantMeta = null, env = "live" } = {}) {
-  if (!tenantSlug) return 0;
-  let redis;
+async function livenessVerdict(call, { tenantSlug, env }, now = Date.now()) {
+  if (!tenantSlug) return { gone: false, reason: "no tenant" };
+  let since;
   try {
-    redis = require("../../config/redis").getClient();
-    if (!redis) return 0;
+    since = await presence.offlineSince(require("../../config/redis").getClient(), {
+      slug: tenantSlug, env, userIds: [call.caller_id, call.callee_id], now,
+    });
   } catch (err) {
-    logger.warn({ err, tenantSlug }, "call liveness: redis unavailable — the 30-minute cap remains the backstop");
-    return 0;
+    logger.warn({ err, tenantSlug }, "call liveness: presence unavailable — the 30-minute cap remains the backstop");
+    return { gone: false, reason: "presence unavailable" };
   }
-  let rows;
-  try {
-    ({ rows } = await client.query(
-      "SELECT call_id, caller_id, callee_id FROM comms_call WHERE status = 'IN_CALL'",
-    ));
-  } catch (err) {
-    logger.warn({ err, tenantSlug }, "call liveness: row scan failed — skipping this tick");
-    return 0;
-  }
-  if (!rows.length) return 0;
+  const a = since[call.caller_id];
+  const b = since[call.callee_id];
+  if (a === null || b === null || a === undefined || b === undefined) return { gone: false, reason: "online" };
+  // BOTH gone for the full window (audit B2: the later of the two counts).
+  const dueAt = Math.max(a, b) + LIVENESS_OFFLINE_S * 1000;
+  return { gone: dueAt <= now, dueAt };
+}
 
-  const onlineKey = `praxis:comms:online:${tenantSlug}:${env}`;
-  const offlineKey = `praxis:comms:call-offline:${tenantSlug}:${env}`;
-  let members;
+async function endDisconnected(client, call, { tenantSlug, tenantMeta, env }) {
   try {
-    members = await redis.smembers(onlineKey);
+    await endCall(client, {
+      id: call.call_id,
+      fromStatus: "IN_CALL",
+      status: "ENDED",
+      reason: "disconnected",
+      notifyEvent: "call:ended",
+      tenantSlug,
+      tenantMeta,
+      env,
+    });
+    return true;
   } catch (err) {
-    logger.warn({ err, tenantSlug }, "call liveness: could not read the online set — skipping this tick");
-    return 0;
+    if (err && err.status === 409) return false; // a hang-up won the race
+    throw err;
   }
-  const online = new Set(members.map((m) => String(m).split(":")[0]));
-  const nowS = Math.floor(Date.now() / 1000);
-  const offlineSince = {};
+}
+
+/**
+ * The liveness job, queued 60 s after a participant's last socket left
+ * mid-call. Ends the call if both are gone for the window; if both are gone
+ * but not yet for long enough, checks again when they will have been.
+ */
+async function checkLiveness(client, { callId, tenantMeta = null, env = "live" }) {
+  const call = await repo.findCall(client, callId);
+  if (!call || call.status !== "IN_CALL") return { moved: false, reason: "not in a call" };
+  const tenantSlug = tenantMeta && tenantMeta.slug;
+  const verdict = await livenessVerdict(call, { tenantSlug, env });
+  if (verdict.gone) return { moved: await endDisconnected(client, call, { tenantSlug, tenantMeta, env }) };
+  if (verdict.dueAt) {
+    await clock.scheduleLiveness({ callId, tenantMeta, env, atMs: verdict.dueAt + clock.GRACE_MS });
+    return { moved: false, reason: "rechecking" };
+  }
+  return { moved: false, reason: verdict.reason };
+}
+
+/** Both participants' live call, for the disconnect → liveness check. Never throws. */
+async function rememberActiveCall(call, { slug, env }) {
+  if (!slug || !call) return;
   try {
-    const entries = await redis.zrange(offlineKey, 0, -1, "WITHSCORES");
-    for (let i = 0; i + 1 < entries.length; i += 2) offlineSince[entries[i]] = Number(entries[i + 1]);
+    await presence.setActiveCall(require("../../config/redis").getClient(), {
+      slug, env, userIds: [call.caller_id, call.callee_id], callId: call.call_id,
+    });
+  } catch (err) {
+    logger.warn({ err, callId: call.call_id }, "call: could not record the live call — the cap remains the backstop");
+  }
+}
+
+async function forgetActiveCall(call, { slug, env }) {
+  if (!slug || !call) return;
+  try {
+    await presence.clearActiveCall(require("../../config/redis").getClient(), {
+      slug, env, userIds: [call.caller_id, call.callee_id], callId: call.call_id,
+    });
   } catch {
-    /* @silent:storage — an unreadable book is read as "nobody proven gone yet". */
+    /* @silent:storage — the key expires on its own (PRESENCE.activeCallS). */
   }
-
-  let moved = 0;
-  for (const call of rows) {
-    for (const uid of [call.caller_id, call.callee_id]) {
-      if (online.has(uid)) {
-        if (offlineSince[uid] !== undefined) delete offlineSince[uid];
-        try { await redis.zrem(offlineKey, uid); } catch { /* @silent:storage */ }
-      } else if (offlineSince[uid] === undefined) {
-        offlineSince[uid] = nowS;
-        try { await redis.zadd(offlineKey, nowS, uid); } catch { /* @silent:storage */ }
-      }
-    }
-    const outCaller = offlineSince[call.caller_id];
-    const outCallee = offlineSince[call.callee_id];
-    if (outCaller === undefined || outCallee === undefined) continue;
-    // BOTH gone for the full window (audit B2: `min` ended the call when only
-    // one had been gone that long and the other had just blinked).
-    if (Math.max(outCaller, outCallee) > nowS - LIVENESS_OFFLINE_S) continue;
-    try {
-      const ended = await endCall(client, {
-        id: call.call_id,
-        fromStatus: "IN_CALL",
-        status: "ENDED",
-        reason: "disconnected",
-        notifyEvent: "call:ended",
-        tenantSlug,
-        tenantMeta,
-        env,
-      });
-      if (ended) {
-        moved += 1;
-        try { await redis.zrem(offlineKey, call.caller_id, call.callee_id); } catch { /* @silent:storage */ }
-      }
-    } catch (err) {
-      if (err && err.status === 409) continue; // a hang-up won the race; the row is terminal
-      throw err;
-    }
-  }
-  return moved;
 }
 
 /* ── The ring on every device (PR-4; O4, audit A7, A12, A14) ─────────────── */
@@ -610,6 +661,11 @@ const RING_VIBRATE = Object.freeze([600, 250, 600, 250, 600]);
  *  no CHECK on the column). */
 const RING_CHANNELS = new Set(["socket", "notification", "push"]);
 
+/** The day counter a terminal status adds to (audit D4). */
+const TERMINAL_COUNTERS = Object.freeze({
+  NO_ANSWER: "calls_no_answer", DECLINED: "calls_declined", BUSY: "calls_busy", FAILED: "calls_failed",
+});
+
 /** A terminal status reached from RINGING, as the cancel push says it. */
 const CANCEL_OUTCOMES = Object.freeze({ DECLINED: "declined", CANCELLED: "missed", NO_ANSWER: "missed", FAILED: "ended" });
 
@@ -623,9 +679,35 @@ function ringSecondsLeft(call, now = Date.now()) {
   return Math.ceil((new Date(call.started_at).getTime() + RING_TIMEOUT_S * 1000 - now) / 1000);
 }
 
-function enqueueRingJob(name, data, opts) {
+/**
+ * Ring-queue priority (BullMQ: lower runs first). First alerts and cancels
+ * go ahead of re-alerts; within a class, each tenant's jobs are ranked by how
+ * many it has queued in the last 10 s, so a burst at one tenant cannot delay
+ * another tenant's ring (every tenant's first ring has rank 1).
+ */
+const RING_RANK_SPAN = 100_000;
+const RING_RANK_WINDOW_S = 10;
+async function ringPriority({ slug, urgent }) {
+  let rank = 1;
+  try {
+    const bucket = Math.floor(Date.now() / (RING_RANK_WINDOW_S * 1000));
+    const key = `praxis:ringrank:${slug}:${bucket}`;
+    const r = require("../../config/redis").getClient();
+    rank = Number(await r.incr(key)) || 1;
+    if (rank === 1) await r.expire(key, RING_RANK_WINDOW_S * 3);
+  } catch {
+    /* @silent:storage — unranked, the job still runs in its class. */
+  }
+  return 1 + (urgent ? 0 : RING_RANK_SPAN) + Math.min(rank - 1, RING_RANK_SPAN - 1);
+}
+
+async function enqueueRingJob(name, data, opts) {
   const { enqueue } = require("../../jobs/queue-producer");
-  return enqueue("comms-call-ring-escalate", name, data, { attempts: 1, removeOnComplete: true, removeOnFail: 50, ...opts });
+  const urgent = name === "cancel" || !data.alert;
+  const priority = await ringPriority({ slug: data.tenantMeta && data.tenantMeta.slug, urgent });
+  return enqueue("comms-call-ring-escalate", name, data, {
+    attempts: 1, removeOnComplete: true, removeOnFail: 50, priority, ...opts,
+  });
 }
 
 /**
@@ -672,7 +754,10 @@ async function ackRing(client, { id, actor, channel = "socket" }) {
   if (call.caller_id === actor.user_id) return null;
   const safeChannel = RING_CHANNELS.has(channel) ? channel : "socket";
   const updated = await repo.markRingAck(client, { callId: id, channel: safeChannel });
-  if (updated) logger.info({ callId: id, channel: safeChannel }, "call: ring acked");
+  if (updated) {
+    logger.info({ callId: id, channel: safeChannel }, "call: ring acked");
+    await countCall(updated, `ring_${safeChannel}`, { env: requestContext.getEnv() });
+  }
   return updated;
 }
 
@@ -901,12 +986,17 @@ module.exports = {
   RING_REALERT_MS,
   RING_MAX_REALERTS,
   RING_CHANNELS,
+  ringPriority,
   createCall,
   acceptCall,
   declineCall,
   hangup,
   reportFailure,
   sweep,
+  expireRing,
+  capCall,
+  checkLiveness,
+  LIVENESS_OFFLINE_S,
   listCalls,
   getCall,
   turnFor,

@@ -127,3 +127,56 @@ describe("mirrorUserBestEffort", () => {
     expect(c.query).not.toHaveBeenCalled();
   });
 });
+
+describe("keeping an already-mirrored user in step (calls audit PR-5)", () => {
+  beforeEach(() => logger.warn.mockClear());
+
+  it("copies status (and the display fields) onto a sandbox row that already exists", async () => {
+    const c = fakeClient({ rowCount: 0 });
+    await mirrorUsersIntoSandbox(c, { userId: USER });
+    const sync = c.queries.find((q) => /^UPDATE sandbox\.app_user/.test(q.sql));
+    expect(sync).toBeDefined();
+    expect(sync.sql).toContain("FROM live.app_user");
+    expect(sync.sql).toMatch(/status\s*=\s*l\.status/);
+    expect(sync.sql).toContain("s.user_id = l.user_id");
+    expect(sync.params).toEqual([USER]);
+  });
+
+  it("syncs every user when no id is given", async () => {
+    const c = fakeClient({ rowCount: 0 });
+    await mirrorUsersIntoSandbox(c);
+    const sync = c.queries.find((q) => /^UPDATE sandbox\.app_user/.test(q.sql));
+    expect(sync.params).toEqual([]);
+    expect(sync.sql).not.toContain("$1");
+  });
+
+  it("never syncs email, username or a secret (a unique clash must not fail the mirror)", async () => {
+    const c = fakeClient();
+    await mirrorUsersIntoSandbox(c, { userId: USER });
+    const sync = c.queries.find((q) => /^UPDATE sandbox\.app_user/.test(q.sql));
+    const setClause = sync.sql.split(/\bFROM\b/)[0];
+    expect(setClause).not.toMatch(/email|username|password_hash|totp|godmode/);
+  });
+});
+
+describe("app_user.setStatus mirrors the new status into sandbox", () => {
+  it("calls the mirror after the status changes", async () => {
+    jest.resetModules();
+    const mirror = jest.fn(async () => undefined);
+    jest.doMock("../../src/shared/db/sandbox-user-mirror", () => ({ mirrorUserBestEffort: mirror }));
+    jest.doMock("../../src/modules/security/app_user/app_user.repo", () => ({
+      getUserSafe: jest.fn(async () => ({ user_id: USER, status: "ACTIVE" })),
+      roleCodes: jest.fn(async () => []),
+      setStatus: jest.fn(async () => ({ user_id: USER, status: "SUSPENDED" })),
+    }));
+    jest.doMock("../../src/shared/cache/identity-cache", () => ({ invalidateUser: jest.fn(async () => undefined) }));
+    jest.doMock("../../src/shared/events/emit", () => ({
+      emitEvent: jest.fn(async () => undefined),
+      audit: jest.fn(async () => undefined),
+      resolveActorId: jest.fn(async (_c, id) => id),
+    }));
+    const service = require("../../src/modules/security/app_user/app_user.service");
+    await service.setStatus({ query: jest.fn() }, { id: USER, status: "SUSPENDED", actor: {} });
+    expect(mirror).toHaveBeenCalledWith(expect.anything(), USER);
+  });
+});

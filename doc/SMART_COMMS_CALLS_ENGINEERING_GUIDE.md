@@ -279,15 +279,19 @@ Call-specific strategy per chapter; the standing matrix:
 - **Liveness (field note FN-1):** `IN_CALL` with **both** participants' sockets
   gone for 60 s → `ENDED(disconnected)`. The 60 s sits beyond the matrix's 20 s
   airplane row — that test drops one device, and the other is still online —
-  and the 30-minute cap remains the backstop if the online registry is down.
+  and the 30-minute cap remains the backstop if presence (Redis) is down.
+- **The clocks (calls audit D1, PR-5):** each call's deadlines are delayed jobs
+  of its own on `comms-call-clock` — ring at dial + 60 s, cap at answer +
+  30 min, and a liveness check 60 s after a participant's last socket leaves
+  mid-call. Each re-reads the row when it fires. A 5-minute safety sweep visits
+  only the tenants with recent calls (Redis set `praxis:comms:call-tenants`).
   The client's half of the same rule: a page closing mid-call sends a
   keep-alive hang-up, so a deliberate close ends the call at once.
 - `FAILED`: terminal, set when media never connected (ICE exhaustion with
   TURN). The UI says the plain sentence (§4.7).
 - Every transition is a DB write **then** a socket publish (the house
-  service→publish pattern). A process restart re-derives open timers from
-  `comms_call` rows (`status, started_at`) on boot — no timer is in memory
-  only.
+  service→publish pattern). No timer is in memory: the clock jobs are durable
+  in Redis, and each re-derives its deadline from the `comms_call` row.
 
 ### 4.2 Data model (PR-1 + PR-2 tables)
 
@@ -311,8 +315,8 @@ comms_call (
 comms_user_presence (
   user_id         uuid PK,
   last_seen_at    timestamptz NOT NULL,
-  -- live "online now" = socket connected (in-memory + Redis for multi-instance);
-  -- this table is the persistent last-seen, flushed on heartbeat (30 s) and disconnect.
+  -- live "online now" = Redis presence (per user, 90 s TTL; PR-5);
+  -- this table is the persistent last-seen, written at most every 5 minutes per user.
 )
 
 -- 14010
@@ -374,7 +378,8 @@ echoed back as errors — silence for lies).
 | `call:hangup` (either → server) | `{ callId, reason }`             | status ENDED (or terminal if earlier); both notified |
 | `call:ended` (server → both)  | `{ callId, durationSeconds, reason }` | UI closes; (PR-2) pipeline starts            |
 | `call:summary_ready` (server → caller) | `{ callId, status }`       | a toast pointing at Comms › Calls; the draft is on `/comms/calls/:id` |
-| `comms:presence` (server → tenant room) | `{ userId, online }` | presence dots; last-seen flushed on leave  |
+| `comms:presence_snapshot` (server → the connecting socket) | `{ users: { <userId>: bool } }` | the DIRECT contacts' dots on (re)connect (PR-5, E12) |
+| `comms:presence` (server → each DIRECT contact's user room) | `{ user_id, online }` | a contact's first socket came / last socket went (PR-5, D6) |
 
 SDP/candidate relay is the only path — the two clients never learn each
 other's endpoint address from the server.
@@ -505,9 +510,12 @@ parallel, not sequence:
   `call:accepted` / the terminal events stop open tabs (PR-4). `call:ring_ack`
   only records which channel landed. (PR-3 had the ack stop the others, which
   let one open laptop tab silence the phone: audit A12.)
-- **Presence:** `comms:presence` on the tenant room from socket join/leave +
-  30 s heartbeat; `last_seen_at` flushed to `comms_user_presence` on heartbeat
-  and disconnect. The member list and the dial UI both render it.
+- **Presence (PR-5):** per user in Redis (`presence:<slug>:<env>:<uid>`, a
+  member per socket, 90 s TTL refreshed by a 30 s server heartbeat), so it is
+  right across replicas and after a crash. A snapshot of the user's DIRECT
+  contacts on connect, and changes only to those contacts' user rooms.
+  `last_seen_at` is written at most once per user per 5 minutes. The dot is
+  shown for DIRECT partners (thread header, info pane, the call screen).
 - **The honest ceiling, stated in the UI where it matters:** iOS does not
   guarantee waking a closed PWA. When the dot is offline we say so and offer
   the message. A ringtone we cannot guarantee is worse than a truthful dot.
@@ -596,8 +604,10 @@ generalised to the whole chat surface:
   `visibilitychange` hidden→visible (the phone was face-down, they came back),
   and each route navigation.
 - **Storage:** the server writes `comms_user_presence.last_seen_at` on
-  connect, beat, and disconnect; live "online now" = socket connected (Redis,
-  so multi-instance agrees). One table serves both the dot and the text.
+  connect, beat and disconnect, at most once per user per 5 minutes (PR-5,
+  C9), so "last seen" can be up to 5 minutes early; live "online now" is
+  Redis presence (TTL-bound, so multi-instance agrees and a crashed replica's
+  sockets stop counting within 90 s).
 - **Display:** under the name in the conversation list and in the InfoPane
   member list — `last seen today at 14:02` / `last seen yesterday at 09:15` /
   `last seen 27/09/2026 at 14:02`, with the FR equivalents (`vu hier à

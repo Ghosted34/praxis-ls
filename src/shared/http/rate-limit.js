@@ -22,15 +22,17 @@
  *      default 1 for the single nginx in front), which makes `req.ip` the
  *      address nginx actually saw.
  *
- * Redis is a soft dependency: if it is unavailable the limiter degrades to the
- * in-process store rather than failing the request. That is weaker, and it is
- * logged loudly at boot — an auth endpoint that 500s because the cache is down
- * is a worse outcome than one that is rate-limited per container.
+ * Redis is a soft dependency: if the Redis store cannot be built, each limiter
+ * counts in its own express-rate-limit `MemoryStore` instead of failing the
+ * request. That is weaker (limits are per process), and it is logged at WARN at
+ * boot — an auth endpoint that 500s because the cache is down is a worse outcome
+ * than one that is rate-limited per container. It never means "unlimited".
  */
 
 "use strict";
 
 const rateLimit = require("express-rate-limit");
+const { MemoryStore } = rateLimit;
 const { logger } = require("../../config/logger");
 
 /** Shared 429 body. Deliberately identical across every limiter: a different
@@ -104,20 +106,30 @@ function makeLimiter({ name, max, windowMs, keyGenerator }) {
       init(options) {
         this._options = options;
       },
-      async increment(key) {
-        const s = store;
-        if (!s) return { totalHits: 1, resetTime: undefined };
-        if (!s._praxisInit) {
-          s.init(this._options);
-          s._praxisInit = true;
+      /** The shared Redis store once it exists; until then (or if it never
+       *  does) this limiter's own in-process MemoryStore. */
+      active() {
+        if (store) {
+          if (!store._praxisInit) {
+            store.init(this._options);
+            store._praxisInit = true;
+          }
+          return store;
         }
-        return s.increment(key);
+        if (!this._memory) {
+          this._memory = new MemoryStore();
+          this._memory.init(this._options);
+        }
+        return this._memory;
+      },
+      async increment(key) {
+        return this.active().increment(key);
       },
       async decrement(key) {
-        return store && store.decrement ? store.decrement(key) : undefined;
+        return this.active().decrement(key);
       },
       async resetKey(key) {
-        return store && store.resetKey ? store.resetKey(key) : undefined;
+        return this.active().resetKey(key);
       },
     },
   });

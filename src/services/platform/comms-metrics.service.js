@@ -16,6 +16,12 @@
  * it) — and it would get slower with every tenant. The second is one row per
  * tenant per day (migrations/platform/0107).
  *
+ * Since calls audit PR-5 (D4) the HOURLY refresh no longer asks any tenant
+ * database: the call service increments day counters in Redis at each
+ * transition (smartcomm.call.signals.js) and `refreshFromCounters` writes
+ * today's rows from them. The daily 7-day aggregation below is the
+ * authoritative repair, served by ix_comms_call_started (14080).
+ *
  * ── THE THREE NUMBERS, AND WHAT EACH ONE HONESTLY SAYS ──────────────────────
  *
  *   Reached       calls_answered / calls_started. NOT "calls that worked" —
@@ -43,6 +49,7 @@
 "use strict";
 
 const registry = require("../tenant/registry.service");
+const signals = require("../../modules/smartcomm/smartcomm.call.signals");
 const alerts = require("./alert-routing.service");
 const runtimeConfig = require("./runtime-config.service");
 const { logger } = require("../../config/logger");
@@ -69,10 +76,45 @@ const DEFAULT_ALERT_WINDOW_HOURS = 24;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** `2026-09-20` — the aggregation key, and what the API sends. A date, not a
- *  timestamp: the grain is a calendar day in UTC, and sending an ISO instant
- *  would make every consumer do its own timezone reasoning about a number that
- *  already has one. */
-const dayKey = (d) => new Date(d).toISOString().slice(0, 10);
+ *  timestamp: the grain is a calendar day in UTC. The SQL returns it as text
+ *  (audit D11: a `date` parsed by node-pg in a non-UTC process shifted a day),
+ *  so a string passes through untouched. */
+const dayKey = (d) => (typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : new Date(d).toISOString().slice(0, 10));
+
+async function upsertRow({ slug, env, day, row, reasons }) {
+  await platformDb.query(
+    `INSERT INTO platform.comms_call_metric (
+       tenant_slug, env, metric_date,
+       calls_started, calls_answered, calls_no_answer, calls_declined,
+       calls_busy, calls_failed, avg_duration_seconds,
+       transcription_failed, transcription_failed_reasons,
+       ring_socket, ring_notification, ring_push, ring_none,
+       computed_at
+     ) VALUES ($1,$2,$3::date,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13,$14,$15,$16, now())
+     ON CONFLICT (tenant_slug, env, metric_date) DO UPDATE SET
+       calls_started    = EXCLUDED.calls_started,
+       calls_answered   = EXCLUDED.calls_answered,
+       calls_no_answer  = EXCLUDED.calls_no_answer,
+       calls_declined   = EXCLUDED.calls_declined,
+       calls_busy       = EXCLUDED.calls_busy,
+       calls_failed     = EXCLUDED.calls_failed,
+       avg_duration_seconds = EXCLUDED.avg_duration_seconds,
+       transcription_failed = EXCLUDED.transcription_failed,
+       transcription_failed_reasons = EXCLUDED.transcription_failed_reasons,
+       ring_socket      = EXCLUDED.ring_socket,
+       ring_notification = EXCLUDED.ring_notification,
+       ring_push        = EXCLUDED.ring_push,
+       ring_none        = EXCLUDED.ring_none,
+       computed_at      = now()`,
+    [
+      slug, env, day,
+      row.calls_started, row.calls_answered, row.calls_no_answer, row.calls_declined,
+      row.calls_busy, row.calls_failed, row.avg_duration_seconds,
+      row.transcription_failed, JSON.stringify(reasons || {}),
+      row.ring_socket, row.ring_notification, row.ring_push, row.ring_none,
+    ],
+  );
+}
 
 /**
  * Aggregate one tenant+env over the last `days` days and upsert the rows.
@@ -85,7 +127,7 @@ async function aggregateTenant({ tenantMeta, env = "live", days = REGRESSION_DAY
   const from = new Date(now.getTime() - days * DAY_MS);
   return registry.withTenantConnection(tenantMeta, env, async (client) => {
     const { rows } = await client.query(
-      `SELECT date_trunc('day', started_at)::date                       AS metric_date,
+      `SELECT (started_at AT TIME ZONE 'UTC')::date::text                AS metric_date,
               count(*)::int                                             AS calls_started,
               count(*) FILTER (WHERE connected_at IS NOT NULL)::int      AS calls_answered,
               count(*) FILTER (WHERE status = 'NO_ANSWER')::int          AS calls_no_answer,
@@ -113,7 +155,7 @@ async function aggregateTenant({ tenantMeta, env = "live", days = REGRESSION_DAY
     // the reason in the GROUP BY, and that would split the outcome counts by
     // reason — every other column in this table would become wrong.
     const { rows: reasonsByDay } = await client.query(
-      `SELECT date_trunc('day', started_at)::date                    AS metric_date,
+      `SELECT (started_at AT TIME ZONE 'UTC')::date::text             AS metric_date,
               COALESCE(transcription_error, 'reason not recorded')    AS reason,
               count(*)::int                                           AS n
          FROM comms_call
@@ -132,38 +174,7 @@ async function aggregateTenant({ tenantMeta, env = "live", days = REGRESSION_DAY
     let written = 0;
     for (const row of rows) {
       const day = dayKey(row.metric_date);
-      await platformDb.query(
-        `INSERT INTO platform.comms_call_metric (
-           tenant_slug, env, metric_date,
-           calls_started, calls_answered, calls_no_answer, calls_declined,
-           calls_busy, calls_failed, avg_duration_seconds,
-           transcription_failed, transcription_failed_reasons,
-           ring_socket, ring_notification, ring_push, ring_none,
-           computed_at
-         ) VALUES ($1,$2,$3::date,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13,$14,$15,$16, now())
-         ON CONFLICT (tenant_slug, env, metric_date) DO UPDATE SET
-           calls_started    = EXCLUDED.calls_started,
-           calls_answered   = EXCLUDED.calls_answered,
-           calls_no_answer  = EXCLUDED.calls_no_answer,
-           calls_declined   = EXCLUDED.calls_declined,
-           calls_busy       = EXCLUDED.calls_busy,
-           calls_failed     = EXCLUDED.calls_failed,
-           avg_duration_seconds = EXCLUDED.avg_duration_seconds,
-           transcription_failed = EXCLUDED.transcription_failed,
-           transcription_failed_reasons = EXCLUDED.transcription_failed_reasons,
-           ring_socket      = EXCLUDED.ring_socket,
-           ring_notification = EXCLUDED.ring_notification,
-           ring_push        = EXCLUDED.ring_push,
-           ring_none        = EXCLUDED.ring_none,
-           computed_at      = now()`,
-        [
-          tenantMeta.slug, env, day,
-          row.calls_started, row.calls_answered, row.calls_no_answer, row.calls_declined,
-          row.calls_busy, row.calls_failed, row.avg_duration_seconds,
-          row.transcription_failed, JSON.stringify(reasons.get(day) || {}),
-          row.ring_socket, row.ring_notification, row.ring_push, row.ring_none,
-        ],
-      );
+      await upsertRow({ slug: tenantMeta.slug, env, day, row, reasons: reasons.get(day) || {} });
       written += 1;
     }
     return { written, days: days };
@@ -195,6 +206,46 @@ async function aggregateFleet({ days = REGRESSION_DAYS, now = new Date(), tenant
     }
   }
   return { tenants: results.length, rows: results.reduce((n, r) => n + r.days, 0), results, errors };
+}
+
+/** One metric row from a tenant's day counters (smartcomm.call.signals). */
+function rowFromCounters(f) {
+  const n = (k) => Number(f[k]) || 0;
+  const reasons = {};
+  for (const [k, v] of Object.entries(f)) if (k.startsWith("reason:")) reasons[k.slice(7)] = v;
+  const acked = n("ring_socket") + n("ring_notification") + n("ring_push");
+  return {
+    calls_started: n("calls_started"),
+    calls_answered: n("calls_answered"),
+    calls_no_answer: n("calls_no_answer"),
+    calls_declined: n("calls_declined"),
+    calls_busy: n("calls_busy"),
+    calls_failed: n("calls_failed"),
+    avg_duration_seconds: n("answered_ended") > 0 ? Math.round(n("duration_sum") / n("answered_ended")) : null,
+    transcription_failed: n("transcription_failed"),
+    reasons,
+    ring_socket: n("ring_socket"),
+    ring_notification: n("ring_notification"),
+    ring_push: n("ring_push"),
+    ring_none: Math.max(0, n("calls_started") - acked),
+  };
+}
+
+/**
+ * Write today's (and, just after midnight, yesterday's) rows from the Redis
+ * day counters: the hourly refresh, with no tenant database read (audit D4).
+ */
+async function refreshFromCounters({ now = new Date(), days = 1 } = {}) {
+  let written = 0;
+  for (let i = 0; i < days; i += 1) {
+    const day = dayKey(new Date(now.getTime() - i * DAY_MS));
+    for (const { slug, env, fields } of await signals.dayCounters(day)) {
+      const r = rowFromCounters(fields);
+      await upsertRow({ slug, env, day, row: r, reasons: r.reasons });
+      written += 1;
+    }
+  }
+  return { written, source: "counters" };
 }
 
 /** The 30-day window the console offers by default, and the cap it may ask for. */
@@ -329,13 +380,16 @@ async function evaluateTranscriptionAlert({ now = new Date(), windowHours, thres
   const limit = Number(threshold || tuning.commsTranscriptionAlertThreshold || DEFAULT_ALERT_THRESHOLD);
   const since = new Date(now.getTime() - hours * 60 * 60 * 1000);
 
+  // Per tenant AND env, live only (audit D5): a training sandbox's failures
+  // are nobody's incident, and mixing them in paged on demo calls.
   const { rows } = await platformDb.query(
-    `SELECT tenant_slug,
+    `SELECT tenant_slug, env,
             sum(transcription_failed)::int AS failed,
             max(transcription_alert_at)    AS last_alert_at
        FROM platform.comms_call_metric
       WHERE metric_date >= ($1::timestamptz AT TIME ZONE 'UTC')::date
-      GROUP BY tenant_slug
+        AND env = 'live'
+      GROUP BY tenant_slug, env
       ORDER BY tenant_slug`,
     [since.toISOString()],
   );
@@ -355,7 +409,7 @@ async function evaluateTranscriptionAlert({ now = new Date(), windowHours, thres
     const reasons = await platformDb.query(
       `SELECT transcription_failed_reasons
          FROM platform.comms_call_metric
-        WHERE tenant_slug = $1
+        WHERE tenant_slug = $1 AND env = 'live'
           AND metric_date >= ($2::timestamptz AT TIME ZONE 'UTC')::date
         ORDER BY metric_date DESC`,
       [r.tenant_slug, since.toISOString()],
@@ -369,7 +423,7 @@ async function evaluateTranscriptionAlert({ now = new Date(), windowHours, thres
 
     const result = await alerts.raise({
       event: "comms.transcription_sustained",
-      subject: `${r.failed} calls fell back to the browser capture in the last ${hours}h (threshold ${limit})`,
+      subject: `${r.failed} calls could not be fully transcribed in the last ${hours}h (threshold ${limit})`,
       detail: { tenant: r.tenant_slug, window_hours: hours, threshold: limit, failed: r.failed, reasons: merged },
       tenant: r.tenant_slug,
     });
@@ -381,13 +435,50 @@ async function evaluateTranscriptionAlert({ now = new Date(), windowHours, thres
     await platformDb.query(
       `UPDATE platform.comms_call_metric
           SET transcription_alert_at = now()
-        WHERE tenant_slug = $1
+        WHERE tenant_slug = $1 AND env = 'live'
           AND metric_date >= ($2::timestamptz AT TIME ZONE 'UTC')::date`,
       [r.tenant_slug, since.toISOString()],
     );
   }
 
   return { window_hours: hours, threshold: limit, raised, skipped };
+}
+
+/**
+ * The latency alarm (§4 item 8; PR-5 step 6): per live tenant, page when the
+ * p95 hang-up→summary of the last hour is over its target, or when the
+ * oldest waiting part is older than its limit. Read from Redis signals, so
+ * it costs no tenant database read. Deduplicated per tenant per window with
+ * a Redis key, for the same reason as the failure alarm: a page every hour
+ * for one condition gets muted.
+ */
+async function evaluateLatencyAlert({ now = new Date(), p95Seconds, backlogSeconds, windowHours = DEFAULT_ALERT_WINDOW_HOURS } = {}) {
+  const { config } = require("../../config/env");
+  const p95Limit = Number(p95Seconds || config.COMMS_CALL_SUMMARY_P95_ALERT_S || 120);
+  const ageLimit = Number(backlogSeconds || config.COMMS_CALL_BACKLOG_ALERT_AGE_S || 600);
+  const signalsNow = await signals.tenantSignals({ now: now.getTime() });
+  const raised = [];
+  const ok = [];
+  for (const s of signalsNow) {
+    if (s.env !== "live") continue;
+    const slow = s.p95_s !== null && s.p95_s > p95Limit;
+    const stuck = s.oldest_waiting_s > ageLimit;
+    if (!slow && !stuck) { ok.push({ tenant: s.tenant }); continue; }
+    const r = require("../../config/redis").getClient();
+    const claimed = await r.set(`praxis:callalert:latency:${s.tenant}`, "1", "EX", Math.round(windowHours * 3600), "NX");
+    if (claimed !== "OK") { ok.push({ tenant: s.tenant, reason: "already raised inside the window" }); continue; }
+    const subject = slow
+      ? `Call summaries are slow: p95 ${Math.round(s.p95_s)} s from hang-up over the last hour (target ${p95Limit} s)`
+      : `Call transcription is backed up: the oldest part has waited ${Math.round(s.oldest_waiting_s / 60)} min`;
+    const result = await alerts.raise({
+      event: "comms.transcription_latency",
+      subject,
+      detail: { ...s, p95_limit_s: p95Limit, backlog_limit_s: ageLimit },
+      tenant: s.tenant,
+    });
+    raised.push({ tenant: s.tenant, slow, stuck, delivered: result.delivered });
+  }
+  return { p95_limit_s: p95Limit, backlog_limit_s: ageLimit, raised, ok, signals: signalsNow };
 }
 
 /** 400-day retention for the metric rows. Returns the number deleted. */
@@ -421,8 +512,11 @@ module.exports = {
   MAX_WINDOW_DAYS,
   aggregateTenant,
   aggregateFleet,
+  refreshFromCounters,
+  rowFromCounters,
   overview,
   evaluateTranscriptionAlert,
+  evaluateLatencyAlert,
   purge,
   alertConfig,
 };

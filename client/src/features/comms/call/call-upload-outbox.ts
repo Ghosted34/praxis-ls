@@ -107,7 +107,10 @@ export function indexedDbStore(): OutboxStore {
     if (!db) {
       db = typeof indexedDB === "undefined"
         ? Promise.resolve(null)
-        : openDb().catch(() => null);
+        : openDb().catch(() => {
+          /* @silent:storage — IndexedDB refused (private window); memory is the floor. */
+          return null;
+        });
     }
     return db;
   };

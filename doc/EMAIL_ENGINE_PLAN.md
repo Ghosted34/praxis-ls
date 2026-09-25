@@ -150,7 +150,7 @@ Phase 1 follow-ups: ✅ IMAP **IDLE** — opt-in low-latency worker `src/jobs/ma
 - ✅ Manual linking endpoint `POST /mail/thread/:id/link {entity_ref}` — attach any message to a `dossier:<id>` / `client:<id>` (auto client-linking already runs on ingest).
 - ✅ **Mail UI** — `client/src/features/comms/mail.tsx` rebuilt with three modes: **Threads** (per-mailbox, open/read/reply, attachments, server-sanitized bodies), **Mailboxes** (connect IMAP form + Microsoft/Google OAuth buttons, test + sync-now, status), and the legacy **Send log**. API in `client/src/lib/mail-api.ts`.
 - ✅ **Automatic dossier linking** — on ingest, a `dossier.ref` (e.g. `SLAS-2026-0001`) found in the subject links the message to `dossier:<id>` (wins over client-by-email); manual `POST /mail/thread/:id/link` remains for overrides.
-- ✅ **Live inbox push** — worker publishes to a Redis mail bus (`src/realtime/mail-bus.js`); the web socket layer re-emits `mail:new` to the per-tenant mail room (`t:<slug>:mail`), and the Threads view live-reloads. Works across the web/worker process split (no socket in the worker).
+- ✅ **Live inbox push** — worker publishes to a Redis mail bus (`src/realtime/mail-bus.js`); the web socket layer re-emits `mail:new` to the per-tenant, per-env mail room (`t:<slug>:<env>:mail`, calls audit N1), from each replica to its own sockets only (`io.local`, N2), and the Threads view live-reloads. Works across the web/worker process split (no socket in the worker).
 
 ---
 

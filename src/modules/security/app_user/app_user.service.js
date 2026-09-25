@@ -1147,11 +1147,8 @@ async function updateUser(client, { id, patch = {}, actor = {} }) {
     await identityCache.invalidateUser(id);
     await audit(client, { actorUserId: actor.user_id || null, action: events.UPDATED, moduleKey: events.MODULE, entityRef: "app_user:" + id, before, after: fields });
     await client.query("COMMIT");
-    // Self-heal, not a sync: this is a no-op when the user is already mirrored
-    // (the insert conflicts and does nothing, so a renamed user keeps the old
-    // display name in sandbox — cosmetic, nothing reads it as authoritative). Its
-    // job is to catch users created BEFORE mirroring existed, whose first TEST
-    // write would otherwise 23503; editing them now quietly fixes it.
+    // Copies a user created before mirroring existed (whose first TEST write
+    // would otherwise 23503) and keeps an existing sandbox row's name in step.
     await mirrorUserBestEffort(client, id);
     return getUser(client, id);
   } catch (err) { await client.query("ROLLBACK"); throw err; }
@@ -1182,6 +1179,8 @@ async function setStatus(client, { id, status, actor = {} }) {
   }
   const row = await repo.setStatus(client, id, status);
   await identityCache.invalidateUser(id);
+  // Sandbox reads app_user.status too; a suspended user must not stay ACTIVE there.
+  await mirrorUserBestEffort(client, id);
   await emitEvent(client, { eventTypeKey: events.UPDATED, moduleKey: events.MODULE, entityRef: "app_user:" + id, actorUserId: actor.user_id || null });
   await audit(client, { actorUserId: actor.user_id || null, action: "app_user.status." + status.toLowerCase(), moduleKey: events.MODULE, entityRef: "app_user:" + id, before, after: row });
   return row;

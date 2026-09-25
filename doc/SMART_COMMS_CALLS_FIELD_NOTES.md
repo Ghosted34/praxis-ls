@@ -112,9 +112,9 @@ cannot clear it: the row belongs to the *users*, not the session.
 - Worst-case clearance for an OS-killed pair is socket detection + grace: the
   server sees the kill when the socket's ping times out (≤ ~45 s: socket.io
   defaults, 25 s interval + 20 s timeout — no custom ping config), the
-  liveness sweep notices on its next 15 s tick, then the 60 s offline grace
-  runs — so under ~2 minutes, not instant. A deliberate close is instant
-  (pagehide).
+  disconnect queues the call's own liveness check 60 s later (PR-5; a
+  replica that dies without a disconnect stops counting within 90 s) — so
+  about 2 minutes, not instant. A deliberate close is instant (pagehide).
 - A call whose two devices lose *network* (not pages) for 60 s or more at the
   same time ends `disconnected` even though a same-LAN P2P media path could in
   principle survive — the server cannot see media, by design (D4). The

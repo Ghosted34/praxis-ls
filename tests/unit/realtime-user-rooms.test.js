@@ -65,11 +65,11 @@ beforeEach(() => {
 });
 
 describe("the user room carries the environment (A9)", () => {
-  test("a socket joins the room for its own env, plus the tenant mail room", () => {
+  test("a socket joins the room for its own env, plus that env's mail room (N1)", () => {
     const joined = [];
     const live = { data: { tenantSlug: "acme", env: "live", userId: U1 }, join: (r) => joined.push(r) };
     realtime.joinPersonalRooms(live);
-    expect(joined).toEqual(["t:acme:mail", `t:acme:live:u:${U1}`]);
+    expect(joined).toEqual(["t:acme:live:mail", `t:acme:live:u:${U1}`]);
 
     joined.length = 0;
     const sandbox = { data: { tenantSlug: "acme", env: "sandbox", userId: U1 }, join: (r) => joined.push(r) };

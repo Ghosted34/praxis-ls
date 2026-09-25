@@ -245,6 +245,20 @@ async function touchPresence(client, userId) {
   return rows[0];
 }
 
+/** The people this user has a DIRECT conversation with: who hears their
+ *  presence, and whose presence their snapshot carries. */
+async function directContacts(client, userId) {
+  const { rows } = await client.query(
+    `SELECT DISTINCT o.user_id
+       FROM comms_member me
+       JOIN comms_group g ON g.group_id = me.group_id AND g.kind = 'DIRECT'
+       JOIN comms_member o ON o.group_id = me.group_id AND o.user_id <> me.user_id
+      WHERE me.user_id = $1`,
+    [userId],
+  );
+  return rows.map((r) => r.user_id);
+}
+
 async function lastSeen(client, userIds) {
   if (!userIds.length) return [];
   const { rows } = await client.query(
@@ -449,13 +463,16 @@ async function closeExhaustedParts(client, { staleMinutes, maxRuns, callId = nul
 }
 
 /** The retention sweep's read (D7): parts whose audio is past its window. */
-async function partsAwaitingPurge(client, { olderThanDays }) {
+async function partsAwaitingPurge(client, { olderThanDays, limit = 500, skip = [] }) {
   const { rows } = await client.query(
     `SELECT r.recording_id, r.vault_ref, r.call_id
      FROM comms_call_recording r
      WHERE r.purged_at IS NULL
-       AND r.created_at <= now() - make_interval(days => $1::int)`,
-    [olderThanDays],
+       AND r.created_at <= now() - make_interval(days => $1::int)
+       AND NOT (r.recording_id = ANY($3::uuid[]))
+     ORDER BY r.created_at
+     LIMIT $2`,
+    [olderThanDays, limit, skip],
   );
   return rows;
 }
@@ -768,6 +785,7 @@ module.exports = {
   isDirectChannel,
   listCallsForUser,
   touchPresence,
+  directContacts,
   lastSeen,
   // The ring half (PR-3 ack; PR-4 pushes and the ringing read).
   markRingAck,

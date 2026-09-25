@@ -167,8 +167,12 @@ jest.mock("../../src/modules/smartcomm/smartcomm.call.repo", () => {
       call.finalised_at = new Date(Date.now() + 1).toISOString();
       return call;
     },
-    partsAwaitingPurge: async (c, { olderThanDays }) =>
-      on().parts.filter((p) => !p.purged_at && Number(p.age_days || 0) >= olderThanDays),
+    partsAwaitingPurge: async (c, { olderThanDays, limit = Infinity, skip = [] }) => {
+      on().purgeReads = (on().purgeReads || 0) + 1;
+      return on().parts
+        .filter((p) => !p.purged_at && Number(p.age_days || 0) >= olderThanDays && !skip.includes(p.recording_id))
+        .slice(0, limit);
+    },
     markPartsPurged: async (c, ids) => {
       let n = 0;
       for (const p of on().parts) {
@@ -278,8 +282,14 @@ jest.mock("../../src/services/ai/gemini-transcription.service", () => ({ transcr
 jest.mock("../../src/services/ai/llm.service", () => ({ chat: jest.fn() }));
 jest.mock("../../src/modules/ai/governance/governance.service", () => ({
   canUseFeature: jest.fn(async () => ({ allowed: true })),
+  audioBudget: jest.fn(async () => ({ allowed: true, used_seconds: 0, cap_seconds: 180000 })),
   recordUsage: jest.fn(async () => {}),
 }));
+// PR-5: the provider limiters, the fair share and the signals live in Redis.
+jest.mock("../../src/config/redis", () => {
+  const fake = require("../helpers/fake-redis").createFakeRedis();
+  return { getClient: () => fake, __fake: fake };
+});
 jest.mock("../../src/services/platform/alert-routing.service", () => ({ raise: jest.fn(async () => {}) }));
 jest.mock("../../src/services/platform/ai-vendor.service", () => ({ getConfig: jest.fn(async () => null) }));
 jest.mock("../../src/realtime", () => ({ publishToUser: jest.fn(() => {}) }));
@@ -439,6 +449,8 @@ beforeEach(() => {
   geminiTranscription.transcribe.mockRejectedValue(new Error("gemini not expected in this test"));
   llm.chat.mockReset();
   governance.canUseFeature.mockResolvedValue({ allowed: true });
+  governance.audioBudget.mockResolvedValue({ allowed: true, used_seconds: 0, cap_seconds: 180000 });
+  require("../../src/config/redis").__fake._reset();
   storage.get.mockResolvedValue(Buffer.from("audio-bytes"));
   storage.put.mockResolvedValue(undefined);
   storage.delete.mockResolvedValue(undefined);
@@ -620,6 +632,17 @@ describe("registerPart — the upload rules", () => {
     expect(data).toEqual(expect.objectContaining({ callId: CALL, side: "caller", partIndex: 1, origin: "upload", env: "live" }));
     expect(opts).toEqual(expect.objectContaining({ jobId: `callpart-${CALL}-caller-1`, attempts: 1 }));
     expect(mockStore.current.calls.get(CALL).transcription_state).toBe("PENDING");
+  });
+
+  test("D2: parts of a call still going run before parts of ended calls, and re-runs come last", async () => {
+    mockStore.current.calls.get(CALL).status = "IN_CALL";
+    await upload();
+    Object.assign(mockStore.current.calls.get(CALL), { status: "ENDED", ended_at: new Date().toISOString() });
+    await upload({ partIndex: 2, partCount: 2 });
+    await pipeline.startPartJob({ callId: CALL, side: "caller", partIndex: 3, tenantMeta, env: "live", origin: "sweep" });
+    const priorities = jobs("call-transcribe-part").map(([, , , opts]) => opts.priority);
+    expect(priorities).toEqual([pipeline.PART_PRIORITY.live, pipeline.PART_PRIORITY.finalise, pipeline.PART_PRIORITY.reprocess]);
+    expect(pipeline.PART_PRIORITY).toEqual({ live: 1, finalise: 2, reprocess: 3 });
   });
 
   test("B12: a re-upload of the same part replaces its object instead of orphaning a new one", async () => {
@@ -834,6 +857,74 @@ describe("transcribePartJob — O1 exactly: Groq once, then Gemini once, then th
     expect(transcription.transcribe).not.toHaveBeenCalled();
   });
 
+  describe("the provider limiters (D2, O1)", () => {
+    const fake = () => require("../../src/config/redis").__fake;
+    const fill = async (provider, n) => {
+      const minute = Math.floor(Date.now() / 60_000);
+      await fake().set(`praxis:calltx:rpm:${provider}:${minute}`, String(n));
+    };
+
+    test("a full Groq limiter sends the part straight to Gemini, once; Groq is never called", async () => {
+      await fill("groq", 1_000_000);
+      geminiTranscription.transcribe.mockResolvedValue({ text: "bonjour", detected_language: "fr", provider: "gemini" });
+      const out = await run(db());
+      expect(out).toEqual(expect.objectContaining({ status: "OK", provider: "gemini", attempts: 1 }));
+      expect(transcription.transcribe).not.toHaveBeenCalled();
+      expect(geminiTranscription.transcribe).toHaveBeenCalledTimes(1);
+    });
+
+    test("a Gemini failure after a full Groq limiter fails the part; nothing is retried", async () => {
+      await fill("groq", 1_000_000);
+      geminiTranscription.transcribe.mockRejectedValue(Object.assign(new Error("429 quota"), { status: 429 }));
+      const out = await run(db());
+      expect(out).toEqual(expect.objectContaining({ status: "FAILED", attempts: 1 }));
+      expect(mockStore.current.parts[0].error).toMatch(/groq: skipped \(limiter full\); gemini: 429 quota/);
+      expect(transcription.transcribe).not.toHaveBeenCalled();
+    });
+
+    test("both limiters full: nobody is called, the part is not claimed, and the job is told to wait", async () => {
+      await fill("groq", 1_000_000);
+      await fill("gemini", 1_000_000);
+      const out = await run(db());
+      expect(out).toEqual({ deferred: true, retryInMs: expect.any(Number) });
+      expect(out.retryInMs).toBeGreaterThan(0);
+      expect(out.retryInMs).toBeLessThanOrEqual(60_250);
+      expect(transcription.transcribe).not.toHaveBeenCalled();
+      expect(geminiTranscription.transcribe).not.toHaveBeenCalled();
+      expect(mockStore.current.parts[0]).toEqual(expect.objectContaining({ transcript_status: "PENDING", job_runs: 0 }));
+    });
+
+    test("a Groq error with Gemini's limiter full fails the part without calling Gemini (as a Gemini 429 would)", async () => {
+      await fill("gemini", 1_000_000);
+      transcription.transcribe.mockRejectedValue(Object.assign(new Error("429 rate limited"), { status: 429 }));
+      const out = await run(db());
+      expect(out).toEqual(expect.objectContaining({ status: "FAILED", attempts: 1 }));
+      expect(geminiTranscription.transcribe).not.toHaveBeenCalled();
+      expect(mockStore.current.parts[0].error).toMatch(/gemini: rate limited \(limiter full\)/);
+    });
+
+    test("a Groq 429 is counted per tenant, beside the requests", async () => {
+      transcription.transcribe.mockRejectedValue(Object.assign(new Error("429 rate limited"), { status: 429 }));
+      geminiTranscription.transcribe.mockResolvedValue({ text: "ok", detected_language: "en", provider: "gemini" });
+      await run(db());
+      const hour = Math.floor(Date.now() / 3_600_000);
+      expect(await fake().get(`praxis:calltx:429:${tenantMeta.slug}:live:groq:${hour}`)).toBe("1");
+      expect(await fake().get(`praxis:calltx:req:${tenantMeta.slug}:live:gemini:${hour}`)).toBe("1");
+    });
+  });
+
+  test("over the tenant's daily audio budget: settled as over budget, no provider, no ops alert", async () => {
+    governance.audioBudget.mockResolvedValue({ allowed: false, used_seconds: 180000, cap_seconds: 180000 });
+    const out = await run(db());
+    expect(out).toEqual({ skipped: "over_budget", settled: true });
+    expect(mockStore.current.parts[0].transcript_status).toBe("FAILED");
+    expect(mockStore.current.parts[0].error).toMatch(/^over_budget: /);
+    expect(transcription.transcribe).not.toHaveBeenCalled();
+    expect(governance.audioBudget).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      featureKey: "voice", callType: "call.transcribe", capMinutes: 3000,
+    }));
+  });
+
   test("the last part's result starts finalise when both sides are complete", async () => {
     Object.assign(mockStore.current.calls.get(CALL), endedCall({ caller_parts_declared: 1, callee_parts_declared: 1 }));
     settled("callee", 1);
@@ -906,6 +997,32 @@ describe("finaliseCall — the draft, once every part has a result", () => {
     // The caller is still told once, and ops hears of the first failure.
     expect(notifications.notifyMany).toHaveBeenCalledTimes(1);
     expect(alerts.raise).toHaveBeenCalledTimes(1);
+  });
+
+  test("over budget only: the caller is told OVER_BUDGET, ops is not paged, and the failure is counted once", async () => {
+    settled("caller", 1, { text: "bonjour", language: "fr" });
+    settled("caller", 2, { status: "FAILED" });
+    mockStore.current.parts[mockStore.current.parts.length - 1].error = "over_budget: the daily call audio budget (3000 min) is used up";
+    settled("callee", 1, { text: "ok" });
+    const out = await finalise(db());
+    expect(out.state).toBe("TRANSCRIPTION_FAILED");
+    expect(alerts.raise).not.toHaveBeenCalled();
+    const failed = rtTo(U1, "call:transcription_failed");
+    expect(failed[0][4]).toEqual(expect.objectContaining({ reason: "OVER_BUDGET" }));
+    const fake = require("../../src/config/redis").__fake;
+    const day = new Date(mockStore.current.calls.get(CALL).started_at).toISOString().slice(0, 10);
+    expect(await fake.get(`praxis:callm:${day}:acme:live:transcription_failed`)).toBe("1");
+    expect(await fake.get(`praxis:callm:${day}:acme:live:reason:OVER_BUDGET`)).toBe("1");
+  });
+
+  test("§4 target: the first notified draft records its hang-up→summary latency for the tenant", async () => {
+    settled("caller", 1);
+    settled("caller", 2);
+    settled("callee", 1);
+    await finalise(db());
+    const fake = require("../../src/config/redis").__fake;
+    const [entry] = await fake.zrange("praxis:calllat:acme:live", 0, -1);
+    expect(entry).toMatch(new RegExp(`^\\d+:\\d+:${CALL}$`));
   });
 
   test("D3: the LLM is called with no database connection open", async () => {
@@ -1391,6 +1508,27 @@ describe("retention (D7)", () => {
     expect(out).toEqual({ due: 1, purged: 0, failed: 1 });
     expect(mockStore.current.parts[0].purged_at).toBeNull();
   });
+
+  test("D9: the purge reads in bounded batches and loops until nothing is due", async () => {
+    for (let i = 1; i <= 12; i += 1) mockStore.current.parts.push(part("caller", i, { age_days: 40 }));
+    const out = await pipeline.purgeExpiredAudio(client(), { days: 30, batch: 5 });
+    expect(out).toEqual({ due: 12, purged: 12, failed: 0 });
+    expect(mockStore.current.purgeReads).toBe(3);
+  });
+
+  test("D9: a part whose delete keeps failing cannot loop the run", async () => {
+    for (let i = 1; i <= 6; i += 1) mockStore.current.parts.push(part("caller", i, { age_days: 40 }));
+    storage.delete.mockImplementation(async (ref) => { if (String(ref).includes("001")) throw new Error("S3 says no"); });
+    const out = await pipeline.purgeExpiredAudio(client(), { days: 30, batch: 2 });
+    expect(out).toEqual({ due: 6, purged: 5, failed: 1 });
+    expect(mockStore.current.purgeReads).toBeLessThanOrEqual(4);
+  });
+
+  test("D9: a run is capped; what is left is due tomorrow", async () => {
+    for (let i = 1; i <= 10; i += 1) mockStore.current.parts.push(part("caller", i, { age_days: 40 }));
+    const out = await pipeline.purgeExpiredAudio(client(), { days: 30, batch: 2, maxBatches: 3 });
+    expect(out).toEqual({ due: 6, purged: 6, failed: 0 });
+  });
 });
 
 describe("reads", () => {
@@ -1449,6 +1587,10 @@ describe("reads", () => {
     expect(pipeline.transcriptionReason(failed, [
       part("caller", 1, { transcript_status: "OK" }), part("callee", 1, { transcript_status: "OK" }),
     ])).toBe("TRANSCRIPTION_FAILED");
+    expect(pipeline.transcriptionReason(failed, [
+      part("caller", 1, { transcript_status: "FAILED", error: "over_budget: used up" }),
+      part("callee", 1, { transcript_status: "OK" }),
+    ])).toBe("OVER_BUDGET");
   });
 
   test("O3: the caller's pending drafts for a conversation, for the pinned card; never the callee's view", async () => {

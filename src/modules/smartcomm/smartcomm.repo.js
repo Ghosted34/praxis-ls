@@ -18,15 +18,15 @@ const getChannel = (client, id) => getById(client, "comms_group", "group_id", id
  *  the honest floor under the dot (guide §4.11 — the dot is the socket, and
  *  when the socket is gone this column says when they were last here). */
 const PARTNER_SQL =
-  "CASE WHEN g.kind = 'DIRECT' THEN " +
-  "(SELECT u.user_id FROM comms_member pm JOIN app_user u ON u.user_id = pm.user_id " +
-  "  WHERE pm.group_id = g.group_id AND pm.user_id <> $1 LIMIT 1) END AS partner_user_id, " +
-  "CASE WHEN g.kind = 'DIRECT' THEN " +
-  "(SELECT u.avatar_ref FROM comms_member pm JOIN app_user u ON u.user_id = pm.user_id " +
-  "  WHERE pm.group_id = g.group_id AND pm.user_id <> $1 LIMIT 1) END AS partner_avatar_ref, " +
-  "CASE WHEN g.kind = 'DIRECT' THEN " +
-  "(SELECT p.last_seen_at FROM comms_member pm JOIN comms_user_presence p ON p.user_id = pm.user_id " +
-  "  WHERE pm.group_id = g.group_id AND pm.user_id <> $1 LIMIT 1) END AS partner_last_seen_at";
+  "partner.user_id AS partner_user_id, partner.avatar_ref AS partner_avatar_ref, " +
+  "partner.last_seen_at AS partner_last_seen_at";
+/** One lateral join per DIRECT row, not three correlated subqueries (calls
+ *  audit D9). A group channel gets no partner (the WHERE is on g.kind). */
+const PARTNER_JOIN =
+  "LEFT JOIN LATERAL (SELECT u.user_id, u.avatar_ref, p.last_seen_at " +
+  "  FROM comms_member pm JOIN app_user u ON u.user_id = pm.user_id " +
+  "  LEFT JOIN comms_user_presence p ON p.user_id = pm.user_id " +
+  "  WHERE g.kind = 'DIRECT' AND pm.group_id = g.group_id AND pm.user_id <> $1 LIMIT 1) partner ON true ";
 
 async function listChannelsForUser(client, userId, q = {}) {
   const { limit, offset } = page(q);
@@ -51,6 +51,7 @@ async function listChannelsForUser(client, userId, q = {}) {
       "     WHERE x.group_id = g.group_id AND x.deleted_at IS NULL " +
       "     ORDER BY x.created_at DESC LIMIT 1) lm) AS last_message " +
       "FROM comms_group g JOIN comms_member m ON m.group_id = g.group_id AND m.user_id = $1 " +
+      PARTNER_JOIN +
       "WHERE g.status = 'ACTIVE' ORDER BY m.is_pinned DESC, g.updated_at DESC LIMIT $2 OFFSET $3",
     [userId, limit, offset],
   );

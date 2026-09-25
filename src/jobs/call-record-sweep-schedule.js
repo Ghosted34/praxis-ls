@@ -14,11 +14,14 @@
  */
 "use strict";
 
-async function removeStaleRepeatables(queue, { pattern, tz }) {
+async function removeStaleRepeatables(queue, { pattern, tz, every }) {
   const existing = await queue.getRepeatableJobs();
   let removed = 0;
   for (const r of existing) {
-    const current = !r.every && r.pattern === pattern && (r.tz || null) === (tz || null);
+    // Also used for the calls safety sweep, which repeats by interval.
+    const current = every
+      ? Number(r.every) === Number(every) && !r.pattern
+      : !r.every && r.pattern === pattern && (r.tz || null) === (tz || null);
     if (current) continue;
     await queue.removeRepeatableByKey(r.key);
     removed += 1;

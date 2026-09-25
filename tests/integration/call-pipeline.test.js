@@ -74,7 +74,14 @@ jest.mock("../../src/services/platform/alert-routing.service", () => ({ raise: j
 jest.mock("../../src/modules/ai/governance/governance.service", () => ({
   canUseFeature: async () => ({ allowed: true }),
   recordUsage: async () => {},
+  // The real budget read, against the real ledger (PR-5).
+  audioBudget: (...a) => jest.requireActual("../../src/modules/ai/governance/governance.service").audioBudget(...a),
 }));
+// PR-5: the provider limiters, fair share and signals are in Redis.
+jest.mock("../../src/config/redis", () => {
+  const fake = require("../helpers/fake-redis").createFakeRedis();
+  return { getClient: () => fake, __fake: fake };
+});
 jest.mock("../../src/services/ai/llm.service", () => ({
   chat: async () => {
     mockState.llmCalls += 1;

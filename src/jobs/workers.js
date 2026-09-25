@@ -26,18 +26,20 @@ const { initRedis, createConnection, closeRedis } = require("../config/redis");
 const PROCESSORS = [
   { name: "comms-send-flush", concurrency: 1, handler: require("./handlers/comms-send-flush") },
   { name: "comms-send-scheduler", concurrency: 1, handler: require("./handlers/comms-send-scheduler") },
-  // 1:1 voice calls (PR-1): the sweep is the ONLY clock for the two call
-  // deadlines (60 s ring, 30 min cap). The row owns the deadline, so a call
-  // ends correctly even when the API process that started it is gone —
-  // process restart, pocket, closed tab. 15 s granularity, see scheduler.
-  { name: "comms-call-sweep", concurrency: 1, handler: require("./handlers/comms-call-sweep") },
+  // 1:1 voice calls. Each call's deadlines (60 s ring, 30 min cap, liveness
+  // after a disconnect) are its own delayed jobs on `comms-call-clock`
+  // (audit D1), on a queue nothing else uses, so no backlog delays a ring
+  // timeout. The sweep is a 5-minute backstop over tenants with recent calls.
+  { name: "comms-call-clock", concurrency: config.COMMS_CALL_CLOCK_CONCURRENCY || 8, handler: require("./handlers/comms-call-clock") },
+  { name: "comms-call-sweep", concurrency: 2, handler: require("./handlers/comms-call-sweep") },
   { name: "comms-call-sweep-scheduler", concurrency: 1, handler: require("./handlers/comms-call-sweep-scheduler") },
   // The ring's pushes (PR-4): to every device of the callee at dial, a
   // re-alert every 15 s while it rings, and the cancel when it ends. The queue
-  // keeps its PR-3 name. Concurrency 2 — each job is one round of push-service
-  // calls, and a ring is a 60-second window in which a queue behind another
-  // tenant's slow push service costs the bell.
-  { name: "comms-call-ring-escalate", concurrency: 2, handler: require("./handlers/comms-call-ring-escalate") },
+  // keeps its PR-3 name so jobs queued across a deploy still run. Each job is
+  // one round of push-service calls; first alerts and cancels are prioritised
+  // over re-alerts and ranked per tenant, so one tenant's burst does not delay
+  // another's ring (smartcomm.call.service ringPriority).
+  { name: "comms-call-ring-escalate", concurrency: config.COMMS_CALL_RING_CONCURRENCY || 16, handler: require("./handlers/comms-call-ring-escalate") },
   /**
    * The call RECORD half (guide §4.5). `call-transcribe-part` transcribes one
    * part as it uploads (Groq once, then Gemini once); `call-finalise` drafts
@@ -46,8 +48,8 @@ const PROCESSORS = [
    * restarts work that never ran (never notifying) and applies audio
    * retention; concurrency 1, since neither is a deadline.
    */
-  { name: "call-transcribe-part", concurrency: 4, handler: require("./handlers/call-transcribe-part") },
-  { name: "call-finalise", concurrency: 2, handler: require("./handlers/call-finalise") },
+  { name: "call-transcribe-part", concurrency: config.CALL_TRANSCRIBE_CONCURRENCY || 8, handler: require("./handlers/call-transcribe-part") },
+  { name: "call-finalise", concurrency: config.CALL_FINALISE_CONCURRENCY || 4, handler: require("./handlers/call-finalise") },
   // The EN/FR rewrite of a summary draft (audit C8), off the request path.
   { name: "call-summary-regenerate", concurrency: 2, handler: require("./handlers/call-summary-regenerate") },
   { name: "comms-call-record-sweep", concurrency: 1, handler: require("./handlers/comms-call-record-sweep") },
@@ -247,7 +249,7 @@ function startWorkers() {
     const connection = createConnection(`worker:${p.name}`);
     const worker = new Worker(
       p.name,
-      async (job) => {
+      async (job, token) => {
         // OBS-T2: "job start"/"job done" were logged and elapsed time never
         // computed, so "is it slow or is it hung?" was unanswerable.
         // OBS-T3: the enqueuing request_id is carried on the job payload and
@@ -286,9 +288,9 @@ function startWorkers() {
                   // open the live schema, so live is the honest default.
                   env: job.data && job.data.env === "sandbox" ? "sandbox" : "live",
                 },
-                () => p.handler(job),
+                () => p.handler(job, token),
               )
-            : await p.handler(job);
+            : await p.handler(job, token);
           const ms = Date.now() - started;
           metrics.observe("praxis_job_duration_seconds", ms / 1000, { queue: p.name },
             "Background job duration in seconds.");
@@ -297,6 +299,13 @@ function startWorkers() {
           logger.info({ queue: p.name, job: job.name, id: job.id, ms }, "job done");
           return result;
         } catch (err) {
+          // A job that moved itself to the delayed set (a call part waiting
+          // for its tenant's fair share: PR-5) is the queue working, not a
+          // failure: no ERROR, no failure count.
+          if (err && err.name === "DelayedError") {
+            logger.debug({ queue: p.name, job: job.name, id: job.id }, "job deferred");
+            throw err;
+          }
           const ms = Date.now() - started;
           metrics.observe("praxis_job_duration_seconds", ms / 1000, { queue: p.name });
           logger.error({ queue: p.name, job: job.name, id: job.id, ms, err }, "job threw");
@@ -356,12 +365,18 @@ async function scheduleRecurring() {
   await require("./queue-producer").enqueue("comms-send-scheduler", "tick", {}, {
     repeat: { every: 30000 }, removeOnComplete: true, removeOnFail: 50,
   });
-  // Calls ride their own tick: a 30-minute cap and a 60-second ring want
-  // closer granularity than chat's 30 s, and call deadlines must not stop
-  // if an unrelated automation interval is disabled.
-  await require("./queue-producer").enqueue("comms-call-sweep-scheduler", "tick", {}, {
-    repeat: { every: 15000 }, removeOnComplete: true, removeOnFail: 50,
-  });
+  // The calls safety sweep (audit D1): a backstop to each call's own
+  // deadline jobs, over tenants with recent calls only. The PR-1 tick ran
+  // every 15 s over the whole fleet; its repeatable is removed here.
+  {
+    const safety = { every: config.COMMS_CALL_SAFETY_SWEEP_MS || 300000 };
+    const queue = require("./queue-producer").getQueue("comms-call-sweep-scheduler");
+    const removed = await require("./call-record-sweep-schedule").removeStaleRepeatables(queue, safety);
+    if (removed) logger.info({ removed }, "call safety sweep: removed stale repeatables");
+    await require("./queue-producer").enqueue("comms-call-sweep-scheduler", "tick", {}, {
+      repeat: safety, removeOnComplete: true, removeOnFail: 50,
+    });
+  }
   // The call RECORD tick: daily, on a working-hours cron in the corridor's
   // timezone (audit A1: `every: 24h` ran at 00:00 UTC). It never notifies
   // anyone (audit A4); it retries and applies audio retention.

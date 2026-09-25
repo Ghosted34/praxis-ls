@@ -1997,8 +1997,8 @@ factual. The next agent relies on them.
 | PR-1 | MERGED | `claude/magical-einstein-xqhkn1` | #476 | 2026-09-24 | Includes owner decisions A-1 (Groq → Gemini transcription, no browser capture) and A-2 (Gemini → DeepSeek summaries) |
 | PR-2 | MERGED | `claude/wizardly-ptolemy-dyazt1` | #477 | 2026-09-24 | Per-part recorder and transcription, finalise, race-free drafts, pinned draft (O3), N3; migration 14050 |
 | PR-3 | MERGED | `claude/tender-davinci-v1eh8y` | #479 | 2026-09-24 | TURN, credentials, relay, IDOR, rate limits; migration 14060; null-payload crash in the relay |
-| PR-4 | OPEN | `claude/smart-comms-pr-4-9e8q91` | #481 | — | Perfect negotiation, rings on every device (push at dial, re-alerts, cancel everywhere), ringing read, Answer/Decline, device check + Test ring, noise default off, no screen wake lock; TURN relay-to-relay and TLS on 443 (owner's Step 0/0b); migration 14070 |
-| PR-5 | NOT STARTED | — | — | — | |
+| PR-4 | MERGED | `claude/smart-comms-pr-4-9e8q91` | #481 | 2026-09-24 | Perfect negotiation, rings on every device (push at dial, re-alerts, cancel everywhere), ringing read, Answer/Decline, device check + Test ring, noise default off, no screen wake lock; TURN relay-to-relay and TLS on 443 (owner's Step 0/0b); migration 14070 |
+| PR-5 | OPEN | `claude/smart-comms-pr-5-jzgkt1` | #482 | — | Per-call clocks, Redis presence, fair/limited transcription, fair ring queue, metrics from counters, latency alarm, bounded queries, env in every room; rate-limit memory fallback, sandbox status mirror; `scripts/load-calls.js`; migration 14080 |
 | PR-6 | NOT STARTED | — | — | — | |
 | PR-7 | NOT STARTED | — | — | — | |
 | Plan update (O1–O5, A12–A15, N1–N5, PR-7) | MERGED | `claude/integration-audit-report-u6twc5` | #475 | 2026-09-24 | Owner decisions, ringing findings, PR-1 findings, test calls |
@@ -2821,3 +2821,187 @@ premium, WhatsApp-grade finish. Branch `claude/message-ui-redesign-gzxylv`
   PgBouncer, the desktop layout gate, the AI golden-set eval, anything on
   a real phone (the owner's checklist on #481). Nothing touched
   production; the §0 SQL was not run.
+
+### PR-5 · 2026-09-25 · OPEN (#482)
+- Fixed, each with the test that proves it. The new tests were written first
+  and fail on PR-4's code (the `realtime-presence`, `call-clock`,
+  `call-transcribe-gate`, `worker-deferral`, `tenant-db-slots` and
+  `smartcomm-channel-list-sql` suites, and the new cases in
+  `smartcomm-calls`, `smartcomm-call-records`, `call-record-jobs`,
+  `comms-call-metrics`, `presence.test.ts`); the ones that pass there are
+  guards (a call with a socket online is kept, a fresh absence is kept).
+  - D1: each call's deadlines are delayed jobs on a new queue,
+    `comms-call-clock`: `ring` at dial + 60 s (`callclock-ring-<call>`),
+    `cap` at answer + 30 min (`callclock-cap-<call>`), `liveness` 60 s after
+    a participant's last socket leaves mid-call (`callclock-live-<call>-<s>`).
+    Each re-reads the row and re-queues itself if it ran early. The 15 s
+    fleet sweep is a 5-minute safety sweep over the tenants in the Redis
+    sorted set `praxis:comms:call-tenants` (dial/answer activity), which a
+    tenant leaves once it has no live call and 10 quiet minutes; the old
+    15 s repeatable is removed at boot. `smartcomm-calls.test.js`
+    ("per-call clocks"), `call-clock.test.js`.
+  - D2 (and §4 items 2, 3, 7, 8 routed by PR-2): `smartcomm.call.gate.js`.
+    One limiter per provider key in Redis (Groq requests/min and
+    audio-seconds/hour, Gemini requests/min, from config). O1 kept exactly:
+    Groq once, then Gemini once, no retries. A Groq 429 or a full Groq
+    limiter goes straight to Gemini; a Groq error with Gemini's limiter
+    full fails the part as a Gemini 429 would; with both full nobody is
+    called and the job waits. A per-tenant GCRA bucket reserves a slot per
+    part (burst 20, 12/min), so 2,000 parts at one tenant are spread at its
+    own rate and every other tenant's first part goes straight through;
+    waiting is a delayed job (`DelayedError`), never an attempt.
+    Priorities: live-call parts 1, ended-call parts 2, re-runs 3. The daily
+    audio budget is `governance.audioBudget` (usage ledger, call type
+    `call.transcribe`, `CALL_AUDIO_DAILY_MINUTES`); an over-budget part is
+    settled `FAILED` with error `over_budget: …`, reason code `OVER_BUDGET`,
+    no provider and no ops page. The daily record sweep is spread over 6 h
+    by a hash of the slug. `call-transcribe-gate.test.js`,
+    `smartcomm-call-records.test.js` ("the provider limiters", "over the
+    tenant's daily audio budget", "D2: parts of a call still going…"),
+    `call-record-jobs.test.js`, `call-clock.test.js`.
+  - Redis down (the owner's rule for the new buckets): the fair share and
+    the provider limiters fall back to per-process state with the same
+    limits, logged at WARN; never unlimited. Tested in
+    `call-transcribe-gate.test.js`.
+  - D4: the call service increments Redis day counters at every transition
+    (`smartcomm.call.signals.js`); the hourly metrics tick writes today's
+    rows from them and reads no tenant database. The daily 7-day
+    aggregation stays as the authoritative repair, now on
+    `ix_comms_call_started` (14080; 14020's claim that
+    `ix_comms_call_group` served the read was wrong). D5: the failure alarm
+    groups by (tenant, env), live only. D11: the day is computed in SQL in
+    UTC and returned as text. N5: the subject says "could not be fully
+    transcribed". `comms-call-metrics.test.js`, `smartcomm-calls.test.js`
+    ("day counters").
+  - Step 6: per tenant, the part's queue wait, the oldest waiting part, 429s
+    per provider beside requests (Prometheus and Redis), and hang-up →
+    summary seconds for each first notified draft. A new latency alarm
+    (`comms.transcription_latency`) pages once per window when a live
+    tenant's p95 is over `COMMS_CALL_SUMMARY_P95_ALERT_S` (120) or its oldest
+    waiting part is older than `COMMS_CALL_BACKLOG_ALERT_AGE_S` (600).
+  - B3, C9, D6, D8, E12: presence per user in Redis
+    (`smartcomm.presence.js`): a sorted set of sockets scored by expiry,
+    90 s TTL, refreshed by a 30 s server heartbeat, so a crashed replica's
+    sockets stop counting within 90 s. A snapshot of the user's DIRECT
+    contacts on connect (`comms:presence_snapshot`); changes go only to those
+    contacts' user rooms. `last_seen_at` at most once per user per 5 minutes;
+    `comms:seen` beats inside 30 s are ignored. The global online SET and the
+    offline ZSET are gone; liveness reads presence. The client replaces its
+    dots with each snapshot and clears them on disconnect.
+    `realtime-presence.test.js`, `presence.test.ts`.
+  - D9: the audio purge reads 500 at a time, deletes 8 at a time, skips a
+    part that keeps failing, and stops after 40 batches a run; the channel
+    list's DIRECT partner is one lateral join. `smartcomm-call-records.test.js`
+    ("D9"), `smartcomm-channel-list-sql.test.js`, and the real-schema
+    `tests/integration/smartcomm-channel-partner.test.js`.
+  - N1: env in every room (`t:<slug>:<env>:c:<group>`, `t:<slug>:<env>:mail`,
+    user rooms already had it); `realtime.publish(slug, env, group, …)`.
+    N2: the mail bridge re-emits with `io.local.to(…)`.
+    `realtime-presence.test.js`, `realtime-user-rooms.test.js`.
+  - D12: no longer present (the `NODE_ENV` log line went in an earlier PR);
+    the terminal log line now carries the call's env.
+- The owner's list (left over from PR-3 and PR-4), each with its test:
+  1. `rate-limit.js`: with no Redis store every limiter falls back to its own
+     express-rate-limit `MemoryStore` (WARN at boot); the header comment is
+     true. `rate-limit-memory-fallback.test.js` (all four failed before:
+     login was unlimited).
+  2. Ring pushes: first alerts and cancels are prioritised over re-alerts
+     and ranked per tenant (a 10 s window), so a burst at one tenant does not
+     delay another's ring; `COMMS_CALL_RING_CONCURRENCY` (16). The queue name
+     is unchanged. `smartcomm-calls.test.js` ("ring pushes are fair").
+  3. `GET /calls/ringing`: measured in the load script (a reconnect storm
+     with every tab at once, then once a minute per tab). It stays a DB read:
+     p95 3 ms, max 36 ms at 200 tenants × 12 tabs, 0 pool timeouts. No
+     change to the route.
+  4. The sandbox `app_user` mirror updates status (and name, 2FA flag) on an
+     existing row, and `setStatus` mirrors. `sandbox-user-mirror.test.js`,
+     real schema `tests/integration/sandbox-user-status.test.js` (a user
+     suspended after the first mirror is SUSPENDED in sandbox).
+  5. `call-upload-outbox.ts:110`: `@silent:storage`; a node:test in
+     `eslint-local-rules/` holds `features/comms/call` at zero unmarked
+     silent catches.
+- The load script, `scripts/load-calls.js` (local Postgres 16 + Redis 7, one
+  worker process unless stated, third parties stubbed: push 100–200 ms, Groq
+  1.5–3 s, Gemini 2–4 s, LLM 2–4 s). Each case: one tenant with 2,000 parts
+  queued and a burst of 30 simultaneous rings; every tenant dials 3 rings
+  nobody answers; every other tenant hangs up 1 call a minute; every tab
+  (12 per tenant) reads `/calls/ringing` in a storm at +30 s, then once a
+  minute. Default limits (Groq 20 rpm / 7,200 s·h, Gemini 60 rpm; fair
+  share 12/min, burst 20). Each simulated tenant has its own emulated
+  4-connection pool with the 5 s acquire timeout.
+
+  | Tenants | Ring timeouts late (p50 / p95 / max) | First ring push p95 (other tenants' worst / burst tenant) | Re-alert / cancel p95 | Hang-up → summary p50 / p95 | Ringing read storm p95 / max | Pool timeouts; wait p95 other / heavy |
+  | --- | --- | --- | --- | --- | --- | --- |
+  | 10 | 0.57 / 1.11 / 1.27 s (60/60) | 282 / 1,176 ms | 285 / 512 ms | 6 / 11 s (18/18) | 3 / 5 ms | 0; 0 / 366 ms |
+  | 50 | 0.54 / 0.99 / 1.26 s (180/180) | 217 / 1,078 ms | 249 / 466 ms | 19 / 55 s (98/98) | 3 / 10 ms | 0; 0 / 353 ms |
+  | 200 | 0.52 / 0.58 / 1.24 s (630/630) | 236 / 1,213 ms | 223 / 204 ms | 42 / 99 s (88 of 398 in the run) | 3 / 36 ms | 0; 0 / 335 ms |
+  | 200, 4 worker replicas, Groq 400 / Gemini 600 rpm | 0.52 / 0.57 / 0.63 s | 223 / 1,135 ms | 222 / 201 ms | 7 / 8 s (398/398) | 3 / 34 ms | 0; 0 / 487 ms |
+
+  Acceptance: every ring timed out within 5 s at every scale (max 1.27 s)
+  while one tenant had 2,000 queued; p95 hang-up→summary at 10 tenants is
+  11 s (target < 2 min); no tenant ever waited for a connection past its
+  budget (0 acquire timeouts; other tenants ≤ 2 ms). The burst tenant's own
+  first rings wait up to ~1.2 s behind its own pool (each ring push holds a
+  connection while the push service answers); nobody else's do. At 200
+  tenants on one worker and free-tier limits, summaries lag: 400 hang-ups a
+  minute is ~800 parts against 80 provider requests a minute, and one
+  worker's finalise concurrency. Sized as §4 item 9 says (paid provider
+  tiers) and scaled by queue lag (§4 item 5, four worker replicas), 200
+  tenants run at p95 8 s. The busy tenant's own backlog drains at its
+  share (its oldest part is ~3 min old at the end of each run, and the new
+  latency alarm pages at 10 minutes).
+- Found by the load script and fixed here:
+  - Part jobs held 8 of one tenant's connections at once against a pool of
+    4, so that tenant's own ring deadline and reads queued behind
+    transcription. `src/jobs/tenant-db-slots.js`: part, finalise and
+    regenerate jobs take at most `TENANT_POOL_MAX - 2` of a tenant's
+    connections per process. `tenant-db-slots.test.js`.
+  - Finalise ran 2 at a time per worker; it is `CALL_FINALISE_CONCURRENCY`
+    (4) now (it holds no connection while the LLM works).
+- Found re-reading the diff and fixed here: the worker wrapper logged a
+  deferred part (`DelayedError`) as "job threw" at ERROR
+  (`worker-deferral.test.js`); a socket that disconnected before its join
+  landed could look online for 90 s (`realtime-presence.test.js`, "races").
+- Not fixed / deferred:
+  - PR-7: `tests/integration/call-pipeline.test.js` needs ffmpeg (it passes
+    here with ffmpeg installed; CI installs it).
+  - PR-6: the design of PR-4's new controls; `OVER_BUDGET` needs a line on
+    the call page with N4's "transcription failed".
+  - The owner's device runs (P1–P11) are unchanged by this PR.
+  - `/live-log` stays (410) until no supported build calls it.
+  - A ring push holds its tenant connection while the push service answers
+    (the burst tenant's ~1.2 s above). Splitting the subscription read from
+    the send would need `push.sendToUser` to change shape; left, since it
+    only ever delays that tenant's own rings.
+- Deviations from §3:
+  - Over budget is a settled part with a reason code (`OVER_BUDGET`), not a
+    new part status: `transcript_status` has a CHECK (PENDING/OK/FAILED), and
+    a new status would touch every reader of the column for no behaviour a
+    reason code cannot carry.
+  - The daily fleet aggregation is kept (once a day, on the new index) as
+    the repair for counters lost to a Redis restart; the hourly one is gone.
+  - Presence goes to DIRECT contacts only, as §3 says. Decision row 10
+    ("everyone sees everyone") is unaffected: the client shows the dot only
+    for DIRECT partners (thread header, info pane, call screen).
+  - The ringing read was measured and kept on the database (item 3).
+- Schema and config: migration 14080 adds `ix_comms_call_started` (index
+  only). New queue `comms-call-clock`. New env: `COMMS_CALL_SAFETY_SWEEP_MS`,
+  `COMMS_CALL_CLOCK_CONCURRENCY`, `COMMS_CALL_RING_CONCURRENCY`,
+  `CALL_TRANSCRIBE_CONCURRENCY`, `CALL_FINALISE_CONCURRENCY`,
+  `GROQ_TRANSCRIBE_RPM`, `GROQ_TRANSCRIBE_AUDIO_SECONDS_PER_HOUR`,
+  `GEMINI_TRANSCRIBE_RPM`, `CALL_TRANSCRIBE_TENANT_PER_MIN`,
+  `CALL_TRANSCRIBE_TENANT_BURST`, `CALL_AUDIO_DAILY_MINUTES`,
+  `COMMS_CALL_SUMMARY_P95_ALERT_S`, `COMMS_CALL_BACKLOG_ALERT_AGE_S`. New
+  socket event `comms:presence_snapshot`; `comms:presence` now goes to user
+  rooms. New alert event `comms.transcription_latency`. Call-part usage rows
+  are `call_type = 'call.transcribe'` (was `transcribe`, shared with voice
+  notes). No route, AppError or AI manifest change.
+- For the next PR (PR-6):
+  - Reason codes now include `OVER_BUDGET` (`CallTranscriptReason`); N4 is
+    still unrendered.
+  - Presence: `useOnline` is fed by the snapshot and `comms:presence`, only
+    for DIRECT partners; `replaceOnline` resets the map.
+  - Channel rooms carry the env; nothing in the client names a room.
+- Gates: see the PR body (`npm run ci`, the integration suites on local
+  Postgres with ffmpeg, the load script). Nothing touched production; the
+  §0 SQL was not run.

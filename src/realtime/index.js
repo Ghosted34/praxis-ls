@@ -8,10 +8,12 @@
  * it belongs to. Membership is re-checked on the server for every join, so a
  * socket can never listen to a channel the user isn't a member of.
  *
- * Rooms are namespaced per tenant + channel: `t:<slug>:c:<groupId>`, so there is
- * no cross-tenant bleed even if two tenants ever shared a channel UUID.
+ * Rooms are namespaced per tenant, environment and channel:
+ * `t:<slug>:<env>:c:<groupId>`, so there is no cross-tenant bleed even if two
+ * tenants ever shared a channel UUID, and a sandbox schema that shares group
+ * ids with live cannot reach live sockets (calls audit N1).
  *
- * Services publish through `publish(tenantSlug, groupId, event, payload)` after
+ * Services publish through `publish(tenantSlug, env, groupId, event, payload)` after
  * a committed DB write (see smartcomm.service). Delivery is best-effort: if the
  * socket server isn't up (tests, workers) publish is a no-op.
  *
@@ -29,8 +31,8 @@ const identityCache = require("../shared/cache/identity-cache");
 
 let io = null;
 
-const room = (slug, groupId) => `t:${slug}:c:${groupId}`;
-const mailRoom = (slug) => `t:${slug}:mail`;
+const room = (slug, env, groupId) => `t:${slug}:${env}:c:${groupId}`;
+const mailRoom = (slug, env) => `t:${slug}:${env}:mail`;
 /**
  * One room per USER and ENVIRONMENT, for what is addressed to a person
  * (notifications, calls). Derived from the socket's authenticated user id and
@@ -44,20 +46,10 @@ const userRoom = (slug, env, uid) => `t:${slug}:${env}:u:${uid}`;
 /** The rooms every authenticated socket joins on connect. */
 function joinPersonalRooms(socket) {
   const { tenantSlug, env, userId } = socket.data;
-  socket.join(mailRoom(tenantSlug));
-  if (userId && ENVS.has(env)) socket.join(userRoom(tenantSlug, env, userId));
+  if (!ENVS.has(env)) return;
+  socket.join(mailRoom(tenantSlug, env));
+  if (userId) socket.join(userRoom(tenantSlug, env, userId));
 }
-
-/**
- * Per-process count of a user's connected sockets, keyed "<slug>:<uid>".
- *
- * Presence math for one replica: a user with two tabs here is still online
- * when one of them closes, and the `online: false` broadcast must wait for
- * the LAST socket on this replica. Cross-replica accuracy comes for free —
- * a disconnect fires on the replica that HELD the socket, so every socket's
- * join/leave is announced exactly once through the adapter.
- */
-const userSocketCount = new Map();
 
 /** Same origin policy as the HTTP CORS: base domain + its subdomains, explicit
  *  extras, and localhost in development. */
@@ -208,18 +200,18 @@ function initSocket(httpServer) {
         const repo = require("../modules/smartcomm/smartcomm.repo");
         const member = await registry.withTenantConnection(tenant, env, (c) => repo.findMember(c, groupId, userId));
         if (!member) return typeof ack === "function" && ack({ ok: false, error: "NOT_A_MEMBER" });
-        socket.join(room(tenantSlug, groupId));
+        socket.join(room(tenantSlug, env, groupId));
         return typeof ack === "function" && ack({ ok: true });
       } catch {
         return typeof ack === "function" && ack({ ok: false, error: "JOIN_FAILED" });
       }
     });
 
-    socket.on("channel:leave", (groupId) => socket.leave(room(tenantSlug, groupId)));
+    socket.on("channel:leave", (groupId) => socket.leave(room(tenantSlug, env, groupId)));
 
     // Ephemeral typing indicator — broadcast to others in the room, not persisted.
     socket.on("channel:typing", (groupId) =>
-      socket.to(room(tenantSlug, groupId)).emit("channel:typing", { group_id: groupId, user_id: userId }),
+      socket.to(room(tenantSlug, env, groupId)).emit("channel:typing", { group_id: groupId, user_id: userId }),
     );
 
     attachCallSignals(socket);
@@ -387,65 +379,92 @@ function attachCallSignals(socket) {
 }
 
 /**
- * Presence + last seen (PR-1, guide §4.11).
+ * Presence + last seen (guide §4.11; calls audit B3, C9, D6, D8, E12).
  *
- * "Online now" = a socket is connected; the broadcast rides the tenant-wide
- * room (mailRoom — every authenticated socket in the tenant already joins
- * it, so presence needs no new room and no client change to hear it). The
- * persistent half is comms_user_presence.last_seen_at, flushed on connect,
- * on every `comms:seen` beat (the client throttles to one per 60 s), and on
- * disconnect.
+ * "Online now" is kept in Redis per user (smartcomm.presence.js): one entry
+ * per live socket, refreshed by this replica every 30 s and gone 90 s after
+ * the last refresh, so it is right across replicas and after a crash.
+ *
+ *   - On connect, the socket gets a snapshot of its user's DIRECT contacts
+ *     (`comms:presence_snapshot`), and the contacts hear `comms:presence`
+ *     in their own user rooms when this is the user's first live socket.
+ *   - On the last socket's disconnect, the contacts hear the user go
+ *     offline, and a live call gets its liveness check at +60 s.
+ *   - `last_seen_at` is written at most once per user per 5 minutes, and a
+ *     socket's `comms:seen` beats are ignored inside 30 s (C9).
+ *
+ * Every Redis or database failure here is logged and absorbed: presence is
+ * advisory, and the 30-minute cap stays the backstop for a call.
  */
+const PRESENCE_SEEN_MIN_MS = 30_000;
+
 function attachPresence(socket) {
   const { tenant, env, tenantSlug, userId } = socket.data;
-  if (!userId) return;
-  const key = `${tenantSlug}:${userId}`;
+  if (!userId || !ENVS.has(env)) return;
+  const presence = require("../modules/smartcomm/smartcomm.presence");
+  const callRepo = require("../modules/smartcomm/smartcomm.call.repo");
+  const redis = () => require("../config/redis").getClient();
+  const who = { slug: tenantSlug, env, userId, socketId: socket.id };
+  let lastSeenBeat = 0;
 
-  const touch = () => {
-    const callRepo = require("../modules/smartcomm/smartcomm.call.repo");
-    registry
-      .withTenantConnection(tenant, env, (c) => callRepo.touchPresence(c, userId))
-      .catch((err) => logger.warn({ err, userId }, "presence flush failed"));
+  const contacts = () => presence.contactsFor(redis(), {
+    ...who,
+    load: () => registry.withTenantConnection(tenant, env, (c) => callRepo.directContacts(c, userId)),
+  });
+
+  const announce = async (online) => {
+    const list = await contacts();
+    if (!list.length || !io) return;
+    io.to(list.map((uid) => userRoom(tenantSlug, env, uid))).emit("comms:presence", { user_id: userId, online });
   };
 
-  // The online registry the call-liveness sweep reads (field note FN-1): one
-  // SET per tenant+env, one member per SOCKET, so a user with two tabs on two
-  // replicas stays "online" while any tab is alive, and the last tab leaving
-  // removes the user cleanly. Best-effort: a registry hiccup must never fail a
-  // join/leave, and the sweep's 60 s offline grace plus the 30-minute cap both
-  // sit on the far side of a wrong read.
-  const touchOnline = (add) => {
-    try {
-      const { getClient } = require("../config/redis");
-      const member = `${userId}:${socket.id}`;
-      const onlineKey = `praxis:comms:online:${tenantSlug}:${env}`;
-      const op = add ? getClient().sadd(onlineKey, member) : getClient().srem(onlineKey, member);
-      void op.catch(() => {});
-    } catch {
-      /* @silent:storage — no Redis client yet (boot); the next socket event retries. */
-    }
+  const flushLastSeen = async () => {
+    if (!(await presence.claimLastSeenFlush(redis(), who))) return;
+    await registry.withTenantConnection(tenant, env, (c) => callRepo.touchPresence(c, userId));
   };
 
-  const n = (userSocketCount.get(key) || 0) + 1;
-  userSocketCount.set(key, n);
-  touch();
-  touchOnline(true);
-  if (n === 1) {
-    io.to(mailRoom(tenantSlug)).emit("comms:presence", { user_id: userId, online: true });
-  }
+  const warn = (what) => (err) => logger.warn({ err, userId }, `presence: ${what} failed`);
 
-  socket.on("comms:seen", () => touch());
+  const joined = (async () => {
+    const before = await presence.join(redis(), who);
+    const list = await contacts();
+    const users = await presence.onlineMap(redis(), { slug: tenantSlug, env, userIds: list });
+    socket.emit("comms:presence_snapshot", { users });
+    if (before === 0) await announce(true);
+    await flushLastSeen();
+  })().catch(warn("connect"));
+
+  const heartbeat = setInterval(() => {
+    presence.beat(redis(), who).catch(warn("heartbeat"));
+  }, presence.PRESENCE.heartbeatMs);
+  if (typeof heartbeat.unref === "function") heartbeat.unref();
+
+  socket.on("comms:seen", () => {
+    const now = Date.now();
+    if (now - lastSeenBeat < PRESENCE_SEEN_MIN_MS) return;
+    lastSeenBeat = now;
+    flushLastSeen().catch(warn("last seen"));
+  });
 
   socket.on("disconnect", () => {
-    touchOnline(false);
-    const left = (userSocketCount.get(key) || 1) - 1;
-    if (left <= 0) {
-      userSocketCount.delete(key);
-      touch();
-      io.to(mailRoom(tenantSlug)).emit("comms:presence", { user_id: userId, online: false });
-    } else {
-      userSocketCount.set(key, left);
-    }
+    clearInterval(heartbeat);
+    // After the join has landed, so a quick disconnect cannot leave this
+    // socket's entry behind it (it would count as online for 90 s).
+    joined.then(async () => {
+      const left = await presence.leave(redis(), who);
+      if (left > 0) return;
+      await announce(false);
+      await flushLastSeen();
+      // A call this user was in gets its liveness check (audit D1).
+      const callId = await presence.activeCall(redis(), who);
+      if (callId) {
+        const clock = require("../modules/smartcomm/smartcomm.call.clock");
+        const { LIVENESS_OFFLINE_S } = require("../modules/smartcomm/smartcomm.call.service");
+        await clock.scheduleLiveness({
+          callId, tenantMeta: tenant, env, atMs: Date.now() + LIVENESS_OFFLINE_S * 1000 + clock.GRACE_MS,
+        });
+      }
+    }).catch(warn("disconnect"));
   });
 }
 
@@ -471,8 +490,11 @@ function attachMailBridge(attempt = 0) {
   subscriber.on("message", (channel, message) => {
     if (channel !== CHANNEL || !io) return;
     try {
-      const { slug, payload } = JSON.parse(message);
-      if (slug) io.to(mailRoom(slug)).emit("mail:new", payload || {});
+      const { slug, env, payload } = JSON.parse(message);
+      // Every replica receives the bus message and re-emits it, so each must
+      // reach only its OWN sockets (io.local): through the redis adapter,
+      // `io.to` sent one duplicate `mail:new` per replica (calls audit N2).
+      if (slug) io.local.to(mailRoom(slug, ENVS.has(env) ? env : "live")).emit("mail:new", payload || {});
     } catch {
       /* @silent:parse — a malformed message on the bus is not something this
          subscriber can act on, and throwing would detach it from every LATER
@@ -482,10 +504,11 @@ function attachMailBridge(attempt = 0) {
   logger.info("[mail-bus] realtime bridge attached");
 }
 
-/** Emit an event to everyone subscribed to a channel. No-op if not initialised. */
-function publish(tenantSlug, groupId, event, payload) {
-  if (!io || !tenantSlug || !groupId) return;
-  io.to(room(tenantSlug, groupId)).emit(event, payload);
+/** Emit an event to everyone subscribed to a channel in one env. No-op if
+ *  not initialised or without a valid env. */
+function publish(tenantSlug, env, groupId, event, payload) {
+  if (!io || !tenantSlug || !groupId || !ENVS.has(env)) return;
+  io.to(room(tenantSlug, env, groupId)).emit(event, payload);
 }
 
 /**
@@ -527,6 +550,10 @@ module.exports = {
   publishToUser,
   joinPersonalRooms,
   attachCallSignals,
+  attachPresence,
+  attachMailBridge,
+  rooms: { room, mailRoom, userRoom },
+  setIoForTests: (server) => { io = server; },
   SIGNAL_LIMITS,
   isReady: () => io !== null,
   resetEmitterForTests: () => { emitter = null; },

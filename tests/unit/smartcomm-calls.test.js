@@ -15,20 +15,14 @@ jest.mock("../../src/jobs/queue-producer", () => ({ enqueue: jest.fn(async () =>
 jest.mock("../../src/shared/push/push.service", () => ({
   sendToUser: jest.fn(async () => ({ sent: 1, failed: 0, total: 1 })),
 }));
-// FN-1: the liveness sweep reads the online registry from Redis. An in-memory
-// SET/ZSET pair emulates it; a test seeds "who has been gone since when"
-// directly, which is exactly what the sweep is allowed to believe.
-const mockRedis = { sets: new Map(), zsets: new Map() };
-jest.mock("../../src/config/redis", () => ({
-  getClient: () => ({
-    sadd: async (k, m) => { if (!mockRedis.sets.has(k)) mockRedis.sets.set(k, new Set()); mockRedis.sets.get(k).add(m); return 1; },
-    srem: async (k, m) => { const hit = mockRedis.sets.get(k)?.delete(m); return hit ? 1 : 0; },
-    smembers: async (k) => [...(mockRedis.sets.get(k) || [])],
-    zadd: async (k, score, member) => { if (!mockRedis.zsets.has(k)) mockRedis.zsets.set(k, new Map()); mockRedis.zsets.get(k).set(member, score); return 1; },
-    zrem: async (k, ...members) => { const z = mockRedis.zsets.get(k); let n = 0; for (const m of members) if (z && z.delete(m)) n += 1; return n; },
-    zrange: async (k) => [...(mockRedis.zsets.get(k) || new Map()).entries()].flat(),
-  }),
-}));
+// Presence, the active-tenant set and the live-call keys are in Redis
+// (PR-5). An in-memory Redis stands in; a test seeds "who has been gone since
+// when" directly, which is exactly what liveness is allowed to believe.
+jest.mock("../../src/config/redis", () => {
+  const fake = require("../helpers/fake-redis").createFakeRedis();
+  return { getClient: () => fake, __fake: fake };
+});
+const mockRedis = require("../../src/config/redis").__fake;
 const service = require("../../src/modules/smartcomm/smartcomm.call.service");
 
 const U1 = "11111111-1111-1111-1111-111111111111";
@@ -164,13 +158,15 @@ function makeClient({ store, members = [], groupKind = "DIRECT" } = {}) {
         if (!row || (row.caller_id !== userId && row.callee_id !== userId)) return { rows: [] };
         return { rows: [{ user_id: row.caller_id === userId ? row.callee_id : row.caller_id }] };
       }
-      if (/SELECT call_id, caller_id, callee_id FROM comms_call WHERE status = 'IN_CALL'/.test(sql)) {
-        // FN-1: the liveness pass's row scan — only in-call rows are at risk.
+      if (/SELECT call_id, caller_id, callee_id, status FROM comms_call WHERE status IN \('RINGING','IN_CALL'\)/.test(sql)) {
+        // The safety sweep's live-row scan: liveness for IN_CALL, and the
+        // count that lets the scheduler drop an idle tenant.
         return {
-          rows: [...store.calls.values()].filter((c) => c.status === "IN_CALL").map((c) => ({
+          rows: [...store.calls.values()].filter((c) => ["RINGING", "IN_CALL"].includes(c.status)).map((c) => ({
             call_id: c.call_id,
             caller_id: c.caller_id,
             callee_id: c.callee_id,
+            status: c.status,
           })),
         };
       }
@@ -194,12 +190,12 @@ function makeClient({ store, members = [], groupKind = "DIRECT" } = {}) {
 
 let thisSkipActiveLookup = 0;
 const MEMBER1 = { group_id: G1, user_id: U1 };
+const TENANT = { slug: "acme", db_name: "tenant_acme" };
 let publishSpy;
 
 beforeEach(() => {
   thisSkipActiveLookup = 0;
-  mockRedis.sets.clear();
-  mockRedis.zsets.clear();
+  mockRedis._reset();
   publishSpy = jest.spyOn(realtime, "publishToUser").mockImplementation(() => {});
   require("../../src/jobs/queue-producer").enqueue.mockClear();
   require("../../src/shared/push/push.service").sendToUser.mockClear();
@@ -427,7 +423,7 @@ describe("engine failure (reportFailure)", () => {
   });
 });
 
-describe("the sweep — the only clock", () => {
+describe("the safety sweep", () => {
   test("a ring older than 60 s becomes NO_ANSWER", async () => {
     const store = makeStore();
     const call = store.insert({ groupId: G1, callerId: U1, calleeId: U2 });
@@ -522,7 +518,6 @@ describe("reads and TURN refresh", () => {
  * ends. The ack is the ring-channel metric only: it silences nothing.
  */
 describe("rings on every device (PR-4)", () => {
-  const TENANT = { slug: "acme" };
   const ringJobs = () => {
     const { enqueue } = require("../../src/jobs/queue-producer");
     return enqueue.mock.calls.filter((c) => c[0] === "comms-call-ring-escalate");
@@ -769,9 +764,9 @@ describe("the noise filter's default (E5)", () => {
 });
 
 describe("call liveness — the row's fourth way to end (FN-1)", () => {
-  const ON_KEY = "praxis:comms:online:acme:live";
-  const OFF_KEY = "praxis:comms:call-offline:acme:live";
-  const nowS = () => Math.floor(Date.now() / 1000);
+  const offKey = (uid) => `presence:off:acme:live:${uid}`;
+  const onKey = (uid) => `presence:acme:live:${uid}`;
+  const goneSince = async (uid, msAgo) => mockRedis.set(offKey(uid), String(Date.now() - msAgo));
 
   /** An answered call, five minutes in: past the ring deadline's concern,
    *  far from the 30-minute cap, so liveness is the only thing that can move
@@ -788,12 +783,8 @@ describe("call liveness — the row's fourth way to end (FN-1)", () => {
   test("a call whose both devices have been gone 60 s ends itself, reason disconnected", async () => {
     const store = makeStore();
     const call = inCall(store);
-    // Neither user has a socket, and the book says they have been gone for
-    // two minutes.
-    mockRedis.zsets.set(OFF_KEY, new Map([
-      [U1, nowS() - 120],
-      [U2, nowS() - 119],
-    ]));
+    await goneSince(U1, 120_000);
+    await goneSince(U2, 119_000);
     const { moved } = await service.sweep(makeClient({ store }), { tenantSlug: "acme", env: "live" });
     expect(moved).toBe(1);
     const row = store.calls.get(call.call_id);
@@ -805,33 +796,44 @@ describe("call liveness — the row's fourth way to end (FN-1)", () => {
   test("one device gone 2 minutes and the other only just gone keeps the call alive (B2: both, not either)", async () => {
     const store = makeStore();
     const call = inCall(store);
-    mockRedis.zsets.set(OFF_KEY, new Map([
-      [U1, nowS() - 120],
-      [U2, nowS() - 5],
-    ]));
+    await goneSince(U1, 120_000);
+    await goneSince(U2, 5_000);
     const { moved } = await service.sweep(makeClient({ store }), { tenantSlug: "acme", env: "live" });
     expect(moved).toBe(0);
     expect(store.calls.get(call.call_id).status).toBe("IN_CALL");
   });
 
-  test("one device still online keeps the call alive, no matter how old the book is", async () => {
+  test("one device still online keeps the call alive, no matter how old the other's absence", async () => {
     const store = makeStore();
     const call = inCall(store);
-    mockRedis.sets.set(ON_KEY, new Set([`${U1}:socket-1`]));
-    mockRedis.zsets.set(OFF_KEY, new Map([[U2, nowS() - 600]]));
+    await mockRedis.zadd(onKey(U1), Date.now() + 90_000, "socket-1");
+    await goneSince(U2, 600_000);
     const { moved } = await service.sweep(makeClient({ store }), { tenantSlug: "acme", env: "live" });
     expect(moved).toBe(0);
     expect(store.calls.get(call.call_id).status).toBe("IN_CALL");
+  });
+
+  test("a crashed replica's socket stops counting once its 90 s lapse (B3)", async () => {
+    const store = makeStore();
+    const call = inCall(store);
+    // U1's only socket was last refreshed 2 minutes ago by a replica that died:
+    // its score is in the past, so it no longer makes U1 online.
+    await mockRedis.zadd(onKey(U1), Date.now() - 30_000, "dead-replica-socket");
+    await goneSince(U1, 120_000);
+    await goneSince(U2, 120_000);
+    const { moved } = await service.sweep(makeClient({ store }), { tenantSlug: "acme", env: "live" });
+    expect(moved).toBe(1);
+    expect(store.calls.get(call.call_id).end_reason).toBe("disconnected");
   });
 
   test("a fresh absence (under 60 s) does not end the call — the airplane row survives", async () => {
     const store = makeStore();
     const call = inCall(store);
-    // Nobody online; the first tick BOOKS the absence, it does not act on it…
+    // Nobody online and no record yet: the first check records the absence…
     const first = await service.sweep(makeClient({ store }), { tenantSlug: "acme", env: "live" });
     expect(first.moved).toBe(0);
     expect(store.calls.get(call.call_id).status).toBe("IN_CALL");
-    // …and a tick moments later still sees the absence as fresh.
+    // …and a check moments later still sees it as fresh.
     const second = await service.sweep(makeClient({ store }), { tenantSlug: "acme", env: "live" });
     expect(second.moved).toBe(0);
     expect(store.calls.get(call.call_id).status).toBe("IN_CALL");
@@ -841,26 +843,229 @@ describe("call liveness — the row's fourth way to end (FN-1)", () => {
     const store = makeStore();
     const call = store.insert({ groupId: G1, callerId: U1, calleeId: U2 });
     call.started_at = new Date(Date.now() - 10_000).toISOString(); // 50 s from NO_ANSWER
-    mockRedis.zsets.set(OFF_KEY, new Map([
-      [U1, nowS() - 300],
-      [U2, nowS() - 300],
-    ]));
+    await goneSince(U1, 300_000);
+    await goneSince(U2, 300_000);
     const { moved } = await service.sweep(makeClient({ store }), { tenantSlug: "acme", env: "live" });
     expect(moved).toBe(0);
     expect(store.calls.get(call.call_id).status).toBe("RINGING");
   });
 
-  test("a registry outage skips liveness and never breaks the ordinary deadlines", async () => {
+  test("a presence outage skips liveness and never breaks the ordinary deadlines", async () => {
     const store = makeStore();
     const call = store.insert({ groupId: G1, callerId: U1, calleeId: U2 });
     call.started_at = new Date(Date.now() - 70_000).toISOString(); // due: NO_ANSWER
-    const redis = require("../../src/config/redis");
-    const spy = jest.spyOn(redis, "getClient").mockImplementation(() => {
-      throw new Error("redis down");
-    });
+    const other = store.insert({ groupId: G1, callerId: U3, calleeId: "55555555-5555-5555-5555-555555555555" });
+    store.transition(other.call_id, "RINGING", { status: "IN_CALL", connected_at: new Date(Date.now() - 300_000).toISOString() });
+    mockRedis._state.fail = true;
     const { moved } = await service.sweep(makeClient({ store }), { tenantSlug: "acme", env: "live" });
-    spy.mockRestore();
+    mockRedis._state.fail = false;
     expect(moved).toBe(1);
     expect(store.calls.get(call.call_id).status).toBe("NO_ANSWER");
+    expect(store.calls.get(other.call_id).status).toBe("IN_CALL");
+  });
+
+  test("the liveness job ends a call both sides left over 60 s ago", async () => {
+    const store = makeStore();
+    const call = inCall(store);
+    await goneSince(U1, 70_000);
+    await goneSince(U2, 65_000);
+    const out = await service.checkLiveness(makeClient({ store }), { callId: call.call_id, tenantMeta: TENANT, env: "live" });
+    expect(out.moved).toBe(true);
+    expect(store.calls.get(call.call_id).end_reason).toBe("disconnected");
+  });
+
+  test("the liveness job checks again when both will have been gone 60 s", async () => {
+    const store = makeStore();
+    const call = inCall(store);
+    await goneSince(U1, 60_000);
+    await goneSince(U2, 20_000);
+    const enqueue = require("../../src/jobs/queue-producer").enqueue;
+    const out = await service.checkLiveness(makeClient({ store }), { callId: call.call_id, tenantMeta: TENANT, env: "live" });
+    expect(out).toEqual({ moved: false, reason: "rechecking" });
+    const again = enqueue.mock.calls.find((c) => c[0] === "comms-call-clock" && c[1] === "liveness");
+    expect(again).toBeTruthy();
+    // Due ~40 s from now (U2's 60 s window), not another full minute.
+    expect(again[3].delay).toBeGreaterThan(38_000);
+    expect(again[3].delay).toBeLessThan(42_000);
+  });
+
+  test("the liveness job leaves a call alone while either side is online", async () => {
+    const store = makeStore();
+    const call = inCall(store);
+    await mockRedis.zadd(onKey(U2), Date.now() + 90_000, "s");
+    await goneSince(U1, 600_000);
+    const out = await service.checkLiveness(makeClient({ store }), { callId: call.call_id, tenantMeta: TENANT, env: "live" });
+    expect(out.moved).toBe(false);
+    expect(store.calls.get(call.call_id).status).toBe("IN_CALL");
+  });
+});
+
+describe("per-call clocks (D1)", () => {
+  const clockJobs = () => require("../../src/jobs/queue-producer").enqueue.mock.calls
+    .filter((c) => c[0] === "comms-call-clock");
+
+  test("a dial queues its own ring deadline at +60 s and puts the tenant in the active set", async () => {
+    const store = makeStore();
+    const out = await inTenant(() => service.createCall(makeClient({ store, members: [MEMBER1] }), {
+      groupId: G1, actor: { user_id: U1 }, tenantMeta: TENANT, env: "live",
+    }));
+    const [job] = clockJobs();
+    expect(job[1]).toBe("ring");
+    expect(job[2]).toMatchObject({ callId: out.call_id, env: "live" });
+    expect(job[3].jobId).toBe(`callclock-ring-${out.call_id}`);
+    expect(job[3].delay).toBeGreaterThan(59_000);
+    expect(job[3].delay).toBeLessThanOrEqual(60_500);
+    expect(await mockRedis.zscore("praxis:comms:call-tenants", "acme|live")).not.toBeNull();
+  });
+
+  test("an answer queues the 30-minute cap and records the live call for both sides", async () => {
+    const store = makeStore();
+    const call = store.insert({ groupId: G1, callerId: U1, calleeId: U2 });
+    await inTenant(() => service.acceptCall(makeClient({ store }), {
+      id: call.call_id, actor: { user_id: U2 }, tenantMeta: TENANT, env: "live",
+    }));
+    const cap = clockJobs().find((c) => c[1] === "cap");
+    expect(cap[3].jobId).toBe(`callclock-cap-${call.call_id}`);
+    expect(cap[3].delay).toBeGreaterThan(1_799_000);
+    expect(await mockRedis.get(`presence:call:acme:live:${U1}`)).toBe(call.call_id);
+    expect(await mockRedis.get(`presence:call:acme:live:${U2}`)).toBe(call.call_id);
+  });
+
+  test("hanging up forgets the live call", async () => {
+    const store = makeStore();
+    const call = store.insert({ groupId: G1, callerId: U1, calleeId: U2 });
+    await inTenant(() => service.acceptCall(makeClient({ store }), {
+      id: call.call_id, actor: { user_id: U2 }, tenantMeta: TENANT, env: "live",
+    }));
+    await inTenant(() => service.hangup(makeClient({ store }), { id: call.call_id, actor: { user_id: U1 }, tenantMeta: TENANT }));
+    expect(await mockRedis.get(`presence:call:acme:live:${U1}`)).toBeNull();
+    expect(await mockRedis.get(`presence:call:acme:live:${U2}`)).toBeNull();
+  });
+
+  test("the ring job ends a ring that is due, and only that", async () => {
+    const store = makeStore();
+    const due = store.insert({ groupId: G1, callerId: U1, calleeId: U2 });
+    due.started_at = new Date(Date.now() - 61_000).toISOString();
+    const out = await service.expireRing(makeClient({ store }), { callId: due.call_id, tenantMeta: TENANT, env: "live" });
+    expect(out.moved).toBe(true);
+    expect(store.calls.get(due.call_id).status).toBe("NO_ANSWER");
+    // The worker has no ambient tenant: the job's slug reaches the publish.
+    expect(publishSpy.mock.calls.find((c) => c[3] === "call:no_answer")[0]).toBe("acme");
+  });
+
+  test("a ring job that runs early re-queues itself instead of ending the ring", async () => {
+    const store = makeStore();
+    const early = store.insert({ groupId: G1, callerId: U1, calleeId: U2 });
+    const out = await service.expireRing(makeClient({ store }), { callId: early.call_id, tenantMeta: TENANT, env: "live" });
+    expect(out).toEqual({ moved: false, reason: "not due" });
+    expect(store.calls.get(early.call_id).status).toBe("RINGING");
+    expect(clockJobs().find((c) => c[1] === "ring")).toBeTruthy();
+  });
+
+  test("a ring job for an answered call does nothing", async () => {
+    const store = makeStore();
+    const call = store.insert({ groupId: G1, callerId: U1, calleeId: U2 });
+    call.started_at = new Date(Date.now() - 61_000).toISOString();
+    store.transition(call.call_id, "RINGING", { status: "IN_CALL", connected_at: new Date().toISOString() });
+    const out = await service.expireRing(makeClient({ store }), { callId: call.call_id, tenantMeta: TENANT, env: "live" });
+    expect(out.moved).toBe(false);
+    expect(store.calls.get(call.call_id).status).toBe("IN_CALL");
+  });
+
+  test("the cap job ends a call at 30 minutes with 1800 s recorded", async () => {
+    const store = makeStore();
+    const call = store.insert({ groupId: G1, callerId: U1, calleeId: U2 });
+    store.transition(call.call_id, "RINGING", {
+      status: "IN_CALL", connected_at: new Date(Date.now() - 1_801_000).toISOString(),
+    });
+    const out = await service.capCall(makeClient({ store }), { callId: call.call_id, tenantMeta: TENANT, env: "live" });
+    expect(out.moved).toBe(true);
+    expect(store.calls.get(call.call_id)).toMatchObject({ status: "ENDED", end_reason: "max_duration", duration_seconds: 1800 });
+  });
+
+  test("the safety sweep reports how many calls are still live", async () => {
+    const store = makeStore();
+    store.insert({ groupId: G1, callerId: U1, calleeId: U2 });
+    expect(await service.sweep(makeClient({ store }), { tenantSlug: "acme" })).toEqual({ moved: 0, live: 1 });
+    expect(await service.sweep(makeClient({ store: makeStore() }), { tenantSlug: "acme" })).toEqual({ moved: 0, live: 0 });
+  });
+});
+
+describe("ring pushes are fair across tenants (leftover from PR-4)", () => {
+  const ringJobs = () => require("../../src/jobs/queue-producer").enqueue.mock.calls
+    .filter((c) => c[0] === "comms-call-ring-escalate");
+
+  test("a first ring and a cancel go ahead of every re-alert", async () => {
+    const first = await service.ringPriority({ slug: "acme", urgent: true });
+    for (let i = 0; i < 500; i += 1) await service.ringPriority({ slug: "busy", urgent: true });
+    const burstTail = await service.ringPriority({ slug: "busy", urgent: true });
+    const realert = await service.ringPriority({ slug: "quiet", urgent: false });
+    expect(first).toBe(1);
+    expect(realert).toBeGreaterThan(burstTail);
+  });
+
+  test("a burst of 200 rings at one tenant does not queue another tenant's ring behind it", async () => {
+    for (let i = 0; i < 200; i += 1) {
+      await service.enqueueRingPush({ callId: `busy-${i}`, tenantMeta: { slug: "busy" }, env: "live", alert: 0 });
+    }
+    await service.enqueueRingPush({ callId: "other", tenantMeta: { slug: "other" }, env: "live", alert: 0 });
+    const jobs = ringJobs();
+    const other = jobs.find((c) => c[2].callId === "other")[3].priority;
+    const busy = jobs.filter((c) => String(c[2].callId).startsWith("busy-")).map((c) => c[3].priority);
+    // BullMQ serves the lowest priority first: the other tenant's first ring
+    // ties the busy tenant's first and is ahead of its other 199.
+    expect(other).toBe(Math.min(...busy));
+    expect(busy.filter((p) => p > other)).toHaveLength(199);
+  });
+
+  test("cancels are urgent, re-alerts are not", async () => {
+    await service.enqueueRingCancel({ callId: "c1", outcome: "missed", tenantMeta: { slug: "acme" }, env: "live" });
+    await service.enqueueRingPush({ callId: "c1", tenantMeta: { slug: "acme" }, env: "live", alert: 2 });
+    const [cancel, realert] = ringJobs();
+    expect(cancel[3].priority).toBeLessThan(100_000);
+    expect(realert[3].priority).toBeGreaterThan(100_000);
+  });
+
+  test("with Redis down the ring still queues, unranked in its class", async () => {
+    mockRedis._state.fail = true;
+    expect(await service.ringPriority({ slug: "acme", urgent: true })).toBe(1);
+    mockRedis._state.fail = false;
+  });
+});
+
+describe("ring concurrency comes from configuration", () => {
+  test("COMMS_CALL_RING_CONCURRENCY sizes the ring worker", () => {
+    const { config } = require("../../src/config/env");
+    expect(config.COMMS_CALL_RING_CONCURRENCY).toBe(16);
+    const src = require("fs").readFileSync(require.resolve("../../src/jobs/workers.js"), "utf8");
+    expect(src).toMatch(/name: "comms-call-ring-escalate", concurrency: config\.COMMS_CALL_RING_CONCURRENCY/);
+  });
+});
+
+describe("day counters at each transition (audit D4)", () => {
+  const day = () => new Date().toISOString().slice(0, 10);
+  const counter = (field, env = "live") => mockRedis.get(`praxis:callm:${day()}:acme:${env}:${field}`);
+
+  test("dial, answer and hang-up count what the metrics screen shows", async () => {
+    const store = makeStore();
+    const out = await inTenant(() => service.createCall(makeClient({ store, members: [MEMBER1] }), {
+      groupId: G1, actor: { user_id: U1 }, tenantMeta: TENANT, env: "live",
+    }));
+    await inTenant(() => service.acceptCall(makeClient({ store }), { id: out.call_id, actor: { user_id: U2 }, tenantMeta: TENANT }));
+    store.calls.get(out.call_id).connected_at = new Date(Date.now() - 90_000).toISOString();
+    await inTenant(() => service.hangup(makeClient({ store }), { id: out.call_id, actor: { user_id: U1 }, tenantMeta: TENANT }));
+    expect(await counter("calls_started")).toBe("1");
+    expect(await counter("calls_answered")).toBe("1");
+    expect(await counter("answered_ended")).toBe("1");
+    expect(Number(await counter("duration_sum"))).toBeGreaterThanOrEqual(89);
+  });
+
+  test("an unanswered ring counts as no answer, in its own env", async () => {
+    const store = makeStore();
+    const call = store.insert({ groupId: G1, callerId: U1, calleeId: U2 });
+    call.started_at = new Date(Date.now() - 61_000).toISOString();
+    await service.sweep(makeClient({ store }), { tenantSlug: "acme", env: "sandbox" });
+    expect(await counter("calls_no_answer", "sandbox")).toBe("1");
+    expect(await counter("calls_no_answer", "live")).toBeNull();
   });
 });

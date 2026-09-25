@@ -8,6 +8,10 @@
  *             part) and enqueues one `call-transcribe-part` job.
  *   part job  owner decision O1, exactly: one Groq attempt, then Gemini once,
  *             then the part has failed. Nothing retries it automatically.
+ *             In front of it (PR-5, audit D2): the tenant's daily audio
+ *             budget, and the shared provider limiters (smartcomm.call.gate):
+ *             a full Groq limiter sends the part straight to Gemini, and
+ *             with both full the part waits without calling anyone.
  *   complete  each side declares how many parts it made
  *             (`POST /calls/:id/recording/complete`).
  *   finalise  runs once both sides are declared and every declared part has a
@@ -40,6 +44,8 @@ const { AppError } = require("../../utils/errors");
 const realtime = require("../../realtime");
 const requestContext = require("../../config/request-context");
 const { logger } = require("../../config/logger");
+const gate = require("./smartcomm.call.gate");
+const signals = require("./smartcomm.call.signals");
 
 const SIDES = ["caller", "callee"];
 /** D6: two languages, no free-text field. */
@@ -68,6 +74,14 @@ const MAX_PROMPT_TRANSCRIPT_CHARS = 60_000;
 const SUMMARY_MAX_TOKENS = 2048;
 /** D7: audio is kept 30 days (tenant-overridable). */
 const RETENTION_DAYS = 30;
+/** Queue priorities (BullMQ: lower runs first). Parts of calls still going,
+ *  then parts of calls that have ended (their summary is waiting), then the
+ *  sweep's and an admin's re-runs (§3 PR-5 step 2). */
+const PART_PRIORITY = Object.freeze({ live: 1, finalise: 2, reprocess: 3 });
+/** The error stored on a part refused by the daily audio budget. */
+const OVER_BUDGET = "over_budget";
+/** The usage-ledger call type for call parts (featureKey stays `voice`). */
+const USAGE_CALL_TYPE = "call.transcribe";
 
 const cref = (id) => "comms_call:" + id;
 
@@ -344,16 +358,25 @@ async function enqueueSafely(jobId, send) {
   }
 }
 
-function startPartJob({ callId, side, partIndex, tenantMeta, env = "live", origin = "upload", suffix = "" }) {
+async function startPartJob({
+  callId, side, partIndex, tenantMeta, env = "live", origin = "upload", suffix = "", live = false,
+}) {
   const jobId = `callpart-${callId}-${side}-${partIndex}${suffix}`;
-  return enqueueSafely(jobId, (enqueue) => enqueue("call-transcribe-part", "part", {
-    callId, side, partIndex, tenantMeta, env, origin,
+  const priority = origin === "upload"
+    ? (live ? PART_PRIORITY.live : PART_PRIORITY.finalise)
+    : PART_PRIORITY.reprocess;
+  const queuedAt = Date.now();
+  const job = await enqueueSafely(jobId, (enqueue) => enqueue("call-transcribe-part", "part", {
+    callId, side, partIndex, tenantMeta, env, origin, queuedAt,
   }, {
     jobId,
+    priority,
     attempts: 1,
     removeOnComplete: true,
     removeOnFail: 100,
   }));
+  if (job && tenantMeta) await signals.partQueued({ slug: tenantMeta.slug, env, jobId, now: queuedAt });
+  return job;
 }
 
 function enqueueFinalise({ callId, tenantMeta, env = "live", origin = "upload", deadline = false, delayMs = 0 }) {
@@ -491,7 +514,7 @@ async function registerPart(client, {
   if (!call.transcription_state) {
     await repo.setTranscriptionState(client, { callId, state: "PENDING" });
   }
-  await startPartJob({ callId, side, partIndex, tenantMeta, env, origin: "upload" });
+  await startPartJob({ callId, side, partIndex, tenantMeta, env, origin: "upload", live: call.status === "IN_CALL" });
   logger.info({ callId, side, partIndex, bytes: file.buffer.length }, "call: recording part stored");
   return part;
 }
@@ -524,12 +547,21 @@ async function completeSide(client, { callId, actor, side, parts, tenantMeta = n
 
 const errText = (err) => String((err && err.message) || err || "failed").slice(0, 200);
 
+const isRateLimited = (err) => !!err && (err.status === 429 || err.statusCode === 429
+  || (err.response && err.response.status === 429) || /\b429\b|rate.?limit/i.test(String(err.message || "")));
+
 /**
- * One part: one Groq attempt, then one Gemini attempt (owner decision O1). No
- * language hint: a hint forces a code-switched call into one language, and
- * Whisper's failure mode is a fluent translation.
+ * One part (owner decision O1): one Groq attempt, then one Gemini attempt.
+ * `first` is the gate's route: "gemini" when Groq's limiter was full, which
+ * skips Groq and gives Gemini its one attempt. Gemini after a Groq error runs
+ * only if its limiter has room; if not, the part fails exactly as a Gemini
+ * 429 would. No language hint: a hint forces a code-switched call into one
+ * language, and Whisper's failure mode is a fluent translation.
  */
-async function transcribePart({ part, vendor }) {
+async function transcribePart({ part, vendor, first = "groq", tenant = {} }) {
+  const note = (provider, err) => signals.providerResult({
+    slug: tenant.slug, env: tenant.env, provider, rateLimited: isRateLimited(err),
+  });
   let audio;
   try {
     audio = await storage.get(part.vault_ref);
@@ -538,29 +570,57 @@ async function transcribePart({ part, vendor }) {
     logger.warn({ err, recording_id: part.recording_id }, "call: part bytes unreadable");
     return { ok: false, attempts: 0, error: "recording unreadable" };
   }
-  let groqError;
-  try {
-    const out = await transcription.transcribe({
-      audio,
-      mimeType: part.media_type,
-      language: null,
-      vendor,
-      detectLanguage: true,
-      maxRetries: 0,
-    });
-    return { ok: true, attempts: 1, result: { ...out, provider: "groq" } };
-  } catch (err) {
-    groqError = err;
-    logger.warn({ err, recording_id: part.recording_id }, "call: groq failed; trying gemini once");
+  let groqError = null;
+  let attempts = 0;
+  if (first === "groq") {
+    attempts += 1;
+    try {
+      const out = await transcription.transcribe({
+        audio,
+        mimeType: part.media_type,
+        language: null,
+        vendor,
+        detectLanguage: true,
+        maxRetries: 0,
+      });
+      await note("groq", null);
+      return { ok: true, attempts, result: { ...out, provider: "groq" } };
+    } catch (err) {
+      groqError = err;
+      await note("groq", err);
+      logger.warn({ err, recording_id: part.recording_id }, "call: groq failed; trying gemini once");
+    }
+    if (!(await gate.takeGemini(redisClient()))) {
+      await signals.providerResult({ slug: tenant.slug, env: tenant.env, provider: "gemini", rateLimited: true });
+      return { ok: false, attempts, error: `groq: ${errText(groqError)}; gemini: rate limited (limiter full)` };
+    }
   }
+  attempts += 1;
   try {
     const out = await geminiTranscription.transcribe({ audio, mimeType: part.media_type });
-    return { ok: true, attempts: 2, result: out };
+    await note("gemini", null);
+    return { ok: true, attempts, result: out };
   } catch (err) {
-    logger.warn({ err, recording_id: part.recording_id }, "call: gemini failed too; the part fails");
-    return { ok: false, attempts: 2, error: `groq: ${errText(groqError)}; gemini: ${errText(err)}` };
+    await note("gemini", err);
+    logger.warn({ err, recording_id: part.recording_id }, "call: gemini failed; the part fails");
+    const groq = groqError ? errText(groqError) : "skipped (limiter full)";
+    return { ok: false, attempts, error: `groq: ${groq}; gemini: ${errText(err)}` };
   }
 }
+
+/** The shared Redis client for the gate; the gate falls back per process
+ *  when it is missing or failing. */
+function redisClient() {
+  try {
+    return require("../../config/redis").getClient();
+  } catch {
+    /* @silent:storage — the gate below falls back to its in-process limits. */
+    return failingRedis;
+  }
+}
+const failingRedis = new Proxy({}, {
+  get: () => () => { throw new Error("redis not initialised"); },
+});
 
 /** Usage recording is bookkeeping: a failure to record it must not fail the
  *  transcription that has already happened and been paid for. */
@@ -573,7 +633,7 @@ async function recordVoiceUsage(client, { userId, result, fallbackSeconds }) {
       conversationId: null,
       provider: result.provider || "groq",
       model: result.model || null,
-      callType: "transcribe",
+      callType: USAGE_CALL_TYPE,
       audioSeconds: result.audio_seconds || fallbackSeconds || 0,
       inputTokens: usage.promptTokenCount || 0,
       outputTokens: usage.candidatesTokenCount || 0,
@@ -611,23 +671,39 @@ async function transcribePartJob({ withDb, callId, side, partIndex, tenantMeta =
       await failPart(c, part, "recording is switched off for this company");
       return { skipped: "recording_off", settled: true };
     }
-    const gate = await governance.canUseFeature(c, { userId: call.caller_id, featureKey: "calls" });
-    if (!gate.allowed) {
-      await failPart(c, part, `not available: ${gate.reason || "call transcription is not available on this plan"}`);
+    const allowed = await governance.canUseFeature(c, { userId: call.caller_id, featureKey: "calls" });
+    if (!allowed.allowed) {
+      await failPart(c, part, `not available: ${allowed.reason || "call transcription is not available on this plan"}`);
       return { skipped: "blocked", settled: true };
     }
+    // The tenant's daily audio budget, before any provider is asked (§4 item
+    // 7): over it, the part is settled as over budget, not as a failure.
+    const { config } = require("../../config/env");
+    const budget = await governance.audioBudget(c, {
+      featureKey: "voice",
+      callType: USAGE_CALL_TYPE,
+      seconds: Number(part.duration_seconds) || PART_NOMINAL_SECONDS,
+      capMinutes: config.CALL_AUDIO_DAILY_MINUTES,
+    });
+    if (!budget.allowed) {
+      await failPart(c, part, `${OVER_BUDGET}: the daily call audio budget (${Math.round(budget.cap_seconds / 60)} min) is used up`);
+      return { skipped: "over_budget", settled: true };
+    }
+    // The shared provider limiters (D2): nobody is called while both are full.
+    const lane = await gate.route(redisClient(), { seconds: Number(part.duration_seconds) || PART_NOMINAL_SECONDS });
+    if (!lane.provider) return { deferred: true, retryInMs: lane.retryInMs };
     const claimed = await repo.claimPart(c, {
       recordingId: part.recording_id, staleMinutes: STALE_MINUTES, maxRuns: PART_MAX_RUNS,
     });
     if (!claimed) return { skipped: "claimed" };
-    return { part: claimed, call };
+    return { part: claimed, call, first: lane.provider };
   });
   if (!read.part) {
     if (read.settled) await withDb((c) => finaliseIfReady(c, { callId, tenantMeta, env, origin }));
     return read;
   }
 
-  const { part, call } = read;
+  const { part, call, first } = read;
   let vendor = null;
   try {
     vendor = await require("../../services/platform/ai-vendor.service").getConfig("groq");
@@ -636,7 +712,7 @@ async function transcribePartJob({ withDb, callId, side, partIndex, tenantMeta =
     // must not be the reason a call has no transcript.
     logger.warn({ err }, "call: could not resolve the platform transcription vendor");
   }
-  const outcome = await transcribePart({ part, vendor });
+  const outcome = await transcribePart({ part, vendor, first, tenant: { slug: tenantMeta && tenantMeta.slug, env } });
   const attempts = Number(part.attempts || 0) + outcome.attempts;
 
   return withDb(async (c) => {
@@ -827,8 +903,16 @@ async function finaliseCall({
         rtToUser(call.caller_id, "call:transcription_failed", payload, rt);
         rtToUser(call.callee_id, "call:transcription_failed", payload, rt);
       }
-      // Ops hears about a call's first failure only (audit A4).
-      if (firstFailure) await raiseOpsAlert({ call, failures: verdict.failures, tenantMeta, env });
+      // Ops hears about a call's first failure only (audit A4), and not about
+      // a call refused only by its tenant's own budget.
+      const overBudgetOnly = parts.some(isOverBudget)
+        && parts.filter((p) => p.transcript_status === "FAILED").every(isOverBudget);
+      if (firstFailure && !overBudgetOnly) await raiseOpsAlert({ call, failures: verdict.failures, tenantMeta, env });
+      if (firstFailure) {
+        await signals.count({ slug, env, field: "transcription_failed", startedAt: call.started_at });
+        const reason = transcriptionReason({ ...call, transcription_state: verdict.state }, parts) || "TRANSCRIPTION_FAILED";
+        await signals.count({ slug, env, field: `reason:${reason}`, startedAt: call.started_at });
+      }
     }
     await repo.markFinalised(c, callId);
     const base = { call_id: callId, state: verdict.state, gaps: verdict.gaps.length };
@@ -867,6 +951,12 @@ async function finaliseCall({
     // (late parts) only refreshes an open conversation.
     if (announce && await repo.claimSummaryNotification(c, callId)) {
       await notifySummaryReady(c, { call, summary: stored, names, rt });
+      // The §4 target: 95% of summaries within 2 minutes of hang-up.
+      if (call.ended_at) {
+        await signals.summaryLatency({
+          slug, env, callId, seconds: (Date.now() - Date.parse(call.ended_at)) / 1000,
+        });
+      }
     } else if (announce) {
       rtToUser(call.caller_id, "call:summary_ready", {
         call_id: callId, status: stored.draft_status, provenance: stored.provenance, redraft: true,
@@ -1084,6 +1174,8 @@ async function sweepStalled(client, { tenantMeta = null, env = "live" } = {}) {
   return { parts: stalled.length, closed: closed.length, calls: calls.size };
 }
 
+const isOverBudget = (p) => String((p && p.error) || "").startsWith(OVER_BUDGET);
+
 /**
  * Why a transcript is incomplete, as a code a client can translate (audit
  * C11). The stored `transcription_error` and each part's `error` can hold a
@@ -1092,7 +1184,9 @@ async function sweepStalled(client, { tenantMeta = null, env = "live" } = {}) {
 function transcriptionReason(call, parts) {
   if (!call || call.transcription_state !== "TRANSCRIPTION_FAILED") return null;
   if (SIDES.some((side) => !parts.some((p) => p.side === side))) return "SIDE_NOT_RECORDED";
-  if (parts.some((p) => p.transcript_status === "FAILED")) return "PARTS_NOT_TRANSCRIBED";
+  const failed = parts.filter((p) => p.transcript_status === "FAILED");
+  if (failed.length && failed.every(isOverBudget)) return "OVER_BUDGET";
+  if (failed.length) return "PARTS_NOT_TRANSCRIBED";
   return "TRANSCRIPTION_FAILED";
 }
 
@@ -1484,19 +1578,37 @@ async function rerunPart(client, { callId, actor, side, partIndex, tenantMeta = 
  * and summaries are the record and stay. A row is marked purged only when
  * its bytes are really gone or already missing.
  */
-async function purgeExpiredAudio(client, { days = RETENTION_DAYS } = {}) {
-  const due = await repo.partsAwaitingPurge(client, { olderThanDays: days });
-  const gone = [];
-  for (const part of due) {
-    try {
-      await storage.delete(part.vault_ref);
-      gone.push(part.recording_id);
-    } catch (err) {
-      logger.warn({ err, recording_id: part.recording_id }, "call: audio purge failed for one part");
+/** Audio purge batches (audit D9): 500 parts a read, 8 deletes at a time,
+ *  and at most PURGE_MAX_BATCHES a run; what is left waits for tomorrow. */
+const PURGE_BATCH = 500;
+const PURGE_CONCURRENCY = 8;
+const PURGE_MAX_BATCHES = 40;
+
+async function purgeExpiredAudio(client, { days = RETENTION_DAYS, batch = PURGE_BATCH, maxBatches = PURGE_MAX_BATCHES } = {}) {
+  const failedIds = [];
+  let due = 0;
+  let purged = 0;
+  for (let b = 0; b < maxBatches; b += 1) {
+    const rows = await repo.partsAwaitingPurge(client, { olderThanDays: days, limit: batch, skip: failedIds });
+    if (!rows.length) break;
+    due += rows.length;
+    const gone = [];
+    for (let i = 0; i < rows.length; i += PURGE_CONCURRENCY) {
+      await Promise.all(rows.slice(i, i + PURGE_CONCURRENCY).map(async (part) => {
+        try {
+          await storage.delete(part.vault_ref);
+          gone.push(part.recording_id);
+        } catch (err) {
+          // Skipped for the rest of this run, so one bad object cannot loop it.
+          failedIds.push(part.recording_id);
+          logger.warn({ err, recording_id: part.recording_id }, "call: audio purge failed for one part");
+        }
+      }));
     }
+    purged += await repo.markPartsPurged(client, gone);
+    if (rows.length < batch) break;
   }
-  const purged = await repo.markPartsPurged(client, gone);
-  return { due: due.length, purged, failed: due.length - gone.length };
+  return { due, purged, failed: failedIds.length };
 }
 
 module.exports = {
@@ -1510,6 +1622,10 @@ module.exports = {
   scheduleDeadline,
   sweepStalled,
   startPartJob,
+  PART_PRIORITY,
+  OVER_BUDGET,
+  USAGE_CALL_TYPE,
+  transcribePart,
   isPipelineEligible,
   purgeExpiredAudio,
   // reads

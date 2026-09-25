@@ -536,7 +536,14 @@ export type Call = {
 };
 
 /** What this person's app may offer (PR-6, audit F10). */
-export type CallCapabilities = { calls: boolean; can_dial: boolean; recording: boolean; settings_admin: boolean };
+export type CallCapabilities = {
+  calls: boolean;
+  can_dial: boolean;
+  recording: boolean;
+  settings_admin: boolean;
+  /** May run Comms → Setup → Test calls (MOD-64 Test right, PR-7). */
+  can_test?: boolean;
+};
 export const fetchCallCapabilities = () => tenant<CallCapabilities>(`/smartcomm/calls/capabilities`);
 
 /** One outside company that receives call data (PR-6, audit G2). */
@@ -713,6 +720,61 @@ export type CallCard = {
   caller_name: string | null;
   callee_name: string | null;
 };
+
+// ── Test calls (calls audit PR-7, O5) ─────────────────────────────────────
+export type DiagStepKey =
+  | "worker" | "schedules" | "signals" | "ring" | "microphone" | "audio"
+  | "connection" | "recording" | "transcription" | "summary" | "cleanup";
+export type DiagStatus = "pending" | "running" | "pass" | "warn" | "fail" | "skipped";
+export type DiagCheck = { label: string; ok: boolean; ms?: number | null; match?: number | null; error?: string | null };
+export type DiagStep = {
+  key: DiagStepKey;
+  n: number;
+  title: string;
+  status: DiagStatus;
+  ms?: number | null;
+  code?: string | null;
+  cause?: string | null;
+  fix?: string | null;
+  detail?: { checks?: DiagCheck[] } & Record<string, unknown>;
+};
+export type DiagRun = {
+  run_id: string;
+  user_id: string;
+  env: "live" | "sandbox";
+  started_at: string;
+  finished_at: string | null;
+  status: "RUNNING" | "PASSED" | "WARN" | "FAILED";
+  steps: DiagStep[];
+  report: string | null;
+};
+export type DiagRunRow = Omit<DiagRun, "steps" | "report"> & { user_name: string | null };
+export type DiagCap = { limit: number; used: number; remaining: number; next_available_at: string | null };
+/** What the device reports for one of its steps. */
+export type DiagResult = {
+  status: "pass" | "warn" | "fail" | "skipped";
+  ms?: number | null;
+  code?: string | null;
+  cause?: string | null;
+  fix?: string | null;
+  detail?: Record<string, string | number | boolean | null>;
+};
+
+const DIAG = "/smartcomm/diagnostics/runs";
+export const listDiagRuns = () => tenant<{ runs: DiagRunRow[]; cap: DiagCap }>(DIAG);
+export const startDiagRun = (appVersion?: string) =>
+  tenant<DiagRun>(DIAG, { method: "POST", body: appVersion ? { app_version: appVersion } : {} });
+export const getDiagRun = (id: string) => tenant<DiagRun>(`${DIAG}/${id}`);
+export const ackDiagSignal = (id: string, nonce: string) =>
+  tenant<DiagRun>(`${DIAG}/${id}/signal`, { method: "POST", body: { nonce } });
+export const diagRing = (id: string, endpoint: string) =>
+  tenant<{ nonce: string; result: TestRingResult }>(`${DIAG}/${id}/ring`, { method: "POST", body: { endpoint } });
+export const diagIce = (id: string) => tenant<IceConfig & { turnConfigured?: boolean }>(`${DIAG}/${id}/ice`);
+export const reportDiagStep = (id: string, key: DiagStepKey, result: DiagResult) =>
+  tenant<DiagRun>(`${DIAG}/${id}/steps/${key}`, { method: "PUT", body: result });
+export const uploadDiagPart = (id: string, index: number, file: File) =>
+  uploadFile<DiagRun>(`/tenant${DIAG}/${id}/parts`, file, { field: "file", fields: { part_index: index } });
+export const finishDiagRun = (id: string) => tenant<DiagRun>(`${DIAG}/${id}/finish`, { method: "POST" });
 
 /** One recorded part of this side's audio. */
 export const uploadCallPart = (

@@ -468,6 +468,10 @@ const Schema = z.object({
   // cron in the corridor's timezone: `every: 24h` ran at 00:00 UTC (audit A1).
   COMMS_CALL_RECORD_SWEEP_CRON: z.string().default("0 10 * * *"),
   COMMS_CALL_RECORD_SWEEP_TZ: z.string().default("Africa/Douala"),
+  // The daily platform call check (calls audit PR-7, O5): once a day, at a
+  // daytime hour, so a broken provider is found during working hours.
+  COMMS_CALL_CANARY_CRON: z.string().default("0 10 * * *"),
+  COMMS_CALL_CANARY_TZ: z.string().default("Africa/Douala"),
   // Calls at scale (audit PR-5, doc/SMART_COMMS_CALLS_AUDIT.md §4). Each call's
   // deadlines are its own delayed jobs; the safety sweep only visits tenants
   // with recent calls. Concurrencies are per worker process.

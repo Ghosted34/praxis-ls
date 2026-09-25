@@ -214,7 +214,9 @@ async function handleCallCancel(data, words) {
 
 async function handleCallTest(data, words) {
   const clients = await windowClients();
-  tellClients(clients, { type: "praxis:call-test" });
+  // `nonce`: Comms → Setup → Test calls matches the echo to its run (PR-7).
+  const nonce = data && data.data && data.data.nonce;
+  tellClients(clients, nonce ? { type: "praxis:call-test", nonce: String(nonce) } : { type: "praxis:call-test" });
   // Always shown: the test is whether this device can SHOW a ring.
   return self.registration.showNotification(words.test, {
     body: words.testBody,

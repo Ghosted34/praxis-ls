@@ -18,7 +18,7 @@
  * will not, rather than offering a button that answers 403.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderScreen } from "@/test/screen-harness";
 import * as apiClient from "@/lib/api-client";
@@ -276,7 +276,10 @@ describe("the outcome of a consent round trip", () => {
     landOn("?mail_connected=microsoft&email=operations%40smartls.cm&mail_tab=mailboxes");
     renderScreen(<CommsSetupPage />, setupRoutes);
 
-    expect(await screen.findByText(/operations@smartls\.cm/i)).toBeInTheDocument();
+    // The notice follows the flow to its tab once the capabilities land, so
+    // it can be on screen twice in a row in two different places: assert on
+    // the settled screen, not on the first node that matched.
+    await waitFor(() => expect(screen.getByText(/operations@smartls\.cm/i)).toBeInTheDocument());
   });
 
   /* A team address is set up from Mailboxes; landing an administrator on their

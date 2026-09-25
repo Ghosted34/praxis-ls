@@ -54,6 +54,11 @@ const PROCESSORS = [
   { name: "call-summary-regenerate", concurrency: 2, handler: require("./handlers/call-summary-regenerate") },
   { name: "comms-call-record-sweep", concurrency: 1, handler: require("./handlers/comms-call-record-sweep") },
   { name: "comms-call-record-sweep-scheduler", concurrency: 1, handler: require("./handlers/comms-call-record-sweep-scheduler") },
+  // Comms → Setup → Test calls (PR-7, O5): the queue round trip and the
+  // provider checks of one run. Capped at 3 runs a tenant a day upstream.
+  { name: "comms-diagnostics", concurrency: 2, handler: require("./handlers/comms-diagnostics") },
+  // The daily platform call check (PR-7, O5): one run a day, console only.
+  { name: "comms-call-canary", concurrency: 1, handler: require("./handlers/comms-call-canary") },
   /**
    * Smart Comms link previews. Concurrency 2 rather than 1: the work is one
    * outbound HTTP request to a third party that may take seconds, and two
@@ -392,6 +397,22 @@ async function scheduleRecurring() {
     if (removed) logger.info({ removed }, "call record sweep: removed stale repeatables");
     await require("./queue-producer").enqueue("comms-call-record-sweep-scheduler", "tick", {}, {
       repeat: recordSweep, removeOnComplete: true, removeOnFail: 50,
+    });
+  }
+  // The daily platform call check (calls audit PR-7, O5): a daytime cron in
+  // the corridor, so a broken provider or relay is found in working hours.
+  {
+    const canary = {
+      pattern: config.COMMS_CALL_CANARY_CRON || "0 10 * * *",
+      tz: config.COMMS_CALL_CANARY_TZ || "Africa/Douala",
+    };
+    const removed = await require("./call-record-sweep-schedule").removeStaleRepeatables(
+      require("./queue-producer").getQueue("comms-call-canary"),
+      canary,
+    );
+    if (removed) logger.info({ removed }, "call canary: removed stale repeatables");
+    await require("./queue-producer").enqueue("comms-call-canary", "run", {}, {
+      repeat: canary, attempts: 1, removeOnComplete: 30, removeOnFail: 30,
     });
   }
   const every = config.ORCHESTRATION_DISPATCH_INTERVAL_MS;

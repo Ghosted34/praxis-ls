@@ -252,6 +252,11 @@ const tenantUsage = asyncHandler(async (req, res) =>
  * render the threshold that is actually in force, which is the difference
  * between an operator trusting the number and guessing at it.
  */
+/** The daily platform call check (calls audit PR-7, O5): latest + 30 days. */
+const commsCanary = asyncHandler(async (_req, res) =>
+  res.json({ data: await require("../../../services/platform/comms-call-canary.service").latest() }),
+);
+
 const commsCalls = asyncHandler(async (req, res) =>
   res.json({
     data: {
@@ -349,6 +354,7 @@ module.exports = {
   maintenanceCreate,
   maintenanceCancel,
   commsCalls,
+  commsCanary,
   fleetUsage,
   tenantUsage,
   usageMetrics,

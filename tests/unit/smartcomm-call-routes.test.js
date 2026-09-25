@@ -242,7 +242,7 @@ describe("GET /calls/capabilities (audit F10)", () => {
     a.use(errorHandler);
     const res = await request(a).get("/calls/capabilities");
     expect(res.status).toBe(200);
-    expect(res.body.data).toEqual({ calls: true, can_dial: true, recording: true, settings_admin: false });
-    expect(rbac.readPermissions.mock.calls[0][1]).toEqual([["MOD-64", "create"], ["MOD-70", "edit"]]);
+    expect(res.body.data).toEqual({ calls: true, can_dial: true, recording: true, settings_admin: false, can_test: false });
+    expect(rbac.readPermissions.mock.calls[0][1]).toEqual([["MOD-64", "create"], ["MOD-70", "edit"], ["MOD-64", "test"]]);
   });
 });

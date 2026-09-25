@@ -398,6 +398,17 @@ export type CommsTenantRow = {
   last_computed_at: string | null;
 };
 
+/** The daily platform call check (calls audit PR-7, O5). */
+export type CanaryCheck = { key: string; label: string; ok: boolean; ms: number | null; error: string | null };
+export type CanaryTenant = { slug: string; env: "live" | "sandbox"; ok: boolean; problems: string[] };
+export type CommsCanary = {
+  latest: {
+    run_id: string; started_at: string; finished_at: string | null; status: "PASSED" | "FAILED";
+    checks: CanaryCheck[]; tenant_checks: CanaryTenant[]; summary: string | null;
+  } | null;
+  history: { run_id: string; started_at: string; status: "PASSED" | "FAILED"; failed: string[] }[];
+};
+
 export type CommsCalls = {
   fleet: CommsFleet;
   tenants: CommsTenantRow[];
@@ -455,6 +466,8 @@ export const ops = {
   // Comms call health (WS-C3) — the aggregation is a nightly job, so this is a
   // read of already-computed rows and the screen has no "collect now" button.
   commsCalls: (days = 30) => api<CommsCalls>(`/ops/comms/calls${qs({ days })}`),
+  // The daily call check — read-only here: it runs on its own schedule.
+  commsCanary: () => api<CommsCanary>("/ops/comms/canary"),
 
   // Entitlement & metering (WS-S3)
   usage: (period?: string) => api<FleetUsage>(`/ops/usage${qs({ period })}`),

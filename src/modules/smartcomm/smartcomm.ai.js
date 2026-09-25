@@ -35,6 +35,10 @@ module.exports = {
     // assistant does not answer calls. The admin erasure (POST
     // /calls/erase-user) is deliberately NOT a write here — an irreversible,
     // audited deletion is a person's decision on the settings screen.
+    // PR-7's Test calls routes (/diagnostics/runs…) are not tools either: a
+    // run needs the person's own device (the ring, the microphone, the
+    // relay) and spends provider credit under a 3-a-day cap, and the Test
+    // right is granted to people, not to the assistant.
     { key: "comms_call_summary", service: async (c, p, caller) => { await requireFeature(c, "call_recording"); return pipeline.getSummary(c, { callId: p.call_id, actor: caller }); }, permission: { module: "MOD-64", action: "view" }, describe: "The summary draft or posted summary of one of the user's own calls, with its language, provenance and the minutes missing from its transcript (participants only)." },
   ],
   writes: [

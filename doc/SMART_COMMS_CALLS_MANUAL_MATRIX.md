@@ -153,6 +153,21 @@ before running S5–S8.
 
 ---
 
+## 5d. PR-7 — Test calls on real devices
+
+Grant the Test right on Smart Comms to the tester's role first (Security →
+Permission matrix, "T"). Each run counts against the tenant's 3 a day.
+
+| # | Script | A | B | C | D |
+| --- | --- | --- | --- | --- | --- |
+| T1 | Comms → Setup → **Test calls** on a set-up device, reading the sentence aloud when asked: every step green, and **Copy report** pastes a readable report. | PENDING | PENDING | PENDING | PENDING |
+| T2 | Block notifications for the site, run again: only step 4 is red, naming notifications. | PENDING | PENDING | PENDING | PENDING |
+| T3 | Block the microphone, run again: step 5 red, steps 6 and 8 skipped (grey), the rest unaffected. | PENDING | PENDING | PENDING | PENDING |
+| T4 | A role without Test sees no Test calls tab. After three runs in a day, the button is off and names the time the next run is available. | — | — | PENDING | — |
+| T5 | Platform console → Health → **Calls pipeline** shows the day's check; a failing check (e.g. a wrong relay secret on staging) rings the console bell once, and its recovery once. | — | — | PENDING | — |
+
+---
+
 ## 6. Sign-off
 
 A row is only signed by a human who did it on the device in that column. Copy

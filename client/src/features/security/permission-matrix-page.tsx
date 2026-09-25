@@ -80,6 +80,8 @@ const PERM_COLOR: Record<PermKey, string> = {
   can_export: "rgb(var(--ink-3))",
   can_validate: "rgb(var(--warn))",
   can_disburse: "rgb(var(--ok))",
+  // PR-7 (O5): spends money on providers, so the warning colour.
+  can_test: "rgb(var(--warn))",
 };
 
 /**
@@ -93,6 +95,7 @@ const PERM_COLOR: Record<PermKey, string> = {
 const STRENGTH: PermKey[] = [
   "can_read",
   "can_export",
+  "can_test",
   "can_create",
   "can_update",
   "can_delete",
@@ -274,6 +277,11 @@ export function PermissionMatrixPage() {
             <span
               key={p}
               className="inline-flex items-center gap-1.5 text-xs text-muted-foreground"
+              title={
+                p === "can_test"
+                  ? "No role holds Test until it is granted. The CEO always can, through the RBAC bypass."
+                  : undefined
+              }
             >
               <span
                 className="inline-block h-2.5 w-2.5 rounded-full"
@@ -517,7 +525,8 @@ export function PermissionMatrixPage() {
       <p className="mt-3 text-xs text-muted-foreground">
         CEO bypasses RBAC by design (
         <span className="font-mono">role.code = &apos;CEO&apos;</span>), so its
-        row is shown as full access and isn&apos;t editable. Seeded defaults
+        row is shown as full access and isn&apos;t editable — the CEO holds
+        every right, Test included. Seeded defaults
         come from{" "}
         <span className="font-mono">9021_seed_default_permissions.sql</span>.
         Note that a granted module can still return 403 if its <em>feature</em>{" "}

@@ -37,6 +37,8 @@ const grant = z
     can_export: z.boolean().optional(),
     can_validate: z.boolean().optional(),
     can_disburse: z.boolean().optional(),
+    // Calls audit PR-7 (O5). Omitted = unchanged, like the rest.
+    can_test: z.boolean().optional(),
   })
   // No unknown keys: a misspelled `can_aprove` would otherwise be dropped and
   // the grant written as false. On the permission matrix specifically, a

@@ -130,9 +130,15 @@ const FIXTURES = path.join(__dirname, "..", "fixtures", "audio");
 const HEADERLESS = fs.readFileSync(path.join(FIXTURES, "chrome-opus-headerless.webm"));
 
 /** Distinct, complete WebM/Opus files; the committed Chromium recording when
- *  ffmpeg is not installed. */
+ *  ffmpeg is not installed — made distinct by a trailing tag, because the
+ *  provider stubs find a part by its BYTES (which key holds this buffer), and
+ *  identical parts made "the part that fails" land on whichever came first
+ *  (calls audit PR-7, the leftover PR-5 recorded). The tag sits after the
+ *  WebM's last cluster, where a header check never looks. */
 function recording(i) {
-  if (!mockHasFfmpeg) return fs.readFileSync(path.join(FIXTURES, "chrome-opus-3s.webm"));
+  if (!mockHasFfmpeg) {
+    return Buffer.concat([fs.readFileSync(path.join(FIXTURES, "chrome-opus-3s.webm")), Buffer.from(`part-${i}`)]);
+  }
   const out = path.join(os.tmpdir(), `praxis-call-part-${process.pid}-${i}.webm`);
   execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", `sine=frequency=${300 + i * 40}:duration=2`,
     "-ac", "1", "-c:a", "libopus", "-b:a", "32k", out]);

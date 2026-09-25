@@ -311,4 +311,11 @@ describe("a test ring (A15)", () => {
     expect(n.options).toMatchObject({ tag: "call:test", vibrate: [600, 250, 600, 250, 600] });
     expect(page.messages).toEqual([{ type: "praxis:call-test" }]);
   });
+
+  it("echoes a Test calls run's nonce to the page, so the run knows THIS device got it (PR-7)", async () => {
+    const page = client(true);
+    const w = worker({ language: "en", clients: [page] });
+    await w.push({ title: "Test ring", body: "", url: "/settings/calls", tag: "call:test", data: { kind: "call_test", nonce: "n-123" } });
+    expect(page.messages).toEqual([{ type: "praxis:call-test", nonce: "n-123" }]);
+  });
 });

@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 6× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (628)
+## All codes (632)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -178,6 +178,9 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `DEFAULT_OUT_OF_SCOPE` | — | 1× | — |
 | `DEVICE_NOT_REGISTERED` | 422 | 1× | — |
 | `DEVICE_REVOKED` | 422 | 1× | — |
+| `DIAGNOSTICS_BAD_SIGNAL` | 409 | 1× | — |
+| `DIAGNOSTICS_DAILY_CAP` | 429 | 1× | — |
+| `DIAGNOSTICS_RUN_CLOSED` | 409 | 1× | — |
 | `DIRECTION_MISMATCH` | 422 | 1× | — |
 | `DOCUMENT_AMENDED` | 409 | 3× | — |
 | `DOCUMENT_UNREADABLE` | — | 1× | — |
@@ -344,7 +347,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_EDITABLE` | 400 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 3× | — |
-| `NOT_FOUND` | 404, 422 | 702× | — |
+| `NOT_FOUND` | 404, 422 | 706× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_OPEN` | 409, 422 | 3× | — |
 | `NOT_OPERATIONAL` | 422 | 1× | — |
@@ -468,6 +471,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `PART_NOT_FOUND` | 404 | 2× | — |
 | `PASSKEY_NOT_FOUND` | 404 | 1× | — |
 | `PASSWORD_REQUIRED` | — | 1× | — |
+| `PAYLOAD_TOO_LARGE` | 413 | 1× | — |
 | `PERIOD_CLOSED` | 422 | 1× | — |
 | `PERIOD_NOT_OPEN` | 422 | 1× | — |
 | `PERMISSION_DENIED` | 403 | 8× | — |
@@ -641,7 +645,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `USER_NOT_ACTIVE` | 422 | 1× | — |
 | `USE_APPROVE` | 422 | 1× | — |
 | `VACANCY_CLOSED` | — | 1× | — |
-| `VALIDATION_ERROR` | 422 | 271× | — |
+| `VALIDATION_ERROR` | 422 | 275× | — |
 | `VALIDATOR_NOT_LINE_MANAGER` | — | 1× | — |
 | `VARIANCE_UNEXPLAINED` | 422 | 1× | — |
 | `VEHICLE_COMMITTED` | — | 1× | — |

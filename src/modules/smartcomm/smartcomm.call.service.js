@@ -924,7 +924,7 @@ async function listRinging(client, actor) {
 }
 
 /** POST /calls/test-ring — a ring-shaped push to THIS device only (A15). */
-async function testRing(client, { actor, endpoint }) {
+async function testRing(client, { actor, endpoint, nonce = null }) {
   const push = require("../../shared/push/push.service");
   return push.sendToUser(client, {
     user_id: actor.user_id,
@@ -939,7 +939,9 @@ async function testRing(client, { actor, endpoint }) {
     urgency: "high",
     ttl: 60,
     timestamp: Date.now(),
-    data: { kind: "call_test" },
+    // `nonce`: Test calls' step 4 — the service worker echoes it to the page,
+    // which is how the run knows the push reached THIS device.
+    data: nonce ? { kind: "call_test", nonce } : { kind: "call_test" },
   });
 }
 

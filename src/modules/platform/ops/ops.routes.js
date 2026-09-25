@@ -122,6 +122,7 @@ router.delete(
 // matching POST — the aggregation is a scheduled job on purpose, so a page load
 // never fans out across every tenant's database.
 router.get("/ops/comms/calls", requireCap("ops.read"), validateQuery("commsCalls"), c.commsCalls);
+router.get("/ops/comms/canary", requireCap("ops.read"), c.commsCanary);
 
 /* ── Support telemetry (WS-M2) ──────────────────────────────────────────── */
 // support.read, not ops.read: this is the snapshot a triager opens next to a

@@ -1056,6 +1056,78 @@ verification on a running environment is
 production). The closing PR inserts no flag rows, adds no migration, and
 writes no override.
 
+### 7.6 Test calls (calls audit PR-7, O5)
+
+**Who.** Anyone holding the **Test** right on Smart Comms (MOD-64 `test`,
+`permission.can_test`, migration 14100). No role holds it until an
+administrator grants it in the permission matrix, because every run spends
+provider credit. The CEO passes it through the RBAC bypass, like every right.
+Without it, Comms → Setup shows no "Test calls" tab and every
+`/diagnostics/runs` route answers 403.
+
+**How much.** 3 runs per tenant per day (in the tenant's time zone), counted
+in `comms_call_diagnostic_run` (migration 14110, always in the LIVE schema,
+kept 90 days) under an advisory lock. The fourth start is a 429
+`DIAGNOSTICS_DAILY_CAP` carrying `next_available_at`; the tab says the same
+before anyone presses the button. A full run is 4 transcription requests (the
+EN and FR reference clips, each through Groq and forced through Gemini), 3
+for the runner's own parts, and 2 summaries: cents, on the `diagnostics`
+usage line.
+
+**Real code, separate records.** The providers are driven through
+`transcribePart` and `draftSummary` in their diagnostics mode (the audio comes
+from the run, nothing is counted in the call signals, and a provider can be
+FORCED — possible only there). The push is `testRing` with the run's nonce; the
+relay credential is the TURN service's. A run writes its row and its usage and
+nothing else: no call, part, transcript, metric, chat or notification
+(`tests/unit/call-diagnostics.test.js` asserts it). Its audio goes under
+`tenant_<slug>/comms/diagnostics/<run>/` and is deleted by step 11.
+
+**What each step proves, and what red usually means.**
+
+| # | Step | Proves | Red usually means |
+| --- | --- | --- | --- |
+| 1 | Server and worker | a job goes through the real queue and worker in ≤ 5 s | no worker running (`WORKER_DOWN`), or its queue is backed up (`WORKER_SLOW`); Redis unreachable (`QUEUE_UNREACHABLE`) |
+| 2 | Schedules | the daily record sweep runs at a daytime hour locally; no ring or cap deadline overdue | a stale midnight repeatable; the call clock is not being processed |
+| 3 | Live signals | the worker's emitter reaches this screen in ≤ 5 s | the API has no redis adapter subscribed, or a proxy blocks the socket (`SIGNAL_LOST`) — skipped when step 1 is red, since it IS the worker's emitter |
+| 4 | Ring to this device | a real ring push reaches this device; the service worker echoes the nonce in ≤ 10 s | notifications blocked (`PUSH_DENIED`), device not set up (`PUSH_NOT_SET_UP`, iPhone: not installed), push dropped (`RING_NOT_RECEIVED`) |
+| 5 | Microphone | permission, a device, a voice level | blocked (`MIC_BLOCKED`), no device, or muted (`MIC_SILENT`) |
+| 6 | Audio | sound would play; the noise filter loads and is not silent over speech | autoplay held (`SOUND_BLOCKED`, amber), filter unavailable (amber) or silent (`FILTER_SILENT`) |
+| 7 | Connection | STUN finds a public address; a TURN credential; a relayed call to itself (RTT, jitter, loss) | no relay configured (amber), relay refuses the credential or its ports are blocked (`RELAY_REFUSED`) |
+| 8 | Recording | 3 parts from the real `CallRecorder`, each decodes alone, each passes the server's container check | a part that is a headerless slice (`PART_UNDECODABLE`, `BAD_CONTAINER`) |
+| 9 | Transcription | reference clips ≥ 85% word match in the right language via Groq and via Gemini; the runner's parts in the production order (O1) | a provider key or quota (`GROQ_FAILED` / `GEMINI_FAILED`); amber when only the runner's own parts failed |
+| 10 | Summary | Gemini and DeepSeek (each forced) pass the shared schema, in English, with key points quoted from the transcript | a provider key (`GEMINI_SUMMARY_FAILED` / `DEEPSEEK_SUMMARY_FAILED`) |
+| 11 | Clean-up | the run's audio deleted | storage refused a delete (`CLEANUP`) |
+
+A step that cannot run because an earlier one failed is **skipped** (grey),
+not red, so the screen names one broken thing.
+
+**Reading a report.** "Copy report" gives plain text: run id, environment,
+server and app versions, browser, then one line per step with its status and
+time, its error code, cause and fix, and each provider check's time and word
+match. It never carries audio, and provider errors are cut to 300 characters
+with anything shaped like a key redacted. Paste it to support or to an AI
+agent as it is.
+
+**The reference clips.** `src/modules/smartcomm/diagnostics-fixtures/`:
+`ref-en.ogg` and `ref-fr.ogg` (about 18 s each, Opus), synthesised with
+espeak-ng from the text in `reference.json`, which also holds the summary's
+reference transcript. Regenerate both together if the text changes (the
+command is in the JSON).
+
+**The daily platform check.** `comms-call-canary`, once a day at
+`COMMS_CALL_CANARY_CRON` / `COMMS_CALL_CANARY_TZ` (10:00 Africa/Douala), proves
+the shared pieces — the queue, the emitter's subscribers, the scheduler, one
+EN clip through Groq and forced through Gemini, a Gemini and a forced DeepSeek
+summary, and a TURN allocation from the server (`turn-probe.js`, a minimal
+RFC 5766 Allocate) — plus cheap per-tenant checks that spend no credit (the
+database answers; no call ringing or live past its deadline; no transcript in
+PROCESSING over an hour). Results go to `platform.comms_call_canary_run`
+(migration 0108) and the console's Health → Calls pipeline; a failure, and the
+recovery after one, is one bell notification and an `alerts.raise`
+(`comms.call_canary`, `notify`). A second failing day stays quiet on the bell.
+Nothing of it is shown in a tenant app.
+
 ---
 
 ## 8. Index set
@@ -1087,11 +1159,20 @@ retry. Two new routes live OUTSIDE this prefix: the per-user noise preference
 use) and the platform ops read (`GET /api/platform/ops/comms/calls`, console
 side, `ops.read`).
 
+Calls audit PR-7 (Test right, MOD-64 `test`): `GET|POST /diagnostics/runs` ·
+`GET /diagnostics/runs/:id` · `POST /diagnostics/runs/:id/signal` ·
+`POST /diagnostics/runs/:id/ring` · `GET /diagnostics/runs/:id/ice` ·
+`PUT /diagnostics/runs/:id/steps/:key` · `POST /diagnostics/runs/:id/parts` ·
+`POST /diagnostics/runs/:id/finish`; console side
+`GET /api/platform/ops/comms/canary` (`ops.read`).
+
 ### 8.3 Socket events (comms namespace)
 
 `call:invite` `call:ringing` `call:ring_ack` `call:accepted` `call:declined`
 `call:busy` `call:offer` `call:answer` `call:ice` `call:hangup` `call:ended`
-`call:summary_ready` `comms:presence` `comms:seen`
+`call:summary_ready` `comms:presence` `comms:seen`; since PR-7
+`comms:diagnostics` (a Test calls run's progress and step-3 signal, to the
+runner's own room)
 
 ### 8.4 Env (new)
 

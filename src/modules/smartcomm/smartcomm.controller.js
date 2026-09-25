@@ -10,6 +10,9 @@ const { asyncHandler, AppError } = require("../../utils/errors");
 const { readUpload } = require("../../shared/http/upload.middleware");
 const { readPermissions } = require("../../middleware/rbac");
 const actor = (req) => req.user || { user_id: null };
+const diagnostics = require("./smartcomm.diagnostics.service");
+/** Where a Test calls run's progress is emitted: the runner's own room. */
+const diagMeta = (req) => ({ slug: req.tenant && req.tenant.slug, env: req.env || "live" });
 
 /**
  * The module keys THIS caller may view, as a Set.
@@ -340,8 +343,8 @@ module.exports = {
   listCalls: A((c, req) => calls.listCalls(c, actor(req))),
   callProcessing: A((c) => calls.processingDisclosure(c)),
   callCapabilities: asyncHandler(async (req, res) => {
-    const [canDial, settingsAdmin] = await require("../../middleware/rbac").readPermissions(req, [
-      ["MOD-64", "create"], ["MOD-70", "edit"],
+    const [canDial, settingsAdmin, canTest] = await require("../../middleware/rbac").readPermissions(req, [
+      ["MOD-64", "create"], ["MOD-70", "edit"], ["MOD-64", "test"],
     ]);
     const data = await req.tenantDb(async (c) => {
       const { rows } = await c.query("SELECT state FROM feature_state WHERE feature_key = $1", ["calls"]);
@@ -351,6 +354,8 @@ module.exports = {
         can_dial: on && canDial === true,
         recording: on && (await calls.recordingEnabled(c)),
         settings_admin: settingsAdmin === true,
+        // PR-7 (O5): may run Comms → Setup → Test calls.
+        can_test: on && canTest === true,
       };
     });
     res.json({ data });
@@ -363,4 +368,63 @@ module.exports = {
   // PR-4: what is ringing for me (A13), and a ring to this device only (A15).
   listRingingCalls: A((c, req) => calls.listRinging(c, actor(req))),
   testRing: A((c, req) => calls.testRing(c, { actor: actor(req), endpoint: req.body.endpoint })),
+
+  // ── Test calls (PR-7, O5). The run row is in the LIVE schema (identityDb),
+  // whatever environment is being tested; `tenantDb` is that environment.
+  diagList: asyncHandler(async (req, res) => {
+    res.json({ data: await req.identityDb((c) => diagnostics.listRuns(c)) });
+  }),
+  diagStart: asyncHandler(async (req, res) => {
+    const data = await req.identityDb((live) => req.tenantDb((envClient) => diagnostics.startRun(live, envClient, {
+      actor: actor(req), env: req.env, tenantMeta: req.tenant,
+      userAgent: req.get("user-agent") || null, appVersion: req.body.app_version || null,
+    })));
+    res.status(201).json({ data });
+  }),
+  diagGet: asyncHandler(async (req, res) => {
+    const data = await req.identityDb((c) => diagnostics.getRun(c, { runId: req.params.id, meta: diagMeta(req) }));
+    res.json({ data });
+  }),
+  diagSignal: asyncHandler(async (req, res) => {
+    const data = await req.identityDb((c) => diagnostics.ackSignal(c, {
+      runId: req.params.id, actor: actor(req), nonce: req.body.nonce, meta: diagMeta(req),
+    }));
+    res.json({ data });
+  }),
+  diagRing: asyncHandler(async (req, res) => {
+    const data = await req.identityDb((live) => req.tenantDb((envClient) => diagnostics.sendRing(live, envClient, {
+      runId: req.params.id, actor: actor(req), endpoint: req.body.endpoint, meta: diagMeta(req),
+    })));
+    res.json({ data });
+  }),
+  diagIce: asyncHandler(async (req, res) => {
+    // Only for a run of the caller's that is still open.
+    await req.identityDb(async (c) => {
+      const run = await require("./smartcomm.diagnostics.repo").getRun(c, req.params.id);
+      if (!run || run.user_id !== actor(req).user_id || run.status !== "RUNNING") {
+        throw new AppError("NOT_FOUND", "Test run not found", 404);
+      }
+    });
+    res.json({ data: diagnostics.iceForRun() });
+  }),
+  diagStep: asyncHandler(async (req, res) => {
+    const data = await req.identityDb((c) => diagnostics.reportStep(c, {
+      runId: req.params.id, actor: actor(req), key: req.params.key, result: req.body, meta: diagMeta(req),
+    }));
+    res.json({ data });
+  }),
+  diagPart: asyncHandler(async (req, res) => {
+    const file = readUpload(req);
+    const data = await req.identityDb((c) => diagnostics.uploadPart(c, {
+      runId: req.params.id, actor: actor(req), index: req.body.part_index, file,
+      slug: req.tenant.slug, meta: diagMeta(req),
+    }));
+    res.json({ data });
+  }),
+  diagFinish: asyncHandler(async (req, res) => {
+    const data = await req.identityDb((c) => diagnostics.finishRun(c, {
+      runId: req.params.id, actor: actor(req), tenantMeta: req.tenant, env: req.env, meta: diagMeta(req),
+    }));
+    res.json({ data });
+  }),
 };

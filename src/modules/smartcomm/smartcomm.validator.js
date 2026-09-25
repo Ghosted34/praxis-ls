@@ -158,6 +158,23 @@ const schemas = {
   // A test ring goes to one of the caller's OWN subscriptions, named by its
   // push endpoint (the service looks it up under the caller's user id).
   callTestRing: z.object({ endpoint: z.string().url().max(2048) }).strict(),
+  // Comms → Setup → Test calls (PR-7, O5).
+  diagStart: z.object({ app_version: z.string().max(60).optional() }).strict(),
+  diagSignal: z.object({ nonce: z.string().min(8).max(64) }).strict(),
+  diagRing: z.object({ endpoint: z.string().url().max(2048) }).strict(),
+  diagStep: z.object({
+    status: z.enum(["pass", "warn", "fail", "skipped"]),
+    ms: z.number().min(0).max(600000).nullable().optional(),
+    code: z.string().max(40).regex(/^[A-Z0-9_]+$/).nullable().optional(),
+    cause: z.string().max(500).nullable().optional(),
+    fix: z.string().max(500).nullable().optional(),
+    // Measurements only (levels, timings, RTT/jitter/loss, device labels
+    // are not sent): bounded so a report cannot carry a payload.
+    detail: z.record(z.string().max(40), z.union([z.string().max(200), z.number(), z.boolean(), z.null()]))
+      .refine((d) => Object.keys(d).length <= 20, { message: "at most 20 details" })
+      .optional(),
+  }).strict(),
+  diagPart: z.object({ part_index: z.coerce.number().int().min(1).max(3) }).strip(),
 
   /**
    * The record half (PR-2, guide §6.2).
@@ -215,4 +232,4 @@ const schemas = {
   callSummaryRegenerate: z.object({ language: z.enum(["en", "fr"]) }).strict(),
 };
 const mw = (k) => (req, _res, next) => { const p = schemas[k].safeParse(req.body); if (!p.success) return next(new AppError("VALIDATION_ERROR", "Invalid body", 422, p.error.flatten().fieldErrors)); req.body = p.data; return next(); };
-module.exports = { transcribe: mw("transcribe"), callRecording: mw("callRecording"), callRecordingComplete: mw("callRecordingComplete"), callSummarySend: mw("callSummarySend"), callSummaryRegenerate: mw("callSummaryRegenerate"), linkPreview: mw("linkPreview"), scheduled: mw("scheduled"), reschedule: mw("reschedule"), mediaUpload: mw("mediaUpload"), promote: mw("promote"), channel: mw("channel"), member: mw("member"), message: mw("message"), editMessage: mw("editMessage"), react: mw("react"), draft: mw("draft"), quickReply: mw("quickReply"), flag: mw("flag"), emailTest: mw("emailTest"), emailDnsCheck: mw("emailDnsCheck"), emailTestSend: mw("emailTestSend"), quickReplyPatch: mw("quickReplyPatch"), whatsappConfig: mw("whatsappConfig"), emailConfig: mw("emailConfig"), callCreate: mw("callCreate"), callHangup: mw("callHangup"), callAccept: mw("callAccept"), callEraseUser: mw("callEraseUser"), callTestRing: mw("callTestRing"), schemas };
+module.exports = { transcribe: mw("transcribe"), callRecording: mw("callRecording"), callRecordingComplete: mw("callRecordingComplete"), callSummarySend: mw("callSummarySend"), callSummaryRegenerate: mw("callSummaryRegenerate"), linkPreview: mw("linkPreview"), scheduled: mw("scheduled"), reschedule: mw("reschedule"), mediaUpload: mw("mediaUpload"), promote: mw("promote"), channel: mw("channel"), member: mw("member"), message: mw("message"), editMessage: mw("editMessage"), react: mw("react"), draft: mw("draft"), quickReply: mw("quickReply"), flag: mw("flag"), emailTest: mw("emailTest"), emailDnsCheck: mw("emailDnsCheck"), emailTestSend: mw("emailTestSend"), quickReplyPatch: mw("quickReplyPatch"), whatsappConfig: mw("whatsappConfig"), emailConfig: mw("emailConfig"), callCreate: mw("callCreate"), callHangup: mw("callHangup"), callAccept: mw("callAccept"), callEraseUser: mw("callEraseUser"), callTestRing: mw("callTestRing"), diagStart: mw("diagStart"), diagSignal: mw("diagSignal"), diagRing: mw("diagRing"), diagStep: mw("diagStep"), diagPart: mw("diagPart"), schemas };

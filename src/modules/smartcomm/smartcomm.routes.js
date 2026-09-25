@@ -201,6 +201,24 @@ const regenerateLimiter = makeLimiter({
   keyGenerator: (req) => `regen:${(req.tenant && req.tenant.slug) || "-"}:${String(req.params.id).toLowerCase().replace(/[^0-9a-f]/g, "")}`,
 });
 router.post("/calls", create, callsOn, dialLimiter, v.callCreate, c.createCall);
+
+// ── Test calls (PR-7, owner decision O5) ───────────────────────────────────
+//
+// Every route needs the Test right on Smart Comms (MOD-64 `test`, held by no
+// role until granted: a run spends provider credit) and the `calls` feature.
+// The 3-a-day cap is the server's, in the run table; the start limiter only
+// stops a double-click from reaching it.
+const test = requirePermission("MOD-64", "test");
+const diagLimiter = makeLimiter({ name: "call-diagnostics", max: 30, windowMs: 10 * MINUTE, keyGenerator: byUser("diag") });
+router.get("/diagnostics/runs", test, callsOn, c.diagList);
+router.post("/diagnostics/runs", test, callsOn, diagLimiter, v.diagStart, c.diagStart);
+router.get("/diagnostics/runs/:id", test, callsOn, c.diagGet);
+router.post("/diagnostics/runs/:id/signal", test, callsOn, v.diagSignal, c.diagSignal);
+router.post("/diagnostics/runs/:id/ring", test, callsOn, diagLimiter, v.diagRing, c.diagRing);
+router.get("/diagnostics/runs/:id/ice", test, callsOn, c.diagIce);
+router.put("/diagnostics/runs/:id/steps/:key", test, callsOn, v.diagStep, c.diagStep);
+router.post("/diagnostics/runs/:id/parts", test, callsOn, singleFile("file"), v.diagPart, c.diagPart);
+router.post("/diagnostics/runs/:id/finish", test, callsOn, c.diagFinish);
 // PR-4. Declared before `/calls/:id`, which would otherwise read "ringing"
 // and "test-ring" as call ids.
 router.get("/calls/ringing", view, callsOn, c.listRingingCalls);

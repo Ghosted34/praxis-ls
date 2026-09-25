@@ -5,6 +5,7 @@ import { fmtDateTime } from "@/lib/format";
 import { Button, Card, Empty, Loading, Modal, PageHeader, Pill } from "@/components/ui";
 import { useToast } from "@/components/Toast";
 import { OpsNav } from "./OpsNav";
+import { CallsPipeline } from "./CallsPipeline";
 
 /**
  * WS-H1 / WS-H2 — the fleet grid.
@@ -144,6 +145,8 @@ export function OpsHealth() {
           </Card>
         </>
       )}
+
+      <CallsPipeline />
 
       {detail && <HistoryModal tenant={detail} onClose={() => setDetail(null)} />}
     </>

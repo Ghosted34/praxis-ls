@@ -77,6 +77,8 @@ const ACTION_COLUMN = {
   export: "can_export",
   validate: "can_validate",
   disburse: "can_disburse",
+  // Calls audit PR-7 (O5): run live checks that spend provider credit.
+  test: "can_test",
   publish: "can_update", // TODO: add permission.can_publish if this needs to be independent
 };
 

@@ -574,14 +574,26 @@ const isRateLimited = (err) => !!err && (err.status === 429 || err.statusCode ==
  * only if its limiter has room; if not, the part fails exactly as a Gemini
  * 429 would. No language hint: a hint forces a code-switched call into one
  * language, and Whisper's failure mode is a fluent translation.
+ *
+ * DIAGNOSTICS MODE (calls audit PR-7, O5). `diagnostics = { audio, only }`
+ * runs this same code for Comms → Setup → Test calls and the platform canary:
+ * the bytes come from the caller instead of storage, nothing is counted in the
+ * call signals (a test is not a call), and `only` ("groq" | "gemini") FORCES
+ * one provider — possible only here, so a test can prove each provider on its
+ * own. Without `only` the order is the production one (O1).
  */
-async function transcribePart({ part, vendor, first = "groq", tenant = {} }) {
-  const note = (provider, err) => signals.providerResult({
-    slug: tenant.slug, env: tenant.env, provider, rateLimited: isRateLimited(err),
-  });
+async function transcribePart({ part, vendor, first = "groq", tenant = {}, diagnostics = null }) {
+  const note = diagnostics
+    ? async () => {}
+    : (provider, err) => signals.providerResult({
+      slug: tenant.slug, env: tenant.env, provider, rateLimited: isRateLimited(err),
+    });
+  const only = diagnostics && diagnostics.only ? diagnostics.only : null;
+  if (only === "gemini") first = "gemini";
   let audio;
   try {
-    audio = await storage.get(part.vault_ref);
+    audio = diagnostics ? diagnostics.audio : await storage.get(part.vault_ref);
+    if (!audio) throw new Error("no audio");
   } catch (err) {
     // The bytes are gone: no provider can help, so no provider is called.
     logger.warn({ err, recording_id: part.recording_id }, "call: part bytes unreadable");
@@ -605,6 +617,7 @@ async function transcribePart({ part, vendor, first = "groq", tenant = {} }) {
     } catch (err) {
       groqError = err;
       await note("groq", err);
+      if (only === "groq") return { ok: false, attempts, error: `groq: ${errText(err)}` };
       logger.warn({ err, recording_id: part.recording_id }, "call: groq failed; trying gemini once");
     }
     if (!(await gate.takeGemini(redisClient()))) {
@@ -1016,7 +1029,12 @@ async function raiseOpsAlert({ call, failures, tenantMeta, env = "live" }) {
  * model answers, the labelled transcript ('transcript-only'). Either way the
  * minutes that are missing are named. Makes no database call.
  */
-async function draftSummary({ call, names, rows, parts, language, verdict }) {
+/**
+ * `diagnostics = { only }` (calls audit PR-7) forces one summary vendor with
+ * no fallback hop, so a test proves Gemini and DeepSeek each on their own.
+ * Production never passes it (O2: Gemini first, DeepSeek as the last resort).
+ */
+async function draftSummary({ call, names, rows, parts, language, verdict, diagnostics = null }) {
   const v = verdict || assess({ call, parts, names });
   const note = v.note(language);
   const transcript = buildAttributedTranscript({ rows, names, gaps: v.gaps });
@@ -1057,8 +1075,9 @@ async function draftSummary({ call, names, rows, parts, language, verdict }) {
       temperature: 0.2,
       maxTokens: SUMMARY_MAX_TOKENS,
       // Owner decision O2: Gemini first, DeepSeek only as the last resort.
-      vendorName: "gemini",
+      vendorName: diagnostics && diagnostics.only ? diagnostics.only : "gemini",
       fallbackVendor: "deepseek",
+      singleVendor: !!(diagnostics && diagnostics.only),
     });
   } catch (err) {
     logger.warn({ err, callId: call.call_id }, "call: summary LLM call threw");
@@ -1751,6 +1770,8 @@ module.exports = {
   OVER_BUDGET,
   USAGE_CALL_TYPE,
   transcribePart,
+  draftSummary,
+  assess,
   purgeExpiredText,
   eraseUserCallRecords,
   withinWindow,

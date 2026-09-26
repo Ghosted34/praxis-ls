@@ -47,8 +47,10 @@ const passwordPolicy = require("../../../shared/security/password-policy");
 const notificationRepo = require("../../notification/notification.repo");
 const repo = require("./app_user.repo");
 const events = require("./app_user.events");
+const sessionPolicy = require("./session-policy");
 const governance = require("../../ai/governance/governance.service");
 const entitlement = require("../../../services/platform/entitlement.service");
+const { quickPin } = require("@praxis/shared");
 
 const TWOFA_PENDING_TTL = "5m";
 /** Reset links live for 30 minutes and are single-use (doc plan §1.1). */
@@ -103,20 +105,39 @@ async function resolveChannels(client) {
  * keep working until they expire (15 minutes), and logout for those callers
  * degrades to the previous body-parameter behaviour rather than erroring.
  */
-function signAccessToken({ userId, jti, sessionId }) {
+/*
+ * Both tokens take an explicit lifetime in SECONDS, computed by session-policy
+ * from what is left of the session. Neither may outlive the session it belongs
+ * to: an access token minted 5 minutes before the two-hour mark lives 5
+ * minutes, not 15 — otherwise the lock screen would appear while a token that
+ * still works sat in memory behind it.
+ */
+function signAccessToken({ userId, jti, sessionId, expiresInSeconds }) {
   return jwt.sign(
     { sub: userId, jti, sid: sessionId, typ: "access" },
     config.JWT_ACCESS_SECRET,
-    { expiresIn: config.JWT_ACCESS_TTL },
+    { expiresIn: expiresInSeconds || sessionPolicy.accessTtlFor(sessionPolicy.maxAgeSeconds()) },
   );
 }
 
-function signRefreshToken({ userId, sessionId, jti }) {
+function signRefreshToken({ userId, sessionId, jti, expiresInSeconds }) {
   return jwt.sign(
     { sub: userId, sid: sessionId, jti, typ: "refresh" },
     config.JWT_REFRESH_SECRET,
-    { expiresIn: config.JWT_REFRESH_TTL },
+    { expiresIn: expiresInSeconds || sessionPolicy.refreshTtlFor(sessionPolicy.maxAgeSeconds()) },
   );
+}
+
+/**
+ * What the client needs to lock on time. Relative seconds, not a timestamp: the
+ * browser's clock is not ours, and a laptop five minutes fast would otherwise
+ * lock five minutes early (or, worse, late).
+ */
+function sessionClock(remaining) {
+  return {
+    session_expires_in: remaining,
+    session_max_age: sessionPolicy.maxAgeSeconds(),
+  };
 }
 
 function signPendingTwoFaToken(userId) {
@@ -125,25 +146,35 @@ function signPendingTwoFaToken(userId) {
   });
 }
 
-/** Shared by login() (no-2FA path) and verifyTotp() (post-2FA path) — the
- *  actual "you're in" step: session row + Redis index + real token pair. */
-async function issueSessionTokens(client, user, { ip, userAgent, environment, keepSignedIn }) {
+/** Shared by every way in — password, 2FA, Quick PIN and passkey — the
+ *  actual "you're in" step: session row + Redis index + real token pair.
+ *
+ *  `method` is recorded on the login event so the audit trail says HOW someone
+ *  got in, which is the first question after "was it them?". Every session is
+ *  created equal: the two-hour ceiling and the idle rule apply whatever the
+ *  method (there is no longer a "keep me signed in" exemption — see
+ *  session-policy.js). */
+async function issueSessionTokens(client, user, { ip, userAgent, environment, method = "password" }) {
   await repo.recordLoginSuccess(client, user.user_id);
   const sessionId = await repo.createSession(client, {
     userId: user.user_id,
     ip,
     userAgent,
     environment,
-    // "Keep me signed in" exempts the session from the idle kill (0494).
-    keepSignedIn,
+    keepSignedIn: false,
   });
   await sessionStore.indexSession(sessionId, { userId: user.user_id, ip, userAgent, environment });
 
+  const remaining = sessionPolicy.maxAgeSeconds();
   const jti = uuid();
   // SEC-C2: bind the access token to its session so logout can revoke it.
-  const accessToken = signAccessToken({ userId: user.user_id, jti, sessionId });
+  const accessToken = signAccessToken({
+    userId: user.user_id, jti, sessionId, expiresInSeconds: sessionPolicy.accessTtlFor(remaining),
+  });
   const refreshJti = uuid();
-  const refreshToken = signRefreshToken({ userId: user.user_id, sessionId, jti: refreshJti });
+  const refreshToken = signRefreshToken({
+    userId: user.user_id, sessionId, jti: refreshJti, expiresInSeconds: sessionPolicy.refreshTtlFor(remaining),
+  });
   await repo.setRefreshJti(client, sessionId, refreshJti); // for rotation reuse-detection
 
   await identityCache.invalidateUser(user.user_id); // drop any stale cached (e.g. inactive) entry
@@ -152,6 +183,7 @@ async function issueSessionTokens(client, user, { ip, userAgent, environment, ke
     moduleKey: events.MODULE,
     entityRef: `app_user:${user.user_id}`,
     actorUserId: user.user_id,
+    payload: { method },
   });
   // Snapshot actor identity (0510) so the Control Tower's self-scoped audit
   // feed can render a card without a cross-schema join back to app_user. The
@@ -174,6 +206,7 @@ async function issueSessionTokens(client, user, { ip, userAgent, environment, ke
     refresh_token: refreshToken,
     token_type: "Bearer",
     expires_in: config.JWT_ACCESS_TTL,
+    ...sessionClock(remaining),
     user: { user_id: user.user_id, email: user.email, display_name: user.full_name, ai_enabled: aiEnabled, channels },
   };
 }
@@ -221,7 +254,7 @@ function throttleFor(user, now = Date.now()) {
   return remaining > 0 ? remaining : 0;
 }
 
-async function login(client, { email, password, ip, userAgent, environment, keepSignedIn }) {
+async function login(client, { email, password, ip, userAgent, environment }) {
   const user = await repo.findByEmail(client, String(email || "").toLowerCase());
 
   // SEC-C3. Checked BEFORE argon2.verify: verification is deliberately
@@ -281,10 +314,10 @@ async function login(client, { email, password, ip, userAgent, environment, keep
     };
   }
 
-  return issueSessionTokens(client, user, { ip, userAgent, environment, keepSignedIn });
+  return issueSessionTokens(client, user, { ip, userAgent, environment, method: "password" });
 }
 
-async function verifyTotp(client, { pendingToken, code, ip, userAgent, environment, keepSignedIn }) {
+async function verifyTotp(client, { pendingToken, code, ip, userAgent, environment }) {
   let payload;
   try {
     payload = jwt.verify(pendingToken, config.JWT_ACCESS_SECRET);
@@ -307,7 +340,7 @@ async function verifyTotp(client, { pendingToken, code, ip, userAgent, environme
     throw new AppError("INVALID_2FA_CODE", "Invalid authentication code", 401);
   }
 
-  return issueSessionTokens(client, user, { ip, userAgent, environment, keepSignedIn });
+  return issueSessionTokens(client, user, { ip, userAgent, environment, method: "password+totp" });
 }
 
 /** Generates+stores a secret but does NOT enable 2FA yet — enableTotp()
@@ -426,26 +459,12 @@ async function refresh(client, { refreshToken }) {
     throw new AppError("SESSION_REVOKED", "Refresh token reuse detected; session revoked", 401);
   }
 
-  // 30-min inactivity auto-logout (SESSION_INACTIVITY_MIN, PRD §5.7). This is
-  // the enforcement point that was missing: the value was configured but never
-  // checked anywhere. Inactivity is measured from last_seen_at, which is
-  // bumped on every refresh below — so a client that stops refreshing (idle)
-  // past the window gets its session killed and must re-authenticate.
-  // Tradeoff (same one already documented for remote session-kill): an access
-  // token already issued stays valid until its own short (15 min) expiry; this
-  // blocks the *refresh* that would extend the session, it doesn't retroactively
-  // revoke a live access token.
-  // "Keep me signed in" opts out of the idle kill (0494). The checkbox promised
-  // a 30-day refresh token and this timeout quietly cut it to 30 minutes, which
-  // is what users reported as "token expired" after stepping away. Rotation,
-  // reuse detection, remote kill and the refresh TTL all still apply — this is a
-  // longer leash, not an exemption from revocation.
-  const idleSeconds = Number(session.idle_seconds);
-  if (
-    session.keep_signed_in !== true
-    && Number.isFinite(idleSeconds)
-    && idleSeconds > config.SESSION_INACTIVITY_MIN * 60
-  ) {
+  /**
+   * End the session for a reason the client can act on. Kill the row, drop the
+   * index entry and the cached identity, record why — then refuse. Shared by
+   * the two expiry rules below so they cannot drift in what "ended" means.
+   */
+  const expire = async (reason, message, extra = {}) => {
     await repo.killSession(client, payload.sid, payload.sub);
     await sessionStore.removeSession(payload.sid, payload.sub);
     await identityCache.invalidateUser(payload.sub);
@@ -454,9 +473,39 @@ async function refresh(client, { refreshToken }) {
       moduleKey: events.MODULE,
       entityRef: `app_user:${payload.sub}`,
       actorUserId: payload.sub,
-      payload: { reason: "inactivity_timeout", idle_seconds: Math.round(idleSeconds) },
+      payload: { reason, ...extra },
     });
-    throw new AppError("SESSION_EXPIRED", "Session expired due to inactivity", 401);
+    throw new AppError("SESSION_EXPIRED", message, 401, { reason });
+  };
+
+  // The two-hour ceiling (SESSION_MAX_AGE_MIN). Checked FIRST: a session that
+  // has reached it is over no matter how active it is, and the client's lock
+  // screen shows at the same moment. Every token is also minted with its `exp`
+  // capped at this point (session-policy.js), so this is the backstop for a
+  // client that did not lock, not the only line.
+  const ageSeconds = Number(session.age_seconds);
+  if (Number.isFinite(ageSeconds) && sessionPolicy.remainingSeconds(ageSeconds) <= 0) {
+    await expire(
+      "session_max_age",
+      `Your session has reached its ${Math.round(sessionPolicy.maxAgeSeconds() / 60)}-minute limit. Sign in again to continue.`,
+      { age_seconds: Math.round(ageSeconds) },
+    );
+  }
+
+  // 30-min inactivity auto-logout (SESSION_INACTIVITY_MIN, PRD §5.7).
+  // Inactivity is measured from last_seen_at, which is bumped on every refresh
+  // below — so a client that stops refreshing (asleep, closed, long in the
+  // background) past the window gets its session killed and must
+  // re-authenticate. An open, visible tab polls and so refreshes on its own;
+  // for that case the two-hour ceiling above is the rule that locks it.
+  //
+  // `keep_signed_in` no longer exempts a session. It used to, and held a 30-day
+  // refresh token — which is the unattended-desk hole the lock screen closes.
+  // The column stays for the history of rows written under 0494, and is read by
+  // nothing.
+  const idleSeconds = Number(session.idle_seconds);
+  if (Number.isFinite(idleSeconds) && idleSeconds > sessionPolicy.idleSeconds()) {
+    await expire("inactivity_timeout", "Session expired due to inactivity", { idle_seconds: Math.round(idleSeconds) });
   }
 
   await repo.touchSession(client, payload.sid);
@@ -464,7 +513,10 @@ async function refresh(client, { refreshToken }) {
   // has refreshed once holds an access token with no `sid` and logout silently
   // reverts to revoking nothing — which is the original bug, reintroduced after
   // fifteen minutes of use.
-  const accessToken = signAccessToken({ userId: payload.sub, jti: uuid(), sessionId: payload.sid });
+  const remaining = sessionPolicy.remainingSeconds(ageSeconds);
+  const accessToken = signAccessToken({
+    userId: payload.sub, jti: uuid(), sessionId: payload.sid, expiresInSeconds: sessionPolicy.accessTtlFor(remaining),
+  });
   // Refresh-token rotation: mint a fresh refresh token (new jti + sliding exp)
   // bound to the SAME session and return it. The client swaps its stored token
   // for this one (already wired FE-side), so each refresh shortens the window in
@@ -472,7 +524,9 @@ async function refresh(client, { refreshToken }) {
   // the source of truth (getActiveSession above) — this doesn't create a new
   // session, it re-issues the credential for the existing one.
   const newRefreshJti = uuid();
-  const rotatedRefreshToken = signRefreshToken({ userId: payload.sub, sessionId: payload.sid, jti: newRefreshJti });
+  const rotatedRefreshToken = signRefreshToken({
+    userId: payload.sub, sessionId: payload.sid, jti: newRefreshJti, expiresInSeconds: sessionPolicy.refreshTtlFor(remaining),
+  });
   await repo.setRefreshJti(client, payload.sid, newRefreshJti);
 
   // No emitEvent + no audit here on purpose. Silent token refresh happens
@@ -486,7 +540,13 @@ async function refresh(client, { refreshToken }) {
   // The important auth events — login_succeeded, logged_out, login_failed —
   // stay: those are user-initiated and belong in the feed.
 
-  return { access_token: accessToken, refresh_token: rotatedRefreshToken, token_type: "Bearer", expires_in: config.JWT_ACCESS_TTL };
+  return {
+    access_token: accessToken,
+    refresh_token: rotatedRefreshToken,
+    token_type: "Bearer",
+    expires_in: config.JWT_ACCESS_TTL,
+    ...sessionClock(remaining),
+  };
 }
 
 /** Recompute the login user block (ai_enabled/channels) for the already-signed-in
@@ -1204,20 +1264,83 @@ async function setSignature(client, { id, html, actor = {} }) {
 // Fast unlock on a trusted device: a fully-authenticated user registers a PIN
 // bound to a device; PIN login on that device issues real tokens. A new device
 // or repeated PIN failures fall back to full password login (PIN + password
-// fallback model). Registering requires a valid access token, so the device is
-// already trusted — PIN login therefore skips the 2FA challenge.
+// fallback model). Registering requires a FRESH sign-in (or the current
+// password — see session-policy.assertFreshAuth), so the device is trusted by
+// someone who just proved who they are — PIN login therefore skips the 2FA
+// challenge.
 const PIN_MAX_FAILS = 5;
+/**
+ * Active PIN devices per person. A laptop, a phone, a tablet and a spare leave
+ * room; past that, the list stops describing a person's own devices and starts
+ * describing every shared machine they ever touched — each one a standing way
+ * into the account.
+ */
+const PIN_MAX_DEVICES = 10;
 
-async function registerPinDevice(client, { userId, pin, label = null }) {
+/** The one security alert every new way into an account raises (unconditional). */
+async function notifyCredentialChange(client, { userId, title, body, entityRef }) {
+  try {
+    await notificationRepo.insertForUser(client, {
+      userId,
+      eventTypeKey: null,
+      title,
+      body,
+      entityRef,
+      priority: "HIGH",
+      category: "security",
+      linkUrl: "/security/my-security",
+    });
+  } catch (err) {
+    // The credential change already happened and is audited; failing it over
+    // the bell icon would leave the user unable to add a PIN when the
+    // notification table is having a bad day. (taxonomy: degraded-optional)
+    logger.warn({ err, user_id: userId }, "[auth] credential-change notification failed");
+  }
+}
+
+async function registerPinDevice(client, { userId, pin, label = null, replaceDeviceId = null, sessionId = null, currentPassword = null }) {
   const user = await repo.getUserSafe(client, userId);
   if (!user) throw new AppError("NOT_FOUND", "User not found", 404);
+
+  const weak = quickPin.weakPinReason(pin);
+  if (weak) throw new AppError("WEAK_PIN", weak, 422);
+
+  await sessionPolicy.assertFreshAuth(client, { sessionId, userId, currentPassword });
+
+  // Re-registering on a device that already has a PIN REPLACES it. Before this,
+  // every "change my PIN" left the old device row ACTIVE — a second, forgotten
+  // PIN that still opened the account from that browser.
+  if (replaceDeviceId) await repo.revokeDevice(client, replaceDeviceId, userId);
+
+  if ((await repo.countActiveDevices(client, userId)) >= PIN_MAX_DEVICES) {
+    throw new AppError(
+      "PIN_DEVICE_LIMIT",
+      `You already have ${PIN_MAX_DEVICES} devices with a Quick PIN. Revoke one you no longer use, then try again.`,
+      409,
+    );
+  }
+
   const pinHash = await argon2.hash(String(pin), ARGON);
-  const row = await repo.insertDevice(client, { userId, label, pinHash });
-  await audit(client, { actorUserId: userId, action: "app_user.pin_device.registered", moduleKey: events.MODULE, entityRef: "user_device:" + row.device_id });
+  const cleanLabel = label ? String(label).trim().slice(0, 80) || null : null;
+  const row = await repo.insertDevice(client, { userId, label: cleanLabel, pinHash });
+  await audit(client, {
+    actorUserId: userId,
+    action: "app_user.pin_device.registered",
+    moduleKey: events.MODULE,
+    entityRef: "user_device:" + row.device_id,
+    after: { label: row.label, replaced: replaceDeviceId || null },
+    isSensitive: true,
+  });
+  await notifyCredentialChange(client, {
+    userId,
+    title: "A Quick PIN was set up on a device",
+    body: `A Quick PIN was set up${row.label ? ` on "${row.label}"` : ""}. If this wasn't you, revoke it in My security and change your password.`,
+    entityRef: "user_device:" + row.device_id,
+  });
   return { device_id: row.device_id, label: row.label, status: row.status, created_at: row.created_at };
 }
 
-async function pinLogin(client, { email, deviceId, pin, ip, userAgent, environment, keepSignedIn }) {
+async function pinLogin(client, { email, deviceId, pin, ip, userAgent, environment }) {
   const passwordFallback = new AppError("PIN_LOGIN_UNAVAILABLE", "Please sign in with your password", 401);
   const user = await repo.findByEmail(client, String(email || "").toLowerCase());
   if (!user || user.status !== "ACTIVE") throw passwordFallback;
@@ -1227,19 +1350,43 @@ async function pinLogin(client, { email, deviceId, pin, ip, userAgent, environme
   if (!ok) {
     const { failed_pin } = await repo.recordDevicePinFailure(client, deviceId);
     const lockedOut = failed_pin >= PIN_MAX_FAILS;
-    if (lockedOut) await repo.revokeDevice(client, deviceId, user.user_id);
+    if (lockedOut) {
+      await repo.revokeDevice(client, deviceId, user.user_id);
+      await audit(client, {
+        actorUserId: user.user_id,
+        action: "app_user.pin_device.locked_out",
+        moduleKey: events.MODULE,
+        entityRef: "user_device:" + deviceId,
+        ip,
+        isSensitive: true,
+      });
+      await notifyCredentialChange(client, {
+        userId: user.user_id,
+        title: "A Quick PIN was switched off after 5 wrong attempts",
+        body: "Someone entered the wrong PIN five times, so that device's Quick PIN was switched off. If this wasn't you, change your password.",
+        entityRef: "user_device:" + deviceId,
+      });
+    }
     await emitEvent(client, { eventTypeKey: events.LOGIN_FAILED, moduleKey: events.MODULE, entityRef: "app_user:" + user.user_id, payload: { method: "pin", reason: lockedOut ? "pin_lockout" : "bad_pin" } });
-    throw new AppError(lockedOut ? "PIN_LOCKED" : "INVALID_PIN", lockedOut ? "Too many attempts — sign in with your password" : "Invalid PIN", 401);
+    const left = PIN_MAX_FAILS - failed_pin;
+    throw new AppError(
+      lockedOut ? "PIN_LOCKED" : "INVALID_PIN",
+      lockedOut
+        ? "Too many wrong PINs — Quick PIN is now off on this device. Sign in with your password."
+        : `That PIN isn't right. ${left} attempt${left === 1 ? "" : "s"} left before Quick PIN is switched off on this device.`,
+      401,
+      lockedOut ? null : { attempts_left: left },
+    );
   }
   await repo.resetDevicePin(client, deviceId);
-  return issueSessionTokens(client, user, { ip, userAgent, environment, keepSignedIn });
+  return issueSessionTokens(client, user, { ip, userAgent, environment, method: "pin" });
 }
 
 const listPinDevices = (client, userId) => repo.listDevices(client, userId);
 async function revokePinDevice(client, { userId, deviceId }) {
   const row = await repo.revokeDevice(client, deviceId, userId);
   if (!row) throw new AppError("NOT_FOUND", "Device not found", 404);
-  await audit(client, { actorUserId: userId, action: "app_user.pin_device.revoked", moduleKey: events.MODULE, entityRef: "user_device:" + deviceId });
+  await audit(client, { actorUserId: userId, action: "app_user.pin_device.revoked", moduleKey: events.MODULE, entityRef: "user_device:" + deviceId, isSensitive: true });
   return { revoked: true };
 }
 

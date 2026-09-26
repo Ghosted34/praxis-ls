@@ -1,5 +1,12 @@
 # Auth & sessions — how it works, and the two traps in it
 
+> **2026-09 — the session model changed.** Sessions now END two hours after
+> sign-in (`SESSION_MAX_AGE_MIN`), whatever the activity; the screen LOCKS rather
+> than signing out, and "Keep me signed in" is gone. Read "The two-hour ceiling
+> and the lock screen" at the end before anything else in this file — the
+> sections above it describe mechanisms that still exist, but the 30-day
+> keep-signed-in session they mention does not.
+
 Written 2026-08-02 (session 19b) while diagnosing a "token expired" complaint.
 Read this before changing anything in `app_user.service.js`, `api-client.ts` or
 the JWT/session settings.
@@ -155,10 +162,66 @@ session at their next sign-in.
 
 ---
 
+## The two-hour ceiling and the lock screen (2026-09)
+
+**The rule (owner's decision).** A session lives `SESSION_MAX_AGE_MIN` (120)
+minutes from sign-in and not a second longer. At that moment the screen locks:
+the app stays mounted but is blurred, `inert` and unreachable, the tokens are
+wiped, and the person at the desk must prove who they are again — passkey first,
+then Quick PIN, then password — to carry on exactly where they were. The finance
+officer who walks away from an open tab does not leave a working session behind.
+
+**Server** (`app_user/session-policy.js`):
+
+- `refresh()` refuses a session whose `created_at` is past the ceiling and kills
+  the row (`SESSION_EXPIRED`, `fields.reason = "session_max_age"`).
+- Every token's `exp` is capped at the session's end — an access token minted
+  five minutes before the mark lives five minutes, not fifteen. So a client that
+  ignores its lock timer (or a token lifted from one) stops working at the same
+  second.
+- Sign-in and refresh return `session_expires_in` (seconds, relative — the
+  browser's clock is not ours) and `session_max_age`.
+- The idle rule (`SESSION_INACTIVITY_MIN`) now applies to **every** session. The
+  0494 `keep_signed_in` exemption — which held a 30-day session through any idle
+  period — is gone; the column is still written (false) and read by nothing.
+- Enrolling a passkey or a Quick PIN needs a sign-in younger than
+  `CREDENTIAL_ENROL_WINDOW_MIN` (15) or the current password (`REAUTH_REQUIRED`,
+  403). A stolen access token must not become a permanent way in.
+
+**Client:**
+
+- `lib/session-clock.ts` turns `session_expires_in` into a deadline shared by all
+  tabs (localStorage). auth-context locks at that instant (timer + focus check +
+  15 s backstop).
+- `status: "locked"` (auth-context) keeps `user`, wipes the tokens, and makes
+  `api()` refuse authenticated calls locally (`SESSION_LOCKED`). A failed refresh
+  mid-use now LOCKS instead of signing out; a refresh that never reached the
+  server is OFFLINE and does not lock.
+- Tabs lock together (the refresh token disappearing from storage) and unlock
+  together (a new one appearing, same user checked via `/auth/me`).
+- A different account's tokens arriving while locked reload the page instead of
+  unlocking — the previous person's data is in memory behind the blur.
+- `features/auth/lock-screen.tsx` seals every other top-level element (blur,
+  `inert`, `aria-hidden`, hidden from print, including portals opened later) and
+  stops keyboard/pointer events from reaching document-level listeners (so an
+  Escape meant for the PIN cannot close a dialog underneath).
+- "Lock screen" in the account menu ends the session server-side, then locks.
+
+**Trap 2 is closed on the client**: `tryRefresh` takes a Web Lock
+(`praxis-auth-refresh`) and reads the refresh token INSIDE it, so tabs refresh
+one after another, each with the current token.
+
+**Rate limits count failures only** (`skipSuccessfulRequests`) on login, TOTP,
+PIN, refresh and passkey verify. They are per IP and an office is one IP: with
+everyone who arrived at 08:00 unlocking at 10:00, counting successful sign-ins
+would refuse the eleventh person in the building.
+
 ## Settings and where they bite
 
-| Setting                  | Default | Bites                                                                       |
-| ------------------------ | ------- | --------------------------------------------------------------------------- |
-| `JWT_ACCESS_TTL`         | `15m`   | Refresh cadence. **Must stay below `SESSION_INACTIVITY_MIN`** — see Trap 1. |
-| `JWT_REFRESH_TTL`        | `30d`   | Ceiling on a keep-signed-in session, and the Redis index TTL.               |
-| `SESSION_INACTIVITY_MIN` | `30`    | Idle kill for sessions **without** keep-signed-in.                          |
+| Setting                        | Default | Bites                                                                       |
+| ------------------------------ | ------- | --------------------------------------------------------------------------- |
+| `SESSION_MAX_AGE_MIN`          | `120`   | Hard session life from sign-in; the screen locks. Caps every token's `exp`. |
+| `SESSION_INACTIVITY_MIN`       | `30`    | Idle kill (no refresh for this long — asleep, closed, long hidden).         |
+| `CREDENTIAL_ENROL_WINDOW_MIN`  | `15`    | Passkey / PIN enrolment without re-entering the password.                   |
+| `JWT_ACCESS_TTL`               | `15m`   | Refresh cadence. **Must stay below `SESSION_INACTIVITY_MIN`** — see Trap 1. |
+| `JWT_REFRESH_TTL`              | `30d`   | Now always cut to the session's remaining life; the Redis index TTL.        |

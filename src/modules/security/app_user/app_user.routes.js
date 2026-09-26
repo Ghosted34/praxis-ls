@@ -24,6 +24,7 @@ const {
   resetLimiter,
   changePasswordLimiter,
   webauthnLimiter,
+  webauthnOptionsLimiter,
 } = require("../../../shared/http/rate-limit");
 
 // Generic user CRUD (list/get/create/update/soft-delete) — NOW GATED (was the
@@ -94,15 +95,16 @@ authRouter.post("/pin/register", authMiddleware, validator.pinRegister, controll
 authRouter.get("/pin/devices", authMiddleware, controller.pinDevices);
 authRouter.delete("/pin/devices/:deviceId", authMiddleware, controller.pinRevoke);
 
-// WebAuthn passkey — passwordless platform authenticator (Face ID / Touch ID / security key).
-// Registration requires a live session (like PIN — the device is trusted because the user already proved who they are);
-// authentication is public (it's how you obtain a token). Shares the same idle/rotation semantics as PIN once verified.
+// WebAuthn passkey — passwordless, device-bound (Face ID / Touch ID / Windows Hello / Android screen lock).
+// Registration requires a live AND fresh session (or the current password — session-policy.assertFreshAuth), so a
+// stolen access token cannot become a permanent key; authentication is public (it's how you obtain a token). The
+// session a passkey opens obeys the same two-hour ceiling and idle rule as every other.
 const webauthnController = require("./webauthn.controller");
 authRouter.post("/passkey/register/options", authMiddleware, webauthnLimiter, validator.passkeyRegisterOptions, webauthnController.registerOptions);
 authRouter.post("/passkey/register/verify", authMiddleware, webauthnLimiter, validator.passkeyRegisterVerify, webauthnController.registerVerify);
 authRouter.get("/passkey/credentials", authMiddleware, webauthnController.list);
 authRouter.delete("/passkey/credentials/:credentialId", authMiddleware, webauthnController.remove);
-authRouter.post("/passkey/login/options", webauthnLimiter, validator.passkeyLoginOptions, webauthnController.loginOptions);
+authRouter.post("/passkey/login/options", webauthnOptionsLimiter, validator.passkeyLoginOptions, webauthnController.loginOptions);
 authRouter.post("/passkey/login/verify", webauthnLimiter, validator.passkeyLoginVerify, webauthnController.loginVerify);
 
 const router = express.Router();

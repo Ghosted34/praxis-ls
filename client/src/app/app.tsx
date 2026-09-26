@@ -9,6 +9,7 @@ import { AppShell } from "@/app/layout/app-shell";
 import { NavTrailProvider } from "@/app/layout/nav-trail-provider";
 import { ShellProvider } from "@/app/layout/shell-providers";
 import { LandingPage } from "@/features/landing/landing-page";
+import { LockLayer } from "@/features/auth/lock-screen";
 import { BootGate } from "@/app/boot-gate";
 import { PwaLayer } from "@/components/pwa/pwa-layer";
 import { MaintenanceBanner } from "@/components/maintenance-banner";
@@ -446,7 +447,10 @@ function OfflineBootGate({ children }: { children: React.ReactNode }) {
   const { status } = useAuth();
   const { status: conn } = useConnection();
 
-  if (conn === "unreachable" && status !== "authed") {
+  // "locked" is an authenticated user's app under the lock screen: it stays
+  // mounted (their unsaved work is in it) exactly like "authed".
+  const signedIn = status === "authed" || status === "locked";
+  if (conn === "unreachable" && !signedIn) {
     return (
       <div className="grid min-h-screen place-items-center p-4">
         <ConnectionLost what="Your workspace" className="w-full max-w-lg" />
@@ -459,7 +463,7 @@ function OfflineBootGate({ children }: { children: React.ReactNode }) {
   // beat rather than flashing the login on the way back to the screen the user
   // was on. Only while a refresh token is actually present — a signed-out user
   // has nothing to wait for and falls straight through to the login.
-  if (conn === "online" && status !== "authed" && tokenStore.getRefresh()) {
+  if (conn === "online" && !signedIn && tokenStore.getRefresh()) {
     return (
       <div
         className="grid min-h-screen place-items-center"
@@ -490,6 +494,10 @@ export function App() {
           and branding (to paint) — BrandingProvider is above AuthProvider in
           main.tsx, so this is the highest point where both are readable. */}
       <UserAppearanceSync />
+      {/* The lock screen. Here, above the routes, because it covers whatever
+          route is showing and must outlive it: the app underneath stays
+          mounted, blurred and inert, until the right person signs back in. */}
+      <LockLayer />
       {/* The crafted offline page stands in for the routes whenever we're offline
           without a session to show — see OfflineBootGate. PwaLayer above stays
           mounted OUTSIDE it, so the connection monitor keeps probing and the pill

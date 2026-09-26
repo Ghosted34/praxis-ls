@@ -31,7 +31,9 @@ export function UserAppearanceSync() {
   const appliedFor = React.useRef<string | null>(null);
 
   React.useEffect(() => {
-    if (status !== "authed" || !userId) {
+    // "locked" keeps the person's own appearance: it is still their screen,
+    // under the lock, and it should look like theirs when it unlocks.
+    if ((status !== "authed" && status !== "locked") || !userId) {
       // Signed out — drop the personal layer so the login screen and the next
       // user start from the tenant's fonts rather than the last session's.
       if (appliedFor.current !== null) {

@@ -15,7 +15,13 @@
 
 const { getClient } = require("../../config/redis");
 
-const SESSION_TTL_S = 60 * 60 * 24 * 30; // ceiling matches JWT_REFRESH_TTL's 30d default
+const { config } = require("../../config/env");
+
+// A session cannot outlive SESSION_MAX_AGE_MIN (the two-hour ceiling), so its
+// index entry need not either. The old 30-day TTL matched the 30-day
+// keep-signed-in session that no longer exists; five minutes of slack keeps an
+// entry alive across the last refresh before the ceiling.
+const SESSION_TTL_S = Number(config.SESSION_MAX_AGE_MIN) * 60 + 300;
 
 const sessionKey = (sessionId) => `session:active:${sessionId}`;
 const userSessionsKey = (userId) => `session:user:${userId}`;

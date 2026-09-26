@@ -880,6 +880,17 @@ export declare namespace linkDetect {
 }
 
 /**
+ * Quick PIN — the length, and why a PIN is refused. Shared because the API
+ * refuses a weak PIN at registration and the My security screen says so as the
+ * user types. See rules/quick-pin.js.
+ */
+export declare namespace quickPin {
+  const PIN_LENGTH: number;
+  /** The reason a PIN is refused, in plain words — or null when it is fine. */
+  function weakPinReason(pin: string | null | undefined): string | null;
+}
+
+/**
  * The working week, per day: worked or not, from when to when, on site or
  * remote. `employee.work_schedule` stores it and `employee.working_hours` — the
  * line a contract prints — is DERIVED from it by `summarise()` on every write,

@@ -62,8 +62,10 @@ export type PromptOptions = {
   /** Starting value, like `window.prompt`'s second argument. */
   defaultValue?: string;
   placeholder?: string;
-  /** `date` renders a date picker rather than asking for YYYY-MM-DD in prose. */
-  type?: "text" | "date" | "email" | "url" | "number";
+  /** `date` renders a date picker rather than asking for YYYY-MM-DD in prose.
+   *  `password` masks the value and lets a password manager fill it — the
+   *  "confirm it's you" step before adding a new way to sign in. */
+  type?: "text" | "date" | "email" | "url" | "number" | "password";
   /** A textarea instead of an input, for anything longer than a few words. */
   multiline?: boolean;
   /** Return an error string to block submission, or null when the value is fine. */
@@ -170,6 +172,7 @@ export function usePrompt(): [
           ) : (
             <Input
               type={state.type ?? "text"}
+              autoComplete={state.type === "password" ? "current-password" : undefined}
               value={value}
               placeholder={state.placeholder}
               onChange={(e) => setValue(e.target.value)}

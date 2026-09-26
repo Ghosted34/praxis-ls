@@ -105,12 +105,16 @@ export function ShellProvider({ children }: { children: React.ReactNode }) {
   const inFlight = React.useRef(false);
   const lastReadAt = React.useRef(0);
   const alive = React.useRef(true);
-  React.useEffect(
-    () => () => {
+  // Set back to true on (re)mount, not only initialised true: StrictMode mounts,
+  // unmounts and remounts every component in development, and a cleanup-only
+  // effect left `alive` false for good after that — so on a first sign-in (no
+  // cached access) the answer was dropped and the page sat on its skeleton.
+  React.useEffect(() => {
+    alive.current = true;
+    return () => {
       alive.current = false;
-    },
-    [],
-  );
+    };
+  }, []);
 
   const revalidate = React.useCallback(
     async (force: boolean) => {

@@ -1477,8 +1477,23 @@
   font-size: 0.68rem;
   color: rgb(232 220 224 / 0.55);
 }
+.login-identity-name {
+  font-size: 0.92rem;
+  font-weight: 650;
+  color: #fbf6f7;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.login-identity-name + .login-identity-email {
+  font-size: 0.74rem;
+  font-weight: 500;
+  color: rgb(232 220 224 / 0.62);
+}
 .login-switch {
-  align-self: flex-start;
+  align-self: center;
+  flex: none;
+  white-space: nowrap;
   font-size: 0.72rem;
   font-weight: 600;
   color: color-mix(in srgb, var(--primary) 72%, #d8b3bb);
@@ -1535,10 +1550,304 @@
   opacity: 0.55;
   cursor: progress;
 }
-.passkey-orb-hint {
-  font-size: 0.8rem;
-  color: rgb(232 220 224 / 0.7);
+.passkey-orb:focus-visible {
+  outline: none;
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--primary) 55%, transparent),
+    0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent),
+    0 0 44px color-mix(in srgb, var(--primary) 34%, transparent);
+}
+.passkey-orb-title {
+  font-size: 0.95rem;
+  font-weight: 650;
+  color: #fbf6f7;
   text-align: center;
+}
+.passkey-orb-hint {
+  font-size: 0.78rem;
+  color: rgb(232 220 224 / 0.62);
+  text-align: center;
+}
+/* The ring that breathes while the device is asking for the fingerprint —
+   the one moment the screen is waiting on the person, and should say so. */
+.login-orb-ring {
+  position: absolute;
+  inset: -0.4rem;
+  border-radius: 999px;
+  border: 1.5px solid color-mix(in srgb, var(--primary) 60%, transparent);
+  opacity: 0;
+  pointer-events: none;
+}
+.login-orb-ring[data-active] {
+  animation: login-orb-pulse 1.6s cubic-bezier(0.2, 0.6, 0.3, 1) infinite;
+}
+@keyframes login-orb-pulse {
+  0% {
+    transform: scale(0.94);
+    opacity: 0.85;
+  }
+  100% {
+    transform: scale(1.2);
+    opacity: 0;
+  }
+}
+
+/* --- Other ways in, under the primary one -------------------------------- */
+.login-hint {
+  font-size: 0.68rem;
+  color: rgb(232 220 224 / 0.45);
+}
+.login-alt {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.login-alt-rule {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.66rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: rgb(232 220 224 / 0.38);
+}
+.login-alt-rule::before,
+.login-alt-rule::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: rgb(255 255 255 / 0.1);
+}
+.login-alt-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem;
+}
+.login-alt-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  height: 2.3rem;
+  padding: 0 0.95rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: rgb(246 238 241 / 0.88);
+  background: rgb(255 255 255 / 0.05);
+  border: 1px solid rgb(255 255 255 / 0.12);
+  transition:
+    background 0.18s ease,
+    border-color 0.18s ease,
+    color 0.18s ease;
+}
+.login-alt-btn:hover:not(:disabled) {
+  color: #fff;
+  background: color-mix(in srgb, var(--primary) 14%, rgb(255 255 255 / 0.05));
+  border-color: color-mix(in srgb, var(--primary) 40%, rgb(255 255 255 / 0.12));
+}
+.login-alt-btn:focus-visible,
+.login-back:focus-visible,
+.login-switch:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--primary) 70%, #fff);
+  outline-offset: 2px;
+}
+.login-alt-btn:disabled {
+  opacity: 0.5;
+}
+.login-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  align-self: center;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: rgb(232 220 224 / 0.62);
+}
+.login-back:hover {
+  color: #fff;
+}
+.login-success {
+  border-radius: 0.55rem;
+  border: 1px solid color-mix(in srgb, var(--primary) 45%, transparent);
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+  color: #f6eef1;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.82rem;
+}
+
+/* --- The passkey offer ---------------------------------------------------- */
+.login-offer {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.9rem;
+  padding: 1rem;
+  border-radius: 0.9rem;
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--primary) 16%, rgb(255 255 255 / 0.04)),
+    rgb(255 255 255 / 0.02)
+  );
+  border: 1px solid
+    color-mix(in srgb, var(--primary) 26%, rgb(255 255 255 / 0.08));
+}
+.login-offer-glyph {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 3.2rem;
+  height: 3.2rem;
+  border-radius: 1rem;
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 16%, transparent);
+  box-shadow: 0 0 26px color-mix(in srgb, var(--primary) 26%, transparent);
+}
+.login-offer-points {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: rgb(246 238 241 / 0.86);
+}
+.login-offer-points li {
+  display: flex;
+  gap: 0.45rem;
+}
+.login-offer-points svg {
+  flex: none;
+  margin-top: 0.15rem;
+  color: var(--primary);
+}
+
+/* --- The lock screen -------------------------------------------------------
+ *
+ * Everything else on the page carries `.praxis-locked` while this shows
+ * (lock-screen.tsx): blurred past reading, not printable, not clickable — and
+ * `inert` + `aria-hidden` on the element itself, so not reachable by keyboard
+ * or screen reader either. The veil below is tinted with the tenant's colour,
+ * so the lock is theirs, not ours.
+ */
+.praxis-locked {
+  filter: blur(26px) saturate(1.15);
+  pointer-events: none;
+  user-select: none;
+  transition: filter 0.2s ease-out;
+}
+@media print {
+  .praxis-locked {
+    display: none !important;
+  }
+}
+.login-lock-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.1rem;
+  padding: 4.5rem 1rem 1.5rem;
+  overflow-y: auto;
+  color: #f2e9ec;
+  background:
+    radial-gradient(
+      60% 50% at 50% -5%,
+      color-mix(in srgb, var(--primary) 30%, transparent),
+      transparent 72%
+    ),
+    radial-gradient(
+      45% 40% at 100% 105%,
+      color-mix(in srgb, var(--primary) 16%, transparent),
+      transparent 70%
+    ),
+    rgb(9 5 7 / 0.82);
+  backdrop-filter: blur(20px) saturate(1.2);
+  -webkit-backdrop-filter: blur(20px) saturate(1.2);
+  animation: fade-in 0.3s ease-out both;
+}
+.login-lock-top {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.1rem 1.4rem;
+}
+.login-lock-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: rgb(246 238 241 / 0.85);
+}
+.login-lock-brand img {
+  height: 1.5rem;
+  width: auto;
+}
+.login-lock-clock {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  animation: landing-rise 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.login-lock-time {
+  font-family: var(--font-display);
+  font-size: clamp(2.6rem, 8vw, 4.2rem);
+  font-weight: 300;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: #fbf6f7;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 6px 30px rgb(0 0 0 / 0.35);
+}
+.login-lock-date {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: rgb(232 220 224 / 0.7);
+  text-transform: capitalize;
+}
+.login-lock-card {
+  animation: landing-rise 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.05s both;
+}
+.login-lock-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.9rem;
+  padding: 0.3rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--primary) 65%, #f6eef1);
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--primary) 30%, transparent);
+}
+.login-lock-foot {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  max-width: 26rem;
+  font-size: 0.74rem;
+  line-height: 1.45;
+  text-align: center;
+  color: rgb(232 220 224 / 0.55);
+}
+.login-lock-foot svg {
+  flex: none;
+}
+@media (max-height: 700px) {
+  .login-lock-clock {
+    display: none;
+  }
 }
 
 /* Password as a fallback: quieter than the quick routes above it, but a real
@@ -1617,8 +1926,14 @@
     animation: none;
   }
   .landing-content > *,
-  .login-card {
+  .login-card,
+  .login-lock-scrim,
+  .login-lock-clock,
+  .login-orb-ring[data-active] {
     animation: none;
+  }
+  .praxis-locked {
+    transition: none;
   }
 }
 

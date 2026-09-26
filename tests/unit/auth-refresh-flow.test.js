@@ -27,9 +27,9 @@
  *   - REUSE OF A ROTATED-AWAY TOKEN revokes the whole session — asserted end to
  *     end by rotating once and re-presenting the original token, never by
  *     calling the predicate
- *   - the 30-minute inactivity kill fires, and `keep_signed_in` opts out of it
- *     (0494 — the checkbox promised 30 days and this timeout quietly cut it to
- *     30 minutes)
+ *   - the 30-minute inactivity kill fires for every session (the 0494
+ *     keep-signed-in exemption is gone), and the two-hour ceiling ends a
+ *     session however active it is, with no token outliving it
  *   - the rotated ACCESS token still carries `sid` (SEC-C2 — without it, logout
  *     after one refresh silently reverts to revoking nothing)
  *
@@ -132,10 +132,12 @@ function makeRefreshToken({
   });
 }
 
-/** A live session, idle for `idleSeconds`, whose current refresh jti is `jti`. */
+/** A live session, idle for `idleSeconds` and `ageSeconds` old, whose current
+ *  refresh jti is `jti`. */
 function liveSession({
   jti = "jti-1",
   idleSeconds = 10,
+  ageSeconds = 60,
   keepSignedIn = false,
 } = {}) {
   return {
@@ -143,9 +145,11 @@ function liveSession({
     user_id: USER,
     killed_at: null,
     last_seen_at: new Date().toISOString(),
+    created_at: new Date(Date.now() - ageSeconds * 1000).toISOString(),
     refresh_jti: jti,
     keep_signed_in: keepSignedIn,
     idle_seconds: idleSeconds,
+    age_seconds: ageSeconds,
   };
 }
 
@@ -360,22 +364,17 @@ describe("refresh() end to end (TC-Q2)", () => {
       expect(mockCalls.killSession).toHaveLength(0);
     });
 
-    it("exempts keep_signed_in from the idle kill without exempting it from revocation", async () => {
+    it("no longer exempts keep_signed_in sessions from the idle kill", async () => {
+      // 0494 let the checkbox hold a 30-day session through any idle period —
+      // the unattended-desk hole the two-hour lock exists to close. A row
+      // written under that rule gets no special treatment any more.
       mockSession = liveSession({
-        idleSeconds: config.SESSION_INACTIVITY_MIN * 600,
+        idleSeconds: config.SESSION_INACTIVITY_MIN * 60 + 1,
         keepSignedIn: true,
       });
-      const out = await svc.refresh(client, {
-        refreshToken: makeRefreshToken(),
-      });
-      expect(out.access_token).toBeTruthy();
-      expect(mockCalls.killSession).toHaveLength(0);
-
-      // Longer leash, not an exemption: reuse still revokes.
-      const stale = makeRefreshToken({ jti: "rotated-away" });
       await expectRejection(
-        svc.refresh(client, { refreshToken: stale }),
-        "SESSION_REVOKED",
+        svc.refresh(client, { refreshToken: makeRefreshToken() }),
+        "SESSION_EXPIRED",
       );
       expect(mockCalls.killSession).toHaveLength(1);
     });
@@ -392,6 +391,49 @@ describe("refresh() end to end (TC-Q2)", () => {
       });
       expect(out.access_token).toBeTruthy();
       expect(mockCalls.killSession).toHaveLength(0);
+    });
+  });
+
+  describe("the two-hour ceiling (SESSION_MAX_AGE_MIN)", () => {
+    const MAX = config.SESSION_MAX_AGE_MIN * 60;
+
+    it("ends a session that has reached its maximum age, however active", async () => {
+      // Idle for ten seconds — an active user — and still over: the ceiling is
+      // about how long the session has existed, not what it is doing.
+      mockSession = liveSession({ ageSeconds: MAX, idleSeconds: 10 });
+      const err = await expectRejection(
+        svc.refresh(client, { refreshToken: makeRefreshToken() }),
+        "SESSION_EXPIRED",
+      );
+      expect(err.details).toMatchObject({ reason: "session_max_age" });
+      expect(mockCalls.killSession).toHaveLength(1);
+      expect(mockCalls.removeSession).toHaveLength(1);
+      expect(mockCalls.setRefreshJti).toHaveLength(0);
+      const logout = mockCalls.events.filter((e) => e.eventTypeKey === "auth.logged_out");
+      expect(logout[0].payload).toMatchObject({ reason: "session_max_age" });
+    });
+
+    it("never mints a token that outlives the session", async () => {
+      // Five minutes left: the access token must die with the session, not
+      // fifteen minutes later behind the lock screen.
+      mockSession = liveSession({ ageSeconds: MAX - 300 });
+      const out = await svc.refresh(client, { refreshToken: makeRefreshToken() });
+      const now = Math.floor(Date.now() / 1000);
+      const access = jwt.verify(out.access_token, config.JWT_ACCESS_SECRET);
+      const refresh = jwt.verify(out.refresh_token, config.JWT_REFRESH_SECRET);
+      expect(access.exp - now).toBeLessThanOrEqual(300);
+      expect(refresh.exp - now).toBeLessThanOrEqual(300);
+      expect(out.session_expires_in).toBeGreaterThan(290);
+      expect(out.session_expires_in).toBeLessThanOrEqual(300);
+    });
+
+    it("keeps the access token's own TTL when the session has longer left", async () => {
+      mockSession = liveSession({ ageSeconds: 60 });
+      const out = await svc.refresh(client, { refreshToken: makeRefreshToken() });
+      const access = jwt.verify(out.access_token, config.JWT_ACCESS_SECRET);
+      expect(access.exp - access.iat).toBe(15 * 60);
+      expect(out.session_expires_in).toBe(MAX - 60);
+      expect(out.session_max_age).toBe(MAX);
     });
   });
 
@@ -426,6 +468,8 @@ describe("refresh() end to end (TC-Q2)", () => {
         "access_token",
         "expires_in",
         "refresh_token",
+        "session_expires_in",
+        "session_max_age",
         "token_type",
       ]);
     });

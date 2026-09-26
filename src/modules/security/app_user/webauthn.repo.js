@@ -4,17 +4,13 @@ async function insertCredential(client, { credentialId, userId, publicKey, count
   const { rows } = await client.query(
     `INSERT INTO webauthn_credential (credential_id, user_id, public_key, counter, transports, device_type, backed_up, aaguid, label)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-     RETURNING credential_id, user_id, public_key, counter, transports, device_type, backed_up, aaguid, label, created_at, last_used_at`,
+     RETURNING credential_id, user_id, counter, transports, device_type, backed_up, aaguid, label, created_at, last_used_at`,
     [credentialId, userId, publicKey, counter || 0, transports || null, deviceType || "singleDevice", backedUp || false, aaguid || null, label || null],
   );
   return rows[0];
 }
 
-async function getCredential(client, credentialId) {
-  const { rows } = await client.query(`SELECT * FROM webauthn_credential WHERE credential_id = $1`, [credentialId]);
-  return rows[0] || null;
-}
-
+/** What My security lists — never the public key. */
 async function listForUser(client, userId) {
   const { rows } = await client.query(
     `SELECT credential_id, label, transports, device_type, backed_up, aaguid, created_at, last_used_at
@@ -24,15 +20,9 @@ async function listForUser(client, userId) {
   return rows;
 }
 
+/** Registration's exclude list and the per-user cap. */
 async function listForUserWithKeys(client, userId) {
-  const { rows } = await client.query(`SELECT * FROM webauthn_credential WHERE user_id = $1`, [userId]);
-  return rows;
-}
-
-async function listAllCredentials(client) {
-  // For authentication without email (discoverable) we need to find credential by id after assertion
-  // This is not used directly; we look up by credential_id supplied in assertion
-  const { rows } = await client.query(`SELECT * FROM webauthn_credential`);
+  const { rows } = await client.query(`SELECT credential_id, transports FROM webauthn_credential WHERE user_id = $1`, [userId]);
   return rows;
 }
 
@@ -46,23 +36,18 @@ async function updateCounter(client, credentialId, newCounter) {
 }
 
 async function deleteCredential(client, credentialId, userId) {
-  const { rows } = await client.query(`DELETE FROM webauthn_credential WHERE credential_id = $1 AND user_id = $2 RETURNING credential_id`, [credentialId, userId]);
+  const { rows } = await client.query(
+    `DELETE FROM webauthn_credential WHERE credential_id = $1 AND user_id = $2 RETURNING credential_id, label`,
+    [credentialId, userId],
+  );
   return rows[0] || null;
-}
-
-async function countForUser(client, userId) {
-  const { rows } = await client.query(`SELECT COUNT(*)::int AS n FROM webauthn_credential WHERE user_id = $1`, [userId]);
-  return rows[0].n;
 }
 
 module.exports = {
   insertCredential,
-  getCredential,
   listForUser,
   listForUserWithKeys,
-  listAllCredentials,
   getByCredentialId,
   updateCounter,
   deleteCredential,
-  countForUser,
 };

@@ -1,58 +1,78 @@
 /**
- * Device-bound passkey registry. Maps email → true for accounts that hold a
- * passkey usable on THIS device.
+ * Device-bound passkey registry: which accounts hold a passkey on THIS device,
+ * and WHICH passkeys those are.
  *
- * WHY IT HAS TO EXIST. `pinStore` already answers "does this device have a
- * Quick PIN for that account", which is the whole reason the sign-in screen can
- * open on the PIN tab instead of guessing. Passkeys had no equivalent, so the
- * identity-first sign-in had nothing to branch on: a device with a passkey and a
- * device with none looked identical, and the only way to find out was to offer
- * the ceremony and let it fail.
+ * ── WHY IT HAS TO EXIST ─────────────────────────────────────────────────────
  *
- * ASKING THE SERVER IS NOT THE ANSWER. `POST /auth/passkey/login/options` will
- * happily say whether an account has credentials, but it is rate-limited, it
- * costs a round trip on every modal open, and it is wrong in the direction that
- * matters: a credential registered on a different laptop is listed by the
- * server and NOT present in this browser's authenticator, so the answer would
- * put a Face ID button in front of someone whose Face ID cannot answer it. The
- * browser is the only party that knows whether this device can do this.
+ * `pinStore` answers "does this device have a Quick PIN for that account".
+ * This answers the same for passkeys, so the sign-in and lock screens can lead
+ * with the passkey on a device that has one — the owner's order is passkey,
+ * then PIN, then password — instead of guessing.
  *
- * WHAT WRITES IT — the two moments the fact becomes true and is observable:
- *   · a passkey is REGISTERED from this device (My security, or the sign-in
- *     offer straight after signing in), and
- *   · a passkey SIGN-IN SUCCEEDS on this device, which is proof the credential
- *     is here (a passkey that lives only in iCloud Keychain and syncs to this
- *     machine counts, and should).
+ * Asking the server is not the answer: the server knows every passkey the
+ * ACCOUNT holds, but not which of them lives in THIS browser's authenticator.
+ * A passkey registered on the laptop is on the server's list and useless on
+ * the phone.
  *
- * WHAT DELETES IT — the passkey is gone or the account is released: the last
- * credential is removed in My security, or the device hands over via "Sign out
- * and remove this account". Not a failed sign-in: a dismissed Touch ID sheet is
- * not a fact about the credential.
+ * ── WHY IT KEEPS THE CREDENTIAL IDS ─────────────────────────────────────────
  *
- * SURVIVES LOGOUT ON PURPOSE, like pinStore and deviceId — it is a DEVICE fact
- * ("this machine can unlock Tom-blake's account"), not session state.
+ * "On my laptop I use my laptop's passkey, on my phone my phone's." The ids
+ * are what make that literal: sign-in sends them, the server scopes the
+ * ceremony to exactly those credentials on this device's own authenticator,
+ * and the OS goes straight to Touch ID / Face ID / Windows Hello — no list of
+ * every passkey on the account, no "use a phone" QR code.
+ *
+ * Entries written before ids were kept are the bare `true`; they still mean
+ * "this device has one", sign in with an unscoped (but account-bound)
+ * ceremony, and gain their id on the first successful passkey sign-in.
+ *
+ * ── WHAT WRITES AND DELETES IT ──────────────────────────────────────────────
+ *
+ *   written  a passkey is REGISTERED from this device, or a passkey SIGN-IN
+ *            succeeds here (proof the credential is here — a synced iCloud /
+ *            Google passkey counts, and should).
+ *   deleted  the server says a credential is no longer on the account
+ *            (PASSKEY_REVOKED), this device's passkey is removed in My
+ *            security, or the account is released ("Sign out and remove this
+ *            account"). Never a dismissed Face ID sheet — that is an answer,
+ *            not a fact about the credential.
+ *
+ * SURVIVES LOGOUT ON PURPOSE, like pinStore and deviceId — it is a DEVICE fact.
  * auth-context preserves it across the logout localStorage.clear() via
- * snapshot()/restore(). Wiping it on sign-out would leave the sign-in screen
- * unable to tell a passkey device from a password-only one, which is the exact
- * guess this store was added to remove.
+ * snapshot()/restore().
  */
 const KEY = "praxis.passkey.devices";
 
-type Registry = Record<string, true>;
+type Entry = true | { ids: string[] };
+type Registry = Record<string, Entry>;
 
 function read(): Registry {
   try {
-    return JSON.parse(localStorage.getItem(KEY) || "{}") as Registry;
+    const r = JSON.parse(localStorage.getItem(KEY) || "{}");
+    return r && typeof r === "object" ? (r as Registry) : {};
   } catch {
     /* @silent:storage — private mode or a malformed entry. The failure
-       direction is a sign-in screen that offers a password instead of a
-       passkey, which still works. */
+       direction is a sign-in screen that offers a PIN or password instead of
+       a passkey, which still works. */
     return {};
+  }
+}
+
+function write(r: Registry) {
+  try {
+    localStorage.setItem(KEY, JSON.stringify(r));
+  } catch {
+    /* @silent:storage — quota or private mode. The device forgets to offer
+       the passkey next time; the passkey itself is unaffected. */
   }
 }
 
 function key(email: string): string {
   return email.trim().toLowerCase();
+}
+
+function idsOf(e: Entry | undefined): string[] {
+  return e && e !== true && Array.isArray(e.ids) ? e.ids.filter((x) => typeof x === "string" && x) : [];
 }
 
 export const passkeyDeviceStore = {
@@ -61,25 +81,44 @@ export const passkeyDeviceStore = {
     if (!email) return false;
     return !!read()[key(email)];
   },
-  set: (email: string) => {
+  /** The ids of the passkeys this device holds for that account (may be empty
+   *  for an entry recorded before ids were kept). */
+  ids: (email: string): string[] => (email ? idsOf(read()[key(email)]) : []),
+  /** Record that this device holds a passkey for the account — with its id when known. */
+  add: (email: string, credentialId?: string | null) => {
     if (!email) return;
     const r = read();
-    r[key(email)] = true;
-    try {
-      localStorage.setItem(KEY, JSON.stringify(r));
-    } catch {
-      /* @silent:storage — quota or private mode. The device forgets to offer
-         the passkey next time; the passkey itself is unaffected. */
-    }
+    const ids = idsOf(r[key(email)]);
+    if (credentialId && !ids.includes(credentialId)) ids.push(credentialId);
+    r[key(email)] = { ids: ids.slice(-10) };
+    write(r);
   },
+  /** @deprecated use `add` — kept for callers that do not know the id. */
+  set: (email: string) => passkeyDeviceStore.add(email),
+  /**
+   * Forget ONE credential (the server said it is gone). Returns whether this
+   * device still holds another for the account. An entry that never had ids
+   * (the bare legacy `true`) is dropped: the one passkey it stood for is the
+   * one the server just refused.
+   */
+  forgetId: (email: string, credentialId: string): boolean => {
+    if (!email) return false;
+    const r = read();
+    const e = r[key(email)];
+    if (!e) return false;
+    const rest = idsOf(e).filter((x) => x !== credentialId);
+    if (rest.length === 0) delete r[key(email)];
+    else r[key(email)] = { ids: rest };
+    write(r);
+    return rest.length > 0;
+  },
+  /** Does this device hold THAT credential? (My security's "this device" badge.) */
+  holds: (email: string, credentialId: string): boolean =>
+    !!email && idsOf(read()[key(email)]).includes(credentialId),
   remove: (email: string) => {
     const r = read();
     delete r[key(email)];
-    try {
-      localStorage.setItem(KEY, JSON.stringify(r));
-    } catch {
-      /* @silent:storage */
-    }
+    write(r);
   },
   clear: () => {
     try {

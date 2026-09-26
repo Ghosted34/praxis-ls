@@ -89,6 +89,9 @@ export function SessionsPage() {
       render: (r) =>
         r.killed_at ? (
           <Pill tone="bad">{tr("Revoked")}</Pill>
+        ) : r.expired ? (
+          // Timed out (two-hour ceiling or idle) — over, but never "revoked".
+          <Pill tone="mute">{tr("Ended")}</Pill>
         ) : (
           <Pill tone="ok">{tr("Active")}</Pill>
         ),
@@ -105,7 +108,7 @@ export function SessionsPage() {
           <Button
             size="sm"
             variant="outline"
-            disabled={!!r.killed_at || kill.busy}
+            disabled={!!r.killed_at || !!r.expired || kill.busy}
             onClick={() => kill.run(r.session_id)}
           >
             Revoke

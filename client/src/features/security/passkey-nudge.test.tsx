@@ -5,25 +5,26 @@ import { apiClientMock, authContextMock, renderScreen } from "@/test/screen-harn
 vi.mock("@/lib/api-client", async () => apiClientMock());
 vi.mock("@/app/auth/auth-context", async () => authContextMock());
 
-const listPasskeys = vi.fn();
+const platformAuthenticatorAvailable = vi.fn();
 const isPasskeySupported = vi.fn();
 vi.mock("@/lib/webauthn", () => ({
-  listPasskeys: (...a: unknown[]) => listPasskeys(...a),
+  platformAuthenticatorAvailable: () => platformAuthenticatorAvailable(),
   isPasskeySupported: () => isPasskeySupported(),
 }));
 
 import { PasskeyNudge, PASSKEY_SETTING_PATH } from "./passkey-nudge";
+import { passkeyDeviceStore } from "@/lib/passkey-devices";
 
 /**
- * The nudge is the only passkey prompt most people will ever see — the sign-in
- * step interrupts once and is then silenced for good — so the thing that
- * matters is WHEN it stays quiet. Every one of these cases is a way to nag
- * somebody who does not need nagging:
+ * The nudge is the standing reminder — the sign-in step asks, and "Not now"
+ * snoozes it — so the thing that matters is WHEN it stays quiet. Every one of
+ * these cases is a way to nag somebody who does not need nagging:
  *
- *   · an account that already has a passkey,
- *   · a browser that cannot hold one,
+ *   · a DEVICE that already has a passkey (per device, not per account: the
+ *     laptop's passkey is no use on the phone),
+ *   · a browser or device that cannot hold one,
  *   · someone who has already dismissed it,
- *   · a credential list that could not be read — "don't know" is not "none".
+ *   · a platform probe that could not answer — "don't know" is not "yes".
  *
  * It also pins that dismissal does NOT touch the sign-in step's own flag.
  * One shared flag would collapse the pair: everyone meets the interrupt first,
@@ -31,15 +32,15 @@ import { PasskeyNudge, PASSKEY_SETTING_PATH } from "./passkey-nudge";
  */
 beforeEach(() => {
   localStorage.clear();
-  listPasskeys.mockReset();
+  platformAuthenticatorAvailable.mockReset();
+  platformAuthenticatorAvailable.mockResolvedValue(true);
   isPasskeySupported.mockReset();
   isPasskeySupported.mockReturnValue(true);
 });
 afterEach(() => localStorage.clear());
 
 describe("PasskeyNudge", () => {
-  it("offers the route in words when the account has no passkey", async () => {
-    listPasskeys.mockResolvedValue([]);
+  it("offers the route in words when this device has no passkey", async () => {
     renderScreen(<PasskeyNudge />);
 
     await screen.findByText(/no passkey yet/i);
@@ -49,33 +50,36 @@ describe("PasskeyNudge", () => {
     expect(screen.getByRole("button", { name: /show me where/i })).toBeTruthy();
   });
 
-  it("stays silent for an account that already has one", async () => {
-    listPasskeys.mockResolvedValue([{ credential_id: "c1", label: null, created_at: "2026-01-01" }]);
+  it("stays silent on a device that already has one", async () => {
+    passkeyDeviceStore.add("test@example.test", "cred-1");
     renderScreen(<PasskeyNudge />);
 
-    await waitFor(() => expect(listPasskeys).toHaveBeenCalled());
+    await waitFor(() => expect(platformAuthenticatorAvailable).toHaveBeenCalled());
     expect(screen.queryByText(/no passkey yet/i)).toBeNull();
   });
 
-  it("stays silent where passkeys are not supported, and does not ask the server", async () => {
+  it("stays silent where passkeys are not supported, and does not probe", async () => {
     isPasskeySupported.mockReturnValue(false);
-    listPasskeys.mockResolvedValue([]);
     renderScreen(<PasskeyNudge />);
 
     await waitFor(() => expect(screen.queryByText(/no passkey yet/i)).toBeNull());
-    expect(listPasskeys).not.toHaveBeenCalled();
+    expect(platformAuthenticatorAvailable).not.toHaveBeenCalled();
   });
 
-  it("treats an unreadable credential list as 'don't know', not 'none'", async () => {
-    listPasskeys.mockRejectedValue(new Error("offline"));
-    renderScreen(<PasskeyNudge />);
+  it("stays silent on a device with no authenticator of its own, or a probe that failed", async () => {
+    platformAuthenticatorAvailable.mockResolvedValue(false);
+    const first = renderScreen(<PasskeyNudge />);
+    await waitFor(() => expect(platformAuthenticatorAvailable).toHaveBeenCalled());
+    expect(screen.queryByText(/no passkey yet/i)).toBeNull();
+    first.unmount();
 
-    await waitFor(() => expect(listPasskeys).toHaveBeenCalled());
+    platformAuthenticatorAvailable.mockRejectedValue(new Error("no answer"));
+    renderScreen(<PasskeyNudge />);
+    await waitFor(() => expect(platformAuthenticatorAvailable).toHaveBeenCalledTimes(2));
     expect(screen.queryByText(/no passkey yet/i)).toBeNull();
   });
 
   it("dismisses, stays dismissed, and leaves the sign-in step's flag alone", async () => {
-    listPasskeys.mockResolvedValue([]);
     const { unmount } = renderScreen(<PasskeyNudge />);
     await screen.findByText(/no passkey yet/i);
 

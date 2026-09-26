@@ -94,12 +94,14 @@ function rateLimitStoreKind() {
  * A limiter that resolves its store at request time, so limiters constructed at
  * require-time still pick up the Redis store initialised later at boot.
  */
-function makeLimiter({ name, max, windowMs, keyGenerator }) {
+function makeLimiter({ name, max, windowMs, keyGenerator, failuresOnly = false }) {
   const limiter = rateLimit({
     ...BASE,
     ...(windowMs ? { windowMs } : {}),
     max,
     ...(keyGenerator ? { keyGenerator } : {}),
+    // Count only the attempts that FAILED. See "FAILURES, NOT SIGN-INS" below.
+    ...(failuresOnly ? { skipSuccessfulRequests: true } : {}),
     // express-rate-limit calls store methods per request; handing it a thin
     // proxy lets `initRateLimitStore()` land after these objects exist.
     store: {
@@ -141,6 +143,7 @@ function makeLimiter({ name, max, windowMs, keyGenerator }) {
   // failure mode this whole pass is about. Tag it explicitly.
   limiter.praxisRateLimit = name || "unnamed";
   limiter.praxisRateLimitMax = max;
+  limiter.praxisRateLimitFailuresOnly = failuresOnly;
   return limiter;
 }
 
@@ -195,20 +198,41 @@ function isRateLimiter(handle) {
  * separate control (the `failed_login_count` column that SEC-C3 also notes is
  * never enforced) and wants its own decision.
  */
-const loginLimiter = makeLimiter({ name: "login", max: 10 });
+/*
+ * ── FAILURES, NOT SIGN-INS ──────────────────────────────────────────────────
+ *
+ * These limiters are keyed by IP, and an office is one IP. They used to count
+ * EVERY request, successful ones included — so the eleventh person in a
+ * twenty-person office to sign in within a quarter of an hour was told "Too
+ * many attempts", having made one. The two-hour session ceiling makes that
+ * the normal case rather than the Monday-morning one: everyone who signed in
+ * at 08:00 unlocks at 10:00. And refresh was worse: 60 per 15 minutes shared by
+ * every open tab in the building, where a 429 is indistinguishable from a dead
+ * session and LOCKS the screen.
+ *
+ * What these defend against is guessing, and a guess is an attempt that
+ * FAILED. So the credential limiters count failures only
+ * (`skipSuccessfulRequests`): a hundred people signing in correctly cost
+ * nothing, and a script working through PINs is stopped exactly as before.
+ */
+const loginLimiter = makeLimiter({ name: "login", max: 10, failuresOnly: true });
 
 /** TOTP is a 6-digit space — 1,000,000 codes, valid for ~30s. Tighter. */
-const totpLimiter = makeLimiter({ name: "totp", max: 5 });
+const totpLimiter = makeLimiter({ name: "totp", max: 5, failuresOnly: true });
 
-/** Device PIN is short by design; the device binding is the real control. */
-const pinLimiter = makeLimiter({ name: "pin", max: 5 });
+/**
+ * Device PIN is short by design; the device binding is the real control (five
+ * wrong PINs revoke the device). Ten failures per IP leaves room for an office
+ * of honest typos while still stopping a spray across devices.
+ */
+const pinLimiter = makeLimiter({ name: "pin", max: 10, failuresOnly: true });
 
 /**
  * Refresh is called legitimately by every open tab on a timer, so this is set
- * to catch token guessing, not to police normal traffic. A 15-minute access TTL
- * across a handful of tabs stays well under this.
+ * to catch token guessing — failed refreshes — and never to police normal
+ * traffic, where a 429 would lock a working user's screen.
  */
-const refreshLimiter = makeLimiter({ name: "refresh", max: 60 });
+const refreshLimiter = makeLimiter({ name: "refresh", max: 60, failuresOnly: true });
 
 /** Enumeration / spam surface on public recovery. */
 const forgotLimiter = makeLimiter({ name: "forgot", max: 5 });
@@ -234,8 +258,18 @@ const changePasswordLimiter = makeLimiter({
   keyGenerator: (req) => (req.user && req.user.user_id ? `user:${req.user.user_id}` : `ip:${req.ip}`),
 });
 
-/** WebAuthn passkey — credential guessing / attestation spam */
-const webauthnLimiter = makeLimiter({ name: "webauthn", max: 20 });
+/**
+ * WebAuthn passkey verification and enrolment — failed assertions / attestation
+ * spam. A signature cannot be guessed, so this is about cost, not odds.
+ */
+const webauthnLimiter = makeLimiter({ name: "webauthn", max: 20, failuresOnly: true });
+
+/**
+ * Passkey sign-in OPTIONS always succeed and read no table (they reveal nothing
+ * — see webauthn.service), so counting failures would count nothing. Counted in
+ * full, and sized for an office unlocking at once after the two-hour lock.
+ */
+const webauthnOptionsLimiter = makeLimiter({ name: "webauthn-options", max: 300 });
 
 module.exports = {
   initRateLimitStore,
@@ -251,5 +285,6 @@ module.exports = {
   resetLimiter,
   changePasswordLimiter,
   webauthnLimiter,
+  webauthnOptionsLimiter,
   TOO_MANY,
 };

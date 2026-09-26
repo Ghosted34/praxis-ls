@@ -9,6 +9,7 @@
  * needs to know the tenant subdomain — the dev proxy sets it (vite.config.ts).
  */
 import { tokenStore } from "./token-store";
+import { sessionClock } from "./session-clock";
 import { reportReachable, reportUnreachable } from "./connection";
 
 /**
@@ -83,78 +84,151 @@ let refreshing: Promise<boolean> | null = null;
  * simply fall through and throw the 401 — no token clear, no state change, no
  * redirect. The app went on believing it was authenticated while holding a dead
  * refresh token, so every subsequent action produced the same error and the user
- * sat looking at "token expired" indefinitely. The only escape was a manual sign
- * out, which is exactly what users reported doing.
+ * sat looking at "token expired" indefinitely.
  *
- * The boot path in auth-context has always handled this correctly (clear tokens,
- * status → anon, back to the login screen); mid-session simply never got the
- * same treatment. This event gives it that, without api-client having to import
- * React state.
- *
- * `SESSION_ENDED_EVENT` is dispatched on `window`; auth-context listens.
+ * auth-context listens and LOCKS the screen (blur + sign-in on top) when there
+ * was a user, so they can prove who they are and carry on where they were.
+ * `detail.reason` says why, so the lock screen can say it in words: the
+ * two-hour ceiling, inactivity, or a session ended from another device.
  */
 export const SESSION_ENDED_EVENT = "praxis:session-ended";
 
+export type SessionEndReason =
+  | "session_max_age"
+  | "inactivity_timeout"
+  | "revoked"
+  | "unknown";
+
 let sessionEndedAnnounced = false;
+let lastEndReason: SessionEndReason = "unknown";
+/**
+ * The last refresh never reached the server. That is not the session ending,
+ * and must not lock the screen: a wifi blip at the wrong second would otherwise
+ * blur the app in front of someone mid-sentence. The caller gets the ordinary
+ * offline error and the connection pill takes over.
+ */
+let lastRefreshOffline = false;
 
 /**
  * Tear down a session the server has already rejected.
  *
  * Idempotent: a page mid-render can fire several failing requests at once, and
- * the user should see one transition to the login screen, not a storm of them.
- * The flag resets on a successful refresh so a later session can end too.
+ * the user should see one lock, not a storm of them. The flag resets on a
+ * successful refresh so a later session can end too.
  */
 function endSession() {
   tokenStore.clear();
+  sessionClock.clear();
   if (sessionEndedAnnounced) return;
   sessionEndedAnnounced = true;
   if (typeof window !== "undefined") {
-    window.dispatchEvent(new CustomEvent(SESSION_ENDED_EVENT));
+    window.dispatchEvent(
+      new CustomEvent(SESSION_ENDED_EVENT, { detail: { reason: lastEndReason } }),
+    );
   }
 }
 
+/** A session is live again (sign-in, unlock) — a later end may announce. */
+export function resetSessionEnded() {
+  sessionEndedAnnounced = false;
+  lastEndReason = "unknown";
+}
+
+function reasonFrom(body: unknown): SessionEndReason {
+  const err =
+    body && typeof body === "object" && "error" in body
+      ? ((body as { error?: { code?: string; fields?: { reason?: string }; details?: { reason?: string } } }).error ?? {})
+      : {};
+  const reason = err.fields?.reason ?? err.details?.reason;
+  if (reason === "session_max_age" || reason === "inactivity_timeout") return reason;
+  if (err.code === "SESSION_REVOKED") return "revoked";
+  return "unknown";
+}
+
 /**
- * Exchange the refresh token for a fresh access token, de-duped so concurrent
- * callers (the 401-retry path here AND the boot restore in auth-context) share a
- * SINGLE network refresh. This matters because the BE rotates the refresh token
- * on every refresh and revokes the session if a rotated-away token is ever
- * presented again (reuse-detection) — two independent refreshes with the same
- * token would otherwise trip that and log the user out early. Persists the
- * rotated refresh token so the next refresh presents the current one.
+ * Exchange the refresh token for a fresh access token.
+ *
+ * ONE REFRESH AT A TIME, ACROSS TABS. The server rotates the refresh token on
+ * every use and treats a rotated-away token presented again as theft — it
+ * revokes the whole session. Tabs share one token (localStorage), so two tabs
+ * whose access tokens expired together used to refresh in parallel with the
+ * same token, and the loser killed the session for all of them
+ * (doc/AUTH_SESSIONS.md, Trap 2). Web Locks serialise the exchange across every
+ * tab of the origin, and the token is read INSIDE the lock, so the second tab
+ * presents the token the first one just received. Within a tab the promise is
+ * still de-duped, so a burst of 401s shares one exchange.
+ *
+ * Also records how long the session has left (the two-hour ceiling), so every
+ * tab locks at the same moment.
  */
-export async function tryRefresh(): Promise<boolean> {
+async function refreshOnce(): Promise<boolean> {
   const refresh_token = tokenStore.getRefresh();
+  lastRefreshOffline = false;
   if (!refresh_token) return false;
-  // De-dupe concurrent refreshes.
-  if (!refreshing) {
-    refreshing = fetch("/api/tenant/auth/refresh", {
+  try {
+    const r = await fetch("/api/tenant/auth/refresh", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ refresh_token }),
-    })
-      .then(async (r) => {
-        if (!r.ok) return false;
-        const j = await r.json();
-        // Unwrap { data: ... } if the endpoint wraps its payload.
-        const d = j && typeof j === "object" && "data" in j ? j.data : j;
-        if (d && d.access_token) {
-          // A live session again — allow a future end-of-session to announce.
-          sessionEndedAnnounced = false;
-          tokenStore.setAccess(d.access_token);
-          // Refresh-token rotation: if the BE rotates and returns a new refresh
-          // token, persist it (into whichever store the keep-signed-in choice
-          // selected). Today the BE returns access only, so this is a no-op.
-          if (d.refresh_token) tokenStore.setRefresh(d.refresh_token);
-          return true;
-        }
+    });
+    const j = await r.json().catch(() => {
+      /* @silent:parse — a body that is not JSON carries no reason; the status still decides. */
+      return null;
+    });
+    if (!r.ok) {
+      lastEndReason = reasonFrom(j);
+      return false;
+    }
+    // Unwrap { data: ... } if the endpoint wraps its payload.
+    const d = j && typeof j === "object" && "data" in j ? j.data : j;
+    if (d && d.access_token) {
+      // A live session again — allow a future end-of-session to announce.
+      sessionEndedAnnounced = false;
+      tokenStore.setAccess(d.access_token);
+      // Refresh-token rotation: persist the new one so the next refresh (in
+      // this tab or another) presents the current token.
+      if (d.refresh_token) tokenStore.setRefresh(d.refresh_token);
+      sessionClock.set(d.session_expires_in);
+      return true;
+    }
+    return false;
+  } catch {
+    /* @silent:teardown — a network failure is "not refreshed", flagged so the
+       caller treats it as offline rather than as the session ending. */
+    lastRefreshOffline = true;
+    return false;
+  }
+}
+
+function offlineError() {
+  reportUnreachable();
+  return new ApiError(NETWORK_DOWN, "Can't reach the server — you appear to be offline.", 0);
+}
+
+export async function tryRefresh(): Promise<boolean> {
+  if (!tokenStore.getRefresh()) return false;
+  if (!refreshing) {
+    const locks = typeof navigator !== "undefined" ? navigator.locks : undefined;
+    const run = locks?.request
+      ? locks.request("praxis-auth-refresh", () => refreshOnce())
+      : refreshOnce();
+    refreshing = Promise.resolve(run)
+      .catch(() => {
+        /* @silent:teardown — a lock manager that throws is "not refreshed"; refreshOnce reports its own outcomes. */
         return false;
       })
-      .catch(() => false)
       .finally(() => {
         refreshing = null;
       });
   }
   return refreshing;
+}
+
+/** Thrown locally, with no request made, for an authenticated call while locked. */
+export const SESSION_LOCKED = "SESSION_LOCKED";
+
+function lockedError() {
+  return new ApiError(SESSION_LOCKED, "Your session is locked. Sign in to continue.", 401);
 }
 
 /**
@@ -278,6 +352,9 @@ export async function apiPaged<T = unknown>(
   opts: Opts = {},
 ): Promise<Paged<T>> {
   const { body, auth = true, retry = true, headers, ...rest } = opts;
+  // Locked: nothing behind the blur may act, and a locked tab must not spend
+  // the next hour firing polls that 401.
+  if (auth && tokenStore.isLocked()) throw lockedError();
   const h = new Headers(headers);
   if (body !== undefined) h.set("Content-Type", "application/json");
   h.set("X-Praxis-Env", tokenStore.getEnv());
@@ -295,6 +372,7 @@ export async function apiPaged<T = unknown>(
   if (res.status === 401 && auth && retry) {
     const ok = await tryRefresh();
     if (ok) return apiPaged<T>(path, { ...opts, retry: false });
+    if (lastRefreshOffline) throw offlineError();
     // Refresh failed: the session is gone (idle timeout, revoked, or the refresh
     // token no longer valid). Ending it here is what stops the app sitting on a
     // dead token showing "token expired" until the user signs out by hand.
@@ -380,6 +458,7 @@ export async function apiWithProgress<T = unknown>(
   const { body, auth = true, retry = true, headers, signal, ...rest } = opts;
   const method = String(rest.method || "GET");
   const multipart = isMultipart(body);
+  if (auth && tokenStore.isLocked()) throw lockedError();
 
   return new Promise<T>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -424,6 +503,10 @@ export async function apiWithProgress<T = unknown>(
 
       if (xhr.status === 401 && auth && retry) {
         const ok = await tryRefresh();
+        if (!ok && lastRefreshOffline) {
+          reject(offlineError());
+          return;
+        }
         if (ok) {
           try {
             resolve(

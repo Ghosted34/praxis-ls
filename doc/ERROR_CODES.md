@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 6× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (632)
+## All codes (636)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -255,10 +255,9 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `INSUFFICIENT_LEAVE` | — | 1× | — |
 | `INVALID_2FA_CODE` | 401 | 3× | — |
 | `INVALID_AMOUNT` | 422 | 7× | — |
-| `INVALID_CHALLENGE` | 400 | 6× | — |
-| `INVALID_CREDENTIAL` | 400 | 1× | — |
+| `INVALID_CHALLENGE` | 400 | 8× | — |
 | `INVALID_CREDENTIALS` | 401 | 2× | — |
-| `INVALID_CURRENT_PASSWORD` | 403 | 1× | — |
+| `INVALID_CURRENT_PASSWORD` | 403 | 2× | — |
 | `INVALID_DATE` | 422 | 1× | — |
 | `INVALID_DAYS` | 422 | 1× | — |
 | `INVALID_EXTRACTION` | 422 | 1× | — |
@@ -445,6 +444,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `OPS_MARKER_EXHAUSTED` | 500 | 1× | — |
 | `OPS_MARKER_TARGET_GONE` | 422 | 1× | — |
 | `ORDER_LOCKED` | 422 | 1× | — |
+| `ORIGIN_MISMATCH` | 400 | 2× | — |
 | `OTP_COOLDOWN` | 429 | 2× | — |
 | `OTP_EXHAUSTED` | 410 | 1× | — |
 | `OTP_EXPIRED` | 410 | 1× | — |
@@ -469,7 +469,8 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `PART_NOT_DECLARED` | 409 | 1× | — |
 | `PART_NOT_FAILED` | 409 | 1× | — |
 | `PART_NOT_FOUND` | 404 | 2× | — |
-| `PASSKEY_NOT_FOUND` | 404 | 1× | — |
+| `PASSKEY_LIMIT` | — | 1× | — |
+| `PASSKEY_REVOKED` | — | 1× | — |
 | `PASSWORD_REQUIRED` | — | 1× | — |
 | `PAYLOAD_TOO_LARGE` | 413 | 1× | — |
 | `PERIOD_CLOSED` | 422 | 1× | — |
@@ -477,6 +478,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `PERMISSION_DENIED` | 403 | 8× | — |
 | `PERSONAL_MAILBOX` | — | 1× | — |
 | `PERSONAL_MAILBOX_EXISTS` | — | 1× | — |
+| `PIN_DEVICE_LIMIT` | — | 1× | — |
 | `PIN_EXPIRED` | 422 | 1× | — |
 | `PIN_LOGIN_UNAVAILABLE` | 401 | 1× | — |
 | `PLACE_NAME_TAKEN` | 409 | 1× | — |
@@ -513,6 +515,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `QUEUE_UNAVAILABLE` | 503 | 1× | — |
 | `RATE_LIMITED` | 429 | 1× | — |
 | `REASON_REQUIRED` | 422 | 8× | — |
+| `REAUTH_REQUIRED` | — | 1× | — |
 | `RECIPIENT_REJECTED` | 422 | 2× | — |
 | `RECONCILIATION_DOES_NOT_BALANCE` | — | 1× | — |
 | `RECONCILIATION_LOCKED` | 409 | 1× | — |
@@ -654,6 +657,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `VERIFICATION_INCOMPLETE` | — | 3× | — |
 | `VOICE_TOO_LONG` | 422 | 1× | — |
 | `WEAK_PASSWORD` | 422 | 2× | — |
+| `WEAK_PIN` | 422 | 1× | — |
 | `WEBAUTHN_UNAVAILABLE` | 500 | 1× | — |
 | `WEBAUTHN_VERIFICATION_FAILED` | 400 | 4× | — |
 | `WRONG_ACTION_FOR_STEP` | 422 | 1× | — |

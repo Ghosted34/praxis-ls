@@ -100,7 +100,7 @@ import { AppIcon } from "@/components/ui/app-icon";
 import { type EffectivePwa } from "@/lib/pwa-config";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { PageSkeleton } from "@/components/ui/skeleton";
-import { XIcon } from "@/components/ui/icons";
+import { LockIcon, XIcon } from "@/components/ui/icons";
 import { ActionErrorBanner } from "@/components/action-error-banner";
 import { AccessBanner } from "@/app/layout/access-banner";
 import { RouteAccessGate } from "@/app/layout/route-access-gate";
@@ -390,7 +390,7 @@ function ThemeChoice() {
   );
 }
 
-/** User avatar + dropdown (role · My HR · My security · theme · density · Sign out). */
+/** User avatar + dropdown (role · My HR · My security · theme · density · Lock · Sign out). */
 function UserMenu({
   user,
   onLogout,
@@ -405,6 +405,7 @@ function UserMenu({
   onLogout: () => void;
 }) {
   const { t } = useTranslation();
+  const { lockNow } = useAuth();
   const name = (
     user?.display_name ||
     user?.full_name ||
@@ -503,6 +504,12 @@ function UserMenu({
         </div>
         <DensityChoice />
         <DropdownSeparator />
+        {/* Stepping away from the desk: lock now rather than wait for the
+            two-hour lock. Ends the session server-side; the app stays put
+            behind the lock screen and the next unlock is one fingerprint. */}
+        <DropdownItem onSelect={() => void lockNow()}>
+          <LockIcon width={16} height={16} /> {t("shell.lockScreen")}
+        </DropdownItem>
         <div className="p-1 pt-2">
           <DropdownItem
             onSelect={onLogout}

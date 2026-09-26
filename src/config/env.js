@@ -393,6 +393,17 @@ const Schema = z.object({
   JWT_ACCESS_TTL: z.string().default("15m"),
   JWT_REFRESH_TTL: z.string().default("30d"),
   SESSION_INACTIVITY_MIN: int(30),
+  // Hard ceiling on a session's life, from sign-in, whatever the activity. The
+  // owner's rule: after two hours the screen locks and the person at it must
+  // prove who they are again (passkey, PIN or password). Enforced server-side —
+  // refresh refuses and every token's `exp` is capped at the session's end — so
+  // a client that ignores its lock timer still cannot outlive it.
+  SESSION_MAX_AGE_MIN: int(120),
+  // Adding a sign-in credential (a passkey, a Quick PIN device) is allowed
+  // without re-entering the password only this soon after signing in. Past it,
+  // the current password is required — a stolen access token must not be
+  // convertible into a PERMANENT way into the account.
+  CREDENTIAL_ENROL_WINDOW_MIN: int(15),
 
   ENCRYPTION_KEY: z
     .string()

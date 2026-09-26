@@ -54,6 +54,7 @@ export const en = {
     theme: "Theme",
     density: "Density",
     signOut: "Sign out",
+    lockScreen: "Lock screen",
     signOutTitle: "Sign out",
     signOutDescription:
       "This device remembers you. Choose how much of that it should forget.",
@@ -61,7 +62,7 @@ export const en = {
     signOutForget: "Sign out and remove this account",
     signOutStored: "Remembered on this device",
     signOutKeeps:
-      "Keeps your account on this device. The next sign-in greets you and offers your Quick PIN or passkey.",
+      "Keeps your account on this device. The next sign-in greets you and offers your passkey or Quick PIN.",
     signOutRemoves:
       "Removes your account from this device — the greeting, the Quick PIN set up here and the passkey record. The next person gets a blank sign-in form. Your account itself is untouched.",
     signOutShared:
@@ -3291,6 +3292,7 @@ export const fr: Dict = {
     theme: "Thème",
     density: "Densité",
     signOut: "Se déconnecter",
+    lockScreen: "Verrouiller l'écran",
     signOutTitle: "Se déconnecter",
     signOutDescription:
       "Cet appareil vous reconnaît. Choisissez ce qu'il doit oublier.",
@@ -3298,7 +3300,7 @@ export const fr: Dict = {
     signOutForget: "Se déconnecter et retirer ce compte",
     signOutStored: "Mémorisé sur cet appareil",
     signOutKeeps:
-      "Conserve votre compte sur cet appareil. La prochaine connexion vous salue et propose votre code PIN rapide ou votre clé d'accès.",
+      "Conserve votre compte sur cet appareil. La prochaine connexion vous salue et propose votre clé d'accès ou votre code PIN rapide.",
     signOutRemoves:
       "Retire votre compte de cet appareil — le message d'accueil, le code PIN rapide configuré ici et l'enregistrement de la clé d'accès. La personne suivante obtient un formulaire vierge. Votre compte lui-même n'est pas modifié.",
     signOutShared:

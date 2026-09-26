@@ -35,7 +35,8 @@ import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
 import { XIcon } from "@/components/ui/icons";
 import { passkeyOfferStore } from "@/lib/passkey-offer";
-import { isPasskeySupported, listPasskeys } from "@/lib/webauthn";
+import { passkeyDeviceStore } from "@/lib/passkey-devices";
+import { isPasskeySupported, platformAuthenticatorAvailable } from "@/lib/webauthn";
 
 /** Where the setting lives, spelled the way the navigation spells it. */
 export const PASSKEY_SETTING_PATH = "Configure → Security & access → My security";
@@ -58,12 +59,14 @@ export function PasskeyNudge() {
       setShow(false);
       return;
     }
-    // Settled rather than caught: a credential list we could not read is an
-    // explicit "don't know", and guessing "none" would nag someone who is
-    // already enrolled.
+    // PER DEVICE, not per account: the owner's rule is that every device has
+    // its own passkey — the laptop's on the laptop, the phone's on the phone —
+    // so a passkey on the phone is no reason to stop suggesting one here. And
+    // only where this device has an authenticator of its own to hold one.
     void (async () => {
-      const [existing] = await Promise.allSettled([listPasskeys()]);
-      if (alive) setShow(existing.status === "fulfilled" && existing.value.length === 0);
+      const [probe] = await Promise.allSettled([platformAuthenticatorAvailable()]);
+      const canHold = probe.status === "fulfilled" && probe.value === true;
+      if (alive) setShow(canHold && !passkeyDeviceStore.get(email));
     })();
     return () => {
       alive = false;
@@ -74,12 +77,12 @@ export function PasskeyNudge() {
 
   return (
     <div className="mb-4">
-      <Callout tone="info" title="Sign in with your fingerprint instead">
+      <Callout tone="info" title="Unlock with one touch instead">
         <div className="flex flex-col gap-3">
           <p>
-            This account has no passkey yet. Add one and this device signs you in with Face ID,
-            Touch ID, Windows Hello or your security key — nothing to type, so nothing to phish.
-            It lives under <strong>{PASSKEY_SETTING_PATH}</strong>.
+            This device has no passkey yet. Your session locks every two hours — set one up and
+            getting back in is a single touch of Face ID, Touch ID or Windows Hello. Nothing to
+            type, so nothing to phish. It lives under <strong>{PASSKEY_SETTING_PATH}</strong>.
           </p>
           <div className="flex flex-wrap items-center gap-2">
             <Button type="button" size="sm" onClick={() => navigate(PASSKEY_SETTING_LINK)}>

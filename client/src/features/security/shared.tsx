@@ -67,6 +67,8 @@ export type Session = {
   // renamed here 2026-08 after the "Revoke" button always stayed enabled
   // because revoked_at was declared but never emitted.
   killed_at?: string | null;
+  /** Never revoked, but past the two-hour ceiling or the idle window (/sessions/mine only). */
+  expired?: boolean | null;
 };
 // (Corporate entities for the scope form now come from `/scopes/entities` and
 // carry their own type — `ScopeEntity` in lib/scope-api. The local shape here

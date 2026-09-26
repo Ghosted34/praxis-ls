@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState, type ChangeEvent } from "react";
-import { platform, type PlatformSetting, type SettingTestResult } from "@/lib/api";
+import { platform, type PlatformSetting, type SettingTestResult, type TurnEffective } from "@/lib/api";
 import { useAsync } from "@/lib/useAsync";
 import { useToast } from "@/components/Toast";
 import { Button, Card, Empty, Field, Loading, PageHeader, Pill } from "@/components/ui";
 import { AiVendorsSection } from "@/features/AiVendors";
+import { fmtDateTime } from "@/lib/format";
 
 /**
  * Deploy-wide integration credentials (S3 / Geoapify / VAPID). Root-admin sets
@@ -29,6 +30,7 @@ export function Integrations() {
           <MailFallbackCard row={byKey["mail.fallback"]} onSaved={reload} />
           <MicrosoftGraphCard row={byKey["mail.microsoft_graph"]} onSaved={reload} />
           <BackupStorageCard row={byKey["storage.backup"]} onSaved={reload} />
+          <TurnCard />
           <SignwellCard rows={byKey} onSaved={reload} />
           <AlertsCard rows={byKey} onSaved={reload} />
         </div>
@@ -432,6 +434,177 @@ function GeoapifyCard({ row, onSaved }: { row?: PlatformSetting; onSaved: () => 
       <div className="row" style={{ justifyContent: "flex-end", marginTop: 12 }}>
         <Button variant="primary" onClick={save} loading={busy}>Save</Button>
       </div>
+    </Card>
+  );
+}
+
+
+/* Call relay (TURN) -----------------------------------------------------------
+ * The relay Smart Comms calls fall back to when two phones cannot reach each
+ * other directly — normal on mobile data behind carrier-grade NAT.
+ *
+ * WHY HALF THIS CARD IS READ-ONLY, WHICH IS THE WHOLE POINT OF IT
+ *
+ *   Thirteen TURN_* variables live on the host, and they are read by two
+ *   different programs. The API reads the host, ports and transports to build
+ *   the `iceServers` array a browser is handed — a DESCRIPTION of the relay,
+ *   which can live in a database and change between one call and the next.
+ *   coturn reads the realm, the IPs, the certificate paths and the port range
+ *   from a file it renders once at start: BINDINGS, which a console cannot
+ *   change. A control that reported success while changing nothing would be
+ *   worse than no control, so those are shown and not offered.
+ *
+ *   The two ports are the trap, and they are why the read-only half is here
+ *   rather than left out. They are coturn's listeners AND part of the URL we
+ *   advertise. Making them settable would let this card advertise
+ *   `turns:host:443` while coturn still listens on 5349 and the firewall
+ *   still drops 443 — a change that looks like it worked and silently breaks
+ *   every relayed call.
+ *
+ *   The shared secret is not here for the reason the pooler password is not:
+ *   the API signs with it and coturn verifies with it, so a value only one of
+ *   them can read puts the two out of step and every credential is refused.
+ *
+ *   Which leaves Test as the honest answer to "did my change take". It makes a
+ *   real allocation against the relay with a credential minted exactly as a
+ *   caller's browser gets one, so drift between what we advertise and what the
+ *   relay is doing surfaces here instead of as "calls do not connect".
+ * ------------------------------------------------------------------------- */
+function TurnCard() {
+  const { toast } = useToast();
+  const { data, loading, error, reload } = useAsync<TurnEffective>(() => platform.turnEffective());
+  const [form, setForm] = useState<TurnEffective["editable"] | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  // Seed the form once the server has said what is in force; a later reload
+  // must not wipe an edit in progress.
+  useEffect(() => {
+    if (data && form === null) setForm(data.editable);
+  }, [data, form]);
+
+  const set = (patch: Partial<TurnEffective["editable"]>) =>
+    setForm((f) => (f ? { ...f, ...patch } : f));
+
+  const [rotating, setRotating] = useState(false);
+  const rotate = async () => {
+    // Deliberately no confirm step: it is safe by construction — the previous
+    // secret keeps working for longer than the longest call — and a dialog
+    // would suggest otherwise.
+    setRotating(true);
+    try {
+      const out = await platform.turnRotate();
+      toast(`New secret in force. The previous one works until ${fmtDateTime(out.previous_valid_until)}.`);
+      reload();
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Rotation failed");
+    } finally {
+      setRotating(false);
+    }
+  };
+
+  const save = async () => {
+    if (!form) return;
+    setBusy(true);
+    try {
+      await platform.putSetting("network", "turn", {
+        value: {
+          host: form.host.trim(),
+          port_tcp: Number(form.port_tcp) || 3478,
+          transports: form.transports.trim(),
+          stun_urls: form.stun_urls.trim(),
+        },
+      });
+      toast("Call relay saved");
+      reload();
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (loading) return <Card title="Call relay (TURN)"><Loading /></Card>;
+  if (error || !data || !form) {
+    return <Card title="Call relay (TURN)"><Empty>Couldn’t load the relay configuration — {error?.message}</Empty></Card>;
+  }
+
+  const host = data.host_owned;
+  const onHost = (v: string | number, unset = "not set") => (v === "" || v === 0 ? unset : String(v));
+
+  return (
+    <Card title="Call relay (TURN)" actions={<TestButton section="network" keyName="turn" />}>
+      {!data.configured && (
+        <div className="row" style={{ marginBottom: 12 }}>
+          <Pill tone="warn">No relay</Pill>
+          <span className="muted" style={{ fontSize: 12 }}>
+            {host.secret_set
+              ? "No relay host is set, so calls between mobile networks may not connect."
+              : "TURN_CREDENTIAL_SECRET is not set on the host, so the API cannot sign a relay credential. Run scripts/turn-setup.sh."}
+          </span>
+        </div>
+      )}
+
+      <Field label="Relay hostname" hint="The public DNS name browsers reach the relay at, e.g. turn.example.com. No scheme or port.">
+        <input className="in" value={form.host} onChange={(e) => set({ host: e.target.value })} placeholder="turn.example.com" />
+      </Field>
+      <Field label="TCP port (advertised)" hint="What browsers are told to use for turn: over TCP. coturn serves TCP and UDP on the UDP port below, so keep these equal unless something in front maps another port.">
+        <input className="in" type="number" value={form.port_tcp} onChange={(e) => set({ port_tcp: Number(e.target.value) })} />
+      </Field>
+      <Field label="Transports" hint="udp, tcp, or udp,tcp.">
+        <input className="in" value={form.transports} onChange={(e) => set({ transports: e.target.value })} placeholder="udp,tcp" />
+      </Field>
+      <Field label="STUN servers" hint="Comma-separated, e.g. stun:turn.example.com:3478. Empty uses the relay’s own port; with no relay at all, calls fall back to Google’s public STUN and each caller’s address reaches Google.">
+        <input className="in" value={form.stun_urls} onChange={(e) => set({ stun_urls: e.target.value })} placeholder="stun:turn.example.com:3478" />
+      </Field>
+
+      <div className="row" style={{ justifyContent: "flex-end", marginTop: 12 }}>
+        <Button variant="primary" onClick={save} loading={busy}>Save</Button>
+      </div>
+
+      <h3 style={{ fontSize: 13, marginTop: 20, marginBottom: 4 }}>Shared secret</h3>
+      {data.secret.source === "vault" ? (
+        <>
+          <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
+            The API signs each call’s credential with it and the relay verifies the signature.
+            Rotating mints a new one and keeps the old one accepted for about 35 minutes, so no
+            call in progress loses its relay — and nothing restarts.
+          </p>
+          <div className="row" style={{ gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            {data.secret.secret_set
+              ? <Pill tone="ok">set{data.secret.last4 ? ` · …${data.secret.last4}` : ""}</Pill>
+              : <Pill tone="bad">not set</Pill>}
+            {data.secret.rotating && (
+              <Pill tone="warn">
+                rotating · the previous one works until {fmtDateTime(data.secret.previous_valid_until)}
+              </Pill>
+            )}
+            <Button variant="ghost" size="sm" onClick={rotate} loading={rotating}>Rotate</Button>
+          </div>
+        </>
+      ) : (
+        <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
+          {host.secret_set ? "Set on the host" : "Not set"} — and owned there. The relay holds a
+          static copy it reads at start, so this cannot be rotated from the console. To change
+          that, give the relay its Redis user and set <code>TURN_SECRET_SOURCE=vault</code>
+          (doc/TURN_PRODUCTION_SETUP.md).
+        </p>
+      )}
+
+      <h3 style={{ fontSize: 13, marginTop: 20, marginBottom: 4 }}>Set on the host</h3>
+      <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
+        coturn reads these when it starts, so they cannot be changed from here — they are
+        listeners, identity and the shared secret. Change them in <code>.env</code> on the
+        relay host (<code>scripts/turn-setup.sh</code>), then press Test above.
+      </p>
+      <table className="table">
+        <tbody>
+          <tr><td>Realm</td><td>{onHost(host.realm)}</td></tr>
+          <tr><td>UDP port (listener)</td><td>{onHost(host.port_udp)}</td></tr>
+          <tr><td>TLS port (listener)</td><td>{onHost(host.tls_port, "off")}</td></tr>
+          <tr><td>External IP</td><td>{onHost(host.external_ip, "on the interface")}</td></tr>
+          <tr><td>Listening IP</td><td>{onHost(host.listening_ip, "all addresses")}</td></tr>
+        </tbody>
+      </table>
     </Card>
   );
 }

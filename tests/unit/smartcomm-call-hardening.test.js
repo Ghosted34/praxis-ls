@@ -11,6 +11,11 @@ jest.mock("../../src/config/env", () => {
   return { ...real, config: { ...real.config } };
 });
 jest.mock("../../src/jobs/queue-producer", () => ({ enqueue: jest.fn(async () => ({})) }));
+// No vault row: these tests are about the env fallback and the URL assembly.
+// `relay()` below resolves through the REAL runtime config rather than
+// rebuilding the mapping here — a reconstruction would pass while the mapping
+// callers actually use was wrong.
+jest.mock("../../src/services/platform/settings.service", () => ({ resolve: jest.fn(async () => null) }));
 jest.mock("../../src/shared/push/push.service", () => ({
   sendToUser: jest.fn(async () => ({ sent: 1, failed: 0, total: 1 })),
 }));
@@ -42,7 +47,13 @@ function withTurn(overrides) {
     TURN_PORT_TCP: 3478, TURN_TRANSPORTS: "udp,tcp", TURN_TLS_PORT: 0,
   }, overrides);
 }
-afterEach(() => Object.assign(config, saved));
+const runtimeConfig = require("../../src/services/platform/runtime-config.service");
+/** The resolved relay for whatever `withTurn` just set (cache dropped first). */
+const relay = () => {
+  runtimeConfig.invalidate();
+  return runtimeConfig.turn();
+};
+afterEach(() => { Object.assign(config, saved); runtimeConfig.invalidate(); });
 
 /**
  * One call row plus the few statements the paths under test issue. The
@@ -228,32 +239,32 @@ describe("C12: STUN from configuration; Google only as the unconfigured fallback
   // Owner decision (2026-09-24, PR-3): keep Google's STUN while no STUN or
   // TURN is configured, so calls between networks keep working until the
   // self-hosted relay is up. It must never be used once either is set.
-  test("nothing configured: Google's STUN, as the stopgap fallback", () => {
+  test("nothing configured: Google's STUN, as the stopgap fallback", async () => {
     withTurn({});
-    const ice = turn.iceConfigFor({ token: "t", ttlSeconds: 120 });
+    const ice = turn.iceConfigFor({ token: "t", ttlSeconds: 120, relay: await relay() });
     expect(ice.iceServers).toEqual([{ urls: ["stun:stun.l.google.com:19302"] }]);
   });
 
-  test("with TURN configured, never Google", () => {
+  test("with TURN configured, never Google", async () => {
     withTurn({ TURN_HOST: "turn.example.com", TURN_CREDENTIAL_SECRET: "k" });
-    expect(JSON.stringify(turn.iceConfigFor({ token: "t", ttlSeconds: 120 }))).not.toMatch(/google/);
+    expect(JSON.stringify(turn.iceConfigFor({ token: "t", ttlSeconds: 120, relay: await relay() }))).not.toMatch(/google/);
   });
 
-  test("with TURN configured, its own port serves STUN", () => {
+  test("with TURN configured, its own port serves STUN", async () => {
     withTurn({ TURN_HOST: "turn.example.com", TURN_CREDENTIAL_SECRET: "k", TURN_PORT_UDP: 3478 });
-    const ice = turn.iceConfigFor({ token: "t", ttlSeconds: 120 });
+    const ice = turn.iceConfigFor({ token: "t", ttlSeconds: 120, relay: await relay() });
     expect(ice.iceServers[0]).toEqual({ urls: ["stun:turn.example.com:3478"] });
   });
 
-  test("STUN_URLS, when set, is used as given", () => {
+  test("STUN_URLS, when set, is used as given", async () => {
     withTurn({ STUN_URLS: "stun:a.example:3478, stun:b.example:3478" });
-    const ice = turn.iceConfigFor({ token: "t", ttlSeconds: 120 });
+    const ice = turn.iceConfigFor({ token: "t", ttlSeconds: 120, relay: await relay() });
     expect(ice.iceServers[0]).toEqual({ urls: ["stun:a.example:3478", "stun:b.example:3478"] });
   });
 
-  test("a TLS port adds a turns: URL for networks that block UDP", () => {
+  test("a TLS port adds a turns: URL for networks that block UDP", async () => {
     withTurn({ TURN_HOST: "turn.example.com", TURN_CREDENTIAL_SECRET: "k", TURN_TLS_PORT: 5349 });
-    const ice = turn.iceConfigFor({ token: "t", ttlSeconds: 120 });
+    const ice = turn.iceConfigFor({ token: "t", ttlSeconds: 120, relay: await relay() });
     expect(turnServers(ice).map((s) => s.urls[0])).toContain("turns:turn.example.com:5349?transport=tcp");
   });
 });

@@ -17,6 +17,8 @@
 
 const crypto = require("crypto");
 const dgram = require("dgram");
+const dns = require("dns").promises;
+const net = require("net");
 
 const MAGIC = 0x2112a442;
 const T = {
@@ -90,12 +92,95 @@ function errorOf(v) {
 }
 
 /**
+ * Is this address one a relay probe must never be pointed at?
+ *
+ * The relay host is operator-supplied — it comes from the platform console
+ * and from `.env` — so "press Test" is a request to send a UDP packet to a
+ * name somebody typed. Without this, that is a port scanner with a button:
+ * a root admin (or anyone who reaches that setting) could aim it at
+ * 169.254.169.254 and read whether cloud metadata answers.
+ *
+ * The ranges are the ones coturn's own entrypoint denies as peers
+ * (docker/coturn/docker-entrypoint.sh, calls audit C1). Keeping the two
+ * lists the same shape is deliberate: the relay must not reach the host's
+ * private services, and neither must the thing that tests the relay.
+ */
+function isBlockedAddress(ip) {
+  const v = String(ip || "");
+  // IPv4-mapped IPv6 (::ffff:10.0.0.1) is an IPv4 address wearing a hat.
+  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(v);
+  const addr = mapped ? mapped[1] : v;
+
+  if (net.isIPv4(addr)) {
+    const [a, b] = addr.split(".").map(Number);
+    if (a === 0 || a === 10 || a === 127) return true;               // this network, RFC 1918, loopback
+    if (a === 169 && b === 254) return true;                         // link-local, incl. cloud metadata
+    if (a === 172 && b >= 16 && b <= 31) return true;                // RFC 1918
+    if (a === 192 && b === 168) return true;                         // RFC 1918
+    if (a === 192 && b === 0) return true;                           // IETF protocol assignments
+    if (a === 100 && b >= 64 && b <= 127) return true;               // CGNAT
+    if (a === 198 && (b === 18 || b === 19)) return true;            // benchmarking
+    if (a >= 224) return true;                                       // multicast and reserved
+    return false;
+  }
+  if (net.isIPv6(addr)) {
+    const low = addr.toLowerCase();
+    if (low === "::" || low === "::1") return true;                  // unspecified, loopback
+    if (/^f[cd]/.test(low)) return true;                             // unique-local fc00::/7
+    if (/^fe[89ab]/.test(low)) return true;                          // link-local fe80::/10
+    if (/^ff/.test(low)) return true;                                // multicast
+    return false;
+  }
+  // Not an address we can reason about: refuse rather than guess.
+  return true;
+}
+
+/**
+ * Resolve `host` and refuse it unless every address it answers with is
+ * public. Every address, not the first: a name that resolves to one public
+ * and one private address is the DNS-rebinding shape, and taking the public
+ * one would send the packet to whichever the OS picked anyway.
+ */
+async function assertProbeableHost(host) {
+  const literal = net.isIP(host);
+  const addresses = literal
+    ? [host]
+    : (await dns.lookup(host, { all: true })).map((a) => a.address);
+  if (!addresses.length) throw new Error(`${host} does not resolve`);
+  const blocked = addresses.filter(isBlockedAddress);
+  if (blocked.length) {
+    throw new Error(
+      `${host} resolves to ${blocked[0]}, which is a private, loopback or link-local address — `
+      + "a relay must be reachable from the public internet, and probing an internal address is refused",
+    );
+  }
+  return addresses;
+}
+
+/**
  * Allocate a relay address on `host:port` with the long-term credential
  * `label` (coturn's "username", `<expiry>:<token>`) and `mac` (the HMAC it
  * checks) — `smartcomm.turn.service` `signedLabel`. Resolves
  * `{ ok, relayed, ms, error, code }`; never throws.
+ *
+ * `allowPrivate` exists for one caller: the integration suite, which spawns
+ * its own turnserver on this machine's LAN address. Nothing that takes a host
+ * from a person may pass it.
  */
-function allocate({ host, port, label, mac, timeoutMs = 5000 }) {
+async function allocate({ host, port, label, mac, timeoutMs = 5000, allowPrivate = false }) {
+  // The packet goes to the address we CHECKED, never to the name. Resolving
+  // once and sending to the result closes the gap between the two: a name
+  // that answers publicly here and privately a millisecond later cannot move
+  // the target, because the target is already an address. It also means the
+  // operator-supplied string never reaches the socket.
+  let target = host;
+  if (!allowPrivate) {
+    try {
+      [target] = await assertProbeableHost(host);
+    } catch (err) {
+      return { ok: false, code: "BLOCKED_ADDRESS", error: err.message, ms: 0 };
+    }
+  }
   const started = Date.now();
   return new Promise((resolve) => {
     const socket = dgram.createSocket("udp4");
@@ -116,7 +201,9 @@ function allocate({ host, port, label, mac, timeoutMs = 5000 }) {
     let key = null;
     let realm = null;
     let nonce = null;
-    const send = (buf) => socket.send(buf, port, host, (err) => err && done({ ok: false, error: err.message }));
+    // `target` is an address assertProbeableHost resolved and then refused
+    // unless EVERY answer was public — never the operator's string.
+    const send = (buf) => socket.send(buf, port, target, (err) => err && done({ ok: false, error: err.message }));
 
     socket.on("error", (err) => done({ ok: false, error: err.message }));
     socket.on("message", (raw) => {
@@ -159,4 +246,4 @@ function allocate({ host, port, label, mac, timeoutMs = 5000 }) {
   });
 }
 
-module.exports = { allocate, _test: { message, parse, attr, xorAddress } };
+module.exports = { allocate, isBlockedAddress, _test: { message, parse, attr, xorAddress, assertProbeableHost } };

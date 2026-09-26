@@ -90,12 +90,33 @@ services:
     # nothing — the exact "control that is counted but does not bite" shape this
     # remediation keeps finding. It must be set in `.env`, and REDIS_URL must
     # carry the same secret (redis://:<password>@redis:6379).
+    #
+    # The `turn` ACL user exists for the relay, and ONLY when a deployment has
+    # opted into TURN_SECRET_SOURCE=vault. The note above names the exact risk
+    # it manages: coturn runs with `network_mode: host`, which is the "one
+    # container" that would otherwise put the whole cache within reach. So it
+    # gets a user that can read `turn/*` and nothing else — no sessions, no
+    # identity or RBAC projections, no rate-limit counters. A compromised
+    # relay learns the TURN secrets it is already holding.
+    #
+    # `+@read ~turn/*` is read-only by key pattern: the API writes the set,
+    # coturn only ever reads it. An empty TURN_REDIS_PASSWORD leaves the user
+    # off rather than creating one with no password.
+    # Built with `set --`, not a string: the ACL password rule starts with `>`,
+    # which an unquoted expansion would hand to the shell as a redirection.
     command:
-      [
-        "redis-server",
-        "--requirepass",
-        "${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}",
-      ]
+      - "sh"
+      - "-c"
+      - |
+        set -e
+        set -- --requirepass "$$REDIS_PASSWORD"
+        if [ -n "$$TURN_REDIS_PASSWORD" ]; then
+          set -- "$$@" --user turn on ">$$TURN_REDIS_PASSWORD" "~turn/*" +@read
+        fi
+        exec redis-server "$$@"
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}
+      TURN_REDIS_PASSWORD: ${TURN_REDIS_PASSWORD:-}
     # OBS-L7: no logging block anywhere meant Docker's json-file driver grew
     # without bound on a single-VPS deployment whose disk is itself unmonitored
     # — a plausible CAUSE of the 02:00 outage, taking postgres, redis, api,
@@ -132,8 +153,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-    environment:
-      REDIS_PASSWORD: ${REDIS_PASSWORD}
 
   # ── coturn — STUN/TURN for inhouse 1:1 calls (Smart Comms) ──────────────
   #
@@ -171,6 +190,14 @@ services:
       # Empty values are refused by the entrypoint, not by compose: `:?` here
       # would fail every `docker compose` command on a box without TURN.
       TURN_CREDENTIAL_SECRET: ${TURN_CREDENTIAL_SECRET:-}
+      # `vault` makes coturn read its secrets from Redis instead of holding a
+      # static one, so the console can rotate without an SSH session. Needs
+      # the ACL user on the redis service above. Default `env` = unchanged.
+      TURN_SECRET_SOURCE: ${TURN_SECRET_SOURCE:-env}
+      # Loopback: coturn is host-networked, and redis publishes to 127.0.0.1.
+      TURN_REDIS_HOST: ${TURN_REDIS_HOST:-127.0.0.1}
+      TURN_REDIS_PORT: ${TURN_REDIS_PORT:-6379}
+      TURN_REDIS_PASSWORD: ${TURN_REDIS_PASSWORD:-}
       TURN_REALM: ${TURN_REALM:-}
       TURN_EXTERNAL_IP: ${TURN_EXTERNAL_IP:-}
       TURN_LISTENING_IP: ${TURN_LISTENING_IP:-}

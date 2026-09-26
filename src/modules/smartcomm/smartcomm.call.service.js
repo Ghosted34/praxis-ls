@@ -1049,7 +1049,15 @@ async function iceFor(client, call, settings = null) {
     || await repo.ensureTurnToken(client, { callId: call.call_id, token: newCallToken() });
   if (!token) throw new AppError("NOT_FOUND", "Call not found", 404);
   const { relay_only: relayOnly } = settings || await callSettings(client);
-  return iceConfigFor({ token, ttlSeconds: credentialTtl(call), relayOnly });
+  // The relay's host and ports are settable from the platform console, so they
+  // are read per call through the runtime config (cached, ~30 s) rather than
+  // captured from env at boot — a console change reaches the next call.
+  const relay = await require("../../services/platform/runtime-config.service").turn();
+  // Fetched here rather than carried on `relay`: the secret's lifetime is
+  // these two lines, and nothing that only needs to describe the relay is
+  // handed the means to impersonate it.
+  const secret = await require("./smartcomm.turn.secret.service").activeSecret();
+  return iceConfigFor({ token, ttlSeconds: credentialTtl(call), relayOnly, relay, secret });
 }
 
 /** GET /calls/:id/turn — a refreshed credential for a participant of a live
@@ -1092,18 +1100,19 @@ async function vendorConfigured(vendor) {
 async function processingDisclosure(client) {
   const pick = async (vendor, role) => ((await vendorConfigured(vendor)) ? [{ vendor, role, ...PROCESSORS[vendor] }] : []);
   const { usesGoogleStun, turnConfigured } = require("./smartcomm.turn.service");
+  const relay = await require("../../services/platform/runtime-config.service").turn();
   return {
     recording_enabled: await recordingEnabled(client),
     // Whether a relay of the company's own exists at all. Settings → Calls
     // reads it to stop "Relay-only calls" being switched on into a
     // deployment that has no relay, where the switch keeps its promise by
     // connecting no calls at all (audit C13).
-    relay_configured: turnConfigured(),
+    relay_configured: turnConfigured(relay),
     transcription: [...(await pick("groq", "first")), ...(await pick("gemini", "when_first_fails"))],
     summary: [...(await pick("gemini", "first")), ...(await pick("deepseek", "last_resort"))],
     // Connection set-up only (no audio): Google's STUN sees the callers'
     // network addresses when no relay of the company's own is configured.
-    network: usesGoogleStun() ? [{ vendor: "google_stun", role: "connection_setup", name: "Google (STUN)", country: "United States" }] : [],
+    network: usesGoogleStun(relay) ? [{ vendor: "google_stun", role: "connection_setup", name: "Google (STUN)", country: "United States" }] : [],
   };
 }
 

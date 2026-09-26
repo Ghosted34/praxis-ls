@@ -168,13 +168,90 @@ relay is off). Keep the relay host's other UDP services on loopback;
 - **Logs:** `docker compose --profile turn logs -f turn`.
 - **Health:** `docker compose ps turn`. The health check makes a real
   allocation every 5 minutes.
-- **Rotating the secret:** calls in progress lose the relay when it
-  changes, so do it at a quiet hour:
+- **Rotating the secret (on `.env`):** calls in progress lose the relay when
+  it changes, so do it at a quiet hour:
   1. set a new `TURN_CREDENTIAL_SECRET` in `.env`;
   2. `docker compose --profile turn up -d --force-recreate turn`;
   3. restart `api-standby`, `api` and `worker`.
+
+  With `TURN_SECRET_SOURCE=vault` none of that applies — press **Rotate** in
+  the console, any time of day. See below.
 - **Turning it off:** `docker compose --profile turn stop turn` and empty
   `TURN_HOST`; calls fall back to Google's STUN.
+
+## Rotating from the console
+
+By default the shared secret lives in `.env` and rotating it needs SSH, a
+container recreate and an API restart — which is why in practice it never
+happens. `TURN_SECRET_SOURCE=vault` moves it to the platform console, where
+**Integrations → Call relay (TURN) → Rotate** does it in one click with no
+restart and no dropped call.
+
+### How it works
+
+coturn can read its secrets from Redis, and `turn/realm/<realm>/secret` is a
+**set**: every member is a valid secret (`turndb/testredisdbsetup.sh`;
+README.turnserver — "Multiple shared secrets can be used"). A rotation
+therefore does not have to be an instant switch:
+
+1. the API mints a new secret and writes BOTH into the set;
+2. it starts signing with the new one straight away;
+3. a credential minted a second before the switch still verifies, because the
+   old secret is still in the set;
+4. about 35 minutes later — past the 30-minute call cap plus the credential's
+   own margin — a background job drops the old secret from the set and from
+   the vault.
+
+Redis is written **before** the vault, deliberately. The other order would,
+on a failed Redis write, leave the API signing with a secret coturn has never
+heard of and every call failing; this way a failure leaves the old secret
+working and the rotation simply has not happened.
+
+### Turning it on
+
+1. **Pick a password for the relay's Redis user** and put it in `.env` as
+   `TURN_REDIS_PASSWORD`. It is NOT `REDIS_PASSWORD` — see the warning below.
+2. **Recreate Redis** so the ACL user is created:
+   `docker compose up -d --force-recreate redis`.
+3. **Set `TURN_SECRET_SOURCE=vault`** in `.env`.
+4. **Recreate the relay and restart the API:**
+
+   ```
+   docker compose --profile turn up -d --force-recreate turn
+   docker compose up -d --no-deps --wait api-standby api
+   docker compose up -d --no-deps worker
+   ```
+
+5. **Press Test** in the console. The first sync publishes the existing
+   `TURN_CREDENTIAL_SECRET` into the set, so nothing changes hands until you
+   rotate.
+6. **Press Rotate**, then Test again. Place a call.
+
+To go back: set `TURN_SECRET_SOURCE=env` and recreate the relay. The static
+secret in `.env` takes over — so keep it current, or rotate once more on
+`env` afterwards.
+
+### The security boundary this moves, plainly
+
+`docker-compose.yml`'s Redis block warns that the cache's isolation is "a
+single line of docker-compose away from not being one: publish the port, add
+a second host, run one container with `network_mode: host`". **The relay is
+that container**, so giving it a Redis connection is exactly the move that
+note is about.
+
+It is therefore given a dedicated ACL user — `--user turn on >… ~turn/*
++@read` — that can read `turn/*` and nothing else: no sessions, no identity
+or RBAC projections, no rate-limit counters, and no writes anywhere. A
+compromised relay learns the TURN secrets it is already holding. **Never
+give it `REDIS_PASSWORD`**, which is the `default` user and has the lot.
+
+Two other costs worth knowing before you turn it on:
+
+- the platform database becomes part of the relay's story. Losing it loses
+  the ability to rotate, and — once `.env`'s copy has drifted — the relay
+  itself. On `env` the two fail independently.
+- the relay now needs Redis to start serving credentials. If Redis is down
+  when coturn starts, it has no secrets and refuses every call.
 
 ## TLS on 443
 
@@ -279,23 +356,32 @@ do not connect. That is the promise the switch makes.
 - **One shared secret, two readers.** The API signs with
   `TURN_CREDENTIAL_SECRET` and coturn verifies with the same value, so both
   must read one source. Today that is the host's `.env`.
-- **Moving it to the admin console (proposed for a later PR).** Storing the
-  TURN host and secret encrypted in the platform console, like the AI vendor
-  credentials, is sound for the API side. But coturn cannot read the
-  console, so the secret would then live in two places, and they would drift.
-  The way to do it properly:
-  - the console stores the secret, encrypted, and the API reads it from
-    there;
-  - coturn reads its secrets from Redis (`redis-userdb` with the
-    `turn/secret` keys, which coturn supports), written by the API when the
-    console setting changes;
-  - rotation keeps two secrets valid for one call's length, so a change
-    never drops a call in progress;
-  - the host `.env` then keeps only the relay's own settings (realm, ports,
-    TLS).
+- **The admin console holds the API side (done).** Platform console →
+  Integrations → **Call relay (TURN)** sets the relay hostname, the advertised
+  TCP port, the transports and the STUN list. They are stored in the platform
+  settings vault and read per call through `runtime-config.service.turn()`: a
+  saved value wins over `.env`, an empty one falls back to it, and a vault
+  that cannot be read falls back to it too — the platform database is not on
+  the call path and must not become so. The same card SHOWS the host-owned
+  half read-only (realm, listener ports, external and listening IP, whether a
+  secret is set), so the whole relay is visible without an SSH session, and
+  its **Test** button makes a real allocation so drift between what we
+  advertise and what the relay is doing surfaces there.
 
-  That is a separate, reviewable change (platform console, Redis ACL for
-  coturn, rotation). Until it lands, `.env` is the single source.
+  What stays in `.env`, and why that is not an omission: the realm, the IPs,
+  the certificate paths, the port range and the quotas are coturn's, read from
+  the file the entrypoint renders when the container starts. The **listener
+  ports** (`TURN_PORT_UDP`, `TURN_TLS_PORT`) stay too, although the API reads
+  them as well — a settable copy would let the console advertise
+  `turns:host:443` while coturn still listens on 5349 and the firewall still
+  drops 443, which looks like it worked and silently breaks every relayed
+  call. Changing a listener is a host operation because it is a network
+  change: the daemon has to re-bind, and the port has to be opened in the
+  cloud provider's firewall, which no application code can do.
+- **The SECRET can move too, opt-in (see [Rotating from the console]
+  (#rotating-from-the-console)).** `TURN_SECRET_SOURCE=vault` makes the
+  console own it and lets you rotate it without an SSH session. Default `env`,
+  so a deployment that has not set it up is unchanged.
 - **Same VPS as the app.** Supported: the relay refuses private, loopback,
   link-local and Docker-bridge peers, has no TCP relay, and has quotas, so a
   credential cannot reach Postgres, Redis or cloud metadata. A separate

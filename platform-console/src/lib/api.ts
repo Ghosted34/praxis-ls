@@ -189,6 +189,31 @@ export async function fetchSupportAttachmentUrl(id: string, signal?: AbortSignal
 }
 
 // Endpoint helpers ----------------------------------------------------------
+/** GET /settings/network/turn/effective. */
+export type TurnEffective = {
+  editable: { host: string; port_tcp: number; transports: string; stun_urls: string };
+  host_owned: {
+    realm: string;
+    external_ip: string;
+    listening_ip: string;
+    port_udp: number;
+    tls_port: number;
+    secret_set: boolean;
+  };
+  configured: boolean;
+  source: "vault" | "env";
+  /** The shared secret's shape — never the secret. */
+  secret: {
+    /** `vault` means the console owns it and can rotate it. */
+    source: "vault" | "env";
+    secret_set: boolean;
+    /** True while a previous secret is still being accepted by the relay. */
+    rotating: boolean;
+    previous_valid_until: string | null;
+    last4: string | null;
+  };
+};
+
 export const platform = {
   login: (email: string, password: string) =>
     api<LoginResult>("/auth/login", { method: "POST", body: { email, password } }),
@@ -302,6 +327,17 @@ export const platform = {
   // Deploy-wide integrations (S3 / Geoapify / VAPID). Secrets are write-only:
   // reads return presence + last4, writes send { value?, secret? }.
   settings: () => api<PlatformSetting[]>("/settings"),
+  /**
+   * The call relay as it actually stands: the half the API reads (settable
+   * here) and the half coturn was started with (read-only). Both together,
+   * because the point of the panel is to see the whole relay without SSH.
+   */
+  turnEffective: () => api<TurnEffective>("/settings/network/turn/effective"),
+  /** Mint a new shared secret. The old one keeps working for one call's
+   *  length, so nothing in progress loses its relay. */
+  turnRotate: () => api<{ rotated: boolean; previous_valid_until: string }>(
+    "/settings/network/turn/rotate", { method: "POST" },
+  ),
   putSetting: (section: string, key: string, body: { value?: Record<string, unknown>; secret?: string }) =>
     api<PlatformSetting>(`/settings/${encodeURIComponent(section)}/${encodeURIComponent(key)}`, { method: "PUT", body }),
   testSetting: (section: string, key: string) =>

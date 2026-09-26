@@ -94,13 +94,22 @@ async function scheduleCheck(getQueue) {
 }
 
 async function relayCheck() {
-  if (!config.TURN_HOST || !config.TURN_CREDENTIAL_SECRET) {
-    return { ok: false, error: "no relay configured (TURN_HOST / TURN_CREDENTIAL_SECRET): calls between mobile networks may not connect" };
+  // The RESOLVED config, not env: the relay's host is settable from the
+  // console, and a canary that checked env would pass against a relay no call
+  // is being sent to (or fail against one that works).
+  const relay = await require("./runtime-config.service").turn();
+  if (!relay.configured) {
+    return { ok: false, error: "no relay configured (host / TURN_CREDENTIAL_SECRET): calls between mobile networks may not connect" };
   }
   const turn = require("../../modules/smartcomm/smartcomm.turn.service");
-  const { label, mac } = turn.signedLabel({ id: `canary-${crypto.randomBytes(9).toString("base64url")}`, ttlSeconds: 60 });
+  // Signed with the secret in force (vault or `.env`), or a deployment that
+  // has rotated from the console would fail its own canary.
+  const secret = await require("../../modules/smartcomm/smartcomm.turn.secret.service").activeSecret();
+  const { label, mac } = turn.signedLabel({
+    id: `canary-${crypto.randomBytes(9).toString("base64url")}`, ttlSeconds: 60, secret,
+  });
   const out = await require("./turn-probe").allocate({
-    host: config.TURN_HOST, port: Number(config.TURN_PORT_UDP) || 3478, label, mac,
+    host: relay.host, port: relay.portUdp, label, mac,
   });
   return out.ok
     ? { ok: true, detail: { relayed: out.relayed } }

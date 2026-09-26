@@ -195,4 +195,97 @@ async function opsTuning() {
   };
 }
 
-module.exports = { backupStorage, opsTuning, invalidate, readVault, TTL_MS };
+/**
+ * The call relay, as the API describes it to browsers.
+ *
+ * ── WHY ONLY HALF OF THE TURN SETTINGS ARE HERE ────────────────────────────
+ *
+ * `.env` holds thirteen TURN_* variables and this reads five of them. The
+ * split is not arbitrary and it is not a migration half-done: the two halves
+ * are read by two different programs.
+ *
+ *   THE API reads host, ports, transports and the STUN list to build the
+ *   `iceServers` array a browser is handed. That array is a DESCRIPTION of
+ *   the relay. A description can live in a database and change between one
+ *   call and the next, because nothing is bound to it.
+ *
+ *   COTURN reads the realm, the listening and external IPs, the certificate
+ *   paths, the port range and the quotas — from a file it renders once at
+ *   start (docker/coturn/docker-entrypoint.sh). Those are BINDINGS and
+ *   identity. A console cannot change what a daemon listens on, and a
+ *   setting that reports success while changing nothing is worse than no
+ *   setting at all (the rule at the top of this file, and the reason the job
+ *   schedules are excluded too).
+ *
+ * TWO OF THEM ARE READ BY BOTH, and that is the trap. `TURN_PORT_UDP` and
+ * `TURN_TLS_PORT` are coturn's listener AND part of the URL we advertise.
+ * They stay env-only here ON PURPOSE: making them settable would let the
+ * console advertise `turns:host:443` while coturn still listens on 5349 and
+ * the firewall still drops 443 — a change that looks like it worked and
+ * breaks every relayed call. The console shows them read-only instead, and
+ * the Test button proves what the relay is actually doing.
+ *
+ * `TURN_CREDENTIAL_SECRET` is env-only for the same reason the pooler
+ * password is: the API signs with it and coturn verifies with it, so a value
+ * only one of them can see puts the two out of step and every credential is
+ * refused. Moving it needs coturn reading its secret from Redis and an
+ * overlapping rotation, which is its own change.
+ */
+async function turn() {
+  const row = await readVault("network", "turn");
+  const v = (row && row.value) || {};
+
+  const host = String(pick(v.host, config.TURN_HOST, "") || "").trim();
+  // The VALUE is deliberately not a field on the object below. This is a
+  // description of the relay — passed around, returned to callers, shaped
+  // into a console response — and the one value that must not leak has no
+  // business riding along on it. Whoever signs fetches it at the point of
+  // signing (smartcomm.turn.secret.service.activeSecret).
+  //
+  // Its PRESENCE still has to follow TURN_SECRET_SOURCE: on `vault` a
+  // deployment can have no TURN_CREDENTIAL_SECRET at all and be perfectly
+  // configured, so asking env alone here would report no relay and the
+  // console would show a working deployment as broken.
+  const secretSet = Boolean(
+    await require("../../modules/smartcomm/smartcomm.turn.secret.service").activeSecret(),
+  );
+  return {
+    // Settable from the console: the API is their only reader.
+    host,
+    portTcp: num(pick(v.port_tcp, config.TURN_PORT_TCP), 3478),
+    transports: String(pick(v.transports, config.TURN_TRANSPORTS, "udp,tcp")),
+    stunUrls: String(pick(v.stun_urls, config.STUN_URLS, "") || ""),
+
+    // Host-owned. Read here because the API needs them to build a URL, NOT
+    // settable — see the note above.
+    portUdp: num(config.TURN_PORT_UDP, 3478),
+    tlsPort: num(config.TURN_TLS_PORT, 0),
+    secretSource: String(config.TURN_SECRET_SOURCE || "env"),
+
+    /** A relay exists only when both halves of the credential do: somewhere
+     *  to reach, and something to sign with. The secret itself stays out of
+     *  this object — see above. */
+    secretSet,
+    configured: Boolean(host && secretSet),
+    source: row && row.value && Object.keys(row.value).length ? "vault" : "env",
+  };
+}
+
+/**
+ * What coturn is configured with, for the console to DISPLAY. Never settable
+ * from there, so it is read straight from env with no vault layer — showing a
+ * vault value for something coturn cannot read would be a lie with a text box
+ * next to it.
+ */
+function turnHostOwned() {
+  return {
+    realm: String(config.TURN_REALM || ""),
+    external_ip: String(config.TURN_EXTERNAL_IP || ""),
+    listening_ip: String(config.TURN_LISTENING_IP || ""),
+    port_udp: num(config.TURN_PORT_UDP, 3478),
+    tls_port: num(config.TURN_TLS_PORT, 0),
+    secret_set: Boolean(config.TURN_CREDENTIAL_SECRET),
+  };
+}
+
+module.exports = { backupStorage, opsTuning, turn, turnHostOwned, invalidate, readVault, TTL_MS };

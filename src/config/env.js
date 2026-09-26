@@ -359,6 +359,22 @@ const Schema = z.object({
   TURN_PORT_UDP: int(3478),
   TURN_TRANSPORTS: z.string().default("udp,tcp"),
   TURN_CREDENTIAL_SECRET: z.string().default(""),
+  /**
+   * Where the shared secret comes from: `env` (this variable, the default) or
+   * `vault` (the platform console, with coturn reading the same value from
+   * Redis — smartcomm.turn.secret.service.js).
+   *
+   * Default `env` on purpose: `vault` only works once coturn has been given
+   * its Redis user, which is a host change. A deployment that has not made it
+   * must keep working exactly as before, so this opts in rather than out.
+   */
+  TURN_SECRET_SOURCE: z.enum(["env", "vault"]).default("env"),
+  /** Redis for coturn, when TURN_SECRET_SOURCE=vault. Host-networked, so
+   *  loopback reaches the same Redis the API uses. */
+  TURN_REDIS_HOST: z.string().default(""),
+  TURN_REDIS_PORT: int(6379),
+  TURN_REDIS_USER: z.string().default("turn"),
+  TURN_REDIS_PASSWORD: z.string().default(""),
   TURN_REALM: z.string().default(""),
   TURN_EXTERNAL_IP: z.string().default(""),
   TURN_LISTENING_IP: z.string().default(""),

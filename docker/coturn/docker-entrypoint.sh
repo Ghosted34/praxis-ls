@@ -41,7 +41,25 @@
 # that accepts no credential, or one keyed on an empty secret.
 set -eu
 
-if [ -z "${TURN_CREDENTIAL_SECRET:-}" ] || [ "${TURN_CREDENTIAL_SECRET}" = "__set_me__" ]; then
+# Where the shared secret comes from. `env` (the default) keeps the secret in
+# this file, as before. `vault` means the API owns it and writes it into
+# Redis, where coturn reads it — the only way both programs can see one value
+# that a person can change without an SSH session.
+#
+#   turn/realm/<realm>/secret   a SET; EVERY member is a valid secret.
+#
+# That set is also how rotation avoids dropping a call: during a rotation it
+# holds the new secret and the old one, so a credential minted a second before
+# the switch still verifies. See smartcomm.turn.secret.service.js.
+TURN_SECRET_SOURCE="${TURN_SECRET_SOURCE:-env}"
+
+if [ "$TURN_SECRET_SOURCE" = "vault" ]; then
+  if [ -z "${TURN_REDIS_HOST:-}" ] || [ -z "${TURN_REDIS_PASSWORD:-}" ]; then
+    echo "FATAL: TURN_SECRET_SOURCE=vault needs TURN_REDIS_HOST and TURN_REDIS_PASSWORD." >&2
+    echo "       coturn reads its secrets from turn/realm/<realm>/secret in Redis." >&2
+    exit 1
+  fi
+elif [ -z "${TURN_CREDENTIAL_SECRET:-}" ] || [ "${TURN_CREDENTIAL_SECRET}" = "__set_me__" ]; then
   echo "FATAL: TURN_CREDENTIAL_SECRET is unset. The API signs relay credentials" >&2
   echo "       with it; coturn must verify them with the same value." >&2
   exit 1
@@ -92,7 +110,20 @@ umask 077
   echo "listening-port=$TURN_PORT_UDP"
   echo "realm=$TURN_REALM"
   echo "use-auth-secret"
-  echo "static-auth-secret=$TURN_CREDENTIAL_SECRET"
+  if [ "$TURN_SECRET_SOURCE" = "vault" ]; then
+    # No static-auth-secret line: the secrets come from the set in Redis, and
+    # a static one here would ALSO stay valid forever, quietly defeating the
+    # rotation this mode exists for.
+    #
+    # The connection is a read-only ACL user scoped to `turn/*`
+    # (docker-compose.yml). coturn runs with network_mode: host, which is the
+    # case that compose's own Redis note warns about — so it is given a user
+    # that can read the TURN secrets it already holds and nothing else: no
+    # sessions, no RBAC projections, no rate-limit counters.
+    echo "redis-userdb=\"ip=$TURN_REDIS_HOST port=${TURN_REDIS_PORT:-6379} dbname=0 password=$TURN_REDIS_PASSWORD connect_timeout=30\""
+  else
+    echo "static-auth-secret=$TURN_CREDENTIAL_SECRET"
+  fi
   echo "fingerprint"
   echo "no-multicast-peers"
   echo "no-tcp-relay"

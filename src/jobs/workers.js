@@ -59,6 +59,7 @@ const PROCESSORS = [
   { name: "comms-diagnostics", concurrency: 2, handler: require("./handlers/comms-diagnostics") },
   // The daily platform call check (PR-7, O5): one run a day, console only.
   { name: "comms-call-canary", concurrency: 1, handler: require("./handlers/comms-call-canary") },
+  { name: "turn-secret-sync", concurrency: 1, handler: require("./handlers/turn-secret-sync") },
   /**
    * Smart Comms link previews. Concurrency 2 rather than 1: the work is one
    * outbound HTTP request to a third party that may take seconds, and two
@@ -415,6 +416,18 @@ async function scheduleRecurring() {
       repeat: canary, attempts: 1, removeOnComplete: 30, removeOnFail: 30,
     });
   }
+  // The relay's shared secret, when the console owns it. Every 10 minutes:
+  // the rotation overlap is 35, so a retired secret is dropped from coturn
+  // well inside the window it was promised, and a set that drifted for any
+  // other reason repairs itself without anyone noticing. A no-op on a
+  // deployment whose secret still lives in `.env`.
+  {
+    const repeat = { every: 10 * 60 * 1000 };
+    await require("./queue-producer").enqueue("turn-secret-sync", "prune", {}, {
+      repeat, attempts: 2, removeOnComplete: 20, removeOnFail: 20,
+    });
+  }
+
   const every = config.ORCHESTRATION_DISPATCH_INTERVAL_MS;
   if (!every || every <= 0) {
     logger.info("orchestration scheduler disabled (ORCHESTRATION_DISPATCH_INTERVAL_MS=0)");

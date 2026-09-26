@@ -310,6 +310,56 @@ const settingPut = asyncHandler(async (req, res) => {
 const settingTest = asyncHandler(async (req, res) =>
   res.json({ data: await platformSettings.test(req.params.section, req.params.key) }),
 );
+/**
+ * The relay as it actually stands: what the API advertises, and what coturn
+ * was started with.
+ *
+ * Both halves in one response on purpose. The console's job here is not only
+ * to edit the settable half — it is to show an operator the whole relay
+ * WITHOUT an SSH session, including the parts they cannot change from there.
+ * Splitting it would leave the read-only half invisible, which is how a
+ * deployment ends up advertising a TLS port nothing is listening on.
+ *
+ * No secret, in either half: `secret_set` says whether the host has one.
+ */
+const turnEffective = asyncHandler(async (_req, res) => {
+  const runtime = require("../../services/platform/runtime-config.service");
+  const relay = await runtime.turn();
+  res.json({
+    data: {
+      // Settable here — the API is their only reader.
+      editable: {
+        host: relay.host,
+        port_tcp: relay.portTcp,
+        transports: relay.transports,
+        stun_urls: relay.stunUrls,
+      },
+      // Read-only: coturn reads these from the host at start, so a value set
+      // here would report success and change nothing.
+      host_owned: runtime.turnHostOwned(),
+      configured: relay.configured,
+      source: relay.source,
+      // Where the shared secret comes from, and whether a rotation's overlap
+      // is still open. Never the secret itself.
+      secret: await require("../../modules/smartcomm/smartcomm.turn.secret.service").status(),
+    },
+  });
+});
+
+/**
+ * Rotate the relay's shared secret.
+ *
+ * The old secret stays valid for one call's length, so nothing in progress
+ * loses its relay — see smartcomm.turn.secret.service.js for why the Redis
+ * write happens before the vault write. Refused with 409 unless the
+ * deployment has opted in, because in `env` mode coturn holds a static
+ * secret this cannot reach and rotating would break every call.
+ */
+const turnRotate = asyncHandler(async (req, res) => {
+  const secrets = require("../../modules/smartcomm/smartcomm.turn.secret.service");
+  res.json({ data: await secrets.rotate({ actor: actor(req) }) });
+});
+
 const vapidGenerate = asyncHandler(async (req, res) =>
   res.json({ data: await platformSettings.generateVapid({ subject: req.body.subject, actor: actor(req) }) }),
 );
@@ -381,6 +431,8 @@ module.exports = {
   settingGet,
   settingPut,
   settingTest,
+  turnEffective,
+  turnRotate,
   vapidGenerate,
   aiVendorsList,
   aiVendorSet,

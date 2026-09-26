@@ -45,15 +45,15 @@ maybe("the TURN probe against a real relay", () => {
   afterAll(() => relay && relay.kill());
 
   test("a credential signed with the relay's secret allocates, and is released", async () => {
-    const out = await allocate({ host: IP, port: PORT, ...signed(RELAY_SHARED) });
+    const out = await allocate({ host: IP, port: PORT, allowPrivate: true, ...signed(RELAY_SHARED) });
     expect(out).toMatchObject({ ok: true, relayed: expect.stringMatching(/^\d+\.\d+\.\d+\.\d+:\d+$/) });
   });
 
   test("a wrong secret is refused with 401", async () => {
-    expect(await allocate({ host: IP, port: PORT, ...signed("not-the-one-the-relay-has") })).toMatchObject({ ok: false, code: 401 });
+    expect(await allocate({ host: IP, port: PORT, allowPrivate: true, ...signed("not-the-one-the-relay-has") })).toMatchObject({ ok: false, code: 401 });
   });
 
   test("a relay that is not there times out", async () => {
-    expect(await allocate({ host: IP, port: PORT + 3, ...signed(RELAY_SHARED), timeoutMs: 1000 })).toMatchObject({ ok: false });
+    expect(await allocate({ host: IP, port: PORT + 3, allowPrivate: true, ...signed(RELAY_SHARED), timeoutMs: 1000 })).toMatchObject({ ok: false });
   });
 });

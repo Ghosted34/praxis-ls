@@ -3,6 +3,7 @@
  * this module lives here (CONVENTIONS: the repo is the only place with SQL).
  */
 "use strict";
+const { clientHeadingJoin, CLIENT_HEADING_COLUMNS } = require("../../master/financial_dictionary/client-heading.sql");
 const { insertOne, getById, page, TOTAL_COL, splitTotal, updateOne } = require("../../../shared/db/query-helpers");
 
 const insertInvoice = (client, data) => insertOne(client, "invoice", data);
@@ -25,8 +26,12 @@ function insertLine(client, data) { return insertOne(client, "invoice_line", dat
 // since-deactivated type must still render on a posted invoice.
 const LINE_SELECT =
   "SELECT il.*, dr.code AS container_type_code, dr.name_en AS container_type_en, " +
-  "dr.name_fr AS container_type_fr, dr.extra AS container_type_extra " +
-  "FROM invoice_line il LEFT JOIN dictionary_ref dr ON dr.ref_id = il.container_type_ref_id ";
+  "dr.name_fr AS container_type_fr, dr.extra AS container_type_extra, " +
+  // 14130: the catalogue's family beside the line's own override.
+  CLIENT_HEADING_COLUMNS + " " +
+  "FROM invoice_line il LEFT JOIN dictionary_ref dr ON dr.ref_id = il.container_type_ref_id " +
+  "LEFT JOIN dictionary_item di ON di.dictionary_item_id = il.dictionary_item_id " +
+  clientHeadingJoin("di") + " ";
 async function listLines(client, invoiceId) {
   const { rows } = await client.query(LINE_SELECT + "WHERE il.invoice_id = $1 ORDER BY il.line_no", [invoiceId]);
   return rows;

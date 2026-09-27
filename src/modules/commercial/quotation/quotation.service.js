@@ -27,7 +27,7 @@ async function replaceLines(client, id, lines) {
     /// eslint-disable-next-line no-await-in-loop
     // container_type_ref_id (0663): which box the line was priced for, carried
     // through from the costing sheet so the quote says what it is quoting.
-    await repo.insertLine(client, { quotation_id: id, dictionary_item_id: l.dictionary_item_id || null, label: l.label || "Line", qty: l.qty || 1, unit_price: l.unit_price || 0, is_disbursement: l.is_disbursement === true, tax_code_id: l.tax_code_id || null, container_type_ref_id: l.container_type_ref_id || null, line_no: i + 1 });
+    await repo.insertLine(client, { quotation_id: id, dictionary_item_id: l.dictionary_item_id || null, label: l.label || "Line", qty: l.qty || 1, unit_price: l.unit_price || 0, is_disbursement: l.is_disbursement === true, tax_code_id: l.tax_code_id || null, container_type_ref_id: l.container_type_ref_id || null, client_heading: l.client_heading && String(l.client_heading).trim() ? String(l.client_heading).trim() : null, line_no: i + 1 });
   }
 }
 async function recompute(client, id) {
@@ -120,6 +120,8 @@ async function accept(client, { id, convert = false, actor = {} }) {
         tax_code_id: l.is_disbursement === true ? null : l.tax_code_id || null,
         label: l.label,
         container_type_ref_id: l.container_type_ref_id || null,
+        // 14130: the invoice prints the same families the client accepted.
+        client_heading: l.client_heading || null,
       }));
       const inv = await finalInvoice.createDraft(client, { entityId: before.entity_id, clientId: before.client_id, dossierId: before.dossier_id, lines: econLines, actor });
       invoiceId = inv.invoice_id;

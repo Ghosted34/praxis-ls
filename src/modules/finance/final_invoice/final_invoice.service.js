@@ -181,6 +181,8 @@ async function replaceLines(client, invoiceId, lines) {
       // Which box this charge was for (0663). NULL for anything with no
       // equipment dimension, and for every line invoiced before it shipped.
       container_type_ref_id: ln.container_type_ref_id || null,
+      // 14130: the family this line prints under; null = the catalogue's.
+      client_heading: ln.client_heading && String(ln.client_heading).trim() ? String(ln.client_heading).trim() : null,
       line_ht: round2(qty * unitPrice), line_no: i + 1,
     });
   }

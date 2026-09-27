@@ -9,6 +9,7 @@
 "use strict";
 
 const k = require("./kit");
+const { groupLines } = require("./client-headings");
 
 const has = (v) => v !== undefined && v !== null;
 
@@ -52,7 +53,9 @@ function lineDoc(opts) {
         { label: { fr: "Émetteur", en: "From" }, name: entity.legal_name, lines: [entity.address, entity.niu && `NIU ${entity.niu}`] },
         { label: opts.partyLabel || { fr: "Client", en: "Bill to" }, name: data.party && data.party.name, lines: (data.party && data.party.lines) || [] },
       ], cfg),
-      k.lineTable(LINE_COLS, fmtLines(data.lines, ccy, cfg), cfg),
+      // `grouped`: one printed line per client heading × nature (14130). The
+      // data — and the signature over it — stays the detailed lines.
+      k.lineTable(LINE_COLS, fmtLines(opts.grouped ? groupLines(data.lines, cfg.language, data.client_headings) : data.lines, ccy, cfg), cfg),
       k.totals(opts.totalsRows(data, ccy, cfg), cfg),
       words,
       cfg.show && cfg.show.notes && data.notes ? k.section({ fr: "Notes", en: "Notes" }, `<div class="box">${k.esc(data.notes).replace(/\n/g, "<br>")}</div>`, cfg) : "",
@@ -67,10 +70,15 @@ function lineDoc(opts) {
 
 /* ── sample data (shared shape) ──────────────────────────────────────────── */
 const sampleParty = { name: "CIMENCAM SA", lines: ["Douala, Cameroun", "NIU P012345678", "contact@cimencam.cm"] };
+// Each carries its client heading (14130), so the grouped invoice and quotation
+// previews show families rather than one "Other Charges" line.
+const FREIGHT = { client_heading_code: "FREIGHT_CARRIER", client_heading_fr: "Fret et Frais du Transporteur", client_heading_en: "Freight & Carrier Charges", client_heading_sort: 30 };
+const PORT = { client_heading_code: "PORT_TERMINAL", client_heading_fr: "Frais Portuaires et de Terminal", client_heading_en: "Port & Terminal Charges", client_heading_sort: 40 };
+const CUSTOMS = { client_heading_code: "CUSTOMS_FORMALITIES", client_heading_fr: "Formalités Douanières", client_heading_en: "Customs Formalities", client_heading_sort: 10 };
 const sampleLines = [
-  { label: "Transit maritime — conteneur 40'", qty: 2, unit: 450000, tax: 19.25, amount: 900000 },
-  { label: "Manutention portuaire", qty: 1, unit: 180000, tax: 19.25, amount: 180000 },
-  { label: "Débours douane (avance)", qty: 1, unit: 320000, tax: 0, amount: 320000 },
+  { label: "Transit maritime — conteneur 40'", qty: 2, unit: 450000, tax: 19.25, amount: 900000, ...FREIGHT },
+  { label: "Manutention portuaire", qty: 1, unit: 180000, tax: 19.25, amount: 180000, ...PORT },
+  { label: "Débours douane (avance)", qty: 1, unit: 320000, tax: 0, amount: 320000, is_disbursement: true, ...CUSTOMS },
 ];
 const sampleTotals = { service_ht: 1080000, disbursement_total: 320000, vat_total: 207900, total_ttc: 1607900 };
 
@@ -82,6 +90,9 @@ const TEMPLATES = {
     module: "finance/final_invoice",
     fields: ["payment terms", "PAID watermark"],
     build: lineDoc({
+      // Printed by client heading × nature (14130, meeting 5): the client reads
+      // "Customs Formalities", not the six lines the costing breaks it into.
+      grouped: true,
       title: { fr: "Facture", en: "Invoice" },
       meta: (d) => [[{ fr: "Date", en: "Date" }, k.dateFmt(d.date)], [{ fr: "Échéance", en: "Due" }, k.dateFmt(d.due)], [{ fr: "Dossier", en: "File" }, d.dossier_ref]],
       totalsRows: (d, ccy, cfg) => [
@@ -121,6 +132,9 @@ const TEMPLATES = {
     module: "commercial/quotation",
     fields: ["accept / e-sign CTA"],
     build: lineDoc({
+      // Printed by client heading × nature (14130, meeting 5): the client reads
+      // "Customs Formalities", not the six lines the costing breaks it into.
+      grouped: true,
       title: { fr: "Devis", en: "Quotation" },
       partyLabel: { fr: "À l'attention de", en: "Prepared for" },
       meta: (d) => [[{ fr: "Date", en: "Date" }, k.dateFmt(d.date)], [{ fr: "Valable jusqu'au", en: "Valid until" }, k.dateFmt(d.valid_until)]],

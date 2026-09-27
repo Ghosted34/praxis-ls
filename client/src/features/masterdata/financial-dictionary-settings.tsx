@@ -30,6 +30,9 @@ const KINDS: { kind: api.DictRefKind; label: string }[] = [
   // The types a person picks when attaching a file (0669). Also addable inline
   // from the upload picker itself — this tab is for retiring and renaming.
   { kind: "DOCUMENT_TYPE", label: "Document types" },
+  // 14130 — the families a quotation and an invoice print lines under
+  // ("Customs Formalities"). Each dictionary line picks its default one.
+  { kind: "CLIENT_HEADING", label: "Client headings" },
 ];
 
 /** Seeded families, so a first container type on a fresh tenant still has a

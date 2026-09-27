@@ -31,6 +31,9 @@ const create = z.object({
   is_billable: z.boolean().optional(),
   default_price: z.number().nonnegative().nullish(),
   currency: z.string().length(3).optional(),
+  // The family a client document prints this line under (14130). Validated
+  // against the CLIENT_HEADING registry by the service.
+  client_heading_ref_id: z.string().uuid().nullish(),
   shipping_line: z.string().nullish(),
   provider_kind: z.enum(["SHIPPING_LINE", "CUSTOMS_AUTHORITY", "PORT_TERMINAL", "OTHER"]).nullish(),
   proof_source: z.string().nullish(),
@@ -56,6 +59,8 @@ const create = z.object({
 const REF_KINDS = [
   "SUBCATEGORY", "UNIT", "PROOF_SOURCE", "PROVIDER_KIND",
   "CONTAINER_TYPE", "LOAD_MODE", "DOCUMENT_TYPE",
+  // 14130: the families a client document prints lines under.
+  "CLIENT_HEADING",
 ];
 
 // A container type whose `extra` is empty is worse than no container type at
@@ -119,6 +124,8 @@ const searchQuery = z.object({
 const spendQuery = z.object({
   from: day.optional(),
   to: day.optional(),
+  // One operations file only (meeting 5). Absent = every file.
+  dossier_id: z.string().uuid().optional(),
   include_documents: z.enum(["true", "false"]).optional(),
 });
 

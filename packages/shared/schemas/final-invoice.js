@@ -50,6 +50,9 @@ const line = z
     // Which container type the charge was priced for (0663). NULL/absent is the
     // normal case — most of the catalogue has no equipment dimension at all.
     container_type_ref_id: uuid.nullish(),
+    // The client family this line prints under (14130). Null/absent = the
+    // dictionary line's heading. The invoice still stores and posts per line.
+    client_heading: z.string().trim().max(120).nullish(),
   })
   .refine((l) => l.unit_price !== undefined || l.amount !== undefined, {
     message: "A line needs either unit_price (with qty) or the deprecated amount",

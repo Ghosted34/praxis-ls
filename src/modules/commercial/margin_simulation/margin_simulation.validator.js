@@ -13,6 +13,9 @@ const line = z.object({
   // finance.vat at compute time, never part of the payload.
   vat_applicable: z.boolean().optional(),
   notes: z.string().max(2000).optional().nullable(),
+  // 14130: this line's client family on this document, when it differs from
+  // the catalogue's. Null/absent = the catalogue's heading.
+  client_heading: z.string().trim().max(120).nullish(),
 });
 
 const UUID = z.string().uuid();

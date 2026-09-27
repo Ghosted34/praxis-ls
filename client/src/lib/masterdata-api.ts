@@ -1348,6 +1348,11 @@ export type DictItem = {
   default_price_currency?: string | null;
   default_price_from?: string | null;
   default_price_rate_id?: string | null;
+  /** 14130: the family a client document prints this line under. */
+  client_heading_ref_id?: string | null;
+  client_heading_code?: string | null;
+  client_heading_fr?: string | null;
+  client_heading_en?: string | null;
   shipping_line?: string | null;
   provider_kind?: string | null;
   proof_source?: string | null;
@@ -1371,6 +1376,8 @@ export type DictInput = {
   is_disbursement?: boolean;
   is_billable?: boolean;
   default_price?: number | null;
+  /** 14130: the family a client document prints this line under. */
+  client_heading_ref_id?: string | null;
   currency?: string;
   shipping_line?: string | null;
   provider_kind?: string | null;
@@ -1466,6 +1473,11 @@ export type DictSearchHit = {
   /** The standard rate in force today, when the item has one. */
   default_price?: number | string | null;
   default_price_currency?: string | null;
+  /** 14130: the catalogue's client heading for this line. */
+  client_heading_ref_id?: string | null;
+  client_heading_code?: string | null;
+  client_heading_fr?: string | null;
+  client_heading_en?: string | null;
   score?: number;
 };
 export const searchDict = (opts: {
@@ -1549,11 +1561,13 @@ export type DictSpend = {
 };
 export const dictSpend = (
   id: string,
-  p: { from?: string; to?: string; include_documents?: boolean } = {},
+  p: { from?: string; to?: string; include_documents?: boolean; dossier_id?: string | null } = {},
 ) => {
   const q = new URLSearchParams();
   if (p.from) q.set("from", p.from);
   if (p.to) q.set("to", p.to);
+  // One operations file only (meeting 5). Absent = every file.
+  if (p.dossier_id) q.set("dossier_id", p.dossier_id);
   if (p.include_documents === false) q.set("include_documents", "false");
   const qs = q.toString();
   return tenant<DictSpend>(
@@ -1733,7 +1747,9 @@ export type DictRefKind =
   | "PROVIDER_KIND"
   | "CONTAINER_TYPE"
   | "LOAD_MODE"
-  | "DOCUMENT_TYPE";
+  | "DOCUMENT_TYPE"
+  /** 14130: the families a quotation / invoice prints lines under. */
+  | "CLIENT_HEADING";
 /** `extra` carries the structured facts a consumer computes on rather than
  *  displays — for CONTAINER_TYPE that is `teu` (capacity), `size` (the rate
  *  lookup key) and `family`, so the sized variants of one kind group together.

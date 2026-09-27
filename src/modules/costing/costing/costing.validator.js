@@ -22,6 +22,9 @@ const line = z.object({
   // 12768: the rate a débours was priced at (default TVA_STD 19.25). When set,
   // the server derives the amount from it; the client sends both.
   upstream_vat_rate_percent: z.number().min(0).max(100).nullish(),
+  // 14130: this line's client family for this file, when it differs from the
+  // catalogue's. Null/absent = the catalogue's heading.
+  client_heading: z.string().trim().max(120).nullish(),
 });
 // §2.2: margin_percent is gone from both schemas — costing has no margin
 // (an old client still sending it is silently stripped, not errored).

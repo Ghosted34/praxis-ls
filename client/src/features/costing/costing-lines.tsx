@@ -207,6 +207,9 @@ export function LineGrid({
             container_type_ref_id: p.container_type_ref_id,
             container_type_label: p.label,
             qty: p.qty || 1,
+            client_heading_code: hit.client_heading_code ?? null,
+            client_heading_fr: hit.client_heading_fr ?? null,
+            client_heading_en: hit.client_heading_en ?? null,
           },
           defaultTax,
         ));
@@ -223,9 +226,12 @@ export function LineGrid({
       withVatDefault(
         {
           ...lines[i],
-          ...(changed ? { unit_cost: 0, price_note: null } : {}),
+          ...(changed ? { unit_cost: 0, price_note: null, client_heading: null } : {}),
           dictionary_item_id: id || undefined,
           label: id ? label : "",
+          client_heading_code: id ? hit?.client_heading_code ?? null : null,
+          client_heading_fr: id ? hit?.client_heading_fr ?? null : null,
+          client_heading_en: id ? hit?.client_heading_en ?? null : null,
           // Nature comes from the catalogue, not from a checkbox the user ticks.
           is_disbursement: id ? hit?.is_disbursement === true : false,
           container_type_ref_id: undefined,

@@ -37,6 +37,7 @@ import { SpendTab, CostEvolutionTab } from "./financial-dictionary-spend";
 import { DictImportModal } from "./financial-dictionary-import";
 import { SetRateModal } from "./rate-modals";
 import { PencilIcon } from "@/components/ui/icons";
+import { dictLabel } from "@/lib/dict-label";
 
 const shell = pageShell.wide;
 
@@ -391,6 +392,10 @@ function DictDossier({
                 {tr("Priced per container type — set those in Expense rates.")}
               </p>
             )}
+            <KV
+              k="Client heading"
+              v={dictLabel({ label_en: it.client_heading_en, label_fr: it.client_heading_fr }) || tr("Other Charges")}
+            />
             <KV k="Unit" v={it.unit_of_measure || "—"} />
             <KV k="Billable" v={it.is_billable ? "Yes" : "No"} />
             <KV k="Provider kind" v={it.provider_kind || "—"} />
@@ -513,17 +518,22 @@ function DictDossier({
             </Callout>
           ) : d.service_tiers.length === 0 ? (
             <EmptyState
-              title="No service tiers"
-              hint="Add services + a Basic/Advanced/Full tier."
+              title="No services yet"
+              hint="Add the services this line belongs to, and tick Core where it belongs on almost every file."
             />
           ) : (
-            (["BASIC", "ADVANCED", "FULL"] as const).map((tier) => {
-              const inTier = d.service_tiers.filter((s) => s.tier === tier);
+            // Core (offered ticked by Suggest charges) or one of the service's
+            // more charges (offered unticked) — meeting 5; BASIC = core.
+            ([
+              { key: "core", title: tr("Core — offered ticked"), core: true },
+              { key: "more", title: tr("More charges — offered unticked"), core: false },
+            ] as const).map((band) => {
+              const inTier = d.service_tiers.filter((s) => (s.tier === "BASIC") === band.core);
               if (!inTier.length) return null;
               return (
-                <div key={tier} className="rounded-lg border">
+                <div key={band.key} className="rounded-lg border">
                   <div className="border-b bg-muted/40 px-3 py-1.5 text-xs font-semibold uppercase text-muted-foreground">
-                    {tier}
+                    {band.title}
                   </div>
                   <ul className="divide-y divide-border">
                     {inTier.map((s) => (

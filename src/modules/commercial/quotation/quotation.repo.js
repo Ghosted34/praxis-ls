@@ -1,5 +1,6 @@
 /** Quotation repository (MOD-27). Header + lines. All SQL lives here. */
 "use strict";
+const { clientHeadingJoin, CLIENT_HEADING_COLUMNS } = require("../../master/financial_dictionary/client-heading.sql");
 const { insertOne, getById, page, updateOne } = require("../../../shared/db/query-helpers");
 
 const insert = (client, data) => insertOne(client, "quotation", data);
@@ -12,8 +13,12 @@ async function deleteLines(client, id) { await client.query("DELETE FROM quotati
 // type deactivated since the quote was issued must still render its name.
 const LINE_SELECT =
   "SELECT ql.*, dr.code AS container_type_code, dr.name_en AS container_type_en, " +
-  "dr.name_fr AS container_type_fr, dr.extra AS container_type_extra " +
-  "FROM quotation_line ql LEFT JOIN dictionary_ref dr ON dr.ref_id = ql.container_type_ref_id ";
+  "dr.name_fr AS container_type_fr, dr.extra AS container_type_extra, " +
+  // 14130: the catalogue's family beside the line's own override.
+  CLIENT_HEADING_COLUMNS + " " +
+  "FROM quotation_line ql LEFT JOIN dictionary_ref dr ON dr.ref_id = ql.container_type_ref_id " +
+  "LEFT JOIN dictionary_item di ON di.dictionary_item_id = ql.dictionary_item_id " +
+  clientHeadingJoin("di") + " ";
 async function listLines(client, id) {
   const { rows } = await client.query(LINE_SELECT + "WHERE ql.quotation_id = $1 ORDER BY ql.line_no NULLS LAST, ql.quotation_line_id", [id]);
   return rows;

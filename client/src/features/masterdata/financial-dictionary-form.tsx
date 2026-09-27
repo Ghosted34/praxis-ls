@@ -65,7 +65,6 @@ const RECEIPT: api.ReceiptRequirement[] = [
   "CONDITIONALLY_REQUIRED",
   "ALWAYS_REQUIRED",
 ];
-const TIERS: api.Tier[] = ["BASIC", "ADVANCED", "FULL"];
 const DRAFT_KEY = "fd-wizard-draft-v1";
 
 // Which SYSCOHADA class each account side naturally belongs to, so the picker
@@ -318,6 +317,7 @@ export function DictForm({
   );
   const taxCodes = useResource(() => api.listSalesTaxCodes(), []);
   const subcats = useResource(() => api.listDictRefs("SUBCATEGORY"), []);
+  const headings = useResource(() => api.listDictRefs("CLIENT_HEADING"), []);
   const units = useResource(() => api.listDictRefs("UNIT"), []);
   const proofSources = useResource(() => api.listDictRefs("PROOF_SOURCE"), []);
   const providers = useResource(() => api.listDictRefs("PROVIDER_KIND"), []);
@@ -336,6 +336,7 @@ export function DictForm({
     applicability_mode: (row?.applicability_mode ??
       "ANY_OPERATIONS") as api.ApplicabilityMode,
     subcategory: row?.subcategory ?? "",
+    client_heading_ref_id: row?.client_heading_ref_id ?? "",
     unit_of_measure: row?.unit_of_measure ?? "",
     default_price: row?.default_price != null ? String(row.default_price) : "",
     currency: row?.currency ?? "XAF",
@@ -453,6 +454,8 @@ export function DictForm({
       direction: f.direction,
       applicability_mode: f.applicability_mode,
       subcategory: f.subcategory || undefined,
+      // null (not undefined) on an edit, so clearing the heading is saved.
+      client_heading_ref_id: f.client_heading_ref_id || (isNew ? undefined : null),
       unit_of_measure: f.unit_of_measure || undefined,
       // A price is only ever sent on CREATE, where the server opens it as the
       // line's standard expense rate. After that the price lives on Expense
@@ -604,6 +607,26 @@ export function DictForm({
                 </Select>
               </Field>
             </div>
+            {/* 14130 — the family this line prints under on a quotation and an
+                invoice. The costing keeps the detail; the client reads the
+                family ("Customs Formalities"). A pricer can still move a line
+                to another family on one document. */}
+            <Field
+              label={tr("Client heading")}
+              hint={tr("What the client reads on a quotation or invoice. Lines under one heading print as one line; disbursements and our fees print separately.")}
+            >
+              <Select
+                value={f.client_heading_ref_id}
+                onChange={(e) => set({ client_heading_ref_id: e.target.value })}
+              >
+                <option value="">{tr("Other Charges (no heading)")}</option>
+                {(headings.data || []).map((r) => (
+                  <option key={r.ref_id} value={r.ref_id}>
+                    {r.name_en || r.name_fr}
+                  </option>
+                ))}
+              </Select>
+            </Field>
 
             <Field
               label="Applicability"
@@ -1039,7 +1062,9 @@ function ServiceTiersEditor({
     if (next)
       setRows((rs) => [
         ...rs,
-        { service_type_id: next.service_type_id, tier: "BASIC" },
+        // Optional until someone says otherwise: marking a line core is a
+        // decision, and the default must not add it to every suggestion.
+        { service_type_id: next.service_type_id, tier: "FULL" },
       ]);
   };
   return (
@@ -1047,11 +1072,14 @@ function ServiceTiersEditor({
       <div className="mb-2 flex items-center justify-between">
         <div>
           <span className="text-sm font-semibold text-foreground">
-            Service types & tier
+            {tr("Service types")}
           </span>
+          {/* One tick, not three tiers (meeting 5, 01:42:48 — setting up
+              Basic/Advanced/Full on every line was the burden). A core line
+              is offered ticked by Suggest charges; every other mapped line is
+              offered under "More charges". */}
           <p className="micro">
-            Basic ⊆ Advanced ⊆ Full — pick the lowest bundle each line belongs
-            to.
+            {tr("Tick Core when this line belongs on almost every file of that service — Suggest charges offers it ticked. Other services list it under More charges.")}
           </p>
         </div>
         <Button
@@ -1089,20 +1117,24 @@ function ServiceTiersEditor({
                   </option>
                 ))}
               </Select>
-              <Segmented
-                label={tr("Tier")}
-                value={r.tier}
-                onChange={(v) =>
+              <Checkbox
+                checked={r.tier === "BASIC"}
+                onCheckedChange={(on) =>
                   setRows((rs) =>
                     rs.map((x, j) =>
-                      j === i ? { ...x, tier: v as api.Tier } : x,
+                      j === i ? { ...x, tier: on ? "BASIC" : "FULL" } : x,
                     ),
                   )
                 }
-                options={TIERS.map((t) => ({
-                  value: t,
-                  label: t[0] + t.slice(1).toLowerCase(),
-                }))}
+                label={
+                  <span className="text-sm">
+                    {tr("Core")}
+                    <span className="sr-only">
+                      {" — "}
+                      {services.find((s) => s.service_type_id === r.service_type_id)?.name_en || ""}
+                    </span>
+                  </span>
+                }
               />
               <Button
                 type="button"

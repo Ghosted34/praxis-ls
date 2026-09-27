@@ -39,7 +39,7 @@ import { useResource } from "@/lib/use-resource";
 import { useUrlTab } from "@/lib/use-url-tab";
 import { useRowAction } from "@/lib/use-action";
 import { DictionaryFinder } from "@/components/dictionary-finder";
-import { cn } from "@/lib/cn";
+import { Checkbox } from "@/components/ui/checkbox";
 import { money, num, dateFmt } from "@/lib/format";
 import * as api from "@/lib/operations-api";
 import { ServiceTypeAssumptions } from "./service-type-assumptions";
@@ -426,63 +426,42 @@ function MilestonesTab({
   );
 }
 
-/* ── Dictionary tab — the tier matrix ───────────────────────────────────── */
-
-const TIER_ORDER = ["BASIC", "ADVANCED", "FULL"] as const;
-const TIER_LABEL: Record<api.Tier, string> = {
-  BASIC: "Basic",
-  ADVANCED: "Advanced",
-  FULL: "Full",
-};
+/* ── Dictionary tab — core or more charges ─────────────────────────────── */
 
 /**
- * The tier control. One segmented choice per line, not three checkboxes,
- * because the bundles NEST: `tier` is the LOWEST bundle a line appears in, so
- * BASIC ⊆ ADVANCED ⊆ FULL. Three checkboxes would let someone express "Advanced
- * but not Full", which the model cannot represent and the costing engine would
- * silently reinterpret.
+ * ONE TICK, NOT THREE TIERS (tenant review "meeting 5", 01:40:51 → 01:42:48).
+ * Basic / Advanced / Full on every line was the configuration burden the tenant
+ * objected to. A line is either CORE for this service — Suggest charges offers
+ * it ticked — or it is one of the service's other charges, offered unticked
+ * under "More charges". Stored as the existing tier column: BASIC = core,
+ * anything else = more charges, so no mapping changed meaning.
  *
  * Set inline, no modal: configuring a service means sweeping thirty lines, and a
  * dialog per line turns a two-minute job into a twenty-minute one.
  */
-function TierSegmented({
+function CoreToggle({
   value,
   busy,
+  label,
   onChange,
 }: {
   value: api.Tier;
   busy: boolean;
+  label: string;
   onChange: (t: api.Tier) => void;
 }) {
   return (
-    <div
-      role="group"
-      aria-label={tr("Tier")}
-      className="inline-flex overflow-hidden rounded-md border"
-    >
-      {TIER_ORDER.map((t) => {
-        const active = t === value;
-        return (
-          <button
-            key={t}
-            type="button"
-            disabled={busy}
-            aria-pressed={active}
-            onClick={() => {
-              if (!active) onChange(t);
-            }}
-            className={cn(
-              "px-2 py-1 text-xs transition-colors disabled:opacity-50",
-              active
-                ? "bg-primary/15 font-medium text-foreground"
-                : "text-muted-foreground hover:bg-muted",
-            )}
-          >
-            {TIER_LABEL[t]}
-          </button>
-        );
-      })}
-    </div>
+    <Checkbox
+      checked={value === "BASIC"}
+      disabled={busy}
+      onCheckedChange={(on) => onChange(on ? "BASIC" : "FULL")}
+      label={
+        <span className="text-xs">
+          {tr("Core")}
+          <span className="sr-only"> — {label}</span>
+        </span>
+      }
+    />
   );
 }
 
@@ -504,17 +483,11 @@ function DictionaryTab({
   const dictHref = (code: string) =>
     `/master/financial-dictionary?focus=${encodeURIComponent(code)}`;
 
-  /**
-   * CUMULATIVE, not per-tier. "How many lines does a Basic job pull?" is the
-   * question someone configuring this is actually asking, and because the sets
-   * nest, an Advanced quote loads Basic + Advanced. Showing three independent
-   * counts would answer a question nobody has and invite the wrong mental model.
-   */
+  /** What Suggest charges offers for a file of this type: core ticked, the
+   *  rest under "More charges". */
   const counts = React.useMemo(() => {
-    const basic = scoped.filter((d) => (d.tier || "BASIC") === "BASIC").length;
-    const advanced = scoped.filter((d) => d.tier === "ADVANCED").length;
-    const full = scoped.filter((d) => d.tier === "FULL").length;
-    return { basic, advanced: basic + advanced, full: basic + advanced + full };
+    const core = scoped.filter((d) => (d.tier || "BASIC") === "BASIC").length;
+    return { core, more: scoped.length - core };
   }, [scoped]);
 
   // No client-side permission gate: `nav-access` only carries read-level module
@@ -536,10 +509,11 @@ function DictionaryTab({
     );
 
   /**
-   * A line picked here is added at ADVANCED, not BASIC. Adding to BASIC changes
-   * what EVERY future costing of this type loads, which is not what "add this
-   * line to the service" has to mean — promoting it is one click away, and the
-   * reverse mistake is invisible until someone reads a quote.
+   * A line picked here is added as one of the service's MORE charges, not as
+   * core. Making it core changes what EVERY future costing of this type offers
+   * ticked, which is not what "add this line to the service" has to mean —
+   * ticking Core is one click away, and the reverse mistake is invisible until
+   * someone reads a quote.
    */
   const addLine = (dictionaryItemId: string) => {
     if (!dictionaryItemId) return;
@@ -548,7 +522,7 @@ function DictionaryTab({
         .setServiceTypeDictionaryTier(
           serviceTypeId,
           dictionaryItemId,
-          "ADVANCED",
+          "FULL",
         )
         .then(reload),
     );
@@ -563,9 +537,10 @@ function DictionaryTab({
         <Td>{d.label_en || d.label_fr}</Td>
         {showTier && (
           <Td>
-            <TierSegmented
+            <CoreToggle
               value={(d.tier || "BASIC") as api.Tier}
               busy={act.busyId === d.dictionary_item_id}
+              label={d.label_en || d.label_fr || d.code}
               onChange={(t) => setTier(d, t)}
             />
           </Td>
@@ -619,11 +594,10 @@ function DictionaryTab({
         </DeepLink>
       </div>
 
-      {/* What each bundle actually loads. Cumulative, because the sets nest. */}
-      <div className="grid grid-cols-3 gap-2">
-        <Stat label="A Basic job pulls" value={num(counts.basic)} />
-        <Stat label="Advanced pulls" value={num(counts.advanced)} />
-        <Stat label="Full pulls" value={num(counts.full)} />
+      {/* What Suggest charges offers for a file of this type. */}
+      <div className="grid grid-cols-2 gap-2">
+        <Stat label="Core — offered ticked" value={num(counts.core)} />
+        <Stat label="More charges — offered unticked" value={num(counts.more)} />
       </div>
 
       <div className="flex flex-wrap items-end justify-between gap-2">
@@ -637,9 +611,7 @@ function DictionaryTab({
           />
         </div>
         <p className="micro max-w-sm">
-          Added at <strong>{tr("Advanced")}</strong> — promote to Basic once it belongs
-          on every file of this type. Tiers nest, so Basic lines load on
-          Advanced and Full quotes too.
+          {tr("Added under More charges — tick Core once it belongs on almost every file of this type.")}
         </p>
       </div>
 
@@ -652,7 +624,7 @@ function DictionaryTab({
           <>
             <Th>{tr("Code")}</Th>
             <Th>{tr("Label")}</Th>
-            <Th>{tr("Tier")}</Th>
+            <Th>{tr("Core")}</Th>
             <Th>{tr("Category")}</Th>
             <Th>{tr("Shipping line")}</Th>
             <Th r>{tr("Default price")}</Th>

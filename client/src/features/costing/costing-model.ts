@@ -102,6 +102,13 @@ export type LineDraft = {
   base_unit_cost?: number | null;
   /** Same, for a débours VAT typed as a free amount (AMOUNT mode). */
   base_upstream_vat?: number | null;
+  /** 14130: this line's family on the client documents, when the pricer moved
+   *  it; null = the catalogue's heading (below). Saved and carried through. */
+  client_heading?: string | null;
+  /** The catalogue's default heading — read-only, for display and grouping. */
+  client_heading_code?: string | null;
+  client_heading_fr?: string | null;
+  client_heading_en?: string | null;
 };
 
 export const BLANK_LINE: LineDraft = {
@@ -159,6 +166,9 @@ export const fromSuggestion = (s: api.SuggestedLine): LineDraft => ({
   disbursement_vat_transparent: s.disbursement_vat_transparent,
   item_code: s.item_code,
   base_unit_cost: s.unit_cost_xaf ?? null,
+  client_heading_code: s.client_heading_code ?? null,
+  client_heading_fr: s.client_heading_fr ?? null,
+  client_heading_en: s.client_heading_en ?? null,
   price_note: priceNote(s),
 });
 
@@ -250,6 +260,10 @@ export const fromSaved = (l: api.CostingLine): LineDraft => ({
     : undefined,
   disbursement_vat_transparent: l.disbursement_vat_transparent ?? undefined,
   item_code: l.item_code,
+  client_heading: l.client_heading ?? null,
+  client_heading_code: l.client_heading_code ?? null,
+  client_heading_fr: l.client_heading_fr ?? null,
+  client_heading_en: l.client_heading_en ?? null,
 });
 
 /** The payload shape the API takes. */
@@ -267,6 +281,7 @@ export const toPayload = (l: LineDraft) => ({
   upstream_vat_rate_percent:
     l.is_disbursement && l.vat_mode !== "AMOUNT" ? (l.upstream_vat_rate_percent ?? null) : null,
   upstream_vat_amount: l.is_disbursement ? (l.upstream_vat_amount ?? null) : null,
+  client_heading: l.client_heading && l.client_heading.trim() ? l.client_heading.trim() : null,
 });
 
 /**

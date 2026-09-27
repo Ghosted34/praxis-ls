@@ -43,6 +43,11 @@ export type CostingLine = {
   tax_code?: string | null;
   disbursement_vat_transparent?: boolean | null;
   varies_by_equipment?: boolean | null;
+  /** 14130: the pricer's family override, and the catalogue's heading. */
+  client_heading?: string | null;
+  client_heading_code?: string | null;
+  client_heading_fr?: string | null;
+  client_heading_en?: string | null;
 };
 export type Costing = {
   costing_id: string;
@@ -259,6 +264,10 @@ export type SuggestedLine = {
   expense_rate_id: string | null;
   effective_from: string | null;
   rate_scope: "CARRIER_AND_TYPE" | "CARRIER" | "TYPE" | "DEFAULT" | null;
+  /** 14130: the family a client document prints this charge under. */
+  client_heading_code?: string | null;
+  client_heading_fr?: string | null;
+  client_heading_en?: string | null;
 };
 
 /**

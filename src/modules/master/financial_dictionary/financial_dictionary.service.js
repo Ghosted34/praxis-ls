@@ -19,7 +19,7 @@ const ITEM_COLS = [
   "unit_of_measure", "applicability_mode", "is_disbursement", "is_billable",
   "currency", "shipping_line", "provider_kind", "proof_source",
   "requires_justification", "receipt_requirement", "disbursement_vat_transparent",
-  "pricing_mode", "is_active", "service_type_key",
+  "pricing_mode", "is_active", "service_type_key", "client_heading_ref_id",
 ];
 
 const listItems = (c, q) => repo.listItems(c, q);
@@ -104,6 +104,20 @@ function ruleRow(r, itemId, itemDisbursement) {
 
 const isUniqueViolation = (err) => err && err.code === "23505";
 
+/**
+ * `client_heading_ref_id` is a plain uuid (14130 — no FK on an existing table,
+ * the 13791 rule), so the rule the FK would have enforced lives here: it must
+ * name an ACTIVE row of the CLIENT_HEADING registry, or be empty.
+ */
+async function assertClientHeading(c, refId) {
+  if (refId === undefined || refId === null) return;
+  const { rows } = await c.query(
+    "SELECT 1 FROM dictionary_ref WHERE ref_id = $1 AND kind = 'CLIENT_HEADING' AND is_active = true",
+    [refId],
+  );
+  if (!rows[0]) { const e = new Error("client_heading_ref_id must be an active client heading"); e.status = 422; throw e; }
+}
+
 /** The tenant's base currency — what a rate is in unless someone says otherwise. */
 async function baseCurrency(c) {
   return (await currencyRepo.getBaseCode(c)) || "XAF";
@@ -172,6 +186,7 @@ async function create(c, { data, actor }) {
   // stored as the item's STANDARD expense rate (no carrier, no container type),
   // opening today, in the same transaction as the item.
   const price = data.default_price === null || data.default_price === undefined ? null : Number(data.default_price);
+  await assertClientHeading(c, itemData.client_heading_ref_id);
   if (posting_rules.length === 0) { const e = new Error("a dictionary item requires at least one posting rule (KB §4)"); e.status = 422; throw e; }
   const base = withCreateDefaults(itemData);
 
@@ -216,6 +231,7 @@ async function update(c, { id, patch, actor }) {
   // moved from revenue to disbursement and kept its #R code — the letter and
   // the accounting said two different things.
   const recoded = itemData.direction && itemData.direction !== before.direction;
+  if (patch.client_heading_ref_id !== undefined) await assertClientHeading(c, patch.client_heading_ref_id);
 
   for (let attempt = 0; attempt < 6; attempt++) {
     try {
@@ -283,14 +299,18 @@ async function spend(c, id, q = {}) {
   // so a Promise.all here would buy no parallelism at all while breaking the
   // invariant that file documents ("nothing runs req.tenantDb calls
   // concurrently"). Three awaits are three round trips either way.
-  const estimated = await repo.spendEstimated(c, id, period.from, period.to);
-  const committed = await repo.spendCommitted(c, id, period.from, period.to);
-  const actual = await repo.spendActual(c, id, period.from, period.to);
+  // Optionally one operations file only (meeting 5, 01:23:15 — "filter per
+  // file, so you see everything spent on that file").
+  const dossierId = q.dossier_id || null;
+  const estimated = await repo.spendEstimated(c, id, period.from, period.to, dossierId);
+  const committed = await repo.spendCommitted(c, id, period.from, period.to, dossierId);
+  const actual = await repo.spendActual(c, id, period.from, period.to, dossierId);
   const series = rules.spendSeries(months, { estimated, committed, actual });
-  const documents = q.include_documents === false ? [] : await repo.spendDocuments(c, id, period.from, period.to);
+  const documents = q.include_documents === false ? [] : await repo.spendDocuments(c, id, period.from, period.to, 100, dossierId);
   return {
     item: { dictionary_item_id: item.dictionary_item_id, code: item.code, label_fr: item.label_fr, label_en: item.label_en, currency: item.currency || "XAF", direction: item.direction },
     period,
+    dossier_id: dossierId,
     months: series.months,
     totals: series.totals,
     documents,

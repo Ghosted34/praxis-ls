@@ -191,6 +191,9 @@ function lineFields(l, lineNo) {
     // Which box this charge was priced for (0663). NULL for anything with no
     // equipment dimension, which is most of the catalogue.
     container_type_ref_id: l.container_type_ref_id || null,
+    // 14130: the pricer's family for this line on this file; blank = the
+    // catalogue's. Carried to the margin simulation, quotation and invoice.
+    client_heading: l.client_heading && String(l.client_heading).trim() ? String(l.client_heading).trim() : null,
     ...debours(l),
   };
 }

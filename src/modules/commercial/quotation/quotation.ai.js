@@ -8,7 +8,7 @@ module.exports = {
     { key: "get_quotation", service: (c, p) => service.get(c, p.id || p), permission: { module: "MOD-27", action: "view" }, describe: "Get a quotation with lines + totals." },
   ],
   writes: [
-    { key: "draft_quotation", service: (c, p) => service.createDraft(c, { data: p }), schema: validator.schemas.create, permission: { module: "MOD-27", action: "create" }, confirm: true, describe: "Draft a quotation (lines + totals)." },
+    { key: "draft_quotation", service: (c, p) => service.createDraft(c, { data: p }), schema: validator.schemas.create, permission: { module: "MOD-27", action: "create" }, confirm: true, describe: "Draft a quotation (lines + totals). Lines stay detailed; each may carry client_heading (a CLIENT_HEADING code or a family name made up for this quote) — the printed quotation groups lines by heading × nature (disbursements apart from fees)." },
     { key: "transition_quotation", service: (c, p, actor) => service.transition(c, { id: p.quotation_id, to: p.to, entityId: p.entity_id, actor }), schema: validator.schemas.aiTransition, permission: { module: "MOD-27", action: "approve" }, confirm: true, describe: "Advance a quotation by id: DRAFT→SENT first, then SENT→REJECTED/EXPIRED (acceptance is the separate accept_quotation action). Cannot skip states." },
     { key: "accept_quotation", service: (c, p, actor) => service.accept(c, { id: p.quotation_id, convert: p.convert, actor }), schema: validator.schemas.aiAccept, permission: { module: "MOD-27", action: "approve" }, confirm: true, describe: "Accept a sent quotation by id (optionally convert to a final invoice)." },
   ],

@@ -91,6 +91,8 @@ export type InvoiceLineInput = {
   is_disbursement?: boolean;
   label?: string;
   container_type_ref_id?: string | null;
+  /** 14130: the family this line prints under; null = the catalogue's. */
+  client_heading?: string | null;
 };
 
 export const createInvoiceDraft = (body: {
@@ -123,6 +125,8 @@ export type InvoiceDetail = {
     label?: string | null;
     line_ht?: number | string;
     is_disbursement?: boolean;
+    /** 14130: the family this line prints under, when moved on this invoice. */
+    client_heading?: string | null;
     container_type_ref_id?: string | null;
     container_type_code?: string | null;
     container_type_en?: string | null;

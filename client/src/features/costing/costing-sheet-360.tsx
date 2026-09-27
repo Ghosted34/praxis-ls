@@ -35,6 +35,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Field, Select } from "@/components/ui/modal";
 import { Input } from "@/components/ui/input";
 import { CurrencySelect } from "@/components/currency-select";
+import { Segmented } from "@/components/ui/segmented";
+import { ClientFamilies } from "@/components/client-families";
 import { Panel } from "@/components/ui/panel";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { EmptyState } from "@/components/ui/states";
@@ -184,6 +186,9 @@ export function CostingSheet360({
   const [rateText, setRateText] = React.useState("1");
   const [rateSource, setRateSource] = React.useState<string | null>(null);
   const [dirty, setDirty] = React.useState(false);
+  // "Detailed" is the costing; "By family" is what the client will read
+  // (14130, meeting 5). Same lines, two views; families are set from the second.
+  const [view, setView] = React.useState<"detailed" | "families">("detailed");
 
   const editable = c?.status === "DRAFT";
 
@@ -538,6 +543,19 @@ export function CostingSheet360({
               ) : undefined
             }
           >
+            {(lines || []).length > 0 && (
+              <div className="mb-3">
+                <Segmented
+                  label={tr("Charges view")}
+                  value={view}
+                  onChange={(v) => setView(v as "detailed" | "families")}
+                  options={[
+                    { value: "detailed", label: tr("Detailed") },
+                    { value: "families", label: tr("By family (as the client sees it)") },
+                  ]}
+                />
+              </div>
+            )}
             {(lines || []).length === 0 ? (
               <EmptyState
                 title={tr("No charges yet")}
@@ -553,6 +571,19 @@ export function CostingSheet360({
                     </Button>
                   ) : undefined
                 }
+              />
+            ) : view === "families" ? (
+              <ClientFamilies
+                lines={(lines || []).map((l) => ({
+                  ...l,
+                  amount: (Number(l.qty) || 0) * (Number(l.unit_cost) || 0),
+                }))}
+                currency={ccy}
+                readOnly={!editable}
+                onHeading={(index, heading) => {
+                  setLines((lines || []).map((l, j) => (j === index ? { ...l, client_heading: heading } : l)));
+                  setDirty(true);
+                }}
               />
             ) : (
               <LineGrid

@@ -294,6 +294,10 @@ async function build(client, { dossierId, tier = "FULL", onDate = null, sheet = 
       tax_rate_percent: taxCodeId ? num(vat.rate_percent) : null,
       tier: item.tier,
       sort_order: item.sort_order,
+      // The family a client document will print this charge under (14130).
+      client_heading_code: item.client_heading_code || null,
+      client_heading_fr: item.client_heading_fr || null,
+      client_heading_en: item.client_heading_en || null,
     };
 
     // ── The equipment expansion ───────────────────────────────────────────

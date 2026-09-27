@@ -96,6 +96,7 @@ module.exports = {
   spend: asyncHandler(async (req, res) => {
     const r = await req.tenantDb((c) => service.spend(c, req.params.id, {
       from: req.query.from, to: req.query.to,
+      dossier_id: req.query.dossier_id || null,
       include_documents: req.query.include_documents !== "false",
     }));
     if (!r) throw new AppError("NOT_FOUND", "Dictionary item not found", 404);

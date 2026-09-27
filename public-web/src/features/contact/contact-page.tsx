@@ -138,11 +138,12 @@ export function ContactPage() {
           <Card padded>
             <ContactForm />
           </Card>
-          <dl className="space-y-5">
+          {/* Match the quote desk: keep the promises beside the form on desktop. */}
+          <dl className="space-y-7 lg:sticky lg:top-[var(--sticky-top)] lg:self-start">
             {promise.map((item) => (
               <div key={item.t}>
-                <dt className="text-sm font-semibold">{item.t}</dt>
-                <dd className="mt-1 text-sm text-muted-foreground">{item.d}</dd>
+                <dt className="eyebrow text-lg">{item.t}</dt>
+                <dd className="mt-2 text-base text-muted-foreground">{item.d}</dd>
               </div>
             ))}
           </dl>

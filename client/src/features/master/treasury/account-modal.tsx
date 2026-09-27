@@ -464,9 +464,9 @@ export function AccountModal({
           {showBank && (
             <fieldset className="grid gap-4 rounded-lg border p-3 sm:grid-cols-2">
               <legend className="px-1 text-sm font-medium">
-                Bank identity
+                {tr("Bank identity")}
               </legend>
-              <Field label="Bank name">
+              <Field label={tr("Bank name")}>
                 <Input
                   value={bankName}
                   onChange={(e) => setBankName(e.target.value)}
@@ -493,20 +493,20 @@ export function AccountModal({
                   placeholder="CM21 …"
                 />
               </Field>
-              <Field label="SWIFT / BIC">
+              <Field label={tr("SWIFT / BIC")}>
                 <Input
                   value={swift}
                   onChange={(e) => setSwift(e.target.value)}
                   placeholder="CCEICMCX"
                 />
               </Field>
-              <Field label="Routing code">
+              <Field label={tr("Routing code")}>
                 <Input
                   value={routing}
                   onChange={(e) => setRouting(e.target.value)}
                 />
               </Field>
-              <Field label="Holder name" className="sm:col-span-2">
+              <Field label={tr("Holder name")} className="sm:col-span-2">
                 <Input
                   value={holder}
                   onChange={(e) => setHolder(e.target.value)}
@@ -518,42 +518,50 @@ export function AccountModal({
 
           {showMomo && (
             <fieldset className="grid gap-4 rounded-lg border p-3 sm:grid-cols-3">
+              {/* 17 Sep review (M4-B19): these labels were the only ones in
+                  the modal outside tr(), so the MoMo block stayed English on
+                  a French screen. Keys are the English text (i18n-dict
+                  `strings`); the hint deliberately has no full stop — tr()
+                  keys cannot contain one (i18next keySeparator). */}
               <legend className="px-1 text-sm font-medium">
-                Mobile-money identity
+                {tr("Mobile-money identity")}
               </legend>
-              <Field label="MoMo network" required>
+              <Field label={tr("MoMo network")} required>
                 <Select
                   value={momoNetwork}
                   onChange={(e) => setMomoNetwork(e.target.value)}
                 >
-                  <option value="">Select network…</option>
+                  <option value="">{tr("Select network…")}</option>
                   <option value="MTN">MTN</option>
                   <option value="ORANGE">Orange</option>
                   <option value="AIRTEL">Airtel</option>
                   <option value="MOOV">Moov</option>
-                  <option value="OTHER">Other</option>
+                  <option value="OTHER">{tr("Other")}</option>
                 </Select>
               </Field>
-              <Field label="MoMo number">
+              <Field label={tr("MoMo number")}>
                 <Input
                   value={momoNumber}
                   onChange={(e) => setMomoNumber(e.target.value)}
                   placeholder="+237 6 …"
                 />
               </Field>
-              <Field label="Till / Paybill">
+              <Field label={tr("Till / Paybill")}>
                 <Input
                   value={momoTill}
                   onChange={(e) => setMomoTill(e.target.value)}
                 />
               </Field>
-              <Field label="Merchant / Agent code">
+              <Field label={tr("Merchant / Agent code")}>
                 <Input
                   value={momoAgent}
                   onChange={(e) => setMomoAgent(e.target.value)}
                 />
               </Field>
-              <Field label="Fee charge account (Class 6)" hint="e.g. 6281 or 631">
+              <Field
+                label={tr("Fee charge account (Class 6)")}
+                hint={tr("For example 6281 or 631")}
+              >
                 <Input
                   value={momoFeeAccount}
                   onChange={(e) => setMomoFeeAccount(e.target.value)}
@@ -566,7 +574,7 @@ export function AccountModal({
           {needCust && (
             <fieldset className="grid gap-4 rounded-lg border p-3 sm:grid-cols-2">
               <legend className="px-1 text-sm font-medium">
-                Custodian (petty cash)
+                {tr("Custodian (petty cash)")}
               </legend>
               <Field
                 label={tr("Custodian")}
@@ -594,7 +602,7 @@ export function AccountModal({
                   placeholder="Yaoundé office"
                 />
               </Field>
-              <Field label="Float limit" hint="Maximum outstanding cash held">
+              <Field label={tr("Float limit")} hint={tr("Maximum outstanding cash held")}>
                 <Input
                   type="number"
                   value={floatLimit}
@@ -607,7 +615,7 @@ export function AccountModal({
 
           <fieldset className="grid gap-4 rounded-lg border p-3 sm:grid-cols-3">
             <legend className="px-1 text-sm font-medium">
-              Opening &amp; statement
+              {tr("Opening & statement")}
             </legend>
             <Field
               label={tr("Opening balance")}
@@ -624,15 +632,15 @@ export function AccountModal({
                 placeholder="0"
               />
             </Field>
-            <Field label="Opening date">
+            <Field label={tr("Opening date")}>
               <DateField
                 value={openDate}
                 onChange={setOpenDate}
               />
             </Field>
             <Field
-              label="Statement day"
-              hint="Day of the month the bank issues a statement (1–31)"
+              label={tr("Statement day")}
+              hint={tr("Day of the month the bank issues a statement (1–31)")}
             >
               <Input
                 type="number"
@@ -648,7 +656,7 @@ export function AccountModal({
             <Checkbox
               checked={markPrimary}
               onCheckedChange={(v) => setMarkPrimary(v === true)}
-              label="Mark as primary for this entity + category"
+              label={tr("Mark as primary for this entity + category")}
             />
           )}
 

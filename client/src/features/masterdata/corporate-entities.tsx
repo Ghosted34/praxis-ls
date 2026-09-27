@@ -65,7 +65,7 @@ import { useDebounced } from "@/lib/use-debounced";
 import { Pagination } from "@/components/ui/pagination";
 import { EntityPicker } from "@/components/entity-picker";
 import { enumLabel } from "@/lib/format";
-import { entityCommon } from "@shared";
+import { common, entityCommon } from "@shared";
 import * as api from "@/lib/masterdata-api";
 import { shell } from "./shared";
 import { EntityDossier } from "./entity-360";
@@ -525,11 +525,23 @@ function EntityForm({
               placeholder="contact@example.cm"
             />
           </Field>
-          <Field label={tr("Phone")}>
+          <Field
+            label={tr("Phone")}
+            hint="Type it however you like — spaces and dashes are removed when you leave the field"
+          >
+            {/* 16 Sep review (M3-B29): "+237 6 90 00 00 00" was refused by the
+                E.164 rule. The shared schema now strips separators server-side;
+                normalising on blur as well means the operator SEES the shape
+                that will be stored instead of learning about it from a 422. */}
             <Input
+              type="tel"
               value={v.phone}
               onChange={(e) => set("phone", e.target.value)}
-              placeholder="+237690000000"
+              onBlur={(e) => {
+                const clean = common.normalizePhone(e.target.value);
+                if (clean !== e.target.value) set("phone", clean);
+              }}
+              placeholder="+237 6 90 00 00 00"
             />
           </Field>
           <Field label={tr("Website")} data-field="website">

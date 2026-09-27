@@ -50,6 +50,12 @@ import * as site from "@/lib/site-settings-api";
 import type { Entity } from "@/lib/masterdata-api";
 
 /** One fact the system already holds. Read-only by design — see the header. */
+/** A coverage row as edited on screen: the API shape plus a local React key. */
+type CoverageRow = site.EntityStory["public_coverage"][number] & { _id: number };
+
+let rowSeq = 0;
+const nextRowId = () => ++rowSeq;
+
 function Fact({ label, value }: { label: string; value?: string | null }) {
   return (
     <div>
@@ -103,7 +109,14 @@ export function EntityPublicStoryTab({
     public_summary_fr: string;
     public_summary_en: string;
   }>({ public_summary_fr: "", public_summary_en: "" });
-  const [coverage, setCoverage] = React.useState<site.EntityStory["public_coverage"]>([]);
+  // Each place row carries a LOCAL id that never changes while it is on
+  // screen. The list used to be keyed on `${country_code}-${index}`, and the
+  // first input in the row edits `country_code` — so every keystroke changed
+  // the key, React unmounted and remounted the row, and the field lost focus
+  // after one character (17 Sep review, M4-B6). Index alone is not enough
+  // either: removing a middle row would hand its key to the row below. The id
+  // is stripped before the rows are sent.
+  const [coverage, setCoverage] = React.useState<CoverageRow[]>([]);
   const [focus, setFocus] = React.useState<site.EntityStory["public_focus"]>([]);
 
   React.useEffect(() => {
@@ -113,7 +126,7 @@ export function EntityPublicStoryTab({
       public_summary_fr: d.public_summary_fr ?? "",
       public_summary_en: d.public_summary_en ?? "",
     });
-    setCoverage(d.public_coverage ?? []);
+    setCoverage((d.public_coverage ?? []).map((c) => ({ ...c, _id: nextRowId() })));
     setFocus(d.public_focus ?? []);
   }, [story.data]);
 
@@ -271,38 +284,47 @@ export function EntityPublicStoryTab({
           )}
         </p>
         <ul className="mt-3 space-y-2">
-          {coverage.map((c, i) => (
-            <li key={`${c.country_code}-${i}`} className="grid gap-2 sm:grid-cols-4">
+          {coverage.map((c) => (
+            <li key={c._id} className="grid gap-2 sm:grid-cols-4">
               <Input
                 aria-label={tr("Country code")}
+                placeholder="CM"
                 value={c.country_code ?? ""}
                 maxLength={2}
                 disabled={busy || !canEdit}
                 onChange={(e) =>
                   setCoverage((p) =>
-                    p.map((row, j) =>
-                      j === i ? { ...row, country_code: e.target.value.toUpperCase() } : row,
+                    p.map((row) =>
+                      row._id === c._id
+                        ? { ...row, country_code: e.target.value.toUpperCase() }
+                        : row,
                     ),
                   )
                 }
               />
               <Input
                 aria-label={tr("Label (FR)")}
+                placeholder="Douala et le littoral"
                 value={c.label_fr ?? ""}
                 disabled={busy || !canEdit}
                 onChange={(e) =>
                   setCoverage((p) =>
-                    p.map((row, j) => (j === i ? { ...row, label_fr: e.target.value } : row)),
+                    p.map((row) =>
+                      row._id === c._id ? { ...row, label_fr: e.target.value } : row,
+                    ),
                   )
                 }
               />
               <Input
                 aria-label={tr("Label (EN)")}
+                placeholder="Douala and the coast"
                 value={c.label_en ?? ""}
                 disabled={busy || !canEdit}
                 onChange={(e) =>
                   setCoverage((p) =>
-                    p.map((row, j) => (j === i ? { ...row, label_en: e.target.value } : row)),
+                    p.map((row) =>
+                      row._id === c._id ? { ...row, label_en: e.target.value } : row,
+                    ),
                   )
                 }
               />
@@ -310,7 +332,7 @@ export function EntityPublicStoryTab({
                 size="sm"
                 variant="ghost"
                 disabled={busy || !canEdit}
-                onClick={() => setCoverage((p) => p.filter((_, j) => j !== i))}
+                onClick={() => setCoverage((p) => p.filter((row) => row._id !== c._id))}
               >
                 {tr("Remove")}
               </Button>
@@ -323,7 +345,10 @@ export function EntityPublicStoryTab({
             variant="outline"
             disabled={busy || !canEdit}
             onClick={() =>
-              setCoverage((p) => [...p, { country_code: "", label_fr: "", label_en: "" }])
+              setCoverage((p) => [
+                ...p,
+                { _id: nextRowId(), country_code: "", label_fr: "", label_en: "" },
+              ])
             }
           >
             {tr("Add a place")}
@@ -336,7 +361,9 @@ export function EntityPublicStoryTab({
                 // Rows with no country code are dropped rather than sent: the
                 // code is what joins a place to the corridor network, and a
                 // blank one is a row that can never be drawn.
-                public_coverage: coverage.filter((c) => (c.country_code || "").length === 2),
+                public_coverage: coverage
+                  .filter((c) => (c.country_code || "").length === 2)
+                  .map(({ _id: _local, ...row }) => row),
               })
             }
           >

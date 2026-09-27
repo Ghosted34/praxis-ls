@@ -141,18 +141,51 @@ const countryCode = blankToUndefined(
 const optionalDate = blankToUndefined(isoDate);
 
 /**
+ * Strip the separators people type into a phone number and leave the E.164
+ * form for the regex below to judge.
+ *
+ * Spaces, dots, dashes, parentheses and the odd non-breaking space that a copy
+ * from a PDF or a phone's contact card brings along are all presentation:
+ * "+237 6 90 00 00 00", "+237-690-000-000" and "(+237) 690.000.000" are the
+ * same subscriber. A leading international prefix `00` is rewritten to `+`,
+ * because that is how the number is dialled from a landline in this corridor
+ * and how it is printed on half the letterheads in Douala. Nothing else is
+ * touched — a letter, a second `+` or a `#` still fails, because those are not
+ * formatting, they are a different string.
+ *
+ * Only strings are normalised; anything else falls through untouched so that
+ * a wrong TYPE still gets zod's "expected string" rather than a phone message.
+ */
+function normalizePhone(v) {
+  if (typeof v !== "string") return v;
+  let s = v.replace(/[\s\u00a0.\-()]/g, "");
+  if (s.startsWith("00")) s = "+" + s.slice(2);
+  return s;
+}
+
+/**
  * An optional phone number in E.164 shape — an optional leading `+` then 7–15
- * digits, no separators. The picker composes the country calling code onto the
- * subscriber number and this is what the API stores. `""` → undefined.
+ * digits — and this is what the API stores. `""` → undefined.
+ *
+ * Separators are accepted on the way in and removed (`normalizePhone`), never
+ * stored: the 16 Sep review (M3-B29) had an entity's "+237 6 90 …" refused by
+ * this very rule, and a form that shows "+237 6 99 00 00 00" as its own
+ * placeholder cannot then reject a number typed that way. The digit rule
+ * itself is unchanged — the storage contract is still one canonical shape, so
+ * dedup, WhatsApp/SMS senders and the letterhead never meet two spellings of
+ * one number.
  */
 const phone = blankToUndefined(
-  z
-    .string()
-    .trim()
-    .regex(
-      /^\+?[1-9]\d{6,14}$/,
-      "Enter a phone number in international format, e.g. +237690000000.",
-    ),
+  z.preprocess(
+    normalizePhone,
+    z
+      .string()
+      .trim()
+      .regex(
+        /^\+?[1-9]\d{6,14}$/,
+        "Enter a phone number in international format, e.g. +237690000000.",
+      ),
+  ),
 );
 
 /** An optional percentage 0–100 (number or numeric string in); `""` → undefined. */
@@ -189,4 +222,5 @@ exports.email = email;
 exports.countryCode = countryCode;
 exports.optionalDate = optionalDate;
 exports.phone = phone;
+exports.normalizePhone = normalizePhone;
 exports.optionalPercent = optionalPercent;

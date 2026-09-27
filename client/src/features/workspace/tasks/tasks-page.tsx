@@ -207,9 +207,11 @@ export function TasksPage() {
             options={offered.map((a) => ({ value: a, label: AUDIENCE_LABEL[a] }))}
           />
         )}
+        {/* A status fragment beside a control, not a sentence — so no full
+            stop (17 Sep review, M4-B2: "Showing everyone." read as a typo). */}
         {effective !== "mine" && (
           <span className="micro text-muted-foreground">
-            Showing {AUDIENCE_LABEL[effective].toLowerCase()}.
+            Showing {AUDIENCE_LABEL[effective].toLowerCase()}
           </span>
         )}
         {/* One search for both views. The server matches the title, the

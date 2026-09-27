@@ -460,6 +460,11 @@ export const en = {
     stockValueHint: "Own stock at cost — awaiting a valuation source",
   },
   strings: {
+    // Outsider pages captured into the installed staff app
+    // (components/pwa/open-in-browser-bar.tsx).
+    "Open in your browser": "Open in your browser",
+    "This page opened inside an installed app. It works here, but it belongs in your browser.": "This page opened inside an installed app. It works here, but it belongs in your browser.",
+    "Open in browser": "Open in browser",
     // Calls audit PR-7: Comms → Setup → Test calls.
     "Notifications are blocked for Praxis on this device, so a call cannot ring here with the app closed.": "Notifications are blocked for Praxis on this device, so a call cannot ring here with the app closed.",
     "Allow notifications for this site in the browser's settings, then run the test again.": "Allow notifications for this site in the browser's settings, then run the test again.",
@@ -3689,6 +3694,9 @@ export const fr: Dict = {
     stockValueHint: "Stock propre au coût — en attente d'une source de valorisation",
   },
   strings: {
+    "Open in your browser": "Ouvrir dans votre navigateur",
+    "This page opened inside an installed app. It works here, but it belongs in your browser.": "Cette page s'est ouverte dans une application installée. Elle fonctionne ici, mais sa place est dans votre navigateur.",
+    "Open in browser": "Ouvrir dans le navigateur",
     // Calls audit PR-7: Comms → Setup → Test calls.
     "Notifications are blocked for Praxis on this device, so a call cannot ring here with the app closed.": "Les notifications sont bloquées pour Praxis sur cet appareil : un appel ne peut pas sonner ici quand l'application est fermée.",
     "Allow notifications for this site in the browser's settings, then run the test again.": "Autorisez les notifications pour ce site dans les réglages du navigateur, puis relancez le test.",

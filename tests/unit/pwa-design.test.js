@@ -426,6 +426,10 @@ describe("GET /manifest.webmanifest and /icons — resolved by Host, never cross
     expect(acme.body.short_name).toBe("AcmeGo");
     expect(acme.body.background_color).toBe("#f3f6fb"); // light theme
     expect(acme.body.display).toBe("standalone");
+    // Links from outside (portal, signing, public site) must not be captured
+    // into the staff app's window on desktop Chromium.
+    expect(acme.body.handle_links).toBe("not-preferred");
+    expect(acme.body.scope).toBe("/");
 
     const globex = await request(app)
       .get("/manifest.webmanifest")

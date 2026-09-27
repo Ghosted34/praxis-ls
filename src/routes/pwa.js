@@ -301,6 +301,24 @@ router.get(
       description: cfg.description,
       start_url: "/",
       scope: "/",
+      /**
+       * LINKS FROM OUTSIDE OPEN IN THE BROWSER, NOT HERE. Scope "/" covers the
+       * whole workspace host, which also serves pages for people who are not
+       * staff: the client portal (/portal — set-password and reset emails), the
+       * public site, e-signature (/sign) and verification (/v). With link
+       * capturing, a click in a mail client lands those in the staff app's
+       * window. A scope is a path prefix and cannot exclude them, so this asks
+       * the browser not to capture at all: "not-preferred" makes Chromium's
+       * desktop link capturing default OFF for this app (a user can still turn
+       * it on per app). Browsers that do not know the member ignore it.
+       *
+       * It does not reach Android, whose WebAPK intent filter is generated from
+       * the scope alone. That case is handled by the portal email preferring
+       * the tenant's public host (a different origin — registry.
+       * publicSurfaceOrigin) and by the "Open in your browser" bar outsider
+       * pages show when they find themselves inside an installed window.
+       */
+      handle_links: "not-preferred",
       display: cfg.display,
       /**
        * WINDOW CONTROLS OVERLAY. Asks the OS to stop drawing a title bar and

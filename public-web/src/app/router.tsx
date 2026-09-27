@@ -10,6 +10,7 @@ import {
 import { NotFoundPage } from "@/features/not-found/not-found-page";
 import { Skeleton } from "@/components/ui/skeleton";
 import { p, BASE_IS_DEFAULT, IS_ROOT, LEGACY_BASE } from "@/lib/base-path";
+import { OpenInBrowserBar } from "@/components/site/open-in-browser-bar";
 
 /**
  * The route table for the stranger-facing app.
@@ -247,6 +248,9 @@ export function AppRouter() {
        Outside, it is never suspended and the scroll happens as the URL changes. */
     <>
       <ScrollToTop />
+      {/* Every page here is for someone outside the staff app, so every page
+          offers the way out of it when a link was captured into its window. */}
+      <OpenInBrowserBar />
       <React.Suspense fallback={<RouteFallback />}>
       <Routes>
         {/* At the root `p()` IS "/", and the marketing route below already

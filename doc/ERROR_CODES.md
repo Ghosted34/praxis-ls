@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 6× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (636)
+## All codes (640)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -126,6 +126,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `BAD_STORAGE_KEY` | 400 | 2× | — |
 | `BAD_TARGET` | 422 | 1× | — |
 | `BAD_TEMPLATE` | 422 | 5× | — |
+| `BAD_TEXT_SIZE` | — | 1× | — |
 | `BAD_THEME` | 422 | 1× | — |
 | `BAD_TIMEZONE` | — | 2× | — |
 | `BAD_TOKEN` | 500 | 1× | — |
@@ -152,7 +153,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `CERTIFIED_NOT_AVAILABLE` | — | 2× | — |
 | `CLASH_DETECTED` | 409 | 2× | — |
 | `CLASS_MISMATCH` | 422 | 1× | — |
-| `CLIENT_REQUIRED` | 422 | 13× | — |
+| `CLIENT_REQUIRED` | 422 | 14× | — |
 | `CLOSE_BLOCKED` | 422 | 1× | — |
 | `COA_IS_MANAGED` | 422 | 1× | — |
 | `CODE_IN_USE` | 422 | 1× | — |
@@ -346,7 +347,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_EDITABLE` | 400 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 3× | — |
-| `NOT_FOUND` | 404, 422 | 711× | — |
+| `NOT_FOUND` | 404, 422 | 714× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_OPEN` | 409, 422 | 3× | — |
 | `NOT_OPERATIONAL` | 422 | 1× | — |
@@ -422,6 +423,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NO_REVENUE_ACCOUNT` | 422 | 1× | — |
 | `NO_SCHEDULE` | 422 | 1× | — |
 | `NO_SERVICE_TYPE` | — | 1× | — |
+| `NO_SIGNATORIES` | 422 | 1× | — |
 | `NO_SIGNED_COPY` | 422 | 2× | — |
 | `NO_SLUG` | 422 | 1× | — |
 | `NO_SUMMARY` | 404 | 2× | — |
@@ -651,6 +653,8 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `VALIDATION_ERROR` | 422 | 276× | — |
 | `VALIDATOR_NOT_LINE_MANAGER` | — | 1× | — |
 | `VARIANCE_UNEXPLAINED` | 422 | 1× | — |
+| `VAULT_DOC_FOREIGN` | 422 | 1× | — |
+| `VAULT_DOC_NOT_FOUND` | 422 | 1× | — |
 | `VEHICLE_COMMITTED` | — | 1× | — |
 | `VEHICLE_NOT_FOUND` | 404 | 1× | — |
 | `VEHICLE_UNAVAILABLE` | 422 | 1× | — |

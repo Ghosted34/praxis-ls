@@ -32,6 +32,11 @@ treasuryRouter.get("/:id/documents", requirePermission(MODULE, "view"), controll
 treasuryRouter.post("/:id/documents", requirePermission(MODULE, "edit"), validator.createDocument, controller.createDocument);
 treasuryRouter.delete("/:id/documents/:docId", requirePermission(MODULE, "edit"), controller.removeDocument);
 treasuryRouter.post("/:id/documents/:docId/verify", requirePermission(MODULE, "edit"), controller.verifyDocument);
+// The file behind a document record (meeting 5): the client uploads to the vault
+// first, then links the returned vault id here.
+treasuryRouter.post("/:id/documents/:docId/scan", requirePermission(MODULE, "edit"), validator.attachDocumentScan, controller.attachDocumentScan);
+// Meeting 5 — the letter to the bank naming who signs, generated and filed.
+treasuryRouter.post("/:id/authorisation-letter", requirePermission(MODULE, "edit"), validator.authorisationLetter, controller.authorisationLetter);
 
 // Signatories (PR-03, Audit #3)
 treasuryRouter.get("/:id/signatories", requirePermission(MODULE, "view"), controller.listSignatories);

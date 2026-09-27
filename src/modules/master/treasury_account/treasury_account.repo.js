@@ -85,7 +85,14 @@ async function list(client, q = {}) {
     "       c.requires_custodian AS category_requires_custodian, " +
     "       c.is_bank_identity   AS category_is_bank_identity, " +
     "       c.is_momo_identity   AS category_is_momo_identity, " +
-    "       c.coa_parent_code    AS category_coa_parent_code " +
+    "       c.coa_parent_code    AS category_coa_parent_code, " +
+    // The list's renewal reminder: documents on this account that have
+    // expired or expire within the default 60-day lead window
+    // (corporate_entity.renewals.DEFAULT_LEAD_DAYS). The dossier breaks it down.
+    "       (SELECT COUNT(*)::int FROM treasury_account_document d " +
+    "         WHERE d.treasury_account_id = t.treasury_account_id " +
+    "           AND d.expiry_date IS NOT NULL " +
+    "           AND d.expiry_date <= CURRENT_DATE + 60) AS docs_expiring " +
     "  FROM treasury_account t " +
     "  LEFT JOIN treasury_category c ON c.treasury_category_id = t.category_id " +
     "  " + where +
@@ -307,6 +314,22 @@ async function deleteDocument(client, documentId) {
   return rowCount > 0;
 }
 
+/**
+ * Point a document record at the scan the vault now holds. The vault owns the
+ * bytes and their hash; this row only records which vault row they are, and
+ * the name, size and type the reader sees in the list.
+ */
+async function attachDocumentScan(client, documentId, { vault_id, file_name, file_size, mime_type }) {
+  return updateOne(client, "treasury_account_document", "document_id", documentId, {
+    vault_id,
+    file_name: file_name ?? null,
+    file_size: file_size ?? null,
+    mime_type: mime_type ?? null,
+    upload_status: "COMPLETED",
+    updated_at: new Date(),
+  }, "*", ["vault_id", "file_name", "file_size", "mime_type", "upload_status", "updated_at"]);
+}
+
 async function verifyDocument(client, documentId, verifiedBy) {
   return updateOne(client, "treasury_account_document", "document_id", documentId, {
     is_verified: true,
@@ -356,7 +379,7 @@ module.exports = {
   insert, get, update, list, getWithCategory,
   getCategory, lockParentCoa, existingLeavesUnder, insertLeafCoa, setLeafActive, renameLeaf,
   clearPrimaryInCategory, clearPrimaryForEntity, countPrimaries,
-  listDocuments, insertDocument, getDocument, deleteDocument, verifyDocument,
+  listDocuments, insertDocument, getDocument, deleteDocument, verifyDocument, attachDocumentScan,
   listSignatories, insertSignatory, getSignatory, updateSignatory, deleteSignatory,
   listGateways, getGatewayRaw, upsertGateway, setGatewayActive, setGatewayRole, deleteGateway,
 };

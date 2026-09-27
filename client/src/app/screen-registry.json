@@ -251,6 +251,7 @@
         "create_treasury_account",
         "update_treasury_account",
         "set_treasury_account_active",
+        "generate_bank_authorisation_letter",
         "list_treasury_categories",
         "create_treasury_category"
       ]

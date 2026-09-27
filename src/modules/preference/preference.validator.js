@@ -17,6 +17,8 @@ const appearance = z.object({
   fontDisplay: font,
   fontBody: font,
   fontMono: font,
+  // Meeting 5 — a personal interface scale.
+  textSize: z.enum(["sm", "md", "lg", "xl"]).nullable().optional(),
 });
 
 /**

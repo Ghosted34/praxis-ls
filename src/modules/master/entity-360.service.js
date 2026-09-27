@@ -275,16 +275,19 @@ function maskEntityRegistrations(entity, canSee) {
  * the resolved inputs now means the dossier's Overview can already show what a
  * document would print, and shows what is missing.
  */
-function letterheadSource(entity, { addresses, registrations }) {
-  const registered = addresses.find((a) => a.type === "REGISTERED" && a.is_active !== false)
-    || addresses.find((a) => a.is_primary) || null;
+function letterheadSource(entity, { addresses, registrations, config = null }) {
+  // The same resolver the renderer and the studio run (meeting 5: the dossier,
+  // the preview and the PDF each had their own "registered address" rule, and
+  // with two registered rows they disagreed about which one was current).
+  const registered = letterheadService.registeredAddressRow(addresses, config);
+  const postal = letterheadService.postalAddressRow(addresses, config);
 
   const composed = registered
     ? [registered.line1, registered.line2, registered.po_box ? `PO Box ${registered.po_box}` : null, [registered.postal_code, registered.city].filter(Boolean).join(" "),
        registered.region, registered.country_code].filter((s) => s && String(s).trim()).join(", ")
     : entity.address || null;
 
-  const poBox = registered ? (registered.po_box ? String(registered.po_box).trim() : null) : null;
+  const poBox = postal && postal.po_box ? String(postal.po_box).trim() : null;
 
   // Registrations win over the legacy niu/rccm columns when present — 0515
   // backfilled those columns into rows, so a divergence means someone edited the
@@ -454,7 +457,7 @@ async function dossier(c, id, { governance = false, financials = false, capabili
     // surface is one of the two places a MOD-01 viewer deliberately sees the
     // bank details (the other is the Banking & treasury tab above), so the
     // preview shows exactly what the document prints.
-    letterhead_source: letterheadSource(visibleEntity, { addresses, registrations: visibleRegistrations }),
+    letterhead_source: letterheadSource(visibleEntity, { addresses, registrations: visibleRegistrations, config: letterhead }),
     letterhead_config: letterhead,
     letterhead_preview: letterheadService.render(
       { entity: visibleEntity, config: letterhead, addresses, registrations: visibleRegistrations, treasuryAccounts: treasury, establishments },

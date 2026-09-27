@@ -69,9 +69,8 @@ function addressLine(a) {
  * entity has no structured row yet — split on the tenant's own line breaks,
  * because that column is all some tenants have ever filled in.
  */
-function addressLines(entity, addresses = [], { countryName = null, language = "en" } = {}) {
-  const active = (addresses || []).filter((a) => a && a.is_active !== false);
-  const a = active.find((x) => x.type === "REGISTERED") || active.find((x) => x.is_primary) || active[0];
+function addressLines(entity, addresses = [], { countryName = null, language = "en", config = null } = {}) {
+  const a = registeredAddressRow(addresses, config);
   if (!a) {
     return String((entity && entity.address) || "")
       .split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
@@ -97,17 +96,67 @@ function addressLines(entity, addresses = [], { countryName = null, language = "
  * public side also uses the row to avoid publishing it twice when an operator
  * marks the registered row public as well as a second one.
  */
-function registeredAddressRow(addresses = []) {
+function registeredAddressRow(addresses = [], config = null) {
   const active = (addresses || []).filter((a) => a && a.is_active !== false);
-  return active.find((a) => a.type === "REGISTERED") || active.find((a) => a.is_primary) || active[0] || null;
+  // The row the entity CHOSE for its letterhead (meeting 5, 21 Sep 2026), when
+  // it is still active. A chosen row that has since been deactivated falls back
+  // to the precedence below rather than printing an address the company has
+  // closed.
+  const chosen = config && config.address_id
+    ? active.find((a) => a.address_id === config.address_id)
+    : null;
+  if (chosen) return chosen;
+  return pickNewest(active.filter((a) => a.type === "REGISTERED" && a.is_primary))
+    || pickNewest(active.filter((a) => a.type === "REGISTERED"))
+    || pickNewest(active.filter((a) => a.is_primary))
+    || pickNewest(active)
+    || null;
+}
+
+/**
+ * The most recently edited row of a set.
+ *
+ * WHY NOT `rows[0]`. The meeting-5 bug (PO box 5120 → 5121 "not refreshing"):
+ * with two active REGISTERED rows, the precedence took the FIRST one — and the
+ * callers load addresses in different orders (the dossier sorts, the document
+ * renderer did not), so the preview and the PDF could each pick a different
+ * row, and neither was reliably the one somebody had just changed. The newest
+ * edit is the intent; ties fall back to the id so the answer never depends on
+ * the order a query happened to return.
+ */
+function pickNewest(rows = []) {
+  if (!rows.length) return null;
+  const ts = (r) => {
+    const t = Date.parse(r.updated_at || r.created_at || "");
+    return Number.isFinite(t) ? t : 0;
+  };
+  return [...rows].sort((a, b) => (ts(b) - ts(a)) || String(a.address_id || "").localeCompare(String(b.address_id || "")))[0];
+}
+
+/**
+ * The row the PO box is printed from.
+ *
+ * A company often files its registered seat at a street address and receives
+ * post at a BP held elsewhere — which is why "postal" is its own choice: the
+ * chosen postal row, else an active MAILING row carrying a PO box, else the
+ * registered row itself.
+ */
+function postalAddressRow(addresses = [], config = null) {
+  const active = (addresses || []).filter((a) => a && a.is_active !== false);
+  const chosen = config && config.postal_address_id
+    ? active.find((a) => a.address_id === config.postal_address_id)
+    : null;
+  if (chosen) return chosen;
+  return pickNewest(active.filter((a) => a.type === "MAILING" && String(a.po_box || "").trim()))
+    || registeredAddressRow(addresses, config);
 }
 
 /**
  * The registered office as one line, preferring a REGISTERED row, then the
  * primary one, then the legacy free-text column that predates entity_address.
  */
-function registeredAddress(entity, addresses = []) {
-  const reg = registeredAddressRow(addresses);
+function registeredAddress(entity, addresses = [], config = null) {
+  const reg = registeredAddressRow(addresses, config);
   return addressLine(reg) || (entity && entity.address ? String(entity.address).trim() : null);
 }
 
@@ -285,15 +334,31 @@ const DEFAULT_CONFIG = {
   show_postal_address: true, show_po_box: true,
   show_registrations: true, show_contact: true, show_bank_block: true, show_establishment: false,
   logo_position: "LEFT", paper_size: "A4",
+  // Meeting 5: "RCCM … · NIU …" on one line by default; false prints one
+  // identifier per line as before.
+  identifiers_inline: true,
+  // Which entity_address rows print — null means the precedence in
+  // registeredAddressRow / postalAddressRow.
+  address_id: null, postal_address_id: null,
 };
 
-/** PO Box from the registered address, if any. */
-function poBox(entity, addresses = []) {
-  const active = (addresses || []).filter((a) => a && a.is_active !== false);
-  const reg = active.find((a) => a.type === "REGISTERED") || active.find((a) => a.is_primary) || active[0];
+/** PO Box from the postal row (the chosen one, a MAILING row, else registered). */
+function poBox(entity, addresses = [], config = null) {
+  const reg = postalAddressRow(addresses, config);
   if (!reg) return null;
   const pb = String(reg.po_box || "").trim();
   return pb || null;
+}
+
+/**
+ * The identifiers as printed lines: ONE line, "RCCM: RC/DLA/2020/B/1234 · NIU:
+ * M012345678901A", when `inline` (the meeting-5 default), else one
+ * "RCCM RC/DLA/…" line per identifier.
+ */
+function identifierText(ids = [], inline = true) {
+  if (!ids.length) return [];
+  if (inline) return [ids.map((i) => `${i.kind}: ${i.number}`).join(" · ")];
+  return ids.map((i) => `${i.kind} ${i.number}`);
 }
 
 /**
@@ -313,7 +378,7 @@ function render({ entity, config, addresses = [], registrations = [], treasuryAc
   const language = lang || e.default_language || "en";
 
   const ids = identifiers(e, registrations);
-  const address = registeredAddress(e, addresses);
+  const address = registeredAddress(e, addresses, c);
   const capital = formatAmount(e.share_capital);
   const payment = paymentBlock(e, treasuryAccounts);
   const establishment = c.show_establishment ? establishmentLine(issuingEstablishment(establishments)) : null;
@@ -337,7 +402,7 @@ function render({ entity, config, addresses = [], registrations = [], treasuryAc
     : null;
 
   const identifierLine = c.show_registrations
-    ? join(ids.map((i) => `${i.kind} ${i.number}`))
+    ? identifierText(ids, c.identifiers_inline !== false).join(" · ")
     : null;
 
   return {
@@ -385,7 +450,7 @@ function render({ entity, config, addresses = [], registrations = [], treasuryAc
 }
 
 module.exports = {
-  render, registeredAddress, registeredAddressRow, identifiers, paymentBlock,
+  render, registeredAddress, registeredAddressRow, postalAddressRow, pickNewest, identifierText, identifiers, paymentBlock,
   resolvePrimaryAccount, addressLine, addressLines, formatAmount, poBox,
   issuingEstablishment, establishmentLine, DEFAULT_CONFIG,
 };

@@ -663,14 +663,54 @@ exports.taxRegistrationCreate = withTaxRules(z.object(taxRegistrationShape));
 exports.taxRegistrationUpdate = withTaxRules(patchOf(taxRegistrationShape));
 
 // ── Letterhead configuration ───────────────────────────────────────────────
+/*
+ * Colour names a person actually types. Meeting 5 (21 Sep 2026, 00:41:19): the
+ * letterhead's brand colour was a strict `#RRGGBB` box, so "black" — and
+ * "000000" without its hash — was refused as a colour that "doesn't exist".
+ * The common names, in English and French, map to their CSS values.
+ */
+const COLOUR_NAMES = {
+  black: "#000000", noir: "#000000", white: "#ffffff", blanc: "#ffffff",
+  red: "#ff0000", rouge: "#ff0000", green: "#008000", vert: "#008000",
+  blue: "#0000ff", bleu: "#0000ff", navy: "#000080", marine: "#000080",
+  orange: "#ffa500", yellow: "#ffff00", jaune: "#ffff00",
+  grey: "#808080", gray: "#808080", gris: "#808080",
+  purple: "#800080", violet: "#800080", maroon: "#800000", bordeaux: "#800000",
+  teal: "#008080", gold: "#ffd700", or: "#ffd700",
+};
+
+/**
+ * Whatever a person typed as a colour → `#rrggbb`, or null when it is not one.
+ *
+ * Accepts a name ("black", "noir"), a hex with or without its "#", and the
+ * three-digit shorthand, which is EXPANDED: several print styles append an
+ * alpha pair to the stored value (`${accent}0d`), and "#000" + "0d" is not a
+ * colour. Everything is stored in one form so nothing downstream has to cope
+ * with the others.
+ */
+function colourInput(value) {
+  if (typeof value !== "string") return null;
+  const t = value.trim().toLowerCase().replace(/\s+/g, "");
+  if (!t) return null;
+  if (COLOUR_NAMES[t]) return COLOUR_NAMES[t];
+  const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/.exec(t);
+  if (!m) return null;
+  const h = m[1].length === 3 ? m[1].split("").map((c) => c + c).join("") : m[1];
+  return `#${h}`;
+}
+exports.colourInput = colourInput;
+
 const hexColor = blankToUndefined(
-  z
-    .string()
-    .trim()
-    .regex(
-      /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/,
-      "Use a hex colour like #C2703D.",
-    ),
+  z.preprocess(
+    (v) => (typeof v === "string" && v.trim() ? colourInput(v) ?? v : v),
+    z
+      .string()
+      .trim()
+      .regex(
+        /^#[0-9a-f]{6}$/,
+        "Use a colour name or a hex code like #C2703D.",
+      ),
+  ),
 );
 /**
  * One block's placement on the twelve-column letterhead grid.
@@ -696,6 +736,9 @@ const letterheadPlacement = z
     tone: z.enum(["ink", "muted", "accent"]).optional(),
     transform: z.enum(["none", "upper"]).optional(),
     visible: z.boolean().optional(),
+    // Place within a stacked cell (meeting 5 — the bank block could not be
+    // moved down past the blocks sharing its cell).
+    order: z.number().int().min(0).max(99).optional(),
   })
   .strict();
 
@@ -707,6 +750,14 @@ exports.letterheadUpdate = z.object({
   show_contact: z.boolean().optional(),
   show_bank_block: z.boolean().optional(),
   show_establishment: z.boolean().optional(),
+  // 13841 — the PO box and postal-address blocks' own switches.
+  show_postal_address: z.boolean().optional(),
+  show_po_box: z.boolean().optional(),
+  // 14140 (meeting 5) — which entity_address rows print, and whether the trade
+  // identifiers share one line.
+  address_id: blankToUndefined(z.string().uuid("Must be a valid address id.")).nullable(),
+  postal_address_id: blankToUndefined(z.string().uuid("Must be a valid address id.")).nullable(),
+  identifiers_inline: z.boolean().optional(),
   header_note_fr: optionalText.nullable(),
   header_note_en: optionalText.nullable(),
   footer_note_fr: optionalText.nullable(),

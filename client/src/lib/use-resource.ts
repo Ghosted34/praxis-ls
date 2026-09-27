@@ -334,6 +334,17 @@ function resourceKey(fn: () => unknown, deps: React.DependencyList) {
 export function useResource<T>(
   fn: () => Promise<T>,
   deps: React.DependencyList,
+  /**
+   * `fresh: true` re-fetches every time the screen mounts, instead of trusting
+   * a copy younger than the client's 30-second `staleTime`.
+   *
+   * For a view DERIVED from records another tab edits. Meeting 5 (21 Sep 2026):
+   * the PO box was changed on "Contacts & addresses", the Letterhead tab was
+   * opened a few seconds later, and it showed the cached composition with the
+   * old BP — nothing had changed its query key, and 30 s had not passed. The
+   * cached copy still renders at once; the fresh one replaces it when it lands.
+   */
+  opts: { fresh?: boolean } = {},
 ) {
   const qc = useQueryClient();
   // The fetcher closes over render-scope values, so it must not be frozen into
@@ -345,7 +356,11 @@ export function useResource<T>(
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const key = React.useMemo(() => resourceKey(fn, deps), deps);
 
-  const q = useQuery({ queryKey: key, queryFn: () => fnRef.current() });
+  const q = useQuery({
+    queryKey: key,
+    queryFn: () => fnRef.current(),
+    ...(opts.fresh ? { staleTime: 0, refetchOnMount: "always" as const } : {}),
+  });
 
   const reload = React.useCallback(() => {
     void qc.invalidateQueries({ queryKey: key });

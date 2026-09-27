@@ -10,6 +10,21 @@
 
 const { fontFaceCss, PDF_FONT_BODY, PDF_FONT_MONO } = require("../../pdf.fonts");
 const blocks = require("./letterhead-blocks");
+const { walkToContrast, parseHex } = require("@praxis/shared/design/color");
+
+/**
+ * The brand colour as TEXT on white paper (meeting 5).
+ *
+ * A tenant may choose any colour, black and pale yellow included, and rules and
+ * fills print in exactly that colour. Text is different: a number or a heading
+ * set in a pale brand colour is unreadable on white, so text uses the least
+ * darkened variant that clears WCAG AA (4.5:1). Black, navy and the default
+ * orange-on-white headings keep their own value whenever they already clear it.
+ */
+function accentInk(accent) {
+  if (!parseHex(accent)) return accent;
+  return walkToContrast(accent, "#ffffff", 4.5, "darker");
+}
 
 const esc = (s) => String(s === null || s === undefined ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
@@ -312,6 +327,7 @@ function mergeCfg(brand, saved = {}) {
 /** Full HTML document. `title` sets <title>; `cfg` themes it; `bodyHtml` is the doc. */
 function shell(title, bodyHtml, cfg = {}) {
   const c = { ...defaults(), ...cfg };
+  c.accentInk = accentInk(c.accent);
   const sheetMm = fitBudgetMm(c);
   const logoMm = Number(c.logo && c.logo.height_mm) || 15;
   const css = `
@@ -319,7 +335,7 @@ function shell(title, bodyHtml, cfg = {}) {
     @page { size: ${c.paper}; margin: ${c.margin_mm}mm; }
     * { box-sizing: border-box; }
     body { font-family: ${c.font}; color: ${c.ink}; font-size: 12px; line-height: 1.5; margin: 0; }
-    .accent { color: ${c.accent}; }
+    .accent { color: ${c.accentInk}; }
     .muted { color: ${c.muted}; }
     .num { font-family: ${c.monoFont}; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
     h1 { font-size: 20px; margin: 0 0 2px; letter-spacing: -0.01em; }
@@ -330,7 +346,7 @@ function shell(title, bodyHtml, cfg = {}) {
     .brandname { font-size: 15px; font-weight: 700; }
     .idlines { font-size: 10.5px; color: ${c.muted}; margin-top: 2px; }
     .meta { text-align: right; font-size: 11px; }
-    .meta .n { font-size: 15px; font-weight: 700; color: ${c.accent}; }
+    .meta .n { font-size: 15px; font-weight: 700; color: ${c.accentInk}; }
     .meta div { margin-top: 1px; }
     .parties { display: flex; gap: 24px; margin: 18px 0; }
     .party { flex: 1; }
@@ -435,7 +451,7 @@ function shell(title, bodyHtml, cfg = {}) {
        max-width caps it. */
     .lh2 .mark img { height: ${logoMm}mm; width: auto; max-width: 62mm;
                      object-fit: contain; object-position: left bottom; display: block; }
-    .lh2 .mark .wordmark { font-size: calc(15pt * var(--k)); font-weight: 800; letter-spacing: -0.01em; color: ${c.accent}; line-height: 1.1; }
+    .lh2 .mark .wordmark { font-size: calc(15pt * var(--k)); font-weight: 800; letter-spacing: -0.01em; color: ${c.accentInk}; line-height: 1.1; }
     .lh2 .id { text-align: right; min-width: 0; }
     .lh2 .id .nm { font-size: calc(11.5pt * var(--k)); font-weight: 800; letter-spacing: 0.03em; text-transform: uppercase; line-height: 1.2; }
     .lh2 .id .ln { font-size: calc(7.4pt * var(--k)); color: ${c.muted}; line-height: 1.45; }
@@ -448,7 +464,7 @@ function shell(title, bodyHtml, cfg = {}) {
     .tbar .ttl { font-size: calc(15pt * var(--k)); font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; line-height: 1.1; }
     .tbar .sub { font-size: calc(7.6pt * var(--k)); color: ${c.muted}; font-style: italic; margin-top: 0.3mm; }
     .tbar .rt { text-align: right; flex: none; }
-    .tbar .no { font-family: ${c.monoFont}; font-size: calc(11pt * var(--k)); font-weight: 700; color: ${c.accent}; letter-spacing: 0.02em; white-space: nowrap; }
+    .tbar .no { font-family: ${c.monoFont}; font-size: calc(11pt * var(--k)); font-weight: 700; color: ${c.accentInk}; letter-spacing: 0.02em; white-space: nowrap; }
     .tbar .meta { font-size: calc(7.4pt * var(--k)); color: ${c.muted}; margin-top: 0.4mm; }
     .tbar .dirs { margin-top: calc(1mm * var(--k)); font-size: calc(8pt * var(--k)); white-space: nowrap; }
     .tbar .dirs .on { font-weight: 700; }
@@ -487,14 +503,14 @@ function shell(title, bodyHtml, cfg = {}) {
     .facts .v { font-weight: 700; font-size: calc(9.4pt * var(--k)); line-height: 1.3; overflow-wrap: anywhere; }
     /* The document's own reference, in the accent — the proforma's treatment,
        and the value everyone quotes back on the phone. */
-    .facts .v.ref { font-family: ${c.monoFont}; color: ${c.accent}; letter-spacing: 0.01em; }
+    .facts .v.ref { font-family: ${c.monoFont}; color: ${c.accentInk}; letter-spacing: 0.01em; }
     .facts .v.plain { font-weight: 400; }
     /* The centred document name, as the proforma sets it. */
     .dname { text-align: center; margin-top: calc(2.6mm * var(--k)); }
     .dname .ttl { font-size: calc(14pt * var(--k)); font-weight: 800; letter-spacing: 0.18em; text-transform: uppercase; line-height: 1.15; }
     .dname .sub { font-size: calc(7.8pt * var(--k)); color: ${c.muted}; font-style: italic; margin-top: 0.4mm; letter-spacing: 0.04em; }
     .dname .ref { font-family: ${c.monoFont}; font-size: calc(11pt * var(--k)); font-weight: 700;
-                  color: ${c.accent}; letter-spacing: 0.02em; margin-top: 0.6mm; }
+                  color: ${c.accentInk}; letter-spacing: 0.02em; margin-top: 0.6mm; }
 
     /* A ticked box. An inline-block square with an ✕ — NOT ☐/☒, which are
        absent from the embedded Noto subsets and print as tofu, i.e. as a box
@@ -611,7 +627,7 @@ function shell(title, bodyHtml, cfg = {}) {
             display: flex; gap: 2.5mm; page-break-inside: avoid; break-inside: avoid; }
     .seal .body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
     .seal .for { font-size: 6pt; letter-spacing: 0.09em; text-transform: uppercase;
-                 font-weight: 700; color: ${c.accent}; display: flex; justify-content: space-between; gap: 2mm; }
+                 font-weight: 700; color: ${c.accentInk}; display: flex; justify-content: space-between; gap: 2mm; }
     .seal .pos { font-family: ${c.monoFont}; color: #4b5563; font-weight: 400; letter-spacing: 0.04em; white-space: nowrap; }
     .seal .rule { border-top: 0.4mm solid ${c.accent}; margin: 0.9mm 0 1.4mm; }
     .seal .reason { font-size: 9pt; font-weight: 600; color: #111827; line-height: 1.15; }
@@ -676,7 +692,7 @@ function shell(title, bodyHtml, cfg = {}) {
     .lhb { min-width: 0; overflow-wrap: anywhere; }
     .lhb .ln { line-height: 1.45; }
     .lhb.t-muted { color: ${c.muted}; }
-    .lhb.t-accent { color: ${c.accent}; }
+    .lhb.t-accent { color: ${c.accentInk}; }
     .lhb.w-bold { font-weight: 800; }
     .lhb.x-upper { text-transform: uppercase; letter-spacing: 0.03em; }
     /* The mark. An EXPLICIT height, never a max-height — an <img> sized only by
@@ -686,7 +702,7 @@ function shell(title, bodyHtml, cfg = {}) {
                     object-fit: contain; display: block; }
     .lhcell.a-center .lhb img.mark { margin: 0 auto; }
     .lhcell.a-right .lhb img.mark { margin-left: auto; }
-    .lhb .wordmark { font-weight: 800; letter-spacing: -0.01em; color: ${c.accent}; line-height: 1.1; }
+    .lhb .wordmark { font-weight: 800; letter-spacing: -0.01em; color: ${c.accentInk}; line-height: 1.1; }
     .lhb .rule { border-bottom: 0.7mm solid ${c.accent}; }
 
     /* The standard foot. '.lft' takes the composed blocks, '.rgt' the page and
@@ -1427,7 +1443,9 @@ function zoneHtml(list = [], cfg = {}) {
  */
 function standardHead(entity = {}, cfg = {}, opts = {}) {
   const lh = composed(entity, cfg, opts.doc || {});
-  const head = zoneHtml(lh.header, cfg);
+  // The payment block may be dragged into the header; it still prints only on
+  // a document that opts in (`opts.bank`), wherever it sits.
+  const head = zoneHtml(lh.header.filter((b) => opts.bank || b.id !== "payment"), cfg);
   if (!opts.title) return head;
   const meta = (opts.meta || []).filter((m) => m && m[1]).map((m) => `<span class="mi">${
     t(typeof m[0] === "string" ? { fr: m[0], en: m[0] } : m[0], cfg.language)
@@ -1503,8 +1521,9 @@ function shellMm(entity = {}, cfg = {}, opts = {}) {
   const lh = composed(entity, cfg, opts.doc || {});
   const footList = lh.footer.filter((b) => opts.bank || b.id !== "payment");
 
-  const head = blocks.measure(lh.header, "header");
-  const headNoMark = blocks.measure(lh.header.filter((b) => b.id !== "logo"), "header");
+  const headList = lh.header.filter((b) => opts.bank || b.id !== "payment");
+  const head = blocks.measure(headList, "header");
+  const headNoMark = blocks.measure(headList.filter((b) => b.id !== "logo"), "header");
   // The accent rule and its margin are hairlines either way and already counted
   // by `measure`; what is fixed here is only the mark's marginal contribution.
   const fixed = Math.max(0, Math.round((head - headNoMark) * 10) / 10);

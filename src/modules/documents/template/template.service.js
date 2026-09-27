@@ -127,7 +127,6 @@ async function resolveEntity(client, entityId, { language = "en" } = {}) {
       client.query("SELECT * FROM entity_tax_registration WHERE entity_id = $1", [entity.entity_id])
         .then((r) => r.rows).catch(() => []),
     ]);
-    entity.address_lines = letterhead.addressLines(entity, addresses, { countryName, language });
     entity.identifiers = letterhead.identifiers(entity, registrations, taxRegistrations);
     /*
      * THE LETTERHEAD ROW, AND WHY IT IS FETCHED HERE.
@@ -166,6 +165,9 @@ async function resolveEntity(client, entityId, { language = "en" } = {}) {
       client.query("SELECT * FROM entity_establishment WHERE entity_id = $1", [entity.entity_id])
         .then((r) => r.rows).catch(() => []),
     ]);
+    // After the letterhead row, because the row names WHICH address prints
+    // (meeting 5) — the same resolver the dossier preview runs.
+    entity.address_lines = letterhead.addressLines(entity, addresses, { countryName, language, config: lhRow });
     entity.letterhead_row = lhRow;
     entity.letterhead_lines = lhLines;
     entity.letterhead_sources = { addresses, treasuryAccounts: treasury, establishments };
@@ -202,7 +204,15 @@ async function resolveEntity(client, entityId, { language = "en" } = {}) {
  * hex triple is dropped rather than interpolated.
  */
 const HEX = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
-const hex = (v) => (typeof v === "string" && HEX.test(v.trim()) ? v.trim() : null);
+// Expanded to six digits: several print styles append an alpha pair to the
+// accent (`${accent}0d`), and a stored "#000" would become "#0000d" there.
+// Values saved before 14140 could be three-digit; new ones are normalised by
+// the shared `colourInput`.
+const hex = (v) => {
+  if (typeof v !== "string" || !HEX.test(v.trim())) return null;
+  const t = v.trim().toLowerCase();
+  return t.length === 4 ? `#${t.slice(1).split("").map((c) => c + c).join("")}` : t;
+};
 
 function entityLetterheadCfg(entity) {
   const row = entity.letterhead_row;
@@ -766,6 +776,19 @@ const headingFields = (l) => ({
 
 /** The CLIENT_HEADING registry, for resolving a line's text override to a
  *  proper bilingual heading at print time (templates/client-headings.js). */
+/**
+ * The VAT rate a quotation or invoice line PRINTS (meeting 5 follow-up): none
+ * on a disbursement (pass-through, never taxed — KB §23.5), the line's own tax
+ * code where it has one, else the standard 19.25 these documents always
+ * printed. Display only — see registry.displayLines for why the signed `tax`
+ * is left as it was.
+ */
+function lineTaxRate(l) {
+  if (l.is_disbursement) return null;
+  if (l.tax_rate_percent !== null && l.tax_rate_percent !== undefined) return Number(l.tax_rate_percent);
+  return 19.25;
+}
+
 async function clientHeadingRegistry(client) {
   const { rows } = await client.query(
     "SELECT code, name_fr AS fr, name_en AS en, sort_order AS sort FROM dictionary_ref WHERE kind = 'CLIENT_HEADING'",
@@ -786,9 +809,10 @@ async function loadRecord(client, docType, recordId) {
     // printed invoice can group by family. Grouping happens at render time
     // (templates/client-headings.js) — these lines stay the signed detail.
     const lr = await client.query(
-      `SELECT il.*, ${CLIENT_HEADING_COLUMNS}
+      `SELECT il.*, tc.rate_percent AS tax_rate_percent, ${CLIENT_HEADING_COLUMNS}
          FROM invoice_line il
          LEFT JOIN dictionary_item di ON di.dictionary_item_id = il.dictionary_item_id
+         LEFT JOIN tax_code tc ON tc.tax_code_id = il.tax_code_id
          ${clientHeadingJoin("di")}
         WHERE il.invoice_id = $1 ORDER BY il.line_no`,
       [recordId],
@@ -799,7 +823,8 @@ async function loadRecord(client, docType, recordId) {
         number: i.doc_number || String(i.invoice_id).slice(0, 8), date: i.issued_on, due: i.payment_due_on, status: i.status,
         original_ref: docType === "CREDIT_NOTE" ? null : undefined,
         party: { name: i.client_name || "—", lines: clientLines(i) },
-        lines: lr.rows.map((l) => ({ label: l.label, qty: Number(l.qty), unit: Number(l.unit_price), tax: l.is_disbursement ? null : 19.25, amount: Number(l.line_ht), ...headingFields(l) })),
+        // `tax` stays as signed (canonical v1); `tax_rate` is what prints.
+        lines: lr.rows.map((l) => ({ label: l.label, qty: Number(l.qty), unit: Number(l.unit_price), tax: l.is_disbursement ? null : 19.25, tax_rate: lineTaxRate(l), amount: Number(l.line_ht), ...headingFields(l) })),
         client_headings: await clientHeadingRegistry(client),
         totals: { service_ht: Number(i.service_ht), disbursement_total: Number(i.disbursement_total), vat_total: Number(i.vat_total), total_ttc: Number(i.total_ttc) },
         currency: i.currency,
@@ -815,9 +840,10 @@ async function loadRecord(client, docType, recordId) {
     const q = rows[0];
     if (!q) return null;
     const lr = await client.query(
-      `SELECT ql.*, ${CLIENT_HEADING_COLUMNS}
+      `SELECT ql.*, tc.rate_percent AS tax_rate_percent, ${CLIENT_HEADING_COLUMNS}
          FROM quotation_line ql
          LEFT JOIN dictionary_item di ON di.dictionary_item_id = ql.dictionary_item_id
+         LEFT JOIN tax_code tc ON tc.tax_code_id = ql.tax_code_id
          ${clientHeadingJoin("di")}
         WHERE ql.quotation_id = $1 ORDER BY ql.line_no`,
       [recordId],
@@ -827,7 +853,7 @@ async function loadRecord(client, docType, recordId) {
       data: {
         number: q.doc_number || String(q.quotation_id).slice(0, 8), date: q.created_at, valid_until: q.valid_until,
         party: { name: q.client_name || "—", lines: clientLines(q) },
-        lines: lr.rows.map((l) => ({ label: l.label, qty: Number(l.qty), unit: Number(l.unit_price), tax: 19.25, amount: Number(l.qty) * Number(l.unit_price), ...headingFields(l) })),
+        lines: lr.rows.map((l) => ({ label: l.label, qty: Number(l.qty), unit: Number(l.unit_price), tax: 19.25, tax_rate: lineTaxRate(l), amount: Number(l.qty) * Number(l.unit_price), ...headingFields(l) })),
         client_headings: await clientHeadingRegistry(client),
         totals: { service_ht: Number(q.total_ht), vat_total: Number(q.total_ttc) - Number(q.total_ht), total_ttc: Number(q.total_ttc) },
         currency: q.currency,

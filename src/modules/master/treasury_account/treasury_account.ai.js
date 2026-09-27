@@ -10,6 +10,8 @@ module.exports = {
   writes: [
     { key: "create_treasury_account", service: (c, p, actor) => (({ entity_id, category_id, ...body }) => service.create(c, { entityId: entity_id, categoryId: category_id, ...body, actor }))(p), schema: validator.schemas.create, permission: { module: "MOD-09", action: "create" }, confirm: true, describe: "Add a treasury account mapped to a class-5 GL account." },
     { key: "update_treasury_account", service: (c, p, actor) => (({ treasury_account_id, ...patch }) => service.update(c, { id: treasury_account_id, patch, actor }))(p), schema: validator.schemas.aiUpdate, permission: { module: "MOD-09", action: "edit" }, confirm: true, describe: "Edit a treasury account by id." },
+    // Meeting 5 — the bank's signatory letter, generated from the active signatories and filed on the account.
+    { key: "generate_bank_authorisation_letter", service: (c, p, actor) => service.authorisationLetter(c, { accountId: p.treasury_account_id, signedBy: p.signed_by || null, actor }), schema: validator.schemas.aiAuthorisationLetter, permission: { module: "MOD-09", action: "edit" }, confirm: true, describe: "Generate the signatory authorisation letter for a treasury account's bank from its active signatories, and file it under the account's documents." },
     { key: "set_treasury_account_active", service: (c, p, actor) => service.setActive(c, { id: p.treasury_account_id, active: p.active, actor }), schema: validator.schemas.aiSetActive, permission: { module: "MOD-09", action: "edit" }, confirm: true, describe: "Activate/deactivate a treasury account by id." },
   ],
 };

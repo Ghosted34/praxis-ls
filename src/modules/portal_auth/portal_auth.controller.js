@@ -80,6 +80,8 @@ module.exports = {
   // PORTAL SESSION, never the query string — a client must not be able to ask
   // for another client's file by changing a parameter.
   clientChain: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => portal.clientChain(c, { clientId: req.portal.clientId, dossierId: req.params.dossierId })) })),
+  // Meeting 5 — what an invoice was for, grouped as the printed invoice groups it.
+  clientInvoice: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => portal.clientInvoice(c, { clientId: req.portal.clientId, invoiceId: req.params.invoiceId, lang: req.query.lang })) })),
   tickets: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => portal.clientTickets(c, { clientId: req.portal.clientId })) })),
   ticket: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => portal.clientTicketDetail(c, { clientId: req.portal.clientId, ticketId: req.params.id })) })),
   raiseTicket: asyncHandler(async (req, res) => res.status(201).json({ data: await req.tenantDb((c) => portal.clientRaiseTicket(c, { clientId: req.portal.clientId, dossierId: req.body.dossier_id, milestoneInstanceId: req.body.milestone_instance_id, subject: req.body.subject, body: req.body.body, raisedBy: req.portal.email || null })) })),

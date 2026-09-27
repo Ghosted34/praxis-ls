@@ -64,7 +64,11 @@ export function InvoiceDraftForm({
     try {
       const payloadLines: InvoiceLineInput[] = filled.map((l) => ({
         dictionary_item_id: l.dictionary_item_id,
-        amount: Number(l.amount),
+        // qty × unit price, extended by the server. Sending `amount` made every
+        // line one unit at its extended total — 40 × 2,000,000 re-saved as
+        // 1 × 80,000,000 the moment a draft was edited.
+        qty: Number(l.qty) > 0 ? Number(l.qty) : 1,
+        unit_price: Number(l.amount),
         is_disbursement: l.is_disbursement || undefined,
         label: l.label || undefined,
         container_type_ref_id: l.container_type_ref_id || null,
@@ -145,7 +149,7 @@ export function InvoiceDraftForm({
           {lines.map((l, i) => (
             <div
               key={i}
-              className="grid grid-cols-[1fr_8rem_auto_auto] items-start gap-2"
+              className="grid grid-cols-[1fr_5rem_8rem_auto_auto] items-start gap-2"
             >
               <DictLineCell
                 line={l}
@@ -166,10 +170,20 @@ export function InvoiceDraftForm({
               <Input
                 type="number"
                 min="0"
+                step="any"
+                className="num text-right"
+                placeholder={tr("Qty")}
+                aria-label={`Quantity, line ${i + 1}`}
+                value={l.qty ?? "1"}
+                onChange={(e) => setLine(i, { qty: e.target.value })}
+              />
+              <Input
+                type="number"
+                min="0"
                 step="0.01"
                 className="num text-right"
-                placeholder={tr("Amount")}
-                aria-label={`Amount, line ${i + 1}`}
+                placeholder={tr("Unit price")}
+                aria-label={`Unit price, line ${i + 1}`}
                 value={l.amount}
                 onChange={(e) => setLine(i, { amount: e.target.value })}
               />
@@ -388,10 +402,15 @@ export function InvoiceEditForm({
           dictionary_item_id: l.dictionary_item_id
             ? String(l.dictionary_item_id)
             : "",
+          // The UNIT price and the quantity, read back as stored — not the
+          // extended line_ht, which a re-save turned into one unit at the total.
+          qty: l.qty !== undefined && l.qty !== null ? String(Number(l.qty)) : "1",
           amount:
-            l.line_ht !== undefined && l.line_ht !== null
-              ? String(l.line_ht)
-              : "",
+            l.unit_price !== undefined && l.unit_price !== null
+              ? String(l.unit_price)
+              : l.line_ht !== undefined && l.line_ht !== null
+                ? String(l.line_ht)
+                : "",
           is_disbursement: !!l.is_disbursement,
           label: l.label ? String(l.label) : "",
           // Read back so a re-save does not silently strip the equipment tag
@@ -428,7 +447,11 @@ export function InvoiceEditForm({
       );
       const payloadLines: InvoiceLineInput[] = filled.map((l) => ({
         dictionary_item_id: l.dictionary_item_id,
-        amount: Number(l.amount),
+        // qty × unit price, extended by the server. Sending `amount` made every
+        // line one unit at its extended total — 40 × 2,000,000 re-saved as
+        // 1 × 80,000,000 the moment a draft was edited.
+        qty: Number(l.qty) > 0 ? Number(l.qty) : 1,
+        unit_price: Number(l.amount),
         is_disbursement: l.is_disbursement || undefined,
         label: l.label || undefined,
         container_type_ref_id: l.container_type_ref_id || null,
@@ -488,7 +511,7 @@ export function InvoiceEditForm({
             {lines.map((l, i) => (
               <div
                 key={i}
-                className="grid grid-cols-[1fr_8rem_auto_auto] items-start gap-2"
+                className="grid grid-cols-[1fr_5rem_8rem_auto_auto] items-start gap-2"
               >
                 <DictLineCell
                   line={l}
@@ -509,10 +532,20 @@ export function InvoiceEditForm({
                 <Input
                   type="number"
                   min="0"
+                  step="any"
+                  className="num text-right"
+                  placeholder={tr("Qty")}
+                  aria-label={`Quantity, line ${i + 1}`}
+                  value={l.qty ?? "1"}
+                  onChange={(e) => setLine(i, { qty: e.target.value })}
+                />
+                <Input
+                  type="number"
+                  min="0"
                   step="0.01"
                   className="num text-right"
-                  placeholder={tr("Amount")}
-                  aria-label={`Amount, line ${i + 1}`}
+                  placeholder={tr("Unit price")}
+                  aria-label={`Unit price, line ${i + 1}`}
                   value={l.amount}
                   onChange={(e) => setLine(i, { amount: e.target.value })}
                 />

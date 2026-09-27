@@ -564,6 +564,14 @@ export type LetterheadConfig = {
   /** The mark's printed height, 4-60mm. Feeds the one-page fit model (12760). */
   logo_height_mm?: number | null;
   layout?: LetterheadLayout | null;
+  show_postal_address?: boolean;
+  show_po_box?: boolean;
+  /** 14140 — the entity_address row the address block prints; null = automatic. */
+  address_id?: string | null;
+  /** 14140 — the row the PO box / postal block prints; null = automatic. */
+  postal_address_id?: string | null;
+  /** 14140 — "RCCM: … · NIU: …" on one line (default) or one per line. */
+  identifiers_inline?: boolean;
 };
 
 /** One block's placement on the twelve-column letterhead grid (12760). */
@@ -578,6 +586,8 @@ export type LetterheadPlacement = {
   tone?: "ink" | "muted" | "accent";
   transform?: "none" | "upper";
   visible?: boolean;
+  /** Place within a stacked cell — lower prints higher. */
+  order?: number;
 };
 
 export type LetterheadLayout = {
@@ -595,7 +605,7 @@ export type LetterheadLayout = {
  * this block, so the editor never hardcodes a route.
  */
 export type LetterheadBlock = Required<
-  Pick<LetterheadPlacement, "id" | "row" | "col" | "span" | "align" | "size">
+  Pick<LetterheadPlacement, "id" | "row" | "col" | "span" | "align" | "size" | "order">
 > & {
   zone: "header" | "footer";
   kind: "text" | "image" | "rule" | "wordmark";
@@ -702,6 +712,11 @@ export type LetterheadBundle = {
   /** The composed blocks the editor drags — the renderer's own composition. */
   blocks: { fr: LetterheadComposition; en: LetterheadComposition };
   custom_lines: LetterheadLine[];
+  /** Active address rows the studio offers for "which address prints". */
+  addresses?: { address_id: string; type: string; is_primary: boolean; line: string | null; po_box: string | null }[];
+  /** The rows the resolver picked (the chosen ones, or its precedence). */
+  resolved_address_id?: string | null;
+  resolved_postal_address_id?: string | null;
   catalogue: LetterheadCatalogueItem[];
   tokens: { token: string; label: string }[];
   language: string;

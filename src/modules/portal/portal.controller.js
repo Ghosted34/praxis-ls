@@ -60,6 +60,7 @@ module.exports = {
   // Staff-side handlers (MOD-67 gated in the routes file).
   staffClient: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.clientView(c, { clientId: staffClientId(req) })) })),
   staffClientChain: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.clientChain(c, { clientId: staffClientId(req), dossierId: req.params.dossierId })) })),
+  staffClientInvoice: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.clientInvoice(c, { clientId: staffClientId(req), invoiceId: req.params.invoiceId, lang: req.query.lang })) })),
   staffMessages: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.staffMessages(c, { clientId: req.query.client_id, dossierId: req.query.dossier_id || null })) })),
   staffSendMessage: asyncHandler(async (req, res) => res.status(201).json({ data: await req.tenantDb((c) => service.staffSendMessage(c, { clientId: req.body.client_id, body: req.body.body, dossierId: req.body.dossier_id || null, actor: actor(req) })) })),
   staffOnboarding: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.clientOnboarding(c, { clientId: req.query.client_id })) })),

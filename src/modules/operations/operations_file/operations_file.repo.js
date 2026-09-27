@@ -136,7 +136,11 @@ async function listPaged(client, q = {}) {
   if (q.q) {
     params.push("%" + q.q + "%");
     const p = "$" + params.length;
-    const clauses = [`d.ref ILIKE ${p}`, `cm.name ILIKE ${p}`, `d.bl_mawb ILIKE ${p}`, `d.vessel_flight ILIKE ${p}`];
+    // The service type too (meeting 5): "sea import" or "transit" finds the
+    // files of that kind in the task and invoice file pickers, which search
+    // through this same endpoint. `st` is joined below for the row anyway.
+    const clauses = [`d.ref ILIKE ${p}`, `cm.name ILIKE ${p}`, `d.bl_mawb ILIKE ${p}`, `d.vessel_flight ILIKE ${p}`,
+      `st.name_en ILIKE ${p}`, `st.name_fr ILIKE ${p}`, `st.key ILIKE ${p}`];
     // Operation references are STORED without separators (`SL7Z3K9QW2M4XBSM`)
     // and DISPLAYED with them (`SL-7Z3K9QW2M4XB-SM`), so the form a person
     // copies off a screen or an email is not the form the column holds and the

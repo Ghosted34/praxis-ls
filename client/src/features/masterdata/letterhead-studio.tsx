@@ -51,9 +51,9 @@ import { useConfirm } from "@/components/ui/use-confirm";
 import { tr } from "@/lib/i18n";
 import * as api from "@/lib/masterdata-api";
 import { errMsg } from "@/lib/use-resource";
+import { layoutOf, moveBlock, nudge, patchBlock, type Layout, type Zone } from "./letterhead-layout";
 
 type Lang = "fr" | "en";
-type Zone = "header" | "footer";
 
 /** Points to millimetres, and the leading — the server measures with these. */
 const MM_PER_PT = 0.3528;
@@ -407,6 +407,8 @@ function Inspector({
   readOnly,
   logoHeightMm,
   onPlace,
+  onNudge,
+  onZone,
   onLine,
   onRemoveLine,
   onJump,
@@ -420,6 +422,8 @@ function Inspector({
   readOnly: boolean;
   logoHeightMm: number | null;
   onPlace: (patch: Partial<api.LetterheadPlacement>) => void;
+  onNudge: (dir: -1 | 1) => void;
+  onZone: () => void;
   onLine: (patch: Record<string, unknown>) => void;
   onRemoveLine: () => void;
   onJump: () => void;
@@ -539,6 +543,35 @@ function Inspector({
         </>
       )}
 
+      {/*
+       * The keyboard path, and the precise one (meeting 5 — the bank block
+       * would not drag down). Up/down walk the block through its stack, then
+       * row by row, then across into the other zone.
+       */}
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={busy || readOnly}
+          aria-label={tr("Move up")}
+          onClick={() => onNudge(-1)}
+        >
+          ↑ {tr("Up")}
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={busy || readOnly}
+          aria-label={tr("Move down")}
+          onClick={() => onNudge(1)}
+        >
+          ↓ {tr("Down")}
+        </Button>
+        <Button size="sm" variant="ghost" disabled={busy || readOnly} onClick={onZone}>
+          {block.zone === "header" ? tr("Move to footer") : tr("Move to header")}
+        </Button>
+      </div>
+
       <div className="grid grid-cols-2 gap-2">
         <Field label={tr("Align")}>
           <Select
@@ -648,6 +681,96 @@ function Inspector({
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
+ * Which address the letterhead prints.
+ *
+ * Meeting 5: a PO box changed from 5120 to 5121 and the letterhead kept the old
+ * one. With two active address rows the renderer and the preview each picked
+ * "the first registered row", in whatever order their query returned — so the
+ * entity now CHOOSES. "Automatic" names the row the rule currently resolves to,
+ * so leaving it on automatic is an informed choice, not a guess.
+ * ──────────────────────────────────────────────────────────────────────────── */
+function AddressPanel({
+  bundle,
+  busy,
+  readOnly,
+  onSave,
+}: {
+  bundle: api.LetterheadBundle;
+  busy: boolean;
+  readOnly: boolean;
+  onSave: (patch: Record<string, unknown>) => void;
+}) {
+  const rows = bundle.addresses || [];
+  const cfg = bundle.config;
+  const describe = (id: string | null | undefined) => {
+    const r = rows.find((a) => a.address_id === id);
+    if (!r) return tr("none");
+    return `${tr(r.type === "MAILING" ? "Postal" : r.type === "REGISTERED" ? "Registered" : r.type)} — ${
+      r.po_box ? `${tr("PO Box")} ${r.po_box}` : r.line || "—"
+    }`;
+  };
+  const option = (r: (typeof rows)[number]) => (
+    <option key={r.address_id} value={r.address_id}>
+      {describe(r.address_id)}
+      {r.is_primary ? ` · ${tr("primary")}` : ""}
+    </option>
+  );
+
+  return (
+    <div className="lux-card space-y-3 p-4">
+      <p className="text-sm font-medium text-foreground">{tr("Address on documents")}</p>
+      {rows.length === 0 ? (
+        <p className="micro text-muted-foreground">
+          {tr("No structured address yet — the letterhead prints the free-text address. Add one under Contacts & addresses.")}
+        </p>
+      ) : (
+        <>
+          <div data-field="address_id">
+            <Field label={tr("Address block")}>
+              <Select
+                value={cfg.address_id || ""}
+                disabled={busy || readOnly}
+                onChange={(e) => onSave({ address_id: e.target.value || null })}
+              >
+                <option value="">
+                  {`${tr("Automatic")} (${describe(bundle.resolved_address_id)})`}
+                </option>
+                {rows.map(option)}
+              </Select>
+            </Field>
+          </div>
+          <div data-field="postal_address_id">
+            <Field
+              label={tr("PO box / postal block")}
+              hint={tr("Automatic takes a postal (mailing) row with a PO box, else the address block's row.")}
+            >
+              <Select
+                value={cfg.postal_address_id || ""}
+                disabled={busy || readOnly}
+                onChange={(e) => onSave({ postal_address_id: e.target.value || null })}
+              >
+                <option value="">
+                  {`${tr("Automatic")} (${describe(bundle.resolved_postal_address_id)})`}
+                </option>
+                {rows.map(option)}
+              </Select>
+            </Field>
+          </div>
+        </>
+      )}
+      <div data-field="identifiers_inline">
+        <Checkbox
+          checked={cfg.identifiers_inline !== false}
+          disabled={busy || readOnly}
+          onCheckedChange={(v) => onSave({ identifiers_inline: v === true })}
+          label={tr("RCCM and NIU on one line")}
+        />
+      </div>
+    </div>
+  );
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
  * The studio.
  * ──────────────────────────────────────────────────────────────────────────── */
 export function LetterheadStudio({
@@ -698,25 +821,18 @@ export function LetterheadStudio({
    * describable as a single-block patch anyway.
    */
   async function place(id: string, patch: Partial<api.LetterheadPlacement>) {
+    return saveLayout(patchBlock(layoutOf(comp), id, patch), id, patch);
+  }
+
+  /** Move a block (drag or arrows) — the whole layout, restacked. */
+  function move(next: Layout) {
+    return saveLayout(next, null, {});
+  }
+
+  async function saveLayout(layout: Layout, id: string | null, patch: Partial<api.LetterheadPlacement>) {
     setBusy(true);
     setError(null);
     try {
-      const layout: api.LetterheadLayout = { version: 1, header: [], footer: [] };
-      for (const zone of ["header", "footer"] as Zone[]) {
-        layout[zone] = comp[zone].map((b) => ({
-          id: b.id,
-          row: b.row,
-          col: b.col,
-          span: b.span,
-          align: b.align,
-          size: b.size,
-          weight: b.weight,
-          tone: b.tone,
-          transform: b.transform,
-          visible: b.visible,
-          ...(b.id === id ? patch : {}),
-        }));
-      }
       /*
        * ONE CONTROL, ONE TRUTH.
        *
@@ -728,7 +844,7 @@ export function LetterheadStudio({
        * second contradictory switch.
        */
       const body: Record<string, unknown> = { layout };
-      const target = comp.header.concat(comp.footer).find((b) => b.id === id);
+      const target = id ? comp.header.concat(comp.footer).find((b) => b.id === id) : null;
       if (patch.visible !== undefined && target && target.toggle) {
         for (const col of target.toggle) {
           if ((TOGGLE_COLUMNS as readonly string[]).includes(col)) {
@@ -845,7 +961,9 @@ export function LetterheadStudio({
       onDrop={(row, col) => {
         const id = dragging;
         setDragging(null);
-        if (id) place(id, { row, col });
+        // Into THIS zone, at the bottom of the cell it lands on — a block can
+        // cross from the footer to the header (meeting 5).
+        if (id) move(moveBlock(layoutOf(comp), id, { zone, row, col }));
       }}
     />
   );
@@ -943,6 +1061,15 @@ export function LetterheadStudio({
               readOnly={readOnly}
               logoHeightMm={cfg.logo_height_mm ?? null}
               onPlace={(patch) => place(block.id, patch)}
+              onNudge={(dir) => move(nudge(layoutOf(comp), block.id, dir))}
+              onZone={() => {
+                const to: Zone = block.zone === "header" ? "footer" : "header";
+                const rows = comp[to].map((b) => b.row);
+                // Into the other zone: the header's last row, or the footer's
+                // first — the side nearest the block's old home.
+                const row = to === "header" ? (rows.length ? Math.max(...rows) : 0) : 0;
+                move(moveBlock(layoutOf(comp), block.id, { zone: to, row, col: block.col, index: to === "footer" ? 0 : undefined }));
+              }}
               onLine={(patch) => line && saveLine(line.line_id, patch)}
               onRemoveLine={async () => {
                 if (!line) return;
@@ -1017,6 +1144,14 @@ export function LetterheadStudio({
           </p>
         </div>
         )}
+
+        {/* ── Which address prints, and the identifiers' line (meeting 5) ── */}
+        <AddressPanel
+          bundle={bundle}
+          busy={busy}
+          readOnly={readOnly}
+          onSave={saveConfig}
+        />
 
         {comp.empty_blocks.length > 0 && (
           <Callout tone="warn" title={tr("Switched on, but empty")}>

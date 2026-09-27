@@ -213,6 +213,15 @@ const DOC_TYPES = {
   ENTITY_DOCUMENT:       { label: "Entity document scan",     module: "master/corporate_entity",       moduleKey: "MOD-01" },
   CLIENT_DOCUMENT:       { label: "Client KYC scan",          module: "master/client_master",          moduleKey: "MOD-03" },
   SUPPLIER_DOCUMENT:     { label: "Supplier KYC scan",        module: "master/supplier_master",        moduleKey: "MOD-04" },
+  /*
+   * A bank RIB, mandate or signature card behind a treasury account (meeting
+   * 5, 21 Sep 2026 — the document form had no way to attach the file at all).
+   * Registered so reading it back follows Treasury (MOD-09), the register it
+   * belongs to, instead of falling back to the Settings grant.
+   */
+  TREASURY_DOCUMENT:     { label: "Treasury account document", module: "master/treasury_account",      moduleKey: "MOD-09" },
+  // The generated signatory letter to a bank — same register, same reader.
+  BANK_AUTHORISATION:    { label: "Signatory authorisation letter", module: "master/treasury_account", moduleKey: "MOD-09" },
 };
 
 /**

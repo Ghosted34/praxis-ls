@@ -96,8 +96,8 @@ describe("GET /entities/:id/letterhead — composed blocks read the registration
     const out = await entityService.letterhead(NO_CLIENT, "e1", "en", { tax: true });
 
     const ids = block(out, "en", "footer", "identifiers");
-    expect(textOf(ids)).toContain(`NIU ${SECRETS.niu}`);
-    expect(textOf(ids)).toContain(`RCCM ${SECRETS.rccm}`);
+    expect(textOf(ids)).toContain(`NIU: ${SECRETS.niu}`);
+    expect(textOf(ids)).toContain(`RCCM: ${SECRETS.rccm}`);
     // PR-10 / A3: the VAT number rides the tax registration and STAYS there —
     // the trade-register line prints NIU/RCCM (and any other registration
     // rows), never a tax-registration number.
@@ -110,7 +110,7 @@ describe("GET /entities/:id/letterhead — composed blocks read the registration
 
     // Both languages compose from the same rows — a French sheet must not
     // lose its statutory mentions to a language switch.
-    expect(textOf(block(out, "fr", "footer", "identifiers"))).toContain(`NIU ${SECRETS.niu}`);
+    expect(textOf(block(out, "fr", "footer", "identifiers"))).toContain(`NIU: ${SECRETS.niu}`);
 
     // And the preview beside the blocks agrees — the two surfaces are fed the
     // same rows, which is the property the whole rebuild is for.

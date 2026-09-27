@@ -182,8 +182,49 @@ async function clientDossierChain(client, { clientId, dossierId, showForecast = 
   return { dossier, milestones: stages.rows, assumptions };
 }
 
+/**
+ * The invoice statuses a CLIENT may see: issued ones. A draft, or one still
+ * awaiting internal validation or approval, is our working paper, not a demand
+ * for payment — it was listed here until 14130's follow-up, amounts and all.
+ */
+const CLIENT_VISIBLE_INVOICE = "status NOT IN ('DRAFT', 'SUBMITTED_FOR_VALIDATION', 'SUBMITTED_FOR_APPROVAL')";
+
 async function clientInvoices(client, clientId) {
-  return (await client.query("SELECT invoice_id, doc_number, total_ttc, status, payment_due_on FROM invoice WHERE client_id = $1 AND type = 'FINAL' ORDER BY created_at DESC LIMIT 100", [clientId])).rows;
+  return (await client.query(
+    "SELECT invoice_id, doc_number, total_ttc, status, payment_due_on, currency FROM invoice " +
+      `WHERE client_id = $1 AND type = 'FINAL' AND ${CLIENT_VISIBLE_INVOICE} ORDER BY created_at DESC LIMIT 100`,
+    [clientId],
+  )).rows;
+}
+
+/**
+ * One invoice's lines, for the client who was billed — scoped in SQL to that
+ * client and to an issued invoice, so an id guessed from another client's
+ * invoice returns nothing. The heading columns ride along so the service can
+ * group the lines exactly as the printed invoice does (meeting 5).
+ */
+async function clientInvoiceWithLines(client, { clientId, invoiceId }) {
+  const { CLIENT_HEADING_COLUMNS, clientHeadingJoin } = require("../master/financial_dictionary/client-heading.sql");
+  const { rows: [invoice] } = await client.query(
+    "SELECT invoice_id, doc_number, created_at AS issued_on, payment_due_on, status, currency, service_ht, disbursement_total, vat_total, total_ttc " +
+      `FROM invoice WHERE invoice_id = $1 AND client_id = $2 AND type = 'FINAL' AND ${CLIENT_VISIBLE_INVOICE}`,
+    [invoiceId, clientId],
+  );
+  if (!invoice) return null;
+  const { rows: lines } = await client.query(
+    `SELECT il.label, il.qty, il.unit_price, il.line_ht, il.is_disbursement, il.client_heading,
+            tc.rate_percent AS tax_rate_percent, ${CLIENT_HEADING_COLUMNS}
+       FROM invoice_line il
+       LEFT JOIN dictionary_item di ON di.dictionary_item_id = il.dictionary_item_id
+       LEFT JOIN tax_code tc ON tc.tax_code_id = il.tax_code_id
+       ${clientHeadingJoin("di")}
+      WHERE il.invoice_id = $1 ORDER BY il.line_no`,
+    [invoiceId],
+  );
+  const { rows: registry } = await client.query(
+    "SELECT code, name_fr AS fr, name_en AS en, sort_order AS sort FROM dictionary_ref WHERE kind = 'CLIENT_HEADING'",
+  );
+  return { invoice, lines, registry };
 }
 
 /**
@@ -210,4 +251,4 @@ async function auditLedger(client, { from, to, prefixes, limit = 500 }) {
   );
   return rows;
 }
-module.exports = { insertAccess, listAccess, activeFor, revoke, clientDossiers, clientDossierChain, clientInvoices, auditLedger, page, clientDocuments, clientDocument, onboardingSteps, seedOnboarding, markOnboardingStep, clientMessages, insertClientMessage, clientQuoteRequests };
+module.exports = { insertAccess, listAccess, activeFor, revoke, clientDossiers, clientDossierChain, clientInvoices, clientInvoiceWithLines, auditLedger, page, clientDocuments, clientDocument, onboardingSteps, seedOnboarding, markOnboardingStep, clientMessages, insertClientMessage, clientQuoteRequests };

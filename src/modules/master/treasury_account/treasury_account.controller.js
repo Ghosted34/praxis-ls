@@ -138,6 +138,22 @@ module.exports = {
       actor: actor(req),
     })) });
   }),
+  attachDocumentScan: asyncHandler(async (req, res) => {
+    res.json({ data: await req.tenantDb((c) => service.attachDocumentScan(c, {
+      accountId: req.params.id,
+      documentId: req.params.docId,
+      actor: actor(req),
+      ...req.body,
+    })) });
+  }),
+
+  authorisationLetter: asyncHandler(async (req, res) => {
+    res.status(201).json({ data: await req.tenantDb((c) => service.authorisationLetter(c, {
+      accountId: req.params.id,
+      actor: actor(req),
+      signedBy: (req.body && req.body.signed_by) || null,
+    })) });
+  }),
 
   // Signatories (PR-03, Audit #3)
   listSignatories: asyncHandler(async (req, res) => {

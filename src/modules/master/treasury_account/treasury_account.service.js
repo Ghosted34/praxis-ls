@@ -423,6 +423,101 @@ async function removeDocument(client, { accountId, documentId, actor = {} }) {
   return { deleted: true };
 }
 
+/**
+ * Link an uploaded scan to a document record — the second of the two calls
+ * every master-data attachment makes (see client components/scan-attachment).
+ * The vault row must exist and must have been filed against THIS account, so a
+ * caller cannot point a treasury record at somebody else's file.
+ */
+async function attachDocumentScan(client, { accountId, documentId, actor = {}, ...body }) {
+  const doc = await repo.getDocument(client, documentId);
+  if (!doc || doc.treasury_account_id !== accountId) {
+    throw new AppError("NOT_FOUND", "Treasury document not found", 404);
+  }
+  const { rows: [vaulted] } = await client.query(
+    "SELECT doc_id, entity_ref, original_name FROM document_vault WHERE doc_id = $1",
+    [body.vault_id],
+  );
+  if (!vaulted) throw new AppError("VAULT_DOC_NOT_FOUND", "The uploaded file was not found in the vault.", 422);
+  const owners = [`treasury_account:${accountId}`, `treasury_account_document:${documentId}`];
+  if (vaulted.entity_ref && !owners.includes(vaulted.entity_ref)) {
+    throw new AppError("VAULT_DOC_FOREIGN", "That file belongs to another record.", 422);
+  }
+  const row = await repo.attachDocumentScan(client, documentId, {
+    vault_id: vaulted.doc_id,
+    file_name: body.file_name || vaulted.original_name || null,
+    file_size: body.file_size ?? null,
+    mime_type: body.mime_type || null,
+  });
+  await audit(client, {
+    actorUserId: actor.user_id || null, action: "treasury_account.document_scan_attached",
+    moduleKey: events.MODULE, entityRef: ref(accountId), before: doc, after: row,
+  });
+  return row;
+}
+
+/**
+ * Generate the letter to the bank naming who may sign on this account (meeting
+ * 5), from the account and its signatories in force today, and file it as a
+ * BANK_MANDATE document on the account — so it sits in the Documents tab beside
+ * the RIB, and the next person to ask "what did we send the bank?" finds it.
+ *
+ * Refuses an account with no active signatory: a letter authorising nobody is
+ * not something to hand a bank.
+ */
+async function authorisationLetter(client, { accountId, actor = {}, signedBy = null }) {
+  const acc = await repo.getWithCategory(client, accountId);
+  if (!acc) throw new AppError("NOT_FOUND", "Treasury account not found", 404);
+  const today = new Date().toISOString().slice(0, 10);
+  const iso = (v) => (v instanceof Date ? v.toISOString().slice(0, 10) : v ? String(v).slice(0, 10) : null);
+  const signatories = (await repo.listSignatories(client, accountId)).filter((s) =>
+    s.is_active !== false
+    && (!s.effective_from || iso(s.effective_from) <= today)
+    && (!s.effective_to || iso(s.effective_to) >= today));
+  if (!signatories.length) {
+    throw new AppError("NO_SIGNATORIES", "Add at least one active signatory before generating the authorisation letter.", 422);
+  }
+  const templateSvc = require("../../documents/template/template.service");
+  const out = await templateSvc.renderPdfFromData(client, {
+    docType: "BANK_AUTHORISATION",
+    entityId: acc.entity_id || null,
+    actor,
+    data: {
+      date: today,
+      bank_name: acc.bank_name || acc.label,
+      branch: acc.branch || null,
+      account_label: acc.label,
+      account_number: acc.account_number || null,
+      iban: acc.iban || null,
+      swift_bic: acc.swift_bic || null,
+      currency: acc.currency,
+      holder: acc.holder_name || null,
+      signed_by: signedBy,
+      signatories: signatories.map((s) => ({
+        full_name: s.full_name, role_title: s.role_title, rule_type: s.rule_type,
+        limit_amount: s.limit_amount, currency: s.currency, effective_from: iso(s.effective_from),
+      })),
+    },
+  });
+  const createdBy = await resolveActorId(client, actor.user_id);
+  const row = await repo.insertDocument(client, {
+    treasury_account_id: accountId,
+    document_type: "BANK_MANDATE",
+    title: `Signatory authorisation letter — ${today}`,
+    vault_id: out && out.doc_id ? out.doc_id : null,
+    file_name: `authorisation-${today}.pdf`,
+    mime_type: "application/pdf",
+    issue_date: today,
+    created_by: createdBy,
+    notes: `Generated from ${signatories.length} active signator${signatories.length === 1 ? "y" : "ies"}.`,
+  });
+  await audit(client, {
+    actorUserId: actor.user_id || null, action: "treasury_account.authorisation_letter_generated",
+    moduleKey: events.MODULE, entityRef: ref(accountId), after: row,
+  });
+  return row;
+}
+
 async function verifyDocument(client, { accountId, documentId, actor = {} }) {
   const doc = await repo.getDocument(client, documentId);
   if (!doc || doc.treasury_account_id !== accountId) {
@@ -525,7 +620,7 @@ async function deleteGateway(client, { provider, actor = {} }) {
 
 module.exports = {
   create, update, setActive, setPrimary, verify, unverify, get, list, reverseEntry,
-  listDocuments, addDocument, removeDocument, verifyDocument,
+  listDocuments, addDocument, removeDocument, verifyDocument, attachDocumentScan, authorisationLetter,
   listSignatories, addSignatory, updateSignatory, removeSignatory,
   listGateways, getGateway, upsertGateway, setGatewayActive, setGatewayRole, deleteGateway,
 };

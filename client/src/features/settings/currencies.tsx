@@ -960,8 +960,11 @@ function CurrencyDossier({
   onEdit,
   onSetRate,
   allCodes,
+  syncTick = 0,
 }: {
   code: string;
+  /** Changes after every sync or edit on the page — the panel re-reads. */
+  syncTick?: number;
   onChanged: () => void;
   onEdit: (c: Currency) => void;
   onSetRate: (base: string, quote: string) => void;
@@ -969,7 +972,8 @@ function CurrencyDossier({
 }) {
   const res = useResource<Dossier | null>(
     () => tenant<Dossier>(`/currencies/${code}/360`),
-    [code],
+    [code, syncTick],
+    { fresh: true },
   );
   const d = asDossier(res.data);
   const [confirm, setConfirm] = React.useState<
@@ -1606,9 +1610,12 @@ export function CurrenciesPage() {
       setSelId(rows[0]?.code ?? null);
   }, [rows, selId]);
 
+  // Bumped by every sync, so the open currency panel re-reads its rates.
+  const [syncTick, setSyncTick] = React.useState(0);
   function reloadAll() {
     cur.reload();
     status.reload();
+    setSyncTick((n) => n + 1);
   }
 
   async function syncNow() {
@@ -1754,6 +1761,7 @@ export function CurrenciesPage() {
           {selId ? (
             <CurrencyDossier
               code={selId}
+              syncTick={syncTick}
               allCodes={codes}
               onChanged={reloadAll}
               onEdit={(c) => setEditing(c)}
@@ -1775,6 +1783,15 @@ export function CurrenciesPage() {
         onSaved={(code) => {
           setSelId(code);
           reloadAll();
+          /*
+           * Meeting 5 (21 Sep 2026): CAD was added, "Sync now" was pressed, and
+           * CAD's panel kept saying "Never synced" until the page was refreshed.
+           * A new currency now syncs at once — the person who adds it wants its
+           * rate, not a second button — and every sync re-reads the open panel.
+           * Only when a provider key is configured; otherwise the banner
+           * already says the sync cannot run.
+           */
+          if (status.data?.key_configured !== false) void syncNow();
         }}
       />
       <EditCurrencyModal

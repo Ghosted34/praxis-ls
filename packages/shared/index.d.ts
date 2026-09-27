@@ -515,6 +515,8 @@ export declare namespace entityCommon {
   const taxRegistrationCreate: z.ZodTypeAny;
   const taxRegistrationUpdate: z.ZodTypeAny;
   const letterheadUpdate: z.ZodObject<Record<string, z.ZodTypeAny>>;
+  /** A typed colour ("black", "000", "#C2703D") → "#rrggbb", or null. */
+  function colourInput(value: unknown): string | null;
   const TAX_KINDS: readonly string[];
   const FILING_FREQUENCIES: readonly string[];
   const personCreate: z.ZodTypeAny;

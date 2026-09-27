@@ -87,7 +87,11 @@ export const payAdvance = (body: PayAdvanceInput) =>
  *  the great majority of lines, which have no equipment dimension. */
 export type InvoiceLineInput = {
   dictionary_item_id: string;
-  amount: number;
+  /** The real shape: the server extends qty × unit_price. */
+  qty?: number;
+  unit_price?: number;
+  /** @deprecated one unit at this price — use qty + unit_price. */
+  amount?: number;
   is_disbursement?: boolean;
   label?: string;
   container_type_ref_id?: string | null;
@@ -124,6 +128,8 @@ export type InvoiceDetail = {
     dictionary_item_id?: string | null;
     label?: string | null;
     line_ht?: number | string;
+    qty?: number | string | null;
+    unit_price?: number | string | null;
     is_disbursement?: boolean;
     /** 14130: the family this line prints under, when moved on this invoice. */
     client_heading?: string | null;

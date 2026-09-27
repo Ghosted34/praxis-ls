@@ -235,7 +235,7 @@ async function load(client, { id }) {
   const leaf = code ? await _leaf(client, code) : null;
   const custodian = await _custodian(client, acc.custodian_user_id);
   const verifier = await _verifier(client, acc.verified_by);
-  const documents = await accRepo.listDocuments(client, id);
+  const documents = withRenewal(await accRepo.listDocuments(client, id));
   const signatories = await accRepo.listSignatories(client, id);
   const timeline = await _timeline(client, id, 25);
   const unreconciledCount = await _unreconciledCount(client, id);
@@ -280,6 +280,22 @@ async function load(client, { id }) {
 }
 
 /**
+ * Stamp each document with where its expiry sits — the same ladder the entity
+ * register uses (corporate_entity.renewals: OK → APPROACHING → DUE → EXPIRED,
+ * 60-day default lead). A bank mandate or signature card that lapses unnoticed
+ * is a payment the bank refuses; the dossier and the list both read this.
+ */
+function withRenewal(docs = [], today = null) {
+  const { stateOf, isoDate, DEFAULT_LEAD_DAYS } = require("./corporate_entity/corporate_entity.renewals");
+  const on = today || new Date().toISOString().slice(0, 10);
+  return (docs || []).map((d) => {
+    const expires = isoDate(d.expiry_date);
+    const { state, days_remaining } = stateOf(expires, on, DEFAULT_LEAD_DAYS);
+    return { ...d, renewal_state: expires ? state : null, days_remaining };
+  });
+}
+
+/**
  * A per-account readiness checklist, same idea as entity-360: an empty
  * account renders it as its empty state, and it explains what to do next
  * rather than showing "—".
@@ -311,6 +327,17 @@ function buildReadiness(acc, docs = []) {
     push("custodian", "Custodian", !!acc.custodian_user_id);
     push("float_limit", "Float limit", acc.float_limit !== null && acc.float_limit !== undefined);
   }
+  const lapsing = (docs || []).filter((d) => d.renewal_state === "EXPIRED" || d.renewal_state === "DUE");
+  if ((docs || []).some((d) => d.expiry_date)) {
+    push(
+      "documents_current",
+      "Documents in date",
+      lapsing.length === 0,
+      lapsing.length
+        ? `Renew ${lapsing.map((d) => d.title).join(", ")} and attach the new copy in Documents`
+        : null,
+    );
+  }
   push("opening_balance", "Opening balance recorded", acc.opening_date !== null, "Record an opening balance so the 360 can reconcile against a starting point");
   push("verified", "Verified against bank letter", acc.is_verified === true, "Have a treasurer confirm the numbers");
 
@@ -325,4 +352,4 @@ function buildReadiness(acc, docs = []) {
 // dossier for every treasury account. Reachable only through `load`, it could
 // not be asserted without standing up the other nine sub-queries; exporting it
 // is cheaper than leaving the regression untested.
-module.exports = { load, buildReadiness, _timeline };
+module.exports = { load, buildReadiness, withRenewal, _timeline };

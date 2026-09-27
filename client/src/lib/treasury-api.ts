@@ -65,6 +65,8 @@ export type TreasuryAccountRich = {
   is_verified: boolean;
   verified_by: string | null;
   verified_at: string | null;
+  /** List only: documents expired or expiring within 60 days. */
+  docs_expiring?: number;
 
   // Banking identity
   bank_name: string | null;
@@ -246,6 +248,9 @@ export type TreasuryDocument = {
   verified_at: string | null;
   notes: string | null;
   created_at: string;
+  /** Where the expiry sits (corporate-entity renewal ladder); null without one. */
+  renewal_state?: "OK" | "APPROACHING" | "DUE" | "EXPIRED" | null;
+  days_remaining?: number | null;
 };
 
 export type TreasurySignatory = {
@@ -280,6 +285,21 @@ export const removeDocument = (accountId: string, documentId: string) =>
 
 export const verifyDocument = (accountId: string, documentId: string) =>
   tenant<TreasuryDocument>(`/treasury-accounts/${accountId}/documents/${documentId}/verify`, { method: "POST" });
+
+/** Link a file already in the vault to a document record (upload first). */
+export const attachDocumentScan = (
+  accountId: string,
+  documentId: string,
+  body: { vault_id: string; file_name?: string | null; file_size?: number | null; mime_type?: string | null },
+) =>
+  tenant<TreasuryDocument>(`/treasury-accounts/${accountId}/documents/${documentId}/scan`, { method: "POST", body });
+
+/**
+ * Generate the signatory authorisation letter for the bank (meeting 5) from the
+ * account's active signatories. Returns the document row it filed.
+ */
+export const generateAuthorisationLetter = (accountId: string, body: { signed_by?: string | null } = {}) =>
+  tenant<TreasuryDocument>(`/treasury-accounts/${accountId}/authorisation-letter`, { method: "POST", body });
 
 export const listSignatories = (accountId: string) =>
   tenant<TreasurySignatory[]>(`/treasury-accounts/${accountId}/signatories`);

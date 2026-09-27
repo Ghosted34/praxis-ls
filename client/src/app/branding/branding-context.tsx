@@ -18,7 +18,7 @@ import {
   type PwaConfig,
 } from "@/lib/pwa-config";
 import { loadFonts, DEFAULT_STACK, DEFAULT_MONO_STACK } from "@/lib/fonts";
-import { EMPTY_USER_APPEARANCE, type UserAppearance } from "@/lib/preferences";
+import { EMPTY_USER_APPEARANCE, applyTextSize, type UserAppearance } from "@/lib/preferences";
 import { onReconnect } from "@/lib/connection";
 import {
   readCachedBranding,
@@ -74,6 +74,7 @@ function resolveFonts(b: Branding, u: UserAppearance) {
 
 function paint(b: Branding, u: UserAppearance = EMPTY_USER_APPEARANCE) {
   const fonts = resolveFonts(b, u);
+  applyTextSize(u.textSize);
   // Fetch the woff2 for whatever is actually in force — at most three families
   // out of the fifteen in the library. Fire-and-forget: @fontsource ships
   // `font-display: swap`, so text paints in the fallback now and reflows into

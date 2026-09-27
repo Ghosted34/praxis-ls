@@ -229,7 +229,10 @@ const CATALOGUE = [
      * rows, which printed a number the tax module owns, from a join the
      * letterhead does not control, on a line that says "trade register".
      */
-    derive: (b) => (b.entity.identifiers || []).map((i) => ({ type: "text", text: `${i.kind} ${i.number}` })),
+    // One line by default (meeting 5: "RCCM: … · NIU: …"); the
+    // `identifiers_inline` switch puts each on its own line.
+    derive: (b) => lh.identifierText(b.entity.identifiers || [], b.config.identifiers_inline !== false)
+      .map((t) => ({ type: "text", text: t })),
     /*
      * The legacy `rccm` / `niu` columns, for an entity with no registration
      * rows. 0512 backfilled the columns into rows, so in practice this covers
@@ -237,10 +240,10 @@ const CATALOGUE = [
      * a commercial document missing its statutory identifiers is not a document
      * anyone can use.
      */
-    fallback: (b) => [
-      b.entity.rccm ? { type: "text", text: `RCCM ${clean(b.entity.rccm)}` } : null,
-      b.entity.niu ? { type: "text", text: `NIU ${clean(b.entity.niu)}` } : null,
-    ].filter(Boolean),
+    fallback: (b) => lh.identifierText([
+      b.entity.rccm ? { kind: "RCCM", number: clean(b.entity.rccm) } : null,
+      b.entity.niu ? { kind: "NIU", number: clean(b.entity.niu) } : null,
+    ].filter(Boolean), b.config.identifiers_inline !== false).map((t) => ({ type: "text", text: t })),
   },
   {
     id: "establishment",
@@ -469,12 +472,24 @@ const DEFAULT_LAYOUT = {
 
 /** One placement, defaulted and clamped. Never trusts a stored value. */
 function placement(zone, saved, fallbackIndex) {
-  const d = (DEFAULT_LAYOUT[zone] || []).find((p) => p.id === (saved && saved.id)) || {};
+  // The default is looked up in EITHER zone: a block the tenant dragged from
+  // the footer into the header keeps its own default styling there.
+  const d = ZONES.map((z) => (DEFAULT_LAYOUT[z] || []).find((p) => p.id === (saved && saved.id)))
+    .find(Boolean) || {};
   const s = saved || {};
   return {
     id: s.id,
     row: clampInt(s.row ?? d.row, 0, 40, fallbackIndex),
     col: clampInt(s.col ?? d.col, 0, COLS - 1, 0),
+    /*
+     * The block's place WITHIN its cell (meeting 5). Blocks sharing a row and a
+     * column stack, and the stack used to be ordered by the catalogue alone —
+     * so the payment block, stacked under the identifiers in the footer's one
+     * cell, could not be moved down past the footer note however it was
+     * dragged. Absent means "catalogue order", which is what `fallbackIndex`
+     * already is.
+     */
+    order: clampInt(s.order, 0, 99, fallbackIndex),
     span: clampInt(s.span ?? d.span, 1, COLS, COLS),
     align: ["left", "center", "right"].includes(s.align ?? d.align) ? (s.align ?? d.align) : "left",
     // The type scale, relative to the zone's base size. Bounded hard: a
@@ -503,16 +518,30 @@ function placement(zone, saved, fallbackIndex) {
  * and are placed by the layout the same way, so a tenant can drag one between
  * two derived blocks rather than being stuck with an appendix at the bottom.
  */
-function mergeLayout(zone, saved, customIds = []) {
-  const savedList = Array.isArray(saved && saved[zone]) ? saved[zone] : [];
-  const savedById = new Map(savedList.filter((p) => p && p.id).map((p) => [p.id, p]));
-  const known = CATALOGUE.filter((b) => b.zone === zone).map((b) => b.id).concat(customIds);
+function mergeLayout(zone, saved, customIds = [], otherZoneCustomIds = []) {
+  const listOf = (z) => (Array.isArray(saved && saved[z]) ? saved[z] : []).filter((p) => p && p.id);
+  const savedById = new Map(listOf(zone).map((p) => [p.id, p]));
+  /*
+   * A block lives in the zone whose saved list carries it, else its own
+   * catalogue zone (meeting 5: the bank block could not be dragged into the
+   * header, because the zone was the catalogue's and nothing else). The first
+   * zone to claim an id wins, so a hand-edited layout listing it twice cannot
+   * print it twice.
+   */
+  const claimed = new Map();
+  for (const z of ZONES) for (const p of listOf(z)) if (!claimed.has(p.id)) claimed.set(p.id, z);
+  const homeOf = (id, fallbackZone) => claimed.get(id) || fallbackZone;
+
+  const candidates = CATALOGUE.map((b) => [b.id, b.zone])
+    .concat(customIds.map((id) => [id, zone]))
+    .concat(otherZoneCustomIds.map((id) => [id, zone === "header" ? "footer" : "header"]));
+  const known = candidates.filter(([id, home]) => homeOf(id, home) === zone).map(([id]) => id);
 
   return known.map((id, i) => placement(zone, { ...(savedById.get(id) || {}), id }, i))
-    // Row-major: down the page, then across it. A stable sort on (row, col)
-    // keeps two blocks in the same cell in their catalogue order rather than in
-    // whatever order the JSON happened to serialise.
-    .sort((a, b) => (a.row - b.row) || (a.col - b.col));
+    // Row-major: down the page, then across it, then down the cell's stack. A
+    // stable sort keeps two blocks with the same (row, col, order) in their
+    // catalogue order rather than in whatever order the JSON serialised.
+    .sort((a, b) => (a.row - b.row) || (a.col - b.col) || (a.order - b.order));
 }
 
 /* ── height ────────────────────────────────────────────────────────────────
@@ -640,19 +669,19 @@ function compose(input = {}, lang) {
     entity.identifiers = lh.identifiers(entity, input.registrations || []);
   }
   if (!Array.isArray(entity.address_lines)) {
-    entity.address_lines = lh.addressLines(entity, addresses, { language });
+    entity.address_lines = lh.addressLines(entity, addresses, { language, config });
   }
 
   // The bundle every `derive` and every token reads. Assembled once: the
   // payment block and the address line are each a non-trivial precedence walk
   // and neither should run per block.
-  const poBoxRaw = lh.poBox ? lh.poBox(entity, addresses) : (entity.po_box || null);
+  const poBoxRaw = lh.poBox ? lh.poBox(entity, addresses, config) : (entity.po_box || null);
   const bundle = {
     entity,
     config,
     language,
     logo_url: input.logo_url || entity.logo_light_ref || null,
-    address_line: lh.registeredAddress(entity, addresses),
+    address_line: lh.registeredAddress(entity, addresses, config),
     po_box_line: poBoxRaw ? `PO Box ${poBoxRaw}` : null,
     establishment_line: lh.establishmentLine(lh.issuingEstablishment(input.establishments || [])),
     payment: lh.paymentBlock(entity, input.treasuryAccounts || []),
@@ -670,8 +699,9 @@ function compose(input = {}, lang) {
 
   for (const zone of ZONES) {
     const zoneCustom = customByZone(zone);
-    const placements = mergeLayout(zone, input.layout, zoneCustom.map((c) => c.id));
-    const customById = new Map(zoneCustom.map((c) => [c.id, c]));
+    const otherCustom = custom.filter((c) => !zoneCustom.includes(c));
+    const placements = mergeLayout(zone, input.layout, zoneCustom.map((c) => c.id), otherCustom.map((c) => c.id));
+    const customById = new Map(custom.map((c) => [c.id, c]));
 
     built[zone] = placements.map((p) => {
       const def = BY_ID.get(p.id);

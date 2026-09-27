@@ -10,17 +10,42 @@ import { tenant } from "./api-client";
  * colour, logo and favicon stay the company's (see preference.service.js).
  * `null` on a field means "inherit whatever the tenant set".
  */
+export type TextSize = "sm" | "md" | "lg" | "xl";
+
 export type UserAppearance = {
   fontDisplay: string | null;
   fontBody: string | null;
   fontMono: string | null;
+  /** Personal interface scale (meeting 5); null = the designed size. */
+  textSize?: TextSize | null;
 };
 
 export const EMPTY_USER_APPEARANCE: UserAppearance = {
   fontDisplay: null,
   fontBody: null,
   fontMono: null,
+  textSize: null,
 };
+
+/**
+ * The root font size per choice. Every Tailwind size and spacing is in rem, so
+ * scaling the root scales the whole interface together — text, rows, buttons —
+ * the way browser zoom does, without the reader having to find browser zoom.
+ */
+export const TEXT_SIZE_ROOT: Record<TextSize, string> = {
+  sm: "93.75%",
+  md: "100%",
+  lg: "112.5%",
+  xl: "125%",
+};
+
+/** Apply a text size to the document root; null restores the default. */
+export function applyTextSize(size: TextSize | null | undefined) {
+  if (typeof document === "undefined") return;
+  const root = document.documentElement;
+  if (!size || size === "md") root.style.removeProperty("font-size");
+  else root.style.fontSize = TEXT_SIZE_ROOT[size];
+}
 
 export const fetchUserAppearance = () =>
   tenant<UserAppearance>("/me/preferences/appearance");

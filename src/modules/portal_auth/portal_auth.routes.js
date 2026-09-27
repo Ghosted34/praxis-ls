@@ -55,6 +55,7 @@ router.post("/auth/accept", resetLimiter, v.accept, c.accept);
 router.get("/me", portalAuth(), c.me);
 router.get("/client", portalAuth("CLIENT"), c.client);
 router.get("/client/dossier/:dossierId", portalAuth("CLIENT"), c.clientChain);
+router.get("/client/invoice/:invoiceId", portalAuth("CLIENT"), c.clientInvoice);
 // Document vault — the client's own client-visible documents (PRD §11.1).
 // The list is scoped to their dossiers + client filings; the download re-checks
 // ownership + visibility in SQL before streaming bytes. Handlers live on the

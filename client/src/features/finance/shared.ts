@@ -58,7 +58,11 @@ export function optionLabel(o: Option) {
  */
 export type InvLine = {
   dictionary_item_id: string;
+  /** The UNIT price on an invoice line (qty × this is the extension); the
+   *  amount itself on a credit-note line. */
   amount: string;
+  /** Invoice lines: how many units. Absent/blank = 1. */
+  qty?: string;
   is_disbursement: boolean;
   label: string;
   /** Which container type this charge was for (0663). Empty for the great

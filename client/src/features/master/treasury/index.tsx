@@ -199,6 +199,15 @@ export function TreasuryMasterPage() {
                         </span>
                         <div className="flex shrink-0 items-center gap-1">
                           {a.is_primary && <Pill tone="blue">★</Pill>}
+                          {(a.docs_expiring ?? 0) > 0 && (
+                            <span
+                              title={tr("Documents expired or expiring within 60 days")}
+                            >
+                              <Pill tone="bad">
+                                {`${a.docs_expiring} ${tr("to renew")}`}
+                              </Pill>
+                            </span>
+                          )}
                           {a.is_verified ? (
                             <Pill tone="ok">✓</Pill>
                           ) : (

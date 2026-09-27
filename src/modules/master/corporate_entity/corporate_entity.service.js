@@ -505,6 +505,18 @@ async function letterhead(client, id, lang = null, { tax = false } = {}) {
     },
     blocks: { fr: composeFor("fr"), en: composeFor("en") },
     custom_lines: customLines,
+    // The rows the studio offers for "which address prints" (meeting 5) — the
+    // active ones only, since the resolver ignores a chosen inactive row.
+    addresses: (addresses || [])
+      .filter((a) => a && a.is_active !== false)
+      .map((a) => ({
+        address_id: a.address_id, type: a.type, is_primary: a.is_primary === true,
+        line: letterheadService.addressLine(a), po_box: a.po_box || null,
+      })),
+    // Which rows the resolver actually picked, so the studio can say so when
+    // the entity has not chosen one.
+    resolved_address_id: (letterheadService.registeredAddressRow(addresses, config) || {}).address_id || null,
+    resolved_postal_address_id: (letterheadService.postalAddressRow(addresses, config) || {}).address_id || null,
     // What the editor may ADD, where each block's content comes from, and which
     // dossier tab and field fixes it — the deep link is a property of the
     // catalogue, so the editor never hardcodes a route.

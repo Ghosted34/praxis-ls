@@ -285,8 +285,10 @@
     color: var(--foreground);
     font-family: var(--font-body);
     /* 13px/1.45 — one step denser. Paired with the 32px table row this is the
-       working density an operator scanning 200 shipments needs (F17). */
-    font-size: 13px;
+       working density an operator scanning 200 shipments needs (F17).
+       In rem (13/16) so the personal text size (My appearance, meeting 5),
+       which scales the root, scales body copy with everything else. */
+    font-size: 0.8125rem;
     line-height: 1.45;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;

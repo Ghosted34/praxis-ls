@@ -20,12 +20,14 @@ import { useBranding } from "@/app/branding/branding-context";
 import {
   saveUserAppearance,
   resetUserAppearance,
+  applyTextSize,
+  type TextSize,
   type UserAppearance,
 } from "@/lib/preferences";
 import { ApiError } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/data-list";
-import { SettingsCard, Field } from "@/components/settings/controls";
+import { SettingsCard, Field, Segmented } from "@/components/settings/controls";
 import { FontPicker } from "@/components/settings/font-picker";
 import { fontByValue } from "@/lib/fonts";
 import { RailCard } from "./rail-card";
@@ -63,7 +65,35 @@ export function MyAppearancePage() {
     setDraft((d) => ({ ...d, [k]: v || null }));
   };
 
-  const hasOverrides = Object.values(draft).some(Boolean);
+  // Fonts are the only overrides the reset button is about; the text size is
+  // its own control with its own "Default".
+  const hasOverrides = [draft.fontDisplay, draft.fontBody, draft.fontMono].some(Boolean);
+
+  /*
+   * Text size (meeting 5 — the text was too small to read on a laptop). Saved
+   * the moment it is chosen, like the rail and tower pins below: it is one
+   * choice, you see its effect at once, and a size change that waits for a
+   * Save button is one that gets tried, forgotten and lost.
+   */
+  const [sizeBusy, setSizeBusy] = React.useState(false);
+  async function chooseSize(size: TextSize) {
+    const next = size === "md" ? null : size;
+    applyTextSize(next); // at once — the saved value confirms it
+    setSizeBusy(true);
+    try {
+      const saved = await saveUserAppearance({ textSize: next });
+      setUserAppearance(saved);
+      setDraft((d) => ({ ...d, textSize: saved.textSize ?? null }));
+    } catch (err) {
+      applyTextSize(userAppearance.textSize);
+      setMsg({
+        kind: "err",
+        text: err instanceof ApiError ? err.message : "Couldn't save the text size. Try again.",
+      });
+    } finally {
+      setSizeBusy(false);
+    }
+  }
 
   async function onSave() {
     setBusy(true);
@@ -143,6 +173,24 @@ export function MyAppearancePage() {
 
       <div className="mt-2 grid gap-6 lg:grid-cols-[minmax(0,32rem)_minmax(0,1fr)]">
         <div className="flex min-w-0 flex-col gap-5">
+          <SettingsCard
+            title={tr("Text size")}
+            desc="Makes everything larger or smaller for you — text, rows and buttons together. Saved to your account, so it follows you to every device."
+          >
+            <div className={sizeBusy ? "pointer-events-none opacity-70" : undefined}>
+              <Segmented<TextSize>
+                value={(userAppearance.textSize as TextSize | null) || "md"}
+                onChange={(v) => void chooseSize(v)}
+                options={[
+                  { value: "sm", label: tr("Small") },
+                  { value: "md", label: tr("Default") },
+                  { value: "lg", label: tr("Large") },
+                  { value: "xl", label: tr("Largest") },
+                ]}
+              />
+            </div>
+          </SettingsCard>
+
           <SettingsCard
             title="Typography"
             desc="Fifteen self-hosted families. Leave a field on the workspace default to keep following your organisation's brand."

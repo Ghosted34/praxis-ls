@@ -610,6 +610,11 @@ const LETTERHEAD_WRITABLE = [
   // is the mark's printed height, which the fit model needs as a FIXED number
   // because the mark does not scale with --k.
   "layout", "logo_height_mm",
+  // 13841 added the PO-box/postal toggles, and the studio has written them
+  // since — but they were never on this list, so hiding the PO box saved
+  // nothing. 14140: which address rows print, and RCCM/NIU on one line.
+  "show_postal_address", "show_po_box",
+  "address_id", "postal_address_id", "identifiers_inline",
 ];
 
 const getLetterhead = (client, id) => getById(client, "entity_letterhead", "entity_id", id);

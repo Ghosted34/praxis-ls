@@ -34,6 +34,39 @@ function fmtLines(lines = [], ccy, cfg = {}) {
 }
 
 /**
+ * The VAT rate a line PRINTS: its own tax code's rate (`tax_rate`) when the
+ * loader supplied one, else the legacy `tax`.
+ *
+ * Why two fields. `tax` is part of the signed canonical payload (v1), which
+ * must never change — and the invoice and quotation loaders have always put
+ * 19.25 there for every taxable line, and the quotation even on disbursements.
+ * Correcting `tax` would make every signed document with an exempt or
+ * pass-through line read as AMENDED. So the true rate travels beside it as a
+ * field the hash does not read, and only the page uses it.
+ */
+function displayLines(lines = []) {
+  return (Array.isArray(lines) ? lines : []).map((l) =>
+    l && l.tax_rate !== undefined ? { ...l, tax: l.tax_rate } : l);
+}
+
+/**
+ * The totals row's VAT label: "TVA 19,25%" when every taxed line shares that
+ * one rate (the usual Cameroonian case, and the label these documents always
+ * printed), plain "TVA" when the lines carry different rates or none — a single
+ * rate in the label over lines at 0% and 19.25% would be a false statement.
+ */
+function vatLabel(lines = []) {
+  const rates = new Set(displayLines(lines)
+    .filter((l) => l && !l.is_disbursement && l.tax !== null && l.tax !== undefined && l.tax !== "")
+    .map((l) => Number(l.tax)));
+  if (rates.size === 1) {
+    const r = [...rates][0];
+    return { fr: `TVA ${String(r).replace(".", ",")}%`, en: `VAT ${r}%` };
+  }
+  return { fr: "TVA", en: "VAT" };
+}
+
+/**
  * Shared builder for the line-item + totals family (invoice / proforma /
  * quotation / credit note). `opts`: { title, meta, totalsRows(data), notesLabel,
  * words? } — `words` adds the amount-in-words block (the legacy PO and invoice
@@ -55,7 +88,7 @@ function lineDoc(opts) {
       ], cfg),
       // `grouped`: one printed line per client heading × nature (14130). The
       // data — and the signature over it — stays the detailed lines.
-      k.lineTable(LINE_COLS, fmtLines(opts.grouped ? groupLines(data.lines, cfg.language, data.client_headings) : data.lines, ccy, cfg), cfg),
+      k.lineTable(LINE_COLS, fmtLines(opts.grouped ? groupLines(displayLines(data.lines), cfg.language, data.client_headings) : displayLines(data.lines), ccy, cfg), cfg),
       k.totals(opts.totalsRows(data, ccy, cfg), cfg),
       words,
       cfg.show && cfg.show.notes && data.notes ? k.section({ fr: "Notes", en: "Notes" }, `<div class="box">${k.esc(data.notes).replace(/\n/g, "<br>")}</div>`, cfg) : "",
@@ -98,7 +131,7 @@ const TEMPLATES = {
       totalsRows: (d, ccy, cfg) => [
         [{ fr: "Total HT", en: "Subtotal" }, k.money(d.totals.service_ht, ccy, cfg)],
         [{ fr: "Débours", en: "Disbursements" }, k.money(d.totals.disbursement_total, ccy, cfg)],
-        [{ fr: "TVA 19,25%", en: "VAT 19.25%" }, k.money(d.totals.vat_total, ccy, cfg)],
+        [vatLabel(d.lines), k.money(d.totals.vat_total, ccy, cfg)],
         [{ fr: "Total TTC", en: "Total" }, k.money(d.totals.total_ttc, ccy, cfg), { grand: true }],
       ],
       // The legacy invoice printed "ARRÊTÉE LA PRÉSENTE FACTURE À LA SOMME DE :"
@@ -118,7 +151,7 @@ const TEMPLATES = {
       meta: (d) => [[{ fr: "Date", en: "Date" }, k.dateFmt(d.date)], [{ fr: "Valable jusqu'au", en: "Valid until" }, k.dateFmt(d.valid_until)], [{ fr: "Acompte", en: "Advance" }, has(d.advance_pct) ? `${d.advance_pct}%` : ""]],
       totalsRows: (d, ccy, cfg) => [
         [{ fr: "Total HT", en: "Subtotal" }, k.money(d.totals.service_ht, ccy, cfg)],
-        [{ fr: "TVA 19,25%", en: "VAT 19.25%" }, k.money(d.totals.vat_total, ccy, cfg)],
+        [vatLabel(d.lines), k.money(d.totals.vat_total, ccy, cfg)],
         [{ fr: "Total TTC", en: "Total" }, k.money(d.totals.total_ttc, ccy, cfg), { grand: true }],
         has(d.advance_pct) ? [{ fr: `Acompte ${d.advance_pct}%`, en: `Advance ${d.advance_pct}%` }, k.money(d.totals.total_ttc * (d.advance_pct / 100), ccy, cfg)] : null,
       ],
@@ -140,7 +173,7 @@ const TEMPLATES = {
       meta: (d) => [[{ fr: "Date", en: "Date" }, k.dateFmt(d.date)], [{ fr: "Valable jusqu'au", en: "Valid until" }, k.dateFmt(d.valid_until)]],
       totalsRows: (d, ccy, cfg) => [
         [{ fr: "Total HT", en: "Subtotal" }, k.money(d.totals.service_ht, ccy, cfg)],
-        [{ fr: "TVA 19,25%", en: "VAT 19.25%" }, k.money(d.totals.vat_total, ccy, cfg)],
+        [vatLabel(d.lines), k.money(d.totals.vat_total, ccy, cfg)],
         [{ fr: "Total TTC", en: "Total" }, k.money(d.totals.total_ttc, ccy, cfg), { grand: true }],
       ],
     }),
@@ -157,7 +190,7 @@ const TEMPLATES = {
       meta: (d) => [[{ fr: "Date", en: "Date" }, k.dateFmt(d.date)], [{ fr: "Facture d'origine", en: "Original invoice" }, d.original_ref], [{ fr: "Motif", en: "Reason" }, d.reason]],
       totalsRows: (d, ccy, cfg) => [
         [{ fr: "Total HT", en: "Subtotal" }, "-" + k.money(d.totals.service_ht, ccy, cfg)],
-        [{ fr: "TVA 19,25%", en: "VAT 19.25%" }, "-" + k.money(d.totals.vat_total, ccy, cfg)],
+        [vatLabel(d.lines), "-" + k.money(d.totals.vat_total, ccy, cfg)],
         [{ fr: "Total avoir TTC", en: "Credit total" }, "-" + k.money(d.totals.total_ttc, ccy, cfg), { grand: true }],
       ],
     }),
@@ -2036,6 +2069,68 @@ const TEMPLATES = {
       return k.shell("Dunning " + (d.number || ""), body, cfg);
     },
     sampleData: { number: "REL-2026-0011", date: "2026-07-27", client: "CIMENCAM SA", client_lines: ["Douala, Cameroun"], body: "Sauf erreur de notre part, les factures ci-dessous demeurent impayées à ce jour. Nous vous prions de bien vouloir procéder à leur règlement dans les meilleurs délais.", invoices: [{ ref: "FCT-2026-0001", date: "2026-06-15", days_late: 42, amount: 1607900 }], total: 1607900, currency: "XAF" },
+  },
+
+  /*
+   * The letter to a bank naming who may sign on an account (meeting 5, 21 Sep
+   * 2026 — "generate the bank authorisation letter from the signatories").
+   * Built from the treasury account and its ACTIVE signatories, so the letter
+   * and the Signatories tab cannot disagree about who signs, up to what, and
+   * whether alone or jointly.
+   */
+  BANK_AUTHORISATION: {
+    docType: "BANK_AUTHORISATION", title: { fr: "Lettre d'autorisation de signature", en: "Signatory authorisation letter" }, module: "master/treasury_account", fields: ["signatories", "account"],
+    build: (d, cfg, entity, verify) => {
+      const lang = cfg.language;
+      const ccy = d.currency || cfg.base_currency || "XAF";
+      const col = [
+        { key: "name", label: { fr: "Nom", en: "Name" } },
+        { key: "role", label: { fr: "Fonction", en: "Role" } },
+        { key: "mode", label: { fr: "Signature", en: "Signing" } },
+        { key: "limit", label: { fr: "Plafond", en: "Limit" }, num: true },
+        { key: "from", label: { fr: "À compter du", en: "From" } },
+      ];
+      const rows = (d.signatories || []).map((s) => ({
+        name: s.full_name,
+        role: s.role_title || "—",
+        mode: s.rule_type === "JOINT_REQUIRED"
+          ? k.t({ fr: "Conjointe", en: "Joint" }, lang)
+          : k.t({ fr: "Seule", en: "Sole" }, lang),
+        limit: s.limit_amount === null || s.limit_amount === undefined || s.limit_amount === "" ? k.t({ fr: "Sans plafond", en: "No limit" }, lang) : k.money(s.limit_amount, s.currency || ccy, cfg),
+        from: k.dateFmt(s.effective_from),
+      }));
+      const account = [
+        d.account_label,
+        d.account_number && `${k.t({ fr: "Compte n°", en: "Account no." }, lang)} ${d.account_number}`,
+        d.iban && `IBAN ${d.iban}`,
+        d.swift_bic && `SWIFT ${d.swift_bic}`,
+        d.currency,
+      ].filter(Boolean).map(k.esc).join(" · ");
+      const joint = (d.signatories || []).some((s) => s.rule_type === "JOINT_REQUIRED");
+      const text = lang === "fr"
+        ? `Madame, Monsieur,<br><br>Nous vous prions de bien vouloir noter que les personnes désignées ci-dessous sont habilitées à signer, au nom de ${k.esc(d.holder || entity.legal_name || "")}, tout ordre de paiement, chèque ou virement sur le compte ci-dessus, dans les limites et selon les modalités indiquées.${joint ? " Les opérations marquées « conjointe » requièrent la signature de deux personnes habilitées." : ""} Cette liste annule et remplace toute autorisation antérieure pour ce compte.`
+        : `Dear Sir or Madam,<br><br>Please note that the persons named below are authorised to sign, on behalf of ${k.esc(d.holder || entity.legal_name || "")}, any payment order, cheque or transfer on the account above, within the limits and on the terms shown.${joint ? " Operations marked \"joint\" require the signatures of two authorised persons." : ""} This list cancels and replaces any earlier authorisation on this account.`;
+      const body = [
+        k.standardHead(entity, cfg, { title: { fr: "Lettre d'autorisation de signature", en: "Signatory authorisation letter" }, number: d.number, meta: [[{ fr: "Date", en: "Date" }, k.dateFmt(d.date)]] }),
+        k.parties([{ label: { fr: "À l'attention de", en: "To" }, name: d.bank_name, lines: [d.branch].filter(Boolean) }], cfg),
+        k.section({ fr: "Compte", en: "Account" }, `<div class="box">${account || "—"}</div>`, cfg),
+        `<p style="margin:14px 2px">${text}</p>`,
+        k.section({ fr: "Signataires habilités", en: "Authorised signatories" }, k.lineTable(col, rows, cfg), cfg),
+        `<p style="margin:14px 2px">${lang === "fr" ? "Veuillez agréer, Madame, Monsieur, l'expression de nos salutations distinguées." : "Yours faithfully,"}</p>`,
+        k.signerBlock([{ label: { fr: "Pour la société — représentant légal", en: "For the company — legal representative" }, name: d.signed_by || "" }], cfg),
+        k.standardFoot(entity, cfg, verify),
+      ].join("");
+      return k.shell("Bank authorisation " + (d.account_number || ""), body, cfg);
+    },
+    sampleData: {
+      number: "AUT-2026-0001", date: "2026-09-27", bank_name: "Afriland First Bank", branch: "Agence Akwa, Douala",
+      account_label: "Compte courant principal", account_number: "10005 00001 01234567801 45", iban: "CM21 10005 00001 01234567801 45", swift_bic: "CCEICMCX", currency: "XAF",
+      holder: "SMART LOGISTICS AND SERVICES LTD",
+      signatories: [
+        { full_name: "Jean Mballa", role_title: "Gérant", rule_type: "SINGLE_SIGNATURE", limit_amount: null, currency: "XAF", effective_from: "2026-01-01" },
+        { full_name: "Aïcha Ndongo", role_title: "Directrice financière", rule_type: "JOINT_REQUIRED", limit_amount: 25000000, currency: "XAF", effective_from: "2026-03-15" },
+      ],
+    },
   },
 
   COMMS_CERTIFIED_EXPORT: {

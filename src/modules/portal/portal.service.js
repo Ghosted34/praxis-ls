@@ -235,6 +235,47 @@ async function clientView(client, { clientId }) {
  * conditions they rest on are read together. That is the whole point of
  * publishing the register.
  */
+/**
+ * One invoice as its client reads it (meeting 5 — the portal showed a number
+ * and a total and nothing about what was billed). The lines come back GROUPED
+ * by client heading × nature, the same way the printed invoice groups them
+ * (templates/client-headings.groupLines), so the portal and the PDF can never
+ * show the client two different breakdowns of one invoice. The costing detail
+ * stays ours.
+ */
+async function clientInvoice(client, { clientId, invoiceId, lang = "fr" }) {
+  if (!clientId) throw new AppError("CLIENT_REQUIRED", "client_id required", 422);
+  const out = await repo.clientInvoiceWithLines(client, { clientId, invoiceId });
+  if (!out) throw new AppError("NOT_FOUND", "No such invoice for this client", 404);
+  const { groupLines } = require("../../services/documents/templates/client-headings");
+  const language = lang === "en" ? "en" : "fr";
+  const lines = out.lines.map((l) => ({
+    label: l.label,
+    qty: Number(l.qty),
+    unit: Number(l.unit_price),
+    amount: Number(l.line_ht),
+    tax: l.is_disbursement ? null : ((l.tax_rate_percent === null || l.tax_rate_percent === undefined) ? 19.25 : Number(l.tax_rate_percent)),
+    is_disbursement: l.is_disbursement === true,
+    client_heading: l.client_heading || null,
+    client_heading_code: l.client_heading_code || null,
+    client_heading_fr: l.client_heading_fr || null,
+    client_heading_en: l.client_heading_en || null,
+    client_heading_sort: l.client_heading_sort ?? null,
+  }));
+  const i = out.invoice;
+  return {
+    invoice: {
+      invoice_id: i.invoice_id, doc_number: i.doc_number, issued_on: i.issued_on,
+      payment_due_on: i.payment_due_on, status: i.status, currency: i.currency,
+      service_ht: Number(i.service_ht), disbursement_total: Number(i.disbursement_total),
+      vat_total: Number(i.vat_total), total_ttc: Number(i.total_ttc),
+    },
+    lines: groupLines(lines, language, out.registry).map((g) => ({
+      label: g.label, amount: g.amount, tax: g.tax, is_disbursement: g.is_disbursement,
+    })),
+  };
+}
+
 async function clientChain(client, { clientId, dossierId }) {
   if (!clientId) throw new AppError("CLIENT_REQUIRED", "client_id required", 422);
   const policy = await milestone.resolvePolicy(client);
@@ -373,7 +414,7 @@ const clientReplyTicket = (client, { clientId, ticketId, body }) =>
 
 module.exports = {
   grantAccess, revokeAccess, listAccess, checkAccess,
-  clientView, clientChain, investorView, auditorView,
+  clientView, clientChain, clientInvoice, investorView, auditorView,
   clientTickets, clientRaiseTicket, clientTicketDetail, clientReplyTicket,
   clientDocuments, clientDocumentDownload,
   clientOnboarding, toggleOnboardingStep,

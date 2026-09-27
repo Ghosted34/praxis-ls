@@ -64,6 +64,7 @@ describe("user appearance preferences", () => {
       fontDisplay: null,
       fontBody: null,
       fontMono: null,
+      textSize: null,
     });
   });
 
@@ -92,6 +93,7 @@ describe("user appearance preferences", () => {
       fontDisplay: "Inter",
       fontBody: "Lora",
       fontMono: "Cascadia",
+      textSize: null,
     });
 
     // Absent keys survive.
@@ -103,6 +105,7 @@ describe("user appearance preferences", () => {
       fontDisplay: "Inter",
       fontBody: "Merriweather",
       fontMono: "Cascadia",
+      textSize: null,
     });
 
     // Explicit null clears exactly one.
@@ -114,6 +117,7 @@ describe("user appearance preferences", () => {
       fontDisplay: "Inter",
       fontBody: null,
       fontMono: "Cascadia",
+      textSize: null,
     });
   });
 
@@ -127,6 +131,14 @@ describe("user appearance preferences", () => {
     });
   });
 
+  it("stores a text size, refuses an unknown one, and clears it with null (meeting 5)", async () => {
+    const c = fakeClient();
+    expect((await service.setAppearance(c, { userId: USER, textSize: "lg" })).textSize).toBe("lg");
+    await expect(service.setAppearance(c, { userId: USER, textSize: "huge" }))
+      .rejects.toMatchObject({ code: "BAD_TEXT_SIZE" });
+    expect((await service.setAppearance(c, { userId: USER, textSize: null })).textSize).toBeNull();
+  });
+
   it("resets every override in one call", async () => {
     const c = fakeClient();
     await service.setAppearance(c, {
@@ -134,11 +146,13 @@ describe("user appearance preferences", () => {
       fontDisplay: "Inter",
       fontBody: "Lora",
       fontMono: "Cascadia",
+      textSize: null,
     });
     await expect(service.resetAppearance(c, USER)).resolves.toEqual({
       fontDisplay: null,
       fontBody: null,
       fontMono: null,
+      textSize: null,
     });
   });
 

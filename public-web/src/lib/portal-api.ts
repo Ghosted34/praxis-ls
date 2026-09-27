@@ -109,6 +109,7 @@ export type PortalInvoice = {
   total_ttc: string | number | null;
   status: string;
   payment_due_on: string | null;
+  currency?: string | null;
 };
 export type ClientView = {
   portal: "CLIENT";
@@ -296,6 +297,27 @@ export type PortalChain = {
 };
 export const portalClientChain = (dossierId: string) =>
   portalApi<PortalChain>(`/client/dossier/${dossierId}`);
+
+/** One issued invoice, its lines grouped by family as the printed copy groups them. */
+export type PortalInvoiceDetail = {
+  invoice: {
+    invoice_id: string;
+    doc_number: string | null;
+    issued_on: string | null;
+    payment_due_on: string | null;
+    status: string;
+    currency: string | null;
+    service_ht: number;
+    disbursement_total: number;
+    vat_total: number;
+    total_ttc: number;
+  };
+  lines: { label: string; amount: number; tax: number | null; is_disbursement: boolean }[];
+};
+export const portalClientInvoice = (invoiceId: string, lang: string) =>
+  portalApi<PortalInvoiceDetail>(
+    `/client/invoice/${encodeURIComponent(invoiceId)}?lang=${lang === "en" ? "en" : "fr"}`,
+  );
 
 /** Q tickets — a client's queries, raised against a milestone and kept in-system. */
 export type PortalTicket = {

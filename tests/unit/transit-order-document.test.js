@@ -390,8 +390,8 @@ describe("the letterhead and the foot", () => {
     expect(head).not.toContain("RCCM");
     expect(head).not.toContain("NIU");
 
-    expect(foot).toContain("RCCM RC/DLA/2021/B/2060");
-    expect(foot).toContain("NIU M042116033580Q");
+    // One line since 14140 (meeting 5): "RCCM: … · NIU: …".
+    expect(foot).toContain("RCCM: RC/DLA/2021/B/2060 · NIU: M042116033580Q");
     expect(foot).not.toContain(ENTITY.legal_name);
     expect(foot).not.toContain("Avenue Douala Manga Bell");
   });
@@ -421,16 +421,20 @@ describe("the letterhead and the foot", () => {
       identifiers: [{ kind: "SIREN", number: "552 100 554" }, { kind: "TVA", number: "FR40552100554" }],
     };
     const html = body(TPL.build(dataWith(), cfgFor("fr"), french, VERIFY));
-    expect(html).toContain("SIREN 552 100 554");
-    expect(html).toContain("TVA FR40552100554");
+    expect(html).toContain("SIREN: 552 100 554 · TVA: FR40552100554");
     expect(html).not.toContain("RCCM");
   });
 
   test("an entity with no registration rows falls back to niu and rccm", () => {
     const legacy = { ...ENTITY, identifiers: [] };
     const html = body(TPL.build(dataWith(), cfgFor("fr"), legacy, VERIFY));
-    expect(html).toContain("RCCM RC/DLA/2021/B/2060");
-    expect(html).toContain("NIU M042116033580Q");
+    expect(html).toContain("RCCM: RC/DLA/2021/B/2060 · NIU: M042116033580Q");
+  });
+
+  test("identifiers_inline: false puts each identifier on its own line", () => {
+    const html = body(TPL.build(dataWith(), { ...cfgFor("fr"), letterhead_config: { identifiers_inline: false } }, ENTITY, VERIFY));
+    expect(html).toContain('<div class="ln">RCCM RC/DLA/2021/B/2060</div>');
+    expect(html).toContain('<div class="ln">NIU M042116033580Q</div>');
   });
 
   test("bank details are not printed on an authorisation", () => {

@@ -45,6 +45,7 @@ import {
 import { msg } from "./portal-chrome";
 import { label } from "./portal-auth";
 import { PortalShipment } from "./portal-shipment";
+import { PortalInvoiceRow } from "./portal-invoice";
 
 function Kpi({
   label: k,
@@ -791,25 +792,7 @@ export function ClientTerminal({ me }: { me: PortalMe }) {
           ) : (
             <ul className="divide-y divide-border">
               {invoices.map((i) => (
-                <li
-                  key={i.invoice_id}
-                  className="flex items-center justify-between py-3"
-                >
-                  <div>
-                    <p className="text-sm font-medium text-foreground">
-                      {i.doc_number || "—"}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      Due {dateFmt(i.payment_due_on)}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className="num text-sm text-foreground">
-                      {num(i.total_ttc)}
-                    </p>
-                    <span className="status">{label(i.status)}</span>
-                  </div>
-                </li>
+                <PortalInvoiceRow key={i.invoice_id} invoice={i} />
               ))}
             </ul>
           )}

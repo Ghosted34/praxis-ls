@@ -49,7 +49,14 @@ const KEYS = {
   fontDisplay: "font_display",
   fontBody: "font_body",
   fontMono: "font_mono",
+  // Meeting 5 (21 Sep 2026): the text was too small to read on a laptop. A
+  // personal scale for the whole interface, not a tenant setting — one reader's
+  // eyesight is not the company's brand.
+  textSize: "text_size",
 };
+
+/** The interface scales a person may choose. "md" is the designed density. */
+const TEXT_SIZES = ["sm", "md", "lg", "xl"];
 
 /**
  * A stored value is a raw CSS font-family string written into a style
@@ -101,6 +108,13 @@ async function setAppearance(client, { userId, ...fields }) {
     const key = KEYS[field];
     if (raw === null || (typeof raw === "string" && raw.trim() === "")) {
       await repo.remove(client, userId, SECTION, key);
+      continue;
+    }
+    if (field === "textSize") {
+      if (!TEXT_SIZES.includes(raw)) {
+        throw new AppError("BAD_TEXT_SIZE", `textSize must be one of: ${TEXT_SIZES.join(", ")}`, 422);
+      }
+      await repo.upsert(client, userId, SECTION, key, raw);
       continue;
     }
     await repo.upsert(client, userId, SECTION, key, validateFont(field, raw));
@@ -231,6 +245,7 @@ async function setCalls(client, { userId, ...fields }) {
 module.exports = {
   SECTION,
   KEYS,
+  TEXT_SIZES,
   getAppearance,
   setAppearance,
   resetAppearance,

@@ -61,13 +61,13 @@ describe("composition — the content is derived, never typed", () => {
       identifiers: [{ kind: "SIREN", number: "552 100 554" }, { kind: "VAT", number: "FR40552100554" }],
     };
     expect(textOf(byId(blocks.compose({ entity: french }, "fr").footer, "identifiers")))
-      .toBe("SIREN 552 100 554 | VAT FR40552100554");
+      .toBe("SIREN: 552 100 554 · VAT: FR40552100554");
   });
 
   test("an entity with no registration rows falls back to the legacy columns", () => {
     const legacy = { ...ENTITY, identifiers: [] };
     expect(textOf(byId(blocks.compose({ entity: legacy }, "fr").footer, "identifiers")))
-      .toBe("RCCM RC/DLA/2021/B/2060 | NIU M042116033580Q");
+      .toBe("RCCM: RC/DLA/2021/B/2060 · NIU: M042116033580Q");
   });
 
   /**
@@ -102,7 +102,7 @@ describe("composition — the content is derived, never typed", () => {
       ],
     }, "fr");
     expect(textOf(byId(c.footer, "identifiers")))
-      .toBe("RCCM RC/DLA/2021/B/2060 | NIU M042116033580Q");
+      .toBe("RCCM: RC/DLA/2021/B/2060 · NIU: M042116033580Q");
     // Not reported empty: the block has real content now.
     expect(c.empty_blocks).not.toContain("identifiers");
   });
@@ -113,7 +113,7 @@ describe("composition — the content is derived, never typed", () => {
       registrations: [{ kind: "NIU", number: "M042116033580Q" }],
       taxRegistrations: [{ tax_kind: "VAT", tax_number: "CM-VAT-778899", is_active: true }],
     }, "fr");
-    expect(textOf(byId(c.footer, "identifiers"))).toBe("NIU M042116033580Q");
+    expect(textOf(byId(c.footer, "identifiers"))).toBe("NIU: M042116033580Q");
     expect(c.empty_blocks).not.toContain("identifiers");
   });
 
@@ -122,7 +122,7 @@ describe("composition — the content is derived, never typed", () => {
       entity: { ...ENTITY, identifiers: [{ kind: "SIREN", number: "552 100 554" }] },
       registrations: [{ kind: "NIU", number: "SHOULD-NOT-PRINT" }],
     }, "fr");
-    expect(textOf(byId(c.footer, "identifiers"))).toBe("SIREN 552 100 554");
+    expect(textOf(byId(c.footer, "identifiers"))).toBe("SIREN: 552 100 554");
   });
 
   test("a redacted registration row (PR-04: no number) contributes no identifier", () => {

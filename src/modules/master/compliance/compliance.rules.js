@@ -12,17 +12,33 @@
  * by a human through POST /:id/block (Hard Rule 3). This function cannot express
  * it.
  *
- * REQUIRED IS NOT SEVERITY (PR3 §3.1). A document type raises a "missing"
- * flag ONLY when it is `is_required` AND it applies to this party. A type that
- * is present-but-not-required is tracked if supplied and never complained about
- * when absent — which is what stops a brand-new water supplier reading
- * "Escalated — Missing Customs Authorisation / Missing Power of Attorney". The
- * flag's SEVERITY still follows the type's `default_severity`.
+ * THREE TIERS, NOT ONE (14030). "Does this tenant want the document on file?"
+ * and "must it be on file before the party can be ACTIVATED?" are different
+ * questions, and answering both with `is_required` is what put a Bank RIB on
+ * every fresh client's activation checklist:
  *
- * APPLICABILITY (PR3 §3.2). A required type is only considered when it applies
- * to the party's role (`applies_to`), category (`applies_to_categories`),
- * country (`applies_to_countries`) and KYC tier (`kyc_tier` ≤ party tier). Empty
- * / NULL means "applies to everyone".
+ *   1. `required_for_activation` — THE ACTIVATION SET. A missing one is an
+ *      onboarding gap: it IS the "Required to activate" checklist, and it IS
+ *      what `canVerify` requires (Hard Rule 9). The only tier that gates.
+ *   2. `is_required` (and NOT required_for_activation) — ADVISORY. A missing
+ *      one still raises a flag, but it is never `onboarding` (so it never
+ *      appears on the activation checklist), never a reason a party cannot be
+ *      activated, and never louder than WARN: escalation is reserved for the
+ *      activation set and real risk, or an advisory would demand a logged
+ *      override on every operation.
+ *   3. Neither — tracked if supplied, silent when absent, which is what stops a
+ *      brand-new water supplier reading "Escalated — Missing Customs
+ *      Authorisation / Missing Power of Attorney".
+ *
+ * A gap in the first tier keeps the type's own `default_severity`; a gap in the
+ * second is capped at WARN (`advisorySeverity`).
+ *
+ * APPLICABILITY (PR3 §3.2). A type is only considered when it applies to the
+ * party's role (`applies_to`), category (`applies_to_categories`), country
+ * (`applies_to_countries`), exemption jurisdiction (`exempt_outside_country`,
+ * 14030) and KYC tier (`kyc_tier` ≤ party tier). Empty / NULL means "applies to
+ * everyone" — except the exemption, which excludes exactly the parties it
+ * names (see `docTypeApplies`).
  *
  * ONBOARDING vs REAL RISK (PR3 §3.3). While a party is still being onboarded
  * (registration_status DRAFT/PENDING_REVIEW, or supplier avl_status
@@ -80,15 +96,38 @@ function scopeMatches(scope, value) {
 }
 
 /**
- * Whether a document type applies to this party — role, category, country and
- * KYC tier all considered (PR3 §3.2). `is_required` is checked separately by the
- * caller; this answers "is this type even relevant here".
+ * Whether a jurisdiction EXEMPTION (`exempt_outside_country`, 14030) rules this
+ * document type out for a party.
+ *
+ * The ACF is what a counterparty operating in Cameroon owes; a foreign company
+ * operating outside Cameroon owes its own jurisdiction's equivalent instead. A
+ * positive country list cannot say that — an empty `applies_to_countries` means
+ * "everyone", not "nobody" — so the type names the HOME jurisdiction and every
+ * party PROVABLY outside it is exempt.
+ *
+ * Unknown NEVER exempts: "we do not know where this party is" is not evidence
+ * that it does not owe the document, and an exemption that fires on a blank
+ * field is how a compliance gate quietly stops gating.
+ */
+function exemptOutsideCountry(dt, country) {
+  const home = upper(dt.exempt_outside_country);
+  if (!home) return false;
+  if (!country) return false;
+  return upper(country) !== home;
+}
+
+/**
+ * Whether a document type applies to this party — role, category, country,
+ * exemption jurisdiction and KYC tier all considered (PR3 §3.2 / 14030).
+ * `is_required` / `required_for_activation` are checked separately by the
+ * callers; this answers "is this type even relevant here".
  */
 function docTypeApplies(dt, { appliesTo, category, country, tier } = {}) {
   if (dt.is_active === false) return false;
   if (!appliesToParty(dt, appliesTo)) return false;
   if (!scopeMatches(dt.applies_to_categories, category)) return false;
   if (!scopeMatches(dt.applies_to_countries, country)) return false;
+  if (exemptOutsideCountry(dt, country)) return false;
   if (dt.kyc_tier && tierRank(dt.kyc_tier) > tierRank(tier)) return false;
   return true;
 }
@@ -111,12 +150,17 @@ function isOnboarding(party = {}) {
 }
 
 /**
- * The rolled-up state WITH the onboarding rule (PR3 §3.3). If the party is still
- * onboarding and every open flag is an onboarding gap, the state is the neutral
- * ONBOARDING; otherwise it is the ordinary worst-severity rollup.
+ * The rolled-up state WITH the onboarding rule (PR3 §3.3 / 14030). If the party
+ * is still onboarding and every open flag is a gap of the setup kind — an
+ * activation gap or an ADVISORY one — the state is the neutral ONBOARDING;
+ * otherwise it is the ordinary worst-severity rollup.
+ *
+ * The advisory class is here deliberately: a document the tenant wants on file
+ * but does not gate activation on must not turn a party that is being set up
+ * red, and it must not read as a compliance failure either.
  */
 function stateForParty(flags, party) {
-  if (flags.length && isOnboarding(party) && flags.every((f) => f.onboarding)) return "ONBOARDING";
+  if (flags.length && isOnboarding(party) && flags.every((f) => f.onboarding || f.advisory)) return "ONBOARDING";
   return stateFor(flags);
 }
 
@@ -129,18 +173,41 @@ function requiredTypes(docTypes, ctx) {
   return (docTypes || []).filter((dt) => dt.is_required === true && docTypeApplies(dt, ctx));
 }
 
+/**
+ * THE ACTIVATION SET (14030): the applicable types the tenant requires BEFORE
+ * the party can be activated, i.e. `required_for_activation`. This is the set
+ * `canVerify` consults and the set the 360 renders as "Required to activate".
+ *
+ * Deliberately keyed on its own column rather than on `is_required`: a type the
+ * tenant merely wants on file raises an advisory flag and gates nothing, which
+ * is the rule that stops a Bank RIB holding up a client nobody has billed yet.
+ */
+function activationTypes(docTypes, ctx) {
+  return (docTypes || []).filter((dt) => dt.required_for_activation === true && docTypeApplies(dt, ctx));
+}
+
 /** Back-compat alias — "mandatory" now means "required + applicable". */
 const mandatoryTypes = (docTypes, appliesTo) => requiredTypes(docTypes, { appliesTo });
 
+/** The severities an ADVISORY (merely `is_required`) gap may carry. Anything
+ *  louder — ESCALATED, SOFT_BLOCK_RECOMMENDATION — is reserved for the
+ *  activation set and real risk; an advisory that escalates forces a logged
+ *  override on every operation, which is the opposite of "advisory". */
+const ADVISORY_RANK = { INFO: 0, WARN: 1 };
+const advisorySeverity = (severity) => {
+  const s = upper(severity);
+  return ADVISORY_RANK[s] === undefined ? "WARN" : s;
+};
+
 /**
  * Whether the party can reach VERIFIED / supplier AVL-APPROVED. False while any
- * required, applicable document type lacks a scanned+verified document, or a
- * screening hit is open. This is the transactional gate the service consults
- * before allowing a verification transition (Hard Rule 9).
+ * ACTIVATION type lacks a scanned+verified document, or a screening hit is
+ * open. This is the transactional gate the service consults before allowing a
+ * verification transition (Hard Rule 9).
  */
 function canVerify({ appliesTo, party, documents, docTypes, category, country, tier }) {
   if (party && (party.screen_status === "HIT" || party.screen_status === "SANCTIONS_HIT")) return false;
-  const need = requiredTypes(docTypes, { appliesTo, category, country, tier });
+  const need = activationTypes(docTypes, { appliesTo, category, country, tier });
   return need.every((dt) =>
     (documents || []).some(
       (d) => d.document_type_id === dt.document_type_id && d.vault_id && d.verification_status === "VERIFIED",
@@ -155,13 +222,20 @@ function canVerify({ appliesTo, party, documents, docTypes, category, country, t
  * or tax residency as a fallback) and `tier` (BASIC/ENHANCED) drive document
  * applicability. Flags carry an `onboarding` marker so the 360 can split
  * "Required to activate" from real "Compliance issues", and so the rolled-up
- * state can stay neutral while a party is still being set up.
+ * state can stay neutral while a party is still being set up; a merely-required
+ * gap carries `advisory` instead, which keeps it off that checklist.
+ *
+ * `missingActivationFields` is the FIELD half of the same question (14030):
+ * `party_field_config.required_for_activation` rows the party does not fill.
+ * It is resolved by the caller (the service owns the DB) and turned into
+ * onboarding flags here so the checklist and the activation gate agree.
  *
  * @returns {{flags: Array<{rule_key,severity,message,onboarding}>, compliance_state: string, can_verify: boolean}}
  */
 function evaluate({
   appliesTo, party = {}, documents = [], docTypes = [], banks = [], creditStatus = null,
   category = null, country = null, tier = null, today, expiryWarnDays = DEFAULT_EXPIRY_WARN_DAYS,
+  missingActivationFields = [],
 }) {
   const t = today ? parseDate(today) || new Date() : new Date();
   const ctx = { appliesTo, category, country: country || party.country_code || party.tax_residency_country, tier: tier || party.kyc_tier };
@@ -169,14 +243,36 @@ function evaluate({
   const typeById = new Map(applicable.map((dt) => [dt.document_type_id, dt]));
   const flags = [];
 
-  // Missing REQUIRED documents — only required, applicable types complain; the
-  // severity follows the type's default_severity, and the flag is tagged as an
-  // onboarding gap (a checklist item, not a failure, until the party is live).
+  // Missing documents — which BUCKET a gap lands in is the whole point (14030).
+  // `required_for_activation` ⇒ an activation requirement: the checklist item,
+  //   keeping the type's own severity, and the only thing `canVerify` asks for.
+  // merely `is_required` ⇒ advisory: reported, WARN at most, never `onboarding`
+  //   (so it never reaches the "Required to activate" list) and never a reason
+  //   a party cannot be activated.
   const present = new Set((documents || []).map((d) => d.document_type_id));
-  for (const dt of requiredTypes(docTypes, ctx)) {
-    if (!present.has(dt.document_type_id)) {
-      flags.push({ rule_key: "party.doc_missing", severity: dt.default_severity || "WARN", message: `Missing ${dt.name || "document"}`, onboarding: true });
-    }
+  for (const dt of applicable) {
+    if (present.has(dt.document_type_id)) continue;
+    const activation = dt.required_for_activation === true;
+    if (!activation && dt.is_required !== true) continue;
+    flags.push({
+      rule_key: "party.doc_missing",
+      severity: activation ? dt.default_severity || "WARN" : advisorySeverity(dt.default_severity),
+      message: `Missing ${dt.name || "document"}`,
+      ...(activation ? { onboarding: true } : { advisory: true }),
+    });
+  }
+
+  // Missing ACTIVATION fields (14030) — tenant config on party_field_config,
+  // resolved by the caller. Onboarding gaps: they are what stands between the
+  // party and activation, and the activation gate refuses on the same set.
+  for (const f of missingActivationFields || []) {
+    if (!f) continue;
+    flags.push({
+      rule_key: "party.field_missing",
+      severity: "WARN",
+      message: `Missing ${f.label || f.field_key || "field"}`,
+      onboarding: true,
+    });
   }
 
   // Per-document: expiry, rejection, and the digital-scan gate.
@@ -242,11 +338,14 @@ module.exports = {
   daysUntil,
   appliesToParty,
   scopeMatches,
+  exemptOutsideCountry,
   docTypeApplies,
   isOnboarding,
   stateFor,
   stateForParty,
   requiredTypes,
+  activationTypes,
+  advisorySeverity,
   mandatoryTypes,
   canVerify,
   evaluate,

@@ -245,22 +245,20 @@ describe("VoiceNote — the words are asked for, and every state is a sentence",
   });
 
   /**
-   * ── WHAT IS DRAWN ON THE SENDER'S OWN BUBBLE ─────────────────────────────
+   * ── SECONDARY TEXT SITS ON THE PLAYER'S OWN SURFACE, NOT A RAW ACCENT ─────
    *
-   * `message-bubble.tsx` paints those `bg-primary`. `--muted-foreground` is
-   * the token for secondary text on a SURFACE, and on the brand fill it is
-   * 2.39:1 in light and 1.01:1 in dark — invisible, which is what shipped.
-   * Nothing inside a component can see the ground its parent painted, so the
-   * parent passes it, and this pins that the child actually uses it.
+   * The old hazard was `--muted-foreground` on a solid `bg-primary` bubble —
+   * 2.39:1 in light, 1.01:1 in dark, invisible. Bubbles are tinted SURFACES
+   * now, but the guarantee this pins is unchanged and cheap to keep: every
+   * `--muted-foreground` element in the player sits inside the player's own
+   * `.voice-wave` ground, never loose on the bubble's tint.
    */
-  it("does not draw surface-ink text on the brand fill", () => {
+  it("keeps secondary text on the player's own surface ground", () => {
     const { container } = render(
       <VoiceNote attachment={{ ...base, transcript_status: "NONE" }} tone="primary" />,
     );
     const onFill = container.querySelectorAll(".text-muted-foreground, .text-ink-3");
-    // The player row draws its own `bg-card` ground and is measured there; only
-    // what sits DIRECTLY on the bubble is the bubble's problem.
-    for (const el of onFill) expect(el.closest(".bg-card")).not.toBeNull();
+    for (const el of onFill) expect(el.closest(".voice-wave")).not.toBeNull();
   });
 
   /**

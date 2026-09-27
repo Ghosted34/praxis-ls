@@ -61,10 +61,10 @@ the sign-off column.
 | R1 | Call the device with the app **open and in the foreground**. The in-app ring shows the caller's name and counts down from 0:60. | PENDING | PENDING | PENDING | PENDING |
 | R2 | Call the device with the app **open but hidden** (another tab/app in front). A system notification appears with **Answer / Decline**. | PENDING | PENDING | PENDING | PENDING |
 | R3 | Tap **Answer** in the notification. The app comes to the front, the call is in progress, and both sides have audio. | PENDING | PENDING | PENDING | PENDING |
-| R4 | **Force-quit the app**, then call it from the other device. (Android: the push tier — the notification should arrive within ~5 s. iOS: see R8.) | PENDING | PENDING | PENDING | PENDING |
+| R4 | **Force-quit the app**, then call it from the other device. (Since PR-4 the push goes at once, to every device — it should arrive within ~2 s. iOS: see R8.) | PENDING | PENDING | PENDING | PENDING |
 | R5 | Android, closed app: tap **Answer** on the push. The app opens on the call and the media connects. | — | PENDING | — | — |
 | R6 | **Expired push**: let a ring expire, then tap the stale notification. The app must show *"That call has already ended"* with a **Call again** button — never a ring for a call that is over. Tapping it dials. | PENDING | PENDING | PENDING | PENDING |
-| R7 | Ring the same user on **two signed-in devices** at once. Acknowledge on one; the other's notification/ring must stop. | PENDING | PENDING | PENDING | PENDING |
+| R7 | Ring the same user on **two signed-in devices** at once. Both ring (seeing the ring on one does not silence the other — PR-4, A12). **Answer** on one; the other stops within ~2 s and says *"Answered on another device"*. | PENDING | PENDING | PENDING | PENDING |
 | R8 | **iOS, closed app — documented as-is**: force-quit, then call. Expect NO ring on that device (a force-quit iOS PWA cannot be woken). The caller must see the honest offline sentence on their overlay rather than ringing into silence. Write down exactly what appeared. | PENDING | — | — | — |
 
 ---
@@ -104,8 +104,67 @@ device where the quirks live.
 | # | Script | A |
 | --- | --- | --- |
 | Q1 | Dial, and **force-quit the app while the mic permission prompt is still on screen**. Reopen the app and dial again. The mic prompt appears and the call connects — no silent, permanent loss of capture (WebKit bug 252465). | PENDING |
-| Q2 | Start a call, let it run past the screen-sleep timeout. **iOS 18.4+ (installed PWA)**: the screen stays awake (Wake Lock). **iOS 26.1-regressed devices**: the screen may sleep — the call must still be alive after waking, via the silent-audio keepalive. Record the iOS version and which of the two happened. | PENDING |
-| Q3 | On the first 30-minute-class call, the one-time *"keep your screen on during calls"* hint appears exactly once and not again on later calls. | PENDING |
+| Q2 | Start a call, let it run past the screen-sleep timeout. Since PR-4 (audit E13) a call holds **no screen wake lock** (a screen kept on against the cheek taps Mute and Hang up), so the screen sleeps. **The call must still be alive after waking**, both sides still hearing. Record the iOS version. If it died, say so on the PR: the plan is then to bring the lock back with a "controls locked" state. | PENDING |
+| Q3 | *(Withdrawn in PR-4: the "keep your screen on during calls" hint this row described was never built, and E13 removes the screen lock it would have explained. Q2 covers the screen-off case.)* | — |
+
+---
+
+## 5b. PR-4 — rings on every device, the engine, and the relay
+
+| # | Script | A | B | C | D |
+| --- | --- | --- | --- | --- | --- |
+| P1 | App **open on the laptop** (C or D) and **closed on the phone** (A or B). Call that user: **both ring**. Answer on one; the other stops within 2 s. | PENDING | PENDING | PENDING | PENDING |
+| P2 | App **closed everywhere**. Call: the phone buzzes about every 15 s (vibrating pattern on Android) until answered or 60 s. | PENDING | PENDING | — | — |
+| P3 | Locked phone: **Answer** from the lock-screen notification. The app opens on the call and both sides hear each other (tap **Tap to hear** if it shows). | PENDING | PENDING | — | — |
+| P4 | Locked phone: **Decline** from the notification. The caller sees *declined*; no call screen opens on the phone. | PENDING | PENDING | — | — |
+| P5 | Open the app **mid-ring** (because the phone buzzed): the ring shows in the app. | PENDING | PENDING | PENDING | PENDING |
+| P6 | Let a ring go unanswered with the app closed: the notification becomes *"Missed call — <name>"* (it does not stay pinned). Tap it: the conversation opens. | PENDING | PENDING | PENDING | PENDING |
+| P7 | **Settings → Calls → This device**: every line is green on a set-up device, and **Send a test ring** rings it (on iPhone: the installed app only). | PENDING | PENDING | PENDING | PENDING |
+| P8 | Mid-call, switch **Wi-Fi → 4G** (walk out of range, or turn Wi-Fi off). *"Reconnecting…"* may show; the call recovers within ~20 s, not ends. | PENDING | PENDING | — | — |
+| P9 | **Both** phones on **mobile data** (both relayed through TURN): the call connects and both hear each other. Then turn on **Relay-only calls** and repeat. | PENDING | PENDING | — | — |
+| P10 | From a network that allows **only TCP 443** (a locked-down office or hotel Wi-Fi, or a laptop firewall that blocks everything else), place a call: it connects through `turns:` on 443. | — | — | PENDING | PENDING |
+| P11 | Double-tap the dial icon quickly: one call rings, not two. | PENDING | PENDING | PENDING | PENDING |
+
+---
+
+## 5c. PR-6 — the call screens and privacy defaults (release gate H2)
+
+**This section is the H2 release gate.** Recording stays off for every tenant
+that has not turned it on (`comms.call_recording.enabled`, migration 14090), and
+**no one may make it on-by-default for new tenants until every row here and in
+§1–§5b is signed.** Turn recording on for the test tenant in Settings → Calls
+before running S5–S8.
+
+| # | Script | A | B | C | D |
+| --- | --- | --- | --- | --- | --- |
+| S1 | Desktop, working in any screen: a call arrives. The ring card is **top-right**, solid, and the page behind it is still usable (scroll, type). It shows the name, avatar, "ringing 0:0x" counting up, and large Decline / Answer. | — | — | PENDING | PENDING |
+| S2 | Phone: the ring card is **top-centre**; **Full screen** turns it into a solid full-screen ring; **Smaller** returns it. | PENDING | PENDING | — | — |
+| S3 | Have the caller's conversation open when the call arrives: a ring strip sits at the top of the thread and **no** card appears — one Answer button on screen. Answer: the strip becomes the live strip (name, clock, mute, End call). | PENDING | PENDING | PENDING | PENDING |
+| S4 | In a call, **Minimise**, then navigate to three other screens: the docked bar follows (name, clock, mute, open conversation, End call), and tapping it opens the full call screen again. | PENDING | PENDING | PENDING | PENDING |
+| S5 | Recording on: the ring says the call **will be recorded and summarised** and names the companies that process it. Answer: a red dot and "recorded" show on both sides. | PENDING | PENDING | PENDING | PENDING |
+| S6 | Recording on: callee taps **Answer without recording**. Both sides talk normally; neither shows the red dot; after hang-up there is no transcript and no summary draft, and the call record says it was not recorded. | PENDING | PENDING | PENDING | PENDING |
+| S7 | After a recorded call, in the pinned summary draft: edit a key point, remove a follow-up, change a due date (it reads dd/mm/yyyy). **Discard** asks first in the app's own red dialog. | PENDING | PENDING | PENDING | PENDING |
+| S8 | Force a transcription failure (remove the vendor keys on the test server): the pinned draft and the call page both say the call **could not be transcribed**, not a blank summary. | PENDING | PENDING | PENDING | PENDING |
+| S9 | Callee turns on **Do not disturb** (Settings → Calls). Caller dials: the call is refused at once with "not taking calls"; nothing rings anywhere. | PENDING | PENDING | PENDING | PENDING |
+| S10 | Callee sets **Quiet hours** around now; a summary arrives inside them: it shows in the app, with no email and no push. | PENDING | PENDING | PENDING | PENDING |
+| S11 | Callee turns on **Hide my last seen**: the caller sees online/offline but no "last seen" time. | PENDING | PENDING | PENDING | PENDING |
+| S12 | A user without MOD-64 create, or on a tenant with calls off: **no** phone icon anywhere in chat; with calls off there is no Calls tab in Comms. | PENDING | PENDING | PENDING | PENDING |
+| S13 | Light and dark theme, and with "reduce motion" on: ring card, call screen, bar and strips are solid (no blur), readable, and do not animate under reduced motion. | PENDING | PENDING | PENDING | PENDING |
+
+---
+
+## 5d. PR-7 — Test calls on real devices
+
+Grant the Test right on Smart Comms to the tester's role first (Security →
+Permission matrix, "T"). Each run counts against the tenant's 3 a day.
+
+| # | Script | A | B | C | D |
+| --- | --- | --- | --- | --- | --- |
+| T1 | Comms → Setup → **Test calls** on a set-up device, reading the sentence aloud when asked: every step green, and **Copy report** pastes a readable report. | PENDING | PENDING | PENDING | PENDING |
+| T2 | Block notifications for the site, run again: only step 4 is red, naming notifications. | PENDING | PENDING | PENDING | PENDING |
+| T3 | Block the microphone, run again: step 5 red, steps 6 and 8 skipped (grey), the rest unaffected. | PENDING | PENDING | PENDING | PENDING |
+| T4 | A role without Test sees no Test calls tab. After three runs in a day, the button is off and names the time the next run is available. | — | — | PENDING | — |
+| T5 | Platform console → Health → **Calls pipeline** shows the day's check; a failing check (e.g. a wrong relay secret on staging) rings the console bell once, and its recovery once. | — | — | PENDING | — |
 
 ---
 

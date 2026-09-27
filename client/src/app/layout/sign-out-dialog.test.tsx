@@ -1,22 +1,16 @@
 /**
- * Sign out, and the question the device now has to ask.
- *
- * The device stores the account it belongs to, so signing out no longer means
- * the machine forgets you. On a personal phone that is the feature; on a shared
- * workstation it is the hazard, and the two people involved want opposite
- * things from the same menu item. The dialog asks, once, at the only moment
- * anyone knows the answer.
+ * Sign out, and the one question the device now has to ask.
  *
  * What these pin:
- *   · three answers, and the plain sign-out is the default-looking one, because
- *     it is what almost everybody wants and it is the reversible choice;
- *   · "remove this account" runs the OTHER handler — a dialog whose second
- *     button silently does the same thing as its first is worse than no dialog,
- *     since it collects a decision and discards it;
- *   · cancelling runs neither, and the destructive-ish option is not where a
- *     stray double-click lands.
+ *   · "Remember me on this device" starts ticked, so one click on Sign out is
+ *     the plain, reversible sign-out;
+ *   · unticking it makes the same button run the OTHER handler — a checkbox
+ *     that collects a decision and discards it is worse than no checkbox;
+ *   · the tick comes back on every opening, so one person's shared-PC choice
+ *     does not leak into the next person's sign-out;
+ *   · cancelling runs neither.
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import "@/lib/i18n";
@@ -28,43 +22,42 @@ function setup(open = true) {
   const onSignOut = vi.fn();
   const onSignOutAndForget = vi.fn();
   const onClose = vi.fn();
-  render(
+  const ui = (o: boolean) => (
     <SignOutDialog
-      open={open}
+      open={o}
       onClose={onClose}
       onSignOut={onSignOut}
       onSignOutAndForget={onSignOutAndForget}
       email={EMAIL}
-    />,
+    />
   );
-  return { onSignOut, onSignOutAndForget, onClose };
+  const { rerender } = render(ui(open));
+  return {
+    onSignOut,
+    onSignOutAndForget,
+    onClose,
+    reopen: () => {
+      rerender(ui(false));
+      rerender(ui(true));
+    },
+  };
 }
 
-describe("SignOutDialog", () => {
-  beforeEach(() => {
-    localStorage.clear();
-  });
+const remember = () =>
+  screen.getByRole("checkbox", { name: /remember me on this device/i });
 
-  it("names the account whose device memory is at stake", () => {
+describe("SignOutDialog", () => {
+  it("names the account being signed out", () => {
     setup();
     expect(screen.getByText(EMAIL)).toBeInTheDocument();
-    expect(screen.getByText(/Remembered on this device/i)).toBeInTheDocument();
   });
 
-  it("offers the plain sign-out as the primary action", () => {
+  it("starts with 'remember me' ticked", () => {
     setup();
-    const keep = screen.getByRole("button", { name: "Sign out" });
-    // Not a destructive control: keeping the identity is the ordinary case.
-    expect(keep.className).toMatch(/bg-primary/);
-    expect(
-      screen.getByRole("button", { name: "Stay signed in" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: /remove this account/i }),
-    ).toBeInTheDocument();
+    expect(remember()).toBeChecked();
   });
 
-  it("signs out without forgetting the device", async () => {
+  it("signs out without forgetting the device by default", async () => {
     const user = userEvent.setup();
     const { onSignOut, onSignOutAndForget } = setup();
 
@@ -74,39 +67,36 @@ describe("SignOutDialog", () => {
     expect(onSignOutAndForget).not.toHaveBeenCalled();
   });
 
-  it("removes the account from the device when that is the answer chosen", async () => {
+  it("forgets the account when 'remember me' is unticked", async () => {
     const user = userEvent.setup();
     const { onSignOut, onSignOutAndForget } = setup();
 
-    await user.click(
-      screen.getByRole("button", { name: /remove this account/i }),
-    );
+    await user.click(remember());
+    await user.click(screen.getByRole("button", { name: "Sign out" }));
 
     expect(onSignOutAndForget).toHaveBeenCalledTimes(1);
     expect(onSignOut).not.toHaveBeenCalled();
   });
 
-  it("stays signed in when the question is dismissed", async () => {
+  it("re-ticks 'remember me' every time it opens", async () => {
+    const user = userEvent.setup();
+    const { reopen } = setup();
+
+    await user.click(remember());
+    expect(remember()).not.toBeChecked();
+    reopen();
+    expect(remember()).toBeChecked();
+  });
+
+  it("stays signed in when cancelled", async () => {
     const user = userEvent.setup();
     const { onSignOut, onSignOutAndForget, onClose } = setup();
 
-    await user.click(screen.getByRole("button", { name: "Stay signed in" }));
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
 
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(onSignOut).not.toHaveBeenCalled();
     expect(onSignOutAndForget).not.toHaveBeenCalled();
-  });
-
-  it("says what each choice will mean for the next person", () => {
-    setup();
-    // The copy is the only place the difference is explained. If it stops
-    // matching the handlers, this is where it shows up.
-    expect(
-      screen.getByText(/Keeps your account on this device/i),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/The next person gets a blank sign-in form/i),
-    ).toBeInTheDocument();
   });
 
   it("does not render while closed", () => {

@@ -96,9 +96,11 @@ describe("the platform's choice of primary (ai_vendor_credential.is_chat_primary
   test("an explicit vendorName outranks the platform choice, and keeps a fallback behind it", async () => {
     platformVendors.getChatPrimary.mockResolvedValue("gemini");
     expect(await llm.resolveChain({ vendorName: "deepseek" })).toEqual({ chain: ["deepseek", "gemini"], source: "explicit" });
-    // A pinned vendor outside the default chain is honoured as-is (it was
-    // before the choice existed), with the whole default chain behind it.
-    expect(await llm.resolveChain({ vendorName: "anthropic" })).toEqual({ chain: ["anthropic", "deepseek", "gemini"], source: "explicit" });
+    // A pinned vendor keeps the pre-console contract: [vendorName, fallback],
+    // fallbackVendor defaulting to gemini (ai-llm-fallback-vendor.test.js).
+    expect(await llm.resolveChain({ vendorName: "anthropic" })).toEqual({ chain: ["anthropic", "gemini"], source: "explicit" });
+    expect(await llm.resolveChain({ vendorName: "gemini" })).toEqual({ chain: ["gemini"], source: "explicit" });
+    expect(await llm.resolveChain({ vendorName: "gemini", fallbackVendor: "deepseek" })).toEqual({ chain: ["gemini", "deepseek"], source: "explicit" });
   });
 
   test("a preference lookup that throws (platform DB down) falls back to the default chain, and the turn is not lost", async () => {

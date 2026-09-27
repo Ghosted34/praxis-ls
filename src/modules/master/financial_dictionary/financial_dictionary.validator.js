@@ -31,6 +31,9 @@ const create = z.object({
   is_billable: z.boolean().optional(),
   default_price: z.number().nonnegative().nullish(),
   currency: z.string().length(3).optional(),
+  // The family a client document prints this line under (14130). Validated
+  // against the CLIENT_HEADING registry by the service.
+  client_heading_ref_id: z.string().uuid().nullish(),
   shipping_line: z.string().nullish(),
   provider_kind: z.enum(["SHIPPING_LINE", "CUSTOMS_AUTHORITY", "PORT_TERMINAL", "OTHER"]).nullish(),
   proof_source: z.string().nullish(),
@@ -56,6 +59,8 @@ const create = z.object({
 const REF_KINDS = [
   "SUBCATEGORY", "UNIT", "PROOF_SOURCE", "PROVIDER_KIND",
   "CONTAINER_TYPE", "LOAD_MODE", "DOCUMENT_TYPE",
+  // 14130: the families a client document prints lines under.
+  "CLIENT_HEADING",
 ];
 
 // A container type whose `extra` is empty is worse than no container type at
@@ -119,6 +124,8 @@ const searchQuery = z.object({
 const spendQuery = z.object({
   from: day.optional(),
   to: day.optional(),
+  // One operations file only (meeting 5). Absent = every file.
+  dossier_id: z.string().uuid().optional(),
   include_documents: z.enum(["true", "false"]).optional(),
 });
 
@@ -135,6 +142,17 @@ const rateSupersede = z.object({
   // NULL = no equipment dimension (an authority fee per BL, an air rate
   // priced by weight rather than by box).
   container_type_ref_id: z.string().uuid().nullish(),
+  note: z.string().nullish(),
+});
+
+// "Apply to all carriers": one rate, many series. The ids are the carriers
+// left ticked; the container type (if any) applies to every one of them.
+const rateApplyAll = z.object({
+  rate: z.number().nonnegative(),
+  currency: z.string().length(3).optional(),
+  effective_from: day,
+  container_type_ref_id: z.string().uuid().nullish(),
+  rate_provider_ids: z.array(z.string().uuid()).min(1).max(200),
   note: z.string().nullish(),
 });
 
@@ -159,12 +177,17 @@ const importErrors = z.object({
   rows: z.array(z.object({ row: z.number().int().optional(), reasons: z.array(z.string()).default([]), raw: z.record(z.any()) })).min(1).max(2000),
 });
 
-const update = create.partial();
+// An item's price is its standard expense rate (14120), set through the rate
+// endpoints; an edit cannot carry one. Stripped rather than refused so an old
+// form that still sends the field does not fail the whole save.
+const update = create.omit({ default_price: true }).partial();
 // AI-facing: the item is in the URL for HTTP, in the payload for the copilot.
 const aiUpdate = update.extend({ dictionary_item_id: z.string().uuid() });
+const aiRateSupersede = rateSupersede.extend({ dictionary_item_id: z.string().uuid() });
+const aiRateApplyAll = rateApplyAll.extend({ dictionary_item_id: z.string().uuid() });
 const schemas = {
-  create, update, aiUpdate, refCreate, refUpdate,
-  searchQuery, spendQuery, rateSupersede, importUpload, importCommit, importErrors,
+  create, update, aiUpdate, aiRateSupersede, aiRateApplyAll, refCreate, refUpdate,
+  searchQuery, spendQuery, rateSupersede, rateApplyAll, importUpload, importCommit, importErrors,
 };
 
 /** Query-string validator — same shape as `mw`, but reads req.query. */
@@ -185,6 +208,7 @@ module.exports = {
   searchQuery: qmw("searchQuery"),
   spendQuery: qmw("spendQuery"),
   rateSupersede: mw("rateSupersede"),
+  rateApplyAll: mw("rateApplyAll"),
   importUpload: mw("importUpload"),
   importCommit: mw("importCommit"),
   importErrors: mw("importErrors"),

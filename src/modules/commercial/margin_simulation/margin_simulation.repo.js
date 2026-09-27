@@ -62,7 +62,7 @@ async function costingForLink(client, costingId) {
 async function costingLinesForLink(client, costingId) {
   const { rows } = await client.query(
     `SELECT cl.dictionary_item_id, cl.label, cl.qty, cl.unit_cost,
-            cl.is_disbursement, cl.tax_code_id,
+            cl.is_disbursement, cl.tax_code_id, cl.client_heading,
             di.direction   AS dict_direction,
             di.category    AS dict_category,
             di.is_disbursement AS dict_is_disbursement,
@@ -70,7 +70,7 @@ async function costingLinesForLink(client, costingId) {
        FROM costing_line cl
        LEFT JOIN dictionary_item di ON di.dictionary_item_id = cl.dictionary_item_id
       WHERE cl.costing_id = $1
-      ORDER BY cl.costing_line_id`,
+      ORDER BY cl.line_no NULLS LAST, cl.costing_line_id`,
     [costingId],
   );
   return rows;

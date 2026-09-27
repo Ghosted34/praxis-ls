@@ -67,4 +67,13 @@ describe("shared transcription vendor resolution", () => {
     expect(OpenAI.options.apiKey).toBe("worker-key");
     expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({ model: "whisper-worker" }));
   });
+
+  test("a caller can switch off the SDK's own retries (the call pipeline gives Groq one attempt)", async () => {
+    await transcription.transcribe({ audio: Buffer.from("audio"), mimeType: "audio/webm", maxRetries: 0 });
+    expect(OpenAI.options).toEqual({
+      apiKey: "platform-key",
+      baseURL: "https://api.groq.com/openai/v1",
+      maxRetries: 0,
+    });
+  });
 });

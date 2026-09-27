@@ -102,6 +102,8 @@ describe("upsertGrant — the PUT /permissions/grant wire contract", () => {
     expect(init.body.can_disburse).toBe(true);
     expect(init.body.can_validate).toBe(false);
     expect(init.body.can_export).toBe(false);
+    // PR-7 (O5): the Test right travels with its value too.
+    expect(init.body.can_test).toBe(false);
     expect(init.body.role_id).toBe("a83d176b-0934-45b8-ba42-f32999079720");
     expect(init.body.module_key).toBe("MOD-04");
   });

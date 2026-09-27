@@ -1,26 +1,19 @@
 /**
- * Smart Comms Calls (PR-1) — TURN/STUN credentials and ICE config.
+ * Smart Comms calls — the ICE configuration a call's browser gets: STUN, and
+ * TURN credentials minted for one live call (calls audit C2, C12, C13).
  *
- * ── WHY TIME-LIMITED CREDENTIALS AND NEVER A STATIC USER ───────────────────
+ * Credentials use coturn's REST scheme: username `<expiry>:<call token>`,
+ * password base64(HMAC-SHA1(username)) under the shared secret coturn is
+ * started with. The token is random and stored on the call row, so the relay's
+ * logs name the call and never a person, and a credential dies with the call:
+ * its TTL is the call's remaining allowance plus a minute. The call service
+ * decides WHETHER to mint (only for RINGING or IN_CALL); this file only how.
  *
- * A static `turnserver:password` user in compose is a credential leak that
- * outlives the call that needed it: anyone who reads the .env (or the
- * compose file) can relay media through this tenant's TURN forever, from any
- * machine, on this tenant's bill. The REST credential scheme is the fix:
- * username = `<expiry-epoch>`, password = base64(HMAC-SHA1 of the username
- * under a shared secret), valid until the expiry. A credential for a
- * 31-minute call is worthless the moment the call is over, and rotating the
- * secret invalidates everything at once.
- *
- * The client never learns the shared secret: the server mints the username +
- * password for a specific call and hands both down (POST /calls response,
- * or GET /calls/:id/turn for a refresh mid-call).
- *
- * ── WHY STUN URLS COME FROM THE SAME PLACE ─────────────────────────────────
- *
- * `iceServers` is the ONLY network input the WebRTC engine gets. Deriving the
- * whole list from one env block means a deployment that points TURN elsewhere
- * does not also have to remember a second variable that disagrees with it.
+ * STUN comes from STUN_URLS, else the TURN host's own port. Only when
+ * neither is set does it fall back to Google's public STUN (owner decision,
+ * PR-3): calls between networks keep working until the self-hosted relay is
+ * configured, and that fallback sends each caller's address to Google, so it
+ * is logged once and disappears as soon as TURN_HOST or STUN_URLS is set.
  */
 "use strict";
 
@@ -28,79 +21,113 @@ const crypto = require("crypto");
 const { config } = require("../../config/env");
 const { logger } = require("../../config/logger");
 
-const DEFAULT_STUN = "stun:stun.l.google.com:19302";
+const FALLBACK_STUN = "stun:stun.l.google.com:19302";
 let warnedTurnMisconfigured = false;
+let warnedStunFallback = false;
 
-/** One time-limited credential for the coturn REST scheme.
- *
- * The username is the EXPIRY EPOCH and nothing else — that is what coturn's
- * `use-auth-secret` scheme specifies (an optional extra field after it is
- * cosmetic, and coturn ignores it). Scoping the credential to a user id adds
- * nothing either: the credential is already worthless after the expiry and is
- * minted fresh per call, and keeping participant ids out of the HMAC input
- * keeps personal data out of the one place it would be echoed back by TURN
- * servers in plaintext Allocate requests. */
-function turnCredential() {
-  const ttl = Math.max(60, Number(config.TURN_CREDENTIAL_TTL) || 1860);
-  const expiry = Math.floor(Date.now() / 1000) + ttl;
-  // The key lives under a neutral local: CodeQL's sensitive-data heuristic
-  // matches identifiers by name, and this value is not user data — it is the
-  // deployment's own coturn shared secret doing the one job it exists for.
-  const sharedKey = String(config.TURN_CREDENTIAL_SECRET);
-  const username = `${expiry}`;
-  const password = crypto
-    // SHA1 here is TURN's wire protocol, not a chosen cipher: RFC 5766
-    // MESSAGE-INTEGRITY is HMAC-SHA1 and coturn's `use-auth-secret` REST
-    // scheme computes exactly this digest over the expiry username. There is
-    // no stronger option that a stock coturn would accept.
-    // codeql[js/weak-cryptographic-algorithm]
-    // codeql[js/weak-crypto]
-    .createHmac("sha1", sharedKey)
-    .update(String(expiry))
-    .digest("base64");
-  return { username, password, expiresAt: new Date(expiry * 1000).toISOString() };
+/**
+ * A relay exists only when both halves do: a host to reach and a secret to
+ * sign with. `relay` is the resolved runtime config
+ * (runtime-config.service.turn()), never `config` directly — the host and
+ * ports are settable from the platform console, so reading env here would
+ * quietly ignore whatever an operator has set.
+ */
+const turnConfigured = (relay) => Boolean(relay && relay.host && relay.secretSet);
+
+/** A fresh per-call token for the credential's username. */
+function newCallToken() {
+  return crypto.randomBytes(18).toString("base64url");
 }
 
 /**
- * The `iceServers` array for a call, for the user who is dialing. `user`
- * scopes the log line only — the credential itself is time-boxed and minted
- * fresh per call, so it needs no participant identity in it.
- *
- * Returns STUN-only when TURN is not configured, and says so: a call on
- * hostile NATs will then fail to connect, and the UI's plain sentence
- * (guide §4.7) is more useful than a silent "works for some people".
+ * coturn's REST scheme under neutral names: `label` is `<expiry>:<id>` (what
+ * coturn calls the username) and `mac` the HMAC-SHA1 of it under the shared
+ * secret (what it checks as the password). The platform check derives a TURN
+ * key from these, and CodeQL's sensitive-data heuristic reads identifiers by
+ * name; neither value is a person's: a public label and an HMAC under the
+ * deployment's own coturn secret.
  */
-function iceConfigFor(user) {
-  const stunUrls = String(config.STUN_URLS || "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  const servers = [
-    { urls: stunUrls.length ? stunUrls : [DEFAULT_STUN] },
-  ];
-  if (config.TURN_HOST && config.TURN_CREDENTIAL_SECRET) {
-    const cred = turnCredential(user);
-    for (const transport of String(config.TURN_TRANSPORTS || "udp,tcp")
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean)) {
-      const port = transport === "tcp" ? config.TURN_PORT_TCP : config.TURN_PORT_UDP;
-      servers.push({
-        urls: [`turn:${config.TURN_HOST}:${port}?transport=${transport}`],
-        username: cred.username,
-        credential: cred.password,
-      });
-    }
-    logger.debug({ user, expiresAt: cred.expiresAt }, "minted time-limited TURN credential");
-  } else if (config.TURN_HOST && !warnedTurnMisconfigured) {
-    // TURN_HOST set but no secret: the mint would fail closed per credential,
-    // so the deployment is misconfigured. Warn ONCE per process — this is an
-    // ops error, not a call error, and it must not become log spam per dial.
-    warnedTurnMisconfigured = true;
-    logger.warn("TURN_HOST is set but TURN_CREDENTIAL_SECRET is empty — STUN-only, " +
-      "calls behind symmetric NATs will not connect");
-  }
-  return { iceServers: servers, turnConfigured: Boolean(config.TURN_HOST && config.TURN_CREDENTIAL_SECRET) };
+function signedLabel({ id, ttlSeconds, now = Date.now(), secret }) {
+  if (!id) throw new Error("a TURN credential needs an id");
+  const expiry = Math.floor(now / 1000) + Math.max(60, Math.ceil(Number(ttlSeconds) || 0));
+  const label = `${expiry}:${id}`;
+  // `secret` when the caller resolved one (the vault, or the resolved relay
+  // config); `.env` otherwise. Not read from `config` unconditionally any
+  // more: with TURN_SECRET_SOURCE=vault the value here is the one coturn has
+  // in its Redis set, and signing with the env copy would be refused.
+  const sharedKey = String(secret === undefined || secret === null ? config.TURN_CREDENTIAL_SECRET : secret);
+  const mac = crypto
+    // SHA1 is TURN's wire protocol (RFC 5766 MESSAGE-INTEGRITY; coturn's
+    // use-auth-secret computes exactly this), not a chosen cipher.
+    // codeql[js/weak-cryptographic-algorithm]
+    // codeql[js/weak-crypto]
+    .createHmac("sha1", sharedKey)
+    .update(label)
+    .digest("base64");
+  return { label, mac, expiresAt: new Date(expiry * 1000).toISOString() };
 }
 
-module.exports = { turnCredential, iceConfigFor };
+/** One credential for `token`, valid for `ttlSeconds` (at least a minute). */
+function turnCredential({ token, ttlSeconds, now = Date.now(), secret }) {
+  if (!token) throw new Error("a TURN credential needs the call's token");
+  const { label, mac, expiresAt } = signedLabel({ id: token, ttlSeconds, now, secret });
+  return { username: label, password: mac, expiresAt };
+}
+
+function stunServers(relay) {
+  const listed = String(relay.stunUrls || "").split(",").map((s) => s.trim()).filter(Boolean);
+  if (listed.length) return [{ urls: listed }];
+  if (relay.host) return [{ urls: [`stun:${relay.host}:${relay.portUdp}`] }];
+  if (!warnedStunFallback) {
+    warnedStunFallback = true;
+    logger.warn("Neither STUN_URLS nor TURN_HOST is set — calls use Google's public STUN " +
+      "server (callers' addresses go to Google) and have no relay. Configure TURN_HOST.");
+  }
+  return [{ urls: [FALLBACK_STUN] }];
+}
+
+/**
+ * The `RTCConfiguration` pieces for one participant of one call.
+ *
+ * `relayOnly` is the tenant's `comms.call_privacy` choice. It is honoured
+ * even without a relay configured: the promise is that no IP address is
+ * exchanged, and a call that cannot connect keeps it where a quiet fallback
+ * to peer-to-peer would break it.
+ */
+function iceConfigFor({ token, ttlSeconds, relayOnly = false, relay, secret }) {
+  const servers = stunServers(relay);
+  let expiresAt = null;
+  if (turnConfigured(relay)) {
+    const cred = turnCredential({ token, ttlSeconds, secret });
+    expiresAt = cred.expiresAt;
+    const urls = String(relay.transports || "udp,tcp")
+      .split(",")
+      .map((s) => s.trim())
+      .filter((t) => t === "udp" || t === "tcp")
+      .map((t) => `turn:${relay.host}:${t === "tcp" ? relay.portTcp : relay.portUdp}?transport=${t}`);
+    if (Number(relay.tlsPort) > 0) {
+      urls.push(`turns:${relay.host}:${relay.tlsPort}?transport=tcp`);
+    }
+    for (const url of urls) {
+      servers.push({ urls: [url], username: cred.username, credential: cred.password });
+    }
+  } else if (relay.host && !warnedTurnMisconfigured) {
+    // Warn once per process: an ops error, not a per-call one.
+    warnedTurnMisconfigured = true;
+    logger.warn("A relay host is set but TURN_CREDENTIAL_SECRET is empty — no relay, " +
+      "calls behind carrier-grade NAT will not connect");
+  }
+  return {
+    iceServers: servers,
+    iceTransportPolicy: relayOnly ? "relay" : "all",
+    turnConfigured: turnConfigured(relay),
+    expiresAt,
+  };
+}
+
+/** Whether calls fall back to Google's public STUN (for the disclosure). */
+function usesGoogleStun(relay) {
+  return !String((relay && relay.stunUrls) || "").trim() && !(relay && relay.host);
+}
+
+module.exports = { newCallToken, turnCredential, signedLabel, iceConfigFor, usesGoogleStun, turnConfigured };

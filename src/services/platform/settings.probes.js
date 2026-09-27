@@ -312,4 +312,60 @@ async function microsoftGraph(cfg) {
   }
 }
 
-module.exports = { s3, geoapify, smtp, vapid, signwell, alertWebhook, alertEmail, backupStorage, microsoftGraph };
+/**
+ * The call relay: a real STUN/TURN Allocate against the relay this deployment
+ * is actually advertising.
+ *
+ * Takes no arguments, for the reason `backupStorage` takes none: it asks the
+ * runtime config what is IN FORCE and exercises that, rather than a copy of
+ * the settings reconstructed here. A probe against a reconstruction is how a
+ * test passes while the thing it claims to test is misconfigured.
+ *
+ * That property is the whole point of this row. Two of the values the console
+ * displays — the UDP port and the TLS port — are coturn's listeners and are
+ * not settable from there. The only honest way to tell an operator whether
+ * what we advertise matches what the relay is doing is to ask the relay, with
+ * a credential minted exactly as a caller's browser gets one.
+ */
+async function turn() {
+  const runtime = require("./runtime-config.service");
+  const cfg = await runtime.turn();
+  if (!cfg.host) throw new Error("no relay host configured (TURN_HOST, or the host field above)");
+  if (!cfg.secretSet) {
+    throw new Error("TURN_CREDENTIAL_SECRET is not set on the host — the API cannot sign a relay credential");
+  }
+
+  const crypto = require("crypto");
+  const turnService = require("../../modules/smartcomm/smartcomm.turn.service");
+  // The secret in force, not `.env`: on TURN_SECRET_SOURCE=vault the relay
+  // verifies against the vault's value, and signing with the host's copy
+  // would fail a working relay with a 401.
+  const secret = await require("../../modules/smartcomm/smartcomm.turn.secret.service").activeSecret();
+  const { label, mac } = turnService.signedLabel({
+    id: `probe-${crypto.randomBytes(9).toString("base64url")}`,
+    ttlSeconds: 60,
+    secret,
+  });
+  const out = await require("./turn-probe").allocate({
+    host: cfg.host, port: cfg.portUdp, label, mac,
+  });
+  if (!out.ok) {
+    // 401 is the one failure worth naming, because it is the failure this
+    // panel can CREATE: the API signs with the host's secret and coturn
+    // verifies with its own copy, so a mismatch means every call's credential
+    // is refused while everything else looks configured.
+    throw new Error(out.code === 401
+      ? "the relay refused the credential (401): TURN_CREDENTIAL_SECRET here does not match the relay's"
+      : `${out.error} (tried ${cfg.host}:${cfg.portUdp}/udp)`);
+  }
+  return {
+    detail: {
+      host: cfg.host,
+      port: cfg.portUdp,
+      relayed: out.relayed,
+      source: cfg.source,
+    },
+  };
+}
+
+module.exports = { s3, geoapify, smtp, vapid, signwell, alertWebhook, alertEmail, backupStorage, microsoftGraph, turn };

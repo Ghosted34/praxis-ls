@@ -131,6 +131,41 @@
     --hero-muted: #9ea1a4; /* --brand-slate-400, 6.9:1 on carbon */
     --hero-line: rgb(237 238 238 / 0.16);
 
+    /* ── THE ACCENT AS TYPE ON THIS BAND, AND WHY IT IS NOT --primary-ink ──
+       ─────────────────────────────────────────────────────────────────────
+       `--primary-ink` is walked against `--card`, which is #ffffff up there —
+       so in the light theme it resolves to the LIGHT-ground ink and measures
+       ~3.4:1 on the carbon below. The band does not follow the page, so its
+       ink cannot either.
+
+       What this replaces is worse than that, and it is worth writing down
+       because the comment it replaces said the opposite. The eyebrow, the
+       accent word, the track plate's kicker and the portal link were all
+       `rgb(var(--brand-orange))`, on the stated grounds that `--brand-orange`
+       is Praxis's and is never tenant-overridden. On THIS app it is: `app/
+       branding.tsx` → `applyBrand` sets it from the tenant's own primary. So
+       four pieces of type were painting the tenant's raw FILL on carbon —
+       6.33:1 for an orange tenant, and **2.12:1 for a navy one** (#0C4A7A).
+       A live AA failure that no gate here could see, because the value only
+       ever existed at runtime.
+
+       These two are now DERIVED PER TENANT by the shared palette engine and
+       arrive with the rest of `GET /public/site/theme`; the pair is in the
+       engine's own `AA_PAIRS`, so it is measured for every palette in the
+       suite and shown in the settings preview. The values below are the
+       engine's output for the default #FF5A00 — so the pre-theme paint and the
+       derived palette agree rather than differing by a step, which is the rule
+       `--primary-ink-light` above already follows.
+
+       `--hero-plate-solid` is the ground the ink was measured against: the
+       track plate flattened, which is the LIGHTER of the band's two grounds
+       and therefore the one that binds. It is published rather than kept
+       inside the engine because `hero.css` needs exactly this colour for its
+       no-`backdrop-filter` fallback, and was approximating it separately with
+       a different number. */
+    --primary-ink-hero: #ff5a00; /* 5.22:1 on --hero-plate-solid, 6.33:1 on --hero */
+    --hero-plate-solid: #231f1d;
+
     /* Bare triplets, consumed as `rgb(var(--x) / a)`. */
     --brand-orange: 255 90 0;
     --brand-blue: 24 132 196;
@@ -1680,6 +1715,80 @@
       calc(var(--hdr) * -16px) rgb(var(--ink) / calc(var(--hdr) * 0.2));
   }
 
+  /* ══ THE BAR OVER THE BAND ════════════════════════════════════════════
+   *
+   * `PageShell overlayHeader` pulls `<main>` up under the header, so the
+   * homepage's hero runs full-bleed behind the bar instead of starting below
+   * it. Two stacked rectangles became one composition — which is what the bar
+   * always looked like it wanted to be, given it already carries a blur "for
+   * when the strip sits over full-bleed imagery".
+   *
+   * ── THE WHOLE SUBTREE IS RE-POINTED, RATHER THAN EVERY RULE RESTATED ────
+   *
+   * Overriding `--foreground` and `--border` on the header itself means
+   * `.navlink`, `.navpill`, the wordmark, the chevron and the drawer all
+   * follow without a second copy of any of them. A parallel set of
+   * `[data-overlay] .navlink { … }` rules is the version that drifts: somebody
+   * adds a colour to the nav and it is right in one mode and wrong in the
+   * other, which is precisely the `.track-widget` defect (F-48) one level up.
+   *
+   * ── AND THE FAMILY IS THE HERO'S, NOT THE PAGE'S — THIS IS THE SAFETY ───
+   *
+   * The obvious build keeps the bar's fill at `--background` and cross-fades
+   * it in as `--hdr` rises. It has a hole nothing in this repo could see: the
+   * labels are `--foreground`, which follows the PAGE, and the band beneath is
+   * `--hero`, which is carbon in BOTH themes and deliberately never follows
+   * it. In the light theme that is dark ink on carbon — an invisible nav, not
+   * a low-contrast one. `FORCE_DARK` hides it today, and that lock is one line
+   * in `lib/theme-mode.ts` whose own header explains how to flip it.
+   *
+   * So an overlaying bar takes the hero family outright and keeps it at every
+   * scroll position: ink `--hero-foreground`, fill `--hero`, hairline
+   * `--hero-line`. The pair is constant rather than interpolated, it is the
+   * one `check:contrast` already measures at 17:1 and 18.4:1, and it holds in
+   * both themes for the same reason the band does. A bar that condenses into
+   * carbon over a light page is a deliberate look; a bar whose contrast is
+   * only correct at the two ends of a scrub is a defect waiting for the lock
+   * to come off. */
+  .site-shell[data-overlay="true"] .site-header {
+    --foreground: var(--hero-foreground);
+    --border: var(--hero-line);
+    /* Nothing at rest, so the hero's own art is what is behind the labels;
+       carbon by the time the bar has condensed. The `--hdr * 92%` never
+       reaches opaque on purpose — the last 8 % is what keeps it reading as a
+       pane over the page rather than as a lid on it. */
+    background: color-mix(in srgb, var(--hero) calc(var(--hdr) * 92%), transparent);
+    /* A hairline across a photograph is the tell that the bar is a separate
+       object. It arrives with the fill it belongs to. */
+    border-bottom-color: color-mix(
+      in srgb,
+      var(--hero-line) calc(var(--hdr) * 100%),
+      transparent
+    );
+  }
+
+  /* The utility strip is already `--hero`, so over a carbon band it is
+     seamless — but only once the bar below it has a fill to match. At rest it
+     would be a solid carbon block sitting on a photograph, which is the same
+     two-rectangles problem this change exists to end. */
+  .site-shell[data-overlay="true"] .site-utility {
+    background: color-mix(in srgb, var(--hero) calc(var(--hdr) * 92%), transparent);
+  }
+
+  /* `<main>` pulled up under the bar. The hero pads its own content back down
+     by the same measured property (`.hero-band`), so the composition is
+     unchanged and only the PAINT moves — which is what keeps this a styling
+     change rather than a layout one, and why no anchor offset or sticky aside
+     elsewhere on the site had to move.
+   *
+   * The fallback is the bar's real resting height, for the frame before the
+   * header's ResizeObserver has published one. 6rem was the number that used
+   * to be hardcoded around the app and it is SHORTER than the header actually
+   * is, which is the bug that sliced pinned headings in half. */
+  .main-under-header {
+    margin-top: calc(var(--site-header-h, 7rem) * -1);
+  }
+
   /* The lit edge, from the site's one light source: top-left at 60°. The
      corridor stage states the same source; this is that light landing on the
      header's top arris. It is a GRADIENT and not a line, because a uniformly
@@ -1833,10 +1942,17 @@
     z-index: 2;
     transform-origin: left center;
     transform: scaleX(var(--read, 0));
+    /* `--primary-ink`, not `--brand-orange`. Both are the tenant's colour on
+       this app, but only one of them is corrected for type: the fill measures
+       2.12:1 on a dark ground for a navy-primary tenant, and a 2px progress
+       rail is a non-text affordance held to 3:1 by WCAG 1.4.11. The header's
+       ground is the PAGE, not the hero, so this is `--primary-ink` — which the
+       dark block redefines to the dark-corrected value — rather than the
+       hero's own ink. */
     background: linear-gradient(
       90deg,
-      rgb(var(--brand-orange) / 0.45),
-      rgb(var(--brand-orange))
+      color-mix(in srgb, var(--primary-ink) 45%, transparent),
+      var(--primary-ink)
     );
   }
 
@@ -1886,7 +2002,7 @@
     z-index: 0;
     height: 2.125rem;
     width: var(--pw, 0px);
-    transform: translate(var(--px, 0px), -50%);
+    transform: translate(calc(var(--px, 0px) + var(--lean, 0px)), -50%);
     border-radius: calc(var(--radius) - 4px);
     pointer-events: none;
     opacity: var(--pill-on, 0);
@@ -1914,11 +2030,50 @@
        WORD rather than the highlight — which is what the old per-item ::after
        did, and the one thing about it worth keeping. */
     width: max(0px, calc(var(--pw, 0px) - 24px));
-    transform: translateX(calc(var(--px, 0px) + 12px));
+    /* Half the pill's lean, so the two do not move as one block — the rail
+       trailing the highlight is the same relationship the two durations below
+       create for the travel. */
+    transform: translateX(
+      calc(var(--px, 0px) + 12px + var(--lean, 0px) * 0.5)
+    );
     border-radius: 2px;
     pointer-events: none;
     opacity: var(--pill-on, 0);
-    background: rgb(var(--brand-orange));
+    /* Same swap, same reason, as `.hdr-rail` above: a 2px underline is a
+       non-text affordance at 3:1, and the raw fill does not clear it for every
+       tenant. */
+    background: var(--primary-ink);
+  }
+
+  /* ── THE INK LEANS TOWARD THE POINTER ───────────────────────────────────
+   *
+   * The pill travels between items on hover, which is a response to arrival.
+   * This is the response to APPROACH: it leans up to 4px toward wherever the
+   * pointer is across the bar, so the nav has noticed you before you have
+   * committed to anything. Hover is binary and it is late — by the time it
+   * fires the reader has already chosen — and that gap is most of the
+   * difference between a menu that reacts and one that feels alive.
+   *
+   * ── AND IT COSTS NO LISTENER, WHICH IS WHY IT IS THIS AND NOT useProximity
+   *
+   * `--lx` is already on `.site-header`: `usePointerLight` writes it for the
+   * sheen, on a listener that exists whether or not this rule does. The
+   * obvious build — `useProximity` on the nav row — reads
+   * `getBoundingClientRect()` inside its own `pointermove` handler, which is a
+   * layout read per event on EVERY page in the app, while the header is
+   * already restyling itself from `--hdr` on scroll. The services grid can
+   * afford that because it is one band on one page; chrome cannot.
+   *
+   * The idle behaviour comes free with the same hook: `--lx` returns to 0.5
+   * after 2.6s of stillness, so a nav nobody is pointing at settles square
+   * rather than freezing mid-lean. On a coarse pointer the hook never attaches
+   * and `--lx` rests at 0.5, which evaluates the lean to exactly 0.
+   *
+   * The 170ms transition below damps it, and the lag is the effect rather than
+   * a cost — the same thing the two sheen layers are built on. */
+  .navpill,
+  .navrail {
+    --lean: calc((var(--lx, 0.5) - 0.5) * 4px);
   }
 
   /* The rail is on the slower, non-overshooting curve. It arrives after the

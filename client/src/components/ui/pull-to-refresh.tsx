@@ -4,25 +4,33 @@
  * ENGINEERING NOTES (why this is not a 5-line hack):
  *
  * - BROWSER'S OWN PULL. Chrome on Android triggers a full `location.reload()`
- *   when you drag the page at `scrollY === 0`. That is NOT our soft-data
+ *   when you drag the page at the scroller's top. That is NOT our soft-data
  *   refresh (it loses scroll, flashes, re-hits /auth/me). We disable it with
- *   `overscroll-behavior-y: contain` on the wrapper and never call it.
- * - SHARED CLIENT INVARIANT. `useControlTower().refresh()` just invalidates
- *   React Query keys — no hard reload — so the list stays painted while it
- *   revalidates (stale-while-revalidate, like a native app).
+ *   `overscroll-behavior-y: contain` on the wrapper (and the shell sets it on
+ *   the `<main>` scroller too) and never call it.
+ * - SHARED CLIENT INVARIANT. `onRefresh` just invalidates React Query keys —
+ *   no hard reload — so the screen stays painted while it revalidates
+ *   (stale-while-revalidate, like a native app). The shell wires this to
+ *   `queryClient.invalidateQueries()` so EVERY screen refreshes its own data.
  * - PHYSICS. Damped pull (`delta * 0.55`, capped at 96px), 72px trigger,
  *   haptic on crossing, spring-back `0.22s` ease. Feels like iOS Mail.
- * - ONLY AT TOP. If `window.scrollY > 0` the gesture is ignored so a normal
- *   scroll never becomes a refresh.
+ * - ONLY AT TOP. The gesture is ignored unless the scroll container is at its
+ *   top, so a normal scroll never becomes a refresh. WHICH container matters:
+ *   in this app `html/body/#root` are `overflow:hidden` and the shell's
+ *   `<main>` owns vertical scrolling, so `window.scrollY` is ALWAYS 0 and
+ *   cannot answer "am I at the top?". Callers pass `scrollRef` (the real
+ *   scroller) and we read its `scrollTop`; `window.scrollY` is only the
+ *   fallback for a page that scrolls the window itself.
  * - DESKTOP DISABLED. `min-width: 1024px` or `hover: hover` → no pull. A
  *   mouse has a refresh button; a pull on a trackpad is a scroll.
  * - ACCESSIBILITY. Pull is not keyboard-reachable. The visible spinner has
- *   `aria-live` and the page's existing `Meeting view`/`TowerFilters` refresh
- *   via React Query keeps keyboard users covered. Reduced-motion skips the
- *   translate animation.
+ *   `aria-live`, and `refetchOnWindowFocus` plus the per-screen refresh
+ *   controls keep keyboard users covered. Reduced-motion skips the translate
+ *   animation.
  * - CONFLICTS. Disabled while a dialog/bottom-sheet is open (filter room,
- *   KPI picker, drilldown, meeting view) — the backdrop locks scroll and the
- *   pull would fight the sheet's own drag-to-dismiss.
+ *   KPI picker, drilldown, meeting view, any write form) — the backdrop locks
+ *   scroll and the pull would fight the sheet's own drag-to-dismiss. We detect
+ *   the lock rather than being told about it, so this holds on every screen.
  */
 import * as React from "react";
 import { cn } from "@/lib/cn";
@@ -37,11 +45,21 @@ export function PullToRefresh({
   disabled,
   children,
   threshold = THRESHOLD,
+  scrollRef,
 }: {
   onRefresh: () => Promise<void> | void;
   disabled?: boolean;
   children: React.ReactNode;
   threshold?: number;
+  /**
+   * The element that actually scrolls. In this app the shell's `<main>` owns
+   * vertical scrolling (`html/body/#root` are `overflow:hidden`), so
+   * `window.scrollY` is always 0 and cannot tell us whether we are at the top —
+   * without this, a pull would fire mid-page on every long, scrolling screen.
+   * Pass the scroll container and the gesture only arms when IT is at the top.
+   * Omitted → fall back to `window.scrollY` for a page that scrolls the window.
+   */
+  scrollRef?: React.RefObject<HTMLElement | null>;
 }) {
   const reduced = usePrefersReducedMotion();
   const wrapperRef = React.useRef<HTMLDivElement>(null);
@@ -52,17 +70,35 @@ export function PullToRefresh({
   const [pull, setPull] = React.useState(0);
   const [refreshing, setRefreshing] = React.useState(false);
 
+  // The scroller is at its top — the only position from which a pull is a
+  // refresh rather than an ordinary scroll. Reads the real scroll container
+  // when given one (see `scrollRef`); the window is only the fallback.
+  const atTop = React.useCallback(() => {
+    const el = scrollRef?.current;
+    if (el) return el.scrollTop <= 0;
+    if (typeof window === "undefined") return false;
+    return window.scrollY <= 0;
+  }, [scrollRef]);
+
   // Disable on desktop — pull is a mobile idiom. Also skip when the caller
-  // says so (meeting view, filter sheet, etc.).
+  // says so (the chat workstation, which owns its own scroll).
   const isDisabled = React.useCallback(() => {
     if (disabled || refreshing) return true;
     if (typeof window === "undefined") return true;
     // Hover = mouse/trackpad → no pull. Touch-only is `hover: none`.
     if (window.matchMedia("(hover: hover)").matches && window.innerWidth >= 1024) return true;
-    // An open dialog locks the page — pull would tug the backdrop.
-    if (document.querySelector('[role="dialog"][data-state="open"], [data-radix-popper-content-wrapper]')) return false; // allow — Radix uses body lock, but don't block
-    // If any Radix dialog is open, don't pull — let the modal handle gestures.
-    if (document.body.style.overflow === "hidden" || document.body.dataset.scrollLocked === "1") return true;
+    // A modal open in front of the page locks the scroll behind it, and the
+    // pull would fight its backdrop or its own drag-to-dismiss. Detect the lock
+    // three ways so this holds for every kind of overlay without the page
+    // having to tell us: Radix (Dialog/AlertDialog) sets a body attribute and a
+    // stylesheet rule; ScreenOverlay (meeting view, map full screen) sets body
+    // overflow inline; and either way the open surface is a modal dialog.
+    if (
+      document.body.hasAttribute("data-scroll-locked") ||
+      document.body.style.overflow === "hidden" ||
+      document.querySelector('[role="dialog"][aria-modal="true"]') !== null
+    )
+      return true;
     return false;
   }, [disabled, refreshing]);
 
@@ -72,7 +108,7 @@ export function PullToRefresh({
 
     const onTouchStart = (e: TouchEvent) => {
       if (isDisabled()) return;
-      if (window.scrollY > 0) return;
+      if (!atTop()) return;
       if (e.touches.length !== 1) return;
       startY.current = e.touches[0].clientY;
       pullRef.current = 0;
@@ -82,7 +118,9 @@ export function PullToRefresh({
     const onTouchMove = (e: TouchEvent) => {
       if (startY.current === null) return;
       if (isDisabled()) return;
-      if (window.scrollY > 0) {
+      // Left the top mid-gesture (the scroller took over) → abandon the pull so
+      // it never competes with an ordinary scroll.
+      if (!atTop()) {
         startY.current = null;
         pullRef.current = 0;
         setPull(0);
@@ -145,7 +183,7 @@ export function PullToRefresh({
       el.removeEventListener("touchend", onTouchEnd);
       el.removeEventListener("touchcancel", onTouchEnd);
     };
-  }, [onRefresh, threshold, isDisabled, refreshing]);
+  }, [onRefresh, threshold, isDisabled, atTop, refreshing]);
 
   const progress = Math.min(pull / threshold, 1);
   const showIndicator = pull > 4 || refreshing;
@@ -158,9 +196,18 @@ export function PullToRefresh({
         : "Pull to refresh";
 
   return (
+    // h-full, and the content below is h-full too, so this wrapper is
+    // LAYOUT-TRANSPARENT: it passes the parent's height straight through to the
+    // page. It has to, now that it sits between the shell's <main> and every
+    // screen — a full-height screen (the comms chat, the AI workspace) sizes
+    // itself with `h-full`/`h-[calc(100%…)]` against <main>, and a wrapper of
+    // its own (auto) height would collapse that chain and drop the page's
+    // pinned-to-bottom composer far down the page. No padding/margin/border
+    // here either, so the AI workspace's negative margins still cancel <main>'s
+    // padding exactly as they did when it was <main>'s direct child.
     <div
       ref={wrapperRef}
-      className="relative overscroll-y-contain"
+      className="relative h-full overscroll-y-contain"
       style={{ overscrollBehaviorY: "contain" } as React.CSSProperties}
     >
       {/* Indicator — sits at the very top, revealed as you pull */}
@@ -222,8 +269,12 @@ export function PullToRefresh({
         </div>
       </div>
 
-      {/* Content — slides down with the pull (no translate on reduced-motion, just indicator) */}
+      {/* Content — slides down with the pull (no translate on reduced-motion,
+          just indicator). h-full so the height chain reaches the page (see the
+          wrapper note above); relative so the out-of-flow edge below anchors
+          here even on reduced-motion, where no transform is applied. */}
       <div
+        className="relative h-full"
         style={
           reduced
             ? undefined
@@ -234,9 +285,13 @@ export function PullToRefresh({
               }
         }
       >
-        {/* Subtle top border that appears as you pull — gives the sheet an edge */}
+        {/* Subtle top border that appears as you pull — gives the sheet an edge.
+            ABSOLUTELY positioned so it consumes no layout height: an in-flow 1px
+            row here would push an h-full page 1px past the viewport (enough to
+            fail the composer-fits-in-833px layout gate) and dent every
+            fill-the-height screen by a pixel. */}
         <div
-          className="pointer-events-none h-px bg-border lg:hidden"
+          className="pointer-events-none absolute inset-x-0 top-0 z-[1] h-px bg-border lg:hidden"
           style={{
             opacity: showIndicator ? 0.18 + progress * 0.52 : 0,
             transform: `scaleX(${0.6 + progress * 0.4})`,

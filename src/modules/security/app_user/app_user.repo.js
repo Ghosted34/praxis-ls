@@ -77,8 +77,9 @@ async function createSession(client, { userId, deviceLabel, ip, userAgent, envir
 
 async function getActiveSession(client, sessionId) {
   const { rows } = await client.query(
-    `SELECT session_id, user_id, killed_at, last_seen_at, refresh_jti, keep_signed_in,
-            EXTRACT(EPOCH FROM (now() - last_seen_at)) AS idle_seconds
+    `SELECT session_id, user_id, killed_at, last_seen_at, refresh_jti, keep_signed_in, created_at,
+            EXTRACT(EPOCH FROM (now() - last_seen_at)) AS idle_seconds,
+            EXTRACT(EPOCH FROM (now() - created_at)) AS age_seconds
        FROM user_session WHERE session_id = $1`,
     [sessionId],
   );
@@ -296,6 +297,12 @@ async function getActiveDeviceForUser(client, deviceId, userId) {
     "SELECT * FROM user_device WHERE device_id = $1 AND user_id = $2 AND status = 'ACTIVE'", [deviceId, userId]);
   return rows[0] || null;
 }
+/** How many PIN devices can still sign this user in — the per-user cap. */
+async function countActiveDevices(client, userId) {
+  const { rows } = await client.query(
+    "SELECT COUNT(*)::int AS n FROM user_device WHERE user_id = $1 AND status = 'ACTIVE'", [userId]);
+  return rows[0].n;
+}
 async function listDevices(client, userId) {
   const { rows } = await client.query(
     "SELECT device_id, label, status, failed_pin, last_used_at, created_at FROM user_device WHERE user_id = $1 ORDER BY created_at DESC", [userId]);
@@ -391,7 +398,7 @@ module.exports = {
   insertUser, getUserSafe, getUserWithHash, listUsersSafe, updateUserFields, setPasswordHash, setAvatar, employeeExists, listEmployeesLite, setStatus, setRoles, roleCodes, roleIds, countActiveCeos,
   getSignature, upsertSignature, ceoRoleId, roleNames, roleNamesByIds,
   createResetToken, findResetByHash, markResetUsed, invalidateUserResets, killAllSessionsForUser, killOtherSessionsForUser,
-  insertDevice, getActiveDeviceForUser, listDevices, recordDevicePinFailure, resetDevicePin, revokeDevice,
+  insertDevice, getActiveDeviceForUser, countActiveDevices, listDevices, recordDevicePinFailure, resetDevicePin, revokeDevice,
   findByEmail,
   recordLoginSuccess,
   recordLoginFailure,

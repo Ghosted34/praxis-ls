@@ -74,6 +74,12 @@ async function sandboxReady(client) {
  * path verifies afterwards and warns, since an email collision is the one case
  * where "no rows inserted" still leaves the FK unsatisfied.
  *
+ * An already-mirrored row is then brought in step with live for the fields
+ * sandbox reads as facts: `status` above all (a user suspended after the first
+ * copy used to stay ACTIVE in sandbox forever), plus the name and 2FA flag.
+ * `email` and `username` are left alone: they are unique, and a stale sandbox
+ * row holding the same value would turn a sync into a failed mirror.
+ *
  * Throws on a real database error — callers that must not fail should use
  * `mirrorUserBestEffort`.
  */
@@ -86,6 +92,17 @@ async function mirrorUsersIntoSandbox(client, { userId = null } = {}) {
     `INSERT INTO sandbox.app_user (${MIRROR_COLS})
      SELECT ${MIRROR_COLS} FROM live.app_user${where}
      ON CONFLICT DO NOTHING`,
+    params,
+  );
+  await client.query(
+    `UPDATE sandbox.app_user s
+        SET status = l.status, full_name = l.full_name,
+            is_2fa_enabled = l.is_2fa_enabled, updated_at = l.updated_at
+       FROM live.app_user l
+      WHERE s.user_id = l.user_id${userId ? " AND l.user_id = $1" : ""}
+        AND (s.status IS DISTINCT FROM l.status
+             OR s.full_name IS DISTINCT FROM l.full_name
+             OR s.is_2fa_enabled IS DISTINCT FROM l.is_2fa_enabled)`,
     params,
   );
 

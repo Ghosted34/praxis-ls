@@ -92,15 +92,22 @@ async function preferredPrimary() {
  * platform's choice or the default, so the health check and the boot log can
  * tell an operator WHY the primary is what it is.
  */
-async function resolveChain({ vendorName, singleVendor = false } = {}) {
-  let source = "default";
-  let first = vendorName || null;
-  if (first) source = "explicit";
-  else {
+async function resolveChain({ vendorName, fallbackVendor, singleVendor = false } = {}) {
+  let chain;
+  let source;
+  if (vendorName) {
+    // A caller that pins a vendor keeps the pre-console contract exactly:
+    // `[vendorName, fallbackVendor ?? DEFAULT_FALLBACK]`, de-duplicated — so
+    // `vendorName: "gemini"` alone is Gemini alone (pinned by
+    // ai-llm-fallback-vendor.test.js), and summaries pass `fallbackVendor`.
+    source = "explicit";
+    chain = [...new Set([vendorName, fallbackVendor || DEFAULT_FALLBACK])];
+  } else {
     const chosen = await preferredPrimary();
-    if (chosen) { first = chosen; source = "platform"; }
+    source = chosen ? "platform" : "default";
+    chain = chainFrom(chosen || DEFAULT_PRIMARY);
+    if (fallbackVendor) chain = [...new Set([chain[0], fallbackVendor])];
   }
-  const chain = chainFrom(first || DEFAULT_PRIMARY);
   return { chain: singleVendor ? [chain[0]] : chain, source };
 }
 
@@ -488,14 +495,16 @@ function classifyVendorError(err) {
   return "transient";
 }
 
-async function chat({ client, messages, tools, temperature = 0.2, vendorName, responseFormat, maxTokens = config.AI_MAX_TOKENS, timeoutMs, singleVendor = false }) {
+async function chat({ client, messages, tools, temperature = 0.2, vendorName, fallbackVendor, responseFormat, maxTokens = config.AI_MAX_TOKENS, timeoutMs, singleVendor = false }) {
   // `singleVendor` drops the fallback hop. Only for calls that are OPTIONAL to
   // the turn (the summariser): trying a second vendor doubles the worst-case
   // wait for work whose failure costs nothing but a retry next turn.
   // `vendorName` is undefined unless a caller pins a vendor: the head of the
   // chain is the platform's choice (`resolveChain`), read per call so a switch
   // made in the console takes effect on the next turn, no restart.
-  const { chain } = await resolveChain({ vendorName, singleVendor });
+  // `fallbackVendor` lets a caller that pins a vendor still choose its second
+  // hop (call summaries: gemini → deepseek).
+  const { chain } = await resolveChain({ vendorName, fallbackVendor, singleVendor });
   let configError = null;
   // Audit H2. This layer is the ONLY one that can see a fallback happen — by
   // the time the orchestrator has a result, a degraded turn and a clean one

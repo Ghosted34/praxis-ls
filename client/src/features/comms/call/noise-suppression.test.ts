@@ -9,8 +9,10 @@
  * matrix, and jsdom has no audio graph to prove it with) and more about
  * "what does the call get when any of the four things go wrong".
  */
-import { describe, it, expect, vi } from "vitest";
-import { applyNoiseSuppression, reasonFor, type NoiseDeps } from "./noise-suppression";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import {
+  applyNoiseSuppression, reasonFor, watchForSilentOutput, defaultCreateContext, type NoiseDeps,
+} from "./noise-suppression";
 
 const track = { kind: "audio", enabled: true } as unknown as MediaStreamTrack;
 const stream = {
@@ -111,6 +113,102 @@ describe("applyNoiseSuppression", () => {
     // The half-built context is closed: the alternative is an open one holding
     // the mic indicator for the rest of the call.
     expect(ctx.close).toHaveBeenCalled();
+  });
+});
+
+/* ── Calls audit E5: a filter that sends silence while the UI says "on" ─── */
+
+describe("the filter's context (E5)", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("is created at 48 kHz, the rate RNNoise is built for", () => {
+    const made: unknown[] = [];
+    vi.stubGlobal("AudioContext", class {
+      constructor(opts?: unknown) {
+        made.push(opts);
+      }
+    });
+    expect(defaultCreateContext()).not.toBeNull();
+    expect(made).toEqual([{ sampleRate: 48_000 }]);
+  });
+
+  it("falls back to the device rate where a rate cannot be asked for", () => {
+    const made: unknown[] = [];
+    vi.stubGlobal("AudioContext", class {
+      constructor(opts?: unknown) {
+        if (opts) throw new Error("NotSupportedError");
+        made.push("default");
+      }
+    });
+    expect(defaultCreateContext()).not.toBeNull();
+    expect(made).toEqual(["default"]);
+  });
+
+  it("a context that will not start is 'suspended', and the raw track goes out", async () => {
+    const resume = vi.fn(async () => {});
+    const ctx = fakeContext({ state: "suspended", resume });
+    const res = await applyNoiseSuppression(stream, deps(ctx));
+    expect(resume).toHaveBeenCalled();
+    expect(res).toMatchObject({ status: "unavailable", reason: "suspended" });
+    expect(res.stream).toBe(stream);
+    expect(ctx.close).toHaveBeenCalled();
+  });
+
+  it("a suspended context that resumes is used", async () => {
+    const ctx = fakeContext({ state: "suspended" });
+    // The context starts suspended and runs once resumed (a spread would copy
+    // a getter's value, so the resume is attached to the object itself).
+    Object.assign(ctx, {
+      resume: vi.fn(async () => {
+        Object.assign(ctx, { state: "running" });
+      }),
+    });
+    const res = await applyNoiseSuppression(stream, deps(ctx));
+    expect(res.status).toBe("on");
+  });
+});
+
+describe("watchForSilentOutput (E5)", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("calls onSilent when the mic hears speech and the filter sends nothing", () => {
+    vi.useFakeTimers();
+    const onSilent = vi.fn();
+    watchForSilentOutput({ readInput: () => 0.2, readOutput: () => 0, onSilent });
+    vi.advanceTimersByTime(1_000);
+    expect(onSilent).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1_000);
+    expect(onSilent).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(10_000);
+    expect(onSilent).toHaveBeenCalledTimes(1);
+  });
+
+  it("quiet on both sides proves nothing and fires nothing", () => {
+    vi.useFakeTimers();
+    const onSilent = vi.fn();
+    watchForSilentOutput({ readInput: () => 0, readOutput: () => 0, onSilent });
+    vi.advanceTimersByTime(30_000);
+    expect(onSilent).not.toHaveBeenCalled();
+  });
+
+  it("stops watching once the filter is heard passing speech", () => {
+    vi.useFakeTimers();
+    const onSilent = vi.fn();
+    let out = 0.05;
+    watchForSilentOutput({ readInput: () => 0.2, readOutput: () => out, onSilent });
+    vi.advanceTimersByTime(500);
+    out = 0; // later silence is the person pausing, not the filter
+    vi.advanceTimersByTime(10_000);
+    expect(onSilent).not.toHaveBeenCalled();
+  });
+
+  it("the stop function ends the watch", () => {
+    vi.useFakeTimers();
+    const onSilent = vi.fn();
+    const stop = watchForSilentOutput({ readInput: () => 0.2, readOutput: () => 0, onSilent });
+    stop();
+    vi.advanceTimersByTime(5_000);
+    expect(onSilent).not.toHaveBeenCalled();
   });
 });
 

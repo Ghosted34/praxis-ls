@@ -60,6 +60,9 @@ async function assertCurrency(client, code) {
  * base is the one the approver saw. unit_price starts at 0: pricing is the
  * pricer's job, not the import's.
  */
+/** A line's client-heading override (14130), trimmed; null = the catalogue's. */
+const headingOf = (l) => (l && l.client_heading && String(l.client_heading).trim() ? String(l.client_heading).trim() : null);
+
 async function fromCosting(client, { costingId }) {
   const costing = await repo.costingForLink(client, costingId);
   if (!costing) throw new AppError("NOT_FOUND", "Costing not found", 404);
@@ -93,6 +96,8 @@ async function fromCosting(client, { costingId }) {
       cost_nature: nature.nature,
       nature_source: nature.source,
       notes: null,
+      // 14130: the family the pricer chose on the costing rides along.
+      client_heading: headingOf(l),
     };
   });
   return {
@@ -137,6 +142,7 @@ async function writeLines(client, simId, lines) {
       label: ln.label || "Line", qty: ln.qty || 1, unit_cost: ln.unit_cost || 0, unit_price: ln.unit_price || 0,
       is_disbursement: ln.is_disbursement === true,
       vat_applicable: ln.vat_applicable === true, notes: ln.notes || null,
+      client_heading: headingOf(ln),
     });
   }
 }
@@ -335,6 +341,7 @@ async function quote(client, { id, actor = {} }) {
         // (0230:92). Drop the tax code rather than emit a quotation line that
         // cannot become an invoice.
         tax_code_id: l.vat_applicable === true && l.is_disbursement !== true ? vatCode : null,
+        client_heading: headingOf(l),
       })),
     },
     actor,

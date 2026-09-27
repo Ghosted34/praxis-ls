@@ -83,6 +83,13 @@ const REQUIRED = [
   // Authenticated, but it compares a submitted current password — a stolen
   // access token must not be a licence to guess it. Keyed per user, not per IP.
   ["tenant", tenantAuth, "POST /auth/change-password", "change-password"],
+  // Passkey sign-in: options are public and cheap (no table read), verify is the
+  // one that mints a session.
+  ["tenant", tenantAuth, "POST /auth/passkey/login/options", "webauthn-options"],
+  ["tenant", tenantAuth, "POST /auth/passkey/login/verify", "webauthn"],
+  // Enrolment hands out a permanent way in; it is limited like a guess.
+  ["tenant", tenantAuth, "POST /auth/passkey/register/options", "webauthn"],
+  ["tenant", tenantAuth, "POST /auth/passkey/register/verify", "webauthn"],
   // External portal — clients, investors, auditors. Internet-facing.
   ["portal", portal, "POST /auth/login", "login"],
   ["portal", portal, "POST /auth/forgot", "forgot"],

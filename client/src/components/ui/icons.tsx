@@ -158,6 +158,23 @@ export const MoreIcon = (p: P) => (
     <circle cx="19" cy="12" r="1.4" />
   </svg>
 );
+/** A paint palette — the "chat appearance" (wallpaper + accent) control. */
+export const PaletteIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M12 3a9 9 0 1 0 0 18 2.4 2.4 0 0 0 2.4-2.4c0-.63-.24-1.2-.63-1.62-.38-.42-.63-.99-.63-1.62a2 2 0 0 1 2-2H17a4 4 0 0 0 4-4c0-3.87-4.03-6.34-9-6.34z" />
+    <circle cx="7.5" cy="10.5" r="1" fill="currentColor" stroke="none" />
+    <circle cx="12" cy="7.5" r="1" fill="currentColor" stroke="none" />
+    <circle cx="16.5" cy="10.5" r="1" fill="currentColor" stroke="none" />
+  </svg>
+);
+/** Three VERTICAL dots — the WhatsApp-style overflow / kebab menu trigger. */
+export const MoreVerticalIcon = (p: P) => (
+  <svg {...base(p)} fill="currentColor" stroke="none">
+    <circle cx="12" cy="5" r="1.6" />
+    <circle cx="12" cy="12" r="1.6" />
+    <circle cx="12" cy="19" r="1.6" />
+  </svg>
+);
 export const RefreshIcon = (p: P) => (
   <svg {...base(p)}>
     <path d="M21 12a9 9 0 1 1-3-6.7L21 8m0-5v5h-5" />
@@ -194,6 +211,25 @@ export const MicIcon = (p: P) => (
   <svg {...base(p)}>
     <rect x="9" y="2" width="6" height="12" rx="3" />
     <path d="M5 11a7 7 0 0 0 14 0M12 18v4M8 22h8" />
+  </svg>
+);
+/** A struck-through microphone — muted. */
+export const MicOffIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M9 9v2a3 3 0 0 0 5.12 2.12M15 9.34V5a3 3 0 0 0-5.94-.6" />
+    <path d="M5 11a7 7 0 0 0 11.95 4.95M19 11a7 7 0 0 1-.36 2.2M12 18v4M8 22h8M2 2l20 20" />
+  </svg>
+);
+/** Shrink to a docked bar — a call minimised to keep working. */
+export const MinimizeIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7" />
+  </svg>
+);
+/** Open to the full call screen. */
+export const ExpandIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
   </svg>
 );
 /** Phone handset — the dial affordance on a DIRECT conversation. */

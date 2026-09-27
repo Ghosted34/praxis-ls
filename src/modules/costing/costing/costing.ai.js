@@ -10,6 +10,8 @@ module.exports = {
     // Read-only by design: it returns a PROPOSAL. The assistant may show it and
     // may create a costing from what the person picks, but suggesting is not
     // choosing — which is why this is a read and not a write.
+    { key: "price_costing_line", service: service.priceLine, permission: { module: "MOD-46", action: "view" }, describe: "Price ONE dictionary item as a costing line, by the same cascade as suggest_costing_lines: the file's carrier rate (dossier_id), then the item's standard rate. Params: dictionary_item_id, dossier_id (optional), container_type_ref_id (optional), on_date (optional), currency + exchange_rate_to_xaf (optional — the costing's; the price is converted into it). Nothing is saved." },
+    { key: "costing_fx_rate", service: service.fxRate, permission: { module: "MOD-46", action: "view" }, describe: "The exchange rate a costing in `currency` defaults to: 1 <currency> = rate_to_xaf XAF, from the Currencies module on today or on_date. found=false when no quote is on file." },
     { key: "suggest_costing_lines", service: service.suggestLines, permission: { module: "MOD-46", action: "view" }, describe: "The standard charge set for an operations file, from its service type's BASIC/ADVANCED/FULL tiers, priced against the file's carrier and expanded one line per container type. Nothing is saved." },
   ],
   writes: [

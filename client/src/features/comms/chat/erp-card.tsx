@@ -83,7 +83,7 @@ export function ErpCardView({
   // cached. Say something true rather than rendering an empty box.
   if (!card) {
     return (
-      <div className={cn("max-w-[320px] rounded-lg border border-border bg-card px-3 py-2", className)}>
+      <div className={cn("chat-linkcard block max-w-[320px] px-3.5 py-3", className)}>
         <span className="text-sm text-muted-foreground">
           {label || tr("A record was shared here.")}
         </span>
@@ -93,19 +93,24 @@ export function ErpCardView({
 
   const body = (
     <>
-      <div className="flex items-center gap-1.5">
-        <span aria-hidden className="text-base leading-none">{KIND_GLYPH[card.kind] || "📄"}</span>
-        <span className="text-micro uppercase tracking-wide text-muted-foreground">
+      <div className="flex items-center gap-2">
+        <span
+          aria-hidden
+          className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-primary/10 text-base leading-none"
+        >
+          {KIND_GLYPH[card.kind] || "📄"}
+        </span>
+        <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
           {tr(KIND_LABEL[card.kind] || card.kind)}
         </span>
         {card.status && !card.redacted && (
-          <span className={cn("ml-auto rounded-full border px-1.5 py-0.5 text-[10px] leading-none", statusTone(card.status))}>
+          <span className={cn("ml-auto rounded-full border px-2 py-0.5 text-[10px] font-medium leading-none", statusTone(card.status))}>
             {card.status.replace(/_/g, " ").toLowerCase()}
           </span>
         )}
       </div>
 
-      <div className="mt-1 truncate text-sm font-semibold text-foreground">
+      <div className="mt-2 truncate text-sm font-semibold text-foreground">
         {card.title || card.ref || tr("Record")}
       </div>
 
@@ -136,8 +141,8 @@ export function ErpCardView({
   );
 
   const shell = cn(
-    "block max-w-[320px] rounded-lg border border-border bg-card px-3 py-2",
-    card.redacted ? "opacity-80" : "transition-colors hover:bg-accent/60",
+    "chat-linkcard block max-w-[320px] px-3.5 py-3",
+    card.redacted ? "opacity-80" : "transition-transform hover:-translate-y-px",
     className,
   );
 

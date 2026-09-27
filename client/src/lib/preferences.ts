@@ -117,22 +117,37 @@ export const saveShellPrefs = (patch: Partial<ShellPrefs>) =>
  * The server clamps and coerces on write (preference.service.js); the client
  * sends what the user chose and reads back the stored value.
  */
+export type QuietHours = { from: string; to: string };
 export type CallPrefs = {
   /** true = filter on, false = filter off, null = follow the tenant default. */
   noiseSuppression: boolean | null;
+  /** Calls never ring me (PR-6, audit C6). */
+  doNotDisturb: boolean | null;
+  /** Call notifications in-app only inside this window (PR-6, audit A11). */
+  quietHours: QuietHours | null;
+  /** Colleagues see no "last seen" for me (PR-6, audit G4). */
+  hideLastSeen: boolean | null;
 };
 
-export const EMPTY_CALL_PREFS: CallPrefs = { noiseSuppression: null };
+export const EMPTY_CALL_PREFS: CallPrefs = { noiseSuppression: null, doNotDisturb: null, quietHours: null, hideLastSeen: null };
 
-export const fetchCallPrefs = async (): Promise<CallPrefs> => {
-  const p = ((await tenant<unknown>("/me/preferences/calls")) ?? {}) as Partial<CallPrefs>;
+const boolOrNull = (v: unknown) => (typeof v === "boolean" ? v : null);
+
+function parseCallPrefs(raw: unknown): CallPrefs {
+  const p = (raw ?? {}) as Partial<CallPrefs>;
+  const q = p.quietHours as QuietHours | null | undefined;
   return {
-    noiseSuppression:
-      typeof p.noiseSuppression === "boolean" ? p.noiseSuppression : null,
+    noiseSuppression: boolOrNull(p.noiseSuppression),
+    doNotDisturb: boolOrNull(p.doNotDisturb),
+    quietHours: q && typeof q.from === "string" && typeof q.to === "string" ? { from: q.from, to: q.to } : null,
+    hideLastSeen: boolOrNull(p.hideLastSeen),
   };
-};
+}
+
+export const fetchCallPrefs = async (): Promise<CallPrefs> =>
+  parseCallPrefs(await tenant<unknown>("/me/preferences/calls"));
 
 /** Partial — omit to leave the preference alone, send null to follow the
  *  tenant default again. */
-export const saveCallPrefs = (patch: Partial<CallPrefs>) =>
-  tenant<CallPrefs>("/me/preferences/calls", { method: "PUT", body: patch });
+export const saveCallPrefs = async (patch: Partial<CallPrefs>): Promise<CallPrefs> =>
+  parseCallPrefs(await tenant<unknown>("/me/preferences/calls", { method: "PUT", body: patch }));

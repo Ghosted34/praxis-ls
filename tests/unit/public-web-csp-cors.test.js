@@ -110,15 +110,20 @@ describe("CSP wiring in server.js", () => {
   const serverSrc = fs.readFileSync(path.join(repo, "src/server.js"), "utf8");
 
   it("names the shell's inline script by hash, not by 'unsafe-inline'", () => {
-    const scriptSrc = serverSrc.match(/const scriptSrc = \[([\s\S]*?)\n {2}\];/);
-    expect(scriptSrc).not.toBeNull();
+    // The directive is built by one exported function (PR-4 added the call
+    // noise filter's 'wasm-unsafe-eval' there), so it is asserted by calling
+    // it, and the wiring by reading server.js.
+    expect(serverSrc).toContain("const scriptSrc = buildScriptSrc(cspDefaults, shellHashes);");
     expect(serverSrc).toContain('"script-src": scriptSrc,');
-    expect(scriptSrc[1]).toContain("shellHashes");
+    const { buildScriptSrc } = require("../../src/server");
+    const helmet = require("helmet");
+    const scriptSrc = buildScriptSrc(helmet.contentSecurityPolicy.getDefaultDirectives(), ["'sha256-shellhash='"]);
+    expect(scriptSrc).toContain("'sha256-shellhash='");
     // SEC-M8: reopening this platform-wide would switch the primary XSS
     // mitigation off for every page, login included. Asserted against the
     // DIRECTIVE, not the file — the token appears in the comment above the
     // helmet config that explains why it was removed.
-    expect(scriptSrc[1]).not.toContain("unsafe-inline");
+    expect(scriptSrc.some((v) => /unsafe-inline/.test(v))).toBe(false);
   });
 
   it("computes the hash from the BUILT file, never a pasted literal", () => {

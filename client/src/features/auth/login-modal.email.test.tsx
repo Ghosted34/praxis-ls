@@ -39,11 +39,7 @@ import { pinStore } from "@/lib/pin-store";
 /** Declared with the real signature, so the assertions below are typed against
  *  the arguments the modal actually passes rather than against `any`. */
 const loginMock = vi.fn<
-  (
-    email: string,
-    password: string,
-    keep: boolean,
-  ) => Promise<{ pending2fa: boolean }>
+  (email: string, password: string) => Promise<{ pending2fa: boolean }>
 >(async () => ({ pending2fa: false }));
 
 // Faked, not wrapped: the modal's own behaviour is what is under test here, and
@@ -173,7 +169,7 @@ describe("LoginModal — changing account on a device that remembers someone", (
     expect(screen.queryByLabelText("Email")).not.toBeInTheDocument();
     expect(screen.getByText(REMEMBERED)).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { name: /Welcome back Ama Nkeng/ }),
+      screen.getByRole("heading", { name: /Welcome back, Ama/ }),
     ).toBeInTheDocument();
   });
 
@@ -190,7 +186,7 @@ describe("LoginModal — changing account on a device that remembers someone", (
     expect(input).toHaveFocus();
     // The greeting goes with the identity it belonged to.
     expect(
-      screen.queryByText(/Welcome back Ama Nkeng/),
+      screen.queryByText(/Welcome back, Ama/),
     ).not.toBeInTheDocument();
     // Released for real, not just hidden: a reopen must not re-greet.
     expect(lastSessionStore.get()).toBeNull();
@@ -211,7 +207,7 @@ describe("LoginModal — changing account on a device that remembers someone", (
     expect(lastSessionStore.get()).toBeNull();
     renderModal();
     expect(
-      screen.queryByText(/Welcome back Ama Nkeng/),
+      screen.queryByText(/Welcome back, Ama/),
     ).not.toBeInTheDocument();
   });
 
@@ -226,11 +222,8 @@ describe("LoginModal — changing account on a device that remembers someone", (
     await user.type(screen.getByLabelText("Password"), "correct horse");
     await user.click(screen.getByRole("button", { name: /^Sign in$/ }));
 
-    expect(loginMock).toHaveBeenCalledWith(
-      "kofi@other.cm",
-      "correct horse",
-      true,
-    );
+    // No "keep me signed in" any more: every session ends at two hours.
+    expect(loginMock).toHaveBeenCalledWith("kofi@other.cm", "correct horse");
     // The device now belongs to Kofi — not to Ama, and not to nobody.
     expect(lastSessionStore.get()?.email).toBe("kofi@other.cm");
   });

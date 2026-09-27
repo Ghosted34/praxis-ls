@@ -33,6 +33,10 @@ import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Field, Select } from "@/components/ui/modal";
+import { Input } from "@/components/ui/input";
+import { CurrencySelect } from "@/components/currency-select";
+import { Segmented } from "@/components/ui/segmented";
+import { ClientFamilies } from "@/components/client-families";
 import { Panel } from "@/components/ui/panel";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { EmptyState } from "@/components/ui/states";
@@ -57,6 +61,7 @@ import {
   lineKey,
   fromSaved,
   fromSuggestion,
+  convertLines,
   statusLabel,
   toPayload,
   withVatDefault,
@@ -175,7 +180,15 @@ export function CostingSheet360({
   const [remarks, setRemarks] = React.useState("");
   const [validatorId, setValidatorId] = React.useState("");
   const [currency, setCurrency] = React.useState("XAF");
+  // The sheet's ONE exchange rate: 1 <currency> = rate XAF. Every line is in
+  // `currency`; there is no per-line currency (meeting 5). Kept as the typed
+  // string so a half-typed "655." is not snapped to a number mid-edit.
+  const [rateText, setRateText] = React.useState("1");
+  const [rateSource, setRateSource] = React.useState<string | null>(null);
   const [dirty, setDirty] = React.useState(false);
+  // "Detailed" is the costing; "By family" is what the client will read
+  // (14130, meeting 5). Same lines, two views; families are set from the second.
+  const [view, setView] = React.useState<"detailed" | "families">("detailed");
 
   const editable = c?.status === "DRAFT";
 
@@ -185,6 +198,8 @@ export function CostingSheet360({
     setRemarks(c.remarks || "");
     setValidatorId(c.validator_id || "");
     setCurrency(c.currency || "XAF");
+    setRateText(String(Number(c.exchange_rate_to_xaf) > 0 ? Number(c.exchange_rate_to_xaf) : 1));
+    setRateSource(null);
     setDirty(false);
   }, [c]);
 
@@ -199,7 +214,7 @@ export function CostingSheet360({
    */
   const draft = useFormDraft({
     key: `costing:${id}`,
-    values: { lines, remarks, validatorId, currency },
+    values: { lines, remarks, validatorId, currency, rateText },
     label: c?.doc_number || tr("Costing sheet"),
     enabled: Boolean(editable && lines),
   });
@@ -217,6 +232,9 @@ export function CostingSheet360({
     try {
       await api.updateCosting(id, {
         currency,
+        // Sent explicitly, so what is saved is the rate the pricer SAW — the
+        // server only falls back to the Currencies quote when none is given.
+        exchange_rate_to_xaf: sheetRate,
         remarks: remarks.trim() || null,
         validator_id: validatorId || null,
         lines: lines.filter((l) => l.label || l.dictionary_item_id).map(toPayload),
@@ -254,6 +272,50 @@ export function CostingSheet360({
   }
   const [unlocking, setUnlocking] = React.useState(false);
 
+  const parsedRate = Number(rateText);
+  const sheetRate = currency === "XAF" ? 1 : parsedRate > 0 ? parsedRate : 1;
+
+  /**
+   * Re-price every line at once into a new currency and/or rate (meeting 5).
+   * One rate for the whole sheet, so a change moves every line together and
+   * the pricer sees how many moved.
+   */
+  function convertAll(nextRate: number, label: string) {
+    if (!lines || !lines.length || nextRate === sheetRate) return;
+    setLines(convertLines(lines, sheetRate, nextRate));
+    toast.info(`${lines.length} ${lines.length === 1 ? tr("line converted") : tr("lines converted")} — ${label}`);
+  }
+
+  async function changeCurrency(next: string) {
+    if (!next || next === currency) return;
+    setDirty(true);
+    if (next === "XAF") {
+      convertAll(1, "XAF");
+      setCurrency("XAF");
+      setRateText("1");
+      setRateSource(null);
+      return;
+    }
+    // Default the rate from Currencies & FX; the pricer may overwrite it.
+    let fx: api.CostingFxRate | null = null;
+    try {
+      fx = await api.costingFxRate(next);
+    } catch {
+      /* @silent:parse — no suggestion is a defined fallback: the rate field
+         is left for the pricer to fill, and the callout below says so. */
+    }
+    setCurrency(next);
+    if (fx && fx.found && fx.rate_to_xaf) {
+      convertAll(fx.rate_to_xaf, `1 ${next} = ${fx.rate_to_xaf} XAF`);
+      setRateText(String(fx.rate_to_xaf));
+      setRateSource(fx.as_of_date ? `${tr("Currencies & FX")} · ${dateFmt(fx.as_of_date)}` : tr("Currencies & FX"));
+    } else {
+      setRateText("");
+      setRateSource(null);
+      toast.info(tr("No exchange rate on file for this currency — enter the rate for this costing."));
+    }
+  }
+
   if (res.loading && !c) return <SkeletonTable rows={6} cols={4} />;
   if (res.error)
     return (
@@ -290,7 +352,11 @@ export function CostingSheet360({
           <Button variant="outline" onClick={() => setSuggesting(true)} disabled={!c.dossier_id}>
             {tr("Suggest charges")}
           </Button>
-          <Button onClick={save} loading={busy} disabled={!dirty}>
+          <Button
+            onClick={save}
+            loading={busy}
+            disabled={!dirty || (currency !== "XAF" && !(parsedRate > 0))}
+          >
             {tr("Save")}
           </Button>
           <Button
@@ -421,6 +487,7 @@ export function CostingSheet360({
             setRemarks(v.remarks);
             setValidatorId(v.validatorId);
             setCurrency(v.currency);
+            if (v.rateText) setRateText(v.rateText);
             setDirty(true);
           }}
           onDiscard={draft.discard}
@@ -476,6 +543,19 @@ export function CostingSheet360({
               ) : undefined
             }
           >
+            {(lines || []).length > 0 && (
+              <div className="mb-3">
+                <Segmented
+                  label={tr("Charges view")}
+                  value={view}
+                  onChange={(v) => setView(v as "detailed" | "families")}
+                  options={[
+                    { value: "detailed", label: tr("Detailed") },
+                    { value: "families", label: tr("By family (as the client sees it)") },
+                  ]}
+                />
+              </div>
+            )}
             {(lines || []).length === 0 ? (
               <EmptyState
                 title={tr("No charges yet")}
@@ -492,12 +572,26 @@ export function CostingSheet360({
                   ) : undefined
                 }
               />
+            ) : view === "families" ? (
+              <ClientFamilies
+                lines={(lines || []).map((l) => ({
+                  ...l,
+                  amount: (Number(l.qty) || 0) * (Number(l.unit_cost) || 0),
+                }))}
+                currency={ccy}
+                readOnly={!editable}
+                onHeading={(index, heading) => {
+                  setLines((lines || []).map((l, j) => (j === index ? { ...l, client_heading: heading } : l)));
+                  setDirty(true);
+                }}
+              />
             ) : (
               <LineGrid
                 lines={lines || []}
                 dossierId={c.dossier_id}
                 serviceTypeId={file?.service_type_id}
                 currency={ccy}
+                exchangeRate={sheetRate}
                 vatCodes={vatCodes}
                 readOnly={!editable}
                 onChange={(next) => {
@@ -515,29 +609,60 @@ export function CostingSheet360({
         <div className="space-y-4">
           <Panel title={tr("Sheet")}>
             <div className="space-y-3">
-              <Field label={tr("Currency")}>
+              <Field
+                label={tr("Currency")}
+                hint={tr("Every line is in this currency — one currency for the whole costing.")}
+              >
                 {editable ? (
-                  <Select
+                  <CurrencySelect
                     value={currency}
-                    onChange={(e) => {
-                      setCurrency(e.target.value);
-                      setDirty(true);
-                    }}
-                  >
-                    <option value="XAF">XAF</option>
-                    <option value="USD">USD</option>
-                    <option value="EUR">EUR</option>
-                  </Select>
+                    onChange={(v) => void changeCurrency(v)}
+                    allowEmpty={false}
+                    aria-label={tr("Costing currency")}
+                  />
                 ) : (
                   <p className="num text-sm text-foreground">{ccy}</p>
                 )}
               </Field>
               {ccy !== "XAF" && (
-                <p className="micro">
-                  {tr("Rate to XAF")}:{" "}
-                  <span className="num">{String(c.exchange_rate_to_xaf ?? 1)}</span>
-                  {" — "}
-                  {tr("defaulted from Currencies & FX on the sheet's date.")}
+                <Field
+                  label={`${tr("Exchange rate")} · 1 ${ccy} =`}
+                  hint={
+                    rateSource
+                      ? `${tr("From")} ${rateSource}. ${tr("Change it to convert every line at once.")}`
+                      : tr("One rate for the whole costing. Change it to convert every line at once.")
+                  }
+                  required
+                >
+                  {editable ? (
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.000001"
+                        className="num text-right"
+                        aria-label={`${tr("Exchange rate")} — 1 ${ccy} ${tr("in")} XAF`}
+                        value={rateText}
+                        onChange={(e) => {
+                          const next = Number(e.target.value);
+                          if (next > 0) convertAll(next, `1 ${ccy} = ${next} XAF`);
+                          setRateText(e.target.value);
+                          setRateSource(null);
+                          setDirty(true);
+                        }}
+                      />
+                      <span className="micro">XAF</span>
+                    </div>
+                  ) : (
+                    <p className="num text-sm text-foreground">
+                      {String(c.exchange_rate_to_xaf ?? 1)} XAF
+                    </p>
+                  )}
+                </Field>
+              )}
+              {editable && ccy !== "XAF" && !(parsedRate > 0) && (
+                <p className="micro text-bad">
+                  {tr("Enter the exchange rate before saving.")}
                 </p>
               )}
               <Field
@@ -614,6 +739,7 @@ export function CostingSheet360({
         <SuggestDialog
           dossierId={c.dossier_id}
           currency={ccy}
+          exchangeRate={sheetRate}
           existingKeys={existingKeys}
           onClose={() => setSuggesting(false)}
           onImport={(picked) => {

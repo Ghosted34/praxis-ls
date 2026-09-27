@@ -551,7 +551,11 @@ export type FieldConfig = {
   applies_to: "CLIENT" | "SUPPLIER";
   field_key: string;
   field_group: string | null;
+  /** Required to CREATE the record (the create form's policy). */
   is_required: boolean;
+  /** Required to ACTIVATE it (14030) — the activation gate's policy, and a
+   *  separate question from `is_required`. */
+  required_for_activation: boolean;
   is_visible: boolean;
   is_custom: boolean;
   sort_order: number;
@@ -559,7 +563,10 @@ export type FieldConfig = {
 };
 
 export declare namespace partyConfig {
-  const DEFAULT_ROWS: ReadonlyArray<[string, string, string, boolean]>;
+  /** `[applies_to, field_key, field_group, is_required, required_for_activation?]` */
+  const DEFAULT_ROWS: ReadonlyArray<
+    [string, string, string, boolean, boolean?]
+  >;
   const GROUP_ORDER: readonly string[];
   function defaultsFor(appliesTo: string): FieldConfig[];
   function effectiveConfig(
@@ -567,6 +574,10 @@ export declare namespace partyConfig {
     dbRows: FieldConfig[] | null | undefined,
   ): FieldConfig[];
   function checkRequired(
+    data: Record<string, unknown>,
+    config: FieldConfig[],
+  ): { ok: boolean; missing: string[] };
+  function checkActivationRequired(
     data: Record<string, unknown>,
     config: FieldConfig[],
   ): { ok: boolean; missing: string[] };
@@ -866,6 +877,17 @@ export declare namespace linkDetect {
   ): string | null;
   /** Sentence punctuation peeled off a candidate's tail. */
   function peelTail(candidate: string): string;
+}
+
+/**
+ * Quick PIN — the length, and why a PIN is refused. Shared because the API
+ * refuses a weak PIN at registration and the My security screen says so as the
+ * user types. See rules/quick-pin.js.
+ */
+export declare namespace quickPin {
+  const PIN_LENGTH: number;
+  /** The reason a PIN is refused, in plain words — or null when it is fine. */
+  function weakPinReason(pin: string | null | undefined): string | null;
 }
 
 /**

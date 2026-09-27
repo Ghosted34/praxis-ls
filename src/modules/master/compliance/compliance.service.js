@@ -15,6 +15,7 @@
 "use strict";
 const rules = require("./compliance.rules");
 const clientRepo = require("../client_master/client_master.repo");
+const masterConfig = require("../master_config/master_config.service");
 const { audit } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
 
@@ -78,13 +79,21 @@ async function evaluateParty(client, { kind, partyId }) {
     creditStatus = limit === null ? { within: true } : { within: outstanding <= limit, used: outstanding, limit };
   }
 
+  // The FIELD half of the activation policy (14030): the tenant's
+  // `required_for_activation` rows this party does not fill. Resolved here —
+  // the rules engine stays pure and DB-free — and turned into onboarding flags
+  // by the engine, so the 360's "Required to activate" list and the gate the
+  // verification POST consults answer the same question from the same rows.
+  const missingActivationFields = await masterConfig.missingActivationFields(client, { appliesTo: c.appliesTo, kind, party });
+
   // Category, country and KYC tier drive document applicability (§3.2); the
   // party's registration/AVL status drives the onboarding-vs-risk rollup (§3.3).
   const result = rules.evaluate({
     appliesTo: c.appliesTo, party, documents, docTypes, banks, creditStatus,
     category, country: party.country_code || party.tax_residency_country || null, tier: tierFor(party),
+    missingActivationFields,
   });
-  return { ...result, party };
+  return { ...result, party, missing_activation_fields: missingActivationFields };
 }
 
 /** Open (unresolved) flags for one entity_ref. */

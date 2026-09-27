@@ -2,7 +2,7 @@
 /**
  * GENERATED FILE — do not hand-edit.
  * The site copy catalogue: every `site.*` string a tenant may override.
- * 495 keys in 24 sections.
+ * 496 keys in 24 sections.
  * Source: public-web/src/lib/i18n-dict.ts
  * Regenerate with: node scripts/gen/gen-site-copy-catalogue.js
  *
@@ -225,6 +225,7 @@ exports.SITE_COPY_ENTRIES = [
   ["site.hero.cta","hero","Cta","Request a quote","Demander un devis"],
   ["site.hero.cta2","hero","Cta2","Track a shipment","Suivre un envoi"],
   ["site.hero.eyebrow","hero","Eyebrow","Logistics · Customs · Warehousing","Logistique · Douane · Entreposage"],
+  ["site.hero.scrollCue","hero","Scroll Cue","Scroll to explore","Faire défiler"],
   ["site.hero.sub","hero","Sub","Sea, air and hinterland logistics across the OHADA/CEMAC region — with one team, one platform, and total visibility.","Logistique maritime, aérienne et terrestre dans la région OHADA/CEMAC — une équipe, une plateforme, une visibilité totale."],
   ["site.hero.title","hero","Title","Freight that moves your business forward","Le fret qui fait avancer votre entreprise"],
   ["site.hero.titleAccent","hero","Title Accent","forward","votre entreprise"],

@@ -75,8 +75,102 @@ const SPEC = {
       client_secret: secret,
     }),
   },
+  // The call relay, API side (FN-2 follow-up). The probe takes no cfg: it
+  // exercises what the runtime config has in force, which is the only way to
+  // catch the drift this panel can create — see settings.probes.turn.
+  //
+  // No secret. TURN_CREDENTIAL_SECRET stays on the host because the API signs
+  // with it and coturn verifies with it; a value only one of them can read
+  // puts the two out of step and refuses every call's credential. That is the
+  // pooler-password case named in runtime-config.service.js.
+  "network.turn": { probe: probes.turn, cfg: () => ({}) },
 };
 const specKey = (section, key) => section + "." + key;
+
+/**
+ * The two registries above, as Maps, for lookup by a name off the URL.
+ *
+ * `/settings/:section/:key` puts two request parameters into an id, and both
+ * callers INVOKE whatever the lookup returns. Indexing an object literal
+ * with that id reaches Object.prototype — `constructor`, `toString`,
+ * `valueOf` are inherited members, so a lookup finding nothing of ours can
+ * still hand back a function.
+ *
+ * A Map has no prototype chain to walk and no inherited string keys, so the
+ * dynamic property read is gone rather than guarded. (An own-property test
+ * on the literal is equally safe at runtime and was the first fix here, but
+ * it leaves the read in place — which is the shape itself, and what CodeQL's
+ * js/unvalidated-dynamic-method-call is about.)
+ *
+ * The literals stay the source of truth: they are what a reader edits when
+ * adding a credential, and deriving these once at load keeps the two from
+ * drifting.
+ */
+const SPEC_BY_ID = new Map(Object.entries(SPEC));
+
+function lookupSpec(registry, section, key) {
+  const id = specKey(section, key);
+  // Compared, not indexed. `registry.get(id)` is still a lookup keyed by
+  // request input, and both callers INVOKE what it returns — the shape
+  // js/unvalidated-dynamic-method-call is about, which neither an
+  // own-property test nor the Map removed. Walking the known ids and
+  // returning only inside an equality branch makes the result provably one
+  // of this file's own entries: there is no key the caller supplies, only a
+  // name it can match. Ten entries, once per settings write or test.
+  for (const [knownId, entry] of registry) {
+    if (knownId === id) return entry;
+  }
+  return null;
+}
+
+/**
+ * Per-setting shape checks for the values that leave this deployment.
+ *
+ * `platformSetting` in the validator accepts any object, which is right for a
+ * store this generic. `network.turn` needs more than that: its values are
+ * assembled into the `iceServers` URLs handed to every caller's browser, so a
+ * stray space or a scheme pasted into the host field becomes an ICE server
+ * nobody can reach, on every call, with the failure surfacing as "calls do
+ * not connect" rather than as anything about this field.
+ */
+const VALUE_RULES = {
+  "network.turn": (v) => {
+    const host = v.host === undefined ? "" : String(v.host).trim();
+    if (host && !/^[A-Za-z0-9.-]+$/.test(host)) {
+      return "host must be a bare hostname or IP — no scheme, port or path (e.g. turn.example.com)";
+    }
+    if (v.port_tcp !== undefined && v.port_tcp !== null && v.port_tcp !== "") {
+      const n = Number(v.port_tcp);
+      if (!Number.isInteger(n) || n < 1 || n > 65535) return "port_tcp must be a whole number between 1 and 65535";
+    }
+    if (v.transports !== undefined && v.transports !== null && v.transports !== "") {
+      const parts = String(v.transports).split(",").map((t) => t.trim()).filter(Boolean);
+      if (!parts.length || parts.some((t) => t !== "udp" && t !== "tcp")) {
+        return "transports must be udp, tcp, or udp,tcp";
+      }
+    }
+    if (v.stun_urls) {
+      const bad = String(v.stun_urls).split(",").map((u) => u.trim()).filter(Boolean)
+        .filter((u) => !/^stuns?:/.test(u));
+      if (bad.length) return `stun_urls entries must start with stun: or stuns: (got ${bad[0]})`;
+    }
+    return null;
+  },
+};
+
+const VALUE_RULES_BY_ID = new Map(Object.entries(VALUE_RULES));
+
+/** Throws 422 when a known setting's value is malformed. */
+function assertValueShape(section, key, value) {
+  const rule = lookupSpec(VALUE_RULES_BY_ID, section, key);
+  if (!rule) return;
+  const problem = rule(value || {});
+  if (problem) {
+    const e = new Error(problem);
+    e.status = 422;
+    throw e;
+  }
+}
 
 /** Public, redacted row shape (no ciphertext / plaintext). */
 function redact(row) {
@@ -118,6 +212,7 @@ async function get(section, key) {
  * key). Returns the redacted row.
  */
 async function put({ section, key, value = {}, secret, actor = null }) {
+  assertValueShape(section, key, value);
   const existing = await getRow(section, key);
   let secretEnc = existing ? existing.secret_enc : null;
   let last4 = existing ? existing.last4 : null;
@@ -170,7 +265,7 @@ async function resolve(section, key) {
 
 /** Run the provider's live probe against the stored credential. Never throws. */
 async function test(section, key) {
-  const spec = SPEC[specKey(section, key)];
+  const spec = lookupSpec(SPEC_BY_ID, section, key);
   if (!spec) return { ok: false, error: "no test available for " + section + "." + key };
   const resolved = await resolve(section, key);
   if (!resolved) return { ok: false, error: "not configured" };
@@ -205,4 +300,6 @@ async function generateVapid({ subject, actor = null } = {}) {
   return { public_key: keys.publicKey, subject: subj };
 }
 
-module.exports = { list, get, put, resolve, test, generateVapid };
+module.exports = {
+  // The value rules, for the suite that holds the iceServers shapes.
+  _test: { valueRules: VALUE_RULES, lookupSpec, spec: SPEC_BY_ID, valueRulesById: VALUE_RULES_BY_ID }, list, get, put, resolve, test, generateVapid };

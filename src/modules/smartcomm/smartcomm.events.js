@@ -15,10 +15,12 @@ module.exports = {
   // PR-2 — the record half. Three things happen to a call after it ends, and
   // each one is an event because each one is something a person may need to
   // find later: the transcript was produced from the vaulted bytes,
-  // transcription fell back to the browser capture (the failure the ops alert
-  // rides on), and a draft landed in the caller's hands / was sent by them.
+  // transcription failed (the failure the ops alert rides on), and a draft
+  // landed in the caller's hands / was sent by them.
   CALL_TRANSCRIBED: "comms.call_transcribed",
   CALL_TRANSCRIPTION_FAILED: "comms.call_transcription_failed",
   CALL_SUMMARY_DRAFTED: "comms.call_summary_drafted",
   CALL_SUMMARY_SENT: "comms.call_summary_sent",
+  // PR-6 (audit G3): an admin erased one person's call records.
+  CALL_RECORDS_ERASED: "comms.call_records_erased",
 };

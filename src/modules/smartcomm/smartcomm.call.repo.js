@@ -11,6 +11,7 @@
 "use strict";
 
 const { atomically } = require("../../shared/db/tx");
+const vocab = require("./smartcomm.call.vocab");
 
 const ACTIVE_STATUSES = ["RINGING", "IN_CALL"];
 
@@ -31,13 +32,13 @@ async function findActiveCall(client, userId) {
  *  `{ call: null, busyWith }` when a partial unique index rejected the insert
  *  because one of the two users is already on a call (guide D8). The service
  *  decides which of the two users it was and says so in the error. */
-async function insertCall(client, { groupId, callerId, calleeId }) {
+async function insertCall(client, { groupId, callerId, calleeId, turnToken = null }) {
   try {
     const { rows } = await client.query(
-      `INSERT INTO comms_call (group_id, caller_id, callee_id, status)
-       VALUES ($1, $2, $3, 'RINGING')
+      `INSERT INTO comms_call (group_id, caller_id, callee_id, status, turn_token)
+       VALUES ($1, $2, $3, 'RINGING', $4)
        RETURNING *`,
-      [groupId, callerId, calleeId],
+      [groupId, callerId, calleeId, turnToken],
     );
     return { call: rows[0], busyWith: null };
   } catch (err) {
@@ -59,8 +60,13 @@ async function findCall(client, callId) {
 }
 
 /** Guarded transition: only moves the row if it is still `fromStatus`.
- *  Returns the updated row, or null when someone got there first. */
+ *  Returns the updated row, or null when someone got there first. The
+ *  end-reason set is enforced here since 14040 dropped its CHECK (audit B1). */
 async function transition(client, { callId, fromStatus, status, fields = {} }) {
+  if (fields.end_reason !== undefined && fields.end_reason !== null
+      && !vocab.END_REASONS.includes(fields.end_reason)) {
+    throw new Error(`invalid call end reason: ${fields.end_reason}`);
+  }
   const setCols = ["status = $" + 3];
   const params = [callId, fromStatus, status];
   for (const [col, value] of Object.entries(fields)) {
@@ -103,34 +109,68 @@ async function markRingAck(client, { callId, channel }) {
 }
 
 /**
- * Claim the push escalation for this call, atomically.
- *
- * The delayed job is queued with a static id, so BullMQ de-duplicates the
- * common case — but "the queue delivered this twice" (a retry after a worker
- * died between the send and the ack of the job) must not become two pushes to a
- * phone that is already ringing. The `WHERE ring_push_sent_at IS NULL` is the
- * claim: exactly one caller receives the row and does the send.
+ * Claim ring push number `alert` (0 = the ring at dial, then each re-alert)
+ * while the call still rings. `ring_alerts` counts the pushes sent, so only
+ * the run that finds it at `alert` sends; a queue retry finds it moved on.
+ * The first claim also stamps `ring_push_sent_at` (the cancel push needs to
+ * know a ring went out).
  */
-async function markRingPushSent(client, callId) {
+async function claimRingAlert(client, { callId, alert }) {
   const { rows } = await client.query(
     `UPDATE comms_call
-     SET ring_push_sent_at = now()
+     SET ring_alerts = $2 + 1,
+         ring_push_sent_at = COALESCE(ring_push_sent_at, now())
      WHERE call_id = $1
-       AND ring_push_sent_at IS NULL
+       AND status = 'RINGING'
+       AND COALESCE(ring_alerts, 0) = $2
      RETURNING *`,
-    [callId],
+    [callId, alert],
   );
   return rows[0] || null;
 }
 
-/** Who is the other participant of this call, relative to `userId`. */
-async function otherParticipant(client, { callId, userId }) {
+/** The calls ringing for `userId` now, with the caller's name and the seconds
+ *  left in the window by the database clock (the sweep's clock). */
+async function listRingingForUser(client, { userId, windowS }) {
+  const { rows } = await client.query(
+    `SELECT c.*, u.full_name AS caller_name,
+            GREATEST(0, CEIL(EXTRACT(EPOCH FROM
+              (c.started_at + make_interval(secs => $2::int) - now()))))::int AS ring_seconds_left
+     FROM comms_call c
+     JOIN app_user u ON u.user_id = c.caller_id
+     WHERE c.callee_id = $1
+       AND c.status = 'RINGING'
+       AND c.started_at > now() - make_interval(secs => $2::int)
+     ORDER BY c.started_at DESC`,
+    [userId, windowS],
+  );
+  return rows;
+}
+
+/** The other participant of a LIVE call (RINGING or IN_CALL), relative to
+ *  `userId`; null for a stranger or a call that has ended (audit C5). */
+async function liveCounterpart(client, { callId, userId }) {
   const { rows } = await client.query(
     `SELECT CASE WHEN caller_id = $2 THEN callee_id ELSE caller_id END AS user_id
-     FROM comms_call WHERE call_id = $1 AND (caller_id = $2 OR callee_id = $2)`,
+     FROM comms_call
+     WHERE call_id = $1 AND (caller_id = $2 OR callee_id = $2)
+       AND status IN ('RINGING','IN_CALL')`,
     [callId, userId],
   );
   return rows[0] || null;
+}
+
+/** The call's relay-credential token (audit C2). A call gets it at insert;
+ *  this backfills a call dialled before migration 14060, and only while it is
+ *  RINGING or IN_CALL. Null otherwise. */
+async function ensureTurnToken(client, { callId, token }) {
+  const { rows } = await client.query(
+    `UPDATE comms_call SET turn_token = COALESCE(turn_token, $2)
+     WHERE call_id = $1 AND status IN ('RINGING','IN_CALL')
+     RETURNING turn_token`,
+    [callId, token],
+  );
+  return rows[0] ? rows[0].turn_token : null;
 }
 
 /** Does `userId` participate in this call at all (any status)? */
@@ -143,14 +183,19 @@ async function isParticipant(client, { callId, userId }) {
   return rows.length > 0;
 }
 
-/** The other member of a DIRECT channel (the dial target when the icon is
- *  on the channel header). Null for non-DIRECT channels or channels with
- *  more than one other member — the header icon only renders on DIRECT. */
+/** The other member of a DIRECT channel, if their account is ACTIVE (audit
+ *  C6: a deactivated employee's phone is never rung). Null for a group
+ *  channel, and for a direct channel whose other member is not active.
+ *
+ *  The status is read from `live.app_user` in both environments: identity is
+ *  pinned to live, and `sandbox.app_user` is a mirror whose status is never
+ *  updated after the row is copied (shared/db/sandbox-user-mirror.js). */
 async function directPartner(client, { groupId, userId }) {
   const { rows } = await client.query(
     `SELECT m.user_id
      FROM comms_group g
      JOIN comms_member m ON m.group_id = g.group_id
+     JOIN live.app_user u ON u.user_id = m.user_id AND u.status = 'ACTIVE'
      WHERE g.group_id = $1 AND g.kind = 'DIRECT' AND m.user_id <> $2
      LIMIT 1`,
     [groupId, userId],
@@ -158,15 +203,27 @@ async function directPartner(client, { groupId, userId }) {
   return rows[0] || null;
 }
 
+async function isDirectChannel(client, groupId) {
+  const { rows } = await client.query(
+    "SELECT 1 AS ok FROM comms_group WHERE group_id = $1 AND kind = 'DIRECT'",
+    [groupId],
+  );
+  return rows.length > 0;
+}
+
+/** The user's calls, newest first, with what the Calls list badges: the
+ *  transcription state (on the row) and the summary's status. */
 async function listCallsForUser(client, userId, { limit = 50 } = {}) {
   const { rows } = await client.query(
     `SELECT c.*, g.name AS channel_name,
             cu.full_name AS caller_name,
-            bu.full_name AS callee_name
+            bu.full_name AS callee_name,
+            s.draft_status, s.notified_at, s.update_available AS summary_update_available
      FROM comms_call c
      JOIN comms_group g ON g.group_id = c.group_id
      JOIN app_user cu ON cu.user_id = c.caller_id
      JOIN app_user bu ON bu.user_id = c.callee_id
+     LEFT JOIN comms_call_summary s ON s.call_id = c.call_id
      WHERE c.caller_id = $1 OR c.callee_id = $1
      ORDER BY c.started_at DESC
      LIMIT $2`,
@@ -188,6 +245,43 @@ async function touchPresence(client, userId) {
   return rows[0];
 }
 
+/**
+ * Call preferences for some users (PR-6): do not disturb, quiet hours, hide
+ * last seen. Read from LIVE, like `directPartner`'s status check: preferences
+ * are identity-level (preference.controller uses the identity database), and a
+ * sandbox call must honour a person's real choice. `{ uid: { key: value } }`.
+ */
+async function callPrefsFor(client, userIds) {
+  const ids = [...new Set(userIds.filter(Boolean))];
+  if (!ids.length) return {};
+  const { rows } = await client.query(
+    `SELECT user_id, key, value FROM live.user_preference
+      WHERE section = 'calls' AND user_id = ANY($1::uuid[])
+        AND key = ANY($2::text[])`,
+    [ids, ["do_not_disturb", "quiet_hours", "hide_last_seen"]],
+  );
+  const out = {};
+  for (const r of rows) {
+    out[r.user_id] = out[r.user_id] || {};
+    out[r.user_id][r.key] = r.value;
+  }
+  return out;
+}
+
+/** The people this user has a DIRECT conversation with: who hears their
+ *  presence, and whose presence their snapshot carries. */
+async function directContacts(client, userId) {
+  const { rows } = await client.query(
+    `SELECT DISTINCT o.user_id
+       FROM comms_member me
+       JOIN comms_group g ON g.group_id = me.group_id AND g.kind = 'DIRECT'
+       JOIN comms_member o ON o.group_id = me.group_id AND o.user_id <> me.user_id
+      WHERE me.user_id = $1`,
+    [userId],
+  );
+  return rows.map((r) => r.user_id);
+}
+
 async function lastSeen(client, userIds) {
   if (!userIds.length) return [];
   const { rows } = await client.query(
@@ -198,25 +292,25 @@ async function lastSeen(client, userIds) {
   return rows;
 }
 
-/* ── The record half (PR-2, migration 14010) ───────────────────────────────
+/* ── The record half (migrations 14010, 14040, 14050) ──────────────────────
  *
- * Recorded parts, transcripts, the browser live log and the summary draft. The
- * pipeline (smartcomm.call.pipeline.service.js) owns the order of these
- * writes; this file only reads and writes rows, same as everything above.
+ * Recorded parts, their per-part results, transcripts, the retired browser
+ * live log and the summary draft. The pipeline
+ * (smartcomm.call.pipeline.service.js) owns the order of these writes.
  */
 
 /**
- * One recorded part, uploaded at hang-up (or retried after a dropped
- * connection — the client re-POSTs a part rather than losing the side).
- *
- * An UPSERT because a duplicate part is not a conflict to resolve, it is the
- * same part arriving twice: the row keeps its identity (and any transcription
- * already done on it) and takes the new bytes. A plain INSERT here would 23505
- * on the first flaky corridor connection and fail an upload that was fine.
+ * One recorded part. Re-uploading a part that is still PENDING replaces its
+ * bytes in place (a retry after a lost acknowledgement); a part that already
+ * has a result is never overwritten, and null is returned so the caller
+ * leaves storage alone and never re-sends it to a provider.
  */
 async function upsertRecordingPart(client, {
   callId, side, partIndex, partCount, vaultRef, mediaType, sizeBytes, durationSeconds,
 }) {
+  if (!Number.isInteger(durationSeconds) || durationSeconds < 0 || durationSeconds > vocab.PART_MAX_SECONDS) {
+    throw new Error(`invalid part duration: ${durationSeconds}`);
+  }
   const { rows } = await client.query(
     `INSERT INTO comms_call_recording
        (call_id, side, part_index, part_count, vault_ref, media_type, size_bytes, duration_seconds)
@@ -227,12 +321,32 @@ async function upsertRecordingPart(client, {
        media_type       = EXCLUDED.media_type,
        size_bytes       = EXCLUDED.size_bytes,
        duration_seconds = EXCLUDED.duration_seconds,
-       transcript_status = 'PENDING',
        error            = NULL
+     WHERE comms_call_recording.transcript_status = 'PENDING'
      RETURNING *`,
     [callId, side, partIndex, partCount, vaultRef, mediaType, sizeBytes, durationSeconds],
   );
-  return rows[0];
+  return rows[0] || null;
+}
+
+async function findRecordingPart(client, { callId, side, partIndex }) {
+  const { rows } = await client.query(
+    `SELECT * FROM comms_call_recording
+     WHERE call_id = $1 AND side = $2 AND part_index = $3`,
+    [callId, side, partIndex],
+  );
+  return rows[0] || null;
+}
+
+/** Bytes a side has stored, not counting one part (the one being replaced). */
+async function sideUploadedBytes(client, { callId, side, exceptPartIndex = null }) {
+  const { rows } = await client.query(
+    `SELECT coalesce(sum(size_bytes), 0)::bigint AS bytes, coalesce(max(part_index), 0) AS max_part
+     FROM comms_call_recording
+     WHERE call_id = $1 AND side = $2 AND ($3::int IS NULL OR part_index <> $3)`,
+    [callId, side, exceptPartIndex],
+  );
+  return { bytes: Number(rows[0].bytes), maxPart: Number(rows[0].max_part) };
 }
 
 /** Every part of a call, in transcript order (side, then part). */
@@ -246,27 +360,188 @@ async function listRecordingParts(client, callId) {
   return rows;
 }
 
-/** What one part's transcription attempt produced. `attempts` is incremented
- *  by the caller so a retry is visible on the row rather than only in logs. */
-async function setPartResult(client, { recordingId, status, language = null, error = null, attempts }) {
+const SIDE_COLUMNS = {
+  caller: { declared: "caller_parts_declared", at: "caller_completed_at" },
+  callee: { declared: "callee_parts_declared", at: "callee_completed_at" },
+};
+
+/**
+ * A side says it has finished recording and how many parts it made (audit
+ * A2). Idempotent for the same count; a different count on a side that has
+ * already declared matches nothing, so the first declaration stands.
+ */
+async function declareSide(client, { callId, side, parts }) {
+  const col = SIDE_COLUMNS[side];
+  if (!col) throw new Error(`invalid call side: ${side}`);
   const { rows } = await client.query(
-    `UPDATE comms_call_recording
-     SET transcript_status = $2, detected_language = $3, error = $4, attempts = $5
-     WHERE recording_id = $1
+    `UPDATE comms_call
+     SET ${col.declared} = $2, ${col.at} = coalesce(${col.at}, now())
+     WHERE call_id = $1 AND (${col.declared} IS NULL OR ${col.declared} = $2)
      RETURNING *`,
-    [recordingId, status, language, error, attempts],
+    [callId, parts],
   );
   return rows[0] || null;
 }
 
+/**
+ * Claim a PENDING part for one transcription run. Exactly one job wins a
+ * part; a part claimed less than `staleMinutes` ago belongs to a live job, and
+ * a part that has had `maxRuns` automatic runs is not claimed again.
+ */
+async function claimPart(client, { recordingId, staleMinutes, maxRuns }) {
+  const { rows } = await client.query(
+    `UPDATE comms_call_recording
+     SET transcribe_started_at = now(), job_runs = job_runs + 1
+     WHERE recording_id = $1
+       AND transcript_status = 'PENDING'
+       AND purged_at IS NULL
+       AND job_runs < $3
+       AND (transcribe_started_at IS NULL
+            OR transcribe_started_at <= now() - make_interval(mins => $2::int))
+     RETURNING *`,
+    [recordingId, staleMinutes, maxRuns],
+  );
+  return rows[0] || null;
+}
+
+/**
+ * An admin's manual re-run of a part that failed on both providers (owner
+ * decision O1: never automatic). The part goes back to PENDING with a fresh
+ * automatic-run budget; `manual_runs` bounds how often a person can do this.
+ */
+async function reopenFailedPart(client, { recordingId, maxManual }) {
+  const { rows } = await client.query(
+    `UPDATE comms_call_recording
+     SET transcript_status = 'PENDING', error = NULL, transcribe_started_at = NULL,
+         transcribed_at = NULL, job_runs = 0, manual_runs = manual_runs + 1
+     WHERE recording_id = $1
+       AND transcript_status = 'FAILED'
+       AND purged_at IS NULL
+       AND manual_runs < $2
+     RETURNING *`,
+    [recordingId, maxManual],
+  );
+  return rows[0] || null;
+}
+
+/** What one part's run produced. Only a PENDING part takes a result, so a
+ *  settled part is never overwritten by a late duplicate. */
+async function setPartResult(client, {
+  recordingId, status, language = null, error = null, attempts, provider = null,
+}) {
+  const { rows } = await client.query(
+    `UPDATE comms_call_recording
+     SET transcript_status = $2, detected_language = $3, error = $4, attempts = $5,
+         provider = $6, transcribed_at = now()
+     WHERE recording_id = $1 AND transcript_status = 'PENDING'
+     RETURNING *`,
+    [recordingId, status, language, error, attempts, provider],
+  );
+  return rows[0] || null;
+}
+
+/**
+ * Parts whose job never ran, or died mid-run, and still have automatic runs
+ * left: the only automatic re-run there is. A part never claimed counts once
+ * it has waited `queuedMinutes` (the job may simply be queued); a claimed one
+ * once its claim is `staleMinutes` old.
+ */
+async function listStalledParts(client, {
+  staleMinutes, maxRuns, queuedMinutes = staleMinutes, callId = null, limit = 50,
+}) {
+  const { rows } = await client.query(
+    `SELECT r.recording_id, r.call_id, r.side, r.part_index
+     FROM comms_call_recording r
+     WHERE r.transcript_status = 'PENDING'
+       AND r.purged_at IS NULL
+       AND r.job_runs < $2
+       AND ($5::uuid IS NULL OR r.call_id = $5)
+       AND (
+         (r.transcribe_started_at IS NULL AND r.created_at <= now() - make_interval(mins => $3::int))
+         OR r.transcribe_started_at <= now() - make_interval(mins => $1::int)
+       )
+     ORDER BY r.created_at ASC
+     LIMIT $4`,
+    [staleMinutes, maxRuns, queuedMinutes, limit, callId],
+  );
+  return rows;
+}
+
+/** Parts that used every automatic run and still have no result are closed,
+ *  so finalise can name them as missing instead of waiting on them. */
+async function closeExhaustedParts(client, { staleMinutes, maxRuns, callId = null }) {
+  const { rows } = await client.query(
+    `UPDATE comms_call_recording
+     SET transcript_status = 'FAILED', error = 'the transcription job did not complete',
+         transcribed_at = now()
+     WHERE transcript_status = 'PENDING'
+       AND purged_at IS NULL
+       AND job_runs >= $2
+       AND ($3::uuid IS NULL OR call_id = $3)
+       AND coalesce(transcribe_started_at, created_at) <= now() - make_interval(mins => $1::int)
+     RETURNING recording_id, call_id`,
+    [staleMinutes, maxRuns, callId],
+  );
+  return rows;
+}
+
 /** The retention sweep's read (D7): parts whose audio is past its window. */
-async function partsAwaitingPurge(client, { olderThanDays }) {
+async function partsAwaitingPurge(client, { olderThanDays, limit = 500, skip = [] }) {
   const { rows } = await client.query(
     `SELECT r.recording_id, r.vault_ref, r.call_id
      FROM comms_call_recording r
      WHERE r.purged_at IS NULL
-       AND r.created_at <= now() - make_interval(days => $1::int)`,
-    [olderThanDays],
+       AND r.created_at <= now() - make_interval(days => $1::int)
+       AND NOT (r.recording_id = ANY($3::uuid[]))
+     ORDER BY r.created_at
+     LIMIT $2`,
+    [olderThanDays, limit, skip],
+  );
+  return rows;
+}
+
+/** Calls whose text is past the retention window (PR-6, G3): ended long
+ *  enough ago and still holding a transcript or an unsent draft. */
+async function callsWithExpiredText(client, { olderThanDays, limit = 500 }) {
+  const { rows } = await client.query(
+    `SELECT c.call_id FROM comms_call c
+      WHERE COALESCE(c.ended_at, c.started_at) <= now() - make_interval(days => $1::int)
+        AND (EXISTS (SELECT 1 FROM comms_call_transcript t WHERE t.call_id = c.call_id)
+             OR EXISTS (SELECT 1 FROM comms_call_summary s WHERE s.call_id = c.call_id
+                         AND s.draft_status <> 'SENT'))
+      ORDER BY c.started_at
+      LIMIT $2`,
+    [olderThanDays, limit],
+  );
+  return rows.map((r) => r.call_id);
+}
+
+/** Delete a set of calls' transcripts and unsent drafts. A SENT summary is a
+ *  message in the conversation and stays. */
+async function deleteCallText(client, callIds) {
+  const t = await client.query("DELETE FROM comms_call_transcript WHERE call_id = ANY($1::uuid[])", [callIds]);
+  // The retired browser live log (PR-1) is text about the call too.
+  await client.query("DELETE FROM comms_call_live_log WHERE call_id = ANY($1::uuid[])", [callIds]);
+  const s = await client.query(
+    "DELETE FROM comms_call_summary WHERE call_id = ANY($1::uuid[]) AND draft_status <> 'SENT'",
+    [callIds],
+  );
+  return { transcripts: t.rowCount || 0, drafts: s.rowCount || 0 };
+}
+
+async function callIdsForUser(client, userId) {
+  const { rows } = await client.query(
+    "SELECT call_id FROM comms_call WHERE caller_id = $1 OR callee_id = $1",
+    [userId],
+  );
+  return rows.map((r) => r.call_id);
+}
+
+async function unpurgedPartsForCalls(client, callIds) {
+  const { rows } = await client.query(
+    `SELECT recording_id, vault_ref FROM comms_call_recording
+      WHERE call_id = ANY($1::uuid[]) AND purged_at IS NULL`,
+    [callIds],
   );
   return rows;
 }
@@ -283,7 +558,8 @@ async function markPartsPurged(client, recordingIds) {
   return rowCount;
 }
 
-/** The call-level state of the never-dies chain (§4.5). */
+/** The call-level state (PENDING, PROCESSING, CERTIFIED, TRANSCRIPTION_FAILED,
+ *  NO_RECORDING). No CHECK on the column (14010); this is the only writer. */
 async function setTranscriptionState(client, { callId, state, error = null }) {
   const { rows } = await client.query(
     `UPDATE comms_call
@@ -297,9 +573,7 @@ async function setTranscriptionState(client, { callId, state, error = null }) {
   return rows[0] || null;
 }
 
-/** One more attempt against this call, counted where a sweep can see it (the
- *  auto-reprocess gives up eventually; a call that has failed 20 times is not
- *  coming back on the 21st). */
+/** One more finalise run against this call; the call sweep stops at a cap. */
 async function bumpTranscriptionAttempts(client, callId) {
   const { rows } = await client.query(
     `UPDATE comms_call
@@ -311,100 +585,44 @@ async function bumpTranscriptionAttempts(client, callId) {
   return rows[0] || null;
 }
 
-/** Calls the daily reprocess should try again: failed, and not abandoned. */
-async function listFailedTranscriptions(client, { limit = 25, maxAttempts = 20 } = {}) {
+async function markFinalised(client, callId) {
   const { rows } = await client.query(
-    `SELECT * FROM comms_call
-     WHERE transcription_state = 'TRANSCRIPTION_FAILED'
-       AND transcription_attempts < $1
-     ORDER BY transcription_updated_at ASC NULLS FIRST
-     LIMIT $2`,
-    [maxAttempts, limit],
+    `UPDATE comms_call SET finalised_at = now() WHERE call_id = $1 RETURNING *`,
+    [callId],
   );
-  return rows;
+  return rows[0] || null;
 }
 
 /**
- * Calls whose pipeline never finished: the ENDED row exists and the state is
- * NULL/PENDING, OR the state is PROCESSING and has gone stale.
- *
- * The second half matters more than it looks. PROCESSING is written before the
- * first vendor call and cleared by the last write of the run; a worker killed
- * mid-run (deploy, OOM, the SIGKILL the jest config documents) leaves it set
- * forever. Without this the caller's transcript would sit at "transcribing…"
- * until the end of time, which is precisely the silent stall §4.5 forbids —
- * and `processCall` will not re-enter a fresh PROCESSING row, so the retry has
- * to be found here rather than by luck.
- *
- * The bounds are the same ones `processCall` uses: 5 minutes of upload grace
- * after hang-up, 10 minutes before a PROCESSING row is presumed dead.
+ * Calls whose finalise never ran, or died mid-run, past the hang-up deadline
+ * (ended_at + 10 min, plus a margin). Capped on every branch, stale
+ * PROCESSING included (audit B4). A FAILED call that never connected has no
+ * audio and is excluded (B5). TRANSCRIPTION_FAILED is not selected: a part
+ * that failed on both providers is never retried automatically (O1).
  */
-async function listUntranscribedEndedCalls(client, { limit = 25 } = {}) {
+async function listUnfinalisedCalls(client, { limit = 25, maxAttempts, afterMinutes = 15, staleMinutes = 10 }) {
   const { rows } = await client.query(
     `SELECT * FROM comms_call
      WHERE status IN ('ENDED','FAILED')
+       AND (status = 'ENDED' OR connected_at IS NOT NULL)
        AND ended_at IS NOT NULL
+       AND ended_at <= now() - make_interval(mins => $2::int)
+       AND transcription_attempts < $1
        AND (
-         ((transcription_state IS NULL OR transcription_state = 'PENDING')
-           AND ended_at <= now() - make_interval(mins => 5))
+         transcription_state IS NULL OR transcription_state = 'PENDING'
          OR (transcription_state = 'PROCESSING'
            AND (transcription_updated_at IS NULL
-                OR transcription_updated_at <= now() - make_interval(mins => 10)))
+                OR transcription_updated_at <= now() - make_interval(mins => $3::int)))
        )
      ORDER BY ended_at ASC
-     LIMIT $1`,
-    [limit],
+     LIMIT $4`,
+    [maxAttempts, afterMinutes, staleMinutes, limit],
   );
   return rows;
 }
 
-/**
- * Write a side's live capture segments (idempotent by seq).
- *
- * Chunked multi-row inserts: a 30-minute call is a few hundred segments, and
- * one statement per segment would be a few hundred round trips inside the
- * upload request. The ON CONFLICT is what makes a retried upload safe without
- * a transaction — the segment list is keyed on its own order.
- */
-async function upsertLiveLog(client, { callId, side, segments }) {
-  if (!segments.length) return 0;
-  let written = 0;
-  const CHUNK = 200;
-  for (let i = 0; i < segments.length; i += CHUNK) {
-    const slice = segments.slice(i, i + CHUNK);
-    const values = [];
-    const params = [callId, side];
-    for (const s of slice) {
-      const base = params.length;
-      params.push(s.seq, s.text, s.language, s.startedMs ?? null, s.endedMs ?? null);
-      values.push(`($1, $2, $${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5})`);
-    }
-    const { rowCount } = await client.query(
-      `INSERT INTO comms_call_live_log
-         (call_id, side, seq, text, language, started_ms, ended_ms)
-       VALUES ${values.join(", ")}
-       ON CONFLICT (call_id, side, seq) DO UPDATE SET
-         text = EXCLUDED.text, language = EXCLUDED.language,
-         started_ms = EXCLUDED.started_ms, ended_ms = EXCLUDED.ended_ms`,
-      params,
-    );
-    written += rowCount;
-  }
-  return written;
-}
 
-async function listLiveLog(client, { callId, side = null }) {
-  const { rows } = await client.query(
-    `SELECT * FROM comms_call_live_log
-     WHERE call_id = $1 AND ($2::text IS NULL OR side = $2)
-     ORDER BY side, seq`,
-    [callId, side],
-  );
-  return rows;
-}
-
-/** Transcript rows for a side, in order — the CURRENT set only (a reprocessed
- *  side has its flagged rows retired rather than deleted, §4.5 step 3). */
+/** Transcript rows for a side, in order — the CURRENT set only. */
 async function listCurrentTranscripts(client, callId, side = null) {
   const { rows } = await client.query(
     `SELECT * FROM comms_call_transcript
@@ -416,34 +634,24 @@ async function listCurrentTranscripts(client, callId, side = null) {
 }
 
 /**
- * Insert a side's transcript rows (per side, per part).
- *
- * ATOMIC with the retire, and that pairing is the whole reason the unique index
- * on (call_id, side, part_index) WHERE is_current can exist:
- *
- *   - an upgrade (flagged → certified) writes the SAME keys, so inserting first
- *     would hit 23505 against the flagged row that is still current;
- *   - retiring first, on its own, would open a window — and worse, a crash
- *     inside it — in which the side has NO current rows at all. The
- *     transcript-never-dies rule (§4.5) does not survive a window like that.
- *
- * Both writes therefore run in one transaction: a reader sees the flagged text
- * or the certified text, never neither, and a failure anywhere leaves the
- * flagged rows exactly as the caller was told they were.
+ * Insert transcript rows for a side, retiring whatever row is current for
+ * each part being written, whatever its provider (audit B4: re-inserting a
+ * certified part used to hit uq_comms_call_transcript_current with 23505).
+ * One transaction, so a reader sees the old row or the new one, never neither.
  */
 async function insertTranscriptRows(client, { callId, side, rows: parts }) {
   if (!parts.length) return [];
+  // The CHECKs 14040 dropped, held here instead.
+  const bad = parts.find((p) => !vocab.isValidTranscriptRow(p));
+  if (bad) {
+    throw new Error(`invalid transcript row: provider=${bad.provider} certified=${bad.certified}`);
+  }
   return atomically(client, async () => {
-    // Only the rows being replaced — a part that is NOT in this set keeps
-    // whatever it has (the pipeline retires the remainder explicitly after
-    // this returns, so a changed part count cannot leave a mixture current).
-    const replacing = parts.map((p) => p.partIndex);
     await client.query(
       `UPDATE comms_call_transcript
        SET is_current = false, superseded_at = now()
-       WHERE call_id = $1 AND side = $2 AND part_index = ANY($3::int[])
-         AND is_current AND provider = 'browser-live'`,
-      [callId, side, replacing],
+       WHERE call_id = $1 AND side = $2 AND part_index = ANY($3::int[]) AND is_current`,
+      [callId, side, parts.map((p) => p.partIndex)],
     );
     const values = [];
     const params = [callId, side];
@@ -463,39 +671,20 @@ async function insertTranscriptRows(client, { callId, side, rows: parts }) {
   });
 }
 
-/** Retire a side's flagged rows when the certified version lands. They stay in
- *  the table: what was said to the caller at the time is part of the record. */
-async function retireFlaggedRows(client, { callId, side }) {
-  const { rowCount } = await client.query(
-    `UPDATE comms_call_transcript
-     SET is_current = false, superseded_at = now()
-     WHERE call_id = $1 AND side = $2 AND provider = 'browser-live' AND is_current`,
-    [callId, side],
-  );
-  return rowCount;
-}
-
-/** Is the live capture still needed for this side (used to decide whether a
- *  reprocess can do better than what is already stored)? */
-async function hasFlaggedRows(client, callId) {
-  const { rows } = await client.query(
-    `SELECT 1 AS ok FROM comms_call_transcript
-     WHERE call_id = $1 AND provider = 'browser-live' AND is_current LIMIT 1`,
-    [callId],
-  );
-  return rows.length > 0;
-}
-
 /* ── The summary draft ───────────────────────────────────────────────────── */
 
 /**
- * Write the draft. An UPSERT on `call_id` (the table's own unique) because a
- * draft is regenerated in place — same row, new prose, and `created_at` stays
- * the moment the FIRST draft arrived, which is what the caller's screen shows.
+ * Write the draft, but only over a draft that is still PENDING_REVIEW (audit
+ * B6). The status is checked by the upsert itself, on the row as it is at that
+ * moment, so a summary sent or discarded while the pipeline was working is
+ * never revived. Returns null when the existing row was not a pending draft.
  */
 async function upsertSummaryDraft(client, {
   callId, summaryText, keyPoints, followUps, language, provenance,
 }) {
+  if (!vocab.SUMMARY_PROVENANCES.includes(provenance)) {
+    throw new Error(`invalid summary provenance: ${provenance}`);
+  }
   const { rows } = await client.query(
     `INSERT INTO comms_call_summary
        (call_id, summary_text, key_points, follow_ups, language, provenance)
@@ -505,13 +694,12 @@ async function upsertSummaryDraft(client, {
        key_points   = EXCLUDED.key_points,
        follow_ups   = EXCLUDED.follow_ups,
        language     = EXCLUDED.language,
-       provenance   = EXCLUDED.provenance,
-       draft_status = 'PENDING_REVIEW',
-       update_available = false
+       provenance   = EXCLUDED.provenance
+     WHERE comms_call_summary.draft_status = 'PENDING_REVIEW'
      RETURNING *`,
     [callId, summaryText, JSON.stringify(keyPoints || []), JSON.stringify(followUps || []), language, provenance],
   );
-  return rows[0];
+  return rows[0] || null;
 }
 
 /** The caller's app language, reported with the caller's own upload (§4.10).
@@ -527,19 +715,41 @@ async function setSummaryLanguage(client, { callId, language }) {
 }
 
 /**
- * The caller's own edit of the draft, before it is sent.
- *
- * Deliberately NOT an upsert: this only ever touches a row that exists (the
- * pipeline created it), and it must not change `draft_status` — the edit is a
- * step inside the review, not a new draft.
+ * Claim a pending draft for sending, with the caller's final edit (audit
+ * B7). Runs inside the send transaction: a second send blocks on the row lock
+ * and then matches nothing, because the first has moved it on.
  */
-async function applySummaryEdit(client, { callId, summaryText, keyPoints, followUps }) {
+async function claimDraftForSend(client, { callId, summaryText, keyPoints, followUps }) {
   const { rows } = await client.query(
     `UPDATE comms_call_summary
-     SET summary_text = $2, key_points = $3::jsonb, follow_ups = $4::jsonb
-     WHERE call_id = $1
+     SET draft_status = 'SENDING', summary_text = $2, key_points = $3::jsonb, follow_ups = $4::jsonb
+     WHERE call_id = $1 AND draft_status = 'PENDING_REVIEW'
      RETURNING *`,
     [callId, summaryText, JSON.stringify(keyPoints || []), JSON.stringify(followUps || [])],
+  );
+  return rows[0] || null;
+}
+
+/** The same claim for the optional update of a summary already sent. */
+async function claimUpdateForSend(client, { callId, summaryText, keyPoints, followUps }) {
+  const { rows } = await client.query(
+    `UPDATE comms_call_summary
+     SET update_available = false, summary_text = $2, key_points = $3::jsonb, follow_ups = $4::jsonb
+     WHERE call_id = $1 AND draft_status = 'SENT' AND update_available
+     RETURNING *`,
+    [callId, summaryText, JSON.stringify(keyPoints || []), JSON.stringify(followUps || [])],
+  );
+  return rows[0] || null;
+}
+
+/** Claim the one "summary ready" notification for a call (audit A4). Exactly
+ *  one caller gets the row back; everyone after that gets null. */
+async function claimSummaryNotification(client, callId) {
+  const { rows } = await client.query(
+    `UPDATE comms_call_summary SET notified_at = now()
+     WHERE call_id = $1 AND notified_at IS NULL
+     RETURNING *`,
+    [callId],
   );
   return rows[0] || null;
 }
@@ -552,14 +762,12 @@ async function getSummary(client, callId) {
   return rows[0] || null;
 }
 
-/** Record the posted message and flip the draft to SENT, in ONE statement:
- *  the row that says "sent" and the row that says "this message" cannot
- *  disagree, because there is no window between them. */
+/** The claimed draft becomes SENT with the message it was posted as. */
 async function markSummarySent(client, { callId, messageId }) {
   const { rows } = await client.query(
     `UPDATE comms_call_summary
      SET draft_status = 'SENT', sent_message_id = $2, update_available = false
-     WHERE call_id = $1
+     WHERE call_id = $1 AND draft_status = 'SENDING'
      RETURNING *`,
     [callId, messageId],
   );
@@ -612,44 +820,80 @@ async function bumpRegenerateCount(client, { callId, language }) {
   return rows[0] || null;
 }
 
+/**
+ * The caller's drafts waiting in one conversation (owner decision O3): the
+ * card pinned above the composer. Only while recording is on, because the
+ * editor's routes are behind that flag.
+ */
+async function pendingDraftsInChannel(client, { groupId, userId, limit = 5 }) {
+  const { rows } = await client.query(
+    `SELECT s.call_id, s.created_at AS drafted_at, s.provenance, s.language,
+            c.started_at, c.ended_at, c.duration_seconds, c.transcription_state
+     FROM comms_call_summary s
+     JOIN comms_call c ON c.call_id = s.call_id
+     WHERE c.group_id = $1 AND c.caller_id = $2 AND s.draft_status = 'PENDING_REVIEW'
+       AND EXISTS (SELECT 1 FROM feature_state f
+                   WHERE f.feature_key = 'call_recording' AND f.state = 'on')
+     ORDER BY c.started_at DESC
+     LIMIT $3`,
+    [groupId, userId, limit],
+  );
+  return rows;
+}
+
 module.exports = {
+  ensureTurnToken,
   ACTIVE_STATUSES,
   findActiveCall,
   insertCall,
   findCall,
   transition,
-  otherParticipant,
+  liveCounterpart,
   isParticipant,
   directPartner,
+  isDirectChannel,
   listCallsForUser,
   touchPresence,
+  directContacts,
+  callPrefsFor,
+  callsWithExpiredText,
+  deleteCallText,
+  callIdsForUser,
+  unpurgedPartsForCalls,
   lastSeen,
-  // The ring half (PR-3, §4.6).
+  // The ring half (PR-3 ack; PR-4 pushes and the ringing read).
   markRingAck,
-  markRingPushSent,
-  // The record half (PR-2).
+  claimRingAlert,
+  listRingingForUser,
+  // The record half.
   upsertRecordingPart,
+  findRecordingPart,
+  sideUploadedBytes,
   listRecordingParts,
+  declareSide,
+  claimPart,
+  reopenFailedPart,
   setPartResult,
+  listStalledParts,
+  closeExhaustedParts,
   partsAwaitingPurge,
   markPartsPurged,
   setTranscriptionState,
   bumpTranscriptionAttempts,
-  listFailedTranscriptions,
-  listUntranscribedEndedCalls,
-  upsertLiveLog,
-  listLiveLog,
+  markFinalised,
+  listUnfinalisedCalls,
   listCurrentTranscripts,
   insertTranscriptRows,
-  retireFlaggedRows,
-  hasFlaggedRows,
   setSummaryLanguage,
   upsertSummaryDraft,
-  applySummaryEdit,
+  claimDraftForSend,
+  claimUpdateForSend,
   getSummary,
+  claimSummaryNotification,
   markSummarySent,
   markSummaryUpdateSent,
   markUpdateAvailable,
   markSummaryDiscarded,
   bumpRegenerateCount,
+  pendingDraftsInChannel,
 };

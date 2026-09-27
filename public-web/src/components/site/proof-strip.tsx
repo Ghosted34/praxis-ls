@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { getLang } from "@/lib/i18n";
-import { pickBilingual, statChips, statCounters } from "@/lib/site-api";
+import { pickBilingual, proofCounters, statChips } from "@/lib/site-api";
 import { useHomePage } from "@/lib/use-site-page";
 import { CountUp } from "@/components/ui/count-up";
 
@@ -58,9 +58,19 @@ export function ProofStrip() {
      its own timeline. `use-site-page` holds the promise in module scope. */
   const { page } = useHomePage();
 
-  // Three or four figures. A fifth makes the row a table, and the fourth is
-  // already the one a reader stops reading at.
-  const figures = statCounters(page).slice(0, 4);
+  /* THE FIGURES THE HERO DID NOT TAKE.
+ 
+     This used to be the first four. The hero now carries a baseline rail of
+     the first three (`HERO_FIGURE_COUNT`), so reading the same list from the
+     top here would print the tenant's two best numbers twice inside one
+     screenful — which reads as a bug in their data rather than as emphasis.
+ 
+     So the two bands split one ordered list, and the editor's drag handles
+     become the control over which figures are promoted. A tenant with exactly
+     three authored figures gets a hero rail and a strip of credentials only,
+     which is the composition this band's own note describes: the bottom edge
+     of the hero plate. */
+  const figures = proofCounters(page);
   // Six is two rows of pills at the narrowest useful width; past that the row
   // stops being a glance and starts being a list.
   const chips = statChips(page).slice(0, 6);

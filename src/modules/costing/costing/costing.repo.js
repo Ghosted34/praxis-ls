@@ -1,5 +1,7 @@
 /** Costing repository (MOD-46). costing + costing_line SQL lives here. */
 "use strict";
+const { standardRateJoin, STANDARD_RATE_COLUMNS } = require("../../master/expense_rate/standard-rate.sql");
+const { clientHeadingJoin, CLIENT_HEADING_COLUMNS } = require("../../master/financial_dictionary/client-heading.sql");
 const { insertOne, getById, page, updateOne, TOTAL_COL, splitTotal } = require("../../../shared/db/query-helpers");
 
 const insert = (client, data) => insertOne(client, "costing", data);
@@ -183,10 +185,13 @@ const LINE_SELECT =
   "dr.name_fr AS container_type_fr, dr.extra AS container_type_extra, " +
   "tc.rate_percent AS tax_rate_percent, tc.code AS tax_code, " +
   "di.code AS item_code, di.unit_of_measure, di.subcategory, " +
-  "di.disbursement_vat_transparent, di.varies_by_equipment " +
+  "di.disbursement_vat_transparent, di.varies_by_equipment, " +
+  // 14130: the catalogue's default family, beside the line's own override.
+  CLIENT_HEADING_COLUMNS + " " +
   "FROM costing_line cl LEFT JOIN dictionary_ref dr ON dr.ref_id = cl.container_type_ref_id " +
   "LEFT JOIN tax_code tc ON tc.tax_code_id = cl.tax_code_id " +
-  "LEFT JOIN dictionary_item di ON di.dictionary_item_id = cl.dictionary_item_id ";
+  "LEFT JOIN dictionary_item di ON di.dictionary_item_id = cl.dictionary_item_id " +
+  clientHeadingJoin("di") + " ";
 /**
  * Just enough of each line to compute its logical identity (`rules.lineKey`)
  * and address it — the in-place upsert's read.
@@ -502,10 +507,12 @@ async function tieredItems(client, { serviceTypeId, tier = "FULL" }) {
     `SELECT di.dictionary_item_id, di.code, di.label_en, di.label_fr, di.description,
             di.direction, di.category, di.subcategory, di.unit_of_measure,
             di.is_disbursement, di.is_billable, di.varies_by_equipment,
-            di.disbursement_vat_transparent, di.default_price, di.currency,
+            di.disbursement_vat_transparent, di.currency,
+            ${STANDARD_RATE_COLUMNS}, ${CLIENT_HEADING_COLUMNS},
             sti.tier, sti.sort_order
        FROM service_type_dictionary_item sti
        JOIN dictionary_item di ON di.dictionary_item_id = sti.dictionary_item_id
+       ${standardRateJoin("di")} ${clientHeadingJoin("di")}
       WHERE sti.service_type_id = $1
         AND di.is_active = true
         AND (CASE sti.tier WHEN 'BASIC' THEN 1 WHEN 'ADVANCED' THEN 2 ELSE 3 END) <= $2

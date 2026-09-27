@@ -175,6 +175,8 @@ describe("RBAC enforcement (TC-C3)", () => {
       ["export", "can_export"],
       ["validate", "can_validate"],
       ["disburse", "can_disburse"],
+      // Calls audit PR-7 (O5): a right of its own, held by no role by default.
+      ["test", "can_test"],
       // Still an alias: the permission table has no can_publish.
       ["publish", "can_update"],
     ];
@@ -198,6 +200,24 @@ describe("RBAC enforcement (TC-C3)", () => {
       for (const [action, column] of CASES) {
         expect(COLUMN[action]).toBe(column);
       }
+    });
+  });
+
+  describe("requirePermission — the Test right (calls audit PR-7, O5)", () => {
+    it("is not implied by any other right", async () => {
+      MOCK_GRANTS = [{
+        can_read: true, can_create: true, can_update: true, can_delete: true, can_approve: true,
+        can_export: true, can_validate: true, can_disburse: true, can_test: false,
+      }];
+      const { error } = await run(requirePermission("MOD-64", "test"), makeReq(clerk));
+      expect(error).not.toBeNull();
+      expect(error.status).toBe(403);
+    });
+
+    it("the CEO passes it, as it passes every right (PRD §3)", async () => {
+      MOCK_GRANTS = [];
+      const { error } = await run(requirePermission("MOD-64", "test"), makeReq(ceo));
+      expect(error).toBeNull();
     });
   });
 

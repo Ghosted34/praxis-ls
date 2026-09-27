@@ -1,5 +1,5 @@
 -- ============================================================================
--- PLATFORM DB — 0108 the primary chat vendor is a choice, not a constant
+-- PLATFORM DB — 0110 the primary chat vendor is a choice, not a constant
 --
 -- Until now which AI vendor answered first was two lines in
 -- `src/services/ai/llm.service.js` (`PRIMARY = "deepseek"`,

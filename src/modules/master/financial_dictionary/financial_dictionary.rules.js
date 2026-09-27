@@ -25,6 +25,76 @@ function formatCode(direction, serial) {
   return `#${directionLetter(direction)}${String(serial).padStart(3, "0")}`;
 }
 
+/**
+ * Title Case for a catalogue label (meeting 5, 01:44:14 — "Shipping Line
+ * Charges", not "shipping line charges"), with the small words left small.
+ *
+ * WHAT IT DOES
+ *   - Every word starts with a capital …
+ *   - … except the language's SMALL WORDS (articles, conjunctions, short
+ *     prepositions), which are written lower case: "Frais de Dossier",
+ *     "Frais d'Agence et de Documentation", "Commission on Disbursements",
+ *     "THC per Box". A small word typed with a capital ("De") is lowered.
+ *   - A small word that OPENS the label, or opens a phrase after "—", "(",
+ *     "[", ":" or a quote, is capitalised like any other: "Transport — Pour
+ *     Compte Client", "L'Entrepôt".
+ *   - An elided article keeps its apostrophe and the word after it is the one
+ *     capitalised: "d'agence" → "d'Agence" (and "D'Agence" at the start).
+ *   - Only a word's FIRST letter is ever raised. The rest is left as typed, so
+ *     "THC", "PDF", "(BL)" and "IT Equipment" survive; a naive capitalise-and-
+ *     lowercase would print "Thc". A word written entirely in capitals is never
+ *     lowered either, so an acronym that happens to spell a small word ("DE",
+ *     "ET") or a lone letter ("Type A") is left alone.
+ *
+ * `lang` is the label's own language: `label_fr` is French, `label_en` English.
+ *
+ * The seed 90995 applies the identical rule in SQL to the rows already stored,
+ * and tests/integration/dictionary-standard-rate.test.js runs both on the same
+ * cases — change one and change the other.
+ */
+const SMALL_WORDS = {
+  fr: new Set([
+    "à", "au", "aux", "avec", "chez", "d", "dans", "de", "des", "du", "en",
+    "entre", "et", "l", "la", "le", "les", "ou", "par", "pour", "sans", "sous",
+    "sur", "un", "une", "vers",
+  ]),
+  en: new Set([
+    "a", "an", "and", "as", "at", "by", "for", "from", "in", "nor", "of", "on",
+    "or", "per", "the", "to", "via", "vs", "with",
+  ]),
+};
+// A separator run between words. Hyphen and slash separate words inside a
+// phrase ("Last-Mile", "Import / Export"); the others below also START one.
+const WORD_SEPARATORS = /([\s()[\]/"«»:—–-]+)/u;
+const PHRASE_OPENERS = /[([:"«—–]/u;
+const isAllCaps = (w) => w === w.toUpperCase() && w !== w.toLowerCase();
+const raiseFirst = (w) => w.replace(/^(\P{L}*)(\p{Ll})/u, (_m, lead, ch) => lead + ch.toUpperCase());
+
+function titleCase(label, lang = "en") {
+  if (label === null || label === undefined) return label;
+  const small = SMALL_WORDS[lang] || SMALL_WORDS.en;
+  const parts = String(label).split(WORD_SEPARATORS);
+  let phraseStart = true;
+  return parts.map((part, i) => {
+    if (i % 2 === 1) { // a separator run
+      if (PHRASE_OPENERS.test(part)) phraseStart = true;
+      return part;
+    }
+    if (!part) return part;
+    const opening = phraseStart;
+    phraseStart = false;
+    // Elision: "d'agence", "l'entrepôt" — the article is a small word, the
+    // word after the apostrophe is the one that takes the capital.
+    const elided = /^(\p{L})(['’])(.+)$/u.exec(part);
+    if (elided && small.has(elided[1].toLowerCase())) {
+      const article = opening ? elided[1].toUpperCase() : elided[1].toLowerCase();
+      return article + elided[2] + raiseFirst(elided[3]);
+    }
+    if (!opening && small.has(part.toLowerCase()) && !isAllCaps(part)) return part.toLowerCase();
+    return raiseFirst(part);
+  }).join("");
+}
+
 /** A débours item always carries the flag; otherwise the explicit toggle wins. */
 function resolveDisbursement(direction, isDisbursement) { return direction === "DISBURSEMENT" ? true : !!isDisbursement; }
 
@@ -479,7 +549,7 @@ function partitionImport(rows = [], ctx = {}) {
 }
 
 module.exports = {
-  directionLetter, formatCode, resolveDisbursement, tierRank, tierIncludes, primaryServiceKey, needsAttention,
+  directionLetter, formatCode, titleCase, resolveDisbursement, tierRank, tierIncludes, primaryServiceKey, needsAttention,
   // spend
   SPEND_LENSES, normalisePeriod, monthKeys, spendSeries,
   // cost evolution

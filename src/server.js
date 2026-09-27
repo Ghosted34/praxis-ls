@@ -194,6 +194,16 @@ function buildCspDirectives(defaults, scriptSrc) {
   };
 }
 
+/**
+ * `script-src`: helmet's default, the SPA shells' inline-script hashes, and
+ * `'wasm-unsafe-eval'` — WebAssembly compilation only, not `eval` — for the
+ * call noise filter's RNNoise module, which the default policy refuses to
+ * compile, so the filter always reported "could not load" (calls audit E5).
+ */
+function buildScriptSrc(defaults, shellHashes) {
+  return [...(defaults["script-src"] || ["'self'"]), "'wasm-unsafe-eval'", ...shellHashes];
+}
+
 function buildApp() {
   const app = express();
   app.disable("x-powered-by");
@@ -282,10 +292,7 @@ function buildApp() {
       ),
     ),
   ];
-  const scriptSrc = [
-    ...(cspDefaults["script-src"] || ["'self'"]),
-    ...shellHashes,
-  ];
+  const scriptSrc = buildScriptSrc(cspDefaults, shellHashes);
   /**
    * ── `media-src`, AND THE MONTHS IT COST TO NOT HAVE IT ────────────────────
    *
@@ -937,6 +944,9 @@ function start() {
   // Same posture: best-effort, never blocks or fails boot (audit B2 + E4).
   checkAiVendorHealth().catch((err) => logger.debug({ err }, "AI vendor health check could not run at boot"));
   checkAiEmbeddingsHealth().catch((err) => logger.debug({ err }, "AI embeddings health check could not run at boot"));
+  // Calls audit N3: a retired Gemini model id fails every Gemini request.
+  require("./services/ai/gemini-model-check.service").logGeminiModelAtBoot()
+    .catch((err) => logger.debug({ err }, "Gemini model check could not run at boot"));
   checkConnectionBudget().catch((err) => {
     if (err && err.code === "DB_BUDGET_EXCEEDED") {
       // Enforce mode. Exit rather than serve on a budget that cannot be met —
@@ -1013,4 +1023,4 @@ function start() {
 
 if (require.main === module) start();
 
-module.exports = { buildApp, start, buildCorsOptions, buildCspDirectives };
+module.exports = { buildApp, start, buildCorsOptions, buildCspDirectives, buildScriptSrc };

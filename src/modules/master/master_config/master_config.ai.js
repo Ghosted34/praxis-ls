@@ -33,6 +33,9 @@ const field = z.object({
   field_key: z.string().min(1).max(120),
   field_group: z.string().max(120).optional().nullable(),
   is_required: z.boolean().optional(),
+  // Required to ACTIVATE the party (14030) — a different policy from
+  // `is_required`, which is enforced when the record is created.
+  required_for_activation: z.boolean().optional(),
   is_visible: z.boolean().optional(),
   is_custom: z.boolean().optional(),
   sort_order: z.number().int().min(0).max(100000).optional(),

@@ -67,6 +67,9 @@ export type InvLine = {
   /** Display snapshot of that type, so the row reads correctly without the
    *  form holding the container registry. */
   container_type_label?: string;
+  /** 14130: the family this line prints under, when moved on this document.
+   *  Read back and re-sent so a re-save does not strip it. */
+  client_heading?: string | null;
 };
 
 export const blankInvLine = (): InvLine => ({

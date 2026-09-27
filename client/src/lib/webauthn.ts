@@ -1,15 +1,16 @@
 /**
- * Client WebAuthn (passkey) helpers.
+ * Client WebAuthn (passkey) helpers — the ONE implementation.
  *
  * Uses the native WebAuthn API directly (no extra npm dep) with base64url
- * helpers so we don't need @simplewebauthn/browser for the login modal.
- * Server speaks the same shape SimpleWebAuthn expects (challenge, rp, user
- * as base64url). When the backend hasn't been deployed yet the fetch 404s
- * and we surface a friendly error rather than a stack trace.
+ * helpers. The server speaks SimpleWebAuthn's JSON shapes.
+ *
+ * There used to be two copies of the sign-in ceremony (here and in
+ * auth-context), and they had drifted: the one the sign-in screen actually used
+ * never recorded that the device holds a passkey, so a passkey sign-in did not
+ * make the passkey the device's first choice next time. auth-context now calls
+ * `passkeyAssertion` and owns only what happens with the tokens.
  */
 import { tenant } from "./api-client";
-import { tokenStore } from "./token-store";
-import { lastSessionStore } from "./last-session";
 import { passkeyDeviceStore } from "./passkey-devices";
 
 function b64urlToBuf(b64url: string): ArrayBuffer {
@@ -28,41 +29,102 @@ function bufToB64url(buf: ArrayBuffer | Uint8Array): string {
   return btoa(str).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 }
 
-function toPublicKeyOptions(opt: any): PublicKeyCredentialCreationOptions | PublicKeyCredentialRequestOptions {
-  // Server sends JSON with base64url strings; we hydrate to ArrayBuffers
-  if (opt.challenge) opt.challenge = b64urlToBuf(opt.challenge);
-  if (opt.user && opt.user.id) opt.user.id = b64urlToBuf(opt.user.id);
-  if (opt.allowCredentials) {
-    for (const c of opt.allowCredentials) c.id = b64urlToBuf(c.id);
-  }
-  if (opt.excludeCredentials) {
-    for (const c of opt.excludeCredentials) c.id = b64urlToBuf(c.id);
-  }
-  return opt;
+type Descriptor = { id: string | ArrayBuffer; type: string; transports?: string[] };
+type JsonOptions = {
+  challenge: string | ArrayBuffer;
+  user?: { id: string | ArrayBuffer; name?: string; displayName?: string };
+  allowCredentials?: Descriptor[];
+  excludeCredentials?: Descriptor[];
+  _challengeToken?: string;
+  [k: string]: unknown;
+};
+
+function toPublicKeyOptions(opt: JsonOptions) {
+  // Server sends JSON with base64url strings; hydrate to ArrayBuffers. The
+  // server-private `_challengeToken` is not a WebAuthn member and is dropped.
+  const { _challengeToken: _drop, ...o } = opt;
+  void _drop;
+  if (typeof o.challenge === "string") o.challenge = b64urlToBuf(o.challenge);
+  if (o.user && typeof o.user.id === "string") o.user = { ...o.user, id: b64urlToBuf(o.user.id) };
+  if (o.allowCredentials) o.allowCredentials = o.allowCredentials.map((c) => ({ ...c, id: typeof c.id === "string" ? b64urlToBuf(c.id) : c.id }));
+  if (o.excludeCredentials) o.excludeCredentials = o.excludeCredentials.map((c) => ({ ...c, id: typeof c.id === "string" ? b64urlToBuf(c.id) : c.id }));
+  return o;
 }
 
-function fromCredential(cred: PublicKeyCredential): any {
-  const rawId = bufToB64url(cred.rawId);
-  const resp: any = (cred as any).response;
-  const out: any = {
-    id: (cred as any).id,
-    rawId,
-    type: cred.type,
-    response: {},
-  };
-  if (resp.attestationObject) out.response.attestationObject = bufToB64url(resp.attestationObject);
-  if (resp.clientDataJSON) out.response.clientDataJSON = bufToB64url(resp.clientDataJSON);
-  if (resp.authenticatorData) out.response.authenticatorData = bufToB64url(resp.authenticatorData);
-  if (resp.signature) out.response.signature = bufToB64url(resp.signature);
-  if (resp.userHandle !== undefined && resp.userHandle !== null) {
-    out.response.userHandle = resp.userHandle ? bufToB64url(resp.userHandle) : null;
-  }
-  if ((cred as any).getClientExtensionResults) {
+type AnyResponse = {
+  clientDataJSON?: ArrayBuffer;
+  attestationObject?: ArrayBuffer;
+  authenticatorData?: ArrayBuffer;
+  signature?: ArrayBuffer;
+  userHandle?: ArrayBuffer | null;
+  getTransports?: () => string[];
+};
+
+function fromCredential(cred: PublicKeyCredential) {
+  const resp = cred.response as unknown as AnyResponse;
+  const response: Record<string, unknown> = {};
+  if (resp.clientDataJSON) response.clientDataJSON = bufToB64url(resp.clientDataJSON);
+  if (resp.attestationObject) response.attestationObject = bufToB64url(resp.attestationObject);
+  if (resp.authenticatorData) response.authenticatorData = bufToB64url(resp.authenticatorData);
+  if (resp.signature) response.signature = bufToB64url(resp.signature);
+  if (resp.userHandle) response.userHandle = bufToB64url(resp.userHandle);
+  if (typeof resp.getTransports === "function") {
     try {
-      out.clientExtensionResults = (cred as any).getClientExtensionResults();
-    } catch { /* @silent:storage */ }
+      response.transports = resp.getTransports();
+    } catch {
+      /* @silent:parse — transports are a hint; the credential is fine without them. */
+    }
+  }
+  const out: Record<string, unknown> = {
+    id: cred.id,
+    rawId: bufToB64url(cred.rawId),
+    type: cred.type,
+    response,
+  };
+  const ext = (cred as unknown as { getClientExtensionResults?: () => Record<string, unknown> }).getClientExtensionResults;
+  if (typeof ext === "function") {
+    try {
+      out.clientExtensionResults = ext.call(cred);
+    } catch {
+      /* @silent:parse */
+    }
   }
   return out;
+}
+
+/**
+ * A WebAuthn failure, named for what the person should be told.
+ *
+ * The old handler stamped EVERY failure `NOT_ALLOWED` ("cancelled"), so a
+ * device that already held a passkey — the browser's InvalidStateError — told
+ * the user they had cancelled, and they tried again, and were told again.
+ */
+export class PasskeyError extends Error {
+  code: string;
+  constructor(code: string, message: string, name?: string) {
+    super(message);
+    this.code = code;
+    this.name = name || "PasskeyError";
+  }
+}
+
+function mapDomError(e: unknown, phase: "create" | "get"): PasskeyError {
+  const name = (e as { name?: string } | null)?.name || "";
+  const message = (e as { message?: string } | null)?.message || "";
+  if (name === "InvalidStateError" && phase === "create")
+    return new PasskeyError("PASSKEY_ALREADY_ON_DEVICE", "This device already has a passkey for your account.", name);
+  if (name === "SecurityError")
+    return new PasskeyError("PASSKEY_INSECURE_CONTEXT", "Passkeys need a secure (https) connection to this workspace.", name);
+  if (name === "NotSupportedError")
+    return new PasskeyError("WEBAUTHN_NOT_SUPPORTED", "This device can't create a passkey for this browser.", name);
+  // NotAllowedError is a cancel, a timeout, or a browser that wanted a tap
+  // first — all "the person did not complete it", none a fault.
+  return new PasskeyError("NOT_ALLOWED", message || "Passkey cancelled", name || "NotAllowedError");
+}
+
+export function isPasskeyCancel(e: unknown): boolean {
+  const x = e as { code?: string; name?: string } | null;
+  return !!x && (x.code === "NOT_ALLOWED" || x.name === "NotAllowedError" || x.name === "AbortError");
 }
 
 export type PasskeyCredential = {
@@ -70,132 +132,149 @@ export type PasskeyCredential = {
   label?: string | null;
   created_at: string;
   last_used_at?: string | null;
-  transports?: string[];
+  transports?: string[] | null;
+  device_type?: "singleDevice" | "multiDevice" | null;
+  backed_up?: boolean | null;
 };
 
+/** Whether the current browser claims to support passkeys at all. */
+export function isPasskeySupported(): boolean {
+  return typeof window !== "undefined" && !!window.PublicKeyCredential;
+}
+
+let platformProbe: Promise<boolean> | null = null;
 /**
- * Authenticate with a passkey (Face ID / Touch ID / security key).
- * If email is provided we scope the allowCredentials list; without it we
- * use discoverable (resident) credentials — the user picks from the OS sheet.
+ * Does THIS device have its own passkey authenticator (Touch ID, Face ID,
+ * Windows Hello, Android screen lock)? Cached. A probe that refuses to answer
+ * is not a "no" — only a resolved `false` is.
  */
-export async function authenticateWithPasskey(email?: string): Promise<void> {
-  if (!window.PublicKeyCredential) throw Object.assign(new Error("Passkeys aren't supported in this browser."), { code: "WEBAUTHN_NOT_SUPPORTED" });
-
-  // 1) Ask server for assertion options
-  const options: any = await tenant<any>("/auth/passkey/login/options", {
-    method: "POST",
-    auth: false,
-    body: email ? { email: email.trim().toLowerCase() } : {},
-  });
-
-  const publicKey = toPublicKeyOptions(options) as PublicKeyCredentialRequestOptions;
-
-  let cred: PublicKeyCredential | null = null;
-  try {
-    cred = (await navigator.credentials.get({ publicKey })) as PublicKeyCredential | null;
-  } catch (e: any) {
-    // User cancelled — surface as NOT_ALLOWED so caller can stay quiet
-    const err: any = new Error(e?.message || "Passkey cancelled");
-    err.name = e?.name || "NotAllowedError";
-    err.code = "NOT_ALLOWED";
-    throw err;
+export function platformAuthenticatorAvailable(): Promise<boolean> {
+  if (!platformProbe) {
+    platformProbe = (async () => {
+      if (!isPasskeySupported()) return false;
+      const PKC = window.PublicKeyCredential as unknown as {
+        isUserVerifyingPlatformAuthenticatorAvailable?: () => Promise<boolean>;
+      };
+      if (typeof PKC.isUserVerifyingPlatformAuthenticatorAvailable !== "function") return true;
+      const [probe] = await Promise.allSettled([PKC.isUserVerifyingPlatformAuthenticatorAvailable()]);
+      return probe.status === "fulfilled" ? !!probe.value : true;
+    })();
   }
-  if (!cred) throw Object.assign(new Error("No passkey selected"), { code: "NOT_ALLOWED" });
+  return platformProbe;
+}
 
-  const assertion = fromCredential(cred);
+/** A readable name for this device: "Chrome on macOS", "Safari on iPhone". */
+export function deviceLabel(ua = typeof navigator !== "undefined" ? navigator.userAgent : ""): string {
+  const os = /iPhone/.test(ua) ? "iPhone"
+    : /iPad/.test(ua) ? "iPad"
+    : /Android/.test(ua) ? "Android"
+    : /Mac OS X|Macintosh/.test(ua) ? "macOS"
+    : /Windows/.test(ua) ? "Windows"
+    : /CrOS/.test(ua) ? "ChromeOS"
+    : /Linux/.test(ua) ? "Linux"
+    : null;
+  const browser = /Edg\//.test(ua) ? "Edge"
+    : /OPR\//.test(ua) ? "Opera"
+    : /Firefox\//.test(ua) ? "Firefox"
+    : /Chrome\//.test(ua) ? "Chrome"
+    : /Safari\//.test(ua) ? "Safari"
+    : null;
+  if (browser && os) return `${browser} on ${os}`;
+  return os || browser || "This device";
+}
 
-  // 2) Verify with server — returns tokens on success
-  const r = await tenant<{ access_token: string; refresh_token: string; user: { email: string; display_name?: string; avatar_url?: string | null; user_id: string } }>(
-    "/auth/passkey/login/verify",
-    {
-      method: "POST",
-      auth: false,
-      body: { email: email ? email.trim().toLowerCase() : undefined, assertion, challengeToken: (options as any)._challengeToken, _challenge: (options as any)._challenge },
-    },
-  );
-
-  // Persist tokens + last session like the other auth paths do (auth-context will also hydrate via /me)
-  if (r && r.access_token) {
-    tokenStore.setAccess(r.access_token);
-    tokenStore.setPersist(true);
-    // tokenStore.setRefresh will be called via api-client? Actually r contains refresh_token
-    // We mimic auth-context.acceptTokens shape
-    // Use raw tokenStore to avoid importing auth internals
-    // Persist refresh token through the correct store
-    const { tokenStore: ts } = await import("./token-store");
-    ts.setRefresh(r.refresh_token);
-    try {
-      localStorage.setItem("praxis.user", JSON.stringify(r.user));
-    } catch { /* @silent:storage */ }
-    lastSessionStore.fromUser(r.user);
-    // A ceremony that COMPLETED is the proof the sign-in screen needs: this
-    // device holds a credential for this account, so the identity-first screen
-    // may put the passkey in front of them next time. Recorded here rather than
-    // at the call site because every passkey sign-in goes through this function
-    // and the modal is not the only caller.
-    passkeyDeviceStore.set(r.user.email);
-    // Also hit /auth/me to hydrate full profile (best-effort)
-    try {
-      const fresh = await tenant<any>("/auth/me");
-      try {
-        localStorage.setItem("praxis.user", JSON.stringify(fresh));
-      } catch { /* @silent:storage */ }
-      lastSessionStore.fromUser(fresh);
-    } catch { /* @silent:storage */ }
-  }
+/** What the OS will actually ask for, in the words the person knows it by. */
+export function biometricName(ua = typeof navigator !== "undefined" ? navigator.userAgent : ""): string {
+  if (/iPhone/.test(ua)) return "Face ID";
+  if (/iPad/.test(ua)) return "Touch ID or Face ID";
+  if (/Macintosh|Mac OS X/.test(ua)) return "Touch ID";
+  if (/Windows/.test(ua)) return "Windows Hello";
+  if (/Android/.test(ua)) return "your fingerprint";
+  return "your passkey";
 }
 
 /**
- * Register a new passkey (requires an authenticated session, like PIN).
- * Returns the new credential id.
+ * The passkey ceremony up to — not including — the server's verification.
  *
- * `email` is the account the credential is being added to. It is a parameter
- * rather than a lookup so the device registry reflects the SESSION's identity —
- * the caller knows whose session this is, and reading it back out of
- * localStorage would silently record the credential against whoever signed in
- * last on a shared browser.
+ * `credentialIds` are the passkeys THIS device registered for the account. With
+ * them the server scopes the ceremony to exactly those, on this device's own
+ * authenticator, and the OS goes straight to the fingerprint / face. Without
+ * them the browser offers the discoverable passkeys it holds. `email` binds the
+ * ceremony to that account: another person's passkey cannot answer it.
  */
-export async function registerPasskey(
-  label?: string | null,
-  email?: string | null,
-): Promise<{ credential_id: string }> {
-  if (!window.PublicKeyCredential) throw Object.assign(new Error("Passkeys aren't supported in this browser."), { code: "WEBAUTHN_NOT_SUPPORTED" });
-
-  const options = await tenant<any>("/auth/passkey/register/options", {
+export async function passkeyAssertion(opts: { email?: string | null; credentialIds?: string[] }) {
+  if (!isPasskeySupported())
+    throw new PasskeyError("WEBAUTHN_NOT_SUPPORTED", "Passkeys aren't supported in this browser.");
+  const email = opts.email ? opts.email.trim().toLowerCase() : undefined;
+  const ids = (opts.credentialIds || []).filter(Boolean);
+  const options = await tenant<JsonOptions>("/auth/passkey/login/options", {
     method: "POST",
-    body: label ? { label } : {},
+    auth: false,
+    retry: false,
+    body: { ...(email ? { email } : {}), ...(ids.length ? { credential_ids: ids } : {}) },
   });
+  let cred: PublicKeyCredential | null = null;
+  try {
+    cred = (await navigator.credentials.get({
+      publicKey: toPublicKeyOptions(options) as unknown as PublicKeyCredentialRequestOptions,
+    })) as PublicKeyCredential | null;
+  } catch (e) {
+    throw mapDomError(e, "get");
+  }
+  if (!cred) throw new PasskeyError("NOT_ALLOWED", "No passkey selected");
+  return { assertion: fromCredential(cred), challengeToken: String(options._challengeToken || "") };
+}
 
-  const publicKey = toPublicKeyOptions(options) as PublicKeyCredentialCreationOptions;
+/**
+ * Register a passkey on THIS device for the signed-in account.
+ *
+ * `email` is the account the credential is being added to — a parameter, not a
+ * lookup, so the device registry reflects the SESSION's identity. The new
+ * credential's id is recorded against it, which is what lets sign-in go
+ * straight to this device's passkey.
+ *
+ * `currentPassword` is for a session that is no longer fresh: the server asks
+ * for it (REAUTH_REQUIRED) before handing out a permanent way in.
+ */
+export async function registerPasskey(opts: {
+  email: string | null | undefined;
+  label?: string | null;
+  currentPassword?: string | null;
+}): Promise<{ credential_id: string; label?: string | null }> {
+  if (!isPasskeySupported())
+    throw new PasskeyError("WEBAUTHN_NOT_SUPPORTED", "Passkeys aren't supported in this browser.");
+
+  const label = (opts.label || "").trim() || deviceLabel();
+  const options = await tenant<JsonOptions>("/auth/passkey/register/options", {
+    method: "POST",
+    body: { label, ...(opts.currentPassword ? { current_password: opts.currentPassword } : {}) },
+  });
 
   let cred: PublicKeyCredential | null = null;
   try {
-    cred = (await navigator.credentials.create({ publicKey })) as PublicKeyCredential | null;
-  } catch (e: any) {
-    const err: any = new Error(e?.message || "Passkey creation cancelled");
-    err.name = e?.name || "NotAllowedError";
-    err.code = "NOT_ALLOWED";
+    cred = (await navigator.credentials.create({
+      publicKey: toPublicKeyOptions(options) as unknown as PublicKeyCredentialCreationOptions,
+    })) as PublicKeyCredential | null;
+  } catch (e) {
+    const err = mapDomError(e, "create");
+    // The authenticator refused because it already holds one of this account's
+    // passkeys. That IS a fact about this device: record it, so sign-in leads
+    // with the passkey it evidently has.
+    if (err.code === "PASSKEY_ALREADY_ON_DEVICE" && opts.email) passkeyDeviceStore.add(opts.email);
     throw err;
   }
-  if (!cred) throw new Error("Passkey creation failed");
+  if (!cred) throw new PasskeyError("NOT_ALLOWED", "Passkey creation was cancelled");
 
-  const attestation = fromCredential(cred);
-  const r = await tenant<{ credential_id: string }>("/auth/passkey/register/verify", {
+  const r = await tenant<{ credential_id: string; label?: string | null }>("/auth/passkey/register/verify", {
     method: "POST",
-    body: { attestation, label: label ?? null, challengeToken: (options as any)._challengeToken, _challenge: (options as any)._challenge },
+    body: { attestation: fromCredential(cred), label, challengeToken: options._challengeToken },
   });
-  // The device now holds a credential it did not a moment ago. Recorded only
-  // after the server has verified the attestation — a credential the server
-  // refused is not one this browser can sign in with.
-  if (email) passkeyDeviceStore.set(email);
+  // Recorded only after the server verified the attestation — a credential the
+  // server refused is not one this browser can sign in with.
+  if (opts.email) passkeyDeviceStore.add(opts.email, r.credential_id);
   return r;
 }
 
 export const listPasskeys = () => tenant<PasskeyCredential[]>("/auth/passkey/credentials");
 export const deletePasskey = (id: string) =>
   tenant<{ deleted: boolean }>(`/auth/passkey/credentials/${encodeURIComponent(id)}`, { method: "DELETE" });
-
-/** Whether the current browser claims to support passkeys */
-export function isPasskeySupported(): boolean {
-  return typeof window !== "undefined" && !!window.PublicKeyCredential;
-}

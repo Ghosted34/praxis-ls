@@ -10,6 +10,9 @@ const { asyncHandler, AppError } = require("../../utils/errors");
 const { readUpload } = require("../../shared/http/upload.middleware");
 const { readPermissions } = require("../../middleware/rbac");
 const actor = (req) => req.user || { user_id: null };
+const diagnostics = require("./smartcomm.diagnostics.service");
+/** Where a Test calls run's progress is emitted: the runner's own room. */
+const diagMeta = (req) => ({ slug: req.tenant && req.tenant.slug, env: req.env || "live" });
 
 /**
  * The module keys THIS caller may view, as a Set.
@@ -193,21 +196,10 @@ module.exports = {
     res.json({ data });
   }),
 
-  // ── The call record half (PR-2) ─────────────────────────────────────────
+  // ── The call record half ────────────────────────────────────────────────
   /**
-   * One recorded PARTIC of a call, uploaded at hang-up.
-   *
-   * Multipart, like a voice note, and read through the same seam — the recorder
-   * has one buffer to hand over and a handful of numbers about it. `readUpload`
-   * is what lets a data-URL fallback exist for the recorder that could not get
-   * a MediaRecorder: on a browser where only the live capture worked, the audio
-   * never arrives and the flagged transcript is all that side has, which is the
-   * §4.5 fallback doing its job.
-   *
-   * The upload answers the PART, not the transcript: part 9 of 12 must return
-   * the instant it is stored, because the phone that sent it is about to send
-   * the next one. Transcription is the job's business (jobId-deduplicated per
-   * call), and the caller watches its state in the thread.
+   * One recorded part, uploaded as it closes (a complete audio file). Answers
+   * the PART at once; its transcription is a job of its own.
    */
   uploadCallRecording: asyncHandler(async (req, res) => {
     const file = readUpload(req);
@@ -222,22 +214,30 @@ module.exports = {
       language: body.language || null,
       file,
       slug: req.tenant.slug,
+      tenantMeta: req.tenant,
+      env: req.env,
     }));
     res.status(201).json({ data });
   }),
 
-  /**
-   * The browser live capture on its own, for the side whose audio could not be
-   * uploaded at all (§4.9). Separate from `uploadCallRecording` because it is
-   * the one upload that must still land when MediaRecorder never produced a
-   * part — the fallback cannot be a rider on the thing that failed.
-   */
-  uploadCallLiveLog: A((c, req) => callRecords.registerLiveLog(c, {
+  /** A side declares it has finished recording, and how many parts it made. */
+  completeCallRecording: A((c, req) => callRecords.completeSide(c, {
     callId: req.params.id,
     actor: actor(req),
     side: req.body.side,
-    segments: req.body.live_segments,
-    language: req.body.language || null,
+    parts: req.body.parts,
+    tenantMeta: req.tenant,
+    env: req.env,
+  })),
+
+  /** An admin re-runs a part that failed on both providers (never automatic). */
+  rerunCallRecordingPart: A((c, req) => callRecords.rerunPart(c, {
+    callId: req.params.id,
+    actor: actor(req),
+    side: req.params.side,
+    partIndex: Number(req.params.part),
+    tenantMeta: req.tenant,
+    env: req.env,
   })),
 
   getCallTranscript: A((c, req) => callRecords.getTranscript(c, {
@@ -258,11 +258,19 @@ module.exports = {
   discardCallSummary: A((c, req) => callRecords.discardSummary(c, {
     callId: req.params.id, actor: actor(req),
   })),
-  regenerateCallSummary: A((c, req) => callRecords.regenerateSummary(c, {
-    callId: req.params.id,
-    actor: actor(req),
-    language: req.body.language,
-  })),
+  // 202: the rewrite is a job; `call:summary_ready` (redraft) says it is done.
+  regenerateCallSummary: asyncHandler(async (req, res) => {
+    const data = await req.tenantDb((c) => callRecords.requestRegenerate(c, {
+      callId: req.params.id,
+      actor: actor(req),
+      language: req.body.language,
+      tenantMeta: req.tenant,
+      env: req.env,
+    }));
+    res.status(202).json({ data });
+  }),
+  /** The browser live capture was retired in PR-1 and nothing reads it. */
+  callLiveLogGone: (_req, _res, next) => next(new AppError("GONE", "The live transcript upload has been retired", 410)),
 
   /**
    * The bytes of one chat attachment, for a member of its channel.
@@ -318,21 +326,109 @@ module.exports = {
   createCall: C((c, req) => calls.createCall(c, {
     groupId: req.body.group_id, actor: actor(req), tenantMeta: req.tenant, env: req.env,
   })),
-  acceptCall: A((c, req) => calls.acceptCall(c, { id: req.params.id, actor: actor(req) })),
+  acceptCall: A((c, req) => calls.acceptCall(c, {
+    id: req.params.id, actor: actor(req), tenantMeta: req.tenant, env: req.env,
+    record: !(req.body && req.body.record === false),
+  })),
   declineCall: A((c, req) => calls.declineCall(c, {
     id: req.params.id, actor: actor(req), tenantMeta: req.tenant, env: req.env,
   })),
+  // The body's `reason` is ignored: the server decides it (audit B9).
   hangupCall: A((c, req) => calls.hangup(c, {
-    id: req.params.id,
-    actor: actor(req),
-    reason: (req.body && req.body.reason) || "hangup",
-    tenantMeta: req.tenant,
-    env: req.env,
+    id: req.params.id, actor: actor(req), tenantMeta: req.tenant, env: req.env,
   })),
   callFailed: A((c, req) => calls.reportFailure(c, {
     id: req.params.id, actor: actor(req), tenantMeta: req.tenant, env: req.env,
   })),
+  // FN-2: "my audio is still up", over HTTP because the socket may not be.
+  callAlive: A((c, req) => calls.recordMediaBeat(c, {
+    id: req.params.id, actor: actor(req), tenantMeta: req.tenant, env: req.env,
+  })),
   listCalls: A((c, req) => calls.listCalls(c, actor(req))),
+  callProcessing: A((c) => calls.processingDisclosure(c)),
+  callCapabilities: asyncHandler(async (req, res) => {
+    const [canDial, settingsAdmin, canTest] = await require("../../middleware/rbac").readPermissions(req, [
+      ["MOD-64", "create"], ["MOD-70", "edit"], ["MOD-64", "test"],
+    ]);
+    const data = await req.tenantDb(async (c) => {
+      const { rows } = await c.query("SELECT state FROM feature_state WHERE feature_key = $1", ["calls"]);
+      const on = !!rows[0] && rows[0].state === "on";
+      return {
+        calls: on,
+        can_dial: on && canDial === true,
+        recording: on && (await calls.recordingEnabled(c)),
+        settings_admin: settingsAdmin === true,
+        // PR-7 (O5): may run Comms → Setup → Test calls.
+        can_test: on && canTest === true,
+      };
+    });
+    res.json({ data });
+  }),
+  eraseUserCallRecords: A((c, req) => require("./smartcomm.call.pipeline.service").eraseUserCallRecords(c, {
+    userId: req.body.user_id, actor: actor(req),
+  })),
   getCall: A((c, req) => calls.getCall(c, { id: req.params.id, actor: actor(req) })),
   callTurn: A((c, req) => calls.turnFor(c, { id: req.params.id, actor: actor(req) })),
+  // PR-4: what is ringing for me (A13), and a ring to this device only (A15).
+  listRingingCalls: A((c, req) => calls.listRinging(c, actor(req))),
+  testRing: A((c, req) => calls.testRing(c, { actor: actor(req), endpoint: req.body.endpoint })),
+
+  // ── Test calls (PR-7, O5). The run row is in the LIVE schema (identityDb),
+  // whatever environment is being tested; `tenantDb` is that environment.
+  diagList: asyncHandler(async (req, res) => {
+    res.json({ data: await req.identityDb((c) => diagnostics.listRuns(c)) });
+  }),
+  diagStart: asyncHandler(async (req, res) => {
+    const data = await req.identityDb((live) => req.tenantDb((envClient) => diagnostics.startRun(live, envClient, {
+      actor: actor(req), env: req.env, tenantMeta: req.tenant,
+      userAgent: req.get("user-agent") || null, appVersion: req.body.app_version || null,
+    })));
+    res.status(201).json({ data });
+  }),
+  diagGet: asyncHandler(async (req, res) => {
+    const data = await req.identityDb((c) => diagnostics.getRun(c, { runId: req.params.id, meta: diagMeta(req) }));
+    res.json({ data });
+  }),
+  diagSignal: asyncHandler(async (req, res) => {
+    const data = await req.identityDb((c) => diagnostics.ackSignal(c, {
+      runId: req.params.id, actor: actor(req), nonce: req.body.nonce, meta: diagMeta(req),
+    }));
+    res.json({ data });
+  }),
+  diagRing: asyncHandler(async (req, res) => {
+    const data = await req.identityDb((live) => req.tenantDb((envClient) => diagnostics.sendRing(live, envClient, {
+      runId: req.params.id, actor: actor(req), endpoint: req.body.endpoint, meta: diagMeta(req),
+    })));
+    res.json({ data });
+  }),
+  diagIce: asyncHandler(async (req, res) => {
+    // Only for a run of the caller's that is still open.
+    await req.identityDb(async (c) => {
+      const run = await require("./smartcomm.diagnostics.repo").getRun(c, req.params.id);
+      if (!run || run.user_id !== actor(req).user_id || run.status !== "RUNNING") {
+        throw new AppError("NOT_FOUND", "Test run not found", 404);
+      }
+    });
+    res.json({ data: diagnostics.iceForRun() });
+  }),
+  diagStep: asyncHandler(async (req, res) => {
+    const data = await req.identityDb((c) => diagnostics.reportStep(c, {
+      runId: req.params.id, actor: actor(req), key: req.params.key, result: req.body, meta: diagMeta(req),
+    }));
+    res.json({ data });
+  }),
+  diagPart: asyncHandler(async (req, res) => {
+    const file = readUpload(req);
+    const data = await req.identityDb((c) => diagnostics.uploadPart(c, {
+      runId: req.params.id, actor: actor(req), index: req.body.part_index, file,
+      slug: req.tenant.slug, meta: diagMeta(req),
+    }));
+    res.json({ data });
+  }),
+  diagFinish: asyncHandler(async (req, res) => {
+    const data = await req.identityDb((c) => diagnostics.finishRun(c, {
+      runId: req.params.id, actor: actor(req), tenantMeta: req.tenant, env: req.env, meta: diagMeta(req),
+    }));
+    res.json({ data });
+  }),
 };

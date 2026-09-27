@@ -158,7 +158,21 @@ const PANEL_OPEN_MS = 110;
  *  the nav item and the panel it opened does not close it. */
 const PANEL_CLOSE_MS = 220;
 
-export function SiteHeader() {
+export function SiteHeader({
+  overlay = false,
+}: {
+  /**
+   * The page beneath runs full-bleed UNDER this bar (`PageShell
+   * overlayHeader`). It switches the whole subtree to the hero's colour
+   * family — see `.site-shell[data-overlay="true"]` in index.css for why that
+   * is the safe version and a cross-fade to the page's own is not.
+   *
+   * An ATTRIBUTE rather than a class, for the reason `data-live` is one on the
+   * hero: it is state about the page this bar is sitting on, not styling, and
+   * a reader of either file can see at a glance which rules it switches.
+   */
+  overlay?: boolean;
+} = {}) {
   const { t } = useTranslation();
   const { branding } = useBranding();
   const [open, setOpen] = React.useState(false);
@@ -284,7 +298,11 @@ export function SiteHeader() {
   }, [hostRef]);
 
   return (
-    <header ref={hostRef} className="site-shell sticky top-0 z-40">
+    <header
+      ref={hostRef}
+      data-overlay={overlay ? "true" : "false"}
+      className="site-shell sticky top-0 z-40"
+    >
       {/* ── the utility strip, which erodes ───────────────────────────────
           `.hdr-erode` collapses its height and dissolves its content through a
           dot mask as `--hdr` rises. It keeps `overflow: clip` so the embers

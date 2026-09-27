@@ -1,65 +1,49 @@
 /**
- * The caller's summary draft (Smart Comms PR-2, §4.10 / decision row 3).
+ * The caller's summary draft editor (decision row 3: nothing posts a summary
+ * by itself; the caller reads, edits and sends).
  *
- * ── THERE IS NO AUTO-POST ───────────────────────────────────────────────────
- *
- * This panel is the whole reason the send endpoint exists: the pipeline writes a
- * draft, the CALLER reads it, edits what is wrong, and presses send. Nothing
- * posts a summary by itself — not the pipeline, not a timer, not the socket
- * event that opened this panel.
- *
- * ── WHAT THE CALLER MAY EDIT, AND WHAT THEY MUST NOT ────────────────────────
- *
- * The connective prose (`summary_text`) is theirs to rewrite in the app
- * language they are working in, and the EN/FR toggle regenerates it. The key
- * points and follow-ups are quotations: they stay in the language they were
- * spoken, and neither this component nor anything behind it translates them
- * (§4.10). The labels below say so, in the reader's own language, because a
- * user who assumes the whole card follows the toggle would "fix" a French
- * quotation by rewriting it.
- *
- * ── THE STATE MACHINE IS PURE AND SEPARATE ─────────────────────────────────
- *
- * `summaryDraftReducer` owns the transitions (load → edit → regenerate → send)
- * and is exported because the guards in it are the promise: a regenerate while
- * a send is in flight, a second send of a sent summary, a send of a draft whose
- * text was emptied. The component below is a renderer over that state.
+ * Embedded twice: pinned above the composer of the conversation (owner
+ * decision O3, pinned-call-summary.tsx) and on the call's own page
+ * (call-record.tsx). The caller edits the prose, the key points and the
+ * follow-ups, switches EN/FR (which redrafts the prose), then sends or
+ * discards. Key points and follow-ups stay in the language spoken. Minutes
+ * that could not be transcribed are named. The state machine lives in
+ * summary-draft-state.ts.
  */
 import * as React from "react";
-// The summary contract itself, shared with the API (§4.10). The caller's edit
-// is checked against the SAME schema the endpoint parses, so the send button can
-// say what is wrong — instead of the caller discovering a 422 after typing.
+// The same shared schema the send endpoint parses, so the button can say what
+// is wrong before the caller meets a 422.
 import { callSummary } from "@shared";
-import { tr } from "@/lib/i18n";
-import { cn } from "@/lib/cn";
+import { tr, tv } from "@/lib/i18n";
 import { useToast } from "@/components/ui/toast";
+import { useConfirm } from "@/components/ui/use-confirm";
+import { Button } from "@/components/ui/button";
+import { Field, Select as NativeSelect } from "@/components/ui/modal";
+import { Input } from "@/components/ui/input";
+import { DateField } from "@/components/ui/date-field";
+import { TrashIcon } from "@/components/ui/icons";
+import { Textarea } from "@/components/ui/textarea";
+import { Segmented } from "@/components/ui/segmented";
+import { Callout } from "@/components/ui/callout";
 import * as api from "@/lib/smartcomm-api";
-import type { CallProvenance } from "@/lib/smartcomm-api";
 import { EMPTY, summaryDraftReducer } from "./summary-draft-state";
+import { provenanceLabel } from "./call-provenance";
+import { gapsSentence, transcriptionReasonSentence } from "./call-labels";
 
-const PROVENANCE_LABEL: Record<CallProvenance, string> = {
-  groq: "Transcribed from the call recording",
-  "browser-live": "Generated from the in-call browser capture (unverified)",
-  "transcript-only": "Summary unavailable — provider down",
-};
-
-/** How the draft reads out loud, whether or not it may be edited. */
-function provenanceLabel(provenance: CallProvenance): string {
-  return tr(PROVENANCE_LABEL[provenance] || PROVENANCE_LABEL.groq);
-}
-
-/** The caller's editor for one call's draft. `callId` is the whole input: the
- *  panel re-reads the view, because the pipeline may still be finishing. */
-export function CallSummaryPanel({
+export function CallSummaryEditor({
   callId,
-  onClose,
-  onPosted,
+  onChanged,
+  refreshKey,
 }: {
   callId: string;
-  onClose: () => void;
-  onPosted?: (messageId: string) => void;
+  /** After a send or a discard, so the page around it can refresh. */
+  onChanged?: () => void;
+  /** Bumped when the server redrafted the summary; re-read unless the caller
+   *  has unsent edits, which a redraft must never overwrite. */
+  refreshKey?: number;
 }) {
   const toast = useToast();
+  const [confirm, confirmDialog] = useConfirm();
   const [state, dispatch] = React.useReducer(summaryDraftReducer, EMPTY);
   const [loading, setLoading] = React.useState(true);
 
@@ -68,8 +52,8 @@ export function CallSummaryPanel({
       const view = await api.getCallSummary(callId);
       dispatch({ type: "loaded", view });
     } catch {
-      /* @silent:parse — the panel is opened by a socket event and may be a beat
-         ahead of the row; the retry below is the answer, not an error screen. */
+      /* @silent:parse — the draft may still be being written; the poll below
+         retries, and the page shows the transcription state meanwhile. */
     } finally {
       setLoading(false);
     }
@@ -79,9 +63,47 @@ export function CallSummaryPanel({
     void load();
   }, [load]);
 
-  // A draft that is still being written (the LLM is running, the last part is
-  // still uploading) is worth waiting for: the socket event arrives when it is
-  // ready, and this poll is the belt to that braces.
+  const dirty = React.useRef(false);
+  dirty.current = state.dirty;
+
+  // The rewrite is a job (audit C8): after the request, the draft is re-read
+  // until it is in the language asked for, or has stopped being a draft.
+  const rewriteTo = React.useRef<"en" | "fr" | null>(null);
+  const checkRewrite = React.useCallback(async () => {
+    const target = rewriteTo.current;
+    if (!target) return;
+    try {
+      const view = await api.getCallSummary(callId);
+      const s = view.summary;
+      if (!s || s.language === target || s.draft_status !== "PENDING_REVIEW") {
+        rewriteTo.current = null;
+        dispatch({ type: "loaded", view });
+      }
+    } catch {
+      /* @silent:parse — the next poll asks again; the timeout below says so. */
+    }
+  }, [callId]);
+
+  React.useEffect(() => {
+    if (!refreshKey) return;
+    if (rewriteTo.current) void checkRewrite();
+    else if (!dirty.current) void load();
+  }, [refreshKey, load, checkRewrite]);
+
+  React.useEffect(() => {
+    if (!state.regenerating) return;
+    const poll = setInterval(() => void checkRewrite(), 2000);
+    const giveUp = setTimeout(() => {
+      rewriteTo.current = null;
+      dispatch({ type: "error", message: tr("Could not rewrite the summary. Try again.") });
+    }, 90_000);
+    return () => {
+      clearInterval(poll);
+      clearTimeout(giveUp);
+    };
+  }, [state.regenerating, checkRewrite]);
+
+  // A draft that is still being written is worth waiting for.
   React.useEffect(() => {
     if (!loading && state.status !== "waiting") return;
     const t = setInterval(() => void load(), 15_000);
@@ -91,22 +113,18 @@ export function CallSummaryPanel({
   const regenerate = async (language: "en" | "fr") => {
     dispatch({ type: "regenerate", language });
     try {
-      const out = await api.regenerateCallSummary(callId, language);
-      dispatch({ type: "regenerated", payload: out });
+      await api.regenerateCallSummary(callId, language);
+      rewriteTo.current = language;
     } catch {
       dispatch({ type: "error", message: tr("Could not rewrite the summary. Try again.") });
     }
   };
 
-  // What the contract says about the current text: the limits and the shape
-  // come from packages/shared, so the client cannot disagree with the API about
-  // what is sendable.
   const validation = callSummary.schema.safeParse({
     summary: state.text,
     key_points: state.points,
     follow_ups: state.followUps,
   });
-  const canSend = validation.success;
 
   const send = async () => {
     dispatch({ type: "send" });
@@ -118,181 +136,192 @@ export function CallSummaryPanel({
       });
       dispatch({ type: "sent", isUpdate: out.is_update });
       toast.success(tr("Summary sent to the conversation"));
-      onPosted?.(out.message_id);
+      onChanged?.();
     } catch {
       dispatch({ type: "error", message: tr("Could not send the summary. Try again.") });
     }
   };
 
   const discard = async () => {
+    const ok = await confirm({
+      title: tr("Discard this summary?"),
+      body: tr("The draft is kept on the call but can no longer be sent."),
+      confirmLabel: tr("Discard summary"),
+      cancelLabel: tr("Keep it"),
+      destructive: true,
+    });
+    if (!ok) return;
     dispatch({ type: "discard" });
     try {
       await api.discardCallSummary(callId);
       dispatch({ type: "discarded" });
-      onClose();
+      onChanged?.();
     } catch {
       dispatch({ type: "error", message: tr("Could not discard the draft. Try again.") });
     }
   };
 
-  if (state.status === "discarded") return null;
+  const editing = state.status === "ready" || state.status === "sending" || state.status === "error";
 
   return (
-    <div
-      role="dialog"
-      aria-label={tr("Call summary")}
-      className="fixed bottom-4 right-4 z-[60] w-[min(28rem,calc(100vw-2rem))] rounded-2xl border border-border bg-card p-4 shadow-[var(--shadow-l)]"
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h2 className="text-sm font-semibold text-foreground">{tr("Call summary")}</h2>
-          <p className="text-micro text-muted-foreground">{provenanceLabel(state.provenance)}</p>
-        </div>
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded px-2 text-muted-foreground hover:text-foreground"
-          aria-label={tr("Close")}
-        >
-          ✕
-        </button>
-      </div>
+    <div className="space-y-3">
+      <p className="text-micro text-muted-foreground">{provenanceLabel(state.provenance)}</p>
 
       {state.status === "waiting" && (
-        <p className="mt-3 text-sm text-muted-foreground" aria-live="polite">
-          {tr("Transcribing the call…")}
+        <p className="text-sm text-muted-foreground" aria-live="polite">
+          {loading ? tr("Loading…") : tr("Transcribing the call…")}
         </p>
       )}
-
       {state.status === "sent" && (
-        <p className="mt-3 text-sm text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           {tr("This summary has been sent to the conversation.")}
         </p>
       )}
+      {state.status === "discarded" && (
+        <p className="text-sm text-muted-foreground">{tr("This draft was discarded.")}</p>
+      )}
 
-      {(state.status === "ready" || state.status === "sending" || state.status === "error") && (
-        <div className="mt-3 space-y-3">
+      {editing && (
+        <>
+          {transcriptionReasonSentence(state.reason) && (
+            <Callout tone="warn">{transcriptionReasonSentence(state.reason)}</Callout>
+          )}
+          {state.gaps.length > 0 && (
+            <Callout tone="warn">{gapsSentence(state.gaps)}</Callout>
+          )}
           {state.updateAvailable && (
-            <p className="rounded-lg border border-[rgb(var(--warn))]/40 bg-[rgb(var(--warn))/0.12] px-3 py-2 text-xs text-foreground">
+            <Callout tone="info">
               {tr("The certified transcript is ready — you can post an updated summary.")}
-            </p>
+            </Callout>
           )}
 
-          <label className="block text-xs font-medium text-muted-foreground" htmlFor="call-summary-text">
-            {tr("Summary")}
-          </label>
-          <textarea
-            id="call-summary-text"
-            value={state.text}
-            onChange={(e) => dispatch({ type: "edit", text: e.target.value })}
-            rows={5}
-            maxLength={callSummary.LIMITS.summaryMax}
-            className="w-full resize-y rounded-lg border border-border bg-background p-3 text-sm text-foreground"
-          />
+          <Field label={tr("Summary")} htmlFor="call-summary-text">
+            <Textarea
+              id="call-summary-text"
+              value={state.text}
+              onChange={(e) => dispatch({ type: "edit", text: e.target.value })}
+              rows={5}
+              maxLength={callSummary.LIMITS.summaryMax}
+            />
+          </Field>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="text-micro text-muted-foreground">{tr("Rewrite in:")}</span>
-            <button
-              type="button"
-              onClick={() => void regenerate("en")}
-              disabled={state.regenerating || state.language === "en"}
-              aria-pressed={state.language === "en"}
-              className={cn(
-                "rounded-md border px-2 py-0.5 text-micro",
-                state.language === "en"
-                  ? "border-[rgb(var(--brand-blue))]/50 bg-[rgb(var(--brand-blue))/0.15] text-foreground"
-                  : "border-border text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {tr("English")}
-            </button>
-            <button
-              type="button"
-              onClick={() => void regenerate("fr")}
-              disabled={state.regenerating || state.language === "fr"}
-              aria-pressed={state.language === "fr"}
-              className={cn(
-                "rounded-md border px-2 py-0.5 text-micro",
-                state.language === "fr"
-                  ? "border-[rgb(var(--brand-blue))]/50 bg-[rgb(var(--brand-blue))/0.15] text-foreground"
-                  : "border-border text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {tr("French")}
-            </button>
+            <Segmented<"en" | "fr">
+              label={tr("Summary language")}
+              value={state.language}
+              options={[
+                { value: "en", label: tr("English"), disabled: state.regenerating },
+                { value: "fr", label: tr("French"), disabled: state.regenerating },
+              ]}
+              onChange={(language) => void regenerate(language)}
+            />
             {state.regenerating && (
-              <span className="text-micro text-muted-foreground" aria-live="polite">
-                {tr("Rewriting…")}
-              </span>
+              <span className="text-micro text-muted-foreground" aria-live="polite">{tr("Rewriting…")}</span>
             )}
           </div>
 
           {state.points.length > 0 && (
-            <div>
-              <p className="text-xs font-medium text-muted-foreground">{tr("Key points")}</p>
-              <ul className="mt-1 space-y-1">
-                {state.points.map((p, i) => (
-                  <li key={`${p.text}-${i}`} className="text-sm text-foreground">
-                    • {p.text}{" "}
-                    <span className="text-micro text-muted-foreground">
-                      ({p.raised_by === "caller" ? tr("you") : tr("them")})
-                    </span>
-                  </li>
-                ))}
-              </ul>
-              <p className="mt-1 text-micro text-muted-foreground">
-                {tr("Quoted as spoken — these are never translated.")}
-              </p>
-            </div>
+            <fieldset className="space-y-2">
+              <legend className="text-xs font-medium text-muted-foreground">{tr("Key points")}</legend>
+              {state.points.map((p, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <Input
+                    aria-label={tv("Key point {{n}}", { n: i + 1 })}
+                    value={p.text}
+                    maxLength={callSummary.LIMITS.textMax}
+                    onChange={(e) => dispatch({
+                      type: "edit",
+                      points: state.points.map((x, j) => (j === i ? { ...x, text: e.target.value } : x)),
+                    })}
+                  />
+                  <span className="shrink-0 text-micro text-muted-foreground">
+                    {p.raised_by === "caller" ? tr("you") : tr("them")}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    icon={null}
+                    aria-label={tv("Remove key point {{n}}", { n: i + 1 })}
+                    onClick={() => dispatch({ type: "edit", points: state.points.filter((_, j) => j !== i) })}
+                  >
+                    <TrashIcon width={16} height={16} />
+                  </Button>
+                </div>
+              ))}
+              <p className="text-micro text-muted-foreground">{tr("Quoted as spoken — these are never translated.")}</p>
+            </fieldset>
           )}
 
           {state.followUps.length > 0 && (
-            <div>
-              <p className="text-xs font-medium text-muted-foreground">{tr("Follow-ups")}</p>
-              <ul className="mt-1 space-y-1">
-                {state.followUps.map((f, i) => (
-                  <li key={`${f.text}-${i}`} className="text-sm text-foreground">
-                    • {f.text}{" "}
-                    <span className="text-micro text-muted-foreground">
-                      ({f.owner === "caller" ? tr("you") : tr("them")}
-                      {f.due ? ` · ${f.due}` : ""})
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
+            <fieldset className="space-y-2">
+              <legend className="text-xs font-medium text-muted-foreground">{tr("Follow-ups")}</legend>
+              {state.followUps.map((f, i) => {
+                const update = (patch: Partial<typeof f>) => dispatch({
+                  type: "edit",
+                  followUps: state.followUps.map((x, j) => (j === i ? { ...x, ...patch } : x)),
+                });
+                return (
+                  <div key={i} className="flex flex-wrap items-center gap-2">
+                    <Input
+                      className="min-w-[12rem] flex-1"
+                      aria-label={tv("Follow-up {{n}}", { n: i + 1 })}
+                      value={f.text}
+                      maxLength={callSummary.LIMITS.textMax}
+                      onChange={(e) => update({ text: e.target.value })}
+                    />
+                    <NativeSelect
+                      className="w-auto"
+                      aria-label={tv("Who does follow-up {{n}}", { n: i + 1 })}
+                      value={f.owner}
+                      onChange={(e) => update({ owner: e.target.value === "callee" ? "callee" : "caller" })}
+                    >
+                      <option value="caller">{tr("You")}</option>
+                      <option value="callee">{tr("Them")}</option>
+                    </NativeSelect>
+                    <DateField
+                      className="w-[9.5rem]"
+                      aria-label={tv("Due date of follow-up {{n}}", { n: i + 1 })}
+                      value={f.due || ""}
+                      onChange={(iso) => update({ due: iso || null })}
+                    />
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      icon={null}
+                      aria-label={tv("Remove follow-up {{n}}", { n: i + 1 })}
+                      onClick={() => dispatch({ type: "edit", followUps: state.followUps.filter((_, j) => j !== i) })}
+                    >
+                      <TrashIcon width={16} height={16} />
+                    </Button>
+                  </div>
+                );
+              })}
+            </fieldset>
           )}
 
-          {state.error && (
-            <p role="alert" className="text-xs text-[rgb(var(--bad))]">
-              {state.error}
-            </p>
-          )}
+          {state.error && <Callout tone="bad">{state.error}</Callout>}
 
-          <div className="flex items-center justify-end gap-2">
-            <button
-              type="button"
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Button
+              variant="outline"
               onClick={() => void discard()}
               disabled={state.status === "sending"}
-              className="rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+              icon={null}
             >
               {tr("Discard")}
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
               onClick={() => void send()}
-              disabled={state.status === "sending" || state.regenerating || !canSend}
-              className="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground disabled:opacity-60"
+              disabled={state.status === "sending" || state.regenerating || !validation.success}
+              loading={state.status === "sending"}
             >
-              {state.status === "sending"
-                ? tr("Sending…")
-                : state.updateAvailable
-                  ? tr("Post updated summary")
-                  : tr("Send to conversation")}
-            </button>
+              {state.updateAvailable ? tr("Post updated summary") : tr("Send to conversation")}
+            </Button>
           </div>
-        </div>
+        </>
       )}
+      {confirmDialog}
     </div>
   );
 }

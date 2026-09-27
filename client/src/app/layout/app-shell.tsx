@@ -100,7 +100,8 @@ import { AppIcon } from "@/components/ui/app-icon";
 import { type EffectivePwa } from "@/lib/pwa-config";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { PageSkeleton } from "@/components/ui/skeleton";
-import { XIcon } from "@/components/ui/icons";
+import { PullToRefresh } from "@/components/ui/pull-to-refresh";
+import { LockIcon, XIcon } from "@/components/ui/icons";
 import { ActionErrorBanner } from "@/components/action-error-banner";
 import { AccessBanner } from "@/app/layout/access-banner";
 import { RouteAccessGate } from "@/app/layout/route-access-gate";
@@ -390,7 +391,7 @@ function ThemeChoice() {
   );
 }
 
-/** User avatar + dropdown (role · My HR · My security · theme · density · Sign out). */
+/** User avatar + dropdown (role · My HR · My security · theme · density · Lock · Sign out). */
 function UserMenu({
   user,
   onLogout,
@@ -405,6 +406,7 @@ function UserMenu({
   onLogout: () => void;
 }) {
   const { t } = useTranslation();
+  const { lockNow } = useAuth();
   const name = (
     user?.display_name ||
     user?.full_name ||
@@ -503,6 +505,12 @@ function UserMenu({
         </div>
         <DensityChoice />
         <DropdownSeparator />
+        {/* Stepping away from the desk: lock now rather than wait for the
+            two-hour lock. Ends the session server-side; the app stays put
+            behind the lock screen and the next unlock is one fingerprint. */}
+        <DropdownItem onSelect={() => void lockNow()}>
+          <LockIcon width={16} height={16} /> {t("shell.lockScreen")}
+        </DropdownItem>
         <div className="p-1 pt-2">
           <DropdownItem
             onSelect={onLogout}
@@ -711,6 +719,21 @@ export function AppShell() {
   const location = useLocation();
   const chatWorkstation = /^\/comms\/?$/.test(location.pathname);
   const qc = useQueryClient();
+  // The one scroll container (index.css: html/body/#root are overflow:hidden).
+  // Handed to <PullToRefresh> so the pull only arms at the true top of the
+  // page — window.scrollY is always 0 here and cannot answer that.
+  const mainRef = React.useRef<HTMLElement>(null);
+  /**
+   * The app-wide pull-to-refresh action. A SOFT refresh: invalidate every
+   * active React Query key so the screen the user is on revalidates in place —
+   * no `location.reload()`, so scroll, auth and in-memory form state all
+   * survive (stale-while-revalidate, like a native app). The control tower
+   * shipped this gesture on its own; hoisting it to the shell is what makes the
+   * pull work on EVERY screen, which is what users expect from a mobile app.
+   */
+  const softRefresh = React.useCallback(async () => {
+    await qc.invalidateQueries();
+  }, [qc]);
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
   const [paletteOpen, setPaletteOpen] = React.useState(false);
   const [env] = React.useState<string>(tokenStore.getEnv());
@@ -1140,31 +1163,46 @@ export function AppShell() {
                */}
               <main
                 id="main-content"
+                ref={mainRef}
                 tabIndex={-1}
                 key={env}
                 className={cn(
-                  "relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-4 pb-24 focus:outline-none md:p-6 md:pb-6 2xl:px-8",
+                  "relative min-h-0 flex-1 overflow-y-auto overscroll-y-contain overflow-x-hidden p-4 pb-24 focus:outline-none md:p-6 md:pb-6 2xl:px-8",
                   chatWorkstation && "overflow-hidden",
                 )}
               >
-                {/* Per-route boundary, keyed on the path so navigating away from a
-                crashed screen clears the error rather than stranding the user on it.
-                The root boundary in main.tsx is the backstop; this one keeps the
-                shell, the nav and the copilot alive when a single screen throws. */}
-                <ErrorBoundary key={location.pathname} name="This screen">
-                  {/* Screens are lazy (app.tsx), so the routed element can suspend while
-                  its chunk downloads. The boundary sits HERE rather than around the
-                  whole app so the nav, topbar and copilot stay painted and only the
-                  content column shows the skeleton. Inside the ErrorBoundary so a
-                  chunk that fails to load — a stale service worker pointing at a
-                  filename a deploy removed — surfaces as the screen error, not a
-                  silent dead route. */}
-                  <React.Suspense fallback={<PageSkeleton />}>
-                    <RouteAccessGate pathname={location.pathname}>
-                      <Outlet />
-                    </RouteAccessGate>
-                  </React.Suspense>
-                </ErrorBoundary>
+                {/* App-wide pull-to-refresh. It wraps every routed screen rather
+                than living on one page, so the mobile pull gesture works
+                everywhere the way a native app's does — a soft, in-place
+                revalidation (softRefresh), not a hard reload. It reads the pull
+                against THIS <main> (mainRef), the app's only scroll container,
+                and stands down on the chat workstation, which owns its own
+                scroll. Desktop and open-dialog suppression are the component's
+                own (see pull-to-refresh.tsx). */}
+                <PullToRefresh
+                  onRefresh={softRefresh}
+                  scrollRef={mainRef}
+                  disabled={chatWorkstation}
+                >
+                  {/* Per-route boundary, keyed on the path so navigating away from a
+                  crashed screen clears the error rather than stranding the user on it.
+                  The root boundary in main.tsx is the backstop; this one keeps the
+                  shell, the nav and the copilot alive when a single screen throws. */}
+                  <ErrorBoundary key={location.pathname} name="This screen">
+                    {/* Screens are lazy (app.tsx), so the routed element can suspend while
+                    its chunk downloads. The boundary sits HERE rather than around the
+                    whole app so the nav, topbar and copilot stay painted and only the
+                    content column shows the skeleton. Inside the ErrorBoundary so a
+                    chunk that fails to load — a stale service worker pointing at a
+                    filename a deploy removed — surfaces as the screen error, not a
+                    silent dead route. */}
+                    <React.Suspense fallback={<PageSkeleton />}>
+                      <RouteAccessGate pathname={location.pathname}>
+                        <Outlet />
+                      </RouteAccessGate>
+                    </React.Suspense>
+                  </ErrorBoundary>
+                </PullToRefresh>
               </main>
             </div>
           </div>

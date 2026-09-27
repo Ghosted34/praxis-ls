@@ -146,7 +146,7 @@ function mix(c: Rgb, target: Rgb, t: number): Rgb {
  * comfortably and fails the card. There is no single worst surface; there is a
  * SET, and the ink has to clear all of it.
  */
-function toAccessibleInk(colour: Rgb, surfaces: Rgb[], ratio = AA_NORMAL): Rgb {
+export function toAccessibleInk(colour: Rgb, surfaces: Rgb[], ratio = AA_NORMAL): Rgb {
   const clears = (c: Rgb) => surfaces.every((s) => contrast(c, s) >= ratio);
   if (clears(colour)) return colour;
   const target: Rgb =

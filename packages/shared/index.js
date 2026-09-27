@@ -21,6 +21,7 @@ const linkDetect = require("./rules/link-detect");
 const notificationInterrupt = require("./rules/notification-interrupt");
 const notificationEmailDefault = require("./rules/notification-email-default");
 const workSchedule = require("./rules/work-schedule");
+const quickPin = require("./rules/quick-pin");
 const pwaDesign = require("./pwa-design");
 const countries = require("./data/countries");
 const currencies = require("./data/currencies");
@@ -80,6 +81,10 @@ exports.notificationInterrupt = notificationInterrupt;
 // hands the default to the EMAIL preference read, and the Preferences matrix
 // draws its checkbox from it — two callers, one answer, no drift.
 exports.notificationEmailDefault = notificationEmailDefault;
+// What a Quick PIN is and which ones are refused. Shared because the API refuses
+// a weak PIN at registration and My security says so as the user types — two
+// lists disagree, and the visible failure is a 422 after pressing Save.
+exports.quickPin = quickPin;
 // Canonical ISO country reference (code, name, phone, currency, per-jurisdiction
 // registration requirements) — the API, the seed and the client picker's source.
 /*

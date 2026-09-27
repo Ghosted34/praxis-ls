@@ -7,13 +7,13 @@
  * has to say 422.
  */
 import { describe, it, expect } from "vitest";
-import { summaryDraftReducer, type DraftState } from "./summary-draft-state";
+import { EMPTY, summaryDraftReducer, type DraftState } from "./summary-draft-state";
 import type { CallSummaryView } from "@/lib/smartcomm-api";
 
 const view = (over: Partial<CallSummaryView> = {}, summary: Partial<CallSummaryView["summary"]> = {}): CallSummaryView => ({
   call_id: "c1",
   transcription_state: "CERTIFIED",
-  transcription_error: null,
+  transcription_reason: null,
   recording_enabled: true,
   is_caller: true,
   summary: over.summary === null ? null : {
@@ -33,10 +33,7 @@ const view = (over: Partial<CallSummaryView> = {}, summary: Partial<CallSummaryV
   ...over,
 }) as CallSummaryView;
 
-const loaded = (v: CallSummaryView = view()) => summaryDraftReducer(
-  { status: "waiting", language: "en", text: "", points: [], followUps: [], provenance: "groq", updateAvailable: false, dirty: false, regenerating: false, error: null },
-  { type: "loaded", view: v },
-);
+const loaded = (v: CallSummaryView = view()) => summaryDraftReducer(EMPTY, { type: "loaded", view: v });
 
 describe("loading a draft", () => {
   it("a PENDING_REVIEW draft is editable, with the quotations as they were spoken", () => {
@@ -66,8 +63,28 @@ describe("loading a draft", () => {
   });
 });
 
+describe("the minutes with no transcript", () => {
+  it("are carried from the read, whatever the draft's state", () => {
+    const gaps = [{ side: "caller" as const, from_s: 120, to_s: 240, parts: [2] }];
+    expect(loaded(view({ gaps })).gaps).toEqual(gaps);
+    expect(loaded(view({ gaps, summary: null })).gaps).toEqual(gaps);
+    expect(loaded(view()).gaps).toEqual([]);
+  });
+});
+
+describe("the caller edits the key points and follow-ups (O3)", () => {
+  it("a key point can be reworded or removed, and a follow-up re-owned and re-dated", () => {
+    let s = loaded();
+    s = summaryDraftReducer(s, { type: "edit", points: [] });
+    expect(s.points).toEqual([]);
+    s = summaryDraftReducer(s, { type: "edit", followUps: [{ text: "Envoyer le BL", owner: "callee", due: "2026-10-02" }] });
+    expect(s.followUps).toEqual([{ text: "Envoyer le BL", owner: "callee", due: "2026-10-02" }]);
+    expect(s.dirty).toBe(true);
+  });
+});
+
 describe("editing and regenerating", () => {
-  it("an edit is kept, and a regeneration replaces the prose in the other language", () => {
+  it("an edit is kept until a rewrite lands, and the rewritten draft replaces the prose (C8: a job, read back)", () => {
     let s = loaded();
     s = summaryDraftReducer(s, { type: "edit", text: "My own words." });
     expect(s.dirty).toBe(true);
@@ -76,21 +93,30 @@ describe("editing and regenerating", () => {
     expect(s.regenerating).toBe(true);
 
     s = summaryDraftReducer(s, {
-      type: "regenerated",
-      payload: {
+      type: "loaded",
+      view: view({}, {
         language: "fr",
-        provenance: "groq",
-        summary: {
-          summary_text: "Le résumé en français.",
-          key_points: [{ text: "Livraison confirmée", raised_by: "caller" }],
-          follow_ups: [],
-        },
-      },
+        summary_text: "Le résumé en français.",
+        key_points: [{ text: "Livraison confirmée", raised_by: "caller" }],
+      }),
     });
     expect(s.language).toBe("fr");
     expect(s.text).toBe("Le résumé en français.");
     expect(s.regenerating).toBe(false);
     expect(s.dirty).toBe(false);
+  });
+
+  it("a rewrite that fails puts the draft's own language back, so the caller can ask again", () => {
+    let s = loaded();
+    expect(s.language).toBe("en");
+    s = summaryDraftReducer(s, { type: "regenerate", language: "fr" });
+    expect(s.language).toBe("fr");
+    s = summaryDraftReducer(s, { type: "error", message: "Could not rewrite" });
+    expect(s.language).toBe("en");
+    expect(s.regenerating).toBe(false);
+    // …and French can be asked for again.
+    s = summaryDraftReducer({ ...s, status: "ready" }, { type: "regenerate", language: "fr" });
+    expect(s.regenerating).toBe(true);
   });
 
   it("a regeneration is refused while one is already running", () => {
@@ -146,5 +172,14 @@ describe("sending", () => {
   it("discarding is not available on a draft that was already posted", () => {
     const sent = loaded(view({}, { draft_status: "SENT" }));
     expect(summaryDraftReducer(sent, { type: "discard" }).status).toBe("sent");
+  });
+});
+
+describe("provenance labels", () => {
+  it("a Gemini transcript reads as the call recording, like a Groq one (A-1)", async () => {
+    const { provenanceLabel } = await import("./call-provenance");
+    expect(provenanceLabel("gemini")).toBe("Transcribed from the call recording");
+    expect(provenanceLabel("gemini")).toBe(provenanceLabel("groq"));
+    expect(provenanceLabel("browser-live")).toMatch(/unverified/);
   });
 });

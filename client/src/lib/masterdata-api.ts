@@ -1342,7 +1342,17 @@ export type DictItem = {
   currency?: string;
   is_disbursement?: boolean;
   is_billable?: boolean;
-  default_price?: number | null;
+  /** The item's STANDARD expense rate in force today (no carrier, no container
+   *  type) — read from the rates since 14120, never a column of its own. */
+  default_price?: number | string | null;
+  default_price_currency?: string | null;
+  default_price_from?: string | null;
+  default_price_rate_id?: string | null;
+  /** 14130: the family a client document prints this line under. */
+  client_heading_ref_id?: string | null;
+  client_heading_code?: string | null;
+  client_heading_fr?: string | null;
+  client_heading_en?: string | null;
   shipping_line?: string | null;
   provider_kind?: string | null;
   proof_source?: string | null;
@@ -1366,6 +1376,8 @@ export type DictInput = {
   is_disbursement?: boolean;
   is_billable?: boolean;
   default_price?: number | null;
+  /** 14130: the family a client document prints this line under. */
+  client_heading_ref_id?: string | null;
   currency?: string;
   shipping_line?: string | null;
   provider_kind?: string | null;
@@ -1410,6 +1422,9 @@ export type DictDossier = {
   service_tiers: ServiceTier[];
   usage: DictUsage;
   compliance: DictCompliance;
+  /** What THIS viewer may do beyond the dictionary's own verbs. `edit_rates` is
+   *  Expense rates (MOD-10) edit — the gate on changing what a line costs. */
+  capabilities?: { edit_rates?: boolean };
 };
 export type DictListFilter = {
   q?: string;
@@ -1455,6 +1470,14 @@ export type DictSearchHit = {
   is_billable?: boolean;
   varies_by_equipment?: boolean;
   is_active?: boolean;
+  /** The standard rate in force today, when the item has one. */
+  default_price?: number | string | null;
+  default_price_currency?: string | null;
+  /** 14130: the catalogue's client heading for this line. */
+  client_heading_ref_id?: string | null;
+  client_heading_code?: string | null;
+  client_heading_fr?: string | null;
+  client_heading_en?: string | null;
   score?: number;
 };
 export const searchDict = (opts: {
@@ -1538,11 +1561,13 @@ export type DictSpend = {
 };
 export const dictSpend = (
   id: string,
-  p: { from?: string; to?: string; include_documents?: boolean } = {},
+  p: { from?: string; to?: string; include_documents?: boolean; dossier_id?: string | null } = {},
 ) => {
   const q = new URLSearchParams();
   if (p.from) q.set("from", p.from);
   if (p.to) q.set("to", p.to);
+  // One operations file only (meeting 5). Absent = every file.
+  if (p.dossier_id) q.set("dossier_id", p.dossier_id);
   if (p.include_documents === false) q.set("include_documents", "false");
   const qs = q.toString();
   return tenant<DictSpend>(
@@ -1620,6 +1645,22 @@ export const supersedeDictRate = (id: string, body: RateSupersedeInput) =>
     method: "POST",
     body,
   });
+
+/** One rate for many carriers at once ("apply to all shipping lines"). The ids
+ *  are the carriers left ticked. All or nothing: one refusal saves none. */
+export type RateApplyAllInput = {
+  rate: number;
+  currency?: string;
+  effective_from: string;
+  container_type_ref_id?: string | null;
+  rate_provider_ids: string[];
+  note?: string | null;
+};
+export const applyDictRateToProviders = (id: string, body: RateApplyAllInput) =>
+  tenant<{ applied: number; evolution: DictRateEvolution }>(
+    `/financial-dictionary/${id}/rates/apply-all`,
+    { method: "POST", body },
+  );
 
 /* ── Bulk Excel import ─────────────────────────────────────────────────────
  * Three steps, deliberately separate: download a template built from THIS
@@ -1706,7 +1747,9 @@ export type DictRefKind =
   | "PROVIDER_KIND"
   | "CONTAINER_TYPE"
   | "LOAD_MODE"
-  | "DOCUMENT_TYPE";
+  | "DOCUMENT_TYPE"
+  /** 14130: the families a quotation / invoice prints lines under. */
+  | "CLIENT_HEADING";
 /** `extra` carries the structured facts a consumer computes on rather than
  *  displays — for CONTAINER_TYPE that is `teu` (capacity), `size` (the rate
  *  lookup key) and `family`, so the sized variants of one kind group together.
@@ -1887,6 +1930,14 @@ export type DocumentType = Registry & {
   default_severity?: string;
   /** How far ahead of expiry this kind of document starts warning. */
   renewal_lead_days?: number | null;
+  /** Advisory: raises a flag when absent, never blocks activation (0512). */
+  is_required?: boolean;
+  /** The ACTIVATION set (14030): a flagged type is on the 360's "Required to
+   *  activate" checklist AND is what the verification gate demands. */
+  required_for_activation?: boolean;
+  /** ISO-2 jurisdiction the type is exempt OUTSIDE of ('CM' on the ACF), or
+   *  null for no exemption. Seeded product data, not a tenant toggle. */
+  exempt_outside_country?: string | null;
 };
 export const listClientTypes = () => tenant<ClientType[]>("/client-types");
 export const createClientType = (body: { code: string; name: string }) =>
@@ -1910,6 +1961,8 @@ export const createDocumentType = (body: {
   name: string;
   applies_to?: string;
   default_severity?: string;
+  /** 14030 — start a new type off gating activation. */
+  required_for_activation?: boolean;
 }) => tenant<DocumentType>("/party-document-types", { method: "POST", body });
 export const updateDocumentType = (id: string, body: Partial<DocumentType>) =>
   tenant<DocumentType>(`/party-document-types/${id}`, {
@@ -1941,7 +1994,11 @@ export type FieldConfigRow = {
   applies_to: "CLIENT" | "SUPPLIER";
   field_key: string;
   field_group: string | null;
+  /** Required to CREATE the record. */
   is_required: boolean;
+  /** Required to ACTIVATE it (14030) — a separate policy, enforced at the
+   *  verification gate rather than on the create form. */
+  required_for_activation: boolean;
   is_visible: boolean;
   is_custom?: boolean;
   sort_order: number;

@@ -20,9 +20,9 @@ const { passthrough, body: validateBody } = require("../../../shared/http/valida
  */
 const zValidate = (schema) => validateBody(schema);
 
-// `keep_signed_in` MUST be declared: zValidate replaces req.body with the
-// parsed object and z.object() strips unknown keys, so an undeclared flag is
-// silently dropped before the controller reads it (0494).
+// `keep_signed_in` is still ACCEPTED so a client built before the two-hour
+// session ceiling keeps working, and is read by nothing: every session now ends
+// at SESSION_MAX_AGE_MIN whatever the checkbox said (session-policy.js).
 const login = zValidate(z.object({ email: z.string().trim().email(), password: z.string().min(1), keep_signed_in: z.boolean().optional() }));
 const refresh = zValidate(z.object({ refresh_token: z.string().min(1) }));
 const verifyTotp = zValidate(z.object({ pending_token: z.string().min(1), code: z.string().min(6).max(8), keep_signed_in: z.boolean().optional() }));
@@ -79,13 +79,73 @@ const resetPassword = zValidate(z.object({ token: z.string().min(16), new_passwo
 const changePassword = zValidate(z.object({ current_password: z.string().min(1), new_password: z.string().min(1) }));
 
 const signature = zValidate(z.object({ html: z.string().max(20000) }));
-const pinRegister = zValidate(z.object({ pin: z.string().regex(/^\d{4}$/), label: z.string().max(80).optional().nullable() }));
+// The weak-PIN rules (1234, 1111, 1212…) are NOT here: they live in the shared
+// package's quickPin rule, which the service applies and the My security screen
+// shows as the user types. This file only guards the shape; importing the shared
+// package here would mark it a migrated adapter (check:schemas).
+const pinRegister = zValidate(z.object({
+  pin: z.string().regex(/^\d{4}$/),
+  label: z.string().max(80).optional().nullable(),
+  replace_device_id: z.string().uuid().optional().nullable(),
+  current_password: z.string().min(1).max(512).optional().nullable(),
+}));
 const pinLogin = zValidate(z.object({ email: z.string().trim().email(), device_id: z.string().uuid(), pin: z.string().regex(/^\d{4}$/), keep_signed_in: z.boolean().optional() }));
-// WebAuthn passkey — attestation/assertion are intricate client-generated objects; validate as pass-through
-const passkeyRegisterOptions = zValidate(z.object({ label: z.string().max(80).optional().nullable() }).passthrough());
-const passkeyRegisterVerify = (req, _res, next) => next(); // complex nested, allow any — verification is cryptographic
-const passkeyLoginOptions = zValidate(z.object({ email: z.string().trim().email().optional().nullable() }).passthrough());
-const passkeyLoginVerify = (req, _res, next) => next();
+
+/*
+ * WebAuthn. The attestation and assertion are verified CRYPTOGRAPHICALLY by
+ * SimpleWebAuthn, so these schemas are not the security boundary — but they
+ * used to be `next()` with no schema at all, and the controllers then guessed
+ * among four historical body shapes. One shape each, declared here, is what the
+ * client sends; the members SimpleWebAuthn reads are required, and anything the
+ * browser adds beyond them is kept (`passthrough`) so a new WebAuthn field does
+ * not break sign-in.
+ */
+const b64url = z.string().min(1).max(16384).regex(/^[A-Za-z0-9_-]+={0,2}$/);
+const credentialId = z.string().min(1).max(1024).regex(/^[A-Za-z0-9_-]+$/);
+const challengeToken = z.string().min(20).max(4096);
+const credentialEnvelope = {
+  id: credentialId,
+  rawId: credentialId,
+  type: z.literal("public-key"),
+  clientExtensionResults: z.record(z.unknown()).optional(),
+  authenticatorAttachment: z.string().max(40).optional().nullable(),
+};
+const passkeyRegisterOptions = zValidate(z.object({
+  label: z.string().max(80).optional().nullable(),
+  current_password: z.string().min(1).max(512).optional().nullable(),
+}));
+const passkeyRegisterVerify = zValidate(z.object({
+  attestation: z.object({
+    ...credentialEnvelope,
+    response: z.object({
+      clientDataJSON: b64url,
+      attestationObject: b64url,
+      transports: z.array(z.string().max(40)).max(10).optional(),
+    }).passthrough(),
+  }).passthrough(),
+  challengeToken,
+  label: z.string().max(80).optional().nullable(),
+}));
+const passkeyLoginOptions = zValidate(z.object({
+  email: z.string().trim().email().optional().nullable(),
+  // The passkeys THIS device registered, so the ceremony goes straight to this
+  // device's Face ID / Touch ID / Windows Hello instead of listing every
+  // passkey the account has or offering a phone's QR code.
+  credential_ids: z.array(credentialId).max(10).optional(),
+}));
+const passkeyLoginVerify = zValidate(z.object({
+  assertion: z.object({
+    ...credentialEnvelope,
+    response: z.object({
+      clientDataJSON: b64url,
+      authenticatorData: b64url,
+      signature: b64url,
+      userHandle: z.string().max(1024).optional().nullable(),
+    }).passthrough(),
+  }).passthrough(),
+  challengeToken,
+  email: z.string().trim().email().optional().nullable(),
+}));
 
 module.exports = {
   ...passthrough,

@@ -355,6 +355,8 @@ export type CommsMetricRow = {
   ring_notification: number;
   ring_push: number;
   ring_none: number;
+  /** end_reason → count, answered calls only (FN-2). */
+  ended_reasons: Record<string, number>;
   transcription_alert_at: string | null;
   computed_at: string;
 };
@@ -382,6 +384,9 @@ export type CommsFleet = {
   avg_duration_seconds: number | null;
   series: CommsDaySeries[];
   reasons: Record<string, number>;
+  /** How ANSWERED calls ended: hangup, disconnected, max_duration,
+   *  ice_failed. The three that nobody chose are the operator's signal. */
+  end_reasons: Record<string, number>;
   last_computed_at: string | null;
 };
 
@@ -396,6 +401,17 @@ export type CommsTenantRow = {
   rings: { socket: number; notification: number; push: number; none: number };
   ring_acknowledged: number;
   last_computed_at: string | null;
+};
+
+/** The daily platform call check (calls audit PR-7, O5). */
+export type CanaryCheck = { key: string; label: string; ok: boolean; ms: number | null; error: string | null };
+export type CanaryTenant = { slug: string; env: "live" | "sandbox"; ok: boolean; problems: string[] };
+export type CommsCanary = {
+  latest: {
+    run_id: string; started_at: string; finished_at: string | null; status: "PASSED" | "FAILED";
+    checks: CanaryCheck[]; tenant_checks: CanaryTenant[]; summary: string | null;
+  } | null;
+  history: { run_id: string; started_at: string; status: "PASSED" | "FAILED"; failed: string[] }[];
 };
 
 export type CommsCalls = {
@@ -455,6 +471,8 @@ export const ops = {
   // Comms call health (WS-C3) — the aggregation is a nightly job, so this is a
   // read of already-computed rows and the screen has no "collect now" button.
   commsCalls: (days = 30) => api<CommsCalls>(`/ops/comms/calls${qs({ days })}`),
+  // The daily call check — read-only here: it runs on its own schedule.
+  commsCanary: () => api<CommsCanary>("/ops/comms/canary"),
 
   // Entitlement & metering (WS-S3)
   usage: (period?: string) => api<FleetUsage>(`/ops/usage${qs({ period })}`),

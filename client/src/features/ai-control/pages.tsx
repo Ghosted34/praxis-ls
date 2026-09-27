@@ -714,7 +714,7 @@ const VENDOR_PRESETS: {
     vendor: "gemini",
     display_name: "Google Gemini",
     endpoint_url: "https://generativelanguage.googleapis.com/v1beta/openai",
-    default_model: "gemini-1.5-flash",
+    default_model: "gemini-2.5-flash",
     note: "document vision",
   },
   {

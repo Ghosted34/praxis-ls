@@ -1,63 +1,67 @@
 /**
- * Auth context — holds the current user + access/refresh lifecycle.
+ * Auth context — the current user, the access/refresh lifecycle, and the LOCK.
  *
- * We stash the user object returned by login alongside the refresh token and
+ * We stash the user object returned by sign-in alongside the refresh token and
  * restore it on reload after confirming the refresh token still works (instant,
- * no flicker). We then re-fetch GET /auth/me to pick up the latest tenant
- * feature state (ai_enabled/channels) — so a platform-console feature toggle
- * reflects on the next reload without forcing a full re-login. Access tokens
- * stay in memory (token-store); refresh survives reload.
+ * no flicker), then re-fetch GET /auth/me for the latest tenant feature state.
+ * Access tokens stay in memory (token-store); the refresh token survives reload.
  *
- * 2FA: login may return { pending_2fa } instead of tokens — the UI then collects
- * a code and calls verify2fa().
+ * ── STATUS ─────────────────────────────────────────────────────────────────
+ *
+ *   loading  boot, until the stored session has been checked
+ *   authed   signed in; the app is usable
+ *   locked   the session ENDED while someone was using the app. The app stays
+ *            mounted — every half-typed form, every open record, exactly where
+ *            it was — but it is blurred, inert and unreachable behind the lock
+ *            screen, the tokens are gone, and every authenticated call is
+ *            refused locally. Proving who you are (passkey → PIN → password)
+ *            unlocks it in place.
+ *   anon     nobody is signed in
+ *
+ * ── WHEN IT LOCKS ──────────────────────────────────────────────────────────
+ *
+ *   · the session reaches its two-hour ceiling (server: SESSION_MAX_AGE_MIN).
+ *     A local timer fires at that exact moment — the screen must blur when the
+ *     session ends, not the next time something happens to make a request —
+ *     and the server refuses every token from that second anyway;
+ *   · the server ends it: inactivity, killed from another device, reuse
+ *     detection (SESSION_ENDED_EVENT from api-client);
+ *   · another tab locked (they share one session, so they lock together — and
+ *     unlocking one unlocks the others);
+ *   · the user locks it themselves ("Lock screen" in the account menu), which
+ *     also ends the session server-side.
+ *
+ * ── WHO MAY UNLOCK ─────────────────────────────────────────────────────────
+ *
+ * Only the person whose screen it is. The lock screen names them and does not
+ * ask for an email; a passkey ceremony is bound to their account server-side.
+ * If a DIFFERENT account ever ends up holding the tokens (another tab signed
+ * in as someone else), the page is reloaded rather than unlocked: the previous
+ * person's data is still in memory behind the blur, and it is not the new
+ * person's to see.
+ *
+ * 2FA: password sign-in may return { pending_2fa } instead of tokens — the UI
+ * then collects a code and calls verify2fa().
  */
 import * as React from "react";
 import {
   tenant,
   ApiError,
   tryRefresh,
+  resetSessionEnded,
   SESSION_ENDED_EVENT,
+  type SessionEndReason,
 } from "@/lib/api-client";
 import { tokenStore } from "@/lib/token-store";
+import { sessionClock } from "@/lib/session-clock";
 import { pinStore } from "@/lib/pin-store";
 import { passkeyDeviceStore } from "@/lib/passkey-devices";
 import { deviceIdStore } from "@/lib/device-id";
 import { lastSessionStore } from "@/lib/last-session";
+import { passkeyAssertion } from "@/lib/webauthn";
+import { queryClient } from "@/lib/query-client";
 import { onReconnect, probeNow, reportUnreachable } from "@/lib/connection";
 import { bindLanguageOwner } from "@/lib/i18n";
-
-function b64urlToBuf(b64url: string): ArrayBuffer {
-  const pad = "=".repeat((4 - (b64url.length % 4)) % 4);
-  const b64 = (b64url + pad).replace(/-/g, "+").replace(/_/g, "/");
-  const str = atob(b64);
-  const bytes = new Uint8Array(str.length);
-  for (let i = 0; i < str.length; i++) bytes[i] = str.charCodeAt(i);
-  return bytes.buffer;
-}
-function bufToB64url(buf: ArrayBuffer | Uint8Array): string {
-  const bytes = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
-  let str = "";
-  for (let i = 0; i < bytes.length; i++) str += String.fromCharCode(bytes[i]);
-  return btoa(str).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
-}
-function toPublicKeyOptions(opt: any): any {
-  if (opt.challenge) opt.challenge = b64urlToBuf(opt.challenge);
-  if (opt.user && opt.user.id) opt.user.id = b64urlToBuf(opt.user.id);
-  if (opt.allowCredentials) for (const c of opt.allowCredentials) c.id = b64urlToBuf(c.id);
-  if (opt.excludeCredentials) for (const c of opt.excludeCredentials) c.id = b64urlToBuf(c.id);
-  return opt;
-}
-function fromCredential(cred: PublicKeyCredential): any {
-  const rawId = bufToB64url(cred.rawId);
-  const resp: any = (cred as any).response;
-  const out: any = { id: (cred as any).id, rawId, type: cred.type, response: {} };
-  if (resp.clientDataJSON) out.response.clientDataJSON = bufToB64url(resp.clientDataJSON);
-  if (resp.authenticatorData) out.response.authenticatorData = bufToB64url(resp.authenticatorData);
-  if (resp.signature) out.response.signature = bufToB64url(resp.signature);
-  if (resp.userHandle !== undefined && resp.userHandle !== null) out.response.userHandle = resp.userHandle ? bufToB64url(resp.userHandle) : null;
-  if (resp.attestationObject) out.response.attestationObject = bufToB64url(resp.attestationObject);
-  return out;
-}
 
 export type User = {
   user_id: string;
@@ -77,35 +81,59 @@ export type User = {
   channels?: { comms?: boolean };
 };
 
+export type LockReason = SessionEndReason | "manual";
+
 type LoginResult = { pending2fa: boolean };
 
 type AuthState = {
   user: User | null;
-  status: "loading" | "authed" | "anon";
+  status: "loading" | "authed" | "anon" | "locked";
+  /** Why the screen is locked, for the lock screen's one line of explanation. */
+  lockReason: LockReason | null;
+  /** Bumped when ANOTHER tab unlocked this session, so this tab's lock screen
+   *  closes too (its own panel did not do the unlocking). */
+  unlockedElsewhere: number;
   pendingToken: string | null;
-  login: (
-    email: string,
-    password: string,
-    keepSignedIn?: boolean,
-  ) => Promise<LoginResult>;
+  login: (email: string, password: string) => Promise<LoginResult>;
   verify2fa: (code: string) => Promise<void>;
   pinLogin: (email: string, pin: string) => Promise<void>;
   registerPin: (
     pin: string,
     label?: string | null,
+    currentPassword?: string | null,
   ) => Promise<{ device_id: string }>;
   passkeyLogin: (email?: string) => Promise<void>;
   logout: () => Promise<void>;
+  /** Lock the screen now and end the session server-side ("I'm stepping away"). */
+  lockNow: () => Promise<void>;
+  /** From the lock screen: "Not you?" — drop everything and start a clean sign-in. */
+  abandonLock: () => void;
   /** Merge fields into the cached user (e.g. after an avatar upload). */
   patchUser: (partial: Partial<User>) => void;
 };
 
 const USER_KEY = "praxis.user";
+/** Why the session locked, so every tab can say the same thing. */
+const LOCK_KEY = "praxis.session.locked";
+/**
+ * Device facts that survive "Sign out" — every one of them is about THIS
+ * machine, not the session. (`device-account.ts` is the one place that removes
+ * them, when the account is taken off the device.)
+ */
+const DEVICE_KEYS = [
+  "praxis.passkey.offer.declined",
+  "praxis.passkey.nudge.dismissed",
+];
+
 const AuthCtx = React.createContext<AuthState | null>(null);
 
 function persistUser(u: User | null) {
-  if (u) localStorage.setItem(USER_KEY, JSON.stringify(u));
-  else localStorage.removeItem(USER_KEY);
+  try {
+    if (u) localStorage.setItem(USER_KEY, JSON.stringify(u));
+    else localStorage.removeItem(USER_KEY);
+  } catch {
+    /* @silent:storage */
+  }
 }
 function readUser(): User | null {
   try {
@@ -115,23 +143,40 @@ function readUser(): User | null {
     return null;
   }
 }
+function readLockReason(): LockReason {
+  try {
+    const raw = localStorage.getItem(LOCK_KEY);
+    const r = raw ? (JSON.parse(raw) as { reason?: LockReason }).reason : null;
+    return r || "unknown";
+  } catch {
+    return "unknown";
+  }
+}
 
-type LoginResponse =
-  | { pending_2fa: true; pending_token: string }
-  | { access_token: string; refresh_token: string; user: User };
+type TokenResponse = {
+  access_token: string;
+  refresh_token: string;
+  session_expires_in?: number;
+  user: User;
+};
+type LoginResponse = { pending_2fa: true; pending_token: string } | TokenResponse;
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = React.useState<User | null>(null);
   const [status, setStatus] = React.useState<AuthState["status"]>("loading");
+  const [lockReason, setLockReason] = React.useState<LockReason | null>(null);
+  const [unlockedElsewhere, setUnlockedElsewhere] = React.useState(0);
   const [pendingToken, setPendingToken] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    bindLanguageOwner(status === "authed" ? user?.user_id : null);
+    bindLanguageOwner(status === "authed" || status === "locked" ? user?.user_id : null);
   }, [status, user?.user_id]);
 
-  // Read the live status without re-subscribing the reconnect handler below.
+  // Read the live values without re-subscribing the listeners below.
   const statusRef = React.useRef(status);
   statusRef.current = status;
+  const userRef = React.useRef(user);
+  userRef.current = user;
 
   /**
    * Restore the session from the stored refresh token. Shared by boot and by the
@@ -139,31 +184,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
    * survived.
    *
    * THE OFFLINE DISTINCTION IS THE WHOLE POINT. `tryRefresh()` collapses every
-   * failure — a rejected token AND a dead network — to `false`, and the old boot
-   * cleared the tokens either way. So a cold reload in a tunnel silently signed
-   * the user out: they lost the crafted offline page (they were "anonymous", so
-   * the login showed), and even when the wifi came back they landed on that
-   * login instead of the screen they were on. Only a REACHABLE server that
-   * rejected the token should end a session. When we cannot reach the server at
-   * all, we keep the token, restore the cached user, and let reconnect verify it.
+   * failure — a rejected token AND a dead network — to `false`. Only a REACHABLE
+   * server that rejected the token should end a session; when we cannot reach
+   * the server at all we keep the token, restore the cached user, and let
+   * reconnect verify it.
    */
   const restore = React.useCallback(() => {
     if (!tokenStore.getRefresh()) {
       setStatus("anon");
       return;
     }
-    // Go through the SHARED, de-duped refresh (api-client) rather than a separate
-    // fetch. The BE rotates the refresh token every time and revokes the session
-    // if a rotated-away token is replayed; a standalone boot refresh racing the
-    // first screen requests' 401-retries would present the same token twice and
-    // trip that reuse-detection, logging the user out well before the 30-min
-    // idle window. Sharing the de-dupe collapses them into one rotation.
+    // Through the SHARED, de-duped, cross-tab-locked refresh (api-client): the
+    // BE rotates the refresh token every time and revokes the session if a
+    // rotated-away token is replayed.
     void tryRefresh().then(async (ok) => {
       if (ok) {
+        tokenStore.setLocked(false);
         setUser(readUser()); // instant restore from cache (no flicker)
         setStatus("authed");
-        // Re-resolve the tenant feature block so a platform-console toggle
-        // (ai_enabled / channels) is reflected without a full re-login.
         try {
           const fresh = await tenant<User>("/auth/me");
           persistUser(fresh);
@@ -173,21 +211,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         return;
       }
-      // Refresh failed. Was it a dead session, or a dead network? Ask the health
-      // probe (unauthenticated, touches no dependency — lib/connection.ts).
       const reachable = await probeNow();
       if (reachable) {
-        // The server is up and said no. Genuinely signed out.
         tokenStore.clear();
+        sessionClock.clear();
         persistUser(null);
         setStatus("anon");
       } else {
-        // Offline. KEEP the token so reconnect can verify it, and flip the
-        // connection state so the branded offline gate + pill show. `anon`
-        // gates the user out of protected DATA until we can confirm the session,
-        // but the OfflineBootGate (app.tsx) shows the offline page over the login
-        // for as long as we are unreachable, so they never see a login they
-        // cannot use — and are returned to their screen the moment we recover.
+        // Offline. KEEP the token so reconnect can verify it; the OfflineBootGate
+        // (app.tsx) shows the offline page over the login meanwhile.
         reportUnreachable();
         setUser(readUser());
         setStatus("anon");
@@ -200,77 +232,223 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     restore();
   }, [restore]);
 
-  // Re-verify on reconnect. If we still hold a refresh token but are not authed
-  // — the offline-hold above, or a drop that happened while signed out — the
-  // moment the server answers again is the moment to exchange the token and get
-  // the user back into the app without a manual refresh.
   React.useEffect(
     () =>
       onReconnect(() => {
-        if (statusRef.current !== "authed" && tokenStore.getRefresh())
-          restore();
+        if (statusRef.current === "anon" && tokenStore.getRefresh()) restore();
       }),
     [restore],
   );
 
-  function acceptTokens(r: {
-    access_token: string;
-    refresh_token: string;
-    user: User;
-  }) {
-    tokenStore.setAccess(r.access_token);
-    tokenStore.setRefresh(r.refresh_token);
-    persistUser(r.user);
-    lastSessionStore.fromUser(r.user);
-    setUser(r.user);
+  /**
+   * Lock the screen. Only an AUTHED session locks — there is nothing to protect
+   * on the sign-in page — and locking twice is a no-op.
+   *
+   * The tokens go first and the reason is written before them, so a tab that
+   * hears about it through the `storage` event can say why.
+   */
+  const lock = React.useCallback((reason: LockReason) => {
+    if (statusRef.current !== "authed") return;
+    try {
+      localStorage.setItem(LOCK_KEY, JSON.stringify({ reason, at: Date.now() }));
+    } catch {
+      /* @silent:storage */
+    }
+    tokenStore.setLocked(true);
+    tokenStore.clear();
+    sessionClock.clear();
     setPendingToken(null);
+    setLockReason(reason);
+    statusRef.current = "locked";
+    setStatus("locked");
+  }, []);
+
+  /** Back to "authed" after the right person proved who they are. */
+  const finishUnlock = React.useCallback(() => {
+    try {
+      localStorage.removeItem(LOCK_KEY);
+    } catch {
+      /* @silent:storage */
+    }
+    setLockReason(null);
+    statusRef.current = "authed";
     setStatus("authed");
-    // The login / 2FA / PIN payloads carry a MINIMAL user block (no avatar_url or
-    // employee_id). Hydrate the full profile from /me — with tokens now set, this
-    // is authenticated — so the avatar shows immediately instead of only after a
-    // hard refresh. Best-effort: if it fails, boot restore will hydrate later.
-    tenant<User>("/auth/me")
-      .then((fresh) => {
-        persistUser(fresh);
-        lastSessionStore.fromUser(fresh);
-        setUser(fresh);
-      })
-      .catch(() => {
-        /* @silent:storage */
-      });
-  }
+    // Everything that tried to load while the screen was locked failed with
+    // SESSION_LOCKED; ask again now so the screen they return to is current.
+    void queryClient.invalidateQueries();
+  }, []);
+
+  /** Nobody is signed in any more (signed out here or in another tab). */
+  const becomeAnon = React.useCallback(() => {
+    tokenStore.setLocked(false);
+    tokenStore.clear();
+    sessionClock.clear();
+    setUser(null);
+    setPendingToken(null);
+    setLockReason(null);
+    statusRef.current = "anon";
+    setStatus("anon");
+  }, []);
 
   /**
-   * The session died mid-use and could not be refreshed.
-   *
-   * Without this the app kept believing it was authenticated while holding a
-   * dead token: every action failed with the same 401 and the user sat on a
-   * "token expired" banner until they signed out by hand — which is exactly what
-   * was reported. The boot path has always handled this; mid-session never did.
+   * Accept a fresh token pair from any way in — password, 2FA, PIN, passkey.
+   * Returns false when the page is being reloaded instead (see "WHO MAY
+   * UNLOCK" above).
+   */
+  const acceptTokens = React.useCallback(
+    (r: TokenResponse): boolean => {
+      const wasLocked = statusRef.current === "locked";
+      const lockedUser = userRef.current;
+      tokenStore.setLocked(false);
+      resetSessionEnded();
+      tokenStore.setAccess(r.access_token);
+      tokenStore.setRefresh(r.refresh_token);
+      sessionClock.set(r.session_expires_in);
+      setPendingToken(null);
+
+      if (wasLocked && lockedUser && lockedUser.user_id !== r.user.user_id) {
+        persistUser(r.user);
+        lastSessionStore.fromUser(r.user);
+        window.location.replace("/");
+        return false;
+      }
+
+      // The sign-in payload carries a MINIMAL user block; keep what we already
+      // know about the same person (avatar, role) until /me answers.
+      const merged: User =
+        lockedUser && lockedUser.user_id === r.user.user_id ? { ...lockedUser, ...r.user } : r.user;
+      persistUser(merged);
+      lastSessionStore.fromUser(merged);
+      setUser(merged);
+      if (wasLocked) finishUnlock();
+      else {
+        statusRef.current = "authed";
+        setStatus("authed");
+      }
+      tenant<User>("/auth/me")
+        .then((fresh) => {
+          persistUser(fresh);
+          lastSessionStore.fromUser(fresh);
+          setUser(fresh);
+        })
+        .catch(() => {
+          /* @silent:storage */
+        });
+      return true;
+    },
+    [finishUnlock],
+  );
+
+  /**
+   * The session died mid-use and could not be refreshed. Lock (not sign out):
+   * the person in front of the screen proves who they are and carries on where
+   * they were. Only a session that never got going falls back to "anon".
    */
   React.useEffect(() => {
-    const onEnded = () => {
-      persistUser(null);
-      setUser(null);
-      setPendingToken(null);
-      setStatus("anon");
+    const onEnded = (e: Event) => {
+      const reason = ((e as CustomEvent<{ reason?: SessionEndReason }>).detail?.reason ?? "unknown") as LockReason;
+      if (statusRef.current === "authed") lock(reason);
+      else if (statusRef.current !== "locked") becomeAnon();
     };
     window.addEventListener(SESSION_ENDED_EVENT, onEnded);
     return () => window.removeEventListener(SESSION_ENDED_EVENT, onEnded);
-  }, []);
+  }, [lock, becomeAnon]);
+
+  /**
+   * The two-hour ceiling, on this machine's clock. A timer for the exact
+   * moment, a visibility/focus check for a laptop that slept through it
+   * (background timers are throttled), and a slow interval as the backstop.
+   */
+  React.useEffect(() => {
+    if (status !== "authed") return;
+    let timer: number | undefined;
+    const check = () => {
+      if (sessionClock.expired()) lock("session_max_age");
+    };
+    const schedule = () => {
+      window.clearTimeout(timer);
+      const left = sessionClock.msLeft();
+      if (left === null) return;
+      timer = window.setTimeout(check, Math.min(left + 200, 2 ** 31 - 1));
+    };
+    const onWake = () => {
+      check();
+      schedule();
+    };
+    schedule();
+    const interval = window.setInterval(check, 15_000);
+    document.addEventListener("visibilitychange", onWake);
+    window.addEventListener("focus", onWake);
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === sessionClock.KEY) schedule();
+    };
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.clearTimeout(timer);
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", onWake);
+      window.removeEventListener("focus", onWake);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, [status, lock]);
+
+  /**
+   * Other tabs. They share one session, so they lock together and unlock
+   * together, and signing out in one signs out all of them.
+   */
+  React.useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.storageArea && e.storageArea !== localStorage) return;
+      const s = statusRef.current;
+      // localStorage.clear() (a sign-out elsewhere) or the user record removed.
+      if (e.key === null || (e.key === USER_KEY && !e.newValue)) {
+        if (s === "authed" || s === "locked") becomeAnon();
+        return;
+      }
+      if (e.key !== tokenStore.REFRESH_KEY) return;
+      if (!e.newValue) {
+        if (s === "authed") lock(readLockReason());
+        return;
+      }
+      if (s !== "locked") return;
+      // Unlocked in another tab: pick the session up here too — but only for
+      // the same person.
+      void (async () => {
+        const ok = await tryRefresh();
+        if (!ok || statusRef.current !== "locked") return;
+        tokenStore.setLocked(false);
+        let me: User | null = null;
+        try {
+          me = await tenant<User>("/auth/me");
+        } catch {
+          /* @silent:teardown — could not confirm who; stay locked. */
+        }
+        const lockedUser = userRef.current;
+        if (!me) {
+          tokenStore.setLocked(true);
+          return;
+        }
+        if (lockedUser && me.user_id !== lockedUser.user_id) {
+          window.location.replace("/");
+          return;
+        }
+        resetSessionEnded();
+        persistUser(me);
+        setUser(me);
+        finishUnlock();
+        setUnlockedElsewhere((n) => n + 1);
+      })();
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, [lock, becomeAnon, finishUnlock]);
 
   const login: AuthState["login"] = React.useCallback(
-    async (email, password, keepSignedIn = true) => {
-      // Record the persistence choice before any tokens land. It also carries the
-      // 2FA path: acceptTokens() runs later in verify2fa() and reads this flag.
-      tokenStore.setPersist(keepSignedIn);
-      // The server needs the choice too: it exempts the session from the 30-minute
-      // idle kill (0494). Storing the token for 30 days while the server killed the
-      // session after half an hour is what users reported as "token expired".
+    async (email, password) => {
       const r = await tenant<LoginResponse>("/auth/login", {
         method: "POST",
         auth: false,
-        body: { email, password, keep_signed_in: keepSignedIn },
+        body: { email, password },
       });
       if ("pending_2fa" in r) {
         setPendingToken(r.pending_token);
@@ -279,36 +457,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       acceptTokens(r);
       return { pending2fa: false };
     },
-    [],
+    [acceptTokens],
   );
 
   const verify2fa: AuthState["verify2fa"] = React.useCallback(
     async (code) => {
       if (!pendingToken) throw new Error("No 2FA challenge in progress");
-      const r = await tenant<{
-        access_token: string;
-        refresh_token: string;
-        user: User;
-      }>("/auth/2fa/verify", {
+      const r = await tenant<TokenResponse>("/auth/2fa/verify", {
         method: "POST",
         auth: false,
-        // Carried through 2FA as well, or ticking the box then completing TOTP
-        // would lose the choice (0494).
-        body: {
-          pending_token: pendingToken,
-          code,
-          keep_signed_in: tokenStore.getPersist(),
-        },
+        body: { pending_token: pendingToken, code },
       });
       acceptTokens(r);
-      // `pendingToken`, NOT []. This closes over render state: an empty array
-      // captures the value from the first render — `null`, always — so the guard
-      // above would throw on every legitimate challenge, and if it did not, the
-      // request would carry `pending_token: null`. 2FA would simply never
-      // complete. PERF S14's empty arrays are right for the handlers that touch
-      // only setters and module helpers; this is not one of them.
+      // `pendingToken`, NOT []: an empty array captures `null` from the first
+      // render forever, and 2FA would never complete.
     },
-    [pendingToken],
+    [pendingToken, acceptTokens],
   );
 
   const pinLogin: AuthState["pinLogin"] = React.useCallback(
@@ -320,115 +484,151 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           "No Quick PIN is set up on this device for that email.",
           400,
         );
-      tokenStore.setPersist(true);
-      const r = await tenant<{
-        access_token: string;
-        refresh_token: string;
-        user: User;
-      }>("/auth/pin/login", {
-        method: "POST",
-        auth: false,
-        body: {
-          email: email.trim(),
-          device_id: dev.device_id,
-          pin,
-          keep_signed_in: true,
-        },
-      });
-      acceptTokens(r);
+      try {
+        const r = await tenant<TokenResponse>("/auth/pin/login", {
+          method: "POST",
+          auth: false,
+          body: { email: email.trim(), device_id: dev.device_id, pin },
+        });
+        acceptTokens(r);
+      } catch (e) {
+        // Locked out or revoked: this device's PIN no longer exists server-side,
+        // so the screen must stop offering it.
+        if (e instanceof ApiError && (e.code === "PIN_LOCKED" || e.code === "PIN_LOGIN_UNAVAILABLE")) {
+          pinStore.remove(email);
+        }
+        throw e;
+      }
     },
-    [],
+    [acceptTokens],
   );
 
   const registerPin: AuthState["registerPin"] = React.useCallback(
-    async (pin, label = null) => {
+    async (pin, label = null, currentPassword = null) => {
+      const email = user?.email ?? "";
+      // Re-registering on this device REPLACES its PIN — the old one is revoked
+      // server-side rather than left working alongside the new.
+      const previous = email ? pinStore.get(email) : null;
       const r = await tenant<{ device_id: string; label?: string | null }>(
         "/auth/pin/register",
         {
           method: "POST",
-          body: { pin, label },
+          body: {
+            pin,
+            label,
+            ...(previous ? { replace_device_id: previous.device_id } : {}),
+            ...(currentPassword ? { current_password: currentPassword } : {}),
+          },
         },
       );
-      if (user)
-        pinStore.set(user.email, {
+      if (email)
+        pinStore.set(email, {
           device_id: r.device_id,
           label: r.label ?? label,
         });
       return { device_id: r.device_id };
-      // `user`, NOT [] — same reason as verify2fa. On the first render `user` is
-      // null, so an empty array makes the `if (user)` branch permanently false:
-      // the server registers the PIN device and the browser never records it, so
-      // the next PIN login fails with NO_PIN_DEVICE against a device that exists.
-      // Silent, and only on the happy path.
+      // `user`, NOT [] — on the first render `user` is null, so an empty array
+      // makes the `if (email)` branch permanently false.
     },
     [user],
   );
 
-  const passkeyLogin: AuthState["passkeyLogin"] = React.useCallback(async (email?: string) => {
-    if (!window.PublicKeyCredential) throw Object.assign(new Error("Passkeys aren't supported in this browser."), { code: "WEBAUTHN_NOT_SUPPORTED" });
-    const options: any = await tenant<any>("/auth/passkey/login/options", {
-      method: "POST",
-      auth: false,
-      body: email ? { email: email.trim().toLowerCase() } : {},
-    });
-    const publicKey = toPublicKeyOptions(options) as PublicKeyCredentialRequestOptions;
-    let cred: PublicKeyCredential | null = null;
-    try {
-      cred = (await navigator.credentials.get({ publicKey })) as PublicKeyCredential | null;
-    } catch (e: any) {
-      const err: any = new Error(e?.message || "Passkey cancelled");
-      err.name = e?.name || "NotAllowedError";
-      err.code = "NOT_ALLOWED";
-      throw err;
-    }
-    if (!cred) throw Object.assign(new Error("No passkey selected"), { code: "NOT_ALLOWED" });
-    const assertion = fromCredential(cred);
-    const r = await tenant<{ access_token: string; refresh_token: string; user: User }>("/auth/passkey/login/verify", {
-      method: "POST",
-      auth: false,
-      body: { email: email ? email.trim().toLowerCase() : undefined, assertion, challengeToken: (options as any)._challengeToken, _challenge: (options as any)._challenge },
-    });
-    tokenStore.setPersist(true);
-    acceptTokens(r);
-  }, []);
+  const passkeyLogin: AuthState["passkeyLogin"] = React.useCallback(
+    async (email?: string) => {
+      const who = email ? email.trim().toLowerCase() : undefined;
+      const { assertion, challengeToken } = await passkeyAssertion({
+        email: who,
+        credentialIds: who ? passkeyDeviceStore.ids(who) : [],
+      });
+      let r: TokenResponse & { credential_id?: string };
+      try {
+        r = await tenant<TokenResponse & { credential_id?: string }>("/auth/passkey/login/verify", {
+          method: "POST",
+          auth: false,
+          body: { assertion, challengeToken, ...(who ? { email: who } : {}) },
+        });
+      } catch (e) {
+        // The account no longer holds this device's passkey: forget it here so
+        // the next visit does not lead with a passkey that cannot work.
+        if (e instanceof ApiError && e.code === "PASSKEY_REVOKED" && who) {
+          const gone = (e.fields as { credential_id?: string } | undefined)?.credential_id || String(assertion.id);
+          passkeyDeviceStore.forgetId(who, gone);
+        }
+        throw e;
+      }
+      if (!acceptTokens(r)) return;
+      // A ceremony that COMPLETED is proof this device holds the credential:
+      // lead with it next time, scoped to exactly this one.
+      passkeyDeviceStore.add(r.user.email, r.credential_id || String(assertion.id));
+    },
+    [acceptTokens],
+  );
 
   const logout: AuthState["logout"] = React.useCallback(async () => {
-    try {
-      await tenant("/auth/logout", { method: "POST" });
-    } catch {
-      /* @silent:teardown */
+    if (!tokenStore.isLocked()) {
+      try {
+        await tenant("/auth/logout", { method: "POST" });
+      } catch {
+        /* @silent:teardown */
+      }
     }
     tokenStore.clear();
+    tokenStore.setLocked(false);
+    sessionClock.clear();
     persistUser(null);
-    // Clear all persisted client state on logout (until told otherwise): tokens,
-    // cached user, theme + env preferences. Three keys are DEVICE facts rather
-    // than session state and are carried across the wipe:
-    //   - pin devices: the whole point of Quick PIN is signing back in fast.
-    //   - device id (0524): the time clock's register counts HARDWARE. Wiping
-    //     it re-minted a fresh fingerprint on the next punch, so every sign-out
-    //     produced a second PENDING hr_device row against the same employee —
-    //     the clock asked a returning laptop to name itself again, and the
-    //     label the employee had already given it stayed on the orphaned row.
-    //   - passkey devices: same reason as pin devices, and one more. The
-    //     sign-in screen reads it to decide whether this machine can offer a
-    //     passkey at all. Losing it on sign-out would make every sign-in a
-    //     password sign-in on a laptop that has a working Touch ID, which is
-    //     the exact guess the store exists to stop making.
+    // Clear all persisted client state on logout: tokens, cached user, theme +
+    // env preferences. DEVICE facts are carried across the wipe — the Quick PIN
+    // and passkey records (the whole point is signing back in fast), the device
+    // id (the time clock counts hardware), the remembered identity, and the
+    // passkey-offer answers (so "Not now" and a dismissed nudge are not undone
+    // by every sign-out).
     try {
-      const pinSnap = pinStore.snapshot(); // trusted PIN devices survive sign-out
+      const pinSnap = pinStore.snapshot();
       const devSnap = deviceIdStore.snapshot();
       const lastSnap = lastSessionStore.snapshot();
       const pkSnap = passkeyDeviceStore.snapshot();
+      const kept = DEVICE_KEYS.map((k) => [k, localStorage.getItem(k)] as const);
       localStorage.clear();
       pinStore.restore(pinSnap);
       deviceIdStore.restore(devSnap);
       lastSessionStore.restore(lastSnap);
       passkeyDeviceStore.restore(pkSnap);
+      for (const [k, v] of kept) if (v) localStorage.setItem(k, v);
     } catch {
       /* @silent:storage */
     }
     setUser(null);
+    setLockReason(null);
+    statusRef.current = "anon";
     setStatus("anon");
+  }, []);
+
+  const lockNow: AuthState["lockNow"] = React.useCallback(async () => {
+    if (statusRef.current !== "authed") return;
+    // End the session server-side FIRST, while the token still works: a lock
+    // that left the session alive would only be a curtain.
+    try {
+      await tenant("/auth/logout", { method: "POST", retry: false });
+    } catch {
+      /* @silent:teardown — the tokens are wiped below either way. */
+    }
+    lock("manual");
+  }, [lock]);
+
+  const abandonLock: AuthState["abandonLock"] = React.useCallback(() => {
+    tokenStore.clear();
+    tokenStore.setLocked(false);
+    sessionClock.clear();
+    persistUser(null);
+    lastSessionStore.clear();
+    try {
+      localStorage.removeItem(LOCK_KEY);
+    } catch {
+      /* @silent:storage */
+    }
+    // A full reload, not a state change: the previous person's data is in memory
+    // behind the blur, and the next person must start from nothing.
+    window.location.replace("/login");
   }, []);
 
   const patchUser = React.useCallback(
@@ -444,38 +644,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   /**
-   * PERF S14. This was an inline object literal containing six handlers that
-   * were re-created on every render, so EVERY render of AuthProvider produced a
-   * new context identity and re-rendered every consumer in the tree — and with
-   * zero React.memo across 134 components there was nothing to arrest the
-   * cascade. AuthProvider wraps the whole app, so that is every render of
-   * everything.
-   *
-   * Four of the six are stable (`useCallback` with empty deps — they close only
-   * over stable setters and module-level helpers, and `patchUser` uses the
-   * functional `setUser` form), so the value identity changes only when the auth
-   * state genuinely does.
-   *
-   * TWO ARE NOT, deliberately. `verify2fa` reads `pendingToken` and
-   * `registerPin` reads `user`, so both carry that dependency. A first pass at
-   * S14 gave all six `[]`, which is where this note used to claim all six were
-   * stable — and it was a stale-closure bug in the auth path, not a lint
-   * complaint: both would have captured `null` from the first render forever.
-   * eslint's `exhaustive-deps` caught it. The cost is that those two change
-   * identity when the value they read changes, which is once per sign-in — not
-   * the every-render cascade S14 was about.
-   *
-   * `acceptTokens` is re-created each render and is intentionally NOT a
-   * dependency of the three handlers that call it. It closes over nothing from
-   * render scope — only setters, `tokenStore`, `persistUser` and `tenant` — so
-   * a stale reference behaves identically to a fresh one. Listing it would make
-   * `login`, `verify2fa` and `pinLogin` unstable on every render and undo S14
-   * for no behavioural gain.
+   * PERF S14. The value is memoised so the context identity changes only when
+   * the auth state genuinely does — AuthProvider wraps the whole app, and a new
+   * value every render re-renders every consumer in the tree. `verify2fa` and
+   * `registerPin` carry the render state they read (`pendingToken`, `user`);
+   * everything else is stable.
    */
   const value = React.useMemo(
     () => ({
       user,
       status,
+      lockReason,
+      unlockedElsewhere,
       pendingToken,
       login,
       verify2fa,
@@ -483,11 +663,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       registerPin,
       passkeyLogin,
       logout,
+      lockNow,
+      abandonLock,
       patchUser,
     }),
     [
       user,
       status,
+      lockReason,
+      unlockedElsewhere,
       pendingToken,
       login,
       verify2fa,
@@ -495,6 +679,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       registerPin,
       passkeyLogin,
       logout,
+      lockNow,
+      abandonLock,
       patchUser,
     ],
   );

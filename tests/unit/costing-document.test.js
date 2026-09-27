@@ -137,13 +137,13 @@ describe("the VAT column is an amount, and a débours is marked (PT)", () => {
     // 2 × 500,000 at 19.25% = 192,500. 12768: just the figure — the "(19.25%)"
     // in brackets was noise on a document (the reader has the amount).
     const html = render();
-    expect(html).toContain("192 500 XAF");
-    expect(html).not.toContain("192 500 XAF (19.25%)");
+    expect(html).toContain(">192 500<");
+    expect(html).not.toContain("192 500 (19.25%)");
   });
 
   test("a débours shows its supplier VAT with (PT) after it", () => {
     // 45'HC surestaries: 100,000 net, 19,250 supplier VAT, re-billed at cost.
-    expect(render()).toContain("19 250 XAF (PT)");
+    expect(render()).toContain("19 250 (PT)");
   });
 
   test("a débours with no VAT shows just (PT), never a rate", () => {
@@ -161,13 +161,42 @@ describe("the VAT column is an amount, and a débours is marked (PT)", () => {
   });
 });
 
+/* ── 3b. One currency per sheet (meeting 5) ───────────────────────────────── */
+
+describe("the sheet has ONE currency: named once, and again only on the total and in words", () => {
+  test("the header names the currency; lines and sub-totals carry bare figures", () => {
+    const html = render();
+    expect(html).toContain("Currency: XAF");
+    // A line amount, a line unit and the sub-total: no currency beside them.
+    expect(html).toContain(">1 000 000<");
+    expect(html).toContain(">500 000<");
+    expect(html).toContain(">1 420 000<");
+    expect(html).not.toMatch(/1 000 000 XAF|500 000 XAF|1 420 000 XAF/);
+  });
+
+  test("the grand total and the amount in words carry it", () => {
+    const html = render();
+    expect(html).toContain("1 631 750 XAF");
+    expect(html).toMatch(/SEVEN HUNDRED FIFTY[^<]*XAF/);
+    // Exactly those two places, plus the header — nowhere else.
+    expect(html.match(/XAF/g)).toHaveLength(3);
+  });
+
+  test("a sheet in another currency prints its one rate to XAF in the header", () => {
+    const html = render({ currency: "EUR", exchange_rate: 655.957 });
+    expect(html).toContain("Currency: EUR");
+    expect(html).toContain("1 EUR = 655,957 XAF");
+    expect(html).toContain("1 631 750 EUR");
+  });
+});
+
 /* ── 4. The supplier's VAT is budgeted into the total ─────────────────────── */
 
 describe("débours VAT is in the total, and named", () => {
   test("the VAT total includes the débours VAT (192,500 + 19,250 = 211,750)", () => {
     // The sample's VAT is the service line's 192,500 PLUS the débours 19,250,
     // which is the whole point of 12768: the budget accounts for the cash.
-    expect(render()).toContain("211 750 XAF");
+    expect(render()).toContain(">211 750<");
   });
 
   test("a memo names how much of the VAT is the supplier's on débours (PT)", () => {

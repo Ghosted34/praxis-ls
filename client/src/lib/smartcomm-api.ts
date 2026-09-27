@@ -294,6 +294,9 @@ export const getThread = (id: string) =>
     group_id: string;
     messages: CommMessage[];
     links?: ThreadLinks;
+    /** The reader's own call-summary drafts in this conversation, newest
+     *  first: pinned above the composer until sent or discarded. */
+    pending_call_summaries?: PendingCallSummary[];
   }>(`/smartcomm/channels/${id}/messages`);
 export const postMessage = (
   id: string,
@@ -483,14 +486,23 @@ export type CallStatus =
   | "RINGING" | "IN_CALL"
   | "ENDED" | "NO_ANSWER" | "CANCELLED" | "DECLINED" | "BUSY" | "FAILED";
 export type CallEndReason =
-  | "hangup" | "declined" | "cancelled" | "no_answer" | "busy" | "max_duration" | "ice_failed";
+  | "hangup" | "declined" | "cancelled" | "no_answer" | "busy" | "max_duration" | "ice_failed"
+  | "disconnected";
 
 export type IceServer = {
   urls: string | string[];
   username?: string;
   credential?: string;
 };
-export type IceConfig = { iceServers: IceServer[]; turnConfigured: boolean };
+/** `iceTransportPolicy` "relay" is the tenant's relay-only privacy setting
+ *  (audit C13): no host or reflexive candidates, so neither side learns the
+ *  other's IP address. Absent from an older server, which means "all". */
+export type IceConfig = {
+  iceServers: IceServer[];
+  turnConfigured: boolean;
+  iceTransportPolicy?: "all" | "relay";
+  expiresAt?: string | null;
+};
 
 export type Call = {
   call_id: string;
@@ -515,7 +527,41 @@ export type Call = {
    *  still override it either way. Absent on a ring payload from an older
    *  server, which is why the client treats "absent" as "on". */
   noise_suppression?: boolean;
+  /** Where the record pipeline is for this call (the row's own column). */
+  transcription_state?: CallTranscriptState | null;
+  /** The summary's status, when the call has one (list and detail reads). */
+  draft_status?: CallSummaryDraft["draft_status"] | null;
+  /** The callee answered without recording (PR-6, audit G5). */
+  recording_declined_at?: string | null;
 };
+
+/** What this person's app may offer (PR-6, audit F10). */
+export type CallCapabilities = {
+  calls: boolean;
+  can_dial: boolean;
+  recording: boolean;
+  settings_admin: boolean;
+  /** May run Comms → Setup → Test calls (MOD-64 Test right, PR-7). */
+  can_test?: boolean;
+};
+export const fetchCallCapabilities = () => tenant<CallCapabilities>(`/smartcomm/calls/capabilities`);
+
+/** One outside company that receives call data (PR-6, audit G2). */
+export type CallProcessor = { vendor: string; role: string; name: string; country: string };
+export type CallProcessing = {
+  recording_enabled: boolean;
+  transcription: CallProcessor[];
+  summary: CallProcessor[];
+  network: CallProcessor[];
+  /** Whether a relay of the company's own (TURN) is configured at all. */
+  relay_configured: boolean;
+};
+export const fetchCallProcessing = () => tenant<CallProcessing>(`/smartcomm/calls/processing`);
+
+/** A settings admin erases one person's call records (PR-6, audit G3). */
+export type CallErasure = { user_id: string; calls: number; audio_parts: number; audio_failed: number; transcripts: number; drafts: number };
+export const eraseUserCallRecords = (userId: string) =>
+  tenant<CallErasure>(`/smartcomm/calls/erase-user`, { method: "POST", body: { user_id: userId } });
 
 /** Dial on a DIRECT channel. The partner is resolved server-side; `ice` is
  *  the dialer's config for the engine to start collecting candidates. */
@@ -523,28 +569,56 @@ export const dialCall = (groupId: string) =>
   tenant<Call & { ice: IceConfig }>(`/smartcomm/calls`, { method: "POST", body: { group_id: groupId } });
 /** Accept carries the acceptor's own ICE config — the callee's engine starts
  *  at answer time and needs TURN creds in the same response. */
-export const acceptCall = (id: string) =>
-  tenant<Call & { ice: IceConfig }>(`/smartcomm/calls/${id}/accept`, { method: "POST" });
+export const acceptCall = (id: string, opts: { record?: boolean } = {}) =>
+  tenant<Call & { ice: IceConfig }>(`/smartcomm/calls/${id}/accept`, {
+    method: "POST",
+    // `record: false` answers without recording (PR-6, audit G5).
+    ...(opts.record === false ? { body: { record: false } } : {}),
+  });
 export const declineCall = (id: string) =>
   tenant<Call>(`/smartcomm/calls/${id}/decline`, { method: "POST" });
+/**
+ * "My audio is still up" (field note FN-2). Sent over HTTP on purpose: the
+ * server's liveness sweep reads socket presence, and the case this exists for
+ * is a dead socket over a live media path — a corridor 4G handover, a phone
+ * that backgrounded the tab, a socket replica that went away.
+ */
+export const reportCallAlive = (id: string) =>
+  tenant<{ recorded: boolean; status: string }>(`/smartcomm/calls/${id}/alive`, { method: "POST" });
+/** The hang-up route, shared with the keep-alive `fetch` a closing page sends
+ *  (call-session.ts), so the two can never point at different URLs (audit A10). */
+export const callHangupPath = (id: string) => `/smartcomm/calls/${id}/hangup`;
+export const callHangupUrl = (id: string) => `/api/tenant${callHangupPath(id)}`;
 export const hangupCall = (id: string) =>
-  tenant<Call>(`/smartcomm/calls/${id}/hangup`, { method: "POST" });
+  tenant<Call>(callHangupPath(id), { method: "POST" });
 /** The engine exhausted ICE and media never connected. */
 export const reportCallFailure = (id: string) =>
   tenant<Call>(`/smartcomm/calls/${id}/fail`, { method: "POST" });
-export const listCalls = () => tenant<Call[]>(`/smartcomm/calls`);
+/** One row of the Calls list: the call, plus what its badges need. */
+export type CallListRow = Call & {
+  channel_name?: string | null;
+  notified_at?: string | null;
+  summary_update_available?: boolean | null;
+};
+export const listCalls = () => tenant<CallListRow[]>(`/smartcomm/calls`);
 export const getCall = (id: string) => tenant<Call>(`/smartcomm/calls/${id}`);
 
 /* ── The call record half (Smart Comms PR-2) ─────────────────────────────────
- * Recorded audio goes up in PARTS as they are cut (60–120 s), the browser's
- * live capture rides along with it, and everything after the hang-up is a read:
- * the transcript, the caller's draft, and the caller's one tap to send.
+ * Recorded audio goes up in PARTS as they are cut (every 120 s, each a
+ * complete file), each side then says how many it made, and everything after
+ * that is a read: the transcript, the caller's draft, and the caller's send.
  * `recording_enabled` on the call row is the tenant's kill switch — when it is
  * false there is no recorder, no consent banner, and these routes 403.
  */
 export type CallRecordSide = "caller" | "callee";
-export type CallTranscriptState = "PENDING" | "PROCESSING" | "CERTIFIED" | "TRANSCRIPTION_FAILED";
-export type CallProvenance = "groq" | "browser-live" | "transcript-only";
+/** NO_RECORDING: nothing was recorded (recording off, no audio uploaded, or
+ *  the call never connected). Terminal; shown as "Not recorded". */
+export type CallTranscriptState =
+  | "PENDING" | "PROCESSING" | "CERTIFIED" | "TRANSCRIPTION_FAILED" | "NO_RECORDING";
+/** Where a transcript's words came from. groq and gemini both transcribe the
+ *  stored audio; browser-live is the retired in-call capture (old calls only). */
+export type CallTranscriptProvider = "groq" | "gemini" | "browser-live";
+export type CallProvenance = CallTranscriptProvider | "transcript-only";
 
 export type CallSummaryKeyPoint = { text: string; raised_by: CallRecordSide };
 export type CallSummaryFollowUp = { text: string; owner: CallRecordSide; due: string | null };
@@ -563,10 +637,32 @@ export type CallSummaryDraft = {
   regenerate_count: number;
 };
 
+/** A stretch of one side's recording with no transcript: a part that failed
+ *  on both providers, is still pending, or never arrived. Seconds from the
+ *  start of that side's recording. */
+export type CallTranscriptGap = { side: CallRecordSide; from_s: number; to_s: number; parts: number[] };
+
+/** A caller's draft waiting in a conversation (the pinned card). */
+export type PendingCallSummary = {
+  call_id: string;
+  drafted_at: string;
+  started_at: string;
+  ended_at: string | null;
+  duration_seconds: number | null;
+  provenance: CallProvenance;
+  transcription_state: CallTranscriptState | null;
+};
+
+export type CallTranscriptReason = "SIDE_NOT_RECORDED" | "PARTS_NOT_TRANSCRIBED" | "OVER_BUDGET" | "TRANSCRIPTION_FAILED";
+
 export type CallSummaryView = {
   call_id: string;
+  group_id: string;
+  gaps: CallTranscriptGap[];
   transcription_state: CallTranscriptState;
-  transcription_error: string | null;
+  /** Why the transcript is incomplete, as a code (audit C11); never the
+   *  provider's own message. */
+  transcription_reason: CallTranscriptReason | null;
   recording_enabled: boolean;
   is_caller: boolean;
   summary: CallSummaryDraft | null;
@@ -576,14 +672,14 @@ export type CallTranscriptSide = {
   side: CallRecordSide;
   label: string;
   name: string | null;
-  provider: "groq" | "browser-live" | null;
+  provider: CallTranscriptProvider | null;
   certified: boolean;
   text: string | null;
   parts: {
     part_index: number;
     text: string;
     language: "en" | "fr";
-    provider: "groq" | "browser-live";
+    provider: CallTranscriptProvider;
     certified: boolean;
   }[];
 };
@@ -591,18 +687,28 @@ export type CallTranscriptSide = {
 export type CallTranscriptView = {
   call_id: string;
   state: CallTranscriptState;
-  error: string | null;
+  reason: CallTranscriptReason | null;
   certified: boolean;
-  provenance: "groq" | "browser-live";
+  provenance: CallTranscriptProvider;
   text: string;
   sides: CallTranscriptSide[];
   parts: {
     side: CallRecordSide;
     part_index: number;
     language: "en" | "fr";
-    provider: "groq" | "browser-live";
+    provider: CallTranscriptProvider;
     certified: boolean;
   }[];
+  /** Every recorded part and where it stands. */
+  recording?: {
+    side: CallRecordSide;
+    part_index: number;
+    status: "PENDING" | "OK" | "FAILED";
+    duration_seconds: number;
+    provider: CallTranscriptProvider | null;
+    purged: boolean;
+  }[];
+  gaps?: CallTranscriptGap[];
 };
 
 /** The card a chat reader sees for a posted call summary. Resolved on every
@@ -621,14 +727,66 @@ export type CallCard = {
   ended_at: string | null;
   call_status: string;
   transcription_state: CallTranscriptState | null;
-  transcription_error: string | null;
   caller_name: string | null;
   callee_name: string | null;
 };
 
-/** One recorded part. `live_segments` travels with the audio it belongs to: the
- *  two together are what make the fallback (flagged browser text) possible for
- *  the SAME span when the provider cannot read the bytes. */
+// ── Test calls (calls audit PR-7, O5) ─────────────────────────────────────
+export type DiagStepKey =
+  | "worker" | "schedules" | "signals" | "ring" | "microphone" | "audio"
+  | "connection" | "recording" | "transcription" | "summary" | "cleanup";
+export type DiagStatus = "pending" | "running" | "pass" | "warn" | "fail" | "skipped";
+export type DiagCheck = { label: string; ok: boolean; ms?: number | null; match?: number | null; error?: string | null };
+export type DiagStep = {
+  key: DiagStepKey;
+  n: number;
+  title: string;
+  status: DiagStatus;
+  ms?: number | null;
+  code?: string | null;
+  cause?: string | null;
+  fix?: string | null;
+  detail?: { checks?: DiagCheck[] } & Record<string, unknown>;
+};
+export type DiagRun = {
+  run_id: string;
+  user_id: string;
+  env: "live" | "sandbox";
+  started_at: string;
+  finished_at: string | null;
+  status: "RUNNING" | "PASSED" | "WARN" | "FAILED";
+  steps: DiagStep[];
+  report: string | null;
+};
+export type DiagRunRow = Omit<DiagRun, "steps" | "report"> & { user_name: string | null };
+export type DiagCap = { limit: number; used: number; remaining: number; next_available_at: string | null };
+/** What the device reports for one of its steps. */
+export type DiagResult = {
+  status: "pass" | "warn" | "fail" | "skipped";
+  ms?: number | null;
+  code?: string | null;
+  cause?: string | null;
+  fix?: string | null;
+  detail?: Record<string, string | number | boolean | null>;
+};
+
+const DIAG = "/smartcomm/diagnostics/runs";
+export const listDiagRuns = () => tenant<{ runs: DiagRunRow[]; cap: DiagCap }>(DIAG);
+export const startDiagRun = (appVersion?: string) =>
+  tenant<DiagRun>(DIAG, { method: "POST", body: appVersion ? { app_version: appVersion } : {} });
+export const getDiagRun = (id: string) => tenant<DiagRun>(`${DIAG}/${id}`);
+export const ackDiagSignal = (id: string, nonce: string) =>
+  tenant<DiagRun>(`${DIAG}/${id}/signal`, { method: "POST", body: { nonce } });
+export const diagRing = (id: string, endpoint: string) =>
+  tenant<{ nonce: string; result: TestRingResult }>(`${DIAG}/${id}/ring`, { method: "POST", body: { endpoint } });
+export const diagIce = (id: string) => tenant<IceConfig & { turnConfigured?: boolean }>(`${DIAG}/${id}/ice`);
+export const reportDiagStep = (id: string, key: DiagStepKey, result: DiagResult) =>
+  tenant<DiagRun>(`${DIAG}/${id}/steps/${key}`, { method: "PUT", body: result });
+export const uploadDiagPart = (id: string, index: number, file: File) =>
+  uploadFile<DiagRun>(`/tenant${DIAG}/${id}/parts`, file, { field: "file", fields: { part_index: index } });
+export const finishDiagRun = (id: string) => tenant<DiagRun>(`${DIAG}/${id}/finish`, { method: "POST" });
+
+/** One recorded part of this side's audio. */
 export const uploadCallPart = (
   callId: string,
   file: File,
@@ -638,7 +796,6 @@ export const uploadCallPart = (
     part_count: number;
     duration_ms?: number;
     language?: "en" | "fr";
-    live_segments?: unknown[];
   },
   onProgress?: (percent: number) => void,
   signal?: AbortSignal,
@@ -650,15 +807,17 @@ export const uploadCallPart = (
     signal,
   });
 
-/** The live capture on its own — the upload that must still land when the
- *  recorder produced no audio at all (§4.9). */
-export const uploadCallLiveLog = (
-  callId: string,
-  data: { side: CallRecordSide; language?: "en" | "fr"; live_segments: unknown[] },
-) =>
-  tenant<{ side: CallRecordSide; written: number }>(
-    `/smartcomm/calls/${callId}/live-log`,
-    { method: "POST", body: data },
+/** This side has finished recording and made `parts` parts (0 is allowed). */
+export const completeCallRecording = (callId: string, body: { side: CallRecordSide; parts: number }) =>
+  tenant<{ call_id: string; side: CallRecordSide; parts: number; received: number }>(
+    `/smartcomm/calls/${callId}/recording/complete`,
+    { method: "POST", body },
+  );
+/** An admin runs a failed part through Groq, then Gemini, once more. */
+export const rerunCallPart = (callId: string, side: CallRecordSide, part: number) =>
+  tenant<{ call_id: string; side: CallRecordSide; part_index: number; status: string }>(
+    `/smartcomm/calls/${callId}/recording/${side}/${part}/rerun`,
+    { method: "POST" },
   );
 
 export const getCallTranscript = (callId: string) =>
@@ -678,22 +837,34 @@ export const discardCallSummary = (callId: string) =>
     `/smartcomm/calls/${callId}/summary/discard`,
     { method: "POST" },
   );
-/** The EN/FR toggle (§4.10). One language, and it is the whole request. */
+/** The EN/FR toggle (§4.10). Queued (audit C8): the answer is 202, and the
+ *  rewritten draft is read once `call:summary_ready` (redraft) arrives. */
 export const regenerateCallSummary = (callId: string, language: "en" | "fr") =>
-  tenant<{
-    call_id: string;
-    language: "en" | "fr";
-    provenance: CallProvenance;
-    summary: {
-      summary_text: string;
-      key_points: CallSummaryKeyPoint[];
-      follow_ups: CallSummaryFollowUp[];
-      draft_status: CallSummaryDraft["draft_status"];
-    };
-  }>(`/smartcomm/calls/${callId}/summary/regenerate`, { method: "POST", body: { language } });
-/** Refreshed TURN credential mid-call (the one minted at dial expires with
- *  the call, plus margin). */
+  tenant<{ call_id: string; language: "en" | "fr"; queued: true }>(
+    `/smartcomm/calls/${callId}/summary/regenerate`,
+    { method: "POST", body: { language } },
+  );
+/** Refreshed TURN credential for a live call, fetched before an ICE restart
+ *  when the one minted at dial is close to expiry. */
 export const getCallTurn = (id: string) => tenant<IceConfig>(`/smartcomm/calls/${id}/turn`);
+
+/** One call ringing for me, from the ringing read (audit A13). */
+export type RingingCall = Call & {
+  caller_name: string | null;
+  /** Seconds left in the ring window, by the server's clock. */
+  ring_seconds_left: number;
+  recording_enabled: boolean;
+  noise_suppression: boolean;
+};
+/** Calls ringing for me now: read on connect, reconnect and return to the
+ *  foreground, so an app opened mid-ring shows the ring. */
+export const getRingingCalls = () => tenant<RingingCall[]>(`/smartcomm/calls/ringing`);
+
+/** What a test ring did (the push service's answer for this device). */
+export type TestRingResult = { sent: number; failed: number; total: number; pruned?: number; reason?: string };
+/** A real ring push to THIS device only (Settings → Calls, audit A15). */
+export const sendTestRing = (endpoint: string) =>
+  tenant<TestRingResult>(`/smartcomm/calls/test-ring`, { method: "POST", body: { endpoint } });
 
 export type ScheduledMessage = {
   schedule_id: string; group_id: string; body: string; attachments: PostedAttachment[];

@@ -22,6 +22,8 @@
  * socket), the call reaches in-call with real media (timer), and hang-up
  * tears the session down through the server row.
  */
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { test, expect, type Page, type WebSocketRoute } from "@playwright/test";
 import { fakeApi, seedSession } from "./fixtures";
 
@@ -71,8 +73,24 @@ type Frame = [string, unknown];
  * client EMITTED (`next("call:offer")`) and lets the test deliver server
  * events (`tell("call:answer", …)`).
  */
-async function fakeComms(page: Page) {
+async function fakeComms(
+  page: Page,
+  opts: {
+    pingIntervalMs?: number;
+    pendingSummaries?: unknown[];
+    /** Every client→server event, for a test that relays between two pages. */
+    onEmit?: (event: string, payload: unknown) => void;
+    /** What GET /calls/ringing answers (the ringing read, audit A13). */
+    ringing?: unknown[];
+    /** The row accept answers with (a different callee, say). */
+    acceptRow?: () => Record<string, unknown>;
+  } = {},
+) {
   const emitted: Frame[] = [];
+  let dials = 0;
+  /** The recorded parts this tab uploaded (the file bytes), and its declarations. */
+  const recordedParts: Buffer[] = [];
+  const completes: unknown[] = [];
   const pending: Array<(f: Frame) => void> = [];
   let ws: WebSocketRoute | null = null;
   const unsent: string[] = []; // server→client frames queued before connect
@@ -103,7 +121,7 @@ async function fakeComms(page: Page) {
     ws = route;
     // engine.io open packet, then the socket.io namespace connect ack.
     route.send(
-      `0${JSON.stringify({ sid: "sv-e2e", upgrades: [], pingInterval: 25000, pingTimeout: 20000 })}`,
+      `0${JSON.stringify({ sid: "sv-e2e", upgrades: [], pingInterval: opts.pingIntervalMs ?? 25000, pingTimeout: 20000 })}`,
     );
     for (const f of unsent.splice(0)) route.send(f);
     route.onMessage((message) => {
@@ -122,6 +140,7 @@ async function fakeComms(page: Page) {
           return;
         }
         const [event, payload] = parsed;
+        opts.onEmit?.(event, payload);
         if (event === "call:ice") {
           remoteCandidates.push((payload as { candidate: unknown }).candidate);
           return;
@@ -159,11 +178,69 @@ async function fakeComms(page: Page) {
         ]),
       });
     }
+    // PR-6 (F10, G2): what the app may offer, and who processes call data.
+    if (path === "/calls/capabilities" && method === "GET") {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ calls: true, can_dial: true, recording: true, settings_admin: false }),
+      });
+    }
+    if (path === "/calls/processing" && method === "GET") {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          recording_enabled: true,
+          transcription: [{ vendor: "groq", role: "first", name: "Groq", country: "United States" }],
+          summary: [{ vendor: "gemini", role: "first", name: "Google (Gemini)", country: "United States" }],
+          network: [],
+        }),
+      });
+    }
+    if (path === "/calls/ringing" && method === "GET") {
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(opts.ringing ?? []) });
+    }
     if (path === "/calls" && method === "POST") {
+      dials += 1;
       return route.fulfill({
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({ ...callRow("RINGING"), ice: ICE_EMPTY }),
+      });
+    }
+    if (/^\/calls\/[^/]+\/recording$/.test(path) && method === "POST") {
+      recordedParts.push(multipartFile(req.postDataBuffer(), req.headers()["content-type"] || ""));
+      return route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ data: {} }) });
+    }
+    if (/^\/calls\/[^/]+\/recording\/complete$/.test(path) && method === "POST") {
+      completes.push(req.postDataJSON());
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: {} }) });
+    }
+    if (path === `/channels/${CHANNEL.group_id}/messages` && method === "GET" && opts.pendingSummaries) {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ group_id: CHANNEL.group_id, messages: [], pending_call_summaries: opts.pendingSummaries }),
+      });
+    }
+    if (/^\/calls\/[^/]+\/summary$/.test(path) && method === "GET") {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          call_id: rowForGet.call_id,
+          transcription_state: "CERTIFIED",
+          transcription_error: null,
+          recording_enabled: true,
+          is_caller: true,
+          summary: {
+            summary_id: "s-e2e", summary_text: "We agreed the Friday delivery.",
+            key_points: [], follow_ups: [], language: "en", provenance: "groq",
+            draft_status: "PENDING_REVIEW", sent_message_id: null,
+            update_available: false, update_message_id: null, regenerate_count: 0,
+          },
+        }),
       });
     }
     if (/^\/calls\/[^/]+$/.test(path) && method === "GET") {
@@ -178,7 +255,7 @@ async function fakeComms(page: Page) {
       return route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify(callRow("IN_CALL", { connected_at: new Date().toISOString(), ice: ICE_EMPTY })),
+        body: JSON.stringify(opts.acceptRow?.() ?? callRow("IN_CALL", { connected_at: new Date().toISOString(), ice: ICE_EMPTY })),
       });
     }
     if (/^\/calls\/[^/]+\/hangup$/.test(path) && method === "POST") {
@@ -207,10 +284,49 @@ async function fakeComms(page: Page) {
     sawHangup: () => sawHangup,
     sawDecline: () => sawDecline,
     sawAccept: () => sawAccept,
+    dials: () => dials,
+    recordedParts: () => recordedParts,
+    completes: () => completes,
     setRowForGet: (row: Record<string, unknown>) => {
       rowForGet = row;
     },
   };
+}
+
+/** The one file in a multipart/form-data body. */
+function multipartFile(body: Buffer | null, contentType: string): Buffer {
+  const boundary = /boundary=([^;]+)/.exec(contentType)?.[1];
+  if (!body || !boundary) return Buffer.alloc(0);
+  const delimiter = Buffer.from(`--${boundary}`);
+  let at = body.indexOf(delimiter);
+  while (at !== -1) {
+    const next = body.indexOf(delimiter, at + delimiter.length);
+    if (next === -1) break;
+    const section = body.subarray(at + delimiter.length, next);
+    const headerEnd = section.indexOf("\r\n\r\n");
+    const headers = section.subarray(0, headerEnd).toString("latin1");
+    if (/filename=/.test(headers)) return section.subarray(headerEnd + 4, section.length - 2);
+    at = next;
+  }
+  return Buffer.alloc(0);
+}
+
+/** Decode each recording on its own in the page, as a player or provider would. */
+async function decodeEach(page: Page, files: Buffer[]) {
+  return page.evaluate(async (b64s) => {
+    const out: Array<{ ok: boolean; seconds?: number; error?: string }> = [];
+    for (const b64 of b64s) {
+      const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+      const ctx = new OfflineAudioContext(1, 48_000, 48_000);
+      try {
+        const audio = await ctx.decodeAudioData(bytes.buffer);
+        out.push({ ok: true, seconds: audio.duration });
+      } catch (e) {
+        out.push({ ok: false, error: String(e) });
+      }
+    }
+    return out;
+  }, files.map((f) => f.toString("base64")));
 }
 
 /** Create the answering peer connection IN THE PAGE and return its answer SDP. */
@@ -267,6 +383,9 @@ test("dial → the offer goes out → real media connects → hang-up closes it"
 
   // Dial from the thread header affordance.
   await page.getByRole("button", { name: "Start a voice call" }).first().click();
+  // PR-6 (O4): in the call's own conversation the call is the thread strip;
+  // the full call screen (timer, quality, microphone) is one tap away.
+  await page.getByRole("button", { name: "Open the call" }).click();
   await expect(page.getByText("Calling…")).toBeVisible();
   await expect(page.getByText(PARTNER.name).first()).toBeVisible();
 
@@ -323,7 +442,8 @@ test("an incoming ring shows who and the 60 s window; declining closes it", asyn
 
   const ring = page.getByRole("alertdialog");
   await expect(ring).toBeVisible();
-  await expect(page.getByText("Incoming call from Aïcha Diallo")).toBeVisible();
+  await expect(ring.getByText("Aïcha Diallo", { exact: true })).toBeVisible();
+  await expect(ring.getByText(/Incoming voice call · ringing 0:0\d/)).toBeVisible();
   await expect(ring.getByText("Decline")).toBeVisible();
 
   await ring.getByRole("button", { name: "Decline" }).click();
@@ -358,6 +478,9 @@ test("a call survives the tab going to the background and coming back", async ({
 
   await page.goto("/comms?channel=ch-e2e-1");
   await page.getByRole("button", { name: "Start a voice call" }).first().click();
+  // PR-6 (O4): in the call's own conversation the call is the thread strip;
+  // the full call screen (timer, quality, microphone) is one tap away.
+  await page.getByRole("button", { name: "Open the call" }).click();
   const offer = (await comms.next("call:offer")) as { callId: string; sdp: string };
   const answerSdp = await createCallee(page, offer.sdp);
   comms.tell("call:accepted", { call_id: "call-e2e-1", by: { user_id: PARTNER.user_id } });
@@ -397,7 +520,7 @@ test("a call survives the tab going to the background and coming back", async ({
   expect(comms.sawHangup()).toBe(true);
 });
 
-test("a ring is acknowledged on the socket channel — the ack that stops the push", async ({ page }) => {
+test("a ring is acknowledged on the socket channel (the ring-channel metric)", async ({ page }) => {
   await seedSession(page);
   await fakeApi(page);
   const comms = await fakeComms(page);
@@ -412,8 +535,8 @@ test("a ring is acknowledged on the socket channel — the ack that stops the pu
   });
   await expect(page.getByRole("alertdialog")).toBeVisible();
 
-  // A visible tab rings in-app, so the channel it reports is `socket` — and
-  // that report is what makes the server stand its push escalation down.
+  // A visible tab rings in-app, so the channel it reports is `socket`. Since
+  // PR-4 the ack only feeds the metric: it stops no other device ringing.
   const ack = (await comms.next("call:ring_ack")) as { callId: string; channel: string };
   expect(ack.callId).toBe("call-e2e-3");
   expect(ack.channel).toBe("socket");
@@ -426,7 +549,7 @@ test("an expired push opens the redial path, not a ring for a call that is over"
   // The row says the 60-second window is long gone.
   comms.setRowForGet(callRow("NO_ANSWER", { end_reason: "no_answer", callee_id: "u-1" }));
 
-  await page.goto("/comms?call=8f2f5a1e-3c22-4a53-9a2b-6e0f2c9d1a44&act=accept");
+  await page.goto("/comms?ring=8f2f5a1e-3c22-4a53-9a2b-6e0f2c9d1a44&act=accept");
 
   // No fake ring: an honest line and a way to call back.
   await expect(page.getByText("That call has already ended")).toBeVisible({ timeout: 10_000 });
@@ -436,4 +559,280 @@ test("an expired push opens the redial path, not a ring for a call that is over"
   await expect(page.getByText("Calling…")).toBeVisible({ timeout: 10_000 });
   const offer = (await comms.next("call:offer")) as { sdp: string };
   expect(offer.sdp).toContain("v=0");
+});
+
+test("an old summary-notification link (?call=) opens the call's page, never a ring or a redial", async ({ page }) => {
+  // Calls audit A6: the summary push used to link /comms?call=<id>, which the
+  // app read as a ring, and offered "Call again" for a call nobody missed.
+  await seedSession(page);
+  await fakeApi(page);
+  const comms = await fakeComms(page);
+  const id = "8f2f5a1e-3c22-4a53-9a2b-6e0f2c9d1a44";
+  comms.setRowForGet(callRow("ENDED", {
+    call_id: id, end_reason: "hangup", duration_seconds: 312,
+    caller_name: "E2E User", callee_name: PARTNER.name, recording_enabled: true,
+  }));
+
+  await page.goto(`/comms?call=${id}`);
+
+  await expect(page).toHaveURL(new RegExp(`/comms/calls/${id}$`));
+  await expect(page.getByRole("heading", { name: `Call with ${PARTNER.name}` })).toBeVisible();
+  await expect(page.getByLabel("Summary", { exact: true })).toHaveValue("We agreed the Friday delivery.");
+  await expect(page.getByText("That call has already ended")).toHaveCount(0);
+  await expect(page.getByRole("alertdialog")).toHaveCount(0);
+});
+
+/* ── Calls audit PR-2: the recorder and the pinned draft ─────────────────── */
+
+test("every recorded part decodes on its own (audit A3)", async ({ page }) => {
+  // The part boundary is a 120 s timer; the fake clock moves it, the fake
+  // microphone and MediaRecorder are Chromium's own. A long ping interval
+  // keeps the fast-forward from looking like a dead socket.
+  await page.clock.install();
+  await seedSession(page);
+  await fakeApi(page);
+  const comms = await fakeComms(page, { pingIntervalMs: 60 * 60 * 1000 });
+
+  await page.goto("/comms?channel=ch-e2e-1");
+  await page.getByRole("button", { name: "Start a voice call" }).first().click();
+  // PR-6 (O4): in the call's own conversation the call is the thread strip;
+  // the full call screen (timer, quality, microphone) is one tap away.
+  await page.getByRole("button", { name: "Open the call" }).click();
+  const offer = (await comms.next("call:offer")) as { callId: string; sdp: string };
+  const answerSdp = await createCallee(page, offer.sdp);
+  comms.tell("call:accepted", { call_id: "call-e2e-1", by: { user_id: PARTNER.user_id } });
+  comms.tell("call:answer", { call_id: "call-e2e-1", sdp: answerSdp });
+  await expect
+    .poll(
+      async () => {
+        await pumpCandidates(page, comms);
+        return page.evaluate(() => (window as unknown as { __callee?: RTCPeerConnection }).__callee?.iceConnectionState || "new");
+      },
+      { timeout: 15_000 },
+    )
+    .toBe("connected");
+  await expect(page.getByRole("timer")).toBeVisible({ timeout: 15_000 });
+
+  // Two part boundaries, each after real audio, then hang up for the third.
+  for (let i = 1; i <= 2; i += 1) {
+    await page.waitForTimeout(1500);
+    await page.clock.fastForward(120_000);
+    await expect.poll(() => comms.recordedParts().length, { timeout: 10_000 }).toBe(i);
+  }
+  await page.waitForTimeout(1500);
+  await page.getByRole("button", { name: "End call" }).click();
+  await expect.poll(() => comms.completes().length, { timeout: 15_000 }).toBe(1);
+
+  const parts = comms.recordedParts();
+  expect(parts).toHaveLength(3);
+  expect(comms.completes()[0]).toEqual({ side: "caller", parts: 3 });
+  for (const p of parts) expect([...p.subarray(0, 4)]).toEqual([0x1a, 0x45, 0xdf, 0xa3]);
+  const decoded = await decodeEach(page, parts);
+  expect(decoded.map((d) => d.ok)).toEqual([true, true, true]);
+  for (const d of decoded) expect(d.seconds).toBeGreaterThan(0.5);
+
+  // Control: a chunk cut from the middle of one continuous recording (what
+  // the old recorder uploaded as part 2) does not decode.
+  const headerless = readFileSync(fileURLToPath(new URL("../../tests/fixtures/audio/chrome-opus-headerless.webm", import.meta.url)));
+  expect((await decodeEach(page, [headerless]))[0].ok).toBe(false);
+});
+
+test("the summary link opens the conversation with the draft pinned above the composer (O3)", async ({ page }) => {
+  await seedSession(page);
+  await fakeApi(page);
+  await fakeComms(page, {
+    pendingSummaries: [{
+      call_id: "call-e2e-1", drafted_at: "2026-09-24T13:06:00.000Z", started_at: "2026-09-24T13:00:00.000Z",
+      ended_at: "2026-09-24T13:10:12.000Z", duration_seconds: 612, provenance: "groq", transcription_state: "CERTIFIED",
+    }],
+  });
+
+  await page.goto("/comms?channel=ch-e2e-1&summary=call-e2e-1");
+
+  const pinned = page.getByRole("region", { name: "Call summary — Review & send" });
+  await expect(pinned).toBeVisible();
+  await expect(pinned.getByLabel("Summary", { exact: true })).toHaveValue("We agreed the Friday delivery.");
+  await expect(pinned.getByRole("button", { name: /Send to conversation/ })).toBeVisible();
+  await expect(pinned.getByRole("button", { name: "Hide" })).toHaveAttribute("aria-expanded", "true");
+
+  // Above the composer, not over the thread or in a floating panel, and the
+  // composer stays on screen: on a short window the editor scrolls inside the
+  // card rather than pushing the composer below the fold.
+  const composer = page.getByRole("textbox", { name: /message/i }).last();
+  const [card, box] = await Promise.all([pinned.boundingBox(), composer.boundingBox()]);
+  expect(card && box && card.y + card.height <= box.y + 1).toBe(true);
+  const viewport = page.viewportSize();
+  expect(box && viewport && box.y + box.height <= viewport.height).toBe(true);
+
+  // Collapsing keeps it pinned, and takes ?summary= off the address.
+  await pinned.getByRole("button", { name: "Hide" }).click();
+  await expect(pinned.getByRole("button", { name: "Review & send" })).toBeVisible();
+  await expect(page).not.toHaveURL(/summary=/);
+});
+
+/* ── PR-4: two real devices, the network dropping, a double tap, a late app ── */
+
+type Comms = Awaited<ReturnType<typeof fakeComms>>;
+
+/**
+ * The signalling server between two pages: what one page's socket emits, the
+ * other page's socket receives, in the relay's wire shape (`call_id`). Every
+ * other part of both pages is the real app.
+ */
+function relayTo(target: () => Comms | null) {
+  return (event: string, payload: unknown) => {
+    const p = (payload || {}) as { callId?: string; sdp?: string; candidate?: unknown };
+    const to = target();
+    if (!to || !p.callId) return;
+    if (event === "call:offer" || event === "call:answer") to.tell(event, { call_id: p.callId, sdp: p.sdp });
+    else if (event === "call:ice") to.tell("call:ice", { call_id: p.callId, candidate: p.candidate ?? null });
+    else if (event === "call:ready") to.tell("call:ready", { call_id: p.callId });
+  };
+}
+
+/** Sign a page in as the partner (u-9): the callee's own device. */
+async function signInAsPartner(page: Page) {
+  const partner = { user_id: PARTNER.user_id, email: "aicha@smartls.test", display_name: PARTNER.name, full_name: PARTNER.name, role: "ADMIN", avatar_url: null };
+  await page.route("**/api/tenant/auth/**", (route) => {
+    const path = new URL(route.request().url()).pathname;
+    const body = path.endsWith("/refresh") ? { access_token: "at", refresh_token: "rt", user: partner } : partner;
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+  });
+}
+
+async function twoDevices(browser: import("@playwright/test").Browser) {
+  const ctxA = await browser.newContext({ permissions: ["microphone", "notifications"] });
+  const ctxB = await browser.newContext({ permissions: ["microphone", "notifications"] });
+  const caller = await ctxA.newPage();
+  const callee = await ctxB.newPage();
+  let a: Comms | null = null;
+  let b: Comms | null = null;
+  await seedSession(caller);
+  await fakeApi(caller);
+  a = await fakeComms(caller, { onEmit: relayTo(() => b) });
+  await seedSession(callee);
+  await fakeApi(callee);
+  await signInAsPartner(callee);
+  b = await fakeComms(callee, { onEmit: relayTo(() => a) });
+  return { ctxA, ctxB, caller, callee, a: a!, b: b!, close: async () => { await ctxA.close(); await ctxB.close(); } };
+}
+
+async function connectTwo(d: Awaited<ReturnType<typeof twoDevices>>) {
+  await d.caller.goto("/comms?channel=ch-e2e-1");
+  await d.callee.goto("/comms");
+  await d.caller.getByRole("button", { name: "Start a voice call" }).first().click();
+  await expect(d.caller.getByText("Calling…")).toBeVisible();
+  await d.caller.getByRole("button", { name: "Open the call" }).click();
+  // The caller's offer (and its candidates) reach the callee while it rings.
+  await d.a.next("call:offer");
+  d.b.tell("call:ringing", { call_id: "call-e2e-1", group_id: CHANNEL.group_id, from: { user_id: "u-1", name: "Ops Lead" }, ring_timeout_s: 60 });
+  const ring = d.callee.getByRole("alertdialog");
+  await expect(ring).toBeVisible();
+  await ring.getByRole("button", { name: "Answer" }).click();
+  d.a.tell("call:accepted", { call_id: "call-e2e-1", by: { user_id: PARTNER.user_id } });
+  await expect(d.caller.getByRole("timer")).toBeVisible({ timeout: 20_000 });
+  await expect(d.callee.getByRole("timer")).toBeVisible({ timeout: 20_000 });
+}
+
+test("two devices: a call connects with the real app on both ends (E1–E3)", async ({ browser }) => {
+  const d = await twoDevices(browser);
+  try {
+    await connectTwo(d);
+    // The callee said it was listening, and nothing re-offered blindly.
+    expect(await d.b.next("call:ready")).toEqual({ callId: "call-e2e-1" });
+    await expect(d.caller.getByText("Your microphone is on")).toBeVisible();
+    await expect(d.callee.getByText("Your microphone is on")).toBeVisible();
+
+    await d.caller.getByRole("button", { name: "End call" }).click();
+    d.b.tell("call:ended", { call_id: "call-e2e-1", status: "ENDED", reason: "hangup" });
+    await expect(d.caller.getByRole("dialog")).toHaveCount(0, { timeout: 10_000 });
+    await expect(d.callee.getByRole("dialog")).toHaveCount(0, { timeout: 10_000 });
+  } finally {
+    await d.close();
+  }
+});
+
+test("two devices: the callee's network drops for a few seconds and the call carries on", async ({ browser }) => {
+  const d = await twoDevices(browser);
+  try {
+    await connectTwo(d);
+    await d.ctxB.setOffline(true);
+    await d.callee.waitForTimeout(3_000);
+    await d.ctxB.setOffline(false);
+    await d.callee.waitForTimeout(2_000);
+    // Both still in the call, no failure line, and it ends the normal way.
+    await expect(d.caller.getByRole("timer")).toBeVisible();
+    await expect(d.callee.getByRole("timer")).toBeVisible();
+    await expect(d.callee.getByText("Could not connect the call")).toHaveCount(0);
+    await expect(d.callee.getByText("The call was lost — the connection ended")).toHaveCount(0);
+    await expect(d.callee.getByText("Reconnecting…")).toHaveCount(0, { timeout: 25_000 });
+    await d.callee.getByRole("button", { name: "End call" }).click();
+    await expect(d.callee.getByRole("dialog")).toHaveCount(0, { timeout: 10_000 });
+    expect(d.b.sawHangup()).toBe(true);
+  } finally {
+    await d.close();
+  }
+});
+
+test("a double tap on dial creates one call (E7)", async ({ page }) => {
+  await seedSession(page);
+  await fakeApi(page);
+  const comms = await fakeComms(page);
+  await page.goto("/comms?channel=ch-e2e-1");
+  await page.getByRole("button", { name: "Start a voice call" }).first().dblclick();
+  await expect(page.getByText("Calling…")).toBeVisible();
+  await comms.next("call:offer");
+  await page.waitForTimeout(500);
+  expect(comms.dials()).toBe(1);
+});
+
+test("an app opened mid-ring shows the ring the socket never delivered (A13)", async ({ page }) => {
+  await seedSession(page);
+  await fakeApi(page);
+  await fakeComms(page, {
+    ringing: [{
+      ...callRow("RINGING", { call_id: "call-e2e-9", caller_id: PARTNER.user_id, callee_id: "u-1" }),
+      caller_name: PARTNER.name,
+      ring_seconds_left: 45,
+      recording_enabled: false,
+      noise_suppression: false,
+    }],
+  });
+  await page.goto("/comms");
+  const ring = page.getByRole("alertdialog");
+  await expect(ring).toBeVisible();
+  await expect(ring.getByText(PARTNER.name, { exact: true })).toBeVisible();
+});
+
+test("a ring for the open conversation is the thread strip: one Answer button, no card (PR-6, O4)", async ({ page }) => {
+  await seedSession(page);
+  await fakeApi(page);
+  const comms = await fakeComms(page);
+  await page.goto("/comms?channel=ch-e2e-1");
+  await expect(page.getByText(PARTNER.name).first()).toBeVisible();
+  comms.tell("call:ringing", {
+    call_id: "call-e2e-5", group_id: CHANNEL.group_id,
+    from: { user_id: PARTNER.user_id, name: PARTNER.name }, ring_timeout_s: 60,
+  });
+  const strip = page.getByRole("region", { name: `Incoming call from ${PARTNER.name}` });
+  await expect(strip).toBeVisible();
+  await expect(page.getByRole("alertdialog")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Answer", exact: true })).toHaveCount(1);
+  await strip.getByRole("button", { name: "Decline" }).click();
+  await expect(strip).toHaveCount(0);
+  expect(comms.sawDecline()).toBe(true);
+});
+
+test("answered on another device: this device stops ringing and says so (E8)", async ({ page }) => {
+  await seedSession(page);
+  await fakeApi(page);
+  const comms = await fakeComms(page);
+  await page.goto("/comms?channel=ch-e2e-1");
+  await expect(page.getByText(PARTNER.name).first()).toBeVisible();
+  comms.tell("call:ringing", { call_id: "call-e2e-4", from: { user_id: PARTNER.user_id, name: PARTNER.name }, ring_timeout_s: 60 });
+  await expect(page.getByRole("alertdialog")).toBeVisible();
+  // The same person answered on their phone.
+  comms.tell("call:accepted", { call_id: "call-e2e-4", by: { user_id: "u-1" } });
+  await expect(page.getByRole("alertdialog")).toHaveCount(0);
+  await expect(page.getByText("Answered on another device")).toBeVisible();
 });

@@ -18,6 +18,7 @@ import {
   ctaBand,
   featureList,
   heroBlock,
+  heroCounters,
   pickBilingual,
   type CtaBandBlock,
   type FeatureListBlock,
@@ -131,7 +132,11 @@ export function MarketingPage() {
      published service list, so the page settles once rather than twice. */
 
   return (
-    <PageShell label={t("site.hero.title")}>
+    /* The one page that opts into the overlay. Its hero is full-bleed, dark in
+       both themes, and pads its own content back down by the same measured
+       header height — so the bar sits IN the composition rather than on top of
+       it. See `PageShell.overlayHeader` for why this is not the default. */
+    <PageShell label={t("site.hero.title")} overlayHeader>
       <Hero
         copy={
           hero
@@ -144,6 +149,11 @@ export function MarketingPage() {
               }
             : null
         }
+        /* The first three of the tenant's own figures, for the hero's baseline
+           rail. Read from the SAME shared home-page promise the copy above
+           comes from, so the band settles once; the proof strip below renders
+           whatever is left, so no number is printed twice in one screenful. */
+        figures={heroCounters(page)}
       />
       {/* §7.2. Directly beneath the hero, on the hero's own ground, and
           ABSENT ENTIRELY when nothing is pinned — which is most tenants, most

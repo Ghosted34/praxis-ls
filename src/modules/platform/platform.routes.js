@@ -122,6 +122,9 @@ router.get("/support/attachments/:id", requireCap("support.read"), c.supportAtta
 // That is the point of the fix, not a side effect of it.
 router.get("/settings", requireCap("settings.read"), c.settingsList);
 router.post("/settings/push/vapid/generate", requireCap("settings.write"), validate("vapidGenerate"), c.vapidGenerate);
+// Three segments, so it cannot be shadowed by `/settings/:section/:key`.
+router.get("/settings/network/turn/effective", requireCap("settings.read"), c.turnEffective);
+router.post("/settings/network/turn/rotate", requireCap("settings.write"), c.turnRotate);
 router.get("/settings/:section/:key", requireCap("settings.read"), c.settingGet);
 router.put("/settings/:section/:key", requireCap("settings.write"), validate("platformSetting"), c.settingPut);
 // `test` sends the stored credential to the live provider, so it is a write-tier
@@ -130,6 +133,7 @@ router.post("/settings/:section/:key/test", requireCap("settings.write"), valida
 
 // Deploy-wide AI vendor keys — one shared set every tenant's AI runtime uses.
 router.get("/ai-vendors", requireCap("settings.read"), c.aiVendorsList);
+router.get("/ai-vendors/gemini/model-check", requireCap("settings.read"), c.aiGeminiModelCheck);
 router.put("/ai-vendors/:vendor", requireCap("settings.write"), validate("aiVendorSet"), c.aiVendorSet);
 router.post("/ai-vendors/:vendor/test", requireCap("settings.write"), validateParams("aiVendorTest"), c.aiVendorTest);
 // Which chat vendor every tenant's AI tries FIRST. A PUT with no body: the

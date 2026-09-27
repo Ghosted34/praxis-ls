@@ -179,6 +179,7 @@ filled in", not as "nothing to report".
 | PR 5 | **Merged** | 2026-09-10 · [#328](https://github.com/tomblakeasaah196/praxis-ls/pull/328) | **100%** | 16 of 16, **plus PR 2's last 3 carried points** (§6.3, §6.8), which closes O-10. Five deviations and eleven findings — see §3.6. **F-28 is the one to read first: `useScrollScrub`'s default range finishes after the band has left the screen**, so §9.1's timeline shipped its first draft permanently invisible. F-31 corrects the record: the SEO and best-practices figures in §3.4 and §3.5 were measuring the preview harness, not the app. O-11 is resolved in §9.7; O-2, O-3 and O-4 remain the client's and §9.4 ships complete without them. |
 | Post-PR 5 | **Open items** | — | **100%** | Not a programme PR: O-12, O-13 and O-14 taken, plus what looking properly turned up — see §3.8. **F-40 is the one to read first: `services-page` put the whole quote wizard on its critical path** and every gate was green, because the first-paint gate never looked at a route chunk. A live theme-toggle defect was found and fixed here too — the painter wrote inline tokens, so clicking "Dark theme" gave a visitor the class, the attribute, the stored preference and a white page. Two items stay open (O-15, O-16), both measured, both with the reason they were not taken. |
 | Hero pass | **In review** | — | **100%** | Not a coverage PR — §7.1 revisited for drama. One deviation and six findings, see §3.9. **F-50 is the one to read first: the obvious way to build a light beam over this band takes the eyebrow to 1.9:1**, and neither gate can see it. F-47 and F-48 are two things §7.1 has been describing and not doing since PR 3. **F-52/F-53 are a pair: this band went over the first-paint budget, and the split that fixes it costs 18 ms of homepage LCP** — a hard rule kept at a soft target's expense, with the recovery named in O-18. The entry stylesheet still comes out smaller than it went in. |
+| Hero + header pass | **In review** | — | **100%** | Not a coverage PR — §7.1 revisited for scroll, §7.1's figures promoted out of the proof strip, and the bar taken over the band. One deviation and seven findings, see §3.10. **F-54 is the one to read first: `--brand-orange` is NOT Praxis's on this app** — `applyBrand` overwrites it from the tenant's own primary — so four pieces of accent TYPE on every dark band were painting a tenant's raw fill, measured at **2.12:1 for a navy-primary tenant**, and no gate in the tree could see it because the failing value only ever exists at runtime. Fixed at the source: `--primary-ink-hero`, derived per tenant in the shared palette engine and carried in its own `AA_PAIRS`. First paint 129.1 → **129.4 kB** of 131. |
 
 ### 3.2 PR 1 — reservations, deviations and findings
 
@@ -935,6 +936,156 @@ cost nothing at all: 244 ms against main's 248, the H1 both times. The 284 ms ab
 
 ---
 
+### 3.10 Hero + header pass — reservations, deviations and findings
+
+Not a coverage PR. The hero was lit, parallaxed and pointer-tracked, and after
+its first 820 ms it was a still picture: the only input it never read was the
+one every visitor supplies on every device, which is the scroll. The bar above
+it was a second rectangle stacked on a band it plainly wanted to be part of.
+And the accent colour on both was wrong for any tenant who is not orange.
+
+This adds a scroll-linked departure on `--exit`, a cinematic frame at `lg`, a
+baseline rail of the tenant's own figures, an overlaying header that takes the
+hero's colour family, and a hero ink token derived per tenant in the shared
+palette engine.
+
+**The deviation.**
+
+| # | Deviation | Why |
+| --- | --- | --- |
+| D-25 | **`useProximity` was specified for the nav's travelling ink and was not used.** The "responds to approach" behaviour shipped; the primitive did not. | `useProximity` calls `getBoundingClientRect()` inside its own `pointermove` handler — a layout read per event, on every page in the app, while the header is already restyling itself from `--hdr` during scroll. The services grid can afford that because it is one band on one page. `usePointerLight` is already attached to the bar for the sheen and already writes `--lx`, already idles to centre after 2.6s, and already declines coarse pointers. The lean is derived from it in CSS, so the effect is the specified one and the listener count is unchanged. §5.4's table should note that `--lx` is the cheaper source wherever a component is already lit. |
+
+**Findings.**
+
+- **F-54 — `--brand-orange` is not Praxis's on this app, and four pieces of type
+  were a tenant's raw FILL.** `hero.tsx`, `hero.css`, `section-head.tsx` and
+  `index.css` all stated, in as many words, that the token "is Praxis's and is
+  never tenant-overridden", and used it for the hero eyebrow, the accent word,
+  the plate's kicker and the portal link on the stated grounds that
+  `--primary-ink` measures ~3.4:1 on carbon. Half of that is true.
+  `app/branding.tsx` → `applyBrand` does `setTriplet("--brand-orange",
+  brand.primary)`, so on `public-web` the token carries the tenant's own
+  colour — the FILL, chosen to look right as a button, with no ink step-down.
+  Measured: `#FF5A00` on carbon is 6.33:1 and passes, `#0C4A7A` is **2.12:1**.
+  `check:contrast` could not see it and never could: it reads the value a
+  stylesheet DECLARES (`#FF5A00`) and the page paints one written at runtime.
+  O-17 described this as the beam and the accent word "disagreeing" on a
+  non-orange tenant, which understated it by a whole category — it was not the
+  wrong brand's colour, it was an AA failure.
+- **F-55 — the fix belongs in the engine, not in the stylesheet, and the
+  binding ground is the plate rather than the band.** `--primary-ink-hero` is
+  the tenant's colour walked to AA against the hero's own ground, in
+  `packages/shared/design/palette.js`, with the pair in `AA_PAIRS` so it is
+  measured for all eight palettes in both themes and shown in the settings
+  preview. Two properties are worth stating because both read like mistakes:
+  it is the **same value in both themes** (the band is carbon in both, so an
+  ink that followed the page would be F-48 again one layer up), and it is
+  derived against the **track plate flattened**, not against bare carbon —
+  the plate is the lighter of the band's two grounds, so an ink that passed on
+  the band could still fail on the plate, which is where the kicker and the
+  portal link sit. The ground is computed with the same sRGB mixes `hero.css`
+  paints with rather than hard-coded from one measurement, so retuning
+  `--hero-plate-tint` cannot silently invalidate it. For `#FF5A00` the walk is
+  a no-op, so an orange tenant's band is byte-identical to what shipped.
+  `--hero-plate-solid` is published alongside it and replaced a fourth,
+  separate approximation of the same colour in `hero.css`'s
+  no-`backdrop-filter` fallback.
+- **F-56 — a bound figure whose metric cannot answer would publish a zero, and
+  the renderer had no way to refuse.** `value` is `z.number()` and always
+  present, so a figure bound to a metric that cannot answer falls back to its
+  literal — and the editor creates a new figure with a literal of `0`. Three of
+  the eight metrics cannot answer until somebody does unrelated work
+  (`company.years_active` needs a founded year on Settings › Website › About,
+  `coverage.countries_count` a published corporate entity,
+  `operations.avg_clearance_hours` a clearance pair marked on a milestone
+  template), so a tenant who binds one of them sees "0 Countries covered" on
+  their own front door. Not a missing number: a false one, and the exact harm
+  §1.2 rule 7 is about. Fixed in `applyMetrics`, which is the only place it CAN
+  be fixed — `metric_key` is deliberately dropped from the public payload, so
+  nothing downstream can tell a placeholder from a number somebody chose. It is
+  what makes a metric safe to offer in the editor at all.
+
+- **F-60 — the tenant seed namespace is exhausted, and the seed this pass
+  wanted could not be written. O-19 carries it.** The extra figures were to
+  ship pre-filled so a tenant's editor opens on eight rows rather than four.
+  `migrator.js` selects tenant seeds with `/^90/` and platform seeds with
+  `/^91/`, so a tenant seed must be 9000–9099 — and 9087 through 9099 are all
+  taken while every free gap (≤ 9079) sorts BEFORE 9085, which is the file that
+  creates the home page and its figures block. A seed that runs first finds no
+  block, returns, and silently does nothing.
+
+  Established the hard way rather than reasoned: the file was written at 9134,
+  which collided with `9134_seed_calls_feature.sql` from main and reddened
+  `build-test`. Fixing only the number would have shipped a worse bug —
+  9134 is the PLATFORM range, so the seed had been running against a database
+  where `site_block` does not exist. Every other 91xx seed writes to
+  `platform_*` tables; this one was the only tenant write in the range.
+
+  **Not taken here, and the reason is the repository's own rule.** The fix is
+  to widen the tenant range in `migrator.js` (`/^9[02]/`, with new files at
+  92xx — inert for every file that exists today, since nothing matches 92xx).
+  That is a change to the code path that provisions every tenant database, and
+  `hero.css` states the principle this pass is being held to: a change that
+  repaints the system "belongs in its own change … not smuggled in behind a
+  hero animation". The same applies to the migrator with more force.
+
+  **What is lost is convenience, not capability.** The eight metrics are in the
+  registry and the editor's "Live figure" list offers all of them against three
+  hero slots, so the choice §7.1 wanted is fully shipped; a tenant clicks "Add
+  a figure" four times instead of reordering rows that were already there.
+- **F-57 — an overlaying bar that cross-fades to the PAGE's colours is
+  invisible in the light theme, and nothing here could catch it.** The obvious
+  build keeps the labels at `--foreground` and fades the fill in from
+  `--background` as `--hdr` rises. `--foreground` follows the page; the band
+  beneath is `--hero`, which is carbon in **both** themes and deliberately
+  never follows it — so in light mode that is dark ink on carbon. Not dim:
+  invisible. `FORCE_DARK` hides it today and that lock is one line in
+  `lib/theme-mode.ts` whose own header explains how to flip it, and
+  `check:contrast` would pass the failing rule because the tokens it NAMES
+  (`--foreground` on `--background`) are a fine pair. The overlay therefore
+  re-points the whole subtree to the hero family — `--foreground`, `--border`
+  and the fill — so the pair is constant at every scroll position and is the
+  one already measured at 17:1 / 18.4:1.
+- **F-58 — the hero's figures were already on the page, one band down.**
+  §7.1 never asked for figures and the reference the client supplied has them,
+  which reads as new scope until you notice `stat_counters` has been rendering
+  in the proof strip since PR 3, with server-side metric resolution behind it.
+  Promoting the first three costs no new endpoint, no new schema and no new
+  claim. The split is by INDEX rather than by a per-item flag: order already
+  exists, the editor already has arrows on it, and a boolean would cost a
+  migration plus two states the design has no answer for (six flagged, or
+  none). The remainder falls through to the strip, so reordering promotes and
+  demotes rather than deleting, and no figure is printed twice in one
+  screenful. The editor says the rule out loud — a rule nobody is told reads as
+  arbitrary.
+- **F-59 — `min-height: 100svh` is a `lg`-and-up rule, and that is the
+  audience arithmetic being kept rather than spent.** The cinematic frame the
+  client picked puts the copy in the lower third. At `lg` the copy and the
+  plate are two columns, so the track field is still beside the headline. Below
+  `lg` they STACK, and a full-height band there would put a screenful of copy
+  above the one control half this audience came for — which is exactly what
+  `hero.tsx`'s header says is not up for redesign. Small screens keep the
+  content-height band they already had.
+
+**Measured, rather than argued.**
+
+| What | Before | After |
+| --- | --- | --- |
+| First paint, total | 129.1 kB gzip | **129.4 kB** gzip (budget 131) |
+| First paint, the stylesheet alone | 16.9 kB gzip | **17.0 kB** gzip |
+| `marketing-page` own cost | 12.7 kB gzip | **12.9 kB** gzip (budget 16) |
+| Deferred total | 76.6 kB gzip | **76.8 kB** gzip (budget 220) |
+| Eyebrow on the hero plate, navy tenant (`#0C4A7A`) | **1.79:1** | **4.50:1** |
+| Eyebrow on the hero band, navy tenant | 2.12:1 | **5.40:1** |
+| Eyebrow, orange tenant (`#FF5A00`) | 6.33:1 | **6.33:1** — unchanged, deliberately |
+| `check:contrast` "fill tokens used as type" | 4 sites, each with a written `ink-on-dark:` marker | **0 sites** |
+| Palette engine pairs, per theme | 17 | **18** |
+| Metric registry | 5 | **8** |
+| Backend suite | — | 9,219 passed |
+| `public-web` suite | 428 | **440** passed |
+
+---
+
 ### 3.1 Open items carried into the build
 
 | # | Item | Owner | Blocks |
@@ -956,6 +1107,7 @@ cost nothing at all: 244 ms against main's 248, the H1 both times. The 284 ms ab
 | O-15 | **The entry ships BOTH translation dictionaries (F-39).** Building with `fr` aliased to `en` takes `index` from 52.7 to 44.3 kB gzip, so every visitor pays **8.4 kB — 6.6 % of the whole first-paint budget** — for the language they are not reading. Not taken here because splitting it naively LOSES: awaiting the resolved dictionary in `main.tsx` turns 8 kB of parallel transfer into a serial round trip, which on the connections this budget exists for is a wash at best. It pays with a `<link rel="modulepreload">` for the right dictionary in the server-rendered head — `src/shared/http/public-head.js` already builds that head and already knows the request's language. | Build | first-paint headroom |
 | O-16 | **`/careers` shifts 0.093 on a skeleton that is not the height of its content.** Diagnosed with a `PerformanceObserver` rather than inferred: one shift at t=227 ms, and NOT the font — it survives with fonts blocked, and O-12's fallbacks left it unchanged (Lighthouse's "web font loaded" attribution is coarse). `PageSkeleton rows={4}` stands in for a vacancy list whose length is the tenant's. Not fixed here because the honest fix needs the real rendered heights of both states, and this session has no live backend to measure them against — guessing a reservation is how the swap gets worse rather than better. | Build | CLS on `/careers` |
 | O-17 | **The hero's accent TYPE is Praxis's orange, not the tenant's.** `section-head.tsx`'s `onDark` branch and the plate's kicker both use `rgb(var(--brand-orange))`, which the file header says is never tenant-overridden. It is there for a measured reason — `--primary-ink` resolves to the *light-ground* ink in the light theme and is ~3.4:1 on carbon — but `--primary-ink-dark` is the token that solves it properly, is AA-corrected for dark grounds, and is already computed per tenant by `theme.ts`. So a tenant whose primary is navy gets a navy beam lighting an orange accent word. The beam and the glass tint use `--primary` today because they are light rather than type and carry no contrast duty; making the four agree repaints **every dark band on the site** and needs `check:contrast` run against it, which is why it is an item and not a line in the hero's diff. | Build | white-label correctness for any non-orange tenant |
+| O-19 | **The tenant seed namespace is full, so no tenant seed can be written at all (F-60).** `migrator.js` selects tenant seeds with `/^90/` and platform seeds with `/^91/`; 9087–9099 are taken and every free gap below sorts ahead of 9085, which creates the page a later seed would extend. The next tenant seed anyone writes hits this, not just this one. The fix is `/^9[02]/` with new files at 92xx — inert today, since nothing matches 92xx — plus a test pinning both ranges and a line in `doc/DB_ARCHITECTURE.md`, which documents neither. It belongs in its own change: it is the path that provisions every tenant database. | Build | any new tenant seed |
 | O-18 | **The marketing chunk's stylesheet is discovered a round trip late (F-53).** Splitting `hero.css` off the entry kept this band inside §1.2 rule 8's first-paint budget and cost **18 ms of homepage LCP** — 268 ms to 284 ms, measured interleaved, eleven loads each. The cost is the extra request's *position*, not its size, so a smaller file does not help. The fix is a `<link rel="preload" as="style">` in `src/shared/http/public-head.js`, resolved from Vite's build manifest, which puts it in parallel with the entry rather than behind it. It wants the same manifest plumbing O-15's `modulepreload` does, so the two belong in one change. | Build | homepage LCP, and §9.7's performance ≥ 90 |
 
 ---

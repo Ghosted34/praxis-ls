@@ -13,5 +13,11 @@ module.exports = build({
     // Applicability + required-ness (PR3 §3.1/§11). NULL/empty scope = applies to
     // all; `is_required=false` = tracked-if-present, never raises a missing flag.
     "is_required", "applies_to_categories", "applies_to_countries", "kyc_tier",
+    // The ACTIVATION set (14030): flagged types are the 360's "Required to
+    // activate" checklist AND what `canVerify` demands before verification. A
+    // separate question from `is_required`, which is advisory-only.
+    // (`exempt_outside_country` is deliberately NOT writable: it is jurisdiction
+    // data this product seeds — 'CM' on the ACF — not a per-tenant preference.)
+    "required_for_activation",
   ],
 });

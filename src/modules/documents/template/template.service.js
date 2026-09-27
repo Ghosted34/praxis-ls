@@ -6,6 +6,7 @@
  * settings store under section "document_template", key "<docType>:<entity|default>".
  */
 "use strict";
+const { clientHeadingJoin, CLIENT_HEADING_COLUMNS } = require("../../master/financial_dictionary/client-heading.sql");
 const settings = require("../../security/setting/setting.service");
 const registry = require("../../../services/documents/templates/registry");
 const kit = require("../../../services/documents/templates/kit");
@@ -748,6 +749,30 @@ async function transitOrderData(client, recordId) {
   };
 }
 
+/**
+ * What a client document needs to print a line under its family (14130): the
+ * line's own override, the catalogue's heading and the line's nature. NOT part
+ * of the signed payload — canonical.js `priceLines` picks label/qty/unit/tax/
+ * amount only — so adding them changes no existing signature.
+ */
+const headingFields = (l) => ({
+  is_disbursement: l.is_disbursement === true,
+  client_heading: l.client_heading || null,
+  client_heading_code: l.client_heading_code || null,
+  client_heading_fr: l.client_heading_fr || null,
+  client_heading_en: l.client_heading_en || null,
+  client_heading_sort: l.client_heading_sort ?? null,
+});
+
+/** The CLIENT_HEADING registry, for resolving a line's text override to a
+ *  proper bilingual heading at print time (templates/client-headings.js). */
+async function clientHeadingRegistry(client) {
+  const { rows } = await client.query(
+    "SELECT code, name_fr AS fr, name_en AS en, sort_order AS sort FROM dictionary_ref WHERE kind = 'CLIENT_HEADING'",
+  );
+  return rows;
+}
+
 async function loadRecord(client, docType, recordId) {
   if (INVOICE_TYPE[docType]) {
     const { rows } = await client.query(
@@ -757,14 +782,25 @@ async function loadRecord(client, docType, recordId) {
     );
     const i = rows[0];
     if (!i) return null;
-    const lr = await client.query("SELECT * FROM invoice_line WHERE invoice_id = $1 ORDER BY line_no", [recordId]);
+    // The catalogue's client heading rides beside each line (14130) so the
+    // printed invoice can group by family. Grouping happens at render time
+    // (templates/client-headings.js) — these lines stay the signed detail.
+    const lr = await client.query(
+      `SELECT il.*, ${CLIENT_HEADING_COLUMNS}
+         FROM invoice_line il
+         LEFT JOIN dictionary_item di ON di.dictionary_item_id = il.dictionary_item_id
+         ${clientHeadingJoin("di")}
+        WHERE il.invoice_id = $1 ORDER BY il.line_no`,
+      [recordId],
+    );
     return {
       entity_id: i.entity_id,
       data: {
         number: i.doc_number || String(i.invoice_id).slice(0, 8), date: i.issued_on, due: i.payment_due_on, status: i.status,
         original_ref: docType === "CREDIT_NOTE" ? null : undefined,
         party: { name: i.client_name || "—", lines: clientLines(i) },
-        lines: lr.rows.map((l) => ({ label: l.label, qty: Number(l.qty), unit: Number(l.unit_price), tax: l.is_disbursement ? null : 19.25, amount: Number(l.line_ht) })),
+        lines: lr.rows.map((l) => ({ label: l.label, qty: Number(l.qty), unit: Number(l.unit_price), tax: l.is_disbursement ? null : 19.25, amount: Number(l.line_ht), ...headingFields(l) })),
+        client_headings: await clientHeadingRegistry(client),
         totals: { service_ht: Number(i.service_ht), disbursement_total: Number(i.disbursement_total), vat_total: Number(i.vat_total), total_ttc: Number(i.total_ttc) },
         currency: i.currency,
       },
@@ -778,13 +814,21 @@ async function loadRecord(client, docType, recordId) {
     );
     const q = rows[0];
     if (!q) return null;
-    const lr = await client.query("SELECT * FROM quotation_line WHERE quotation_id = $1 ORDER BY line_no", [recordId]);
+    const lr = await client.query(
+      `SELECT ql.*, ${CLIENT_HEADING_COLUMNS}
+         FROM quotation_line ql
+         LEFT JOIN dictionary_item di ON di.dictionary_item_id = ql.dictionary_item_id
+         ${clientHeadingJoin("di")}
+        WHERE ql.quotation_id = $1 ORDER BY ql.line_no`,
+      [recordId],
+    );
     return {
       entity_id: q.entity_id,
       data: {
         number: q.doc_number || String(q.quotation_id).slice(0, 8), date: q.created_at, valid_until: q.valid_until,
         party: { name: q.client_name || "—", lines: clientLines(q) },
-        lines: lr.rows.map((l) => ({ label: l.label, qty: Number(l.qty), unit: Number(l.unit_price), tax: 19.25, amount: Number(l.qty) * Number(l.unit_price) })),
+        lines: lr.rows.map((l) => ({ label: l.label, qty: Number(l.qty), unit: Number(l.unit_price), tax: 19.25, amount: Number(l.qty) * Number(l.unit_price), ...headingFields(l) })),
+        client_headings: await clientHeadingRegistry(client),
         totals: { service_ht: Number(q.total_ht), vat_total: Number(q.total_ttc) - Number(q.total_ht), total_ttc: Number(q.total_ttc) },
         currency: q.currency,
       },
@@ -1346,8 +1390,10 @@ async function loadRecord(client, docType, recordId) {
               rp.name AS rate_provider_name,
               COALESCE(e_v.signatory_name, v.full_name) AS validator_name, e_v.job_title AS validator_title,
               COALESCE(e_vb.signatory_name, vb.full_name) AS validated_by_name, e_vb.job_title AS validated_by_title,
-              COALESCE(e_a.signatory_name, ap.full_name) AS approver_name, e_a.job_title AS approver_title
+              COALESCE(e_a.signatory_name, ap.full_name) AS approver_name, e_a.job_title AS approver_title,
+              cur.decimals AS currency_decimals
          FROM costing c
+         LEFT JOIN currency cur ON cur.code = c.currency
          LEFT JOIN dossier d ON d.dossier_id = c.dossier_id
          LEFT JOIN client_master cm ON cm.client_id = d.client_id
          LEFT JOIN service_type st ON st.service_type_id = d.service_type_id
@@ -1491,6 +1537,9 @@ async function loadRecord(client, docType, recordId) {
         totals,
         amount_in_words: totals.total_ttc,
         currency: c.currency,
+        // The words are in the SHEET's currency, so its minor units decide
+        // whether they end "… ET 00/100" (EUR) or not (XAF).
+        currency_decimals: c.currency_decimals !== null && c.currency_decimals !== undefined ? Number(c.currency_decimals) : undefined,
       },
     };
   }

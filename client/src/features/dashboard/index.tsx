@@ -62,8 +62,6 @@ import { LANE_STROKE, ShipmentMap } from "./map/shipment-map";
 import type { Selection } from "./map/selection";
 import { firstNameOf } from "./model";
 import { useControlTower } from "./use-control-tower";
-import { PullToRefresh } from "@/components/ui/pull-to-refresh";
-import { useQueryClient } from "@tanstack/react-query";
 
 /** The filters in force, in words. Meeting mode shows it so the room knows what
  *  it is looking at rather than assuming "everything". */
@@ -89,15 +87,8 @@ export function DashboardPage() {
   const { t } = useTranslation();
   const { user } = useAuth();
   const palette = useCommandPalette();
-  const queryClient = useQueryClient();
   const [filters, setFilters] = React.useState<ControlTowerFilters>({});
   const { data, error, loading, refresh } = useControlTower(filters);
-  const handlePullRefresh = React.useCallback(async () => {
-    // Soft refresh: invalidate React Query cache, keep scroll & auth.
-    // `refresh()` already does invalidateQueries(), but we await it here
-    // so the pull spinner stays until data lands.
-    await queryClient.invalidateQueries();
-  }, [queryClient]);
   const [openKpi, setOpenKpi] = React.useState<KpiId | null>(null);
   /** The band picker (kpi guide §7.1): one door, on the band itself, and its
    *  catalog query stays cold until the panel opens. */
@@ -156,13 +147,15 @@ export function DashboardPage() {
     },
   ];
 
-  // Pull disabled while a sheet/dialog is open — backdrop already locks scroll.
-  const pullDisabled = meeting || !!openKpi || editingBand;
-
   return (
     <PageContainer width="wide">
-      <PullToRefresh onRefresh={handlePullRefresh} disabled={pullDisabled}>
-        <TowerHero
+      {/* Pull-to-refresh is app-wide now — the shell wraps every screen's
+          content in it (app-shell.tsx), so the control tower gets the gesture
+          from there rather than owning its own copy. The shell's soft refresh
+          (invalidateQueries) revalidates this screen's data in place, and its
+          open-dialog suppression covers meeting view, the KPI picker and the
+          drilldown without this page having to declare them. */}
+      <TowerHero
         firstName={firstName}
         activeFiles={data.activeFiles}
         approvals={data.approvals}
@@ -272,7 +265,6 @@ export function DashboardPage() {
         band={data.band}
         onClose={() => setOpenKpi(null)}
       />
-      </PullToRefresh>
 
       <MeetingMode
         open={meeting}

@@ -101,7 +101,7 @@ export function SectionHead({
           className={cn(
             "eyebrow flex items-center gap-2",
             centred && "justify-center",
-            onDark && "text-[rgb(var(--brand-orange))]", // ink-on-dark: 6.44:1 on --hero, where --primary-ink is ~3.4:1
+            onDark && "text-[var(--primary-ink-hero)]",
             eyebrowClass,
           )}
         >
@@ -137,14 +137,30 @@ export function SectionHead({
                     which is the whole reason the ink token exists (CLAUDE.md:
                     accent TEXT is the ink, `--primary` is a fill).
 
-                    On the dark plate the relation inverts and the fill is the
-                    correct one — 6.44:1, against `--primary-ink`'s ~3.4:1.
-                    Found by porting `check:contrast` to this app (guide O-9).
+                    ON DARK IT IS A THIRD TOKEN, AND THE ONE THIS REPLACED WAS
+                    A LIVE FAILURE. `--primary-ink` is walked against `--card`,
+                    which is white in the light theme, so on the hero's carbon
+                    it measures ~3.4:1 — correct, and the reason the dark branch
+                    was ever separate. But the dark branch was
+                    `rgb(var(--brand-orange))`, on the stated grounds that that
+                    token is Praxis's and never tenant-overridden. On THIS app
+                    it is: `app/branding.tsx` → `applyBrand` sets it from the
+                    tenant's own primary. So this painted a tenant's raw FILL as
+                    type on carbon — 6.33:1 for an orange tenant, **2.12:1 for a
+                    navy one**, and invisible to every gate because the value
+                    only ever existed at runtime.
+
+                    `--primary-ink-hero` is that same colour walked to AA
+                    against the hero band's own ground, per tenant, in the
+                    shared palette engine where it CAN be measured. The pair is
+                    in the engine's `AA_PAIRS`. For #FF5A00 it resolves to
+                    #FF5A00, so an orange tenant's band is byte-identical to
+                    what shipped.
                   */}
                   <span
                     className={
                       onDark
-                        ? "text-[rgb(var(--brand-orange))]" // ink-on-dark: the accent word on the hero plate, 6.44:1
+                        ? "text-[var(--primary-ink-hero)]"
                         : "text-[var(--primary-ink)]"
                     }
                   >

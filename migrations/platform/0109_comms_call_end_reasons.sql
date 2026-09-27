@@ -1,0 +1,49 @@
+-- ============================================================================
+-- PLATFORM DB — 0109 how calls ended (Smart Comms calls, field note FN-2).
+-- ============================================================================
+--
+-- 0107 counts calls by terminal STATUS: started, answered, no-answer, declined,
+-- busy, failed. That answers "was the person reached". It cannot answer the
+-- question that actually brought an operator to this screen: an ANSWERED call
+-- that ended on its own, and why.
+--
+-- Four things end a call that nobody hung up, and from the outside they look
+-- identical — the call simply stops:
+--
+--   hangup        somebody pressed the button (the overwhelming majority)
+--   disconnected  the liveness sweep: both devices were unreachable
+--   max_duration  the 30-minute cap
+--   ice_failed    the media path died and did not recover
+--
+-- All four land in 0107 as `calls_answered` with a duration. Telling them apart
+-- needed a query against the tenant database, which is exactly the thing this
+-- table exists so that nobody has to do. A deployment with no TURN relay shows
+-- up here as a rising `ice_failed`, and a flapping network as `disconnected`;
+-- both are invisible in every column 0107 already has.
+--
+-- WHY jsonb AND NOT FOUR COLUMNS
+--   Same reason as `transcription_failed_reasons` beside it: `end_reason` is a
+--   vocabulary that has changed once already (14040 dropped its CHECK and
+--   smartcomm.call.vocab.js now owns it), and a new reason must not need a
+--   migration to become visible. A map of reason → count adds, rolls up and
+--   survives a vocabulary change; four integer columns do none of those.
+--
+-- GRAIN, IDEMPOTENCE, RETENTION: unchanged from 0107 — one row per
+-- (tenant, env, day), re-derived from the tenant tables on every tick, purged
+-- at 400 days by the same job. This column is backfilled by the next
+-- aggregation run over its regression window; older rows keep '{}', which
+-- reads as "not recorded then" rather than "nothing ended".
+--
+-- REVERSIBLE: dropping the column loses a breakdown, never a call. Every
+-- number in it is re-derived from `comms_call.end_reason` in each tenant's own
+-- database on the next run.
+--
+-- DOWN
+--   ALTER TABLE platform.comms_call_metric DROP COLUMN IF EXISTS ended_reasons;
+-- ============================================================================
+
+ALTER TABLE platform.comms_call_metric
+  ADD COLUMN IF NOT EXISTS ended_reasons jsonb NOT NULL DEFAULT '{}'::jsonb;
+
+-- DOWN
+-- ALTER TABLE platform.comms_call_metric DROP COLUMN IF EXISTS ended_reasons;

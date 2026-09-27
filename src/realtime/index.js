@@ -8,10 +8,12 @@
  * it belongs to. Membership is re-checked on the server for every join, so a
  * socket can never listen to a channel the user isn't a member of.
  *
- * Rooms are namespaced per tenant + channel: `t:<slug>:c:<groupId>`, so there is
- * no cross-tenant bleed even if two tenants ever shared a channel UUID.
+ * Rooms are namespaced per tenant, environment and channel:
+ * `t:<slug>:<env>:c:<groupId>`, so there is no cross-tenant bleed even if two
+ * tenants ever shared a channel UUID, and a sandbox schema that shares group
+ * ids with live cannot reach live sockets (calls audit N1).
  *
- * Services publish through `publish(tenantSlug, groupId, event, payload)` after
+ * Services publish through `publish(tenantSlug, env, groupId, event, payload)` after
  * a committed DB write (see smartcomm.service). Delivery is best-effort: if the
  * socket server isn't up (tests, workers) publish is a no-op.
  *
@@ -29,31 +31,25 @@ const identityCache = require("../shared/cache/identity-cache");
 
 let io = null;
 
-const room = (slug, groupId) => `t:${slug}:c:${groupId}`;
-const mailRoom = (slug) => `t:${slug}:mail`;
+const room = (slug, env, groupId) => `t:${slug}:${env}:c:${groupId}`;
+const mailRoom = (slug, env) => `t:${slug}:${env}:mail`;
 /**
- * One room per USER, for their own notifications.
- *
- * Notifications are the one payload here that is addressed to a person rather
- * than to a channel or a tenant, so they cannot ride `mailRoom` — that reaches
- * every authenticated socket in the tenant, and "your cash request was
- * rejected" is not everyone's business. The room is derived from the socket's
- * AUTHENTICATED user id, never from anything the client sends, so a client
- * cannot join someone else's by asking: there is no `notification:join` event
- * to ask with.
+ * One room per USER and ENVIRONMENT, for what is addressed to a person
+ * (notifications, calls). Derived from the socket's authenticated user id and
+ * env, never from anything the client sends. The env is in the name because a
+ * user's live and sandbox (training) tabs are different audiences: without it
+ * a sandbox call rang live devices (calls audit A9).
  */
-const userRoom = (slug, uid) => `t:${slug}:u:${uid}`;
+const ENVS = new Set(["live", "sandbox"]);
+const userRoom = (slug, env, uid) => `t:${slug}:${env}:u:${uid}`;
 
-/**
- * Per-process count of a user's connected sockets, keyed "<slug>:<uid>".
- *
- * Presence math for one replica: a user with two tabs here is still online
- * when one of them closes, and the `online: false` broadcast must wait for
- * the LAST socket on this replica. Cross-replica accuracy comes for free —
- * a disconnect fires on the replica that HELD the socket, so every socket's
- * join/leave is announced exactly once through the adapter.
- */
-const userSocketCount = new Map();
+/** The rooms every authenticated socket joins on connect. */
+function joinPersonalRooms(socket) {
+  const { tenantSlug, env, userId } = socket.data;
+  if (!ENVS.has(env)) return;
+  socket.join(mailRoom(tenantSlug, env));
+  if (userId) socket.join(userRoom(tenantSlug, env, userId));
+}
 
 /** Same origin policy as the HTTP CORS: base domain + its subdomains, explicit
  *  extras, and localhost in development. */
@@ -137,7 +133,13 @@ function initSocket(httpServer) {
     logger.warn("socket.io not installed — real-time disabled");
     return null;
   }
-  io = new Server(httpServer, { cors: { origin: corsOrigin, credentials: true } });
+  // Every client event is small: chat goes over HTTP, and the largest socket
+  // payload is a call's SDP (≤ 64 KB). socket.io's 1 MB default let one
+  // socket push megabytes per event (calls audit C5).
+  io = new Server(httpServer, {
+    cors: { origin: corsOrigin, credentials: true },
+    maxHttpBufferSize: SIGNAL_LIMITS.bufferBytes,
+  });
 
   /**
    * PERF S12. Attach the Redis adapter so `publish()` reaches every replica.
@@ -187,19 +189,10 @@ function initSocket(httpServer) {
   io.on("connection", (socket) => {
     const { tenantSlug, env, userId, tenant } = socket.data;
 
-    // Every authenticated socket joins its tenant's mail room, so inbound-mail
-    // notifications (published from the worker via the Redis bus) reach the
-    // Comms → Mail view live. Membership is tenant-scoped; the API still enforces
-    // per-record access when the client re-fetches.
-    socket.join(mailRoom(tenantSlug));
-
-    // …and their own notification room. Joined here rather than on request for
-    // two reasons: there is no client-supplied id to get wrong, and a user who
-    // has the app open should be told the moment something lands, not whenever
-    // the next 60-second badge poll happens to come round. That poll is what
-    // this replaces as the live path; it stays as the reconciler for a socket
-    // that was down when the notification was written.
-    if (userId) socket.join(userRoom(tenantSlug, userId));
+    // The tenant mail room (inbound-mail events) and the user's own room for
+    // their env. Joined here, not on request, so there is no client-supplied
+    // id to get wrong. The 60-second badge poll stays as the reconciler.
+    joinPersonalRooms(socket);
 
     socket.on("channel:join", async (groupId, ack) => {
       try {
@@ -207,18 +200,18 @@ function initSocket(httpServer) {
         const repo = require("../modules/smartcomm/smartcomm.repo");
         const member = await registry.withTenantConnection(tenant, env, (c) => repo.findMember(c, groupId, userId));
         if (!member) return typeof ack === "function" && ack({ ok: false, error: "NOT_A_MEMBER" });
-        socket.join(room(tenantSlug, groupId));
+        socket.join(room(tenantSlug, env, groupId));
         return typeof ack === "function" && ack({ ok: true });
       } catch {
         return typeof ack === "function" && ack({ ok: false, error: "JOIN_FAILED" });
       }
     });
 
-    socket.on("channel:leave", (groupId) => socket.leave(room(tenantSlug, groupId)));
+    socket.on("channel:leave", (groupId) => socket.leave(room(tenantSlug, env, groupId)));
 
     // Ephemeral typing indicator — broadcast to others in the room, not persisted.
     socket.on("channel:typing", (groupId) =>
-      socket.to(room(tenantSlug, groupId)).emit("channel:typing", { group_id: groupId, user_id: userId }),
+      socket.to(room(tenantSlug, env, groupId)).emit("channel:typing", { group_id: groupId, user_id: userId }),
     );
 
     attachCallSignals(socket);
@@ -244,69 +237,131 @@ function initSocket(httpServer) {
 }
 
 /**
- * 1:1 call signaling (PR-1) — RELAY ONLY.
+ * 1:1 call signalling — relay only: SDP and ICE candidates between the two
+ * participants, never stored or interpreted. The state machine is on the REST
+ * paths.
  *
- * The server carries the SDP offer/answer and ICE candidates between the two
- * participants and nothing else: it never stores them, never parses them, and
- * the media itself is P2P (guide D4 — our servers relay signaling only). The
- * state machine (RINGING → IN_CALL → terminal) is not driven from here; it
- * lives on the REST paths, because a state change writes a row and this file
- * must not own two sources of truth for one call.
- *
- * Participant check per event, exactly like `channel:join`: the row is the
- * authorisation and it is re-read every time, so a socket that is no longer a
- * participant (removed from the channel mid-call, call already closed) stops
- * being relayed to with no bookkeeping to get wrong. A non-participant's
- * signal is answered with silence, not an error — an error here would be a
- * probe for "is there a call I am not in".
+ * Bounded (calls audit C5, D7):
+ *   - relayed only while the call is RINGING or IN_CALL;
+ *   - the counterpart is looked up once per call per socket and cached, not
+ *     once per candidate; the cache entry goes when a terminal call event
+ *     reaches this socket (on whichever replica holds it) or after
+ *     `cacheMs`, whichever is first;
+ *   - an SDP is a string of at most 64 KB; a candidate is its four known
+ *     fields, at most 2 KB, or null;
+ *   - a token bucket per socket, shared by every call event.
+ * A dropped signal gets no reply: an error would tell a prober there is a
+ * call it is not in.
  */
+const SIGNAL_LIMITS = Object.freeze({
+  sdpBytes: 64 * 1024,
+  candidateBytes: 2048,
+  bufferBytes: 128 * 1024,
+  burst: 120,
+  refillPerSecond: 20,
+  cacheMs: 30_000,
+  cacheEntries: 8,
+});
+const TERMINAL_CALL_EVENTS = new Set(["call:ended", "call:declined", "call:cancelled", "call:no_answer"]);
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function cleanSdp(sdp) {
+  if (typeof sdp !== "string" || !sdp || Buffer.byteLength(sdp) > SIGNAL_LIMITS.sdpBytes) return undefined;
+  return sdp;
+}
+
+/** null (end of candidates), the candidate's known fields, or undefined (drop). */
+function cleanCandidate(c) {
+  if (c === null || c === undefined) return null;
+  if (typeof c !== "object" || Array.isArray(c)) return undefined;
+  const out = {};
+  if (typeof c.candidate === "string") out.candidate = c.candidate;
+  if (typeof c.sdpMid === "string" || c.sdpMid === null) out.sdpMid = c.sdpMid;
+  if (Number.isInteger(c.sdpMLineIndex) || c.sdpMLineIndex === null) out.sdpMLineIndex = c.sdpMLineIndex;
+  if (typeof c.usernameFragment === "string" || c.usernameFragment === null) out.usernameFragment = c.usernameFragment;
+  if (Buffer.byteLength(JSON.stringify(out)) > SIGNAL_LIMITS.candidateBytes) return undefined;
+  return out;
+}
+
+function tokenBucket({ burst, refillPerSecond }, now = () => Date.now()) {
+  let tokens = burst;
+  let last = now();
+  return () => {
+    const t = now();
+    tokens = Math.min(burst, tokens + ((t - last) / 1000) * refillPerSecond);
+    last = t;
+    if (tokens < 1) return false;
+    tokens -= 1;
+    return true;
+  };
+}
+
+/** A client event's payload as an object. `null`, an array or a primitive
+ *  becomes `{}`: destructuring `null` throws inside socket.io's listener, and
+ *  an uncaught exception there exits the API process (server.js). */
+const asObject = (p) => (p && typeof p === "object" && !Array.isArray(p) ? p : {});
+
 function attachCallSignals(socket) {
   const { tenant, env, tenantSlug, userId } = socket.data;
+  const allow = tokenBucket(SIGNAL_LIMITS);
+  const counterparts = new Map(); // callId → { userId, at }
 
-  async function relay(callId, event, extra) {
-    if (typeof callId !== "string") return;
-    const callRepo = require("../modules/smartcomm/smartcomm.call.repo");
-    const other = await registry.withTenantConnection(tenant, env, (c) =>
-      callRepo.otherParticipant(c, { callId, userId }),
-    );
-    if (!other) return;
-    publishToUser(tenantSlug, other.user_id, event, { call_id: callId, ...(extra || {}) });
+  if (typeof socket.onAnyOutgoing === "function") {
+    socket.onAnyOutgoing((event, payload) => {
+      if (TERMINAL_CALL_EVENTS.has(event) && payload && payload.call_id) counterparts.delete(payload.call_id);
+    });
   }
 
-  socket.on("call:offer", ({ callId, sdp } = {}) => {
-    if (sdp) {
-      relay(callId, "call:offer", { sdp }).catch((err) =>
-        logger.warn({ err, callId }, "call:offer relay failed"),
-      );
-    }
-  });
-  socket.on("call:answer", ({ callId, sdp } = {}) => {
-    if (sdp) {
-      relay(callId, "call:answer", { sdp }).catch((err) =>
-        logger.warn({ err, callId }, "call:answer relay failed"),
-      );
-    }
-  });
-  socket.on("call:ice", ({ callId, candidate } = {}) => {
-    relay(callId, "call:ice", { candidate: candidate || null }).catch((err) =>
-      logger.warn({ err, callId }, "call:ice relay failed"),
+  async function counterpartFor(callId) {
+    const hit = counterparts.get(callId);
+    if (hit && Date.now() - hit.at < SIGNAL_LIMITS.cacheMs) return hit.userId;
+    counterparts.delete(callId);
+    const callRepo = require("../modules/smartcomm/smartcomm.call.repo");
+    const other = await registry.withTenantConnection(tenant, env, (c) =>
+      callRepo.liveCounterpart(c, { callId, userId }),
     );
+    if (!other) return null;
+    if (counterparts.size >= SIGNAL_LIMITS.cacheEntries) counterparts.delete(counterparts.keys().next().value);
+    counterparts.set(callId, { userId: other.user_id, at: Date.now() });
+    return other.user_id;
+  }
+
+  function relay(event, callId, extra) {
+    if (typeof callId !== "string" || !UUID.test(callId) || !allow()) return;
+    counterpartFor(callId)
+      .then((other) => {
+        if (other) publishToUser(tenantSlug, env, other, event, { call_id: callId, ...extra });
+      })
+      .catch((err) => logger.warn({ err, callId }, `${event} relay failed`));
+  }
+
+  socket.on("call:offer", (p) => {
+    const { callId, sdp } = asObject(p);
+    const clean = cleanSdp(sdp);
+    if (clean !== undefined) relay("call:offer", callId, { sdp: clean });
   });
-  socket.on("call:ring_ack", ({ callId, channel } = {}) => {
-    // PR-3 (§4.6). The ack is what stops the other channels: it is written to
-    // the row (which the delayed push escalation re-reads before it sends) and
-    // broadcast to this user's other devices so the desk tab and the phone stop
-    // ringing together.
-    //
-    // The write goes through the SERVICE, not the repo, because the service is
-    // where the two rules live that make the ack meaningful: only the callee can
-    // ack a ring, and only the FIRST ack counts (a second device acking 20 ms
-    // later must not overwrite which channel landed).
-    //
-    // A failure here is swallowed on purpose: the ring times out on its own 60
-    // seconds later, so an unvalidated ack costs at most one push and never the
-    // call — and a warning per ack on a flaky network is a log nobody can read.
-    if (typeof callId !== "string") return;
+  socket.on("call:answer", (p) => {
+    const { callId, sdp } = asObject(p);
+    const clean = cleanSdp(sdp);
+    if (clean !== undefined) relay("call:answer", callId, { sdp: clean });
+  });
+  socket.on("call:ice", (p) => {
+    const { callId, candidate } = asObject(p);
+    const clean = cleanCandidate(candidate);
+    if (clean !== undefined) relay("call:ice", callId, { candidate: clean });
+  });
+  // PR-4 (E3): the callee's engine is listening; the caller re-sends its
+  // offer if it has no answer. No payload beyond the call id.
+  socket.on("call:ready", (p) => {
+    relay("call:ready", asObject(p).callId, {});
+  });
+  socket.on("call:ring_ack", (p) => {
+    const { callId, channel } = asObject(p);
+    // Which channel a ring landed on, for the ring-channel metric only: it
+    // stops no push and no other device (audit A12). Through the service,
+    // which holds the rules (only the callee acks; the first ack counts).
+    // A failure is swallowed: it costs a metric row, never the call.
+    if (typeof callId !== "string" || !UUID.test(callId) || !allow()) return;
     const callService = require("../modules/smartcomm/smartcomm.call.service");
     registry
       .withTenantConnection(tenant, env, (c) =>
@@ -314,7 +369,6 @@ function attachCallSignals(socket) {
           id: callId,
           actor: { user_id: userId },
           channel: typeof channel === "string" ? channel : "socket",
-          tenantSlug,
         }),
       )
       .catch(
@@ -325,65 +379,92 @@ function attachCallSignals(socket) {
 }
 
 /**
- * Presence + last seen (PR-1, guide §4.11).
+ * Presence + last seen (guide §4.11; calls audit B3, C9, D6, D8, E12).
  *
- * "Online now" = a socket is connected; the broadcast rides the tenant-wide
- * room (mailRoom — every authenticated socket in the tenant already joins
- * it, so presence needs no new room and no client change to hear it). The
- * persistent half is comms_user_presence.last_seen_at, flushed on connect,
- * on every `comms:seen` beat (the client throttles to one per 60 s), and on
- * disconnect.
+ * "Online now" is kept in Redis per user (smartcomm.presence.js): one entry
+ * per live socket, refreshed by this replica every 30 s and gone 90 s after
+ * the last refresh, so it is right across replicas and after a crash.
+ *
+ *   - On connect, the socket gets a snapshot of its user's DIRECT contacts
+ *     (`comms:presence_snapshot`), and the contacts hear `comms:presence`
+ *     in their own user rooms when this is the user's first live socket.
+ *   - On the last socket's disconnect, the contacts hear the user go
+ *     offline, and a live call gets its liveness check at +60 s.
+ *   - `last_seen_at` is written at most once per user per 5 minutes, and a
+ *     socket's `comms:seen` beats are ignored inside 30 s (C9).
+ *
+ * Every Redis or database failure here is logged and absorbed: presence is
+ * advisory, and the 30-minute cap stays the backstop for a call.
  */
+const PRESENCE_SEEN_MIN_MS = 30_000;
+
 function attachPresence(socket) {
   const { tenant, env, tenantSlug, userId } = socket.data;
-  if (!userId) return;
-  const key = `${tenantSlug}:${userId}`;
+  if (!userId || !ENVS.has(env)) return;
+  const presence = require("../modules/smartcomm/smartcomm.presence");
+  const callRepo = require("../modules/smartcomm/smartcomm.call.repo");
+  const redis = () => require("../config/redis").getClient();
+  const who = { slug: tenantSlug, env, userId, socketId: socket.id };
+  let lastSeenBeat = 0;
 
-  const touch = () => {
-    const callRepo = require("../modules/smartcomm/smartcomm.call.repo");
-    registry
-      .withTenantConnection(tenant, env, (c) => callRepo.touchPresence(c, userId))
-      .catch((err) => logger.warn({ err, userId }, "presence flush failed"));
+  const contacts = () => presence.contactsFor(redis(), {
+    ...who,
+    load: () => registry.withTenantConnection(tenant, env, (c) => callRepo.directContacts(c, userId)),
+  });
+
+  const announce = async (online) => {
+    const list = await contacts();
+    if (!list.length || !io) return;
+    io.to(list.map((uid) => userRoom(tenantSlug, env, uid))).emit("comms:presence", { user_id: userId, online });
   };
 
-  // The online registry the call-liveness sweep reads (field note FN-1): one
-  // SET per tenant+env, one member per SOCKET, so a user with two tabs on two
-  // replicas stays "online" while any tab is alive, and the last tab leaving
-  // removes the user cleanly. Best-effort: a registry hiccup must never fail a
-  // join/leave, and the sweep's 60 s offline grace plus the 30-minute cap both
-  // sit on the far side of a wrong read.
-  const touchOnline = (add) => {
-    try {
-      const { getClient } = require("../config/redis");
-      const member = `${userId}:${socket.id}`;
-      const onlineKey = `praxis:comms:online:${tenantSlug}:${env}`;
-      const op = add ? getClient().sadd(onlineKey, member) : getClient().srem(onlineKey, member);
-      void op.catch(() => {});
-    } catch {
-      /* @silent:storage — no Redis client yet (boot); the next socket event retries. */
-    }
+  const flushLastSeen = async () => {
+    if (!(await presence.claimLastSeenFlush(redis(), who))) return;
+    await registry.withTenantConnection(tenant, env, (c) => callRepo.touchPresence(c, userId));
   };
 
-  const n = (userSocketCount.get(key) || 0) + 1;
-  userSocketCount.set(key, n);
-  touch();
-  touchOnline(true);
-  if (n === 1) {
-    io.to(mailRoom(tenantSlug)).emit("comms:presence", { user_id: userId, online: true });
-  }
+  const warn = (what) => (err) => logger.warn({ err, userId }, `presence: ${what} failed`);
 
-  socket.on("comms:seen", () => touch());
+  const joined = (async () => {
+    const before = await presence.join(redis(), who);
+    const list = await contacts();
+    const users = await presence.onlineMap(redis(), { slug: tenantSlug, env, userIds: list });
+    socket.emit("comms:presence_snapshot", { users });
+    if (before === 0) await announce(true);
+    await flushLastSeen();
+  })().catch(warn("connect"));
+
+  const heartbeat = setInterval(() => {
+    presence.beat(redis(), who).catch(warn("heartbeat"));
+  }, presence.PRESENCE.heartbeatMs);
+  if (typeof heartbeat.unref === "function") heartbeat.unref();
+
+  socket.on("comms:seen", () => {
+    const now = Date.now();
+    if (now - lastSeenBeat < PRESENCE_SEEN_MIN_MS) return;
+    lastSeenBeat = now;
+    flushLastSeen().catch(warn("last seen"));
+  });
 
   socket.on("disconnect", () => {
-    touchOnline(false);
-    const left = (userSocketCount.get(key) || 1) - 1;
-    if (left <= 0) {
-      userSocketCount.delete(key);
-      touch();
-      io.to(mailRoom(tenantSlug)).emit("comms:presence", { user_id: userId, online: false });
-    } else {
-      userSocketCount.set(key, left);
-    }
+    clearInterval(heartbeat);
+    // After the join has landed, so a quick disconnect cannot leave this
+    // socket's entry behind it (it would count as online for 90 s).
+    joined.then(async () => {
+      const left = await presence.leave(redis(), who);
+      if (left > 0) return;
+      await announce(false);
+      await flushLastSeen();
+      // A call this user was in gets its liveness check (audit D1).
+      const callId = await presence.activeCall(redis(), who);
+      if (callId) {
+        const clock = require("../modules/smartcomm/smartcomm.call.clock");
+        const { LIVENESS_OFFLINE_S } = require("../modules/smartcomm/smartcomm.call.service");
+        await clock.scheduleLiveness({
+          callId, tenantMeta: tenant, env, atMs: Date.now() + LIVENESS_OFFLINE_S * 1000 + clock.GRACE_MS,
+        });
+      }
+    }).catch(warn("disconnect"));
   });
 }
 
@@ -409,8 +490,11 @@ function attachMailBridge(attempt = 0) {
   subscriber.on("message", (channel, message) => {
     if (channel !== CHANNEL || !io) return;
     try {
-      const { slug, payload } = JSON.parse(message);
-      if (slug) io.to(mailRoom(slug)).emit("mail:new", payload || {});
+      const { slug, env, payload } = JSON.parse(message);
+      // Every replica receives the bus message and re-emits it, so each must
+      // reach only its OWN sockets (io.local): through the redis adapter,
+      // `io.to` sent one duplicate `mail:new` per replica (calls audit N2).
+      if (slug) io.local.to(mailRoom(slug, ENVS.has(env) ? env : "live")).emit("mail:new", payload || {});
     } catch {
       /* @silent:parse — a malformed message on the bus is not something this
          subscriber can act on, and throwing would detach it from every LATER
@@ -420,24 +504,57 @@ function attachMailBridge(attempt = 0) {
   logger.info("[mail-bus] realtime bridge attached");
 }
 
-/** Emit an event to everyone subscribed to a channel. No-op if not initialised. */
-function publish(tenantSlug, groupId, event, payload) {
-  if (!io || !tenantSlug || !groupId) return;
-  io.to(room(tenantSlug, groupId)).emit(event, payload);
+/** Emit an event to everyone subscribed to a channel in one env. No-op if
+ *  not initialised or without a valid env. */
+function publish(tenantSlug, env, groupId, event, payload) {
+  if (!io || !tenantSlug || !groupId || !ENVS.has(env)) return;
+  io.to(room(tenantSlug, env, groupId)).emit(event, payload);
 }
 
 /**
- * Emit to ONE user's notification room, on every app instance.
- *
- * Best-effort by design and silent when the socket server is not up (workers,
- * tests, a cold boot): the notification row is already committed and the badge
- * poll still reconciles, so a missed live event costs latency, never the
- * notification. That is the same contract `publish` has, and it is why neither
- * is ever awaited inside a transaction.
+ * The worker has no socket server, so it publishes through the Redis emitter
+ * onto the same channels the API's redis adapter subscribes to (calls audit
+ * A6: `call:summary_ready` from the pipeline job reached nobody). Created on
+ * first use from the shared Redis client.
  */
-function publishToUser(tenantSlug, userId, event, payload) {
-  if (!io || !tenantSlug || !userId) return;
-  io.to(userRoom(tenantSlug, userId)).emit(event, payload);
+let emitter = null;
+function getEmitter() {
+  if (!emitter) {
+    const { Emitter } = require("@socket.io/redis-emitter");
+    emitter = new Emitter(require("../config/redis").getClient());
+  }
+  return emitter;
 }
 
-module.exports = { initSocket, publish, publishToUser, isReady: () => io !== null };
+/**
+ * Emit to ONE user's room for ONE environment, on every app instance: through
+ * the socket server in the API, through the Redis emitter in the worker. `env`
+ * is required; a publish without a valid one goes nowhere rather than to the
+ * live room. Best-effort and never awaited inside a transaction: the row is
+ * committed and the badge poll reconciles, so a missed event costs latency.
+ */
+function publishToUser(tenantSlug, env, userId, event, payload) {
+  if (!tenantSlug || !userId || !ENVS.has(env)) return;
+  const target = userRoom(tenantSlug, env, userId);
+  try {
+    if (io) io.to(target).emit(event, payload);
+    else getEmitter().to(target).emit(event, payload);
+  } catch (err) {
+    logger.warn({ err, event }, "realtime: publish to user failed");
+  }
+}
+
+module.exports = {
+  initSocket,
+  publish,
+  publishToUser,
+  joinPersonalRooms,
+  attachCallSignals,
+  attachPresence,
+  attachMailBridge,
+  rooms: { room, mailRoom, userRoom },
+  setIoForTests: (server) => { io = server; },
+  SIGNAL_LIMITS,
+  isReady: () => io !== null,
+  resetEmitterForTests: () => { emitter = null; },
+};

@@ -21,8 +21,14 @@
  * Seeded defaults — the SAME set 0511 writes into party_field_config. Kept here
  * as the fallback for a tenant whose config table is somehow empty, and as the
  * source PR 2's form reads when the API has not answered yet. `[applies_to,
- * field_key, field_group, is_required]`; everything unlisted defaults to
- * visible + optional.
+ * field_key, field_group, is_required, required_for_activation?]`; everything
+ * unlisted defaults to visible + optional + not-an-activation-requirement.
+ *
+ * `is_required` is enforced when the record is CREATED. `required_for_activation`
+ * (14030) is enforced when the party is ACTIVATED — the fifth element is
+ * optional so the two policies stay readable side by side, and every seeded row
+ * leaves it false: activation requirements are opt-in per tenant (only `name`
+ * is required out of the box, via `is_required`, and it can never be blank).
  */
 const DEFAULT_ROWS = [
   ["CLIENT", "name", "IDENTITY", true],
@@ -87,11 +93,12 @@ const GROUP_ORDER = [
 function defaultsFor(appliesTo) {
   const want = String(appliesTo || "").toUpperCase();
   return DEFAULT_ROWS.filter(([a]) => a === want).map(
-    ([applies_to, field_key, field_group, is_required], i) => ({
+    ([applies_to, field_key, field_group, is_required, required_for_activation], i) => ({
       applies_to,
       field_key,
       field_group,
       is_required,
+      required_for_activation: required_for_activation === true,
       is_visible: true,
       is_custom: false,
       sort_order: (i + 1) * 10,
@@ -140,6 +147,26 @@ function resolveValue(data, key) {
 }
 
 /**
+ * Which fields carrying `flag` the payload has not filled in. `is_required` and
+ * `required_for_activation` are two different questions asked of the same rows,
+ * so they share one walk rather than two that can drift:
+ *
+ *   is_required             → required to CREATE the record.
+ *   required_for_activation → required to ACTIVATE it (14030).
+ */
+function checkFlagged(data, config, flag) {
+  const rows = config && config.length ? config : [];
+  const missing = [];
+  for (const c of rows) {
+    if (!c[flag]) continue;
+    if (c.is_visible === false) continue; // a hidden field cannot be demanded of a form
+    if (isBlank(resolveValue(data || {}, c.field_key)))
+      missing.push(c.field_key);
+  }
+  return { ok: missing.length === 0, missing };
+}
+
+/**
  * Which required, visible fields the payload has not filled in.
  *
  * @param {object} data   the parsed payload (post-Zod)
@@ -147,15 +174,21 @@ function resolveValue(data, key) {
  * @returns {{ok: boolean, missing: string[]}}
  */
 function checkRequired(data, config) {
-  const rows = config && config.length ? config : [];
-  const missing = [];
-  for (const c of rows) {
-    if (!c.is_required) continue;
-    if (c.is_visible === false) continue; // a hidden field cannot be demanded of a form
-    if (isBlank(resolveValue(data || {}, c.field_key)))
-      missing.push(c.field_key);
-  }
-  return { ok: missing.length === 0, missing };
+  return checkFlagged(data, config, "is_required");
+}
+
+/**
+ * Which ACTIVATION fields (14030) the party does not yet carry. Same rows, same
+ * nesting rules, different flag — the act of activating a party is where a
+ * tenant's `required_for_activation` policy is enforced.
+ *
+ * @param {object} data   the party's data (a payload, or a stored row hydrated
+ *                        with its child collections by the caller)
+ * @param {Array}  config the effective config rows for this side
+ * @returns {{ok: boolean, missing: string[]}}
+ */
+function checkActivationRequired(data, config) {
+  return checkFlagged(data, config, "required_for_activation");
 }
 
 // Named `exports.x =` assignments, NOT `module.exports = { x }` — see index.js.
@@ -164,3 +197,4 @@ exports.GROUP_ORDER = GROUP_ORDER;
 exports.defaultsFor = defaultsFor;
 exports.effectiveConfig = effectiveConfig;
 exports.checkRequired = checkRequired;
+exports.checkActivationRequired = checkActivationRequired;

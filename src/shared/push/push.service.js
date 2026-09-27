@@ -218,6 +218,8 @@ async function sendToUser(a, b) {
     user_id, title, body, url, tag,
     renotify, requireInteraction, badgeCount, actions, data, timestamp, vibrate,
     urgency = "normal", ttl = DEFAULT_TTL_S,
+    // One device only (a call's Test ring): that subscription of this user.
+    endpoint = null,
   } = opts || {};
   // A tenant client exposes .query(sql, params); the legacy platform `query` is
   // a bare function. Normalise both to q(sql, params).
@@ -236,9 +238,11 @@ async function sendToUser(a, b) {
 
   const webpush = await configuredClient();
   if (!webpush || !q) return { sent: 0, failed: 0, total: 0, pruned: 0, reason: "push not configured" };
+  const where = endpoint ? "WHERE user_id = $1 AND endpoint = $2" : "WHERE user_id = $1";
+  const params = endpoint ? [user_id, endpoint] : [user_id];
   let subs;
   try {
-    const res = await q(`SELECT endpoint, p256dh, auth, vapid_key_hash FROM ${table} WHERE user_id = $1`, [user_id]);
+    const res = await q(`SELECT endpoint, p256dh, auth, vapid_key_hash FROM ${table} ${where}`, params);
     subs = res.rows;
   } catch {
     // Either the table is not provisioned, or 12770 has not run and
@@ -246,7 +250,7 @@ async function sendToUser(a, b) {
     // fall back to reporting the table missing" — a deployment mid-migration
     // must keep delivering.
     try {
-      const res = await q(`SELECT endpoint, p256dh, auth FROM ${table} WHERE user_id = $1`, [user_id]);
+      const res = await q(`SELECT endpoint, p256dh, auth FROM ${table} ${where}`, params);
       subs = res.rows;
     } catch {
       return { sent: 0, failed: 0, total: 0, pruned: 0, reason: "no push_subscription table" };

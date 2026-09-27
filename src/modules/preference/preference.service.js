@@ -183,7 +183,14 @@ const CALLS_SECTION = "calls";
  */
 const CALLS_KEYS = {
   noiseSuppression: "noise_suppression",
+  // PR-6 (calls audit C6, A11, G4). The call service reads these from
+  // live.user_preference: see smartcomm.call.repo callPrefsFor.
+  doNotDisturb: "do_not_disturb",
+  quietHours: "quiet_hours",
+  hideLastSeen: "hide_last_seen",
 };
+/** The one call preference that is not a boolean. */
+const CALLS_OBJECT_KEYS = new Set(["quietHours"]);
 
 /** This user's call preferences. Every key present; null = inherit. */
 async function getCalls(client, userId) {
@@ -213,7 +220,10 @@ async function setCalls(client, { userId, ...fields }) {
       await repo.remove(client, userId, CALLS_SECTION, CALLS_KEYS[field]);
       continue;
     }
-    await repo.upsert(client, userId, CALLS_SECTION, CALLS_KEYS[field], raw === true || raw === "true");
+    const value = CALLS_OBJECT_KEYS.has(field)
+      ? { from: String(raw.from), to: String(raw.to) }
+      : raw === true || raw === "true";
+    await repo.upsert(client, userId, CALLS_SECTION, CALLS_KEYS[field], value);
   }
   return getCalls(client, userId);
 }

@@ -1053,9 +1053,10 @@ last character" from "the prefill has not happened yet", and so re-filled the ad
 user was clearing. Changing account is `Not you? Switch account`, which clears
 `lastSessionStore` and hands over an empty, focused field.
 
-**Sign-out asks, because the answer differs by machine.** `<SignOutDialog>` offers a plain
-sign-out (keeps the identity; tomorrow's sign-in is fast) and "Sign out and remove this
-account" (clears the greeting, the PIN record and the passkey record). The removal is
+**Sign-out asks, because the answer differs by machine.** `<SignOutDialog>` is one confirm
+with a "Remember me on this device" `<Checkbox>`, ticked on every opening. Ticked is a plain
+sign-out (keeps the identity; tomorrow's sign-in is fast); unticked also forgets the account
+(clears the greeting, the PIN record and the passkey record). The removal is
 `forgetDeviceAccount()` in `lib/device-account.ts`, which owns that set so a refactor cannot
 drop one — a PIN left behind still opens the account from the sign-in screen's PIN tab, and
 nothing on screen would say so. Order matters: call it **after** `logout()`, which restores

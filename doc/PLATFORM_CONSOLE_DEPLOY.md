@@ -95,14 +95,14 @@ report presence only). Rotating = paste a new key and Save.
    their next turn — no restart, and the previous primary becomes the fallback.
    Groq and Embeddings do not get the button: they cannot answer a chat call and
    the API refuses them (`422`). The choice is one flagged row
-   (`ai_vendor_credential.is_chat_primary`, `platform/0108`), audited as
+   (`ai_vendor_credential.is_chat_primary`, `platform/0110`), audited as
    `ai_vendor.chat_primary_set`; nothing flagged means the code default
    (DeepSeek). The API's boot log names the primary and whether it was *chosen
    in the platform console* or is the *code default*.
 
-> Gemini row on deployments created before `platform/0108`: the seed pointed it
+> Gemini row on deployments created before `platform/0110`: the seed pointed it
 > at Google's **native** endpoint (`…/v1beta`), which does not speak
-> `/chat/completions`, and at the shut-down `gemini-1.5-flash`. 0108 repairs
+> `/chat/completions`, and at the shut-down `gemini-1.5-flash`. 0110 repairs
 > both — only where the values are still exactly the seeded ones — to the
 > OpenAI-compatible gateway (`…/v1beta/openai`) and `gemini-2.5-flash`. If the
 > row was edited by hand, check it before making Gemini primary: **Test** must

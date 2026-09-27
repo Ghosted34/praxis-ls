@@ -1,9 +1,10 @@
 /**
  * Presence (Smart Comms PR-1, guide §4.11) — the LIVE half of "last seen".
  *
- * The live dot is the SOCKET: the server broadcasts `comms:presence` to the
- * tenant room when a user's first socket connects and when their last one
- * leaves. This store is the client's half of that — a small external store
+ * The live dot is the SOCKET: on connect the server sends a snapshot of the
+ * user's DIRECT contacts (`comms:presence_snapshot`), then `comms:presence`
+ * to this user's room when a contact's first socket connects or their last
+ * one leaves (calls audit D6, E12). This store is the client's half of that — a small external store
  * (useSyncExternalStore) rather than React state, because it is written by
  * socket events that arrive outside any component's render, and read from
  * the conversation list AND the InfoPane at the same time.
@@ -30,6 +31,13 @@ function emit() {
 export function setOnline(userId: string, isOnline: boolean) {
   if (online[userId] === isOnline) return;
   online = { ...online, [userId]: isOnline };
+  emit();
+}
+
+/** The connect snapshot, and the empty map on a disconnect: replaces the
+ *  whole store, so no dot outlives the connection that reported it. */
+export function replaceOnline(users: OnlineMap) {
+  online = { ...users };
   emit();
 }
 

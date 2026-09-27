@@ -56,6 +56,7 @@ const {
   rotateHue,
   hueDelta,
   parseHex,
+  toHex,
   toTriplet,
   normaliseColor,
 } = require("./color");
@@ -213,6 +214,75 @@ function labelOn(fillHex, ink, paper) {
   return { fill: best.fill, label: best.label, adjusted: true };
 }
 
+/**
+ * THE HERO BAND'S GROUND, AND WHY THE ACCENT NEEDS AN INK OF ITS OWN.
+ *
+ * `--hero` is carbon in BOTH themes and is deliberately not a tenant token —
+ * the band is carbon whatever the visitor's theme is, which is the whole reason
+ * a plate floating on it follows the band rather than the page. That makes it
+ * the one surface in this system whose ink CANNOT come from `--primary-ink`:
+ * that token is walked against `--card`, which is white in the light theme, so
+ * in light mode it resolves to the light-ground ink and measures ~3.4:1 on
+ * carbon.
+ *
+ * The shipped workaround was `--brand-orange`, on the stated grounds that it is
+ * Praxis's and is never tenant-overridden. On `public-web` that is false:
+ * `app/branding.tsx` → `applyBrand` sets `--brand-orange` from the tenant's own
+ * primary. So the hero's eyebrow, its accent word, the track plate's kicker and
+ * the portal link were all painting the tenant's raw FILL as type on carbon —
+ * which measures 6.33:1 for an orange tenant and 2.12:1 for a navy one
+ * (#0C4A7A on #0A0A0A). A live AA failure that no gate in this tree can see,
+ * because the value only ever exists at runtime.
+ *
+ * `--primary-ink-hero` is that colour walked to AA against the hero's own
+ * ground, per tenant, HERE — where it can be measured. `AA_PAIRS` carries the
+ * pair and `auditTheme` reports it, so the settings preview shows a tenant the
+ * ratio before they save.
+ *
+ * ── AND WHY THE PLATE IS THE GROUND, NOT THE BAND ─────────────────────────
+ *
+ * Two grounds carry accent type on this band: the band itself (`--hero`,
+ * carbon) and the track plate floating on it (`--hero-plate`, a translucent
+ * pane over that same carbon). The plate is the LIGHTER of the two and is
+ * therefore the one that binds — an ink walked against bare carbon passes on
+ * the band and can still fail on the plate, which is the exact shape of failure
+ * this token exists to end.
+ *
+ * The ground is COMPUTED with the arithmetic the stylesheet paints with, rather
+ * than hard-coded from one tenant's measured result. `hero.css` mixes
+ * `--primary` 22% into `--hero-foreground` and lays that over `--hero` at 11%
+ * alpha; both mixes are sRGB, so they reproduce exactly. One formula, two
+ * consumers — a constant here would go silently wrong the day somebody retunes
+ * `--hero-plate-tint`, and the failure would be invisible.
+ */
+const HERO_GROUND = "#0a0a0a";
+const HERO_FOREGROUND = "#edeeee";
+/** `--hero-plate-tint` / `--hero-plate-alpha` in `hero.css`. Keep in step. */
+const HERO_PLATE_TINT = 0.22;
+const HERO_PLATE_ALPHA = 0.11;
+
+/** `color-mix(in srgb, a <pct>, b)` — the sRGB mix CSS performs, so a ground
+ *  derived here is the ground the stylesheet actually paints. Works in the
+ *  0…1 space `parseHex` returns; `toHex` owns the rounding. */
+function mixSrgb(aHex, bHex, aFraction) {
+  const a = parseHex(aHex);
+  const b = parseHex(bHex);
+  if (!a || !b) return bHex;
+  return toHex([
+    a[0] * aFraction + b[0] * (1 - aFraction),
+    a[1] * aFraction + b[1] * (1 - aFraction),
+    a[2] * aFraction + b[2] * (1 - aFraction),
+  ]);
+}
+
+/** The lighter of the hero band's two grounds: the track plate, flattened. */
+const heroPlateSolid = (primaryHex) =>
+  mixSrgb(
+    mixSrgb(primaryHex, HERO_FOREGROUND, HERO_PLATE_TINT),
+    HERO_GROUND,
+    HERO_PLATE_ALPHA,
+  );
+
 /* ── The engine ─────────────────────────────────────────────────────────────*/
 
 /**
@@ -290,6 +360,27 @@ function derivePalette(input) {
       });
     }
 
+    /* The accent as type ON THE HERO BAND — see the note above `HERO_GROUND`.
+       Always walked "lighter", in both themes, because the ground is carbon in
+       both: the hero does not follow the page. That is also why the value is
+       identical in the two token sets, which is the property that stops a theme
+       toggle moving the colour of a band that never changes. */
+    const heroPlate = heroPlateSolid(primary);
+    const heroInk = walkToContrast(primary, heroPlate, AA, "lighter");
+    if (theme === "dark" && heroInk.toLowerCase() !== primary.toLowerCase()) {
+      // Reported once rather than per theme: one ground, one correction, and a
+      // corrections list that named it twice would read as two problems.
+      corrections.push({
+        theme: "both",
+        token: "--primary-ink-hero",
+        from: primary,
+        to: heroInk,
+        fromRatio: Number(contrast(primary, heroPlate).toFixed(2)),
+        toRatio: Number(contrast(heroInk, heroPlate).toFixed(2)),
+        reason: "accent-as-text-on-hero",
+      });
+    }
+
     // The label on the accent FILL, and the fill itself if it had to move.
     const ink = "#0a0a0a";
     const paper = "#ffffff";
@@ -328,6 +419,16 @@ function derivePalette(input) {
       "--ring": primaryInk,
       "--secondary-ink": secondaryInk,
       "--tertiary-ink": tertiaryInk,
+      /* Both emitted in both themes, with the same value. The hero band is
+         carbon either way, so an accent that changed with the visitor's theme
+         would be the band following the page — the exact thing `--hero-plate`
+         exists to prevent. `--hero-plate-solid` is published as well as
+         consumed: it is the ground this ink was measured against, so the audit
+         can report the pair, and it is the honest fallback for an engine with
+         no `backdrop-filter` — which `hero.css` was approximating a third time,
+         separately, with a different number. */
+      "--primary-ink-hero": heroInk,
+      "--hero-plate-solid": heroPlate,
     };
 
     const modeHex = {};
@@ -417,6 +518,12 @@ const AA_PAIRS = [
   ["--secondary-ink", "--card"],
   ["--tertiary-ink", "--card"],
   ["--primary-foreground", "--primary"],
+  /* The hero band's accent, against the lighter of its two grounds. This pair
+     is the whole reason `--primary-ink-hero` exists: the colour it replaces
+     was the tenant's raw fill, measured by nothing, and 2.12:1 for a navy
+     tenant. Listed here so it is measured for every palette in the suite and
+     shown in the settings preview. */
+  ["--primary-ink-hero", "--hero-plate-solid"],
 ];
 
 /** Non-text pairs, held to 3:1 (WCAG 1.4.11) rather than 4.5:1. */

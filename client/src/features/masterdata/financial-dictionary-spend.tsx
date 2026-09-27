@@ -35,6 +35,7 @@ import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { useResource } from "@/lib/use-resource";
 import { money, num, dateFmt } from "@/lib/format";
 import * as api from "@/lib/masterdata-api";
+import { OperationsFilePicker, type PickedFile } from "@/components/operations/file-picker";
 
 /* ── Period picker ────────────────────────────────────────────────────────── */
 
@@ -306,6 +307,9 @@ export function SpendTab({ id }: { id: string }) {
   const [preset, setPreset] = React.useState<PeriodPreset>("year");
   const [range, setRange] = React.useState(() => presetRange("year"));
   const [lensFilter, setLensFilter] = React.useState<"" | api.SpendLens>("");
+  // One operations file only (meeting 5, 01:23:15 — "filter per file, so you
+  // see everything spent on that file"). Null = every file.
+  const [file, setFile] = React.useState<PickedFile | null>(null);
 
   // A preset writes concrete dates so the request is always explicit; custom
   // leaves whatever the user typed alone.
@@ -315,8 +319,8 @@ export function SpendTab({ id }: { id: string }) {
   };
 
   const spend = useResource(
-    () => api.dictSpend(id, { from: range.from, to: range.to }),
-    [id, range.from, range.to],
+    () => api.dictSpend(id, { from: range.from, to: range.to, dossier_id: file?.dossier_id ?? null }),
+    [id, range.from, range.to, file?.dossier_id],
   );
 
   if (spend.loading) return <LoadingRow label="Loading spend…" />;
@@ -356,6 +360,16 @@ export function SpendTab({ id }: { id: string }) {
             setRange((r) => ({ ...r, to: v }));
           }}
         />
+        <div className="min-w-[15rem]">
+          <OperationsFilePicker
+            id={`spend-file-${id}`}
+            label={tr("Operations file")}
+            placeholder={tr("Every file — search ref, client, B/L…")}
+            value={file?.dossier_id ?? null}
+            onSelect={(f) => setFile(f)}
+            onClear={() => setFile(null)}
+          />
+        </div>
         <Legend />
       </div>
 
@@ -704,7 +718,7 @@ export function CostEvolutionTab({ id }: { id: string }) {
 
           <RateStepLine points={s.points} currency={s.currency} />
 
-          <div className="mt-3 overflow-hidden rounded-lg border">
+          <div className="mt-3 overflow-x-auto rounded-lg border">
             <table className="w-full text-sm">
               <caption className="sr-only">
                 Effective-dated rate versions

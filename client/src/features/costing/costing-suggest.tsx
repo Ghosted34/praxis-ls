@@ -9,29 +9,35 @@
  * count — are exactly the ones you want to see BEFORE they are on your sheet,
  * not after.
  *
- * WHY ONE LIST WITH BANDS AND NOT THREE TABS. The tiers NEST: BASIC ⊆ ADVANCED
- * ⊆ FULL (0630). Three tabs would show Ocean Freight under all three, which is
- * not a presentation choice — it is the UI lying about the data. One list, three
- * bands, a master checkbox per band, and the tier control decides how far down
- * the long tail the list goes.
+ * CORE, THEN "MORE CHARGES" (meeting 5, 01:36:48 → 01:42:48). The dialog used
+ * to open on a Basic / Advanced / Full choice; the tenant found that one more
+ * decision than the job needs. It now opens with the service's CORE charges
+ * ticked, and every other charge mapped to the service sits unticked in one
+ * collapsed, searchable "More charges for this service" section. There is no
+ * tier vocabulary left on this screen; the dictionary's "Core for this
+ * service" tick decides which list a charge is in.
  */
 import * as React from "react";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Segmented } from "@/components/ui/segmented";
+import { Input } from "@/components/ui/input";
 import { Pill } from "@/components/ui/pill";
 import { EmptyState } from "@/components/ui/states";
 import { ScreenError } from "@/components/connection/screen-error";
 import { SkeletonTable } from "@/components/ui/skeleton";
 import { useResource } from "@/lib/use-resource";
-import { money } from "@/lib/format";
+import { amount, dateFmt } from "@/lib/format";
 import { tr } from "@/lib/i18n";
 import { cn } from "@/lib/cn";
 import * as api from "@/lib/costing-api";
 import { suggestionKey as keyOf } from "./costing-model";
+import { dictLabel } from "@/lib/dict-label";
 
-type Tier = "BASIC" | "ADVANCED" | "FULL";
+/** The line's name in the reader's language (lib/dict-label). */
+const labelOf = (l: api.SuggestedLine) =>
+  dictLabel({ label_en: l.label_en ?? l.label, label_fr: l.label_fr }) || l.label;
+
 
 
 /** Why this quantity, in words a person can check. */
@@ -48,9 +54,21 @@ const BASIS_NOTE: Record<api.SuggestedLine["qty_basis"], string> = {
  *  fallback, NOT this carrier's price, and saying so stops "MSC rate card"
  *  appearing beside a number MSC never quoted. */
 function priceNote(l: api.SuggestedLine, carrier: string | null): string | null {
+  // Converted into the sheet's currency: say from what, so an EUR figure on an
+  // XAF rate card is never a mystery to the approver.
+  const from =
+    l.source_unit_cost != null && l.source_currency
+      ? ` · ${amount(l.source_unit_cost)} ${l.source_currency}`
+      : "";
+  return withFrom(scopeNote(l, carrier), from);
+}
+const withFrom = (note: string | null, from: string) => (note ? note + from : from ? from.slice(3) : null);
+
+function scopeNote(l: api.SuggestedLine, carrier: string | null): string | null {
   if (l.price_source === "NONE") return null;
+  if (l.price_source === "NO_FX") return tr("No exchange rate on file to convert this rate");
   if (l.price_source === "CATALOGUE_DEFAULT") return tr("Catalogue default");
-  const eff = l.effective_from ? `, from ${l.effective_from}` : "";
+  const eff = l.effective_from ? `, ${tr("from")} ${dateFmt(l.effective_from)}` : "";
   if (l.rate_scope === "CARRIER_AND_TYPE")
     return `${carrier || tr("Carrier")} · ${l.container_type_code}${eff}`;
   if (l.rate_scope === "CARRIER") return `${carrier || tr("Carrier")}${eff}`;
@@ -63,13 +81,11 @@ function LineRow({
   checked,
   onToggle,
   carrier,
-  currency,
 }: {
   line: api.SuggestedLine;
   checked: boolean;
   onToggle: (next: boolean) => void;
   carrier: string | null;
-  currency: string;
 }) {
   const note = priceNote(line, carrier);
   return (
@@ -87,7 +103,7 @@ function LineRow({
         // the 40'. The visible label is the row body beside it.
         label={
           <span className="sr-only">
-            {line.label}
+            {labelOf(line)}
             {line.container_type_label ? ` — ${line.container_type_label}` : ""}
           </span>
         }
@@ -95,7 +111,7 @@ function LineRow({
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
           <span className="num micro text-muted-foreground">{line.item_code}</span>
-          <span className="text-sm font-medium text-foreground">{line.label}</span>
+          <span className="text-sm font-medium text-foreground">{labelOf(line)}</span>
           {line.container_type_label && (
             <Pill tone="blue">{line.container_type_label}</Pill>
           )}
@@ -118,9 +134,8 @@ function LineRow({
         {line.unit_cost === null ? (
           <Pill tone="warn">{tr("Needs a price")}</Pill>
         ) : (
-          <span className="num text-sm text-foreground">
-            {money(line.unit_cost, line.currency || currency)}
-          </span>
+          // No currency on the line: the dialog's heading names the sheet's.
+          <span className="num text-sm text-foreground">{amount(line.unit_cost)}</span>
         )}
       </div>
     </div>
@@ -130,6 +145,7 @@ function LineRow({
 export function SuggestDialog({
   dossierId,
   currency,
+  exchangeRate = 1,
   /** Codes already on the sheet. Suggest TOPS UP: a charge you have already is
    *  offered unticked with its state named, never silently re-added and never
    *  overwriting what you typed into it. */
@@ -139,27 +155,54 @@ export function SuggestDialog({
 }: {
   dossierId: string;
   currency: string;
+  /** The sheet's one rate (1 <currency> = rate XAF); prices arrive converted. */
+  exchangeRate?: number;
   existingKeys: Set<string>;
   onImport: (lines: api.SuggestedLine[]) => void;
   onClose: () => void;
 }) {
-  const [tier, setTier] = React.useState<Tier>("ADVANCED");
+  // Always the whole mapped set: CORE lines are offered ticked, everything else
+  // sits unticked under "More charges" (meeting 5 — no Basic/Advanced/Full
+  // choice to make before you can see anything).
   const res = useResource(
-    () => api.suggestCostingLines(dossierId, tier),
-    [dossierId, tier],
+    () =>
+      api.suggestCostingLines(dossierId, "FULL", {
+        currency,
+        exchangeRateToXaf: exchangeRate,
+      }),
+    [dossierId, currency, exchangeRate],
   );
   const d = res.data;
 
-  // Ticked by default, minus anything already on the sheet. Re-derived whenever
-  // the tier changes, because the line set itself changes with it.
+  const core = React.useMemo(
+    () => (d ? d.bands.filter((b) => b.tier === "BASIC").flatMap((b) => b.lines) : []),
+    [d],
+  );
+  const extras = React.useMemo(
+    () => (d ? d.bands.filter((b) => b.tier !== "BASIC").flatMap((b) => b.lines) : []),
+    [d],
+  );
+
+  /*
+   * THE UNSELECT BUG (meeting 5, 01:40:51 — "unselect all doesn't work, and
+   * unselecting a line does not even go"). The sheet hands in a NEW Set of
+   * existing keys on every render, and the effect that ticks the default lines
+   * depended on it — so every click re-rendered the sheet, re-ran the effect,
+   * and ticked everything again. The keys are read through a ref now, and the
+   * default ticking runs once per suggestion, when it arrives.
+   */
+  const existingRef = React.useRef(existingKeys);
+  existingRef.current = existingKeys;
+  const onSheet = (l: api.SuggestedLine) => existingRef.current.has(keyOf(l));
+
   const [picked, setPicked] = React.useState<Set<string> | null>(null);
   React.useEffect(() => {
     if (!d) return;
     const next = new Set<string>();
-    for (const band of d.bands)
-      for (const l of band.lines) if (!existingKeys.has(keyOf(l))) next.add(keyOf(l));
+    for (const l of d.bands.filter((b) => b.tier === "BASIC").flatMap((b) => b.lines))
+      if (!existingRef.current.has(keyOf(l))) next.add(keyOf(l));
     setPicked(next);
-  }, [d, existingKeys]);
+  }, [d]);
 
   const sel = picked ?? new Set<string>();
   const toggle = (k: string, on: boolean) =>
@@ -170,31 +213,92 @@ export function SuggestDialog({
       return next;
     });
 
-  const allLines = React.useMemo(
-    () => (d ? d.bands.flatMap((b) => b.lines) : []),
-    [d],
-  );
+  const allLines = React.useMemo(() => [...core, ...extras], [core, extras]);
   const chosen = allLines.filter((l) => sel.has(keyOf(l)));
 
-  const toggleBand = (lines: api.SuggestedLine[], on: boolean) =>
+  const toggleMany = (lines: api.SuggestedLine[], on: boolean) =>
     setPicked((prev) => {
       const next = new Set(prev ?? []);
       for (const l of lines) {
         // An already-present charge stays out of a bulk tick — "select all"
         // must not quietly re-add the line you edited an hour ago.
-        if (existingKeys.has(keyOf(l))) continue;
+        if (onSheet(l)) continue;
         if (on) next.add(keyOf(l));
         else next.delete(keyOf(l));
       }
       return next;
     });
 
+  // "More charges" is closed until asked for — or open from the start when the
+  // service has no core lines at all, so the dialog is never an empty box.
+  const [moreOpen, setMoreOpen] = React.useState(false);
+  const [q, setQ] = React.useState("");
+  const showMore = moreOpen || (!!d && core.length === 0) || q.trim() !== "";
+  const needle = q.trim().toLowerCase();
+  const shownExtras = needle
+    ? extras.filter((l) =>
+        [labelOf(l), l.label_fr, l.label_en, l.item_code, l.container_type_label]
+          .filter(Boolean)
+          .some((v) => String(v).toLowerCase().includes(needle)),
+      )
+    : extras;
+
+  const group = (title: string, lines: api.SuggestedLine[], id: string) => {
+    const selectable = lines.filter((l) => !onSheet(l));
+    const on = selectable.filter((l) => sel.has(keyOf(l))).length;
+    return (
+      <section className="space-y-2" aria-labelledby={id}>
+        <div className="flex items-center justify-between gap-3 border-b pb-1">
+          <Checkbox
+            checked={on === 0 ? false : on === selectable.length ? true : "indeterminate"}
+            onCheckedChange={(next) => toggleMany(lines, next)}
+            disabled={!selectable.length}
+            label={
+              <span id={id} className="text-sm font-semibold">
+                {title}
+              </span>
+            }
+          />
+          <span className="micro">
+            {on}/{selectable.length} {tr("selected")}
+          </span>
+        </div>
+        <div className="space-y-1.5">
+          {lines.map((l) => {
+            const k = keyOf(l);
+            return onSheet(l) ? (
+              <div
+                key={k}
+                className="flex items-center justify-between gap-3 rounded-lg border border-dashed px-3 py-2"
+              >
+                <span className="text-sm text-muted-foreground">
+                  {labelOf(l)}
+                  {l.container_type_label ? ` — ${l.container_type_label}` : ""}
+                </span>
+                <Pill tone="ok">{tr("Already on the sheet")}</Pill>
+              </div>
+            ) : (
+              <LineRow
+                key={k}
+                line={l}
+                checked={sel.has(k)}
+                onToggle={(next) => toggle(k, next)}
+                carrier={d?.file.rate_provider_name ?? null}
+              />
+            );
+          })}
+        </div>
+      </section>
+    );
+  };
+
   return (
     <Dialog
       open
       onClose={onClose}
       size="xl"
-      title={tr("Suggest charges")}
+      // The sheet's one currency, named once — the lines below carry none.
+      title={`${tr("Suggest charges")} · ${currency}`}
       description={
         d
           ? `${d.file.service_name_en || d.file.service_type_key || ""}${
@@ -208,22 +312,6 @@ export function SuggestDialog({
       }
     >
       <div className="space-y-4">
-        <Segmented
-          label={tr("How much of the catalogue to offer")}
-          value={tier}
-          options={[
-            { value: "BASIC", label: tr("Basic") },
-            { value: "ADVANCED", label: tr("Advanced") },
-            { value: "FULL", label: tr("Full") },
-          ]}
-          onChange={(v) => setTier(v as Tier)}
-        />
-        <p className="micro">
-          {tr(
-            "The bands nest — Advanced includes Basic, Full includes both. Everything is ticked; untick what this file does not need.",
-          )}
-        </p>
-
         {res.loading && <SkeletonTable rows={6} cols={3} />}
         {res.error && (
           <ScreenError
@@ -240,63 +328,44 @@ export function SuggestDialog({
           />
         )}
 
-        {d &&
-          d.bands.map((band) => {
-            const selectable = band.lines.filter((l) => !existingKeys.has(keyOf(l)));
-            const on = selectable.filter((l) => sel.has(keyOf(l))).length;
-            return (
-              <section key={band.tier} className="space-y-2">
-                <div className="flex items-center justify-between gap-3 border-b pb-1">
-                  <Checkbox
-                    checked={
-                      on === 0
-                        ? false
-                        : on === selectable.length
-                          ? true
-                          : "indeterminate"
-                    }
-                    onCheckedChange={(next) => toggleBand(band.lines, next)}
-                    disabled={!selectable.length}
-                    label={
-                      <span className="text-sm font-semibold">
-                        {tr(band.tier === "BASIC" ? "Basic" : band.tier === "ADVANCED" ? "Advanced" : "Full")}
-                      </span>
-                    }
-                  />
-                  <span className="micro">
-                    {on}/{selectable.length} {tr("selected")}
-                  </span>
-                </div>
-                <div className="space-y-1.5">
-                  {band.lines.map((l) => {
-                    const k = keyOf(l);
-                    const already = existingKeys.has(k);
-                    return already ? (
-                      <div
-                        key={k}
-                        className="flex items-center justify-between gap-3 rounded-lg border border-dashed px-3 py-2"
-                      >
-                        <span className="text-sm text-muted-foreground">
-                          {l.label}
-                          {l.container_type_label ? ` — ${l.container_type_label}` : ""}
-                        </span>
-                        <Pill tone="ok">{tr("Already on the sheet")}</Pill>
-                      </div>
-                    ) : (
-                      <LineRow
-                        key={k}
-                        line={l}
-                        checked={sel.has(k)}
-                        onToggle={(next) => toggle(k, next)}
-                        carrier={d.file.rate_provider_name}
-                        currency={currency}
-                      />
-                    );
-                  })}
-                </div>
-              </section>
-            );
-          })}
+        {d && core.length > 0 && (
+          <>
+            <p className="micro">
+              {tr("The core charges for this service are ticked. Untick what this file does not need.")}
+            </p>
+            {group(tr("Core charges"), core, "suggest-core")}
+          </>
+        )}
+
+        {d && extras.length > 0 && (
+          <div className="space-y-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              aria-expanded={showMore}
+              aria-controls="suggest-more"
+              onClick={() => setMoreOpen((o) => !o)}
+            >
+              {showMore ? "▾" : "▸"} {tr("More charges for this service")} ({extras.length})
+            </Button>
+            {showMore && (
+              <div id="suggest-more" className="space-y-2">
+                <Input
+                  aria-label={tr("Search more charges")}
+                  placeholder={tr("Search a charge…")}
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                />
+                {shownExtras.length ? (
+                  group(tr("More charges"), shownExtras, "suggest-more-title")
+                ) : (
+                  <p className="micro">{tr("No charge matches that search.")}</p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {d && (
           <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-3">

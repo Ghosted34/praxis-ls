@@ -12,9 +12,9 @@
  *
  * ── THE LABEL IS THE HONESTY ────────────────────────────────────────────────
  *
- * Three provenances, three sentences, and none of them is buried:
+ * Three sentences, and none of them is buried:
  *
- *   certified transcript  the provider read the recorded audio
+ *   certified transcript  a provider (Groq or Gemini) read the recorded audio
  *   browser capture       the in-call recogniser carried the call, so the words
  *                         may be partial and are marked unverified
  *   provider down         the transcript IS the draft — the caller was told so
@@ -33,12 +33,7 @@ import { tr } from "@/lib/i18n";
 import { dateDmy } from "@/lib/format";
 import * as api from "@/lib/smartcomm-api";
 import type { CallCard, CallTranscriptView } from "@/lib/smartcomm-api";
-
-const PROVENANCE_LABEL: Record<CallCard["provenance"], string> = {
-  groq: "Transcribed from the call recording",
-  "browser-live": "Generated from the in-call browser capture (unverified)",
-  "transcript-only": "Summary unavailable — provider down",
-};
+import { provenanceLabel } from "./call-provenance";
 
 function minutes(seconds?: number | null): string | null {
   const s = Number(seconds) || 0;
@@ -71,7 +66,7 @@ function TranscriptPanel({ callId, onClose }: { callId: string; onClose: () => v
   }, [callId]);
 
   return (
-    <div className="mt-2 rounded-lg border border-border bg-background/60 p-3">
+    <div className="mt-2 rounded-lg border border-border bg-background p-3">
       <div className="flex items-center justify-between">
         <p className="text-micro font-medium text-muted-foreground">
           {tr("Transcript")}
@@ -129,7 +124,7 @@ export function CallSummaryCardView({
 
   if (!card || !id) {
     return (
-      <div className="rounded-xl border border-border bg-card/60 px-3 py-2 text-xs text-muted-foreground">
+      <div className="rounded-xl border border-border bg-card px-3 py-2 text-xs text-muted-foreground">
         {label || tr("Call summary")} — {tr("this record is no longer available")}
       </div>
     );
@@ -139,14 +134,14 @@ export function CallSummaryCardView({
   const when = card.ended_at ? dateDmy(card.ended_at) : null;
 
   return (
-    <div className="rounded-xl border border-border bg-card/60 px-3 py-2">
+    <div className="rounded-xl border border-border bg-card px-3 py-2">
       <div className="flex items-center justify-between gap-2">
         <p className="text-xs font-semibold text-foreground">{tr("Call summary")}</p>
         <p className="text-micro text-muted-foreground">
           {[when, dur].filter(Boolean).join(" · ")}
         </p>
       </div>
-      <p className="mt-0.5 text-micro text-muted-foreground">{tr(PROVENANCE_LABEL[card.provenance] || PROVENANCE_LABEL.groq)}</p>
+      <p className="mt-0.5 text-micro text-muted-foreground">{provenanceLabel(card.provenance)}</p>
 
       <p className="mt-2 whitespace-pre-wrap text-sm text-foreground">{card.summary_text}</p>
 

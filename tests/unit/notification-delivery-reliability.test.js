@@ -287,3 +287,25 @@ describe("addresses are fetched in one query, not one per recipient", () => {
     expect(out.fellBack).toBe(0);
   });
 });
+
+describe("quiet hours: in-app only for the people named in silentFor (calls audit A11)", () => {
+  test("a silent recipient gets the in-app row and no push; the others are pushed as before", async () => {
+    repo.insertForUsers.mockResolvedValue([
+      { notification_id: "n-1", user_id: "u-1" },
+      { notification_id: "n-2", user_id: "u-2" },
+    ]);
+    await svc.notifyMany(client, ["u-1", "u-2"], {
+      eventTypeKey: "comms.call_summary_ready", title: "Call summary ready", silentFor: ["u-1"],
+    });
+    expect(repo.insertForUsers.mock.calls[0][1]).toEqual(["u-1", "u-2"]);
+    const pushed = mockSendToUser.mock.calls.map((c) => c[1].user_id);
+    expect(pushed).toEqual(["u-2"]);
+  });
+
+  test("silentFor never silences a security notification", async () => {
+    await svc.notifyMany(client, ["u-1"], {
+      eventTypeKey: "security.login.new_device", title: "New sign-in", category: "security", silentFor: ["u-1"],
+    });
+    expect(mockSendToUser.mock.calls.map((c) => c[1].user_id)).toEqual(["u-1"]);
+  });
+});

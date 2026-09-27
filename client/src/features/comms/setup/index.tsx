@@ -42,10 +42,12 @@ import { SecureLinksTab } from "./secure-links";
 import { SlaTab } from "./sla";
 import { TrustTab } from "./trust";
 import { FollowupsTab } from "./followups";
+import { TestCallsTab } from "./test-calls";
+import { useCallCapabilities } from "../call/call-capabilities";
 
 type TabKey =
   | "mine" | "connections" | "mailboxes" | "send-points" | "senders"
-  | "secure-links" | "sla" | "trust" | "followups";
+  | "secure-links" | "sla" | "trust" | "followups" | "test-calls";
 
 /**
  * The four tabs after "Senders & channels" are PR-5's surfaces, which had a
@@ -76,6 +78,8 @@ const TABS: { key: TabKey; label: string; adminOnly: boolean; hint: string }[] =
   { key: "trust", label: "Trust & archive", adminOnly: true, hint: "Confirmed domains, bounces, and the archive seal" },
   { key: "send-points", label: "Send points", adminOnly: true, hint: "Which address each part of the product sends from" },
   { key: "senders", label: "Senders & channels", adminOnly: true, hint: "System senders, shared SMTP, WhatsApp, DNS" },
+  // Calls audit PR-7 (O5): offered to the Test right on MOD-64, not to admins.
+  { key: "test-calls", label: "Test calls", adminOnly: false, hint: "Check every step of a call on this device and the server" },
 ];
 
 export function CommsSetupPage() {
@@ -83,7 +87,8 @@ export function CommsSetupPage() {
   // Until the answer arrives, offer only the tab everyone has. Over-offering for
   // a frame and then retracting is worse than a tab appearing a moment later.
   const isAdmin = caps.data?.can_administer === true;
-  const visible = TABS.filter((t) => !t.adminOnly || isAdmin);
+  const canTest = useCallCapabilities()?.can_test === true;
+  const visible = TABS.filter((t) => (t.key === "test-calls" ? canTest : !t.adminOnly || isAdmin));
 
   /**
    * Creating a shared mailbox is MOD-72 **create**, which is a different right
@@ -332,6 +337,7 @@ export function CommsSetupPage() {
       {tab === "trust" && isAdmin && <TrustTab />}
       {tab === "send-points" && isAdmin && <SendPointsTab />}
       {tab === "senders" && isAdmin && <SendersAndChannelsTab />}
+      {tab === "test-calls" && canTest && <TestCallsTab />}
     </div>
   );
 }

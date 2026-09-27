@@ -12,10 +12,10 @@ const { logger } = require("../config/logger");
 
 const CHANNEL = "mail:events";
 
-function publishMailEvent(slug, payload) {
+function publishMailEvent(slug, payload, env = "live") {
   if (!slug) return;
   try {
-    getPublisher().publish(CHANNEL, JSON.stringify({ slug, payload: payload || {} }));
+    getPublisher().publish(CHANNEL, JSON.stringify({ slug, env, payload: payload || {} }));
   } catch (err) {
     logger.debug({ err }, "[mail-bus] publish skipped (redis not ready)");
   }

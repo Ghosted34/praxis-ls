@@ -461,3 +461,38 @@ describe('kpiPins validator', () => {
     expect(run({ kpiPins: [] }).req.body).toEqual({ kpiPins: [] });
   });
 });
+
+describe("call preferences: do not disturb, quiet hours, hide last seen (calls audit PR-6)", () => {
+  const { validateCalls } = require("../../src/modules/preference/preference.validator");
+  const U = "u-calls";
+
+  test("every key is present, null until chosen", async () => {
+    const c = fakeClient();
+    expect(await service.getCalls(c, U)).toEqual({
+      noiseSuppression: null, doNotDisturb: null, quietHours: null, hideLastSeen: null,
+    });
+  });
+
+  test("do not disturb and hide last seen are real booleans; quiet hours an HH:mm pair", async () => {
+    const c = fakeClient();
+    const out = await service.setCalls(c, {
+      userId: U, doNotDisturb: true, hideLastSeen: "true", quietHours: { from: "22:00", to: "07:00" },
+    });
+    expect(out).toMatchObject({ doNotDisturb: true, hideLastSeen: true, quietHours: { from: "22:00", to: "07:00" } });
+    const cleared = await service.setCalls(c, { userId: U, quietHours: null, doNotDisturb: null });
+    expect(cleared).toMatchObject({ doNotDisturb: null, quietHours: null, hideLastSeen: true });
+  });
+
+  test("the validator refuses a malformed quiet-hours window", () => {
+    const run = (body) => {
+      let err = null;
+      const res = { status: (code) => ({ json: () => { err = code; } }) };
+      validateCalls({ body }, res, () => {});
+      return err;
+    };
+    expect(run({ quietHours: { from: "22:00", to: "07:00" } })).toBeNull();
+    expect(run({ quietHours: { from: "25:00", to: "07:00" } })).not.toBeNull();
+    expect(run({ quietHours: { from: "22:00" } })).not.toBeNull();
+    expect(run({ doNotDisturb: "yes" })).not.toBeNull();
+  });
+});

@@ -68,6 +68,7 @@ const COLUMN = {
   export: "can_export",
   validate: "can_validate",
   disburse: "can_disburse",
+  test: "can_test",
   publish: "can_update",
 };
 

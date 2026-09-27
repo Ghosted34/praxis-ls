@@ -177,17 +177,78 @@ const callsOn = requireFeature("calls");
  * 403 FEATURE_DISABLED and the recorder never arms or uploads.
  */
 const recordOn = requireFeature("call_recording");
-router.post("/calls", create, callsOn, v.callCreate, c.createCall);
-router.post("/calls/:id/accept", view, callsOn, c.acceptCall);
+/**
+ * Rate limits on the call routes that ring a person or spend money (audit
+ * C6, C2, C8). Per caller for dialing and TURN credentials, per call for the
+ * summary rewrite (each rewrite is an LLM call) and per admin for part
+ * re-runs (each is a transcription). The service adds a per-callee dial
+ * limit, since only it knows who is being rung.
+ */
+const { makeLimiter } = require("../../shared/http/rate-limit");
+const byUser = (name) => (req) => `${name}:${(req.tenant && req.tenant.slug) || "-"}:${(req.user && req.user.user_id) || req.ip}`;
+const MINUTE = 60 * 1000;
+const dialLimiter = makeLimiter({ name: "call-dial", max: 8, windowMs: MINUTE, keyGenerator: byUser("dial") });
+const turnLimiter = makeLimiter({ name: "call-turn", max: 30, windowMs: 10 * MINUTE, keyGenerator: byUser("turn") });
+const rerunLimiter = makeLimiter({ name: "call-part-rerun", max: 10, windowMs: 10 * MINUTE, keyGenerator: byUser("rerun") });
+// The in-call media beat (FN-2): one every 20 s per participant, so 3/min is
+// the honest rate. 12 leaves room for a retry and a second device without
+// letting a loop hammer Redis.
+const aliveLimiter = makeLimiter({ name: "call-alive", max: 12, windowMs: MINUTE, keyGenerator: byUser("alive") });
+// A test ring is a real, high-urgency push: a few per person are plenty.
+const testRingLimiter = makeLimiter({ name: "call-test-ring", max: 5, windowMs: 10 * MINUTE, keyGenerator: byUser("testring") });
+const regenerateLimiter = makeLimiter({
+  name: "call-regenerate",
+  max: 3,
+  windowMs: 10 * MINUTE,
+  // Postgres reads a uuid written upper-case, without hyphens or in braces
+  // as the same id; the key must too, or each spelling gets its own budget.
+  keyGenerator: (req) => `regen:${(req.tenant && req.tenant.slug) || "-"}:${String(req.params.id).toLowerCase().replace(/[^0-9a-f]/g, "")}`,
+});
+router.post("/calls", create, callsOn, dialLimiter, v.callCreate, c.createCall);
+
+// ── Test calls (PR-7, owner decision O5) ───────────────────────────────────
+//
+// Every route needs the Test right on Smart Comms (MOD-64 `test`, held by no
+// role until granted: a run spends provider credit) and the `calls` feature.
+// The 3-a-day cap is the server's, in the run table; the start limiter only
+// stops a double-click from reaching it.
+const test = requirePermission("MOD-64", "test");
+const diagLimiter = makeLimiter({ name: "call-diagnostics", max: 30, windowMs: 10 * MINUTE, keyGenerator: byUser("diag") });
+router.get("/diagnostics/runs", test, callsOn, c.diagList);
+router.post("/diagnostics/runs", test, callsOn, diagLimiter, v.diagStart, c.diagStart);
+router.get("/diagnostics/runs/:id", test, callsOn, c.diagGet);
+router.post("/diagnostics/runs/:id/signal", test, callsOn, v.diagSignal, c.diagSignal);
+router.post("/diagnostics/runs/:id/ring", test, callsOn, diagLimiter, v.diagRing, c.diagRing);
+router.get("/diagnostics/runs/:id/ice", test, callsOn, c.diagIce);
+router.put("/diagnostics/runs/:id/steps/:key", test, callsOn, v.diagStep, c.diagStep);
+router.post("/diagnostics/runs/:id/parts", test, callsOn, singleFile("file"), v.diagPart, c.diagPart);
+router.post("/diagnostics/runs/:id/finish", test, callsOn, c.diagFinish);
+// PR-4. Declared before `/calls/:id`, which would otherwise read "ringing"
+// and "test-ring" as call ids.
+router.get("/calls/ringing", view, callsOn, c.listRingingCalls);
+router.post("/calls/test-ring", view, callsOn, testRingLimiter, v.callTestRing, c.testRing);
+// PR-6 (audit G2): who receives this tenant's call data, from the configured
+// vendors. Read by the consent line on the ring and Settings → Calls.
+router.get("/calls/processing", view, callsOn, c.callProcessing);
+// PR-6 (audit F10): what this person's app may offer — calls on, may dial,
+// recording on, settings admin. Not behind `callsOn`: its answer IS whether
+// calls are on, so the phone icon never renders into a 403.
+router.get("/calls/capabilities", view, c.callCapabilities);
+// PR-6 (audit G3): a settings admin erases one person's call records.
+router.post("/calls/erase-user", requirePermission("MOD-70", "edit"), v.callEraseUser, c.eraseUserCallRecords);
+router.post("/calls/:id/accept", view, callsOn, v.callAccept, c.acceptCall);
 router.post("/calls/:id/decline", view, callsOn, c.declineCall);
 router.post("/calls/:id/hangup", view, callsOn, v.callHangup, c.hangupCall);
 // ICE exhausted — the engine gives up before the call ever connected.
 router.post("/calls/:id/fail", view, callsOn, c.callFailed);
+// FN-2. Deliberately NOT a socket event: this is what a browser sends when
+// its socket is the thing that died.
+router.post("/calls/:id/alive", view, callsOn, aliveLimiter, c.callAlive);
 router.get("/calls", view, callsOn, c.listCalls);
 router.get("/calls/:id", view, callsOn, c.getCall);
 // A refreshed TURN credential mid-call (the one minted at dial expires with
 // the call, plus margin).
-router.get("/calls/:id/turn", view, callsOn, c.callTurn);
+router.get("/calls/:id/turn", view, callsOn, turnLimiter, c.callTurn);
 
 // ── The call record half (PR-2) ────────────────────────────────────────────
 //
@@ -204,11 +265,17 @@ router.get("/calls/:id/turn", view, callsOn, c.callTurn);
 // where `readUpload` looks for it.
 router.post("/calls/:id/recording",
   view, recordOn, singleFile("file"), v.callRecording, c.uploadCallRecording);
-router.post("/calls/:id/live-log", view, recordOn, v.callLiveLog, c.uploadCallLiveLog);
+router.post("/calls/:id/recording/complete", view, recordOn, v.callRecordingComplete, c.completeCallRecording);
+// Re-running a failed part spends provider credit, so it is a settings
+// admin's action (MOD-70 edit), still only on a call the admin took part in.
+router.post("/calls/:id/recording/:side/:part/rerun",
+  requirePermission("MOD-70", "edit"), recordOn, rerunLimiter, c.rerunCallRecordingPart);
+// The browser live capture was retired in PR-1: 410 for any old client.
+router.post("/calls/:id/live-log", view, c.callLiveLogGone);
 router.get("/calls/:id/transcript", view, recordOn, c.getCallTranscript);
 router.get("/calls/:id/summary", view, recordOn, c.getCallSummary);
 router.post("/calls/:id/summary/send", view, recordOn, v.callSummarySend, c.sendCallSummary);
 router.post("/calls/:id/summary/discard", view, recordOn, c.discardCallSummary);
-router.post("/calls/:id/summary/regenerate", view, recordOn, v.callSummaryRegenerate, c.regenerateCallSummary);
+router.post("/calls/:id/summary/regenerate", view, recordOn, regenerateLimiter, v.callSummaryRegenerate, c.regenerateCallSummary);
 
 module.exports = { basePath: "/smartcomm", feature: "comms", router };

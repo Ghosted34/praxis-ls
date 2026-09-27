@@ -25,13 +25,14 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 6× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (609)
+## All codes (636)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
 | `2FA_NOT_IMPLEMENTED` | 501 | 1× | — |
 | `ACCOUNT_MISMATCH` | 422 | 1× | — |
 | `ACCOUNT_NOT_CASH_CAPABLE` | 422 | 1× | — |
+| `ACTIVATION_REQUIREMENTS_MISSING` | 422 | 1× | — |
 | `ACTUALS_LOCKED` | — | 1× | — |
 | `ADVANCE_NOT_CLEARED` | 422 | 2× | — |
 | `AI_ACTION_FORBIDDEN` | 403 | 1× | — |
@@ -138,6 +139,8 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `BREACHED_PASSWORD` | 422 | 1× | — |
 | `BUDGET_EXHAUSTED` | 422 | 1× | — |
 | `CALLEE_BUSY` | 409 | 1× | — |
+| `CALLEE_DND` | 409 | 1× | — |
+| `CALLEE_INACTIVE` | 422 | 1× | — |
 | `CALLER_BUSY` | 409 | 1× | — |
 | `CALL_MOVED_ON` | 409 | 4× | — |
 | `CALL_NOT_STARTED` | 409 | 1× | — |
@@ -175,6 +178,9 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `DEFAULT_OUT_OF_SCOPE` | — | 1× | — |
 | `DEVICE_NOT_REGISTERED` | 422 | 1× | — |
 | `DEVICE_REVOKED` | 422 | 1× | — |
+| `DIAGNOSTICS_BAD_SIGNAL` | 409 | 1× | — |
+| `DIAGNOSTICS_DAILY_CAP` | 429 | 1× | — |
+| `DIAGNOSTICS_RUN_CLOSED` | 409 | 1× | — |
 | `DIRECTION_MISMATCH` | 422 | 1× | — |
 | `DOCUMENT_AMENDED` | 409 | 3× | — |
 | `DOCUMENT_UNREADABLE` | — | 1× | — |
@@ -219,7 +225,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `EVENT_FORBIDDEN` | 403 | 1× | — |
 | `EVERY_LINE_NEEDS_BUDGET` | — | 1× | — |
 | `EXISTS` | 409 | 3× | — |
-| `FEATURE_DISABLED` | 403 | 3× | — |
+| `FEATURE_DISABLED` | 403 | 4× | — |
 | `FIELD_NOT_WRITABLE` | — | 2× | — |
 | `FILE_TOO_LARGE` | 413 | 4× | — |
 | `FORBIDDEN` | 403 | 7× | `PERMISSION_DENIED` |
@@ -229,6 +235,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `GENERATION_UNAVAILABLE` | 502 | 1× | — |
 | `GENERATION_WINDOW_TOO_LARGE` | 500 | 1× | — |
 | `GL_POST_FAILED` | 422, 500 | 2× | — |
+| `GONE` | 410 | 1× | — |
 | `GUARDRAIL_BLOCKED` | 422 | 1× | — |
 | `GUARDRAIL_REASON_TOO_SHORT` | 422 | 1× | — |
 | `HARD_BLOCKED` | 409 | 1× | — |
@@ -248,10 +255,9 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `INSUFFICIENT_LEAVE` | — | 1× | — |
 | `INVALID_2FA_CODE` | 401 | 3× | — |
 | `INVALID_AMOUNT` | 422 | 7× | — |
-| `INVALID_CHALLENGE` | 400 | 6× | — |
-| `INVALID_CREDENTIAL` | 400 | 1× | — |
+| `INVALID_CHALLENGE` | 400 | 8× | — |
 | `INVALID_CREDENTIALS` | 401 | 2× | — |
-| `INVALID_CURRENT_PASSWORD` | 403 | 1× | — |
+| `INVALID_CURRENT_PASSWORD` | 403 | 2× | — |
 | `INVALID_DATE` | 422 | 1× | — |
 | `INVALID_DAYS` | 422 | 1× | — |
 | `INVALID_EXTRACTION` | 422 | 1× | — |
@@ -340,7 +346,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_EDITABLE` | 400 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 3× | — |
-| `NOT_FOUND` | 404, 422 | 702× | — |
+| `NOT_FOUND` | 404, 422 | 711× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_OPEN` | 409, 422 | 3× | — |
 | `NOT_OPERATIONAL` | 422 | 1× | — |
@@ -438,6 +444,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `OPS_MARKER_EXHAUSTED` | 500 | 1× | — |
 | `OPS_MARKER_TARGET_GONE` | 422 | 1× | — |
 | `ORDER_LOCKED` | 422 | 1× | — |
+| `ORIGIN_MISMATCH` | 400 | 2× | — |
 | `OTP_COOLDOWN` | 429 | 2× | — |
 | `OTP_EXHAUSTED` | 410 | 1× | — |
 | `OTP_EXPIRED` | 410 | 1× | — |
@@ -457,13 +464,21 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `OVER_RETIRED` | 422 | 2× | — |
 | `PARENT_POSTABLE` | 422 | 2× | — |
 | `PARTICIPANT_FORBIDDEN` | 403 | 1× | — |
-| `PASSKEY_NOT_FOUND` | 404 | 1× | — |
+| `PART_AUDIO_DELETED` | 409 | 1× | — |
+| `PART_COUNT_TOO_LOW` | 409 | 1× | — |
+| `PART_NOT_DECLARED` | 409 | 1× | — |
+| `PART_NOT_FAILED` | 409 | 1× | — |
+| `PART_NOT_FOUND` | 404 | 2× | — |
+| `PASSKEY_LIMIT` | — | 1× | — |
+| `PASSKEY_REVOKED` | — | 1× | — |
 | `PASSWORD_REQUIRED` | — | 1× | — |
+| `PAYLOAD_TOO_LARGE` | 413 | 1× | — |
 | `PERIOD_CLOSED` | 422 | 1× | — |
 | `PERIOD_NOT_OPEN` | 422 | 1× | — |
-| `PERMISSION_DENIED` | 403 | 8× | — |
+| `PERMISSION_DENIED` | 403 | 9× | — |
 | `PERSONAL_MAILBOX` | — | 1× | — |
 | `PERSONAL_MAILBOX_EXISTS` | — | 1× | — |
+| `PIN_DEVICE_LIMIT` | — | 1× | — |
 | `PIN_EXPIRED` | 422 | 1× | — |
 | `PIN_LOGIN_UNAVAILABLE` | 401 | 1× | — |
 | `PLACE_NAME_TAKEN` | 409 | 1× | — |
@@ -497,17 +512,26 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `QES_NOT_CONFIGURED` | 409 | 4× | — |
 | `QES_PROVIDER_ERROR` | 502 | 2× | — |
 | `QES_PROVIDER_UNSUPPORTED` | 422 | 1× | — |
+| `QUEUE_UNAVAILABLE` | 503 | 1× | — |
+| `RATE_LIMITED` | 429 | 1× | — |
 | `REASON_REQUIRED` | 422 | 8× | — |
+| `REAUTH_REQUIRED` | — | 1× | — |
 | `RECIPIENT_REJECTED` | 422 | 2× | — |
 | `RECONCILIATION_DOES_NOT_BALANCE` | — | 1× | — |
 | `RECONCILIATION_LOCKED` | 409 | 1× | — |
 | `RECONCILIATION_UNSETTLED` | — | 1× | — |
+| `RECORDING_CLOSED` | 409 | 1× | — |
+| `RECORDING_DECLINED` | 409 | 1× | — |
+| `RECORDING_NOT_AUDIO` | — | 1× | — |
+| `RECORDING_OFF` | 409 | 1× | — |
+| `RECORDING_TOO_LARGE` | 413 | 1× | — |
 | `REFERENCED` | 409 | 2× | — |
 | `REF_COLLISION_RETRY_EXHAUSTED` | 500 | 1× | — |
 | `REF_ENTITY_REQUIRED` | 422 | 2× | — |
 | `REF_IMMUTABLE` | 422 | 1× | — |
 | `REF_REQUIRED` | 422 | 2× | — |
 | `REF_WRITE_REQUIRED` | 500 | 1× | — |
+| `REGENERATE_LIMIT` | 409 | 1× | — |
 | `REGIE_OVER_RETIRED` | — | 1× | — |
 | `REGISTRATION_NUMBER_REQUIRED` | 422 | 1× | — |
 | `REJECTION_REASON_REQUIRED` | 422 | 1× | — |
@@ -515,6 +539,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `REPORTING_CYCLE` | 422 | 2× | — |
 | `REQUEST_CLOSED` | 409 | 1× | — |
 | `REQUIRED_FIELDS_MISSING` | — | 1× | — |
+| `RERUN_LIMIT` | 409 | 1× | — |
 | `RESERVED_HOST` | 409 | 1× | — |
 | `RESTORE_NOT_SUPPORTED` | 422 | 1× | — |
 | `RESULT_SET_TOO_LARGE` | 500 | 1× | — |
@@ -528,6 +553,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `ROTATION_REJECTED` | 404 | 1× | — |
 | `RUN_EXISTS` | 409 | 1× | — |
 | `RUN_LOCKED` | 422 | 1× | — |
+| `SAME_LANGUAGE` | 422 | 1× | — |
 | `SAME_PASSWORD` | 422 | 1× | — |
 | `SCANNED_PDF` | 422 | 2× | — |
 | `SCAN_ENCODING_UNSUPPORTED` | — | 1× | — |
@@ -543,11 +569,11 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `SELF_ROLE_CHANGE` | 403 | 1× | — |
 | `SELF_SETTLE` | 422 | 1× | — |
 | `SENDER_NOT_AUTHORIZED` | 422 | 2× | — |
-| `SEND_FAILED` | 500 | 1× | — |
 | `SEND_RATE_LIMIT` | — | 2× | — |
 | `SESSION_EXPIRED` | 401 | 1× | — |
 | `SESSION_REVOKED` | 401 | 8× | — |
 | `SETUP_REQUIRED` | 400 | 1× | — |
+| `SIDE_ALREADY_COMPLETE` | 409 | 1× | — |
 | `SIGNER_IDENTITY_NOT_ACCEPTED` | — | 1× | — |
 | `SLUG_TAKEN` | 422 | 3× | — |
 | `SMTP_AUTH_FAILED` | 502 | 1× | — |
@@ -561,7 +587,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `STEPUP_REQUIRED` | 403 | 1× | — |
 | `STORAGE_LIMIT` | 413 | 1× | — |
 | `SUBMISSION_BLOCKED` | 422 | 1× | — |
-| `SUMMARY_ALREADY_SENT` | 409 | 1× | — |
+| `SUMMARY_ALREADY_SENT` | 409 | 2× | — |
 | `SUMMARY_DISCARDED` | 409 | 1× | — |
 | `SUMMARY_NOT_PENDING` | 409 | 1× | — |
 | `SUMMARY_NOT_PENDING_REVIEW` | 409 | 1× | — |
@@ -622,7 +648,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `USER_NOT_ACTIVE` | 422 | 1× | — |
 | `USE_APPROVE` | 422 | 1× | — |
 | `VACANCY_CLOSED` | — | 1× | — |
-| `VALIDATION_ERROR` | 422 | 271× | — |
+| `VALIDATION_ERROR` | 422 | 276× | — |
 | `VALIDATOR_NOT_LINE_MANAGER` | — | 1× | — |
 | `VARIANCE_UNEXPLAINED` | 422 | 1× | — |
 | `VEHICLE_COMMITTED` | — | 1× | — |
@@ -631,6 +657,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `VERIFICATION_INCOMPLETE` | — | 3× | — |
 | `VOICE_TOO_LONG` | 422 | 1× | — |
 | `WEAK_PASSWORD` | 422 | 2× | — |
+| `WEAK_PIN` | 422 | 1× | — |
 | `WEBAUTHN_UNAVAILABLE` | 500 | 1× | — |
 | `WEBAUTHN_VERIFICATION_FAILED` | 400 | 4× | — |
 | `WRONG_ACTION_FOR_STEP` | 422 | 1× | — |

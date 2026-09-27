@@ -9,7 +9,7 @@
  * brand name — so an un-set-up tenant still gets a presentable landing.
  */
 import * as React from "react";
-import { Navigate } from "react-router-dom";
+import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/app/auth/auth-context";
 import { useBranding } from "@/app/branding/branding-context";
 import { LoginModal } from "@/features/auth/login-modal";
@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/icons";
 import { getMode, setMode, type ThemeMode } from "@/lib/theme-mode";
 import { fetchLogin, type LoginConfig } from "@/lib/branding";
+import { lastSessionStore } from "@/lib/last-session";
 
 const NEXT: Record<ThemeMode, ThemeMode> = {
   light: "dark",
@@ -52,7 +53,19 @@ function ThemeCycle() {
 export function LandingPage() {
   const { status } = useAuth();
   const { branding } = useBranding();
+  const location = useLocation();
   const [open, setOpen] = React.useState(false);
+
+  /**
+   * Open the sign-in straight away for someone who is clearly here to sign in:
+   * a device that remembers its person (the greeting and their passkey are the
+   * whole point), or a redirect from a page they were trying to reach. The hero
+   * and its "Enter workspace" button are for a device that knows nobody.
+   */
+  const wantsSignIn = !!lastSessionStore.get() || !!(location.state as { from?: string } | null)?.from;
+  React.useEffect(() => {
+    if (status === "anon" && wantsSignIn) setOpen(true);
+  }, [status, wantsSignIn]);
 
   // Login-screen config (GET /branding/login) — authored on /settings/login.
   // It's the live source for hero copy/background; the legacy branding.hero
@@ -71,8 +84,11 @@ export function LandingPage() {
     };
   }, []);
 
-  // Already signed in? Skip the marketing page.
-  if (status === "authed") return <Navigate to="/" replace />;
+  // Already signed in? Skip the marketing page — unless the sign-in modal is
+  // still open. It stays up after the tokens land to offer this device a
+  // passkey, and redirecting here unmounted it the instant sign-in succeeded:
+  // the offer was written, and nobody ever saw it.
+  if (status === "authed" && !open) return <Navigate to="/" replace />;
 
   const brandName = branding.name || "Praxis LS";
   const hero = branding.hero || {};

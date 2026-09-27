@@ -13,7 +13,8 @@
  *   - it renders the call surfaces (ring, overlay) which live HERE, outside
  *     any feature screen, because a call can be ringing while the user is in
  *     /finance or /wms,
- *   - it owns the wake keep-alive for the duration of a live call,
+ *   - it owns the audio keep-alive for the duration of a live call (never a
+ *     screen wake lock: audit E13),
  *   - it turns terminal call events into toasts (the honest end-of-call line,
  *     including "missed" and "no answer" — a call that ended is said to have
  *     ended, in the language the user reads in).
@@ -22,21 +23,30 @@
  * only connects, subscribes, and unmounts cleanly on logout.
  */
 import * as React from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { tr, tv } from "@/lib/i18n";
 import { useAuth } from "@/app/auth/auth-context";
 import { useToast } from "@/components/ui/toast";
 import { getCommsSocket, disconnectCommsSocket } from "@/lib/comms-socket";
-import { unlockAudio, playNotifSound } from "@/lib/notif-sound";
+import { unlockAudio, playNotifSound, isAudioBlocked } from "@/lib/notif-sound";
 import {
   useCall, answer, decline, hangup, setMuted, setNoise, wireCallSocket, myUserId,
-  closeSummaryDraft, initCallDeepLink, redial, dismissRedial,
+  clearSummaryNotice, initCallDeepLink, redial, dismissRedial, resumeAudio, clearElsewhere,
+  clearTranscriptionIssue,
 } from "./call/call-session";
+import { transcriptionReasonSentence } from "./call/call-labels";
+import { parseSummaryLink } from "./call/ring-surface";
 import { CallOverlay } from "./call/call-overlay";
+import { ActiveCallBar } from "./call/active-call-bar";
+import { useCallProcessing, processorsSentence, resetCallCapabilities } from "./call/call-capabilities";
 import { IncomingRing } from "./call/incoming-ring";
-import { CallSummaryPanel } from "./call/summary-draft";
-import { acquireWakeLock, releaseWakeLock } from "./call/wake-keepalive";
-import { setOnline, useOnline } from "./presence";
+import { CallRingPrompt } from "./call/call-ring-prompt";
+import { startRingingTitle, stopRingingTitle } from "./call/ring-title";
+import { acquireCallKeepAlive, releaseWakeLock } from "./call/wake-keepalive";
+import { setOnline, useOnline, replaceOnline } from "./presence";
+import { Button } from "@/components/ui/button";
+import { XIcon } from "@/components/ui/icons";
+import { useCallView, setCallView } from "./call/call-view";
 
 /** 60 s client-side throttle for the seen beat — the server upserts either
  *  way, so the throttle is about honesty (and load), not correctness. */
@@ -45,6 +55,11 @@ const SEEN_BEAT_MS = 60_000;
 export function CommsLive() {
   const { status, user } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
+  // Read through a ref: the socket effect below must not re-run (and reconnect)
+  // every time navigation hands out a new `navigate`.
+  const navigateRef = React.useRef(navigate);
+  navigateRef.current = navigate;
   const toast = useToast();
   const call = useCall();
   const lastBeat = React.useRef(0);
@@ -60,21 +75,45 @@ export function CommsLive() {
       : call.call.caller_id
     : null;
   const peerOnline = useOnline(peerId);
+  // PR-6 (O4): the call's own conversation, when it is the open screen, shows
+  // the ring banner / live strip itself (thread-call-strip.tsx).
+  const openChannel = location.pathname === "/comms"
+    ? new URLSearchParams(location.search).get("channel")
+    : null;
+  const inThread = !!openChannel && call.call?.group_id === openChannel;
+  // Full call screen, docked bar, or — in the call's own conversation — the
+  // thread strip alone (call-view.ts). A new call starts at "auto".
+  const view = useCallView();
+  React.useEffect(() => {
+    if (call.phase === "idle" || call.phase === "ended") setCallView("auto");
+  }, [call.phase]);
+  const showFull = view === "full" || (view === "auto" && !inThread);
+  const processing = useCallProcessing(call.recordingEnabled && call.phase !== "idle" && call.phase !== "ended");
+  const processors = processorsSentence(processing);
 
   /* ── Socket boot: connect, wire presence + calls, start the beat ─────── */
   React.useEffect(() => {
     if (!authed) return;
     const s = getCommsSocket();
     wireCallSocket();
-    // §4.6: a push tap lands here — `/comms?call=<id>&act=accept|decline`. The
-    // session decides whether that call is still answerable or has expired
-    // (the redial path); this only hands it the link.
-    initCallDeepLink(window.location.search);
+    // A ring push lands as `/comms?ring=<id>&act=…`; the session decides
+    // whether it can still be answered. `/comms?call=<id>` is the OLD summary
+    // notification link, still in people's shades: it opens the call's page
+    // and is never treated as a ring (audit A6).
+    const legacySummary = parseSummaryLink(window.location.search);
+    if (legacySummary) navigateRef.current(`/comms/calls/${legacySummary}`, { replace: true });
+    else initCallDeepLink(window.location.search);
 
     const onPresence = (p: { user_id: string; online: boolean }) => {
       setOnline(p.user_id, p.online);
     };
     s.on("comms:presence", onPresence);
+    // The server's snapshot on every (re)connect seeds the dots (audit E12);
+    // a disconnect clears them, since nothing keeps them true meanwhile.
+    const onSnapshot = (p: { users?: Record<string, boolean> }) => replaceOnline(p?.users ?? {});
+    const onDrop = () => replaceOnline({});
+    s.on("comms:presence_snapshot", onSnapshot);
+    s.on("disconnect", onDrop);
 
     const beat = () => {
       const now = Date.now();
@@ -93,14 +132,30 @@ export function CommsLive() {
     };
     document.addEventListener("visibilitychange", onVis);
 
+    // The service worker opens a place in THIS window (an expired ring's
+    // conversation) through the router, not a reload that would drop a call.
+    const sw = typeof navigator !== "undefined" ? navigator.serviceWorker : undefined;
+    const onWorker = (ev: MessageEvent) => {
+      const msg = ev.data as { type?: string; url?: string } | null;
+      if (msg?.type === "praxis:navigate" && typeof msg.url === "string"
+          && msg.url.startsWith("/") && !msg.url.startsWith("//")) {
+        navigateRef.current(msg.url);
+      }
+    };
+    sw?.addEventListener?.("message", onWorker);
+
     return () => {
       s.off("comms:presence", onPresence);
+      s.off("comms:presence_snapshot", onSnapshot);
+      s.off("disconnect", onDrop);
       s.off("connect", onConnect);
       document.removeEventListener("visibilitychange", onVis);
+      sw?.removeEventListener?.("message", onWorker);
       beatRef.current = () => {};
       // Logout: the socket is authenticated as THIS user, and the next user
       // on this browser (shift change) must not inherit the old user's ring.
       disconnectCommsSocket();
+      resetCallCapabilities();
     };
   }, [authed]);
 
@@ -116,6 +171,7 @@ export function CommsLive() {
          the ack was already sent — would make the log claim `socket` for a
          ring the person only ever saw in the shade. The tone stays, because it
          is local to this tab and needs no server round trip. */
+  const [ringSoundBlocked, setRingSoundBlocked] = React.useState(false);
   React.useEffect(() => {
     if (call.phase !== "incoming") return;
     unlockAudio();
@@ -124,13 +180,22 @@ export function CommsLive() {
     // backgrounded app ring like a phone. A CLOSED page cannot play anything;
     // that is the platform's ceiling and the notification tier's job.
     playNotifSound("ring");
-    const t = setInterval(() => playNotifSound("ring"), 2500);
-    return () => clearInterval(t);
+    setRingSoundBlocked(isAudioBlocked());
+    const t = setInterval(() => {
+      playNotifSound("ring");
+      setRingSoundBlocked(isAudioBlocked());
+    }, 2500);
+    // The tab title says who is calling, for a ringing tab among many.
+    startRingingTitle(call.peerName ? tv("📞 {{name}} is calling", { name: call.peerName }) : tr("📞 Incoming call"));
+    return () => {
+      clearInterval(t);
+      stopRingingTitle();
+    };
   }, [call.phase, call.peerName]);
 
-  /* ── Wake keep-alive for the duration of live media ──────────────────── */
+  /* ── Audio keep-alive for the duration of live media (no screen lock) ── */
   React.useEffect(() => {
-    if (call.phase === "in_call") void acquireWakeLock();
+    if (call.phase === "in_call") acquireCallKeepAlive();
     else releaseWakeLock();
   }, [call.phase]);
 
@@ -142,7 +207,9 @@ export function CommsLive() {
     const name = call.peerName || "";
     const r = call.endedReason;
     const iWasCaller = myUserId() === call.call.caller_id;
-    if (r === "no_answer") {
+    if (r === "answered_elsewhere") {
+      toast.info(tr("Answered on another device"));
+    } else if (r === "no_answer") {
       if (iWasCaller) toast.info(tv("No answer", {}));
       else toast.info(tv("Missed call — {{name}}", { name }));
     } else if (r === "cancelled") {
@@ -159,6 +226,30 @@ export function CommsLive() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [call.phase, call.call?.call_id]);
 
+  /* ── A summary gained an update: say where it is ──────────────────────
+         Only the update: a first draft also arrives as a notification, whose
+         toast already honours the user's interrupt preference, and a second
+         toast here would ignore it. An update has no notification of its own. */
+  React.useEffect(() => {
+    const n = call.summaryNotice;
+    if (!n) return;
+    if (n.status === "UPDATE_AVAILABLE") {
+      toast.info(tr("An updated call summary is available. Open Comms › Calls to post it."));
+    }
+    clearSummaryNotice();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [call.summaryNotice]);
+
+  /* ── A call's transcript is incomplete (audit N4: set, never shown) ──── */
+  React.useEffect(() => {
+    const issue = call.transcriptionIssue;
+    if (!issue) return;
+    const line = transcriptionReasonSentence(issue.reason);
+    if (line) toast.info(line);
+    clearTranscriptionIssue();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [call.transcriptionIssue]);
+
   /* ── Dial failures the user should hear (busy, no mic, …) ────────────── */
   React.useEffect(() => {
     if (call.phase !== "idle" || !call.lastError) return;
@@ -172,18 +263,45 @@ export function CommsLive() {
 
   return (
     <>
-      {call.phase === "incoming" && (
+      {call.phase === "incoming" && !inThread && (
         <IncomingRing
           name={call.peerName}
           secondsLeft={call.ringSecondsLeft}
+          recordingEnabled={call.recordingEnabled}
+          processing={processing}
           onAccept={() => void answer()}
+          onAcceptWithoutRecording={() => void answer({ record: false })}
           onDecline={() => void decline()}
+          soundBlocked={ringSoundBlocked}
+          onEnableSound={() => {
+            unlockAudio();
+            setRingSoundBlocked(false);
+          }}
         />
       )}
-      {(call.phase === "outgoing" || call.phase === "connecting" || call.phase === "in_call") && (
+      {(call.phase === "dialing" || call.phase === "outgoing" || call.phase === "connecting" || call.phase === "in_call")
+        && view === "bar" && !inThread && (
+        <ActiveCallBar
+          name={call.peerName}
+          phase={call.phase}
+          elapsedS={call.elapsedS}
+          muted={call.muted}
+          recordingEnabled={call.recordingEnabled}
+          onMute={() => setMuted(!call.muted)}
+          onHangup={() => void hangup()}
+          onExpand={() => setCallView("full")}
+          onOpenConversation={call.call ? () => navigateRef.current(`/comms?channel=${call.call?.group_id}`) : undefined}
+        />
+      )}
+      {(call.phase === "dialing" || call.phase === "outgoing" || call.phase === "connecting" || call.phase === "in_call")
+        && showFull && (
         <CallOverlay
           name={call.peerName}
           phase={call.phase}
+          processors={processors}
+          onMinimise={() => setCallView("bar")}
+          audioBlocked={call.audioBlocked}
+          onTapToHear={() => void resumeAudio()}
           elapsedS={call.elapsedS}
           warning={call.warning}
           muted={call.muted}
@@ -203,39 +321,39 @@ export function CommsLive() {
           way to call back is the honest ending. It sits above the toasts and
           below the call surfaces, and it says the call ended rather than
           showing a screen for a call that cannot happen. */}
+      {/* The same person is on a call on another of their devices. A line,
+          not a call screen: this tab is not in that call. */}
+      {call.elsewhere && call.phase === "idle" && (
+        <div
+          role="status"
+          className="fixed bottom-4 left-1/2 z-[64] flex w-[92vw] max-w-md -translate-x-1/2 items-center gap-3 rounded-lg border border-border bg-card p-3 shadow-[var(--shadow-l)] motion-safe:animate-fade-in"
+        >
+          <p className="min-w-0 flex-1 text-sm text-foreground">
+            {call.elsewhere.peerName
+              ? tv("On a call with {{name}} on another device", { name: call.elsewhere.peerName })
+              : tr("On a call on another device")}
+          </p>
+          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={clearElsewhere} aria-label={tr("Dismiss")} icon={null}>
+            <XIcon width={14} height={14} />
+          </Button>
+        </div>
+      )}
+      <CallRingPrompt callsAvailable={call.callsAvailable} />
       {call.redial && (
         <div
           role="status"
-          className="fixed bottom-4 left-1/2 z-[65] flex w-[92vw] max-w-md -translate-x-1/2 items-center gap-3 rounded-lg border border-border bg-card p-3 shadow-[var(--shadow-l)] animate-fade-in"
+          className="fixed bottom-4 left-1/2 z-[65] flex w-[92vw] max-w-md -translate-x-1/2 items-center gap-3 rounded-lg border border-border bg-card p-3 shadow-[var(--shadow-l)] motion-safe:animate-fade-in"
         >
           <p className="min-w-0 flex-1 text-sm text-foreground">
             {tr("That call has already ended")}
           </p>
-          <button
-            type="button"
-            onClick={() => void redial()}
-            className="shrink-0 rounded-md border border-border px-3 py-1.5 text-xs text-foreground transition-colors hover:bg-accent"
-          >
+          <Button variant="outline" size="sm" className="shrink-0" onClick={() => void redial()} icon={null}>
             {tr("Call again")}
-          </button>
-          <button
-            type="button"
-            onClick={dismissRedial}
-            className="shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:text-foreground"
-            aria-label={tr("Dismiss")}
-          >
-            ×
-          </button>
+          </Button>
+          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={dismissRedial} aria-label={tr("Dismiss")} icon={null}>
+            <XIcon width={14} height={14} />
+          </Button>
         </div>
-      )}
-      {/* The caller's draft, opened by the socket event that says it is ready.
-          It is a panel rather than a screen because the caller may be anywhere
-          when the summary lands — exactly like the call itself. */}
-      {call.draftCallId && (
-        <CallSummaryPanel
-          callId={call.draftCallId}
-          onClose={closeSummaryDraft}
-        />
       )}
     </>
   );

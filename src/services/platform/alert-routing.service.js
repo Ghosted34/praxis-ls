@@ -88,6 +88,10 @@ const EVENT_SEVERITY = {
   // which is why the two events are separate rather than one with a severity
   // that depends on the count.
   "comms.transcription_sustained": "page",
+  // The daily platform call check (calls audit PR-7, O5) failed, or recovered.
+  // `notify`: it names which shared piece broke while calls may still work
+  // for most tenants; the console bell carries it too.
+  "comms.call_canary": "notify",
   "backup.stale": "notify",
   "tenant.amber": "notify",
   // A tenant past a SOFT limit. Nothing was blocked and nothing is broken —

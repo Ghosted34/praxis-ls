@@ -63,13 +63,16 @@ function FieldConfigEditor({ side }: { side: Side }) {
     <div className="space-y-4">
       <p className="micro">
         Toggle which fields are required and visible on the {side.toLowerCase()}{" "}
-        form. `name` is always required.
+        form. `Required` is enforced when the record is created;{" "}
+        <span className="text-foreground">`Required to activate`</span> is what
+        the party must carry before it can be activated — set it on the handful
+        of fields that genuinely gate going live. `name` is always required.
       </p>
       {groups.map((g) => {
         const inGroup = rows.filter((r) => (r.field_group || "OTHER") === g);
         if (inGroup.length === 0) return null;
         return (
-          <div key={g} className="rounded-lg border">
+          <div key={g} className="overflow-x-auto rounded-lg border">
             <div className="border-b bg-muted/50 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               {g}
             </div>
@@ -88,6 +91,23 @@ function FieldConfigEditor({ side }: { side: Side }) {
                           set(r.field_key, { is_required: !!v })
                         }
                         label={<span className="text-xs">{tr("Required")}</span>}
+                      />
+                    </td>
+                    <td className="w-32 px-3 py-1.5">
+                      {/* 14030 — the ACTIVATION half of the policy. It is
+                          deliberately a third column rather than a replacement
+                          for `Required`: "we want this on file" and "the party
+                          cannot go live without it" are different questions,
+                          and answering both with `Required` is what had a Bank
+                          RIB gating every fresh client. */}
+                      <Checkbox
+                        checked={r.required_for_activation}
+                        onCheckedChange={(v) =>
+                          set(r.field_key, { required_for_activation: !!v })
+                        }
+                        label={
+                          <span className="text-xs">Required to activate</span>
+                        }
                       />
                     </td>
                     <td className="w-24 px-3 py-1.5">
@@ -124,6 +144,8 @@ type RegItem = {
   is_system?: boolean;
   is_active?: boolean;
   extra?: React.ReactNode;
+  /** 14030 — document-type rows only (categories never gate activation). */
+  required_for_activation?: boolean;
 };
 
 function RegistryManager({
@@ -132,12 +154,21 @@ function RegistryManager({
   create,
   deactivate,
   addFields,
+  update,
+  activation,
 }: {
   title: string;
   load: () => Promise<RegItem[]>;
   create: (body: Record<string, string>) => Promise<unknown>;
   deactivate: (id: string, active: boolean) => Promise<unknown>;
   addFields?: { key: string; label: string; options?: string[] }[];
+  /** Inline row edit (document types only): flips the activation requirement. */
+  update?: (
+    id: string,
+    body: { required_for_activation?: boolean },
+  ) => Promise<unknown>;
+  /** Show the "Required to activate" column (document types only). */
+  activation?: boolean;
 }) {
   const toast = useToast();
   const list = useResource(load, []);
@@ -166,6 +197,21 @@ function RegistryManager({
   async function toggle(it: RegItem) {
     try {
       await deactivate(it.id, !(it.is_active ?? true));
+      list.reload();
+    } catch (e) {
+      toast.error(errMsg(e));
+    }
+  }
+
+  async function toggleActivation(it: RegItem) {
+    if (!update) return;
+    try {
+      await update(it.id, { required_for_activation: !it.required_for_activation });
+      toast.success(
+        !it.required_for_activation
+          ? `${it.code} is now required to activate`
+          : `${it.code} no longer gates activation`,
+      );
       list.reload();
     } catch (e) {
       toast.error(errMsg(e));
@@ -251,8 +297,11 @@ function RegistryManager({
       ) : (list.data || []).length === 0 ? (
         <EmptyState title={tr("Nothing yet")} hint="Add your first item." />
       ) : (
-        <div className="overflow-hidden rounded-lg border">
-          <table className="w-full text-sm">
+        /* overflow-x-auto, not overflow-hidden: the last column (Deactivate)
+           used to be clipped unreachable on narrow modals. min-w keeps the
+           columns readable and lets narrow windows scroll instead of squash. */
+        <div className="overflow-x-auto rounded-lg border">
+          <table className="w-full min-w-[560px] text-sm">
             <tbody className="divide-y divide-border">
               {(list.data || []).map((it) => (
                 <tr key={it.id}>
@@ -266,7 +315,20 @@ function RegistryManager({
                     {it.extra}
                     {it.is_system && <Pill tone="mute">{tr("System")}</Pill>}
                   </td>
-                  <td className="px-3 py-1.5 text-right">
+                  {activation && (
+                    <td className="w-40 px-3 py-1.5">
+                      <Checkbox
+                        checked={it.required_for_activation === true}
+                        onCheckedChange={() => toggleActivation(it)}
+                        label={
+                          <span className="text-xs">
+                            Required to activate
+                          </span>
+                        }
+                      />
+                    </td>
+                  )}
+                  <td className="whitespace-nowrap px-3 py-1.5 text-right">
                     <button
                       onClick={() => toggle(it)}
                       className="text-sm text-primary-ink underline"
@@ -305,6 +367,9 @@ export function MasterDataSettings({
       onClose={onClose}
       title="Master data settings"
       description="Per-tenant field requirements, categories and KYC document types."
+      // `xl` so the registry tables get real width on desktop; on narrow
+      // windows the tables fall back to horizontal scroll (see wrappers below).
+      size="xl"
     >
       <div className="mb-4 flex items-center gap-2">
         {(["CLIENT", "SUPPLIER"] as Side[]).map((s) => (
@@ -371,6 +436,7 @@ export function MasterDataSettings({
         {section === "Document types" && (
           <RegistryManager
             title="KYC document types"
+            activation
             load={async () =>
               (await api.listDocumentTypes()).map((t) => ({
                 id: t.document_type_id,
@@ -378,6 +444,7 @@ export function MasterDataSettings({
                 name: t.name,
                 is_system: t.is_system,
                 is_active: t.is_active,
+                required_for_activation: t.required_for_activation,
                 extra: <Pill tone="mute">{t.applies_to}</Pill>,
               }))
             }
@@ -388,6 +455,7 @@ export function MasterDataSettings({
                 applies_to: b.applies_to || "BOTH",
               })
             }
+            update={(id, body) => api.updateDocumentType(id, body)}
             deactivate={(id, active) =>
               api.updateDocumentType(id, { is_active: active })
             }

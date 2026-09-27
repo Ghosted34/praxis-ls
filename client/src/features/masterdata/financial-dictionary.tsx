@@ -29,12 +29,15 @@ import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { SectionTabs } from "@/components/ui/section-tabs";
 import { useResource, errMsg } from "@/lib/use-resource";
-import { money, num } from "@/lib/format";
+import { money, num, dateFmt } from "@/lib/format";
 import * as api from "@/lib/masterdata-api";
 import { DictForm } from "./financial-dictionary-form";
 import { FinancialDictionarySettings } from "./financial-dictionary-settings";
 import { SpendTab, CostEvolutionTab } from "./financial-dictionary-spend";
 import { DictImportModal } from "./financial-dictionary-import";
+import { SetRateModal } from "./rate-modals";
+import { PencilIcon } from "@/components/ui/icons";
+import { dictLabel } from "@/lib/dict-label";
 
 const shell = pageShell.wide;
 
@@ -216,6 +219,7 @@ function DictDossier({
   const [tab, setTab] = React.useState<Tab>("Overview");
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState<string | null>(null);
+  const [pricing, setPricing] = React.useState(false);
 
   if (dossier.loading) return <LoadingRow label="Loading 360…" />;
   if (dossier.error) return <ErrorState message={dossier.error} />;
@@ -346,15 +350,52 @@ function DictDossier({
             />
           </Panel>
           <Panel title="Commercials">
+            {/* The line's own price is its STANDARD expense rate — the same
+                number Expense Rates shows and costing uses (14120). The pencil
+                opens the same "Set rate" dialog as that screen, and is offered
+                only to someone who may edit rates: dictionary access alone
+                must not change what a line costs (meeting 5, 01:17:37). */}
             <KV
-              k="Default price"
+              k="Standard rate"
               v={
-                it.default_price != null
-                  ? money(it.default_price, it.currency || "XAF")
-                  : "—"
+                <span className="inline-flex items-center gap-1.5">
+                  <span>
+                    {it.default_price != null
+                      ? money(
+                          it.default_price,
+                          it.default_price_currency || it.currency || "XAF",
+                        )
+                      : tr("Not set")}
+                    {it.default_price != null && it.default_price_from ? (
+                      <span className="ml-1.5 micro">
+                        {tr("since")} {dateFmt(it.default_price_from)}
+                      </span>
+                    ) : null}
+                  </span>
+                  {d.capabilities?.edit_rates && (
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => setPricing(true)}
+                      aria-label={tr("Edit standard rate")}
+                      title={tr("Edit standard rate")}
+                    >
+                      <PencilIcon width={14} height={14} />
+                    </Button>
+                  )}
+                </span>
               }
             />
-            <KV k="Currency" v={it.currency || "XAF"} />
+            {it.varies_by_equipment && (
+              <p className="micro">
+                {tr("Priced per container type — set those in Expense rates.")}
+              </p>
+            )}
+            <KV
+              k="Client heading"
+              v={dictLabel({ label_en: it.client_heading_en, label_fr: it.client_heading_fr }) || tr("Other Charges")}
+            />
             <KV k="Unit" v={it.unit_of_measure || "—"} />
             <KV k="Billable" v={it.is_billable ? "Yes" : "No"} />
             <KV k="Provider kind" v={it.provider_kind || "—"} />
@@ -366,11 +407,39 @@ function DictDossier({
       {/* Mounted only when selected: each owns its own fetch, and the spend
           query is a four-table aggregate nobody should pay for on a tab they
           are not looking at. */}
+      {pricing && (
+        <SetRateModal
+          itemId={id}
+          title={`${tr("Standard rate")} — ${it.label_en || it.label_fr}`}
+          providerLabel={tr("Standard rate")}
+          providerId={null}
+          containerTypeId={null}
+          containerTypeLabel={null}
+          current={
+            it.default_price != null && it.default_price_rate_id
+              ? {
+                  expense_rate_id: it.default_price_rate_id,
+                  rate: Number(it.default_price),
+                  currency: it.default_price_currency || it.currency || "XAF",
+                  effective_from: it.default_price_from || "",
+                  in_force: true,
+                  superseded: false,
+                }
+              : null
+          }
+          onClose={() => setPricing(false)}
+          onSaved={() => {
+            dossier.reload();
+            onChanged();
+          }}
+        />
+      )}
+
       {tab === "Spend" && <SpendTab id={id} />}
       {tab === "Cost & evolution" && <CostEvolutionTab id={id} />}
 
       {tab === "OHADA posting" && (
-        <div className="overflow-hidden rounded-xl border">
+        <div className="overflow-x-auto rounded-xl border">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b bg-muted/50 text-left text-xs uppercase text-muted-foreground">
@@ -449,17 +518,22 @@ function DictDossier({
             </Callout>
           ) : d.service_tiers.length === 0 ? (
             <EmptyState
-              title="No service tiers"
-              hint="Add services + a Basic/Advanced/Full tier."
+              title="No services yet"
+              hint="Add the services this line belongs to, and tick Core where it belongs on almost every file."
             />
           ) : (
-            (["BASIC", "ADVANCED", "FULL"] as const).map((tier) => {
-              const inTier = d.service_tiers.filter((s) => s.tier === tier);
+            // Core (offered ticked by Suggest charges) or one of the service's
+            // more charges (offered unticked) — meeting 5; BASIC = core.
+            ([
+              { key: "core", title: tr("Core — offered ticked"), core: true },
+              { key: "more", title: tr("More charges — offered unticked"), core: false },
+            ] as const).map((band) => {
+              const inTier = d.service_tiers.filter((s) => (s.tier === "BASIC") === band.core);
               if (!inTier.length) return null;
               return (
-                <div key={tier} className="rounded-lg border">
+                <div key={band.key} className="rounded-lg border">
                   <div className="border-b bg-muted/40 px-3 py-1.5 text-xs font-semibold uppercase text-muted-foreground">
-                    {tier}
+                    {band.title}
                   </div>
                   <ul className="divide-y divide-border">
                     {inTier.map((s) => (

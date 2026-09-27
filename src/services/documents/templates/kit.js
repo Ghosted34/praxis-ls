@@ -41,6 +41,19 @@ const money = (n, ccy = "XAF", cfg = {}) => {
 };
 const xaf = (n, cfg) => money(n, "XAF", cfg);
 /**
+ * A figure in a document's currency WITHOUT the currency — for the lines and
+ * sub-totals of a document that names its one currency in the header and on
+ * the grand total (the costing, meeting 5). Same grouping and decimals as
+ * `money`, so a line and the total it adds up to print the same way.
+ */
+const figure = (n, ccy = "XAF", cfg = {}) => {
+  const cur = (cfg && cfg.currencies && cfg.currencies[ccy]) || null;
+  const dec = cur && Number.isInteger(cur.decimals) ? cur.decimals : 2;
+  const v = Number(n || 0);
+  const min = Number.isInteger(v) ? 0 : dec;
+  return v.toLocaleString("fr-FR", { minimumFractionDigits: min, maximumFractionDigits: dec });
+};
+/**
  * A date as it is printed on an OHADA commercial document: dd/mm/yyyy.
  *
  * This is THE date formatter for the whole document family — invoice, proforma,
@@ -1505,7 +1518,7 @@ function shellMm(entity = {}, cfg = {}, opts = {}) {
 }
 
 module.exports = {
-  esc, money, xaf, dateFmt, t, defaults, mergeCfg, words, wordsBlock,
+  esc, money, figure, xaf, dateFmt, t, defaults, mergeCfg, words, wordsBlock,
   shell, letterhead, titleMeta, head, parties, lineTable, totals, section,
   bankBlock, termsBlock, signatureBlock, signerBlock,
   tick, clause, clauseText, factsGrid, ruledBlock, pairRow, cargoTable, instrumentHead,

@@ -1,0 +1,27 @@
+{
+  "note": "Reference clips for Comms → Setup → Test calls and the platform call canary (calls audit PR-7, O5). Generated with espeak-ng 1.51 (GPL tool; the synthesised audio carries no licence of its own) from the text below: `espeak-ng -v <voice> -s 150 -w clip.wav \"<text>\"`, then `ffmpeg -i clip.wav -ac 1 -ar 16000 -c:a libopus -b:a 24k ref-<lang>.ogg`. Regenerate both together if the text changes.",
+  "clips": [
+    {
+      "language": "en",
+      "file": "ref-en.ogg",
+      "voice": "en-us",
+      "text": "Good morning, this is the Douala dispatch desk calling about container number four. The truck left the port at nine this morning and should reach the warehouse before three this afternoon. Please have two people ready to unload, and send me the signed delivery note once everything is counted."
+    },
+    {
+      "language": "fr",
+      "file": "ref-fr.ogg",
+      "voice": "fr",
+      "text": "Bonjour, ici le service des expéditions de Douala au sujet du conteneur numéro quatre. Le camion a quitté le port ce matin à neuf heures et doit arriver à l'entrepôt avant quinze heures. Merci de prévoir deux personnes pour le déchargement et de m'envoyer le bon de livraison signé une fois tout compté."
+    }
+  ],
+  "summary_transcript": {
+    "language": "en",
+    "names": { "caller": "Awa Diallo", "callee": "Jean Mbarga" },
+    "rows": [
+      { "side": "caller", "part_index": 1, "language": "en", "text": "Hi Jean, the truck with container four left the port at nine this morning. It should reach the warehouse before three this afternoon." },
+      { "side": "callee", "part_index": 1, "language": "en", "text": "Good. I will have two people ready to unload it." },
+      { "side": "caller", "part_index": 2, "language": "en", "text": "Please send me the signed delivery note once everything is counted." },
+      { "side": "callee", "part_index": 2, "language": "en", "text": "I will send the signed delivery note by five today." }
+    ]
+  }
+}

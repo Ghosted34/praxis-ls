@@ -191,6 +191,9 @@ function lineFields(l, lineNo) {
     // Which box this charge was priced for (0663). NULL for anything with no
     // equipment dimension, which is most of the catalogue.
     container_type_ref_id: l.container_type_ref_id || null,
+    // 14130: the pricer's family for this line on this file; blank = the
+    // catalogue's. Carried to the margin simulation, quotation and invoice.
+    client_heading: l.client_heading && String(l.client_heading).trim() ? String(l.client_heading).trim() : null,
     ...debours(l),
   };
 }
@@ -804,8 +807,46 @@ const list = async (client, q) => (await repo.list(client, q)).rows;
 const kpis = (client, q) => repo.kpis(client, q);
 
 /** The standard charge set for a file, priced. Read-only — see costing.suggest. */
+/** The sheet a price is being put into, from the query — or null for "no conversion". */
+const sheetOf = (q) =>
+  q.currency
+    ? { currency: String(q.currency).toUpperCase(), rate: q.exchange_rate_to_xaf ? Number(q.exchange_rate_to_xaf) : null }
+    : null;
+
 const suggestLines = (client, q = {}) =>
-  suggest.build(client, { dossierId: q.dossier_id, tier: q.tier, onDate: q.on_date });
+  suggest.build(client, { dossierId: q.dossier_id, tier: q.tier, onDate: q.on_date, sheet: sheetOf(q) });
+
+/**
+ * The rate a costing in `currency` should default to — the Currencies module's
+ * quote for today (or `on_date`), as "1 <currency> = rate XAF". The sheet
+ * offers it and the pricer may overwrite it; what is saved is what the sheet
+ * sends. `found: false` means nothing is on file and the sheet must be given a
+ * rate by hand rather than silently priced at 1.
+ */
+async function fxRate(client, { currency: code, on_date: onDate } = {}) {
+  const c = String(code || "XAF").toUpperCase();
+  const date = onDate || new Date().toISOString().slice(0, 10);
+  if (c === "XAF") return { currency: c, rate_to_xaf: 1, as_of_date: date, source: "identity", found: true };
+  try {
+    const hit = await currency.rateFor(client, { base: c, quote: "XAF", date });
+    const rate = Number(hit && hit.rate);
+    if (Number.isFinite(rate) && rate > 0) {
+      return { currency: c, rate_to_xaf: rate, as_of_date: hit.as_of_date || date, source: hit.source || null, found: true };
+    }
+  } catch (err) {
+    if (err.code !== "NO_FX_RATE") throw err;
+  }
+  return { currency: c, rate_to_xaf: null, as_of_date: null, source: null, found: false };
+}
+
+const priceLine = (client, q = {}) =>
+  suggest.priceOne(client, {
+    dossierId: q.dossier_id || null,
+    dictionaryItemId: q.dictionary_item_id,
+    containerTypeRefId: q.container_type_ref_id || null,
+    onDate: q.on_date || null,
+    sheet: sheetOf(q),
+  });
 
 // A cleared approval chain approves+locks the costing (BUILD_CONVENTIONS §2/§5).
 onApproved.register("costing", (client, { id, actor }) => setStatus(client, { id, to: "APPROVE", actor: actor || {}, viaChain: true }));
@@ -989,6 +1030,6 @@ async function nudge(client, { id, actor = {} }) {
 
 module.exports = {
   createDraft, updateDraft, setStatus, unlockTransition, get, budget,
-  list, listPaged, kpis, suggestLines, gate, nudge,
+  list, listPaged, kpis, suggestLines, priceLine, fxRate, gate, nudge,
   validatorCandidates: (client) => repo.validatorCandidates(client),
 };

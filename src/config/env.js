@@ -337,13 +337,21 @@ const Schema = z.object({
   REDIS_PASSWORD: z.string().default(""),
 
   /**
-   * Inhouse calls (Smart Comms PR-1): STUN/TURN for WebRTC media.
+   * Inhouse calls: STUN/TURN for WebRTC media (calls audit C1, C2, C3, C12).
    *
-   * `TURN_HOST` empty = STUN-only (local dev, easy NATs). When set, the
-   * compose `coturn` service sits behind it and every credential issued to a
-   * client is time-limited (TTL, HMAC with TURN_CREDENTIAL_SECRET) — a static
-   * public TURN user is a credential leak that outlives the call that needed
-   * it. See src/modules/smartcomm/smartcomm.turn.service.js and the guide §5.5.
+   * `TURN_HOST` empty = no relay; STUN then comes from `STUN_URLS`, and with
+   * both empty from Google's public server (owner decision, PR-3; logged
+   * once). With `TURN_HOST` set, its port also serves STUN. Each
+   * credential is minted for one live call (`<expiry>:<call token>`, HMAC
+   * with TURN_CREDENTIAL_SECRET) and expires with the call's remaining time
+   * plus a minute. See smartcomm.turn.service.js.
+   *
+   * The rest configure the compose `turn` service
+   * (docker/coturn/docker-entrypoint.sh): the realm, the public address
+   * behind cloud NAT ("public" or "public/private"), the one address to bind
+   * (so TLS can take 443 on a second IP), the TLS listener (`turns:`, 0 =
+   * off), the relay port range and the quotas. They are read here too so one
+   * schema lists them.
    */
   STUN_URLS: z.string().default(""),
   TURN_HOST: z.string().default(""),
@@ -351,13 +359,51 @@ const Schema = z.object({
   TURN_PORT_UDP: int(3478),
   TURN_TRANSPORTS: z.string().default("udp,tcp"),
   TURN_CREDENTIAL_SECRET: z.string().default(""),
-  TURN_CREDENTIAL_TTL: int(1860),
+  /**
+   * Where the shared secret comes from: `env` (this variable, the default) or
+   * `vault` (the platform console, with coturn reading the same value from
+   * Redis — smartcomm.turn.secret.service.js).
+   *
+   * Default `env` on purpose: `vault` only works once coturn has been given
+   * its Redis user, which is a host change. A deployment that has not made it
+   * must keep working exactly as before, so this opts in rather than out.
+   */
+  TURN_SECRET_SOURCE: z.enum(["env", "vault"]).default("env"),
+  /** Redis for coturn, when TURN_SECRET_SOURCE=vault. Host-networked, so
+   *  loopback reaches the same Redis the API uses. */
+  TURN_REDIS_HOST: z.string().default(""),
+  TURN_REDIS_PORT: int(6379),
+  TURN_REDIS_USER: z.string().default("turn"),
+  TURN_REDIS_PASSWORD: z.string().default(""),
+  TURN_REALM: z.string().default(""),
+  TURN_EXTERNAL_IP: z.string().default(""),
+  TURN_LISTENING_IP: z.string().default(""),
+  TURN_TLS_PORT: int(0),
+  TURN_TLS_CERT: z.string().default(""),
+  TURN_TLS_KEY: z.string().default(""),
+  TURN_TLS_DIR: z.string().default(""),
+  TURN_MIN_PORT: int(49152),
+  TURN_MAX_PORT: int(65535),
+  TURN_USER_QUOTA: int(12),
+  TURN_TOTAL_QUOTA: int(400),
+  TURN_MAX_BPS: int(64000),
 
   JWT_ACCESS_SECRET: z.string().default("__dev_access__"),
   JWT_REFRESH_SECRET: z.string().default("__dev_refresh__"),
   JWT_ACCESS_TTL: z.string().default("15m"),
   JWT_REFRESH_TTL: z.string().default("30d"),
   SESSION_INACTIVITY_MIN: int(30),
+  // Hard ceiling on a session's life, from sign-in, whatever the activity. The
+  // owner's rule: after two hours the screen locks and the person at it must
+  // prove who they are again (passkey, PIN or password). Enforced server-side —
+  // refresh refuses and every token's `exp` is capped at the session's end — so
+  // a client that ignores its lock timer still cannot outlive it.
+  SESSION_MAX_AGE_MIN: int(120),
+  // Adding a sign-in credential (a passkey, a Quick PIN device) is allowed
+  // without re-entering the password only this soon after signing in. Past it,
+  // the current password is required — a stolen access token must not be
+  // convertible into a PERMANENT way into the account.
+  CREDENTIAL_ENROL_WINDOW_MIN: int(15),
 
   ENCRYPTION_KEY: z
     .string()
@@ -369,12 +415,8 @@ const Schema = z.object({
   DEEPSEEK_BASE_URL: z.string().default("https://api.deepseek.com"),
   DEEPSEEK_MODEL: z.string().default("deepseek-chat"),
   GEMINI_API_KEY: z.string().default(""),
-  // The .env fallback model, used when the platform `gemini` row has no key.
-  // Kept equal to the platform seed (platform/0108) so the fallback path and
-  // the console path run the SAME model — the two used to differ (1.5-pro here,
-  // 1.5-flash there), a ~10× price gap on identical calls, priced in the ledger
-  // for only one of them. The 1.5 line is shut down; 2.5-flash is GA with no
-  // shutdown date announced.
+  // Only used when the platform `gemini` credential is missing or unreadable;
+  // that credential is the source of truth (calls audit N3).
   GEMINI_MODEL: z.string().default("gemini-2.5-flash"),
   GROQ_API_KEY: z.string().default(""),
   WHISPER_BASE_URL: z.string().default(""),
@@ -449,6 +491,38 @@ const Schema = z.object({
   // default puts "midnight" at Douala midnight rather than UTC. Empty FX_SYNC_CRON
   // disables the daily sync (manual "Sync now" still works).
   FX_SYNC_TZ: z.string().default("Africa/Douala"),
+  // The daily call-record sweep (retries + audio retention). A working-hours
+  // cron in the corridor's timezone: `every: 24h` ran at 00:00 UTC (audit A1).
+  COMMS_CALL_RECORD_SWEEP_CRON: z.string().default("0 10 * * *"),
+  COMMS_CALL_RECORD_SWEEP_TZ: z.string().default("Africa/Douala"),
+  // The daily platform call check (calls audit PR-7, O5): once a day, at a
+  // daytime hour, so a broken provider is found during working hours.
+  COMMS_CALL_CANARY_CRON: z.string().default("0 10 * * *"),
+  COMMS_CALL_CANARY_TZ: z.string().default("Africa/Douala"),
+  // Calls at scale (audit PR-5, doc/SMART_COMMS_CALLS_AUDIT.md §4). Each call's
+  // deadlines are its own delayed jobs; the safety sweep only visits tenants
+  // with recent calls. Concurrencies are per worker process.
+  COMMS_CALL_SAFETY_SWEEP_MS: int(300000),
+  COMMS_CALL_CLOCK_CONCURRENCY: int(8),
+  COMMS_CALL_RING_CONCURRENCY: int(16),
+  CALL_TRANSCRIBE_CONCURRENCY: int(8),
+  // Finalise drafts the summary; it waits on the LLM holding no connection.
+  CALL_FINALISE_CONCURRENCY: int(4),
+  // One limiter per provider key, shared by every worker (Redis). Size them to
+  // the plan on the key: Groq's free tier is 20 requests a minute and 7,200
+  // audio-seconds an hour. A full Groq limiter sends the part to Gemini (O1).
+  GROQ_TRANSCRIBE_RPM: int(20),
+  GROQ_TRANSCRIBE_AUDIO_SECONDS_PER_HOUR: int(7200),
+  GEMINI_TRANSCRIBE_RPM: int(60),
+  // Per-tenant fair share of transcription: parts a minute, and the burst.
+  CALL_TRANSCRIBE_TENANT_PER_MIN: int(12),
+  CALL_TRANSCRIBE_TENANT_BURST: int(20),
+  // A tenant's daily call audio budget, in minutes (0 turns it off).
+  CALL_AUDIO_DAILY_MINUTES: int(3000),
+  // The latency alarm (per tenant): p95 hang-up→summary, and the oldest
+  // waiting part.
+  COMMS_CALL_SUMMARY_P95_ALERT_S: int(120),
+  COMMS_CALL_BACKLOG_ALERT_AGE_S: int(600),
   ENABLE_WORKERS: bool(false),
 
   // Monthly leave accrual (MOD-15). 02:00 on the 1st, in the FX timezone — the

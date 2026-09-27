@@ -90,6 +90,7 @@ import { ApiKeysPage } from "./settings/api-keys";
 import { PipelineStagesPage } from "./settings/pipeline-stages";
 import { CustomFieldsPage } from "./settings/custom-fields";
 import { EmailSignaturesPage } from "./settings/email-signatures";
+import { CallsPage } from "./settings/calls-page";
 import { BusinessPoliciesPage } from "./settings/business-policies";
 import { CurrenciesPage } from "./settings/currencies";
 import { TaxJurisdictionsPage } from "./settings/tax-jurisdictions";
@@ -1687,6 +1688,28 @@ const AREAS: Area[] = [
         name: "Custom fields",
         render: () => <CustomFieldsPage />,
         routes: { "/settings": [] },
+      },
+      {
+        // Calls audit PR-6: the recording opt-in, both retentions, the named
+        // processors, the person's own preferences and the admin erasure.
+        name: "Calls",
+        render: () => <CallsPage />,
+        routes: {
+          "/settings/comms/call_recording": { value: { enabled: true, retention_days: 30 } },
+          "/settings/comms/call_noise_suppression": { value: { enabled: false } },
+          "/settings/comms/call_privacy": { value: { relay_only: false } },
+          "/me/preferences/calls": { doNotDisturb: false, quietHours: { from: "20:00", to: "07:00" }, hideLastSeen: true },
+          "/smartcomm/calls/capabilities": { calls: true, can_dial: true, recording: true, settings_admin: true },
+          "/smartcomm/calls/processing": {
+            recording_enabled: true,
+            transcription: [{ vendor: "groq", role: "first", name: "Groq", country: "United States" }],
+            summary: [{ vendor: "gemini", role: "first", name: "Google (Gemini)", country: "United States" }],
+            network: [],
+          },
+        },
+        populatedProof: /Google \(Gemini\)/,
+        // A settings form: there is no list, so no empty state to have.
+        states: ["loading", "error", "populated"],
       },
       {
         name: "Email signatures",

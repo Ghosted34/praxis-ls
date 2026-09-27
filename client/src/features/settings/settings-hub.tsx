@@ -204,7 +204,7 @@ const SECTIONS: Section[] = [
         // the yard noise filter, and how long call recordings are kept.
         to: "/settings/calls",
         label: "Calls",
-        desc: "Noise filtering on calls, and how long recordings are kept",
+        desc: "Recording, privacy, do not disturb and noise filtering on calls",
         icon: "comms",
       },
     ],

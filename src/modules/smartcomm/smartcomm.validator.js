@@ -38,6 +38,15 @@ const attachment = z.object({
   kind: z.enum(["IMAGE", "AUDIO", "VIDEO"]).optional().nullable(),
   is_voice_note: z.boolean().optional(),
 }).passthrough();
+/**
+ * An attachment a PERSON may post (audit C4). A CALL card resolves a call's
+ * summary for everyone in the channel, so only `sendSummary` writes one; a
+ * client naming another pair's call id here would surface their summary.
+ */
+const notCall = (a) => a.attachment_kind !== "CALL";
+const NOT_CALL = { message: "Call summaries are shared from the call, not attached", path: ["attachment_kind"] };
+const postedAttachment = attachment.refine(notCall, NOT_CALL);
+const scheduledAttachment = attachment.strip().refine(notCall, NOT_CALL);
 const schemas = {
   // SEC H3 guard. Four write routes reached their handler with an unvalidated
   // body. The three toggles read `req.body.x === true`, so an absent or
@@ -58,10 +67,11 @@ const schemas = {
   emailTestSend: z.object({ to: z.string().trim().email().max(254), purpose: z.string().trim().min(1).max(64).optional() }).strict(),
   channel: z.object({ name: z.string().min(1), kind: z.enum(["DEPARTMENT", "PROJECT", "DOSSIER", "DIRECT", "CLIENT"]).optional(), dossier_id: z.string().uuid().optional().nullable(), client_id: z.string().uuid().optional().nullable(), topic: z.string().optional(), member_ids: z.array(z.string().uuid()).optional() }),
   member: z.object({ user_id: z.string().uuid(), member_role: z.enum(["OWNER", "ADMIN", "MEMBER"]).optional() }),
-  message: z.object({ body: z.string().optional(), media_vault_id: z.string().uuid().optional().nullable(), reply_to: z.string().uuid().optional().nullable(), attachments: z.array(attachment).optional() }),
-  scheduled: z.object({ request_id: z.string().uuid(), body: z.string().max(10000).default(""), attachments: z.array(attachment.strip()).max(20).default([]), reply_to: z.string().uuid().nullable().optional(), send_at: z.string().datetime({ offset: true }), timezone: z.string().min(1).max(100) }).strict(),
+  message: z.object({ body: z.string().optional(), media_vault_id: z.string().uuid().optional().nullable(), reply_to: z.string().uuid().optional().nullable(), attachments: z.array(postedAttachment).optional() }),
+  scheduled: z.object({ request_id: z.string().uuid(), body: z.string().max(10000).default(""), attachments: z.array(scheduledAttachment).max(20).default([]), reply_to: z.string().uuid().nullable().optional(), send_at: z.string().datetime({ offset: true }), timezone: z.string().min(1).max(100) }).strict(),
   reschedule: z.object({ send_at: z.string().datetime({ offset: true }), timezone: z.string().min(1).max(100) }).strict(),
-  editMessage: z.object({ body: z.string().min(1) }),
+  // An edit changes the words only; attachments are never edited (C4).
+  editMessage: z.object({ body: z.string().min(1) }).strict(),
   react: z.object({ emoji: z.string().min(1).max(16) }),
   draft: z.object({ body: z.string() }),
   /**
@@ -134,13 +144,37 @@ const schemas = {
   /**
    * 1:1 call transitions (PR-1). The dial names a channel — the DIRECT
    * conversation the icon sits on — never a person, so the callee is resolved
-   * server-side and there is no user id to spoof. `reason` on hangup is
-   * closed, because it lands in the row's CHECK constraint and in the event
-   * the other side sees: a free-text reason there is a label someone will
-   * quote in a support ticket.
+   * server-side and there is no user id to spoof.
    */
   callCreate: z.object({ group_id: z.string().uuid() }).strict(),
-  callHangup: z.object({ reason: z.enum(["hangup", "declined", "cancelled", "no_answer", "busy", "max_duration", "ice_failed"]).optional() }).strict(),
+  // Clients built before PR-3 send a `reason`; it is accepted and ignored
+  // (audit B9: the server decides how a call ended).
+  callHangup: z.object({ reason: z.string().max(32).optional() }).strict(),
+  // PR-6 (audit G5): `record: false` answers without recording. Absent means
+  // record as the tenant has it; a client from before PR-6 sends no body.
+  callAccept: z.object({ record: z.boolean().optional() }).strict(),
+  // PR-6 (audit G3): whose call records to erase.
+  callEraseUser: z.object({ user_id: z.string().uuid() }).strict(),
+  // A test ring goes to one of the caller's OWN subscriptions, named by its
+  // push endpoint (the service looks it up under the caller's user id).
+  callTestRing: z.object({ endpoint: z.string().url().max(2048) }).strict(),
+  // Comms → Setup → Test calls (PR-7, O5).
+  diagStart: z.object({ app_version: z.string().max(60).optional() }).strict(),
+  diagSignal: z.object({ nonce: z.string().min(8).max(64) }).strict(),
+  diagRing: z.object({ endpoint: z.string().url().max(2048) }).strict(),
+  diagStep: z.object({
+    status: z.enum(["pass", "warn", "fail", "skipped"]),
+    ms: z.number().min(0).max(600000).nullable().optional(),
+    code: z.string().max(40).regex(/^[A-Z0-9_]+$/).nullable().optional(),
+    cause: z.string().max(500).nullable().optional(),
+    fix: z.string().max(500).nullable().optional(),
+    // Measurements only (levels, timings, RTT/jitter/loss, device labels
+    // are not sent): bounded so a report cannot carry a payload.
+    detail: z.record(z.string().max(40), z.union([z.string().max(200), z.number(), z.boolean(), z.null()]))
+      .refine((d) => Object.keys(d).length <= 20, { message: "at most 20 details" })
+      .optional(),
+  }).strict(),
+  diagPart: z.object({ part_index: z.coerce.number().int().min(1).max(3) }).strip(),
 
   /**
    * The record half (PR-2, guide §6.2).
@@ -152,11 +186,8 @@ const schemas = {
    * is uploading — a validator that guessed would be the second place the rule
    * lives.
    *
-   * `live_segments` is the browser capture (§4.9), sent as a JSON string
-   * alongside the audio (a multipart field cannot carry an array) and accepted
-   * as an array when the client uses a JSON body. Its CONTENTS are normalised
-   * in the pipeline service: a malformed segment is dropped, never a reason to
-   * refuse the audio it travelled with.
+   * A `live_segments` field from a client built before PR-1 is passed
+   * through unread; the browser capture is retired.
    *
    * `language` is the uploading side's app language. Only the CALLER's is used
    * — it is the language the summary is drafted in (§4.10) — and it is an enum
@@ -166,34 +197,17 @@ const schemas = {
     side: z.enum(["caller", "callee"]),
     part_index: z.coerce.number().int().min(1).max(60),
     part_count: z.coerce.number().int().min(1).max(60),
-    duration_ms: z.coerce.number().int().min(0).max(3_600_000).optional(),
+    // A part is cut at 120 s; 125 s allows for a throttled background timer
+    // and matches the repo's bound (audit B11).
+    duration_ms: z.coerce.number().int().min(0).max(125_000).optional(),
     language: z.enum(["en", "fr"]).optional(),
-    live_segments: z.preprocess((v) => {
-      if (typeof v !== "string") return v;
-      try { return JSON.parse(v); } catch { return undefined; }
-    }, z.array(z.object({
-      seq: z.coerce.number().int().min(0).optional(),
-      text: z.string().max(2000),
-      language: z.enum(["en", "fr"]).optional(),
-      started_ms: z.coerce.number().int().min(0).optional().nullable(),
-      ended_ms: z.coerce.number().int().min(0).optional().nullable(),
-    })).max(2000).optional()),
   }).passthrough(),
-  /** A retry of the live-log upload on its own (the audio may already be in). */
-  callLiveLog: z.object({
+  /** A side has finished recording: how many parts it made (audit A2). Zero
+   *  is a real answer (a device whose recorder could not start). */
+  callRecordingComplete: z.object({
     side: z.enum(["caller", "callee"]),
-    language: z.enum(["en", "fr"]).optional(),
-    live_segments: z.preprocess((v) => {
-      if (typeof v !== "string") return v;
-      try { return JSON.parse(v); } catch { return undefined; }
-    }, z.array(z.object({
-      seq: z.coerce.number().int().min(0).optional(),
-      text: z.string().max(2000),
-      language: z.enum(["en", "fr"]).optional(),
-      started_ms: z.coerce.number().int().min(0).optional().nullable(),
-      ended_ms: z.coerce.number().int().min(0).optional().nullable(),
-    })).max(2000)),
-  }).passthrough(),
+    parts: z.number().int().min(0).max(60),
+  }).strict(),
   /**
    * The caller's SEND, carrying their own edit of the draft.
    *
@@ -218,4 +232,4 @@ const schemas = {
   callSummaryRegenerate: z.object({ language: z.enum(["en", "fr"]) }).strict(),
 };
 const mw = (k) => (req, _res, next) => { const p = schemas[k].safeParse(req.body); if (!p.success) return next(new AppError("VALIDATION_ERROR", "Invalid body", 422, p.error.flatten().fieldErrors)); req.body = p.data; return next(); };
-module.exports = { transcribe: mw("transcribe"), callRecording: mw("callRecording"), callLiveLog: mw("callLiveLog"), callSummarySend: mw("callSummarySend"), callSummaryRegenerate: mw("callSummaryRegenerate"), linkPreview: mw("linkPreview"), scheduled: mw("scheduled"), reschedule: mw("reschedule"), mediaUpload: mw("mediaUpload"), promote: mw("promote"), channel: mw("channel"), member: mw("member"), message: mw("message"), editMessage: mw("editMessage"), react: mw("react"), draft: mw("draft"), quickReply: mw("quickReply"), flag: mw("flag"), emailTest: mw("emailTest"), emailDnsCheck: mw("emailDnsCheck"), emailTestSend: mw("emailTestSend"), quickReplyPatch: mw("quickReplyPatch"), whatsappConfig: mw("whatsappConfig"), emailConfig: mw("emailConfig"), callCreate: mw("callCreate"), callHangup: mw("callHangup"), schemas };
+module.exports = { transcribe: mw("transcribe"), callRecording: mw("callRecording"), callRecordingComplete: mw("callRecordingComplete"), callSummarySend: mw("callSummarySend"), callSummaryRegenerate: mw("callSummaryRegenerate"), linkPreview: mw("linkPreview"), scheduled: mw("scheduled"), reschedule: mw("reschedule"), mediaUpload: mw("mediaUpload"), promote: mw("promote"), channel: mw("channel"), member: mw("member"), message: mw("message"), editMessage: mw("editMessage"), react: mw("react"), draft: mw("draft"), quickReply: mw("quickReply"), flag: mw("flag"), emailTest: mw("emailTest"), emailDnsCheck: mw("emailDnsCheck"), emailTestSend: mw("emailTestSend"), quickReplyPatch: mw("quickReplyPatch"), whatsappConfig: mw("whatsappConfig"), emailConfig: mw("emailConfig"), callCreate: mw("callCreate"), callHangup: mw("callHangup"), callAccept: mw("callAccept"), callEraseUser: mw("callEraseUser"), callTestRing: mw("callTestRing"), diagStart: mw("diagStart"), diagSignal: mw("diagSignal"), diagRing: mw("diagRing"), diagStep: mw("diagStep"), diagPart: mw("diagPart"), schemas };

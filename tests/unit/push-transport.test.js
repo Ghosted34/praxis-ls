@@ -254,3 +254,21 @@ describe("degrading cleanly", () => {
     expect(out.reason).toBe("no push_subscription table");
   });
 });
+
+describe("one device only (a call's Test ring, calls audit A15)", () => {
+  test("an endpoint narrows the read to that subscription of THIS user", async () => {
+    const client = makeClient();
+    await push.sendToUser(client, { user_id: "u-1", title: "T", endpoint: "https://fcm.example/abc" });
+    const [sql, params] = client.query.mock.calls.find(([q]) => /SELECT endpoint/.test(q));
+    expect(sql).toMatch(/WHERE user_id = \$1 AND endpoint = \$2/);
+    expect(params).toEqual(["u-1", "https://fcm.example/abc"]);
+  });
+
+  test("without one, every device of the user, as before", async () => {
+    const client = makeClient();
+    await push.sendToUser(client, { user_id: "u-1", title: "T" });
+    const [sql, params] = client.query.mock.calls.find(([q]) => /SELECT endpoint/.test(q));
+    expect(sql).not.toMatch(/endpoint = \$2/);
+    expect(params).toEqual(["u-1"]);
+  });
+});

@@ -1,12 +1,17 @@
 /**
- * My Security (self-service) — change your password, enrol MFA (authenticator
- * app) and manage device-bound Quick PIN. Talks to the tenant auth routes:
- *   /auth/change-password, /auth/2fa/setup|enable|disable, /auth/pin/register|devices.
- * The backend doesn't report current MFA status (no /me), so both the enrol and
- * disable flows are shown with guidance.
+ * My Security (self-service) — a passkey for THIS device (first, because it is
+ * the fastest and safest way in and the one the lock screen leads with), your
+ * password, an authenticator app, and a device-bound Quick PIN. Talks to the
+ * tenant auth routes: /auth/passkey/*, /auth/change-password,
+ * /auth/2fa/setup|enable|disable, /auth/pin/register|devices.
+ *
+ * Adding a way in (a passkey, a PIN) on a session that is no longer fresh asks
+ * for the password first — the server answers REAUTH_REQUIRED and `withReauth`
+ * asks, once, in a branded dialog. Removing one asks for confirmation, and
+ * names what will stop working.
  */
 import { pageShell } from "@/lib/layout";
-import { dateDmy } from "@/lib/format";
+import { dateFmt, fmtRelative } from "@/lib/format";
 import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { useAuth } from "@/app/auth/auth-context";
@@ -33,10 +38,18 @@ import {
   registerPasskey,
   listPasskeys,
   deletePasskey,
+  biometricName,
+  deviceLabel,
+  isPasskeyCancel,
   isPasskeySupported,
+  platformAuthenticatorAvailable,
   type PasskeyCredential,
 } from "@/lib/webauthn";
 import { passkeyDeviceStore } from "@/lib/passkey-devices";
+import { quickPin } from "@praxis/shared";
+import { useConfirm } from "@/components/ui/use-confirm";
+import { usePrompt } from "@/components/ui/use-prompt";
+import { FingerprintIcon } from "@/features/auth/sign-in-panel";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/data-list";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
@@ -195,13 +208,50 @@ export function MySecurityPage() {
     }
   }
 
+  const [confirm, confirmDialog] = useConfirm();
+  const [prompt, promptDialog] = usePrompt();
+  const email = user?.email ?? "";
+  const bio = biometricName();
+
+  /**
+   * Adding a way in on a session that is no longer fresh needs the password
+   * (server: REAUTH_REQUIRED). One helper, so the passkey and the PIN ask the
+   * same question the same way. Resolves null when the person backs out.
+   */
+  async function withReauth<T>(run: (currentPassword: string | null) => Promise<T>): Promise<T | null> {
+    try {
+      return await run(null);
+    } catch (e) {
+      if (!(e instanceof ApiError && e.code === "REAUTH_REQUIRED")) throw e;
+      const pw = await prompt({
+        title: "Confirm it's you",
+        description:
+          "You signed in a while ago. Enter your password to add a new way into your account — it stops someone at an unattended desk from adding their own.",
+        label: "Current password",
+        type: "password",
+        confirmLabel: "Confirm",
+        trim: false,
+        validate: (v) => (v ? null : "Enter your password."),
+      });
+      if (pw === null) return null;
+      return run(pw);
+    }
+  }
+
   // --- Quick PIN ---
   const [devices, setDevices] = React.useState<PinDeviceRow[] | null>(null);
   const [pin, setPin] = React.useState("");
-  const [label, setLabel] = React.useState("");
+  const [pin2, setPin2] = React.useState("");
+  const [label, setLabel] = React.useState(() => deviceLabel());
   const [pinBusy, setPinBusy] = React.useState(false);
   const [pinMsg, setPinMsg] = React.useState<Msg>(null);
-  const thisDeviceId = user ? pinStore.get(user.email)?.device_id : null;
+  const thisDeviceId = email ? pinStore.get(email)?.device_id : null;
+  const hasPinHere = !!thisDeviceId && !!devices?.some((d) => d.device_id === thisDeviceId && d.status === "ACTIVE");
+  // The shared rule (@praxis/shared quickPin) — the same one the server applies,
+  // shown as the user types rather than as a 422 after pressing the button.
+  const pinWeak = pin.length === PIN_LENGTH ? quickPin.weakPinReason(pin) : null;
+  const pinMismatch = pin2.length === PIN_LENGTH && pin !== pin2;
+  const pinReady = pin.length === PIN_LENGTH && !pinWeak && pin === pin2;
 
   const loadDevices = React.useCallback(() => {
     listPinDevices()
@@ -212,41 +262,51 @@ export function MySecurityPage() {
 
   async function onRegister(e: React.FormEvent) {
     e.preventDefault();
-    if (!new RegExp(`^\\d{${PIN_LENGTH}}$`).test(pin)) {
-      setPinMsg({ kind: "err", text: `PIN must be ${PIN_LENGTH} digits.` });
-      return;
-    }
+    if (!pinReady) return;
     setPinBusy(true);
     setPinMsg(null);
     try {
-      await registerPin(pin, label.trim() || null);
+      const done = await withReauth((pw) => registerPin(pin, label.trim() || null, pw));
+      if (!done) return;
       setPin("");
-      setLabel("");
+      setPin2("");
       setPinMsg({
         kind: "ok",
-        text: "Quick PIN registered on this device. You can now PIN-in from the sign-in screen.",
+        text: hasPinHere
+          ? "This device's PIN was changed. The old one no longer works."
+          : "Quick PIN is set up on this device. When your session locks, four digits unlock it.",
       });
       loadDevices();
-    } catch (e) {
-      setPinMsg({ kind: "err", text: errText(e) });
+    } catch (err) {
+      setPinMsg({ kind: "err", text: errText(err) });
     } finally {
       setPinBusy(false);
     }
   }
-  async function onRevoke(deviceId: string) {
+  async function onRevoke(d: PinDeviceRow) {
+    const here = thisDeviceId === d.device_id;
+    const ok = await confirm({
+      title: here ? "Turn off Quick PIN on this device?" : `Revoke the Quick PIN on "${d.label || "Unnamed device"}"?`,
+      body: here
+        ? "You'll sign in here with your passkey or password instead. You can set a new PIN up any time."
+        : "That device will stop accepting the PIN straight away. Do this for a device you've lost or no longer use.",
+      confirmLabel: here ? "Turn off Quick PIN" : "Revoke PIN",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
-      await revokePinDevice(deviceId);
-      if (user && thisDeviceId === deviceId) pinStore.remove(user.email);
+      await revokePinDevice(d.device_id);
+      if (here && email) pinStore.remove(email);
+      setPinMsg({ kind: "ok", text: here ? "Quick PIN is off on this device." : "That device's PIN was revoked." });
       loadDevices();
-    } catch (e) {
-      setPinMsg({ kind: "err", text: errText(e) });
+    } catch (err) {
+      setPinMsg({ kind: "err", text: errText(err) });
     }
   }
 
   // --- Passkey deep link ---
-  // The dashboard nudge links here with ?highlight=passkey. Landing at the top
-  // of a long settings page and being told the card is "below" is the failure
-  // this avoids: scroll to it and ring it, so the location is SEEN.
+  // The dashboard nudge links here with ?highlight=passkey. Scroll to the card
+  // and ring it, so arriving by link SHOWS the location.
   const [searchParams, setSearchParams] = useSearchParams();
   const passkeyCardRef = React.useRef<HTMLDivElement>(null);
   const [passkeyHighlit, setPasskeyHighlit] = React.useState(false);
@@ -258,8 +318,6 @@ export function MySecurityPage() {
     const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     el.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "center" });
     setPasskeyHighlit(true);
-    // Drop the param so a refresh, a back-navigation or a copied URL does not
-    // re-trigger a highlight the user has already been shown.
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
       next.delete("highlight");
@@ -271,32 +329,60 @@ export function MySecurityPage() {
 
   // --- Passkey ---
   const [passkeys, setPasskeys] = React.useState<PasskeyCredential[] | null>(null);
-  const [pkLabel, setPkLabel] = React.useState("");
   const [pkBusy, setPkBusy] = React.useState(false);
   const [pkMsg, setPkMsg] = React.useState<Msg>(null);
   const passkeySupported = typeof window !== "undefined" && isPasskeySupported();
+  const [platformOk, setPlatformOk] = React.useState<boolean | null>(null);
+  const [deviceVersion, bumpDevice] = React.useReducer((n: number) => n + 1, 0);
+  const passkeyHere = React.useMemo(
+    () => !!email && passkeyDeviceStore.get(email),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- deviceVersion invalidates a localStorage read React cannot track.
+    [email, deviceVersion],
+  );
 
+  React.useEffect(() => {
+    let alive = true;
+    void platformAuthenticatorAvailable().then((ok) => alive && setPlatformOk(ok));
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  /**
+   * The server is the truth about which passkeys exist. A credential this
+   * device remembers but the account no longer holds (removed from another
+   * session) is forgotten here, so the sign-in and lock screens stop leading
+   * with it.
+   */
   const loadPasskeys = React.useCallback(() => {
     listPasskeys()
-      .then(setPasskeys)
+      .then((list) => {
+        setPasskeys(list);
+        if (!email) return;
+        const onServer = new Set(list.map((p) => p.credential_id));
+        for (const id of passkeyDeviceStore.ids(email)) if (!onServer.has(id)) passkeyDeviceStore.forgetId(email, id);
+        if (list.length === 0) passkeyDeviceStore.remove(email);
+        bumpDevice();
+      })
       .catch(() => setPasskeys([]));
-  }, []);
+  }, [email]);
   React.useEffect(() => loadPasskeys(), [loadPasskeys]);
 
-  async function onRegisterPasskey(e: React.FormEvent) {
-    e.preventDefault();
+  async function onRegisterPasskey() {
     setPkBusy(true);
     setPkMsg(null);
     try {
-      // `user.email` — the device registry records which account this browser
-      // can now unlock, and only the authenticated session knows that.
-      await registerPasskey(pkLabel.trim() || null, user?.email);
-      setPkLabel("");
-      setPkMsg({ kind: "ok", text: "Passkey added. You can now use Face ID / Touch ID to sign in." });
+      const r = await withReauth((pw) => registerPasskey({ email, label: deviceLabel(), currentPassword: pw }));
+      if (!r) return;
+      setPkMsg({ kind: "ok", text: `Done — ${bio} now signs you in on this device.` });
       loadPasskeys();
-    } catch (err: any) {
-      if (err && (err.name === "NotAllowedError" || err.code === "NOT_ALLOWED")) {
-        setPkMsg({ kind: "err", text: "Passkey creation was cancelled." });
+    } catch (err) {
+      const code = (err as { code?: string } | null)?.code;
+      if (code === "PASSKEY_ALREADY_ON_DEVICE") {
+        setPkMsg({ kind: "ok", text: "This device already has a passkey for your account — you're all set." });
+        bumpDevice();
+      } else if (isPasskeyCancel(err)) {
+        setPkMsg({ kind: "err", text: "Passkey setup was cancelled." });
       } else {
         setPkMsg({ kind: "err", text: errText(err) });
       }
@@ -304,21 +390,25 @@ export function MySecurityPage() {
       setPkBusy(false);
     }
   }
-  async function onDeletePasskey(id: string) {
+  async function onDeletePasskey(c: PasskeyCredential) {
+    const here = passkeyDeviceStore.holds(email, c.credential_id);
+    const name = c.label || "this passkey";
+    const ok = await confirm({
+      title: here ? "Remove this device's passkey?" : `Remove the passkey for "${name}"?`,
+      body: here
+        ? `${bio} will stop signing you in here. Your PIN and password still work, and you can set a passkey up again any time.`
+        : "That device will no longer be able to sign you in with it. Do this for a device you've lost or no longer use.",
+      confirmLabel: "Remove passkey",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
-      await deletePasskey(id);
-      // Removing the LAST credential for this account takes the device's claim
-      // with it. `passkeys` is read before the reload because that is the list
-      // as the user saw it: if the one they just removed was the only one, this
-      // browser can no longer answer the sign-in screen's "can this device do a
-      // passkey?" — and saying it can would put an unusable Face ID button in
-      // front of them on the next visit.
-      const wasLast = (passkeys?.length ?? 0) <= 1;
-      if (wasLast && user?.email) passkeyDeviceStore.remove(user.email);
-      loadPasskeys();
+      await deletePasskey(c.credential_id);
+      if (here) passkeyDeviceStore.forgetId(email, c.credential_id);
       setPkMsg({ kind: "ok", text: "Passkey removed." });
-    } catch (e) {
-      setPkMsg({ kind: "err", text: errText(e) });
+      loadPasskeys();
+    } catch (err) {
+      setPkMsg({ kind: "err", text: errText(err) });
     }
   }
 
@@ -329,10 +419,12 @@ export function MySecurityPage() {
 
   return (
     <section className={pageShell.wide}>
+      {confirmDialog}
+      {promptDialog}
       <PageHeader
         eyebrow={<HubCrumb area="Security & access" to="/security" />}
         title="My security"
-        description="Your password, an authenticator app, a device-bound Quick PIN and passkeys (Face ID / Touch ID) — all for your own account."
+        description="How you get into your account: a passkey on this device, a Quick PIN, your password and an authenticator app."
       />
       <HubTabs />
 
@@ -395,6 +487,99 @@ export function MySecurityPage() {
             </div>
           </div>
         </SettingsCard>
+
+        {/* Passkey — FIRST, because it is the fastest and safest way in and the
+            one the lock screen leads with. `highlight=passkey` (the dashboard
+            nudge's deep link) scrolls here and rings the card. */}
+        <div
+          ref={passkeyCardRef}
+          className={cn(
+            "rounded-2xl transition-shadow motion-reduce:transition-none",
+            passkeyHighlit && "ring-2 ring-primary ring-offset-2 ring-offset-background",
+          )}
+        >
+          <SettingsCard
+            title={`Passkey — ${bio === "your passkey" ? "one-touch sign-in" : bio}`}
+            desc="One touch signs you in and unlocks your session. It belongs to this device alone — your laptop uses the laptop's, your phone uses the phone's — and there is nothing to type, so nothing to phish."
+          >
+            {!passkeySupported || platformOk === false ? (
+              <p className="text-sm text-muted-foreground">
+                This browser or device has no built-in fingerprint, face or Windows Hello sign-in it can use, so it can&apos;t hold a
+                passkey. Use your Quick PIN or password here, and set a passkey up on your phone or laptop.
+              </p>
+            ) : passkeyHere ? (
+              <div className="flex items-center gap-3 rounded-xl border border-primary/30 bg-primary/5 p-4">
+                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary-ink">
+                  <FingerprintIcon width={24} height={24} />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold">This device signs you in with {bio}.</p>
+                  <p className="text-xs text-muted-foreground">When your session locks, one touch unlocks it.</p>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-3 rounded-xl border border-primary/30 bg-primary/5 p-4 sm:flex-row sm:items-center">
+                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary-ink">
+                  <FingerprintIcon width={24} height={24} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="flex flex-wrap items-center gap-2 text-sm font-semibold">
+                    Set up {bio} on this device
+                    <span className="status st-ok !py-0.5 !text-[9px]">recommended</span>
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Your session locks every two hours. With a passkey, getting back in is a single touch.
+                  </p>
+                </div>
+                <Button onClick={() => void onRegisterPasskey()} loading={pkBusy}>
+                  Set up {bio === "your passkey" ? "a passkey" : bio}
+                </Button>
+              </div>
+            )}
+
+            <div className="mt-5 border-t pt-4">
+              <p className="micro mb-2">Your passkeys</p>
+              {passkeys === null ? (
+                <p className="text-sm text-muted-foreground">{tr("Loading…")}</p>
+              ) : passkeys.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No passkeys yet.</p>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {passkeys.map((c) => {
+                    const here = passkeyDeviceStore.holds(email, c.credential_id);
+                    return (
+                      <div key={c.credential_id} className="flex items-center justify-between gap-3 rounded-lg border p-3">
+                        <div className="flex min-w-0 items-center gap-3">
+                          <FingerprintIcon width={18} height={18} className="shrink-0 text-muted-foreground" />
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2 text-sm font-medium">
+                              <span className="truncate">{c.label || "Passkey"}</span>
+                              {here && <span className="status st-ok !py-0.5 !text-[9px]">this device</span>}
+                              {c.backed_up && <span className="status st-mute !py-0.5 !text-[9px]">synced</span>}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              Added {dateFmt(c.created_at)}
+                              {c.last_used_at ? ` · last used ${fmtRelative(c.last_used_at)}` : " · never used"}
+                            </div>
+                          </div>
+                        </div>
+                        <Button variant="ghost" size="sm" onClick={() => void onDeletePasskey(c)}>
+                          Remove
+                        </Button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {pkMsg && (
+              <p className={`mt-4 ${pkMsg.kind === "ok" ? okCls : errCls}`} role="status">
+                {pkMsg.text}
+              </p>
+            )}
+          </SettingsCard>
+        </div>
 
         {/* Password */}
         <SettingsCard
@@ -562,154 +747,89 @@ export function MySecurityPage() {
           {/* Quick PIN */}
           <SettingsCard
             title="Quick PIN"
-            desc="A fast, device-bound unlock. Registers only on this device."
+            desc="Four digits that unlock your session on THIS device only. Five wrong tries switch it off."
           >
-            <form onSubmit={onRegister} className="flex flex-col gap-3">
+            <form onSubmit={onRegister} className="flex flex-col gap-3" noValidate>
               <div className="grid gap-3 sm:grid-cols-2">
-                <Field label={`New PIN (${PIN_LENGTH} digits)`}>
+                <Field label={hasPinHere ? `New PIN (${PIN_LENGTH} digits)` : `PIN (${PIN_LENGTH} digits)`}>
                   <Input
                     type="password"
                     inputMode="numeric"
                     autoComplete="off"
                     value={pin}
-                    onChange={(e) =>
-                      setPin(e.target.value.replace(/\D/g, "").slice(0, PIN_LENGTH))
-                    }
+                    onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, PIN_LENGTH))}
                     placeholder="••••"
+                    aria-invalid={!!pinWeak || undefined}
                   />
                 </Field>
-                <Field label="Device label (optional)">
+                <Field label="Confirm PIN">
                   <Input
-                    value={label}
-                    onChange={(e) => setLabel(e.target.value)}
-                    placeholder="My laptop"
+                    type="password"
+                    inputMode="numeric"
+                    autoComplete="off"
+                    value={pin2}
+                    onChange={(e) => setPin2(e.target.value.replace(/\D/g, "").slice(0, PIN_LENGTH))}
+                    placeholder="••••"
+                    aria-invalid={pinMismatch || undefined}
                   />
                 </Field>
               </div>
-              <div>
-                <Button type="submit" loading={pinBusy}>
-                  Register this device
+              {pinWeak && <p className="text-xs text-[rgb(var(--bad))]">{pinWeak}</p>}
+              {!pinWeak && pinMismatch && <p className="text-xs text-[rgb(var(--bad))]">The two PINs don&apos;t match.</p>}
+              <Field label="Device name">
+                <Input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="My laptop" maxLength={80} />
+              </Field>
+              <div className="flex flex-wrap items-center gap-3">
+                <Button type="submit" loading={pinBusy} disabled={!pinReady}>
+                  {hasPinHere ? "Change this device's PIN" : "Set up Quick PIN here"}
                 </Button>
+                {hasPinHere && (
+                  <span className="text-xs text-muted-foreground">Replaces the PIN on this device — the old one stops working.</span>
+                )}
               </div>
             </form>
 
             <div className="mt-5 border-t pt-4">
-              <p className="micro mb-2">Registered devices</p>
+              <p className="micro mb-2">Devices with a Quick PIN</p>
               {devices === null ? (
                 <p className="text-sm text-muted-foreground">{tr("Loading…")}</p>
-              ) : devices.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  No Quick PIN devices yet.
-                </p>
+              ) : devices.filter((d) => d.status === "ACTIVE").length === 0 ? (
+                <p className="text-sm text-muted-foreground">No device has a Quick PIN yet.</p>
               ) : (
                 <div className="flex flex-col gap-2">
-                  {devices.map((d) => (
-                    <div
-                      key={d.device_id}
-                      className="flex items-center justify-between rounded-lg border p-3"
-                    >
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2 text-sm font-medium">
-                          {d.label || "Unnamed device"}
-                          {thisDeviceId === d.device_id && (
-                            <span className="status st-ok !py-0.5 !text-[9px]">
-                              this device
-                            </span>
-                          )}
-                          {d.status && d.status !== "ACTIVE" && (
-                            <span className="status st-mute !py-0.5 !text-[9px]">
-                              {d.status.toLowerCase()}
-                            </span>
-                          )}
+                  {devices
+                    .filter((d) => d.status === "ACTIVE")
+                    .map((d) => (
+                      <div key={d.device_id} className="flex items-center justify-between gap-3 rounded-lg border p-3">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 text-sm font-medium">
+                            <span className="truncate">{d.label || "Unnamed device"}</span>
+                            {thisDeviceId === d.device_id && (
+                              <span className="status st-ok !py-0.5 !text-[9px]">this device</span>
+                            )}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            Added {dateFmt(d.created_at)}
+                            {d.last_used_at ? ` · last used ${fmtRelative(d.last_used_at)}` : " · never used"}
+                          </div>
                         </div>
-                        <div className="text-xs text-muted-foreground">
-                          Added {dateDmy(d.created_at)}
-                        </div>
+                        <Button variant="ghost" size="sm" onClick={() => void onRevoke(d)}>
+                          {thisDeviceId === d.device_id ? "Turn off" : "Revoke"}
+                        </Button>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => onRevoke(d.device_id)}
-                      >
-                        Revoke
-                      </Button>
-                    </div>
-                  ))}
+                    ))}
                 </div>
               )}
             </div>
 
             {pinMsg && (
-              <p className={`mt-4 ${pinMsg.kind === "ok" ? okCls : errCls}`}>
+              <p className={`mt-4 ${pinMsg.kind === "ok" ? okCls : errCls}`} role="status">
                 {pinMsg.text}
               </p>
             )}
           </SettingsCard>
         </div>
 
-        {/* Passkey — `highlight=passkey` (the dashboard nudge's deep link)
-            scrolls here and rings the card, so arriving by link SHOWS the
-            location rather than just landing near it. */}
-        <div
-          ref={passkeyCardRef}
-          className={cn(
-            "rounded-2xl transition-shadow motion-reduce:transition-none",
-            passkeyHighlit && "ring-2 ring-primary ring-offset-2 ring-offset-background",
-          )}
-        >
-        <SettingsCard
-          title="Passkey (Face ID / Touch ID)"
-          desc="Passwordless sign-in with your device's biometrics or security key. Works on this device and anywhere your passkey is synced."
-        >
-          {!passkeySupported ? (
-            <p className="text-sm text-muted-foreground">
-              Passkeys need a secure browser with WebAuthn support (HTTPS + platform authenticator). Your current browser doesn't support them — use Quick PIN or password, and add a passkey from a supported device.
-            </p>
-          ) : (
-            <form onSubmit={onRegisterPasskey} className="flex flex-col gap-3">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-                <div className="flex-1">
-                  <Field label="Label (optional)">
-                    <Input value={pkLabel} onChange={(e) => setPkLabel(e.target.value)} placeholder="My MacBook" />
-                  </Field>
-                </div>
-                <Button type="submit" loading={pkBusy}>
-                  Add passkey
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground">You'll be asked by your device to confirm with Face ID, Touch ID, Windows Hello, or your security key.</p>
-            </form>
-          )}
-
-          <div className="mt-5 border-t pt-4">
-            <p className="micro mb-2">Registered passkeys</p>
-            {passkeys === null ? (
-              <p className="text-sm text-muted-foreground">{tr("Loading…")}</p>
-            ) : passkeys.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No passkeys yet. Add one above to enable passwordless sign-in.</p>
-            ) : (
-              <div className="flex flex-col gap-2">
-                {passkeys.map((c) => (
-                  <div key={c.credential_id} className="flex items-center justify-between rounded-lg border p-3">
-                    <div className="min-w-0">
-                      <div className="text-sm font-medium">{c.label || "Passkey"}</div>
-                      <div className="text-xs text-muted-foreground">
-                        Added {dateDmy(c.created_at)}
-                        {c.last_used_at ? ` • last used ${dateDmy(c.last_used_at)}` : ""}
-                      </div>
-                    </div>
-                    <Button variant="ghost" size="sm" onClick={() => onDeletePasskey(c.credential_id)}>
-                      Remove
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {pkMsg && <p className={`mt-4 ${pkMsg.kind === "ok" ? okCls : errCls}`}>{pkMsg.text}</p>}
-        </SettingsCard>
-        </div>
       </div>
     </section>
   );

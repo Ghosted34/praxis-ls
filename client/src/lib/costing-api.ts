@@ -43,6 +43,11 @@ export type CostingLine = {
   tax_code?: string | null;
   disbursement_vat_transparent?: boolean | null;
   varies_by_equipment?: boolean | null;
+  /** 14130: the pricer's family override, and the catalogue's heading. */
+  client_heading?: string | null;
+  client_heading_code?: string | null;
+  client_heading_fr?: string | null;
+  client_heading_en?: string | null;
 };
 export type Costing = {
   costing_id: string;
@@ -225,6 +230,7 @@ export type SuggestedLine = {
   dictionary_item_id: string;
   item_code: string;
   label: string;
+  label_en?: string | null;
   label_fr?: string | null;
   subcategory?: string | null;
   unit_of_measure?: string | null;
@@ -246,11 +252,22 @@ export type SuggestedLine = {
   /** null = no rate on file and no catalogue default — badged "needs a price". */
   unit_cost: number | null;
   currency: string | null;
-  price_source: "EXPENSE_RATE" | "CATALOGUE_DEFAULT" | "NONE";
+  /** NO_FX: the rate on file is in a currency with no quote to XAF, so it was
+   *  not converted into the sheet's currency — the figure is in source_*. */
+  price_source: "EXPENSE_RATE" | "CATALOGUE_DEFAULT" | "NONE" | "NO_FX";
+  /** When converted into the sheet's currency: what the rate card said. */
+  source_unit_cost?: number | null;
+  source_currency?: string | null;
+  /** The line's value in XAF before rounding into the sheet's currency. */
+  unit_cost_xaf?: number | null;
   price_note: string | null;
   expense_rate_id: string | null;
   effective_from: string | null;
   rate_scope: "CARRIER_AND_TYPE" | "CARRIER" | "TYPE" | "DEFAULT" | null;
+  /** 14130: the family a client document prints this charge under. */
+  client_heading_code?: string | null;
+  client_heading_fr?: string | null;
+  client_heading_en?: string | null;
 };
 
 /**
@@ -292,10 +309,57 @@ export type CostingSuggestion = {
   };
 };
 
+/** The sheet a price is put INTO — its currency and its one rate to XAF. */
+export type SheetFx = { currency: string; exchangeRateToXaf: number };
+
 export const suggestCostingLines = (
   dossierId: string,
   tier: "BASIC" | "ADVANCED" | "FULL" = "FULL",
-) => tenant<CostingSuggestion>(`/costings/suggest${qs({ dossier_id: dossierId, tier })}`);
+  sheet?: SheetFx,
+) =>
+  tenant<CostingSuggestion>(
+    `/costings/suggest${qs({
+      dossier_id: dossierId,
+      tier,
+      currency: sheet?.currency,
+      exchange_rate_to_xaf: sheet?.exchangeRateToXaf,
+    })}`,
+  );
+
+/** The rate a sheet in `currency` defaults to, from Currencies & FX. */
+export type CostingFxRate = {
+  currency: string;
+  rate_to_xaf: number | null;
+  as_of_date: string | null;
+  source: string | null;
+  found: boolean;
+};
+export const costingFxRate = (currency: string) =>
+  tenant<CostingFxRate>(`/costings/fx-rate${qs({ currency })}`);
+
+/** One hand-picked line, priced by the same cascade Suggest uses (the file's
+ *  carrier → the item's standard rate). Before this, "+ Add a line" arrived at
+ *  0 even when Expense rates had a price (meeting 5). */
+export type PricedLine = Pick<
+  SuggestedLine,
+  | "unit_cost" | "currency" | "price_source" | "price_note" | "expense_rate_id" | "effective_from"
+  | "rate_scope" | "source_unit_cost" | "source_currency" | "unit_cost_xaf"
+> & { dictionary_item_id: string; container_type_ref_id: string | null };
+export const priceCostingLine = (opts: {
+  dictionaryItemId: string;
+  dossierId?: string | null;
+  containerTypeRefId?: string | null;
+  sheet?: SheetFx;
+}) =>
+  tenant<PricedLine>(
+    `/costings/price-line${qs({
+      dictionary_item_id: opts.dictionaryItemId,
+      dossier_id: opts.dossierId || undefined,
+      container_type_ref_id: opts.containerTypeRefId || undefined,
+      currency: opts.sheet?.currency,
+      exchange_rate_to_xaf: opts.sheet?.exchangeRateToXaf,
+    })}`,
+  );
 
 /** DRAFT-only, server-side. The screen has never called this; the worksheet
  *  in PR 2 does. */

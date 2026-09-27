@@ -19,6 +19,9 @@ import { errMsg, type Row } from "@/lib/use-resource";
 import { cell, money } from "@/lib/format";
 import { SearchSelect } from "@/components/ui/search-select";
 import { listSalesTaxCodes, type TaxCode } from "@/lib/masterdata-api";
+import { Segmented } from "@/components/ui/segmented";
+import { ClientFamilies } from "@/components/client-families";
+import { dictLabel } from "@/lib/dict-label";
 
 export type QLine = {
   dictionary_item_id: string | null;
@@ -27,6 +30,12 @@ export type QLine = {
   unit_price: string;
   is_disbursement: boolean;
   tax_code_id: string | null;
+  /** 14130: the family this line prints under, when moved on this quotation;
+   *  null = the catalogue's heading (below, read-only). */
+  client_heading?: string | null;
+  client_heading_code?: string | null;
+  client_heading_fr?: string | null;
+  client_heading_en?: string | null;
 };
 export const qLineTotal = (l: { qty?: unknown; unit_price?: unknown }) =>
   (Number(l.qty) || 0) * (Number(l.unit_price) || 0);
@@ -80,6 +89,7 @@ export function QuotationForm({
   const [validUntil, setValidUntil] = React.useState("");
   const [marginPercent, setMarginPercent] = React.useState("");
   const [lines, setLines] = React.useState<QLine[]>([]);
+  const [lineView, setLineView] = React.useState<"lines" | "families">("lines");
   const [taxCodes, setTaxCodes] = React.useState<TaxCode[]>([]);
   // B1 (class E — degraded read). listSalesTaxCodes returns
   // { codes, degraded, failed_jurisdictions } so an empty picker cannot be
@@ -121,6 +131,10 @@ export function QuotationForm({
             unit_price: l.unit_price != null ? String(l.unit_price) : "0",
             is_disbursement: l.is_disbursement === true,
             tax_code_id: l.tax_code_id ? String(l.tax_code_id) : null,
+            client_heading: l.client_heading ? String(l.client_heading) : null,
+            client_heading_code: l.client_heading_code ? String(l.client_heading_code) : null,
+            client_heading_fr: l.client_heading_fr ? String(l.client_heading_fr) : null,
+            client_heading_en: l.client_heading_en ? String(l.client_heading_en) : null,
           }))
         : [blankLine()],
     );
@@ -189,6 +203,7 @@ export function QuotationForm({
         unit_price: Number(l.unit_price) || 0,
         is_disbursement: l.is_disbursement,
         tax_code_id: l.is_disbursement ? null : l.tax_code_id || null,
+        client_heading: l.client_heading || null,
       }));
     const common: Record<string, unknown> = {
       client_id: clientId || null,
@@ -309,7 +324,32 @@ export function QuotationForm({
         </div>
 
         <div className="space-y-2">
-          <div className="flex items-center justify-between">
+          {/* 14130 — the quotation prints one line per family; this view shows
+              exactly that, and moves a line to another family for this quote. */}
+          <Segmented
+            label={tr("Line view")}
+            value={lineView}
+            onChange={(v) => setLineView(v as "lines" | "families")}
+            options={[
+              { value: "lines", label: tr("Line items") },
+              { value: "families", label: tr("By family (as printed)") },
+            ]}
+          />
+          {lineView === "families" && (
+            <ClientFamilies
+              lines={lines
+                .filter((l) => l.label.trim())
+                .map((l) => ({ ...l, qty: Number(l.qty) || 0, amount: qLineTotal(l) }))}
+              currency={currency.trim().toUpperCase() || "XAF"}
+              readOnly={false}
+              onHeading={(index, heading) => {
+                const kept = lines.map((l, j) => ({ l, j })).filter((x) => x.l.label.trim());
+                const target = kept[index];
+                if (target) setLine(target.j, { client_heading: heading });
+              }}
+            />
+          )}
+          <div className={lineView === "families" ? "hidden" : "flex items-center justify-between"}>
             <p className="text-sm font-medium">Line items</p>
             <Button
               size="sm"
@@ -319,7 +359,7 @@ export function QuotationForm({
               + Line
             </Button>
           </div>
-          {lines.map((l, i) => (
+          {lineView === "lines" && lines.map((l, i) => (
             <div key={i} className="rounded-lg border border-border/60 p-2">
               <div className="flex flex-wrap items-center gap-2">
                 <div className="min-w-[10rem] flex-1">
@@ -334,7 +374,17 @@ export function QuotationForm({
                     onSelect={(r) =>
                       setLine(i, {
                         dictionary_item_id: String(r.dictionary_item_id),
-                        label: String(r.label_fr ?? r.label_en ?? r.code ?? ""),
+                        // In the reader's language (lib/dict-label).
+                        label:
+                          dictLabel({
+                            label_en: r.label_en == null ? null : String(r.label_en),
+                            label_fr: r.label_fr == null ? null : String(r.label_fr),
+                            code: r.code == null ? null : String(r.code),
+                          }),
+                        client_heading: null,
+                        client_heading_code: r.client_heading_code == null ? null : String(r.client_heading_code),
+                        client_heading_fr: r.client_heading_fr == null ? null : String(r.client_heading_fr),
+                        client_heading_en: r.client_heading_en == null ? null : String(r.client_heading_en),
                         unit_price:
                           r.default_price != null
                             ? String(r.default_price)

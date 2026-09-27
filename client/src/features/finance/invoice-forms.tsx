@@ -68,6 +68,7 @@ export function InvoiceDraftForm({
         is_disbursement: l.is_disbursement || undefined,
         label: l.label || undefined,
         container_type_ref_id: l.container_type_ref_id || null,
+        client_heading: l.client_heading || null,
       }));
       await fin.createInvoiceDraft({
         entity_id: entityId,
@@ -403,6 +404,7 @@ export function InvoiceEditForm({
             l.container_type_fr ||
             l.container_type_code ||
             undefined,
+          client_heading: l.client_heading ? String(l.client_heading) : null,
         }));
         setLines(ls.length ? ls : [blankInvLine()]);
       })
@@ -430,6 +432,7 @@ export function InvoiceEditForm({
         is_disbursement: l.is_disbursement || undefined,
         label: l.label || undefined,
         container_type_ref_id: l.container_type_ref_id || null,
+        client_heading: l.client_heading || null,
       }));
       await fin.updateInvoiceDraft(invoiceId, {
         client_id: clientId || undefined,

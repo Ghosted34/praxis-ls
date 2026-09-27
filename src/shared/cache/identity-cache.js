@@ -124,7 +124,7 @@ async function getGrants(client, { role_ids, module }) {
 
   const { rows } = await client.query(
     `SELECT can_create, can_read, can_update, can_delete, can_approve,
-            can_export, can_validate, can_disburse
+            can_export, can_validate, can_disburse, can_test
      FROM permission
      WHERE role_id = ANY($1::uuid[]) AND module_key = $2`,
     [role_ids, module],

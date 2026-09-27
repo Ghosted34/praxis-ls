@@ -24,6 +24,7 @@ import "@fontsource-variable/inter";
 import "./index.css";
 import { clearChunkReloadFlag } from "@/lib/chunk-reload";
 import { pruneDrafts } from "@/lib/form-draft";
+import { captureCallIntent } from "@/features/comms/call/call-intent";
 
 // OBS-E2: window 'error' and 'unhandledrejection' — the two failure modes React
 // never sees (event handlers, timers, un-awaited promises). Installed FIRST so a
@@ -63,6 +64,10 @@ document.getElementById("pre-boot-titlebar")?.remove();
 // flag set would mean the NEXT deploy's stale chunk goes straight to the error
 // screen, having "already retried" in a session that succeeded hours ago.
 clearChunkReloadFlag();
+
+// A tapped ring notification (`/comms?ring=<id>&act=…`): kept before the
+// router runs, because a login redirect keeps the path and drops the query.
+captureCallIntent(window.location.search);
 
 // Expired form drafts, dropped once per boot. Cheap (a scan of our own
 // localStorage prefix) and it keeps the origin's storage budget available for

@@ -25,6 +25,9 @@ export type Grant = {
   can_export: boolean;
   can_validate: boolean;
   can_disburse: boolean;
+  /** Calls audit PR-7 (O5): run live checks that spend provider credit. No
+   *  role holds it until granted. */
+  can_test: boolean;
 };
 
 export const PERMS = [
@@ -38,6 +41,9 @@ export const PERMS = [
   "can_validate",
   "can_disburse",
   "can_export",
+  // PR-7 (O5). Last: it is not a decision about a record, it is a right to
+  // spend provider credit on a live check.
+  "can_test",
 ] as const;
 export type PermKey = (typeof PERMS)[number];
 export const PERM_LABEL: Record<PermKey, string> = {
@@ -49,6 +55,7 @@ export const PERM_LABEL: Record<PermKey, string> = {
   can_validate: "V",
   can_disburse: "$",
   can_export: "X",
+  can_test: "T",
 };
 export const PERM_TITLE: Record<PermKey, string> = {
   can_read: "Read / view",
@@ -59,6 +66,7 @@ export const PERM_TITLE: Record<PermKey, string> = {
   can_validate: "Validate — the finance visa, not a signature",
   can_disburse: "Disburse — hand over the cash",
   can_export: "Export — take this module's data out of the building",
+  can_test: "Test — run live checks that spend provider credit",
 };
 
 export const emptyGrant = (role_id: string, module_key: string): Grant => ({
@@ -72,6 +80,7 @@ export const emptyGrant = (role_id: string, module_key: string): Grant => ({
   can_export: false,
   can_validate: false,
   can_disburse: false,
+  can_test: false,
 });
 
 export const fetchRoles = () => tenant<Role[]>("/roles");
@@ -142,5 +151,6 @@ export const upsertGrant = (g: Grant) =>
       can_validate: g.can_validate,
       can_disburse: g.can_disburse,
       can_export: g.can_export,
+      can_test: g.can_test,
     },
   });

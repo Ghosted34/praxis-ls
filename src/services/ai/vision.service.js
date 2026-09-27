@@ -21,9 +21,6 @@ async function extract({ image, mimeType = "image/jpeg", prompt, vendor = null }
 
   const { GoogleGenerativeAI } = require("@google/generative-ai");
   const genAI = new GoogleGenerativeAI(apiKey);
-  // `config.GEMINI_MODEL` always has a default (env.js), so the literal is the
-  // last resort for a caller that stubs `config` — kept off the shut-down 1.5
-  // line so that path cannot revive a dead model name either.
   const model = genAI.getGenerativeModel({ model: (vendor && vendor.model) || config.GEMINI_MODEL || "gemini-2.5-flash" });
   const instruction =
     (prompt || "Extract the key fields from this logistics document") +

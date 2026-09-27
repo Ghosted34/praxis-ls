@@ -10,7 +10,9 @@ const base = makeRepo({
   writable: ["role_id", "module_key", "can_create", "can_read", "can_update", "can_delete", "can_approve",
     // 12771 — export is a right over data; validate and disburse are the two
     // decisions maker-checker most wants apart from "approve".
-    "can_export", "can_validate", "can_disburse"],
+    "can_export", "can_validate", "can_disburse",
+    // Calls audit PR-7 (O5): runs checks that spend provider credit.
+    "can_test"],
   table: "permission",
   pk: "permission_id",
   activeColumn: null,
@@ -96,10 +98,10 @@ async function upsertGrant(client, g) {
   const { rows } = await client.query(
     `INSERT INTO permission (role_id, module_key,
        can_create, can_read, can_update, can_delete, can_approve,
-       can_export, can_validate, can_disburse)
+       can_export, can_validate, can_disburse, can_test)
      VALUES ($1,$2,
        COALESCE($3,false), COALESCE($4,false), COALESCE($5,false), COALESCE($6,false), COALESCE($7,false),
-       COALESCE($8,false), COALESCE($9,false), COALESCE($10,false))
+       COALESCE($8,false), COALESCE($9,false), COALESCE($10,false), COALESCE($11,false))
      ON CONFLICT (role_id, module_key) DO UPDATE SET
        can_create   = COALESCE($3,  permission.can_create),
        can_read     = COALESCE($4,  permission.can_read),
@@ -108,11 +110,12 @@ async function upsertGrant(client, g) {
        can_approve  = COALESCE($7,  permission.can_approve),
        can_export   = COALESCE($8,  permission.can_export),
        can_validate = COALESCE($9,  permission.can_validate),
-       can_disburse = COALESCE($10, permission.can_disburse)
+       can_disburse = COALESCE($10, permission.can_disburse),
+       can_test     = COALESCE($11, permission.can_test)
      RETURNING *`,
     [g.role_id, g.module_key,
       flag(g.can_create), flag(g.can_read), flag(g.can_update), flag(g.can_delete), flag(g.can_approve),
-      flag(g.can_export), flag(g.can_validate), flag(g.can_disburse)],
+      flag(g.can_export), flag(g.can_validate), flag(g.can_disburse), flag(g.can_test)],
   );
   return rows[0];
 }

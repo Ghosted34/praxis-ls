@@ -664,7 +664,11 @@ export function ServiceDetailPage() {
 
       <Section divided>
         <div className="grid gap-10 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
-          <div className="min-w-0 max-w-prose">
+          {/* Either column can be shorter with tenant-authored content. Keep
+              both at their natural height so the shorter one sticks within
+              this shared row, then leaves with the longer one. Mobile stacks
+              normally; the measured header offset keeps desktop copy clear. */}
+          <div className="min-w-0 max-w-prose lg:sticky lg:top-[var(--sticky-top)] lg:self-start">
             {longText ? (
               <LongCopy text={longText} />
             ) : (
@@ -700,7 +704,7 @@ export function ServiceDetailPage() {
             )}
           </div>
 
-          <div className="space-y-6">
+          <div className="space-y-6 lg:sticky lg:top-[var(--sticky-top)] lg:self-start">
             {highlights.length > 0 && (
               <Panel title={t("site.servicesPage.highlights")} titleAs="h2">
                 <ul className="space-y-2.5">

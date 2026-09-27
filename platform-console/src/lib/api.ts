@@ -351,6 +351,9 @@ export const platform = {
     api<AiVendor>(`/ai-vendors/${encodeURIComponent(vendor)}`, { method: "PUT", body }),
   testAiVendor: (vendor: string) =>
     api<SettingTestResult>(`/ai-vendors/${encodeURIComponent(vendor)}/test`, { method: "POST" }),
+  // Which chat vendor every tenant's AI tries first. Idempotent PUT, no body.
+  setAiChatPrimary: (vendor: string) =>
+    api<AiVendor>(`/ai-vendors/${encodeURIComponent(vendor)}/chat-primary`, { method: "PUT" }),
   /** Does the configured Gemini model still exist at Google (calls audit N3)? */
   geminiModelCheck: (refresh = false) =>
     api<GeminiModelCheck>(`/ai-vendors/gemini/model-check${refresh ? "?refresh=1" : ""}`),
@@ -373,6 +376,10 @@ export type AiVendor = {
   is_active: boolean;
   has_key: boolean;
   last_rotated_at: string | null;
+  /** The one chat vendor the runtime tries first (at most one row). */
+  is_chat_primary: boolean;
+  /** Answers /chat/completions, so CAN be primary. Computed by the API from the runtime's list. */
+  chat_capable: boolean;
 };
 export type AiVendorInput = { api_key?: string; display_name?: string; endpoint_url?: string; default_model?: string; current_model?: string; is_active?: boolean };
 

@@ -613,6 +613,41 @@ async function publicSiteBaseUrl(tenantId) {
 }
 
 /**
+ * The origin of the tenant's own PUBLIC-surface host (`surface = 'public'`,
+ * normally a domain the client brought), or null when it has none.
+ *
+ * ── WHY LINKS FOR OUTSIDERS WANT A DIFFERENT ORIGIN ─────────────────────────
+ *
+ * The staff app is an installable PWA whose manifest scope is `/` on the
+ * workspace host (src/routes/pwa.js). Once a staff member installs it, Android
+ * (WebAPK intent filters) and desktop Chromium (link capturing) open EVERY link
+ * on that origin in the app window — including a portal set-password link a
+ * staff member was sent to test, or opens on a shared phone. A manifest scope
+ * is a path prefix and cannot exclude `/portal`, so the only complete answer is
+ * an origin the staff PWA does not own. A public-surface host is exactly that,
+ * and it already serves `/portal/*` (public-web's router is mounted at its root
+ * and keeps the `/portal` prefix — see public-web/src/app/router.tsx).
+ *
+ * No `public_base` here, unlike `publicSiteBaseUrl`: the portal never moves
+ * (src/shared/http/public-web-paths.js), so the caller appends `/portal/...`.
+ * Null — not the workspace host — when there is no public host, so the caller
+ * keeps its own origin, which is the host the request actually arrived on.
+ */
+async function publicSurfaceOrigin(tenantId) {
+  if (!tenantId) return null;
+  const { rows } = await platform().query(
+    `SELECT host
+       FROM platform.subdomain
+      WHERE tenant_id = $1 AND surface = 'public'
+      ORDER BY is_primary DESC, created_at
+      LIMIT 1`,
+    [tenantId],
+  );
+  const host = rows[0] && rows[0].host;
+  return host ? `https://${host}` : null;
+}
+
+/**
  * The tenant's own slug and the origin its assets are fetched from by something
  * OUTSIDE the app — today, an email-signature card sitting in a recipient's
  * mail client.
@@ -679,6 +714,7 @@ module.exports = {
   withTenantConnection,
   listActiveTenants,
   publicSiteBaseUrl,
+  publicSurfaceOrigin,
   poolStats,
   hostCacheStats,
   closeAll,

@@ -37,6 +37,13 @@ export const en = {
     send: "Send",
     status: "Status",
     none: "—",
+    // Shown only when a link meant for a browser opened inside the staff app's
+    // installed window (components/site/open-in-browser-bar.tsx).
+    openInBrowser: {
+      label: "Open in your browser",
+      message: "This page opened inside an installed app. It works here, but it belongs in your browser.",
+      action: "Open in browser",
+    },
   },
   /**
    * The four presentation states and the shipment vocabulary
@@ -1000,6 +1007,11 @@ export const fr = {
     send: "Envoyer",
     status: "Statut",
     none: "—",
+    openInBrowser: {
+      label: "Ouvrir dans votre navigateur",
+      message: "Cette page s’est ouverte dans une application installée. Elle fonctionne ici, mais sa place est dans votre navigateur.",
+      action: "Ouvrir dans le navigateur",
+    },
   },
   states: {
     loading: "Chargement…",

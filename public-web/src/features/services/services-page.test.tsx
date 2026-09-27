@@ -164,6 +164,22 @@ describe("the services index entrance (§8.2)", () => {
 });
 
 describe("the service detail entrance (§8.2)", () => {
+  it("keeps either shorter column alongside its sibling on desktop only", async () => {
+    const { container } = await mountDetail();
+    const copy = container.querySelector(".grid > .max-w-prose")!;
+    const row = copy.parentElement!;
+    expect(row).toHaveClass("grid");
+    expect(row.children).toHaveLength(2);
+    for (const column of Array.from(row.children)) {
+      expect(column).toHaveClass(
+        "lg:sticky",
+        "lg:top-[var(--sticky-top)]",
+        "lg:self-start",
+      );
+      expect(column).not.toHaveClass("sticky");
+    }
+  });
+
   it("is lit by the service's own mode", async () => {
     const { container } = await mountDetail();
     const band = container.querySelector(".band-service") as HTMLElement;

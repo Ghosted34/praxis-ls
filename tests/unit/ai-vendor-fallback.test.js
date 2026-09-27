@@ -15,7 +15,10 @@
  * .env path is exercised deterministically.
  */
 jest.mock("axios");
-jest.mock("../../src/services/platform/ai-vendor.service", () => ({ getConfig: jest.fn(async () => null) }));
+jest.mock("../../src/services/platform/ai-vendor.service", () => ({
+  getConfig: jest.fn(async () => null),
+  getChatPrimary: jest.fn(async () => null),
+}));
 
 process.env.DEEPSEEK_API_KEY = "ds-test-key";
 process.env.GEMINI_API_KEY = "gem-test-key";
@@ -32,10 +35,55 @@ const completion = (content, model) => ({
 beforeEach(() => {
   jest.clearAllMocks();
   platformVendors.getConfig.mockResolvedValue(null); // force the .env fallback path
+  platformVendors.getChatPrimary.mockResolvedValue(null); // nothing flagged → default chain
   jest.spyOn(logger, "error").mockImplementation(() => {});
   jest.spyOn(logger, "warn").mockImplementation(() => {});
 });
 afterEach(() => jest.restoreAllMocks());
+
+describe("the platform's primary choice is what a call actually walks", () => {
+  test("with 'gemini' flagged primary the FIRST request goes to Gemini's gateway and deepseek is the fallback", async () => {
+    platformVendors.getChatPrimary.mockResolvedValue("gemini");
+    axios.post
+      .mockRejectedValueOnce({ response: { status: 503 } }) // gemini (now primary) → transient
+      .mockResolvedValueOnce(completion("Answer from deepseek, now the fallback.", "deepseek-chat"));
+
+    const res = await llm.chat({ client: {}, messages: [{ role: "user", content: "hi" }] });
+
+    expect(axios.post.mock.calls[0][0]).toBe("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions");
+    expect(axios.post.mock.calls[1][0]).toBe("https://api.deepseek.com/chat/completions");
+    expect(res.provider).toBe("deepseek");
+    expect(res.text).toBe("Answer from deepseek, now the fallback.");
+    // The degraded turn is recorded against the vendor that answered, naming
+    // the one tried before it — the health event does not assume deepseek is
+    // always the primary.
+    expect(res.health).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "fallback", provider: "deepseek", detail: { after: ["gemini"] } }),
+    ]));
+  });
+
+  test("the choice is read PER CALL — a switch in the console takes effect on the next turn, no restart", async () => {
+    axios.post.mockResolvedValue(completion("ok", "x"));
+    platformVendors.getChatPrimary.mockResolvedValueOnce("deepseek");
+    await llm.chat({ client: {}, messages: [{ role: "user", content: "1" }] });
+    platformVendors.getChatPrimary.mockResolvedValueOnce("gemini");
+    await llm.chat({ client: {}, messages: [{ role: "user", content: "2" }] });
+
+    expect(axios.post.mock.calls[0][0]).toMatch(/^https:\/\/api\.deepseek\.com\//);
+    expect(axios.post.mock.calls[1][0]).toMatch(/^https:\/\/generativelanguage\.googleapis\.com\//);
+  });
+
+  test("the same applies to the streaming path", async () => {
+    platformVendors.getChatPrimary.mockResolvedValue("gemini");
+    // No stream support in the mock → callVendorStream falls back to callVendor,
+    // which is enough to see which vendor was tried first.
+    axios.post.mockRejectedValueOnce(new Error("no stream")).mockResolvedValueOnce(completion("streamed", "gemini-2.5-flash"));
+    const chunks = [];
+    for await (const c of llm.chatStream({ client: {}, messages: [{ role: "user", content: "hi" }] })) chunks.push(c);
+    expect(axios.post.mock.calls[0][0]).toMatch(/^https:\/\/generativelanguage\.googleapis\.com\//);
+    expect(chunks[chunks.length - 1].provider).toBe("gemini");
+  });
+});
 
 test("the fallback vendor 'gemini' now resolves to the OpenAI-compat gateway (audit B2)", async () => {
   const vendor = await llm.resolveVendor({}, "gemini");

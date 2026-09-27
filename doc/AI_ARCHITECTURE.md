@@ -16,7 +16,7 @@
 | Permissions              | The AI **never exceeds the calling user**. Every tool runs on the caller's tenant connection with the caller's RBAC; writes are additionally Zod-gated.                                     |
 | Modalities (v1)          | Text chat · per-module beck-&-call · chat-on-dashboards · **voice-to-text** · **document-vision** (last two via workers).                                                                   |
 | Voice/vision             | **Worker jobs** (`worker-ai`), feeding the same propose→confirm pipeline.                                                                                                                   |
-| Providers                | **DeepSeek primary → Gemini fallback** (reasoning/agent + vision), OpenAI-compatible **embeddings**, **Groq** voice. All API, per-tenant keys, swappable layer.                             |
+| Providers                | **Chat chain chosen in the Platform Console** (Integrations → AI providers → *Use as primary*; default DeepSeek → Gemini), Gemini vision, OpenAI-compatible **embeddings**, **Groq** voice. All API, one deploy-wide key set, swappable layer. |
 | Grounding freshness      | **Event-driven re-embed** — the event engine re-indexes the changed record's card on its `entity.action`. Full reindex only on migrate/deploy.                                              |
 | Isolation                | Tenant corpus in the tenant DB; global corpus (code/docs/schema) in the platform DB.                                                                                                        |
 
@@ -158,7 +158,7 @@ Multi-step reads chain freely; **no write executes without confirmation.**
   (13+) that no plausible figure reaches it, never because it crossed nine
   digits. The passport pattern is anchored to a passport context, because its
   bare shape (`AB1234567`) is also the shape of half the references in this ERP.
-- **Provider routing**: DeepSeek → Gemini fallback; Gemini for vision; Groq for voice; embeddings via OpenAI-compatible endpoint. Keys per tenant where billing separates; discovery keys treated as compromised and rotated.
+- **Provider routing**: the chat chain is `[primary, fallback]` where the primary is the `ai_vendor_credential` row flagged `is_chat_primary` in the platform DB (chosen in the console; `services/ai/chat-vendors.js` holds the defaults, DeepSeek → Gemini) and the fallback is the default chain minus the primary — so choosing Gemini makes DeepSeek the fallback. `llm.service.resolveChain` reads the flag per call (no restart), ignores a flag on a non-chat vendor, and falls back to the default when the platform DB cannot be asked; the boot health check reports which chain is in force and whether it came from the console or the code. Gemini for vision; Groq for voice; embeddings via OpenAI-compatible endpoint. One shared key set per deployment; discovery keys treated as compromised and rotated.
 - **Auditability**: every executed AI write is on the immutable ledger with `source = ai.action.<key>`; every call is on the usage ledger.
 
 ## 7. Component/build map

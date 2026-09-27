@@ -138,6 +138,40 @@ function fmtRate(v: number | string) {
     : "—";
 }
 
+/*
+ * Rates are STORED base-first — `fx_rate_daily.rate` means "1 base = rate
+ * quote" — but people read them the way banks and BEAC quote them: foreign
+ * first. With XAF as base, the row holds 0.00152449 for EUR and the screen
+ * says "1 EUR = 655.957 XAF". Every rate this page shows goes through
+ * `quoted()`, and the Set-rate form takes the quoted figure and inverts it
+ * back with `storedFromQuoted()`, so the stored convention never changes.
+ */
+
+/** Stored "1 base = r quote" → quoted "1 quote = x base". */
+function quoted(v: number | string): number {
+  const n = Number(v);
+  return n > 0 ? 1 / n : NaN;
+}
+
+/** A quoted figure is an inverse of an 8-dp number, so its tail digits are
+ *  noise (1 / 0.00152449 = 655.95707…). Six significant digits reads back
+ *  exactly what was typed (655.957). */
+function fmtQuoted(v: number | string) {
+  return fmtSig(quoted(v));
+}
+
+function fmtSig(n: number) {
+  return Number.isFinite(n)
+    ? n.toLocaleString("en-US", { maximumSignificantDigits: 6 })
+    : "—";
+}
+
+/** The inverse of `quoted`, rounded to the column's numeric(18,8) scale so
+ *  the form can show what will actually be saved. */
+function storedFromQuoted(v: number): number {
+  return v > 0 ? Number((1 / v).toFixed(8)) : NaN;
+}
+
 /** A partial/array payload (e.g. an unmocked test route) is not a dossier. */
 function asDossier(data: unknown): Dossier | null {
   if (!data || Array.isArray(data) || typeof data !== "object") return null;
@@ -253,7 +287,7 @@ function Sparkline({
               r={2}
               tabIndex={0}
               role="button"
-              aria-label={`${p.date}: 1 ${base} = ${fmtRate(p.value)} ${quote}${p.override ? " (manual override)" : ""}`}
+              aria-label={`${p.date}: 1 ${quote} = ${fmtSig(p.value)} ${base}${p.override ? " (manual override)" : ""}`}
               className="cursor-pointer fill-primary outline-none focus-visible:ring-2 focus-visible:ring-ring"
               onFocus={() => setActive(i)}
               onBlur={() => setActive((a) => (a === i ? null : a))}
@@ -281,7 +315,7 @@ function Sparkline({
       >
         {cur ? (
           <span className="num whitespace-nowrap">
-            {cur.date}: 1 {base} = {fmtRate(cur.value)} {quote}
+            {cur.date}: 1 {quote} = {fmtSig(cur.value)} {base}
             {cur.override ? " · manual" : cur.source ? ` · ${cur.source}` : ""}
           </span>
         ) : (
@@ -681,8 +715,12 @@ function SetRateForm({
     setError(null);
   }, [open, initialBase, initialQuote]);
 
+  // The operator types the rate foreign-first ("1 EUR = 655.957 XAF", as the
+  // bank quotes it); the API stores it base-first, so it is inverted on save.
+  const stored = storedFromQuoted(Number(rate));
+  const tooLarge = Number(rate) > 0 && !(stored > 0);
   const canSubmit =
-    !!base && !!quote && base !== quote && Number(rate) > 0 && !busy;
+    !!base && !!quote && base !== quote && stored > 0 && !busy;
 
   async function submit() {
     setBusy(true);
@@ -690,7 +728,7 @@ function SetRateForm({
     try {
       await tenant("/currencies/rates", {
         method: "POST",
-        body: { base, quote, rate: Number(rate), as_of_date: asOf },
+        body: { base, quote, rate: stored, as_of_date: asOf },
       });
       onSaved();
       onClose();
@@ -747,7 +785,20 @@ function SetRateForm({
             ))}
           </Select>
         </Field>
-        <Field label={tr("Rate")} hint="1 base = ? quote" required>
+        <Field
+          label={tr("Rate")}
+          hint={
+            stored > 0
+              ? `1 ${quote || "quote"} = ${rate} ${base || "base"} · saved as 1 ${base || "base"} = ${fmtRate(stored)} ${quote || "quote"}`
+              : `1 ${quote || "quote"} = ? ${base || "base"}`
+          }
+          error={
+            tooLarge
+              ? "Too large to store — set this pair the other way round"
+              : undefined
+          }
+          required
+        >
           <Input
             type="number"
             min="0"
@@ -1014,8 +1065,12 @@ function CurrencyDossier({
   // `histIndex` maps a chart point back to its row in the (newest-first) table.
   const points: (SparkPoint & { histIndex: number })[] = [];
   history.forEach((r, i) => {
-    const value = rateNum(r);
-    if (value == null) return;
+    const stored = rateNum(r);
+    if (stored == null) return;
+    // Plotted foreign-first, like every other rate on the page, so the line
+    // rises when the foreign currency strengthens against the base.
+    const value = quoted(stored);
+    if (!Number.isFinite(value)) return;
     points.push({
       date: r.as_of_date,
       value,
@@ -1175,7 +1230,7 @@ function CurrencyDossier({
                 <div className="text-xs text-muted-foreground">Latest rate</div>
                 <div className="num text-lg font-semibold">
                   {latest
-                    ? `1 ${d.base} = ${fmtRate(latest.rate)} ${code}`
+                    ? `1 ${code} = ${fmtQuoted(latest.rate)} ${d.base}`
                     : "—"}
                 </div>
               </div>
@@ -1209,7 +1264,9 @@ function CurrencyDossier({
                     <THead>
                       <TR>
                         <TH>{tr("As of")}</TH>
-                        <TH className="text-right">{tr("Rate")}</TH>
+                        <TH className="text-right">
+                          {tr("Rate")} ({d.base} per 1 {code})
+                        </TH>
                         <TH>{tr("Source")}</TH>
                         <TH>Override</TH>
                         <TH>Set by</TH>
@@ -1229,7 +1286,7 @@ function CurrencyDossier({
                         >
                           <TD className="text-sm">{r.as_of_date}</TD>
                           <TD className="num text-right text-sm">
-                            {fmtRate(r.rate)}
+                            {fmtQuoted(r.rate)}
                           </TD>
                           <TD className="text-sm">{smartCell(r.source)}</TD>
                           <TD className="text-sm">
@@ -1309,7 +1366,7 @@ function CurrencyDossier({
             {d.last_sync ? (
               <div className="text-sm">
                 <span className="num font-medium">
-                  {fmtRate(d.last_sync.rate)}
+                  1 {code} = {fmtQuoted(d.last_sync.rate)} {d.base}
                 </span>{" "}
                 · {smartCell(d.last_sync.source)}
                 <div className="text-xs text-muted-foreground">
@@ -1341,7 +1398,9 @@ function CurrencyDossier({
                     key={i}
                     className="flex items-center justify-between gap-2"
                   >
-                    <span className="num">{fmtRate(o.rate)}</span>
+                    <span className="num">
+                      1 {code} = {fmtQuoted(o.rate)} {d.base}
+                    </span>
                     <span className="text-xs text-muted-foreground">
                       {o.as_of_date}
                       {o.set_by_name ? ` · ${o.set_by_name}` : ""}

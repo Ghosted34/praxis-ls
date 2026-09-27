@@ -108,7 +108,7 @@ describe("Currency 360 — C-PR-03 discovery & chart", () => {
     const chart = await screen.findByRole("img", { name: /Rate trend for XAF→EUR/i });
     expect(chart).toHaveAccessibleName(/2026-09-17 to 2026-09-19/);
     // Each point exposes its date + exact rate via an accessible button label.
-    expect(within(chart).getByRole("button", { name: /2026-09-18: 1 XAF = 655.9 EUR/i })).toBeInTheDocument();
+    expect(within(chart).getByRole("button", { name: /2026-09-18: 1 EUR = 0.00152462 XAF/i })).toBeInTheDocument();
   });
 
   it("rate chart: activating a point highlights the matching history row", async () => {
@@ -139,7 +139,7 @@ describe("Currency 360 — C-PR-03 discovery & chart", () => {
     // x=110 of 220 → middle of 3 points → 2026-09-18 @ 655.9.
     fireEvent.mouseMove(chart, { clientX: 110, clientY: 22 });
     expect(
-      await screen.findByText("2026-09-18: 1 XAF = 655.9 EUR · exchangerate-api"),
+      await screen.findByText("2026-09-18: 1 EUR = 0.00152462 XAF · exchangerate-api"),
     ).toBeInTheDocument();
     // Leaving the chart clears the tooltip back to the hint.
     fireEvent.mouseLeave(chart);

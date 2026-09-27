@@ -22,10 +22,10 @@ router.post("/access/:id/revoke", requirePermission("MOD-67", "edit"), controlle
 router.get("/access/check", requirePermission("MOD-67", "view"), controller.check);
 
 // Scoped data views
-router.get("/client", requireFeature("portal.client"), requirePermission("MOD-29", "view"), controller.client);
+router.get("/client", requireFeature("portal.client"), requirePermission("MOD-29", "view"), controller.staffClient);
 // A client's own file: visible stages, committed dates, and the assumptions
 // those dates depend on.
-router.get("/client/dossier/:dossierId", requireFeature("portal.client"), requirePermission("MOD-29", "view"), controller.clientChain);
+router.get("/client/dossier/:dossierId", requireFeature("portal.client"), requirePermission("MOD-29", "view"), controller.staffClientChain);
 router.get("/investor", requireFeature("portal.investor"), requirePermission("MOD-56", "view"), controller.investor);
 router.get("/auditor", requireFeature("portal.audit"), requirePermission("MOD-69", "view"), controller.auditor);
 

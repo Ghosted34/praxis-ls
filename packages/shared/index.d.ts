@@ -177,6 +177,8 @@ export declare namespace common {
   const countryCode: Blankable<string>;
   const optionalDate: Blankable<string>;
   const phone: Blankable<string>;
+  /** Strip spaces/dots/dashes/parentheses and rewrite a leading `00` to `+`. Non-strings pass through. */
+  function normalizePhone<T>(v: T): T extends string ? string : T;
   const optionalPercent: BlankableNumeric;
 }
 

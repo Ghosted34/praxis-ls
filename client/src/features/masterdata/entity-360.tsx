@@ -824,7 +824,7 @@ const personFields = (lk: Lookups): FieldSpec[] => [
   { key: "full_name", label: "Full name" },
   { key: "title", label: "Title", placeholder: "Directeur Général" },
   { key: "email", label: "Email", type: "email" },
-  { key: "phone", label: "Phone", placeholder: "+237690000000" },
+  { key: "phone", label: "Phone", placeholder: "+237 6 90 00 00 00" },
 
   {
     key: "date_of_birth",
@@ -949,7 +949,7 @@ const contactFields = (): FieldSpec[] => [
   { key: "name", label: "Name" },
   { key: "title", label: "Title" },
   { key: "email", label: "Email", type: "email" },
-  { key: "phone", label: "Phone" },
+  { key: "phone", label: "Phone", placeholder: "+237 6 90 00 00 00" },
   {
     key: "role_tags",
     label: "Departments",

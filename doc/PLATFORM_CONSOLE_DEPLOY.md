@@ -87,6 +87,28 @@ console — the per-tenant Vendors tab is gone.
 Keys are AES-256-GCM encrypted at rest and never shown again after saving (reads
 report presence only). Rotating = paste a new key and Save.
 
+4. **Choose the primary chat provider.** The section header shows the chain a
+   turn will walk (*Chat chain: DeepSeek → Google Gemini*). Each chat-capable
+   card (DeepSeek, Gemini) carries either a *Primary chat provider* pill or a
+   **Use as primary** button; the button asks for confirmation, then every
+   tenant's assistant, drafting and copy features try that vendor first from
+   their next turn — no restart, and the previous primary becomes the fallback.
+   Groq and Embeddings do not get the button: they cannot answer a chat call and
+   the API refuses them (`422`). The choice is one flagged row
+   (`ai_vendor_credential.is_chat_primary`, `platform/0110`), audited as
+   `ai_vendor.chat_primary_set`; nothing flagged means the code default
+   (DeepSeek). The API's boot log names the primary and whether it was *chosen
+   in the platform console* or is the *code default*.
+
+> Gemini row on deployments created before `platform/0110`: the seed pointed it
+> at Google's **native** endpoint (`…/v1beta`), which does not speak
+> `/chat/completions`, and at the shut-down `gemini-1.5-flash`. 0110 repairs
+> both — only where the values are still exactly the seeded ones — to the
+> OpenAI-compatible gateway (`…/v1beta/openai`) and `gemini-2.5-flash`. If the
+> row was edited by hand, check it before making Gemini primary: **Test** must
+> say *Connected*, and the endpoint must end in `/openai`. Re-price the Gemini
+> row in each tenant's AI Control → Vendors; the seeded prices were 1.5-flash's.
+
 > Encryption key: keys are encrypted with the deployment's `ENCRYPTION_KEY`
 > (`encryption.service`). It must be the **same** value the API already uses — do
 > not rotate it, or previously-saved vendor keys become undecryptable.

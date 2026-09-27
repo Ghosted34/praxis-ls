@@ -886,9 +886,13 @@ async function checkAiVendorHealth() {
   const llm = require("./services/ai/llm.service");
   const health = await llm.checkVendorHealth();
   if (health.ok) {
+    // `source` says WHY the primary is what it is — "platform" is a choice made
+    // in the console (Integrations → AI providers), "default" is the code's
+    // constant. Without it a primary that differs from the documented default
+    // reads as a bug in the log rather than a decision.
     logger.info(
-      { primary: health.primary.name, fallback: health.fallback.name },
-      "AI chat vendor health OK — primary and fallback both resolve to a usable provider",
+      { primary: health.primary.name, fallback: health.fallback.name, source: health.source },
+      `AI chat vendor health OK — primary "${health.primary.name}" (${health.source === "platform" ? "chosen in the platform console" : "code default"}) and fallback "${health.fallback.name}" both resolve to a usable provider`,
     );
     return;
   }

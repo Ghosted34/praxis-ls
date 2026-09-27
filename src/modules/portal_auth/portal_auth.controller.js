@@ -3,6 +3,8 @@
 const service = require("./portal_auth.service");
 const portal = require("../portal/portal.service");
 const branding = require("../branding/branding.service");
+const registry = require("../../services/tenant/registry.service");
+const { logger } = require("../../config/logger");
 const { asyncHandler } = require("../../utils/errors");
 
 const PORTALS = ["CLIENT", "INVESTOR", "AUDITOR"];
@@ -26,6 +28,31 @@ async function tenantName(req) {
 
 /** Absolute origin of the request, so the emailed link points at the right host. */
 const originOf = (req) => `${req.protocol}://${req.get("host")}`;
+
+/**
+ * The origin a portal link in an email should point at: the tenant's own
+ * public-surface host when it has one, otherwise the host the request came in on.
+ *
+ * The request host is usually the WORKSPACE host (staff send invites from the
+ * ERP), and that origin belongs to the installed staff PWA — Android and desktop
+ * Chromium open any link on it in the app window, so a client's set-password
+ * link opened in the staff app. A public-surface host is a different origin
+ * that serves `/portal/*` too, so the link opens in a browser everywhere. See
+ * registry.publicSurfaceOrigin. Best-effort: a failed lookup must not stop the
+ * email, it only means the link keeps the request's host.
+ */
+async function portalLinkOrigin(req) {
+  const tenantId = req.tenant && req.tenant.tenant_id;
+  try {
+    const pub = await registry.publicSurfaceOrigin(tenantId);
+    if (pub) return pub;
+  } catch (err) {
+    // degraded: fall back to the request host; the link still works, it just
+    // may open in the installed staff app.
+    logger.warn({ err, tenantId }, "public host lookup failed — portal link uses the request host");
+  }
+  return originOf(req);
+}
 
 module.exports = {
   // ── Public login ──
@@ -77,12 +104,13 @@ module.exports = {
    */
   invite: asyncHandler(async (req, res) => {
     const name = await tenantName(req);
+    const origin = await portalLinkOrigin(req);
     const data = await req.identityDb((c) =>
       service.inviteUser(c, {
         email: req.body.email,
         fullName: req.body.full_name,
         ip: req.ip,
-        origin: originOf(req),
+        origin,
         tenantName: name,
       }),
     );
@@ -92,8 +120,9 @@ module.exports = {
   /** Public. Always 200 — never reveals whether an email is registered. */
   forgot: asyncHandler(async (req, res) => {
     const name = await tenantName(req);
+    const origin = await portalLinkOrigin(req);
     const data = await req.identityDb((c) =>
-      service.requestReset(c, { email: req.body.email, ip: req.ip, origin: originOf(req), tenantName: name }),
+      service.requestReset(c, { email: req.body.email, ip: req.ip, origin, tenantName: name }),
     );
     res.json({ data });
   }),

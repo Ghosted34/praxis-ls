@@ -159,6 +159,12 @@ const PARAM_SCHEMAS = {
   aiVendorTest: z.object({
     vendor: z.string().regex(/^[a-z][a-z0-9_-]{0,39}$/i, "invalid vendor"),
   }),
+  // `PUT /ai-vendors/:vendor/chat-primary` — same segment, same shape. Which
+  // vendors may actually BE primary is the service's rule (CHAT_VENDORS), not
+  // a path regex; this only keeps the segment a plausible vendor id.
+  aiVendorChatPrimary: z.object({
+    vendor: z.string().regex(/^[a-z][a-z0-9_-]{0,39}$/i, "invalid vendor"),
+  }),
 };
 
 const validateParams = (schemaKey) => (req, _res, next) => {

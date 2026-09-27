@@ -4,7 +4,10 @@
  * push-subscription sync. Rendered once at the app root so it overlays every
  * route (landing included).
  */
+import { useLocation } from "react-router-dom";
 import { InstallBanner } from "./install-banner";
+import { OpenInBrowserBar } from "./open-in-browser-bar";
+import { isOutsiderPath } from "@/lib/installed-window";
 import { PwaUpdater } from "./pwa-updater";
 import { OfflineIndicator } from "./offline-indicator";
 import { PushSync } from "./push-sync";
@@ -12,6 +15,21 @@ import { PushEnrolmentBanner } from "./push-enrolment-banner";
 import { ConnectionWatcher } from "@/components/connection/connection-watcher";
 
 export function PwaLayer() {
+  const { pathname } = useLocation();
+  // Signing, verification and secure-link pages are for strangers (see
+  // lib/installed-window.ts). They get the connection indicators — the page
+  // still has to work — and the way out of the installed app if a link was
+  // captured into it, but none of the staff app's self-promotion: no "Install
+  // <tenant>" banner, no push prompt, no "new version" toast.
+  if (isOutsiderPath(pathname)) {
+    return (
+      <>
+        <OpenInBrowserBar />
+        <ConnectionWatcher />
+        <OfflineIndicator />
+      </>
+    );
+  }
   return (
     <>
       {/* First: it installs the connection monitor and the outbox replay, which

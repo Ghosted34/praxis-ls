@@ -154,6 +154,72 @@ function prepareMessages(vendor, messages) {
   });
 }
 
+// ── Gemini request shaping ──────────────────────────────────────────────────
+// Two things DeepSeek never needed, and that only surface once Gemini answers
+// first (the console's "Use as primary").
+//
+// 1. THINKING. Gemini 2.5+ models think by default, and thinking tokens count
+//    against `max_tokens`. With AI_MAX_TOKENS at 4096 a dynamic budget can
+//    eat most of the ceiling and return a cut-off or empty reply — worst on
+//    long JSON (service_page_copy). DeepSeek-chat does not think, so the
+//    parity setting is thinking OFF: `reasoning_effort: "none"`, which Google
+//    documents for 2.5 Flash / Flash-Lite. 2.5 Pro and Gemini 3 cannot turn
+//    thinking off and reject "none", so they get "low" (the smallest budget).
+//    Non-Gemini vendors get nothing — the field would be unknown to them.
+//
+// 2. TOOL SCHEMAS. Gemini's function declarations take an OpenAPI subset. The
+//    manifests' zod-generated schemas use `exclusiveMinimum` (not in it) and
+//    string `format`s such as uuid/email/date (only date-time/enum are); one
+//    unsupported keyword fails the WHOLE request, so every tool turn would
+//    drop to the fallback. The schema offered to the model is only a hint —
+//    the payload is validated against the real zod schema on confirm — so
+//    stripping these for Gemini loses nothing that is enforced.
+function geminiReasoningEffort(model) {
+  const m = String(model || "").toLowerCase();
+  return /^(models\/)?gemini-2\.5-flash/.test(m) ? "none" : "low";
+}
+
+const GEMINI_STRING_FORMATS = new Set(["date-time", "enum"]);
+const GEMINI_NUMBER_FORMATS = new Set(["float", "double", "int32", "int64"]);
+
+function geminiSchema(node) {
+  if (Array.isArray(node)) return node.map(geminiSchema);
+  if (!node || typeof node !== "object") return node;
+  const out = {};
+  for (const [k, v] of Object.entries(node)) {
+    if (k === "properties" && v && typeof v === "object") {
+      out.properties = Object.fromEntries(Object.entries(v).map(([p, s]) => [p, geminiSchema(s)]));
+    } else if (k === "exclusiveMinimum" || k === "exclusiveMaximum") {
+      // Keep the bound as an inclusive one when no explicit bound exists — a
+      // near-enough hint; zod still enforces the exclusive bound on confirm.
+      const inc = k === "exclusiveMinimum" ? "minimum" : "maximum";
+      if (typeof v === "number" && node[inc] === undefined) out[inc] = v;
+    } else if (k === "format") {
+      const ok = node.type === "string" ? GEMINI_STRING_FORMATS : GEMINI_NUMBER_FORMATS;
+      if (ok.has(v)) out.format = v;
+    } else if (k === "$schema" || k === "additionalProperties") {
+      // not part of Gemini's schema subset
+    } else {
+      out[k] = geminiSchema(v);
+    }
+  }
+  return out;
+}
+
+function prepareTools(vendor, tools) {
+  if (!tools || !tools.length) return tools;
+  if (!vendor || vendor.vendor !== "gemini") return tools;
+  return tools.map((t) => (t && t.function && t.function.parameters
+    ? { ...t, function: { ...t.function, parameters: geminiSchema(t.function.parameters) } }
+    : t));
+}
+
+/** Vendor-specific top-level fields for a /chat/completions body. */
+function vendorExtras(vendor) {
+  if (vendor && vendor.vendor === "gemini") return { reasoning_effort: geminiReasoningEffort(vendor.model) };
+  return {};
+}
+
 /**
  * A resolved endpoint that is Gemini's NATIVE API rather than its OpenAI-compat
  * gateway (audit B2). The native host does not speak /chat/completions, so a
@@ -212,12 +278,12 @@ function extractInlineToolCalls(content) {
 
 async function callVendor(vendor, { messages, tools, temperature, responseFormat, maxTokens, timeoutMs }) {
   const base = String(vendor.endpoint_url).replace(/\/$/, "");
-  const body = { model: vendor.model, messages: prepareMessages(vendor, messages), temperature };
+  const body = { model: vendor.model, messages: prepareMessages(vendor, messages), temperature, ...vendorExtras(vendor) };
   // Explicit output ceiling — without it the vendor default (often short) caps
   // the reply mid-sentence (audit B1). See config.AI_MAX_TOKENS.
   if (maxTokens) body.max_tokens = maxTokens;
   if (responseFormat) body.response_format = responseFormat;
-  if (tools && tools.length) { body.tools = tools; body.tool_choice = "auto"; }
+  if (tools && tools.length) { body.tools = prepareTools(vendor, tools); body.tool_choice = "auto"; }
   const { data } = await axios.post(`${base}/chat/completions`, body, {
     headers: { Authorization: `Bearer ${vendor.api_key}`, "Content-Type": "application/json" },
     // Generous + configurable (audit E1): an `ask` makes several sequential
@@ -282,9 +348,9 @@ async function* callVendorStream(vendor, { messages, tools, temperature, maxToke
   // `stream_options.include_usage` makes OpenAI-compatible vendors emit a final
   // usage chunk on a stream; without it token usage is unknown for every
   // streamed turn and the budget/spend ledger under-counts (audit B4).
-  const body = { model: vendor.model, messages: prepareMessages(vendor, messages), temperature, stream: true, stream_options: { include_usage: true } };
+  const body = { model: vendor.model, messages: prepareMessages(vendor, messages), temperature, stream: true, stream_options: { include_usage: true }, ...vendorExtras(vendor) };
   if (maxTokens) body.max_tokens = maxTokens;
-  if (tools && tools.length) { body.tools = tools; body.tool_choice = "auto"; }
+  if (tools && tools.length) { body.tools = prepareTools(vendor, tools); body.tool_choice = "auto"; }
 
   let response;
   try {
@@ -625,6 +691,8 @@ module.exports = {
   resolveChain,
   checkVendorHealth,
   supportsPromptCache,
+  prepareTools,
+  vendorExtras,
   PRIMARY,
   FALLBACK,
   DEFAULT_PRIMARY,

@@ -5,14 +5,19 @@ const rules = require("./financial_dictionary.rules");
 const importer = require("./financial_dictionary.import");
 const { resolveContext } = require("../../../services/spreadsheet");
 const { emitEvent, audit } = require("../../../shared/events/emit");
+const currencyRepo = require("../currency/currency.repo");
 
 // The only columns a caller may write on dictionary_item. `code`, ids and the
 // timestamps are server-owned; picking an explicit set (never spreading the
 // whole row) is what keeps update from rewriting created_at or the PK.
+//
+// `default_price` is NOT here. Since 14120 an item's price is its standard
+// expense rate (expense_rate/standard-rate.sql.js); `create` turns a price in
+// the payload into that rate, and nothing writes the retired column again.
 const ITEM_COLS = [
   "label_fr", "label_en", "description", "category", "direction", "subcategory",
   "unit_of_measure", "applicability_mode", "is_disbursement", "is_billable",
-  "default_price", "currency", "shipping_line", "provider_kind", "proof_source",
+  "currency", "shipping_line", "provider_kind", "proof_source",
   "requires_justification", "receipt_requirement", "disbursement_vat_transparent",
   "pricing_mode", "is_active", "service_type_key",
 ];
@@ -61,6 +66,9 @@ function normalise(data) {
   const itemData = pickItem(data);
   itemData.direction = direction;
   itemData.is_disbursement = rules.resolveDisbursement(direction, data.is_disbursement);
+  // Title Case on every save, so the catalogue stays the way 90995 left it.
+  if (itemData.label_fr !== undefined) itemData.label_fr = rules.titleCase(itemData.label_fr, "fr");
+  if (itemData.label_en !== undefined) itemData.label_en = rules.titleCase(itemData.label_en, "en");
   return { itemData, posting_rules: data.posting_rules || [], service_tiers: data.service_tiers || [] };
 }
 
@@ -96,8 +104,74 @@ function ruleRow(r, itemId, itemDisbursement) {
 
 const isUniqueViolation = (err) => err && err.code === "23505";
 
+/** The tenant's base currency — what a rate is in unless someone says otherwise. */
+async function baseCurrency(c) {
+  return (await currencyRepo.getBaseCode(c)) || "XAF";
+}
+
+const todayIso = () => new Date().toISOString().slice(0, 10);
+
+/** A date as a PERSON reads it here — day-first — for messages shown on screen.
+ *  pg hands back a `date` column as a Date at UTC midnight. */
+function dayFirst(v) {
+  const iso = v instanceof Date ? v.toISOString().slice(0, 10) : String(v).slice(0, 10);
+  const [y, m, d] = iso.split("-");
+  return d && m && y ? `${d}/${m}/${y}` : iso;
+}
+
+/**
+ * Open (or supersede) ONE rate series inside the caller's transaction.
+ *
+ * The core of `supersedeRate`, lifted out so the create wizard's price and
+ * "apply to all carriers" write through exactly the same expire-then-insert
+ * discipline — without each opening a transaction of its own inside another.
+ * Returns { before, row }.
+ */
+async function openRateSeries(c, item, data) {
+  const key = {
+    rateProviderId: data.rate_provider_id || null,
+    containerTypeRefId: data.container_type_ref_id || null,
+  };
+  // provider_kind is a denormalised cache of rate_provider.kind (repo.js has
+  // no join for a single lookup, so this is the one place it is read fresh).
+  let providerKind = null;
+  if (key.rateProviderId) {
+    const { rows } = await c.query("SELECT kind FROM rate_provider WHERE rate_provider_id = $1", [key.rateProviderId]);
+    if (!rows[0]) { const e = new Error("rate provider not found"); e.status = 404; throw e; }
+    providerKind = rows[0].kind;
+  }
+  const effectiveFrom = data.effective_from || todayIso();
+  const current = await repo.openRate(c, item.dictionary_item_id, key);
+  if (current) {
+    if (Date.parse(current.effective_from) >= Date.parse(effectiveFrom)) {
+      const e = new Error(`the current rate already starts on ${dayFirst(current.effective_from)}; a new rate must start after that day`);
+      e.status = 422;
+      throw e;
+    }
+    await repo.expireRate(c, current.expense_rate_id, rules.dayBefore(effectiveFrom));
+  }
+  const row = await repo.insertRate(c, {
+    dictionary_item_id: item.dictionary_item_id,
+    rate_provider_id: key.rateProviderId,
+    container_type_ref_id: key.containerTypeRefId,
+    provider_kind: providerKind,
+    rate: data.rate,
+    // The BASE currency, not the item's: a rate is in the tenant's own money
+    // unless someone deliberately picks another (meeting 5, 01:11:19).
+    currency: data.currency || (await baseCurrency(c)),
+    effective_from: effectiveFrom,
+    effective_to: data.effective_to || null,
+    note: data.note || null,
+  });
+  return { before: current || null, row };
+}
+
 async function create(c, { data, actor }) {
   const { itemData, posting_rules, service_tiers } = normalise(data);
+  // The wizard's "Default price" step: kept on the payload for the form's sake,
+  // stored as the item's STANDARD expense rate (no carrier, no container type),
+  // opening today, in the same transaction as the item.
+  const price = data.default_price === null || data.default_price === undefined ? null : Number(data.default_price);
   if (posting_rules.length === 0) { const e = new Error("a dictionary item requires at least one posting rule (KB §4)"); e.status = 422; throw e; }
   const base = withCreateDefaults(itemData);
 
@@ -110,6 +184,10 @@ async function create(c, { data, actor }) {
       const item = await repo.createItem(c, row);
       for (const r of posting_rules) await repo.createRule(c, ruleRow(r, item.dictionary_item_id, item.is_disbursement));
       if (service_tiers.length) await repo.replaceTiers(c, item.dictionary_item_id, service_tiers);
+      if (price !== null) {
+        const { row: rate } = await openRateSeries(c, item, { rate: price, currency: data.currency || null });
+        await audit(c, { actorUserId: actor.user_id, action: events.RATE_SUPERSEDED, moduleKey: events.MODULE, entityRef: `dict:${item.code}`, before: null, after: rate });
+      }
       await c.query("COMMIT");
       await emitEvent(c, { eventTypeKey: events.CREATED, moduleKey: events.MODULE, entityRef: `dict:${item.code}`, actorUserId: actor.user_id });
       await audit(c, { actorUserId: actor.user_id, action: events.CREATED, moduleKey: events.MODULE, entityRef: `dict:${item.code}`, after: item });
@@ -124,7 +202,7 @@ async function create(c, { data, actor }) {
 }
 
 async function update(c, { id, patch, actor }) {
-  const before = await repo.getItem(c, id);
+  const before = await repo.getItemRow(c, id);
   if (!before) return null;
   const merged = { ...before, ...patch };
   const { itemData, posting_rules, service_tiers } = normalise(merged);
@@ -133,16 +211,44 @@ async function update(c, { id, patch, actor }) {
   if (rulesSent && posting_rules.length === 0) { const e = new Error("a dictionary item requires at least one posting rule (KB §4)"); e.status = 422; throw e; }
   if (tiersSent) itemData.service_type_key = primaryServiceKey(service_tiers);
 
+  // A direction change moves the item to the new letter's next free number and
+  // frees the old one (meeting 5, 01:20:04). Before this, "Documentation fee"
+  // moved from revenue to disbursement and kept its #R code — the letter and
+  // the accounting said two different things.
+  const recoded = itemData.direction && itemData.direction !== before.direction;
+
+  for (let attempt = 0; attempt < 6; attempt++) {
+    try {
+      return await updateOnce(c, { id, before, itemData, posting_rules, service_tiers, rulesSent, tiersSent, recoded, actor });
+    } catch (err) {
+      // Two items re-lettered at once can mint the same serial; remint.
+      if (recoded && isUniqueViolation(err) && attempt < 5) continue;
+      throw err;
+    }
+  }
+  const e = new Error("could not allocate a unique code, please retry"); e.status = 409; throw e;
+}
+
+async function updateOnce(c, { id, before, itemData, posting_rules, service_tiers, rulesSent, tiersSent, recoded, actor }) {
   await c.query("BEGIN");
   try {
+    if (recoded) itemData.code = await repo.nextCode(c, itemData.direction);
     const row = await repo.updateItem(c, id, itemData);
+    if (recoded) {
+      await audit(c, {
+        actorUserId: actor.user_id, action: events.RECODED, moduleKey: events.MODULE,
+        entityRef: `dict:${row.code}`,
+        before: { code: before.code, direction: before.direction },
+        after: { code: row.code, direction: row.direction },
+      });
+    }
     if (rulesSent) {
       await repo.deleteRules(c, id);
       for (const r of posting_rules) await repo.createRule(c, ruleRow(r, id, row ? row.is_disbursement : before.is_disbursement));
     }
     if (tiersSent) await repo.replaceTiers(c, id, service_tiers);
-    await emitEvent(c, { eventTypeKey: events.UPDATED, moduleKey: events.MODULE, entityRef: `dict:${before.code}`, actorUserId: actor.user_id });
-    await audit(c, { actorUserId: actor.user_id, action: events.UPDATED, moduleKey: events.MODULE, entityRef: `dict:${before.code}`, before, after: row });
+    await emitEvent(c, { eventTypeKey: events.UPDATED, moduleKey: events.MODULE, entityRef: `dict:${row.code}`, actorUserId: actor.user_id });
+    await audit(c, { actorUserId: actor.user_id, action: events.UPDATED, moduleKey: events.MODULE, entityRef: `dict:${row.code}`, before, after: row });
     await c.query("COMMIT");
     return get(c, id);
   } catch (err) { await c.query("ROLLBACK"); throw err; }
@@ -253,45 +359,57 @@ async function rateEvolution(c, id, q = {}) {
 async function supersedeRate(c, { id, data, actor }) {
   const item = await repo.getItem(c, id);
   if (!item) return null;
-  const effectiveFrom = data.effective_from;
-  const key = {
-    rateProviderId: data.rate_provider_id || null,
-    containerTypeRefId: data.container_type_ref_id || null,
-  };
-  // provider_kind is a denormalised cache of rate_provider.kind (repo.js has
-  // no join for a single lookup, so this is the one place it is read fresh).
-  let providerKind = null;
-  if (key.rateProviderId) {
-    const { rows } = await c.query("SELECT kind FROM rate_provider WHERE rate_provider_id = $1", [key.rateProviderId]);
-    if (!rows[0]) { const e = new Error("rate provider not found"); e.status = 404; throw e; }
-    providerKind = rows[0].kind;
-  }
   await c.query("BEGIN");
   try {
-    const current = await repo.openRate(c, id, key);
-    if (current) {
-      if (Date.parse(current.effective_from) >= Date.parse(effectiveFrom)) {
-        const e = new Error(`the open rate already starts on ${current.effective_from}; a superseding rate must start after it`);
-        e.status = 422;
-        throw e;
-      }
-      await repo.expireRate(c, current.expense_rate_id, rules.dayBefore(effectiveFrom));
-    }
-    const row = await repo.insertRate(c, {
-      dictionary_item_id: id,
-      rate_provider_id: key.rateProviderId,
-      container_type_ref_id: key.containerTypeRefId,
-      provider_kind: providerKind,
-      rate: data.rate,
-      currency: data.currency || item.currency || "XAF",
-      effective_from: effectiveFrom,
-      effective_to: data.effective_to || null,
-      note: data.note || null,
-    });
+    const { before, row } = await openRateSeries(c, item, data);
     await emitEvent(c, { eventTypeKey: events.RATE_SUPERSEDED, moduleKey: events.MODULE, entityRef: `dict:${item.code}`, actorUserId: actor.user_id || null });
-    await audit(c, { actorUserId: actor.user_id || null, action: events.RATE_SUPERSEDED, moduleKey: events.MODULE, entityRef: `dict:${item.code}`, before: current || null, after: row });
+    await audit(c, { actorUserId: actor.user_id || null, action: events.RATE_SUPERSEDED, moduleKey: events.MODULE, entityRef: `dict:${item.code}`, before, after: row });
     await c.query("COMMIT");
     return rateEvolution(c, id);
+  } catch (err) { await c.query("ROLLBACK"); throw err; }
+}
+
+/**
+ * One rate, written for many carriers at once (meeting 5, 01:07:48).
+ *
+ * Documentation fees and most shipping-line charges are near-identical across
+ * lines, and setting MSC, Maersk, CMA CGM… one cell at a time is how a tariff
+ * change gets half-applied. The screen offers every active carrier of the tab's
+ * kind, all ticked, and the person unticks the exceptions; the ids that arrive
+ * here are the ones left ticked.
+ *
+ * ALL OR NOTHING. Each carrier's series is superseded with the same expire-
+ * then-insert as a single cell, inside ONE transaction: a rate that applied to
+ * four lines of six because the fifth already had a later-dated rate is worse
+ * than a clear refusal naming the carrier that blocked it.
+ */
+async function applyRateToProviders(c, { id, data, actor }) {
+  const item = await repo.getItem(c, id);
+  if (!item) return null;
+  const ids = [...new Set(data.rate_provider_ids || [])];
+  if (!ids.length) { const e = new Error("tick at least one carrier"); e.status = 422; throw e; }
+  const { rows: providers } = await c.query(
+    "SELECT rate_provider_id, name FROM rate_provider WHERE rate_provider_id = ANY($1::uuid[])",
+    [ids],
+  );
+  if (providers.length !== ids.length) { const e = new Error("one or more carriers were not found"); e.status = 404; throw e; }
+  const nameOf = new Map(providers.map((p) => [p.rate_provider_id, p.name]));
+  await c.query("BEGIN");
+  try {
+    const written = [];
+    for (const providerId of ids) {
+      try {
+        const { before, row } = await openRateSeries(c, item, { ...data, rate_provider_id: providerId });
+        await audit(c, { actorUserId: actor.user_id || null, action: events.RATE_SUPERSEDED, moduleKey: events.MODULE, entityRef: `dict:${item.code}`, before, after: row });
+        written.push(row);
+      } catch (err) {
+        if (err.status === 422) err.message = `${nameOf.get(providerId)}: ${err.message}`;
+        throw err;
+      }
+    }
+    await emitEvent(c, { eventTypeKey: events.RATE_SUPERSEDED, moduleKey: events.MODULE, entityRef: `dict:${item.code}`, actorUserId: actor.user_id || null });
+    await c.query("COMMIT");
+    return { applied: written.length, evolution: await rateEvolution(c, id) };
   } catch (err) { await c.query("ROLLBACK"); throw err; }
 }
 
@@ -429,7 +547,7 @@ async function updateRef(c, { id, patch, actor }) {
 
 module.exports = {
   listItems, searchItems, get, dossier, create, update,
-  spend, rateEvolution, supersedeRate,
+  spend, rateEvolution, supersedeRate, applyRateToProviders,
   importTemplate, importValidate, importCommit, importErrorFile,
   listRefs, createRef, updateRef,
 };

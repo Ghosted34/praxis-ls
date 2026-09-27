@@ -1346,8 +1346,10 @@ async function loadRecord(client, docType, recordId) {
               rp.name AS rate_provider_name,
               COALESCE(e_v.signatory_name, v.full_name) AS validator_name, e_v.job_title AS validator_title,
               COALESCE(e_vb.signatory_name, vb.full_name) AS validated_by_name, e_vb.job_title AS validated_by_title,
-              COALESCE(e_a.signatory_name, ap.full_name) AS approver_name, e_a.job_title AS approver_title
+              COALESCE(e_a.signatory_name, ap.full_name) AS approver_name, e_a.job_title AS approver_title,
+              cur.decimals AS currency_decimals
          FROM costing c
+         LEFT JOIN currency cur ON cur.code = c.currency
          LEFT JOIN dossier d ON d.dossier_id = c.dossier_id
          LEFT JOIN client_master cm ON cm.client_id = d.client_id
          LEFT JOIN service_type st ON st.service_type_id = d.service_type_id
@@ -1491,6 +1493,9 @@ async function loadRecord(client, docType, recordId) {
         totals,
         amount_in_words: totals.total_ttc,
         currency: c.currency,
+        // The words are in the SHEET's currency, so its minor units decide
+        // whether they end "… ET 00/100" (EUR) or not (XAF).
+        currency_decimals: c.currency_decimals !== null && c.currency_decimals !== undefined ? Number(c.currency_decimals) : undefined,
       },
     };
   }

@@ -1342,7 +1342,12 @@ export type DictItem = {
   currency?: string;
   is_disbursement?: boolean;
   is_billable?: boolean;
-  default_price?: number | null;
+  /** The item's STANDARD expense rate in force today (no carrier, no container
+   *  type) — read from the rates since 14120, never a column of its own. */
+  default_price?: number | string | null;
+  default_price_currency?: string | null;
+  default_price_from?: string | null;
+  default_price_rate_id?: string | null;
   shipping_line?: string | null;
   provider_kind?: string | null;
   proof_source?: string | null;
@@ -1410,6 +1415,9 @@ export type DictDossier = {
   service_tiers: ServiceTier[];
   usage: DictUsage;
   compliance: DictCompliance;
+  /** What THIS viewer may do beyond the dictionary's own verbs. `edit_rates` is
+   *  Expense rates (MOD-10) edit — the gate on changing what a line costs. */
+  capabilities?: { edit_rates?: boolean };
 };
 export type DictListFilter = {
   q?: string;
@@ -1455,6 +1463,9 @@ export type DictSearchHit = {
   is_billable?: boolean;
   varies_by_equipment?: boolean;
   is_active?: boolean;
+  /** The standard rate in force today, when the item has one. */
+  default_price?: number | string | null;
+  default_price_currency?: string | null;
   score?: number;
 };
 export const searchDict = (opts: {
@@ -1620,6 +1631,22 @@ export const supersedeDictRate = (id: string, body: RateSupersedeInput) =>
     method: "POST",
     body,
   });
+
+/** One rate for many carriers at once ("apply to all shipping lines"). The ids
+ *  are the carriers left ticked. All or nothing: one refusal saves none. */
+export type RateApplyAllInput = {
+  rate: number;
+  currency?: string;
+  effective_from: string;
+  container_type_ref_id?: string | null;
+  rate_provider_ids: string[];
+  note?: string | null;
+};
+export const applyDictRateToProviders = (id: string, body: RateApplyAllInput) =>
+  tenant<{ applied: number; evolution: DictRateEvolution }>(
+    `/financial-dictionary/${id}/rates/apply-all`,
+    { method: "POST", body },
+  );
 
 /* ── Bulk Excel import ─────────────────────────────────────────────────────
  * Three steps, deliberately separate: download a template built from THIS

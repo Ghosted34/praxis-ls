@@ -3,28 +3,64 @@ const { insertOne, updateOne, getById, page } = require("../../../shared/db/quer
 const { directionLetter, formatCode } = require("./financial_dictionary.rules");
 // Actual spend per item is NET of reconciliation reversals — see shared/finance/cost-entry-sql.
 const { netAmountSql } = require("../../../shared/finance/cost-entry-sql");
+// An item's price is its STANDARD expense rate, never a column on the item (14120).
+const { standardRateJoin, STANDARD_RATE_COLUMNS } = require("../expense_rate/standard-rate.sql");
 
 /* ── item + posting rules ──────────────────────────────────────────────────── */
 const createItem = (c, d) => insertOne(c, "dictionary_item", d);
 const createRule = (c, d) => insertOne(c, "posting_rule", d);
 const updateItem = (c, id, patch) => updateOne(c, "dictionary_item", "dictionary_item_id", id, patch);
-const getItem = (c, id) => getById(c, "dictionary_item", "dictionary_item_id", id);
+/** The raw row, for writes that need `before` exactly as stored. */
+const getItemRow = (c, id) => getById(c, "dictionary_item", "dictionary_item_id", id);
+
+/**
+ * The item as every reader sees it: the row plus its standard rate under
+ * `default_price` / `default_price_currency` / `default_price_from`.
+ *
+ * `STANDARD_RATE_COLUMNS` comes AFTER `di.*` on purpose. `di.*` still carries
+ * the retired `default_price` column (NULL since 14120), and node-pg builds the
+ * row object field by field, so the later alias is the value the caller gets.
+ */
+async function getItem(c, id) {
+  const { rows } = await c.query(
+    `SELECT di.*, ${STANDARD_RATE_COLUMNS}
+       FROM dictionary_item di ${standardRateJoin("di")}
+      WHERE di.dictionary_item_id = $1`,
+    [id],
+  );
+  return rows[0] || null;
+}
 
 /**
  * Mint the next code for a direction: "#<L><NNN>" (R/E/D/A + zero-padded serial).
- * The serial is the max numeric suffix already in use for that letter, +1, so it
- * never collides even with the mixed free-form codes some legacy rows still use.
- * Rolls past 3 digits automatically once a letter passes #_999.
+ *
+ * GAP-FILLING (meeting 5, 01:20:04). The serial is the LOWEST number not in use
+ * for that letter, not the highest + 1. A line whose direction changes moves to
+ * the new letter and gives its old number back ("it frees up the number so that
+ * another person can use it"), and the next line of that letter takes it. The
+ * audit trail keeps the old code against the item that carried it, and a
+ * document already issued keeps the code it printed, so a reused number never
+ * rewrites history.
+ *
+ * Mixed legacy codes ("#-1119") never match the `^#L[0-9]+$` pattern and so
+ * never block or occupy a serial. A collision between two concurrent creates is
+ * still possible; the callers retry on 23505 exactly as before.
  */
 async function nextCode(c, direction) {
   const letter = directionLetter(direction);
   const { rows } = await c.query(
-    `SELECT COALESCE(MAX((regexp_replace(code::text, '\\D', '', 'g'))::int), 0) AS maxn
-       FROM dictionary_item WHERE code::text ~ $1`,
+    `WITH used AS (
+       SELECT (substring(code::text FROM 3))::int AS n
+         FROM dictionary_item
+        WHERE code::text ~ $1
+     )
+     SELECT COALESCE(
+       (SELECT MIN(g) FROM generate_series(1, (SELECT COALESCE(MAX(n), 0) + 1 FROM used)) g
+         WHERE NOT EXISTS (SELECT 1 FROM used WHERE used.n = g)),
+       1) AS n`,
     [`^#${letter}[0-9]+$`],
   );
-  const n = Number(rows[0] && rows[0].maxn ? rows[0].maxn : 0) + 1;
-  return formatCode(direction, n);
+  return formatCode(direction, Number(rows[0] && rows[0].n ? rows[0].n : 1));
 }
 
 /**
@@ -74,13 +110,14 @@ async function searchItems(c, { q, limit = 20, service_type_id = null, direction
     `SELECT di.dictionary_item_id, di.code, di.label_fr, di.label_en, di.description,
             di.direction, di.category, di.subcategory, di.unit_of_measure,
             di.is_disbursement, di.is_billable, di.varies_by_equipment, di.is_active,
+            ${STANDARD_RATE_COLUMNS},
             GREATEST(
               CASE WHEN di.keywords && ARRAY[$2] THEN 1.0 ELSE 0 END,
               CASE WHEN di.code::text ILIKE '%' || $1 || '%' THEN 0.95 ELSE 0 END,
               similarity(di.label_en, $1), similarity(di.label_fr, $1),
               similarity(COALESCE(di.description, ''), $1) * 0.6
             ) AS score
-       FROM dictionary_item di ${join}
+       FROM dictionary_item di ${join} ${standardRateJoin("di")}
       ${wh.length ? "WHERE " + wh.join(" AND ") + " AND" : "WHERE"} (
             di.keywords && ARRAY[$2]
          OR di.code::text ILIKE '%' || $1 || '%'
@@ -164,7 +201,9 @@ async function listItems(c, q = {}) {
   }
   const where = wh.length ? "WHERE " + wh.join(" AND ") : "";
   const { rows } = await c.query(
-    `SELECT di.* FROM dictionary_item di ${join} ${where} ORDER BY di.code LIMIT $1 OFFSET $2`,
+    `SELECT di.*, ${STANDARD_RATE_COLUMNS}
+       FROM dictionary_item di ${join} ${standardRateJoin("di")}
+       ${where} ORDER BY di.code LIMIT $1 OFFSET $2`,
     params,
   );
   return rows;
@@ -378,7 +417,7 @@ const updateRef = (c, id, patch) => updateOne(c, "dictionary_ref", "ref_id", id,
 const getRef = (c, id) => getById(c, "dictionary_ref", "ref_id", id);
 
 module.exports = {
-  createItem, createRule, updateItem, getItem, nextCode,
+  createItem, createRule, updateItem, getItem, getItemRow, nextCode,
   listRules, deleteRules, listTiers, replaceTiers,
   listItems, searchItems, usageCounts,
   spendEstimated, spendCommitted, spendActual, spendDocuments,

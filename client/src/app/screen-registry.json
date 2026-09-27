@@ -332,7 +332,9 @@
         "list_rate_providers",
         "get_rate_provider",
         "create_rate_provider",
-        "update_rate_provider"
+        "update_rate_provider",
+        "set_dictionary_rate",
+        "apply_dictionary_rate_to_carriers"
       ]
     },
     {
@@ -346,7 +348,8 @@
         "list_dictionary_items",
         "get_dictionary_item",
         "create_dictionary_item",
-        "update_dictionary_item"
+        "update_dictionary_item",
+        "dictionary_rate_history"
       ]
     },
     {
@@ -1062,6 +1065,8 @@
         "get_costing",
         "costing_kpis",
         "suggest_costing_lines",
+        "price_costing_line",
+        "costing_fx_rate",
         "create_costing",
         "update_costing",
         "costing_status",

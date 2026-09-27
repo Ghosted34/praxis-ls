@@ -13,6 +13,7 @@
  * paper over an error with an empty result.
  */
 "use strict";
+const { standardRateJoin, STANDARD_RATE_COLUMNS } = require("../../master/expense_rate/standard-rate.sql");
 const { makeRepo } = require("../../../shared/crud/resource");
 // Actual spend is NET of reconciliation reversals — see shared/finance/cost-entry-sql.
 const { netAmountSql } = require("../../../shared/finance/cost-entry-sql");
@@ -95,15 +96,18 @@ async function templatesWithStages(client, serviceTypeId) {
  * mistake generic items for scoped ones (spec §11.3, "services as DATA").
  */
 async function dictionaryItemsFor(client, key) {
+  // `default_price` is the item's STANDARD expense rate since 14120, not the
+  // retired column — see master/expense_rate/standard-rate.sql.js.
   // Scoped lines now come from the many-to-many tier join (Basic/Advanced/Full),
   // ordered by tier so the ST-360 can group them. service_type_key is kept in
   // step by the FD service, so this reads the same set either way.
   const scoped = (await client.query(
     "SELECT di.dictionary_item_id, di.code, di.label_fr, di.label_en, di.category, di.direction, " +
-      "  di.is_disbursement, di.is_billable, di.default_price, di.currency, di.shipping_line, " +
-      "  di.service_type_key, di.is_active, sti.tier " +
+      "  di.is_disbursement, di.is_billable, di.currency, di.shipping_line, " +
+      "  di.service_type_key, di.is_active, sti.tier, " + STANDARD_RATE_COLUMNS + " " +
       "FROM service_type_dictionary_item sti " +
       "JOIN dictionary_item di ON di.dictionary_item_id = sti.dictionary_item_id " +
+      standardRateJoin("di") + " " +
       "JOIN service_type st ON st.service_type_id = sti.service_type_id " +
       "WHERE st.key = $1 " +
       "ORDER BY (CASE sti.tier WHEN 'BASIC' THEN 1 WHEN 'ADVANCED' THEN 2 ELSE 3 END), di.category, di.code",
@@ -112,10 +116,11 @@ async function dictionaryItemsFor(client, key) {
   // Generic = surfaces on ANY operation (the new applicability mode). Overhead /
   // non-operational lines are deliberately excluded from a service's pick-list.
   const generic = (await client.query(
-    "SELECT dictionary_item_id, code, label_fr, label_en, category, direction, is_disbursement, " +
-      "  is_billable, default_price, currency, shipping_line, is_active " +
-      "FROM dictionary_item WHERE applicability_mode = 'ANY_OPERATIONS' AND is_active = true " +
-      "ORDER BY category, code",
+    "SELECT di.dictionary_item_id, di.code, di.label_fr, di.label_en, di.category, di.direction, di.is_disbursement, " +
+      "  di.is_billable, di.currency, di.shipping_line, di.is_active, " + STANDARD_RATE_COLUMNS + " " +
+      "FROM dictionary_item di " + standardRateJoin("di") + " " +
+      "WHERE di.applicability_mode = 'ANY_OPERATIONS' AND di.is_active = true " +
+      "ORDER BY di.category, di.code",
   )).rows;
   return { scoped, generic };
 }

@@ -37,22 +37,21 @@ import { IndexRow } from "@/components/ui/index-row";
 import { ScreenAi } from "@/components/screen-ai";
 import { Button } from "@/components/ui/button";
 import { SectionTabs } from "@/components/ui/section-tabs";
-import { DateField } from "@/components/ui/date-field";
-import { FormButtons } from "@/components/ui/form-buttons";
 import { Input } from "@/components/ui/input";
 import { Pill } from "@/components/ui/pill";
 import { Segmented } from "@/components/ui/segmented";
 import { Callout } from "@/components/ui/callout";
-import { Modal, Field } from "@/components/ui/modal";
+import { Modal } from "@/components/ui/modal";
 import { EmptyState, ErrorState, LoadingRow } from "@/components/ui/states";
 import { SplitPane } from "@/components/ui/split-pane";
 import { PageHeader } from "@/components/data-list";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { useToast } from "@/components/ui/toast";
 import { useResource, errMsg } from "@/lib/use-resource";
-import { money, dateFmt, todayISO } from "@/lib/format";
+import { money } from "@/lib/format";
 import * as api from "@/lib/masterdata-api";
 import { shell } from "./shared";
+import { SetRateModal, ApplyToCarriersModal } from "./rate-modals";
 
 const DIR_TONE: Record<string, React.ComponentProps<typeof Pill>["tone"]> = {
   REVENUE: "ok",
@@ -325,119 +324,6 @@ function QuickAddProvider({
   );
 }
 
-/* ══════════════════════════ Set-rate modal ═════════════════════════════ */
-
-function SetRateModal({
-  itemId,
-  currency,
-  providerLabel,
-  providerId,
-  containerTypeId,
-  containerTypeLabel,
-  current,
-  onClose,
-  onSaved,
-}: {
-  itemId: string;
-  currency: string;
-  providerLabel: string;
-  providerId: string | null;
-  containerTypeId: string | null;
-  containerTypeLabel: string | null;
-  current: api.RatePoint | null;
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const [rate, setRate] = React.useState(current ? String(current.rate) : "");
-  const [curr, setCurr] = React.useState(
-    current?.currency || currency || "XAF",
-  );
-  const [from, setFrom] = React.useState(todayISO());
-  const [note, setNote] = React.useState("");
-  const [busy, setBusy] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    setError(null);
-    try {
-      await api.supersedeDictRate(itemId, {
-        rate: Number(rate),
-        currency: curr,
-        effective_from: from,
-        rate_provider_id: providerId,
-        container_type_ref_id: containerTypeId,
-        note: note || undefined,
-      });
-      onSaved();
-      onClose();
-    } catch (err) {
-      setError(errMsg(err));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <Modal
-      open
-      onClose={onClose}
-      title={`Set rate — ${providerLabel}${containerTypeLabel ? " · " + containerTypeLabel : ""}`}
-      description="Rates are superseded, never edited in place — the prior rate expires the day before this one opens, so history stays intact."
-    >
-      <form className="space-y-4" onSubmit={submit}>
-        {current && (
-          <Callout tone="info" title={tr("Current rate")}>
-            {money(current.rate, current.currency || curr)} since{" "}
-            {dateFmt(current.effective_from)}
-          </Callout>
-        )}
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label={tr("Rate")} required>
-            <Input
-              type="number"
-              min="0"
-              step="0.01"
-              className="num text-right"
-              value={rate}
-              onChange={(e) => setRate(e.target.value)}
-            />
-          </Field>
-          <Field label={tr("Currency")}>
-            <Input
-              value={curr}
-              onChange={(e) =>
-                setCurr(e.target.value.toUpperCase().slice(0, 3))
-              }
-            />
-          </Field>
-          <Field label={tr("Effective from")} required>
-            <DateField
-              value={from}
-              onChange={setFrom}
-            />
-          </Field>
-          <Field label={tr("Note")}>
-            <Input
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder={tr("Optional")}
-            />
-          </Field>
-        </div>
-        {error && <ErrorState message={error} />}
-        <FormButtons
-          busy={busy}
-          disabled={rate === "" || !from || busy}
-          onCancel={onClose}
-          saveLabel="Save rate"
-        />
-      </form>
-    </Modal>
-  );
-}
-
 /* ══════════════════════════════ Rate grids ═════════════════════════════ */
 
 function RateCell({
@@ -523,6 +409,7 @@ function CarrierRateGrid({
   seriesMap,
   onEdit,
   onAdded,
+  onApplyAll,
   addKind,
 }: {
   providers: api.RateProvider[];
@@ -531,10 +418,19 @@ function CarrierRateGrid({
   seriesMap: Map<string, api.RateSeries>;
   onEdit: (provider: api.RateProvider, type: api.DictRef | null) => void;
   onAdded: () => void;
+  /** Omitted → the button is not offered (one carrier, or no MOD-10 edit). */
+  onApplyAll?: () => void;
   addKind: api.RateProviderKind;
 }) {
   return (
     <div className="space-y-3">
+      {onApplyAll && providers.length > 1 && (
+        <div className="flex justify-end">
+          <Button size="sm" variant="outline" onClick={onApplyAll}>
+            {tr("Apply one rate to all…")}
+          </Button>
+        </div>
+      )}
       {providers.length === 0 ? (
         <EmptyState
           title="No carriers configured yet"
@@ -658,6 +554,8 @@ function RateDossier({
     provider: api.RateProvider | null;
     type: api.DictRef | null;
   } | null>(null);
+  const [applyingAll, setApplyingAll] = React.useState(false);
+  const toast = useToast();
 
   const seriesMap = React.useMemo(() => {
     const m = new Map<string, api.RateSeries>();
@@ -675,6 +573,10 @@ function RateDossier({
   if (hist.error) return <ErrorState message={hist.error} />;
 
   const containerTypes = item.varies_by_equipment ? typesRes.data || [] : [];
+  const tabProviders =
+    tab === "Default rate"
+      ? []
+      : (providersRes.data || []).filter((p) => TAB_KINDS[tab].includes(p.kind));
   const isFormula = item.pricing_mode === "FORMULA";
 
   return (
@@ -730,7 +632,12 @@ function RateDossier({
         value={tab}
         onChange={setTab}
         className="mb-3"
-        tabs={RATE_TABS.map((t) => ({ value: t, label: t }))}
+        // "Standard rate" is what the dictionary overview calls the same number,
+        // so the two screens name it the same way (meeting 5, 01:20:04).
+        tabs={RATE_TABS.map((t) => ({
+          value: t,
+          label: t === "Default rate" ? "Standard rate" : t,
+        }))}
       />
 
       {tab === "Default rate" && (
@@ -743,24 +650,37 @@ function RateDossier({
       )}
       {tab !== "Default rate" && (
         <CarrierRateGrid
-          providers={(providersRes.data || []).filter((p) =>
-            TAB_KINDS[tab].includes(p.kind),
-          )}
+          providers={tabProviders}
           variesByEquipment={item.varies_by_equipment}
           containerTypes={containerTypes}
           seriesMap={seriesMap}
           onEdit={(provider, type) => setEditing({ provider, type })}
           onAdded={providersRes.reload}
+          onApplyAll={() => setApplyingAll(true)}
           addKind={TAB_KINDS[tab][0]}
+        />
+      )}
+
+      {applyingAll && tab !== "Default rate" && (
+        <ApplyToCarriersModal
+          itemId={id}
+          kindLabel={tab.toLowerCase()}
+          providers={tabProviders}
+          containerTypes={containerTypes}
+          onClose={() => setApplyingAll(false)}
+          onSaved={(n) => {
+            toast.success(`Rate applied to ${n} carrier${n === 1 ? "" : "s"}.`);
+            hist.reload();
+            onChanged();
+          }}
         />
       )}
 
       {editing && (
         <SetRateModal
           itemId={id}
-          currency={item.currency || "XAF"}
           providerId={editing.provider?.rate_provider_id ?? null}
-          providerLabel={editing.provider?.name ?? "Default (no carrier)"}
+          providerLabel={editing.provider?.name ?? "Standard rate"}
           containerTypeId={editing.type?.ref_id ?? null}
           containerTypeLabel={
             editing.type ? editing.type.name_en || editing.type.name_fr : null

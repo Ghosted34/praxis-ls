@@ -9,6 +9,7 @@ const c = require("./financial_dictionary.controller");
 const v = require("./financial_dictionary.validator");
 
 const MODULE = "MOD-05";
+const RATES_MODULE = "MOD-10";
 const router = express.Router();
 router.use(authMiddleware);
 
@@ -33,7 +34,12 @@ router.get("/", requirePermission(MODULE, "view"), c.list);
 router.get("/:id/360", requirePermission(MODULE, "view"), c.dossier);
 router.get("/:id/spend", requirePermission(MODULE, "view"), v.spendQuery, c.spend);
 router.get("/:id/rate-history", requirePermission(MODULE, "view"), c.rateEvolution);
-router.post("/:id/rates/supersede", requirePermission(MODULE, "edit"), v.rateSupersede, c.supersedeRate);
+// Rates are EXPENSE-RATE writes, so they are gated on MOD-10 (Expense rates),
+// not on the dictionary: someone who may edit catalogue wording must not be
+// able to change what a line costs (meeting 5, 01:17:37). The dictionary's
+// own "Edit standard rate" pop-up posts here too, so it inherits the gate.
+router.post("/:id/rates/supersede", requirePermission(RATES_MODULE, "edit"), v.rateSupersede, c.supersedeRate);
+router.post("/:id/rates/apply-all", requirePermission(RATES_MODULE, "edit"), v.rateApplyAll, c.applyRateToProviders);
 router.get("/:id", requirePermission(MODULE, "view"), c.get);
 router.post("/", requirePermission(MODULE, "create"), v.create, c.create);
 router.patch("/:id", requirePermission(MODULE, "edit"), v.update, c.update);

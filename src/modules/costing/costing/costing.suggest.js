@@ -32,6 +32,7 @@
 
 const repo = require("./costing.repo");
 const { pickRate } = require("../../master/expense_rate/expense_rate.rules");
+const currencySvc = require("../../master/currency/currency.service");
 const { AppError } = require("../../../utils/errors");
 
 const round2 = (n) => Math.round(n * 100) / 100;
@@ -96,7 +97,9 @@ function qtyBasis(unitOfMeasure, qty) {
  *   1. an `expense_rate` for this carrier and this container type, then the
  *      carrier's general rate, then the item's default rate — `pickRate` scores
  *      and orders that, and it is the same function the rate editor uses;
- *   2. the catalogue's own `default_price`;
+ *   2. the item's standard rate as read with the item (`default_price`, which
+ *      since 14120 IS the no-carrier expense rate, so step 1 normally already
+ *      found it — this only matters for a caller that passes no rate rows);
  *   3. nothing, badged so the gap is visible before the sheet is submitted.
  *
  * `pickRate` throws NO_RATE / NO_RATE_MATCH when nothing is effective or
@@ -133,7 +136,7 @@ function priceLine(item, rateRows, { date, rateProviderId, containerTypeRefId })
   if (item.default_price !== null && item.default_price !== undefined) {
     return {
       unit_cost: num(item.default_price),
-      currency: item.currency || null,
+      currency: item.default_price_currency || item.currency || null,
       price_source: "CATALOGUE_DEFAULT",
       price_note: null,
       expense_rate_id: null,
@@ -152,6 +155,79 @@ function priceLine(item, rateRows, { date, rateProviderId, containerTypeRefId })
   };
 }
 
+/**
+ * Put a priced line into the SHEET's currency (meeting 5, 01:12:33).
+ *
+ * A costing has ONE currency and ONE exchange rate — `exchange_rate_to_xaf`,
+ * "1 <currency> = rate XAF" — and every line is in that currency. A rate on
+ * file may be in anything: XAF mostly, sometimes the carrier's EUR or USD. So:
+ *
+ *   rate in the sheet's currency   → as is
+ *   rate in XAF                    → divided by the sheet's rate
+ *   rate in a third currency       → to XAF at the Currencies module's rate for
+ *                                    the day, then divided by the sheet's rate
+ *
+ * The sheet's own rate is the one used for the last step, never a fresh quote,
+ * because it is the rate the pricer can see and edit and the approver signs.
+ * A third currency with no quote on file is NOT guessed: the line comes back
+ * unpriced (`NO_FX`) with the original figure, so a person decides.
+ *
+ * `unit_cost_xaf` is the line's value in XAF before rounding into the sheet's
+ * currency. The worksheet keeps it so that switching the sheet's currency or
+ * rate converts from the same XAF figure every time instead of compounding
+ * rounding — XAF → EUR → XAF lands back on the number it started from.
+ *
+ * No `sheet.currency` → no conversion at all (the pre-conversion contract, for
+ * a caller that does not pass one).
+ */
+async function toSheetCurrency(client, priced, sheet, cache) {
+  if (!sheet || !sheet.currency || priced.unit_cost === null) return priced;
+  const to = String(sheet.currency).toUpperCase();
+  const sheetRate = Number(sheet.rate) > 0 ? Number(sheet.rate) : 1;
+  const from = String(priced.currency || "XAF").toUpperCase();
+  const unit = num(priced.unit_cost);
+  if (from === to) {
+    return { ...priced, currency: to, source_unit_cost: null, source_currency: null, unit_cost_xaf: to === "XAF" ? unit : unit * sheetRate };
+  }
+  let perXaf = 1; // XAF value of one unit of `from`
+  if (from !== "XAF") {
+    if (!cache.has(from)) {
+      try {
+        const hit = await currencySvc.rateFor(client, { base: from, quote: "XAF", date: sheet.date });
+        cache.set(from, Number(hit.rate) > 0 ? Number(hit.rate) : null);
+      } catch (err) {
+        // @silent:expected — no quote for this currency on or before the day is
+        // an ordinary state (a currency never synced); the line is returned
+        // unpriced with its original figure instead of a guessed conversion.
+        if (err.code !== "NO_FX_RATE") throw err;
+        cache.set(from, null);
+      }
+    }
+    perXaf = cache.get(from);
+    if (!perXaf) {
+      return {
+        ...priced,
+        unit_cost: null,
+        currency: to,
+        price_source: "NO_FX",
+        price_note: `No ${from} → XAF exchange rate on file to convert this rate`,
+        source_unit_cost: unit,
+        source_currency: from,
+        unit_cost_xaf: null,
+      };
+    }
+  }
+  const xaf = unit * perXaf;
+  return {
+    ...priced,
+    unit_cost: round2(xaf / sheetRate),
+    currency: to,
+    source_unit_cost: unit,
+    source_currency: from,
+    unit_cost_xaf: xaf,
+  };
+}
+
 /** The display name for a container type, matching the equipment picker's. */
 const typeLabel = (row) => row.container_type_en || row.container_type_fr || row.container_type_code;
 
@@ -160,7 +236,7 @@ const typeLabel = (row) => row.container_type_en || row.container_type_fr || row
  *
  * @returns { file, tier, bands: [{ tier, lines }], counts, defaults }
  */
-async function build(client, { dossierId, tier = "FULL", onDate = null }) {
+async function build(client, { dossierId, tier = "FULL", onDate = null, sheet = null }) {
   const wanted = TIERS.includes(String(tier).toUpperCase()) ? String(tier).toUpperCase() : "FULL";
   const date = onDate || new Date().toISOString().slice(0, 10);
 
@@ -189,6 +265,9 @@ async function build(client, { dossierId, tier = "FULL", onDate = null }) {
   const vat = await repo.defaultSalesTaxCode(client, { entityId: file.entity_id, onDate: date });
 
   const bands = new Map(TIERS.map((t) => [t, []]));
+  // Into the sheet's currency when the caller names one — see toSheetCurrency.
+  const fx = new Map();
+  const inSheet = (priced) => toSheetCurrency(client, priced, sheet && { ...sheet, date }, fx);
 
   for (const item of items) {
     const rows = rateRows.get(item.dictionary_item_id) || [];
@@ -202,6 +281,8 @@ async function build(client, { dossierId, tier = "FULL", onDate = null }) {
       dictionary_item_id: item.dictionary_item_id,
       item_code: item.code,
       label: item.label_en || item.label_fr,
+      // Both names, so the sheet shows the one its reader reads (lib/dict-label).
+      label_en: item.label_en || null,
       label_fr: item.label_fr,
       subcategory: item.subcategory || null,
       unit_of_measure: item.unit_of_measure || null,
@@ -222,11 +303,11 @@ async function build(client, { dossierId, tier = "FULL", onDate = null }) {
     // `Demurrage 20'` and `Demurrage 40'` as two codes, and ours needs one.
     if (item.varies_by_equipment && containers.length) {
       for (const box of containers) {
-        const priced = priceLine(item, rows, {
+        const priced = await inSheet(priceLine(item, rows, {
           date,
           rateProviderId: file.rate_provider_id || null,
           containerTypeRefId: box.container_type_ref_id,
-        });
+        }));
         bands.get(item.tier).push({
           ...common,
           container_type_ref_id: box.container_type_ref_id,
@@ -243,11 +324,11 @@ async function build(client, { dossierId, tier = "FULL", onDate = null }) {
     // An equipment-varying charge on a file with no equipment recorded yet:
     // one line, no box, and a note rather than silently dropping the charge.
     const qty = qtyFromUnit(item.unit_of_measure, file);
-    const priced = priceLine(item, rows, {
+    const priced = await inSheet(priceLine(item, rows, {
       date,
       rateProviderId: file.rate_provider_id || null,
       containerTypeRefId: null,
-    });
+    }));
     bands.get(item.tier).push({
       ...common,
       container_type_ref_id: null,
@@ -288,8 +369,8 @@ async function build(client, { dossierId, tier = "FULL", onDate = null }) {
     })),
     counts: {
       total: all.length,
-      priced: all.filter((l) => l.price_source !== "NONE").length,
-      needs_price: all.filter((l) => l.price_source === "NONE").length,
+      priced: all.filter((l) => l.unit_cost !== null).length,
+      needs_price: all.filter((l) => l.unit_cost === null).length,
       needs_quantity: all.filter((l) => l.qty === null).length,
       disbursements: all.filter((l) => l.is_disbursement).length,
     },
@@ -305,4 +386,41 @@ async function build(client, { dossierId, tier = "FULL", onDate = null }) {
   };
 }
 
-module.exports = { build, qtyFromUnit, qtyBasis, priceLine, TIERS };
+/**
+ * Price ONE line a person picked by hand from the finder.
+ *
+ * "Suggest" priced its own lines and nothing else, so a charge added with
+ * "+ Add a line" arrived at 0 even when the Expense Rates screen had a price
+ * for it (meeting 5, 01:01:49 — "it doesn't give the cost"). This is the same
+ * `priceLine` cascade over the same rate rows, scoped by the file's carrier
+ * when there is a file, so a hand-picked line and a suggested one can never be
+ * priced differently.
+ *
+ * `dossierId` is optional: a sheet can be drafted before it is attached to a
+ * file, and then only the item's own (no-carrier) rates apply.
+ */
+async function priceOne(client, { dossierId = null, dictionaryItemId, containerTypeRefId = null, onDate = null, sheet = null }) {
+  const date = onDate || new Date().toISOString().slice(0, 10);
+  const { rows } = await client.query(
+    "SELECT dictionary_item_id, currency FROM dictionary_item WHERE dictionary_item_id = $1",
+    [dictionaryItemId],
+  );
+  const item = rows[0];
+  if (!item) throw new AppError("NOT_FOUND", "Dictionary item not found", 404);
+  let rateProviderId = null;
+  if (dossierId) {
+    const file = await repo.dossierForCosting(client, dossierId);
+    if (!file) throw new AppError("NOT_FOUND", "Operations file not found", 404);
+    rateProviderId = file.rate_provider_id || null;
+  }
+  const rates = await repo.ratesForItems(client, [dictionaryItemId]);
+  const priced = await toSheetCurrency(
+    client,
+    priceLine(item, rates.get(dictionaryItemId) || [], { date, rateProviderId, containerTypeRefId }),
+    sheet && { ...sheet, date },
+    new Map(),
+  );
+  return { dictionary_item_id: dictionaryItemId, container_type_ref_id: containerTypeRefId, ...priced };
+}
+
+module.exports = { build, priceOne, qtyFromUnit, qtyBasis, priceLine, toSheetCurrency, TIERS };

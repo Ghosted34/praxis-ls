@@ -1,5 +1,6 @@
 /** Costing repository (MOD-46). costing + costing_line SQL lives here. */
 "use strict";
+const { standardRateJoin, STANDARD_RATE_COLUMNS } = require("../../master/expense_rate/standard-rate.sql");
 const { insertOne, getById, page, updateOne, TOTAL_COL, splitTotal } = require("../../../shared/db/query-helpers");
 
 const insert = (client, data) => insertOne(client, "costing", data);
@@ -502,10 +503,12 @@ async function tieredItems(client, { serviceTypeId, tier = "FULL" }) {
     `SELECT di.dictionary_item_id, di.code, di.label_en, di.label_fr, di.description,
             di.direction, di.category, di.subcategory, di.unit_of_measure,
             di.is_disbursement, di.is_billable, di.varies_by_equipment,
-            di.disbursement_vat_transparent, di.default_price, di.currency,
+            di.disbursement_vat_transparent, di.currency,
+            ${STANDARD_RATE_COLUMNS},
             sti.tier, sti.sort_order
        FROM service_type_dictionary_item sti
        JOIN dictionary_item di ON di.dictionary_item_id = sti.dictionary_item_id
+       ${standardRateJoin("di")}
       WHERE sti.service_type_id = $1
         AND di.is_active = true
         AND (CASE sti.tier WHEN 'BASIC' THEN 1 WHEN 'ADVANCED' THEN 2 ELSE 3 END) <= $2

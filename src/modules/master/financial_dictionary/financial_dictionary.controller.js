@@ -1,6 +1,7 @@
 "use strict";
 const service = require("./financial_dictionary.service");
 const { asyncHandler, AppError } = require("../../../utils/errors");
+const { readPermissions } = require("../../../middleware/rbac");
 const { exportFilename } = require("../../../services/spreadsheet");
 const actor = (req) => req.user || { user_id: null };
 const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
@@ -36,6 +37,24 @@ function decodeUpload(file) {
   return buffer;
 }
 
+/**
+ * A price on a dictionary write is an EXPENSE-RATE write (MOD-10), whichever
+ * screen it came from. The dictionary routes only check MOD-05, so a payload
+ * that carries a price is checked here too — otherwise the create wizard and
+ * the import would be a side door around the gate on the rate endpoints.
+ */
+async function assertCanPrice(req) {
+  const [ok] = await readPermissions(req, [["MOD-10", "create"]]);
+  if (!ok) {
+    throw new AppError(
+      "PERMISSION_DENIED",
+      "Setting a price needs the Expense rates permission. Save the line without a price and ask someone who manages rates to set its standard rate.",
+      403,
+    );
+  }
+}
+const hasPrice = (v) => v !== null && v !== undefined && String(v).trim() !== "";
+
 module.exports = {
   list: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.listItems(c, req.query)) })),
   // The shared finder (DictionaryFinder). Returns [] for a blank term rather
@@ -58,9 +77,15 @@ module.exports = {
   dossier: asyncHandler(async (req, res) => {
     const r = await req.tenantDb((c) => service.dossier(c, req.params.id));
     if (!r) throw new AppError("NOT_FOUND", "Dictionary item not found", 404);
-    res.json({ data: r });
+    // Whether this viewer may change the line's price — the overview's pencil
+    // is shown only when the rate endpoints would accept the save.
+    const [editRates] = await readPermissions(req, [["MOD-10", "edit"]]);
+    res.json({ data: { ...r, capabilities: { edit_rates: editRates === true } } });
   }),
-  create: asyncHandler(async (req, res) => res.status(201).json({ data: await req.tenantDb((c) => service.create(c, { data: req.body, actor: actor(req) })) })),
+  create: asyncHandler(async (req, res) => {
+    if (hasPrice(req.body.default_price)) await assertCanPrice(req);
+    res.status(201).json({ data: await req.tenantDb((c) => service.create(c, { data: req.body, actor: actor(req) })) });
+  }),
   update: asyncHandler(async (req, res) => {
     const r = await req.tenantDb((c) => service.update(c, { id: req.params.id, patch: req.body, actor: actor(req) }));
     if (!r) throw new AppError("NOT_FOUND", "Dictionary item not found", 404);
@@ -86,6 +111,11 @@ module.exports = {
     if (!r) throw new AppError("NOT_FOUND", "Dictionary item not found", 404);
     res.status(201).json({ data: r });
   }),
+  applyRateToProviders: asyncHandler(async (req, res) => {
+    const r = await req.tenantDb((c) => service.applyRateToProviders(c, { id: req.params.id, data: req.body, actor: actor(req) }));
+    if (!r) throw new AppError("NOT_FOUND", "Dictionary item not found", 404);
+    res.status(201).json({ data: r });
+  }),
 
   /* ── PR2: bulk Excel import ─────────────────────────────────────────────── */
   // Streams the workbook rather than vaulting it: a template is generated fresh
@@ -102,6 +132,7 @@ module.exports = {
     res.json({ data: r });
   }),
   importCommit: asyncHandler(async (req, res) => {
+    if ((req.body.rows || []).some((row) => hasPrice(row && row.raw && row.raw.default_price))) await assertCanPrice(req);
     const r = await req.tenantDb((c) => service.importCommit(c, { rows: req.body.rows, actor: actor(req) }));
     res.status(201).json({ data: r });
   }),

@@ -1445,11 +1445,15 @@ const TEMPLATES = {
         [{ fr: "Date", en: "Date" }, k.dateFmt(data.date)],
         [{ fr: "Dossier", en: "File" }, data.dossier_ref],
         [{ fr: "Statut", en: "Status" }, data.status_words ? k.t(data.status_words, lang) : data.status],
+        // ONE currency for the whole sheet (meeting 5): named here, once, and
+        // again only on the grand total and in the amount in words. The lines
+        // and sub-totals below print bare figures.
+        [{ fr: "Devise", en: "Currency" }, ccy],
         // The rate is a fact about the money only when it is doing something.
-        // Printing "Rate (XAF): 1" on every sheet in the base currency is a
-        // line that teaches the reader to skip the meta strip.
-        has(data.exchange_rate) && Number(data.exchange_rate) !== 1
-          ? [{ fr: "Taux (XAF)", en: "Rate (XAF)" }, String(data.exchange_rate)]
+        // Printing "Rate: 1" on every sheet in XAF is a line that teaches the
+        // reader to skip the meta strip.
+        has(data.exchange_rate) && Number(data.exchange_rate) !== 1 && ccy !== "XAF"
+          ? [{ fr: "Taux de change", en: "Exchange rate" }, `1 ${ccy} = ${Number(data.exchange_rate).toLocaleString("fr-FR", { maximumFractionDigits: 6 })} XAF`]
           : null,
       ].filter((m) => m && m[1]);
 
@@ -1509,33 +1513,34 @@ const TEMPLATES = {
         return {
           label,
           qty: has(l.qty) ? String(l.qty) : "",
-          unit: has(l.unit) ? k.money(l.unit, ccy, cfg) : "",
+          unit: has(l.unit) ? k.figure(l.unit, ccy, cfg) : "",
           // 12768: the VAT column carries the amount and nothing else — the rate
           // in brackets was noise on a document (the reader has the figure). A
           // débours shows its supplier VAT with (PT) after it, marking a
           // pass-through re-billed at cost; a débours with no VAT shows just (PT).
           vat: l.is_disbursement
             ? (has(l.upstream_vat) && l.upstream_vat > 0
-              ? `${k.money(l.upstream_vat, ccy, cfg)} (PT)`
+              ? `${k.figure(l.upstream_vat, ccy, cfg)} (PT)`
               : "(PT)")
-            : (vatAmount === null ? "" : k.money(vatAmount, ccy, cfg)),
-          amount: k.money(amount, ccy, cfg),
+            : (vatAmount === null ? "" : k.figure(vatAmount, ccy, cfg)),
+          amount: k.figure(amount, ccy, cfg),
         };
       });
 
       const totalsRows = [
-        [{ fr: "Sous-total (HT)", en: "Subtotal (HT)" }, k.money(t.total_ht, ccy, cfg)],
+        [{ fr: "Sous-total (HT)", en: "Subtotal (HT)" }, k.figure(t.total_ht, ccy, cfg)],
         // Inside the block, immediately under the subtotal it qualifies. Débours
         // are re-billed at cost; their net is here, their VAT is in the VAT line.
         has(t.disbursement_total) && Number(t.disbursement_total) > 0
-          ? [{ fr: "dont débours (au coût)", en: "of which débours (at cost)" }, k.money(t.disbursement_total, ccy, cfg)]
+          ? [{ fr: "dont débours (au coût)", en: "of which débours (at cost)" }, k.figure(t.disbursement_total, ccy, cfg)]
           : null,
-        [{ fr: "TVA", en: "VAT" }, k.money(t.vat_total, ccy, cfg)],
+        [{ fr: "TVA", en: "VAT" }, k.figure(t.vat_total, ccy, cfg)],
         // 12768: the supplier's VAT on débours is now IN the VAT above; this
         // names how much of it, so the (PT) lines reconcile to the total.
         has(t.upstream_vat_total) && Number(t.upstream_vat_total) > 0
-          ? [{ fr: "dont sur débours (PT)", en: "of which on débours (PT)" }, k.money(t.upstream_vat_total, ccy, cfg)]
+          ? [{ fr: "dont sur débours (PT)", en: "of which on débours (PT)" }, k.figure(t.upstream_vat_total, ccy, cfg)]
           : null,
+        // The one row that carries the currency — the figure a reader quotes.
         [{ fr: "Total estimé (TTC)", en: "Total estimate (TTC)" }, k.money(t.total_ttc, ccy, cfg), { grand: true }],
       ];
 
@@ -1552,9 +1557,9 @@ const TEMPLATES = {
             : { fr: "Modifiée", en: "Changed" }, lang,
       ))}</td><td>${k.esc(l.label)}</td><td class="num">${k.esc(
         kind === "changed" && has(l.was_amount)
-          ? `${k.money(l.was_amount, ccy, cfg)} → ${k.money(l.amount, ccy, cfg)}`
-          : k.money(l.amount, ccy, cfg),
-      )}</td><td class="num">${k.esc((l.delta >= 0 ? "+" : "") + k.money(l.delta, ccy, cfg))}</td></tr>`;
+          ? `${k.figure(l.was_amount, ccy, cfg)} → ${k.figure(l.amount, ccy, cfg)}`
+          : k.figure(l.amount, ccy, cfg),
+      )}</td><td class="num">${k.esc((l.delta >= 0 ? "+" : "") + k.figure(l.delta, ccy, cfg))}</td></tr>`;
       // Wrapped so the heading and the rows it introduces stay together: the
       // first render put "Changed since it was approved" at the foot of page 1
       // and what changed on page 2.
@@ -1565,7 +1570,7 @@ const TEMPLATES = {
           }${(a.added || []).map((l) => amendRow(l, "added")).join("")
           }${(a.removed || []).map((l) => amendRow(l, "removed")).join("")
           }</tbody></table><div class="muted" style="margin-top:2mm;font-size:9px">${k.esc(
-            `${a.unchanged_count} ${k.t({ fr: "ligne(s) inchangée(s)", en: "line(s) unchanged" }, lang)} · ${k.money(a.before_ht, ccy, cfg)} → ${k.money(a.after_ht, ccy, cfg)} (${a.delta_ht >= 0 ? "+" : ""}${k.money(a.delta_ht, ccy, cfg)})`,
+            `${a.unchanged_count} ${k.t({ fr: "ligne(s) inchangée(s)", en: "line(s) unchanged" }, lang)} · ${k.figure(a.before_ht, ccy, cfg)} → ${k.figure(a.after_ht, ccy, cfg)} (${a.delta_ht >= 0 ? "+" : ""}${k.figure(a.delta_ht, ccy, cfg)})`,
           )}</div>`, cfg)}</div>`
         : "";
 

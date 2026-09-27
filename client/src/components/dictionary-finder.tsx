@@ -35,6 +35,7 @@
  * reveals the equipment step before returning. Callers that do not pass it are
  * untouched: same one-argument flow, same close-on-pick.
  */
+import { dictLabel } from "@/lib/dict-label";
 import * as React from "react";
 import { Popover } from "@/components/ui/popover";
 import { Pill, type Tone } from "@/components/ui/pill";
@@ -59,11 +60,12 @@ const DIRECTION_TONE: Record<Direction, { label: string; tone: Tone }> = {
   ASSET: { label: "Asset", tone: "orange" },
 };
 
+// In the reader's language — see lib/dict-label.
 const labelOf = (h: {
   label_en?: string | null;
   label_fr?: string | null;
   code: string;
-}) => h.label_en || h.label_fr || h.code;
+}) => dictLabel(h);
 
 export function DictionaryFinder({
   value,

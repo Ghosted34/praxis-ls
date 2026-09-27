@@ -26,6 +26,7 @@ import { ErrorState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import { useResource, errMsg } from "@/lib/use-resource";
 import { money } from "@/lib/format";
+import { CurrencySelect } from "@/components/currency-select";
 import * as api from "@/lib/masterdata-api";
 import * as ops from "@/lib/operations-api";
 import * as fin from "@/lib/finance-api";
@@ -453,8 +454,11 @@ export function DictForm({
       applicability_mode: f.applicability_mode,
       subcategory: f.subcategory || undefined,
       unit_of_measure: f.unit_of_measure || undefined,
+      // A price is only ever sent on CREATE, where the server opens it as the
+      // line's standard expense rate. After that the price lives on Expense
+      // rates (and the overview's pencil), not on this form (14120).
       default_price:
-        f.default_price === "" ? undefined : Number(f.default_price),
+        !isNew || f.default_price === "" ? undefined : Number(f.default_price),
       currency: f.currency || undefined,
       provider_kind: f.provider_kind || undefined,
       proof_source: f.proof_source || undefined,
@@ -814,22 +818,45 @@ export function DictForm({
                   ))}
                 </Select>
               </Field>
-              <Field label={tr("Default price")}>
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  className="num text-right"
-                  value={f.default_price}
-                  onChange={(e) => set({ default_price: e.target.value })}
-                />
-              </Field>
+              {isNew ? (
+                <Field
+                  label={tr("Standard rate")}
+                  hint={tr(
+                    "Optional. Saved as this line's standard expense rate from today — leave it empty if the price is not known yet.",
+                  )}
+                >
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    className="num text-right"
+                    value={f.default_price}
+                    onChange={(e) => set({ default_price: e.target.value })}
+                  />
+                </Field>
+              ) : (
+                <Field
+                  label={tr("Standard rate")}
+                  hint={tr(
+                    "Changed from the pencil on the overview or from Expense rates, so the price has one home and a history.",
+                  )}
+                >
+                  <p className="flex min-h-9 items-center text-sm text-foreground">
+                    {row?.default_price != null
+                      ? money(
+                          Number(row.default_price),
+                          row.default_price_currency || f.currency,
+                        )
+                      : tr("Not set")}
+                  </p>
+                </Field>
+              )}
               <Field label={tr("Currency")}>
-                <Input
+                <CurrencySelect
                   value={f.currency}
-                  onChange={(e) =>
-                    set({ currency: e.target.value.toUpperCase().slice(0, 3) })
-                  }
+                  onChange={(v) => set({ currency: v })}
+                  allowEmpty={false}
+                  aria-label={tr("Currency")}
                 />
               </Field>
               <Field
@@ -928,9 +955,9 @@ export function DictForm({
               k="Compliance"
               v={`${f.receipt_requirement.replace(/_/g, " ").toLowerCase()}${f.requires_justification ? " · justification" : ""}${f.is_billable ? " · billable" : ""}`}
             />
-            {f.default_price ? (
+            {isNew && f.default_price ? (
               <ReviewRow
-                k="Default price"
+                k="Standard rate"
                 v={money(Number(f.default_price), f.currency)}
               />
             ) : null}

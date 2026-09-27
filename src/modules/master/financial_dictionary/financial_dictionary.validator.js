@@ -138,6 +138,17 @@ const rateSupersede = z.object({
   note: z.string().nullish(),
 });
 
+// "Apply to all carriers": one rate, many series. The ids are the carriers
+// left ticked; the container type (if any) applies to every one of them.
+const rateApplyAll = z.object({
+  rate: z.number().nonnegative(),
+  currency: z.string().length(3).optional(),
+  effective_from: day,
+  container_type_ref_id: z.string().uuid().nullish(),
+  rate_provider_ids: z.array(z.string().uuid()).min(1).max(200),
+  note: z.string().nullish(),
+});
+
 // Uploads ride the same base64 data-URL convention as the document vault, so
 // there is one upload shape in the product and no multipart middleware to add.
 const importUpload = z.object({
@@ -159,12 +170,17 @@ const importErrors = z.object({
   rows: z.array(z.object({ row: z.number().int().optional(), reasons: z.array(z.string()).default([]), raw: z.record(z.any()) })).min(1).max(2000),
 });
 
-const update = create.partial();
+// An item's price is its standard expense rate (14120), set through the rate
+// endpoints; an edit cannot carry one. Stripped rather than refused so an old
+// form that still sends the field does not fail the whole save.
+const update = create.omit({ default_price: true }).partial();
 // AI-facing: the item is in the URL for HTTP, in the payload for the copilot.
 const aiUpdate = update.extend({ dictionary_item_id: z.string().uuid() });
+const aiRateSupersede = rateSupersede.extend({ dictionary_item_id: z.string().uuid() });
+const aiRateApplyAll = rateApplyAll.extend({ dictionary_item_id: z.string().uuid() });
 const schemas = {
-  create, update, aiUpdate, refCreate, refUpdate,
-  searchQuery, spendQuery, rateSupersede, importUpload, importCommit, importErrors,
+  create, update, aiUpdate, aiRateSupersede, aiRateApplyAll, refCreate, refUpdate,
+  searchQuery, spendQuery, rateSupersede, rateApplyAll, importUpload, importCommit, importErrors,
 };
 
 /** Query-string validator — same shape as `mw`, but reads req.query. */
@@ -185,6 +201,7 @@ module.exports = {
   searchQuery: qmw("searchQuery"),
   spendQuery: qmw("spendQuery"),
   rateSupersede: mw("rateSupersede"),
+  rateApplyAll: mw("rateApplyAll"),
   importUpload: mw("importUpload"),
   importCommit: mw("importCommit"),
   importErrors: mw("importErrors"),

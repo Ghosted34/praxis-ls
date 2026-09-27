@@ -20,7 +20,9 @@
  *    register's chunk, and tripped `react-refresh/only-export-components` on
  *    every module that mixed a component with a helper.
  */
+import { dictLabel } from "@/lib/dict-label";
 import { tr } from "@/lib/i18n";
+import { amount } from "@/lib/format";
 import * as api from "@/lib/costing-api";
 
 /** Where a costing sheet lives. One route, whether it opens as a page or in a
@@ -93,6 +95,13 @@ export type LineDraft = {
    *  never reaches an approver. */
   price_note?: string | null;
   item_code?: string | null;
+  /** Client-only: this line's unit cost in XAF, unrounded, when it is known —
+   *  from the rate card, or pinned the first time the sheet's currency or rate
+   *  changes. Converting always starts from it, so XAF → EUR → XAF lands back
+   *  on the figure it started from. Cleared when a person types a unit cost. */
+  base_unit_cost?: number | null;
+  /** Same, for a débours VAT typed as a free amount (AMOUNT mode). */
+  base_upstream_vat?: number | null;
 };
 
 export const BLANK_LINE: LineDraft = {
@@ -139,7 +148,7 @@ export const lineKey = (l: LineDraft) =>
 /** A suggested line, as the worksheet holds it. */
 export const fromSuggestion = (s: api.SuggestedLine): LineDraft => ({
   dictionary_item_id: s.dictionary_item_id,
-  label: s.label,
+  label: dictLabel({ label_en: s.label_en ?? s.label, label_fr: s.label_fr }) || s.label,
   qty: s.qty,
   unit_cost: s.unit_cost,
   is_disbursement: s.is_disbursement,
@@ -149,13 +158,77 @@ export const fromSuggestion = (s: api.SuggestedLine): LineDraft => ({
   container_type_label: s.container_type_label,
   disbursement_vat_transparent: s.disbursement_vat_transparent,
   item_code: s.item_code,
-  price_note:
-    s.price_source === "EXPENSE_RATE"
-      ? tr("From the rate card")
-      : s.price_source === "CATALOGUE_DEFAULT"
-        ? tr("Catalogue default")
-        : null,
+  base_unit_cost: s.unit_cost_xaf ?? null,
+  price_note: priceNote(s),
 });
+
+/**
+ * Where a price came from, in words — and, when it was converted into the
+ * sheet's currency, the figure it was converted FROM. The approver sees
+ * "From the rate card · 72 700 XAF", so a number in EUR is never a mystery.
+ */
+export function priceNote(p: {
+  price_source?: string | null;
+  source_unit_cost?: number | null;
+  source_currency?: string | null;
+}): string | null {
+  const from =
+    p.source_unit_cost !== null && p.source_unit_cost !== undefined && p.source_currency
+      ? `${amount(p.source_unit_cost)} ${p.source_currency}`
+      : null;
+  if (p.price_source === "NO_FX")
+    return `${tr("No exchange rate on file for")} ${p.source_currency} — ${from}`;
+  const where =
+    p.price_source === "EXPENSE_RATE"
+      ? tr("From the rate card")
+      : p.price_source === "CATALOGUE_DEFAULT"
+        ? tr("Catalogue default")
+        : null;
+  if (!where) return null;
+  return from ? `${where} · ${from}` : where;
+}
+
+/**
+ * Put every line into a new sheet currency / rate AT ONCE (meeting 5).
+ *
+ * A costing has one currency and one rate — "1 <currency> = rate XAF" — and
+ * each line is in that currency. Changing either changes every line: each is
+ * taken to XAF (its pinned `base_unit_cost`, or its current figure × the OLD
+ * rate) and divided by the NEW rate. The XAF figure is kept on the line, so
+ * a second change starts from the same place instead of compounding rounding.
+ *
+ * A débours VAT in RATE mode needs no conversion — it is re-derived from the
+ * converted net. One typed as a free AMOUNT is converted the same way.
+ */
+export function convertLines(
+  lines: LineDraft[],
+  oldRateToXaf: number,
+  newRateToXaf: number,
+): LineDraft[] {
+  const from = oldRateToXaf > 0 ? oldRateToXaf : 1;
+  const to = newRateToXaf > 0 ? newRateToXaf : 1;
+  if (from === to) return lines;
+  const round2 = (n: number) => Math.round(n * 100) / 100;
+  return lines.map((l) => {
+    const baseUnit =
+      l.base_unit_cost ?? (l.unit_cost === null ? null : Number(l.unit_cost || 0) * from);
+    const next: LineDraft = {
+      ...l,
+      base_unit_cost: baseUnit,
+      unit_cost: baseUnit === null ? null : round2(baseUnit / to),
+    };
+    if (l.is_disbursement && l.upstream_vat_amount !== null && l.upstream_vat_amount !== undefined) {
+      if (l.vat_mode === "AMOUNT") {
+        const baseVat = l.base_upstream_vat ?? Number(l.upstream_vat_amount) * from;
+        next.base_upstream_vat = baseVat;
+        next.upstream_vat_amount = round2(baseVat / to);
+      } else if (l.upstream_vat_rate_percent !== null && l.upstream_vat_rate_percent !== undefined) {
+        next.upstream_vat_amount = deboursVatFromRate(next, l.upstream_vat_rate_percent);
+      }
+    }
+    return next;
+  });
+}
 
 /** A saved line, as the worksheet holds it. */
 export const fromSaved = (l: api.CostingLine): LineDraft => ({

@@ -17,6 +17,8 @@ module.exports = {
   validators: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.validatorCandidates(c)) })),
   // Read-only: returns a PROPOSAL. Nothing is written until the person picks.
   suggest: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.suggestLines(c, q(req))) })),
+  fxRate: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.fxRate(c, q(req))) })),
+  priceLine: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.priceLine(c, q(req))) })),
   get: asyncHandler(async (req, res) => { const r = await req.tenantDb((c) => service.get(c, req.params.id, { lang: lang(req) })); if (!r) throw new AppError("NOT_FOUND", "Costing not found", 404); res.json({ data: r }); }),
   // The budget ledger for one sheet — per line, what is approved, committed and
   // left. Read-only; the service throws 404 for an unknown sheet.

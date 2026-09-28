@@ -25,6 +25,7 @@ import { Input } from "@/components/ui/input";
 import { Pill } from "@/components/ui/pill";
 import { EmptyState, ErrorState, LoadingRow } from "@/components/ui/states";
 import { SplitPane } from "@/components/ui/split-pane";
+import { isDesktopNow } from "@/lib/use-media-query";
 import { PageHeader } from "@/components/data-list";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { ScreenAi } from "@/components/screen-ai";
@@ -80,7 +81,12 @@ export function ServiceTypesPage() {
     // service is open and the list re-fetches without it. The pane then rendered
     // "No service type selected" over a selId that was still set, and nothing
     // re-selected — the only way out was to click another row.
-    if (!rows.length) return;
+    //
+    // A DESKTOP ONLY. On a phone the record is a full-screen sheet over the
+    // list (SplitPane onClose): opening one unasked would cover the list on
+    // arrival, and — because closing clears the selection — re-open the sheet
+    // the moment the reader closed it.
+    if (!rows.length || !isDesktopNow()) return;
     if (!selected) setSelId(rows[0].service_type_id);
   }, [rows, selected]);
 
@@ -107,6 +113,8 @@ export function ServiceTypesPage() {
           max={480}
           activeKind={tr("Service type")}
           active={!!selected}
+          onClose={() => setSelId(null)}
+          sheetTitle={selected ? selected.name_en || selected.name_fr : null}
         >
           <div className="space-y-2">
             <Input
@@ -122,7 +130,7 @@ export function ServiceTypesPage() {
               />
               Show archived
             </label>
-            <div className="max-h-[70vh] space-y-1 overflow-auto rounded-lg border p-1">
+            <div className="space-y-1 rounded-lg border p-1 lg:max-h-[70vh] lg:overflow-auto">
               {list.loading ? (
                 <LoadingRow label="Loading service types…" />
               ) : filtered.length === 0 ? (

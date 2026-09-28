@@ -36,6 +36,7 @@ import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/data-list";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { SplitPane } from "@/components/ui/split-pane";
+import { isDesktopNow } from "@/lib/use-media-query";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
@@ -881,8 +882,11 @@ export function TaxJurisdictionsPage() {
     : list;
   const selected =
     list.find((r) => String(r.jurisdiction_id) === selId) || null;
+  // Opens the first jurisdiction beside a desktop's detail pane — never on a
+  // phone, where it is a full-screen sheet over the list (SplitPane onClose).
   React.useEffect(() => {
-    if (!selId && list.length) setSelId(String(list[0].jurisdiction_id));
+    if (!selId && list.length && isDesktopNow())
+      setSelId(String(list[0].jurisdiction_id));
   }, [list, selId]);
 
   return (
@@ -908,6 +912,8 @@ export function TaxJurisdictionsPage() {
           max={480}
           activeKind={tr("Tax jurisdiction")}
           active={!!selected}
+          onClose={() => setSelId(null)}
+          sheetTitle={selected ? String(selected.name ?? "") : null}
         >
           <div className="space-y-2">
             <Input
@@ -915,7 +921,7 @@ export function TaxJurisdictionsPage() {
               value={q}
               onChange={(e) => setQ(e.target.value)}
             />
-            <div className="max-h-[70vh] space-y-1 overflow-auto rounded-lg border p-1">
+            <div className="space-y-1 rounded-lg border p-1 lg:max-h-[70vh] lg:overflow-auto">
               {loading ? (
                 <LoadingRow label="Loading jurisdictions…" />
               ) : filtered.length === 0 ? (

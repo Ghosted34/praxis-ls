@@ -44,6 +44,7 @@ import { Callout } from "@/components/ui/callout";
 import { Modal } from "@/components/ui/modal";
 import { EmptyState, ErrorState, LoadingRow } from "@/components/ui/states";
 import { SplitPane } from "@/components/ui/split-pane";
+import { isDesktopNow } from "@/lib/use-media-query";
 import { PageHeader } from "@/components/data-list";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { useToast } from "@/components/ui/toast";
@@ -721,8 +722,11 @@ export function ExpenseRatesPage() {
   const [settings, setSettings] = React.useState(false);
 
   const rows = React.useMemo(() => list.data || [], [list.data]);
+  // Opens the first item beside a desktop's detail pane — never on a phone,
+  // where it is a full-screen sheet over the list (SplitPane onClose).
   React.useEffect(() => {
-    if (!selId && rows.length) setSelId(rows[0].dictionary_item_id);
+    if (!selId && rows.length && isDesktopNow())
+      setSelId(rows[0].dictionary_item_id);
   }, [rows, selId]);
   const selected = rows.find((r) => r.dictionary_item_id === selId) || null;
 
@@ -766,8 +770,14 @@ export function ExpenseRatesPage() {
           max={520}
           activeKind={tr("Expense item")}
           active={!!selected}
+          onClose={() => setSelId(null)}
+          sheetTitle={
+            selected
+              ? `${selected.code} · ${selected.label_en || selected.label_fr || ""}`
+              : null
+          }
         >
-          <div className="max-h-[70vh] space-y-1 overflow-auto rounded-lg border p-1">
+          <div className="space-y-1 rounded-lg border p-1 lg:max-h-[70vh] lg:overflow-auto">
             {list.loading ? (
               <LoadingRow label="Loading items…" />
             ) : rows.length === 0 ? (

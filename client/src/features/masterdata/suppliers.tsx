@@ -17,6 +17,7 @@ import { Modal, Field, Select } from "@/components/ui/modal";
 import { usePrompt } from "@/components/ui/use-prompt";
 import { EmptyState, ErrorState, LoadingRow } from "@/components/ui/states";
 import { SplitPane } from "@/components/ui/split-pane";
+import { isDesktopNow } from "@/lib/use-media-query";
 import { PageHeader } from "@/components/data-list";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { SmartCountryPicker } from "@/components/smart-country-picker";
@@ -412,8 +413,10 @@ export function SuppliersPage() {
     ? rows.filter((s) => s.name.toLowerCase().includes(q.toLowerCase()))
     : rows;
   const selected = rows.find((s) => s.supplier_id === selId) || null;
+  // Opens the first supplier beside a desktop's detail pane — never on a
+  // phone, where it is a full-screen sheet over the list (SplitPane onClose).
   React.useEffect(() => {
-    if (!selId && rows.length) setSelId(rows[0].supplier_id);
+    if (!selId && rows.length && isDesktopNow()) setSelId(rows[0].supplier_id);
   }, [rows, selId]);
 
   return (
@@ -443,6 +446,8 @@ export function SuppliersPage() {
           max={480}
           activeKind={tr("Supplier")}
           active={!!selected}
+          onClose={() => setSelId(null)}
+          sheetTitle={selected?.name}
         >
           <div className="space-y-2">
             <Input
@@ -450,7 +455,7 @@ export function SuppliersPage() {
               value={q}
               onChange={(e) => setQ(e.target.value)}
             />
-            <div className="max-h-[70vh] space-y-1 overflow-auto rounded-lg border p-1">
+            <div className="space-y-1 rounded-lg border p-1 lg:max-h-[70vh] lg:overflow-auto">
               {suppliers.loading ? (
                 <LoadingRow label="Loading suppliers…" />
               ) : filtered.length === 0 ? (

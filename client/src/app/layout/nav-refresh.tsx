@@ -63,7 +63,11 @@ import {
 import { TENANT_KEY } from "@/lib/query-client";
 import { getConnection, useRetryOnReconnect } from "@/lib/connection";
 import { useDataFreshness, MIN_ARC } from "@/lib/data-freshness";
-import { applyPendingUpdate, useUpdateReady } from "@/lib/pwa-update";
+import {
+  applyPendingUpdate,
+  checkForUpdate,
+  useUpdateReady,
+} from "@/lib/pwa-update";
 import { isEditing } from "@/lib/is-editing";
 import { useHoldMenu } from "./use-hold-menu";
 
@@ -213,6 +217,10 @@ export function NavRefresh() {
     setArmedBoth(false);
     workingRef.current = true;
     setWorking(true);
+    // "Are these numbers current?" includes the code drawing them. A soft
+    // refresh makes no navigation, so without this it could never find a
+    // deploy; the answer arrives as the toast and this control's dot.
+    void checkForUpdate({ force: true });
     const started = Date.now();
     try {
       // The coarse sweep, deliberately: a write in an ERP invalidates more than

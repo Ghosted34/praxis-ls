@@ -52,6 +52,7 @@ import { DraftBanner } from "@/components/ui/draft-banner";
 import { useFormDraft } from "@/lib/form-draft";
 import { submitQueued } from "@/lib/outbox";
 import { SplitPane } from "@/components/ui/split-pane";
+import { isDesktopNow } from "@/lib/use-media-query";
 import { PageHeader } from "@/components/data-list";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { CountrySelect } from "@/components/country-select";
@@ -946,8 +947,10 @@ export function CorporateEntitiesPage() {
   const selected =
     entities.find((e) => e.entity_id === selId) ??
     (selRow && selRow.entity_id === selId ? selRow : null);
+  // Opens the first entity beside a desktop's detail pane — never on a phone,
+  // where it is a full-screen sheet over the list (SplitPane onClose).
   React.useEffect(() => {
-    if (!selId && entities.length) {
+    if (!selId && entities.length && isDesktopNow()) {
       setSelId(entities[0].entity_id);
       setSelRow(entities[0]);
     }
@@ -1042,6 +1045,15 @@ export function CorporateEntitiesPage() {
           max={480}
           activeKind={tr("Corporate entity")}
           active={!!selected}
+          onClose={() => {
+            setSelId(null);
+            setSelRow(null);
+          }}
+          sheetTitle={
+            selected
+              ? [selected.code, selected.legal_name].filter(Boolean).join(" · ")
+              : null
+          }
         >
           <div className="space-y-2">
             <Input
@@ -1049,7 +1061,7 @@ export function CorporateEntitiesPage() {
               value={q}
               onChange={(e) => setQ(e.target.value)}
             />
-            <div className="max-h-[70vh] space-y-1 overflow-auto rounded-lg border p-1">
+            <div className="space-y-1 rounded-lg border p-1 lg:max-h-[70vh] lg:overflow-auto">
               {loading ? (
                 <LoadingRow label="Loading entities…" />
               ) : entities.length === 0 ? (

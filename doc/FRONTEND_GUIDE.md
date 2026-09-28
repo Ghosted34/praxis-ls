@@ -360,7 +360,8 @@ return `{ rows | data, error, loading, reload }`.
 | Crash safety                     | `<ErrorBoundary>`                                                                         | Already at the app root and per route; add around risky widgets.                                                                                                |
 | Unknown payload                  | `<DataView>`                                                                              | Never `<pre>{JSON.stringify(…)}</pre>` in the UI.                                                                                                               |
 | Edit one field                   | `<InlineEdit>`                                                                            | Descriptive master data only — **never** a field on a posted document (§7.3).                                                                                   |
-| Master-detail                    | `<SplitPane>`                                                                             | Keyboard-resizable. Replaces `lg:grid-cols-[260px_1fr]`.                                                                                                        |
+| Master-detail                    | `<SplitPane>`                                                                             | Keyboard-resizable. Replaces `lg:grid-cols-[260px_1fr]`. Pass `onClose` and a phone opens the record in a `<RecordSheet>` (§3.14).                              |
+| A list's open record on a phone  | `<RecordSheet>`                                                                           | Full screen, ✕ top right, Back closes it, the list untouched underneath. `<SplitPane onClose>` renders it for you (§3.14).                                      |
 | Row in a master-detail index     | `<IndexRow>`                                                                              | The open record's ground + accent rail + `aria-current`. Pair with `<SplitPane activeKind>` (§3.14).                                                            |
 | Bulk actions                     | `<BulkBar>` + `useRowSelection`                                                           | Announces the count; scoped to visible rows (§7.2).                                                                                                             |
 | Column control                   | `<ColumnsMenu>` + `useColumnVisibility`                                                   | Persists the HIDDEN set, per screen (§7.2).                                                                                                                     |
@@ -375,6 +376,18 @@ Stories: `src/components/ui/primitives.stories.tsx`.
 The app shell wraps content in `<main>` with responsive padding, so screens **don't** add outer
 padding or page chrome. One `<PageContainer>` per screen, at the top; nesting them is a bug.
 Don't add `max-w-*` inside one — if a section must be narrower, constrain the section.
+
+**The bottom of a long page is an in-flow spacer, not `<main>`'s padding.** `<main>`'s
+`pb-24` is the clearance for the phone's fixed bottom nav, but the pull-to-refresh wrapper
+between `<main>` and the page is `h-full` (the chat and AI screens need a definite height), so
+a long page OVERFLOWS that wrapper — and a scroll container appends its end padding only after
+its in-flow children, never after a descendant's overflow. Every long page lost the clearance:
+its last ~66px sat behind the nav with the scroll already at its end, reported as "the 360
+won't scroll down". The shell now closes every page with an empty block of the same height
+(`app-shell.tsx`, after the routed screen). On a full-height screen it lands exactly in the
+space the padding reserves and adds no scroll; on a long page it carries the clearance with the
+overflow. **Change `<main>`'s padding and you change that spacer with it.**
+`e2e/phone-record-sheet.spec.ts` asserts the end of a long page clears the nav.
 
 ### 3.7 Routes and bundle chunks
 
@@ -1022,6 +1035,51 @@ becomes a standing tax on the screen. Where the detail is optional rather than t
 is open, give the body the width the rest of the time, and branch the phone's sheet in
 JavaScript so the sheet cannot appear beside the pane — `features/workspace/tasks/tasks-page.tsx`.
 
+**On a phone the record is a sheet over the list, not the bottom of the page.** Below `lg` a
+`<SplitPane>` without `onClose` stacks its panes, which put the open record under the WHOLE
+list: tap a client, scroll past every other client to read it, scroll back to open the next.
+Pass `onClose` and the list is the page while the record opens in a full-screen
+`<RecordSheet>` over it — a ✕ top right, Back to close, and the reader lands exactly where they
+left the list. Every list-with-360 screen does this; the inbox is the one split screen that
+keeps the stack (its thread view has its own header and close).
+
+```tsx
+<SplitPane
+  storageKey="master.suppliers"
+  label="Supplier list width"
+  activeKind={tr("Supplier")}
+  active={!!selected}
+  onClose={() => setSelId(null)}   // how the sheet deselects — and the opt-in
+  sheetTitle={selected?.name}      // the sheet's header; falls back to activeKind
+>
+```
+
+Four rules, each of which shipped broken at least once while this was built:
+
+1. **Never open the first row by itself on a phone.** "Select the first row so the pane is
+   never empty" is right beside a desktop's detail pane and wrong on a phone, where opening it
+   covers the list the reader came to — and, on a screen that re-selects whenever nothing is
+   selected, reopens the sheet the moment it is closed. Gate the effect on `isDesktopNow()`
+   (`lib/use-media-query.ts`), not on `useIsDesktop()`: the hook answers `true` on its first
+   render, and an effect that runs in that commit — a list served from cache — acts on it.
+2. **A selection already in the URL passes `selectionInUrl`.** `useRecordParam`'s `?focus=`
+   is already the step Back undoes; pass its `close` as `onClose` and the sheet adds nothing.
+   Any other screen gets the step from the sheet itself (`?sheet=1`), and its ✕ steps back
+   over it rather than pushing a second entry — otherwise Forward reopens a sheet with nothing
+   in it.
+3. **The list flows with the page on a phone.** An index pane written `max-h-[70vh]
+   overflow-auto` is a scroller inside the page's scroller once the detail pane is gone —
+   two thumbs' worth of scrolling for one list. Write it `lg:max-h-[70vh] lg:overflow-auto`.
+4. **Nothing inside the record may offer "Open as a page ↗" on a phone.** The sheet is
+   already full screen; that link is a way out of a split pane, so it renders on a desktop
+   only.
+
+Closing lands where the reader was because nothing under the sheet moves: the list stays
+mounted (the sheet is an overlay, not a route), focus returns to the row with
+`preventScroll` (a plain `focus()` scrolls a half-visible row into view), and no scroll is
+reset. `e2e/phone-record-sheet.spec.ts` measures it — the list's scroll under the open sheet
+against the scroll after ✕ and after Back.
+
 ### 3.15 The sign-in screen — the device remembers, and lets go
 
 `features/auth/login-modal.tsx` is the front door, and it is **identity-first**: once a
@@ -1159,6 +1217,7 @@ in English (`"The record": "Le dossier"`), not a dossier.
 - [ ] No `<Input type="date">` or `type="datetime-local"` — `<DateField>` / `<DateTimeField>`; no locale-less `toLocaleDateString()`; no ISO date on a document or export (§3.12).
 - [ ] New shared component? Add a story, a usage example, a best-practices note and a test.
 - [ ] Row actions go in `<RowActions>` — that is what keeps the row at its density height (§7.1).
+- [ ] A list with a 360 (`<SplitPane>`) passes `onClose`, so a phone opens the record in a sheet, and never opens its first row by itself on a phone — gate that effect on `isDesktopNow()` (§3.14).
 - [ ] `npm run lint`, `npm test`, `npm run check:contrast`, `npm run check:motion`, `npm run check:palette`, `npm run check:docs`, `npm run check:schemas`, `npm run build`, `npm run check:bundle`, `npm run check:shared` and `npm run test:e2e` all pass in `client/`, and `npm run check:dates` at the repo root.
 - [ ] Screen registered in `app.tsx` via `lazyNamed(...)`; **no** new `manualChunks` bucket (§3.7).
 - [ ] RBAC action is **`edit`**, not `update` (matches the backend).

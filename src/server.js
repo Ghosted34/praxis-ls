@@ -39,6 +39,7 @@ const registry = require("./services/tenant/registry.service");
 const publicHead = require("./shared/http/public-head");
 const publicWebPaths = require("./shared/http/public-web-paths");
 const inlineScriptHashes = require("./shared/http/inline-script-hashes");
+const { setSpaCacheHeaders } = require("./shared/http/spa-cache");
 
 /**
  * Lifetime of a presigned /media URL (s3 driver). Short on purpose: these are
@@ -750,7 +751,14 @@ function buildApp() {
   // Skipped on the admin console host so the tenant app never renders there.
   const clientDist = path.resolve(__dirname, "../client/dist");
   if (fs.existsSync(path.join(clientDist, "index.html"))) {
-    const clientStatic = express.static(clientDist, { index: false, maxAge: "1h" });
+    // `setHeaders` runs after express.static has written its own max-age, so
+    // the service worker, its imported push handler and the shell override it
+    // with no-cache — see shared/http/spa-cache.js for why those three.
+    const clientStatic = express.static(clientDist, {
+      index: false,
+      maxAge: "1h",
+      setHeaders: setSpaCacheHeaders,
+    });
     // The surface check alongside the console check, and this is the whole point
     // of recording a surface: without it every host that is not the admin console
     // — a tenant's own domain included — is answered here with the staff PWA, and

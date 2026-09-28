@@ -5,6 +5,7 @@
  */
 import { pageShell } from "@/lib/layout";
 import { SplitPane } from "@/components/ui/split-pane";
+import { isDesktopNow } from "@/lib/use-media-query";
 import { IndexRow } from "@/components/ui/index-row";
 import { tr } from "@/lib/i18n";
 import * as React from "react";
@@ -348,6 +349,7 @@ export function LocationsPage() {
     record: selected,
     id: selId,
     open: select,
+    close,
     preselect,
   } = useRecordParam(rows, (l) => l.location_id);
   const filtered = q
@@ -357,9 +359,11 @@ export function LocationsPage() {
     : rows;
   // The list opens on its first row. `preselect` writes the same param with
   // `replace`: the user did not navigate here, so it must not become a step
-  // the back arrow can land on.
+  // the back arrow can land on. A desktop only — on a phone the slot opens as
+  // a full-screen sheet over the list (SplitPane onClose), and opening one
+  // unasked would cover the list on arrival.
   React.useEffect(() => {
-    if (!selId && rows.length) preselect(rows[0]);
+    if (!selId && rows.length && isDesktopNow()) preselect(rows[0]);
   }, [rows, selId, preselect]);
   // Names this step for the arrow tooltips and the hold-menu.
   useTrailTitle(selected ? api.locationLabel(selected) : null);
@@ -399,6 +403,9 @@ export function LocationsPage() {
           max={460}
           activeKind={tr("Location")}
           active={!!selected}
+          onClose={close}
+          sheetTitle={selected ? api.locationLabel(selected) : null}
+          selectionInUrl
         >
           <div className="space-y-2">
             <Input
@@ -406,7 +413,7 @@ export function LocationsPage() {
               value={q}
               onChange={(e) => setQ(e.target.value)}
             />
-            <div className="max-h-[70vh] space-y-2 overflow-auto rounded-lg border p-1">
+            <div className="space-y-2 rounded-lg border p-1 lg:max-h-[70vh] lg:overflow-auto">
               {locs.loading ? (
                 <div className="px-3 py-4 micro">{tr("Loading…")}</div>
               ) : groups.length === 0 ? (

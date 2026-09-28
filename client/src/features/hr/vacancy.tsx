@@ -6,6 +6,7 @@
  */
 import { pageShell } from "@/lib/layout";
 import { SplitPane } from "@/components/ui/split-pane";
+import { isDesktopNow } from "@/lib/use-media-query";
 import { IndexRow } from "@/components/ui/index-row";
 import { tr } from "@/lib/i18n";
 import * as React from "react";
@@ -891,7 +892,12 @@ export function VacanciesPage() {
   React.useEffect(() => {
     // Also re-selects when a filter change hides the current row, so the pane
     // beside the list never sits on a vacancy the list no longer shows.
-    if (!selected && rows.length) setSelId(rows[0].vacancy_id);
+    //
+    // A desktop only. On a phone the vacancy is a full-screen sheet over the
+    // list (SplitPane onClose): choosing one unasked would cover the list on
+    // arrival — and, since closing clears the selection, reopen the sheet the
+    // moment it was closed.
+    if (!selected && rows.length && isDesktopNow()) setSelId(rows[0].vacancy_id);
   }, [rows, selected]);
 
   return (
@@ -914,6 +920,8 @@ export function VacanciesPage() {
           max={420}
           activeKind={tr("Vacancy")}
           active={!!selected}
+          onClose={() => setSelId(null)}
+          sheetTitle={selected ? selected.title || tr("Vacancy") : null}
         >
           <div className="space-y-2">
             <div
@@ -944,7 +952,7 @@ export function VacanciesPage() {
                 );
               })}
             </div>
-            <div className="max-h-[70vh] space-y-1 overflow-auto rounded-lg border p-1">
+            <div className="space-y-1 rounded-lg border p-1 lg:max-h-[70vh] lg:overflow-auto">
               {vacancies.loading ? (
                 <LoadingRow />
               ) : rows.length === 0 ? (

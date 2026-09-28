@@ -28,6 +28,7 @@ import { Button } from "@/components/ui/button";
 import { Pill } from "@/components/ui/pill";
 import { Callout } from "@/components/ui/callout";
 import { SplitPane } from "@/components/ui/split-pane";
+import { isDesktopNow } from "@/lib/use-media-query";
 import { PageHeader } from "@/components/data-list";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { Input } from "@/components/ui/input";
@@ -1604,11 +1605,19 @@ export function CurrenciesPage() {
     .filter((c) => c.is_active)
     .map((c) => String(c.code));
 
+  // Beside a desktop's detail pane the first currency opens by itself, and a
+  // currency that leaves the list hands its pane to the first one. On a phone
+  // the currency is a full-screen sheet over the list (SplitPane onClose):
+  // nothing opens unasked, and a currency that disappears closes its sheet
+  // rather than swapping a different one in under the reader.
   React.useEffect(() => {
-    if (!selId && rows.length) setSelId(rows[0].code);
+    const desktop = isDesktopNow();
+    if (!selId && rows.length && desktop) setSelId(rows[0].code);
     if (selId && rows.length && !rows.some((r) => r.code === selId))
-      setSelId(rows[0]?.code ?? null);
+      setSelId(desktop ? (rows[0]?.code ?? null) : null);
   }, [rows, selId]);
+
+  const openCurrency = rows.find((r) => r.code === selId) ?? null;
 
   // Bumped by every sync, so the open currency panel re-reads its rates.
   const [syncTick, setSyncTick] = React.useState(0);
@@ -1721,6 +1730,8 @@ export function CurrenciesPage() {
           max={520}
           activeKind={tr("Currency")}
           active={!!selId}
+          onClose={() => setSelId(null)}
+          sheetTitle={openCurrency ? `${openCurrency.code} · ${openCurrency.name}` : selId}
         >
           <div className="space-y-2">
             <Input
@@ -1728,7 +1739,7 @@ export function CurrenciesPage() {
               value={q}
               onChange={(e) => setQ(e.target.value)}
             />
-            <div className="max-h-[72vh] space-y-1 overflow-auto rounded-lg border p-1">
+            <div className="space-y-1 rounded-lg border p-1 lg:max-h-[72vh] lg:overflow-auto">
               {filtered.length === 0 ? (
                 <div className="px-3 py-4 text-sm text-muted-foreground">
                   No match.

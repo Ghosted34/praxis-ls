@@ -38,6 +38,7 @@ import { DictImportModal } from "./financial-dictionary-import";
 import { SetRateModal } from "./rate-modals";
 import { PencilIcon } from "@/components/ui/icons";
 import { dictLabel } from "@/lib/dict-label";
+import { isDesktopNow } from "@/lib/use-media-query";
 
 const shell = pageShell.wide;
 
@@ -75,9 +76,14 @@ export function FinancialDictionaryPage() {
   const [importing, setImporting] = React.useState(false);
 
   const rows = React.useMemo(() => list.data || [], [list.data]);
+  // The first line opens by itself beside a desktop's detail pane. Not on a
+  // phone: there the line opens as a full-screen sheet, and opening it unasked
+  // would cover the list the reader came to (SplitPane `onClose`).
   React.useEffect(() => {
-    if (!selId && rows.length) setSelId(rows[0].dictionary_item_id);
+    if (!selId && rows.length && isDesktopNow())
+      setSelId(rows[0].dictionary_item_id);
   }, [rows, selId]);
+  const selectedRow = rows.find((r) => r.dictionary_item_id === selId);
 
   return (
     <section className={shell}>
@@ -129,8 +135,16 @@ export function FinancialDictionaryPage() {
           max={520}
           activeKind={tr("Dictionary item")}
           active={!!selId}
+          onClose={() => setSelId(null)}
+          sheetTitle={
+            selectedRow
+              ? `${selectedRow.code} · ${selectedRow.label_en || selectedRow.label_fr || ""}`
+              : null
+          }
         >
-          <div className="max-h-[70vh] space-y-1 overflow-auto rounded-lg border p-1">
+          {/* Its own scroller beside a desktop's detail pane; on a phone the
+              list IS the page, so it flows with the page's one scroll. */}
+          <div className="space-y-1 rounded-lg border p-1 lg:max-h-[70vh] lg:overflow-auto">
             {list.loading ? (
               <LoadingRow label="Loading dictionary…" />
             ) : rows.length === 0 ? (

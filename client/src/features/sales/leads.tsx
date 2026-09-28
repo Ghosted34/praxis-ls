@@ -29,6 +29,7 @@ import { StatusPill } from "@/components/ui/pill";
 import { Segmented } from "@/components/ui/segmented";
 import { Chips } from "@/components/ui/chips";
 import { SplitPane } from "@/components/ui/split-pane";
+import { isDesktopNow, useIsDesktop } from "@/lib/use-media-query";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { Avatar } from "@/components/ui/avatar";
 import { Link } from "react-router-dom";
@@ -124,9 +125,13 @@ function LeadsTab() {
 
   // Select the first lead once the list arrives, so the right-hand pane is
   // never an empty frame on a register that has rows — same as client-360.
+  // A desktop only: on a phone the lead opens as a full-screen sheet over the
+  // list (SplitPane onClose), and opening one unasked covers the list.
   React.useEffect(() => {
-    if (!selId && filtered.length) setSelId(String(filtered[0].lead_id));
+    if (!selId && filtered.length && isDesktopNow())
+      setSelId(String(filtered[0].lead_id));
   }, [filtered, selId]);
+  const isDesktop = useIsDesktop();
 
   const selected =
     (rows || []).find((r) => String(r.lead_id) === selId) || null;
@@ -170,6 +175,8 @@ function LeadsTab() {
           max={480}
           activeKind={tr("Lead")}
           active={!!selected}
+          onClose={() => setSelId(null)}
+          sheetTitle={selected ? String(selected.company_name || "") : null}
         >
           <div className="space-y-2">
             <Input
@@ -177,7 +184,7 @@ function LeadsTab() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
-            <div className="max-h-[70vh] space-y-1 overflow-auto rounded-lg border p-1">
+            <div className="space-y-1 rounded-lg border p-1 lg:max-h-[70vh] lg:overflow-auto">
               {rows === null ? (
                 <LoadingRow label="Loading leads…" />
               ) : filtered.length === 0 ? (
@@ -209,14 +216,19 @@ function LeadsTab() {
           </div>
           {selected ? (
             <div className="space-y-3">
-              <div className="flex justify-end">
-                <Link
-                  to={`/sales/leads/${selId}`}
-                  className="micro hover:underline"
-                >
-                  Open as a page ↗
-                </Link>
-              </div>
+              {/* A way out of the split pane into a page. On a phone the lead
+                  is already full screen, in a sheet, so there is nowhere
+                  further to go. */}
+              {isDesktop && (
+                <div className="flex justify-end">
+                  <Link
+                    to={`/sales/leads/${selId}`}
+                    className="micro hover:underline"
+                  >
+                    Open as a page ↗
+                  </Link>
+                </div>
+              )}
               <LeadDossier
                 leadId={String(selected.lead_id)}
                 // The name and state are already in the row that was clicked,

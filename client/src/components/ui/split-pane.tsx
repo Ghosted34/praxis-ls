@@ -18,13 +18,25 @@
  * be fixed after the fact. Building the third one operable was cheaper than
  * fixing it would have been.
  *
- * IT ONLY SPLITS ON DESKTOP. Below `lg` the panes stack and the separator is not
- * rendered — dragging a divider is not a phone gesture, and 260px of a 360px
- * viewport is not a layout. `lg` is where the existing grids already switched,
- * so no screen changes behaviour at a width it did not already change at.
+ * IT ONLY SPLITS ON DESKTOP. Below `lg` the separator is not rendered —
+ * dragging a divider is not a phone gesture, and 260px of a 360px viewport is
+ * not a layout. `lg` is where the existing grids already switched, so no screen
+ * changes behaviour at a width it did not already change at.
+ *
+ * BELOW `lg`, PASS `onClose` AND THE RECORD OPENS IN A SHEET. Without it the
+ * panes stack, which put the open record underneath the WHOLE list: tap a
+ * client, then scroll past every other client to read it. With it, the list is
+ * the page and the record is a full-screen `<RecordSheet>` over it, with a ✕
+ * top right and Back to close it, landing exactly where the reader left the
+ * list. `onClose` is how the sheet deselects, so it is also what makes the
+ * sheet possible — which is why it is the opt-in. Pair it with a screen that
+ * does NOT open its first row by itself on a phone (`isDesktopNow()`), or the
+ * sheet covers the list the moment the page loads.
  *
  * @example
- * <SplitPane storageKey="master.clients" label="Client list width">
+ * <SplitPane storageKey="master.clients" label="Client list width"
+ *            activeKind={tr("Client")} active={!!selected}
+ *            onClose={() => setSelId(null)} sheetTitle={selected?.name}>
  *   <ClientIndex … />
  *   <ClientDetail … />
  * </SplitPane>
@@ -49,6 +61,9 @@
  */
 import * as React from "react";
 import { cn } from "@/lib/cn";
+import { tr } from "@/lib/i18n";
+import { useIsDesktop } from "@/lib/use-media-query";
+import { RecordSheet } from "@/components/ui/record-sheet";
 
 const PREFIX = "praxis.split.";
 const STEP = 16;
@@ -71,6 +86,9 @@ export function SplitPane({
   max = 560,
   activeKind,
   active,
+  onClose,
+  sheetTitle,
+  selectionInUrl = false,
   className,
 }: {
   /** Exactly two: the index pane, then the detail pane. */
@@ -91,8 +109,24 @@ export function SplitPane({
   activeKind?: string;
   /** Is a record actually open? Usually `!!selected`. */
   active?: boolean;
+  /**
+   * Close the open record — usually `() => setSelId(null)`, or
+   * `useRecordParam`'s `close`. Below `lg` this is what turns the detail pane
+   * into a full-screen sheet over the list (see the header). Desktop ignores it.
+   */
+  onClose?: () => void;
+  /** The open record's name, for the phone sheet's header. Falls back to
+   *  `activeKind`. */
+  sheetTitle?: string | null;
+  /**
+   * The selection is a URL parameter (`useRecordParam`'s `?focus=`), so opening
+   * a record is already a step Back can undo. Otherwise the sheet adds that
+   * step itself. See `RecordSheet.ownsHistory`.
+   */
+  selectionInUrl?: boolean;
   className?: string;
 }) {
+  const isDesktop = useIsDesktop();
   const [size, setSize] = React.useState(() => read(storageKey, defaultSize));
   /** The width to restore to. Non-null means the index pane is collapsed. */
   const [collapsedFrom, setCollapsedFrom] = React.useState<number | null>(null);
@@ -165,6 +199,26 @@ export function SplitPane({
       toggleCollapse();
     }
   };
+
+  // The phone's layout: the list IS the page, the record is a sheet over it.
+  // Decided in JavaScript, not with `lg:hidden` — the sheet is a portal, and a
+  // CSS wrapper hides nothing that renders into <body> (FRONTEND_GUIDE §3.11).
+  if (!isDesktop && onClose) {
+    return (
+      <div className={className}>
+        {children[0]}
+        <RecordSheet
+          open={!!active}
+          onClose={onClose}
+          eyebrow={activeKind}
+          title={sheetTitle || activeKind || tr("Details")}
+          ownsHistory={!selectionInUrl}
+        >
+          {children[1]}
+        </RecordSheet>
+      </div>
+    );
+  }
 
   return (
     <div

@@ -7,6 +7,7 @@
  */
 import { pageShell } from "@/lib/layout";
 import { SplitPane } from "@/components/ui/split-pane";
+import { isDesktopNow } from "@/lib/use-media-query";
 import { IndexRow } from "@/components/ui/index-row";
 import { SectionTabs } from "@/components/ui/section-tabs";
 import { tr } from "@/lib/i18n";
@@ -2211,6 +2212,7 @@ export function EmployeesPage() {
     id: selId,
     open: select,
     openId: selectId,
+    close,
     preselect,
   } = useRecordParam(rows, (e) => e.employee_id);
   /*
@@ -2235,9 +2237,11 @@ export function EmployeesPage() {
   const awaitingLogin = rows.filter((e) => !e.account_user_id).length;
   // The list opens on its first row. `preselect` writes the same param with
   // `replace`: the user did not navigate here, so it must not become a step
-  // the back arrow can land on.
+  // the back arrow can land on. A desktop only — on a phone the person opens
+  // as a full-screen sheet over the list (SplitPane onClose), and opening one
+  // unasked would cover the list on arrival.
   React.useEffect(() => {
-    if (!selId && rows.length) preselect(rows[0]);
+    if (!selId && rows.length && isDesktopNow()) preselect(rows[0]);
   }, [rows, selId, preselect]);
   // Names this step for the arrow tooltips and the hold-menu.
   useTrailTitle(selected ? selected.full_name : null);
@@ -2262,6 +2266,9 @@ export function EmployeesPage() {
           max={480}
           activeKind={tr("Employee")}
           active={!!selected}
+          onClose={close}
+          sheetTitle={selected?.full_name}
+          selectionInUrl
         >
           <div className="space-y-2">
             <Input
@@ -2292,7 +2299,7 @@ export function EmployeesPage() {
                 </button>
               ))}
             </div>
-            <div className="max-h-[70vh] space-y-1 overflow-auto rounded-lg border p-1">
+            <div className="space-y-1 rounded-lg border p-1 lg:max-h-[70vh] lg:overflow-auto">
               {employees.loading ? (
                 <div className="px-3 py-4 micro">{tr("Loading…")}</div>
               ) : filtered.length === 0 ? (

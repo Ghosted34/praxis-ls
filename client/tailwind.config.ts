@@ -260,6 +260,15 @@ export default {
           to: { opacity: "1", transform: "none" },
         },
         "grow-x": { from: { transform: "scaleX(0)" }, to: { transform: "scaleX(1)" } },
+        // The phone's record sheet (components/ui/record-sheet.tsx): a layer
+        // arriving from below, so it reads as ON TOP of the list rather than
+        // replacing it — which is what tells the reader the list is still
+        // there when they close it. 24px, not the full height: a travel that
+        // long in the budget reads as a lurch.
+        "sheet-in": {
+          from: { opacity: "0", transform: "translateY(24px)" },
+          to: { opacity: "1", transform: "none" },
+        },
       },
       animation: {
         // Was 0.35s with a 4px translate. Entrance motion on a screen opened
@@ -273,6 +282,7 @@ export default {
         "slide-in-right": "slide-in-right 0.22s cubic-bezier(0.2, 0.8, 0.2, 1) both",
         "pop-in": "pop-in 0.2s cubic-bezier(0.2, 0.8, 0.2, 1) both",
         "grow-x": "grow-x 0.25s ease-out both",
+        "sheet-in": "sheet-in 0.2s cubic-bezier(0.2, 0.8, 0.2, 1) both",
       },
     },
   },

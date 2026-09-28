@@ -101,6 +101,7 @@ import { type EffectivePwa } from "@/lib/pwa-config";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { PageSkeleton } from "@/components/ui/skeleton";
 import { PullToRefresh } from "@/components/ui/pull-to-refresh";
+import { checkForUpdate } from "@/lib/pwa-update";
 import { LockIcon, XIcon } from "@/components/ui/icons";
 import { ActionErrorBanner } from "@/components/action-error-banner";
 import { AccessBanner } from "@/app/layout/access-banner";
@@ -730,8 +731,16 @@ export function AppShell() {
    * survive (stale-while-revalidate, like a native app). The control tower
    * shipped this gesture on its own; hoisting it to the shell is what makes the
    * pull work on EVERY screen, which is what users expect from a mobile app.
+   *
+   * It also asks for a new BUILD. On an installed phone app there is no reload
+   * button, so this pull is what a person does when they suspect they are out
+   * of date — and before this it could never find a deploy, because a soft
+   * refresh makes no navigation and so the browser never re-checks the service
+   * worker. Not awaited: the check announces through the update toast on its
+   * own, and the spinner is about the data.
    */
   const softRefresh = React.useCallback(async () => {
+    void checkForUpdate({ force: true });
     await qc.invalidateQueries();
   }, [qc]);
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
@@ -1202,6 +1211,30 @@ export function AppShell() {
                       </RouteAccessGate>
                     </React.Suspense>
                   </ErrorBoundary>
+                  {/*
+                    THE END OF THE PAGE, restored. Its height mirrors <main>'s
+                    padding-bottom (`pb-24 md:pb-6`), and it has to change with it.
+
+                    The wrapper above is `h-full` so full-height screens (the comms
+                    chat, the AI workspace) keep their height chain — but a LONG
+                    page overflows that fixed box, and a scroll container only
+                    appends its end padding after its in-flow children's boxes,
+                    never after a descendant's overflow. So <main>'s `pb-24` —
+                    the clearance for the fixed bottom nav — silently stopped
+                    counting on every page taller than the screen, and the last
+                    ~66px of each one sat behind the nav with the scroll already
+                    at its end. On a phone that read as "the 360 will not scroll
+                    down".
+
+                    This spacer is the end padding put back in the flow. On a
+                    full-height screen it lands exactly in the space <main>'s
+                    padding already reserves, so it adds no scroll at all; on a
+                    long page it follows the overflow and carries the clearance
+                    with it. `pointer-events-none` because on the AI workspace it
+                    overlaps the bottom of a section that bleeds into <main>'s
+                    padding with negative margins.
+                  */}
+                  <div aria-hidden className="pointer-events-none h-24 md:h-6" />
                 </PullToRefresh>
               </main>
             </div>

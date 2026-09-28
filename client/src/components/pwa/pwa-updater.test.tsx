@@ -189,3 +189,35 @@ describe("PwaUpdater — clicking Update always reloads", () => {
     expect(reload).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("PwaUpdater — the toast does not wait for the plugin", () => {
+  it("shows a build the plugin never reported (found while a phone was relaunching the app)", async () => {
+    // The plugin says nothing: its `updatefound` listener was attached after the
+    // browser's own launch check had already found the build.
+    needRefreshState.current = false;
+    const installing = makeWorker("installing");
+    installSwMock({
+      active: makeWorker("activated"),
+      waiting: null,
+      installing,
+    });
+
+    render(<PwaUpdater />);
+
+    expect(
+      await screen.findByRole("button", { name: "Update" }),
+    ).toBeInTheDocument();
+  });
+
+  it("stays quiet on a first install — that is offline-ready, not a new version", async () => {
+    needRefreshState.current = false;
+    installSwMock({ active: null, waiting: null, installing: makeWorker("installing") });
+
+    render(<PwaUpdater />);
+    await waitFor(() =>
+      expect(navigator.serviceWorker.getRegistration).toHaveBeenCalled(),
+    );
+
+    expect(screen.queryByRole("button", { name: "Update" })).toBeNull();
+  });
+});

@@ -17,6 +17,7 @@ import { Input } from "./input";
 import { Textarea } from "./textarea";
 import { Field, Modal } from "./modal";
 import { Dialog, ConfirmDialog } from "./dialog";
+import { RecordSheet } from "./record-sheet";
 import { Select, NativeSelect } from "./select";
 import { Checkbox, RadioGroup } from "./checkbox";
 import { Segmented } from "./segmented";
@@ -402,6 +403,7 @@ export const Overlays = () => {
   const [dialog, setDialog] = React.useState(false);
   const [legacy, setLegacy] = React.useState(false);
   const [confirm, setConfirm] = React.useState(false);
+  const [sheet, setSheet] = React.useState(false);
 
   return (
     <>
@@ -459,6 +461,32 @@ export const Overlays = () => {
         confirmLabel="Delete rate card"
         destructive
       />
+
+      <Row label="RecordSheet — a list's open record on a phone: full screen, ✕ top right, Back closes it. <SplitPane onClose> renders it below lg.">
+        <Button variant="outline" onClick={() => setSheet(true)}>
+          Open a supplier
+        </Button>
+      </Row>
+
+      <RecordSheet
+        open={sheet}
+        onClose={() => setSheet(false)}
+        eyebrow="Supplier"
+        title="Douala Port Services SARL"
+      >
+        <div className="space-y-4">
+          <KpiRow stack>
+            <KpiTile label="Outstanding" value="1,250,000 XAF" />
+            <KpiTile label="Open POs" value="4" />
+          </KpiRow>
+          {Array.from({ length: 12 }, (_, i) => (
+            <p key={i} className="text-sm text-muted-foreground">
+              Section {i + 1} — the record scrolls inside the sheet, and the
+              list under it keeps its own place.
+            </p>
+          ))}
+        </div>
+      </RecordSheet>
 
       <Row label="DropdownMenu — arrow keys, Escape, focus restore">
         <DropdownMenu trigger={<Button variant="outline">Row actions</Button>}>

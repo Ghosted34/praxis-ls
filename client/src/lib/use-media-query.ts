@@ -59,6 +59,26 @@ export const DESKTOP_QUERY = "(min-width: 1024px)";
 export const useIsDesktop = (): boolean => useMediaQuery(DESKTOP_QUERY, true);
 
 /**
+ * The same question as `useIsDesktop()`, answered NOW rather than from state.
+ *
+ * For an EFFECT that acts on the answer — the split screens' "open the first
+ * row for the reader", which is right beside a desktop's detail pane and wrong
+ * on a phone, where the detail is a full-screen sheet and opening it unasked
+ * covers the list the reader came to. The hook cannot answer that safely: on
+ * its first render it reports the `true` fallback, and an effect that runs in
+ * that same commit (a list served from cache, say) would act on it before the
+ * real answer lands. `matchMedia` read at effect time has no such window.
+ *
+ * Same fallback as the hook — true where `matchMedia` does not exist (jsdom),
+ * so a test that renders a split screen sees the desktop behaviour it always
+ * did.
+ */
+export function isDesktopNow(): boolean {
+  if (typeof window === "undefined" || !window.matchMedia) return true;
+  return window.matchMedia(DESKTOP_QUERY).matches;
+}
+
+/**
  * `md` and up — matching tailwind.config.ts `md: "768px"` exactly.
  *
  * This is the width at which a data TABLE stops working and has to become

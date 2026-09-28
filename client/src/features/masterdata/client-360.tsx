@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Pill } from "@/components/ui/pill";
 import { EmptyState, ErrorState, LoadingRow } from "@/components/ui/states";
 import { SplitPane } from "@/components/ui/split-pane";
+import { isDesktopNow } from "@/lib/use-media-query";
 import { PageHeader } from "@/components/data-list";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { useResource } from "@/lib/use-resource";
@@ -45,6 +46,7 @@ export function ClientsPage() {
     record: selected,
     id: selId,
     open: select,
+    close,
     preselect,
   } = useRecordParam(rows, (c) => c.client_id);
   const filtered = q
@@ -52,9 +54,11 @@ export function ClientsPage() {
     : rows;
   // The list opens on its first row. `preselect` writes the same param with
   // `replace`: the user did not navigate here, so it must not become a step
-  // the back arrow can land on.
+  // the back arrow can land on. A desktop only — on a phone the client opens
+  // as a full-screen sheet over the list (SplitPane onClose), and opening one
+  // unasked would cover the list on arrival.
   React.useEffect(() => {
-    if (!selId && rows.length) preselect(rows[0]);
+    if (!selId && rows.length && isDesktopNow()) preselect(rows[0]);
   }, [rows, selId, preselect]);
   // Names this step for the arrow tooltips and the hold-menu.
   useTrailTitle(selected ? selected.name : null);
@@ -88,6 +92,9 @@ export function ClientsPage() {
           max={480}
           activeKind={tr("Client")}
           active={!!selected}
+          onClose={close}
+          sheetTitle={selected?.name}
+          selectionInUrl
         >
           <div className="space-y-2">
             <Input
@@ -95,7 +102,7 @@ export function ClientsPage() {
               value={q}
               onChange={(e) => setQ(e.target.value)}
             />
-            <div className="max-h-[70vh] space-y-1 overflow-auto rounded-lg border p-1">
+            <div className="space-y-1 rounded-lg border p-1 lg:max-h-[70vh] lg:overflow-auto">
               {clients.loading ? (
                 <LoadingRow label="Loading clients…" />
               ) : filtered.length === 0 ? (

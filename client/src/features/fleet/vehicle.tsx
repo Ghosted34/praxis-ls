@@ -5,6 +5,7 @@
  */
 import { pageShell } from "@/lib/layout";
 import { SplitPane } from "@/components/ui/split-pane";
+import { isDesktopNow } from "@/lib/use-media-query";
 import { IndexRow } from "@/components/ui/index-row";
 import { tr } from "@/lib/i18n";
 import * as React from "react";
@@ -431,8 +432,10 @@ export function VehiclesPage() {
       )
     : rows;
   const selected = rows.find((v) => v.vehicle_id === selId) || null;
+  // Opens the first vehicle beside a desktop's detail pane — never on a
+  // phone, where it is a full-screen sheet over the list (SplitPane onClose).
   React.useEffect(() => {
-    if (!selId && rows.length) setSelId(rows[0].vehicle_id);
+    if (!selId && rows.length && isDesktopNow()) setSelId(rows[0].vehicle_id);
   }, [rows, selId]);
 
   return (
@@ -464,6 +467,8 @@ export function VehiclesPage() {
           max={480}
           activeKind={tr("Vehicle")}
           active={!!selected}
+          onClose={() => setSelId(null)}
+          sheetTitle={selected?.registration}
         >
           <div className="space-y-2">
             <Input
@@ -471,7 +476,7 @@ export function VehiclesPage() {
               value={q}
               onChange={(e) => setQ(e.target.value)}
             />
-            <div className="max-h-[70vh] space-y-1 overflow-auto rounded-lg border p-1">
+            <div className="space-y-1 rounded-lg border p-1 lg:max-h-[70vh] lg:overflow-auto">
               {vehicles.loading ? (
                 <div className="px-3 py-4 micro">{tr("Loading…")}</div>
               ) : filtered.length === 0 ? (

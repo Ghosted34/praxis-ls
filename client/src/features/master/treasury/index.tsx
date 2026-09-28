@@ -21,6 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { EmptyState, ErrorState, LoadingRow } from "@/components/ui/states";
 import { SplitPane } from "@/components/ui/split-pane";
+import { isDesktopNow } from "@/lib/use-media-query";
 import { PageHeader } from "@/components/data-list";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { pageShell } from "@/lib/layout";
@@ -83,8 +84,12 @@ export function TreasuryMasterPage() {
 
   const accts = React.useMemo(() => paged.rows || [], [paged.rows]);
 
+  // Opens the first account beside a desktop's detail pane — never on a
+  // phone, where it is a full-screen sheet over the list (SplitPane onClose).
+  // A deep link (`?open=`, below) still opens its account on either.
   React.useEffect(() => {
-    if (!selId && accts.length) setSelId(accts[0].treasury_account_id);
+    if (!selId && accts.length && isDesktopNow())
+      setSelId(accts[0].treasury_account_id);
   }, [accts, selId]);
 
   // /master/treasury-accounts?open=<id> deep-links from other screens.
@@ -161,6 +166,8 @@ export function TreasuryMasterPage() {
           max={480}
           activeKind={tr("Treasury account")}
           active={!!selected}
+          onClose={() => setSelId(null)}
+          sheetTitle={selected?.label}
         >
           <div className="space-y-2">
             <Input
@@ -168,7 +175,7 @@ export function TreasuryMasterPage() {
               value={q}
               onChange={(e) => setQ(e.target.value)}
             />
-            <div className="max-h-[70vh] space-y-1 overflow-auto rounded-lg border p-1">
+            <div className="space-y-1 rounded-lg border p-1 lg:max-h-[70vh] lg:overflow-auto">
               {paged.loading ? (
                 <LoadingRow label="Loading accounts…" />
               ) : accts.length === 0 ? (

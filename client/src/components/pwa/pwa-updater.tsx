@@ -1,11 +1,16 @@
 /**
  * Service-worker lifecycle UI. We register the SW here (registerType is "prompt"
  * in vite.config, injectRegister:false) so we control the update experience:
- *   - onNeedRefresh → a "New version available" toast with a Reload action; the
- *     new build is already downloaded, Reload just activates it.
+ *   - a new build → a "New version available" toast with a Reload action.
+ *     Reload activates it — and, if it is still downloading, waits for it.
  *   - onOfflineReady → a brief "Ready to work offline" confirmation.
  * Using the React hook from vite-plugin-pwa's virtual module keeps this in sync
  * with the generated Workbox SW.
+ *
+ * WHEN the toast appears is decided in `lib/pwa-update.ts`, not here: the
+ * plugin's `onNeedRefresh` reports into that store, and so does a direct watch
+ * on the registration, which catches the builds the plugin misses on a phone
+ * (the file header there has the whole account).
  */
 import * as React from "react";
 import { useRegisterSW } from "virtual:pwa-register/react";
@@ -13,27 +18,14 @@ import { XIcon } from "@/components/ui/icons";
 import { useBranding } from "@/app/branding/branding-context";
 import {
   applyPendingUpdate,
-  setUpdateReady,
+  checkForUpdate,
+  dismissUpdate,
+  reportStagedBuild,
+  startUpdateWatch,
   useApplyingUpdate,
+  useUpdateReady,
+  watchRegistration,
 } from "@/lib/pwa-update";
-
-/**
- * How often to ask the service worker to check for a new build.
- *
- * WHY WE POLL AT ALL. `registerType: "prompt"` fires `onNeedRefresh` only when
- * a new SW is DETECTED — and by default vite-plugin-pwa never proactively
- * asks. Chrome checks the sw.js file on tab navigation and on the browser's
- * own ~24 h cache TTL, so a user with a long-lived tab (the common ERP shape:
- * an operator leaves a dossier open all day) can sit on a stale bundle for
- * hours after a deploy, never seeing the "New version available" toast.
- *
- * Five minutes is short enough that a deploy is visible within one coffee
- * break, long enough that the polling cost is trivial (one HEAD-ish request
- * per user per five minutes). We also poll on tab-visible, so returning to a
- * tab that has been in the background immediately checks — the audit's
- * "leave a dossier open on one monitor for hours" note again.
- */
-const SW_UPDATE_POLL_MS = 5 * 60_000;
 
 export function PwaUpdater() {
   // Tenant-authored copy (Settings › App & PWA › Offline & updates), falling
@@ -44,61 +36,15 @@ export function PwaUpdater() {
     offlineReady: [offlineReady, setOfflineReady],
     needRefresh: [needRefresh, setNeedRefresh],
   } = useRegisterSW({
-    // Poll for updates so a long-open tab actually sees a new deploy. `r` is
-    // the ServiceWorkerRegistration from the registration call — `update()`
-    // asks the browser to re-fetch sw.js and, if the byte-stream differs, fire
-    // the update lifecycle so `onNeedRefresh` above resolves.
+    // `r` is the ServiceWorkerRegistration from the registration call. The
+    // store watches it for the life of the page and checks it now; the
+    // polling, the in-flight guard and the checks on resume all live there
+    // (`startUpdateWatch`), because a phone needs them from the first frame —
+    // not from whenever the workbox-window chunk finishes downloading.
     onRegisteredSW(_url, r) {
       if (!r) return;
-
-      // In-flight guard + floor between checks.
-      //
-      // `tick` also runs on EVERY visibilitychange, so alt-tabbing fired an
-      // update() per focus — overlapping calls against one registration, which
-      // is one of the ways it lands in an invalid state to begin with.
-      let checking = false;
-      let lastCheck = 0;
-      const MIN_GAP_MS = 30_000;
-
-      const tick = () => {
-        // Don't check while offline — `update()` would just fail; wait for
-        // the next visibility change or the next scheduled tick.
-        if (navigator.onLine === false) return;
-        if (checking || Date.now() - lastCheck < MIN_GAP_MS) return;
-
-        checking = true;
-        lastCheck = Date.now();
-
-        // `.catch()`, NOT `void`.
-        //
-        // `update()` REJECTS — `InvalidStateError: Failed to update a
-        // ServiceWorker … The object is in an invalid state` — whenever the
-        // registration is no longer usable: it has been superseded, the user
-        // cleared site data, or a previous update is mid-lifecycle. A floating
-        // promise made every one of those an UNHANDLED REJECTION, which
-        // window.onunhandledrejection dutifully reported as an application
-        // error. It reached ×7 in a day and none of it was a fault: a failed
-        // update CHECK is benign by construction, because the next tick simply
-        // tries again.
-        r.update()
-          .catch(() => {
-            /* benign — the app is fine, the next tick retries */
-          })
-          .finally(() => {
-            checking = false;
-          });
-      };
-
-      const timer = window.setInterval(tick, SW_UPDATE_POLL_MS);
-      const onVisibility = () => {
-        if (document.visibilityState === "visible") tick();
-      };
-      document.addEventListener("visibilitychange", onVisibility);
-      // Nothing tears this down: the SW registration is per-page and lives as
-      // long as the page does. The intent IS to keep polling for the lifetime
-      // of the tab — an unmount cleanup here would defeat the point.
-      void timer;
-      void onVisibility;
+      watchRegistration(r);
+      void checkForUpdate();
     },
     onRegisterError(err) {
       // Non-fatal: the app works without the SW, just without offline/install.
@@ -106,6 +52,12 @@ export function PwaUpdater() {
       console.warn("[pwa] service worker registration failed", err);
     },
   });
+
+  // Look for a staged build as soon as this mounts, and keep looking whenever
+  // the app comes back into view. Nothing tears this down in the app — the
+  // intent IS to keep watching for the lifetime of the tab — but the stop
+  // function keeps a remount from stacking a second set of listeners.
+  React.useEffect(() => startUpdateWatch(), []);
 
   // Auto-hide the "ready to work offline" note after a few seconds.
   React.useEffect(() => {
@@ -115,7 +67,8 @@ export function PwaUpdater() {
   }, [offlineReady, setOfflineReady]);
 
   /*
-   * Publish the staged-build fact so it outlives this toast.
+   * The plugin's "a build is waiting" goes into the store, so it outlives this
+   * toast.
    *
    * The toast is a moment — dismissible, easy to miss on a second monitor, and
    * once it is gone the downloaded build sits there with no route to it until
@@ -123,13 +76,15 @@ export function PwaUpdater() {
    * carries the same signal as a dot, so a user who dismissed the toast (or
    * never saw it) can still find the update. See `lib/pwa-update.ts`.
    *
-   * The DISMISS button below clears `needRefresh`, which clears the dot too —
+   * The DISMISS button below clears the store, which clears the dot too —
    * correct: dismissing is the user saying "not now", and a badge that
-   * survives being dismissed is a badge that cannot be dismissed.
+   * survives being dismissed is a badge that cannot be dismissed. It stays
+   * dismissed for THAT build; a newer deploy asks again.
    */
   React.useEffect(() => {
-    setUpdateReady(needRefresh);
+    if (needRefresh) reportStagedBuild();
   }, [needRefresh]);
+  const updateReady = useUpdateReady();
 
   // The apply routine itself now lives in `lib/pwa-update.ts` — unchanged, and
   // with the whole account of why it does not call the plugin's
@@ -138,13 +93,13 @@ export function PwaUpdater() {
   // service-worker handover is two sets of the bugs that comment describes.
   const applying = useApplyingUpdate();
 
-  if (!needRefresh && !offlineReady) return null;
+  if (!updateReady && !offlineReady) return null;
 
   return (
     <div className="fixed inset-x-0 top-3 z-[70] flex justify-center px-3">
       <div className="pointer-events-auto flex w-full max-w-md items-center gap-3 rounded-xl border bg-popover p-3 pl-4 shadow-l">
         <div className="min-w-0 flex-1">
-          {needRefresh ? (
+          {updateReady ? (
             <>
               <p className="text-sm font-semibold text-foreground">
                 {pwa.updateTitle || "New version available"}
@@ -159,7 +114,7 @@ export function PwaUpdater() {
             </p>
           )}
         </div>
-        {needRefresh && (
+        {updateReady && (
           <button
             type="button"
             onClick={applyPendingUpdate}
@@ -173,6 +128,7 @@ export function PwaUpdater() {
           type="button"
           aria-label="Dismiss"
           onClick={() => {
+            dismissUpdate();
             setNeedRefresh(false);
             setOfflineReady(false);
           }}

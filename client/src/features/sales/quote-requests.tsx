@@ -36,6 +36,7 @@ import { EmptyState, ErrorState, LoadingRow } from "@/components/ui/states";
 import { StatusPill } from "@/components/ui/pill";
 import { Chips } from "@/components/ui/chips";
 import { SplitPane } from "@/components/ui/split-pane";
+import { useIsDesktop } from "@/lib/use-media-query";
 import { PageHeader } from "@/components/data-list";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { pageShell } from "@/lib/layout";
@@ -164,6 +165,7 @@ export function QuoteRequestsPage() {
   const rows = data?.rows || [];
   const kpi = data?.kpi || EMPTY_KPI;
   const selected = rows.find((r: any) => String(r.quote_request_id) === selId) || null;
+  const isDesktop = useIsDesktop();
 
   return (
     <section className={pageShell.wide}>
@@ -248,6 +250,8 @@ export function QuoteRequestsPage() {
           max={480}
           activeKind={tr("Quote request")}
           active={!!selected}
+          onClose={() => setSelId(null)}
+          sheetTitle={selected ? String(selected.public_ref || "") : null}
         >
           <div className="space-y-2">
             <Input
@@ -255,7 +259,7 @@ export function QuoteRequestsPage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
-            <div className="max-h-[70vh] space-y-1 overflow-auto rounded-lg border p-1">
+            <div className="space-y-1 rounded-lg border p-1 lg:max-h-[70vh] lg:overflow-auto">
               {data === null ? (
                 <LoadingRow label="Loading requests…" />
               ) : rows.length === 0 ? (
@@ -287,14 +291,18 @@ export function QuoteRequestsPage() {
           </div>
           {selected ? (
             <div className="space-y-3">
-              <div className="flex justify-end">
-                <Link
-                  to={`/sales/quote-requests/${selId}`}
-                  className="micro hover:underline"
-                >
-                  Open as a page ↗
-                </Link>
-              </div>
+              {/* A way out of the split pane into a page. On a phone the
+                  request is already full screen, in a sheet. */}
+              {isDesktop && (
+                <div className="flex justify-end">
+                  <Link
+                    to={`/sales/quote-requests/${selId}`}
+                    className="micro hover:underline"
+                  >
+                    Open as a page ↗
+                  </Link>
+                </div>
+              )}
               <IntakeDossier
                 quoteRequestId={String(selected.quote_request_id)}
                 // Reference and state come from the row just clicked, so the

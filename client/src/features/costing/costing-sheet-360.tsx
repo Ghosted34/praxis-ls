@@ -25,11 +25,9 @@
  */
 import * as React from "react";
 import { useParams, Link } from "react-router-dom";
-import {
-  Record360Page,
-  Record360Header,
-} from "@/components/record-360";
+import { Record360Page, Record360Header } from "@/components/record-360";
 import { Dialog } from "@/components/ui/dialog";
+import { RecordSheet } from "@/components/ui/record-sheet";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Field, Select } from "@/components/ui/modal";
@@ -99,9 +97,20 @@ function AmendmentBlock({
     l: api.CostingAmendmentLine,
     kind: "added" | "changed" | "removed",
   ) => (
-    <li key={`${kind}-${l.key}`} className="flex flex-wrap items-baseline gap-2 py-1">
-      <Pill tone={kind === "added" ? "ok" : kind === "removed" ? "bad" : "warn"}>
-        {tr(kind === "added" ? "Added" : kind === "removed" ? "Removed" : "Changed")}
+    <li
+      key={`${kind}-${l.key}`}
+      className="flex flex-wrap items-baseline gap-2 py-1"
+    >
+      <Pill
+        tone={kind === "added" ? "ok" : kind === "removed" ? "bad" : "warn"}
+      >
+        {tr(
+          kind === "added"
+            ? "Added"
+            : kind === "removed"
+              ? "Removed"
+              : "Changed",
+        )}
       </Pill>
       <span className="text-sm text-foreground">
         {l.label}
@@ -124,7 +133,8 @@ function AmendmentBlock({
   return (
     <Panel title={tr("Changed since it was approved")}>
       <p className="micro mb-2">
-        {tr("Revision")} {a.since_revision} · {tr("approved")} {dateFmt(a.approved_at)}
+        {tr("Revision")} {a.since_revision} · {tr("approved")}{" "}
+        {dateFmt(a.approved_at)}
       </p>
       <ul className="divide-y">
         {a.changed.map((l) => row(l, "changed"))}
@@ -141,7 +151,9 @@ function AmendmentBlock({
         <span className="num text-sm font-medium">
           {a.delta_ht >= 0 ? "+" : ""}
           {money(a.delta_ht, currency)}
-          {a.delta_percent != null ? ` (${a.delta_percent > 0 ? "+" : ""}${a.delta_percent}%)` : ""}
+          {a.delta_percent != null
+            ? ` (${a.delta_percent > 0 ? "+" : ""}${a.delta_percent}%)`
+            : ""}
         </span>
       </div>
     </Panel>
@@ -198,7 +210,11 @@ export function CostingSheet360({
     setRemarks(c.remarks || "");
     setValidatorId(c.validator_id || "");
     setCurrency(c.currency || "XAF");
-    setRateText(String(Number(c.exchange_rate_to_xaf) > 0 ? Number(c.exchange_rate_to_xaf) : 1));
+    setRateText(
+      String(
+        Number(c.exchange_rate_to_xaf) > 0 ? Number(c.exchange_rate_to_xaf) : 1,
+      ),
+    );
     setRateSource(null);
     setDirty(false);
   }, [c]);
@@ -237,7 +253,9 @@ export function CostingSheet360({
         exchange_rate_to_xaf: sheetRate,
         remarks: remarks.trim() || null,
         validator_id: validatorId || null,
-        lines: lines.filter((l) => l.label || l.dictionary_item_id).map(toPayload),
+        lines: lines
+          .filter((l) => l.label || l.dictionary_item_id)
+          .map(toPayload),
       });
       draft.clear();
       setDirty(false);
@@ -283,7 +301,9 @@ export function CostingSheet360({
   function convertAll(nextRate: number, label: string) {
     if (!lines || !lines.length || nextRate === sheetRate) return;
     setLines(convertLines(lines, sheetRate, nextRate));
-    toast.info(`${lines.length} ${lines.length === 1 ? tr("line converted") : tr("lines converted")} — ${label}`);
+    toast.info(
+      `${lines.length} ${lines.length === 1 ? tr("line converted") : tr("lines converted")} — ${label}`,
+    );
   }
 
   async function changeCurrency(next: string) {
@@ -308,18 +328,30 @@ export function CostingSheet360({
     if (fx && fx.found && fx.rate_to_xaf) {
       convertAll(fx.rate_to_xaf, `1 ${next} = ${fx.rate_to_xaf} XAF`);
       setRateText(String(fx.rate_to_xaf));
-      setRateSource(fx.as_of_date ? `${tr("Currencies & FX")} · ${dateFmt(fx.as_of_date)}` : tr("Currencies & FX"));
+      setRateSource(
+        fx.as_of_date
+          ? `${tr("Currencies & FX")} · ${dateFmt(fx.as_of_date)}`
+          : tr("Currencies & FX"),
+      );
     } else {
       setRateText("");
       setRateSource(null);
-      toast.info(tr("No exchange rate on file for this currency — enter the rate for this costing."));
+      toast.info(
+        tr(
+          "No exchange rate on file for this currency — enter the rate for this costing.",
+        ),
+      );
     }
   }
 
   if (res.loading && !c) return <SkeletonTable rows={6} cols={4} />;
   if (res.error)
     return (
-      <ScreenError message={res.error} what="Costing sheet" onRetry={res.reload} />
+      <ScreenError
+        message={res.error}
+        what="Costing sheet"
+        onRetry={res.reload}
+      />
     );
   if (!c)
     return (
@@ -349,7 +381,11 @@ export function CostingSheet360({
       />
       {editable && (
         <>
-          <Button variant="outline" onClick={() => setSuggesting(true)} disabled={!c.dossier_id}>
+          <Button
+            variant="outline"
+            onClick={() => setSuggesting(true)}
+            disabled={!c.dossier_id}
+          >
             {tr("Suggest charges")}
           </Button>
           <Button
@@ -385,7 +421,9 @@ export function CostingSheet360({
       {c.status === "SUBMITTED_FOR_VALIDATION" && (
         <Button
           loading={busy}
-          onClick={() => transition("SUBMIT_APPROVAL", tr("Validated — sent for approval"))}
+          onClick={() =>
+            transition("SUBMIT_APPROVAL", tr("Validated — sent for approval"))
+          }
         >
           {tr("Validate")}
         </Button>
@@ -408,14 +446,18 @@ export function CostingSheet360({
           {tr("Approve")}
         </Button>
       )}
-      {["SUBMITTED_FOR_VALIDATION", "SUBMITTED_FOR_APPROVAL"].includes(c.status) && (
+      {["SUBMITTED_FOR_VALIDATION", "SUBMITTED_FOR_APPROVAL"].includes(
+        c.status,
+      ) && (
         <Button
           variant="outline"
           loading={busy}
           onClick={async () => {
             const ok = await confirm({
               title: tr("Reject this costing?"),
-              body: tr("It goes back to the author, who can correct and resubmit it."),
+              body: tr(
+                "It goes back to the author, who can correct and resubmit it.",
+              ),
               confirmLabel: tr("Reject costing"),
               destructive: true,
             });
@@ -474,8 +516,6 @@ export function CostingSheet360({
 
   const body = (
     <div className="space-y-4">
-      {variant === "modal" && <div className="flex justify-end">{actions}</div>}
-
       {draft.pending && (
         <DraftBanner
           savedAt={draft.pending.savedAt}
@@ -534,7 +574,13 @@ export function CostingSheet360({
                   variant="ghost"
                   onClick={() => {
                     // A hand-added line is born with the TVA_STD default (12768).
-                    setLines([...(lines || []), withVatDefault({ ...BLANK_LINE }, defaultVatCode(vatCodes))]);
+                    setLines([
+                      ...(lines || []),
+                      withVatDefault(
+                        { ...BLANK_LINE },
+                        defaultVatCode(vatCodes),
+                      ),
+                    ]);
                     setDirty(true);
                   }}
                 >
@@ -551,7 +597,10 @@ export function CostingSheet360({
                   onChange={(v) => setView(v as "detailed" | "families")}
                   options={[
                     { value: "detailed", label: tr("Detailed") },
-                    { value: "families", label: tr("By family (as the client sees it)") },
+                    {
+                      value: "families",
+                      label: tr("By family (as the client sees it)"),
+                    },
                   ]}
                 />
               </div>
@@ -581,7 +630,11 @@ export function CostingSheet360({
                 currency={ccy}
                 readOnly={!editable}
                 onHeading={(index, heading) => {
-                  setLines((lines || []).map((l, j) => (j === index ? { ...l, client_heading: heading } : l)));
+                  setLines(
+                    (lines || []).map((l, j) =>
+                      j === index ? { ...l, client_heading: heading } : l,
+                    ),
+                  );
                   setDirty(true);
                 }}
               />
@@ -611,7 +664,9 @@ export function CostingSheet360({
             <div className="space-y-3">
               <Field
                 label={tr("Currency")}
-                hint={tr("Every line is in this currency — one currency for the whole costing.")}
+                hint={tr(
+                  "Every line is in this currency — one currency for the whole costing.",
+                )}
               >
                 {editable ? (
                   <CurrencySelect
@@ -630,7 +685,9 @@ export function CostingSheet360({
                   hint={
                     rateSource
                       ? `${tr("From")} ${rateSource}. ${tr("Change it to convert every line at once.")}`
-                      : tr("One rate for the whole costing. Change it to convert every line at once.")
+                      : tr(
+                          "One rate for the whole costing. Change it to convert every line at once.",
+                        )
                   }
                   required
                 >
@@ -645,7 +702,8 @@ export function CostingSheet360({
                         value={rateText}
                         onChange={(e) => {
                           const next = Number(e.target.value);
-                          if (next > 0) convertAll(next, `1 ${ccy} = ${next} XAF`);
+                          if (next > 0)
+                            convertAll(next, `1 ${ccy} = ${next} XAF`);
                           setRateText(e.target.value);
                           setRateSource(null);
                           setDirty(true);
@@ -690,7 +748,10 @@ export function CostingSheet360({
                   </p>
                 )}
               </Field>
-              <Field label={tr("Remarks")} hint={tr("Context for the validator")}>
+              <Field
+                label={tr("Remarks")}
+                hint={tr("Context for the validator")}
+              >
                 {editable ? (
                   <Textarea
                     rows={3}
@@ -714,7 +775,9 @@ export function CostingSheet360({
                   <dt className="micro">{tr("Validated")}</dt>
                   <dd className="text-right">
                     {validatorName(c.validated_by) || "—"}
-                    <span className="micro block">{dateFmt(c.validated_at)}</span>
+                    <span className="micro block">
+                      {dateFmt(c.validated_at)}
+                    </span>
                   </dd>
                 </div>
               )}
@@ -723,7 +786,9 @@ export function CostingSheet360({
                   <dt className="micro">{tr("Approved")}</dt>
                   <dd className="text-right">
                     {validatorName(c.approver_id) || "—"}
-                    <span className="micro block">{dateFmt(c.approved_at)}</span>
+                    <span className="micro block">
+                      {dateFmt(c.approved_at)}
+                    </span>
                   </dd>
                 </div>
               )}
@@ -748,7 +813,9 @@ export function CostingSheet360({
             // born with the TVA_STD default (12768) — rate mode for a débours.
             setLines([
               ...(lines || []),
-              ...picked.map((s) => withVatDefault(fromSuggestion(s), defaultVatCode(vatCodes))),
+              ...picked.map((s) =>
+                withVatDefault(fromSuggestion(s), defaultVatCode(vatCodes)),
+              ),
             ]);
             setDirty(true);
             toast.success(
@@ -773,7 +840,20 @@ export function CostingSheet360({
     </div>
   );
 
-  if (variant === "modal") return body;
+  /*
+   * On a phone the record is a full-screen sheet, and its actions sit in a bar
+   * pinned to the bottom — where the thumb already is — rather than wrapped
+   * across the top of a long sheet the reader has scrolled away from.
+   */
+  if (variant === "modal")
+    return (
+      <>
+        {body}
+        <div className="sticky bottom-0 z-10 -mx-4 mt-4 border-t bg-card/95 px-4 py-3 backdrop-blur [&_button]:min-h-11">
+          {actions}
+        </div>
+      </>
+    );
 
   return (
     <div className="space-y-4">
@@ -788,7 +868,10 @@ export function CostingSheet360({
         }
         subtitle={
           file ? (
-            <Link className="underline-offset-2 hover:underline" to={`/operations/files/${file.dossier_id}`}>
+            <Link
+              className="underline-offset-2 hover:underline"
+              to={`/operations/files/${file.dossier_id}`}
+            >
               {file.ref}
               {file.client_name ? ` · ${file.client_name}` : ""}
             </Link>
@@ -862,7 +945,9 @@ function UnlockDialog({
             rows={3}
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            placeholder={tr("Maersk detention — container held 3 days past free time")}
+            placeholder={tr(
+              "Maersk detention — container held 3 days past free time",
+            )}
           />
         </Field>
         {error && <ScreenError message={error} what="The unlock request" />}
@@ -892,23 +977,29 @@ export function CostingSheet360Modal({
   onClose: () => void;
   onChanged?: () => void;
 }) {
+  // Full screen, not a bottom sheet: a costing is a long list of lines and
+  // totals, and the selection already lives in `?focus=`, so Back closes it.
   return (
-    <Dialog
+    <RecordSheet
       open
       onClose={onClose}
-      size="xl"
-      title={`${tr("Costing")} · ${reference || ""}`.trim()}
-      description={tr("What this file will cost — HT / VAT / TTC.")}
+      ownsHistory={false}
+      eyebrow={tr("Costing")}
+      title={reference || tr("Draft — unnumbered")}
     >
       <CostingSheet360 id={id} variant="modal" onChanged={onChanged} />
-    </Dialog>
+    </RecordSheet>
   );
 }
 
 export function CostingSheet360Page() {
   const { costingId = "" } = useParams();
   return (
-    <Record360Page basePath={COSTING_BASE} backLabel={tr("Costing")} id={costingId}>
+    <Record360Page
+      basePath={COSTING_BASE}
+      backLabel={tr("Costing")}
+      id={costingId}
+    >
       <CostingSheet360 id={costingId} variant="page" />
     </Record360Page>
   );

@@ -26,12 +26,7 @@ import { exportCsv } from "@/lib/export-csv";
 import { cn } from "@/lib/cn";
 import { RowActions } from "@/components/ui/row-actions";
 import { Panel } from "@/components/ui/panel";
-import {
-  RegieDetail,
-  MyAdvances,
-  WindowPill,
-  regieTone,
-} from "./regie-detail";
+import { RegieDetail, MyAdvances, WindowPill, regieTone } from "./regie-detail";
 import {
   DisburseForm,
   JustifyForm,
@@ -55,6 +50,10 @@ import { useDebounced } from "@/lib/use-debounced";
 // The worksheet owns the route and the status vocabulary; the register links
 // into it rather than keeping a second copy of either.
 import { COSTING_BASE, statusLabel } from "./costing-model";
+import { CostingSheet360Modal } from "./costing-sheet-360";
+import { CashRequest360Modal } from "./cash-request-360";
+import { useRecordOpener, recordPath, recordSheetPath } from "@/lib/record-360";
+import { isDesktopNow } from "@/lib/use-media-query";
 
 const shell = pageShell.wide;
 const TONES: Record<string, Tone> = {
@@ -206,7 +205,10 @@ function CostingForm({
             label={tr("Currency")}
             hint={tr("The rate to XAF is taken from Currencies & FX.")}
           >
-            <Select value={currency} onChange={(e) => setCurrency(e.target.value)}>
+            <Select
+              value={currency}
+              onChange={(e) => setCurrency(e.target.value)}
+            >
               {(currencies.data || [])
                 .filter((c) => c.is_active !== false)
                 .map((c) => (
@@ -216,7 +218,10 @@ function CostingForm({
                 ))}
             </Select>
           </Field>
-          <Field label={tr("Validator")} hint={tr("Who this sheet is submitted to")}>
+          <Field
+            label={tr("Validator")}
+            hint={tr("Who this sheet is submitted to")}
+          >
             <Select
               value={validatorId}
               onChange={(e) => setValidatorId(e.target.value)}
@@ -242,8 +247,7 @@ function CostingForm({
           >
             <p>
               <span className="num font-medium text-foreground">
-                {existing.doc_number ||
-                  `${existing.costing_id.slice(0, 8)}…`}
+                {existing.doc_number || `${existing.costing_id.slice(0, 8)}…`}
               </span>
               {existing.status ? ` · ${statusLabel(existing.status)}` : ""}
             </p>
@@ -302,6 +306,18 @@ export function CostingPage() {
   const navigate = useNavigate();
   const [creating, setCreating] = React.useState(false);
 
+  /*
+   * A row opens the worksheet: its own page on a desktop, a full-screen sheet
+   * over this list on a phone. Navigating straight to the route on a phone was
+   * the bug — the route hands a phone back to `?focus=` on this list, and this
+   * list never read it, so a tap landed exactly where it started.
+   */
+  const { openRecord, sheetId, sheetRecord, closeSheet } = useRecordOpener(
+    COSTING_BASE,
+    rows,
+    (r) => r.costing_id,
+  );
+
   const columns: Column<api.Costing>[] = [
     {
       key: "ref",
@@ -315,9 +331,7 @@ export function CostingPage() {
     {
       key: "file",
       label: tr("File"),
-      render: (r) => (
-        <span className="num">{r.dossier_ref || "—"}</span>
-      ),
+      render: (r) => <span className="num">{r.dossier_ref || "—"}</span>,
     },
     {
       key: "client",
@@ -343,9 +357,7 @@ export function CostingPage() {
       // figure is what the KPI strip sums, never this one.
       render: (r) =>
         r.total_ttc != null ? (
-          <span>
-            {money(r.total_ttc, r.currency || "XAF")}
-          </span>
+          <span>{money(r.total_ttc, r.currency || "XAF")}</span>
         ) : (
           "—"
         ),
@@ -365,15 +377,23 @@ export function CostingPage() {
         description={tr(
           "What each operations file will cost us — HT / VAT / TTC. Pricing lives in the margin simulator and the quotation.",
         )}
-        action={<Button onClick={() => setCreating(true)}>{tr("New costing")}</Button>}
+        action={
+          <Button onClick={() => setCreating(true)}>{tr("New costing")}</Button>
+        }
       />
       <HubTabs />
 
       {/* Counts and money over the WHOLE filter, not the page. */}
       <KpiRow>
         <KpiTile label={tr("Costings")} value={num(kpis.data?.total ?? 0)} />
-        <KpiTile label={tr("To validate")} value={num(kpis.data?.to_validate ?? 0)} />
-        <KpiTile label={tr("To approve")} value={num(kpis.data?.to_approve ?? 0)} />
+        <KpiTile
+          label={tr("To validate")}
+          value={num(kpis.data?.to_validate ?? 0)}
+        />
+        <KpiTile
+          label={tr("To approve")}
+          value={num(kpis.data?.to_approve ?? 0)}
+        />
         <KpiTile
           label={tr("Approved total")}
           value={money0(kpis.data?.total_ttc_xaf ?? 0)}
@@ -411,9 +431,7 @@ export function CostingPage() {
         error={list.error}
         loading={list.loading}
         rowKey={(r) => r.costing_id}
-        // The worksheet is a route, so a row click is a navigation and the
-        // reference can be pasted into an email.
-        onRowClick={(r) => navigate(`${COSTING_BASE}/${r.costing_id}`)}
+        onRowClick={openRecord}
         empty={{
           title: q || status ? tr("No costings match") : tr("No costings yet"),
           hint:
@@ -422,7 +440,9 @@ export function CostingPage() {
               : tr("Build a costing for an operations file."),
           action:
             q || status ? undefined : (
-              <Button onClick={() => setCreating(true)}>{tr("New costing")}</Button>
+              <Button onClick={() => setCreating(true)}>
+                {tr("New costing")}
+              </Button>
             ),
         }}
       />
@@ -433,7 +453,24 @@ export function CostingPage() {
           onCreated={(newId) => {
             setCreating(false);
             // Straight to the worksheet: an empty costing is not a destination.
-            navigate(`${COSTING_BASE}/${newId}`);
+            // The route on a desktop; `?focus=` (the sheet) on a phone.
+            navigate(
+              isDesktopNow()
+                ? recordPath(COSTING_BASE, newId)
+                : recordSheetPath(COSTING_BASE, newId),
+            );
+          }}
+        />
+      )}
+
+      {sheetId && (
+        <CostingSheet360Modal
+          id={sheetId}
+          reference={sheetRecord?.doc_number}
+          onClose={closeSheet}
+          onChanged={() => {
+            list.reload();
+            kpis.reload();
           }}
         />
       )}
@@ -802,10 +839,7 @@ function BulkCostSheet({
             </Select>
           </Field>
           <Field label={tr("Date")} required>
-            <DateField
-              value={entryDate}
-              onChange={setEntryDate}
-            />
+            <DateField value={entryDate} onChange={setEntryDate} />
           </Field>
           <Field label={tr("Source doc ref")} required>
             <Input value={docRef} onChange={(e) => setDocRef(e.target.value)} />
@@ -1105,7 +1139,10 @@ function AllocateModal({
  * disagreed; see doc/COST_TRACKING_LEGACY_COMPARISON.md §5.
  */
 function CostPortfolio() {
-  const rows = useResource<api.CostPortfolioRow[]>(() => api.costPortfolio(), []);
+  const rows = useResource<api.CostPortfolioRow[]>(
+    () => api.costPortfolio(),
+    [],
+  );
   const kpis = useResource<api.CostPortfolioKpis>(
     () => api.costPortfolioKpis(),
     [],
@@ -1120,7 +1157,11 @@ function CostPortfolio() {
         <span className="num font-medium text-foreground">{r.ref || "—"}</span>
       ),
     },
-    { key: "client_name", label: "Client", render: (r) => r.client_name || "—" },
+    {
+      key: "client_name",
+      label: "Client",
+      render: (r) => r.client_name || "—",
+    },
     {
       key: "budget",
       label: "Budget",
@@ -1277,7 +1318,10 @@ function CostingGatePanel({
             "A cash request draws on an approved costing, so the file needs one before money can be released.",
           )}
         </p>
-        <Link className="underline underline-offset-2" to={`${COSTING_BASE}?dossier_id=${dossierId}`}>
+        <Link
+          className="underline underline-offset-2"
+          to={`${COSTING_BASE}?dossier_id=${dossierId}`}
+        >
           {tr("Create the costing for this file")}
         </Link>
       </Callout>
@@ -1301,13 +1345,21 @@ function CostingGatePanel({
   /* ── 3. A draft nobody has submitted ────────────────────────────────── */
   if (c.status === "DRAFT") {
     return (
-      <Callout tone="warn" title={`${tr("The costing is still a draft")} · ${ref}`}>
+      <Callout
+        tone="warn"
+        title={`${tr("The costing is still a draft")} · ${ref}`}
+      >
         <p className="mb-2">
-          {tr("It has to be validated and approved before this request can be funded. You can send it on its way from here.")}
+          {tr(
+            "It has to be validated and approved before this request can be funded. You can send it on its way from here.",
+          )}
         </p>
         {gate.needs_validator && (
           <Field label={tr("Validator")} hint={tr("Who the sheet goes to")}>
-            <Select value={validatorId} onChange={(e) => setValidatorId(e.target.value)}>
+            <Select
+              value={validatorId}
+              onChange={(e) => setValidatorId(e.target.value)}
+            >
               <option value="">—</option>
               {users.map((u) => (
                 <option key={u.user_id} value={u.user_id}>
@@ -1329,7 +1381,9 @@ function CostingGatePanel({
               // refuses SUBMIT_VALIDATION without one (NO_VALIDATOR), and a
               // button that fails for a reason we could have fixed is a bad one.
               if (gate.needs_validator && validatorId) {
-                await api.updateCosting(c.costing_id, { validator_id: validatorId });
+                await api.updateCosting(c.costing_id, {
+                  validator_id: validatorId,
+                });
               }
               await api.setCostingStatus(c.costing_id, "SUBMIT_VALIDATION");
             }, tr("Costing submitted for validation"))
@@ -1672,6 +1726,13 @@ export function CashRequestsPage() {
   // past the first fifty rows. Its own endpoint now, over the same filter.
   const kpis = useResource(() => api.cashRequestKpis(), []);
   const [open, setOpen] = React.useState(false);
+  // The costing register's rule: the page on a desktop, a sheet on a phone.
+  const {
+    openRecord: openCashRequest,
+    sheetId,
+    sheetRecord,
+    closeSheet,
+  } = useRecordOpener(CASH_REQUEST_BASE, rows, (r) => r.cash_request_id);
   const [busyId, setBusyId] = React.useState<string | null>(null);
   /*
    * The file column, named from the ids ON THIS PAGE (13930).
@@ -1686,8 +1747,12 @@ export function CashRequestsPage() {
   );
 
   // The two money actions open a dialog; the three status moves are one call.
-  const [disbursing, setDisbursing] = React.useState<api.CashRequest | null>(null);
-  const [justifying, setJustifying] = React.useState<api.CashRequest | null>(null);
+  const [disbursing, setDisbursing] = React.useState<api.CashRequest | null>(
+    null,
+  );
+  const [justifying, setJustifying] = React.useState<api.CashRequest | null>(
+    null,
+  );
 
   async function moveCr(
     c: api.CashRequest,
@@ -1747,8 +1812,7 @@ export function CashRequestsPage() {
     {
       key: "category",
       label: "Type",
-      render: (r) =>
-        r.category ? <Pill tone="mute">{r.category}</Pill> : "—",
+      render: (r) => (r.category ? <Pill tone="mute">{r.category}</Pill> : "—"),
     },
     {
       key: "total_budget",
@@ -1804,14 +1868,22 @@ export function CashRequestsPage() {
         eyebrow={<HubCrumb area="Costing" to="/costing" />}
         title="Cash requests"
         description="Advances requested against operations file budgets."
-        action={<Button onClick={() => setOpen(true)}>{tr("New request")}</Button>}
+        action={
+          <Button onClick={() => setOpen(true)}>{tr("New request")}</Button>
+        }
       />
       <HubTabs />
       <KpiRow>
         <KpiTile label={tr("Requests")} value={num(kpis.data?.total)} />
-        <KpiTile label={tr("To validate")} value={num(kpis.data?.to_validate)} />
+        <KpiTile
+          label={tr("To validate")}
+          value={num(kpis.data?.to_validate)}
+        />
         <KpiTile label={tr("To approve")} value={num(kpis.data?.to_approve)} />
-        <KpiTile label={tr("To disburse")} value={num(kpis.data?.to_disburse)} />
+        <KpiTile
+          label={tr("To disburse")}
+          value={num(kpis.data?.to_disburse)}
+        />
         {/* The one figure a count cannot give: approved money not yet paid. */}
         <KpiTile
           label={tr("Outstanding")}
@@ -1830,7 +1902,7 @@ export function CashRequestsPage() {
         // register whose rows are inert while its neighbour's are clickable
         // teaches people the detail screen does not exist — which is precisely
         // what happened.
-        onRowClick={(r) => navigate(`${CASH_REQUEST_BASE}/${r.cash_request_id}`)}
+        onRowClick={openCashRequest}
         empty={{
           title: "No cash requests",
           hint: "Request an advance for an operations file.",
@@ -1845,11 +1917,27 @@ export function CashRequestsPage() {
             // above: an empty request is not a destination. This is where the
             // budget lines are, with what each claim leaves behind, and it is
             // the screen the requester actually works on.
-            navigate(`${CASH_REQUEST_BASE}/${newId}`, {
-              // Carried rather than shown here: the worksheet is where the
-              // retry lives, so that is where the reason belongs.
-              state: loadFailed ? { loadFailed } : undefined,
-            });
+            navigate(
+              isDesktopNow()
+                ? recordPath(CASH_REQUEST_BASE, newId)
+                : recordSheetPath(CASH_REQUEST_BASE, newId),
+              {
+                // Carried rather than shown here: the worksheet is where the
+                // retry lives, so that is where the reason belongs.
+                state: loadFailed ? { loadFailed } : undefined,
+              },
+            );
+          }}
+        />
+      )}
+      {sheetId && (
+        <CashRequest360Modal
+          id={sheetId}
+          reference={sheetRecord?.doc_number}
+          onClose={closeSheet}
+          onChanged={() => {
+            reload();
+            kpis.reload();
           }}
         />
       )}
@@ -2159,7 +2247,9 @@ export function RegiePage() {
         }}
       />
 
-      {open && <RegieForm onClose={() => setOpen(false)} onSaved={refreshAll} />}
+      {open && (
+        <RegieForm onClose={() => setOpen(false)} onSaved={refreshAll} />
+      )}
       {selected && (
         <Modal
           open

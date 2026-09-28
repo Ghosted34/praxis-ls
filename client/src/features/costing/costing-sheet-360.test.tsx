@@ -24,7 +24,7 @@
  * 5. THE REGISTER'S MONEY AND COUNTS ARE THE SERVER'S. Its Total column read two
  *    fields that were never columns, and its KPI strip counted the loaded page.
  */
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
@@ -454,5 +454,51 @@ describe("the costing register", () => {
       expect(screen.getByTitle("9")).toBeInTheDocument(),
     );
     expect(screen.getByTitle("3")).toBeInTheDocument();
+  });
+});
+
+/*
+ * THE PHONE TAP (28 Sep 2026). Tapping a costing on a phone did nothing: the
+ * row navigated to the route, the route hands a phone back to `?focus=` on
+ * the list, and the list never read it — so the tap landed where it started.
+ */
+describe("on a phone, a costing opens as a full-screen sheet", () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      "matchMedia",
+      (query: string) =>
+        ({
+          matches: false,
+          media: query,
+          addEventListener: () => {},
+          removeEventListener: () => {},
+        }) as unknown as MediaQueryList,
+    );
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("a tap opens the worksheet over the register", async () => {
+    const user = userEvent.setup();
+    renderScreen(<CostingPage />, {
+      path: "/costing/costing",
+      pattern: "/costing/costing",
+      routes: {
+        "/costings/kpis": { total: 1 },
+        "/costings/validators": [{ user_id: "u-2", full_name: "Jean Mballa" }],
+        "/costings": [
+          { costing_id: ID, doc_number: "CST-2026-0043", status: "DRAFT", client_name: "FMA Services", currency: "XAF", total_ttc: 1_311_750 },
+        ],
+        [`/costings/${ID}`]: SHEET,
+        "/tax-codes/sales": VAT_CODES,
+        "/operations": [],
+      },
+    });
+    await user.click((await screen.findAllByText("CST-2026-0043"))[0]);
+    const sheet = await screen.findByRole("dialog");
+    expect(sheet).toHaveTextContent("CST-2026-0043");
+    // The worksheet's own content, not an empty shell.
+    expect(await screen.findByText(/Ocean Freight/)).toBeInTheDocument();
   });
 });

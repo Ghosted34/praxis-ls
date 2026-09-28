@@ -185,6 +185,10 @@ const LINE_SELECT =
   "dr.name_fr AS container_type_fr, dr.extra AS container_type_extra, " +
   "tc.rate_percent AS tax_rate_percent, tc.code AS tax_code, " +
   "di.code AS item_code, di.unit_of_measure, di.subcategory, " +
+  // The Financial Dictionary's own names, both languages: the printed sheet
+  // uses the one matching its language rather than whichever copy the line
+  // was saved with (a French sheet showed English descriptions).
+  "di.label_en AS item_label_en, di.label_fr AS item_label_fr, " +
   "di.disbursement_vat_transparent, di.varies_by_equipment, " +
   // 14130: the catalogue's default family, beside the line's own override.
   CLIENT_HEADING_COLUMNS + " " +
@@ -432,6 +436,23 @@ async function isValidatorCandidate(client, userId) {
   return rows.length > 0;
 }
 
+/**
+ * Does this user hold the tenant's SUPER_ADMIN role? The one account allowed to
+ * validate AND approve the same sheet — it is the training account, which walks
+ * a costing through every step alone to show how it works.
+ */
+async function isSuperAdmin(client, userId) {
+  if (!userId) return false;
+  const { rows } = await client.query(
+    `SELECT 1 FROM user_role ur
+       JOIN role r ON r.role_id = ur.role_id
+      WHERE ur.user_id = $1 AND r.code = 'SUPER_ADMIN'
+      LIMIT 1`,
+    [userId],
+  );
+  return rows.length > 0;
+}
+
 /** Reminders sent about this sheet today. The quota's numerator (12774). */
 async function nudgesToday(client, costingId) {
   const { rows } = await client.query(
@@ -617,7 +638,7 @@ module.exports = {
   // Shared with MOD-76 Budget Reconciliation so the budget and the actual are
   // computed off one definition each (see claimsLateral's header).
   LINE_VAT_SQL, claimsLateral,
-  liveForDossier, gateForDossier, usersInRole, validatorCandidates, isValidatorCandidate,
+  liveForDossier, gateForDossier, usersInRole, validatorCandidates, isValidatorCandidate, isSuperAdmin,
   nudgesToday, insertNudge,
   insertSnapshot, latestSnapshot, snapshotCount,
   dossierForCosting, tieredItems, containerTypesOnFile, ratesForItems, defaultSalesTaxCode,

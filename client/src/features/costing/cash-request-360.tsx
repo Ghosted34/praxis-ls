@@ -27,6 +27,7 @@
 import * as React from "react";
 import { useParams, useLocation, Link } from "react-router-dom";
 import { Record360Page, Record360Header } from "@/components/record-360";
+import { RecordSheet } from "@/components/ui/record-sheet";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
@@ -75,7 +76,10 @@ import {
 function BudgetBanner({ control }: { control: api.BudgetControl }) {
   const ref = control.costing_doc_number || tr("the costing");
   const link = control.costing_id ? (
-    <Link className="underline underline-offset-2" to={`${COSTING_BASE}/${control.costing_id}`}>
+    <Link
+      className="underline underline-offset-2"
+      to={`${COSTING_BASE}/${control.costing_id}`}
+    >
       {ref}
     </Link>
   ) : (
@@ -86,29 +90,43 @@ function BudgetBanner({ control }: { control: api.BudgetControl }) {
     return (
       <Callout tone="bad" title={tr("This file's budget is not approved")}>
         {link} {tr("is")} {statusLabel(control.costing_status)}.{" "}
-        {tr("No cash can be raised against this file until its budget is approved.")}
+        {tr(
+          "No cash can be raised against this file until its budget is approved.",
+        )}
       </Callout>
     );
   }
   if (control.is_over_budget) {
     return (
-      <Callout tone="warn" title={tr("This request claims more than the budget has left")}>
-        {control.breaches.length} {tr("line(s) exceed what")} {link} {tr("has available.")}{" "}
-        {tr("Say why below — it can be submitted, but it cannot be approved until the costing is unlocked and amended.")}
+      <Callout
+        tone="warn"
+        title={tr("This request claims more than the budget has left")}
+      >
+        {control.breaches.length} {tr("line(s) exceed what")} {link}{" "}
+        {tr("has available.")}{" "}
+        {tr(
+          "Say why below — it can be submitted, but it cannot be approved until the costing is unlocked and amended.",
+        )}
       </Callout>
     );
   }
   if (control.unbudgeted_line_count > 0) {
     return (
-      <Callout tone="warn" title={tr("Some lines are not drawn from the budget")}>
-        {tr("Every spend on an operations file goes through its costing. Import the line from")}{" "}
+      <Callout
+        tone="warn"
+        title={tr("Some lines are not drawn from the budget")}
+      >
+        {tr(
+          "Every spend on an operations file goes through its costing. Import the line from",
+        )}{" "}
         {link}, {tr("or request an unlock and add it to the sheet first.")}
       </Callout>
     );
   }
   return (
     <Callout tone="ok" title={tr("Budget approved")}>
-      {link} — {money(control.remaining_before, control.currency)} {tr("available on this file.")}
+      {link} — {money(control.remaining_before, control.currency)}{" "}
+      {tr("available on this file.")}
     </Callout>
   );
 }
@@ -134,19 +152,26 @@ function BudgetControlPanel({ control }: { control: api.BudgetControl }) {
         {row(
           tr("Remaining after this"),
           control.remaining_after,
-          control.remaining_after < 0 ? "font-medium text-[rgb(var(--bad))]" : undefined,
+          control.remaining_after < 0
+            ? "font-medium text-[rgb(var(--bad))]"
+            : undefined,
         )}
       </div>
       {control.is_over_budget && (
         <ul className="mt-3 space-y-1 border-t border-border pt-2">
           {control.breaches.map((b) => (
-            <li key={b.costing_line_id} className="flex flex-wrap items-baseline gap-2">
+            <li
+              key={b.costing_line_id}
+              className="flex flex-wrap items-baseline gap-2"
+            >
               <Pill tone="bad">{tr("Over")}</Pill>
               <span className="text-sm text-foreground">{b.label || "—"}</span>
               <span className="num micro">
                 {money(b.claim, ccy)} {tr("of")} {money(b.remaining, ccy)}
               </span>
-              <span className="num micro text-[rgb(var(--bad))]">+{money(b.excess, ccy)}</span>
+              <span className="num micro text-[rgb(var(--bad))]">
+                +{money(b.excess, ccy)}
+              </span>
             </li>
           ))}
         </ul>
@@ -195,9 +220,11 @@ function PaymentsPanel({
    * deterministically there, and the two would disagree.
    */
   const rows = React.useMemo(() => {
-    const ordered = [...(payments || [])].sort((a, b) =>
-      String(a.paid_on).localeCompare(String(b.paid_on))
-      || a.cash_request_payment_id.localeCompare(b.cash_request_payment_id));
+    const ordered = [...(payments || [])].sort(
+      (a, b) =>
+        String(a.paid_on).localeCompare(String(b.paid_on)) ||
+        a.cash_request_payment_id.localeCompare(b.cash_request_payment_id),
+    );
     let running = 0;
     return ordered.map((p, i) => {
       running = Math.round((running + Number(p.amount || 0)) * 100) / 100;
@@ -217,8 +244,18 @@ function PaymentsPanel({
         ariaLabel={tr("How much of this request has been disbursed")}
         max={requested || 1}
         rows={[
-          { label: tr("Requested"), value: requested, display: money(requested, currency), tone: "neutral" },
-          { label: tr("Disbursed"), value: paid, display: money(paid, currency), tone: "accent" },
+          {
+            label: tr("Requested"),
+            value: requested,
+            display: money(requested, currency),
+            tone: "neutral",
+          },
+          {
+            label: tr("Disbursed"),
+            value: paid,
+            display: money(paid, currency),
+            tone: "accent",
+          },
           {
             label: tr("Outstanding"),
             value: outstanding,
@@ -246,17 +283,23 @@ function PaymentsPanel({
               {rows.map((p) => (
                 <TR key={p.cash_request_payment_id}>
                   <TD className="num">{dateFmt(p.paid_on)}</TD>
-                  <TD className="num text-right tabular-nums">{money(p.amount, currency)}</TD>
+                  <TD className="num text-right tabular-nums">
+                    {money(p.amount, currency)}
+                  </TD>
                   {/* Running, not final: a request paid in tranches is read to
                       answer "how much is left", and nobody should have to
                       subtract down a column to find out. Same figure the
                       printed receipt for this instalment carries. */}
-                  <TD className="num text-right tabular-nums">{money(p.balance, currency)}</TD>
+                  <TD className="num text-right tabular-nums">
+                    {money(p.balance, currency)}
+                  </TD>
                   <TD>
                     {p.received_at ? (
                       <span className="micro">
                         {dateFmt(p.received_at)}
-                        {p.received_ack_kind === "WET_SCAN" ? ` · ${tr("signed on paper")}` : ""}
+                        {p.received_ack_kind === "WET_SCAN"
+                          ? ` · ${tr("signed on paper")}`
+                          : ""}
                       </span>
                     ) : (
                       <Pill tone="warn">{tr("Not acknowledged")}</Pill>
@@ -269,7 +312,9 @@ function PaymentsPanel({
                           size="sm"
                           variant="outline"
                           loading={busy}
-                          onClick={() => onAcknowledge(p.cash_request_payment_id)}
+                          onClick={() =>
+                            onAcknowledge(p.cash_request_payment_id)
+                          }
                         >
                           {tr("Acknowledge receipt")}
                         </Button>
@@ -383,7 +428,9 @@ export function CashRequest360({
   const [dirty, setDirty] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const [reasonFor, setReasonFor] = React.useState<null | "REJECT" | "OVER_BUDGET" | "CLOSE">(null);
+  const [reasonFor, setReasonFor] = React.useState<
+    null | "REJECT" | "OVER_BUDGET" | "CLOSE"
+  >(null);
 
   const [confirm, confirmUi] = useConfirm();
   const toast = useToast();
@@ -398,7 +445,10 @@ export function CashRequest360({
    * as over budget.
    */
   const budgetRes = useResource(
-    () => (cr?.costing_id ? api.getCostingBudget(cr.costing_id, id) : Promise.resolve(null)),
+    () =>
+      cr?.costing_id
+        ? api.getCostingBudget(cr.costing_id, id)
+        : Promise.resolve(null),
     [cr?.costing_id, id],
   );
 
@@ -407,7 +457,14 @@ export function CashRequest360({
     const byLine = new Map(
       (budgetRes.data?.lines || []).map((b) => [b.costing_line_id, b]),
     );
-    setLines((cr.lines || []).map((l) => fromSaved(l, l.costing_line_id ? byLine.get(l.costing_line_id) : undefined)));
+    setLines(
+      (cr.lines || []).map((l) =>
+        fromSaved(
+          l,
+          l.costing_line_id ? byLine.get(l.costing_line_id) : undefined,
+        ),
+      ),
+    );
     setDirty(false);
   }, [cr, budgetRes.data]);
 
@@ -442,7 +499,8 @@ export function CashRequest360({
   async function save() {
     if (!lines) return false;
     return act(
-      () => api.updateCashRequest(id, { lines: pickedLines(lines).map(toPayload) }),
+      () =>
+        api.updateCashRequest(id, { lines: pickedLines(lines).map(toPayload) }),
       tr("Saved"),
     );
   }
@@ -462,7 +520,8 @@ export function CashRequest360({
    * closing: this is the screen with the "Load from budget" button on it, so
    * this is where a reader can act on the answer.
    */
-  const loadFailed = (useLocation().state as { loadFailed?: string } | null)?.loadFailed || null;
+  const loadFailed =
+    (useLocation().state as { loadFailed?: string } | null)?.loadFailed || null;
 
   async function submit() {
     if (dirty && !(await save())) return;
@@ -470,14 +529,28 @@ export function CashRequest360({
       setReasonFor("OVER_BUDGET");
       return;
     }
-    await act(() => api.transitionCashRequest(id, "SUBMITTED"), tr("Submitted"));
+    await act(
+      () => api.transitionCashRequest(id, "SUBMITTED"),
+      tr("Submitted"),
+    );
   }
 
   if (res.loading && !cr) return <SkeletonTable rows={6} cols={5} />;
   if (res.error)
-    return <ScreenError message={res.error} what="Cash request" onRetry={res.reload} />;
+    return (
+      <ScreenError
+        message={res.error}
+        what="Cash request"
+        onRetry={res.reload}
+      />
+    );
   if (!cr)
-    return <EmptyState title={tr("Not found")} hint="This cash request could not be loaded." />;
+    return (
+      <EmptyState
+        title={tr("Not found")}
+        hint="This cash request could not be loaded."
+      />
+    );
 
   const actions = (
     <div className="flex flex-wrap items-center gap-2">
@@ -506,11 +579,20 @@ export function CashRequest360({
         <>
           <Button
             loading={busy}
-            onClick={() => act(() => api.transitionCashRequest(id, "VALIDATED"), tr("Validated"))}
+            onClick={() =>
+              act(
+                () => api.transitionCashRequest(id, "VALIDATED"),
+                tr("Validated"),
+              )
+            }
           >
             {tr("Validate")}
           </Button>
-          <Button variant="outline" loading={busy} onClick={() => setReasonFor("REJECT")}>
+          <Button
+            variant="outline"
+            loading={busy}
+            onClick={() => setReasonFor("REJECT")}
+          >
             {tr("Reject")}
           </Button>
         </>
@@ -530,12 +612,19 @@ export function CashRequest360({
                 });
                 return;
               }
-              await act(() => api.transitionCashRequest(id, "APPROVED"), tr("Approved"));
+              await act(
+                () => api.transitionCashRequest(id, "APPROVED"),
+                tr("Approved"),
+              );
             }}
           >
             {tr("Approve")}
           </Button>
-          <Button variant="outline" loading={busy} onClick={() => setReasonFor("REJECT")}>
+          <Button
+            variant="outline"
+            loading={busy}
+            onClick={() => setReasonFor("REJECT")}
+          >
             {tr("Reject")}
           </Button>
         </>
@@ -544,13 +633,19 @@ export function CashRequest360({
         <Button
           variant="outline"
           loading={busy}
-          onClick={() => act(() => api.transitionCashRequest(id, "DRAFT"), tr("Reopened"))}
+          onClick={() =>
+            act(() => api.transitionCashRequest(id, "DRAFT"), tr("Reopened"))
+          }
         >
           {tr("Reopen and correct")}
         </Button>
       )}
       {cr.status === "PARTIALLY_DISBURSED" && (
-        <Button variant="outline" loading={busy} onClick={() => setReasonFor("CLOSE")}>
+        <Button
+          variant="outline"
+          loading={busy}
+          onClick={() => setReasonFor("CLOSE")}
+        >
           {tr("Settle at what was paid")}
         </Button>
       )}
@@ -559,7 +654,6 @@ export function CashRequest360({
 
   const body = (
     <div className="space-y-4">
-      {variant === "modal" && <div className="flex justify-end">{actions}</div>}
       {error && <ScreenError message={error} what="This action" />}
 
       {/* Why the request came back, and what to fix. */}
@@ -623,7 +717,9 @@ export function CashRequest360({
               />
             )}
           </Panel>
-          {(lines || []).length > 0 && <CashTotalsFooter lines={lines || []} currency={ccy} />}
+          {(lines || []).length > 0 && (
+            <CashTotalsFooter lines={lines || []} currency={ccy} />
+          )}
         </div>
 
         <div className="space-y-4">
@@ -633,18 +729,25 @@ export function CashRequest360({
             currency={ccy}
             busy={busy}
             onAcknowledge={(paymentId) =>
-              act(() => api.acknowledgeCashReceipt(id, paymentId), tr("Receipt acknowledged"))
+              act(
+                () => api.acknowledgeCashReceipt(id, paymentId),
+                tr("Receipt acknowledged"),
+              )
             }
           />
           <Panel title={tr("Request")}>
             <div className="space-y-1.5">
               <div className="flex items-baseline justify-between gap-3">
                 <span className="micro">{tr("Beneficiary")}</span>
-                <span className="text-sm text-foreground">{cr.beneficiary || "—"}</span>
+                <span className="text-sm text-foreground">
+                  {cr.beneficiary || "—"}
+                </span>
               </div>
               <div className="flex items-baseline justify-between gap-3">
                 <span className="micro">{tr("Method")}</span>
-                <span className="text-sm text-foreground">{cr.disbursement_method || "—"}</span>
+                <span className="text-sm text-foreground">
+                  {cr.disbursement_method || "—"}
+                </span>
               </div>
               <div className="flex items-baseline justify-between gap-3">
                 <span className="micro">{tr("Currency")}</span>
@@ -653,7 +756,9 @@ export function CashRequest360({
               {cr.approved_at && (
                 <div className="flex items-baseline justify-between gap-3">
                   <span className="micro">{tr("Approved")}</span>
-                  <span className="num text-sm text-foreground">{dateFmt(cr.approved_at)}</span>
+                  <span className="num text-sm text-foreground">
+                    {dateFmt(cr.approved_at)}
+                  </span>
                 </div>
               )}
             </div>
@@ -664,27 +769,37 @@ export function CashRequest360({
       <ReasonDialog
         open={reasonFor === "REJECT"}
         title={tr("Reject this request")}
-        description={tr("The requester needs to know what to fix — a rejection with no reason is a status they cannot act on.")}
+        description={tr(
+          "The requester needs to know what to fix — a rejection with no reason is a status they cannot act on.",
+        )}
         confirmLabel={tr("Reject")}
         destructive
         busy={busy}
         onClose={() => setReasonFor(null)}
         onConfirm={async (reason) => {
           setReasonFor(null);
-          await act(() => api.transitionCashRequest(id, "REJECTED", { reason }), tr("Rejected"));
+          await act(
+            () => api.transitionCashRequest(id, "REJECTED", { reason }),
+            tr("Rejected"),
+          );
         }}
       />
       <ReasonDialog
         open={reasonFor === "OVER_BUDGET"}
         title={tr("This claims more than the budget has left")}
-        description={tr("Say why. It can be submitted with a reason, but it cannot be approved until the costing is unlocked and amended.")}
+        description={tr(
+          "Say why. It can be submitted with a reason, but it cannot be approved until the costing is unlocked and amended.",
+        )}
         confirmLabel={tr("Submit anyway")}
         busy={busy}
         onClose={() => setReasonFor(null)}
         onConfirm={async (reason) => {
           setReasonFor(null);
           await act(
-            () => api.transitionCashRequest(id, "SUBMITTED", { over_budget_reason: reason }),
+            () =>
+              api.transitionCashRequest(id, "SUBMITTED", {
+                over_budget_reason: reason,
+              }),
             tr("Submitted"),
           );
         }}
@@ -692,27 +807,51 @@ export function CashRequest360({
       <ReasonDialog
         open={reasonFor === "CLOSE"}
         title={tr("Settle this request at what was paid")}
-        description={tr("The balance will not be paid, and the unspent commitment returns to the file's budget.")}
+        description={tr(
+          "The balance will not be paid, and the unspent commitment returns to the file's budget.",
+        )}
         confirmLabel={tr("Settle")}
         busy={busy}
         onClose={() => setReasonFor(null)}
         onConfirm={async (reason) => {
           setReasonFor(null);
-          await act(() => api.closeCashRequestBalance(id, reason), tr("Settled"));
+          await act(
+            () => api.closeCashRequestBalance(id, reason),
+            tr("Settled"),
+          );
         }}
       />
       {confirmUi}
     </div>
   );
 
-  if (variant === "modal") return body;
+  // A phone: the sheet's actions pinned to the bottom, within thumb reach —
+  // the costing sheet's grammar, so the two worksheets behave alike.
+  if (variant === "modal")
+    return (
+      <>
+        {body}
+        <div className="sticky bottom-0 z-10 -mx-4 mt-4 border-t bg-card/95 px-4 py-3 backdrop-blur [&_button]:min-h-11">
+          {actions}
+        </div>
+      </>
+    );
 
   return (
-    <Record360Page basePath={CASH_REQUEST_BASE} backLabel={tr("Cash requests")} id={id}>
+    <Record360Page
+      basePath={CASH_REQUEST_BASE}
+      backLabel={tr("Cash requests")}
+      id={id}
+    >
       <Record360Header
-        title={cr.doc_number || `${tr("Cash request")} ${cr.cash_request_id.slice(0, 8)}`}
+        title={
+          cr.doc_number ||
+          `${tr("Cash request")} ${cr.cash_request_id.slice(0, 8)}`
+        }
         titleClassName="num"
-        pills={<Pill tone={statusTone(cr.status)}>{statusLabel(cr.status)}</Pill>}
+        pills={
+          <Pill tone={statusTone(cr.status)}>{statusLabel(cr.status)}</Pill>
+        }
         meta={[
           cr.beneficiary,
           cr.category === "OVH" ? tr("Overhead") : tr("Operations"),
@@ -725,9 +864,40 @@ export function CashRequest360({
   );
 }
 
+/** The phone shell: full screen over the register, closed by Back. */
+export function CashRequest360Modal({
+  id,
+  reference,
+  onClose,
+  onChanged,
+}: {
+  id: string;
+  reference?: string | null;
+  onClose: () => void;
+  onChanged?: () => void;
+}) {
+  return (
+    <RecordSheet
+      open
+      onClose={onClose}
+      ownsHistory={false}
+      eyebrow={tr("Cash request")}
+      title={reference || tr("Cash request")}
+    >
+      <CashRequest360 id={id} variant="modal" onChanged={onChanged} />
+    </RecordSheet>
+  );
+}
+
 /** Route entry. The id comes from the URL, so a pasted link lands on the sheet. */
 export function CashRequest360Page() {
   const { cashRequestId } = useParams();
-  if (!cashRequestId) return <EmptyState title={tr("Not found")} hint="No cash request id in the URL." />;
+  if (!cashRequestId)
+    return (
+      <EmptyState
+        title={tr("Not found")}
+        hint="No cash request id in the URL."
+      />
+    );
   return <CashRequest360 id={cashRequestId} />;
 }

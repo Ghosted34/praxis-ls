@@ -25,7 +25,7 @@ const canonical = require("../../../services/signatures/canonical");
 const tokens = require("../../../services/signatures/tokens");
 const presets = require("../../../services/signatures/presets");
 const { maskIp, coarseUserAgent } = require("../../../services/signatures/mask");
-const { emitEvent, audit } = require("../../../shared/events/emit");
+const { emitEvent, audit, resolveActorId } = require("../../../shared/events/emit");
 const { getSetting } = require("../../../shared/config/settings");
 const { AppError } = require("../../../utils/errors");
 const { logger } = require("../../../config/logger");
@@ -246,6 +246,10 @@ async function signInternal(client, opts) {
     entityRef, docType, presetCode, signReason = null,
     markImageB64 = null, actor = {}, ip = null, userAgent = null,
     language = "fr", doc = null, otpChallengeId = null,
+    // One live seal per step: re-signing a step supersedes the earlier seal
+    // for it instead of printing beside it (14160). Opt-in, because other
+    // documents can legitimately carry two parties signing for one reason.
+    supersedeStep = false,
   } = opts;
 
   if (!entityRef) throw new AppError("NO_ENTITY_REF", "entity_ref is required", 422);
@@ -322,6 +326,13 @@ async function signInternal(client, opts) {
 
   const vaultDoc = await vaultRepo.getByRef(client, entityRef).catch(() => null);
 
+  if (supersedeStep && signReason) {
+    await repo.supersedeLive(client, {
+      entityRef, signReason, actorUserId: user.user_id,
+      reason: "Superseded: this step was signed again",
+    });
+  }
+
   const row = await repo.insert(client, {
     entity_ref: entityRef,
     doc_type: docType,
@@ -388,6 +399,25 @@ async function revoke(client, { id, reason, actor = {}, ip = null, language = "f
     entityRef: row.entity_ref, before: { revoked_at: null }, after: { revoked_at: row.revoked_at, reason: row.revoke_reason }, ip,
   });
   return present(row, "REVOKED", { language });
+}
+
+/**
+ * A document went back for amendment: every live seal on it stops speaking for
+ * it. Revoked (never deleted), so a copy printed before the amendment verifies
+ * as "revoked" rather than as a broken link. Returns the superseded ids.
+ */
+async function supersedeAll(client, { entityRef, actor = {}, reason }) {
+  // DATA 2.4: `revoked_by` is an FK to app_user in THIS schema; a live actor
+  // working in sandbox resolves to null rather than failing the unlock.
+  const actorUserId = await resolveActorId(client, actor.user_id);
+  const ids = await repo.supersedeLive(client, { entityRef, actorUserId, reason });
+  if (ids.length) {
+    await emitEvent(client, {
+      eventTypeKey: events.REVOKED, moduleKey: events.MODULE, entityRef,
+      actorUserId: actor.user_id || null, payload: { signature_ids: ids, reason },
+    });
+  }
+  return ids;
 }
 
 /** Written back after the document is rendered and vaulted (PR-2 calls this). */
@@ -500,7 +530,7 @@ async function stepUpRequired(client, { totalXaf }) {
 }
 
 module.exports = {
-  listByRef, get, menu, reasons, signInternal, revoke, setArtifact, stats,
+  listByRef, get, menu, reasons, signInternal, revoke, supersedeAll, setArtifact, stats,
   scans, pruneScans,
   presets: presetCatalogue,
   // Exported for the public portal, which detects the same amendment from the

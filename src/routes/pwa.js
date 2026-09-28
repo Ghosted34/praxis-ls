@@ -373,6 +373,61 @@ router.get(
   }),
 );
 
+/**
+ * The CLIENT PORTAL's manifest (client portal redesign PR 2).
+ *
+ * A second app on the same origin, and deliberately a separate one: its own
+ * `id` and a scope of `/portal/`, so a client who installs the portal gets an
+ * app that opens on their shipments — never the staff workspace — and staff
+ * who installed the workspace are not offered it again. Browsers keep apps
+ * apart by `id`, and a nested scope is allowed beside the workspace's `/`.
+ *
+ * `/portal/` with the slash, in all three places: a scope is a string prefix,
+ * so `/portal` without it would not contain its own pages, and the service
+ * worker (public-web/public/portal/sw.js) is registered at the same scope.
+ *
+ * The tenant's name and icon — the same Host-resolved icons as the workspace,
+ * because it is the same brand — and the portal's own light ground: the portal
+ * is light unless the client chose dark, whatever the workspace default is.
+ * `?theme=` and `?lang=` are hints the portal puts in the URL; anything else is
+ * ignored.
+ */
+router.get(
+  "/portal/manifest.webmanifest",
+  hostTenantResolver,
+  asyncHandler(async (req, res) => {
+    const theme = themeHint(req) || "light";
+    const cfg = await resolvePwaConfig(req, theme);
+    const v = iconVersion(cfg);
+    const fr = req.query && req.query.lang === "fr";
+    const dark = theme === "dark";
+    const manifest = {
+      id: "/portal/",
+      name: cfg.name,
+      short_name: cfg.shortName,
+      description: fr
+        ? `Vos expéditions, documents et factures avec ${cfg.name}.`
+        : `Your shipments, documents and invoices with ${cfg.name}.`,
+      lang: fr ? "fr" : "en",
+      start_url: "/portal/",
+      scope: "/portal/",
+      display: "standalone",
+      // An open portal window is reused when a notification or a link opens it.
+      launch_handler: { client_mode: "navigate-existing" },
+      theme_color: dark ? "#0b0d11" : "#ffffff",
+      background_color: dark ? "#0b0d11" : "#f6f7f9",
+      icons: [
+        { src: `/icons/app-icon-192.png?v=${v}`, sizes: "192x192", type: "image/png", purpose: "any" },
+        { src: `/icons/app-icon-512.png?v=${v}`, sizes: "512x512", type: "image/png", purpose: "any" },
+        { src: `/icons/app-icon-maskable-512.png?v=${v}`, sizes: "512x512", type: "image/png", purpose: "maskable" },
+      ],
+    };
+    res.type("application/manifest+json");
+    res.set("Cache-Control", "public, max-age=300");
+    res.send(JSON.stringify(manifest));
+  }),
+);
+
 router.get(
   "/icons/app-icon-maskable-:size(\\d+).png",
   hostTenantResolver,

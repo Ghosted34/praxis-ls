@@ -8,7 +8,6 @@
 import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
-import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import { SkeletonTable } from "@/components/ui/skeleton";
@@ -18,17 +17,11 @@ import { tenant } from "@/lib/api-client";
 import { errMsg, useList } from "@/lib/use-resource";
 import { dateFmt } from "@/lib/format";
 import { tr } from "@/lib/i18n";
+import { useSearchParams } from "react-router-dom";
 import { ClientRequestsPanel } from "./client-portal-staff";
+import { ClientChatPanel } from "./client-chat-panel";
 
 type ClientRow = { client_id: string; name?: string; legal_name?: string };
-type Message = {
-  message_id: string;
-  direction: "STAFF" | "CLIENT";
-  body: string;
-  author_name: string | null;
-  author_email: string | null;
-  created_at: string;
-};
 type Onboarding = {
   client_id: string;
   progress: number;
@@ -44,22 +37,20 @@ type Onboarding = {
 export function ClientSupportPage() {
   const { t } = useTranslation();
   const { rows: clients } = useList<ClientRow>("/clients");
-  const [clientId, setClientId] = React.useState("");
-  const [msgs, setMsgs] = React.useState<Message[] | null>(null);
+  // A staff alert for a client's message links here with the client and the
+  // conversation already chosen (client portal PR 2, 14170).
+  const [params] = useSearchParams();
+  const [clientId, setClientId] = React.useState(params.get("client") || "");
+  const initialThread = params.get("thread") || "general";
   const [onb, setOnb] = React.useState<Onboarding | null>(null);
-  const [draft, setDraft] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState<string | null>(null);
 
   const load = React.useCallback(
     (id: string) => {
       if (!id) return;
-      setMsgs(null);
       setOnb(null);
       setError(null);
-      tenant<Message[]>(`/portal/messages?client_id=${encodeURIComponent(id)}`)
-        .then(setMsgs)
-        .catch((e) => setError(errMsg(e)));
       tenant<Onboarding>(`/portal/onboarding?client_id=${encodeURIComponent(id)}`)
         .then(setOnb)
         .catch((e) => setError(errMsg(e)));
@@ -67,24 +58,12 @@ export function ClientSupportPage() {
     [],
   );
 
-  async function reply() {
-    const body = draft.trim();
-    if (!body || !clientId) return;
-    setBusy("reply");
-    setError(null);
-    try {
-      await tenant("/portal/messages", {
-        method: "POST",
-        body: { client_id: clientId, body },
-      });
-      setDraft("");
-      load(clientId);
-    } catch (e) {
-      setError(errMsg(e));
-    } finally {
-      setBusy(null);
-    }
-  }
+  // Opened from an alert: the client is already chosen, so load it.
+  React.useEffect(() => {
+    if (clientId) load(clientId);
+    // Once, for the client the link named — later picks load themselves.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function toggleStep(stepKey: string) {
     if (!clientId) return;
@@ -159,52 +138,7 @@ export function ClientSupportPage() {
       ) : (
         <div className="grid gap-6 lg:grid-cols-2">
           <Panel title={`${t("portal.messages")} · ${clientName(clientId)}`}>
-            {msgs === null ? (
-              <SkeletonTable />
-            ) : msgs.length === 0 ? (
-              <EmptyState
-                title={t("support.noMessages")}
-                hint={t("support.noMessagesHint")}
-              />
-            ) : (
-              <div className="mb-3 max-h-72 space-y-2 overflow-auto">
-                {msgs.map((m) => (
-                  <div
-                    key={m.message_id}
-                    className={`rounded-xl px-3 py-2 text-sm ${
-                      m.direction === "STAFF"
-                        ? "ml-6 bg-primary/10 text-foreground"
-                        : "mr-6 bg-card text-foreground"
-                    }`}
-                  >
-                    <div className="mb-0.5 text-[11px] text-muted-foreground">
-                      {m.direction === "STAFF"
-                        ? m.author_name || "You"
-                        : m.author_email || "Client"}{" "}
-                      · {dateFmt(m.created_at)}
-                    </div>
-                    <p className="whitespace-pre-wrap">{m.body}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-            <textarea
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              rows={2}
-              maxLength={4000}
-              placeholder={t("support.replyPlaceholder")}
-              className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40"
-            />
-            <Button
-              size="sm"
-              className="mt-2"
-              disabled={!draft.trim()}
-              loading={busy === "reply"}
-              onClick={() => void reply()}
-            >
-              {t("support.sendReply")}
-            </Button>
+            <ClientChatPanel key={clientId} clientId={clientId} initialThread={initialThread} />
           </Panel>
 
           <Panel title={`${t("portal.onboarding")} · ${clientName(clientId)}`}>

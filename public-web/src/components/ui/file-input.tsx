@@ -231,6 +231,7 @@ export function FilePicker({
   onPick,
   className,
   capture,
+  multiple,
 }: {
   accept: string;
   /** Names the control for assistive tech; visually hidden. */
@@ -243,6 +244,8 @@ export function FilePicker({
    *  "take a photo of the receipt" — instead of the file chooser. Ignored by
    *  desktop browsers, which show their usual picker. */
   capture?: "environment" | "user";
+  /** More than one file in one pick — the chat's "photos". Same prop as the ERP's picker. */
+  multiple?: boolean;
 }) {
   const id = React.useId();
   return (
@@ -260,6 +263,7 @@ export function FilePicker({
         type="file"
         accept={accept}
         capture={capture}
+        multiple={multiple}
         disabled={disabled}
         aria-label={label}
         className="sr-only"

@@ -54,6 +54,10 @@ const {
 // mail-sending endpoints a stranger can hit, and sharing one budget would let a
 // flood of code requests lock out a real password reset from the same office.
 const codeLimiter = makeLimiter({ name: "portal-code", max: 8 });
+// Signing a proposal emails a code (the signature programme's OTP, which caps
+// its own resends too); the AI fill spends the tenant's AI budget.
+const signLimiter = makeLimiter({ name: "portal-sign", max: 12 });
+const fillLimiter = makeLimiter({ name: "portal-quote-fill", max: 20 });
 
 const router = express.Router();
 
@@ -98,6 +102,11 @@ router.get("/client/dossier/:dossierId", portalAuth("CLIENT"), OPS, c.clientChai
 // account to pay it into (14150) — a superset of what this route returned.
 router.get("/client/invoice/:invoiceId", portalAuth("CLIENT"), BILL, pc.invoice);
 router.get("/client/invoice/:invoiceId/pdf", portalAuth("CLIENT"), BILL, pc.invoicePdf);
+// The invoice's supporting documents, once finance has shared them (14160).
+// `zip` is declared before `:docId` so it is never read as a document id.
+router.get("/client/invoice/:invoiceId/documents", portalAuth("CLIENT"), BILL, pc.invoiceDocuments);
+router.get("/client/invoice/:invoiceId/documents/zip", portalAuth("CLIENT"), BILL, pc.invoiceDocumentsZip);
+router.get("/client/invoice/:invoiceId/documents/:docId", portalAuth("CLIENT"), BILL, pc.invoiceDocument);
 router.get("/client/home", portalAuth("CLIENT"), pc.home);
 router.get("/client/shipments", portalAuth("CLIENT"), OPS, pc.shipments);
 router.get("/client/shipments/:id", portalAuth("CLIENT"), OPS, pc.shipment);
@@ -148,8 +157,45 @@ router.get("/client/onboarding", portalAuth("CLIENT"), controller.clientOnboardi
 router.get("/client/messages", portalAuth("CLIENT"), controller.clientMessages);
 router.post("/client/messages", portalAuth("CLIENT"), v.message, controller.sendClientMessage);
 router.get("/client/messages/export", portalAuth("CLIENT"), controller.exportClientChat);
+// The chat (14170): a General thread and one per shipment, with photos, PDFs,
+// voice notes and location pins. Every client may use General; a shipment's
+// thread follows the shipment routes' OPERATIONS scope, checked in the service
+// per thread rather than here, because the same route serves both. Sends are
+// MULTIPART — `singleFile` before the validator, as for every portal upload.
+router.get("/client/chat/threads", portalAuth("CLIENT"), pc.chatThreads);
+router.get("/client/chat/unread", portalAuth("CLIENT"), pc.chatUnread);
+router.get("/client/chat/messages", portalAuth("CLIENT"), pc.chatMessages);
+router.post("/client/chat/messages", portalAuth("CLIENT"), singleFile("file"), v.chatSend, pc.chatSend);
+router.post("/client/chat/read", portalAuth("CLIENT"), v.chatRead, pc.chatRead);
+router.get("/client/chat/attachments/:attachmentId", portalAuth("CLIENT"), pc.chatAttachment);
 router.get("/client/quote-requests", portalAuth("CLIENT"), controller.clientQuoteRequests);
 router.post("/client/quote-requests", portalAuth("CLIENT"), v.portalQuote, controller.createClientQuote);
+// "Describe it in your own words" — reads a description into the quote
+// wizard's fields. Limited per caller: it may spend the tenant's AI budget.
+router.post("/client/quote-requests/fill", portalAuth("CLIENT"), fillLimiter, v.quoteFill, pc.quoteFill);
+// Proposals the tenant sent this client: read, download, decline, accept. On
+// a tenant that offers a digital signature card for proposals, accepting IS
+// signing — an emailed code, then a stamp or a drawn mark, through the
+// signature programme (portal_proposal.service); the three sign routes share
+// the signing OTP's limiter budget.
+router.get("/client/proposals", portalAuth("CLIENT"), OPS, pc.proposals);
+router.get("/client/proposals/:id", portalAuth("CLIENT"), OPS, pc.proposal);
+router.get("/client/proposals/:id/pdf", portalAuth("CLIENT"), OPS, pc.proposalPdf);
+router.post("/client/proposals/:id/decline", portalAuth("CLIENT"), OPS, v.proposalDecline, pc.proposalDecline);
+router.post("/client/proposals/:id/accept", portalAuth("CLIENT"), OPS, signLimiter, v.empty, pc.proposalAccept);
+router.post("/client/proposals/:id/sign", portalAuth("CLIENT"), OPS, signLimiter, v.empty, pc.proposalSignStart);
+router.post("/client/proposals/:id/sign/resend", portalAuth("CLIENT"), OPS, signLimiter, v.empty, pc.proposalSignResend);
+router.post("/client/proposals/:id/sign/complete", portalAuth("CLIENT"), OPS, signLimiter, v.proposalSignComplete, pc.proposalSignComplete);
+// Notifications (14180): what this person is told by email and on their phone,
+// and the devices they allowed it on. Self-service — a person's own switches
+// and their own devices, never a colleague's. The test sends a real push to the
+// caller's own devices only, and is limited like the staff one.
+const pushTestLimiter = makeLimiter({ name: "portal-push-test", max: 10, windowMs: 10 * 60 * 1000 });
+router.get("/client/notifications", portalAuth("CLIENT"), pc.notifySettings);
+router.post("/client/notifications", portalAuth("CLIENT"), v.notifySettings, pc.notifySave);
+router.post("/client/push/subscribe", portalAuth("CLIENT"), v.pushSubscribe, pc.pushSubscribe);
+router.post("/client/push/unsubscribe", portalAuth("CLIENT"), v.pushUnsubscribe, pc.pushUnsubscribe);
+router.post("/client/push/test", portalAuth("CLIENT"), pushTestLimiter, v.empty, pc.pushTest);
 // Staff management — invite/manage external users. IAM & user access (MOD-67).
 const M = "MOD-67";
 router.get("/users", authMiddleware, requirePermission(M, "view"), c.listUsers);
@@ -171,6 +217,13 @@ router.post("/data-room/:id/answer", authMiddleware, requirePermission(M, "edit"
 // onboarding checklist. Same gate (MOD-67).
 router.get("/messages", authMiddleware, requirePermission(M, "view"), controller.staffMessages);
 router.post("/messages", authMiddleware, requirePermission(M, "edit"), v.staffMessage, controller.staffSendMessage);
+// The team's side of the chat (14170): a client's threads, one thread, a reply
+// with or without a file, and "we have read this" (the client's seen ticks).
+router.get("/chat/threads", authMiddleware, requirePermission(M, "view"), pc.staffChatThreads);
+router.get("/chat/messages", authMiddleware, requirePermission(M, "view"), pc.staffChatMessages);
+router.post("/chat/messages", authMiddleware, requirePermission(M, "edit"), singleFile("file"), v.staffChatSend, pc.staffChatSend);
+router.post("/chat/read", authMiddleware, requirePermission(M, "view"), v.staffChatRead, pc.staffChatRead);
+router.get("/chat/attachments/:attachmentId", authMiddleware, requirePermission(M, "view"), pc.staffChatAttachment);
 router.get("/onboarding", authMiddleware, requirePermission(M, "view"), controller.staffOnboarding);
 router.post("/onboarding/:clientId/:stepKey", authMiddleware, requirePermission(M, "edit"), validator.toggle, controller.staffToggleOnboarding);
 
@@ -189,5 +242,10 @@ router.get("/payment-proofs", authMiddleware, PORTAL_CLIENT, requirePermission("
 router.post("/payment-proofs/:id/confirm", authMiddleware, PORTAL_CLIENT, requirePermission("MOD-52", "create"), v.staffConfirmProof, pc.staffConfirmProof);
 router.post("/payment-proofs/:id/reject", authMiddleware, PORTAL_CLIENT, requirePermission("MOD-52", "edit"), v.staffRejectProof, pc.staffRejectProof);
 router.get("/payment-proofs/:id/file", authMiddleware, PORTAL_CLIENT, requirePermission("MOD-52", "view"), pc.staffProofFile);
+// Finance: share a final invoice's supporting documents with the client in one
+// act (14160). MOD-51 is final invoices — the same grant that issues one.
+router.get("/invoice-bundles/:invoiceId", authMiddleware, PORTAL_CLIENT, requirePermission("MOD-51", "view"), pc.staffInvoiceBundle);
+router.post("/invoice-bundles/:invoiceId", authMiddleware, PORTAL_CLIENT, requirePermission("MOD-51", "edit"), v.staffPublishBundle, pc.staffPublishBundle);
+router.post("/invoice-bundles/:invoiceId/withdraw", authMiddleware, PORTAL_CLIENT, requirePermission("MOD-51", "edit"), v.empty, pc.staffWithdrawBundle);
 
 module.exports = { basePath: "/portal", feature: null, router };

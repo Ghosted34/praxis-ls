@@ -45,7 +45,54 @@ const jsonField = (schema) =>
     }
   }, schema);
 const flag = z.preprocess((v) => (v === "true" ? true : v === "false" ? false : v), z.boolean());
+/** A multipart number: "12.5" → 12.5, blank → absent, bounded. */
+const optNum = (min, max) =>
+  z.preprocess(
+    (v) => (typeof v === "string" ? (v.trim() === "" ? undefined : Number(v)) : v ?? undefined),
+    z.number().finite().min(min).max(max).optional(),
+  );
+const optInt = (min, max) =>
+  z.preprocess(
+    (v) => (typeof v === "string" ? (v.trim() === "" ? undefined : Number(v)) : v ?? undefined),
+    z.number().int().min(min).max(max).optional(),
+  );
+/** A chat thread: "general", or the id of a shipment. */
+const chatThread = z.preprocess(blankToUndefined, z.union([z.literal("general"), z.string().uuid()]).optional());
+/**
+ * What a chat message may carry besides its file (14170). The text is
+ * optional — a photo, a voice note or a pin can stand alone — and bounded here
+ * because the column's CHECK went (see the migration); the service refuses a
+ * message with nothing in it. A pin is both coordinates or neither.
+ * width/height/duration_ms are layout hints the phone measured, bounded.
+ */
+const chatFields = {
+  thread: chatThread,
+  body: z.preprocess((v) => (v === undefined || v === null ? "" : v), z.string().max(4000)),
+  milestone_instance_id: optUuid,
+  width: optInt(1, 20000),
+  height: optInt(1, 20000),
+  duration_ms: optInt(0, 600000),
+};
+const pinBoth = (v) => (v.lat === undefined) === (v.lng === undefined);
 const SCOPES = ["ALL", "OPERATIONS", "BILLING"];
+/** What a client can be told about (14180, portal_notify.service TOPICS). */
+const NOTIFY_TOPICS = ["MESSAGES", "REQUESTS", "BILLING", "PROPOSALS", "SHIPMENTS"];
+
+/**
+ * The push services browsers actually use: Chrome, Edge and Android (FCM),
+ * Firefox (Mozilla autopush), Safari and iOS (Apple), and Windows (WNS). A
+ * subscription endpoint anywhere else is not one a browser minted.
+ */
+const PUSH_HOSTS = /^(fcm\.googleapis\.com|updates\.push\.services\.mozilla\.com|web\.push\.apple\.com|[a-z0-9-]+\.notify\.windows\.com)$/i;
+function isPushService(value) {
+  try {
+    const u = new URL(String(value));
+    return u.protocol === "https:" && !u.port && PUSH_HOSTS.test(u.hostname);
+  } catch {
+    return false;
+  }
+}
+const pushEndpoint = z.string().url().max(1024).refine(isPushService, "Not a browser push service");
 
 const schemas = {
   login: z.object({ email: z.string().email(), password: z.string().min(1), trust_device: trust }),
@@ -148,11 +195,71 @@ const schemas = {
     note: z.string().trim().max(1000).optional().nullable(),
   }),
   staffConfirmProof: z.object({ treasury_account_id: z.string().uuid().optional().nullable() }),
+  // An invoice's supporting documents, shared with the client (14160). The
+  // service refuses any id that is not on the invoice's own file.
+  staffPublishBundle: z.object({ doc_ids: z.array(z.string().uuid()).max(200) }),
   staffRejectProof: z.object({ note: z.string().trim().min(1).max(1000) }),
   // A portal message — the body is the only thing the caller supplies.
   message: z.object({ body: z.string().trim().min(1).max(4000), dossier_id: z.string().uuid().optional() }),
   // Staff reply — client_id comes from the caller (staff route).
   staffMessage: z.object({ client_id: z.string().uuid(), body: z.string().trim().min(1).max(4000), dossier_id: z.string().uuid().optional() }),
+  // The chat (14170). Multipart when a file rides along, so every field may
+  // arrive as a string.
+  chatSend: z
+    .object({
+      ...chatFields,
+      lat: optNum(-90, 90),
+      lng: optNum(-180, 180),
+      location_label: optText(200),
+    })
+    .refine(pinBoth, { message: "A location needs both latitude and longitude", path: ["lat"] }),
+  chatRead: z.object({ thread: chatThread, at: z.string().datetime({ offset: true }).optional() }),
+  staffChatSend: z.object({ client_id: z.string().uuid(), ...chatFields }),
+  staffChatRead: z.object({ client_id: z.string().uuid(), thread: chatThread }),
+  // A proposal in the portal. Declining takes a reason from the signing
+  // programme's DECLINE list; free text is appended to a reason, never instead
+  // of one (signature_public.validator.js, the same rule).
+  proposalDecline: z
+    .object({ reason_code: z.string().min(1).max(64), note: z.string().trim().max(400).optional() })
+    .strict(),
+  // Signing — the public signing page's shape exactly, and like it STRICT with
+  // no email field: the address a code goes to is the one on file, never one
+  // the signer supplies (guide §6.3). The name and role are the signer's own
+  // DECLARED identity; the mark is capped at 200 KB (§6.6).
+  proposalSignComplete: z
+    .object({
+      code: z.string().regex(/^[0-9]{6}$/, "A signing code is six digits"),
+      preset_code: z.enum(["STAMP", "DRAWN"]),
+      full_name: z.string().trim().min(1).max(200).optional(),
+      party_role: z.string().trim().max(120).optional(),
+      mark_image_b64: z.string().max(200_000).regex(/^data:image\/(png|jpeg);base64,/).optional(),
+    })
+    .strict(),
+  // "Describe it in your own words" — the quote wizard's fill.
+  quoteFill: z.object({ text: z.string().trim().min(3).max(2000) }),
+  // Notifications (14180): five topics with two switches each, and the
+  // language the emails are written in. Strict — nothing else is a setting.
+  notifySettings: z
+    .object({
+      topics: z
+        .array(z.object({ topic: z.enum(NOTIFY_TOPICS), email: z.boolean(), push: z.boolean() }).strict())
+        .max(NOTIFY_TOPICS.length),
+      language: z.enum(["en", "fr"]).optional(),
+    })
+    .strict(),
+  // A browser's PushSubscription as `subscription.toJSON()` gives it. The
+  // endpoint must belong to a real push service: the worker POSTs to it, and a
+  // portal login is a stranger's — an arbitrary URL here would let one make
+  // this server call any address it can reach.
+  pushSubscribe: z.object({
+    subscription: z.object({
+      endpoint: pushEndpoint,
+      keys: z.object({ p256dh: z.string().min(1).max(256), auth: z.string().min(1).max(256) }),
+      expirationTime: z.number().nullable().optional(),
+    }),
+    language: z.enum(["en", "fr"]).optional(),
+  }),
+  pushUnsubscribe: z.object({ endpoint: z.string().url().max(1024) }).strict(),
 };
 
 const mw = (k) => (req, _res, next) => {
@@ -174,5 +281,10 @@ module.exports = {
   paymentProof: mw("paymentProof"), teamInvite: mw("teamInvite"), teamUpdate: mw("teamUpdate"),
   staffCreateRequest: mw("staffCreateRequest"), staffReviewRequest: mw("staffReviewRequest"),
   staffConfirmProof: mw("staffConfirmProof"), staffRejectProof: mw("staffRejectProof"),
+  staffPublishBundle: mw("staffPublishBundle"),
+  chatSend: mw("chatSend"), chatRead: mw("chatRead"), staffChatSend: mw("staffChatSend"), staffChatRead: mw("staffChatRead"),
+  proposalDecline: mw("proposalDecline"), proposalSignComplete: mw("proposalSignComplete"), quoteFill: mw("quoteFill"),
+  notifySettings: mw("notifySettings"), pushSubscribe: mw("pushSubscribe"), pushUnsubscribe: mw("pushUnsubscribe"),
+  isPushService,
   schemas,
 };

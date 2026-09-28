@@ -20,7 +20,7 @@
  *    count differs from the rule.
  *
  * 3. THREE SEALS, NEVER SIX. One per step — raised, validated, approved
- *    (template.service `onePerStep`, and migration 14160 underneath it).
+ *    (template.service `onePerStep`, and migration 14190 underneath it).
  *
  * 4. ONE REMARK LINE ABOUT PASS-THROUGHS. Not a sentence per débours line: one
  *    line that says what (PT) means, then the pricer's own note if any.

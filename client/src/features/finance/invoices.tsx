@@ -21,6 +21,7 @@ import {
   InvoiceSubmitForm,
   InvoiceEditForm,
 } from "./invoice-forms";
+import { InvoiceBundleModal } from "@/features/portal/invoice-bundle-modal";
 
 function invField(r: Record<string, unknown>, keys: string[]): unknown {
   for (const k of keys) if (r[k] !== undefined && r[k] !== null) return r[k];
@@ -39,6 +40,7 @@ export function InvoicesPage() {
     unknown
   > | null>(null);
   const [editId, setEditId] = React.useState<string | null>(null);
+  const [shareId, setShareId] = React.useState<string | null>(null);
   const [clientName, setClientName] = React.useState<Record<string, string>>(
     {},
   );
@@ -170,6 +172,16 @@ export function InvoicesPage() {
               </Button>
             </>
           )}
+          {!isDraft(r) && String(invField(r, ["type"]) ?? "FINAL").toUpperCase() === "FINAL" && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setShareId(String(invField(r, ["invoice_id", "id"]) ?? ""))}
+              title={tr("Send the invoice and its supporting documents to the client's portal")}
+            >
+              {tr("Share with client")}
+            </Button>
+          )}
           <Button
             size="sm"
             variant="ghost"
@@ -227,6 +239,7 @@ export function InvoicesPage() {
         onClose={() => setEditId(null)}
         onSaved={reload}
       />
+      <InvoiceBundleModal invoiceId={shareId} onClose={() => setShareId(null)} />
     </section>
   );
 }

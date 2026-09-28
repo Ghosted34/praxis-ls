@@ -29,6 +29,17 @@ const schemas = {
     payment_proof_id: z.string().uuid(),
     treasury_account_id: z.string().uuid().optional().nullable(),
   }),
+  aiPublishBundle: z.object({
+    invoice_id: z.string().uuid(),
+    doc_ids: z.array(z.string().uuid()).max(200),
+  }),
+  aiWithdrawBundle: z.object({ invoice_id: z.string().uuid() }),
+  // A reply to a client in their portal chat (14170): General, or one shipment's thread.
+  aiChatReply: z.object({
+    client_id: z.string().uuid(),
+    thread: z.union([z.literal("general"), z.string().uuid()]).optional(),
+    body: z.string().trim().min(1).max(4000),
+  }),
   aiRejectProof: z.object({
     payment_proof_id: z.string().uuid(),
     note: z.string().trim().min(1).max(1000),

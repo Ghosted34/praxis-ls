@@ -1953,7 +1953,7 @@ async function wetPrintBlockFor(client, { entityRef }) {
  */
 /**
  * A costing prints ONE seal per step — raised, validated, approved — and never
- * more (14160). The service supersedes on unlock and on re-sign, and a unique
+ * more (14190). The service supersedes on unlock and on re-sign, and a unique
  * index forbids a second live seal per step; this is the last line, so a row
  * that got past both still cannot put six boxes on the page. Newest wins —
  * `listByRef` returns newest first. Other documents are untouched: two parties

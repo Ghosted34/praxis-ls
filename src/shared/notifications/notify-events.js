@@ -47,6 +47,9 @@ const NOTIFIABLE = {
   "opportunity.won": { action: "view", title: "Opportunity won" },
   "opportunity.lost": { action: "view", title: "Opportunity lost" },
   "proposal.accepted": { action: "view", title: "Proposal accepted" },
+  // A client said no in the portal (client portal PR 2) — with a reason sales
+  // can act on, and HIGH because a declined offer is usually a call to make.
+  "proposal.declined_by_client": { action: "view", title: "A client declined a proposal", priority: "HIGH" },
 
   /*
    * ── Client portal (14150) ──

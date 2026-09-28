@@ -181,7 +181,7 @@ describe("a seal that fails does not undo the decision", () => {
 });
 
 /*
- * ONE SEAL PER STEP (14160). SBX-CST-2026-0001 printed six seals: approved,
+ * ONE SEAL PER STEP (14190). SBX-CST-2026-0001 printed six seals: approved,
  * unlocked, re-approved, and the first three were never retired. These pin the
  * two places that now retire them.
  */

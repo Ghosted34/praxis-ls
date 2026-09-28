@@ -247,7 +247,7 @@ async function signInternal(client, opts) {
     markImageB64 = null, actor = {}, ip = null, userAgent = null,
     language = "fr", doc = null, otpChallengeId = null,
     // One live seal per step: re-signing a step supersedes the earlier seal
-    // for it instead of printing beside it (14160). Opt-in, because other
+    // for it instead of printing beside it (14190). Opt-in, because other
     // documents can legitimately carry two parties signing for one reason.
     supersedeStep = false,
   } = opts;

@@ -78,6 +78,9 @@ const PROCESSORS = [
   // an SMTP server — and a mail arriving for a shared mailbox with a dozen
   // members is one job with a dozen sequential sends inside it.
   { name: "notification-deliver", concurrency: 4, handler: require("./handlers/notification-deliver") },
+  // Telling CLIENTS what is waiting in their portal (14180): one job per
+  // client, topic and time window, mostly waiting on a push service and SMTP.
+  { name: "portal-notify-deliver", concurrency: 4, handler: require("./handlers/portal-notify-deliver") },
   { name: "fx-sync", concurrency: 1, handler: require("./handlers/fx-sync") },
   { name: "fx-sync-scheduler", concurrency: 1, handler: require("./handlers/fx-sync-scheduler") },
   { name: "ai-transcribe", concurrency: 2, handler: require("./handlers/ai-transcribe") },

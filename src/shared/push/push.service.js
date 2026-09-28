@@ -135,11 +135,24 @@ async function getPublicKey() {
 async function configuredClient() {
   const v = await resolveVapid();
   if (!v.publicKey || !v.privateKey) return null;
-   
+
   const webpush = require("web-push");
   webpush.setVapidDetails(v.subject, v.publicKey, v.privateKey);
   return webpush;
 }
+
+/**
+ * Where a person's devices are kept. A staff login's browsers are in
+ * `push_subscription`, keyed by user_id; a client portal login's are in
+ * `portal_push_subscription` (14180), keyed by portal_user_id. The columns are
+ * otherwise the same on purpose, so ONE sender — its pruning of gone
+ * endpoints, its handling of a rotated key, its counters — serves both, and a
+ * fix to either reaches the other.
+ */
+const DEVICE_TABLES = {
+  staff: { table: "push_subscription", owner: "user_id" },
+  portal: { table: "portal_push_subscription", owner: "portal_user_id" },
+};
 
 /**
  * The JSON the service worker receives. Kept in one place because
@@ -220,6 +233,8 @@ async function sendToUser(a, b) {
     urgency = "normal", ttl = DEFAULT_TTL_S,
     // One device only (a call's Test ring): that subscription of this user.
     endpoint = null,
+    // "portal" reads a client portal login's devices (sendToPortalUser).
+    devices = "staff",
   } = opts || {};
   // A tenant client exposes .query(sql, params); the legacy platform `query` is
   // a bare function. Normalise both to q(sql, params).
@@ -234,11 +249,11 @@ async function sendToUser(a, b) {
   // platform — so that branch could only ever return "no push_subscription
   // table". Its sole caller was services/notifications.service.js, which had
   // zero importers and has been deleted. A tenant client is now required.
-  const table = "push_subscription";
+  const { table, owner } = DEVICE_TABLES[devices] || DEVICE_TABLES.staff;
 
   const webpush = await configuredClient();
   if (!webpush || !q) return { sent: 0, failed: 0, total: 0, pruned: 0, reason: "push not configured" };
-  const where = endpoint ? "WHERE user_id = $1 AND endpoint = $2" : "WHERE user_id = $1";
+  const where = endpoint ? `WHERE ${owner} = $1 AND endpoint = $2` : `WHERE ${owner} = $1`;
   const params = endpoint ? [user_id, endpoint] : [user_id];
   let subs;
   try {
@@ -406,7 +421,17 @@ function describeFailure(err) {
   return detail ? `${label}: ${detail}` : label;
 }
 
+/**
+ * Push to every device a client portal login registered (14180). The same
+ * sender as staff — see DEVICE_TABLES — so a device gone or minted under a
+ * rotated key is pruned the same way. `url` is a portal path; the portal's
+ * service worker opens it on its own origin.
+ */
+function sendToPortalUser(client, { portal_user_id, ...rest }) {
+  return sendToUser(client, { ...rest, user_id: portal_user_id, devices: "portal" });
+}
+
 module.exports = {
-  sendToUser, getPublicKey, resolveVapid, buildPayload, DEFAULT_TTL_S,
+  sendToUser, sendToPortalUser, getPublicKey, resolveVapid, buildPayload, DEFAULT_TTL_S,
   keyFingerprint, currentKeyFingerprint, isSupersededKey,
 };

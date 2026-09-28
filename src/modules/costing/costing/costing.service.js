@@ -130,7 +130,7 @@ async function unlockTransition(client, { id, action, reason = null, actor = {} 
   if (action === "UNLOCK") {
     /*
      * The seals stop speaking for the sheet the moment it is editable again
-     * (14160). Left live, the re-approval printed its three seals BESIDE the
+     * (14190). Left live, the re-approval printed its three seals BESIDE the
      * first three — six on one page, then nine. Superseded, not deleted: a
      * copy printed before the unlock still verifies, as revoked.
      */
@@ -528,7 +528,7 @@ async function sealTransition(client, { id, to, doc, actor = {} }) {
       // the caller has decided WHEN to build it, and the whole point is that
       // this payload is the post-transition sheet, not the pre-transition one.
       doc,
-      // One seal per step, whatever path led back to it (14160).
+      // One seal per step, whatever path led back to it (14190).
       supersedeStep: true,
     });
   } catch (err) {

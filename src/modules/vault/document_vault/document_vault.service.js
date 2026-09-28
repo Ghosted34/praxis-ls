@@ -21,6 +21,9 @@ const EXT = {
   "application/vnd.ms-excel": "xls",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+  // A client's voice note in the portal chat (14170). The chat sniffs these
+  // itself; here they only choose the stored extension.
+  "audio/webm": "webm", "audio/ogg": "ogg", "audio/mp4": "m4a", "audio/mpeg": "mp3", "audio/aac": "aac",
 };
 const MAX_BYTES = 25 * 1024 * 1024;
 

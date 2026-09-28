@@ -242,7 +242,22 @@ export function ShipmentPage() {
 
       <RequestSheet r={request} onClose={() => setRequest(null)} onDone={reload} />
       <ShareSheet open={sharing} onClose={() => setSharing(false)} onDone={reload} shipments={[s]} dossierId={s.dossier_id} />
-      <AskSheet open={!!ask} dossierId={s.dossier_id} step={ask?.step || null} onClose={() => setAsk(null)} onDone={tickets.reload} />
+      <AskSheet
+        open={!!ask}
+        dossierId={s.dossier_id}
+        step={ask?.step || null}
+        onClose={() => setAsk(null)}
+        onDone={tickets.reload}
+        onChat={() => {
+          const step = ask?.step;
+          setAsk(null);
+          openChat({
+            dossierId: s.dossier_id,
+            ref: s.ref,
+            milestone: step && step.milestone_instance_id ? { id: step.milestone_instance_id, label: step.label } : null,
+          });
+        }}
+      />
       <TicketSheet tk={ticket} onClose={() => setTicket(null)} onChanged={tickets.reload} />
       <InvoiceSheet inv={invoice} onClose={() => setInvoice(null)} />
     </div>

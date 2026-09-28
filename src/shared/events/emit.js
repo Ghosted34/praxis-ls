@@ -270,6 +270,16 @@ async function emitEvent(client, e) {
     actorUserId: e.actorUserId || null,
     payload: e.payload || {},
   });
+
+  // The CLIENT side of the same idea (14180): the few events that mean
+  // "something is waiting for a client in their portal" become an outbox row
+  // in this transaction and a delayed email/push. A lookup and a return for
+  // everything else; best-effort, and guarded so it cannot abort the caller.
+  await require("../notifications/notify-portal").onEvent(client, {
+    eventTypeKey: key,
+    entityRef: e.entityRef || null,
+    payload: e.payload || {},
+  });
 }
 
 /**

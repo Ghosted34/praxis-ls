@@ -126,8 +126,12 @@ export function portalUpload<T = unknown>(
   });
 }
 
-/** Bytes to a Save-As, with the session. A pop-up-free anchor click. */
-export async function portalDownload(path: string, filename: string): Promise<void> {
+/**
+ * Bytes with the session, as a Blob — a photo or a voice note shown in place,
+ * which an `<img src>` cannot fetch because the session is a header, not a
+ * cookie.
+ */
+export async function portalBlob(path: string): Promise<Blob> {
   const get = () => {
     const t = portalSession.access();
     return fetch(`${BASE}${path}`, { headers: t ? { Authorization: `Bearer ${t}` } : {} }).catch(() => null);
@@ -142,9 +146,17 @@ export async function portalDownload(path: string, filename: string): Promise<vo
         : res.status === 401
           ? tStatic("errors.sessionExpired")
           : tStatic("errors.downloadFailed");
-    throw new PortalError("DOWNLOAD_FAILED", message, res ? res.status : 0);
+    // The server's own code when it sent one ("too large to download
+    // together" is a different sentence from "it did not work").
+    const code = res ? (await errorFrom(res)).code : "OFFLINE";
+    throw new PortalError(code === "ERROR" ? "DOWNLOAD_FAILED" : code, message, res ? res.status : 0);
   }
-  const url = URL.createObjectURL(await res.blob());
+  return res.blob();
+}
+
+/** Bytes to a Save-As, with the session. A pop-up-free anchor click. */
+export async function portalDownload(path: string, filename: string): Promise<void> {
+  const url = URL.createObjectURL(await portalBlob(path));
   const a = document.createElement("a");
   a.href = url;
   a.download = filename;
@@ -301,12 +313,18 @@ export type InvoiceSummary = {
   state: InvoiceState;
   dossier_id: string | null;
   dossier_ref: string | null;
+  /** Supporting documents finance shared with this invoice — the paperclip count. */
+  documents_count?: number;
 };
 export type CurrencyTotal = { currency: string; due: number; overdue: number; count: number };
 
 export type PortalHome = {
   company: PortalMe["company"];
   scope: Scope;
+  /** What the team wrote since I last looked (14170) — the chat button's badge. */
+  chat?: { unread: number } | null;
+  /** Proposals waiting for this client's answer. */
+  proposals?: { pending_count: number } | null;
   shipments: { active_count: number; items: ShipmentCard[] } | null;
   requests: { open_count: number; in_review_count: number; items: ClientRequest[] } | null;
   billing: {
@@ -495,11 +513,22 @@ export type PortalInvoiceDetail = {
   lines: { label: string; amount: number; tax: number | null; is_disbursement: boolean }[];
   summary: InvoiceSummary | null;
   how_to_pay: PayTo | null;
+  /** The supporting documents finance shared with it (14160), in the file's order. */
+  documents?: InvoiceDocuments | null;
+};
+export type InvoiceDocuments = {
+  published_at: string;
+  items: { doc_id: string; position: number; label: string | null; name: string; ext: string }[];
 };
 export const portalInvoice = (invoiceId: string, lang: string) =>
   portalApi<PortalInvoiceDetail>(`/client/invoice/${encodeURIComponent(invoiceId)}?${langQ(lang)}`);
 export const portalInvoicePdf = (invoiceId: string, filename: string, lang: string) =>
   portalDownload(`/client/invoice/${encodeURIComponent(invoiceId)}/pdf?${langQ(lang)}`, filename);
+/** The invoice and every shared document, numbered, as one ZIP. */
+export const portalInvoiceDocumentsZip = (invoiceId: string, filename: string, lang: string) =>
+  portalDownload(`/client/invoice/${encodeURIComponent(invoiceId)}/documents/zip?${langQ(lang)}`, filename);
+export const portalInvoiceDocument = (invoiceId: string, docId: string, filename: string) =>
+  portalDownload(`/client/invoice/${encodeURIComponent(invoiceId)}/documents/${encodeURIComponent(docId)}`, filename);
 
 export function portalSubmitProof(
   input: {
@@ -575,6 +604,84 @@ export const portalSendMessage = (body: string, dossierId?: string | null) =>
     method: "POST",
     body: dossierId ? { body, dossier_id: dossierId } : { body },
   });
+// ── Client: the chat (14170) — General and one thread per shipment ─────────
+
+export type ChatKind = "TEXT" | "IMAGE" | "FILE" | "VOICE" | "LOCATION";
+export type ChatThread = {
+  /** "general", or the shipment's id. */
+  thread: string;
+  dossier_id: string | null;
+  dossier_ref: string | null;
+  dossier_status: string | null;
+  unread: number;
+  last: { direction: "STAFF" | "CLIENT"; mine: boolean; preview: string | null; kind: ChatKind; at: string } | null;
+};
+export type ChatAttachment = {
+  attachment_id: string;
+  kind: "IMAGE" | "FILE" | "VOICE";
+  name: string | null;
+  mime_type: string | null;
+  size: number | null;
+  width: number | null;
+  height: number | null;
+  duration_ms: number | null;
+};
+export type ChatMessage = {
+  message_id: string;
+  dossier_id: string | null;
+  dossier_ref: string | null;
+  direction: "STAFF" | "CLIENT";
+  body: string;
+  created_at: string;
+  author: { name: string | null; email: string | null };
+  mine: boolean;
+  /** On my own messages: the team has read it. */
+  seen: boolean | null;
+  milestone: { milestone_instance_id: string; label: string | null } | null;
+  location: { lat: number; lng: number; label: string | null } | null;
+  attachments: ChatAttachment[];
+};
+export type ChatPage = { thread: string; dossier_ref: string | null; has_more: boolean; messages: ChatMessage[] };
+export type ChatSend = {
+  thread: string;
+  body?: string;
+  milestone_instance_id?: string | null;
+  location?: { lat: number; lng: number; label?: string | null } | null;
+  width?: number | null;
+  height?: number | null;
+  duration_ms?: number | null;
+};
+
+export const portalChatThreads = () => portalApi<ChatThread[]>("/client/chat/threads");
+export const portalChatUnread = () => portalApi<{ unread: number }>("/client/chat/unread");
+export const portalChatMessages = (thread: string, lang: string, before?: string | null) =>
+  portalApi<ChatPage>(
+    `/client/chat/messages?thread=${encodeURIComponent(thread)}&${langQ(lang)}${before ? `&before=${encodeURIComponent(before)}` : ""}`,
+  );
+/** One message — words, a pin, a file, or a mix. Multipart, so a photo reports its percentage. */
+export function portalChatSend(input: ChatSend, lang: string, file?: File | null, onProgress?: (pct: number) => void) {
+  const form = new FormData();
+  form.append("thread", input.thread);
+  if (input.body) form.append("body", input.body);
+  if (input.milestone_instance_id) form.append("milestone_instance_id", input.milestone_instance_id);
+  if (input.location) {
+    form.append("lat", String(input.location.lat));
+    form.append("lng", String(input.location.lng));
+    if (input.location.label) form.append("location_label", input.location.label);
+  }
+  if (input.width) form.append("width", String(Math.round(input.width)));
+  if (input.height) form.append("height", String(Math.round(input.height)));
+  if (input.duration_ms) form.append("duration_ms", String(Math.round(input.duration_ms)));
+  if (file) form.append("file", file, file.name);
+  return portalUpload<ChatMessage>(`/client/chat/messages?${langQ(lang)}`, form, onProgress);
+}
+export const portalChatRead = (thread: string, at?: string | null) =>
+  portalApi<{ thread: string }>("/client/chat/read", { method: "POST", body: at ? { thread, at } : { thread } });
+export const portalChatAttachment = (id: string, preview = false) =>
+  portalBlob(`/client/chat/attachments/${encodeURIComponent(id)}${preview ? "?size=preview" : ""}`);
+export const portalChatAttachmentDownload = (id: string, filename: string) =>
+  portalDownload(`/client/chat/attachments/${encodeURIComponent(id)}`, filename);
+
 export const portalExportChat = () =>
   portalDownload("/client/messages/export", `conversation-${new Date().toISOString().slice(0, 10)}.pdf`);
 
@@ -600,6 +707,141 @@ export const portalCreateQuote = (data: {
   cargo_description?: string;
   incoterm?: string;
 }) => portalApi<PortalQuoteRequest>("/client/quote-requests", { method: "POST", body: data });
+
+/** "Describe it in your own words" — the wizard's fields, read from a description. */
+export type QuoteFill = {
+  fields: {
+    mode: Mode | null;
+    direction: "IMPORT" | "EXPORT" | "LOCAL" | null;
+    origin: string | null;
+    destination: string | null;
+    incoterm: string | null;
+    cargo: string | null;
+    weight_kg: number | null;
+    containers: string | null;
+  };
+  source: "ai" | "rules";
+};
+export const portalQuoteFill = (text: string) =>
+  portalApi<QuoteFill>("/client/quote-requests/fill", { method: "POST", body: { text } });
+
+// ── Client: proposals — read, download, decline, accept by e-signature ──────
+
+export type ProposalStatus = "SENT" | "ACCEPTED" | "REJECTED";
+export type ProposalSummary = {
+  proposal_id: string;
+  doc_number: string | null;
+  title: string;
+  status: ProposalStatus;
+  currency: string;
+  total: number;
+  route: string | null;
+  sent_on: string;
+  valid_until: string | null;
+};
+export type ProposalSignature = {
+  signer_name: string;
+  signer_role: string | null;
+  signed_at: string;
+  mark: "STAMP" | "DRAWN" | string;
+  assurance: string;
+  verify_code: string | null;
+};
+export type SignCard = { preset_code: "STAMP" | "DRAWN"; label: string; blurb: string | null };
+export type ProposalDetail = {
+  proposal: Omit<ProposalSummary, "route" | "sent_on">;
+  /** The same model the vaulted PDF is rendered from — never re-formatted here. */
+  presentation: {
+    language: "EN" | "FR";
+    title: string;
+    document_number: string;
+    client_name: string;
+    route: string;
+    labels: { service: string; quantity: string; unit: string; total: string };
+    sections: { key: string; title: string; body: string }[];
+    lines: { label: string; quantity: number; unit_price_display: string; total_display: string }[];
+  };
+  signature: ProposalSignature | null;
+  signing: { available: boolean; cards: SignCard[] };
+  decline_reasons: { reason_code: string; label: string }[];
+};
+export type SigningStart = {
+  signer: { full_name: string; email_masked: string };
+  cards: SignCard[];
+  otp: SigningCode | null;
+};
+/** The emailed code, as the signing programme describes it (never the code itself). */
+export type SigningCode = {
+  sent_to: string;
+  expires_at: string;
+  attempts_remaining: number;
+  resends_remaining: number;
+  cooldown_until: string | null;
+  verified_at: string | null;
+};
+
+const pid = (id: string) => encodeURIComponent(id);
+export const portalProposals = () => portalApi<ProposalSummary[]>("/client/proposals");
+export const portalProposal = (id: string, lang: string) => portalApi<ProposalDetail>(`/client/proposals/${pid(id)}?${langQ(lang)}`);
+export const portalProposalPdf = (id: string, filename: string, lang: string) =>
+  portalDownload(`/client/proposals/${pid(id)}/pdf?${langQ(lang)}`, filename);
+export const portalProposalDecline = (id: string, reasonCode: string, note?: string) =>
+  portalApi<{ declined: boolean }>(`/client/proposals/${pid(id)}/decline`, {
+    method: "POST",
+    body: note ? { reason_code: reasonCode, note } : { reason_code: reasonCode },
+  });
+/** Only where the tenant offers no e-signature — elsewhere accepting IS signing. */
+export const portalProposalAccept = (id: string) =>
+  portalApi<{ accepted: boolean; signature: ProposalSignature | null }>(`/client/proposals/${pid(id)}/accept`, { method: "POST", body: {} });
+export const portalProposalSignStart = (id: string, lang: string) =>
+  portalApi<SigningStart>(`/client/proposals/${pid(id)}/sign?${langQ(lang)}`, { method: "POST", body: {} });
+export const portalProposalSignResend = (id: string, lang: string) =>
+  portalApi<{ otp: SigningStart["otp"] }>(`/client/proposals/${pid(id)}/sign/resend?${langQ(lang)}`, { method: "POST", body: {} });
+export const portalProposalSignComplete = (
+  id: string,
+  lang: string,
+  body: { code: string; preset_code: "STAMP" | "DRAWN"; full_name?: string; party_role?: string; mark_image_b64?: string },
+) =>
+  portalApi<{ accepted: boolean; signature: ProposalSignature | null }>(`/client/proposals/${pid(id)}/sign/complete?${langQ(lang)}`, {
+    method: "POST",
+    body,
+  });
+
+// ── Client: notifications — email and this device (14180) ───────────────────
+
+export type NotifyTopic = "MESSAGES" | "REQUESTS" | "BILLING" | "PROPOSALS" | "SHIPMENTS";
+export type NotifyChoice = { topic: NotifyTopic; email: boolean; push: boolean };
+export type NotifySettings = {
+  language: "en" | "fr" | null;
+  /** Only the topics this person's access shows them, in a fixed order. */
+  topics: NotifyChoice[];
+  push: { configured: boolean; public_key: string | null; devices: number };
+};
+/** The browser's own PushSubscription, as `toJSON()` gives it. */
+export type PushSubscriptionBody = {
+  endpoint: string;
+  keys: { p256dh: string; auth: string };
+  expirationTime?: number | null;
+};
+
+export const portalNotifySettings = () => portalApi<NotifySettings>("/client/notifications");
+export const portalNotifySave = (topics: NotifyChoice[], language?: "en" | "fr") =>
+  portalApi<Omit<NotifySettings, "push">>("/client/notifications", {
+    method: "POST",
+    body: language ? { topics, language } : { topics },
+  });
+export const portalPushSubscribe = (subscription: PushSubscriptionBody, language?: "en" | "fr") =>
+  portalApi<{ subscribed: boolean; devices: number }>("/client/push/subscribe", {
+    method: "POST",
+    body: language ? { subscription, language } : { subscription },
+  });
+export const portalPushUnsubscribe = (endpoint: string) =>
+  portalApi<{ unsubscribed: boolean; devices: number }>("/client/push/unsubscribe", { method: "POST", body: { endpoint } });
+export const portalPushTest = (lang: string) =>
+  portalApi<{ sent: number; failed: number; devices: number; reason: string | null }>(`/client/push/test?${langQ(lang)}`, {
+    method: "POST",
+    body: {},
+  });
 
 // ── Investor and auditor terminals ──────────────────────────────────────────
 

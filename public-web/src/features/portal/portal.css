@@ -283,6 +283,15 @@
   border-color: var(--primary);
   background: var(--pt-tint);
 }
+/* A switch that reads as a word — "Email", "App" — pressed or not: the
+   notification settings, two to a row. */
+.pt-chip-sm {
+  min-height: 36px;
+  padding: 0 12px;
+  gap: 6px;
+  border-radius: 999px;
+  font-size: 0.8125rem;
+}
 
 /* ── buttons ────────────────────────────────────────────────────────────── */
 
@@ -1079,6 +1088,349 @@ a.pt-row:hover {
 }
 .pt-hide-scrollbar::-webkit-scrollbar {
   display: none;
+}
+
+
+/* ── the chat (14170) ───────────────────────────────────────────────────── */
+
+/* Full height on a phone; on a desk a two-pane window of its own size, the
+   list on the left. The composer carries the phone's safe area itself, so the
+   sheet's own bottom padding would double it. */
+.pt-sheet.pt-chat-sheet {
+  padding-bottom: 0;
+  overflow: hidden;
+}
+@media (min-width: 768px) {
+  .pt-sheet.pt-chat-sheet {
+    width: min(980px, calc(100vw - 48px));
+    height: min(760px, calc(100dvh - 64px));
+  }
+}
+.pt-chat {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+.pt-chat-list {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-height: 0;
+}
+.pt-chat-pane {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+@media (min-width: 768px) {
+  .pt-chat-list {
+    width: 320px;
+    flex-shrink: 0;
+    border-right: 1px solid var(--pt-line);
+  }
+}
+.pt-chat-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px 10px;
+  border-bottom: 1px solid var(--pt-line);
+}
+.pt-chat-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px 16px 8px;
+}
+.pt-chat-composer {
+  padding: 10px 12px calc(10px + var(--pt-safe-b));
+  border-top: 1px solid var(--pt-line);
+  background: var(--pt-surface);
+}
+@media (min-width: 768px) {
+  .pt-chat-composer {
+    padding-bottom: 12px;
+  }
+}
+
+.pt-chat-thread {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: var(--pt-radius);
+  transition: background-color var(--pt-dur) var(--pt-ease);
+}
+.pt-chat-thread:hover {
+  background: var(--pt-soft);
+}
+.pt-chat-thread[aria-current="true"] {
+  background: var(--pt-tint);
+}
+.pt-chat-thread:focus-visible,
+.pt-chat-photo:focus-visible,
+.pt-chat-file:focus-visible,
+.pt-chat-place:focus-visible,
+.pt-chat-voice-play:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+.pt-chat-unread {
+  display: grid;
+  place-items: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+/* Inside a bubble. */
+.pt-chat-who {
+  margin-bottom: 2px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--primary-ink);
+}
+.pt-chat-stage {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  margin-bottom: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  background: var(--pt-surface);
+  color: var(--muted-foreground);
+}
+.pt-chat-meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  margin-top: 2px;
+  font-size: 0.68rem;
+  color: var(--muted-foreground);
+}
+/* A photo or a pin fills its bubble edge to edge; the words keep their inset. */
+.pt-bubble[data-media] {
+  padding: 4px;
+}
+.pt-bubble[data-media] .pt-chat-who,
+.pt-bubble[data-media] .pt-chat-stage {
+  margin: 4px 8px;
+}
+.pt-bubble[data-media] .pt-chat-text {
+  padding: 6px 8px 0;
+}
+.pt-bubble[data-media] .pt-chat-meta {
+  padding: 0 8px 4px;
+}
+.pt-bubble .relative + .relative,
+.pt-bubble .relative + .pt-chat-place {
+  margin-top: 4px;
+}
+
+.pt-chat-photo {
+  display: block;
+  width: min(260px, 64vw);
+  overflow: hidden;
+  border-radius: 14px;
+  background: var(--pt-soft);
+}
+.pt-chat-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.pt-chat-file {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: min(260px, 64vw);
+  padding: 8px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--foreground) 5%, transparent);
+}
+.pt-chat-voice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: min(250px, 62vw);
+  padding: 2px 0;
+}
+.pt-chat-voice-play {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+.pt-chat-wave {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 2px;
+  height: 30px;
+  cursor: pointer;
+}
+.pt-chat-wave span {
+  flex: 1;
+  min-width: 2px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--foreground) 22%, transparent);
+}
+.pt-chat-wave span[data-on] {
+  background: var(--primary);
+}
+.pt-chat-place {
+  display: block;
+  width: min(260px, 64vw);
+  overflow: hidden;
+  border-radius: 14px;
+  background: var(--pt-surface);
+}
+/* A map drawn, not fetched — see LocationCard. */
+.pt-chat-map {
+  position: relative;
+  display: block;
+  height: 118px;
+  background-color: var(--pt-soft);
+  background-image:
+    linear-gradient(115deg, transparent 46%, color-mix(in srgb, var(--primary) 24%, transparent) 46% 49%, transparent 49%),
+    linear-gradient(25deg, transparent 58%, var(--pt-line-strong) 58% 60.5%, transparent 60.5%),
+    linear-gradient(var(--pt-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--pt-line) 1px, transparent 1px);
+  background-size:
+    100% 100%,
+    100% 100%,
+    22px 22px,
+    22px 22px;
+}
+.pt-chat-map-pin {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  color: var(--primary);
+  transform: translate(-50%, -85%);
+}
+.pt-chat-map-pin svg path {
+  fill: var(--primary);
+  stroke: var(--primary);
+}
+.pt-chat-map-pin svg circle {
+  fill: var(--primary-foreground);
+  stroke: var(--primary-foreground);
+}
+/* The percentage over a photo or file while it goes up. */
+.pt-chat-progress {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  pointer-events: none;
+}
+.pt-chat-progress > span {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  background: var(--pt-surface);
+  color: var(--foreground);
+  box-shadow: var(--pt-shadow);
+}
+.pt-chat-fresh {
+  position: absolute;
+  left: 50%;
+  bottom: 88px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  background: var(--pt-surface);
+  color: var(--primary-ink);
+  box-shadow: var(--pt-shadow-lift);
+  transform: translateX(-50%);
+}
+.pt-chat-tray-item {
+  position: relative;
+  flex-shrink: 0;
+  width: 64px;
+  height: 64px;
+  overflow: hidden;
+  border-radius: 12px;
+  background: var(--pt-soft);
+  color: var(--muted-foreground);
+}
+.pt-chat-tray-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.pt-chat-tray-x {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--pt-surface);
+  color: var(--foreground);
+  box-shadow: var(--pt-shadow);
+}
+/* The unread count on the chat button. */
+.pt-fab .pt-badge {
+  top: -4px;
+  right: -4px;
+}
+
+/* ── signing a proposal ─────────────────────────────────────────────────── */
+
+/* The pad is paper in both themes. The ink is printed ink (SignaturePad
+   draws in a fixed near-black, because the PNG lands on a white document),
+   and a dark-mode card behind it would make the signature invisible while it
+   is being written. White here is paper, not a brand colour. */
+.pt-sign-pad {
+  position: relative;
+  overflow: hidden;
+  border: 1.5px dashed var(--pt-line-strong);
+  border-radius: var(--pt-radius);
+  background: #fff;
+}
+.pt-sign-line {
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  bottom: 34px;
+  height: 1px;
+  background: var(--pt-line-strong);
+  pointer-events: none;
+}
+/* What the stamp will print: the name, the role, the day. */
+.pt-sign-stamp {
+  padding: 14px 16px;
+  border: 1.5px solid var(--primary);
+  border-radius: var(--pt-radius-sm);
+  background: var(--pt-tint);
 }
 
 @media print {

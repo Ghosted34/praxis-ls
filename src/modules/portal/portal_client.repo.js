@@ -335,7 +335,8 @@ async function billingInvoices(client, clientId) {
     `SELECT i.invoice_id, i.doc_number, i.status, i.currency, i.total_ttc, i.payment_due_on,
             i.created_at AS issued_on, i.dossier_id, i.entity_id, d.ref AS dossier_ref,
             COALESCE(a.allocated, 0) AS allocated,
-            COALESCE(pp.in_review, 0) AS in_review
+            COALESCE(pp.in_review, 0) AS in_review,
+            COALESCE(bd.documents_count, 0) AS documents_count
        FROM invoice i
        LEFT JOIN dossier_visible d ON d.dossier_id = i.dossier_id
        LEFT JOIN (SELECT invoice_id, SUM(amount) AS allocated FROM payment_allocation GROUP BY invoice_id) a
@@ -346,6 +347,11 @@ async function billingInvoices(client, clientId) {
                    WHERE p.status = 'SUBMITTED'
                    GROUP BY pa.invoice_id) pp
               ON pp.invoice_id = i.invoice_id
+       LEFT JOIN (SELECT b.invoice_id, COUNT(*) AS documents_count
+                    FROM invoice_client_bundle b
+                    JOIN invoice_client_bundle_item it ON it.bundle_id = b.bundle_id
+                   GROUP BY b.invoice_id) bd
+              ON bd.invoice_id = i.invoice_id
       WHERE i.client_id = $1 AND i.type = 'FINAL'
         AND i.status NOT IN ('DRAFT','SUBMITTED_FOR_VALIDATION','SUBMITTED_FOR_APPROVAL')
       ORDER BY i.created_at DESC

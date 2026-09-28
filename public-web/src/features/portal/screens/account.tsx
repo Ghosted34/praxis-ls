@@ -26,9 +26,14 @@ import {
   portalPasskeyRegisterVerify,
   portalDevices,
   portalRevokeDevice,
+  portalNotifySettings,
+  portalNotifySave,
+  portalPushTest,
   type Scope,
   type TeamMember,
   type PortalDevice,
+  type NotifyChoice,
+  type NotifyTopic,
 } from "@/lib/portal-api";
 import { portalSession } from "@/lib/portal-session";
 import { getLang, setLang } from "@/lib/i18n";
@@ -36,6 +41,7 @@ import { cn } from "@/lib/cn";
 import { usePortal, KindSwitchContext, type PortalKind } from "../lib/portal-context";
 import { getPortalTheme, setPortalTheme, type PortalTheme } from "../lib/theme";
 import { deviceCanUsePasskey, createPasskey, isCancel, biometricKind } from "../lib/passkey";
+import { pushState, enablePush, disablePush, useInstall, type PushState } from "../lib/portal-pwa";
 import { usePageChrome } from "../shell/portal-shell";
 import {
   Avatar,
@@ -47,6 +53,8 @@ import {
   TextField,
   ConfirmSheet,
   SkeletonCards,
+  ErrorCard,
+  InfoButton,
   useLoad,
   useToast,
   errorText,
@@ -68,6 +76,15 @@ import {
   CheckIcon,
   TrashIcon,
   ShieldIcon,
+  BellIcon,
+  ChatIcon,
+  FolderIcon,
+  WalletIcon,
+  QuoteIcon,
+  ShipIcon,
+  ShareIcon,
+  PlusIcon,
+  InstallIcon,
 } from "../ui/icons";
 import { whenShort } from "../lib/when";
 
@@ -105,6 +122,8 @@ export function AccountPage() {
 
       <KindSwitch />
       {portal.kind === "CLIENT" ? <Team /> : null}
+      {portal.kind === "CLIENT" ? <InstallApp /> : null}
+      {portal.kind === "CLIENT" ? <Notifications /> : null}
       <Security />
       <Preferences />
 
@@ -548,6 +567,210 @@ function Security() {
         onClose={() => setRevoke(null)}
         onConfirm={() => void doRevoke()}
       />
+    </Section>
+  );
+}
+
+/* ── the app on this device (client portal PR 2) ────────────────────────── */
+
+/**
+ * Offered only where it can happen: a browser that handed us its install
+ * prompt, or an iPhone, where it is two taps in Safari's Share sheet. Gone
+ * once installed, and never shown where neither applies.
+ */
+function InstallApp() {
+  const { t } = useTranslation();
+  const { state, install } = useInstall();
+  if (state === "installed" || state === "unavailable") return null;
+  return (
+    <section className="pt-card flex items-center gap-4 p-4 sm:p-5">
+      <IconDisc tone="brand">
+        <InstallIcon />
+      </IconDisc>
+      <span className="min-w-0 flex-1">
+        <span className="block text-[0.95rem] font-semibold text-foreground">{t("portal.install.title")}</span>
+        <span className="block text-xs text-muted-foreground">{t("portal.install.hint")}</span>
+      </span>
+      {state === "ready" ? (
+        <button type="button" className="pt-btn pt-btn-primary pt-btn-sm shrink-0" onClick={() => void install()}>
+          {t("portal.install.button")}
+        </button>
+      ) : (
+        <InstallHelp />
+      )}
+    </section>
+  );
+}
+
+/** iPhone and iPad: Share, then "Add to Home Screen" — Safari has no button a site can press. */
+function InstallHelp() {
+  const { t } = useTranslation();
+  const steps: [React.ReactNode, string][] = [
+    [<ShareIcon key="share" size={18} />, t("portal.install.ios1")],
+    [<PlusIcon key="add" size={18} />, t("portal.install.ios2")],
+    [<BellIcon key="bell" size={18} />, t("portal.install.ios3")],
+  ];
+  return (
+    <InfoButton label={t("portal.install.howLabel")} title={t("portal.install.iosTitle")}>
+      <ol className="grid gap-3">
+        {steps.map(([icon, text], i) => (
+          <li key={i} className="flex items-center gap-3 text-[0.95rem] text-foreground">
+            <IconDisc size={36}>{icon}</IconDisc>
+            <span className="min-w-0 flex-1">{text}</span>
+          </li>
+        ))}
+      </ol>
+    </InfoButton>
+  );
+}
+
+/* ── notifications (14180) ──────────────────────────────────────────────── */
+
+const TOPIC_ICON: Record<NotifyTopic, React.ReactNode> = {
+  MESSAGES: <ChatIcon size={20} />,
+  REQUESTS: <FolderIcon size={20} />,
+  BILLING: <WalletIcon size={20} />,
+  PROPOSALS: <QuoteIcon size={20} />,
+  SHIPMENTS: <ShipIcon size={20} />,
+};
+
+/**
+ * This device on or off, and per topic: email, the app, both or neither. A
+ * topic this person's access does not show them is not listed at all — the
+ * server only returns the ones they can see.
+ */
+function Notifications() {
+  const { t } = useTranslation();
+  const toast = useToast();
+  const settings = useLoad(portalNotifySettings, "notify");
+  const [device, setDevice] = React.useState<PushState | null>(null);
+  const [topics, setTopics] = React.useState<NotifyChoice[] | null>(null);
+  const [busy, setBusy] = React.useState<"device" | "test" | null>(null);
+  const lang = getLang() === "fr" ? "fr" : "en";
+
+  React.useEffect(() => {
+    void pushState().then(setDevice);
+  }, []);
+  React.useEffect(() => {
+    if (settings.data) setTopics(settings.data.topics);
+  }, [settings.data]);
+
+  const publicKey = settings.data?.push.configured ? settings.data.push.public_key : null;
+
+  async function toggleDevice(on: boolean) {
+    setBusy("device");
+    try {
+      const next = on ? (publicKey ? await enablePush(publicKey, lang) : "unsupported") : await disablePush();
+      setDevice(next);
+      if (next === "on") toast(t("portal.notify.turnedOn"));
+      else if (!on) toast(t("portal.notify.turnedOff"));
+    } catch (e) {
+      toast(errorText(e), "bad");
+      setDevice(await pushState());
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function test() {
+    setBusy("test");
+    try {
+      const r = await portalPushTest(lang);
+      if (r.sent) toast(t("portal.notify.testSent"));
+      else toast(t("portal.notify.testNone"), "bad");
+    } catch (e) {
+      toast(errorText(e), "bad");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function flip(topic: NotifyTopic, channel: "email" | "push") {
+    if (!topics) return;
+    const before = topics;
+    const next = topics.map((x) => (x.topic === topic ? { ...x, [channel]: !x[channel] } : x));
+    setTopics(next);
+    try {
+      const saved = await portalNotifySave(next, lang);
+      setTopics(saved.topics);
+    } catch (e) {
+      setTopics(before);
+      toast(errorText(e), "bad");
+    }
+  }
+
+  const stateLine =
+    device === null
+      ? ""
+      : !publicKey && settings.data && (device === "on" || device === "off")
+        ? t("portal.notify.state.unconfigured")
+        : t(`portal.notify.state.${device === "install-first" ? "installFirst" : device}`);
+  const canSwitch = !!publicKey && (device === "on" || device === "off");
+
+  return (
+    <Section
+      title={t("portal.notify.title")}
+      icon={<BellIcon size={20} />}
+      action={
+        <InfoButton label={t("portal.notify.infoLabel")} title={t("portal.notify.infoTitle")}>
+          <div className="grid gap-3 text-[0.95rem] text-foreground">
+            <p>{t("portal.notify.info1")}</p>
+            <p>{t("portal.notify.info2")}</p>
+            <p>{t("portal.notify.info3")}</p>
+          </div>
+        </InfoButton>
+      }
+    >
+      <div className="pt-row">
+        <IconDisc tone={device === "on" ? "ok" : "mute"}>
+          <BellIcon />
+        </IconDisc>
+        <span className="min-w-0 flex-1">
+          <span className="block text-[0.95rem] font-semibold text-foreground">{t("portal.notify.thisDevice")}</span>
+          <span className="block text-xs text-muted-foreground">{stateLine}</span>
+        </span>
+        {device === "on" ? (
+          <button type="button" className="pt-btn pt-btn-ghost pt-btn-sm shrink-0" disabled={busy === "test"} onClick={() => void test()}>
+            <Busy busy={busy === "test"} />
+            {t("portal.notify.test")}
+          </button>
+        ) : null}
+        {canSwitch ? (
+          <Switch checked={device === "on"} onChange={(v) => void toggleDevice(v)} label={t("portal.notify.switchLabel")} disabled={busy === "device"} />
+        ) : device === "blocked" ? (
+          <InfoButton label={t("portal.notify.blockedTitle")} title={t("portal.notify.blockedTitle")}>
+            <p className="text-[0.95rem] text-foreground">{t("portal.notify.blockedHow")}</p>
+          </InfoButton>
+        ) : device === "install-first" ? (
+          <InstallHelp />
+        ) : null}
+      </div>
+      {(topics || []).map((x) => (
+        <div key={x.topic} className="pt-row flex-wrap">
+          <IconDisc size={38}>{TOPIC_ICON[x.topic]}</IconDisc>
+          <span className="min-w-0 flex-1 text-[0.95rem] font-semibold text-foreground">{t(`portal.notify.topic.${x.topic}`)}</span>
+          <span className="flex shrink-0 gap-2" role="group" aria-label={t(`portal.notify.topic.${x.topic}`)}>
+            <button type="button" className="pt-chip pt-chip-sm" aria-pressed={x.email} onClick={() => void flip(x.topic, "email")}>
+              <MailIcon size={16} />
+              {t("portal.notify.email")}
+            </button>
+            <button type="button" className="pt-chip pt-chip-sm" aria-pressed={x.push} onClick={() => void flip(x.topic, "push")}>
+              <DeviceIcon size={16} />
+              {t("portal.notify.push")}
+            </button>
+          </span>
+        </div>
+      ))}
+      {!settings.data && !settings.error ? (
+        <div className="p-3">
+          <SkeletonCards count={2} />
+        </div>
+      ) : null}
+      {settings.error ? (
+        <div className="p-3">
+          <ErrorCard message={settings.error} onRetry={settings.reload} />
+        </div>
+      ) : null}
     </Section>
   );
 }

@@ -25,6 +25,9 @@
 
 const crypto = require("crypto");
 const repo = require("./portal_client.repo");
+const bundles = require("./invoice_bundle.service");
+const chat = require("./portal_chat.service");
+const proposals = require("./portal_proposal.service");
 const portal = require("./portal.service");
 const vault = require("../vault/document_vault/document_vault.service");
 const shipmentDetails = require("../operations/shipment_details/shipment_details.service");
@@ -149,6 +152,8 @@ function invoiceView(row, asOf = today()) {
     state,
     dossier_id: row.dossier_id,
     dossier_ref: row.dossier_ref || null,
+    // Supporting documents finance shared with it (14160) — the paperclip count.
+    documents_count: Number(row.documents_count || 0),
   };
 }
 
@@ -183,9 +188,11 @@ const canBilling = (scope) => scope === "ALL" || scope === "BILLING";
  * a finance colleague sees what is due and nothing about shipments; an
  * operations colleague sees shipments and paperwork and no amounts.
  */
-async function home(c, { clientId, scope = "ALL", lang = "en" }) {
+async function home(c, { clientId, scope = "ALL", lang = "en", me = null, since = null }) {
   const company = await clientIdentity(c, { clientId });
-  const out = { company, scope, shipments: null, requests: null, billing: null };
+  const out = { company, scope, shipments: null, requests: null, billing: null, chat: null, proposals: null };
+  // The badge on the chat button (14170): what the team wrote since I last looked.
+  if (me) out.chat = { unread: await chat.unread(c, { clientId, me, scope, since }) };
 
   if (canOps(scope)) {
     await repo.syncRuleRequests(c, clientId);
@@ -202,6 +209,8 @@ async function home(c, { clientId, scope = "ALL", lang = "en" }) {
       in_review_count: asks.filter((r) => r.status === "SUBMITTED").length,
       items: needed.slice(0, 4),
     };
+    // A proposal waiting for the client's answer is something they owe us too.
+    out.proposals = { pending_count: await proposals.pendingCount(c, { clientId }) };
   }
 
   if (canBilling(scope)) {
@@ -469,6 +478,8 @@ async function invoice(c, { clientId, invoiceId, lang }) {
     ...detail,
     summary: row ? invoiceView(row) : null,
     how_to_pay: await howToPay(c, entity && entity.entity_id),
+    // The supporting documents finance has shared with this invoice (14160).
+    documents: await bundles.clientView(c, { clientId, invoiceId }),
   };
 }
 
@@ -654,6 +665,11 @@ async function createRequest(c, { clientId, dossierId = null, kind, docTypeCode 
   await audit(c, {
     actorUserId: actor.user_id || null, action: "client_request.created", moduleKey: MODULE_OPS,
     entityRef: `client_request:${row.client_request_id}`, after: { client_id: clientId, dossier_id: dossierId, kind, doc_type_code: docTypeCode, title },
+  });
+  // The client is told — by email and on their phone (notify-portal, 14180).
+  await emitEvent(c, {
+    eventTypeKey: "client_request.created", moduleKey: MODULE_OPS, entityRef: `client_request:${row.client_request_id}`,
+    actorUserId: actor.user_id || null, payload: { client_id: clientId, dossier_id: dossierId, kind },
   });
   return requestView(await repo.requestById(c, row.client_request_id));
 }

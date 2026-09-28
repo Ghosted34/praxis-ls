@@ -215,3 +215,285 @@ describe("a colleague given only Billing", () => {
     expect(calls).not.toContain("GET /portal/client/shipments");
   });
 });
+
+describe("an invoice's supporting documents", () => {
+  const INVOICE = {
+    invoice_id: "i1",
+    doc_number: "FAC-2026-1182",
+    issued_on: "2026-09-20",
+    payment_due_on: "2026-10-20",
+    days_to_due: 22,
+    currency: "XAF",
+    total: 1850000,
+    paid: 0,
+    in_review: 0,
+    outstanding: 1850000,
+    state: "DUE",
+    dossier_id: "d1",
+    dossier_ref: "PRX-1",
+    documents_count: 2,
+  };
+  const DETAIL = {
+    invoice: {
+      invoice_id: "i1",
+      doc_number: "FAC-2026-1182",
+      issued_on: "2026-09-20",
+      payment_due_on: "2026-10-20",
+      status: "ISSUED_LOCKED",
+      currency: "XAF",
+      service_ht: 350000,
+      disbursement_total: 1400000,
+      vat_total: 100000,
+      total_ttc: 1850000,
+    },
+    lines: [{ label: "Port charges (PAD)", amount: 900000, tax: null, is_disbursement: true }],
+    summary: INVOICE,
+    how_to_pay: null,
+    documents: {
+      published_at: "2026-09-27T10:00:00Z",
+      items: [
+        { doc_id: "v1", position: 1, label: "Port charges (PAD)", name: "pad-receipt", ext: "pdf" },
+        { doc_id: "v2", position: 2, label: "Demurrage", name: "Maersk demurrage", ext: "pdf" },
+      ],
+    },
+  };
+  const billing = (zip: [number, Json]) => ({
+    "/portal/client/billing": () => [200, { data: { totals: [], invoices: [INVOICE], proofs: [], how_to_pay: null } }] as [number, Json],
+    "/portal/client/invoice/i1": () => [200, { data: DETAIL }] as [number, Json],
+    "/portal/client/invoice/i1/documents/zip": () => zip,
+  });
+
+  beforeEach(() => {
+    vi.stubGlobal("URL", Object.assign(URL, { createObjectURL: vi.fn(() => "blob:zip"), revokeObjectURL: vi.fn() }));
+    // The Save-As anchor: jsdom would try to navigate to the blob.
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it("shows the paperclip on the row, and one tap downloads the invoice and every document as a ZIP", async () => {
+    stubApi(true, billing([200, { ok: true }]));
+    sessionStorage.setItem("praxis.portal.token", "tok");
+    const { findByText, getByText, getByRole } = await mount("/portal/billing");
+    // The row says how many documents come with the invoice, in words for a screen reader.
+    getByText("Supporting documents: 2", { selector: ".sr-only" });
+    fireEvent.click(getByText("FAC-2026-1182"));
+    await findByText(en.bill.docs.title);
+    fireEvent.click(getByRole("button", { name: en.bill.docs.all }));
+    await waitFor(() => expect(calls).toContain("GET /portal/client/invoice/i1/documents/zip"));
+    // The single files wait behind a tap.
+    expect(document.body.textContent).not.toContain("Maersk demurrage");
+    fireEvent.click(getByRole("button", { name: en.bill.docs.show }));
+    getByText("Maersk demurrage");
+  });
+
+  it("says so when the documents are too large to download together", async () => {
+    stubApi(true, billing([413, { error: { code: "BUNDLE_TOO_LARGE", message: "server words" } }]));
+    sessionStorage.setItem("praxis.portal.token", "tok");
+    const { findByText, getByText, getByRole } = await mount("/portal/billing");
+    fireEvent.click(getByText("FAC-2026-1182"));
+    await findByText(en.bill.docs.title);
+    fireEvent.click(getByRole("button", { name: en.bill.docs.all }));
+    await findByText(en.err.BUNDLE_TOO_LARGE);
+  });
+});
+
+describe("the chat", () => {
+  const THREADS = [
+    { thread: "general", dossier_id: null, dossier_ref: null, dossier_status: null, unread: 1, last: { direction: "STAFF", mine: false, preview: "Your statement is ready.", kind: "TEXT", at: "2026-09-28T08:00:00Z" } },
+    { thread: "11111111-1111-4111-8111-111111111111", dossier_id: "11111111-1111-4111-8111-111111111111", dossier_ref: "PRX-9", dossier_status: "IN_PROGRESS", unread: 2, last: { direction: "STAFF", mine: false, preview: null, kind: "IMAGE", at: "2026-09-28T09:00:00Z" } },
+  ];
+  const PAGE = {
+    thread: "general",
+    dossier_ref: null,
+    has_more: false,
+    messages: [
+      {
+        message_id: "m1", dossier_id: null, dossier_ref: null, direction: "STAFF", body: "Your statement is ready.", created_at: "2026-09-28T08:00:00Z",
+        author: { name: "Paul Ekambi", email: null }, mine: false, seen: null, milestone: null, location: null, attachments: [],
+      },
+    ],
+  };
+  const chatRoutes = (sent: RequestInit[] = []) => ({
+    "/portal/client/home": () => [200, { data: { ...HOME, chat: { unread: 3 } } }] as [number, Json],
+    "/portal/client/chat/threads": () => [200, { data: THREADS }] as [number, Json],
+    "/portal/client/chat/unread": () => [200, { data: { unread: 0 } }] as [number, Json],
+    "/portal/client/chat/messages": (init?: RequestInit) => {
+      if (init?.method === "POST") {
+        sent.push(init);
+        return [201, { data: { ...PAGE.messages[0], message_id: "m2", direction: "CLIENT", body: "Thank you!", mine: true, seen: false, author: { name: null, email: "marie@acme.cm" } } }] as [number, Json];
+      }
+      return [200, { data: PAGE }] as [number, Json];
+    },
+    "/portal/client/chat/read": () => [200, { data: { thread: "general" } }] as [number, Json],
+  });
+
+  it("puts the unread count on the chat button and lists General before the shipments", async () => {
+    stubApi(true, chatRoutes());
+    sessionStorage.setItem("praxis.portal.token", "tok");
+    const { container, findByText, getByText } = await mount("/portal");
+    const fab = container.querySelector(".pt-fab") as HTMLButtonElement;
+    await waitFor(() => expect(fab.textContent).toContain("3"));
+    fireEvent.click(fab);
+    await findByText(en.chat.general);
+    const rows = [...document.querySelectorAll(".pt-chat-thread")].map((n) => n.textContent || "");
+    expect(rows[0]).toContain(en.chat.general);
+    expect(rows[1]).toContain("PRX-9");
+    // A photo with no words reads as what it is.
+    expect(rows[1]).toContain(en.chat.kind.IMAGE);
+    getByText(en.chat.newAbout);
+  });
+
+  /** The upload path is XHR (for its progress events); route it through the same table. */
+  class FakeXHR {
+    status = 0;
+    responseText = "";
+    upload: { onprogress: ((e: { lengthComputable: boolean; loaded: number; total: number }) => void) | null } = { onprogress: null };
+    onload: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    private method = "GET";
+    private url = "";
+    open(method: string, url: string) {
+      this.method = method;
+      this.url = url;
+    }
+    setRequestHeader() {}
+    send(body: FormData) {
+      const path = new URL(this.url, "http://localhost").pathname.replace("/api/tenant", "");
+      calls.push(`${this.method} ${path}`);
+      const hit = routes[path];
+      const [status, json] = hit ? hit({ method: this.method, body } as RequestInit) : [404, { error: { code: "NOT_FOUND" } }];
+      setTimeout(() => {
+        this.upload.onprogress?.({ lengthComputable: true, loaded: 1, total: 1 });
+        this.status = status;
+        this.responseText = JSON.stringify(json);
+        this.onload?.();
+      }, 0);
+    }
+  }
+
+  it("opens a conversation, marks it read, and sends as a multipart message", async () => {
+    const sent: RequestInit[] = [];
+    stubApi(true, chatRoutes(sent));
+    vi.stubGlobal("XMLHttpRequest", FakeXHR);
+    sessionStorage.setItem("praxis.portal.token", "tok");
+    const { container, findByText, getByLabelText, getByRole } = await mount("/portal");
+    fireEvent.click(container.querySelector(".pt-fab") as HTMLButtonElement);
+    fireEvent.click(await findByText(en.chat.general));
+    await findByText("Your statement is ready.", { selector: ".pt-chat-text" });
+    await waitFor(() => expect(calls).toContain("POST /portal/client/chat/read"));
+    const box = getByLabelText(en.chat.placeholder);
+    fireEvent.change(box, { target: { value: "Thank you!" } });
+    fireEvent.click(getByRole("button", { name: en.chat.send }));
+    await findByText("Thank you!", { selector: ".pt-chat-text" });
+    await waitFor(() => expect(sent).toHaveLength(1));
+    const form = sent[0].body as FormData;
+    expect(form.get("thread")).toBe("general");
+    expect(form.get("body")).toBe("Thank you!");
+    // The new thread API, never the first portal's flat endpoint.
+    expect(calls).not.toContain("POST /portal/client/messages");
+  });
+
+  it("opens straight into a conversation from a notification's link, then drops the parameter", async () => {
+    stubApi(true, chatRoutes());
+    sessionStorage.setItem("praxis.portal.token", "tok");
+    const { findByText, getByTestId } = await mount("/portal?chat=general");
+    // General, opened — its message on screen without touching the list.
+    await findByText("Your statement is ready.", { selector: ".pt-chat-text" });
+    await waitFor(() => expect(getByTestId("loc").textContent).toBe("/portal"));
+  });
+
+  it("gives a Billing-only colleague no way to start a shipment conversation", async () => {
+    stubApi(true, { ...chatRoutes(), "/portal/me": () => [200, { data: ME("BILLING") }] });
+    sessionStorage.setItem("praxis.portal.token", "tok");
+    const { container, findByText, queryByText } = await mount("/portal");
+    fireEvent.click(container.querySelector(".pt-fab") as HTMLButtonElement);
+    await findByText(en.chat.general);
+    expect(queryByText(en.chat.newAbout)).toBeNull();
+  });
+});
+
+describe("notifications", () => {
+  const SETTINGS = {
+    language: null,
+    topics: [
+      { topic: "MESSAGES", email: true, push: true },
+      { topic: "REQUESTS", email: true, push: true },
+      { topic: "BILLING", email: true, push: true },
+      { topic: "PROPOSALS", email: true, push: true },
+      { topic: "SHIPMENTS", email: false, push: true },
+    ],
+    push: { configured: true, public_key: "BPUBLIC", devices: 0 },
+  };
+
+  it("lists each topic with its two switches, and saves a change at once", async () => {
+    const saved: unknown[] = [];
+    stubApi(true, {
+      "/portal/client/team": () => [200, { data: { can_manage: false, members: [] } }],
+      "/portal/auth/passkeys": () => [200, { data: [] }],
+      "/portal/auth/sessions": () => [200, { data: [] }],
+      "/portal/client/notifications": (init?: RequestInit) => {
+        if (init?.method === "POST") {
+          const body = JSON.parse(String(init.body));
+          saved.push(body);
+          return [200, { data: { language: null, topics: body.topics } }];
+        }
+        return [200, { data: SETTINGS }];
+      },
+    });
+    sessionStorage.setItem("praxis.portal.token", "tok");
+    const { findByRole, getByRole } = await mount("/portal/account");
+    const shipments = await findByRole("group", { name: en.notify.topic.SHIPMENTS });
+    const email = shipments.querySelector("button") as HTMLButtonElement;
+    expect(email.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(email);
+    await waitFor(() => expect(saved).toHaveLength(1));
+    const body = saved[0] as { topics: { topic: string; email: boolean }[] };
+    expect(body.topics.find((x) => x.topic === "SHIPMENTS")?.email).toBe(true);
+    await waitFor(() => expect(email.getAttribute("aria-pressed")).toBe("true"));
+    // jsdom has no service worker: this device says so instead of offering a switch.
+    expect(getByRole("group", { name: en.notify.topic.MESSAGES })).toBeTruthy();
+  });
+});
+
+describe("a proposal", () => {
+  const P = "77777777-7777-4777-8777-777777777777";
+  const SUMMARY = {
+    proposal_id: P, doc_number: "PRP-2026-0004", title: "Door-to-door, Shanghai to Douala", status: "SENT",
+    currency: "XAF", total: 4850000, route: "Shanghai → Douala", sent_on: "2026-09-20", valid_until: "2099-12-31",
+  };
+  const DETAIL = {
+    proposal: { proposal_id: P, doc_number: "PRP-2026-0004", title: SUMMARY.title, status: "SENT", currency: "XAF", total: 4850000, valid_until: "2099-12-31" },
+    presentation: {
+      language: "EN", title: SUMMARY.title, document_number: "PRP-2026-0004", client_name: "Acme Trading", route: "Shanghai → Douala",
+      labels: { service: "Service", quantity: "Qty", unit: "Unit", total: "Total" },
+      sections: [], lines: [{ label: "Sea freight 1×40HC", quantity: 1, unit_price_display: "4 850 000", total_display: "4 850 000" }],
+    },
+    signature: null,
+    signing: { available: true, cards: [{ preset_code: "STAMP", label: "Stamp", blurb: null }] },
+    decline_reasons: [{ reason_code: "PRICE", label: "The price" }, { reason_code: "TIMING", label: "The timing" }],
+  };
+
+  it("opens from its link and is declined with a reason the team can act on", async () => {
+    const declined: unknown[] = [];
+    stubApi(true, {
+      "/portal/client/quote-requests": () => [200, { data: [] }],
+      "/portal/client/proposals": () => [200, { data: [SUMMARY] }],
+      [`/portal/client/proposals/${P}`]: () => [200, { data: DETAIL }],
+      [`/portal/client/proposals/${P}/decline`]: (init?: RequestInit) => {
+        declined.push(JSON.parse(String(init?.body)));
+        return [200, { data: { declined: true } }];
+      },
+    });
+    sessionStorage.setItem("praxis.portal.token", "tok");
+    const { findByText, findByRole, getByRole } = await mount(`/portal/quotes?proposal=${P}`);
+    await findByText("Sea freight 1×40HC");
+    // Accepting is signing on a tenant that offers a signature card.
+    expect(getByRole("button", { name: en.prop.acceptSign })).toBeTruthy();
+    fireEvent.click(getByRole("button", { name: en.prop.decline }));
+    const send = await findByRole("button", { name: en.prop.declineSend });
+    expect((send as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(await findByRole("button", { name: "The price" }));
+    fireEvent.click(send);
+    await waitFor(() => expect(declined).toEqual([{ reason_code: "PRICE" }]));
+  });
+});

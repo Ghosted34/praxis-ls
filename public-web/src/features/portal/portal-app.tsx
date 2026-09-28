@@ -16,8 +16,9 @@ import "./portal-i18n";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { Routes, Route, Navigate } from "react-router-dom";
-import { useLang } from "@/lib/i18n";
-import { applyPortalTheme, restoreSiteTheme, watchSystemTheme } from "./lib/theme";
+import { useLang, getLang } from "@/lib/i18n";
+import { applyPortalTheme, restoreSiteTheme, watchSystemTheme, resolvePortalTheme } from "./lib/theme";
+import { usePortalPwa } from "./lib/portal-pwa";
 import { PortalSessionGate, type PortalKind } from "./lib/portal-context";
 import { LayerContext, ToastProvider, EmptyState } from "./ui/kit";
 import { BrandMark } from "./ui/brand";
@@ -37,6 +38,9 @@ import { InvestorTerminal, AuditorTerminal } from "./screens/terminals";
 export function PortalApp() {
   useLang();
   const [layer, setLayer] = React.useState<HTMLElement | null>(null);
+  // Installable, with notifications and an offline page (lib/portal-pwa.ts):
+  // the manifest only while the portal is open, never on the marketing site.
+  usePortalPwa({ theme: resolvePortalTheme(), lang: getLang() === "fr" ? "fr" : "en" });
 
   // Before paint, so the first frame is already the portal's ground.
   React.useLayoutEffect(() => {

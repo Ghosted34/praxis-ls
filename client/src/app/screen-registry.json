@@ -845,7 +845,10 @@
         "get_final_invoice",
         "draft_final_invoice",
         "update_final_invoice",
-        "submit_final_invoice"
+        "submit_final_invoice",
+        "get_invoice_client_documents",
+        "publish_invoice_documents",
+        "withdraw_invoice_documents"
       ]
     },
     {
@@ -1899,7 +1902,11 @@
       "purpose": "The account team's side of the client portal — what clients sent to review, the message thread and onboarding checklist per client.",
       "actions": [
         "list_client_requests",
-        "review_client_request"
+        "review_client_request",
+        "list_client_conversations",
+        "read_client_conversation",
+        "reply_to_client",
+        "client_notification_reach"
       ]
     },
     {

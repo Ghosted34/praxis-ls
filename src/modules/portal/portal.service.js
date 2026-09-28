@@ -137,9 +137,24 @@ async function toggleOnboardingStep(client, { clientId, stepKey, actor }) {
 const clientMessages = (client, { clientId, dossierId }) =>
   repo.clientMessages(client, clientId, { dossierId });
 
+/**
+ * A message may only name a shipment of the client it is filed under. The
+ * first version took `dossier_id` on trust, so a client could file a message
+ * against another company's shipment and the team would read it there.
+ */
+async function assertOwnDossier(client, { clientId, dossierId }) {
+  if (!dossierId) return;
+  const { rows } = await client.query(
+    "SELECT 1 FROM dossier_visible WHERE dossier_id = $1 AND client_id = $2",
+    [dossierId, clientId],
+  );
+  if (!rows.length) throw new AppError("NOT_FOUND", "No such shipment for this client", 404);
+}
+
 /** A message from the client's side of the thread. */
 async function sendClientMessage(client, { clientId, body, dossierId, authorEmail }) {
   if (!clientId) throw new AppError("CLIENT_REQUIRED", "client_id required", 422);
+  await assertOwnDossier(client, { clientId, dossierId });
   const row = await repo.insertClientMessage(client, {
     clientId, dossierId: dossierId || null, direction: "CLIENT", body, authorEmail,
   });
@@ -150,6 +165,7 @@ async function sendClientMessage(client, { clientId, body, dossierId, authorEmai
 /** A reply from the account team. */
 async function staffSendMessage(client, { clientId, body, dossierId, actor }) {
   if (!clientId) throw new AppError("CLIENT_REQUIRED", "client_id required", 422);
+  await assertOwnDossier(client, { clientId, dossierId });
   const row = await repo.insertClientMessage(client, {
     clientId, dossierId: dossierId || null, direction: "STAFF", body, authorUserId: actor.user_id || null,
   });
@@ -169,13 +185,31 @@ const staffMessages = (client, { clientId, dossierId }) =>
 async function exportClientChat(client, { clientId }) {
   if (!clientId) throw new AppError("CLIENT_REQUIRED", "client_id required", 422);
   const messages = await repo.clientMessages(client, clientId, { limit: 500 });
+  // Since 14170 a message can be a photo, a voice note or a pin with no words;
+  // the certified copy says what was sent rather than printing an empty box.
+  const { rows: files } = messages.length
+    ? await client.query(
+      "SELECT message_id, kind, file_name, duration_ms FROM client_message_attachment WHERE message_id = ANY($1::uuid[]) ORDER BY position",
+      [messages.map((m) => m.message_id)],
+    )
+    : { rows: [] };
+  const filesOf = new Map();
+  for (const f of files) filesOf.set(f.message_id, [...(filesOf.get(f.message_id) || []), f]);
   const rows = messages.map((m) => ({
     direction: m.direction,
     author: m.direction === "STAFF" ? (m.author_name || "Account team") : (m.author_email || "Client"),
-    body: m.body,
+    about: m.dossier_ref || null,
+    body: [
+      ...(filesOf.get(m.message_id) || []).map(attachmentLine),
+      m.location_lat !== null && m.location_lat !== undefined
+        ? `[Location: ${m.location_label ? `${m.location_label}, ` : ""}${Number(m.location_lat).toFixed(5)}, ${Number(m.location_lng).toFixed(5)}]`
+        : null,
+      m.body || null,
+    ].filter(Boolean).join("\n"),
     at: m.created_at,
   }));
-  const html = chatHtml(rows);
+  const { rows: [who] } = await client.query("SELECT timezone FROM client_master WHERE client_id = $1", [clientId]);
+  const html = chatHtml(rows, (who && who.timezone) || null);
   const entityRef = `client_chat:${clientId}:${Date.now()}`;
   const key = `documents/client-chat/${clientId}-${Date.now()}.pdf`;
   // docType null: no registry type fits a chat export, and capture allows a
@@ -185,11 +219,37 @@ async function exportClientChat(client, { clientId }) {
   return { buffer, verify: out.verify, doc_id: out.doc_id, count: rows.length };
 }
 
-function chatHtml(rows) {
+/** "[Photo: seal.jpg]", "[Voice note, 0:14]", "[File: delivery-order.pdf]". */
+function attachmentLine(f) {
+  if (f.kind === "VOICE") {
+    const secs = Math.round((f.duration_ms || 0) / 1000);
+    return `[Voice note${secs ? `, ${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}` : ""}]`;
+  }
+  return `[${f.kind === "IMAGE" ? "Photo" : "File"}${f.file_name ? `: ${f.file_name}` : ""}]`;
+}
+
+/**
+ * When a message was sent, as the client reads a date: dd/mm/yyyy HH:mm, in
+ * their own timezone (UTC when none is on file). This used to print
+ * `String(date).slice(0, 16)` — "Mon Sep 28 2026", since pg hands back a Date.
+ */
+function stamp(at, tz) {
+  const opts = { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" };
+  const d = new Date(at);
+  if (Number.isNaN(d.getTime())) return "";
+  try {
+    return new Intl.DateTimeFormat("en-GB", { ...opts, timeZone: tz || "UTC" }).format(d).replace(",", "");
+  } catch {
+    // An unknown zone name on the client record: UTC, and say so.
+    return `${new Intl.DateTimeFormat("en-GB", { ...opts, timeZone: "UTC" }).format(d).replace(",", "")} UTC`;
+  }
+}
+
+function chatHtml(rows, tz = null) {
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const items = rows.map((m) =>
     `<div style="margin:0 0 12px;padding:10px 14px;border-radius:10px;background:${m.direction === "STAFF" ? "#eef2f7" : "#fdf1e3"};border:1px solid #e3e9f2">
-       <div style="font-size:11px;color:#64748b;margin-bottom:4px">${esc(m.author)} · ${esc(String(m.at).slice(0, 16).replace("T", " "))}</div>
+       <div style="font-size:11px;color:#64748b;margin-bottom:4px">${esc(m.author)}${m.about ? ` · ${esc(m.about)}` : ""} · ${esc(stamp(m.at, tz))}</div>
        <div style="font-size:13px;color:#0b2030;white-space:pre-wrap">${esc(m.body)}</div>
      </div>`).join("\n");
   return `<!doctype html><html><head><meta charset="utf-8"><style>@page{size:A4;margin:18mm}body{font-family:Roboto,'Noto Sans',sans-serif;color:#0b2030}h1{font-size:16px;margin:0 0 4px}p.lead{font-size:12px;color:#64748b;margin:0 0 20px}</style></head><body>

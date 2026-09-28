@@ -43,7 +43,8 @@ export function HomePage() {
 
   const asks = (s?.requests?.items || []).filter((r) => r.status === "OPEN" || r.status === "REJECTED");
   const overdue = s?.billing?.next_due && s.billing.next_due.state === "OVERDUE" ? s.billing.next_due : null;
-  const needs = asks.length > 0 || !!overdue;
+  const offers = s?.proposals?.pending_count || 0;
+  const needs = asks.length > 0 || !!overdue || offers > 0;
   const ships = s?.shipments?.items || [];
   const dueTotals = (s?.billing?.totals || []).filter((x) => x.due > 0);
 
@@ -111,6 +112,18 @@ export function HomePage() {
                       </span>
                     </span>
                     <span className="pt-btn pt-btn-soft pt-btn-sm shrink-0">{t("portal.bill.pay")}</span>
+                  </button>
+                ) : null}
+                {offers ? (
+                  <button type="button" className="pt-row" onClick={() => navigate("/portal/quotes?tab=proposals")}>
+                    <IconDisc tone="brand">
+                      <QuoteIcon />
+                    </IconDisc>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[0.95rem] font-semibold text-foreground">{t("portal.prop.awaiting")}</span>
+                      <span className="mt-0.5 block truncate text-xs text-muted-foreground">{t("portal.prop.awaitingCount", { count: offers })}</span>
+                    </span>
+                    <span className="pt-btn pt-btn-soft pt-btn-sm shrink-0">{t("portal.prop.review")}</span>
                   </button>
                 ) : null}
                 {asks.slice(0, 3).map((r) => (

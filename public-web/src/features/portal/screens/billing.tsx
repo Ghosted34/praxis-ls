@@ -17,6 +17,8 @@ import {
   portalBilling,
   portalInvoice,
   portalInvoicePdf,
+  portalInvoiceDocumentsZip,
+  portalInvoiceDocument,
   portalSubmitProof,
   portalProofFile,
   type PortalBilling,
@@ -24,6 +26,7 @@ import {
   type PaymentProof,
   type PayTo,
   type InvoiceState,
+  type InvoiceDocuments,
 } from "@/lib/portal-api";
 import { getLang, currentLocale } from "@/lib/i18n";
 import { money } from "@/lib/format";
@@ -64,7 +67,10 @@ import {
   ShipIcon,
   CheckIcon,
   ChevronRightIcon,
+  ChevronDownIcon,
   AlertIcon,
+  PaperclipIcon,
+  ArchiveIcon,
 } from "../ui/icons";
 import { relDay, relDayTitle } from "../lib/when";
 import { parseAmount } from "../lib/numbers";
@@ -105,6 +111,15 @@ export function InvoiceRow({ inv, onOpen }: { inv: InvoiceSummary; onOpen: (i: I
             <Pill plain>
               <ShipIcon size={13} />
               <span className="pt-mono">{inv.dossier_ref}</span>
+            </Pill>
+          ) : null}
+          {inv.documents_count ? (
+            <Pill plain>
+              <PaperclipIcon size={13} />
+              <span className="pt-num" aria-hidden="true">
+                {inv.documents_count}
+              </span>
+              <span className="sr-only">{t("portal.bill.docs.count", { count: inv.documents_count })}</span>
             </Pill>
           ) : null}
           {open && inv.paid > 0 ? <span className="pt-num text-xs text-muted-foreground">{t("portal.bill.ofTotal", { total: money(inv.total, inv.currency) })}</span> : null}
@@ -436,6 +451,12 @@ export function InvoiceSheet({ inv, onClose, onPay }: { inv: InvoiceSummary | nu
             </div>
           </div>
 
+          {d?.documents && d.documents.items.length ? (
+            <SupportingDocs inv={inv} docs={d.documents} />
+          ) : !d && !detail.error && inv.documents_count ? (
+            <Shimmer className="mt-5 h-[140px] w-full rounded-[18px]" />
+          ) : null}
+
           <p className="pt-section-title mt-6">{t("portal.bill.lines")}</p>
           {detail.error ? <p className="mt-2 text-sm text-[rgb(var(--bad))]">{detail.error}</p> : null}
           {!d && !detail.error ? (
@@ -470,6 +491,111 @@ export function InvoiceSheet({ inv, onClose, onPay }: { inv: InvoiceSummary | nu
         </>
       ) : null}
     </Sheet>
+  );
+}
+
+/**
+ * The documents finance shared with a final invoice (14160). The one button a
+ * client needs is "download all" — the invoice and every receipt behind it, as
+ * one ZIP numbered in the order of the lines — so it leads; the single files
+ * are one tap further, for the client who wants just the port receipt.
+ */
+function SupportingDocs({ inv, docs }: { inv: InvoiceSummary; docs: InvoiceDocuments }) {
+  const { t } = useTranslation();
+  const toast = useToast();
+  const lang = getLang();
+  const [showFiles, setShowFiles] = React.useState(false);
+  const [busy, setBusy] = React.useState<string | null>(null);
+  const listId = React.useId();
+
+  async function run(key: string, download: () => Promise<void>) {
+    setBusy(key);
+    try {
+      await download();
+    } catch (e) {
+      toast(errorText(e), "bad");
+    } finally {
+      setBusy(null);
+    }
+  }
+  const zipName = `${inv.doc_number || t("portal.bill.invoice")}-${t("portal.bill.docs.zipName")}.zip`;
+
+  return (
+    <section className="mt-5 rounded-[18px] border border-[var(--pt-line)] bg-[var(--pt-surface)] p-4" aria-label={t("portal.bill.docs.title")}>
+      <div className="flex items-center gap-3">
+        {/* The count rides on the paperclip, so the title keeps its width on a phone. */}
+        <span className="relative shrink-0">
+          <IconDisc tone="brand" size={40}>
+            <PaperclipIcon size={20} />
+          </IconDisc>
+          <span
+            aria-hidden="true"
+            className="pt-num absolute -right-1.5 -top-1.5 grid h-5 min-w-[20px] place-items-center rounded-full border-2 border-[var(--pt-surface)] bg-[var(--primary)] px-1 text-[0.6875rem] font-bold text-[var(--primary-foreground)]"
+          >
+            {docs.items.length}
+          </span>
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-bold text-foreground">
+            {t("portal.bill.docs.title")}
+            <span className="sr-only">{` (${t("portal.bill.docs.count", { count: docs.items.length })})`}</span>
+          </p>
+          <p className="truncate text-xs text-muted-foreground">{t("portal.bill.docs.shared", { when: relDay(docs.published_at) })}</p>
+        </div>
+        <InfoButton title={t("portal.bill.docs.title")} label={t("portal.bill.docs.about")}>
+          <p className="text-[0.95rem] leading-relaxed text-muted-foreground">{t("portal.bill.docs.info")}</p>
+        </InfoButton>
+      </div>
+
+      <button
+        type="button"
+        className="pt-btn pt-btn-soft pt-btn-block mt-3"
+        onClick={() => void run("zip", () => portalInvoiceDocumentsZip(inv.invoice_id, zipName, lang))}
+        disabled={busy === "zip"}
+      >
+        <Busy busy={busy === "zip"}>
+          <ArchiveIcon size={20} />
+        </Busy>
+        {t("portal.bill.docs.all")}
+      </button>
+
+      <button
+        type="button"
+        className="mt-2 flex w-full items-center justify-between rounded-[10px] py-2 text-sm font-semibold text-[var(--primary-ink)]"
+        aria-expanded={showFiles}
+        aria-controls={listId}
+        onClick={() => setShowFiles((v) => !v)}
+      >
+        {showFiles ? t("portal.bill.docs.hide") : t("portal.bill.docs.show")}
+        <ChevronDownIcon size={18} className={cn("transition-transform", showFiles && "rotate-180")} />
+      </button>
+      {showFiles ? (
+        <ul id={listId} className="pt-rows">
+          {docs.items.map((doc) => (
+            <li key={doc.doc_id} className="flex items-center gap-3 py-2.5">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[11px] bg-[var(--pt-soft)] text-[0.625rem] font-bold uppercase tracking-wide text-muted-foreground">
+                {doc.ext}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-semibold text-foreground">{doc.name}</span>
+                {doc.label ? <span className="block truncate text-xs text-muted-foreground">{doc.label}</span> : null}
+              </span>
+              <button
+                type="button"
+                className="pt-icon-btn shrink-0 text-muted-foreground"
+                aria-label={t("portal.bill.docs.downloadOne", { name: doc.name })}
+                onClick={() => void run(doc.doc_id, () => portalInvoiceDocument(inv.invoice_id, doc.doc_id, `${doc.name}.${doc.ext}`))}
+                disabled={busy === doc.doc_id}
+              >
+                <Busy busy={busy === doc.doc_id}>
+                  <DownloadIcon size={20} />
+                </Busy>
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </section>
   );
 }
 

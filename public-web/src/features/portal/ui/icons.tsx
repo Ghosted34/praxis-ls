@@ -392,3 +392,64 @@ export const PaperclipIcon = (p: Props) => (
     <path d="M20.5 11.5 12 20a5.3 5.3 0 0 1-7.5-7.5l9-9a3.5 3.5 0 0 1 5 5l-9 9a1.8 1.8 0 0 1-2.5-2.5l8.3-8.3" />
   </Svg>
 );
+/** A box with its lid and an arrow down — "everything, in one download". */
+export const ArchiveIcon = (p: Props) => (
+  <Svg {...p}>
+    <path d="M3 4h18v4H3z" />
+    <path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8" />
+    <path d="M12 11v6M9.5 14.5 12 17l2.5-2.5" />
+  </Svg>
+);
+/** A microphone — "record a voice note". */
+export const MicIcon = (p: Props) => (
+  <Svg {...p}>
+    <rect x="9" y="3" width="6" height="11" rx="3" />
+    <path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M8.5 21h7" />
+  </Svg>
+);
+/** Two ticks — the team has read it. */
+export const DoubleCheckIcon = (p: Props) => (
+  <Svg {...p}>
+    <path d="m2.5 12.5 4.5 4.5 9.5-9.5M11.5 16.5l.5.5 9.5-9.5" />
+  </Svg>
+);
+export const PlayIcon = (p: Props) => (
+  <Svg {...p}>
+    <path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z" fill="currentColor" stroke="none" />
+  </Svg>
+);
+export const PauseIcon = (p: Props) => (
+  <Svg {...p}>
+    <rect x="6.5" y="5" width="4" height="14" rx="1.2" fill="currentColor" stroke="none" />
+    <rect x="13.5" y="5" width="4" height="14" rx="1.2" fill="currentColor" stroke="none" />
+  </Svg>
+);
+/** A picture — "photos". */
+export const ImageIcon = (p: Props) => (
+  <Svg {...p}>
+    <rect x="3" y="4" width="18" height="16" rx="3" />
+    <circle cx="9" cy="10" r="2" />
+    <path d="m21 16-5-5-8.5 9" />
+  </Svg>
+);
+/** A bell — "tell me". */
+export const BellIcon = (p: Props) => (
+  <Svg {...p}>
+    <path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2h-15z" />
+    <path d="M10 21a2.2 2.2 0 0 0 4 0" />
+  </Svg>
+);
+/** A box with an arrow out — iOS's Share button, which is where "Add to Home Screen" lives. */
+export const ShareIcon = (p: Props) => (
+  <Svg {...p}>
+    <path d="M8 9H6.5a1.5 1.5 0 0 0-1.5 1.5v8A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5v-8A1.5 1.5 0 0 0 17.5 9H16" />
+    <path d="M12 3v11M8.5 6.5 12 3l3.5 3.5" />
+  </Svg>
+);
+/** A phone with a star on it — "add the portal to this device". */
+export const InstallIcon = (p: Props) => (
+  <Svg {...p}>
+    <rect x="6.5" y="2.5" width="11" height="19" rx="2.5" />
+    <path d="M12 8v6M9.5 11.5 12 14l2.5-2.5M10.5 18.5h3" />
+  </Svg>
+);

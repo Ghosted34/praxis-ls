@@ -22,12 +22,15 @@ export function AskSheet({
   step,
   onClose,
   onDone,
+  onChat,
 }: {
   open: boolean;
   dossierId: string;
   step: Milestone | null;
   onClose: () => void;
   onDone: () => void;
+  /** A conversation instead of a question on record: the shipment's chat, tagged with the step. */
+  onChat?: () => void;
 }) {
   const { t } = useTranslation();
   const toast = useToast();
@@ -109,6 +112,12 @@ export function AskSheet({
         <p role="alert" className="mt-3 text-sm font-medium text-[rgb(var(--bad))]">
           {error}
         </p>
+      ) : null}
+      {onChat ? (
+        <button type="button" className="pt-btn pt-btn-ghost pt-btn-block mt-3" onClick={onChat}>
+          <ChatIcon size={20} />
+          {t("portal.ask.chatInstead")}
+        </button>
       ) : null}
     </Sheet>
   );

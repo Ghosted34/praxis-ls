@@ -17,10 +17,18 @@ import { useTranslation } from "react-i18next";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useBranding } from "@/app/branding";
 import { cn } from "@/lib/cn";
-import { portalHome, portalPasskeyRegisterOptions, portalPasskeyRegisterVerify, type PortalHome } from "@/lib/portal-api";
+import {
+  portalHome,
+  portalChatUnread,
+  portalPasskeyRegisterOptions,
+  portalPasskeyRegisterVerify,
+  portalNotifySettings,
+  type PortalHome,
+} from "@/lib/portal-api";
 import { portalSession } from "@/lib/portal-session";
 import { getLang } from "@/lib/i18n";
 import { usePortal } from "../lib/portal-context";
+import { syncPush } from "../lib/portal-pwa";
 import { deviceCanUsePasskey, createPasskey, isCancel, biometricKind } from "../lib/passkey";
 import { BrandMark } from "../ui/brand";
 import { Avatar, Sheet, useLoad, useToast, errorText, Busy, type Load } from "../ui/kit";
@@ -60,8 +68,44 @@ export const useSummary = () => React.useContext(SummaryContext);
 
 /* ── chat: any screen can open it, already pointed at a shipment ────────── */
 
+/**
+ * The count on the chat button: what the team wrote since I last looked. It
+ * starts from the home summary and then asks the one cheap endpoint every
+ * minute while the tab is visible (and when it comes back), so a reply lands
+ * on the button without a reload — and a background tab asks nothing.
+ */
+function useChatUnread(on: boolean, initial: number | null) {
+  const [count, setCount] = React.useState(0);
+  React.useEffect(() => {
+    if (initial !== null) setCount(initial);
+  }, [initial]);
+  const refresh = React.useCallback(() => {
+    portalChatUnread()
+      .then((r) => setCount(r.unread))
+      .catch(() => {
+        /* @silent:storage the badge waits for the next minute */
+      });
+  }, []);
+  React.useEffect(() => {
+    if (!on) return;
+    const tick = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    const id = window.setInterval(tick, 60_000);
+    document.addEventListener("visibilitychange", tick);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", tick);
+    };
+  }, [on, refresh]);
+  return { count, refresh };
+}
+
 const ChatContext = React.createContext<(target?: ChatTarget) => void>(() => {});
 export const useOpenChat = () => React.useContext(ChatContext);
+
+/** A shipment's id in a `?chat=` link; anything else is ignored, not requested. */
+const THREAD_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 type NavItem = { to: string; label: string; icon: React.ReactNode; badge?: number; end?: boolean };
 
@@ -90,9 +134,26 @@ export function PortalShell({ children }: { children: React.ReactNode }) {
     document.title = chrome.title ? `${chrome.title} · ${name}` : name;
   }, [branding.name, chrome.title, t]);
 
+  // A device that already has notifications on is re-registered on every
+  // start (lib/portal-pwa.ts syncPush). Nothing is asked, and nothing is even
+  // fetched, where notifications were never allowed.
+  React.useEffect(() => {
+    if (!isClient || typeof Notification === "undefined" || Notification.permission !== "granted") return;
+    let alive = true;
+    portalNotifySettings()
+      .then((n) => (alive ? syncPush(n.push.public_key, lang === "fr" ? "fr" : "en") : undefined))
+      .catch(() => {
+        /* @silent:storage — the next start tries again */
+      });
+    return () => {
+      alive = false;
+    };
+  }, [isClient, lang]);
+
   const s = summary.data;
   const needed = s?.requests?.open_count || 0;
   const overdue = s?.billing?.overdue_count || 0;
+  const chatUnread = useChatUnread(isClient, s?.chat?.unread ?? null);
 
   const nav: NavItem[] = isClient
     ? [
@@ -113,6 +174,22 @@ export function PortalShell({ children }: { children: React.ReactNode }) {
 
   const openChat = React.useCallback((target?: ChatTarget) => setChat(target || null), []);
   const name = portal.me.portal_user.full_name || portal.me.portal_user.email;
+
+  // A notification's link — `/portal?chat=general`, or a shipment's id — opens
+  // that conversation over the page it lands on, then drops the parameter so a
+  // reload or a back does not open it a second time.
+  const navigate = useNavigate();
+  React.useEffect(() => {
+    if (!isClient) return;
+    const params = new URLSearchParams(location.search);
+    const thread = params.get("chat");
+    if (!thread) return;
+    if (thread === "general") setChat({ general: true });
+    else if (THREAD_ID.test(thread)) setChat({ dossierId: thread });
+    params.delete("chat");
+    const rest = params.toString();
+    navigate({ pathname: location.pathname, search: rest ? `?${rest}` : "" }, { replace: true });
+  }, [isClient, location.pathname, location.search, navigate]);
 
   return (
     <ChromeContext.Provider value={setChrome}>
@@ -187,12 +264,18 @@ export function PortalShell({ children }: { children: React.ReactNode }) {
           ) : null}
 
           {isClient ? (
-            <button type="button" className="pt-fab" aria-label={t("portal.chat.open")} onClick={() => openChat(null)}>
+            <button type="button" className="pt-fab" onClick={() => openChat(null)}>
               <ChatIcon size={26} />
+              <span className="sr-only">{chatUnread.count ? `${t("portal.chat.open")} (${t("portal.chat.unread", { count: chatUnread.count })})` : t("portal.chat.open")}</span>
+              {chatUnread.count ? (
+                <span className="pt-badge pt-num" aria-hidden="true">
+                  {chatUnread.count > 9 ? "9+" : chatUnread.count}
+                </span>
+              ) : null}
             </button>
           ) : null}
 
-          {isClient ? <ChatSheet open={chat !== false} target={chat || null} onClose={() => setChat(false)} /> : null}
+          {isClient ? <ChatSheet open={chat !== false} target={chat || null} onClose={() => setChat(false)} onRead={chatUnread.refresh} /> : null}
           <PasskeyOffer key={location.key} />
         </ChatContext.Provider>
       </SummaryContext.Provider>

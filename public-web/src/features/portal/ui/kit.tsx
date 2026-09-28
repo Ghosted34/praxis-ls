@@ -87,6 +87,8 @@ export function Sheet({
   footer,
   full = false,
   wide = false,
+  bare = false,
+  className,
   labelledBy,
 }: {
   open: boolean;
@@ -96,6 +98,9 @@ export function Sheet({
   footer?: React.ReactNode;
   full?: boolean;
   wide?: boolean;
+  /** The children ARE the panel — their own header, scroller and footer (the chat). */
+  bare?: boolean;
+  className?: string;
   labelledBy?: string;
 }) {
   const layer = React.useContext(LayerContext);
@@ -160,23 +165,29 @@ export function Sheet({
         aria-modal="true"
         aria-labelledby={labelledBy || (title ? titleId : undefined)}
         tabIndex={-1}
-        className="pt-sheet outline-none"
+        className={cn("pt-sheet outline-none", className)}
         data-full={full || undefined}
         data-wide={wide || undefined}
       >
-        <div className="pt-sheet-grip" aria-hidden="true" />
-        {title ? (
-          <div className="flex items-center gap-3 px-5 pb-2 pt-3 md:pt-5">
-            <h2 id={titleId} className="pt-display min-w-0 flex-1 text-[1.3rem]">
-              {title}
-            </h2>
-            <button type="button" data-close onClick={onClose} className="pt-icon-btn -mr-2" aria-label={t("portal.common.close")}>
-              <CloseIcon size={20} />
-            </button>
-          </div>
-        ) : null}
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-5 pt-1">{children}</div>
-        {footer ? <div className="border-t border-[var(--pt-line)] px-5 py-4">{footer}</div> : null}
+        {bare ? (
+          children
+        ) : (
+          <>
+            <div className="pt-sheet-grip" aria-hidden="true" />
+            {title ? (
+              <div className="flex items-center gap-3 px-5 pb-2 pt-3 md:pt-5">
+                <h2 id={titleId} className="pt-display min-w-0 flex-1 text-[1.3rem]">
+                  {title}
+                </h2>
+                <button type="button" data-close onClick={onClose} className="pt-icon-btn -mr-2" aria-label={t("portal.common.close")}>
+                  <CloseIcon size={20} />
+                </button>
+              </div>
+            ) : null}
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-5 pt-1">{children}</div>
+            {footer ? <div className="border-t border-[var(--pt-line)] px-5 py-4">{footer}</div> : null}
+          </>
+        )}
       </div>
     </>
   );

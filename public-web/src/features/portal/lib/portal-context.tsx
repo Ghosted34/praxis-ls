@@ -9,6 +9,7 @@ import * as React from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { portalMe, portalLogout, type PortalMe, type Scope } from "@/lib/portal-api";
 import { portalSession, refreshPortalSession, PORTAL_SIGNED_OUT } from "@/lib/portal-session";
+import { forgetPushDevice } from "./portal-pwa";
 
 export type PortalKind = "CLIENT" | "INVESTOR" | "AUDITOR";
 
@@ -109,6 +110,9 @@ export function PortalSessionGate({
 
   const signOut = React.useCallback(
     async ({ forget = false }: { forget?: boolean } = {}) => {
+      // This device stops receiving this person's notifications — while the
+      // session that may say so still exists. Best effort, never in the way.
+      await forgetPushDevice();
       await portalLogout();
       portalSession.clear({ forget });
       navigate("/portal/login", { replace: true });

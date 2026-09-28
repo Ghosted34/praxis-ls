@@ -2,11 +2,11 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 141,
-  "route_count": 1705,
+  "route_count": 1768,
   "tiers": {
-    "public": 68,
+    "public": 74,
     "self-scoped": 107,
-    "gated": 1530
+    "gated": 1587
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -460,6 +460,12 @@
       "tier": "gated"
     },
     "DELETE /api/tenant/permissions/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "DELETE /api/tenant/portal/auth/passkeys/:id": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -927,6 +933,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/platform/ops/comms/canary": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/platform/ops/drills": {
       "auth": true,
       "rbac": true,
@@ -1036,6 +1048,12 @@
       "tier": "gated"
     },
     "GET /api/platform/settings/:section/:key": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/platform/settings/network/turn/effective": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -1707,6 +1725,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/costings/fx-rate": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/costings/gate": {
       "auth": true,
       "rbac": true,
@@ -1714,6 +1738,12 @@
       "tier": "gated"
     },
     "GET /api/tenant/costings/kpis": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/costings/price-line": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -3387,7 +3417,49 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/portal/auth/passkeys": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/portal/auth/sessions": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/portal/client": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/portal/client-requests": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/portal/client-requests/:id/file": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/portal/client-requests/document-types": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/portal/client/billing": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/portal/client/document-types": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -3411,6 +3483,24 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/portal/client/home": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/portal/client/invoice/:invoiceId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/portal/client/invoice/:invoiceId/pdf": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/portal/client/messages": {
       "auth": true,
       "rbac": true,
@@ -3429,7 +3519,43 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/portal/client/payment-proofs/:id/file": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/portal/client/quote-requests": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/portal/client/requests": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/portal/client/requests/:id/file": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/portal/client/shipments": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/portal/client/shipments/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/portal/client/team": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -3483,6 +3609,18 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/portal/payment-proofs": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/portal/payment-proofs/:id/file": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/portal/users": {
       "auth": true,
       "rbac": true,
@@ -3514,6 +3652,12 @@
       "tier": "gated"
     },
     "GET /api/tenant/portals/client/dossier/:dossierId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/portals/client/invoice/:invoiceId": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -4335,6 +4479,18 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/smartcomm/calls/capabilities": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/smartcomm/calls/processing": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/smartcomm/calls/ringing": {
       "auth": true,
       "rbac": true,
@@ -4384,6 +4540,24 @@
       "tier": "gated"
     },
     "GET /api/tenant/smartcomm/config": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/smartcomm/diagnostics/runs": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/smartcomm/diagnostics/runs/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/smartcomm/diagnostics/runs/:id/ice": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -6141,6 +6315,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/platform/settings/network/turn/rotate": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/platform/settings/push/vapid/generate": {
       "auth": true,
       "rbac": true,
@@ -7311,6 +7491,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/financial-dictionary/:id/rates/apply-all": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/financial-dictionary/:id/rates/supersede": {
       "auth": true,
       "rbac": true,
@@ -8367,6 +8553,18 @@
       "validated": false,
       "tier": "public"
     },
+    "POST /api/tenant/portal/auth/code": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
+    },
+    "POST /api/tenant/portal/auth/code/verify": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
+    },
     "POST /api/tenant/portal/auth/forgot": {
       "auth": false,
       "rbac": false,
@@ -8379,13 +8577,109 @@
       "validated": false,
       "tier": "public"
     },
+    "POST /api/tenant/portal/auth/logout": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
+    },
+    "POST /api/tenant/portal/auth/passkey/login/options": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
+    },
+    "POST /api/tenant/portal/auth/passkey/login/verify": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
+    },
+    "POST /api/tenant/portal/auth/passkey/register/options": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/portal/auth/passkey/register/verify": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/portal/auth/refresh": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
+    },
+    "POST /api/tenant/portal/auth/sessions/:id/revoke": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/portal/client-requests": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/portal/client-requests/:id/review": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/portal/client/documents": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/portal/client/messages": {
       "auth": true,
       "rbac": true,
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/portal/client/payment-proofs": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/portal/client/quote-requests": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/portal/client/requests/:id/answer": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/portal/client/requests/:id/upload": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/portal/client/team": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/portal/client/team/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/portal/client/team/:id/remove": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -8427,6 +8721,18 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/portal/payment-proofs/:id/confirm": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/portal/payment-proofs/:id/reject": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/portal/users": {
       "auth": true,
       "rbac": true,
@@ -8458,6 +8764,12 @@
       "tier": "gated"
     },
     "POST /api/tenant/portals/access/:id/revoke": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/portals/access/:id/team": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -9069,6 +9381,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/smartcomm/calls/:id/alive": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/smartcomm/calls/:id/decline": {
       "auth": true,
       "rbac": true,
@@ -9124,6 +9442,12 @@
       "tier": "gated"
     },
     "POST /api/tenant/smartcomm/calls/:id/summary/send": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/smartcomm/calls/erase-user": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -9214,6 +9538,36 @@
       "tier": "gated"
     },
     "POST /api/tenant/smartcomm/config/whatsapp/test": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/smartcomm/diagnostics/runs": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/smartcomm/diagnostics/runs/:id/finish": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/smartcomm/diagnostics/runs/:id/parts": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/smartcomm/diagnostics/runs/:id/ring": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/smartcomm/diagnostics/runs/:id/signal": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -9657,7 +10011,19 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/treasury-accounts/:id/authorisation-letter": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/treasury-accounts/:id/documents": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/treasury-accounts/:id/documents/:docId/scan": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -9934,6 +10300,12 @@
       "tier": "gated"
     },
     "PUT /api/platform/ai-vendors/:vendor": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PUT /api/platform/ai-vendors/:vendor/chat-primary": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -10228,6 +10600,12 @@
       "tier": "gated"
     },
     "PUT /api/tenant/smartcomm/config/whatsapp": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PUT /api/tenant/smartcomm/diagnostics/runs/:id/steps/:key": {
       "auth": true,
       "rbac": true,
       "validated": false,

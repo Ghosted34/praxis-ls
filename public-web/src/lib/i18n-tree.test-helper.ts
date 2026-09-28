@@ -3,6 +3,10 @@ import {
   en as careersEn,
   fr as careersFr,
 } from "@/features/careers/careers-copy";
+import {
+  en as portalEn,
+  fr as portalFr,
+} from "@/features/portal/portal-copy";
 
 /**
  * The whole translation tree as it exists AT RUNTIME — for tests only.
@@ -36,9 +40,11 @@ import {
 export const en = {
   ...baseEn,
   site: { ...baseEn.site, careers: careersEn },
+  portal: { ...baseEn.portal, ...portalEn },
 };
 
 export const fr = {
   ...baseFr,
   site: { ...baseFr.site, careers: careersFr },
+  portal: { ...baseFr.portal, ...portalFr },
 };

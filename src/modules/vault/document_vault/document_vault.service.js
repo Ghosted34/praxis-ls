@@ -215,8 +215,15 @@ async function createDocument(client, opts) {
     // type list they already had. Narrowing those here would be a silent
     // regression in modules this change has no business touching.
     maxBytes = MAX_BYTES, allowedTypes = null, sniff = false,
+    // VERIFIED for everything a member of staff files (they are the check).
+    // PENDING for a file a CLIENT sent through the portal (14150): real bytes,
+    // but nobody has looked at it yet — staff accept it (→ VERIFIED) or reject it.
+    status = "VERIFIED",
     slug, actor = {},
   } = opts;
+  if (status !== "VERIFIED" && status !== "PENDING") {
+    throw new AppError("BAD_STATUS", "an uploaded document starts VERIFIED or PENDING", 422);
+  }
   // Ad-hoc uploads are free-form (scanned contracts, IDs, …) — no registry guard
   // here; the doc_type registry constrains system-generated captures, not uploads.
   // Parameters are legal in a data URL's media type (`;codecs=`, `;charset=`)
@@ -290,7 +297,7 @@ async function createDocument(client, opts) {
   await imagePipeline.putDerivatives(key, processed.derivatives);
   const row = await repo.insert(client, {
     entity_ref: entityRef, doc_type: docType, storage_path: key, content_hash: contentHash,
-    file_context: fileContext, folder_ref: folderRef, dossier_id: dossierId, status: "VERIFIED",
+    file_context: fileContext, folder_ref: folderRef, dossier_id: dossierId, status,
     // 0669: the typed filing. `doc_type` (text) stays populated from the
     // registry code so every existing reader keeps working.
     doc_type_ref_id: docTypeRefId, client_id: clientId,

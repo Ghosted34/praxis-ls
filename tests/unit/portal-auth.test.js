@@ -147,6 +147,10 @@ jest.mock("../../src/modules/portal_auth/portal_auth.repo", () => ({
     mockCalls.markInviteUsed.push(inviteId);
   },
   inviteStatus: async () => ({ pending: false }),
+  // 14150 — a password set by staff, a reset and a disable end every
+  // remembered device. The trusted-session behaviour itself is covered in
+  // portal-sessions.test.js; here it only has to exist.
+  revokeAllSessions: async () => {},
 }));
 
 jest.mock("../../src/services/email.service", () => ({

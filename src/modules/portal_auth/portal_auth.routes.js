@@ -29,18 +29,31 @@
 const express = require("express");
 const { authMiddleware } = require("../../middleware/auth");
 const { requirePermission } = require("../../middleware/rbac");
-const { portalAuth } = require("./portal_auth.middleware");
+const { portalAuth, portalScope, portalClientAdmin } = require("./portal_auth.middleware");
+const { requireFeature } = require("../../middleware/feature-gate");
+const { singleFile } = require("../../shared/http/upload.middleware");
 const c = require("./portal_auth.controller");
 // Names match what the write-route validator gate recognises (`controller` /
 // `validator` / `c` / `v`) — a chain named `controller.` or `validator.` reads as unvalidated.
 const controller = require("../portal/portal.controller");
 const v = require("./portal_auth.validator");
+// The client portal redesign (14150): home, shipments, requests, billing,
+// proof of payment, the client's own team — and the staff half of each.
+const pc = require("../portal/portal_client.controller");
 // SEC-C3, 2026-08-04. The portal is the INTERNET-FACING auth tier — external
 // clients, investors and auditors — and it was the least protected: no limiter
 // on any of the three public routes, and (SEC-H6) an 8-character password
 // policy with no complexity or breach check behind them. The password policy is
 // a separate fix; this closes the unlimited-guessing half.
-const { loginLimiter, forgotLimiter, resetLimiter } = require("../../shared/http/rate-limit");
+const {
+  loginLimiter, forgotLimiter, resetLimiter, refreshLimiter, makeLimiter,
+  webauthnLimiter, webauthnOptionsLimiter,
+} = require("../../shared/http/rate-limit");
+
+// Emailed sign-in codes (14150). Its own bucket rather than `forgot`'s: both are
+// mail-sending endpoints a stranger can hit, and sharing one budget would let a
+// flood of code requests lock out a real password reset from the same office.
+const codeLimiter = makeLimiter({ name: "portal-code", max: 8 });
 
 const router = express.Router();
 
@@ -50,24 +63,73 @@ router.post("/auth/login", loginLimiter, v.login, c.login);
 router.post("/auth/forgot", forgotLimiter, v.forgot, c.forgot);
 // `accept` is a token-guessing surface, same shape as staff reset-password.
 router.post("/auth/accept", resetLimiter, v.accept, c.accept);
+// Trusted-device sessions ("keep me signed in", 14150). Refresh and logout take
+// the refresh token in the body — possession of it IS the credential.
+router.post("/auth/refresh", refreshLimiter, v.refresh, c.refresh);
+router.post("/auth/logout", v.logout, c.logout);
+// Sign in with a six-digit code by email instead of a password. `code` always
+// answers 200, exactly like `forgot`.
+router.post("/auth/code", codeLimiter, v.codeRequest, c.requestCode);
+router.post("/auth/code/verify", loginLimiter, v.codeVerify, c.verifyCode);
+// Face ID / fingerprint. Options are public and read nothing; verify is the
+// sign-in. Registration needs a signed-in portal user with a FRESH token.
+router.post("/auth/passkey/login/options", webauthnOptionsLimiter, v.passkeyLoginOptions, c.passkeyLoginOptions);
+router.post("/auth/passkey/login/verify", webauthnLimiter, v.passkeyLoginVerify, c.passkeyLoginVerify);
+router.post("/auth/passkey/register/options", portalAuth(), c.passkeyRegisterOptions);
+router.post("/auth/passkey/register/verify", webauthnLimiter, portalAuth(), v.passkeyRegisterVerify, c.passkeyRegisterVerify);
+router.get("/auth/passkeys", portalAuth(), c.passkeys);
+router.delete("/auth/passkeys/:id", portalAuth(), c.deletePasskey);
+router.get("/auth/sessions", portalAuth(), c.sessions);
+router.post("/auth/sessions/:id/revoke", portalAuth(), c.revokeSession);
 
 // Portal user (external, token-scoped)
 router.get("/me", portalAuth(), c.me);
 router.get("/client", portalAuth("CLIENT"), c.client);
-router.get("/client/dossier/:dossierId", portalAuth("CLIENT"), c.clientChain);
-router.get("/client/invoice/:invoiceId", portalAuth("CLIENT"), c.clientInvoice);
+/*
+ * The client team's access scope (14150) is checked per AREA: OPS routes carry
+ * shipments and paperwork, BILL routes carry money. A colleague given only one
+ * of the two gets a 403 on the other, and the home summary below is assembled
+ * per scope instead of being refused, so nobody opens the portal to an error.
+ */
+const OPS = portalScope("OPERATIONS");
+const BILL = portalScope("BILLING");
+router.get("/client/dossier/:dossierId", portalAuth("CLIENT"), OPS, c.clientChain);
+// The invoice as the printed copy groups it, plus what is left to pay and the
+// account to pay it into (14150) — a superset of what this route returned.
+router.get("/client/invoice/:invoiceId", portalAuth("CLIENT"), BILL, pc.invoice);
+router.get("/client/invoice/:invoiceId/pdf", portalAuth("CLIENT"), BILL, pc.invoicePdf);
+router.get("/client/home", portalAuth("CLIENT"), pc.home);
+router.get("/client/shipments", portalAuth("CLIENT"), OPS, pc.shipments);
+router.get("/client/shipments/:id", portalAuth("CLIENT"), OPS, pc.shipment);
+// What we are waiting for from the client — documents and answers. Uploads
+// are MULTIPART (`singleFile` before the validator: multer fills req.body).
+router.get("/client/requests", portalAuth("CLIENT"), OPS, pc.requests);
+router.get("/client/document-types", portalAuth("CLIENT"), OPS, pc.documentTypes);
+router.post("/client/requests/:id/upload", portalAuth("CLIENT"), OPS, singleFile("file"), v.requestUpload, pc.uploadForRequest);
+router.post("/client/requests/:id/answer", portalAuth("CLIENT"), OPS, v.requestAnswer, pc.answerRequest);
+router.get("/client/requests/:id/file", portalAuth("CLIENT"), OPS, pc.requestFile);
+router.post("/client/documents", portalAuth("CLIENT"), OPS, singleFile("file"), v.shareDocument, pc.shareDocument);
+// Billing and "I have paid".
+router.get("/client/billing", portalAuth("CLIENT"), BILL, pc.billing);
+router.post("/client/payment-proofs", portalAuth("CLIENT"), BILL, singleFile("file"), v.paymentProof, pc.submitProof);
+router.get("/client/payment-proofs/:id/file", portalAuth("CLIENT"), BILL, pc.proofFile);
+// The client's own team: anyone on it may see it, only its admins change it.
+router.get("/client/team", portalAuth("CLIENT"), pc.team);
+router.post("/client/team", portalAuth("CLIENT"), portalClientAdmin, v.teamInvite, pc.teamInvite);
+router.post("/client/team/:id", portalAuth("CLIENT"), portalClientAdmin, v.teamUpdate, pc.teamUpdate);
+router.post("/client/team/:id/remove", portalAuth("CLIENT"), portalClientAdmin, v.empty, pc.teamRemove);
 // Document vault — the client's own client-visible documents (PRD §11.1).
 // The list is scoped to their dossiers + client filings; the download re-checks
 // ownership + visibility in SQL before streaming bytes. Handlers live on the
 // portal module controller (they need the grant-scoped clientId helper).
-router.get("/client/documents", portalAuth("CLIENT"), controller.clientDocuments);
-router.get("/client/documents/:id/download", portalAuth("CLIENT"), controller.clientDocumentDownload);
+router.get("/client/documents", portalAuth("CLIENT"), OPS, controller.clientDocuments);
+router.get("/client/documents/:id/download", portalAuth("CLIENT"), OPS, controller.clientDocumentDownload);
 // Q tickets — the client raises a query against a milestone and it stays in
 // the system, which is the whole reason this exists rather than an email.
-router.get("/client/tickets", portalAuth("CLIENT"), c.tickets);
-router.get("/client/tickets/:id", portalAuth("CLIENT"), c.ticket);
-router.post("/client/tickets", portalAuth("CLIENT"), v.raiseTicket, c.raiseTicket);
-router.post("/client/tickets/:id/replies", portalAuth("CLIENT"), v.replyTicket, c.replyTicket);
+router.get("/client/tickets", portalAuth("CLIENT"), OPS, c.tickets);
+router.get("/client/tickets/:id", portalAuth("CLIENT"), OPS, c.ticket);
+router.post("/client/tickets", portalAuth("CLIENT"), OPS, v.raiseTicket, c.raiseTicket);
+router.post("/client/tickets/:id/replies", portalAuth("CLIENT"), OPS, v.replyTicket, c.replyTicket);
 router.get("/investor", portalAuth("INVESTOR"), c.investor);
 router.get("/auditor", portalAuth("AUDITOR"), c.auditor);
 // Auditor data room (PRD §5.2) — the auditor's requests and the documents
@@ -111,5 +173,21 @@ router.get("/messages", authMiddleware, requirePermission(M, "view"), controller
 router.post("/messages", authMiddleware, requirePermission(M, "edit"), v.staffMessage, controller.staffSendMessage);
 router.get("/onboarding", authMiddleware, requirePermission(M, "view"), controller.staffOnboarding);
 router.post("/onboarding/:clientId/:stepKey", authMiddleware, requirePermission(M, "edit"), validator.toggle, controller.staffToggleOnboarding);
+
+// Staff: what we asked clients for, and what they sent (14150). Operations
+// (MOD-29, the client-portal module) asks and reviews; finance (MOD-52,
+// receivables) confirms or rejects a payment claim. Confirming drafts a
+// receipt, so it needs the same `create` grant a receipt does.
+const PORTAL_CLIENT = requireFeature("portal.client");
+router.get("/client-requests", authMiddleware, PORTAL_CLIENT, requirePermission("MOD-29", "view"), pc.staffRequests);
+// What staff may ask for — the same registry the client picks from.
+router.get("/client-requests/document-types", authMiddleware, PORTAL_CLIENT, requirePermission("MOD-29", "view"), pc.documentTypes);
+router.post("/client-requests", authMiddleware, PORTAL_CLIENT, requirePermission("MOD-29", "edit"), v.staffCreateRequest, pc.staffCreateRequest);
+router.post("/client-requests/:id/review", authMiddleware, PORTAL_CLIENT, requirePermission("MOD-29", "edit"), v.staffReviewRequest, pc.staffReviewRequest);
+router.get("/client-requests/:id/file", authMiddleware, PORTAL_CLIENT, requirePermission("MOD-29", "view"), pc.staffRequestFile);
+router.get("/payment-proofs", authMiddleware, PORTAL_CLIENT, requirePermission("MOD-52", "view"), pc.staffProofs);
+router.post("/payment-proofs/:id/confirm", authMiddleware, PORTAL_CLIENT, requirePermission("MOD-52", "create"), v.staffConfirmProof, pc.staffConfirmProof);
+router.post("/payment-proofs/:id/reject", authMiddleware, PORTAL_CLIENT, requirePermission("MOD-52", "edit"), v.staffRejectProof, pc.staffRejectProof);
+router.get("/payment-proofs/:id/file", authMiddleware, PORTAL_CLIENT, requirePermission("MOD-52", "view"), pc.staffProofFile);
 
 module.exports = { basePath: "/portal", feature: null, router };

@@ -202,10 +202,12 @@ describe("the portal is the same app, not a second one", () => {
     "%s shows the sign-in form",
     async (path) => {
       const { container } = await mount(path);
+      // Email first (the redesign): a code by email, a password, or Face ID
+      // are all offered AFTER the address, so the address is the form.
       await waitFor(
         () =>
           expect(
-            container.querySelector('input[type="password"]'),
+            container.querySelector('input[type="email"]'),
           ).toBeTruthy(),
         { timeout: 4000 },
       );
@@ -228,8 +230,12 @@ describe("the portal is the same app, not a second one", () => {
     const { getByTestId, container } = await mount(
       "/client-portal/documents?tab=1",
     );
+    // …and carries it: signing in lands on the page the link was for.
     await waitFor(
-      () => expect(getByTestId("loc").textContent).toBe("/portal/login"),
+      () =>
+        expect(getByTestId("loc").textContent).toBe(
+          `/portal/login?next=${encodeURIComponent("/portal/documents?tab=1")}`,
+        ),
       {
         timeout: 4000,
       },

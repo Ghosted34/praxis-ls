@@ -19,6 +19,8 @@ router.use(authMiddleware);
 router.get("/access", requirePermission("MOD-67", "view"), controller.listAccess);
 router.post("/access", requirePermission("MOD-67", "edit"), validator.grant, controller.grant);
 router.post("/access/:id/revoke", requirePermission("MOD-67", "edit"), controller.revoke);
+// A client-team member's scope and admin flag (14150).
+router.post("/access/:id/team", requirePermission("MOD-67", "edit"), validator.team, controller.setTeamRole);
 router.get("/access/check", requirePermission("MOD-67", "view"), controller.check);
 
 // Scoped data views

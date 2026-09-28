@@ -279,7 +279,8 @@
         "get_client",
         "client_credit_check",
         "create_client",
-        "update_client"
+        "update_client",
+        "request_client_document"
       ]
     },
     {
@@ -891,14 +892,17 @@
       "route": "/finance/receivables",
       "area": "finance",
       "module_key": "MOD-56",
-      "purpose": "Smart receivables ledger — open items, ageing, reminders.",
+      "purpose": "Smart receivables ledger — open items, ageing, reminders, and the payments clients report from their portal.",
       "actions": [
         "list_receipts",
         "get_receipt",
         "receivables_ageing",
         "receivables_reminders",
         "draft_receipt",
-        "post_receipt"
+        "post_receipt",
+        "list_payment_proofs",
+        "confirm_payment_proof",
+        "reject_payment_proof"
       ]
     },
     {
@@ -1886,8 +1890,11 @@
       "route": "/settings/client-support",
       "area": "settings",
       "module_key": "MOD-67",
-      "purpose": "The account team's side of the client portal — message thread and onboarding checklist per client.",
-      "actions": []
+      "purpose": "The account team's side of the client portal — what clients sent to review, the message thread and onboarding checklist per client.",
+      "actions": [
+        "list_client_requests",
+        "review_client_request"
+      ]
     },
     {
       "id": "my_hr",

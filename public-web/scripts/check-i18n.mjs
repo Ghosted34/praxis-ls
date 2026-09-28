@@ -63,6 +63,11 @@ const FEATURE_DICTS = [
     file: path.join(SRC, "features/careers/careers-copy.ts"),
     mount: "site.careers",
   },
+  {
+    // The client portal — ~300 strings only a signed-in client can reach.
+    file: path.join(SRC, "features/portal/portal-copy.ts"),
+    mount: "portal",
+  },
 ];
 
 /** True for any file that IS copy rather than a component that contains copy.

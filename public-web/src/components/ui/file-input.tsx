@@ -230,6 +230,7 @@ export function FilePicker({
   disabled,
   onPick,
   className,
+  capture,
 }: {
   accept: string;
   /** Names the control for assistive tech; visually hidden. */
@@ -238,6 +239,10 @@ export function FilePicker({
   disabled?: boolean;
   onPick: (files: FileList | null) => void;
   className?: string;
+  /** "environment" opens the phone's rear camera directly — the portal's
+   *  "take a photo of the receipt" — instead of the file chooser. Ignored by
+   *  desktop browsers, which show their usual picker. */
+  capture?: "environment" | "user";
 }) {
   const id = React.useId();
   return (
@@ -254,6 +259,7 @@ export function FilePicker({
         id={id}
         type="file"
         accept={accept}
+        capture={capture}
         disabled={disabled}
         aria-label={label}
         className="sr-only"

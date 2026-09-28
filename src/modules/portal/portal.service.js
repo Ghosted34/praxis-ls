@@ -41,10 +41,22 @@ const AUDIT_LEDGER_PREFIXES = [
 ];
 
 // ── Access grants ──
-async function grantAccess(client, { portal, subjectEmail, clientId = null, expiresAt = null, actor = {} }) {
+async function grantAccess(client, { portal, subjectEmail, clientId = null, expiresAt = null, accessScope = "ALL", isClientAdmin = null, actor = {} }) {
   if (!["CLIENT", "INVESTOR", "AUDITOR"].includes(portal)) throw new AppError("BAD_PORTAL", "portal must be CLIENT/INVESTOR/AUDITOR", 422);
   if (portal === "CLIENT" && !clientId) throw new AppError("CLIENT_REQUIRED", "a CLIENT portal grant needs a client_id scope", 422);
-  const row = await repo.insertAccess(client, { portal, subject_email: String(subjectEmail).toLowerCase(), client_id: clientId, expires_at: expiresAt });
+  // The first person a client is given access through becomes that client's
+  // portal admin unless staff say otherwise (14150): somebody on the client's
+  // side has to be able to add their colleagues, and the contact staff chose
+  // first is the one they already trust with the account.
+  const admin = portal === "CLIENT"
+    ? (isClientAdmin === null || isClientAdmin === undefined
+      ? (await repo.countClientGrants(client, clientId)) === 0
+      : isClientAdmin === true)
+    : false;
+  const row = await repo.insertAccess(client, {
+    portal, subject_email: String(subjectEmail).toLowerCase(), client_id: clientId, expires_at: expiresAt,
+    ...(portal === "CLIENT" ? { access_scope: accessScope || "ALL", is_client_admin: admin } : {}),
+  });
   await emitEvent(client, { eventTypeKey: events.ACCESS_GRANTED, moduleKey: events.MODULE, entityRef: "portal_access:" + row.portal_access_id, actorUserId: actor.user_id || null, priority: "HIGH" });
   await audit(client, { actorUserId: actor.user_id || null, action: events.ACCESS_GRANTED, moduleKey: events.MODULE, entityRef: "portal_access:" + row.portal_access_id, after: row });
   return row;
@@ -57,6 +69,14 @@ async function revokeAccess(client, { id, actor = {} }) {
   return { revoked: true };
 }
 const listAccess = (client, q) => repo.listAccess(client, q);
+
+/** Staff adjust what a client-team member may see, or whether they are its admin. */
+async function setTeamRole(client, { id, accessScope, isClientAdmin, actor = {} }) {
+  const row = await repo.setTeamRole(client, id, { accessScope, isClientAdmin });
+  if (!row) throw new AppError("NOT_FOUND", "Active client grant not found", 404);
+  await audit(client, { actorUserId: actor.user_id || null, action: "portal.team_role_changed", moduleKey: events.MODULE, entityRef: "portal_access:" + id, after: row });
+  return row;
+}
 async function checkAccess(client, { email, portal }) {
   const grant = await repo.activeFor(client, String(email || "").toLowerCase(), portal);
   return { allowed: isGrantUsable(grant), grant: grant || null };
@@ -196,6 +216,10 @@ async function createClientQuote(client, { clientId, data, actor }) {
   const row = await quoteRequest.create(client, {
     data: {
       ...data,
+      // `quote_request.incoterm` is NOT NULL (0683) and the portal lets a
+      // client say "not sure" — which is an answer for sales to follow up,
+      // not a reason to fail the insert.
+      incoterm: data.incoterm || "TBD",
       client_id: clientId,
       intake_channel: "PORTAL",
       requester_name: data.requester_name || cm?.name || null,
@@ -413,7 +437,7 @@ const clientReplyTicket = (client, { clientId, ticketId, body }) =>
   qTicket.reply(client, { ticketId, body, fromClient: true, clientId });
 
 module.exports = {
-  grantAccess, revokeAccess, listAccess, checkAccess,
+  grantAccess, revokeAccess, listAccess, checkAccess, setTeamRole,
   clientView, clientChain, clientInvoice, investorView, auditorView,
   clientTickets, clientRaiseTicket, clientTicketDetail, clientReplyTicket,
   clientDocuments, clientDocumentDownload,

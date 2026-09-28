@@ -6,7 +6,7 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 1705 |
+| Routes | 1768 |
 | Modules mounted | 141 |
 | API version | v1 |
 
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 1705 mounted routes, grouped by path prefix.
+All 1768 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -51,6 +51,7 @@ All 1705 mounted routes, grouped by path prefix.
 |---|---|---|
 | GET | `/api/platform/ai-vendors` | — |
 | PUT | `/api/platform/ai-vendors/:vendor` | — |
+| PUT | `/api/platform/ai-vendors/:vendor/chat-primary` | — |
 | POST | `/api/platform/ai-vendors/:vendor/test` | — |
 | GET | `/api/platform/ai-vendors/gemini/model-check` | — |
 
@@ -131,6 +132,7 @@ All 1705 mounted routes, grouped by path prefix.
 | GET | `/api/platform/ops/backups/runs` | — |
 | GET | `/api/platform/ops/backups/wal` | — |
 | GET | `/api/platform/ops/comms/calls` | — |
+| GET | `/api/platform/ops/comms/canary` | — |
 | GET | `/api/platform/ops/drills` | — |
 | POST | `/api/platform/ops/drills` | — |
 | POST | `/api/platform/ops/drills/:slug` | — |
@@ -185,6 +187,8 @@ All 1705 mounted routes, grouped by path prefix.
 | GET | `/api/platform/settings/:section/:key` | — |
 | PUT | `/api/platform/settings/:section/:key` | — |
 | POST | `/api/platform/settings/:section/:key/test` | — |
+| GET | `/api/platform/settings/network/turn/effective` | — |
+| POST | `/api/platform/settings/network/turn/rotate` | — |
 | POST | `/api/platform/settings/push/vapid/generate` | — |
 
 ### `platform/support`
@@ -618,8 +622,10 @@ All 1705 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/costings/:id/nudge` | — |
 | POST | `/api/tenant/costings/:id/status` | — |
 | POST | `/api/tenant/costings/:id/unlock` | — |
+| GET | `/api/tenant/costings/fx-rate` | — |
 | GET | `/api/tenant/costings/gate` | — |
 | GET | `/api/tenant/costings/kpis` | — |
+| GET | `/api/tenant/costings/price-line` | — |
 | GET | `/api/tenant/costings/suggest` | — |
 | GET | `/api/tenant/costings/validators` | — |
 
@@ -909,6 +915,7 @@ All 1705 mounted routes, grouped by path prefix.
 | PATCH | `/api/tenant/financial-dictionary/:id` | — |
 | GET | `/api/tenant/financial-dictionary/:id/360` | — |
 | GET | `/api/tenant/financial-dictionary/:id/rate-history` | — |
+| POST | `/api/tenant/financial-dictionary/:id/rates/apply-all` | — |
 | POST | `/api/tenant/financial-dictionary/:id/rates/supersede` | — |
 | GET | `/api/tenant/financial-dictionary/:id/spend` | — |
 | POST | `/api/tenant/financial-dictionary/import/commit` | — |
@@ -1538,18 +1545,53 @@ All 1705 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/portal/auditor/data-room/:id` | — |
 | GET | `/api/tenant/portal/auditor/data-room/:id/documents/:docId/download` | — |
 | POST | `/api/tenant/portal/auth/accept` | — |
+| POST | `/api/tenant/portal/auth/code` | — |
+| POST | `/api/tenant/portal/auth/code/verify` | — |
 | POST | `/api/tenant/portal/auth/forgot` | — |
 | POST | `/api/tenant/portal/auth/login` | — |
+| POST | `/api/tenant/portal/auth/logout` | — |
+| POST | `/api/tenant/portal/auth/passkey/login/options` | — |
+| POST | `/api/tenant/portal/auth/passkey/login/verify` | — |
+| POST | `/api/tenant/portal/auth/passkey/register/options` | — |
+| POST | `/api/tenant/portal/auth/passkey/register/verify` | — |
+| GET | `/api/tenant/portal/auth/passkeys` | — |
+| DELETE | `/api/tenant/portal/auth/passkeys/:id` | — |
+| POST | `/api/tenant/portal/auth/refresh` | — |
+| GET | `/api/tenant/portal/auth/sessions` | — |
+| POST | `/api/tenant/portal/auth/sessions/:id/revoke` | — |
 | GET | `/api/tenant/portal/client` | — |
+| GET | `/api/tenant/portal/client-requests` | — |
+| POST | `/api/tenant/portal/client-requests` | — |
+| GET | `/api/tenant/portal/client-requests/:id/file` | — |
+| POST | `/api/tenant/portal/client-requests/:id/review` | — |
+| GET | `/api/tenant/portal/client-requests/document-types` | — |
+| GET | `/api/tenant/portal/client/billing` | — |
+| GET | `/api/tenant/portal/client/document-types` | — |
 | GET | `/api/tenant/portal/client/documents` | — |
+| POST | `/api/tenant/portal/client/documents` | — |
 | GET | `/api/tenant/portal/client/documents/:id/download` | — |
 | GET | `/api/tenant/portal/client/dossier/:dossierId` | — |
+| GET | `/api/tenant/portal/client/home` | — |
+| GET | `/api/tenant/portal/client/invoice/:invoiceId` | — |
+| GET | `/api/tenant/portal/client/invoice/:invoiceId/pdf` | — |
 | GET | `/api/tenant/portal/client/messages` | — |
 | POST | `/api/tenant/portal/client/messages` | — |
 | GET | `/api/tenant/portal/client/messages/export` | — |
 | GET | `/api/tenant/portal/client/onboarding` | — |
+| POST | `/api/tenant/portal/client/payment-proofs` | — |
+| GET | `/api/tenant/portal/client/payment-proofs/:id/file` | — |
 | GET | `/api/tenant/portal/client/quote-requests` | — |
 | POST | `/api/tenant/portal/client/quote-requests` | — |
+| GET | `/api/tenant/portal/client/requests` | — |
+| POST | `/api/tenant/portal/client/requests/:id/answer` | — |
+| GET | `/api/tenant/portal/client/requests/:id/file` | — |
+| POST | `/api/tenant/portal/client/requests/:id/upload` | — |
+| GET | `/api/tenant/portal/client/shipments` | — |
+| GET | `/api/tenant/portal/client/shipments/:id` | — |
+| GET | `/api/tenant/portal/client/team` | — |
+| POST | `/api/tenant/portal/client/team` | — |
+| POST | `/api/tenant/portal/client/team/:id` | — |
+| POST | `/api/tenant/portal/client/team/:id/remove` | — |
 | GET | `/api/tenant/portal/client/tickets` | — |
 | POST | `/api/tenant/portal/client/tickets` | — |
 | GET | `/api/tenant/portal/client/tickets/:id` | — |
@@ -1564,6 +1606,10 @@ All 1705 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/portal/messages` | — |
 | GET | `/api/tenant/portal/onboarding` | — |
 | POST | `/api/tenant/portal/onboarding/:clientId/:stepKey` | — |
+| GET | `/api/tenant/portal/payment-proofs` | — |
+| POST | `/api/tenant/portal/payment-proofs/:id/confirm` | — |
+| GET | `/api/tenant/portal/payment-proofs/:id/file` | — |
+| POST | `/api/tenant/portal/payment-proofs/:id/reject` | — |
 | GET | `/api/tenant/portal/users` | — |
 | POST | `/api/tenant/portal/users` | — |
 | POST | `/api/tenant/portal/users/:id/password` | — |
@@ -1577,10 +1623,12 @@ All 1705 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/portals/access` | — |
 | POST | `/api/tenant/portals/access` | — |
 | POST | `/api/tenant/portals/access/:id/revoke` | — |
+| POST | `/api/tenant/portals/access/:id/team` | — |
 | GET | `/api/tenant/portals/access/check` | — |
 | GET | `/api/tenant/portals/auditor` | — |
 | GET | `/api/tenant/portals/client` | — |
 | GET | `/api/tenant/portals/client/dossier/:dossierId` | — |
+| GET | `/api/tenant/portals/client/invoice/:invoiceId` | — |
 | GET | `/api/tenant/portals/investor` | — |
 
 ### `tenant/pricing-variance`
@@ -1984,6 +2032,7 @@ All 1705 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/smartcomm/calls` | — |
 | GET | `/api/tenant/smartcomm/calls/:id` | — |
 | POST | `/api/tenant/smartcomm/calls/:id/accept` | — |
+| POST | `/api/tenant/smartcomm/calls/:id/alive` | — |
 | POST | `/api/tenant/smartcomm/calls/:id/decline` | — |
 | POST | `/api/tenant/smartcomm/calls/:id/fail` | — |
 | POST | `/api/tenant/smartcomm/calls/:id/hangup` | — |
@@ -1997,6 +2046,9 @@ All 1705 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/smartcomm/calls/:id/summary/send` | — |
 | GET | `/api/tenant/smartcomm/calls/:id/transcript` | — |
 | GET | `/api/tenant/smartcomm/calls/:id/turn` | — |
+| GET | `/api/tenant/smartcomm/calls/capabilities` | — |
+| POST | `/api/tenant/smartcomm/calls/erase-user` | — |
+| GET | `/api/tenant/smartcomm/calls/processing` | — |
 | GET | `/api/tenant/smartcomm/calls/ringing` | — |
 | POST | `/api/tenant/smartcomm/calls/test-ring` | — |
 | GET | `/api/tenant/smartcomm/channels` | — |
@@ -2026,6 +2078,15 @@ All 1705 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/smartcomm/config/email/test-send` | — |
 | PUT | `/api/tenant/smartcomm/config/whatsapp` | — |
 | POST | `/api/tenant/smartcomm/config/whatsapp/test` | — |
+| GET | `/api/tenant/smartcomm/diagnostics/runs` | — |
+| POST | `/api/tenant/smartcomm/diagnostics/runs` | — |
+| GET | `/api/tenant/smartcomm/diagnostics/runs/:id` | — |
+| POST | `/api/tenant/smartcomm/diagnostics/runs/:id/finish` | — |
+| GET | `/api/tenant/smartcomm/diagnostics/runs/:id/ice` | — |
+| POST | `/api/tenant/smartcomm/diagnostics/runs/:id/parts` | — |
+| POST | `/api/tenant/smartcomm/diagnostics/runs/:id/ring` | — |
+| POST | `/api/tenant/smartcomm/diagnostics/runs/:id/signal` | — |
+| PUT | `/api/tenant/smartcomm/diagnostics/runs/:id/steps/:key` | — |
 | GET | `/api/tenant/smartcomm/erp/:kind/:id` | — |
 | GET | `/api/tenant/smartcomm/erp/search` | — |
 | GET | `/api/tenant/smartcomm/links/image` | — |
@@ -2284,9 +2345,11 @@ All 1705 mounted routes, grouped by path prefix.
 | PATCH | `/api/tenant/treasury-accounts/:id` | — |
 | GET | `/api/tenant/treasury-accounts/:id/360` | — |
 | POST | `/api/tenant/treasury-accounts/:id/active` | — |
+| POST | `/api/tenant/treasury-accounts/:id/authorisation-letter` | — |
 | GET | `/api/tenant/treasury-accounts/:id/documents` | — |
 | POST | `/api/tenant/treasury-accounts/:id/documents` | — |
 | DELETE | `/api/tenant/treasury-accounts/:id/documents/:docId` | — |
+| POST | `/api/tenant/treasury-accounts/:id/documents/:docId/scan` | — |
 | POST | `/api/tenant/treasury-accounts/:id/documents/:docId/verify` | — |
 | POST | `/api/tenant/treasury-accounts/:id/primary` | — |
 | POST | `/api/tenant/treasury-accounts/:id/reverse-entry` | — |

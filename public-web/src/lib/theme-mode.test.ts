@@ -10,6 +10,11 @@ import {
   setMode,
   toggleMode,
 } from "./theme-mode";
+import {
+  PORTAL_THEME_KEY,
+  getPortalTheme,
+  resolvePortalTheme,
+} from "@/features/portal/lib/theme";
 
 const html = () =>
   readFileSync(join(process.cwd(), "index.html"), "utf8");
@@ -88,7 +93,28 @@ describe("forced dark mode", () => {
     // the read in a `//` line as the unlock instruction, and matching that
     // would fail the test for documenting itself.
     const live = script.replace(/^\s*\/\/.*$/gm, "");
-    expect(live).not.toContain("localStorage");
+    expect(live).not.toContain(THEME_KEY);
+    // The ONE storage read the script may make is the client portal's own
+    // choice, inside the `/portal` branch — the portal is a signed-in app with
+    // a light default (features/portal/lib/theme.ts), not the marketing site,
+    // and the lock is about the marketing site.
+    const reads = live.match(/localStorage\.getItem\(([^)]*)\)/g) ?? [];
+    expect(reads).toEqual([`localStorage.getItem("${PORTAL_THEME_KEY}")`]);
+    const branch = live.indexOf('p.indexOf("/portal/") === 0');
+    expect(branch).toBeGreaterThan(-1);
+    expect(live.indexOf("localStorage")).toBeGreaterThan(branch);
+  });
+
+  it("paints a /portal URL in the portal's own mode, light unless chosen", () => {
+    // The pre-paint branch and `features/portal/lib/theme.ts` make the same
+    // decision; this pins the script's half of it.
+    const source = html();
+    const open = source.indexOf("<script>", source.indexOf("PRE-PAINT THEME"));
+    const script = source.slice(open, source.indexOf("</script>", open));
+    expect(script).toContain('mode = t === "dark" || (t === "system" && sys) ? "dark" : "light"');
+    expect(getPortalTheme()).toBe("light");
+    expect(resolvePortalTheme("light")).toBe("light");
+    expect(resolvePortalTheme("dark")).toBe("dark");
   });
 
   it("pins theme-color to the dark background, with no light alternative", () => {

@@ -39,7 +39,8 @@ const staffClientId = (req) => {
 
 module.exports = {
   listAccess: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.listAccess(c, req.query)) })),
-  grant: asyncHandler(async (req, res) => { const b = req.body; res.status(201).json({ data: await req.tenantDb((c) => service.grantAccess(c, { portal: b.portal, subjectEmail: b.subject_email, clientId: b.client_id, expiresAt: b.expires_at, actor: actor(req) })) }); }),
+  grant: asyncHandler(async (req, res) => { const b = req.body; res.status(201).json({ data: await req.tenantDb((c) => service.grantAccess(c, { portal: b.portal, subjectEmail: b.subject_email, clientId: b.client_id, expiresAt: b.expires_at, accessScope: b.access_scope, isClientAdmin: b.is_client_admin, actor: actor(req) })) }); }),
+  setTeamRole: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.setTeamRole(c, { id: req.params.id, accessScope: req.body.access_scope, isClientAdmin: req.body.is_client_admin, actor: actor(req) })) })),
   revoke: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.revokeAccess(c, { id: req.params.id, actor: actor(req) })) })),
   check: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.checkAccess(c, { email: req.query.email, portal: req.query.portal })) })),
   client: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.clientView(c, { clientId: clientId(req) })) })),

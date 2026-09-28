@@ -49,6 +49,18 @@ const NOTIFIABLE = {
   "proposal.accepted": { action: "view", title: "Proposal accepted" },
 
   /*
+   * ── Client portal (14150) ──
+   *
+   * A client answering something we asked for — or sending a document nobody
+   * asked for — is work waiting on operations (MOD-29, the client-portal
+   * module). A client saying "I have paid" is work waiting on finance (MOD-52,
+   * receivables), and HIGH: a payment nobody confirms is a client chased for
+   * money they already sent, which is the complaint this portal exists to end.
+   */
+  "client_request.submitted": { action: "view", title: "A client sent a document or answer" },
+  "payment_proof.submitted": { action: "view", title: "A client uploaded a proof of payment", priority: "HIGH" },
+
+  /*
    * ── Approvals & disbursement (12771, owner Q20) ──
    *
    * The chain events already notify the people a task is waiting on

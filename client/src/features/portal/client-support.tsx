@@ -17,6 +17,8 @@ import { HubCrumb } from "@/components/tabbed-hub";
 import { tenant } from "@/lib/api-client";
 import { errMsg, useList } from "@/lib/use-resource";
 import { dateFmt } from "@/lib/format";
+import { tr } from "@/lib/i18n";
+import { ClientRequestsPanel } from "./client-portal-staff";
 
 type ClientRow = { client_id: string; name?: string; legal_name?: string };
 type Message = {
@@ -112,6 +114,14 @@ export function ClientSupportPage() {
         title={t("settings.clientSupport")}
         description={t("support.staffDesc")}
       />
+
+      {/* Everything clients sent through the portal that is waiting for us —
+          across every client, so an upload never waits for someone to open
+          the right client first. */}
+      <div className="mb-6">
+        <h3 className="mb-2 text-sm font-semibold text-foreground">{tr("Sent by clients")}</h3>
+        <ClientRequestsPanel />
+      </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <label className="text-sm text-muted-foreground" htmlFor="client-pick">

@@ -31,7 +31,21 @@ import type { Config } from "tailwindcss";
  */
 export default {
   darkMode: "class",
-  content: ["./index.html", "./src/**/*.{ts,tsx}"],
+  /*
+   * The client portal is EXCLUDED here and built by its own config
+   * (`tailwind.portal.config.ts`, compiled into `features/portal/portal.css`).
+   *
+   * This file's output is `index.css` — the stylesheet on EVERY visitor's first
+   * paint, which sits at 99% of its budget (`check-bundle.mjs`). A signed-in
+   * portal has three times the surface of any marketing page, and every class it
+   * used that no marketing page did was being shipped to strangers who will never
+   * sign in. Its utilities now travel with its own lazy chunk instead.
+   */
+  content: [
+    "./index.html",
+    "./src/**/*.{ts,tsx}",
+    "!./src/features/portal/**",
+  ],
   theme: {
     screens: {
       sm: "640px",

@@ -24,6 +24,8 @@ import { errMsg, useList, useRefresh, type Row } from "@/lib/use-resource";
 import { cell, dateFmt } from "@/lib/format";
 import { SearchSelect } from "@/components/ui/search-select";
 import { DataView } from "@/components/ui/data-view";
+import { TeamRoleModal } from "@/features/portal/client-portal-staff";
+import { SCOPE_LABEL, type PortalScope } from "@/features/portal/portal-scope";
 
 const PORTAL_AI: AiAction[] = [
   {
@@ -305,6 +307,7 @@ export function PortalAccessPage() {
   const [rowBusy, setRowBusy] = React.useState<string | null>(null);
   const [rowError, setRowError] = React.useState<string | null>(null);
   const [rowNotice, setRowNotice] = React.useState<string | null>(null);
+  const [teamGrant, setTeamGrant] = React.useState<Row | null>(null);
 
   const clientName = React.useMemo(
     () =>
@@ -457,6 +460,12 @@ export function PortalAccessPage() {
                         invited
                       </span>
                     ) : null}
+                    {portal === "CLIENT" ? (
+                      <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                        {tr(SCOPE_LABEL[(g.access_scope as PortalScope) || "ALL"])}
+                        {g.is_client_admin ? ` · ${tr("Admin")}` : ""}
+                      </span>
+                    ) : null}
                     {g.expires_at ? (
                       <span className="text-xs text-muted-foreground">
                         expires {dateFmt(g.expires_at)}
@@ -473,6 +482,11 @@ export function PortalAccessPage() {
                       : ""}
                   </p>
                 </div>
+                {portal === "CLIENT" && (
+                  <Button size="sm" variant="ghost" onClick={() => setTeamGrant(g)}>
+                    {tr("Change access")}
+                  </Button>
+                )}
                 {portal === "CLIENT" && !!g.client_id && (
                   <Button
                     size="sm"
@@ -520,6 +534,11 @@ export function PortalAccessPage() {
         open={grantOpen}
         clients={clients}
         onClose={() => setGrantOpen(false)}
+        onSaved={reload}
+      />
+      <TeamRoleModal
+        grant={teamGrant as React.ComponentProps<typeof TeamRoleModal>["grant"]}
+        onClose={() => setTeamGrant(null)}
         onSaved={reload}
       />
       <PreviewModal

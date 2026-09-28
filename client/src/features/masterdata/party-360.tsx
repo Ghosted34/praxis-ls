@@ -41,6 +41,7 @@ import {
 } from "@/lib/vault-file";
 import * as api from "@/lib/masterdata-api";
 import { useUrlTab } from "@/lib/use-url-tab";
+import { ClientPortalTab } from "@/features/portal/client-portal-staff";
 import { ComposeIconButton as MailIconButton } from "@/features/comms/inbox/composer/compose-icon-button";
 import {
   KpiDetailsModal,
@@ -498,11 +499,13 @@ const CLIENT_TABS = [
   "Owners",
   "Operations",
   "Financial",
+  "Portal",
 ] as const;
 type Tab = (typeof CLIENT_TABS)[number];
-// "Operations" lists the client's dossiers; suppliers have none, so the tab is
+// "Operations" lists the client's dossiers and "Portal" what we asked the
+// client for through their portal; suppliers have neither, so both tabs are
 // dropped on that side.
-const SUPPLIER_TABS = CLIENT_TABS.filter((t) => t !== "Operations");
+const SUPPLIER_TABS = CLIENT_TABS.filter((t) => t !== "Operations" && t !== "Portal");
 
 /* ── PR3-C: duplicates, governed merge, scorecard, pending changes ─────────── */
 
@@ -2221,6 +2224,13 @@ export function PartyDossier({
             ))}
           </MiniTable>
         </Section>
+      )}
+
+      {tab === "Portal" && isClient && (
+        <ClientPortalTab
+          clientId={partyId}
+          dossiers={(d.dossiers ?? []).map((ds) => ({ dossier_id: ds.dossier_id, ref: ds.ref || ds.dossier_id.slice(0, 8) }))}
+        />
       )}
 
       {tab === "Operations" && (

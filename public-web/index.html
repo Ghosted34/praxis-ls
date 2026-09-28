@@ -36,7 +36,18 @@
         //   try { if (localStorage.getItem("praxis.public.theme") === "light") mode = "light"; } catch (e) {}
         var mode = "dark";
         var el = document.documentElement;
-        el.classList.add("dark");
+        // THE PORTAL IS NOT THE MARKETING SITE. A signed-in client's portal is
+        // light unless they chose otherwise (features/portal/lib/theme.ts is its
+        // twin), and a `/portal` URL must not paint one dark frame first.
+        var p = location.pathname;
+        if (p === "/portal" || p.indexOf("/portal/") === 0 || p.indexOf("/client-portal") === 0) {
+          var t = null;
+          try { t = localStorage.getItem("praxis.portal.theme"); } catch (e) {}
+          var sys = !!(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+          mode = t === "dark" || (t === "system" && sys) ? "dark" : "light";
+        }
+        if (mode === "dark") el.classList.add("dark");
+        else el.classList.remove("dark");
         el.classList.remove("light");
         el.setAttribute("data-theme", mode);
         // Native UI — scrollbars, form controls, the canvas painted before the

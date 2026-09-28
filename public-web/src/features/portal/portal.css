@@ -1,0 +1,1092 @@
+/**
+ * The client portal's stylesheet — loaded with the portal's own chunk, never on
+ * a marketing page's first paint (see `tailwind.portal.config.ts`).
+ *
+ * ── THE LOOK, IN ONE PARAGRAPH ─────────────────────────────────────────────
+ *
+ * Soft and friendly (owner's choice, portal redesign Q11): a pale page, white
+ * cards with generous radius and a shadow you feel rather than see, tinted
+ * pills for every status, icons carrying meaning so words do not have to, and
+ * the tenant's own colour on exactly the things a person can press. Every
+ * colour below is a TOKEN or a mix of tokens — no hex — so the tenant's brand
+ * repaints all of it, and both themes come from the same rules.
+ *
+ * ── MOTION ─────────────────────────────────────────────────────────────────
+ *
+ * Everything here is a RESPONSE to a tap and held to `check:motion`'s 200ms.
+ * The one continuous animation, the loading shimmer, is on the gate's
+ * exemption list with its reason. The reduced-motion umbrella in `index.css`
+ * covers this sheet as well: it targets `*`.
+ */
+@config "../../../tailwind.portal.config.ts";
+
+/* A `grid` with no column template is a vertical stack in this app, and its
+   one column must be allowed to shrink. Left implicit, the track is `auto`,
+   which grows to the min-content of what it holds — and a nested
+   `grid-cols-3` reports THREE max-content tiles as its min-content, which
+   pushed Home 16px past a 390px phone. Declared BEFORE the utilities, so any
+   `grid-cols-*` (responsive ones included) still wins. */
+.pt-root .grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@tailwind utilities;
+
+/* ── tokens ─────────────────────────────────────────────────────────────── */
+
+.pt-root {
+  --pt-bg: var(--secondary);
+  --pt-surface: var(--card);
+  --pt-line: color-mix(in srgb, var(--foreground) 8%, transparent);
+  --pt-line-strong: color-mix(in srgb, var(--foreground) 14%, transparent);
+  --pt-tint: var(--muted);
+  --pt-tint: color-mix(in srgb, var(--primary) 9%, var(--card));
+  --pt-tint-strong: color-mix(in srgb, var(--primary) 16%, var(--card));
+  --pt-soft: color-mix(in srgb, var(--foreground) 4%, var(--card));
+  --pt-shadow:
+    0 1px 2px rgb(var(--elev-shadow-hue) / 0.04),
+    0 6px 20px rgb(var(--elev-shadow-hue) / 0.05);
+  --pt-shadow-lift:
+    0 2px 6px rgb(var(--elev-shadow-hue) / 0.06),
+    0 16px 40px rgb(var(--elev-shadow-hue) / 0.1);
+  --pt-radius-xl: 28px;
+  --pt-radius-lg: 22px;
+  --pt-radius: 16px;
+  --pt-radius-sm: 12px;
+  --pt-top-h: 56px;
+  --pt-tab-h: 64px;
+  --pt-safe-t: env(safe-area-inset-top, 0px);
+  --pt-safe-b: env(safe-area-inset-bottom, 0px);
+  --pt-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --pt-dur: 180ms;
+  --pt-dur-sheet: 200ms;
+
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: var(--pt-bg);
+  color: var(--foreground);
+  font-family: var(--font-body);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.dark .pt-root,
+[data-theme="dark"] .pt-root {
+  --pt-bg: var(--background);
+  --pt-line: color-mix(in srgb, var(--foreground) 10%, transparent);
+  --pt-tint: color-mix(in srgb, var(--primary) 14%, var(--card));
+  --pt-tint-strong: color-mix(in srgb, var(--primary) 24%, var(--card));
+  --pt-soft: color-mix(in srgb, var(--foreground) 5%, var(--card));
+}
+
+/* ── surfaces ───────────────────────────────────────────────────────────── */
+
+.pt-card {
+  background: var(--pt-surface);
+  border: 1px solid var(--pt-line);
+  border-radius: var(--pt-radius-lg);
+  box-shadow: var(--pt-shadow);
+}
+/* The one card per screen that carries the page's headline figure. */
+.pt-hero-card {
+  background:
+    radial-gradient(120% 90% at 0% 0%, var(--pt-tint-strong) 0%, transparent 55%),
+    var(--pt-surface);
+}
+.pt-card-press {
+  transition:
+    transform var(--pt-dur) var(--pt-ease),
+    box-shadow var(--pt-dur) var(--pt-ease);
+}
+.pt-card-press:hover {
+  box-shadow: var(--pt-shadow-lift);
+}
+.pt-card-press:active {
+  transform: scale(0.985);
+}
+
+.pt-section-title {
+  font-family: var(--font-display);
+  font-size: 1.0625rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--foreground);
+}
+
+.pt-display {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.1;
+}
+
+.pt-num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+.pt-mono {
+  font-family: var(--font-mono);
+  letter-spacing: -0.01em;
+}
+
+/* An icon sitting in a soft disc — the portal's main way of saying WHAT a row is. */
+.pt-icon-disc {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: var(--pt-tint);
+  color: var(--primary-ink);
+}
+.pt-icon-disc[data-tone="ok"] {
+  background: rgb(var(--ok) / 0.12);
+  color: rgb(var(--ok));
+}
+.pt-icon-disc[data-tone="warn"] {
+  background: rgb(var(--warn) / 0.14);
+  color: rgb(var(--warn));
+}
+.pt-icon-disc[data-tone="bad"] {
+  background: rgb(var(--bad) / 0.12);
+  color: rgb(var(--bad));
+}
+.pt-icon-disc[data-tone="info"] {
+  background: rgb(var(--brand-blue-ink) / 0.12);
+  color: rgb(var(--brand-blue-ink));
+}
+.pt-icon-disc[data-tone="mute"] {
+  background: var(--pt-soft);
+  color: var(--muted-foreground);
+}
+
+/* ── pills ──────────────────────────────────────────────────────────────── */
+
+.pt-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  background: var(--pt-soft);
+  color: var(--muted-foreground);
+}
+.pt-pill::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: currentColor;
+}
+.pt-pill[data-plain]::before {
+  display: none;
+}
+.pt-pill[data-tone="ok"] {
+  background: rgb(var(--ok) / 0.12);
+  color: rgb(var(--ok));
+}
+.pt-pill[data-tone="warn"] {
+  background: rgb(var(--warn) / 0.14);
+  color: rgb(var(--warn));
+}
+.pt-pill[data-tone="bad"] {
+  background: rgb(var(--bad) / 0.12);
+  color: rgb(var(--bad));
+}
+.pt-pill[data-tone="info"] {
+  background: rgb(var(--brand-blue-ink) / 0.12);
+  color: rgb(var(--brand-blue-ink));
+}
+.pt-pill[data-tone="brand"] {
+  background: var(--pt-tint);
+  color: var(--primary-ink);
+}
+
+/* A row of choices, one of which is selected — filters, methods, languages. */
+.pt-seg {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 999px;
+  background: var(--pt-soft);
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.pt-seg::-webkit-scrollbar {
+  display: none;
+}
+.pt-seg-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 999px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+  transition:
+    background-color var(--pt-dur) var(--pt-ease),
+    color var(--pt-dur) var(--pt-ease),
+    box-shadow var(--pt-dur) var(--pt-ease);
+}
+.pt-seg-item:hover {
+  color: var(--foreground);
+}
+.pt-seg-item[aria-pressed="true"],
+.pt-seg-item[aria-selected="true"] {
+  background: var(--pt-surface);
+  color: var(--foreground);
+  box-shadow: 0 1px 3px rgb(var(--elev-shadow-hue) / 0.12);
+}
+.pt-seg-count {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  display: inline-grid;
+  place-items: center;
+  font-size: 0.6875rem;
+  background: var(--pt-tint-strong);
+  color: var(--primary-ink);
+}
+
+/* Choice chips that wrap — a method of payment, a document type. */
+.pt-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: 14px;
+  border: 1.5px solid var(--pt-line-strong);
+  background: var(--pt-surface);
+  font-size: 0.9375rem;
+  font-weight: 550;
+  color: var(--foreground);
+  transition:
+    border-color var(--pt-dur) var(--pt-ease),
+    background-color var(--pt-dur) var(--pt-ease);
+}
+.pt-chip:hover {
+  border-color: color-mix(in srgb, var(--primary) 40%, var(--pt-line-strong));
+}
+.pt-chip[aria-pressed="true"] {
+  border-color: var(--primary);
+  background: var(--pt-tint);
+}
+
+/* ── buttons ────────────────────────────────────────────────────────────── */
+
+.pt-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 0 22px;
+  border-radius: 14px;
+  font-size: 0.9375rem;
+  font-weight: 650;
+  letter-spacing: -0.005em;
+  user-select: none;
+  transition:
+    background-color var(--pt-dur) var(--pt-ease),
+    box-shadow var(--pt-dur) var(--pt-ease),
+    transform var(--pt-dur) var(--pt-ease),
+    opacity var(--pt-dur) var(--pt-ease);
+}
+.pt-btn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+.pt-btn:disabled {
+  opacity: 0.55;
+  pointer-events: none;
+}
+.pt-btn:focus-visible,
+.pt-seg-item:focus-visible,
+.pt-chip:focus-visible,
+.pt-tab:focus-visible,
+.pt-nav-item:focus-visible,
+.pt-icon-btn:focus-visible,
+.pt-row:focus-visible,
+.pt-card-press:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+.pt-btn-primary {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--primary) 28%, transparent);
+}
+.pt-btn-primary:hover {
+  box-shadow: 0 8px 22px color-mix(in srgb, var(--primary) 36%, transparent);
+}
+.pt-btn-soft {
+  background: var(--pt-tint);
+  color: var(--primary-ink);
+}
+.pt-btn-soft:hover {
+  background: var(--pt-tint-strong);
+}
+.pt-btn-ghost {
+  background: transparent;
+  color: var(--foreground);
+}
+.pt-btn-ghost:hover {
+  background: var(--pt-soft);
+}
+.pt-btn-outline {
+  background: var(--pt-surface);
+  color: var(--foreground);
+  border: 1.5px solid var(--pt-line-strong);
+}
+.pt-btn-outline:hover {
+  background: var(--pt-soft);
+}
+.pt-btn-danger {
+  background: rgb(var(--bad) / 0.1);
+  color: rgb(var(--bad));
+}
+.pt-btn-sm {
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: 11px;
+  font-size: 0.8125rem;
+}
+.pt-btn-block {
+  width: 100%;
+}
+
+.pt-icon-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  color: var(--foreground);
+  transition: background-color var(--pt-dur) var(--pt-ease);
+}
+.pt-icon-btn:hover {
+  background: var(--pt-soft);
+}
+
+/* Spun by Tailwind's own `animate-spin` (as `components/ui/button.tsx` does). */
+.pt-spinner {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+}
+
+/* ── form fields ────────────────────────────────────────────────────────── */
+
+.pt-field {
+  display: block;
+  width: 100%;
+  min-height: 52px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1.5px solid var(--pt-line-strong);
+  background: var(--pt-surface);
+  color: var(--foreground);
+  font-size: 1rem;
+  transition:
+    border-color var(--pt-dur) var(--pt-ease),
+    box-shadow var(--pt-dur) var(--pt-ease);
+}
+.pt-field::placeholder {
+  color: color-mix(in srgb, var(--muted-foreground) 80%, transparent);
+}
+.pt-field:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 18%, transparent);
+}
+.pt-field[aria-invalid="true"] {
+  border-color: rgb(var(--bad));
+}
+textarea.pt-field {
+  min-height: 96px;
+  resize: vertical;
+  line-height: 1.5;
+}
+.pt-label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--muted-foreground);
+}
+
+/* Six boxes for a six-digit code, typed as one field. */
+.pt-otp {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+}
+.pt-otp input {
+  width: 100%;
+  height: 56px;
+  border-radius: 14px;
+  border: 1.5px solid var(--pt-line-strong);
+  background: var(--pt-surface);
+  color: var(--foreground);
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 1.5rem;
+  font-weight: 650;
+  transition:
+    border-color var(--pt-dur) var(--pt-ease),
+    box-shadow var(--pt-dur) var(--pt-ease);
+}
+.pt-otp input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 18%, transparent);
+}
+
+/* An on/off switch — "keep me signed in", Face ID. */
+.pt-switch {
+  position: relative;
+  flex-shrink: 0;
+  width: 46px;
+  height: 28px;
+  border-radius: 999px;
+  background: var(--pt-line-strong);
+  transition: background-color var(--pt-dur) var(--pt-ease);
+}
+.pt-switch::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--card);
+  box-shadow: 0 1px 3px rgb(var(--elev-shadow-hue) / 0.3);
+  transition: transform var(--pt-dur) var(--pt-ease);
+}
+.pt-switch[aria-checked="true"] {
+  background: var(--primary);
+}
+.pt-switch[aria-checked="true"]::after {
+  transform: translateX(18px);
+}
+.pt-switch:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* ── progress ───────────────────────────────────────────────────────────── */
+
+.pt-progress {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--pt-soft);
+  overflow: hidden;
+}
+.pt-progress > span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--primary);
+  transition: width var(--pt-dur) var(--pt-ease);
+}
+.pt-progress[data-tone="ok"] > span {
+  background: rgb(var(--ok-fill));
+}
+
+/* ── lists ──────────────────────────────────────────────────────────────── */
+
+.pt-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 14px 16px;
+  text-align: left;
+  transition: background-color var(--pt-dur) var(--pt-ease);
+}
+button.pt-row:hover,
+a.pt-row:hover {
+  background: var(--pt-soft);
+}
+.pt-rows > * + * {
+  border-top: 1px solid var(--pt-line);
+}
+
+/* ── journey timeline ───────────────────────────────────────────────────── */
+
+.pt-timeline {
+  position: relative;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.pt-step {
+  position: relative;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  gap: 14px;
+  padding-bottom: 22px;
+}
+.pt-step:last-child {
+  padding-bottom: 0;
+}
+.pt-step::before {
+  content: "";
+  position: absolute;
+  left: 13px;
+  top: 30px;
+  bottom: 2px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--pt-line-strong);
+}
+.pt-step:last-child::before {
+  display: none;
+}
+.pt-step[data-state="done"]::before {
+  background: rgb(var(--ok-fill) / 0.55);
+}
+.pt-dot {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 2px solid var(--pt-line-strong);
+  background: var(--pt-surface);
+  color: var(--muted-foreground);
+}
+.pt-step[data-state="done"] .pt-dot {
+  border-color: rgb(var(--ok-fill));
+  background: rgb(var(--ok-fill));
+  color: var(--card);
+}
+.pt-step[data-state="current"] .pt-dot {
+  border-color: var(--primary);
+  background: var(--pt-surface);
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--primary) 20%, transparent);
+}
+.pt-step[data-state="current"] .pt-dot::after {
+  content: "";
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--primary);
+}
+.pt-step[data-state="blocked"] .pt-dot {
+  border-color: rgb(var(--warn));
+  color: rgb(var(--warn));
+}
+
+/* A route drawn between two places: origin • ─── ✈ ─── • destination. */
+.pt-route {
+  display: grid;
+  grid-template-columns: auto minmax(24px, 1fr) auto minmax(24px, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+.pt-route-line {
+  height: 2px;
+  background-image: linear-gradient(90deg, var(--pt-line-strong) 50%, transparent 50%);
+  background-size: 8px 2px;
+}
+.pt-route-line[data-done] {
+  background: var(--primary);
+}
+.pt-route-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  border: 2px solid var(--primary);
+  background: var(--pt-surface);
+}
+.pt-route-dot[data-filled] {
+  background: var(--primary);
+}
+
+/* ── the shell ──────────────────────────────────────────────────────────── */
+
+.pt-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: calc(var(--pt-top-h) + var(--pt-safe-t));
+  padding: var(--pt-safe-t) 12px 0;
+  background: color-mix(in srgb, var(--pt-bg) 86%, transparent);
+  -webkit-backdrop-filter: saturate(160%) blur(16px);
+  backdrop-filter: saturate(160%) blur(16px);
+  border-bottom: 1px solid transparent;
+  transition: border-color var(--pt-dur) var(--pt-ease);
+}
+.pt-topbar[data-scrolled="true"] {
+  border-bottom-color: var(--pt-line);
+}
+.pt-logo {
+  display: block;
+  max-height: 30px;
+  max-width: 132px;
+  width: auto;
+  object-fit: contain;
+}
+
+.pt-tabbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  height: calc(var(--pt-tab-h) + var(--pt-safe-b));
+  padding: 6px 6px var(--pt-safe-b);
+  background: color-mix(in srgb, var(--pt-surface) 90%, transparent);
+  -webkit-backdrop-filter: saturate(160%) blur(18px);
+  backdrop-filter: saturate(160%) blur(18px);
+  border-top: 1px solid var(--pt-line);
+}
+.pt-tab {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  border-radius: 14px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--muted-foreground);
+  transition: color var(--pt-dur) var(--pt-ease);
+}
+.pt-tab-icon {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 30px;
+  border-radius: 999px;
+  transition: background-color var(--pt-dur) var(--pt-ease);
+}
+.pt-tab[aria-current="page"] {
+  color: var(--primary-ink);
+}
+.pt-tab[aria-current="page"] .pt-tab-icon {
+  background: var(--pt-tint-strong);
+}
+.pt-badge {
+  position: absolute;
+  top: -2px;
+  right: -4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font-size: 0.625rem;
+  font-weight: 700;
+  background: rgb(var(--bad-fill));
+  color: var(--card);
+  border: 2px solid var(--pt-surface);
+}
+
+.pt-sidebar {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+  padding: 22px 14px 16px;
+  background: var(--pt-surface);
+  border-right: 1px solid var(--pt-line);
+}
+.pt-nav-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 46px;
+  padding: 0 14px;
+  border-radius: 14px;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--muted-foreground);
+  transition:
+    background-color var(--pt-dur) var(--pt-ease),
+    color var(--pt-dur) var(--pt-ease);
+}
+.pt-nav-item:hover {
+  background: var(--pt-soft);
+  color: var(--foreground);
+}
+.pt-nav-item[aria-current="page"] {
+  background: var(--pt-tint);
+  color: var(--primary-ink);
+}
+
+/* The floating chat button, bottom right, above the tab bar on a phone. */
+.pt-fab {
+  position: fixed;
+  right: 18px;
+  bottom: calc(var(--pt-tab-h) + var(--pt-safe-b) + 16px);
+  z-index: 45;
+  display: grid;
+  place-items: center;
+  width: 58px;
+  height: 58px;
+  border-radius: 20px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  box-shadow:
+    0 10px 24px color-mix(in srgb, var(--primary) 38%, transparent),
+    0 2px 6px rgb(var(--elev-shadow-hue) / 0.12);
+  transition:
+    transform var(--pt-dur) var(--pt-ease),
+    box-shadow var(--pt-dur) var(--pt-ease);
+}
+.pt-fab:hover {
+  transform: translateY(-2px);
+}
+.pt-fab:active {
+  transform: scale(0.96);
+}
+.pt-fab:focus-visible {
+  outline: 3px solid var(--ring);
+  outline-offset: 3px;
+}
+@media (min-width: 1024px) {
+  .pt-fab {
+    bottom: 28px;
+    right: 28px;
+  }
+}
+
+/* Space so the last card never hides behind the tab bar or the chat button. */
+.pt-main {
+  padding-bottom: calc(var(--pt-tab-h) + var(--pt-safe-b) + 96px);
+}
+@media (min-width: 1024px) {
+  .pt-main {
+    padding-bottom: 96px;
+  }
+}
+
+/* ── sheets: a bottom sheet on a phone, a centred dialog on a desk ─────── */
+
+.pt-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: var(--mat-scrim);
+  animation: pt-fade var(--pt-dur-sheet) var(--pt-ease) both;
+}
+.pt-sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 61;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - 24px - var(--pt-safe-t));
+  background: var(--pt-surface);
+  border-radius: var(--pt-radius-xl) var(--pt-radius-xl) 0 0;
+  box-shadow: 0 -12px 40px rgb(var(--elev-shadow-hue) / 0.18);
+  padding-bottom: var(--pt-safe-b);
+  animation: pt-rise var(--pt-dur-sheet) var(--pt-ease) both;
+}
+.pt-sheet[data-full] {
+  top: calc(var(--pt-safe-t) + 12px);
+  max-height: none;
+}
+.pt-sheet-grip {
+  width: 40px;
+  height: 5px;
+  margin: 10px auto 2px;
+  border-radius: 999px;
+  background: var(--pt-line-strong);
+}
+@media (min-width: 768px) {
+  .pt-sheet,
+  .pt-sheet[data-full] {
+    left: 50%;
+    right: auto;
+    top: 50%;
+    bottom: auto;
+    width: min(560px, calc(100vw - 48px));
+    max-height: min(760px, calc(100dvh - 64px));
+    border-radius: var(--pt-radius-xl);
+    padding-bottom: 0;
+    transform: translate(-50%, -50%);
+    animation: pt-pop var(--pt-dur-sheet) var(--pt-ease) both;
+  }
+  .pt-sheet[data-wide] {
+    width: min(760px, calc(100vw - 48px));
+  }
+  .pt-sheet-grip {
+    display: none;
+  }
+}
+@keyframes pt-fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes pt-rise {
+  from {
+    transform: translateY(24px);
+    opacity: 0;
+  }
+}
+@keyframes pt-pop {
+  from {
+    transform: translate(-50%, calc(-50% + 12px)) scale(0.98);
+    opacity: 0;
+  }
+}
+
+/* ── toasts ─────────────────────────────────────────────────────────────── */
+
+.pt-toasts {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--pt-tab-h) + var(--pt-safe-b) + 18px);
+  z-index: 80;
+  display: grid;
+  gap: 8px;
+  width: min(420px, calc(100vw - 32px));
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+@media (min-width: 1024px) {
+  .pt-toasts {
+    bottom: 28px;
+  }
+}
+.pt-toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: var(--foreground);
+  color: var(--background);
+  font-size: 0.875rem;
+  font-weight: 550;
+  box-shadow: var(--pt-shadow-lift);
+  pointer-events: auto;
+  animation: pt-rise var(--pt-dur-sheet) var(--pt-ease) both;
+}
+
+/* ── loading ────────────────────────────────────────────────────────────── */
+
+.pt-shimmer {
+  border-radius: 12px;
+  background: linear-gradient(
+    90deg,
+    var(--pt-soft) 0%,
+    color-mix(in srgb, var(--foreground) 9%, var(--card)) 50%,
+    var(--pt-soft) 100%
+  );
+  background-size: 200% 100%;
+  animation: pt-sweep 1.2s ease-in-out infinite;
+}
+@keyframes pt-sweep {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+
+/* ── the sign-in screen ─────────────────────────────────────────────────── */
+
+.pt-signin {
+  position: relative;
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  isolation: isolate;
+  background: var(--hero);
+  color: var(--hero-foreground);
+}
+.pt-signin-photo {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+/* Legibility over ANY photograph a tenant uploads: dark at the foot where the
+   card sits, lighter at the head where the logo sits. */
+.pt-signin-veil {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    linear-gradient(180deg, rgb(0 0 0 / 0.42) 0%, rgb(0 0 0 / 0.05) 34%, rgb(0 0 0 / 0.55) 72%, rgb(0 0 0 / 0.78) 100%);
+}
+/* No photograph set: the tenant's own colour as light, over carbon. */
+.pt-signin-scene {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  overflow: hidden;
+  background:
+    radial-gradient(120% 80% at 12% 8%, color-mix(in srgb, var(--primary) 42%, transparent) 0%, transparent 55%),
+    radial-gradient(90% 70% at 100% 100%, rgb(var(--brand-blue) / 0.38) 0%, transparent 60%),
+    radial-gradient(60% 50% at 70% 30%, color-mix(in srgb, var(--primary) 18%, transparent) 0%, transparent 70%),
+    var(--hero);
+}
+/* A faint field of dots, brightest behind the globe — depth without a photo. */
+.pt-signin-dots {
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(circle, rgb(255 255 255 / 0.16) 1px, transparent 1.6px);
+  background-size: 22px 22px;
+  -webkit-mask-image: radial-gradient(ellipse 70% 55% at 50% 32%, rgb(0 0 0) 0%, transparent 75%);
+  mask-image: radial-gradient(ellipse 70% 55% at 50% 32%, rgb(0 0 0) 0%, transparent 75%);
+}
+.pt-signin-globe {
+  position: absolute;
+  left: 50%;
+  top: 4%;
+  width: min(128vw, 620px);
+  height: auto;
+  transform: translateX(-50%);
+  color: var(--hero-foreground);
+}
+@media (min-width: 768px) {
+  .pt-signin-dots {
+    -webkit-mask-image: radial-gradient(ellipse 55% 70% at 30% 55%, rgb(0 0 0) 0%, transparent 75%);
+    mask-image: radial-gradient(ellipse 55% 70% at 30% 55%, rgb(0 0 0) 0%, transparent 75%);
+  }
+  .pt-signin-globe {
+    left: 30%;
+    top: 50%;
+    width: min(62vw, 900px);
+    transform: translate(-50%, -50%);
+  }
+}
+.pt-glass {
+  background: color-mix(in srgb, var(--card) 97%, transparent);
+  -webkit-backdrop-filter: saturate(180%) blur(22px);
+  backdrop-filter: saturate(180%) blur(22px);
+  color: var(--foreground);
+  border: 1px solid color-mix(in srgb, var(--card) 60%, transparent);
+  box-shadow: 0 24px 60px rgb(0 0 0 / 0.28);
+}
+.pt-glass-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.14);
+  color: var(--hero-foreground);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgb(255 255 255 / 0.18);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  transition: background-color var(--pt-dur) var(--pt-ease);
+}
+.pt-glass-chip:hover,
+.pt-glass-chip[aria-pressed="true"] {
+  background: rgb(255 255 255 / 0.26);
+}
+.pt-glass-chip:focus-visible {
+  outline: 2px solid var(--hero-foreground);
+  outline-offset: 2px;
+}
+
+/* The avatar: initials in the tenant's tint. */
+.pt-avatar {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: var(--pt-tint-strong);
+  color: var(--primary-ink);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+/* Chat bubbles — the interim General thread (PR 2 replaces the chat). */
+.pt-bubble {
+  max-width: min(78%, 520px);
+  padding: 10px 14px;
+  border-radius: 18px;
+  font-size: 0.9375rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.pt-bubble[data-mine] {
+  margin-left: auto;
+  border-bottom-right-radius: 6px;
+  background: var(--pt-tint-strong);
+  color: var(--foreground);
+}
+.pt-bubble:not([data-mine]) {
+  border-bottom-left-radius: 6px;
+  background: var(--pt-soft);
+  color: var(--foreground);
+}
+
+/* The image being sent: a preview from the moment it is picked. */
+.pt-upload-thumb {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--pt-soft);
+  color: var(--muted-foreground);
+}
+.pt-upload-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.pt-hide-scrollbar {
+  scrollbar-width: none;
+}
+.pt-hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+@media print {
+  .pt-tabbar,
+  .pt-fab,
+  .pt-sidebar,
+  .pt-topbar,
+  .pt-toasts {
+    display: none !important;
+  }
+}

@@ -18,7 +18,30 @@ const { AppError } = require("../../utils/errors");
 const passwordPolicy = require("../../shared/security/password-policy");
 
 const TOKEN_TTL = "2h";
+const TOKEN_TTL_S = 2 * 3600;
 const MODULE = "MOD-67";
+
+/**
+ * "Keep me signed in" (14150). A client who ticks it on their own phone gets a
+ * refresh token that lives 30 days from its LAST use and rotates every time it
+ * is used — so the installed portal opens signed in, like any app on the phone,
+ * and a device nobody opens for a month signs itself out. Without the tick
+ * nothing changes: the 2-hour access token in sessionStorage is the whole
+ * session, which is still the right answer on a borrowed office PC.
+ *
+ * Deliberately the OPPOSITE of the staff rule (doc/AUTH_SESSIONS.md, 2026-09:
+ * staff sessions end two hours after sign-in, whatever). A finance officer's
+ * open tab is the tenant's books; a client's phone is their own shipments and
+ * invoices, opened a few times a week, and a portal that asks for a password
+ * every visit is one clients stop opening. Owner's decision, portal redesign Q5.
+ */
+const TRUSTED_SESSION_DAYS = 30;
+/** Two tabs refreshing the same token at once is a race, not a theft. */
+const ROTATION_GRACE_S = 30;
+/** Emailed sign-in codes: short-lived, few guesses, few per hour. */
+const CODE_TTL_MIN = 10;
+const CODE_MAX_ATTEMPTS = 5;
+const CODE_MAX_PER_HOUR = 6;
 
 /**
  * Invite and reset lifetimes (0482).
@@ -33,10 +56,62 @@ const RESET_TTL_MIN = 30;
 
 const sha256 = (s) => crypto.createHash("sha256").update(String(s)).digest("hex");
 
-function issueToken(user) {
-  return jwt.sign({ sub: user.portal_user_id, email: user.email, typ: "portal" }, config.JWT_ACCESS_SECRET, {
-    expiresIn: TOKEN_TTL,
+function issueToken(user, { sid = null } = {}) {
+  const claims = { sub: user.portal_user_id, email: user.email, typ: "portal" };
+  if (sid) claims.sid = sid;
+  return jwt.sign(claims, config.JWT_ACCESS_SECRET, { expiresIn: TOKEN_TTL });
+}
+
+const safeUser = (u) => ({ portal_user_id: u.portal_user_id, email: u.email, full_name: u.full_name || null });
+
+/** A readable device name for the "signed-in devices" list: "iPhone", "Chrome on Windows". */
+function deviceLabel(userAgent) {
+  const s = String(userAgent || "");
+  const os = /iPhone/.test(s) ? "iPhone"
+    : /iPad/.test(s) ? "iPad"
+    : /Android/.test(s) ? "Android"
+    : /Mac OS X|Macintosh/.test(s) ? "Mac"
+    : /Windows/.test(s) ? "Windows"
+    : /Linux/.test(s) ? "Linux"
+    : null;
+  const browser = /Edg\//.test(s) ? "Edge"
+    : /Firefox\//.test(s) ? "Firefox"
+    : /Chrome\//.test(s) ? "Chrome"
+    : /Safari\//.test(s) ? "Safari"
+    : null;
+  if (os && browser && !["iPhone", "iPad", "Android"].includes(os)) return `${browser} on ${os}`;
+  return os || browser || null;
+}
+
+/**
+ * The one place a portal sign-in turns into tokens, whichever way the person
+ * proved who they are (password, emailed code, passkey, invite link).
+ *
+ * `trust` is the "keep me signed in" tick. With it, a `portal_session` row and a
+ * refresh token; without it, exactly what this endpoint always returned.
+ */
+async function issueTokens(client, user, { trust = false, method = "password", userAgent = null, ip = null } = {}) {
+  if (!trust) {
+    return { access_token: issueToken(user), portal_user: safeUser(user), trusted: false, expires_in: TOKEN_TTL_S };
+  }
+  const refreshToken = crypto.randomBytes(32).toString("base64url");
+  const session = await repo.insertSession(client, {
+    portalUserId: user.portal_user_id,
+    refreshHash: sha256(refreshToken),
+    method,
+    deviceLabel: deviceLabel(userAgent),
+    userAgent: userAgent ? String(userAgent).slice(0, 400) : null,
+    ip,
+    expiresAt: new Date(Date.now() + TRUSTED_SESSION_DAYS * 86400 * 1000),
   });
+  return {
+    access_token: issueToken(user, { sid: session.portal_session_id }),
+    refresh_token: refreshToken,
+    portal_user: safeUser(user),
+    trusted: true,
+    expires_in: TOKEN_TTL_S,
+    session_expires_in: TRUSTED_SESSION_DAYS * 86400,
+  };
 }
 
 /** Verify a portal token. Throws on anything that isn't a valid portal token. */
@@ -53,7 +128,7 @@ function verifyToken(token) {
 
 /** Authenticate against the identity schema. Generic error — never reveal which
  *  half (email vs password) failed. */
-async function login(client, { email, password }) {
+async function login(client, { email, password, trust = false, userAgent = null, ip = null }) {
   const generic = new AppError("BAD_CREDENTIALS", "Invalid email or password", 401);
   const user = await repo.findByEmail(client, email);
   if (!user || user.status !== "ACTIVE") throw generic;
@@ -68,10 +143,182 @@ async function login(client, { email, password }) {
     throw generic;
   }
   await repo.touchLogin(client, user.portal_user_id);
+  return issueTokens(client, user, { trust, method: "password", userAgent, ip });
+}
+
+// ── Trusted-device refresh (14150) ──────────────────────────────────────────
+
+const sessionEnded = () =>
+  new AppError("SESSION_EXPIRED", "Your session has ended. Sign in again.", 401);
+
+/**
+ * Trade a refresh token for a new access token AND a new refresh token.
+ *
+ * Reuse detection, with a grace window. A token that was rotated away from
+ * more than ROTATION_GRACE_S ago and is presented again is either a replay or a
+ * copy that leaked; either way the whole session ends. Inside the window it is
+ * two tabs of one browser racing, and the loser gets an access token and no
+ * new refresh token — the winner already wrote the new one where both tabs
+ * read it (localStorage).
+ */
+async function refresh(client, { refreshToken }) {
+  if (!refreshToken) throw sessionEnded();
+  const hash = sha256(refreshToken);
+  const session = await repo.findSessionByRefresh(client, hash);
+  if (!session || session.revoked_at || new Date(session.expires_at).getTime() <= Date.now()) throw sessionEnded();
+
+  const user = await repo.findById(client, session.portal_user_id);
+  if (!user || user.status !== "ACTIVE") {
+    await repo.revokeSession(client, session.portal_session_id);
+    throw sessionEnded();
+  }
+
+  const inGrace = () =>
+    session.rotated_at && Date.now() - new Date(session.rotated_at).getTime() <= ROTATION_GRACE_S * 1000;
+
+  if (!session.is_current) {
+    if (!inGrace()) {
+      await repo.revokeSession(client, session.portal_session_id);
+      logger.warn({ portal_user_id: user.portal_user_id }, "[portal] rotated refresh token presented again — session ended");
+      throw sessionEnded();
+    }
+    await repo.touchSession(client, session.portal_session_id);
+    return {
+      access_token: issueToken(user, { sid: session.portal_session_id }),
+      refresh_token: null,
+      portal_user: safeUser(user),
+      trusted: true,
+      expires_in: TOKEN_TTL_S,
+    };
+  }
+
+  const next = crypto.randomBytes(32).toString("base64url");
+  const rotated = await repo.rotateSession(client, {
+    sessionId: session.portal_session_id,
+    fromHash: hash,
+    toHash: sha256(next),
+    expiresAt: new Date(Date.now() + TRUSTED_SESSION_DAYS * 86400 * 1000),
+  });
+  if (!rotated) {
+    // Another tab rotated between our read and our write — the grace case.
+    return {
+      access_token: issueToken(user, { sid: session.portal_session_id }),
+      refresh_token: null,
+      portal_user: safeUser(user),
+      trusted: true,
+      expires_in: TOKEN_TTL_S,
+    };
+  }
   return {
-    access_token: issueToken(user),
-    portal_user: { portal_user_id: user.portal_user_id, email: user.email, full_name: user.full_name },
+    access_token: issueToken(user, { sid: session.portal_session_id }),
+    refresh_token: next,
+    portal_user: safeUser(user),
+    trusted: true,
+    expires_in: TOKEN_TTL_S,
+    session_expires_in: TRUSTED_SESSION_DAYS * 86400,
   };
+}
+
+/** Sign out this device. Idempotent, and never an error: the person asked to be
+ *  signed out, and a token we no longer recognise is already that. */
+async function logout(client, { refreshToken }) {
+  if (refreshToken) await repo.revokeSessionByHash(client, sha256(refreshToken));
+  return { ok: true };
+}
+
+const listSessions = (client, portalUserId) => repo.listSessions(client, portalUserId);
+
+/** For the middleware: is the session an access token was minted under still live? */
+const sessionIsLive = (client, sessionId) => repo.sessionIsLive(client, sessionId);
+
+async function revokeSession(client, { portalUserId, sessionId }) {
+  const row = await repo.revokeSession(client, sessionId, portalUserId);
+  if (!row) throw new AppError("NOT_FOUND", "That device is already signed out", 404);
+  return { revoked: true };
+}
+
+// ── Emailed sign-in codes (14150) ───────────────────────────────────────────
+
+/** Peppered with the user id, so the same six digits hash differently per person. */
+const codeHash = (portalUserId, code) => sha256(`${portalUserId}:${code}`);
+
+function codeEmailHtml({ name, code, tenantName }) {
+  return `<!doctype html><html><body style="margin:0;background:#f3f6fb;font-family:Roboto,'Noto Sans',sans-serif">
+  <div style="max-width:480px;margin:32px auto;background:#fff;border-radius:16px;overflow:hidden;border:1px solid #e3e9f2">
+    <div style="padding:28px 32px">
+      <p style="margin:0 0 6px;font-size:13px;color:#84a0b0">${tenantName}</p>
+      <h1 style="margin:0 0 16px;font-size:20px;color:#0b2030">Your sign-in code</h1>
+      <p style="margin:0 0 18px;font-size:14px;line-height:1.6;color:#42586a">Hi ${name}, enter this code to sign in. It works once and expires in ${CODE_TTL_MIN} minutes.</p>
+      <p style="margin:0 0 22px;font-size:32px;letter-spacing:8px;font-weight:700;color:#0b2030;font-family:'JetBrains Mono',monospace">${code}</p>
+      <p style="margin:0;font-size:13px;line-height:1.5;color:#84a0b0">If you did not ask for this code, you can ignore this email — nobody can sign in without it.</p>
+    </div>
+  </div></body></html>`;
+}
+
+/**
+ * Email a six-digit code. ALWAYS answers ok, for the same reason `forgot` does:
+ * the response must not reveal whether an address has an account. A code is
+ * only minted for an ACTIVE user, and at most CODE_MAX_PER_HOUR an hour — past
+ * that the request is silently a no-op rather than an inbox flood.
+ */
+async function requestCode(client, { email, ip, tenantName = "your logistics provider" }) {
+  const normalized = String(email || "").trim().toLowerCase();
+  const user = await repo.findByEmail(client, normalized);
+  if (!user || user.status !== "ACTIVE") return { ok: true };
+  if ((await repo.countRecentLoginCodes(client, user.portal_user_id, 60)) >= CODE_MAX_PER_HOUR) {
+    logger.warn({ portal_user_id: user.portal_user_id }, "[portal] sign-in code limit reached");
+    return { ok: true };
+  }
+  const code = String(crypto.randomInt(0, 1000000)).padStart(6, "0");
+  await repo.retireLoginCodes(client, user.portal_user_id);
+  await repo.insertLoginCode(client, {
+    portalUserId: user.portal_user_id,
+    codeHash: codeHash(user.portal_user_id, code),
+    expiresAt: new Date(Date.now() + CODE_TTL_MIN * 60 * 1000),
+    ip,
+  });
+  const firstName = user.full_name ? String(user.full_name).trim().split(/\s+/)[0] : "there";
+  try {
+    await emailService.send(client, {
+      to: user.email,
+      subject: `${code} is your sign-in code`,
+      html: codeEmailHtml({ name: firstName, code, tenantName }),
+      text: `Hi ${firstName},\n\nYour sign-in code is ${code}. It works once and expires in ${CODE_TTL_MIN} minutes.\n\nIf you did not ask for it, ignore this email.`,
+      purpose: "NOTIFICATIONS",
+      moduleKey: MODULE,
+      sendPoint: "portal.invite",
+    });
+  } catch (err) {
+    logger.error({ err, portal_user_id: user.portal_user_id }, "[portal] sign-in code email failed to send");
+  }
+  return { ok: true };
+}
+
+/**
+ * Check a code and sign in. One generic error for every failure — wrong code,
+ * expired, used, too many guesses, unknown email — so the endpoint cannot be
+ * used to learn which of those it was.
+ */
+async function verifyCode(client, { email, code, trust = false, userAgent = null, ip = null }) {
+  const invalid = () => new AppError("INVALID_CODE", "That code is not valid. Check the latest email, or ask for a new code.", 401);
+  const normalized = String(email || "").trim().toLowerCase();
+  const user = await repo.findByEmail(client, normalized);
+  if (!user || user.status !== "ACTIVE") throw invalid();
+  const row = await repo.latestLoginCode(client, user.portal_user_id);
+  if (!row || row.attempts >= CODE_MAX_ATTEMPTS) throw invalid();
+
+  const expected = Buffer.from(row.code_hash, "hex");
+  const actual = Buffer.from(codeHash(user.portal_user_id, String(code || "").trim()), "hex");
+  const match = expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
+  if (!match) {
+    await repo.bumpLoginCodeAttempts(client, row.portal_login_code_id);
+    throw invalid();
+  }
+  // Single use, and the WHERE on used_at makes two simultaneous submissions of
+  // the same code produce one session, not two.
+  if (!(await repo.useLoginCode(client, row.portal_login_code_id))) throw invalid();
+  await repo.touchLogin(client, user.portal_user_id);
+  return issueTokens(client, user, { trust, method: "code", userAgent, ip });
 }
 
 async function createUser(client, { email, password, fullName }) {
@@ -101,6 +348,9 @@ async function setPassword(client, { id, password }) {
   const password_hash = await argon2.hash(password, { type: argon2.argon2id });
   const row = await repo.setPassword(client, id, password_hash);
   if (!row) throw new AppError("NOT_FOUND", "Portal user not found", 404);
+  // A password set by staff is usually "we think this account was used by
+  // someone else" — every remembered device signs in again.
+  await repo.revokeAllSessions(client, id);
   return row;
 }
 
@@ -108,10 +358,14 @@ async function setStatus(client, { id, status }) {
   if (!["ACTIVE", "DISABLED"].includes(status)) throw new AppError("BAD_STATUS", "status must be ACTIVE/DISABLED", 422);
   const row = await repo.setStatus(client, id, status);
   if (!row) throw new AppError("NOT_FOUND", "Portal user not found", 404);
+  // `refresh` refuses a disabled user anyway; revoking here makes the device
+  // list say so too, instead of showing sessions that can no longer do anything.
+  if (status === "DISABLED") await repo.revokeAllSessions(client, id);
   return row;
 }
 
 const listUsers = (client) => repo.list(client);
+const usersByEmails = (client, emails) => (emails.length ? repo.usersByEmails(client, emails) : []);
 const getById = (client, id) => repo.findById(client, id);
 
 // ── Invitations + recovery (0482) ───────────────────────────────────────────
@@ -245,7 +499,7 @@ async function requestReset(client, { email, ip, origin, tenantName }) {
  * The error is deliberately identical for expired, already-used and unknown
  * tokens: distinguishing them tells an attacker which guesses were once real.
  */
-async function acceptInvite(client, { token, password }) {
+async function acceptInvite(client, { token, password, trust = false, userAgent = null, ip = null }) {
   const invalid = () => new AppError("INVALID_INVITE", "This link is invalid or has expired. Ask for a new one.", 400);
   if (!token) throw invalid();
 
@@ -265,14 +519,19 @@ async function acceptInvite(client, { token, password }) {
   const password_hash = await argon2.hash(password, { type: argon2.argon2id });
   await repo.setPassword(client, user.portal_user_id, password_hash);
   await repo.markInviteUsed(client, row.invite_id);
+  // A reset means the old password is in doubt, so every device that was kept
+  // signed in with it signs in again — except the one being signed in now.
+  if (row.purpose === "RESET") await repo.revokeAllSessions(client, user.portal_user_id);
   // Signed in immediately: the alternative is bouncing someone who has just
   // proved control of the mailbox back to a login form to retype what they typed.
-  return { access_token: issueToken(user), portal_user: user };
+  return issueTokens(client, user, { trust, method: "invite", userAgent, ip });
 }
 
 const inviteStatus = (client, portalUserId) => repo.inviteStatus(client, portalUserId);
 
 module.exports = {
-  login, verifyToken, createUser, setPassword, setStatus, listUsers, getById,
+  login, verifyToken, createUser, setPassword, setStatus, listUsers, usersByEmails, getById,
   inviteUser, requestReset, acceptInvite, inviteStatus,
+  issueTokens, refresh, logout, listSessions, sessionIsLive, revokeSession, requestCode, verifyCode,
+  TRUSTED_SESSION_DAYS,
 };

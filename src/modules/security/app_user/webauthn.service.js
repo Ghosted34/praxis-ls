@@ -83,20 +83,31 @@ const CEREMONY_TIMEOUT_MS = 90 * 1000;
 const MAX_PASSKEYS_PER_USER = 10;
 const MODULE = "MOD-67";
 
-function signChallenge(payload) {
-  return jwt.sign({ ...payload, typ: "webauthn_challenge", nonce: crypto.randomUUID() }, config.JWT_ACCESS_SECRET, {
-    expiresIn: CHALLENGE_TTL_S,
-  });
+/**
+ * `audience` separates the two populations that share this machinery: staff
+ * (no audience, as before) and external portal users (`"portal"`, 14150). A
+ * challenge minted for one is refused by the other, so a portal ceremony can
+ * never complete a staff sign-in or the reverse, even though both tokens are
+ * signed with the same secret.
+ */
+function signChallenge(payload, { audience = null } = {}) {
+  const claims = { ...payload, typ: "webauthn_challenge", nonce: crypto.randomUUID() };
+  if (audience) claims.aud_kind = audience;
+  return jwt.sign(claims, config.JWT_ACCESS_SECRET, { expiresIn: CHALLENGE_TTL_S });
 }
 
-function verifyChallenge(token) {
+function verifyChallenge(token, { audience = null } = {}) {
+  let p;
   try {
-    const p = jwt.verify(token, config.JWT_ACCESS_SECRET);
+    p = jwt.verify(token, config.JWT_ACCESS_SECRET);
     if (p.typ !== "webauthn_challenge") throw new Error("bad typ");
-    return p;
   } catch {
     throw new AppError("INVALID_CHALLENGE", "That passkey request expired. Try again.", 400);
   }
+  if ((p.aud_kind || null) !== audience) {
+    throw new AppError("INVALID_CHALLENGE", "That passkey request was not issued here. Try again.", 400);
+  }
+  return p;
 }
 
 // ── Single-use challenges ────────────────────────────────────────────────────
@@ -540,6 +551,17 @@ module.exports = {
   getRpInfo,
   labelFromUserAgent,
   MAX_PASSKEYS_PER_USER,
+  // The ceremony plumbing, for the portal's own passkeys (portal_auth/
+  // portal_passkey.service.js). Shared rather than copied: a second copy of
+  // "burn the challenge once" is a second place for it to stop being true.
+  signChallenge,
+  verifyChallenge,
+  consumeChallenge,
+  credentialIdToBytes,
+  toBase64URL,
+  brandName,
+  sw,
+  CEREMONY_TIMEOUT_MS,
   // Exported for tests.
   _resetUsedChallenges: () => usedLocally.clear(),
 };

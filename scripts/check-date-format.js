@@ -141,6 +141,11 @@ const ALLOW_FILES = {
     rules: ["native-date-input"],
     why: "The console's twin of the above.",
   },
+  "public-web/src/components/ui/date-field.tsx": {
+    rules: ["native-date-input"],
+    why: "public-web's twin of the above — the client portal's payment date. " +
+      "Same hidden calendar-only input, same day-first text box in front of it.",
+  },
   "client/src/components/ui/datetime-field.tsx": {
     rules: ["native-date-input"],
     why: "`DateField`'s sibling for a date AND a time. Same arrangement: the " +

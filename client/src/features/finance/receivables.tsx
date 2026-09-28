@@ -26,6 +26,7 @@ import { useFocusRow } from "@/lib/use-focus-row";
 import { money, dateFmt, todayISO, enumLabel } from "@/lib/format";
 import type { Client, Entity } from "@/lib/masterdata-api";
 import * as api from "@/lib/finance-api";
+import { PaymentProofQueue } from "@/features/portal/client-portal-staff";
 
 const shell = pageShell.wide;
 const TONES: Record<string, Tone> = {
@@ -502,6 +503,15 @@ export function ReceivablesPage() {
         <KpiTile label="61–90 days" value={money(a?.d61_90)} />
         <KpiTile label="90+ days" value={money(a?.d90_plus)} />
       </KpiRow>
+
+      {/* Client-portal "I've paid" claims waiting for finance — absent when none. */}
+      <PaymentProofQueue
+        compact
+        onChanged={() => {
+          reload();
+          ageing.reload();
+        }}
+      />
 
       {(dunning.data?.reminders || []).length > 0 && (
         <div className="mb-5 rounded-lg border border-[rgb(var(--warn))]/40 bg-[rgb(var(--warn))]/10 px-4 py-3">

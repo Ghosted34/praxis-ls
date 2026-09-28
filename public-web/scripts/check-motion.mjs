@@ -110,6 +110,10 @@ const NARRATIVE = [
  */
 const EXEMPT = [
   [/^\.weight-scrub/, "scroll-linked: the reader's scroll position IS the timeline"],
+  [
+    /^\.pt-shimmer/,
+    "the signed-in portal's loading placeholder: a sweep that exists only while a read is pending and is removed with the placeholder when the data arrives, so it never runs on settled content — and the reduced-motion umbrella reduces it to one unfilled iteration, leaving a flat grey block",
+  ],
   [/^\.lane-/, "marching-ants stroke on a shipping lane — the motion IS direction of travel"],
   [/^\.ambient/, "continuous atmosphere on a set piece; paused off-screen and under reduced motion"],
   [

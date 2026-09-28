@@ -15,6 +15,25 @@ async function activeFor(client, email, portal) {
   );
   return rows[0] || null;
 }
+/** How many live CLIENT grants a client already has — zero means the next is its first. */
+async function countClientGrants(client, clientId) {
+  const { rows } = await client.query(
+    "SELECT count(*)::int AS n FROM portal_access WHERE portal = 'CLIENT' AND client_id = $1 AND is_active",
+    [clientId],
+  );
+  return rows[0] ? rows[0].n : 0;
+}
+async function setTeamRole(client, id, { accessScope, isClientAdmin }) {
+  const { rows } = await client.query(
+    `UPDATE portal_access
+        SET access_scope = COALESCE($2, access_scope),
+            is_client_admin = COALESCE($3, is_client_admin)
+      WHERE portal_access_id = $1 AND portal = 'CLIENT' AND is_active
+      RETURNING *`,
+    [id, accessScope || null, typeof isClientAdmin === "boolean" ? isClientAdmin : null],
+  );
+  return rows[0] || null;
+}
 async function revoke(client, id) {
   const { rows } = await client.query("UPDATE portal_access SET is_active = false WHERE portal_access_id = $1 AND is_active = true RETURNING *", [id]);
   return rows[0] || null;
@@ -108,11 +127,17 @@ async function clientMessages(client, clientId, { dossierId = null, limit = 200 
     params.push(dossierId);
     wh += " AND m.dossier_id = $" + params.length;
   }
+  // The LATEST `limit` messages, handed back oldest first. An ascending sort
+  // with a limit returned the FIRST two hundred, so a long thread stopped
+  // showing anything new once it passed that length.
   const { rows } = await client.query(
-    `SELECT m.*, u.full_name AS author_name
-       FROM client_message m
-       LEFT JOIN app_user u ON u.user_id = m.author_user_id
-      WHERE ${wh} ORDER BY m.created_at ASC LIMIT $2`,
+    `SELECT * FROM (
+       SELECT m.*, u.full_name AS author_name, d.ref AS dossier_ref
+         FROM client_message m
+         LEFT JOIN app_user u ON u.user_id = m.author_user_id
+         LEFT JOIN dossier_visible d ON d.dossier_id = m.dossier_id
+        WHERE ${wh} ORDER BY m.created_at DESC LIMIT $2
+     ) latest ORDER BY latest.created_at ASC`,
     params,
   );
   return rows;
@@ -251,4 +276,4 @@ async function auditLedger(client, { from, to, prefixes, limit = 500 }) {
   );
   return rows;
 }
-module.exports = { insertAccess, listAccess, activeFor, revoke, clientDossiers, clientDossierChain, clientInvoices, clientInvoiceWithLines, auditLedger, page, clientDocuments, clientDocument, onboardingSteps, seedOnboarding, markOnboardingStep, clientMessages, insertClientMessage, clientQuoteRequests };
+module.exports = { insertAccess, listAccess, activeFor, revoke, countClientGrants, setTeamRole, clientDossiers, clientDossierChain, clientInvoices, clientInvoiceWithLines, auditLedger, page, clientDocuments, clientDocument, onboardingSteps, seedOnboarding, markOnboardingStep, clientMessages, insertClientMessage, clientQuoteRequests };

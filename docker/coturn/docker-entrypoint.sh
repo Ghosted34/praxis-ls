@@ -159,6 +159,15 @@ umask 077
   if [ -n "$TURN_LISTENING_IP" ]; then
     echo "listening-ip=$TURN_LISTENING_IP"
     echo "relay-ip=$TURN_LISTENING_IP"
+  elif [ -n "$TURN_EXTERNAL_IP" ]; then
+    # Without a relay-ip coturn relays from EVERY local address, and with
+    # network_mode: host that includes the Docker bridges (172.17.0.1,
+    # 172.18.0.1) and ::1. It hands those out round-robin, so most
+    # allocations got a relayed address no phone can reach. Relay from the
+    # one address that is the public one: the private part behind 1:1 NAT,
+    # else the public address itself. Listening stays on all addresses, so
+    # the loopback health check still works.
+    echo "relay-ip=${EXT_PRIVATE:-$EXT_PUBLIC}"
   fi
   # Behind cloud NAT the relay advertises the public address. coturn maps a
   # peer at the public part of "public/private" to the private part before

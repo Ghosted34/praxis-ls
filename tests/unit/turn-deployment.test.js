@@ -96,6 +96,14 @@ describe("coturn entrypoint (C3: credentials coturn can verify)", () => {
     ]);
   });
 
+  test("with TURN_EXTERNAL_IP it relays from that one address, never the Docker bridges or ::1", () => {
+    const pub = render({ ...BASE, TURN_EXTERNAL_IP: "203.0.113.7" });
+    expect(pub.lines.filter((l) => l.startsWith("relay-ip="))).toEqual(["relay-ip=203.0.113.7"]);
+    expect(pub.lines.some((l) => l.startsWith("listening-ip="))).toBe(false); // loopback health check keeps working
+    const nat = render({ ...BASE, TURN_EXTERNAL_IP: "203.0.113.7/10.0.0.5" });
+    expect(nat.lines.filter((l) => l.startsWith("relay-ip="))).toEqual(["relay-ip=10.0.0.5"]);
+  });
+
   test("TURN_LISTENING_IP binds that one address for listening and relay, and allows it", () => {
     const r = render({ ...BASE, TURN_LISTENING_IP: "203.0.113.8" });
     expect(r.lines).toEqual(expect.arrayContaining([

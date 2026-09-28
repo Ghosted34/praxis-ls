@@ -17,7 +17,7 @@
  * state: a click ends in a reload.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 const needRefreshState = { current: true };
@@ -149,23 +149,15 @@ describe("PwaUpdater — clicking Update always reloads", () => {
     expect(reload).toHaveBeenCalledTimes(1);
   });
 
-  it("waits for a still-downloading worker, then skip-waits it", async () => {
+  it("does not sit on 'Updating…' waiting for a download — it reloads now", async () => {
     const installing = makeWorker("installing");
     installSwMock({ waiting: null, installing });
 
     render(<PwaUpdater />);
     await userEvent.click(screen.getByRole("button", { name: "Update" }));
 
-    await waitFor(() =>
-      expect(navigator.serviceWorker.getRegistration).toHaveBeenCalled(),
-    );
+    await waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
     expect(installing.postMessage).not.toHaveBeenCalled();
-
-    installing.state = "installed";
-    installing.fire("statechange");
-    expect(installing.postMessage).toHaveBeenCalledWith({
-      type: "SKIP_WAITING",
-    });
   });
 
   it("reloads exactly once even if the user clicks repeatedly", async () => {
@@ -203,6 +195,16 @@ describe("PwaUpdater — the toast does not wait for the plugin", () => {
     });
 
     render(<PwaUpdater />);
+    await waitFor(() =>
+      expect(navigator.serviceWorker.getRegistration).toHaveBeenCalled(),
+    );
+    // Still downloading: offering it now would make the click wait.
+    expect(screen.queryByRole("button", { name: "Update" })).toBeNull();
+
+    act(() => {
+      installing.state = "installed";
+      installing.fire("statechange");
+    });
 
     expect(
       await screen.findByRole("button", { name: "Update" }),

@@ -112,26 +112,33 @@ describe("a build the browser found before anyone was listening", () => {
     expect(isUpdateReady()).toBe(true);
   });
 
-  it("is announced when it is still DOWNLOADING — the case workbox-window never looks at", () => {
+  it("is tracked while still DOWNLOADING — the case workbox-window never looks at — and announced the moment it parks", () => {
     // The phone relaunched the app; the navigation's own check found the build
     // and fired `updatefound` while the page was still loading.
     const reg = liveRegistration();
-    reg.find(new FakeWorker("installing"));
+    const found = new FakeWorker("installing");
+    reg.find(found);
 
     watchRegistration(asReg(reg));
+    // Not yet: a click now would have to sit and wait for the download.
+    expect(isUpdateReady()).toBe(false);
 
+    reg.park(found);
     expect(isUpdateReady()).toBe(true);
   });
 });
 
 describe("a build found while the page is open", () => {
-  it("is announced on updatefound", () => {
+  it("is announced once the build updatefound reported has downloaded", () => {
     const reg = liveRegistration();
     watchRegistration(asReg(reg));
     expect(isUpdateReady()).toBe(false);
 
-    reg.find(new FakeWorker("installing"));
+    const found = new FakeWorker("installing");
+    reg.find(found);
+    expect(isUpdateReady()).toBe(false);
 
+    reg.park(found);
     expect(isUpdateReady()).toBe(true);
   });
 
@@ -147,7 +154,9 @@ describe("a build found while the page is open", () => {
     dismissUpdate();
     expect(isUpdateReady()).toBe(false);
 
-    reg.find(new FakeWorker("installing"));
+    const second = new FakeWorker("installing");
+    reg.find(second);
+    reg.park(second);
     expect(isUpdateReady()).toBe(true);
   });
 });
@@ -165,13 +174,13 @@ describe("what is NOT an update", () => {
     expect(isUpdateReady()).toBe(false);
   });
 
-  it("a download that fails takes the toast back", async () => {
+  it("a download that fails never raises the toast", async () => {
     vi.useFakeTimers();
     const reg = liveRegistration();
     watchRegistration(asReg(reg));
     const broken = new FakeWorker("installing");
     reg.find(broken);
-    expect(isUpdateReady()).toBe(true);
+    expect(isUpdateReady()).toBe(false);
 
     reg.installing = null;
     broken.to("redundant");
@@ -188,8 +197,12 @@ describe("what is NOT an update", () => {
     reg.find(older);
     reg.park(older);
 
+    // The browser retires a parked build only once the newer one has itself
+    // finished downloading and taken its place.
     const newer = new FakeWorker("installing");
     reg.find(newer);
+    expect(isUpdateReady()).toBe(true);
+    reg.park(newer);
     older.to("redundant");
     await vi.advanceTimersByTimeAsync(300);
 
@@ -213,19 +226,22 @@ describe("dismissing", () => {
 });
 
 describe("checkForUpdate", () => {
-  it("asks the registration to update, then announces what it found", async () => {
+  it("asks the registration to update, then announces what it found once it has downloaded", async () => {
     const reg = liveRegistration();
     installNavigator(reg);
+    const found = new FakeWorker("installing");
     reg.update.mockImplementation(() => {
       // `update()` resolves once the new worker is INSTALLING; nothing fires
       // for a page whose updatefound listener was never attached.
-      reg.installing = new FakeWorker("installing");
+      reg.installing = found;
       return Promise.resolve(reg);
     });
 
     await checkForUpdate({ force: true });
 
     expect(reg.update).toHaveBeenCalledTimes(1);
+    expect(isUpdateReady()).toBe(false);
+    reg.park(found);
     expect(isUpdateReady()).toBe(true);
   });
 
@@ -310,7 +326,7 @@ describe("startUpdateWatch — the moments a phone gives us", () => {
   });
 });
 
-describe("applyPendingUpdate while the new build is still downloading", () => {
+describe("applyPendingUpdate — a click reloads at once", () => {
   let reload: ReturnType<typeof vi.fn>;
   beforeEach(() => {
     reload = vi.fn();
@@ -321,25 +337,9 @@ describe("applyPendingUpdate while the new build is still downloading", () => {
     });
   });
 
-  it("waits for the download instead of reloading into the old build", async () => {
-    vi.useFakeTimers();
-    const reg = liveRegistration();
-    const downloading = new FakeWorker("installing");
-    reg.installing = downloading;
-    installNavigator(reg);
-
-    applyPendingUpdate();
-    await vi.advanceTimersByTimeAsync(5_000);
-    // The old 1.5s backstop would have reloaded a phone mid-download.
-    expect(reload).not.toHaveBeenCalled();
-
-    downloading.to("installed");
-    expect(downloading.postMessage).toHaveBeenCalledWith({ type: "SKIP_WAITING" });
-    await vi.advanceTimersByTimeAsync(1_600);
-    expect(reload).toHaveBeenCalledTimes(1);
-  });
-
-  it("reloads straight away if the download fails", async () => {
+  it("never waits on a download: with nothing parked it reloads immediately", async () => {
+    // This used to wait up to a minute for the download — the "Updating…"
+    // that sat there for seconds on desktop and mobile alike.
     vi.useFakeTimers();
     const reg = liveRegistration();
     const downloading = new FakeWorker("installing");
@@ -348,7 +348,39 @@ describe("applyPendingUpdate while the new build is still downloading", () => {
 
     applyPendingUpdate();
     await vi.advanceTimersByTimeAsync(0);
-    downloading.to("redundant");
+
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(downloading.postMessage).not.toHaveBeenCalled();
+  });
+
+  it("skip-waits a parked build and reloads as soon as it starts activating", async () => {
+    vi.useFakeTimers();
+    const reg = liveRegistration();
+    const parked = new FakeWorker("installed");
+    reg.waiting = parked;
+    installNavigator(reg);
+
+    applyPendingUpdate();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(parked.postMessage).toHaveBeenCalledWith({ type: "SKIP_WAITING" });
+    expect(reload).not.toHaveBeenCalled();
+
+    parked.to("activating");
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it("reloads on controllerchange, and still reloads only once", async () => {
+    vi.useFakeTimers();
+    const reg = liveRegistration();
+    const parked = new FakeWorker("installed");
+    reg.waiting = parked;
+    const container = installNavigator(reg);
+
+    applyPendingUpdate();
+    await vi.advanceTimersByTimeAsync(0);
+    container.fire("controllerchange");
+    parked.to("activating");
+    await vi.advanceTimersByTimeAsync(2_000);
 
     expect(reload).toHaveBeenCalledTimes(1);
   });

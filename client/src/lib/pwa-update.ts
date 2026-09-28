@@ -50,11 +50,19 @@
  * phone freezes the moment the screen turns off. The plugin's own `onNeedRefresh`
  * still reports into the same store; this is the net under it, not a rival.
  *
- * A BUILD IS ANNOUNCED WHEN IT IS FOUND, NOT WHEN IT HAS FINISHED DOWNLOADING.
- * The precache is several megabytes, which is a second on office broadband and
- * can be half a minute on a phone — and that half-minute of silence is the
- * "delay" being fixed. Pressing Reload before the download is done is safe:
- * `applyPendingUpdate` waits for it, then hands over.
+ * A BUILD IS ANNOUNCED WHEN IT HAS FINISHED DOWNLOADING, NOT WHEN IT IS FOUND.
+ * It used to be the other way round, to close the gap between a deploy and the
+ * toast. But the precache is several megabytes — a second on office broadband,
+ * half a minute on a phone — and announcing early only moved that wait to AFTER
+ * the click: "Updating…" sat there for seconds while the download finished, on
+ * desktop and mobile alike, which reads as a stalled button. Silence before the
+ * toast costs nobody anything (they do not know a deploy happened); a stall
+ * after a click is the product not doing what it was told. So the toast means
+ * "ready", and a click on it reloads at once.
+ *
+ * The finding half of the fix above still matters: a build found while the page
+ * was loading is TRACKED from the moment we see it, so it is announced the
+ * instant it parks rather than on the next page load.
  */
 import * as React from "react";
 
@@ -130,15 +138,23 @@ function isNewBuild(r: ServiceWorkerRegistration, worker: ServiceWorker) {
   return !!r.active && r.active !== worker;
 }
 
+/**
+ * Announce `worker` — but only once it has finished downloading. A worker that
+ * is still `installing` is tracked (see `track`) and staged by its own
+ * `statechange` to `installed`, so the toast only ever offers a build that can
+ * take over the moment it is clicked.
+ */
 function stage(r: ServiceWorkerRegistration, worker: ServiceWorker) {
+  if (worker.state !== "installed") return;
   if (!isNewBuild(r, worker) || worker === dismissedWorker) return;
   setUpdateReady(true);
 }
 
 /**
- * A worker went `redundant`. Either its download failed — in which case the
- * build we announced is not coming, and the toast has to go — or a newer
- * build replaced it, which is still an update.
+ * A worker went `redundant`. Either it was a parked build that a newer one has
+ * just replaced — still an update, so the toast stays — or it was activated or
+ * discarded some other way, and the build we announced is no longer there to
+ * hand over to.
  *
  * Deferred, because the registration's own `waiting` / `installing`
  * attributes are updated by tasks queued alongside the `statechange` that
@@ -148,9 +164,9 @@ function stage(r: ServiceWorkerRegistration, worker: ServiceWorker) {
 function settle(r: ServiceWorkerRegistration) {
   window.setTimeout(() => {
     if (applying || handedOver) return;
-    const pending = [r.installing, r.waiting].some(
-      (w) => !!w && w.state !== "redundant" && w !== dismissedWorker && isNewBuild(r, w),
-    );
+    const w = r.waiting;
+    const pending =
+      !!w && w.state === "installed" && w !== dismissedWorker && isNewBuild(r, w);
     if (!pending) setUpdateReady(false);
   }, 250);
 }
@@ -283,8 +299,9 @@ export function checkForUpdate({
       ]);
     }
     // `update()` resolves once a new worker is INSTALLING — before its install
-    // event has run — so this is where a build found by our own check is
-    // announced, whether or not `updatefound` reached a listener.
+    // event has run — so this is where a build found by our own check starts
+    // being tracked, whether or not `updatefound` reached a listener. It is
+    // announced when it parks.
     inspect(r);
   })().finally(() => {
     if (inFlight === run) inFlight = null;
@@ -375,14 +392,6 @@ export function startUpdateWatch(): () => void {
 const TAKEOVER_BACKSTOP_MS = 1500;
 
 /**
- * How long to wait for a build that is still DOWNLOADING before reloading
- * anyway. The takeover backstop alone would reload a phone into the OLD build
- * half-way through fetching the new one — and the toast would come straight
- * back, which reads as the button having done nothing.
- */
-const DOWNLOAD_BACKSTOP_MS = 60_000;
-
-/**
  * Apply the staged update.
  *
  * We drive this ourselves instead of calling vite-plugin-pwa's
@@ -404,8 +413,18 @@ const DOWNLOAD_BACKSTOP_MS = 60_000;
  *
  * So: resolve the registration fresh (never a stale reference), talk to the
  * waiting worker directly, reload on `controllerchange` with no `isUpdate`
- * condition — and, above all, guarantee the call always ends in a reload. A
- * control that sometimes does nothing is the actual bug being fixed here.
+ * condition — and, above all, guarantee the call always ends in a reload, and
+ * promptly. A control that sometimes does nothing is the bug being fixed here;
+ * a control that does something only after ten silent seconds is the same bug
+ * as far as the person pressing it can tell.
+ *
+ * It NEVER waits on a download. The toast is only raised for a build that has
+ * finished downloading (see `stage`), so the normal path is a parked worker
+ * that takes over in milliseconds. Anything else — a worker still installing,
+ * nothing staged at all — reloads straight away: if a newer build is still on
+ * its way, it will be announced again when it is ready, which is better than a
+ * button that sits on "Updating…" for up to a minute. That wait shipped, and it
+ * is what "I click update and nothing happens for seconds" was.
  */
 export function applyPendingUpdate(): void {
   if (applying) return;
@@ -430,51 +449,31 @@ export function applyPendingUpdate(): void {
   // Ctrl+F5 case above), and we reload the moment control changes hands.
   sw.addEventListener("controllerchange", reload, { once: true });
 
-  // Backstop. If control never changes — no waiting worker, a worker wedged
-  // mid-lifecycle, a browser that swallows the message — reload anyway rather
-  // than leave the user pressing a control that does nothing. Worst case they
-  // get the same version back and the toast returns; that is still strictly
-  // better than silence.
-  let backstop = window.setTimeout(reload, TAKEOVER_BACKSTOP_MS);
-  const backstopIn = (ms: number) => {
-    window.clearTimeout(backstop);
-    backstop = window.setTimeout(reload, ms);
-  };
+  // Backstop. If control never changes — a worker wedged mid-lifecycle, a
+  // browser that swallows the message — reload anyway rather than leave the
+  // user pressing a control that does nothing. Worst case they get the same
+  // version back and the toast returns; that is still strictly better than
+  // silence.
+  window.setTimeout(reload, TAKEOVER_BACKSTOP_MS);
 
   sw.getRegistration()
     .then((reg) => {
-      if (!reg) return reload();
+      const parked = reg?.waiting;
+      // Nothing parked: either the new build already controls this tab
+      // (another window applied it) and this tab is just running old code, or
+      // there is nothing ready to hand over to. A plain reload is right either
+      // way — and it is immediate.
+      if (!parked) return reload();
 
-      // Already installed and parked: tell it to take over now.
-      if (reg.waiting) {
-        reg.waiting.postMessage({ type: "SKIP_WAITING" });
-        return;
-      }
-
-      // Still downloading: skip waiting as soon as it finishes, so a user who
-      // acts the instant the toast appears is not punished for being quick.
-      // The backstop stretches to cover the download (see DOWNLOAD_BACKSTOP_MS)
-      // and shrinks back once there is only a handover left to wait for.
-      const installing = reg.installing;
-      if (installing) {
-        backstopIn(DOWNLOAD_BACKSTOP_MS);
-        installing.addEventListener("statechange", () => {
-          if (installing.state === "installed") {
-            installing.postMessage({ type: "SKIP_WAITING" });
-            backstopIn(TAKEOVER_BACKSTOP_MS);
-          } else if (installing.state === "redundant") {
-            // The download failed. Nothing is coming; do not make them wait
-            // a minute to find that out.
-            reload();
-          }
-        });
-        return;
-      }
-
-      // Nothing waiting, nothing installing — the new build is already the
-      // active worker and this tab is just running old code. A plain reload is
-      // exactly the right move.
-      reload();
+      // Installed and parked: tell it to take over now. A worker that reaches
+      // `activating` is already the registration's active worker, and a
+      // navigation made from here on is served by it — so that is as good a
+      // signal to reload as `controllerchange`, whichever comes first.
+      parked.addEventListener?.("statechange", () => {
+        if (parked.state === "activating" || parked.state === "activated")
+          reload();
+      });
+      parked.postMessage({ type: "SKIP_WAITING" });
     })
     .catch(() => reload());
 }

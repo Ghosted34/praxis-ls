@@ -144,7 +144,16 @@ export const ScrollStrip = React.forwardRef<HTMLDivElement, ScrollStripProps>(
     // Bring the active tab into view. `block: "nearest"` on purpose: this must
     // never scroll the page vertically — a reader who taps a tab halfway down a
     // dossier stays exactly where they were looking.
-    React.useEffect(() => {
+    //
+    // A LAYOUT effect, and INSTANT on the first run. A hub's strip is drawn by
+    // each section's page, so it mounts afresh on every section change — and
+    // as a plain effect with a smooth scroll that meant a frame painted at the
+    // far left (the active tab off-screen, nothing lit) followed by a slide
+    // across. The reader is not watching the strip move on arrival; they are
+    // asking where they are. So: in view before the first paint, and the smooth
+    // scroll kept for a change of tab while the strip is already on screen.
+    const centred = React.useRef(false);
+    React.useLayoutEffect(() => {
       if (activeKey === undefined) return;
       const el = scroller.current;
       if (!el) return;
@@ -153,10 +162,12 @@ export const ScrollStrip = React.forwardRef<HTMLDivElement, ScrollStripProps>(
       // Nothing to do when the strip fits: scrollIntoView on a non-overflowing
       // container still walks up the tree and can nudge the page.
       if (el.scrollWidth - el.clientWidth <= 1) return;
+      const first = !centred.current;
+      centred.current = true;
       active.scrollIntoView({
         inline: "center",
         block: "nearest",
-        behavior: reduced ? "auto" : "smooth",
+        behavior: reduced || first ? "auto" : "smooth",
       });
       measure();
       // NOT keyed on `children`. That array is a fresh identity every render, so

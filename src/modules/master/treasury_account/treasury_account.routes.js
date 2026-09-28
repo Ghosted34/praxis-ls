@@ -19,6 +19,9 @@ treasuryRouter.use(authMiddleware);
 treasuryRouter.get("/", requirePermission(MODULE, "view"), controller.list);
 treasuryRouter.get("/:id", requirePermission(MODULE, "view"), controller.get);
 treasuryRouter.get("/:id/360", requirePermission(MODULE, "view"), controller.dossier);
+// The ledger lines behind the 360's movement tiles, a page at a time. Same
+// gate as the 360, which already shows the account's recent lines.
+treasuryRouter.get("/:id/lines", requirePermission(MODULE, "view"), validator.linesQuery, controller.lines);
 treasuryRouter.post("/", requirePermission(MODULE, "create"), validator.create, controller.create);
 treasuryRouter.patch("/:id", requirePermission(MODULE, "edit"), validator.update, controller.update);
 treasuryRouter.post("/:id/active",  requirePermission(MODULE, "edit"), validator.setActive, controller.setActive);

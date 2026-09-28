@@ -35,6 +35,7 @@ import { DictForm } from "./financial-dictionary-form";
 import { FinancialDictionarySettings } from "./financial-dictionary-settings";
 import { SpendTab, CostEvolutionTab } from "./financial-dictionary-spend";
 import { DictImportModal } from "./financial-dictionary-import";
+import { DictUsageDrill } from "./financial-dictionary-usage";
 import { SetRateModal } from "./rate-modals";
 import { PencilIcon } from "@/components/ui/icons";
 import { dictLabel } from "@/lib/dict-label";
@@ -210,6 +211,16 @@ export function FinancialDictionaryPage() {
   );
 }
 
+/** Each drill-in's tile figure, so the dialog can tell when its total falls
+ *  short of the number that was clicked. */
+const USAGE_COUNT: Record<api.DictUsageKind, (u: api.DictUsage) => number> = {
+  costings: (u) => u.costing_lines,
+  cash_requests: (u) => u.cash_request_lines,
+  invoices: (u) => u.invoice_lines,
+  purchase_orders: (u) => u.purchase_order_items,
+  rates: (u) => u.expense_rates,
+};
+
 const TABS = [
   "Overview",
   "Spend",
@@ -234,6 +245,8 @@ function DictDossier({
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState<string | null>(null);
   const [pricing, setPricing] = React.useState(false);
+  // Which usage tile's list is open, if any.
+  const [drill, setDrill] = React.useState<api.DictUsageKind | null>(null);
 
   if (dossier.loading) return <LoadingRow label="Loading 360…" />;
   if (dossier.error) return <ErrorState message={dossier.error} />;
@@ -323,14 +336,45 @@ function DictDossier({
         )}
       </div>
 
-      {/* Usage KPI strip — the money rollups (PR2) hang off these counts. */}
+      {/* Usage KPI strip — every tile opens the rows it counts, a page at a
+          time, with a way out to the module that owns them
+          (./financial-dictionary-usage). A zero opens too: "none yet" is an
+          answer, and the dialog's link is still the way to the module. */}
       <KpiRow stack>
-        <KpiTile label="Costings" value={num(u.costing_lines)} />
-        <KpiTile label="Cash requests" value={num(u.cash_request_lines)} />
-        <KpiTile label={tr("Invoices")} value={num(u.invoice_lines)} />
-        <KpiTile label={tr("Purchase orders")} value={num(u.purchase_order_items)} />
-        <KpiTile label={tr("Rates")} value={num(u.expense_rates)} />
+        <KpiTile
+          label="Costings"
+          value={num(u.costing_lines)}
+          onClick={() => setDrill("costings")}
+        />
+        <KpiTile
+          label="Cash requests"
+          value={num(u.cash_request_lines)}
+          onClick={() => setDrill("cash_requests")}
+        />
+        <KpiTile
+          label={tr("Invoices")}
+          value={num(u.invoice_lines)}
+          onClick={() => setDrill("invoices")}
+        />
+        <KpiTile
+          label={tr("Purchase orders")}
+          value={num(u.purchase_order_items)}
+          onClick={() => setDrill("purchase_orders")}
+        />
+        <KpiTile
+          label={tr("Rates")}
+          value={num(u.expense_rates)}
+          onClick={() => setDrill("rates")}
+        />
       </KpiRow>
+      {drill && (
+        <DictUsageDrill
+          item={it}
+          kind={drill}
+          count={USAGE_COUNT[drill](u)}
+          onClose={() => setDrill(null)}
+        />
+      )}
 
       {/* One row on a phone — see `section-tabs.tsx`. */}
       <SectionTabs

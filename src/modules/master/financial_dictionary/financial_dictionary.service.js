@@ -6,6 +6,7 @@ const importer = require("./financial_dictionary.import");
 const { resolveContext } = require("../../../services/spreadsheet");
 const { emitEvent, audit } = require("../../../shared/events/emit");
 const currencyRepo = require("../currency/currency.repo");
+const { page } = require("../../../shared/db/query-helpers");
 
 // The only columns a caller may write on dictionary_item. `code`, ids and the
 // timestamps are server-owned; picking an explicit set (never spreading the
@@ -51,6 +52,26 @@ async function dossier(c, id) {
     needs_attention: rules.needsAttention(item),
   };
   return { item, posting_rules: item.posting_rules, service_tiers: item.service_tiers, usage, compliance };
+}
+
+/**
+ * One page of the rows behind one of the 360's usage tiles — the drill-in the
+ * tile opens. `{ rows, total }`, or null when the item does not exist.
+ *
+ * `invoiceTypes` narrows the invoices drill to the kinds the viewer may open
+ * (the controller resolves it from their grants); the other kinds are gated
+ * whole, before this is called.
+ */
+async function listUsage(c, id, kind, q = {}, { invoiceTypes = [] } = {}) {
+  const item = await repo.getItemRow(c, id);
+  if (!item) return null;
+  const out = await repo.usageRows(c, id, kind, q, { invoiceTypes });
+  if (kind !== "rates") return out;
+  // In force / superseded by the SAME rule the Cost & evolution tab uses.
+  return {
+    ...out,
+    rows: out.rows.map((r) => ({ ...r, rate: Number(r.rate), ...rules.rateState(r) })),
+  };
 }
 
 function pickItem(src) {
@@ -317,6 +338,26 @@ async function spend(c, id, q = {}) {
   };
 }
 
+/**
+ * One page of the documents behind the Spend tab's tiles, and the true total.
+ *
+ * The window goes through the SAME `normalisePeriod` as `spend`, so a drill-in
+ * opened from a tile lists the period that tile summed — a reversed or garbage
+ * range is corrected the same way for both. `lens` NULL is every lens.
+ */
+async function spendDocumentsPage(c, id, q = {}) {
+  const item = await repo.getItemRow(c, id);
+  if (!item) return null;
+  const period = rules.normalisePeriod({ from: q.from, to: q.to });
+  const { limit, offset } = page(q);
+  return repo.spendDocumentsPage(c, id, period.from, period.to, {
+    lens: q.lens || null,
+    dossierId: q.dossier_id || null,
+    limit,
+    offset,
+  });
+}
+
 /* ═══════════════════ COST EVOLUTION (PR2 workstream 2) ════════════════════ */
 
 /**
@@ -566,8 +607,8 @@ async function updateRef(c, { id, patch, actor }) {
 }
 
 module.exports = {
-  listItems, searchItems, get, dossier, create, update,
-  spend, rateEvolution, supersedeRate, applyRateToProviders,
+  listItems, searchItems, get, dossier, listUsage, create, update,
+  spend, spendDocumentsPage, rateEvolution, supersedeRate, applyRateToProviders,
   importTemplate, importValidate, importCommit, importErrorFile,
   listRefs, createRef, updateRef,
 };

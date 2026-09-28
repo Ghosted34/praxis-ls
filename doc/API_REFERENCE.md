@@ -6,7 +6,7 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 1768 |
+| Routes | 1771 |
 | Modules mounted | 141 |
 | API version | v1 |
 
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 1768 mounted routes, grouped by path prefix.
+All 1771 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -918,6 +918,8 @@ All 1768 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/financial-dictionary/:id/rates/apply-all` | — |
 | POST | `/api/tenant/financial-dictionary/:id/rates/supersede` | — |
 | GET | `/api/tenant/financial-dictionary/:id/spend` | — |
+| GET | `/api/tenant/financial-dictionary/:id/spend/documents` | — |
+| GET | `/api/tenant/financial-dictionary/:id/usage/:kind` | — |
 | POST | `/api/tenant/financial-dictionary/import/commit` | — |
 | POST | `/api/tenant/financial-dictionary/import/errors` | — |
 | GET | `/api/tenant/financial-dictionary/import/template` | — |
@@ -2351,6 +2353,7 @@ All 1768 mounted routes, grouped by path prefix.
 | DELETE | `/api/tenant/treasury-accounts/:id/documents/:docId` | — |
 | POST | `/api/tenant/treasury-accounts/:id/documents/:docId/scan` | — |
 | POST | `/api/tenant/treasury-accounts/:id/documents/:docId/verify` | — |
+| GET | `/api/tenant/treasury-accounts/:id/lines` | — |
 | POST | `/api/tenant/treasury-accounts/:id/primary` | — |
 | POST | `/api/tenant/treasury-accounts/:id/reverse-entry` | — |
 | GET | `/api/tenant/treasury-accounts/:id/signatories` | — |

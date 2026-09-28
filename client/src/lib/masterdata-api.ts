@@ -1514,6 +1514,48 @@ export const searchDict = (opts: {
 
 export const dictDossier = (id: string) =>
   tenant<DictDossier>(`/financial-dictionary/${id}/360`);
+
+/* ── Where a line is used (GET /financial-dictionary/:id/usage/:kind) ───────
+ * The rows behind the 360's usage tiles — the same table and filter as each
+ * count in `DictUsage`, one page at a time. Read with `useListPaged`, which
+ * takes the true total off `X-Total-Count`. Each document list needs the view
+ * grant of the module that owns it (403 otherwise); rates need only this one. */
+export type DictUsageKind =
+  "costings" | "cash_requests" | "invoices" | "purchase_orders" | "rates";
+export const dictUsagePath = (id: string, kind: DictUsageKind) =>
+  `/financial-dictionary/${encodeURIComponent(id)}/usage/${kind}`;
+/** One LINE on a document — a costing sheet, cash request, invoice or PO. */
+export type DictUsageDoc = {
+  row_id: string;
+  doc_id: string;
+  doc_number?: string | null;
+  status?: string | null;
+  /** Invoices only: FINAL | PROFORMA | CREDIT_NOTE. */
+  doc_type?: string | null;
+  doc_date?: string | null;
+  currency?: string | null;
+  amount: number | string;
+  label?: string | null;
+  dossier_id?: string | null;
+  dossier_ref?: string | null;
+  /** The file's client — or, on a purchase order, the supplier. */
+  party_id?: string | null;
+  party_name?: string | null;
+};
+export type DictUsageRate = {
+  row_id: string;
+  rate: number;
+  currency?: string | null;
+  effective_from: string;
+  effective_to?: string | null;
+  note?: string | null;
+  provider_name?: string | null;
+  provider_kind?: string | null;
+  container_type_code?: string | null;
+  container_type_name?: string | null;
+  in_force: boolean;
+  superseded: boolean;
+};
 export const createDict = (body: DictInput) =>
   tenant<DictFull>("/financial-dictionary", { method: "POST", body });
 export const updateDict = (id: string, body: Partial<DictInput>) =>
@@ -1589,6 +1631,13 @@ export const dictSpend = (
     `/financial-dictionary/${id}/spend${qs ? `?${qs}` : ""}`,
   );
 };
+
+/** The paged documents behind the Spend tab's tiles (GET /:id/spend/documents)
+ *  — the same rows as `documents` above, one lens at a time, with the true
+ *  total. Read with `useListPaged`, passing from / to / dossier_id / lens as
+ *  its filters. */
+export const dictSpendDocsPath = (id: string) =>
+  `/financial-dictionary/${encodeURIComponent(id)}/spend/documents`;
 
 /* ── Cost evolution (GET /financial-dictionary/:id/rate-history) ───────────
  * Grouped into SERIES — one per (provider, shipping line, variant) — because a

@@ -33,6 +33,7 @@ import { ScanAttachment } from "@/components/scan-attachment";
 import { openVaultDoc } from "@/lib/vault-file";
 import { SignatoryModal } from "./signatory-modal";
 import { ReconciliationTab } from "./reconciliation-tab";
+import { TreasuryKpiDrill, type TreasuryKpiKind } from "./treasury-kpi-drill";
 
 const RENEWAL_TONE: Record<"APPROACHING" | "DUE" | "EXPIRED", Tone> = {
   APPROACHING: "warn",
@@ -185,6 +186,8 @@ export function TreasuryDossier({
   // precisely to be deep-linkable, and a reload was dumping the reader back on
   // Overview. "Overview" is the fallback, so the param is omitted there.
   const [tab, setTab] = useUrlTab<Tab>(TABS, "Overview");
+  // Which movement tile's lines are open, if any (./treasury-kpi-drill).
+  const [drill, setDrill] = React.useState<TreasuryKpiKind | null>(null);
   const [busy, setBusy] = React.useState<string | null>(null);
   const [actionError, setActionError] = React.useState<string | null>(null);
   const [docError, setDocError] = React.useState<string | null>(null);
@@ -379,21 +382,27 @@ export function TreasuryDossier({
           label="Opening"
           value={amount(data.kpis.opening_balance, data.kpis.currency)}
         />
+        {/* Balance and Opening are figures, not sums of a list, and stay
+            inert. The four movement tiles open the lines they add up. */}
         <KpiTile
           label="Debits (posted)"
           value={amount(data.kpis.debit_total, data.kpis.currency)}
+          onClick={() => setDrill("debits")}
         />
         <KpiTile
           label="Credits (posted)"
           value={amount(data.kpis.credit_total, data.kpis.currency)}
+          onClick={() => setDrill("credits")}
         />
         <KpiTile
           label="This month (net)"
           value={amount(data.kpis.mtd.net, data.kpis.currency)}
+          onClick={() => setDrill("mtd")}
         />
         <KpiTile
           label="This year (net)"
           value={amount(data.kpis.ytd.net, data.kpis.currency)}
+          onClick={() => setDrill("ytd")}
         />
         <KpiTile
           label={tr("Unreconciled")}
@@ -402,6 +411,14 @@ export function TreasuryDossier({
           onClick={() => setTab("Reconciliation")}
         />
       </KpiRow>
+      {drill && (
+        <TreasuryKpiDrill
+          kind={drill}
+          accountId={id}
+          accountLabel={String(a.label || "Account")}
+          onClose={() => setDrill(null)}
+        />
+      )}
 
       {/* Readiness — the empty-state that explains itself. */}
       {data.readiness.percent < 100 && (

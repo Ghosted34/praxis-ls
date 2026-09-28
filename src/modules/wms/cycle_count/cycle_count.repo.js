@@ -3,7 +3,7 @@
  * for context and filters by location.
  */
 "use strict";
-const { insertOne, getById, page, updateOne } = require("../../../shared/db/query-helpers");
+const { insertOne, getById, page, updateOne, TOTAL_COL, splitTotal } = require("../../../shared/db/query-helpers");
 
 const insert = (client, data) => insertOne(client, "cycle_count", data);
 const findById = (client, id) => getById(client, "cycle_count", "cycle_count_id", id);
@@ -22,15 +22,19 @@ async function list(client, q = {}) {
   if (q.location_id) { params.push(q.location_id); wh.push("cc.location_id = $" + params.length); }
   const where = wh.length ? "WHERE " + wh.join(" AND ") : "";
   const { rows } = await client.query(
-    `SELECT cc.*, wl.zone, wl.aisle, wl.rack, wl.bin
+    `SELECT cc.*, wl.zone, wl.aisle, wl.rack, wl.bin, ${TOTAL_COL}
        FROM cycle_count cc
        LEFT JOIN warehouse_location wl ON wl.location_id = cc.location_id
        ${where}
-      ORDER BY cc.created_at DESC
+      ORDER BY cc.created_at DESC, cc.cycle_count_id
       LIMIT $1 OFFSET $2`,
     params,
   );
-  return rows;
+  const split = splitTotal(rows);
+  // The match count, for the shared controller's `meta.total` (see service.list).
+  Object.defineProperty(split.rows, "_total", { value: split.total, enumerable: false });
+  Object.defineProperty(split.rows, "_page", { value: { limit, offset }, enumerable: false });
+  return split.rows;
 }
 
 module.exports = { insert, findById, update, list };

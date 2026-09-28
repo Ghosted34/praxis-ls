@@ -18,6 +18,7 @@
  * through the treasury_account service.
  */
 "use strict";
+const { page, TOTAL_COL, splitTotal } = require("../../shared/db/query-helpers");
 // treasury_account.repo is loaded lazily from load() so that the require graph
 // stays a DAG (this file lives in master/, its consumer is treasury_account/
 // two levels down, and pre-loading would circle).
@@ -44,6 +45,61 @@ async function _balances(client, accountCode, mtdDate, ytdDate) {
 }
 
 
+
+/**
+ * Where "This month" and "This year" start. One function for the tiles' sums
+ * (`load`) and for the lines behind them (`movementLines`), so a drill-in opened on the
+ * 1st of the month cannot list a different month from the one its tile added.
+ *
+ * Written from the calendar fields, not via `toISOString()`. The inline version
+ * this replaced built LOCAL midnight on the 1st and then printed it in UTC — on
+ * a server east of Greenwich (Douala is UTC+1) that is 23:00 the day before, so
+ * "this month" quietly began on the last day of the previous one.
+ */
+function periodStarts(now = new Date()) {
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  // An ISO day for a SQL parameter — never displayed.
+  return { mtd: `${y}-${m}-01`, ytd: `${y}-01-01` };
+}
+
+/**
+ * One page of the ledger lines behind a movement tile, and the true total.
+ *
+ * The filter is `_balances`' filter, nothing added: this account's CoA leaf,
+ * validated entries only. `side` keeps the lines that carry that side (the
+ * Debits tile sums `debit` over every line, and a line with a zero debit adds
+ * nothing to it); `period` starts where the tile's MTD / YTD sum starts. So the
+ * rows listed are exactly the rows the figure was added up from.
+ *
+ * null when the account does not exist. An account with no CoA leaf has posted
+ * nothing, and says so as an empty page rather than an error.
+ */
+async function movementLines(client, { id, side = null, period = "all", q = {} }) {
+  const accRepo = require("./treasury_account/treasury_account.repo");
+  const acc = await accRepo.getWithCategory(client, id);
+  if (!acc) return null;
+  if (!acc.coa_code) return { rows: [], total: 0 };
+  const { limit, offset } = page(q);
+  const starts = periodStarts();
+  const from = period === "mtd" ? starts.mtd : period === "ytd" ? starts.ytd : null;
+  const { rows } = await client.query(
+    "SELECT jl.line_id, jl.entry_id, jl.debit, jl.credit, jl.currency, jl.dossier_id, " +
+    "       je.entry_date, je.entry_no, je.description, je.source_doc_ref, " +
+    "       j.code AS journal_code, d.ref AS dossier_ref, " + TOTAL_COL + " " +
+    "  FROM journal_line jl " +
+    "  JOIN journal_entry je ON je.entry_id = jl.entry_id " +
+    "  JOIN journal j ON j.journal_id = je.journal_id " +
+    "  LEFT JOIN dossier_visible d ON d.dossier_id = jl.dossier_id " +
+    " WHERE jl.account_code = $1 AND je.status = 'validated' " +
+    "   AND ($2::text IS NULL OR ($2::text = 'debit' AND jl.debit > 0) OR ($2::text = 'credit' AND jl.credit > 0)) " +
+    "   AND ($3::date IS NULL OR je.entry_date >= $3::date) " +
+    " ORDER BY je.entry_date DESC, je.entry_no DESC, jl.line_id " +
+    " LIMIT $4 OFFSET $5",
+    [acc.coa_code, side, from, limit, offset],
+  );
+  return splitTotal(rows);
+}
 
 /** Recent journal lines that hit this account with reversal links (Audit #5, #16). */
 async function _recentLines(client, accountCode, limit = 50) {
@@ -219,8 +275,7 @@ async function load(client, { id }) {
 
   const code = acc.coa_code;
 
-  const mtdDate = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10);
-  const ytdDate = new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10);
+  const { mtd: mtdDate, ytd: ytdDate } = periodStarts();
 
   // Consolidated balances in one query (Audit #17)
   const balances = code ? await _balances(client, code, mtdDate, ytdDate) : {
@@ -352,4 +407,4 @@ function buildReadiness(acc, docs = []) {
 // dossier for every treasury account. Reachable only through `load`, it could
 // not be asserted without standing up the other nine sub-queries; exporting it
 // is cheaper than leaving the regression untested.
-module.exports = { load, buildReadiness, withRenewal, _timeline };
+module.exports = { load, movementLines, periodStarts, buildReadiness, withRenewal, _timeline };

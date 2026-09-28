@@ -32,10 +32,20 @@ import { Segmented } from "@/components/ui/segmented";
 import { Callout } from "@/components/ui/callout";
 import { EmptyState, ErrorState, LoadingRow } from "@/components/ui/states";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
-import { useResource } from "@/lib/use-resource";
+import { useListPaged, useResource } from "@/lib/use-resource";
+import {
+  KpiDetailsModal,
+  KPI_PAGE_SIZE,
+  type KpiDetailRow,
+} from "@/components/kpi-details-modal";
 import { money, num, dateFmt } from "@/lib/format";
 import * as api from "@/lib/masterdata-api";
 import { OperationsFilePicker, type PickedFile } from "@/components/operations/file-picker";
+import {
+  CASH_REQUEST_ROUTE,
+  COSTING_ROUTE,
+  PURCHASE_ORDER_ROUTE,
+} from "./financial-dictionary-usage";
 
 /* ── Period picker ────────────────────────────────────────────────────────── */
 
@@ -280,9 +290,18 @@ function Legend() {
  * unknown type to an inert link instead of an exception.
  */
 const DOC_ROUTE = new Map<string, (d: api.SpendDocument) => string>([
-  ["costing", (d) => `/costing/sheets?focus=${d.doc_id}`],
-  ["purchase_order", (d) => `/procurement/purchase-orders?focus=${d.doc_id}`],
-  ["cash_request", (d) => `/costing/cash-requests?focus=${d.doc_id}`],
+  // The record 360s, the same place the usage tiles open. (This used to be
+  // `/costing/sheets?focus=`, which is no section of the costing hub — the link
+  // landed on the costing list with the sheet nowhere in it.)
+  ["costing", (d) => `${COSTING_ROUTE}/${encodeURIComponent(d.doc_id)}`],
+  [
+    "purchase_order",
+    (d) => `${PURCHASE_ORDER_ROUTE}?focus=${encodeURIComponent(d.doc_id)}`,
+  ],
+  [
+    "cash_request",
+    (d) => `${CASH_REQUEST_ROUTE}/${encodeURIComponent(d.doc_id)}`,
+  ],
   [
     "cost_entry",
     (d) =>
@@ -303,6 +322,136 @@ const docHref = (d: api.SpendDocument) =>
 const docLabel = (d: api.SpendDocument) =>
   DOC_LABEL.get(String(d.doc_type)) ?? "Document";
 
+/** Pill tone for a document's lens — the same three the chart's legend uses. */
+const lensTone = (lens: api.SpendLens) =>
+  lens === "actual" ? "ok" : lens === "committed" ? "warn" : "mute";
+
+/** What each Spend tile opens. `lens` absent is every lens (Documents). */
+type SpendDrillKind = "actual" | "committed" | "estimated" | "all";
+const SPEND_DRILL: Record<
+  SpendDrillKind,
+  {
+    title: string;
+    description: string;
+    viewAll?: { label: string; href: string };
+  }
+> = {
+  actual: {
+    title: "Actual",
+    description: "Ledger cost entries in this period — what was really posted.",
+    viewAll: { label: "View more in Cost tracking", href: "/costing/cost-tracking" },
+  },
+  committed: {
+    title: "Committed",
+    description:
+      "Purchase-order lines and approved cash-request lines in this period — promised to a third party, posted or not.",
+  },
+  estimated: {
+    title: "Estimated",
+    description: "Costing-sheet lines in this period — what was planned.",
+    viewAll: { label: "View more in Costing", href: COSTING_ROUTE },
+  },
+  all: {
+    title: "Documents",
+    description: "Every document behind this period's figures, all three lenses.",
+  },
+};
+
+/**
+ * The documents behind a Spend tile, a page at a time.
+ *
+ * The list under the chart stops at the 100 newest; a tile's figure does not,
+ * so the tiles read GET /:id/spend/documents — the same rows, the same window
+ * and file filter, one lens, with the true total. "Committed · of 340" is then
+ * the 340 lines that figure was added up from.
+ */
+function SpendDocsDrill({
+  id,
+  code,
+  kind,
+  range,
+  dossierId,
+  currency,
+  onClose,
+}: {
+  id: string;
+  code: string;
+  kind: SpendDrillKind;
+  range: { from: string; to: string };
+  dossierId: string | null;
+  currency: string;
+  onClose: () => void;
+}) {
+  const spec = SPEND_DRILL[kind];
+  const [page, setPage] = React.useState(0);
+  const list = useListPaged<api.SpendDocument>(api.dictSpendDocsPath(id), {
+    page,
+    pageSize: KPI_PAGE_SIZE,
+    from: range.from,
+    to: range.to,
+    dossier_id: dossierId ?? undefined,
+    lens: kind === "all" ? undefined : kind,
+  });
+  const rows: KpiDetailRow[] = (list.rows || []).map((doc, i) => ({
+    id: `${doc.doc_type}-${doc.doc_id}-${page}-${i}`,
+    href: docHref(doc),
+    cells: [
+      <span key="n">
+        <span className="num whitespace-nowrap font-medium">
+          {doc.doc_number || docLabel(doc)}
+        </span>
+        {doc.label ? (
+          <>
+            <br />
+            <span className="inline-block text-xs font-normal text-muted-foreground">
+              {doc.label}
+            </span>
+          </>
+        ) : null}
+      </span>,
+      <span key="d" className="whitespace-nowrap">
+        {dateFmt(doc.doc_date)}
+      </span>,
+      <span key="f" className="num whitespace-nowrap">
+        {doc.dossier_ref || "—"}
+      </span>,
+      <Pill key="s" tone={lensTone(doc.lens)}>
+        {doc.status || doc.lens}
+      </Pill>,
+      <span key="a" className="num whitespace-nowrap">
+        {money(doc.amount, doc.currency || currency)}
+      </span>,
+    ],
+  }));
+  return (
+    <KpiDetailsModal
+      open
+      onClose={onClose}
+      title={`${tr(spec.title)} · ${code}`}
+      description={`${spec.description} ${dateFmt(range.from)} — ${dateFmt(range.to)}.`}
+      headers={[
+        { label: tr("Document") },
+        { label: tr("Date") },
+        { label: tr("File") },
+        { label: tr("Status") },
+        { label: tr("Amount"), right: true },
+      ]}
+      rows={rows}
+      emptyLabel="No documents in this period."
+      loading={list.loading}
+      error={list.error}
+      paging={{
+        page,
+        pageSize: KPI_PAGE_SIZE,
+        total: list.total,
+        onPageChange: setPage,
+      }}
+      viewAll={spec.viewAll}
+      size="wide"
+    />
+  );
+}
+
 export function SpendTab({ id }: { id: string }) {
   const [preset, setPreset] = React.useState<PeriodPreset>("year");
   const [range, setRange] = React.useState(() => presetRange("year"));
@@ -310,6 +459,8 @@ export function SpendTab({ id }: { id: string }) {
   // One operations file only (meeting 5, 01:23:15 — "filter per file, so you
   // see everything spent on that file"). Null = every file.
   const [file, setFile] = React.useState<PickedFile | null>(null);
+  // Which tile's documents are open, if any.
+  const [drill, setDrill] = React.useState<SpendDrillKind | null>(null);
 
   // A preset writes concrete dates so the request is always explicit; custom
   // leaves whatever the user typed alone.
@@ -374,29 +525,52 @@ export function SpendTab({ id }: { id: string }) {
       </div>
 
       {/* Headline = actual. The other two tiles are context for it, which is why
-          the variance is stated on the committed tile rather than as a fourth. */}
+          the variance is stated on the committed tile rather than as a fourth.
+          Every tile opens the documents it was added up from (SpendDocsDrill). */}
       <KpiRow stack>
         <KpiTile
           label={`Actual (${cur})`}
           value={money(d.totals.actual, cur)}
           hint={`${num(d.totals.actual_count)} ledger entries`}
+          onClick={() => setDrill("actual")}
         />
         <KpiTile
           label={tr("Committed")}
           value={money(d.totals.committed, cur)}
           hint={`${money(d.totals.variance_committed_actual, cur)} not yet posted`}
+          onClick={() => setDrill("committed")}
         />
         <KpiTile
           label={tr("Estimated")}
           value={money(d.totals.estimated, cur)}
           hint={`${num(d.totals.estimated_count)} costing lines`}
+          onClick={() => setDrill("estimated")}
         />
+        {/* The three lenses' counts, not the list's length: the list below
+            stops at the 100 newest, and this tile used to say 100 for a period
+            with 340 documents in it. */}
         <KpiTile
           label={tr("Documents")}
-          value={num(d.documents.length)}
+          value={num(
+            d.totals.actual_count +
+              d.totals.committed_count +
+              d.totals.estimated_count,
+          )}
           hint={`${dateFmt(d.period.from)} — ${dateFmt(d.period.to)}`}
+          onClick={() => setDrill("all")}
         />
       </KpiRow>
+      {drill && (
+        <SpendDocsDrill
+          id={id}
+          code={d.item.code}
+          kind={drill}
+          range={d.period}
+          dossierId={file?.dossier_id ?? null}
+          currency={cur}
+          onClose={() => setDrill(null)}
+        />
+      )}
 
       {nothing ? (
         <EmptyState

@@ -52,4 +52,38 @@ async function occupancy(client, id) {
   return { total, breakdown };
 }
 
-module.exports = { insert, findById, update, list, occupancy };
+/**
+ * What one slot holds, counted in SQL — the location 360's tiles.
+ *
+ * The screen used to fetch the tenant's inventory, equipment and cycle counts
+ * (the first 50 of each, the list default) and filter them by location in the
+ * browser, so a warehouse past 50 stock lines under-counted every slot and
+ * showed an empty one as empty when its stock was simply on page two. These
+ * are the counts over EVERY row for this location, and `on_hand` is the sum
+ * of its quantities that "Capacity used" is worked out from.
+ *
+ * Same missing-table tolerance as `occupancy`, for a tenant provisioned
+ * before a WMS table existed.
+ */
+const STATS = [
+  ["items", "SELECT count(*)::int AS items FROM inventory_item WHERE location_id = $1"],
+  ["on_hand", "SELECT COALESCE(SUM(qty_on_hand), 0) AS on_hand FROM inventory_item WHERE location_id = $1"],
+  ["equipment", "SELECT count(*)::int AS equipment FROM wms_equipment WHERE location_id = $1"],
+  ["cycle_counts", "SELECT count(*)::int AS cycle_counts FROM cycle_count WHERE location_id = $1"],
+];
+
+async function stats(client, id) {
+  const out = {};
+  for (const [key, sql] of STATS) {
+    try {
+      const { rows } = await client.query(sql, [id]);
+      out[key] = Number((rows[0] && rows[0][key]) || 0);
+    } catch (err) {
+      if (err && err.code === "42P01") { out[key] = 0; continue; }
+      throw err;
+    }
+  }
+  return out;
+}
+
+module.exports = { insert, findById, update, list, occupancy, stats };

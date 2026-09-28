@@ -6,7 +6,7 @@
  * point to a browsable list (`party-360.tsx`); the entity dossier's tiles said
  * "12 employees" and stopped there, which left the reader to go and find those
  * twelve somewhere else. This is the same drill-in over the same dialog
- * (`./kpi-details-modal`), pointed at the entity's own facts:
+ * (`components/kpi-details-modal`), pointed at the entity's own facts:
  *
  *   Shareholders  the people rows already on the 360 payload — the union of
  *                 `role` and `role_tags` (13850), so an owner who is also the
@@ -26,12 +26,17 @@
  * copy on the entity — an employee's job title shown here is the one HR holds,
  * not one cached at some earlier moment.
  *
+ * The Renewals tab's three tiles (Expired, Due now, Approaching) open the same
+ * dialog over `renewals.items` for that state — see `RenewalsDrill` below.
+ *
  * WHAT IT DOES NOT DO. The Ownership tile has no drill: 82% is a figure, not a
  * list (the party 360s treat "Credit available" the same way). The Shareholders
  * and Subsidiaries rows link to what exists — a holding company's own dossier,
  * an employee's row in the HR master, the Journals screen — and a person with no
  * page of their own renders as plain text rather than a link to nowhere.
  */
+import type * as React from "react";
+import { useLocation } from "react-router-dom";
 import { Avatar } from "@/components/ui/avatar";
 import { Pill } from "@/components/ui/pill";
 import { useResource } from "@/lib/use-resource";
@@ -44,7 +49,7 @@ import {
   KpiDetailsModal,
   type KpiDetailHeader,
   type KpiDetailRow,
-} from "./kpi-details-modal";
+} from "@/components/kpi-details-modal";
 
 /** The four tiles that open something. "Ownership recorded" is deliberately
  *  absent — see the file header. */
@@ -272,6 +277,92 @@ export function EntityKpiDrill({
           ? "No shareholders recorded yet — the Shareholding section on the People & shareholding tab is where they are added."
           : "This entity has no subsidiaries recorded. Set a parent on another entity's Structure tab to add one."
       }
+    />
+  );
+}
+
+/* ── Renewals ─────────────────────────────────────────────────────────────── */
+
+const RENEWAL_TITLE: Record<api.RenewalItem["state"], string> = {
+  EXPIRED: "Expired",
+  DUE: "Due now",
+  APPROACHING: "Approaching",
+};
+const RENEWAL_DESCRIPTION: Record<api.RenewalItem["state"], string> = {
+  EXPIRED: "Registrations and documents whose expiry date has passed.",
+  DUE: "Registrations and documents inside their renewal window.",
+  APPROACHING: "Registrations and documents whose renewal window opens soon.",
+};
+const RENEWAL_PILL: Record<
+  api.RenewalItem["state"],
+  React.ComponentProps<typeof Pill>["tone"]
+> = {
+  EXPIRED: "bad",
+  DUE: "orange",
+  APPROACHING: "warn",
+};
+/** The dossier tab that holds each kind — where it is renewed. */
+const RENEWAL_TAB: Record<api.RenewalItem["kind"], string> = {
+  DOCUMENT: "Documents",
+  REGISTRATION: "Identity & registrations",
+  TAX_REGISTRATION: "Tax & jurisdiction",
+};
+
+/**
+ * Renewals → the items behind one of the three tiles (Expired, Due now,
+ * Approaching). The rows are the SAME `renewals.items` the tiles count (the
+ * server counts them by `state`), for the same as-of date the Renewals tab is
+ * showing. A row opens the tab where that item lives and is renewed — this
+ * dossier, same address, other `?tab=` — so it keeps whatever else the URL
+ * carries (the list's `?focus=` when the dossier is a sheet over it).
+ */
+export function RenewalsDrill({
+  state,
+  entityName,
+  renewals,
+  onClose,
+}: {
+  state: api.RenewalItem["state"];
+  entityName: string;
+  renewals: api.Renewals;
+  onClose: () => void;
+}) {
+  const location = useLocation();
+  const tabHref = (kind: api.RenewalItem["kind"]) => {
+    const p = new URLSearchParams(location.search);
+    p.set("tab", RENEWAL_TAB[kind] ?? "Renewals");
+    return `${location.pathname}?${p.toString()}`;
+  };
+  const items = renewals.items.filter((i) => i.state === state);
+  return (
+    <KpiDetailsModal
+      open
+      onClose={onClose}
+      title={`${RENEWAL_TITLE[state]} · ${entityName}`}
+      description={`${RENEWAL_DESCRIPTION[state]} As of ${dateDmy(renewals.as_of)}. Click a row to open the tab where it is renewed.`}
+      headers={[
+        { label: "Item" },
+        { label: "Kind" },
+        { label: "Country" },
+        { label: "Expires" },
+        { label: "Days", right: true },
+        { label: "State" },
+      ]}
+      rows={items.map((i) => ({
+        id: `${i.kind}-${i.id}`,
+        href: tabHref(i.kind),
+        cells: [
+          i.label,
+          enumLabel(i.kind),
+          i.country_code || "—",
+          dateDmy(i.expires_on),
+          i.days_remaining != null ? num(i.days_remaining) : "—",
+          <Pill key="s" tone={RENEWAL_PILL[i.state] || "mute"}>
+            {enumLabel(i.state)}
+          </Pill>,
+        ],
+      }))}
+      emptyLabel={`Nothing is ${RENEWAL_TITLE[state].toLowerCase()} on this entity.`}
     />
   );
 }

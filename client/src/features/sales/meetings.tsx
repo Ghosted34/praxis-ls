@@ -27,6 +27,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs } from "@/components/ui/tabs";
 import { DiscoveryCapture } from "@/features/sales/meeting-discovery";
 import { DiscoveryWizard } from "@/features/sales/discovery-wizard";
+import { useFocusOpen } from "@/lib/use-focus-row";
 
 /* ═══════════════════════════════════ MEETINGS ═══════════════════════════════════ */
 
@@ -391,6 +392,9 @@ export function MeetingsPage() {
   const [formOpen, setFormOpen] = React.useState(false);
   const [detail, setDetail] = React.useState<Row | null>(null);
   const [wizardOpen, setWizardOpen] = React.useState(false);
+  // `?focus=<meeting_id>` — a lead 360's Meetings drill-in opens the meeting
+  // the reader clicked rather than the whole list.
+  useFocusOpen(rows, (r) => String(r.meeting_id), setDetail);
 
   const leadName = React.useMemo(
     () =>

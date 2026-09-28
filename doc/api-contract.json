@@ -2,11 +2,11 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 141,
-  "route_count": 1768,
+  "route_count": 1771,
   "tiers": {
     "public": 74,
     "self-scoped": 107,
-    "gated": 1587
+    "gated": 1590
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -2272,6 +2272,18 @@
       "tier": "gated"
     },
     "GET /api/tenant/financial-dictionary/:id/spend": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/financial-dictionary/:id/spend/documents": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/financial-dictionary/:id/usage/:kind": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -4990,6 +5002,12 @@
       "tier": "gated"
     },
     "GET /api/tenant/treasury-accounts/:id/documents": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/treasury-accounts/:id/lines": {
       "auth": true,
       "rbac": true,
       "validated": false,

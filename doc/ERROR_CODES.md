@@ -278,7 +278,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `INVALID_QTY` | 422 | 3× | — |
 | `INVALID_RESET_TOKEN` | 400 | 1× | — |
 | `INVALID_ROTATION` | 422 | 1× | — |
-| `INVALID_SORT` | — | 1× | — |
+| `INVALID_SORT` | — | 2× | — |
 | `INVALID_STATE` | 422 | 1× | — |
 | `INVALID_SUBSCRIPTION` | 422 | 1× | — |
 | `INVALID_TOKEN` | 401 | 10× | — |
@@ -357,7 +357,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_EDITABLE` | 400 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 3× | — |
-| `NOT_FOUND` | 404, 422 | 718× | — |
+| `NOT_FOUND` | 404, 422 | 722× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_OPEN` | 409, 422 | 3× | — |
 | `NOT_OPERATIONAL` | 422 | 1× | — |
@@ -488,7 +488,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `PAYLOAD_TOO_LARGE` | 413 | 1× | — |
 | `PERIOD_CLOSED` | 422 | 1× | — |
 | `PERIOD_NOT_OPEN` | 422 | 1× | — |
-| `PERMISSION_DENIED` | 403 | 9× | — |
+| `PERMISSION_DENIED` | 403 | 10× | — |
 | `PERSONAL_MAILBOX` | — | 1× | — |
 | `PERSONAL_MAILBOX_EXISTS` | — | 1× | — |
 | `PIN_DEVICE_LIMIT` | — | 1× | — |
@@ -665,7 +665,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `USER_NOT_ACTIVE` | 422 | 1× | — |
 | `USE_APPROVE` | 422 | 1× | — |
 | `VACANCY_CLOSED` | — | 1× | — |
-| `VALIDATION_ERROR` | 422 | 278× | — |
+| `VALIDATION_ERROR` | 422 | 279× | — |
 | `VALIDATOR_NOT_LINE_MANAGER` | — | 1× | — |
 | `VARIANCE_UNEXPLAINED` | 422 | 1× | — |
 | `VAULT_DOC_FOREIGN` | 422 | 1× | — |

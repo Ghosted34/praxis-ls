@@ -40,6 +40,7 @@ import { isDesktopNow } from "@/lib/use-media-query";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
+import { KpiDetailsModal } from "@/components/kpi-details-modal";
 import { SectionTabs } from "@/components/ui/section-tabs";
 import { Callout } from "@/components/ui/callout";
 import { Pill, type Tone } from "@/components/ui/pill";
@@ -640,6 +641,75 @@ type DossierTab = (typeof DOSSIER_TABS)[number];
 const tabLabel = (t: DossierTab) =>
   t === "Overview" ? "Overview" : KIND_LABEL[t as Kind];
 
+/**
+ * The codes behind a count tile — "Tax codes 14", "Retenues 5", "Paie & social
+ * 6" — in the shared drill-in dialog. One row per CODE, as the tiles count them
+ * (a code with three dated versions is one code), showing the version in force
+ * today. The codes live on this screen, so a row has nowhere else to go and the
+ * dialog has no "View more": its job is to answer "which ones" without leaving
+ * the tab you are on.
+ *
+ * "TVA standard" and "IS" are single rates, not lists, and stay inert.
+ */
+type CodeDrill = "all" | "WHT" | "PAYROLL";
+
+function TaxCodesDrill({
+  kind,
+  jurisdiction,
+  groups,
+  onClose,
+}: {
+  kind: CodeDrill;
+  jurisdiction: string;
+  groups: [string, Code[]][];
+  onClose: () => void;
+}) {
+  const title =
+    kind === "all" ? "Tax codes" : kind === "WHT" ? "Retenues" : "Paie & social";
+  return (
+    <KpiDetailsModal
+      open
+      onClose={onClose}
+      title={`${title} · ${jurisdiction}`}
+      description={
+        kind === "all"
+          ? "Every tax code in this jurisdiction, with the rate in force today."
+          : `The ${KIND_LABEL[kind].toLowerCase()} codes in this jurisdiction, with the rate in force today. Amend a rate from the ${KIND_LABEL[kind]} tab.`
+      }
+      headers={[
+        { label: tr("Code") },
+        { label: "Family" },
+        { label: tr("Current rate") },
+        { label: tr("Applies to") },
+        { label: tr("Effective from") },
+        { label: "Versions", right: true },
+      ]}
+      rows={groups.map(([key, versions]) => {
+        const cur = currentVersion(versions);
+        const k = String(cur?.kind ?? versions[0]?.kind ?? "OTHER") as Kind;
+        return {
+          id: key,
+          cells: [
+            <span key="c" className="num font-medium">
+              {key}
+            </span>,
+            KIND_LABEL[k] ?? k,
+            rateLabel(cur),
+            cur?.applies_to ? String(cur.applies_to) : "—",
+            dateFmt(cur?.effective_from),
+            num(versions.length),
+          ],
+        };
+      })}
+      emptyLabel={
+        kind === "all"
+          ? "No tax codes in this jurisdiction yet."
+          : `No ${KIND_LABEL[kind].toLowerCase()} codes in this jurisdiction yet.`
+      }
+    />
+  );
+}
+
 function JurisdictionDossier({ id }: { id: string }) {
   const reloadList = useRefresh();
   const d = useResource<Record<string, unknown> & { tax_codes?: Code[] }>(
@@ -650,6 +720,8 @@ function JurisdictionDossier({ id }: { id: string }) {
     [id],
   );
   const [tab, setTab] = React.useState<DossierTab>("Overview");
+  // Which count tile's codes are open, if any (TaxCodesDrill).
+  const [drill, setDrill] = React.useState<CodeDrill | null>(null);
   const [addOpen, setAddOpen] = React.useState(false);
   const [amendTarget, setAmendTarget] = React.useState<CodeTarget | null>(null);
   const [rowBusy, setRowBusy] = React.useState(false);
@@ -742,7 +814,11 @@ function JurisdictionDossier({ id }: { id: string }) {
       )}
 
       <KpiRow stack>
-        <KpiTile label="Tax codes" value={num(groups.size)} />
+        <KpiTile
+          label="Tax codes"
+          value={num(groups.size)}
+          onClick={() => setDrill("all")}
+        />
         <KpiTile
           label="TVA standard"
           value={
@@ -761,9 +837,25 @@ function JurisdictionDossier({ id }: { id: string }) {
           }
           tone="info"
         />
-        <KpiTile label="Retenues" value={num(countByKind("WHT"))} />
-        <KpiTile label="Paie & social" value={num(countByKind("PAYROLL"))} />
+        <KpiTile
+          label="Retenues"
+          value={num(countByKind("WHT"))}
+          onClick={() => setDrill("WHT")}
+        />
+        <KpiTile
+          label="Paie & social"
+          value={num(countByKind("PAYROLL"))}
+          onClick={() => setDrill("PAYROLL")}
+        />
       </KpiRow>
+      {drill && (
+        <TaxCodesDrill
+          kind={drill}
+          jurisdiction={String(j.name ?? "")}
+          groups={drill === "all" ? [...groups.entries()] : groupsByKind(drill)}
+          onClose={() => setDrill(null)}
+        />
+      )}
 
       {/* One row on a phone — see `section-tabs.tsx`. The counts used to ride
           in parentheses inside the label; they are the badge now, and the

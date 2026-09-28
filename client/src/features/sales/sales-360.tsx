@@ -41,6 +41,12 @@ import { money, moneyCompact, num, dateFmt, dateTimeFmt, enumLabel, cell } from 
 import { pageShell } from "@/lib/layout";
 import { ConvertModal } from "./lead-forms";
 import { ConvertToOpportunityModal } from "./quote-request-forms";
+import {
+  IntakeKpiDrill,
+  LeadKpiDrill,
+  type IntakeKpiKind,
+  type LeadKpiKind,
+} from "./sales-kpi-drill";
 
 /* ── Types (mirrors src/modules/sales/sales-360.service.js) ────────────────── */
 
@@ -555,6 +561,8 @@ export function LeadDossier({
 }) {
   const [tab, setTab] = React.useState<LeadTab>("Overview");
   const [converting, setConverting] = React.useState(false);
+  // Which tile's rows are open, if any (./sales-kpi-drill).
+  const [drill, setDrill] = React.useState<LeadKpiKind | null>(null);
   const res = useResource<LeadDossierData>(
     () => tenant<LeadDossierData>(`/leads/${leadId}/360`),
     [leadId],
@@ -668,12 +676,32 @@ export function LeadDossier({
           tiles sharing one row, one of them carrying a money figure and a
           weighted hint, overflowed the card at every width — see KpiRow. */}
       <KpiRow fit="content" stack>
-        <KpiTile label={tr("Meetings")} value={num(k.meetings)} hint={`${k.discovery_sections_captured} discovery`} />
-        <KpiTile label="Quote requests" value={num(k.quote_requests)} />
-        <KpiTile label={tr("Proposals")} value={num(k.proposals)} hint={`${k.proposals_sent} sent · ${k.proposals_accepted} accepted`} />
-        <KpiTile label="Open deals" value={num(k.open_opportunities)} hint={`${k.won_opportunities} won · ${k.lost_opportunities} lost`} />
+        <KpiTile
+          label={tr("Meetings")}
+          value={num(k.meetings)}
+          hint={`${k.discovery_sections_captured} discovery`}
+          onClick={() => setDrill("meetings")}
+        />
+        <KpiTile
+          label="Quote requests"
+          value={num(k.quote_requests)}
+          onClick={() => setDrill("quote_requests")}
+        />
+        <KpiTile
+          label={tr("Proposals")}
+          value={num(k.proposals)}
+          hint={`${k.proposals_sent} sent · ${k.proposals_accepted} accepted`}
+          onClick={() => setDrill("proposals")}
+        />
+        <KpiTile
+          label="Open deals"
+          value={num(k.open_opportunities)}
+          hint={`${k.won_opportunities} won · ${k.lost_opportunities} lost`}
+          onClick={() => setDrill("open_deals")}
+        />
         <KpiTile
           label="Open pipeline"
+          onClick={() => setDrill("pipeline")}
           value={k.open_pipeline_value === null ? "—" : moneyCompact(k.open_pipeline_value)}
           hint={
             k.weighted_pipeline_value === null
@@ -683,6 +711,9 @@ export function LeadDossier({
         />
       </KpiRow>
       <MoneyNotice visible={k.money_visible} />
+      {drill && (
+        <LeadKpiDrill kind={drill} data={d} onClose={() => setDrill(null)} />
+      )}
 
       {/* One row on a phone — see `section-tabs.tsx`. */}
       <SectionTabs
@@ -977,6 +1008,8 @@ export function IntakeDossier({
 }) {
   const [tab, setTab] = React.useState<IntakeTab>("Overview");
   const [converting, setConverting] = React.useState(false);
+  // Which tile's rows are open, if any (./sales-kpi-drill).
+  const [drill, setDrill] = React.useState<IntakeKpiKind | null>(null);
   const res = useResource<IntakeDossierData>(
     () => tenant<IntakeDossierData>(`/quote-requests/${quoteRequestId}/360`),
     [quoteRequestId],
@@ -1091,8 +1124,14 @@ export function IntakeDossier({
           label={tr("Attachments")}
           value={num(k.attachments)}
           hint={k.has_primary_attachment ? "primary on file" : "no primary document"}
+          onClick={() => setDrill("attachments")}
         />
-        <KpiTile label={tr("Proposals")} value={num(k.proposals)} hint="via the lead" />
+        <KpiTile
+          label={tr("Proposals")}
+          value={num(k.proposals)}
+          hint="via the lead"
+          onClick={() => setDrill("proposals")}
+        />
         <KpiTile
           label="Converted deal"
           value={
@@ -1106,6 +1145,9 @@ export function IntakeDossier({
         />
       </KpiRow>
       <MoneyNotice visible={k.money_visible} />
+      {drill && (
+        <IntakeKpiDrill kind={drill} data={d} onClose={() => setDrill(null)} />
+      )}
 
       {/* One row on a phone — see `section-tabs.tsx`. */}
       <SectionTabs

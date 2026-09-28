@@ -13,6 +13,14 @@ const { AppError } = require("../../../utils/errors");
 // write registry. Built once at load; a manifest change requires a restart, same
 // as the catalogue sync.
 const registry = buildExecutorMap();
+/**
+ * The same executors as a Map, for the one dispatch whose key comes straight
+ * off a request (`options`). A Map holds only what was put in it: there is no
+ * prototype chain for a request-supplied `constructor` or `toString` to walk
+ * into, which a plain-object lookup has however it is guarded (CodeQL
+ * js/unvalidated-dynamic-method-call). `Object.entries` copies own keys only.
+ */
+const executors = new Map(Object.entries(registry));
 
 const ask = (client, { user, message, conversationId, allowed, mode, scope }) =>
   orchestrator.ask({ client, user, message, conversationId, allowed, registry, mode, scope });
@@ -41,7 +49,10 @@ async function options(client, { user, ref, q, limit }) {
     [ref],
   );
   if (!rows.length) throw new Error(`unknown or disabled options source: ${ref}`);
-  const fn = registry[ref];
+  // Only an executor the manifests REGISTERED (see `executors`). The catalogue
+  // lookup above would refuse an inherited name like `constructor` today, but
+  // what a dispatch may call should not rest on the contents of a table.
+  const fn = executors.get(String(ref));
   if (typeof fn !== "function") throw new Error(`no executor for ${ref}`);
   const out = await fn({ client, user, payload: { limit: Math.min(limit || 100, 500), q: q || undefined } });
   return rowsToOptions(out && out.data !== undefined ? out.data : out, Math.min(limit || 100, 500));

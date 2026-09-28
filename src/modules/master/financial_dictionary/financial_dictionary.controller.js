@@ -3,6 +3,7 @@ const service = require("./financial_dictionary.service");
 const { asyncHandler, AppError } = require("../../../utils/errors");
 const { readPermissions } = require("../../../middleware/rbac");
 const { exportFilename } = require("../../../services/spreadsheet");
+const { sendPaged } = require("../../../shared/http/paged");
 const actor = (req) => req.user || { user_id: null };
 const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
@@ -55,6 +56,41 @@ async function assertCanPrice(req) {
 }
 const hasPrice = (v) => v !== null && v !== undefined && String(v).trim() !== "";
 
+/**
+ * Who may open each usage drill-in, and what the refusal says.
+ *
+ * The 360's tile COUNTS need only the dictionary (MOD-05): "used on 14 costing
+ * lines" is a fact about the line. The ROWS behind them are not — they name the
+ * client, the file and the amount of documents another module owns — so each
+ * list asks for that module's own view grant, the one its screen asks for. A
+ * drill-in must not be a side door around the Costing or Invoices permission.
+ *
+ * Invoices are two modules: finals and credit notes are MOD-51, proformas are
+ * MOD-50. The list is narrowed to the types the viewer may open rather than
+ * refused whole, so someone who handles proformas still sees theirs.
+ *
+ * Rates carry no extra gate: they are the line's own price history, and the
+ * Cost & evolution tab already shows every one of them on MOD-05 alone.
+ */
+const USAGE_GATE = {
+  costings: { module: "MOD-46", name: "Costing" },
+  cash_requests: { module: "MOD-49", name: "Cash requests" },
+  purchase_orders: { module: "MOD-60", name: "Purchase orders" },
+};
+const denied = (name) => new AppError(
+  "PERMISSION_DENIED",
+  `Listing these needs the ${name} permission. The count on the tile is all this screen can show you.`,
+  403,
+);
+async function usageInvoiceTypes(req) {
+  const [finals, proformas] = await readPermissions(req, [["MOD-51", "view"], ["MOD-50", "view"]]);
+  const types = [];
+  if (finals) types.push("FINAL", "CREDIT_NOTE");
+  if (proformas) types.push("PROFORMA");
+  if (!types.length) throw denied("Invoices");
+  return types;
+}
+
 module.exports = {
   list: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.listItems(c, req.query)) })),
   // The shared finder (DictionaryFinder). Returns [] for a blank term rather
@@ -82,6 +118,22 @@ module.exports = {
     const [editRates] = await readPermissions(req, [["MOD-10", "edit"]]);
     res.json({ data: { ...r, capabilities: { edit_rates: editRates === true } } });
   }),
+  // One page of the rows behind a 360 usage tile (`X-Total-Count` carries the
+  // total). `:kind` was checked by the validator.
+  usage: asyncHandler(async (req, res) => {
+    const kind = req.params.kind;
+    let invoiceTypes = [];
+    const gate = USAGE_GATE[kind];
+    if (kind === "invoices") {
+      invoiceTypes = await usageInvoiceTypes(req);
+    } else if (gate) {
+      const [ok] = await readPermissions(req, [[gate.module, "view"]]);
+      if (!ok) throw denied(gate.name);
+    }
+    const r = await req.tenantDb((c) => service.listUsage(c, req.params.id, kind, req.query, { invoiceTypes }));
+    if (!r) throw new AppError("NOT_FOUND", "Dictionary item not found", 404);
+    sendPaged(res, r);
+  }),
   create: asyncHandler(async (req, res) => {
     if (hasPrice(req.body.default_price)) await assertCanPrice(req);
     res.status(201).json({ data: await req.tenantDb((c) => service.create(c, { data: req.body, actor: actor(req) })) });
@@ -101,6 +153,11 @@ module.exports = {
     }));
     if (!r) throw new AppError("NOT_FOUND", "Dictionary item not found", 404);
     res.json({ data: r });
+  }),
+  spendDocuments: asyncHandler(async (req, res) => {
+    const r = await req.tenantDb((c) => service.spendDocumentsPage(c, req.params.id, req.query));
+    if (!r) throw new AppError("NOT_FOUND", "Dictionary item not found", 404);
+    sendPaged(res, r);
   }),
   rateEvolution: asyncHandler(async (req, res) => {
     const r = await req.tenantDb((c) => service.rateEvolution(c, req.params.id, { as_of: req.query.as_of }));

@@ -706,6 +706,16 @@ Four rules make it hold together:
    and that is deliberate: the tile used to carry `basis-[13rem]`, which is a
    main-size property, so in the row's phone-time `flex-col` it became a 208px
    HEIGHT and a five-tile strip measured ~1100px on a 780px screen.
+5. **A tile that counts rows opens them.** "57 costings" is a question the
+   reader cannot answer from the number — which ones, for which client, on
+   which file. Pass `onClick` and open `<KpiDetailsModal>`
+   (`components/kpi-details-modal.tsx`) with the rows behind the
+   count, a destination per row, and `viewAll` to the module that owns them.
+   When the count can run into the thousands, page on the SERVER (`paging`,
+   read with `useListPaged`) so the dialog says "of 3,412" under a tile that
+   says 3,412, not "of 200". The rows must come from the same table and filter
+   as the count. A figure that is not a list (a percentage, a credit limit
+   minus a balance) stays inert.
 
 Both entry points must land: whatever already deep-links to the list with
 `?focus=<id>` keeps working, so exchange that parameter for the route on desktop

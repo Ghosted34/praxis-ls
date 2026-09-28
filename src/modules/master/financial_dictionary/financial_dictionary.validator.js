@@ -129,6 +129,22 @@ const spendQuery = z.object({
   include_documents: z.enum(["true", "false"]).optional(),
 });
 
+// One page of the documents behind a Spend tile — the Spend tab's own window
+// and file filter, one lens (or every lens), a page.
+const spendDocsQuery = spendQuery.omit({ include_documents: true }).extend({
+  lens: z.enum(["estimated", "committed", "actual"]).optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+  offset: z.coerce.number().int().min(0).optional(),
+});
+
+// One page of a usage drill-in (the 360's tiles). 100 is the page ceiling —
+// the dialog asks for 20; a larger page is for a caller that knows why.
+const usageQuery = z.object({
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+  offset: z.coerce.number().int().min(0).optional(),
+});
+const USAGE_KINDS = ["costings", "cash_requests", "invoices", "purchase_orders", "rates"];
+
 // Supersede, not edit: `effective_from` is the pivot the open row is expired
 // against, so it is required — the whole operation is meaningless without it.
 // `effective_to` stays optional (an open-ended new rate is the normal case).
@@ -187,7 +203,7 @@ const aiRateSupersede = rateSupersede.extend({ dictionary_item_id: z.string().uu
 const aiRateApplyAll = rateApplyAll.extend({ dictionary_item_id: z.string().uuid() });
 const schemas = {
   create, update, aiUpdate, aiRateSupersede, aiRateApplyAll, refCreate, refUpdate,
-  searchQuery, spendQuery, rateSupersede, rateApplyAll, importUpload, importCommit, importErrors,
+  searchQuery, spendQuery, spendDocsQuery, usageQuery, rateSupersede, rateApplyAll, importUpload, importCommit, importErrors,
 };
 
 /** Query-string validator — same shape as `mw`, but reads req.query. */
@@ -196,6 +212,14 @@ const qmw = (k) => (req, _res, next) => {
   if (!p.success) return next(new AppError("VALIDATION_ERROR", "Invalid query", 422, p.error.flatten().fieldErrors));
   req.query = { ...req.query, ...p.data };
   return next();
+};
+/** `:kind` is one of the five tiles; anything else is a route that does not
+ *  exist, so 404 rather than 422. Then the page, as a query. */
+const usage = (req, res, next) => {
+  if (!USAGE_KINDS.includes(req.params.kind)) {
+    return next(new AppError("NOT_FOUND", "Unknown usage list", 404));
+  }
+  return qmw("usageQuery")(req, res, next);
 };
 const mw = (k) => (req, _res, next) => {
   const p = schemas[k].safeParse(req.body);
@@ -207,6 +231,8 @@ module.exports = {
   create: mw("create"), update: mw("update"), refCreate: mw("refCreate"), refUpdate: mw("refUpdate"),
   searchQuery: qmw("searchQuery"),
   spendQuery: qmw("spendQuery"),
+  spendDocsQuery: qmw("spendDocsQuery"),
+  usageQuery: usage,
   rateSupersede: mw("rateSupersede"),
   rateApplyAll: mw("rateApplyAll"),
   importUpload: mw("importUpload"),

@@ -17,6 +17,7 @@ import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { useResource, errMsg } from "@/lib/use-resource";
 import { num, dateFmt } from "@/lib/format";
 import * as api from "@/lib/wms-api";
+import { useFocusOpen } from "@/lib/use-focus-row";
 
 const shell = pageShell.wide;
 const STATE_TONE: Record<string, Tone> = {
@@ -363,6 +364,8 @@ export function InventoryPage() {
   const locs = useResource(() => api.listLocations(), []);
   const [view, setView] = React.useState<api.InventoryItem | null>(null);
   const [creating, setCreating] = React.useState(false);
+  // `?focus=<inventory_item_id>` — a location 360's drill-in opens the item.
+  useFocusOpen(items.data, (i) => i.inventory_item_id, setView);
   const locMap = React.useMemo(() => {
     const m: Record<string, string> = {};
     (locs.data || []).forEach((l) => {

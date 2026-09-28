@@ -23,7 +23,8 @@
  *      rendered as text rather than a link to nowhere.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { screen, within } from "@testing-library/react";
+import { screen, within, waitFor } from "@testing-library/react";
+import { useLocation } from "react-router-dom";
 import userEvent from "@testing-library/user-event";
 
 import {
@@ -342,5 +343,48 @@ describe("Corporate entities · the Shareholders drill shows the whole role set"
     expect(
       await screen.findByText(/no shareholders recorded yet/i),
     ).toBeInTheDocument();
+  });
+});
+
+describe("Corporate entities · the Renewals tiles open the items behind them", () => {
+  const RENEWALS = {
+    as_of: "2026-07-01",
+    items: [
+      { kind: "DOCUMENT", id: "doc1", label: "Attestation de non-redevance", country_code: "CM", expires_on: "2026-06-01", days_remaining: -30, state: "EXPIRED", severity: "ESCALATED" },
+      { kind: "REGISTRATION", id: "reg1", label: "RCCM", country_code: "CM", expires_on: "2026-07-20", days_remaining: 19, state: "DUE", severity: "WARN" },
+      { kind: "TAX_REGISTRATION", id: "tax1", label: "NIU", country_code: "CM", expires_on: "2026-06-15", days_remaining: -16, state: "EXPIRED", severity: "ESCALATED" },
+    ],
+    counts: { expired: 2, due: 1, approaching: 0 },
+  };
+
+  function Where() {
+    const loc = useLocation();
+    return <output data-testid="where">{loc.pathname + loc.search}</output>;
+  }
+
+  it("lists the tile's state only, and a row opens the tab where it is renewed", async () => {
+    renderScreen(
+      <>
+        <EntityDossier entityId="e1" onEdit={() => {}} />
+        <Where />
+      </>,
+      {
+        routes: routes({ "/entities/e1/360": { ...BASE, renewals: RENEWALS } }),
+        path: "/master/corporate-entities/e1?tab=Renewals",
+      },
+    );
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: /^open expired$/i }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Attestation de non-redevance")).toBeInTheDocument();
+    expect(within(dialog).getByText("NIU")).toBeInTheDocument();
+    expect(within(dialog).queryByText("RCCM")).toBeNull();
+
+    await user.click(within(dialog).getByRole("button", { name: "NIU" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("where")).toHaveTextContent(
+        "/master/corporate-entities/e1?tab=Tax+%26+jurisdiction",
+      ),
+    );
   });
 });

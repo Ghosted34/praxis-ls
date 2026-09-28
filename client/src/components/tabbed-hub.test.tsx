@@ -18,7 +18,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { authContextMock } from "@/test/screen-harness";
 import type { NavAccess } from "@/lib/nav-access";
 
@@ -171,5 +171,67 @@ describe("the in-page strip yields to the ribbon, and only to the ribbon", () =>
     // `waitFor` so the preferences half of the read settles inside `act`; the
     // access half never does, which is what keeps this the in-flight case.
     await waitFor(() => expect(stripIsHiddenOnDesktop()).toBe(true));
+  });
+});
+
+/**
+ * THE SECTION YOU ARE ON. The strip marked nothing: the active style and the
+ * scroll-into-view both key off `data-strip-active`, and the hub never told its
+ * `TabList` which tab that was. On a phone the master-data hub opened on
+ * "Financial dictionary" with four other tabs on screen, none of them lit, and
+ * the one you were on scrolled off the right-hand edge. `TabList` now reads the
+ * Root's value, so no hub can forget to pass it.
+ */
+describe("the strip says which section you are on", () => {
+  function renderAt(path: string) {
+    return render(
+      <MemoryRouter initialEntries={[path]}>
+        <ShellProvider>
+          <Routes>
+            <Route
+              path="/wms/:section"
+              element={
+                <TabbedHub
+                  eyebrow="Warehouse"
+                  basePath="/wms"
+                  tabs={TABS}
+                  inlineTabs
+                />
+              }
+            />
+            <Route
+              path="/wms"
+              element={
+                <TabbedHub
+                  eyebrow="Warehouse"
+                  basePath="/wms"
+                  tabs={TABS}
+                  inlineTabs
+                />
+              }
+            />
+          </Routes>
+        </ShellProvider>
+      </MemoryRouter>,
+    );
+  }
+  const marked = () =>
+    screen
+      .getAllByRole("tab")
+      .filter((t) => t.getAttribute("data-strip-active") === "true")
+      .map((t) => t.textContent);
+
+  it("marks the deep-linked section, and only that one", async () => {
+    renderAt("/wms/inventory");
+    await waitFor(() => expect(marked()).toEqual(["Inventory"]));
+    expect(screen.getByRole("tab", { name: "Inventory" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+  });
+
+  it("marks the first section on the hub's bare path", async () => {
+    renderAt("/wms");
+    await waitFor(() => expect(marked()).toEqual(["Locations"]));
   });
 });

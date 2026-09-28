@@ -1,5 +1,5 @@
 "use strict";
-const { insertOne, updateOne, getById, page } = require("../../../shared/db/query-helpers");
+const { insertOne, updateOne, getById, page, TOTAL_COL, splitTotal } = require("../../../shared/db/query-helpers");
 const { directionLetter, formatCode } = require("./financial_dictionary.rules");
 // Actual spend per item is NET of reconciliation reversals — see shared/finance/cost-entry-sql.
 const { netAmountSql } = require("../../../shared/finance/cost-entry-sql");
@@ -229,6 +229,113 @@ async function usageCounts(c, id) {
   return out;
 }
 
+/* ── USAGE ROWS — the lines behind each 360 tile ────────────────────────────
+ *
+ * The tiles above are `usageCounts`; these are the rows those counts count, one
+ * query per tile, so "Costings 14" opens exactly fourteen rows. Same table and
+ * the same WHERE as the count, nothing else: a filter added here and not there
+ * (hiding cancelled documents, say) would make the list disagree with the
+ * number the reader clicked. The joins are LEFT for the same reason — a line
+ * whose file is still a DRAFT has no visible file ref, but it is still counted,
+ * so it is still listed.
+ *
+ * One page at a time with the true total (`X-Total-Count`). A core charge sits
+ * on thousands of costing lines, and a list capped at "the first 200" would say
+ * "Showing 1–20 of 200" under a tile that says 3,412.
+ *
+ * Every document row has one shape — document, file, client (or supplier for a
+ * PO), line, amount — so the dialog draws all four document kinds with one
+ * table. Rates are not documents and have their own shape.
+ */
+const USAGE_DOC_SQL = {
+  costings: `
+    SELECT cl.costing_line_id AS row_id, co.costing_id AS doc_id, co.doc_number, co.status,
+           NULL::text AS doc_type, co.created_at AS doc_date, co.currency,
+           (cl.qty * cl.unit_cost) AS amount, cl.label,
+           d.dossier_id, d.ref AS dossier_ref, cm.client_id AS party_id, cm.name AS party_name,
+           ${TOTAL_COL}
+      FROM costing_line cl
+      JOIN costing co ON co.costing_id = cl.costing_id
+      LEFT JOIN dossier_visible d ON d.dossier_id = co.dossier_id
+      LEFT JOIN client_master cm ON cm.client_id = d.client_id
+     WHERE cl.dictionary_item_id = $1
+     ORDER BY co.created_at DESC, cl.costing_line_id
+     LIMIT $2 OFFSET $3`,
+  cash_requests: `
+    SELECT crl.cash_request_line_id AS row_id, cr.cash_request_id AS doc_id, cr.doc_number, cr.status,
+           NULL::text AS doc_type, cr.created_at AS doc_date, cr.currency,
+           crl.budget_amount AS amount, crl.label,
+           d.dossier_id, d.ref AS dossier_ref, cm.client_id AS party_id, cm.name AS party_name,
+           ${TOTAL_COL}
+      FROM cash_request_line crl
+      JOIN cash_request cr ON cr.cash_request_id = crl.cash_request_id
+      LEFT JOIN dossier_visible d ON d.dossier_id = cr.dossier_id
+      LEFT JOIN client_master cm ON cm.client_id = d.client_id
+     WHERE crl.dictionary_item_id = $1
+     ORDER BY cr.created_at DESC, crl.cash_request_line_id
+     LIMIT $2 OFFSET $3`,
+  // The invoice's own client first — an invoice need not have a file — then
+  // the file's. `$4` is the invoice types this viewer may see (the controller
+  // resolves it from their grants).
+  invoices: `
+    SELECT il.invoice_line_id AS row_id, inv.invoice_id AS doc_id, inv.doc_number, inv.status,
+           inv.type AS doc_type, inv.created_at AS doc_date, inv.currency,
+           (il.qty * il.unit_price) AS amount, il.label,
+           d.dossier_id, d.ref AS dossier_ref, cm.client_id AS party_id, cm.name AS party_name,
+           ${TOTAL_COL}
+      FROM invoice_line il
+      JOIN invoice inv ON inv.invoice_id = il.invoice_id
+      LEFT JOIN dossier_visible d ON d.dossier_id = inv.dossier_id
+      LEFT JOIN client_master cm ON cm.client_id = COALESCE(inv.client_id, d.client_id)
+     WHERE il.dictionary_item_id = $1 AND inv.type = ANY($4::text[])
+     ORDER BY inv.created_at DESC, il.invoice_line_id
+     LIMIT $2 OFFSET $3`,
+  // The party on a PO is the supplier it was raised on, not the file's client.
+  purchase_orders: `
+    SELECT poi.po_item_id AS row_id, po.po_id AS doc_id, po.doc_number, po.status,
+           NULL::text AS doc_type, po.created_at AS doc_date, po.currency,
+           (poi.qty * poi.unit_price) AS amount, poi.label,
+           d.dossier_id, d.ref AS dossier_ref, sm.supplier_id AS party_id, sm.name AS party_name,
+           ${TOTAL_COL}
+      FROM purchase_order_item poi
+      JOIN purchase_order po ON po.po_id = poi.po_id
+      LEFT JOIN dossier_visible d ON d.dossier_id = po.dossier_id
+      LEFT JOIN supplier_master sm ON sm.supplier_id = po.supplier_id
+     WHERE poi.dictionary_item_id = $1
+     ORDER BY po.created_at DESC, poi.po_item_id
+     LIMIT $2 OFFSET $3`,
+};
+
+/** Open rates first (the ones in use), then newest first. */
+const USAGE_RATES_SQL = `
+    SELECT er.expense_rate_id AS row_id, er.rate, er.currency, er.effective_from, er.effective_to, er.note,
+           rp.name AS provider_name, rp.kind AS provider_kind,
+           ct.code AS container_type_code, COALESCE(ct.name_en, ct.name_fr) AS container_type_name,
+           ${TOTAL_COL}
+      FROM expense_rate er
+      LEFT JOIN rate_provider rp ON rp.rate_provider_id = er.rate_provider_id
+      LEFT JOIN dictionary_ref ct ON ct.ref_id = er.container_type_ref_id
+     WHERE er.dictionary_item_id = $1
+     ORDER BY (er.effective_to IS NULL) DESC, er.effective_from DESC, er.expense_rate_id
+     LIMIT $2 OFFSET $3`;
+
+/**
+ * One page of the rows behind one usage tile, plus the true total.
+ * `invoiceTypes` is only read for `invoices`.
+ */
+async function usageRows(c, id, kind, q = {}, { invoiceTypes = [] } = {}) {
+  const { limit, offset } = page(q);
+  if (kind === "rates") {
+    const { rows } = await c.query(USAGE_RATES_SQL, [id, limit, offset]);
+    return splitTotal(rows);
+  }
+  const sql = USAGE_DOC_SQL[kind];
+  if (!sql) return { rows: [], total: 0 };
+  const params = kind === "invoices" ? [id, limit, offset, invoiceTypes] : [id, limit, offset];
+  const { rows } = await c.query(sql, params);
+  return splitTotal(rows);
+}
+
 /* ── SPEND OVER A PERIOD — three lenses, one item, grouped by month ─────────
  *
  * Each lens reads the document that owns that stage of the money, and dates it
@@ -310,16 +417,14 @@ async function spendActual(c, id, from, to, dossierId = null) {
 }
 
 /**
- * The documents behind the numbers — what a drill-in opens.
- *
- * Deliberately capped and ordered newest-first rather than paged: this is the
- * "show me the receipts" list under a chart, not a browsable ledger. The module
- * that owns each document is where a user goes to page through them, and each
- * row carries the ref the deep-link needs.
+ * The four lenses' rows as one set — `$1` item, `$2`/`$3` the window, `$5` one
+ * operations file or NULL. Shared by the capped list under the Spend chart and
+ * by the paged drill-in its tiles open, so the two cannot disagree about which
+ * documents a lens holds. Each branch is its lens's SUM query (`spendEstimated`,
+ * `spendCommitted`, `spendActual`) with the same table, statuses and date, one
+ * row per line — which is why a lens's row count is the count on its tile.
  */
-async function spendDocuments(c, id, from, to, limit = 100, dossierId = null) {
-  const { rows } = await c.query(
-    `SELECT * FROM (
+const SPEND_DOCS_UNION = `
        SELECT 'estimated' AS lens, 'costing' AS doc_type, co.costing_id AS doc_id,
               co.doc_number, co.status, co.dossier_id, d.ref AS dossier_ref,
               (cl.qty * cl.unit_cost) AS amount, co.currency, co.created_at::date AS doc_date, cl.label
@@ -356,10 +461,38 @@ async function spendDocuments(c, id, from, to, limit = 100, dossierId = null) {
           AND COALESCE(je.entry_date, ce.created_at::date) >= $2::date
           AND COALESCE(je.entry_date, ce.created_at::date) <= $3::date
           AND ($5::uuid IS NULL OR ce.dossier_id = $5::uuid)
-     ) docs ORDER BY doc_date DESC, lens LIMIT $4`,
+`;
+
+/**
+ * The documents behind the numbers — the list under the Spend chart.
+ *
+ * Deliberately capped and ordered newest-first rather than paged: this is the
+ * "show me the receipts" list under a chart, not a browsable ledger. The tiles
+ * above it open the paged version (`spendDocumentsPage`) for the whole set.
+ */
+async function spendDocuments(c, id, from, to, limit = 100, dossierId = null) {
+  const { rows } = await c.query(
+    `SELECT * FROM (${SPEND_DOCS_UNION}) docs ORDER BY doc_date DESC, lens LIMIT $4`,
     [id, from, to, limit, dossierId],
   );
   return rows;
+}
+
+/**
+ * One page of the same documents, optionally one lens, with the true total —
+ * what the Spend tab's tiles open. `lens` NULL is every lens (the Documents
+ * tile). Ordered as the capped list is, with the id as the tie-break a stable
+ * page needs.
+ */
+async function spendDocumentsPage(c, id, from, to, { lens = null, dossierId = null, limit, offset }) {
+  const { rows } = await c.query(
+    `SELECT *, ${TOTAL_COL} FROM (${SPEND_DOCS_UNION}) docs
+      WHERE ($6::text IS NULL OR lens = $6::text)
+      ORDER BY doc_date DESC, lens, doc_id
+      LIMIT $4 OFFSET $7`,
+    [id, from, to, limit, dossierId, lens, offset],
+  );
+  return splitTotal(rows);
 }
 
 /* ── COST EVOLUTION — the effective-dated rate history per item + provider ─── */
@@ -428,8 +561,8 @@ const getRef = (c, id) => getById(c, "dictionary_ref", "ref_id", id);
 module.exports = {
   createItem, createRule, updateItem, getItem, getItemRow, nextCode,
   listRules, deleteRules, listTiers, replaceTiers,
-  listItems, searchItems, usageCounts,
-  spendEstimated, spendCommitted, spendActual, spendDocuments,
+  listItems, searchItems, usageCounts, usageRows,
+  spendEstimated, spendCommitted, spendActual, spendDocuments, spendDocumentsPage,
   rateHistory, openRate, insertRate, expireRate,
   postableAccounts, taxCodeIndex, serviceTypeIndex,
   listRefs, createRef, updateRef, getRef,

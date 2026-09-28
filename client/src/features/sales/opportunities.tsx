@@ -44,6 +44,7 @@ import { Segmented } from "@/components/ui/segmented";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { DropdownMenu, DropdownItem } from "@/components/ui/dropdown-menu";
 import { OpportunityForm, WinModal } from "./opportunity-forms";
+import { useFocusOpen } from "@/lib/use-focus-row";
 
 /* ═══════════════════════════════ OPPORTUNITIES ═══════════════════════════════ */
 
@@ -120,6 +121,12 @@ export function OpportunitiesPage() {
   const [rowError, setRowError] = React.useState<string | null>(null);
   const [dragId, setDragId] = React.useState<string | null>(null);
   const [dragOver, setDragOver] = React.useState<string | null>(null);
+  // `?focus=<opportunity_id>` — a lead 360's deal rows land on THAT deal. A
+  // deal's own view on this page is its dialog, so that is what opens.
+  useFocusOpen(opps, (o) => String(o.opportunity_id), (o) => {
+    setEditing(o);
+    setFormOpen(true);
+  });
 
   /** The filters the list, the KPI row and the CSV export all share. */
   const query = React.useCallback(() => {

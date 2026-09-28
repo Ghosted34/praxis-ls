@@ -17,7 +17,11 @@ module.exports = {
 
   async list(client, q) {
     const rows = await repo.list(client, q);
-    return rows.map((r) => ({ ...r, discrepancy_summary: summariseDiscrepancy(r.discrepancy) }));
+    const out = rows.map((r) => ({ ...r, discrepancy_summary: summariseDiscrepancy(r.discrepancy) }));
+    // `map` drops the repo's non-enumerable total; carry it across.
+    Object.defineProperty(out, "_total", { value: rows._total, enumerable: false });
+    Object.defineProperty(out, "_page", { value: rows._page, enumerable: false });
+    return out;
   },
   async get(client, id) {
     const row = await repo.findById(client, id);

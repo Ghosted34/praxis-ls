@@ -421,6 +421,29 @@ export type Dossier = {
 export const getDossier = (id: string) =>
   tenant<Dossier>(`/treasury-accounts/${id}/360`);
 
+/* ── The lines behind the 360's movement tiles (GET /:id/lines) ─────────────
+ * Validated ledger lines on the account's GL leaf — the rows the Debits,
+ * Credits, This month and This year figures are added up from. One page at a
+ * time; read with `useListPaged`, passing `side` / `period` as its filters. */
+export type TreasuryLineSide = "debit" | "credit";
+export type TreasuryLinePeriod = "all" | "mtd" | "ytd";
+export const treasuryLinesPath = (id: string) =>
+  `/treasury-accounts/${encodeURIComponent(id)}/lines`;
+export type TreasuryLine = {
+  line_id: string;
+  entry_id: string;
+  entry_date: string;
+  entry_no: number;
+  description: string | null;
+  source_doc_ref: string | null;
+  journal_code: string;
+  debit: string | number;
+  credit: string | number;
+  currency: string;
+  dossier_id: string | null;
+  dossier_ref: string | null;
+};
+
 export const reverseEntry = (accountId: string, entryId: string, reason: string) =>
   tenant<{ reversal_entry_id: string; entry: unknown }>(
     `/treasury-accounts/${encodeURIComponent(accountId)}/reverse-entry`,

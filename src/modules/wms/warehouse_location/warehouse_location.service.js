@@ -24,7 +24,9 @@ module.exports = {
     const row = await repo.findById(client, id);
     if (!row) return null;
     const occ = await repo.occupancy(client, id);
-    return { ...withLabel(row), occupancy: occ };
+    // The 360's tiles — counted over every row at this slot (see repo.stats).
+    const stats = await repo.stats(client, id);
+    return { ...withLabel(row), occupancy: occ, stats };
   },
 
   async create(client, { data, actor = {} }) {

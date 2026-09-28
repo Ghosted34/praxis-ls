@@ -1,6 +1,7 @@
 "use strict";
 const service = require("./treasury_account.service");
 const { asyncHandler, AppError } = require("../../../utils/errors");
+const { sendPaged } = require("../../../shared/http/paged");
 const actor = (req) => req.user || { user_id: null };
 
 // Explicit field lists. The zod validator already strips unknown keys, but
@@ -184,6 +185,19 @@ module.exports = {
   }),
 
   // 360 aggregation — one call feeds the whole dossier page.
+  // One page of the validated ledger lines behind a 360 movement tile
+  // (Debits, Credits, This month, This year); the total rides X-Total-Count.
+  lines: asyncHandler(async (req, res) => {
+    const treasury360 = require("../treasury-360.service");
+    const r = await req.tenantDb((c) => treasury360.movementLines(c, {
+      id: req.params.id,
+      side: req.query.side || null,
+      period: req.query.period || "all",
+      q: req.query,
+    }));
+    if (!r) throw new AppError("NOT_FOUND", "Treasury account not found", 404);
+    sendPaged(res, r);
+  }),
   dossier: asyncHandler(async (req, res) => {
     const treasury360 = require("../treasury-360.service");
     const data = await req.tenantDb((c) => treasury360.load(c, {

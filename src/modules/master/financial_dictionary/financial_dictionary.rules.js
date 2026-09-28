@@ -231,16 +231,23 @@ function spendSeries(months, byLens = {}) {
  * why `asOf` is a parameter rather than `now()` baked in.
  */
 function rateTimeline(rates = [], asOf = null) {
-  const on = isDay(asOf) ? asOf : dayOf(new Date());
-  const t = Date.parse(on);
   return [...rates]
     .filter((r) => r && r.effective_from)
     .sort((a, b) => Date.parse(a.effective_from) - Date.parse(b.effective_from))
-    .map((r) => {
-      const from = Date.parse(r.effective_from);
-      const to = r.effective_to ? Date.parse(r.effective_to) : Infinity;
-      return { ...r, rate: n(r.rate), in_force: from <= t && t <= to, superseded: !!r.effective_to };
-    });
+    .map((r) => ({ ...r, rate: n(r.rate), ...rateState(r, asOf) }));
+}
+
+/**
+ * One rate row's state at `asOf` (today when absent) — the window above, for a
+ * row on its own. The 360's Rates drill-in lists rows a page at a time rather
+ * than as a timeline, and must still call "in force" exactly what the Cost &
+ * evolution tab calls it.
+ */
+function rateState(r, asOf = null) {
+  const t = Date.parse(isDay(asOf) ? asOf : dayOf(new Date()));
+  const from = r && r.effective_from ? Date.parse(r.effective_from) : NaN;
+  const to = r && r.effective_to ? Date.parse(r.effective_to) : Infinity;
+  return { in_force: from <= t && t <= to, superseded: !!(r && r.effective_to) };
 }
 
 /**
@@ -553,7 +560,7 @@ module.exports = {
   // spend
   SPEND_LENSES, normalisePeriod, monthKeys, spendSeries,
   // cost evolution
-  rateTimeline, rateTrend, dayBefore,
+  rateTimeline, rateState, rateTrend, dayBefore,
   // compliance
   proofObligation, missingProof, proofMessage,
   // import

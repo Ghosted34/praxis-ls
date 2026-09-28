@@ -264,7 +264,8 @@
       "module_key": "MOD-09",
       "purpose": "Full dossier for a single treasury account — Overview, Statement, Reconciliation, Sub-account (CoA leaf), Signatories, Documents, Timeline. Each manifest action is declared on exactly one screen (ai-readiness): `get_treasury_account` is the dossier's unique read, `list_treasury_accounts` / `list_treasury_categories` live on the list page above.",
       "actions": [
-        "get_treasury_account"
+        "get_treasury_account",
+        "treasury_account_lines"
       ]
     },
     {
@@ -351,6 +352,11 @@
         "get_dictionary_item",
         "create_dictionary_item",
         "update_dictionary_item",
+        "dictionary_item_costing_lines",
+        "dictionary_item_cash_request_lines",
+        "dictionary_item_invoice_lines",
+        "dictionary_item_purchase_order_lines",
+        "dictionary_item_spend_documents",
         "dictionary_rate_history"
       ]
     },

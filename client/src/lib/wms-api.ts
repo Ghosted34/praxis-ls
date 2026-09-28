@@ -147,6 +147,27 @@ export const setEquipmentStatus = (
   });
 
 export const listLocations = () => tenant<WarehouseLocation[]>("/locations");
+
+/**
+ * What one slot holds, counted over EVERY row at it by the server — the
+ * location 360's tiles. (They used to be counted in the browser from the
+ * tenant's first 50 stock lines, which under-counted any warehouse past 50.)
+ */
+export type LocationStats = {
+  items: number;
+  on_hand: number;
+  equipment: number;
+  cycle_counts: number;
+};
+export type LocationDetail = WarehouseLocation & { stats: LocationStats };
+export const getLocation = (id: string) =>
+  tenant<LocationDetail>(`/locations/${encodeURIComponent(id)}`);
+
+/** The lists the 360 reads one slot of, with `useListPaged` and a
+ *  `location_id` filter: each stays behind its own module's permission. */
+export const INVENTORY_PATH = "/inventory";
+export const EQUIPMENT_PATH = "/equipment";
+export const CYCLE_COUNTS_PATH = "/cycle-counts";
 export const createLocation = (body: {
   zone?: string;
   aisle?: string;

@@ -56,3 +56,45 @@ function cssEscape(s: string): string {
   if (globalCss?.escape) return globalCss.escape(s);
   return s.replace(/["\\]/g, "\\$&");
 }
+
+/**
+ * `?focus=<id>` for a page whose record opens as a DIALOG from its list —
+ * Proposals, Meetings — rather than as a highlighted row or a route.
+ *
+ * A 360's drill-in lands here with the id of the proposal or meeting the reader
+ * clicked. Without this the page ignored it and showed its list, so the click
+ * "worked" and still left the reader hunting for the row. Once the list holding
+ * the row has loaded, `open(row)` is called exactly once for that id and the
+ * parameter is dropped (`replace`), so closing the dialog does not reopen it and
+ * a reload does not drag the reader back to it.
+ *
+ * Only a row the page has LOADED is opened: a list reads its most recent page,
+ * and a drill-in links to recent records, so in practice it is there. When it
+ * is not, the parameter is dropped and the list is shown — no request to go
+ * wrong, and no dialog built from a half-shaped record.
+ */
+export function useFocusOpen<T>(
+  rows: readonly T[] | null | undefined,
+  idOf: (row: T) => string,
+  open: (row: T) => void,
+) {
+  const [params, setParams] = useSearchParams();
+  const focusId = params.get("focus");
+  const handled = React.useRef<string | null>(null);
+  // Inline arrows at every call site — held in refs rather than taken as deps,
+  // the same reasoning as `useRecordParam`.
+  const idOfRef = React.useRef(idOf);
+  idOfRef.current = idOf;
+  const openRef = React.useRef(open);
+  openRef.current = open;
+
+  React.useEffect(() => {
+    if (!focusId || rows == null || handled.current === focusId) return;
+    handled.current = focusId;
+    const hit = rows.find((r) => idOfRef.current(r) === focusId);
+    if (hit) openRef.current(hit);
+    const next = new URLSearchParams(params);
+    next.delete("focus");
+    setParams(next, { replace: true });
+  }, [focusId, rows, params, setParams]);
+}

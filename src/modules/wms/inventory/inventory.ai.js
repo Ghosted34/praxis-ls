@@ -10,7 +10,7 @@ module.exports = {
   screens: ["inventory"],
 
   reads: [
-    { key: "list_inventory", service: service.list, permission: { module: "MOD-35", action: "view" }, describe: "List inventory items (stock on hand)." },
+    { key: "list_inventory", service: service.list, permission: { module: "MOD-35", action: "view" }, describe: "List inventory items (stock on hand). Params: location_id (optional — one slot's stock), sort (created_at | sku | qty_on_hand, prefix - for descending), limit, offset." },
     { key: "get_inventory", service: service.get, permission: { module: "MOD-35", action: "view" }, describe: "Get one inventory item by id." },
     { key: "list_movements", service: service.listMovements, permission: { module: "MOD-35", action: "view" }, describe: "List the stock-movement journal for an item." },
   ],

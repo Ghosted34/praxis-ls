@@ -4,12 +4,20 @@
  */
 "use strict";
 const { makeRepo } = require("../../../shared/crud/resource");
-const { page } = require("../../../shared/db/query-helpers");
+const { page, TOTAL_COL, splitTotal } = require("../../../shared/db/query-helpers");
 
 const base = makeRepo({ table: "wms_equipment", pk: "wms_equipment_id", activeColumn: null, searchColumn: "label", orderBy: "created_at DESC",
   // API F-29: explicit allow-list; anything else is refused, not interpolated.
   sortable: ["created_at", "label"],
 });
+
+/** The rows, carrying the match count the shared controller sends as
+ *  `meta.total` — without it a client paging this list sees no total. */
+function withTotal({ rows, total }, pg) {
+  Object.defineProperty(rows, "_total", { value: total, enumerable: false });
+  Object.defineProperty(rows, "_page", { value: pg, enumerable: false });
+  return rows;
+}
 
 module.exports = {
   ...base,
@@ -22,14 +30,14 @@ module.exports = {
     if (q.q) { params.push("%" + q.q + "%"); wh.push("we.label ILIKE $" + params.length); }
     const where = wh.length ? "WHERE " + wh.join(" AND ") : "";
     const { rows } = await client.query(
-      `SELECT we.*, wl.zone, wl.aisle, wl.rack, wl.bin
+      `SELECT we.*, wl.zone, wl.aisle, wl.rack, wl.bin, ${TOTAL_COL}
          FROM wms_equipment we
          LEFT JOIN warehouse_location wl ON wl.location_id = we.location_id
          ${where}
-        ORDER BY we.label
+        ORDER BY we.label, we.wms_equipment_id
         LIMIT $1 OFFSET $2`,
       params,
     );
-    return rows;
+    return withTotal(splitTotal(rows), { limit, offset });
   },
 };

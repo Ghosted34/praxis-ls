@@ -71,6 +71,28 @@ export type TabItem = {
   count?: React.ReactNode;
 };
 
+/**
+ * The value of the enclosing `<TabsRoot>`, for a `<TabList>` that is not told
+ * which tab is active.
+ *
+ * WHY THIS EXISTS. The active tab is styled — underlined, bold, foreground —
+ * off `data-strip-active`, and the strip scrolls whichever trigger carries it
+ * into view. Radix knows which tab is active but says so in its own
+ * `data-state`, which the shared trigger classes deliberately do not read (see
+ * `TAB_TRIGGER`). So `TabList` has to put `data-strip-active` on the right
+ * trigger itself, and it only could when the caller passed `activeKey`.
+ *
+ * Every standalone `<TabList>` in the app omitted it — the hub strip, the
+ * milestones views, the inbox record drawer, the scaffold screens — so on
+ * every one of them NO tab was marked: nothing was highlighted, and on a phone
+ * the strip never scrolled to the section you were on. The master-data hub
+ * opened on "Financial dictionary" with Clients / Suppliers / Corporate
+ * entities / Treasury on screen, none of them lit, and the tab you were on
+ * scrolled off the right-hand edge. A caller cannot forget this now: the Root
+ * already holds the value, and the list reads it.
+ */
+const ActiveTabContext = React.createContext<string | undefined>(undefined);
+
 /** The strip on its own, for hubs that render their panel elsewhere (TabbedHub
  *  publishes the bar through context and each page draws its own body). */
 export function TabList({
@@ -87,16 +109,19 @@ export function TabList({
   /** Pin under the app bar on a phone. Used by the 360 sheets, where the tab
    *  strip is the only way back to another section of a long record. */
   sticky?: boolean;
-  /** Forwarded to `<ScrollStrip>` so a deep link lands with its tab in view.
-   *  Defaults to the active tab's value; pass `null` to switch it off. */
+  /** The tab to mark active and bring into view. Defaults to the enclosing
+   *  `<TabsRoot>`'s value, which is right everywhere today; pass `null` to keep
+   *  the highlight but stop the strip scrolling to it. */
   activeKey?: string | null;
 }) {
+  const rootValue = React.useContext(ActiveTabContext);
+  const current = activeKey ?? rootValue;
   return (
     <RadixTabs.List asChild aria-label={label}>
       <ScrollStrip
         className={cn("mb-4", className)}
         sticky={sticky}
-        activeKey={activeKey === undefined ? undefined : (activeKey ?? null)}
+        activeKey={activeKey === null ? undefined : current}
       >
         {tabs.map((t) => (
           <RadixTabs.Trigger
@@ -106,7 +131,7 @@ export function TabList({
             // `ScrollStrip` reads this to centre the tab you are on — including
             // on first paint, so `?tab=Renewals` opens with Renewals visible
             // rather than scrolled off the right-hand edge.
-            data-strip-active={t.value === activeKey ? "true" : undefined}
+            data-strip-active={t.value === current ? "true" : undefined}
             className={TAB_TRIGGER}
           >
             {t.label}
@@ -171,7 +196,33 @@ export function Tabs({
   );
 }
 
-/** Re-exported so a hub can compose Root/List/Content itself when the panel
- *  cannot live next to the strip. Prefer `<Tabs>` where it fits. */
-export const TabsRoot = RadixTabs.Root;
+/**
+ * Radix's Root, plus the one thing a `<TabList>` placed away from it needs: the
+ * active value, on context (see `ActiveTabContext`). For a hub that composes
+ * Root/List/Content itself because the panel cannot live next to the strip.
+ * Prefer `<Tabs>` where it fits.
+ *
+ * Uncontrolled use (`defaultValue`) is tracked too, so the strip is marked
+ * whichever way the Root is driven.
+ */
+export const TabsRoot = React.forwardRef<
+  React.ElementRef<typeof RadixTabs.Root>,
+  React.ComponentPropsWithoutRef<typeof RadixTabs.Root>
+>(function TabsRoot({ value, defaultValue, onValueChange, ...rest }, ref) {
+  const [uncontrolled, setUncontrolled] = React.useState(defaultValue);
+  return (
+    <ActiveTabContext.Provider value={value ?? uncontrolled}>
+      <RadixTabs.Root
+        ref={ref}
+        value={value}
+        defaultValue={defaultValue}
+        onValueChange={(v) => {
+          setUncontrolled(v);
+          onValueChange?.(v);
+        }}
+        {...rest}
+      />
+    </ActiveTabContext.Provider>
+  );
+});
 export const TabsContent = RadixTabs.Content;

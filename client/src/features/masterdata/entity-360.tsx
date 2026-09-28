@@ -73,7 +73,11 @@ import { reportActionError } from "@/lib/action-error";
 import { pageShell } from "@/lib/layout";
 import { entityCommon } from "@shared";
 import * as api from "@/lib/masterdata-api";
-import { EntityKpiDrill, type EntityKpiKind } from "./entity-kpi-drill";
+import {
+  EntityKpiDrill,
+  RenewalsDrill,
+  type EntityKpiKind,
+} from "./entity-kpi-drill";
 
 const LIFECYCLE_TONE: Record<string, Tone> = {
   DRAFT: "mute",
@@ -1332,6 +1336,10 @@ export function EntityDossier({
   // it in app.tsx); the TAB was not, so a link that meant "the P.O. Box is
   // missing" landed on Overview with eleven tabs to guess from.
   const [tab, setTab] = useUrlTab<Tab>(TABS, "Overview");
+  // Which renewal tile's items are open, if any (RenewalsDrill).
+  const [renewalDrill, setRenewalDrill] = React.useState<
+    api.RenewalItem["state"] | null
+  >(null);
   // The field list is no longer carried in this state: it depends on lookups
   // fetched when the modal opens, so only the collection, the title and the row
   // being edited live here.
@@ -2228,13 +2236,32 @@ export function EntityDossier({
             <ErrorState message={errMsg(datedRenewals.error)} />
           )}
           <KpiRow stack>
-            <KpiTile label={tr("Expired")} value={num(renewalsView.counts.expired)} />
-            <KpiTile label="Due now" value={num(renewalsView.counts.due)} />
+            <KpiTile
+              label={tr("Expired")}
+              value={num(renewalsView.counts.expired)}
+              onClick={() => setRenewalDrill("EXPIRED")}
+            />
+            <KpiTile
+              label="Due now"
+              value={num(renewalsView.counts.due)}
+              onClick={() => setRenewalDrill("DUE")}
+            />
             <KpiTile
               label="Approaching"
               value={num(renewalsView.counts.approaching)}
+              onClick={() => setRenewalDrill("APPROACHING")}
             />
           </KpiRow>
+          {renewalDrill && (
+            <RenewalsDrill
+              state={renewalDrill}
+              entityName={
+                d.data.entity.legal_name || d.data.entity.code || "Entity"
+              }
+              renewals={renewalsView}
+              onClose={() => setRenewalDrill(null)}
+            />
+          )}
           <MiniTable
             empty={renewalsView.items.length === 0}
             head={

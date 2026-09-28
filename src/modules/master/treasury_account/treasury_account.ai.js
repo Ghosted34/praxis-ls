@@ -6,6 +6,9 @@ module.exports = {
   reads: [
     { key: "list_treasury_accounts", service: service.list, permission: { module: "MOD-09", action: "view" }, describe: "List treasury accounts (bank/cash/MoMo)." },
     { key: "get_treasury_account", service: service.get, permission: { module: "MOD-09", action: "view" }, describe: "Get a treasury account by id." },
+    // The ledger lines behind the account 360's movement tiles (Debits, Credits,
+    // This month, This year) — the same rows those sums are added up from.
+    { key: "treasury_account_lines", service: (c, p) => require("../treasury-360.service").movementLines(c, { id: p.treasury_account_id, side: p.side || null, period: p.period || "all", q: p }), permission: { module: "MOD-09", action: "view" }, describe: "Validated ledger lines posted to a treasury account's GL leaf, newest first. Params: treasury_account_id, side ('debit' | 'credit', optional), period ('all' | 'mtd' | 'ytd', default all), limit (≤100), offset. Returns { rows, total }." },
   ],
   writes: [
     { key: "create_treasury_account", service: (c, p, actor) => (({ entity_id, category_id, ...body }) => service.create(c, { entityId: entity_id, categoryId: category_id, ...body, actor }))(p), schema: validator.schemas.create, permission: { module: "MOD-09", action: "create" }, confirm: true, describe: "Add a treasury account mapped to a class-5 GL account." },

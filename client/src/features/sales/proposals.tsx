@@ -21,6 +21,7 @@ import { StatusPill } from "@/components/ui/pill";
 import { Chips } from "@/components/ui/chips";
 import { ProposalForm } from "./proposal-forms";
 import { ProposalDetail } from "./proposal-detail";
+import { useFocusOpen } from "@/lib/use-focus-row";
 
 /* ═══════════════════════════════════ PROPOSALS ═══════════════════════════════════ */
 
@@ -65,6 +66,9 @@ export function ProposalsPage() {
   const [formOpen, setFormOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<Row | null>(null);
   const [detail, setDetail] = React.useState<Row | null>(null);
+  // `?focus=<proposal_id>` — a lead 360's Proposals drill-in opens the one the
+  // reader clicked rather than the whole register.
+  useFocusOpen(rows, (r) => String(r.proposal_id), setDetail);
 
   const clientName = React.useMemo(
     () =>

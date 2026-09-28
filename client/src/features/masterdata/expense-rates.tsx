@@ -32,6 +32,7 @@
  * dictionary_ref elsewhere in the product.
  */
 import * as React from "react";
+import { useSearchParams } from "react-router-dom";
 import { tr } from "@/lib/i18n";
 import { IndexRow } from "@/components/ui/index-row";
 import { ScreenAi } from "@/components/screen-ai";
@@ -718,7 +719,23 @@ export function ExpenseRatesPage() {
       }),
     [q, dir],
   );
-  const [selId, setSelId] = React.useState<string | null>(null);
+  // `?focus=<dictionary_item_id>` opens that line — how the dictionary 360's
+  // Rates tile lands here on the line it was showing rather than on the first
+  // one. Read once, as the starting selection: the rail owns it after that, and
+  // the parameter is dropped the moment the reader picks or closes something,
+  // so a reload does not drag them back to a line they have moved on from.
+  const [params, setParams] = useSearchParams();
+  const [selId, setSelIdState] = React.useState<string | null>(() =>
+    params.get("focus"),
+  );
+  const setSelId = (next: string | null) => {
+    setSelIdState(next);
+    if (params.has("focus")) {
+      const p = new URLSearchParams(params);
+      p.delete("focus");
+      setParams(p, { replace: true });
+    }
+  };
   const [settings, setSettings] = React.useState(false);
 
   const rows = React.useMemo(() => list.data || [], [list.data]);
@@ -726,7 +743,7 @@ export function ExpenseRatesPage() {
   // where it is a full-screen sheet over the list (SplitPane onClose).
   React.useEffect(() => {
     if (!selId && rows.length && isDesktopNow())
-      setSelId(rows[0].dictionary_item_id);
+      setSelIdState(rows[0].dictionary_item_id);
   }, [rows, selId]);
   const selected = rows.find((r) => r.dictionary_item_id === selId) || null;
 

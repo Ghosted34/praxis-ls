@@ -135,6 +135,14 @@ const schemas = {
   }),
   gatewayActive: z.object({ active: z.boolean() }),
   gatewayRole:   z.object({ role: z.string().min(1).max(64) }),
+  // The 360's movement drill-ins (GET /:id/lines). `period` is named, not a
+  // date: the server works out "this month" the same way the tile's sum does.
+  linesQuery: z.object({
+    side: z.enum(["debit", "credit"]).optional(),
+    period: z.enum(["all", "mtd", "ytd"]).optional(),
+    limit: z.coerce.number().int().min(1).max(100).optional(),
+    offset: z.coerce.number().int().min(0).optional(),
+  }),
 };
 
 const mw = (k) => (req, _res, next) => {
@@ -144,7 +152,16 @@ const mw = (k) => (req, _res, next) => {
   return next();
 };
 
+/** Query-string twin of `mw`. */
+const qmw = (k) => (req, _res, next) => {
+  const p = schemas[k].safeParse(req.query);
+  if (!p.success) return next(new AppError("VALIDATION_ERROR", "Invalid query", 422, p.error.flatten().fieldErrors));
+  req.query = { ...req.query, ...p.data };
+  return next();
+};
+
 module.exports = {
+  linesQuery: qmw("linesQuery"),
   create: mw("create"), update: mw("update"), setActive: mw("setActive"),
   reverseEntry: mw("reverseEntry"),
   createDocument: mw("createDocument"),

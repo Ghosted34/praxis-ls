@@ -11,7 +11,7 @@ module.exports = {
 
   reads: [
     { key: "list_locations", service: service.list, permission: { module: "MOD-34", action: "view" }, describe: "List warehouse locations (zone/aisle/rack/bin/yard)." },
-    { key: "get_location", service: service.get, permission: { module: "MOD-34", action: "view" }, describe: "Get one location by id." },
+    { key: "get_location", service: service.get, permission: { module: "MOD-34", action: "view" }, describe: "Get one location by id, with its occupancy and stats: items stored, total quantity on hand, equipment and cycle counts at the slot." },
   ],
 
   writes: [

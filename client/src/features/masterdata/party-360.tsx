@@ -47,7 +47,7 @@ import {
   KpiDetailsModal,
   type KpiDetailHeader,
   type KpiDetailRow,
-} from "./kpi-details-modal";
+} from "@/components/kpi-details-modal";
 
 // Deep-link targets (§3.1) — the real hub-section routes confirmed in
 // src/app/app.tsx. A `focus` query hints the record to the destination list,
@@ -1137,7 +1137,7 @@ function PendingChangesCard({
   );
 }
 
-/* The KPI drill-in dialog itself lives in ./kpi-details-modal — the entity
+/* The KPI drill-in dialog itself lives in components/kpi-details-modal — the entity
  * dossier opens the same one. The row derivation below is party-specific. */
 /** Which KPI a click opened — one of the four tiles per party kind. The
  *  "Credit available" tile deliberately has no drill-in (there are no rows to

@@ -17,6 +17,8 @@ import { ScreenAi } from "@/components/screen-ai";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { useResource, useList, errMsg } from "@/lib/use-resource";
 import * as api from "@/lib/wms-api";
+import { useFocusRow } from "@/lib/use-focus-row";
+import { cn } from "@/lib/cn";
 import { reportActionError } from "@/lib/action-error";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -187,6 +189,10 @@ function NewEquipmentForm({
 export function EquipmentPage() {
   const equipment = useResource(() => api.listEquipment(), []);
   const locs = useResource(() => api.listLocations(), []);
+  // `?focus=<wms_equipment_id>` — a location 360's drill-in lands on that card:
+  // scrolled into view (`[data-row-key]`) and ringed. The board has no detail
+  // view to open; the card, with its actions, is the record.
+  const { focusId } = useFocusRow(equipment.data);
   const { rows: users } = useList<Usr>("/users");
   const [checkout, setCheckout] = React.useState<api.Equipment | null>(null);
   const [creating, setCreating] = React.useState(false);
@@ -308,7 +314,12 @@ export function EquipmentPage() {
                   (byStatus[col] || []).map((e) => (
                     <div
                       key={e.wms_equipment_id}
-                      className="rounded-md border bg-card p-3"
+                      data-row-key={e.wms_equipment_id}
+                      className={cn(
+                        "rounded-md border bg-card p-3",
+                        focusId === e.wms_equipment_id &&
+                          "ring-2 ring-ring ring-offset-1 ring-offset-background",
+                      )}
                     >
                       <div className="text-sm font-medium text-foreground">
                         {e.label}

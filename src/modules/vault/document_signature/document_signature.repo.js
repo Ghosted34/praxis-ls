@@ -86,9 +86,13 @@ async function supersedeLive(client, { entityRef, signReason = null, actorUserId
     where += " AND sign_reason = $4";
   }
   const { rows } = await client.query(
+    // ck_sig_revocation needs revoked_by whenever revoked_at is set. The actor
+    // can resolve to null in SANDBOX (a LIVE user absent from that schema —
+    // resolveActorId), so it falls back to the seal's own signer rather than
+    // failing the unlock that asked for the supersession.
     `UPDATE document_signature
-        SET revoked_at = now(), revoked_by = $2, revoke_reason = $3
-      WHERE ${where}
+        SET revoked_at = now(), revoked_by = COALESCE($2, signer_user_id), revoke_reason = $3
+      WHERE ${where} AND COALESCE($2, signer_user_id) IS NOT NULL
       RETURNING signature_id`,
     params,
   );

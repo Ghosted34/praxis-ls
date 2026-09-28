@@ -22,29 +22,49 @@
 --      types can carry two parties signing for the same reason.
 -- ============================================================================
 
+-- ── CORRECTED 28 Sep 2026 ──────────────────────────────────────────────────
+-- The first version set revoked_at without revoked_by, and ck_sig_revocation
+-- (10771) requires both or neither. It passed wherever there was nothing to
+-- supersede and failed on smartls [sandbox], which held SBX-CST-2026-0001's six
+-- seals; that scope rolled back and re-runs this file as it is now. The scopes
+-- that already applied it had no rows to update, so the correction changes
+-- nothing there — re-stamp them with
+--   node scripts/db/mark-migration-applied.js --scope=live --file=tenant/14190_costing_one_seal_per_step.sql --all-tenants --rehash
+-- (and --scope=sandbox for the tenants whose sandbox succeeded).
+--
+-- revoked_by is the person the supersession belongs to: whoever unlocked the
+-- costing (1a) or signed the newer seal for the step (1b), falling back to the
+-- superseded seal's own signer — all rows of app_user in THIS schema already.
+
 -- 1a. Seals from before the last unlock.
 UPDATE document_signature s
    SET revoked_at = now(),
+       revoked_by = COALESCE(c.unlocked_by, s.signer_user_id),
        revoke_reason = 'Superseded: the costing was unlocked for amendment'
   FROM costing c
  WHERE s.doc_type = 'COSTING'
    AND s.revoked_at IS NULL
    AND s.entity_ref = 'costing:' || c.costing_id::text
    AND c.unlocked_at IS NOT NULL
-   AND s.signed_at < c.unlocked_at;
+   AND s.signed_at < c.unlocked_at
+   AND COALESCE(c.unlocked_by, s.signer_user_id) IS NOT NULL;
 
 -- 1b. Anything still doubled: keep the newest per (costing, step).
 UPDATE document_signature s
    SET revoked_at = now(),
+       revoked_by = COALESCE(d.newest_signer, s.signer_user_id),
        revoke_reason = 'Superseded: a newer seal records this step'
   FROM (
     SELECT signature_id,
-           row_number() OVER (PARTITION BY entity_ref, sign_reason ORDER BY signed_at DESC, created_at DESC) AS rn
+           row_number() OVER w AS rn,
+           first_value(signer_user_id) OVER w AS newest_signer
       FROM document_signature
      WHERE doc_type = 'COSTING' AND revoked_at IS NULL AND sign_reason IS NOT NULL
+    WINDOW w AS (PARTITION BY entity_ref, sign_reason ORDER BY signed_at DESC, created_at DESC)
   ) d
  WHERE s.signature_id = d.signature_id
-   AND d.rn > 1;
+   AND d.rn > 1
+   AND COALESCE(d.newest_signer, s.signer_user_id) IS NOT NULL;
 
 -- 2. The guarantee.
 CREATE UNIQUE INDEX IF NOT EXISTS uq_sig_costing_step_live ON document_signature(entity_ref, sign_reason) WHERE doc_type = 'COSTING' AND revoked_at IS NULL AND sign_reason IS NOT NULL;

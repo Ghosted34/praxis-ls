@@ -257,6 +257,31 @@ describe("scripts/turn-setup.sh (the one-time production setup), .env half", () 
     }));
   });
 
+  test("a .env without a final newline gets the secret on a line of its own", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "turn-setup-"));
+    fs.writeFileSync(path.join(dir, ".env"), "APP_BASE_DOMAIN=praxisls.com");
+    expect(run(dir, ["--host", "turn.example.com"]).status).toBe(0);
+    const env = envOf(dir);
+    expect(env.APP_BASE_DOMAIN).toBe("praxisls.com");
+    expect(env.TURN_CREDENTIAL_SECRET).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  test("stops on a TURN_ setting an earlier run glued onto another line, and the printed fix splits it", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "turn-setup-"));
+    const secret = "a".repeat(64);
+    fs.writeFileSync(path.join(dir, ".env"),
+      `APP_BASE_DOMAIN=praxisls.comTURN_CREDENTIAL_SECRET=${secret}\nTURN_HOST=turn.example.com\n`);
+    const out = run(dir, ["--host", "turn.example.com"]);
+    expect(out.status).toBe(1);
+    expect(out.stderr).toMatch(/line\(s\) 1 have a TURN_ setting glued/);
+    const fix = out.stderr.match(/(sed -i -E .*)$/m)[1];
+    expect(spawnSync("sh", ["-c", fix], { cwd: dir }).status).toBe(0);
+    expect(run(dir, ["--host", "turn.example.com"]).status).toBe(0);
+    const env = envOf(dir);
+    expect(env.APP_BASE_DOMAIN).toBe("praxisls.com");
+    expect(env.TURN_CREDENTIAL_SECRET).toBe(secret);
+  });
+
   test("refuses a host that is not a hostname", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "turn-setup-"));
     fs.writeFileSync(path.join(dir, ".env"), "\n");

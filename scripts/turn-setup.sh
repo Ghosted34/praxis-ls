@@ -41,7 +41,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-die() { echo "FATAL: $*" >&2; exit 1; }
+die() { printf 'FATAL: %s\n' "$*" >&2; exit 1; }  # printf: dash's echo would eat \1 and \n
 [ -n "$HOST" ] || die "--host is required (the public DNS name clients reach, e.g. turn.example.com)"
 case "$HOST" in *[!A-Za-z0-9.-]*) die "--host '$HOST' is not a hostname" ;; esac
 case "$TLS_PORT" in ''|*[!0-9]*) die "--tls-port must be a number" ;; esac
@@ -89,6 +89,23 @@ fi
 backup="$ENV_FILE.bak-turn-$(date +%Y%m%d%H%M%S)"
 cp -p "$ENV_FILE" "$backup"
 echo "backed up $ENV_FILE to $backup"
+
+# Keys this script writes. An earlier run on a .env WITHOUT a final newline
+# appended the first of them onto the end of the last line
+# ("SOME_KEY=valueTURN_CREDENTIAL_SECRET=…"): compose then sees no secret and
+# the relay refuses to start, and the line it was glued to has a wrong value.
+# Refuse to go on over that — a re-run would mint a second secret and leave the
+# damaged line in place — and say exactly how to split it.
+OWN_KEYS='TURN_(CREDENTIAL_SECRET|HOST|REALM|PORT_UDP|PORT_TCP|EXTERNAL_IP|LISTENING_IP|TLS_PORT|TLS_DIR|TLS_CERT|TLS_KEY)'
+glued="$(grep -nE "^[A-Za-z_][A-Za-z0-9_]*=.+$OWN_KEYS=" "$ENV_FILE" | cut -d: -f1 | paste -sd, - || true)"
+if [ -n "$glued" ]; then
+  die "$ENV_FILE line(s) $glued have a TURN_ setting glued onto the end of another
+       setting (a previous run appended to a file without a final newline).
+       Split it, then run this again:
+         sed -i -E 's/(.)($OWN_KEYS=)/\\1\\n\\2/' $ENV_FILE"
+fi
+# Appending to a file without a final newline is what glued them.
+[ ! -s "$ENV_FILE" ] || [ -z "$(tail -c 1 "$ENV_FILE")" ] || echo >> "$ENV_FILE"
 
 get_env() { sed -n "s/^$1=//p" "$ENV_FILE" | tail -n 1; }
 set_env() { # replace KEY=... in place, or append; values here never contain | or newlines

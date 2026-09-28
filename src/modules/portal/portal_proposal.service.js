@@ -208,7 +208,15 @@ async function sender(c, row) {
   const first = await notificationRepo.requesterFor(c, entityRef(row.proposal_id)).catch(() => null);
   if (first) return first;
   if (row.reviewed_by) return row.reviewed_by;
-  const { rows } = await c.query("SELECT user_id FROM app_user WHERE is_ceo = true AND status = 'ACTIVE' LIMIT 1");
+  // The MD is the CEO role (as auth derives is_ceo — app_user has no column).
+  const { rows } = await c.query(
+    `SELECT u.user_id
+       FROM app_user u
+       JOIN user_role ur ON ur.user_id = u.user_id
+       JOIN role r ON r.role_id = ur.role_id
+      WHERE r.code = 'CEO' AND u.status = 'ACTIVE'
+      ORDER BY u.created_at ASC LIMIT 1`,
+  );
   if (rows[0]) return rows[0].user_id;
   throw new AppError("NO_SENDER", "This proposal cannot be signed online. Contact your account manager.", 409);
 }

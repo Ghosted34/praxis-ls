@@ -413,6 +413,9 @@ export declare namespace clientMaster {
     }
   >;
   const aiUpdate: typeof update;
+  /** PUT /clients/:id/account-manager — a login, or null to clear (PR 3). */
+  const accountManager: z.ZodObject<{ user_id: z.ZodNullable<z.ZodString> }>;
+  const aiAccountManager: z.ZodObject<{ user_id: z.ZodNullable<z.ZodString>; client_id: z.ZodString }>;
 }
 
 /** The shared identity/terms fields of a supplier payload; see ClientBaseShape. */

@@ -139,8 +139,25 @@ const consent = z.object({
   consent: z.enum(["NOT_ASKED", "ANONYMISED_ONLY", "NAMED"]),
 });
 
+/**
+ * The client's account manager (PR 3, 14200) — a LOGIN, chosen through the
+ * employee picker (which offers only people who have one), or null to clear
+ * it. Its own endpoint rather than a field of `update`, because the people who
+ * assign account managers answer the Client inbox (MOD-64C) and need not hold
+ * the client master's edit right. The service checks the login is ACTIVE —
+ * a shape cannot. `create` and `update` still accept
+ * `relationship_manager_user_id`, and the client service hands it to the same
+ * account-manager service, so every door applies the same check, audit and
+ * notice.
+ */
+const accountManager = z.object({ user_id: uuid.nullable() }).strict();
+// AI-facing: the client by id, and the login (null clears).
+const aiAccountManager = accountManager.extend({ client_id: uuid });
+
 // Named `exports.x =` assignments, NOT `module.exports = { x }` — see index.js.
 exports.create = create;
 exports.update = update;
 exports.aiUpdate = aiUpdate;
 exports.consent = consent;
+exports.accountManager = accountManager;
+exports.aiAccountManager = aiAccountManager;

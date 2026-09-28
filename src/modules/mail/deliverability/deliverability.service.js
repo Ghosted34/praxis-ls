@@ -93,8 +93,16 @@ async function notifyMod70(client, domain, regressions) {
   // CEOs always; everyone else with Settings view is reached by the event
   // catalogue once a workflow is bound. A wrong join against the permission
   // table would silently notify nobody — the regression row is still stored.
+  //
+  // The CEO is a ROLE (role.code = 'CEO', as auth derives is_ceo): app_user has
+  // no is_ceo column, and the query that assumed one failed on every run —
+  // silently, through the catch at the call site — so this notified nobody.
   const { rows } = await client.query(
-    `SELECT user_id FROM app_user WHERE is_ceo = true AND status = 'ACTIVE'`,
+    `SELECT DISTINCT u.user_id
+       FROM app_user u
+       JOIN user_role ur ON ur.user_id = u.user_id
+       JOIN role r ON r.role_id = ur.role_id
+      WHERE r.code = 'CEO' AND u.status = 'ACTIVE'`,
   );
   const ids = rows.map((r) => r.user_id);
   if (!ids.length) return;

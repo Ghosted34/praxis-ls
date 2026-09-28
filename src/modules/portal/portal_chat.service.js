@@ -32,7 +32,13 @@ const { atomically } = require("../../shared/db/tx");
 const { AppError } = require("../../utils/errors");
 const { logger } = require("../../config/logger");
 
-const MODULE = "MOD-67"; // client support — the team's side of the portal
+const MODULE = "MOD-67"; // client support — where the chat's events are filed
+/**
+ * The Client inbox (PR 3, seeds 90997/9136): the permission of the people who
+ * answer clients — operations, sales, management. A message nobody owns goes
+ * to them. It replaced MOD-67 (IAM) here, whose holders are administrators.
+ */
+const INBOX_MODULE = "MOD-64C";
 const PAGE = 40;
 
 const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
@@ -319,15 +325,15 @@ async function staffRead(c, { clientId, thread }) {
 }
 
 /** A reply from the team, with a file or not. */
-async function staffSend(c, { clientId, thread, body = "", milestoneId = null, file = null, meta = {}, actor = {}, slug }) {
-  assertNotEmpty({ body, file, location: null });
+async function staffSend(c, { clientId, thread, body = "", milestoneId = null, file = null, meta = {}, location = null, actor = {}, slug }) {
+  assertNotEmpty({ body, file, location });
   const dossier = await staffDossier(c, { clientId, thread });
   const stage = await namedStage(c, { dossier, milestoneId });
   const stored = file ? await storeAttachment(c, { clientId, file, meta, status: "VERIFIED", slug, actor }) : null;
   const row = await atomically(c, async () => {
     const m = await repo.insertMessage(c, {
       clientId, dossierId: dossier && dossier.dossier_id, direction: "STAFF", body: clean(body),
-      authorUserId: await resolveActorId(c, actor.user_id), milestoneId: stage && stage.milestone_instance_id,
+      authorUserId: await resolveActorId(c, actor.user_id), milestoneId: stage && stage.milestone_instance_id, location,
     });
     if (stored) await repo.insertAttachment(c, { messageId: m.message_id, ...stored });
     // Answering a thread is reading it.
@@ -336,7 +342,7 @@ async function staffSend(c, { clientId, thread, body = "", milestoneId = null, f
   });
   await emitEvent(c, {
     eventTypeKey: "portal.client_message", moduleKey: MODULE, entityRef: `client_message:${row.message_id}`, actorUserId: actor.user_id || null,
-    payload: { client_id: clientId, dossier_id: dossier ? dossier.dossier_id : null, direction: "STAFF", kind: stored ? stored.kind : "TEXT" },
+    payload: { client_id: clientId, dossier_id: dossier ? dossier.dossier_id : null, direction: "STAFF", kind: stored ? stored.kind : location ? "LOCATION" : "TEXT" },
   });
   const [saved] = await repo.messages(c, { clientId, dossierId: dossier && dossier.dossier_id, limit: 1, clientView: false });
   return messageView(saved && saved.message_id === row.message_id ? saved : { ...row, dossier_ref: dossier && dossier.ref });
@@ -380,16 +386,25 @@ async function attachmentBytes(a, size) {
 }
 
 /**
- * Tell the team a client wrote (owner decision 2/12): the shipment's owners
- * and the MD; with no owner to hold it — General, or a file nobody owns — the
- * people who answer the portal. One alert per person per thread per minute: a
- * client typing five short lines is one ping, not five.
+ * Tell the team a client wrote (owner decision 2/12):
+ *
+ *   · the client's account manager and — for a shipment's conversation — the
+ *     file's operations and sales owners;
+ *   · when none of those can be reached (General with no account manager, a
+ *     file nobody owns, or owners who have left), the people who answer the
+ *     Client inbox, operations among them (MOD-64C);
+ *   · the MD, always.
+ *
+ * One alert per person per thread per minute: a client typing five short
+ * lines is one ping, not five. The link opens the conversation in the inbox.
  */
 async function alertTeam(c, { clientId, dossier, row, kind }) {
   try {
-    const audience = await repo.staffAudience(c, { dossier });
-    let ids = [...audience.owners, ...audience.md];
-    if (!audience.owners.length) ids = ids.concat(await notificationRepo.recipientsWithPermission(c, MODULE, "edit"));
+    const audience = await repo.staffAudience(c, { clientId, dossier });
+    let ids = [...audience.manager, ...audience.owners, ...audience.md];
+    if (!audience.manager.length && !audience.owners.length) {
+      ids = ids.concat(await notificationRepo.recipientsWithPermission(c, INBOX_MODULE, "edit"));
+    }
     ids = [...new Set(ids.filter(Boolean))];
     if (!ids.length) return;
     const { rows } = await c.query("SELECT COALESCE(name, legal_name) AS name FROM client_master WHERE client_id = $1", [clientId]);
@@ -405,7 +420,7 @@ async function alertTeam(c, { clientId, dossier, row, kind }) {
         title: dossier ? `${company} · ${dossier.ref}` : company,
         body,
         entityRef: `client_message:${row.message_id}`,
-        url: `/settings/client-support?client=${clientId}&thread=${thread}`,
+        url: `/comms/clients?client=${clientId}&thread=${thread}`,
         dedupeKey: `chat:${clientId}:${thread}:${userId}`,
         pushTag: `chat:${clientId}:${thread}`,
         renotify: true,
@@ -416,6 +431,49 @@ async function alertTeam(c, { clientId, dossier, row, kind }) {
     // turn the client's send into an error they retry.
     logger.warn({ err, clientId }, "client chat: team alert failed");
   }
+}
+
+/* ── the Client inbox (PR 3) ───────────────────────────────────────────── */
+
+const INBOX_FILTERS = ["all", "waiting", "mine"];
+/** How many conversations the inbox reads — waiting ones first, so they are the last to be cut. */
+const INBOX_LIMIT = 300;
+
+/**
+ * Every client conversation the team has, those waiting for an answer first;
+ * or only those waiting, or only mine — clients I look after and files I own.
+ * The counts for all three come with any of them, for the filter chips.
+ * `truncated` says the read hit its limit, so the screen can say the list and
+ * its counts stop there rather than present them as everything.
+ */
+async function staffInbox(c, { filter = "all", actor = {} }) {
+  const f = INBOX_FILTERS.includes(filter) ? filter : "all";
+  const me = actor.user_id || null;
+  const rows = await repo.inbox(c, { limit: INBOX_LIMIT });
+  const all = rows.map((r) => ({
+    client_id: r.client_id,
+    client_name: r.client_name,
+    thread: repo.threadKey(r.dossier_id),
+    dossier_id: r.dossier_id || null,
+    dossier_ref: r.dossier_ref || null,
+    unread: Number(r.unread || 0),
+    waiting_since: r.waiting_since || null,
+    last: {
+      direction: r.direction,
+      preview: previewOf(r),
+      kind: contentKind(r),
+      at: r.created_at,
+    },
+    manager: r.manager_user_id ? { user_id: r.manager_user_id, name: r.manager_name || null } : null,
+    mine: !!me && (r.manager_user_id === me || r.owner_ops_id === me || r.owner_sales_id === me),
+  }));
+  const keep = { all: () => true, waiting: (i) => i.unread > 0, mine: (i) => i.mine };
+  return {
+    filter: f,
+    counts: { all: all.length, waiting: all.filter(keep.waiting).length, mine: all.filter(keep.mine).length },
+    items: all.filter(keep[f]),
+    truncated: rows.length >= INBOX_LIMIT,
+  };
 }
 
 /** A notification's line when the message has no words. */
@@ -429,6 +487,6 @@ const KIND_LINE = {
 
 module.exports = {
   threads, unread, messages, read, send, clientAttachment,
-  staffThreads, staffMessages, staffRead, staffSend, staffAttachment,
-  sniffAudio, PAGE,
+  staffThreads, staffMessages, staffRead, staffSend, staffAttachment, staffInbox,
+  sniffAudio, PAGE, INBOX_MODULE,
 };

@@ -4,9 +4,14 @@
  * sends — and a reply box that can carry a file back.
  *
  * Opening a thread marks the client's messages in it read, which is the
- * "seen" tick on their phone; answering does the same. This panel sits in
- * Settings › Client support today; the shared Client Inbox and the Client 360
- * Messages tab (client portal PR 3) are built from it.
+ * "seen" tick on their phone; answering does the same. The same panel serves
+ * Settings › Client support, the Client inbox (Comms › Clients) and a
+ * client's Messages tab (client portal PR 3).
+ *
+ * The reply box is the Smart Comms team chat's: a `+` with the tools (photo or
+ * document, location, emoji, quick replies — client-chat-tools.tsx), Enter to
+ * send, a file pasted straight into the box, and a microphone for a voice note
+ * while there is nothing to send.
  */
 import * as React from "react";
 import { useTranslation } from "react-i18next";
@@ -17,13 +22,18 @@ import { useUpload } from "@/lib/use-upload";
 import { dateTimeFmt } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/button";
+import { SendIcon } from "@/components/ui/icons";
 import { Chips } from "@/components/ui/chips";
 import { Textarea } from "@/components/ui/textarea";
 import { Pill } from "@/components/ui/pill";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import { SkeletonTable } from "@/components/ui/skeleton";
 import { FilePicker, UploadList } from "@/components/ui/image-upload";
+import { pasteFileFromEvent } from "@/components/ui/upload-paste";
 import { useToast } from "@/components/ui/toast";
+import { useCanUseModule } from "@/lib/route-access";
+import { VoiceRecorder, type Recording } from "@/features/comms/chat/voice-recorder";
+import { ClientChatTools, ShareLocationDialog, type SharedPlace } from "./client-chat-tools";
 
 type Attachment = {
   attachment_id: string;
@@ -145,7 +155,7 @@ function Bubble({ m }: { m: Message }) {
                 variant="outline"
                 onClick={() => void tenantDownload(`/portal/chat/attachments/${a.attachment_id}`, a.name || "document.pdf")}
               >
-                {a.name || tr("File")}
+                {a.name || tr("Document")}
               </Button>
             )}
           </div>
@@ -167,7 +177,16 @@ function Bubble({ m }: { m: Message }) {
   );
 }
 
-export function ClientChatPanel({ clientId, initialThread = "general" }: { clientId: string; initialThread?: string }) {
+export function ClientChatPanel({
+  clientId,
+  initialThread = "general",
+  onActivity,
+}: {
+  clientId: string;
+  initialThread?: string;
+  /** A thread was read or answered here — the Client inbox refreshes its counts. */
+  onActivity?: () => void;
+}) {
   const { t } = useTranslation();
   const toast = useToast();
   const [threads, setThreads] = React.useState<Thread[]>([]);
@@ -176,7 +195,20 @@ export function ClientChatPanel({ clientId, initialThread = "general" }: { clien
   const [error, setError] = React.useState<string | null>(null);
   const [draft, setDraft] = React.useState("");
   const [busy, setBusy] = React.useState(false);
+  const [placing, setPlacing] = React.useState(false);
+  const [pasteNote, setPasteNote] = React.useState<string | null>(null);
   const end = React.useRef<HTMLDivElement>(null);
+  const box = React.useRef<HTMLTextAreaElement>(null);
+  const fileOpen = React.useRef<(() => void) | null>(null);
+  // A ref as well as the state: two quick Enters land before `busy` re-renders.
+  const sending = React.useRef(false);
+  // Quick replies are Smart Comms' (MOD-64); the tools offer them to its holders.
+  const phrasesOn = useCanUseModule("MOD-64");
+  // Held in a ref: a parent passing an inline arrow must not change `load`'s
+  // identity on every render — that would restart the poll, re-read, notify
+  // the parent, re-render it, and go round again.
+  const activity = React.useRef(onActivity);
+  activity.current = onActivity;
 
   const q = `client_id=${encodeURIComponent(clientId)}`;
 
@@ -196,6 +228,7 @@ export function ClientChatPanel({ clientId, initialThread = "general" }: { clien
         if (markRead && p.messages.some((m) => m.direction === "CLIENT")) {
           await tenant(`/portal/chat/read`, { method: "POST", body: { client_id: clientId, thread } });
           loadThreads();
+          activity.current?.();
         }
       } catch (e) {
         setError(errMsg(e));
@@ -236,10 +269,18 @@ export function ClientChatPanel({ clientId, initialThread = "general" }: { clien
       }),
   });
 
+  /** After anything is sent: the thread, the thread list, and whoever is listening. */
+  async function sent() {
+    await load(false);
+    loadThreads();
+    activity.current?.();
+  }
+
   async function send() {
     const body = draft.trim();
     const withFile = upload.items.length > 0;
-    if (!body && !withFile) return;
+    if (sending.current || (!body && !withFile)) return;
+    sending.current = true;
     setBusy(true);
     try {
       if (withFile) {
@@ -250,13 +291,68 @@ export function ClientChatPanel({ clientId, initialThread = "general" }: { clien
         await tenant("/portal/chat/messages", { method: "POST", body: { client_id: clientId, thread, body } });
       }
       setDraft("");
-      await load(false);
-      loadThreads();
+      setPasteNote(null);
+      await sent();
     } catch (e) {
       toast.error(errMsg(e));
     } finally {
+      sending.current = false;
       setBusy(false);
     }
+  }
+
+  /** A voice note goes the moment the recording stops, as in the team chat. */
+  async function sendVoice(rec: Recording) {
+    if (sending.current) return;
+    sending.current = true;
+    setBusy(true);
+    try {
+      const ext = rec.mimeType.includes("mp4") ? "m4a" : rec.mimeType.includes("ogg") ? "ogg" : "webm";
+      await uploadFile<Message>(
+        "/tenant/portal/chat/messages",
+        new File([rec.blob], `voice-note.${ext}`, { type: rec.mimeType }),
+        { fields: { client_id: clientId, thread, duration_ms: Math.round(rec.durationMs) } },
+      );
+      await sent();
+    } catch (e) {
+      toast.error(errMsg(e));
+    } finally {
+      sending.current = false;
+      setBusy(false);
+    }
+  }
+
+  async function sendPlace(place: SharedPlace) {
+    if (sending.current) return;
+    sending.current = true;
+    setBusy(true);
+    try {
+      await tenant("/portal/chat/messages", {
+        method: "POST",
+        body: { client_id: clientId, thread, lat: place.lat, lng: place.lng, location_label: place.label || undefined },
+      });
+      setPlacing(false);
+      await sent();
+    } catch (e) {
+      toast.error(errMsg(e));
+    } finally {
+      sending.current = false;
+      setBusy(false);
+    }
+  }
+
+  /** Put text where the cursor is — an emoji, or a quick reply. */
+  function insert(text: string) {
+    const el = box.current;
+    const at = el ? el.selectionStart ?? draft.length : draft.length;
+    const to = el ? el.selectionEnd ?? at : at;
+    const next = draft.slice(0, at) + text + draft.slice(to);
+    setDraft(next);
+    requestAnimationFrame(() => {
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(at + text.length, at + text.length);
+    });
   }
 
   const options = [
@@ -285,21 +381,87 @@ export function ClientChatPanel({ clientId, initialThread = "general" }: { clien
         )}
         <div ref={end} />
       </div>
-      <UploadList items={upload.items} onRemove={upload.remove} onRetry={upload.retry} />
-      <div className="flex flex-wrap items-end gap-2">
-        <FilePicker variant="inline" accept={ACCEPT} trigger={tr("Attach a photo or PDF")} onPick={(files) => void upload.pick(files)} disabled={busy} />
-        <Textarea
-          className="min-w-[240px] flex-1"
-          rows={2}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          placeholder={t("support.replyPlaceholder")}
-          aria-label={t("support.replyPlaceholder")}
-        />
-        <Button onClick={() => void send()} loading={busy} disabled={!draft.trim() && !upload.items.length}>
-          {t("support.sendReply")}
-        </Button>
+      <div data-composer className="rounded-xl border bg-card">
+        {upload.items.length ? (
+          <div className="border-b border-border px-3 py-2">
+            <UploadList items={upload.items} onRemove={upload.remove} onRetry={upload.retry} />
+          </div>
+        ) : null}
+        <div className="flex items-end gap-2 px-2 py-2">
+          <ClientChatTools
+            disabled={busy}
+            onFile={() => {
+              setPasteNote(null);
+              fileOpen.current?.();
+            }}
+            onLocation={() => setPlacing(true)}
+            onEmoji={insert}
+            onPhrase={insert}
+            phrases={phrasesOn}
+          />
+          {/* The engine's picker, opened from the + menu — preview, percentage
+              and compression all still come from it. */}
+          <div className="hidden">
+            <FilePicker
+              variant="inline"
+              openRef={fileOpen}
+              accept={ACCEPT}
+              onPaste={false}
+              label={tr("Photo or document")}
+              disabled={busy}
+              onPick={(files) => void upload.pick(files)}
+            />
+          </div>
+          <div
+            className="min-w-0 flex-1"
+            onPaste={(e) => {
+              if (busy) return;
+              const result = pasteFileFromEvent(e, ACCEPT);
+              if (result.kind === "accepted") {
+                e.preventDefault();
+                setPasteNote(null);
+                void upload.pick([result.file]);
+              } else if (result.kind === "rejected") {
+                e.preventDefault();
+                setPasteNote(tr("That file type isn't accepted here — choose a file instead."));
+              }
+            }}
+          >
+            <Textarea
+              ref={box}
+              rows={1}
+              className="max-h-40 min-h-[40px] resize-none"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                  e.preventDefault();
+                  void send();
+                }
+              }}
+              placeholder={t("support.replyPlaceholder")}
+              aria-label={t("support.replyPlaceholder")}
+              // Read-only while sending, not disabled: disabling drops focus,
+              // and the next line should be typed without reaching for the box.
+              readOnly={busy}
+            />
+          </div>
+          {draft.trim() || upload.items.length ? (
+            <Button onClick={() => void send()} loading={busy} icon={<SendIcon />}>
+              {t("support.sendReply")}
+            </Button>
+          ) : (
+            <VoiceRecorder onRecorded={(rec) => void sendVoice(rec)} disabled={busy} />
+          )}
+        </div>
+        <p
+          className={cn("px-14 pb-2 text-[10px]", pasteNote ? "text-[rgb(var(--bad))]" : "text-muted-foreground")}
+          role={pasteNote ? "status" : undefined}
+        >
+          {pasteNote || tr("Enter to send · Shift + Enter for a new line")}
+        </p>
       </div>
+      <ShareLocationDialog open={placing} onClose={() => setPlacing(false)} onSend={(p) => void sendPlace(p)} busy={busy} />
     </div>
   );
 }

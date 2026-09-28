@@ -9,15 +9,20 @@
  *   2. A message needs something in it; a stage it names must be on its
  *      shipment; a shipment it names must be the client's own.
  *   3. A voice note is stored only if its bytes are audio.
- *   4. The team is told: the file's owners and the MD, or — with nobody
- *      owning the thread — the people who answer the portal. Once a minute per
- *      thread, not once a line.
+ *   4. The team is told (PR 3): the client's account manager and the file's
+ *      owners, and the MD always; with none of the first two reachable, the
+ *      people who hold the Client inbox (MOD-64C). Once a minute per thread,
+ *      not once a line, and the link opens the conversation in the inbox.
+ *   5. The Client inbox: waiting first, and Mine is the clients I look after
+ *      and the files I own.
  */
 
 let mockRepo;
 let mockNotified = [];
 let mockVaultCalls = [];
 let mockHolders = [];
+let mockHolderAsks = [];
+let mockManager = [];
 let mockStored = {};
 
 jest.mock("../../src/modules/portal/portal_chat.repo", () => {
@@ -45,7 +50,10 @@ jest.mock("../../src/modules/notification/notification.service", () => ({
   },
 }));
 jest.mock("../../src/modules/notification/notification.repo", () => ({
-  recipientsWithPermission: async () => mockHolders,
+  recipientsWithPermission: async (c, moduleKey, action) => {
+    mockHolderAsks.push([moduleKey, action]);
+    return mockHolders;
+  },
 }));
 jest.mock("../../src/services/storage.service", () => ({
   get: async (key) => {
@@ -77,6 +85,8 @@ beforeEach(() => {
   mockNotified = [];
   mockVaultCalls = [];
   mockHolders = ["support-1"];
+  mockHolderAsks = [];
+  mockManager = [];
   mockStored = {};
   inserted = { messages: [], attachments: [], reads: [] };
   mockRepo = {
@@ -100,7 +110,12 @@ beforeEach(() => {
       inserted.reads.push(r);
     },
     markStaffRead: async () => 1,
-    staffAudience: async (c, { dossier }) => ({ owners: dossier ? [dossier.owner_ops_id, dossier.owner_sales_id] : [], md: ["md-1"] }),
+    // The repo returns ACTIVE logins only; an owner who left is simply absent.
+    staffAudience: async (c, { clientId, dossier }) => ({
+      manager: clientId === "c1" ? mockManager : [],
+      owners: dossier ? [dossier.owner_ops_id, dossier.owner_sales_id].filter(Boolean) : [],
+      md: ["md-1"],
+    }),
     attachment: async (c, { attachmentId, clientId }) => {
       if (attachmentId !== "a1") return null;
       if (clientId && clientId !== "c1") return null;
@@ -189,18 +204,47 @@ describe("voice notes", () => {
 });
 
 describe("telling the team", () => {
-  it("alerts the file's owners and the MD about a shipment's thread", async () => {
+  it("alerts the account manager, the file's owners and the MD about a shipment's thread", async () => {
+    mockManager = ["am-1"];
     await chat.send(client, { clientId: "c1", me: ME, scope: "ALL", thread: SHIP.dossier_id, body: "Hello" });
-    expect(mockNotified.map((n) => n.userId).sort()).toEqual(["md-1", "ops-1", "sales-1"]);
+    expect(mockNotified.map((n) => n.userId).sort()).toEqual(["am-1", "md-1", "ops-1", "sales-1"]);
     expect(mockNotified[0]).toMatchObject({ category: "comms", title: "Acme Trading · PRX-1", body: "Hello" });
     // One claim per person per thread: five quick lines are one ping.
     expect(mockNotified[0].dedupeKey).toBe(`chat:c1:${SHIP.dossier_id}:${mockNotified[0].userId}`);
+    // The link opens the conversation itself, in the Client inbox.
+    expect(mockNotified[0].url).toBe(`/comms/clients?client=c1&thread=${SHIP.dossier_id}`);
+    // Somebody holds it, so the inbox is not asked.
+    expect(mockHolderAsks).toEqual([]);
   });
 
-  it("alerts the portal's answerers when nobody owns the thread", async () => {
+  it("brings a General message to the account manager and the MD, not the whole inbox", async () => {
+    mockManager = ["am-1"];
+    await chat.send(client, { clientId: "c1", me: ME, scope: "ALL", thread: "general", body: "Can you quote Douala to Bangui?" });
+    expect(mockNotified.map((n) => n.userId).sort()).toEqual(["am-1", "md-1"]);
+    expect(mockNotified[0].url).toBe("/comms/clients?client=c1&thread=general");
+    expect(mockHolderAsks).toEqual([]);
+  });
+
+  it("alerts the Client inbox when nobody looks after the client or owns the thread", async () => {
     await chat.send(client, { clientId: "c1", me: ME, scope: "ALL", thread: "general", location: { lat: 1, lng: 2 } });
     expect(mockNotified.map((n) => n.userId).sort()).toEqual(["md-1", "support-1"]);
     expect(mockNotified[0].body).toBe("Shared a location");
+    // The inbox's own permission — not MOD-67, the administrators'.
+    expect(mockHolderAsks).toEqual([["MOD-64C", "edit"]]);
+  });
+
+  it("falls back to the inbox when the file's owners have left and nobody looks after the client", async () => {
+    mockRepo.clientDossier = async () => ({ ...SHIP, owner_ops_id: null, owner_sales_id: null });
+    await chat.send(client, { clientId: "c1", me: ME, scope: "ALL", thread: SHIP.dossier_id, body: "Anyone?" });
+    expect(mockNotified.map((n) => n.userId).sort()).toEqual(["md-1", "support-1"]);
+    expect(mockHolderAsks).toEqual([["MOD-64C", "edit"]]);
+  });
+
+  it("tells a person once, whichever of the roles they hold", async () => {
+    mockManager = ["ops-1"];
+    mockHolders = ["ops-1", "md-1"];
+    await chat.send(client, { clientId: "c1", me: ME, scope: "ALL", thread: SHIP.dossier_id, body: "Hello" });
+    expect(mockNotified.map((n) => n.userId).sort()).toEqual(["md-1", "ops-1", "sales-1"]);
   });
 });
 
@@ -225,5 +269,82 @@ describe("the team's side", () => {
     await chat.staffSend(client, { clientId: "c1", thread: SHIP.dossier_id, body: "Out this morning.", actor: { user_id: "ops-1" } });
     expect(inserted.messages[0]).toMatchObject({ direction: "STAFF", authorUserId: "ops-1", dossierId: SHIP.dossier_id });
     expect(mockNotified).toHaveLength(0);
+  });
+
+  it("shares a location with no words, as a client can (PR 3's reply tools)", async () => {
+    await chat.staffSend(client, { clientId: "c1", thread: "general", location: { lat: 4.0435, lng: 9.6966, label: "Warehouse B" }, actor: { user_id: "ops-1" } });
+    expect(inserted.messages[0]).toMatchObject({ direction: "STAFF", body: "", location: { lat: 4.0435, lng: 9.6966, label: "Warehouse B" } });
+    await expect(chat.staffSend(client, { clientId: "c1", thread: "general", body: " ", actor: { user_id: "ops-1" } })).rejects.toMatchObject({ code: "EMPTY_MESSAGE" });
+  });
+
+  it("sends a voice note recorded in the ERP", async () => {
+    const file = { buffer: WEBM, mimetype: "audio/webm;codecs=opus", originalname: "voice-note.webm" };
+    await chat.staffSend(client, { clientId: "c1", thread: "general", file, meta: { durationMs: 4200 }, actor: { user_id: "ops-1" } });
+    expect(mockVaultCalls[0]).toMatchObject({ status: "VERIFIED", sniff: false });
+    expect(inserted.attachments[0]).toMatchObject({ kind: "VOICE", durationMs: 4200, mimeType: "audio/webm" });
+  });
+});
+
+describe("the Client inbox", () => {
+  const ROWS = [
+    // Waiting: Acme wrote on a shipment and nobody has read it.
+    { client_id: "c1", client_name: "Acme Trading", dossier_id: SHIP.dossier_id, dossier_ref: "PRX-1", body: "Is it out of port?", direction: "CLIENT", created_at: "2026-09-28T10:00:00Z", has_location: false, attachment_kind: null, unread: 2, waiting_since: "2026-09-28T09:58:00Z", owner_ops_id: "ops-1", owner_sales_id: "sales-1", manager_user_id: "am-1", manager_name: "Awa Ndiaye" },
+    // Answered: our photo was the last word in Acme's General.
+    { client_id: "c1", client_name: "Acme Trading", dossier_id: null, dossier_ref: null, body: "", direction: "STAFF", created_at: "2026-09-27T16:00:00Z", has_location: false, attachment_kind: "IMAGE", unread: 0, waiting_since: null, owner_ops_id: null, owner_sales_id: null, manager_user_id: "am-1", manager_name: "Awa Ndiaye" },
+    // Nobody looks after Bois du Sud yet; its pin is waiting.
+    { client_id: "c2", client_name: "Bois du Sud", dossier_id: null, dossier_ref: null, body: null, direction: "CLIENT", created_at: "2026-09-26T08:00:00Z", has_location: true, attachment_kind: null, unread: 1, waiting_since: "2026-09-26T08:00:00Z", owner_ops_id: null, owner_sales_id: null, manager_user_id: null, manager_name: null },
+  ];
+
+  beforeEach(() => {
+    mockRepo.inbox = async () => ROWS;
+  });
+
+  it("lists every conversation, as the screen reads it", async () => {
+    const out = await chat.staffInbox(client, { filter: "all", actor: { user_id: "am-1" } });
+    expect(out.filter).toBe("all");
+    expect(out.items.map((i) => `${i.client_id}:${i.thread}`)).toEqual([`c1:${SHIP.dossier_id}`, "c1:general", "c2:general"]);
+    expect(out.items[0]).toMatchObject({
+      client_name: "Acme Trading", dossier_ref: "PRX-1", unread: 2, waiting_since: "2026-09-28T09:58:00Z",
+      last: { direction: "CLIENT", preview: "Is it out of port?", kind: "TEXT", at: "2026-09-28T10:00:00Z" },
+      manager: { user_id: "am-1", name: "Awa Ndiaye" }, mine: true,
+    });
+    // A message with no words says what it is.
+    expect(out.items[1].last).toMatchObject({ preview: null, kind: "IMAGE", direction: "STAFF" });
+    expect(out.items[2]).toMatchObject({ manager: null, mine: false, last: { kind: "LOCATION" } });
+  });
+
+  it("counts all three filters whichever one is shown", async () => {
+    const waiting = await chat.staffInbox(client, { filter: "waiting", actor: { user_id: "am-1" } });
+    expect(waiting.counts).toEqual({ all: 3, waiting: 2, mine: 2 });
+    expect(waiting.items.map((i) => i.client_id)).toEqual(["c1", "c2"]);
+    expect(waiting.items.every((i) => i.unread > 0)).toBe(true);
+  });
+
+  it("makes Mine the clients I look after and the files I own", async () => {
+    const asOwner = await chat.staffInbox(client, { filter: "mine", actor: { user_id: "sales-1" } });
+    expect(asOwner.items.map((i) => i.thread)).toEqual([SHIP.dossier_id]);
+    const asManager = await chat.staffInbox(client, { filter: "mine", actor: { user_id: "am-1" } });
+    expect(asManager.items.map((i) => `${i.client_id}:${i.thread}`)).toEqual([`c1:${SHIP.dossier_id}`, "c1:general"]);
+    const asNobody = await chat.staffInbox(client, { filter: "mine", actor: {} });
+    expect(asNobody.items).toEqual([]);
+    expect(asNobody.counts.mine).toBe(0);
+  });
+
+  it("shows everything for a filter it does not know", async () => {
+    const out = await chat.staffInbox(client, { filter: "urgent", actor: { user_id: "am-1" } });
+    expect(out.filter).toBe("all");
+    expect(out.items).toHaveLength(3);
+    expect(out.truncated).toBe(false);
+  });
+
+  it("says when the read hit its limit, so the counts are not presented as everything", async () => {
+    let asked;
+    mockRepo.inbox = async (c, opts) => {
+      asked = opts;
+      return Array.from({ length: opts.limit }, (_, i) => ({ ...ROWS[2], client_id: `c${i}` }));
+    };
+    const out = await chat.staffInbox(client, { filter: "all", actor: {} });
+    expect(asked).toEqual({ limit: 300 });
+    expect(out.truncated).toBe(true);
   });
 });

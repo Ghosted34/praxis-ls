@@ -217,13 +217,21 @@ router.post("/data-room/:id/answer", authMiddleware, requirePermission(M, "edit"
 // onboarding checklist. Same gate (MOD-67).
 router.get("/messages", authMiddleware, requirePermission(M, "view"), controller.staffMessages);
 router.post("/messages", authMiddleware, requirePermission(M, "edit"), v.staffMessage, controller.staffSendMessage);
-// The team's side of the chat (14170): a client's threads, one thread, a reply
-// with or without a file, and "we have read this" (the client's seen ticks).
-router.get("/chat/threads", authMiddleware, requirePermission(M, "view"), pc.staffChatThreads);
-router.get("/chat/messages", authMiddleware, requirePermission(M, "view"), pc.staffChatMessages);
-router.post("/chat/messages", authMiddleware, requirePermission(M, "edit"), singleFile("file"), v.staffChatSend, pc.staffChatSend);
-router.post("/chat/read", authMiddleware, requirePermission(M, "view"), v.staffChatRead, pc.staffChatRead);
-router.get("/chat/attachments/:attachmentId", authMiddleware, requirePermission(M, "view"), pc.staffChatAttachment);
+// The team's side of the chat (14170): the Client inbox across every client
+// (PR 3), a client's threads, one thread, a reply with or without a file, and
+// "we have read this" (the client's seen ticks).
+//
+// Gated on MOD-64C, the Client inbox (seeds 90997/9136) — the people who
+// answer clients: operations, sales, management. It was MOD-67, the IAM
+// engine, whose grants are an administrator's, so the people a client was
+// actually writing to could neither read nor answer.
+const INBOX = "MOD-64C";
+router.get("/chat/inbox", authMiddleware, requirePermission(INBOX, "view"), pc.staffChatInbox);
+router.get("/chat/threads", authMiddleware, requirePermission(INBOX, "view"), pc.staffChatThreads);
+router.get("/chat/messages", authMiddleware, requirePermission(INBOX, "view"), pc.staffChatMessages);
+router.post("/chat/messages", authMiddleware, requirePermission(INBOX, "edit"), singleFile("file"), v.staffChatSend, pc.staffChatSend);
+router.post("/chat/read", authMiddleware, requirePermission(INBOX, "view"), v.staffChatRead, pc.staffChatRead);
+router.get("/chat/attachments/:attachmentId", authMiddleware, requirePermission(INBOX, "view"), pc.staffChatAttachment);
 router.get("/onboarding", authMiddleware, requirePermission(M, "view"), controller.staffOnboarding);
 router.post("/onboarding/:clientId/:stepKey", authMiddleware, requirePermission(M, "edit"), validator.toggle, controller.staffToggleOnboarding);
 

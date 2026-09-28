@@ -2,11 +2,11 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 141,
-  "route_count": 1802,
+  "route_count": 1806,
   "tiers": {
     "public": 74,
     "self-scoped": 107,
-    "gated": 1621
+    "gated": 1625
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -1545,6 +1545,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/clients/:id/account-manager": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/clients/:id/addresses": {
       "auth": true,
       "rbac": true,
@@ -1588,6 +1594,12 @@
       "tier": "gated"
     },
     "GET /api/tenant/clients/:id/registrations": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/clients/account-manager-candidates": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -3442,6 +3454,12 @@
       "tier": "gated"
     },
     "GET /api/tenant/portal/chat/attachments/:attachmentId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/portal/chat/inbox": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -10564,6 +10582,12 @@
       "tier": "gated"
     },
     "PUT /api/tenant/capabilities/users/:userId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PUT /api/tenant/clients/:id/account-manager": {
       "auth": true,
       "rbac": true,
       "validated": false,

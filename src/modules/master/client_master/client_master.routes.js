@@ -2,7 +2,7 @@
 "use strict";
 const express = require("express");
 const { authMiddleware } = require("../../../middleware/auth");
-const { requirePermission } = require("../../../middleware/rbac");
+const { requirePermission, requireAnyPermission } = require("../../../middleware/rbac");
 const { mountNested, validate } = require("../_shared/nested");
 const { partyCommon } = require("@praxis/shared");
 const controller = require("./client_master.controller");
@@ -19,9 +19,21 @@ router.post("/convert-from-supplier/:id", requirePermission(MODULE, "create"), c
 // Non-blocking duplicate detection (§5.1) — static prefix, before /:id.
 router.post("/dedupe-check", requirePermission(MODULE, "view"), validate(partyCommon.dedupeCheck), controller.dedupeCheck);
 
+// Who can be named account manager (PR 3, 14200) — the account manager
+// picker's search, gated like naming one. Static prefix, before /:id.
+router.get("/account-manager-candidates", requireAnyPermission([[MODULE, "edit"], ["MOD-64C", "edit"]]), controller.accountManagerCandidates);
+
 router.get("/", requirePermission(MODULE, "view"), controller.list);
 router.get("/:id", requirePermission(MODULE, "view"), controller.get);
 router.get("/:id/credit", requirePermission(MODULE, "view"), controller.creditCheck);
+// The account manager (PR 3, 14200). Readable by anyone who can see the client
+// or answer its messages; set by the client master's editors OR by the people
+// who answer the Client inbox (MOD-64C) — sales and operations assign who looks
+// after a client, and they do not hold the master's edit right. The two grants
+// are equivalent in power for this one field, which is what
+// requireAnyPermission asks of its members.
+router.get("/:id/account-manager", requireAnyPermission([[MODULE, "view"], ["MOD-64C", "view"]]), controller.accountManager);
+router.put("/:id/account-manager", requireAnyPermission([[MODULE, "edit"], ["MOD-64C", "edit"]]), validator.accountManager, controller.setAccountManager);
 router.get("/:id/360", requirePermission(MODULE, "view"), controller.dossier);
 router.get("/:id/aging", requirePermission(MODULE, "view"), controller.agingDetail);
 router.post("/", requirePermission(MODULE, "create"), validator.create, controller.create);

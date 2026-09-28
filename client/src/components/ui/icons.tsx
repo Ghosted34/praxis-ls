@@ -213,6 +213,34 @@ export const MicIcon = (p: P) => (
     <path d="M5 11a7 7 0 0 0 14 0M12 18v4M8 22h8" />
   </svg>
 );
+/** A photo — the chat composer's "photo or document" (client portal PR 3). */
+export const ImageIcon = (p: P) => (
+  <svg {...base(p)}>
+    <rect x="3" y="4" width="18" height="16" rx="2" />
+    <circle cx="9" cy="10" r="2" />
+    <path d="m21 16-5-5-9 9" />
+  </svg>
+);
+/** A map pin — share a location. */
+export const MapPinIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21Z" />
+    <circle cx="12" cy="9.5" r="2.5" />
+  </svg>
+);
+/** A face — insert an emoji. */
+export const SmileIcon = (p: P) => (
+  <svg {...base(p)}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M8 14s1.5 2.5 4 2.5 4-2.5 4-2.5M9 9.5h.01M15 9.5h.01" />
+  </svg>
+);
+/** A bolt — quick replies. */
+export const ZapIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z" />
+  </svg>
+);
 /** A struck-through microphone — muted. */
 export const MicOffIcon = (p: P) => (
   <svg {...base(p)}>

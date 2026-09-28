@@ -1,9 +1,14 @@
 /**
  * Client support — the account team's side of the client portal (MOD-67):
- * the message thread for a chosen client (reply from here) and their
- * onboarding checklist (tick steps off as they complete). The client sees
- * both in their portal; this is where the tenant's half of the conversation
- * happens.
+ * what clients sent that is waiting for us, and for a chosen client their
+ * onboarding checklist (tick steps off as they complete) beside their
+ * conversation.
+ *
+ * The conversation itself is the Client inbox's (Comms › Clients, MOD-64C,
+ * client portal PR 3) — the permission of the people who answer clients, which
+ * the chat's endpoints now check. So it shows here for someone who holds that
+ * permission, with a link to the inbox; an administrator who holds only this
+ * screen's grant sees where the conversation lives instead of an error.
  */
 import { pageShell } from "@/lib/layout";
 import * as React from "react";
@@ -17,9 +22,10 @@ import { tenant } from "@/lib/api-client";
 import { errMsg, useList } from "@/lib/use-resource";
 import { dateFmt } from "@/lib/format";
 import { tr } from "@/lib/i18n";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { ClientRequestsPanel } from "./client-portal-staff";
 import { ClientChatPanel } from "./client-chat-panel";
+import { useCanUseModule } from "@/lib/route-access";
 
 type ClientRow = { client_id: string; name?: string; legal_name?: string };
 type Onboarding = {
@@ -45,6 +51,7 @@ export function ClientSupportPage() {
   const [onb, setOnb] = React.useState<Onboarding | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState<string | null>(null);
+  const canAnswer = useCanUseModule("MOD-64C");
 
   const load = React.useCallback(
     (id: string) => {
@@ -138,7 +145,22 @@ export function ClientSupportPage() {
       ) : (
         <div className="grid gap-6 lg:grid-cols-2">
           <Panel title={`${t("portal.messages")} · ${clientName(clientId)}`}>
-            <ClientChatPanel key={clientId} clientId={clientId} initialThread={initialThread} />
+            {canAnswer ? (
+              <>
+                <ClientChatPanel key={clientId} clientId={clientId} initialThread={initialThread} />
+                <Link
+                  to={`/comms/clients?client=${encodeURIComponent(clientId)}&thread=${encodeURIComponent(initialThread)}`}
+                  className="mt-3 inline-block text-sm font-medium text-primary-ink hover:underline"
+                >
+                  {tr("Open in the Client inbox")}
+                </Link>
+              </>
+            ) : (
+              <EmptyState
+                title={tr("Conversations are answered from the Client inbox")}
+                hint={tr("Comms › Clients, for the people who hold the Client inbox permission.")}
+              />
+            )}
           </Panel>
 
           <Panel title={`${t("portal.onboarding")} · ${clientName(clientId)}`}>

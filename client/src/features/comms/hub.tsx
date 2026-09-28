@@ -5,6 +5,8 @@
  *                   search, the Master Composer). Connecting and managing
  *                   mailboxes (Microsoft 365 / Google / IMAP-SMTP) lives under
  *                   Comms → Setup.
+ *   /comms/clients → the Client inbox: every client's portal conversations,
+ *                   waiting first (client portal PR 3, MOD-64C).
  *   /comms/calls  → the user's calls, and /comms/calls/:callId one call's
  *                   summary and transcript. Call settings live at
  *                   /settings/calls.
@@ -30,10 +32,14 @@ import { SignaturesPage } from "./signatures";
 import { CallsListPage } from "./call/calls-list";
 import { CallRecordPage } from "./call/call-record";
 import { useCallCapabilities } from "./call/call-capabilities";
+import { ClientInboxPage } from "./client-inbox";
+import { useCanUseModule } from "@/lib/route-access";
 
 const TABS = [
   { to: "/comms", label: "Chat", end: true },
   { to: "/comms/mail", label: "Mailbox", end: false },
+  // Client portal PR 3: every client's portal conversations (MOD-64C).
+  { to: "/comms/clients", label: "Clients", end: false },
   { to: "/comms/signatures", label: "Signatures", end: false },
   { to: "/comms/calls", label: "Calls", end: false },
   { to: "/comms/setup", label: "Setup", end: false },
@@ -43,16 +49,27 @@ export function CommsHub() {
   const { section: sectionParam, callId } = useParams();
   // `/comms/calls/:callId` has no `:section`; it is the Calls tab all the same.
   const section = callId ? "calls" : sectionParam;
-  const isChat = !section || !["setup", "signatures", "mail", "calls"].includes(section);
+  const isChat = !section || !["setup", "signatures", "mail", "calls", "clients"].includes(section);
   // F10: no Calls tab while the tenant has calls off. A deep link to a call
   // still opens it — its record answers for itself.
   const callsOn = useCallCapabilities()?.calls === true;
-  const tabs = TABS.filter((t) => t.to !== "/comms/calls" || callsOn || section === "calls");
+  // The Client inbox only for the people who answer clients; a deep link from
+  // an alert still opens it, and the API answers for itself.
+  const inboxOn = useCanUseModule("MOD-64C");
+  const tabs = TABS.filter(
+    (t) =>
+      (t.to !== "/comms/calls" || callsOn || section === "calls") &&
+      (t.to !== "/comms/clients" || inboxOn || section === "clients"),
+  );
   const page =
     section === "setup" ? (
       <CommsSetupPage />
     ) : section === "calls" ? (
       callId ? <CallRecordPage /> : <CallsListPage />
+    ) : section === "clients" ? (
+      <section className={pageShell.wide}>
+        <ClientInboxPage />
+      </section>
     ) : section === "signatures" ? (
       <SignaturesPage />
     ) : section === "mail" ? (

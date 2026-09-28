@@ -281,7 +281,10 @@
         "client_credit_check",
         "create_client",
         "update_client",
-        "request_client_document"
+        "request_client_document",
+        "get_client_account_manager",
+        "set_client_account_manager",
+        "find_account_manager_candidates"
       ]
     },
     {
@@ -1725,6 +1728,21 @@
       ]
     },
     {
+      "id": "comms_clients",
+      "title": "Client inbox",
+      "route": "/comms/clients",
+      "area": "comms",
+      "module_key": "MOD-64C",
+      "purpose": "Every client's portal conversations in one list — General and one per shipment — those waiting for an answer first, with who looks after each client. Filter to what is waiting or to your own clients and files, open a conversation and reply with text or a file.",
+      "actions": [
+        "list_client_inbox",
+        "list_client_conversations",
+        "read_client_conversation",
+        "reply_to_client",
+        "client_notification_reach"
+      ]
+    },
+    {
       "id": "comms_call_record",
       "title": "Call",
       "route": "/comms/calls/:callId",
@@ -1902,11 +1920,7 @@
       "purpose": "The account team's side of the client portal — what clients sent to review, the message thread and onboarding checklist per client.",
       "actions": [
         "list_client_requests",
-        "review_client_request",
-        "list_client_conversations",
-        "read_client_conversation",
-        "reply_to_client",
-        "client_notification_reach"
+        "review_client_request"
       ]
     },
     {

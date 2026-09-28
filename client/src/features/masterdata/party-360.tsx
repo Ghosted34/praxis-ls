@@ -42,6 +42,9 @@ import {
 import * as api from "@/lib/masterdata-api";
 import { useUrlTab } from "@/lib/use-url-tab";
 import { ClientPortalTab } from "@/features/portal/client-portal-staff";
+import { ClientChatPanel } from "@/features/portal/client-chat-panel";
+import { AccountManagerCard } from "@/features/portal/account-manager";
+import { useCanUseModule } from "@/lib/route-access";
 import { ComposeIconButton as MailIconButton } from "@/features/comms/inbox/composer/compose-icon-button";
 import {
   KpiDetailsModal,
@@ -500,12 +503,13 @@ const CLIENT_TABS = [
   "Operations",
   "Financial",
   "Portal",
+  "Messages",
 ] as const;
 type Tab = (typeof CLIENT_TABS)[number];
-// "Operations" lists the client's dossiers and "Portal" what we asked the
-// client for through their portal; suppliers have neither, so both tabs are
-// dropped on that side.
-const SUPPLIER_TABS = CLIENT_TABS.filter((t) => t !== "Operations" && t !== "Portal");
+// "Operations" lists the client's dossiers, "Portal" what we asked the client
+// for through their portal, and "Messages" their portal conversations (client
+// portal PR 3); suppliers have none of these, so the three are dropped there.
+const SUPPLIER_TABS = CLIENT_TABS.filter((t) => t !== "Operations" && t !== "Portal" && t !== "Messages");
 
 /* ── PR3-C: duplicates, governed merge, scorecard, pending changes ─────────── */
 
@@ -1408,10 +1412,14 @@ export function PartyDossier({
   // `?tab=` (use-url-tab), not local state: the tab survives a reload and a
   // link can land on it — same house pattern as entity-360. "Overview" is the
   // fallback, so the param is omitted there and a bare URL stays clean.
-  const [tab, setTab] = useUrlTab<Tab>(
-    kind === "client" ? CLIENT_TABS : SUPPLIER_TABS,
-    "Overview",
-  );
+  // Messages only for the people who answer clients (MOD-64C) — for anyone
+  // else the conversation's API refuses, so the tab would be a 403.
+  const canAnswerClients = useCanUseModule("MOD-64C");
+  const tabList: readonly Tab[] =
+    kind === "client"
+      ? CLIENT_TABS.filter((t) => t !== "Messages" || canAnswerClients)
+      : SUPPLIER_TABS;
+  const [tab, setTab] = useUrlTab<Tab>(tabList, "Overview");
   const [adding, setAdding] = React.useState<
     | null
     | "contact"
@@ -1773,7 +1781,7 @@ export function PartyDossier({
         onChange={setTab}
         sticky
         className="mb-3"
-        tabs={(isClient ? CLIENT_TABS : SUPPLIER_TABS).map((t) => {
+        tabs={tabList.map((t) => {
           // `Operations` is a client-only field on the 360 response (only clients
           // have dossiers). Reading `d.dossiers.length` unconditionally throws on
           // the supplier branch — the intersection type hides it — so the
@@ -1796,6 +1804,9 @@ export function PartyDossier({
 
       {tab === "Overview" && (
         <div className="grid gap-4 lg:grid-cols-2">
+          {/* Who looks after this client — the first person their portal
+              messages reach (client portal PR 3). */}
+          {isClient ? <AccountManagerCard clientId={partyId} className="lg:col-span-2" /> : null}
           <div className="rounded-xl border bg-card p-4">
             <h4 className="mb-3 text-sm font-semibold text-foreground">
               Compliance
@@ -2231,6 +2242,15 @@ export function PartyDossier({
           clientId={partyId}
           dossiers={(d.dossiers ?? []).map((ds) => ({ dossier_id: ds.dossier_id, ref: ds.ref || ds.dossier_id.slice(0, 8) }))}
         />
+      )}
+
+      {/* The client's portal conversations — General and one per shipment —
+          answered from here as from the Client inbox (client portal PR 3). */}
+      {tab === "Messages" && isClient && (
+        <div className="grid gap-3">
+          <AccountManagerCard clientId={partyId} />
+          <ClientChatPanel clientId={partyId} />
+        </div>
       )}
 
       {tab === "Operations" && (

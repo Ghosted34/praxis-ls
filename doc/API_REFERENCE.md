@@ -6,7 +6,7 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 1802 |
+| Routes | 1806 |
 | Modules mounted | 141 |
 | API version | v1 |
 
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 1802 mounted routes, grouped by path prefix.
+All 1806 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -502,6 +502,8 @@ All 1802 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/clients/:id` | — |
 | PATCH | `/api/tenant/clients/:id` | — |
 | GET | `/api/tenant/clients/:id/360` | — |
+| GET | `/api/tenant/clients/:id/account-manager` | — |
+| PUT | `/api/tenant/clients/:id/account-manager` | — |
 | GET | `/api/tenant/clients/:id/addresses` | — |
 | POST | `/api/tenant/clients/:id/addresses` | — |
 | DELETE | `/api/tenant/clients/:id/addresses/:childId` | — |
@@ -539,6 +541,7 @@ All 1802 mounted routes, grouped by path prefix.
 | PATCH | `/api/tenant/clients/:id/registrations/:childId` | — |
 | POST | `/api/tenant/clients/:id/unblock` | — |
 | POST | `/api/tenant/clients/:id/verify` | — |
+| GET | `/api/tenant/clients/account-manager-candidates` | — |
 | POST | `/api/tenant/clients/convert-from-supplier/:id` | — |
 | POST | `/api/tenant/clients/dedupe-check` | — |
 
@@ -1562,6 +1565,7 @@ All 1802 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/portal/auth/sessions` | — |
 | POST | `/api/tenant/portal/auth/sessions/:id/revoke` | — |
 | GET | `/api/tenant/portal/chat/attachments/:attachmentId` | — |
+| GET | `/api/tenant/portal/chat/inbox` | — |
 | GET | `/api/tenant/portal/chat/messages` | — |
 | POST | `/api/tenant/portal/chat/messages` | — |
 | POST | `/api/tenant/portal/chat/read` | — |

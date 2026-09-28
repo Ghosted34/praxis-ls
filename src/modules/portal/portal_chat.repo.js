@@ -221,20 +221,95 @@ async function attachment(client, { attachmentId, clientId = null }) {
 }
 
 /**
- * Who on the team a client's message alerts (owner decision, 2/12): a message
- * about a shipment reaches that file's operations and sales owners; the MD is
- * told of every one. PR 3 adds the client's named account manager and the
- * shared inbox's fallback audience in front of `fallback`.
+ * Who on the team a client's message alerts (owner decision 2/12), as three
+ * lists the service combines:
+ *
+ *   manager  the client's account manager (client_master.
+ *            relationship_manager_user_id, 14200) — if their login is ACTIVE;
+ *   owners   for a shipment's conversation, that file's operations and sales
+ *            owners — the ACTIVE ones;
+ *   md       the MD — the CEO role (role.code = 'CEO', as auth derives
+ *            is_ceo: app_user has no such column) — told of every one.
+ *
+ * Only active logins, everywhere: someone who has left is not a destination,
+ * and counting them would stop the fallback to the inbox (which the service
+ * applies when `manager` and `owners` are both empty).
  */
-async function staffAudience(client, { dossier }) {
+async function staffAudience(client, { clientId, dossier }) {
   const owners = dossier ? [dossier.owner_ops_id, dossier.owner_sales_id].filter(Boolean) : [];
-  const { rows: md } = await client.query(
-    "SELECT user_id FROM app_user WHERE is_ceo = true AND status = 'ACTIVE'",
+  const { rows } = await client.query(
+    `SELECT 'manager' AS why, u.user_id
+       FROM client_master cm
+       JOIN app_user u ON u.user_id = cm.relationship_manager_user_id
+      WHERE cm.client_id = $1 AND u.status = 'ACTIVE'
+     UNION ALL
+     SELECT 'owner' AS why, u.user_id
+       FROM app_user u
+      WHERE u.user_id = ANY($2::uuid[]) AND u.status = 'ACTIVE'
+     UNION ALL
+     SELECT 'md' AS why, u.user_id
+       FROM app_user u
+       JOIN user_role ur ON ur.user_id = u.user_id
+       JOIN role r ON r.role_id = ur.role_id
+      WHERE r.code = 'CEO' AND u.status = 'ACTIVE'`,
+    [clientId, owners],
   );
-  return { owners, md: md.map((r) => r.user_id) };
+  const of = (why) => [...new Set(rows.filter((r) => r.why === why).map((r) => r.user_id))];
+  return { manager: of("manager"), owners: of("owner"), md: of("md") };
+}
+
+/**
+ * The Client inbox (PR 3): one row per client and thread, those waiting for
+ * an answer first, with who looks after the client and who owns the file — so
+ * the service can offer All, Waiting and Mine from this one read.
+ *
+ * A conversation is listed when it moved in the last six months OR a client
+ * message in it is still unread by the team, however old: the bound keeps the
+ * list to what is current, and must never be what hides a question nobody
+ * answered. An older, answered conversation is one click away on the client's
+ * own Messages tab, and a new message brings it straight back.
+ */
+async function inbox(client, { limit = 300 } = {}) {
+  const { rows } = await client.query(
+    `WITH waiting AS (
+       SELECT m.client_id, m.dossier_id, COUNT(*)::int AS unread, MIN(m.created_at) AS waiting_since
+         FROM client_message m
+        WHERE m.direction = 'CLIENT' AND m.staff_read_at IS NULL
+        GROUP BY m.client_id, m.dossier_id
+     ), last AS (
+       SELECT DISTINCT ON (m.client_id, m.dossier_id)
+              m.client_id, m.dossier_id, m.message_id, m.body, m.direction, m.created_at,
+              (m.location_lat IS NOT NULL) AS has_location,
+              (SELECT a.kind FROM client_message_attachment a
+                WHERE a.message_id = m.message_id ORDER BY a.position LIMIT 1) AS attachment_kind
+         FROM client_message m
+        WHERE m.created_at > now() - interval '180 days'
+           OR EXISTS (SELECT 1 FROM waiting w0
+                       WHERE w0.client_id = m.client_id
+                         AND COALESCE(w0.dossier_id::text, 'general') = COALESCE(m.dossier_id::text, 'general'))
+        ORDER BY m.client_id, m.dossier_id, m.created_at DESC
+     )
+     SELECT l.*, COALESCE(w.unread, 0) AS unread, w.waiting_since,
+            COALESCE(cm.name, cm.legal_name) AS client_name,
+            d.ref AS dossier_ref, d.owner_ops_id, d.owner_sales_id,
+            cm.relationship_manager_user_id AS manager_user_id,
+            COALESCE(me.full_name, mu.full_name) AS manager_name
+       FROM last l
+       JOIN client_master cm ON cm.client_id = l.client_id
+       LEFT JOIN waiting w
+              ON w.client_id = l.client_id
+             AND COALESCE(w.dossier_id::text, 'general') = COALESCE(l.dossier_id::text, 'general')
+       LEFT JOIN dossier_visible d ON d.dossier_id = l.dossier_id
+       LEFT JOIN app_user mu ON mu.user_id = cm.relationship_manager_user_id
+       LEFT JOIN employee me ON me.employee_id = mu.employee_id
+      ORDER BY (COALESCE(w.unread, 0) > 0) DESC, l.created_at DESC
+      LIMIT $1`,
+    [limit],
+  );
+  return rows;
 }
 
 module.exports = {
   threadKey, clientDossier, clientMilestone, threads, unreadTotal, messages, insertMessage,
-  insertAttachment, markRead, markStaffRead, staffThreads, attachment, staffAudience,
+  insertAttachment, markRead, markStaffRead, staffThreads, attachment, staffAudience, inbox,
 };

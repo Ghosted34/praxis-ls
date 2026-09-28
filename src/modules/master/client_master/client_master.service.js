@@ -16,6 +16,7 @@ const masterConfig = require("../master_config/master_config.service");
 const lifecycle = require("../party-lifecycle.service");
 const partyWrite = require("../_shared/party-write.service");
 const changeRequest = require("../_shared/change-request.service");
+const accountManager = require("./account_manager.service");
 const { emitEvent, audit } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
 const { atomically } = require("../../../shared/db/tx");
@@ -31,8 +32,12 @@ async function create(client, { data, actor = {} }) {
     Object.assign(masterData, partyWrite.niuRccmMirror(registrations), { name_norm: partyWrite.normalizeName(masterData) });
     // Tenant field-requirement policy on top of the static schema (§5.2).
     await masterConfig.enforceRequired(client, "CLIENT", masterData);
+    // The account manager (14200) is named through its own service whichever
+    // door it comes in by — it must be an ACTIVE login, and naming one is
+    // audited and tells them — so it is not a plain column of the insert.
+    const { relationship_manager_user_id: accountManagerId, ...insertable } = masterData;
     // A new client starts as a DRAFT unless told otherwise.
-    const payload = { registration_status: "DRAFT", ...masterData };
+    const payload = { registration_status: "DRAFT", ...insertable };
     let ref = payload.ref || null;
     if (!ref && payload.entity_id) {
       const alloc = await numbering.allocate(client, { moduleKey: events.MODULE, entityId: payload.entity_id, date: new Date().toISOString().slice(0, 10) });
@@ -41,6 +46,10 @@ async function create(client, { data, actor = {} }) {
     const row = await repo.insert(client, { ...payload, ref });
     // Registrations, primary contact and primary address — same transaction.
     await partyWrite.writeChildren(client, { kind: "client", partyId: row.client_id, registrations, primary_contact, primary_address });
+    if (accountManagerId) {
+      await accountManager.set(client, { clientId: row.client_id, userId: accountManagerId, actor });
+      row.relationship_manager_user_id = accountManagerId;
+    }
     await emitEvent(client, { eventTypeKey: events.CREATED, moduleKey: events.MODULE, entityRef: "client:" + row.client_id, actorUserId: actor.user_id || null });
     await audit(client, { actorUserId: actor.user_id || null, action: events.CREATED, moduleKey: events.MODULE, entityRef: "client:" + row.client_id, after: row });
     return row;
@@ -56,6 +65,10 @@ async function update(client, { id, patch, actor = {}, env }) {
   const masterPatch = { ...patch };
   const { registrations } = masterPatch;
   delete masterPatch.registrations; delete masterPatch.primary_contact; delete masterPatch.primary_address;
+  // The account manager goes through its own service, as on create (14200):
+  // an ACTIVE login, audited, and the person told.
+  const accountManagerId = masterPatch.relationship_manager_user_id;
+  delete masterPatch.relationship_manager_user_id;
   // Sensitive-field maker-checker (§8): in LIVE, split legal name / credit limit
   // / status out of the direct patch — they need a second authorization. Done
   // BEFORE the mirror + name_norm recompute so a pending legal-name change never
@@ -74,6 +87,9 @@ async function update(client, { id, patch, actor = {}, env }) {
       pending = await changeRequest.open(client, { kind: "client", partyId: id, changeType: gate.changeType, payload: gate.sensitive, actor });
     }
     const row = Object.keys(masterPatch).length ? await repo.update(client, id, masterPatch) : before;
+    if (accountManagerId !== undefined) {
+      await accountManager.set(client, { clientId: id, userId: accountManagerId || null, actor });
+    }
     // Activation (§3): allocate the aux account + refresh compliance the first
     // time a client becomes ACTIVE. Keyed on "active without an aux account" so a
     // retry after a mid-activation failure still completes it.

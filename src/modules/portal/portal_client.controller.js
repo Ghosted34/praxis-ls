@@ -419,6 +419,11 @@ module.exports = {
   }),
 
   // ── staff ──
+  // The Client inbox (PR 3): every client conversation, waiting first.
+  staffChatInbox: asyncHandler(async (req, res) => {
+    const filter = ["all", "waiting", "mine"].includes(req.query.filter) ? req.query.filter : "all";
+    res.json({ data: await req.tenantDb((c) => chat.staffInbox(c, { filter, actor: staff(req) })) });
+  }),
   staffChatThreads: asyncHandler(async (req, res) => {
     res.json({ data: await req.tenantDb((c) => chat.staffThreads(c, { clientId: uuidOf(req.query.client_id, "client_id") })) });
   }),
@@ -435,6 +440,7 @@ module.exports = {
         chat.staffSend(c, {
           clientId: b.client_id, thread: b.thread || "general", body: b.body,
           milestoneId: b.milestone_instance_id || null, file: req.file || null, meta: chatMeta(b),
+          location: b.lat !== undefined ? { lat: b.lat, lng: b.lng, label: b.location_label || null } : null,
           actor: staff(req), slug: slugOf(req),
         })),
     });

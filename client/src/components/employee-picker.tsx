@@ -68,6 +68,7 @@ export function EmployeePicker({
   disabled,
   requireAccount = false,
   id = "employee-picker",
+  source = "/employees",
 }: {
   onPick: (employee: EmployeeHit) => void;
   /** Ids already chosen — filtered out of the results rather than greyed, so
@@ -79,6 +80,13 @@ export function EmployeePicker({
   /** Hide employees who do not yet have an app login. */
   requireAccount?: boolean;
   id?: string;
+  /**
+   * Where to search. `/employees` needs the employee master (MOD-02) and
+   * returns the whole record; a screen whose users do not hold it passes a
+   * narrower read that answers `?q=&limit=` with the same row shape — the
+   * account manager picker's `/clients/account-manager-candidates`.
+   */
+  source?: string;
 }) {
   const [open, setOpen] = React.useState(false);
   const [term, setTerm] = React.useState("");
@@ -92,7 +100,7 @@ export function EmployeePicker({
     return () => clearTimeout(t);
   }, [term]);
 
-  const path = `/employees?active=true&limit=${PAGE}${query ? `&q=${encodeURIComponent(query)}` : ""}`;
+  const path = `${source}?active=true&limit=${PAGE}${query ? `&q=${encodeURIComponent(query)}` : ""}`;
   const { rows, loading, error } = useList<EmployeeHit>(path);
   const hits = (rows || []).filter(
     (r) => !exclude?.has(r.employee_id) && (!requireAccount || Boolean(r.account_user_id)),

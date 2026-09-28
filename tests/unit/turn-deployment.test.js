@@ -382,6 +382,38 @@ describe("scripts/turn-setup.sh (the one-time production setup), .env half", () 
   });
 });
 
+describe("scripts/turn-check.sh: a wrong secret", () => {
+  const CHECK = path.join(ROOT, "scripts", "turn-check.sh");
+  /** A stand-in turnutils_uclient: the right secret allocates; a wrong one prints `wrong`. */
+  function check(wrong, { rightWorks = true } = {}) {
+    const bin = fs.mkdtempSync(path.join(os.tmpdir(), "turn-uclient-"));
+    const uclient = path.join(bin, "uclient");
+    fs.writeFileSync(uclient, `#!/bin/sh
+case "$2" in
+  good) ${rightWorks ? 'echo "allocate response received: success"; echo "tot_send_msgs=1"' : ":"} ;;
+  *) printf '%s\\n' ${JSON.stringify(wrong)} ;;
+esac
+`, { mode: 0o755 });
+    return spawnSync("sh", [CHECK], {
+      encoding: "utf8",
+      env: { PATH: process.env.PATH, TURN_CREDENTIAL_SECRET: "good", TURNUTILS_UCLIENT: uclient },
+    }).stdout;
+  }
+
+  test("coturn 4.18.0's uclient: silent retries until the timeout count as refused", () => {
+    expect(check("INFO uclient: sender pool disabled")).toMatch(/PASS: a wrong secret cannot allocate/);
+  });
+  test("an older uclient's 'Cannot complete Allocation' counts as refused", () => {
+    expect(check("Cannot complete Allocation")).toMatch(/PASS: a wrong secret cannot allocate/);
+  });
+  test("an allocation with the wrong secret fails the check", () => {
+    expect(check("tot_send_msgs=1")).toMatch(/FAIL: a credential signed with the wrong secret was NOT refused/);
+  });
+  test("silence proves nothing when the right secret did not allocate either", () => {
+    expect(check("", { rightWorks: false })).toMatch(/FAIL: a wrong secret: cannot tell/);
+  });
+});
+
 describe("scripts/turn-check.sh knows the relay's own addresses", () => {
   const src = fs.readFileSync(path.join(ROOT, "scripts", "turn-check.sh"), "utf8");
 

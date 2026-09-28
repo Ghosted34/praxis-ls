@@ -69,6 +69,32 @@ async function revoke(client, { id, actorUserId, reason }) {
   return rows[0] || null;
 }
 
+/**
+ * Revoke every live signature on a document in one statement — or, with
+ * `signReason`, only the live one(s) for that step. The rows survive (rule 3):
+ * this sets the revocation triple, so a printout made before today keeps
+ * answering "revoked" on the portal instead of 404ing.
+ *
+ * Used when a document goes back for amendment (a costing unlock) and when a
+ * step is re-signed, so the page never carries two seals for one decision.
+ */
+async function supersedeLive(client, { entityRef, signReason = null, actorUserId = null, reason }) {
+  const params = [entityRef, actorUserId, reason];
+  let where = "entity_ref = $1 AND revoked_at IS NULL";
+  if (signReason) {
+    params.push(signReason);
+    where += " AND sign_reason = $4";
+  }
+  const { rows } = await client.query(
+    `UPDATE document_signature
+        SET revoked_at = now(), revoked_by = $2, revoke_reason = $3
+      WHERE ${where}
+      RETURNING signature_id`,
+    params,
+  );
+  return rows.map((r) => r.signature_id);
+}
+
 /** Written back once the document has been rendered and vaulted. */
 async function setArtifact(client, { id, documentVaultId, artifactHash }) {
   const { rows } = await client.query(
@@ -221,7 +247,7 @@ async function stats(client) {
 }
 
 module.exports = {
-  insert, getById, getByVerifyCode, listByRef, countActive, revoke, setArtifact,
+  insert, getById, getByVerifyCode, listByRef, countActive, revoke, supersedeLive, setArtifact,
   lockForAmendment, amendmentFlagExists, raiseAmendmentFlag, stats,
   scanSeenFromIp, insertScan, countScansInWindow, listScans, scanSummary, pruneScans,
 };

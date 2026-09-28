@@ -155,7 +155,7 @@ describe("the VAT column is an amount, and a débours is marked (PT)", () => {
 
   test("the débours sub-total sits inside the totals — at cost, not 'untaxed'", () => {
     const html = render();
-    expect(html).toContain("of which débours (at cost)");
+    expect(html).toContain("of which disbursements (at cost)");
     // The old label claimed débours were untaxed; they are budgeted now.
     expect(html).not.toContain("untaxed");
   });
@@ -166,7 +166,8 @@ describe("the VAT column is an amount, and a débours is marked (PT)", () => {
 describe("the sheet has ONE currency: named once, and again only on the total and in words", () => {
   test("the header names the currency; lines and sub-totals carry bare figures", () => {
     const html = render();
-    expect(html).toContain("Currency: XAF");
+    // The value is bold, the label is not (owner decision, 28 Sep 2026).
+    expect(html).toContain('<div class="cst-mk">Currency</div><div class="cst-mv">XAF</div>');
     // A line amount, a line unit and the sub-total: no currency beside them.
     expect(html).toContain(">1 000 000<");
     expect(html).toContain(">500 000<");
@@ -184,7 +185,7 @@ describe("the sheet has ONE currency: named once, and again only on the total an
 
   test("a sheet in another currency prints its one rate to XAF in the header", () => {
     const html = render({ currency: "EUR", exchange_rate: 655.957 });
-    expect(html).toContain("Currency: EUR");
+    expect(html).toContain('<div class="cst-mv">EUR</div>');
     expect(html).toContain("1 EUR = 655,957 XAF");
     expect(html).toContain("1 631 750 EUR");
   });
@@ -200,24 +201,22 @@ describe("débours VAT is in the total, and named", () => {
   });
 
   test("a memo names how much of the VAT is the supplier's on débours (PT)", () => {
-    expect(render()).toContain("of which on débours (PT)");
+    expect(render()).toContain("of which on disbursements (PT)");
   });
 
   test("a sheet with no débours VAT prints no such memo", () => {
     const html = render({ totals: { ...TPL.sampleData.totals, upstream_vat_total: 0 } });
-    expect(html).not.toContain("of which on débours (PT)");
+    expect(html).not.toContain("of which on disbursements (PT)");
   });
 
-  test("every débours gets a remarks line, above the pricer's own remarks", () => {
+  test("ONE remark line explains (PT), however many débours — then the pricer's own note", () => {
+    // Owner decision, 28 Sep 2026: a sentence per pass-through line was nine
+    // near-identical lines on SBX-CST-2026-0001. One line says what (PT) means.
     const html = render();
-    // A line per pass-through explaining what (PT) means…
-    expect(html).toMatch(/\(PT\)[^<]*Surestaries[^<]*disbursement re-billed at cost/);
-    // …and the user's remark still prints, after them.
-    expect(html).toContain("Taux carrier confirmé le 25/07");
-    const firstNote = html.indexOf("disbursement re-billed at cost");
-    const userRemark = html.indexOf("Taux carrier confirmé");
-    expect(firstNote).toBeGreaterThan(-1);
-    expect(userRemark).toBeGreaterThan(firstNote);
+    expect(html.match(/\(PT\) Disbursements re-billed at cost/g)).toHaveLength(1);
+    expect(html).not.toMatch(/\(PT\)[^<]*Demurrage/);
+    expect(html).toContain("Carrier rate confirmed on 25/07");
+    expect(html.indexOf("Carrier rate confirmed")).toBeGreaterThan(html.indexOf("(PT) Disbursements"));
   });
 });
 
@@ -278,7 +277,9 @@ describe("the seals", () => {
     // A DRAFT printed for a desk review has nobody to seal it yet, and a page
     // with neither seals nor signature lines cannot be signed at all.
     const html = render({ seals: [] }, "fr");
-    expect(html).toContain('class="sig"');
+    // Three titled boxes, one per step, each with a line to sign on.
+    expect(html.match(/class="cst-sbd empty"/g)).toHaveLength(3);
+    expect(html).toContain("Approuvé pour expédition");
   });
 });
 

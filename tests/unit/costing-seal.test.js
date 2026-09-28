@@ -58,6 +58,7 @@ jest.mock("../../src/config/logger", () => ({
 // behaviour — which `signature-*.test.js` already pins.
 jest.mock("../../src/modules/vault/document_signature/document_signature.service", () => ({
   signInternal: jest.fn(async () => ({ signature_id: "sig-1" })),
+  supersedeAll: jest.fn(async () => ["old-1", "old-2", "old-3"]),
 }));
 jest.mock("../../src/services/signatures/presets", () => ({
   resolveMenu: jest.fn(async () => ({ cards: [{ preset_code: "STAMP" }], default: "STAMP" })),
@@ -74,11 +75,11 @@ const DOSSIER = "22222222-2222-2222-2222-222222222222";
 const ACTOR = { user_id: "33333333-3333-3333-3333-333333333333" };
 
 /** A client that answers the reads `setStatus` performs and records the UPDATE. */
-function stubClient({ status = "DRAFT", validatorId = "v-1" } = {}) {
+function stubClient({ status = "DRAFT", validatorId = "v-1", validatedBy = null, superAdmin = false } = {}) {
   const state = {
     row: {
       costing_id: ID, dossier_id: DOSSIER, status,
-      validator_id: validatorId, doc_number: "CST-2026-0043",
+      validator_id: validatorId, validated_by: validatedBy, doc_number: "CST-2026-0043",
       currency: "XAF", exchange_rate_to_xaf: 1,
       total_ht: 1000, total_vat: 192.5, total_ttc: 1192.5,
     },
@@ -89,6 +90,7 @@ function stubClient({ status = "DRAFT", validatorId = "v-1" } = {}) {
       state.updates.push(text);
       return { rows: [{ ...state.row }] };
     }
+    if (/r\.code = 'SUPER_ADMIN'/.test(text)) return { rows: superAdmin ? [{ "?column?": 1 }] : [] };
     if (/FROM costing\b/i.test(text)) return { rows: [state.row] };
     if (/FROM costing_line\b/i.test(text) || /costing_line cl/i.test(text)) return { rows: [] };
     if (/FROM dossier_visible\b/i.test(text)) return { rows: [{ entity_id: "e-1" }] };
@@ -175,5 +177,80 @@ describe("a seal that fails does not undo the decision", () => {
     expect(logger.error).toHaveBeenCalled();
     const [, message] = logger.error.mock.calls[0];
     expect(message).toMatch(/could not be sealed/i);
+  });
+});
+
+/*
+ * ONE SEAL PER STEP (14190). SBX-CST-2026-0001 printed six seals: approved,
+ * unlocked, re-approved, and the first three were never retired. These pin the
+ * two places that now retire them.
+ */
+describe("one seal per step, never six", () => {
+  test("every transition seal supersedes an earlier seal for the same step", async () => {
+    const c = stubClient({ status: "SUBMITTED_FOR_APPROVAL" });
+    await service.setStatus(c, { id: ID, to: "APPROVE", actor: ACTOR });
+    expect(signatures.signInternal.mock.calls[0][1].supersedeStep).toBe(true);
+  });
+
+  test("UNLOCK retires every live seal on the costing", async () => {
+    const c = stubClient({ status: "UNLOCK_REQUESTED" });
+    await service.unlockTransition(c, { id: ID, action: "UNLOCK", actor: ACTOR });
+    expect(signatures.supersedeAll).toHaveBeenCalledTimes(1);
+    const call = signatures.supersedeAll.mock.calls[0][1];
+    expect(call.entityRef).toBe(`costing:${ID}`);
+    expect(call.reason).toMatch(/unlocked/i);
+  });
+
+  test.each(["REQUEST_UNLOCK", "DENY_UNLOCK"])("%s leaves the seals alone", async (action) => {
+    const c = stubClient({ status: action === "REQUEST_UNLOCK" ? "APPROVED_LOCKED" : "UNLOCK_REQUESTED" });
+    await service.unlockTransition(c, { id: ID, action, reason: "carrier re-priced", actor: ACTOR });
+    expect(signatures.supersedeAll).not.toHaveBeenCalled();
+  });
+});
+
+describe("the validator never approves their own validation", () => {
+  test("refused for an ordinary user", async () => {
+    const c = stubClient({ status: "SUBMITTED_FOR_APPROVAL", validatedBy: ACTOR.user_id });
+    await expect(service.setStatus(c, { id: ID, to: "APPROVE", actor: ACTOR }))
+      .rejects.toMatchObject({ code: "SAME_VALIDATOR_APPROVER" });
+    expect(c.updates).toHaveLength(0);
+    expect(signatures.signInternal).not.toHaveBeenCalled();
+  });
+
+  test("allowed for SUPER_ADMIN — the training account", async () => {
+    const c = stubClient({ status: "SUBMITTED_FOR_APPROVAL", validatedBy: ACTOR.user_id, superAdmin: true });
+    await expect(service.setStatus(c, { id: ID, to: "APPROVE", actor: ACTOR })).resolves.toBeTruthy();
+  });
+
+  test("a different approver is fine", async () => {
+    const c = stubClient({ status: "SUBMITTED_FOR_APPROVAL", validatedBy: "someone-else" });
+    await expect(service.setStatus(c, { id: ID, to: "APPROVE", actor: ACTOR })).resolves.toBeTruthy();
+  });
+
+  test("raising and validating may be the same person", async () => {
+    const c = stubClient({ status: "SUBMITTED_FOR_VALIDATION" });
+    await expect(service.setStatus(c, { id: ID, to: "SUBMIT_APPROVAL", actor: ACTOR })).resolves.toBeTruthy();
+  });
+});
+
+describe("the page prints at most one seal per step", () => {
+  const row = (reason, at, id) => ({ signature_id: id, sign_reason: reason, signed_at: at });
+  // SBX-CST-2026-0001 as it was: three steps, each signed twice.
+  const six = [
+    row("ACKNOWLEDGED", "2026-09-03T13:54:00Z", "a1"),
+    row("REVIEWED_ACCEPTED", "2026-09-03T13:54:10Z", "b1"),
+    row("APPROVED_DISPATCH", "2026-09-03T13:54:20Z", "c1"),
+    row("ACKNOWLEDGED", "2026-09-03T15:48:00Z", "a2"),
+    row("REVIEWED_ACCEPTED", "2026-09-04T15:47:00Z", "b2"),
+    row("APPROVED_DISPATCH", "2026-09-04T15:47:10Z", "c2"),
+  ];
+
+  test("six live costing seals print as three — the newest of each step", () => {
+    const out = templateSvc.onePerStep(`costing:${ID}`, six);
+    expect(out.map((r) => r.signature_id).sort()).toEqual(["a2", "b2", "c2"]);
+  });
+
+  test("other documents keep every seal — two parties can sign for one reason", () => {
+    expect(templateSvc.onePerStep("invoice:1", six)).toHaveLength(6);
   });
 });

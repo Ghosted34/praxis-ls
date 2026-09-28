@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 6× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (666)
+## All codes (667)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -577,6 +577,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `RUN_LOCKED` | 422 | 1× | — |
 | `SAME_LANGUAGE` | 422 | 1× | — |
 | `SAME_PASSWORD` | 422 | 1× | — |
+| `SAME_VALIDATOR_APPROVER` | — | 1× | — |
 | `SCANNED_PDF` | 422 | 2× | — |
 | `SCAN_ENCODING_UNSUPPORTED` | — | 1× | — |
 | `SCAN_REQUIRED` | 422 | 3× | — |

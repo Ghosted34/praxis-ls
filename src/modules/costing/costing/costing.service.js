@@ -127,6 +127,20 @@ async function unlockTransition(client, { id, action, reason = null, actor = {} 
   // fact that a reopening was asked for and refused is the audit trail.
 
   const row = await repo.update(client, id, patch);
+  if (action === "UNLOCK") {
+    /*
+     * The seals stop speaking for the sheet the moment it is editable again
+     * (14190). Left live, the re-approval printed its three seals BESIDE the
+     * first three — six on one page, then nine. Superseded, not deleted: a
+     * copy printed before the unlock still verifies, as revoked.
+     */
+    const signatures = require("../../vault/document_signature/document_signature.service");
+    await signatures.supersedeAll(client, {
+      entityRef: "costing:" + id,
+      actor,
+      reason: "Superseded: the costing was unlocked for amendment",
+    });
+  }
   await emitEvent(client, {
     eventTypeKey: events.unlockEvent(action),
     moduleKey: events.MODULE,
@@ -514,6 +528,8 @@ async function sealTransition(client, { id, to, doc, actor = {} }) {
       // the caller has decided WHEN to build it, and the whole point is that
       // this payload is the post-transition sheet, not the pre-transition one.
       doc,
+      // One seal per step, whatever path led back to it (14190).
+      supersedeStep: true,
     });
   } catch (err) {
     logger.error(
@@ -540,6 +556,19 @@ async function setStatus(client, { id, to, actor = {}, viaChain = false }) {
   // Approving/rejecting directly while a chain is live would skip it (W4).
   if (to === "APPROVE" || to === "REJECT") {
     await assertNoPendingChain(client, "costing:" + id, { viaChain, what: "costing" });
+  }
+
+  // Segregation of duties (owner decision, 28 Sep 2026): the person who
+  // validated a sheet never approves it. Raising and validating may be one
+  // person — an operations manager can do both — but approval is a second pair
+  // of eyes. SUPER_ADMIN alone is exempt: it is the training account.
+  if (to === "APPROVE" && before.validated_by && String(before.validated_by) === String(actor.user_id)
+      && !(await repo.isSuperAdmin(client, actor.user_id))) {
+    throw new AppError(
+      "SAME_VALIDATOR_APPROVER",
+      "You validated this costing, so someone else must approve it",
+      403,
+    );
   }
 
   const patch = { status };

@@ -138,6 +138,9 @@ async function build(client, signatures, { entity = {}, docRef = "", language = 
       forParty: forParty(sig, entity),
       position: { n: i + 1, of: ordered.length },
       reason: reasonWords.get(sig.sign_reason) || "",
+      // The step, as a code, so a template can place the seal in its own box
+      // (the costing prints one box per step, never a fourth).
+      reasonCode: sig.sign_reason || null,
       signerName: sig.signer_name || "",
       signerRole: sig.signer_role || "",
       signedAt: stampedAt(sig.signed_at, timezone, L),

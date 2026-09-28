@@ -260,9 +260,19 @@ async function savedConfig(client, docType, entityId) {
  * `asLang` filter and lands on the entity's default_language, exactly the same
  * as an unconfigured template.
  */
-function resolveDocLanguage(picked, saved, entityDefault) {
+/*
+ * Doc types whose default language is fixed, ahead of the Studio's saved
+ * language and the entity's default. The operator's pick at print time still
+ * wins — a costing CAN be printed in French — but nobody gets French by
+ * accident because the company's default is French (owner decision, 28 Sep
+ * 2026: "the default language should always be English" for costings).
+ */
+const DOC_DEFAULT_LANGUAGE = { COSTING: "en" };
+
+function resolveDocLanguage(picked, saved, entityDefault, docType = null) {
   return (
     asLang(picked)
+    || (docType && DOC_DEFAULT_LANGUAGE[docType])
     || asLang(saved && saved.language)
     || asLang(entityDefault)
     || "en"
@@ -304,7 +314,7 @@ async function resolveCfg(client, docType, entityId, override, { language = null
   // default_language, then 'en'. The entity is then resolved IN that language,
   // so address_lines and identifiers come out matching the sheet they print on.
   const entityDefault = await peekEntityDefaultLanguage(client, entityId);
-  const picked = resolveDocLanguage(language, saved, entityDefault);
+  const picked = resolveDocLanguage(language, saved, entityDefault, docType);
   const { entity, brand } = await resolveEntity(client, entityId, { language: picked });
   const fromEntity = entityLetterheadCfg(entity);
   // `language` is forced onto the merged cfg (rather than spread conditionally
@@ -410,6 +420,29 @@ const SIMPLE = {
   TRIP_SHEET: { table: "fleet_dispatch", pk: "fleet_dispatch_id", label: null },
 };
 const clientLines = (r) => [r.client_niu && `NIU ${r.client_niu}`, r.client_rccm && `RCCM ${r.client_rccm}`].filter(Boolean);
+/**
+ * The costing's client block, as rows the template lays out. Every row is
+ * optional and a missing one is dropped rather than printed as a dash.
+ * Language-neutral on purpose: labels are the template's, values are data.
+ */
+function costingClientBlock(r) {
+  const street = r.ca_line1 || r.client_address || null;
+  const city = r.ca_city || r.client_city || null;
+  const country = r.ca_country || r.client_country || null;
+  const place = [street, city, country].filter(Boolean).join(", ");
+  const phone = r.client_phone || r.attn_phone || null;
+  const email = r.client_email || r.attn_email || null;
+  return {
+    code: r.client_code || null,
+    niu: r.client_niu || null,
+    rccm: r.client_rccm || null,
+    address: place || null,
+    po_box: r.ca_po_box || null,
+    phone,
+    email,
+    attn: r.attn_name ? [r.attn_name, r.attn_title].filter(Boolean).join(" · ") : null,
+  };
+}
 const humanize = (s) => String(s || "").replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase());
 const RECEIPT_METHOD = { BANK: "Virement / Bank transfer", CASH: "Espèces / Cash", MOBILE_MONEY: "Mobile money", CHEQUE: "Chèque / Cheque" };
 
@@ -1412,6 +1445,10 @@ async function loadRecord(client, docType, recordId) {
       `SELECT c.*,
               d.ref AS dossier_ref, d.entity_id, d.bl_mawb, d.pol, d.pod, d.eta, d.incoterm,
               cm.name AS client_name, cm.niu AS client_niu, cm.rccm AS client_rccm,
+              cm.ref AS client_code, cm.address AS client_address, cm.city AS client_city,
+              cm.country_code AS client_country, cm.phone AS client_phone, cm.email AS client_email,
+              ca.line1 AS ca_line1, ca.city AS ca_city, ca.po_box AS ca_po_box, ca.country_code AS ca_country,
+              cc.name AS attn_name, cc.title AS attn_title, cc.phone AS attn_phone, cc.email AS attn_email,
               st.name_en AS service_name_en, st.name_fr AS service_name_fr,
               rp.name AS rate_provider_name,
               COALESCE(e_v.signatory_name, v.full_name) AS validator_name, e_v.job_title AS validator_title,
@@ -1422,6 +1459,23 @@ async function loadRecord(client, docType, recordId) {
          LEFT JOIN currency cur ON cur.code = c.currency
          LEFT JOIN dossier d ON d.dossier_id = c.dossier_id
          LEFT JOIN client_master cm ON cm.client_id = d.client_id
+         -- The client's printed address: the primary active row, billing and
+         -- registered ahead of the rest; its PO box comes with it (13841).
+         LEFT JOIN LATERAL (
+           SELECT a.line1, a.city, a.po_box, a.country_code
+             FROM client_address a
+            WHERE a.client_id = cm.client_id AND a.is_active
+            ORDER BY a.is_primary DESC, (a.type IN ('BILLING','REGISTERED')) DESC, a.created_at
+            LIMIT 1
+         ) ca ON true
+         -- "Attn:" — the client's primary active contact.
+         LEFT JOIN LATERAL (
+           SELECT k.name, k.title, k.phone, k.email
+             FROM client_contact k
+            WHERE k.client_id = cm.client_id AND k.is_active
+            ORDER BY k.is_primary DESC, k.created_at
+            LIMIT 1
+         ) cc ON true
          LEFT JOIN service_type st ON st.service_type_id = d.service_type_id
          LEFT JOIN rate_provider rp ON rp.rate_provider_id = d.rate_provider_id
          LEFT JOIN app_user v  ON v.user_id  = c.validator_id
@@ -1454,6 +1508,8 @@ async function loadRecord(client, docType, recordId) {
       try {
         const shipmentDetails = require("../../operations/shipment_details/shipment_details.service");
         details = await shipmentDetails.forDossier(client, c.dossier_id);
+        const fr = await shipmentDetails.forDossier(client, c.dossier_id, { lang: "fr" }).catch(() => null);
+        if (details && fr) details = { ...details, facets_fr: fr.facets };
       } catch (err) {
         // A file whose service type has lost its field set must still PRINT.
         logger.warn({ err, costing_id: recordId }, "[documents] costing printed without shipment details");
@@ -1522,6 +1578,11 @@ async function loadRecord(client, docType, recordId) {
           name: c.client_name || "—",
           lines: clientLines(c),
         },
+        // The fuller client block the costing prints (owner decision, 28 Sep
+        // 2026): code, identifiers, address, how to reach them, and who to.
+        // Kept OFF `party` — that is the shape canonical.js hashes, and adding
+        // to it would change the content hash of every sheet already sealed.
+        client_block: costingClientBlock(c),
         client: c.client_name || "—",
         shipment: details || null,
         validator: c.validator_name,
@@ -1542,7 +1603,13 @@ async function loadRecord(client, docType, recordId) {
         amendment,
         exchange_rate: Number(c.exchange_rate_to_xaf),
         lines: lines.map((l) => ({
+          // `label` is what the line was saved with, and it is what the seal
+          // hashes — left exactly as it is. The Dictionary's names ride beside
+          // it for the template to print in the sheet's own language.
           label: l.label,
+          label_i18n: l.item_label_en || l.item_label_fr
+            ? { en: l.item_label_en || null, fr: l.item_label_fr || null }
+            : null,
           item_code: l.item_code || null,
           // D10: the equipment a per-container charge was priced FOR. A sheet
           // with "Demurrage" twice and no box named is unreadable — and
@@ -1884,10 +1951,32 @@ async function wetPrintBlockFor(client, { entityRef }) {
  * Best-effort, like everything else on this path: no seals is the same page a
  * tenant with no signatures gets.
  */
+/**
+ * A costing prints ONE seal per step — raised, validated, approved — and never
+ * more (14190). The service supersedes on unlock and on re-sign, and a unique
+ * index forbids a second live seal per step; this is the last line, so a row
+ * that got past both still cannot put six boxes on the page. Newest wins —
+ * `listByRef` returns newest first. Other documents are untouched: two parties
+ * can sign one of them for the same reason.
+ */
+function onePerStep(entityRef, rows) {
+  if (!String(entityRef || "").startsWith("costing:")) return rows;
+  const seen = new Set();
+  return rows
+    .slice()
+    .sort((a, b) => new Date(b.signed_at) - new Date(a.signed_at))
+    .filter((r) => {
+      const step = r.sign_reason || r.signature_id;
+      if (seen.has(step)) return false;
+      seen.add(step);
+      return true;
+    });
+}
+
 async function sealsFor(client, { entityRef, entity, data, cfg, origin = null, signatures = null, env = "live" }) {
   if (!entityRef || !cfg || !cfg.show || !cfg.show.signature) return [];
   try {
-    const rows = signatures || (await activeSignatures(client, entityRef));
+    const rows = onePerStep(entityRef, signatures || (await activeSignatures(client, entityRef)));
     if (!rows.length) return [];
     return await sealView.build(client, rows, {
       entity,
@@ -2226,7 +2315,7 @@ function contractArticles(bodyMd) {
 
 module.exports = {
   // Exported for the test that pins it — see tests/unit/contract-draft.
-  contractArticles, list, getConfig, setConfig, records, preview, generate, renderPdfFromData, send, composePrefill,
+  contractArticles, onePerStep, resolveDocLanguage, list, getConfig, setConfig, records, preview, generate, renderPdfFromData, send, composePrefill,
   // resolveCfg + watermark: the documents everything-on-the-letterhead seam.
   // renderPdfFromData stamps a timestamped entity_ref, built for one-shot
   // contract PDFs; the reconciliation statement (MOD-76) vaults under a

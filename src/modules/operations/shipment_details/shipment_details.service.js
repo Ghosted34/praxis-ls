@@ -641,9 +641,17 @@ async function snapshotOnto(client, { table, id, dossierId }) {
   if (!dossierId || !id) return null;
   try {
     const projection = await forDossier(client, dossierId);
+    // The French facets ride alongside, so a document printed in French from
+    // the frozen snapshot does not fall back to English values (a costing's
+    // default is English; French stays selectable at print time).
+    const fr = await forDossier(client, dossierId, { lang: "fr" }).catch(() => null);
     const { rows } = await client.query(sql, [
       id,
-      JSON.stringify({ ...projection, snapshot_at: new Date().toISOString() }),
+      JSON.stringify({
+        ...projection,
+        facets_fr: fr ? fr.facets : null,
+        snapshot_at: new Date().toISOString(),
+      }),
     ]);
     return rows[0] || null;
   } catch (err) {

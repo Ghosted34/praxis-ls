@@ -40,6 +40,7 @@ import type { EquipmentPick } from "@/components/equipment-step";
 import { money, amount } from "@/lib/format";
 import { tr } from "@/lib/i18n";
 import { priceCostingLine } from "@/lib/costing-api";
+import { useIsDesktop } from "@/lib/use-media-query";
 import {
   BLANK_LINE,
   computeTotals,
@@ -73,10 +74,15 @@ export function LineGrid({
   /** The sheet's ONE rate: 1 <currency> = exchangeRate XAF. Prices fetched for
    *  a hand-picked line arrive already converted at it. */
   exchangeRate?: number;
-  vatCodes: { tax_code_id: string; code: string; rate_percent?: number | null }[];
+  vatCodes: {
+    tax_code_id: string;
+    code: string;
+    rate_percent?: number | null;
+  }[];
   readOnly: boolean;
   onChange: (next: LineDraft[]) => void;
 }) {
+  const isDesktop = useIsDesktop();
   const setLine = (i: number, patch: Partial<LineDraft>) =>
     onChange(lines.map((l, j) => (j === i ? { ...l, ...patch } : l)));
 
@@ -130,9 +136,12 @@ export function LineGrid({
       // Pricing is a convenience: on failure the line stays as picked and the
       // person types the cost — but they are TOLD, so a 0 is never mistaken
       // for "this charge has no rate".
-      .catch(() => toast.info(tr("Could not look up a price for this line — enter the unit cost.")));
+      .catch(() =>
+        toast.info(
+          tr("Could not look up a price for this line — enter the unit cost."),
+        ),
+      );
   };
-;
   const replaceLine = (i: number, line: LineDraft) =>
     onChange(lines.map((l, j) => (j === i ? line : l)));
 
@@ -144,8 +153,15 @@ export function LineGrid({
    *  the new net — so changing a quantity or unit cost keeps the VAT honest. */
   const setLineCalc = (i: number, patch: Partial<LineDraft>) => {
     const merged = { ...lines[i], ...patch };
-    if (merged.is_disbursement && merged.vat_mode !== "AMOUNT" && merged.upstream_vat_rate_percent != null) {
-      merged.upstream_vat_amount = deboursVatFromRate(merged, merged.upstream_vat_rate_percent);
+    if (
+      merged.is_disbursement &&
+      merged.vat_mode !== "AMOUNT" &&
+      merged.upstream_vat_rate_percent != null
+    ) {
+      merged.upstream_vat_amount = deboursVatFromRate(
+        merged,
+        merged.upstream_vat_rate_percent,
+      );
     }
     replaceLine(i, merged);
   };
@@ -169,10 +185,15 @@ export function LineGrid({
         upstream_vat_rate_percent: null,
         // Carry the current figure across so switching does not blank it.
         upstream_vat_amount:
-          l.upstream_vat_amount ?? deboursVatFromRate(l, l.upstream_vat_rate_percent ?? (defaultTax?.rate_percent ?? 19.25)),
+          l.upstream_vat_amount ??
+          deboursVatFromRate(
+            l,
+            l.upstream_vat_rate_percent ?? defaultTax?.rate_percent ?? 19.25,
+          ),
       });
     } else {
-      const rate = l.upstream_vat_rate_percent ?? (defaultTax?.rate_percent ?? 19.25);
+      const rate =
+        l.upstream_vat_rate_percent ?? defaultTax?.rate_percent ?? 19.25;
       setLine(i, {
         vat_mode: "RATE",
         upstream_vat_rate_percent: rate,
@@ -212,42 +233,313 @@ export function LineGrid({
             client_heading_en: hit.client_heading_en ?? null,
           },
           defaultTax,
-        ));
+        ),
+      );
       if (!made.length) return;
       onChange([...lines.slice(0, at), ...made, ...lines.slice(at + 1)]);
       for (const p of picks) fillPrice(id, p.container_type_ref_id || null);
     };
 
-  const pickOne = (i: number) => (id: string, label: string, hit?: DictSearchHit) => {
-    // A DIFFERENT charge on this row: the old charge's price is not this one's.
-    const changed = (lines[i].dictionary_item_id || "") !== (id || "");
-    replaceLine(
-      i,
-      withVatDefault(
-        {
-          ...lines[i],
-          ...(changed ? { unit_cost: 0, price_note: null, client_heading: null } : {}),
-          dictionary_item_id: id || undefined,
-          label: id ? label : "",
-          client_heading_code: id ? hit?.client_heading_code ?? null : null,
-          client_heading_fr: id ? hit?.client_heading_fr ?? null : null,
-          client_heading_en: id ? hit?.client_heading_en ?? null : null,
-          // Nature comes from the catalogue, not from a checkbox the user ticks.
-          is_disbursement: id ? hit?.is_disbursement === true : false,
-          container_type_ref_id: undefined,
-          container_type_label: undefined,
-          // Clear the previous VAT decision so the default re-applies for the
-          // line's new nature (a service line just turned débours, or back).
-          tax_code_id: undefined,
-          tax_rate_percent: undefined,
-          upstream_vat_rate_percent: undefined,
-          upstream_vat_amount: undefined,
-          vat_mode: undefined,
-        },
-        defaultTax,
-      ));
-    if (id && changed) fillPrice(id, null);
-  };
+  const pickOne =
+    (i: number) => (id: string, label: string, hit?: DictSearchHit) => {
+      // A DIFFERENT charge on this row: the old charge's price is not this one's.
+      const changed = (lines[i].dictionary_item_id || "") !== (id || "");
+      replaceLine(
+        i,
+        withVatDefault(
+          {
+            ...lines[i],
+            ...(changed
+              ? { unit_cost: 0, price_note: null, client_heading: null }
+              : {}),
+            dictionary_item_id: id || undefined,
+            label: id ? label : "",
+            client_heading_code: id ? (hit?.client_heading_code ?? null) : null,
+            client_heading_fr: id ? (hit?.client_heading_fr ?? null) : null,
+            client_heading_en: id ? (hit?.client_heading_en ?? null) : null,
+            // Nature comes from the catalogue, not from a checkbox the user ticks.
+            is_disbursement: id ? hit?.is_disbursement === true : false,
+            container_type_ref_id: undefined,
+            container_type_label: undefined,
+            // Clear the previous VAT decision so the default re-applies for the
+            // line's new nature (a service line just turned débours, or back).
+            tax_code_id: undefined,
+            tax_rate_percent: undefined,
+            upstream_vat_rate_percent: undefined,
+            upstream_vat_amount: undefined,
+            vat_mode: undefined,
+          },
+          defaultTax,
+        ),
+      );
+      if (id && changed) fillPrice(id, null);
+    };
+
+  /*
+   * Each cell's control, once. The desktop table and the phone cards below
+   * render the SAME controls — a second copy of the VAT boxes for the phone
+   * would be the copy that drifts from the one the total is built from.
+   */
+  const chargeCell = (l: LineDraft, i: number) => (
+    <>
+      {readOnly ? (
+        <span className="text-sm font-medium text-foreground">
+          {l.label || "—"}
+          {l.container_type_label && (
+            <Pill tone="blue" className="ml-2">
+              {l.container_type_label}
+            </Pill>
+          )}
+        </span>
+      ) : (
+        <DictionaryFinder
+          value={l.dictionary_item_id}
+          valueLabel={l.label}
+          dossierId={dossierId || null}
+          serviceTypeId={serviceTypeId || null}
+          onPick={pickOne(i)}
+          onPickMulti={pickMulti(i)}
+          placeholder={tr("Search a charge…")}
+        />
+      )}
+      <p className="micro mt-0.5 flex flex-wrap items-center gap-1.5">
+        {l.item_code && <span className="num">{l.item_code}</span>}
+        {l.is_disbursement && <Pill tone="mute">{tr("Débours")}</Pill>}
+        {l.container_type_label && !readOnly && (
+          <Pill tone="blue">{l.container_type_label}</Pill>
+        )}
+        {l.price_note && <span>{l.price_note}</span>}
+      </p>
+    </>
+  );
+  const qtyCell = (l: LineDraft, i: number) => (
+    <>
+      {readOnly ? (
+        <span className="num">{l.qty ?? "—"}</span>
+      ) : (
+        <Input
+          type="number"
+          className="num text-right"
+          aria-label={`${tr("Quantity")} — ${l.label || tr("line")} ${i + 1}`}
+          value={l.qty === null ? "" : String(l.qty)}
+          // Blank is a real state: a per-day charge has no
+          // quantity anything on the file can supply, and a
+          // plausible wrong number gets approved.
+          placeholder={tr("Qty")}
+          onChange={(e) =>
+            setLineCalc(i, {
+              qty: e.target.value === "" ? null : Number(e.target.value),
+            })
+          }
+        />
+      )}
+    </>
+  );
+  const unitCell = (l: LineDraft, i: number) => (
+    <>
+      {readOnly ? (
+        <span className="num">{amount(l.unit_cost ?? 0)}</span>
+      ) : (
+        <Input
+          type="number"
+          className="num text-right"
+          aria-label={`${tr("Unit cost")} — ${l.label || tr("line")} ${i + 1}`}
+          value={l.unit_cost === null ? "" : String(l.unit_cost)}
+          placeholder={tr("Needs a price")}
+          onChange={(e) =>
+            setLineCalc(i, {
+              unit_cost: e.target.value === "" ? null : Number(e.target.value),
+              // A typed price is in the sheet's currency now;
+              // the next conversion starts from it.
+              base_unit_cost: null,
+            })
+          }
+        />
+      )}
+    </>
+  );
+  const vatCell = (l: LineDraft, i: number) => (
+    <>
+      {l.is_disbursement ? (
+        // 12768: a débours is a pass-through, but its supplier VAT
+        // is now BUDGETED — so instead of "not taxed" the cell
+        // carries the two boxes the VAT is entered through: a rate
+        // (default, TVA_STD) whose amount follows the net, or a
+        // free-text amount for the rare bill that is not a clean
+        // rate. (PT) marks it pass-through in both.
+        readOnly ? (
+          <span className="num">
+            {l.upstream_vat_amount != null && l.upstream_vat_amount > 0
+              ? `${amount(l.upstream_vat_amount)} `
+              : ""}
+            <span className="micro">{tr("(PT)")}</span>
+          </span>
+        ) : (
+          <div className="space-y-1">
+            <Segmented
+              label={`${tr("VAT entry")} — ${l.label || tr("line")} ${i + 1}`}
+              value={l.vat_mode || "RATE"}
+              options={[
+                { value: "RATE", label: tr("Rate") },
+                { value: "AMOUNT", label: tr("Amount") },
+              ]}
+              onChange={(m) => switchDeboursMode(i, m as "RATE" | "AMOUNT")}
+            />
+            {(l.vat_mode || "RATE") === "RATE" ? (
+              <Select
+                value={
+                  l.upstream_vat_rate_percent == null
+                    ? "0"
+                    : String(l.upstream_vat_rate_percent)
+                }
+                aria-label={`${tr("VAT rate")} — ${l.label || tr("line")} ${i + 1}`}
+                onChange={(e) => setDeboursRate(i, e.target.value)}
+              >
+                <option value="0">{tr("No VAT")}</option>
+                {vatCodes.map((c) => (
+                  <option
+                    key={c.tax_code_id}
+                    value={String(c.rate_percent ?? 0)}
+                  >
+                    {c.code}
+                    {c.rate_percent != null ? ` (${c.rate_percent}%)` : ""}
+                  </option>
+                ))}
+              </Select>
+            ) : (
+              <Input
+                type="number"
+                className="num text-right"
+                aria-label={`${tr("VAT amount")} — ${l.label || tr("line")} ${i + 1}`}
+                placeholder={tr("VAT amount")}
+                value={
+                  l.upstream_vat_amount == null
+                    ? ""
+                    : String(l.upstream_vat_amount)
+                }
+                onChange={(e) =>
+                  setLine(i, {
+                    vat_mode: "AMOUNT",
+                    upstream_vat_rate_percent: null,
+                    upstream_vat_amount:
+                      e.target.value === "" ? null : Number(e.target.value),
+                    base_upstream_vat: null,
+                  })
+                }
+              />
+            )}
+            <span className="micro text-muted-foreground">
+              {tr("Pass-through (PT)")}
+            </span>
+          </div>
+        )
+      ) : readOnly ? (
+        <span className="num">
+          {l.tax_rate_percent != null ? `${l.tax_rate_percent}%` : "—"}
+        </span>
+      ) : (
+        <Select
+          value={l.tax_code_id || ""}
+          aria-label={`${tr("VAT code")} — ${l.label || tr("line")} ${i + 1}`}
+          onChange={(e) => {
+            const code = vatCodes.find((c) => c.tax_code_id === e.target.value);
+            setLine(i, {
+              tax_code_id: e.target.value || null,
+              tax_rate_percent: code?.rate_percent ?? null,
+            });
+          }}
+        >
+          <option value="">{tr("No VAT")}</option>
+          {vatCodes.map((c) => (
+            <option key={c.tax_code_id} value={c.tax_code_id}>
+              {c.code}
+              {c.rate_percent != null ? ` (${c.rate_percent}%)` : ""}
+            </option>
+          ))}
+        </Select>
+      )}
+    </>
+  );
+  const rowActions = (i: number) => (
+    <div className="flex gap-1">
+      <Button
+        size="sm"
+        variant="ghost"
+        aria-label={`${tr("Move up")} — ${tr("line")} ${i + 1}`}
+        disabled={i === 0}
+        onClick={() => move(i, -1)}
+      >
+        ↑
+      </Button>
+      <Button
+        size="sm"
+        variant="ghost"
+        aria-label={`${tr("Move down")} — ${tr("line")} ${i + 1}`}
+        disabled={i === lines.length - 1}
+        onClick={() => move(i, 1)}
+      >
+        ↓
+      </Button>
+      <Button
+        size="sm"
+        variant="ghost"
+        aria-label={`${tr("Remove")} — ${tr("line")} ${i + 1}`}
+        onClick={() => onChange(lines.filter((_, j) => j !== i))}
+      >
+        ✕
+      </Button>
+    </div>
+  );
+
+  if (!isDesktop) {
+    /*
+     * A PHONE EDITS LINES AS CARDS (owner decision, 28 Sep 2026: full editing
+     * on the phone). Seven columns do not fit 390px — the table scrolled
+     * sideways, and a quantity typed off-screen is a quantity nobody checks.
+     * One card per line: the charge, then quantity and cost side by side, the
+     * VAT, and the line's amount where the thumb ends.
+     */
+    return (
+      <ol className="space-y-3" aria-label={tr("Lines")}>
+        {lines.map((l, i) => {
+          const lineAmount = (Number(l.qty) || 0) * (Number(l.unit_cost) || 0);
+          return (
+            <li
+              key={`${lineKey(l)}-${i}`}
+              className="rounded-xl border bg-card p-3 shadow-[var(--shadow-s)]"
+            >
+              <div className="flex items-start gap-2">
+                <span className="num mt-2 w-5 shrink-0 text-xs text-muted-foreground">
+                  {i + 1}
+                </span>
+                <div className="min-w-0 flex-1">{chargeCell(l, i)}</div>
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <label className="block">
+                  <span className="micro mb-1 block">{tr("Qty")}</span>
+                  {qtyCell(l, i)}
+                </label>
+                <label className="block">
+                  <span className="micro mb-1 block">{tr("Unit cost")}</span>
+                  {unitCell(l, i)}
+                </label>
+              </div>
+              <div className="mt-2">
+                <span className="micro mb-1 block">{tr("VAT")}</span>
+                {vatCell(l, i)}
+              </div>
+              <div className="mt-3 flex items-center justify-between gap-2 border-t pt-2">
+                {!readOnly ? rowActions(i) : <span />}
+                <span className="num text-base font-semibold text-foreground">
+                  {amount(lineAmount)}
+                </span>
+              </div>
+            </li>
+          );
+        })}
+      </ol>
+    );
+  }
 
   return (
     <div className="space-y-2">
@@ -266,213 +558,17 @@ export function LineGrid({
           </THead>
           <TBody>
             {lines.map((l, i) => {
-              const lineAmount = (Number(l.qty) || 0) * (Number(l.unit_cost) || 0);
+              const lineAmount =
+                (Number(l.qty) || 0) * (Number(l.unit_cost) || 0);
               return (
                 <TR key={`${lineKey(l)}-${i}`}>
                   <TD className="num text-muted-foreground">{i + 1}</TD>
-                  <TD>
-                    {readOnly ? (
-                      <span className="text-sm font-medium text-foreground">
-                        {l.label || "—"}
-                        {l.container_type_label && (
-                          <Pill tone="blue" className="ml-2">
-                            {l.container_type_label}
-                          </Pill>
-                        )}
-                      </span>
-                    ) : (
-                      <DictionaryFinder
-                        value={l.dictionary_item_id}
-                        valueLabel={l.label}
-                        dossierId={dossierId || null}
-                        serviceTypeId={serviceTypeId || null}
-                        onPick={pickOne(i)}
-                        onPickMulti={pickMulti(i)}
-                        placeholder={tr("Search a charge…")}
-                      />
-                    )}
-                    <p className="micro mt-0.5 flex flex-wrap items-center gap-1.5">
-                      {l.item_code && <span className="num">{l.item_code}</span>}
-                      {l.is_disbursement && <Pill tone="mute">{tr("Débours")}</Pill>}
-                      {l.container_type_label && !readOnly && (
-                        <Pill tone="blue">{l.container_type_label}</Pill>
-                      )}
-                      {l.price_note && <span>{l.price_note}</span>}
-                    </p>
-                  </TD>
-                  <TD className="text-right">
-                    {readOnly ? (
-                      <span className="num">{l.qty ?? "—"}</span>
-                    ) : (
-                      <Input
-                        type="number"
-                        className="num text-right"
-                        aria-label={`${tr("Quantity")} — ${l.label || tr("line")} ${i + 1}`}
-                        value={l.qty === null ? "" : String(l.qty)}
-                        // Blank is a real state: a per-day charge has no
-                        // quantity anything on the file can supply, and a
-                        // plausible wrong number gets approved.
-                        placeholder={tr("Qty")}
-                        onChange={(e) =>
-                          setLineCalc(i, {
-                            qty: e.target.value === "" ? null : Number(e.target.value),
-                          })
-                        }
-                      />
-                    )}
-                  </TD>
-                  <TD className="text-right">
-                    {readOnly ? (
-                      <span className="num">{amount(l.unit_cost ?? 0)}</span>
-                    ) : (
-                      <Input
-                        type="number"
-                        className="num text-right"
-                        aria-label={`${tr("Unit cost")} — ${l.label || tr("line")} ${i + 1}`}
-                        value={l.unit_cost === null ? "" : String(l.unit_cost)}
-                        placeholder={tr("Needs a price")}
-                        onChange={(e) =>
-                          setLineCalc(i, {
-                            unit_cost:
-                              e.target.value === "" ? null : Number(e.target.value),
-                            // A typed price is in the sheet's currency now;
-                            // the next conversion starts from it.
-                            base_unit_cost: null,
-                          })
-                        }
-                      />
-                    )}
-                  </TD>
-                  <TD>
-                    {l.is_disbursement ? (
-                      // 12768: a débours is a pass-through, but its supplier VAT
-                      // is now BUDGETED — so instead of "not taxed" the cell
-                      // carries the two boxes the VAT is entered through: a rate
-                      // (default, TVA_STD) whose amount follows the net, or a
-                      // free-text amount for the rare bill that is not a clean
-                      // rate. (PT) marks it pass-through in both.
-                      readOnly ? (
-                        <span className="num">
-                          {l.upstream_vat_amount != null && l.upstream_vat_amount > 0
-                            ? `${amount(l.upstream_vat_amount)} `
-                            : ""}
-                          <span className="micro">{tr("(PT)")}</span>
-                        </span>
-                      ) : (
-                        <div className="space-y-1">
-                          <Segmented
-                            label={`${tr("VAT entry")} — ${l.label || tr("line")} ${i + 1}`}
-                            value={l.vat_mode || "RATE"}
-                            options={[
-                              { value: "RATE", label: tr("Rate") },
-                              { value: "AMOUNT", label: tr("Amount") },
-                            ]}
-                            onChange={(m) => switchDeboursMode(i, m as "RATE" | "AMOUNT")}
-                          />
-                          {(l.vat_mode || "RATE") === "RATE" ? (
-                            <Select
-                              value={
-                                l.upstream_vat_rate_percent == null
-                                  ? "0"
-                                  : String(l.upstream_vat_rate_percent)
-                              }
-                              aria-label={`${tr("VAT rate")} — ${l.label || tr("line")} ${i + 1}`}
-                              onChange={(e) => setDeboursRate(i, e.target.value)}
-                            >
-                              <option value="0">{tr("No VAT")}</option>
-                              {vatCodes.map((c) => (
-                                <option key={c.tax_code_id} value={String(c.rate_percent ?? 0)}>
-                                  {c.code}
-                                  {c.rate_percent != null ? ` (${c.rate_percent}%)` : ""}
-                                </option>
-                              ))}
-                            </Select>
-                          ) : (
-                            <Input
-                              type="number"
-                              className="num text-right"
-                              aria-label={`${tr("VAT amount")} — ${l.label || tr("line")} ${i + 1}`}
-                              placeholder={tr("VAT amount")}
-                              value={
-                                l.upstream_vat_amount == null
-                                  ? ""
-                                  : String(l.upstream_vat_amount)
-                              }
-                              onChange={(e) =>
-                                setLine(i, {
-                                  vat_mode: "AMOUNT",
-                                  upstream_vat_rate_percent: null,
-                                  upstream_vat_amount:
-                                    e.target.value === "" ? null : Number(e.target.value),
-                                  base_upstream_vat: null,
-                                })
-                              }
-                            />
-                          )}
-                          <span className="micro text-muted-foreground">{tr("Pass-through (PT)")}</span>
-                        </div>
-                      )
-                    ) : readOnly ? (
-                      <span className="num">
-                        {l.tax_rate_percent != null ? `${l.tax_rate_percent}%` : "—"}
-                      </span>
-                    ) : (
-                      <Select
-                        value={l.tax_code_id || ""}
-                        aria-label={`${tr("VAT code")} — ${l.label || tr("line")} ${i + 1}`}
-                        onChange={(e) => {
-                          const code = vatCodes.find(
-                            (c) => c.tax_code_id === e.target.value,
-                          );
-                          setLine(i, {
-                            tax_code_id: e.target.value || null,
-                            tax_rate_percent: code?.rate_percent ?? null,
-                          });
-                        }}
-                      >
-                        <option value="">{tr("No VAT")}</option>
-                        {vatCodes.map((c) => (
-                          <option key={c.tax_code_id} value={c.tax_code_id}>
-                            {c.code}
-                            {c.rate_percent != null ? ` (${c.rate_percent}%)` : ""}
-                          </option>
-                        ))}
-                      </Select>
-                    )}
-                  </TD>
+                  <TD>{chargeCell(l, i)}</TD>
+                  <TD className="text-right">{qtyCell(l, i)}</TD>
+                  <TD className="text-right">{unitCell(l, i)}</TD>
+                  <TD>{vatCell(l, i)}</TD>
                   <TD className="num text-right">{amount(lineAmount)}</TD>
-                  {!readOnly && (
-                    <TD>
-                      <div className="flex gap-1">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          aria-label={`${tr("Move up")} — ${tr("line")} ${i + 1}`}
-                          disabled={i === 0}
-                          onClick={() => move(i, -1)}
-                        >
-                          ↑
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          aria-label={`${tr("Move down")} — ${tr("line")} ${i + 1}`}
-                          disabled={i === lines.length - 1}
-                          onClick={() => move(i, 1)}
-                        >
-                          ↓
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          aria-label={`${tr("Remove")} — ${tr("line")} ${i + 1}`}
-                          onClick={() => onChange(lines.filter((_, j) => j !== i))}
-                        >
-                          ✕
-                        </Button>
-                      </div>
-                    </TD>
-                  )}
+                  {!readOnly && <TD>{rowActions(i)}</TD>}
                 </TR>
               );
             })}
@@ -553,7 +649,9 @@ export function VatPanel({
             <TR>
               <TD>
                 {tr("No VAT code")}
-                <p className="micro">{tr("No tax code picked on these lines.")}</p>
+                <p className="micro">
+                  {tr("No tax code picked on these lines.")}
+                </p>
               </TD>
               <TD className="num text-right">{amount(r(noCode))}</TD>
               <TD className="num text-right">—</TD>
@@ -564,7 +662,9 @@ export function VatPanel({
               <TD>
                 {tr("Débours (PT)")}
                 <p className="micro">
-                  {tr("Re-billed at cost; the VAT is the supplier's, budgeted into the total.")}
+                  {tr(
+                    "Re-billed at cost; the VAT is the supplier's, budgeted into the total.",
+                  )}
                 </p>
               </TD>
               <TD className="num text-right">{amount(r(passThrough))}</TD>

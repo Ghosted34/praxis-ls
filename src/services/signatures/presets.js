@@ -116,6 +116,7 @@ async function flagsOn(client, keys) {
 const ASSURANCE_WORDS = new Map(Object.entries({
   SES: { fr: "Signé depuis votre compte", en: "Signed from your account" },
   AES_OTP: { fr: "Confirmé par un code envoyé à votre e-mail", en: "Confirmed by a code sent to your email" },
+  AES_PASSKEY: { fr: "Confirmé par votre empreinte ou votre visage", en: "Confirmed with your fingerprint or face" },
   QES: { fr: "Identité vérifiée par un prestataire indépendant", en: "Identity checked by an independent provider" },
   WET: { fr: "Signé à la main, puis rapproché de ce dossier", en: "Signed by hand, then matched back to this record" },
 }));

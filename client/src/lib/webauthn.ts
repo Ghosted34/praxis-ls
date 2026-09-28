@@ -278,3 +278,24 @@ export async function registerPasskey(opts: {
 export const listPasskeys = () => tenant<PasskeyCredential[]>("/auth/passkey/credentials");
 export const deletePasskey = (id: string) =>
   tenant<{ deleted: boolean }>(`/auth/passkey/credentials/${encodeURIComponent(id)}`, { method: "DELETE" });
+
+/**
+ * The SIGNING ceremony: the fingerprint / face over options the server bound to
+ * one document's content hash (server: signing-proof.service). Returns the
+ * `proof.passkey` body a signing route takes.
+ */
+export async function passkeySigningAssertion(options: Record<string, unknown>) {
+  if (!isPasskeySupported())
+    throw new PasskeyError("WEBAUTHN_NOT_SUPPORTED", "Passkeys aren't supported in this browser.");
+  const opts = options as JsonOptions;
+  let cred: PublicKeyCredential | null = null;
+  try {
+    cred = (await navigator.credentials.get({
+      publicKey: toPublicKeyOptions(opts) as unknown as PublicKeyCredentialRequestOptions,
+    })) as PublicKeyCredential | null;
+  } catch (e) {
+    throw mapDomError(e, "get");
+  }
+  if (!cred) throw new PasskeyError("NOT_ALLOWED", "No passkey selected");
+  return { assertion: fromCredential(cred), challenge_token: String(opts._challengeToken || "") };
+}

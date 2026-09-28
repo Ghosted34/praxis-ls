@@ -28,6 +28,7 @@ import * as React from "react";
 import { useParams, useLocation, Link } from "react-router-dom";
 import { Record360Page, Record360Header } from "@/components/record-360";
 import { RecordSheet } from "@/components/ui/record-sheet";
+import { useSigningProof } from "@/components/signing/use-signing-proof";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
@@ -433,6 +434,7 @@ export function CashRequest360({
   >(null);
 
   const [confirm, confirmUi] = useConfirm();
+  const [confirmSign, signUi] = useSigningProof();
   const toast = useToast();
 
   const editable = isEditable(cr?.status);
@@ -612,8 +614,14 @@ export function CashRequest360({
                 });
                 return;
               }
+              // Approving is signing: the approver's fingerprint or face.
+              const proof = await confirmSign({
+                entityRef: `cash_request:${id}`,
+                docType: "CASH_REQUEST",
+              });
+              if (!proof) return;
               await act(
-                () => api.transitionCashRequest(id, "APPROVED"),
+                () => api.transitionCashRequest(id, "APPROVED", { proof }),
                 tr("Approved"),
               );
             }}
@@ -822,6 +830,7 @@ export function CashRequest360({
         }}
       />
       {confirmUi}
+      {signUi}
     </div>
   );
 

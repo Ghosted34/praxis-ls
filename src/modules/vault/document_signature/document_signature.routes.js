@@ -36,6 +36,13 @@ router.get("/:id", requirePermission(MODULE, "view"), controller.get);
 router.get("/:id/scans", requirePermission(MODULE, "view"), controller.scans);
 
 router.post("/internal", requirePermission(MODULE, "approve"), validator.signInternal, controller.sign);
+// The signer's confirmation. Signed-in is enough to ASK — no MOD-64 grant: a
+// costing approver need not hold the signatures module to approve a costing.
+// Neither route reveals the document (options carry only a challenge; the code
+// goes to the caller's own address), and what a proof unlocks is still gated by
+// the route that signs (a costing approval needs MOD-46 `approve` + APPROVER).
+router.post("/proof/options", validator.proofTarget, controller.proofOptions);
+router.post("/proof/otp", validator.proofTarget, controller.proofOtp);
 router.post("/:id/revoke", requirePermission(MODULE, "approve"), validator.revoke, controller.revoke);
 
 module.exports = { basePath: "/signatures", feature: "signatures", router };

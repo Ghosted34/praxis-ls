@@ -1,4 +1,6 @@
 "use strict";
+
+const signingProof = require("../../vault/document_signature/signing-proof.service");
 const service = require("./costing.service");
 const { asyncHandler, AppError } = require("../../../utils/errors");
 const { sendPaged } = require("../../../shared/http/paged");
@@ -40,6 +42,11 @@ module.exports = {
   })),
   create: asyncHandler(async (req, res) => res.status(201).json({ data: await req.tenantDb((c) => service.createDraft(c, { data: req.body, actor: actor(req) })) })),
   update: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.updateDraft(c, { id: req.params.id, patch: req.body, lines: req.body.lines || null, actor: actor(req) })) })),
-  setStatus: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.setStatus(c, { id: req.params.id, to: req.body.to, actor: actor(req) })) })),
+  // The passkey is verified on the identity connection first (signing-proof.service
+  // header); the transition then checks it against the sheet as it stands.
+  setStatus: asyncHandler(async (req, res) => {
+    const proof = await signingProof.fromRequest(req);
+    res.json({ data: await req.tenantDb((c) => service.setStatus(c, { id: req.params.id, to: req.body.to, actor: actor(req), proof })) });
+  }),
   unlock: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.unlockTransition(c, { id: req.params.id, action: req.body.action, reason: req.body.reason, actor: actor(req) })) })),
 };

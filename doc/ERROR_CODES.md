@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 6× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (668)
+## All codes (672)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -79,6 +79,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `BAD_ACTION` | 422 | 4× | — |
 | `BAD_AMOUNT` | 422 | 16× | `INVALID_AMOUNT` |
 | `BAD_APPLIES_TO` | 422 | 1× | — |
+| `BAD_ASSURANCE` | 500 | 1× | — |
 | `BAD_AUDIO` | 400, 422 | 5× | — |
 | `BAD_AUDIO_TYPE` | — | 1× | — |
 | `BAD_BASE` | 400 | 1× | — |
@@ -361,7 +362,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_EDITABLE` | 400 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 3× | — |
-| `NOT_FOUND` | 404, 422 | 735× | — |
+| `NOT_FOUND` | 404, 422 | 736× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_ON_THIS_FILE` | 409 | 1× | — |
 | `NOT_OPEN` | 409, 422 | 3× | — |
@@ -387,7 +388,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_YOUR_SIDE` | 403 | 2× | — |
 | `NO_ACCEPTED_QUOTATION` | — | 1× | — |
 | `NO_ACCOUNT` | 500 | 2× | — |
-| `NO_ACTOR` | 401 | 4× | — |
+| `NO_ACTOR` | 401 | 5× | — |
 | `NO_AGING_ENTRY` | 422 | 1× | — |
 | `NO_APPROVED_COSTING` | — | 1× | — |
 | `NO_CANONICAL_PAYLOAD` | 422 | 1× | — |
@@ -432,7 +433,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NO_RATE_MATCH` | 404 | 1× | — |
 | `NO_REASON` | 422 | 2× | — |
 | `NO_REBASE_RATE` | — | 1× | — |
-| `NO_RECIPIENT` | 422 | 4× | — |
+| `NO_RECIPIENT` | 422 | 5× | — |
 | `NO_RECIPIENT_TIMEZONE` | — | 1× | — |
 | `NO_REPLY_ADDRESS` | 422 | 1× | — |
 | `NO_REVENUE_ACCOUNT` | 422 | 1× | — |
@@ -605,6 +606,9 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `SIGNING_CLOSED` | 409 | 2× | — |
 | `SIGNING_INCOMPLETE` | 409 | 1× | — |
 | `SIGNING_NOT_STARTED` | 409 | 2× | — |
+| `SIGNING_PROOF_INVALID` | 400 | 6× | — |
+| `SIGNING_PROOF_REQUIRED` | 428 | 2× | — |
+| `SIGNING_PROOF_STALE` | 409 | 1× | — |
 | `SLUG_TAKEN` | 422 | 3× | — |
 | `SMTP_AUTH_FAILED` | 502 | 1× | — |
 | `SMTP_SEND_FAILED` | 502 | 3× | — |

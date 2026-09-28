@@ -219,7 +219,10 @@ describe("Analytics — chart guidance and blocked detail", () => {
     renderScreen(<AnalyticsPage />, at());
     await screen.findByText("17");
 
-    const infoButtons = screen.getAllByRole("button", { name: /^About / });
+    // The chart controls only — the page header has its own "About this page".
+    const infoButtons = screen
+      .getAllByRole("button", { name: /^About / })
+      .filter((b) => b.getAttribute("aria-label") !== "About this page");
     expect(infoButtons).toHaveLength(7);
 
     await user.click(

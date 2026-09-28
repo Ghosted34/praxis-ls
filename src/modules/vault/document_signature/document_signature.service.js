@@ -34,9 +34,12 @@ const { logger } = require("../../../config/logger");
 const METHOD_WORDS = {
   SES:     { fr: "Signé depuis une session authentifiée", en: "Signed from an authenticated session" },
   AES_OTP: { fr: "Vérifié par code e-mail",               en: "Verified by email code" },
+  AES_PASSKEY: { fr: "Vérifié par passkey",                en: "Verified by passkey" },
   QES:     { fr: "Certifié par un tiers de confiance",    en: "Certified by a trust provider" },
   WET:     { fr: "Signé à la main et rapproché",          en: "Signed by hand and reconciled" },
 };
+/** Every assurance a row may carry (migration 14210 moved this out of a CHECK). */
+const ASSURANCE_LEVELS = new Set(["SES", "AES_OTP", "AES_PASSKEY", "QES", "WET"]);
 const methodWords = (level, lang) => (METHOD_WORDS[level] || METHOD_WORDS.SES)[lang === "en" ? "en" : "fr"];
 
 /**
@@ -250,6 +253,12 @@ async function signInternal(client, opts) {
     // for it instead of printing beside it (14190). Opt-in, because other
     // documents can legitimately carry two parties signing for one reason.
     supersedeStep = false,
+    // The signer's proof, already settled by signing-proof.settle():
+    // { assurance, otpChallengeId, passkeyCredentialId }. Required unless the
+    // caller marks the seal `silent` — a hand-off (a costing's submission),
+    // not an approval (owner decision, 28 Sep 2026).
+    settled = null,
+    silent = false,
   } = opts;
 
   if (!entityRef) throw new AppError("NO_ENTITY_REF", "entity_ref is required", 422);
@@ -313,8 +322,17 @@ async function signInternal(client, opts) {
    * or a future endpoint cannot route around it: the choke point every
    * signature passes through is the one that asks.
    */
+  if (!silent && !settled && !otpChallengeId) {
+    throw new AppError(
+      "SIGNING_PROOF_REQUIRED",
+      "Confirm with your fingerprint or face to sign.",
+      428,
+      { doc_type: docType, entity_ref: entityRef },
+    );
+  }
+  const proofOtp = otpChallengeId || (settled && settled.otpChallengeId) || null;
   const stepUp = await stepUpNeeded(client, { docType, doc: liveDoc });
-  if (stepUp && !otpChallengeId) {
+  if (stepUp && !proofOtp && !(settled && settled.assurance === "AES_PASSKEY")) {
     throw new AppError(
       "STEPUP_REQUIRED",
       "This document is above the amount that requires an emailed code as well as your password.",
@@ -322,7 +340,13 @@ async function signInternal(client, opts) {
       { doc_type: docType, entity_ref: entityRef },
     );
   }
-  const assurance = otpChallengeId ? "AES_OTP" : "SES";
+  // What was COLLECTED (rule 2): a verified passkey, an emailed code, or
+  // only the session.
+  const assurance = settled && settled.assurance === "AES_PASSKEY"
+    ? "AES_PASSKEY"
+    : proofOtp ? "AES_OTP" : "SES";
+  // The column's CHECK was dropped by 14210 (the 13791 rule); this is the list.
+  if (!ASSURANCE_LEVELS.has(assurance)) throw new AppError("BAD_ASSURANCE", "Unknown assurance level", 500);
 
   const vaultDoc = await vaultRepo.getByRef(client, entityRef).catch(() => null);
 
@@ -355,7 +379,8 @@ async function signInternal(client, opts) {
     verify_code: tokens.mintVerifyCode(),
     ip,
     user_agent: userAgent,
-    otp_challenge_id: otpChallengeId,
+    otp_challenge_id: proofOtp,
+    passkey_credential_id: (settled && settled.passkeyCredentialId) || null,
   });
 
   await emitEvent(client, {

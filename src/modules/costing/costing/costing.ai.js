@@ -26,7 +26,7 @@ module.exports = {
      * whether the transition can be SEALED: `sealTransition` signs as the
      * acting user and returns early when there is none.
      */
-    { key: "costing_status", service: (c, p, actor) => service.setStatus(c, { id: p.costing_id, to: p.to, actor }), schema: validator.schemas.aiSetStatus, permission: { module: "MOD-46", action: "approve" }, confirm: true, describe: "Advance a costing by id (SUBMIT_VALIDATION→SUBMIT_APPROVAL→APPROVE, or REJECT). Each step is sealed with the acting user's digital signature." },
+    { key: "costing_status", service: (c, p, actor) => service.setStatus(c, { id: p.costing_id, to: p.to, actor }), schema: validator.schemas.aiSetStatus, permission: { module: "MOD-46", action: "approve" }, confirm: true, describe: "Advance a costing by id: SUBMIT_VALIDATION (submit) or REJECT. Validating (SUBMIT_APPROVAL) and approving (APPROVE) need the signer's own fingerprint or face on their device, so the assistant cannot do them — tell the user to open the costing and tap Validate / Approve." },
     // The unlock loop (10718). Exposed for the same reason régie's retirement
     // is: the assistant could already APPROVE a costing, and approving is what
     // locks it. Leaving unlock off the manifest would let it reach a state it

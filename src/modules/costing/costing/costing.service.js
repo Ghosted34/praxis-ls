@@ -508,7 +508,14 @@ const SEAL_REASON = {
   APPROVE: "APPROVED_DISPATCH",
 };
 
-async function sealTransition(client, { id, to, doc, actor = {} }) {
+/*
+ * Which transitions the SIGNER must confirm (owner decision, 28 Sep 2026):
+ * validating and approving — a fingerprint or face, or the emailed code on a
+ * device without passkeys. Submitting is a hand-off, sealed silently.
+ */
+const NEEDS_PROOF = new Set(["SUBMIT_APPROVAL", "APPROVE"]);
+
+async function sealTransition(client, { id, to, doc, actor = {}, settled = null }) {
   const signReason = SEAL_REASON[to];
   if (!signReason || !actor.user_id) return;
   try {
@@ -530,6 +537,11 @@ async function sealTransition(client, { id, to, doc, actor = {} }) {
       doc,
       // One seal per step, whatever path led back to it (14190).
       supersedeStep: true,
+      settled,
+      // setStatus has already refused a validate/approve without proof, so a
+      // seal with none here is a hand-off (submit) or a workflow chain's
+      // advance — sealed on the session, as before.
+      silent: !settled,
     });
   } catch (err) {
     logger.error(
@@ -539,7 +551,7 @@ async function sealTransition(client, { id, to, doc, actor = {} }) {
   }
 }
 
-async function setStatus(client, { id, to, actor = {}, viaChain = false }) {
+async function setStatus(client, { id, to, actor = {}, viaChain = false, proof = null }) {
   const before = await repo.get(client, id);
   if (!before) throw new AppError("NOT_FOUND", "Costing not found", 404);
   if (LOCKED.has(before.status)) throw new AppError("LOCKED", "Costing is " + before.status, 422);
@@ -569,6 +581,18 @@ async function setStatus(client, { id, to, actor = {}, viaChain = false }) {
       "You validated this costing, so someone else must approve it",
       403,
     );
+  }
+
+  /*
+   * The signer's confirmation, checked against the sheet AS THEY SAW IT —
+   * before anything moves. A missing or stale proof refuses the transition
+   * itself: an approval that could not be confirmed is not an approval.
+   * A workflow chain's automatic advance (viaChain) carries no person to ask.
+   */
+  let settled = null;
+  if (NEEDS_PROOF.has(to) && !viaChain) {
+    const signingProof = require("../../vault/document_signature/signing-proof.service");
+    settled = await signingProof.settle(client, { actor, docType: "COSTING", entityRef: "costing:" + id, proof });
   }
 
   const patch = { status };
@@ -651,7 +675,7 @@ async function setStatus(client, { id, to, actor = {}, viaChain = false }) {
    * this transaction it would read uncommitted rows — so the projection is
    * built here from the row we just wrote.
    */
-  await sealTransition(client, { id, to, doc: await sealDoc(client, row), actor });
+  await sealTransition(client, { id, to, doc: await sealDoc(client, row), actor, settled });
   await audit(client, { actorUserId: actor.user_id || null, action: events.statusChange(status), moduleKey: events.MODULE, entityRef: "costing:" + id, before, after: row });
   return row;
 }

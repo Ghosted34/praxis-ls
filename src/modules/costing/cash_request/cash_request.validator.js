@@ -1,5 +1,6 @@
 "use strict";
 const { z } = require("zod");
+const { signingProofSchema } = require("../../vault/document_signature/signing-proof.schema");
 const { AppError } = require("../../../utils/errors");
 const line = z.object({
   // 12771 — the worksheet round-trips the line's own id so an edit is
@@ -56,6 +57,7 @@ const schemas = {
     date: d.optional(),
     reason: z.string().max(2000).optional(),
     over_budget_reason: z.string().max(2000).optional(),
+    proof: signingProofSchema.optional(),
   }),
   closeBalance: z.object({ reason: z.string().trim().min(1).max(2000) }),
   acknowledge: z.object({

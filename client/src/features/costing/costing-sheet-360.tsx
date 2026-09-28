@@ -28,6 +28,8 @@ import { useParams, Link } from "react-router-dom";
 import { Record360Page, Record360Header } from "@/components/record-360";
 import { Dialog } from "@/components/ui/dialog";
 import { RecordSheet } from "@/components/ui/record-sheet";
+import { useSigningProof } from "@/components/signing/use-signing-proof";
+import type { SigningProof } from "@/lib/signing-proof";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Field, Select } from "@/components/ui/modal";
@@ -182,6 +184,7 @@ export function CostingSheet360({
   }>("/costings/validators");
 
   const [confirm, confirmUi] = useConfirm();
+  const [confirmSign, signUi] = useSigningProof();
   const toast = useToast();
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -269,10 +272,20 @@ export function CostingSheet360({
   }
 
   async function transition(to: api.CostingAction, label: string) {
+    // Validating and approving are signatures: the signer's fingerprint or
+    // face first (the OS prompt is the confirmation — no dialog of ours).
+    let proof: SigningProof | null = null;
+    if (to === "SUBMIT_APPROVAL" || to === "APPROVE") {
+      proof = await confirmSign({
+        entityRef: `costing:${id}`,
+        docType: "COSTING",
+      });
+      if (!proof) return;
+    }
     setBusy(true);
     setError(null);
     try {
-      await api.setCostingStatus(id, to);
+      await api.setCostingStatus(id, to, proof);
       toast.success(label);
       refresh();
     } catch (err) {
@@ -431,17 +444,7 @@ export function CostingSheet360({
       {c.status === "SUBMITTED_FOR_APPROVAL" && (
         <Button
           loading={busy}
-          onClick={async () => {
-            const ok = await confirm({
-              title: tr("Approve this costing?"),
-              body: `${tr("It becomes the file's approved budget at")} ${money(
-                c.totals?.total_ttc,
-                ccy,
-              )}${tr(". Correcting it afterwards needs an unlock.")}`,
-              confirmLabel: tr("Approve costing"),
-            });
-            if (ok) await transition("APPROVE", tr("Costing approved"));
-          }}
+          onClick={() => transition("APPROVE", tr("Costing approved"))}
         >
           {tr("Approve")}
         </Button>
@@ -837,6 +840,7 @@ export function CostingSheet360({
       )}
 
       {confirmUi}
+      {signUi}
     </div>
   );
 

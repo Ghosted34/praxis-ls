@@ -2,6 +2,7 @@
  * Costing API helpers — costing sheets, cost tracking (actuals), cash requests,
  * régie d'avance. Routes mirror src/modules/costing/*.
  */
+import type { SigningProof } from "@/lib/signing-proof";
 import { tenant, tenantDownload } from "./api-client";
 import type { ShipmentDetails } from "./operations-api";
 
@@ -373,8 +374,10 @@ export const createCosting = (body: CostingInput) =>
 // SUBMITTED_FOR_APPROVAL, APPROVE → APPROVED_LOCKED, REJECT → REJECTED.
 export type CostingAction =
   "SUBMIT_VALIDATION" | "SUBMIT_APPROVAL" | "APPROVE" | "REJECT";
-export const setCostingStatus = (id: string, to: CostingAction) =>
-  tenant<Costing>(`/costings/${id}/status`, { method: "POST", body: { to } });
+/** `proof` — the signer's fingerprint / face (useSigningProof); required to
+ *  validate (SUBMIT_APPROVAL) and approve. */
+export const setCostingStatus = (id: string, to: CostingAction, proof?: SigningProof | null) =>
+  tenant<Costing>(`/costings/${id}/status`, { method: "POST", body: { to, ...(proof ? { proof } : {}) } });
 
 /**
  * The unlock loop (10718) — the way out of APPROVED_LOCKED.
@@ -1134,6 +1137,8 @@ export const transitionCashRequest = (
     date?: string;
     reason?: string;
     over_budget_reason?: string;
+    /** Required to approve: the approver's fingerprint / face. */
+    proof?: SigningProof;
   } = {},
 ) =>
   tenant<CashRequest>(`/cash-requests/${id}/transition`, {

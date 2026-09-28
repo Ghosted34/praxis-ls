@@ -1,6 +1,7 @@
 "use strict";
 const { z } = require("zod");
 const { AppError } = require("../../../utils/errors");
+const { signingProofSchema } = require("../../vault/document_signature/signing-proof.schema");
 // `container_type_ref_id` (0663) records which box the charge was priced for.
 // Nullish, not optional-only: the form clears it when the item stops varying by
 // equipment, and an unlisted field is stripped here before the service sees it.
@@ -32,7 +33,7 @@ const line = z.object({
 // the sheet is submitted TO; the service stamps validator_assigned_at).
 const create = z.object({ dossier_id: z.string().uuid(), currency: z.string().length(3).optional(), exchange_rate_to_xaf: z.number().positive().optional(), remarks: z.string().max(4000).optional().nullable(), validator_id: z.string().uuid().optional().nullable(), lines: z.array(line).optional() });
 const update = z.object({ currency: z.string().length(3).optional(), exchange_rate_to_xaf: z.number().positive().optional(), remarks: z.string().max(4000).optional().nullable(), validator_id: z.string().uuid().optional().nullable(), lines: z.array(line).optional() });
-const setStatus = z.object({ to: z.enum(["SUBMIT_VALIDATION", "SUBMIT_APPROVAL", "APPROVE", "REJECT"]) });
+const setStatus = z.object({ to: z.enum(["SUBMIT_VALIDATION", "SUBMIT_APPROVAL", "APPROVE", "REJECT"]), proof: signingProofSchema.optional() });
 // The unlock loop (10718). Kept OFF `setStatus` deliberately: `to` on that
 // schema names an ordinary transition and is what the RBAC middleware keys on,
 // whereas these three are refused by setStatus's LOCKED guard by design. A

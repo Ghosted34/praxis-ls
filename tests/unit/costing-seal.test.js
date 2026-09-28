@@ -60,6 +60,11 @@ jest.mock("../../src/modules/vault/document_signature/document_signature.service
   signInternal: jest.fn(async () => ({ signature_id: "sig-1" })),
   supersedeAll: jest.fn(async () => ["old-1", "old-2", "old-3"]),
 }));
+// Validating and approving need the signer's passkey (or emailed code). Settled
+// to AES_PASSKEY here; signing-proof.test.js pins the settling itself.
+jest.mock("../../src/modules/vault/document_signature/signing-proof.service", () => ({
+  settle: jest.fn(async () => ({ assurance: "AES_PASSKEY", otpChallengeId: null, passkeyCredentialId: "cred-1" })),
+}));
 jest.mock("../../src/services/signatures/presets", () => ({
   resolveMenu: jest.fn(async () => ({ cards: [{ preset_code: "STAMP" }], default: "STAMP" })),
 }));
@@ -252,5 +257,37 @@ describe("the page prints at most one seal per step", () => {
 
   test("other documents keep every seal — two parties can sign for one reason", () => {
     expect(templateSvc.onePerStep("invoice:1", six)).toHaveLength(6);
+  });
+});
+
+describe("validating and approving need the signer's own confirmation", () => {
+  const signingProof = require("../../src/modules/vault/document_signature/signing-proof.service");
+
+  test.each([["SUBMIT_APPROVAL", "SUBMITTED_FOR_VALIDATION"], ["APPROVE", "SUBMITTED_FOR_APPROVAL"]])(
+    "%s settles the proof and seals with it",
+    async (to, from) => {
+      const c = stubClient({ status: from });
+      await service.setStatus(c, { id: ID, to, actor: ACTOR, proof: { otp_code: "123456" } });
+      expect(signingProof.settle).toHaveBeenCalledWith(c, expect.objectContaining({
+        docType: "COSTING", entityRef: `costing:${ID}`, proof: { otp_code: "123456" },
+      }));
+      const call = signatures.signInternal.mock.calls[0][1];
+      expect(call.settled).toMatchObject({ assurance: "AES_PASSKEY" });
+      expect(call.silent).toBe(false);
+    },
+  );
+
+  test("a refused proof refuses the transition — nothing moves", async () => {
+    signingProof.settle.mockRejectedValueOnce(Object.assign(new Error("no"), { code: "SIGNING_PROOF_REQUIRED", status: 428 }));
+    const c = stubClient({ status: "SUBMITTED_FOR_APPROVAL" });
+    await expect(service.setStatus(c, { id: ID, to: "APPROVE", actor: ACTOR })).rejects.toMatchObject({ code: "SIGNING_PROOF_REQUIRED" });
+    expect(c.updates).toHaveLength(0);
+  });
+
+  test("submitting is a hand-off: no proof asked, sealed silently", async () => {
+    const c = stubClient({ status: "DRAFT" });
+    await service.setStatus(c, { id: ID, to: "SUBMIT_VALIDATION", actor: ACTOR });
+    expect(signingProof.settle).not.toHaveBeenCalled();
+    expect(signatures.signInternal.mock.calls[0][1].silent).toBe(true);
   });
 });

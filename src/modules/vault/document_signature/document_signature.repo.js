@@ -17,7 +17,7 @@ const COLS = `signature_id, entity_ref, doc_type, document_vault_id,
   assurance_level, visual_mark, preset_code, sign_reason,
   party, identity_source, signer_user_id, signer_name, signer_role, signer_email,
   signature_request_id, mark_image_b64, verify_code,
-  signed_at, ip, user_agent, otp_challenge_id,
+  signed_at, ip, user_agent, otp_challenge_id, passkey_credential_id,
   revoked_at, revoked_by, revoke_reason, created_at`;
 
 function insert(client, data) {

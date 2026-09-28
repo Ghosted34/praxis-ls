@@ -43,6 +43,13 @@ d("cash-request budget gates (real Postgres)", () => {
     svc = require("../../src/modules/costing/cash_request/cash_request.service");
     costingSvc = require("../../src/modules/costing/costing/costing.service");
 
+    // Approving is signing (28 Sep 2026): the approver confirms with a passkey
+    // or an emailed code, checked by signing-proof.settle. That check is pinned
+    // by tests/unit/signing-proof.test.js; this suite is about what approval
+    // DOES, so the proof is settled at its boundary.
+    jest.spyOn(require("../../src/modules/vault/document_signature/signing-proof.service"), "settle")
+      .mockResolvedValue({ assurance: "AES_PASSKEY", otpChallengeId: null, passkeyCredentialId: "integration-test" });
+
     ids.client = (await client.query("INSERT INTO client_master (name) VALUES ($1) RETURNING client_id", ["Gates Test Co"])).rows[0].client_id;
     ids.dossier = (await client.query("INSERT INTO dossier (ref, client_id) VALUES ($1,$2) RETURNING dossier_id", [`GTE-${Date.now()}`, ids.client])).rows[0].dossier_id;
     // Raised as a DRAFT on purpose — the first thing asserted is that a budget

@@ -541,21 +541,15 @@ describe("search and the environment control", () => {
     expect(chip).toHaveAttribute("aria-haspopup", "dialog");
   });
 
-  it("opens the switch dialog from the chip: both environments, the warning, and the two outcomes", async () => {
+  it("opens the switch dialog from the chip: one line, and the two outcomes", async () => {
     const { container } = renderShell();
     await userEvent.click(chipIn(container));
 
-    const dialog = await screen.findByRole("dialog", { name: "Switch to TEST mode?" });
-    // Where you are and where you are going, both named — the sheet this
-    // replaced carried the same two facts one tap later.
-    expect(within(dialog).getByText("You are in")).toBeInTheDocument();
-    expect(within(dialog).getByText("You'll be in")).toBeInTheDocument();
-    expect(within(dialog).getByText("Real data. Changes are permanent.")).toBeInTheDocument();
-    expect(within(dialog).getByText("Sandbox data. Changes don't affect live.")).toBeInTheDocument();
-    // THE warning. A switch reloads the page, so this is the sentence the
-    // dialog exists to put in front of the answer.
-    expect(within(dialog).getByRole("note")).toHaveTextContent("Unsaved changes will be lost");
-    expect(within(dialog).getByText(/Praxis reloads to open TEST/)).toBeInTheDocument();
+    // One title and two buttons (tenant, 28 Sep 2026: no paragraph to read on
+    // every switch). Unsaved form work survives the reload as a draft.
+    const dialog = await screen.findByRole("dialog", { name: "Switch to TEST?" });
+    expect(within(dialog).queryByRole("note")).toBeNull();
+    expect(within(dialog).queryByText("You are in")).toBeNull();
     // Outcomes, not Yes/No.
     expect(within(dialog).getByRole("button", { name: "Stay in LIVE" })).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "Switch to TEST" })).toBeInTheDocument();
@@ -565,7 +559,7 @@ describe("search and the environment control", () => {
     const { container } = renderShell();
     await userEvent.click(chipIn(container));
 
-    const confirm = await screen.findByRole("dialog", { name: "Switch to TEST mode?" });
+    const confirm = await screen.findByRole("dialog", { name: "Switch to TEST?" });
     await userEvent.click(within(confirm).getByRole("button", { name: "Stay in LIVE" }));
 
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
@@ -584,7 +578,7 @@ describe("search and the environment control", () => {
     const { container } = renderShell();
     await userEvent.click(chipIn(container));
 
-    const confirm = await screen.findByRole("dialog", { name: "Switch to TEST mode?" });
+    const confirm = await screen.findByRole("dialog", { name: "Switch to TEST?" });
     await userEvent.click(within(confirm).getByRole("button", { name: "Switch to TEST" }));
 
     // The order of events IS the fix. The environment is persisted and the
@@ -609,8 +603,7 @@ describe("search and the environment control", () => {
     expect(chipIn(container)).toHaveTextContent("TEST");
 
     await userEvent.click(chipIn(container));
-    const confirm = await screen.findByRole("dialog", { name: "Switch to LIVE mode?" });
-    expect(within(confirm).getByRole("note")).toHaveTextContent("Unsaved changes will be lost");
+    const confirm = await screen.findByRole("dialog", { name: "Switch to LIVE?" });
     await userEvent.click(within(confirm).getByRole("button", { name: "Switch to LIVE" }));
 
     expect(localStorage.getItem("praxis.env")).toBe("live");
@@ -631,8 +624,7 @@ describe("search and the environment control", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
 
     await userEvent.click(test);
-    const confirm = await screen.findByRole("dialog", { name: "Switch to TEST mode?" });
-    expect(within(confirm).getByRole("note")).toHaveTextContent("Unsaved changes will be lost");
+    const confirm = await screen.findByRole("dialog", { name: "Switch to TEST?" });
     // Nothing has happened yet — the click alone used to be the switch.
     expect(localStorage.getItem("praxis.env")).toBeNull();
     expect(reload).not.toHaveBeenCalled();
@@ -650,7 +642,7 @@ describe("search and the environment control", () => {
     renderShell();
 
     await userEvent.click(screen.getByRole("button", { name: "Switch to live" }));
-    const confirm = await screen.findByRole("dialog", { name: "Switch to LIVE mode?" });
+    const confirm = await screen.findByRole("dialog", { name: "Switch to LIVE?" });
     expect(within(confirm).getByRole("button", { name: "Switch to LIVE" })).toBeInTheDocument();
     await userEvent.click(within(confirm).getByRole("button", { name: "Stay in TEST" }));
 
@@ -666,7 +658,7 @@ describe("search and the environment control", () => {
       const { container } = renderShell();
       const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
       await user.click(chipIn(container));
-      const confirm = await screen.findByRole("dialog", { name: "Switch to TEST mode?" });
+      const confirm = await screen.findByRole("dialog", { name: "Switch to TEST?" });
       await user.click(within(confirm).getByRole("button", { name: "Switch to TEST" }));
 
       // The reload fires, but a `beforeunload` guard on the screen can make the

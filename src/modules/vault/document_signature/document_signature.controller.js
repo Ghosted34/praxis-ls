@@ -1,6 +1,7 @@
 "use strict";
 
 const service = require("./document_signature.service");
+const signingProof = require("./signing-proof.service");
 const { asyncHandler } = require("../../../utils/errors");
 
 const lang = (req) => (req.validatedQuery && req.validatedQuery.lang) || req.query.lang || "fr";
@@ -20,9 +21,32 @@ module.exports = {
     res.json({ data: await req.tenantDb((c) => service.menu(c, { docType, language: lang(req) })) });
   }),
 
+  /**
+   * What the client needs to ask for the signer's fingerprint or face on ONE
+   * document: the ceremony bound to its current content hash, or
+   * `has_passkey: false` so the client offers the two-tap setup first.
+   */
+  proofOptions: asyncHandler(async (req, res) => {
+    const { entity_ref: entityRef, doc_type: docType } = req.body;
+    const contentHash = await req.tenantDb((c) => signingProof.currentHash(c, { docType, entityRef }));
+    const data = await req.identityDb((c) => signingProof.passkeyOptions(c, {
+      userId: req.user.user_id, entityRef, contentHash, req,
+    }));
+    res.json({ data });
+  }),
+
+  /** The fallback: email the signer a six-digit code bound to this document. */
+  proofOtp: asyncHandler(async (req, res) => {
+    const { entity_ref: entityRef, doc_type: docType } = req.body;
+    const data = await req.tenantDb((c) => signingProof.sendOtp(c, { actor: req.user || {}, docType, entityRef }));
+    res.json({ data });
+  }),
+
   sign: asyncHandler(async (req, res) => {
     const b = req.body;
-    const data = await req.tenantDb((c) => service.signInternal(c, {
+    const proof = await signingProof.fromRequest(req);
+    const data = await req.tenantDb(async (c) => service.signInternal(c, {
+      settled: await signingProof.settle(c, { actor: req.user || {}, docType: b.doc_type, entityRef: b.entity_ref, proof }),
       entityRef: b.entity_ref,
       docType: b.doc_type,
       presetCode: b.preset_code,

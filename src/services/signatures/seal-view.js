@@ -30,6 +30,7 @@ const { logger } = require("../../config/logger");
 const METHOD_WORDS = {
   SES: { fr: "Signé depuis une session authentifiée", en: "Signed from an authenticated session" },
   AES_OTP: { fr: "Vérifié par code e-mail", en: "Verified by email code" },
+  AES_PASSKEY: { fr: "Vérifié par passkey", en: "Verified by passkey" },
   QES: { fr: "Certifié par un tiers de confiance", en: "Certified by a trust provider" },
   WET: { fr: "Signé à la main et rapproché", en: "Signed by hand and reconciled" },
 };

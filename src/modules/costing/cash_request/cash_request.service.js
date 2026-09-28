@@ -241,7 +241,7 @@ async function applySpend(client, id, lines) {
  * about signatures. It is logged at error level: an unsealed approval is a
  * real gap in the evidence chain, just not one worth refusing the money over.
  */
-async function seal(client, { entityRef, docType, recordId, signReason, actor = {} }) {
+async function seal(client, { entityRef, docType, recordId, signReason, actor = {}, settled = null }) {
   if (!signReason || !actor.user_id) return;
   try {
     // Required lazily: document_signature pulls the template service, which
@@ -266,6 +266,11 @@ async function seal(client, { entityRef, docType, recordId, signReason, actor = 
     const rec = await templateSvc.loadRecord(client, docType, recordId);
     await signatures.signInternal(client, {
       entityRef, docType, presetCode: menu.default, signReason, actor, doc: rec ? rec.data : null,
+      // Confirmed by the signer's passkey (or emailed code) where the caller
+      // collected one — the approval. Every other seal here is a hand-off or
+      // a counter receipt, sealed on the session as before.
+      settled,
+      silent: !settled,
     });
   } catch (err) {
     logger.error(
@@ -723,7 +728,7 @@ async function assertFundable(client, cr, { stage, overBudgetReason = null } = {
   return { ledger, breaches };
 }
 
-async function transition(client, { id, to, entityId = null, date = null, reason = null, overBudgetReason = null, actor = {}, viaChain = false }) {
+async function transition(client, { id, to, entityId = null, date = null, reason = null, overBudgetReason = null, actor = {}, viaChain = false, proof = null }) {
   const cr = await repo.getCR(client, id);
   if (!cr) throw new AppError("NOT_FOUND", "Cash request not found", 404);
   assertTransition(cr.status, to);
@@ -750,6 +755,13 @@ async function transition(client, { id, to, entityId = null, date = null, reason
   // Before BEGIN so the refusal doesn't open and roll back a transaction.
   if (to === "VALIDATED" || to === "APPROVED" || to === "REJECTED") {
     await assertNoPendingChain(client, ref(id), { viaChain, what: "cash request" });
+  }
+  // Approving is signing (owner decision, 28 Sep 2026): the approver confirms
+  // with a fingerprint or face, checked against the voucher as they saw it.
+  let settled = null;
+  if (to === "APPROVED" && !viaChain) {
+    const signingProof = require("../../vault/document_signature/signing-proof.service");
+    settled = await signingProof.settle(client, { actor, docType: "CASH_REQUEST", entityRef: ref(id), proof });
   }
   await client.query("BEGIN");
   try {
@@ -833,7 +845,7 @@ async function transition(client, { id, to, entityId = null, date = null, reason
      */
     await seal(client, {
       entityRef: ref(id), docType: "CASH_REQUEST", recordId: id,
-      signReason: TRANSITION_SEAL[to], actor,
+      signReason: TRANSITION_SEAL[to], actor, settled,
     });
     await emitEvent(client, { eventTypeKey: events.transition(to), moduleKey: events.MODULE, entityRef: ref(id), actorUserId: actor.user_id || null });
     await audit(client, { actorUserId: actor.user_id || null, action: events.transition(to), moduleKey: events.MODULE, entityRef: ref(id), after: updated });

@@ -39,6 +39,13 @@ d("orchestration — import-freight lane (real Postgres)", () => {
     pool = new Pool({ connectionString: process.env.DATABASE_URL });
     opportunity = require("../../src/modules/sales/opportunity/opportunity.service");
     costing = require("../../src/modules/costing/costing/costing.service");
+
+    // Approving is signing (28 Sep 2026): the approver confirms with a passkey
+    // or an emailed code, checked by signing-proof.settle. That check is pinned
+    // by tests/unit/signing-proof.test.js; this suite is about what approval
+    // DOES, so the proof is settled at its boundary.
+    jest.spyOn(require("../../src/modules/vault/document_signature/signing-proof.service"), "settle")
+      .mockResolvedValue({ assurance: "AES_PASSKEY", otpChallengeId: null, passkeyCredentialId: "integration-test" });
     dispatcher = require("../../src/orchestration/dispatcher");
   });
   afterAll(async () => {

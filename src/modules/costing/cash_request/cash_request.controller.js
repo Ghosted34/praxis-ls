@@ -1,4 +1,6 @@
 "use strict";
+
+const signingProof = require("../../vault/document_signature/signing-proof.service");
 const service = require("./cash_request.service");
 const { asyncHandler, AppError } = require("../../../utils/errors");
 const { enqueueDocument } = require("../../../services/documents/generate");
@@ -27,7 +29,8 @@ module.exports = {
   importCosting: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.importCostingLines(c, { id: req.params.id, actor: actor(req) })) })),
   transition: asyncHandler(async (req, res) => {
     const b = req.body;
-    const data = await req.tenantDb((c) => service.transition(c, { id: req.params.id, to: b.to, entityId: b.entity_id, date: b.date, reason: b.reason, overBudgetReason: b.over_budget_reason, actor: actor(req) }));
+    const proof = await signingProof.fromRequest(req);
+    const data = await req.tenantDb((c) => service.transition(c, { id: req.params.id, to: b.to, entityId: b.entity_id, date: b.date, reason: b.reason, overBudgetReason: b.over_budget_reason, actor: actor(req), proof }));
     // Submitting numbers + captures the request — mint its PDF then too.
     if (data && b.to === "SUBMITTED") {
       enqueueDocument({ tenantMeta: req.tenant, env: req.env, docType: "CASH_REQUEST", recordId: req.params.id });

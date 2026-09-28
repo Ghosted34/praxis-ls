@@ -1,7 +1,6 @@
 "use strict";
 
 const service = require("./document_signature.service");
-const validator = require("./document_signature.validator");
 
 /**
  * AI catalogue (doc/AI_ARCHITECTURE.md): reads are free, writes are confirmed.
@@ -29,14 +28,12 @@ module.exports = {
       describe: "The signature methods available for a document type.",
     },
   ],
+  /*
+   * No writes. Signing needs the signer's fingerprint or face (or an emailed
+   * code) on their own device (signing-proof.service) — an assistant cannot
+   * supply either, and a catalogue entry it could never complete would
+   * advertise a capability the runtime refuses.
+   */
   writes: [
-    {
-      key: "sign_document",
-      service: (c, p, actor) => service.signInternal(c, { entityRef: p.entity_ref, docType: p.doc_type, presetCode: p.preset_code, signReason: p.sign_reason, markImageB64: p.mark_image_b64, actor }),
-      schema: validator.schemas.signInternal,
-      permission: { module: "MOD-64", action: "approve" },
-      confirm: true,
-      describe: "Sign a document as the current user, tied to its canonical content hash.",
-    },
   ],
 };

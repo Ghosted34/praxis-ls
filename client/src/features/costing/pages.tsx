@@ -52,6 +52,8 @@ import { useDebounced } from "@/lib/use-debounced";
 import { COSTING_BASE, statusLabel } from "./costing-model";
 import { CostingSheet360Modal } from "./costing-sheet-360";
 import { CashRequest360Modal } from "./cash-request-360";
+import { useSigningProof } from "@/components/signing/use-signing-proof";
+import type { SigningProof } from "@/lib/signing-proof";
 import { useRecordOpener, recordPath, recordSheetPath } from "@/lib/record-360";
 import { isDesktopNow } from "@/lib/use-media-query";
 
@@ -1754,13 +1756,28 @@ export function CashRequestsPage() {
     null,
   );
 
+  const [confirmSign, signUi] = useSigningProof();
+
   async function moveCr(
     c: api.CashRequest,
     to: "SUBMITTED" | "VALIDATED" | "APPROVED" | "REJECTED",
   ) {
+    // Approving is signing: the approver's fingerprint or face first.
+    let proof: SigningProof | null = null;
+    if (to === "APPROVED") {
+      proof = await confirmSign({
+        entityRef: `cash_request:${c.cash_request_id}`,
+        docType: "CASH_REQUEST",
+      });
+      if (!proof) return;
+    }
     setBusyId(c.cash_request_id);
     try {
-      await api.transitionCashRequest(c.cash_request_id, to);
+      await api.transitionCashRequest(
+        c.cash_request_id,
+        to,
+        proof ? { proof } : {},
+      );
       reload();
     } catch (e) {
       reportActionError(e);
@@ -1930,6 +1947,7 @@ export function CashRequestsPage() {
           }}
         />
       )}
+      {signUi}
       {sheetId && (
         <CashRequest360Modal
           id={sheetId}

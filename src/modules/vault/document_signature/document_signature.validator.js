@@ -1,6 +1,7 @@
 "use strict";
 
 const { z } = require("zod");
+const { signingProofSchema } = require("./signing-proof.schema");
 const { AppError } = require("../../../utils/errors");
 
 /**
@@ -22,8 +23,16 @@ const signInternal = z
     // DRAWN only. Capped well under the 2 MB body limit: a signature pad
     // producing more than this is a pad that needs downscaling, not a bigger cap.
     mark_image_b64: z.string().max(300_000).regex(/^data:image\/(png|jpeg);base64,/).optional(),
+    // The signer's fingerprint / face (or emailed code): signing-proof.service.
+    proof: signingProofSchema.optional(),
   })
   .strict();
+
+/** The document a proof is asked for: which one, of which kind. */
+const proofTarget = z.object({
+  entity_ref: z.string().min(1).max(200),
+  doc_type: z.string().min(1).max(64),
+}).strict();
 
 const revoke = z.object({ reason: z.string().min(3).max(500) }).strict();
 
@@ -37,7 +46,7 @@ const menuQuery = z.object({
   lang: z.enum(["fr", "en"]).optional(),
 });
 
-const schemas = { signInternal, revoke, listQuery, menuQuery };
+const schemas = { signInternal, revoke, listQuery, menuQuery, proofTarget };
 
 const body = (k) => (req, _res, next) => {
   const p = schemas[k].safeParse(req.body);
@@ -69,6 +78,7 @@ const query = (k) => (req, _res, next) => {
 
 module.exports = {
   signInternal: body("signInternal"),
+  proofTarget: body("proofTarget"),
   revoke: body("revoke"),
   listQuery: query("listQuery"),
   menuQuery: query("menuQuery"),

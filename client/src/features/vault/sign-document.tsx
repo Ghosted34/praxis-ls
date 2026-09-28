@@ -20,6 +20,7 @@
  * (doc/SIGNATURE_ENGINEERING_GUIDE.md §3.12, §4.5).
  */
 
+import { useSigningProof } from "@/components/signing/use-signing-proof";
 import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { tenant } from "@/lib/api-client";
@@ -64,6 +65,7 @@ export function SignDocumentModal({
   const [busy, setBusy] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [confirmSign, signUi] = useSigningProof();
 
   React.useEffect(() => {
     if (!open || !docType) return;
@@ -105,7 +107,10 @@ export function SignDocumentModal({
   }, [open]);
 
   async function submit() {
-    if (!preset) return;
+    if (!preset || !docType) return;
+    // The signer's fingerprint or face (or emailed code) — signing proof.
+    const proof = await confirmSign({ entityRef, docType });
+    if (!proof) return;
     setBusy(true);
     setError(null);
     try {
@@ -116,6 +121,7 @@ export function SignDocumentModal({
           doc_type: docType,
           preset_code: preset,
           ...(reason ? { sign_reason: reason } : {}),
+          proof,
         },
       });
       onSaved();
@@ -132,28 +138,37 @@ export function SignDocumentModal({
       open={open}
       onClose={onClose}
       title={tr("Sign this document")}
-      description="You are signing as yourself. Your name and role come from your account — they cannot be typed in."
+      description={tr("Signed as you, with your fingerprint or face.")}
       size="lg"
     >
+      {signUi}
       <div className="space-y-4">
         {loading ? (
           <SkeletonTable />
         ) : menu ? (
           <>
             <Field label={tr("How do you want to sign?")}>
-              <SignatureCardGrid menu={menu} value={preset} onChange={setPreset} />
+              <SignatureCardGrid
+                menu={menu}
+                value={preset}
+                onChange={setPreset}
+              />
             </Field>
-            <Field
-              label={tr("Reason")}
-              hint="Printed on the signature stamp."
-            >
-              <Select value={reason} onChange={(e) => setReason(e.target.value)}>
+            <Field label={tr("Reason")} hint="Printed on the signature stamp.">
+              <Select
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+              >
                 <option value="">{tr("No reason given")}</option>
                 {reasons.map((r) => (
-                  <option key={String(r.reason_code)} value={String(r.reason_code)}>
+                  <option
+                    key={String(r.reason_code)}
+                    value={String(r.reason_code)}
+                  >
                     {String(
-                      (currentLocale().startsWith("fr") ? r.label_fr : r.label_en) ??
-                        r.reason_code,
+                      (currentLocale().startsWith("fr")
+                        ? r.label_fr
+                        : r.label_en) ?? r.reason_code,
                     )}
                   </option>
                 ))}
@@ -174,7 +189,6 @@ export function SignDocumentModal({
     </Modal>
   );
 }
-
 
 /**
  * The signatures already on one record, as the seals they print as.
@@ -201,7 +215,9 @@ export function SignaturesOnRecord({
   title?: string;
 }) {
   const { rows, error, errorCode } = useList(
-    entityRef ? `/signatures?entity_ref=${encodeURIComponent(entityRef)}` : null,
+    entityRef
+      ? `/signatures?entity_ref=${encodeURIComponent(entityRef)}`
+      : null,
   );
   if (isGated(errorCode) || error) return null;
   if (rows === null) return <SkeletonTable />;
@@ -209,7 +225,9 @@ export function SignaturesOnRecord({
 
   return (
     <div className="space-y-2">
-      {title ? <div className="micro text-muted-foreground">{title}</div> : null}
+      {title ? (
+        <div className="micro text-muted-foreground">{title}</div>
+      ) : null}
       {rows.map((r: Row) => {
         const status = String(r.status || "");
         const amended = status === "AMENDED";
@@ -367,20 +385,23 @@ export function SendForSignatureModal({
          * name to a chain is a decision, and a chain that silently includes us
          * is one somebody has to notice to remove.
          */
-        const primary = r.counterparty?.signatories.find((c) => c.is_primary)
-          || r.counterparty?.signatories[0];
+        const primary =
+          r.counterparty?.signatories.find((c) => c.is_primary) ||
+          r.counterparty?.signatories[0];
         if (primary) {
-          setParties([{
-            party_kind: "COUNTERPARTY",
-            source: "ON_FILE",
-            source_ref: primary.source_ref,
-            full_name: primary.full_name,
-            ...(primary.party_role ? { party_role: primary.party_role } : {}),
-            email: primary.email,
-            ...(primary.language === "fr" || primary.language === "en"
-              ? { language: primary.language }
-              : {}),
-          }]);
+          setParties([
+            {
+              party_kind: "COUNTERPARTY",
+              source: "ON_FILE",
+              source_ref: primary.source_ref,
+              full_name: primary.full_name,
+              ...(primary.party_role ? { party_role: primary.party_role } : {}),
+              email: primary.email,
+              ...(primary.language === "fr" || primary.language === "en"
+                ? { language: primary.language }
+                : {}),
+            },
+          ]);
         }
       } catch (e) {
         if (!cancelled) setError(errMsg(e));
@@ -393,24 +414,27 @@ export function SendForSignatureModal({
     };
   }, [open, entityRef, docType]);
 
-  const has = (c: Candidate) => parties.some((p) => p.source_ref === c.source_ref);
+  const has = (c: Candidate) =>
+    parties.some((p) => p.source_ref === c.source_ref);
 
   function toggle(c: Candidate, kind: PartyDraft["party_kind"]) {
     setParties((prev) =>
       prev.some((p) => p.source_ref === c.source_ref)
         ? prev.filter((p) => p.source_ref !== c.source_ref)
         : [
-          ...prev,
-          {
-            party_kind: kind,
-            source: "ON_FILE",
-            source_ref: c.source_ref,
-            full_name: c.full_name,
-            ...(c.party_role ? { party_role: c.party_role } : {}),
-            email: c.email,
-            ...(c.language === "fr" || c.language === "en" ? { language: c.language } : {}),
-          },
-        ],
+            ...prev,
+            {
+              party_kind: kind,
+              source: "ON_FILE",
+              source_ref: c.source_ref,
+              full_name: c.full_name,
+              ...(c.party_role ? { party_role: c.party_role } : {}),
+              email: c.email,
+              ...(c.language === "fr" || c.language === "en"
+                ? { language: c.language }
+                : {}),
+            },
+          ],
     );
   }
 
@@ -426,10 +450,10 @@ export function SendForSignatureModal({
 
   const overrides = parties.filter((p) => p.source === "OVERRIDE").length;
   const manualReady =
-    manual !== null
-    && manual.full_name.trim().length > 0
-    && /.+@.+\..+/.test(manual.email)
-    && (manual.override_reason || "").trim().length >= 3;
+    manual !== null &&
+    manual.full_name.trim().length > 0 &&
+    /.+@.+\..+/.test(manual.email) &&
+    (manual.override_reason || "").trim().length >= 3;
 
   async function submit() {
     if (!parties.length) return;
@@ -445,22 +469,30 @@ export function SendForSignatureModal({
        * survives as a draft on the record rather than vanishing, and the
        * chain panel offers "Send next link".
        */
-      const created = await tenant<{ request_id: string }>("/signature-requests", {
-        method: "POST",
-        body: {
-          entity_ref: entityRef,
-          doc_type: docType,
-          parties,
-          ...(message.trim() ? { message: message.trim() } : {}),
-          require_certified: requireCertified,
-          allow_paper: allowPaper,
-          ...(Number(expiresInDays) > 0 ? { expires_in_days: Number(expiresInDays) } : {}),
+      const created = await tenant<{ request_id: string }>(
+        "/signature-requests",
+        {
+          method: "POST",
+          body: {
+            entity_ref: entityRef,
+            doc_type: docType,
+            parties,
+            ...(message.trim() ? { message: message.trim() } : {}),
+            require_certified: requireCertified,
+            allow_paper: allowPaper,
+            ...(Number(expiresInDays) > 0
+              ? { expires_in_days: Number(expiresInDays) }
+              : {}),
+          },
         },
-      });
-      await tenant(`/signature-requests/${encodeURIComponent(created.request_id)}/dispatch`, {
-        method: "POST",
-        body: {},
-      });
+      );
+      await tenant(
+        `/signature-requests/${encodeURIComponent(created.request_id)}/dispatch`,
+        {
+          method: "POST",
+          body: {},
+        },
+      );
       onSent();
       onClose();
     } catch (e) {
@@ -493,7 +525,9 @@ export function SendForSignatureModal({
                 <div className="space-y-1">
                   {cands.counterparty.signatories.length === 0 ? (
                     <p className="text-sm text-muted-foreground">
-                      {tr("Nobody on this client's file has an email address yet.")}
+                      {tr(
+                        "Nobody on this client's file has an email address yet.",
+                      )}
                     </p>
                   ) : (
                     cands.counterparty.signatories.map((c) => (
@@ -516,7 +550,9 @@ export function SendForSignatureModal({
               <Select
                 value=""
                 onChange={(e) => {
-                  const c = cands?.internal.find((x) => x.source_ref === e.target.value);
+                  const c = cands?.internal.find(
+                    (x) => x.source_ref === e.target.value,
+                  );
                   if (c && !has(c)) toggle(c, "ISSUER");
                 }}
               >
@@ -563,13 +599,17 @@ export function SendForSignatureModal({
                   <Field label={tr("Full name")}>
                     <Input
                       value={manual.full_name}
-                      onChange={(e) => setManual({ ...manual, full_name: e.target.value })}
+                      onChange={(e) =>
+                        setManual({ ...manual, full_name: e.target.value })
+                      }
                     />
                   </Field>
                   <Field label={tr("Role")}>
                     <Input
                       value={manual.party_role || ""}
-                      onChange={(e) => setManual({ ...manual, party_role: e.target.value })}
+                      onChange={(e) =>
+                        setManual({ ...manual, party_role: e.target.value })
+                      }
                     />
                   </Field>
                 </div>
@@ -577,13 +617,17 @@ export function SendForSignatureModal({
                   <Input
                     type="email"
                     value={manual.email}
-                    onChange={(e) => setManual({ ...manual, email: e.target.value })}
+                    onChange={(e) =>
+                      setManual({ ...manual, email: e.target.value })
+                    }
                   />
                 </Field>
                 <Field label={tr("Why is this address not on file?")} required>
                   <Input
                     value={manual.override_reason || ""}
-                    onChange={(e) => setManual({ ...manual, override_reason: e.target.value })}
+                    onChange={(e) =>
+                      setManual({ ...manual, override_reason: e.target.value })
+                    }
                     placeholder="e.g. New signatory named by the client on today's call"
                   />
                 </Field>
@@ -598,7 +642,11 @@ export function SendForSignatureModal({
                   >
                     {tr("Add to the chain")}
                   </Button>
-                  <Button size="sm" variant="ghost" onClick={() => setManual(null)}>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setManual(null)}
+                  >
                     {tr("Cancel")}
                   </Button>
                 </div>
@@ -620,10 +668,17 @@ export function SendForSignatureModal({
                       key={keyOf(p)}
                       className="flex items-center gap-2 rounded-lg border border-[rgb(var(--ink)/0.1)] px-3 py-1.5 text-sm"
                     >
-                      <span className="num w-5 text-muted-foreground">{i + 1}</span>
+                      <span className="num w-5 text-muted-foreground">
+                        {i + 1}
+                      </span>
                       <span className="min-w-0 flex-1">
-                        <span className="font-medium text-foreground">{p.full_name}</span>
-                        <span className="text-muted-foreground"> · {p.email}</span>
+                        <span className="font-medium text-foreground">
+                          {p.full_name}
+                        </span>
+                        <span className="text-muted-foreground">
+                          {" "}
+                          · {p.email}
+                        </span>
                       </span>
                       {p.source === "OVERRIDE" ? (
                         <Pill tone="warn">{tr("Entered by hand")}</Pill>
@@ -653,7 +708,11 @@ export function SendForSignatureModal({
                         type="button"
                         aria-label={tr("Remove")}
                         className="px-1 text-muted-foreground"
-                        onClick={() => setParties((prev) => prev.filter((x) => keyOf(x) !== keyOf(p)))}
+                        onClick={() =>
+                          setParties((prev) =>
+                            prev.filter((x) => keyOf(x) !== keyOf(p)),
+                          )
+                        }
                       >
                         ✕
                       </button>
@@ -663,7 +722,10 @@ export function SendForSignatureModal({
               )}
             </Field>
 
-            <Field label={tr("Message to the signatories")} hint="Optional. Appears in the email.">
+            <Field
+              label={tr("Message to the signatories")}
+              hint="Optional. Appears in the email."
+            >
               <Textarea
                 rows={2}
                 value={message}
@@ -711,7 +773,11 @@ export function SendForSignatureModal({
           <Button variant="outline" onClick={onClose} disabled={busy}>
             {tr("Cancel")}
           </Button>
-          <Button onClick={submit} loading={busy} disabled={!parties.length || busy}>
+          <Button
+            onClick={submit}
+            loading={busy}
+            disabled={!parties.length || busy}
+          >
             {tr("Send")}
           </Button>
         </div>
@@ -744,7 +810,6 @@ function CandidateRow({
   );
 }
 
-
 /**
  * The signature chains on one record: who was ASKED, and where it got to.
  *
@@ -767,7 +832,9 @@ export function SignatureChainOnRecord({
   refreshKey?: number;
 }) {
   const { rows, error, errorCode, reload } = useList(
-    entityRef ? `/signature-requests?entity_ref=${encodeURIComponent(entityRef)}` : null,
+    entityRef
+      ? `/signature-requests?entity_ref=${encodeURIComponent(entityRef)}`
+      : null,
   );
   const [busy, setBusy] = React.useState<string | null>(null);
   const [failed, setFailed] = React.useState<string | null>(null);
@@ -782,7 +849,10 @@ export function SignatureChainOnRecord({
     setBusy(id);
     setFailed(null);
     try {
-      await tenant(`/signature-requests/${encodeURIComponent(id)}/${path}`, { method: "POST", body: {} });
+      await tenant(`/signature-requests/${encodeURIComponent(id)}/${path}`, {
+        method: "POST",
+        body: {},
+      });
       reload();
     } catch (e) {
       setFailed(errMsg(e));
@@ -797,18 +867,24 @@ export function SignatureChainOnRecord({
 
   return (
     <div className="space-y-2">
-      {title ? <div className="micro text-muted-foreground">{title}</div> : null}
+      {title ? (
+        <div className="micro text-muted-foreground">{title}</div>
+      ) : null}
       {failed ? <ErrorState message={failed} /> : null}
       {rows.map((r: Row) => {
         const id = String(r.request_id);
         const status = String(r.status || "");
         const open = ["DRAFT", "SENT", "PARTIALLY_SIGNED"].includes(status);
         return (
-          <div key={id} className="rounded-lg border border-[rgb(var(--ink)/0.1)] px-3 py-2">
+          <div
+            key={id}
+            className="rounded-lg border border-[rgb(var(--ink)/0.1)] px-3 py-2"
+          >
             <div className="flex flex-wrap items-center gap-2">
               <Pill tone={chainTone(status)}>{status.replace(/_/g, " ")}</Pill>
               <span className="text-sm text-muted-foreground">
-                {String(r.signed_count ?? 0)} / {String(r.party_count ?? 0)} {tr("signed")}
+                {String(r.signed_count ?? 0)} / {String(r.party_count ?? 0)}{" "}
+                {tr("signed")}
               </span>
               {r.expires_at ? (
                 <span className="text-sm text-muted-foreground">
@@ -817,17 +893,32 @@ export function SignatureChainOnRecord({
               ) : null}
               <span className="ml-auto flex gap-1">
                 {open ? (
-                  <Button size="sm" variant="ghost" loading={busy === id} onClick={() => run(id, "dispatch")}>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    loading={busy === id}
+                    onClick={() => run(id, "dispatch")}
+                  >
                     {tr("Send next link")}
                   </Button>
                 ) : null}
                 {status === "COMPLETED" ? (
-                  <Button size="sm" variant="ghost" loading={busy === id} onClick={() => run(id, "certificate")}>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    loading={busy === id}
+                    onClick={() => run(id, "certificate")}
+                  >
                     {tr("Certificate")}
                   </Button>
                 ) : null}
                 {open ? (
-                  <Button size="sm" variant="ghost" loading={busy === id} onClick={() => run(id, "void")}>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    loading={busy === id}
+                    onClick={() => run(id, "void")}
+                  >
                     {tr("Void")}
                   </Button>
                 ) : null}
@@ -855,5 +946,7 @@ function chainTone(status: string): "ok" | "warn" | "bad" | "mute" {
       VOIDED: "mute",
     },
   );
-  return Object.prototype.hasOwnProperty.call(map, status) ? map[status] : "mute";
+  return Object.prototype.hasOwnProperty.call(map, status)
+    ? map[status]
+    : "mute";
 }

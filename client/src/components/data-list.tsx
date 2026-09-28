@@ -6,6 +6,8 @@
  */
 import * as React from "react";
 import { cn } from "@/lib/cn";
+import { tr } from "@/lib/i18n";
+import { InfoIcon } from "@/components/ui/icons";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import { SkeletonTable } from "@/components/ui/skeleton";
@@ -70,6 +72,18 @@ export function PageHeader({
   action?: React.ReactNode;
   eyebrow?: React.ReactNode;
 }) {
+  /*
+   * THE EXPLANATION IS ONE TAP AWAY, NOT ON EVERY VISIT (tenant, 28 Sep 2026).
+   * 116 of 117 screens opened on a sentence explaining themselves, read once
+   * and then scrolled past forever — on a phone, the first screenful. The
+   * title leads; the sentence sits behind ⓘ.
+   *
+   * Collapsed, the description stays in the DOM as screen-reader text and is
+   * wired to the title by `aria-describedby`: assistive tech still hears the
+   * context the sighted reader chose to skip.
+   */
+  const [open, setOpen] = React.useState(false);
+  const descId = React.useId();
   return (
     <header className="mb-4 flex flex-wrap items-start justify-between gap-x-4 gap-y-3 border-b pb-3">
       <div className="flex min-w-0 items-start gap-3">
@@ -79,27 +93,38 @@ export function PageHeader({
         />
         <div className="min-w-0">
           {eyebrow && <div className="micro mb-1">{eyebrow}</div>}
-          {/*
-            The <h1> is now unconditional (audit F13). It used to render only
-            when `description` was absent — and 116 of 117 call sites pass one,
-            so in practice almost every screen in the app shipped with NO h1 at
-            all and a flat document outline.
-
-            The visual intent is preserved: inside a hub the tab bar already
-            names the screen, so the title stays visually small (`micro`) and the
-            description carries the visual weight. It is still a real h1 for
-            assistive tech and document structure — `sr-only` is deliberately NOT
-            used, because the title is genuinely useful context on screen too.
-          */}
-          {description ? (
-            <>
-              <h1 className="micro mb-1">{title}</h1>
-              <p className="max-w-prose text-base font-medium leading-snug text-foreground">
-                {description}
-              </p>
-            </>
-          ) : (
-            <h1 className="font-display text-h2 leading-tight">{title}</h1>
+          <div className="flex items-center gap-1.5">
+            {/* The <h1> is unconditional (audit F13). */}
+            <h1
+              className="font-display text-h2 leading-tight"
+              aria-describedby={description ? descId : undefined}
+            >
+              {title}
+            </h1>
+            {description && (
+              <button
+                type="button"
+                onClick={() => setOpen((v) => !v)}
+                aria-expanded={open}
+                aria-controls={descId}
+                aria-label={tr("About this page")}
+                className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <InfoIcon width={16} height={16} aria-hidden />
+              </button>
+            )}
+          </div>
+          {description && (
+            <p
+              id={descId}
+              className={
+                open
+                  ? "mt-1 max-w-prose text-sm leading-snug text-muted-foreground animate-rise-in"
+                  : "sr-only"
+              }
+            >
+              {description}
+            </p>
           )}
         </div>
       </div>

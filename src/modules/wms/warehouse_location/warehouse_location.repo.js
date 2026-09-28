@@ -4,7 +4,8 @@
  * reference count that guards deletion of an occupied location.
  */
 "use strict";
-const { insertOne, getById, page, updateOne } = require("../../../shared/db/query-helpers");
+const { insertOne, getById, page, updateOne, TOTAL_COL, splitTotal } = require("../../../shared/db/query-helpers");
+const { LABEL_SQL } = require("./warehouse_location.rules");
 
 const insert = (client, data) => insertOne(client, "warehouse_location", data);
 const findById = (client, id) => getById(client, "warehouse_location", "location_id", id);
@@ -16,18 +17,38 @@ async function update(client, id, fields) {
   return updateOne(client, "warehouse_location", "location_id", id, fields, "*", null);
 }
 
+/**
+ * One page of slots, with the true total and a search.
+ *
+ * The Locations screen used to read this with no search and no total — the
+ * first 50 slots in slot order — and filter THOSE in the browser, so a
+ * warehouse with more than 50 slots could neither see nor find the rest.
+ * `?q=` now matches the label the list shows (`LABEL_SQL`, the SQL twin of
+ * `label()`), server-side, and the total rides on `meta.total` so the screen
+ * can page. `location_id` is the tie-break a stable page needs: slots that
+ * share zone/aisle/rack/bin (or have none) must not trade places between pages.
+ */
 async function list(client, q = {}) {
   const { limit, offset } = page(q);
   const params = [limit, offset];
   const wh = [];
   if (q.zone) { params.push(q.zone); wh.push("zone = $" + params.length); }
   if (q.yard) { wh.push("yard IS NOT NULL"); }
+  if (q.q && String(q.q).trim()) {
+    params.push("%" + String(q.q).trim() + "%");
+    wh.push(`(${LABEL_SQL}) ILIKE $${params.length}`);
+  }
   const where = wh.length ? "WHERE " + wh.join(" AND ") : "";
   const { rows } = await client.query(
-    `SELECT * FROM warehouse_location ${where} ORDER BY zone NULLS FIRST, aisle, rack, bin LIMIT $1 OFFSET $2`,
+    `SELECT *, ${TOTAL_COL} FROM warehouse_location ${where}
+      ORDER BY zone NULLS FIRST, aisle, rack, bin, location_id LIMIT $1 OFFSET $2`,
     params,
   );
-  return rows;
+  const split = splitTotal(rows);
+  // Read by the shared controller as `meta.total` (resource.js makeController).
+  Object.defineProperty(split.rows, "_total", { value: split.total, enumerable: false });
+  Object.defineProperty(split.rows, "_page", { value: { limit, offset }, enumerable: false });
+  return split.rows;
 }
 
 const REFERENCING = [

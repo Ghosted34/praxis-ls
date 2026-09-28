@@ -147,6 +147,9 @@ export const setEquipmentStatus = (
   });
 
 export const listLocations = () => tenant<WarehouseLocation[]>("/locations");
+/** The slot list for `useListPaged` — searchable (`q`, the slot label) and
+ *  paged with a true total. */
+export const LOCATIONS_PATH = "/locations";
 
 /**
  * What one slot holds, counted over EVERY row at it by the server — the

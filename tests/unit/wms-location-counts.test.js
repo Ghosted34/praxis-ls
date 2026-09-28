@@ -13,7 +13,9 @@
  *   - GET /inventory takes `?location_id=` (one slot's stock) with a real total
  *     and a quantity sort for "On hand";
  *   - the equipment and cycle-count lists, which already filtered by location,
- *     now report their totals, so a paged drill-in can say "of N".
+ *     now report their totals, so a paged drill-in can say "of N";
+ *   - GET /locations itself searches (`?q=`, the slot label) and reports its
+ *     total, so the rail can page past the first 50 slots and find slot 180.
  */
 const express = require("express");
 const request = require("supertest");
@@ -167,5 +169,67 @@ describe("equipment and cycle-count lists report their totals", () => {
     const out = await cycleCountService.list(client, { location_id: LOC });
     expect(out._total).toBe(12);
     expect(out[0]).toHaveProperty("discrepancy_summary");
+  });
+});
+
+describe("GET /locations — the slot list is searched and paged on the server", () => {
+  const { label, LABEL_SQL } = require("../../src/modules/wms/warehouse_location/warehouse_location.rules");
+
+  test("?q= matches the label the list shows, and the true total rides along", async () => {
+    const { seen, client } = recorder(() => ({
+      rows: [{ location_id: "l1", zone: "A", aisle: "12", rack: "3", bin: "B", _total: "180" }],
+    }));
+    const out = await locationService.list(client, { q: "  A-12 ", limit: 50, offset: 50 });
+    expect(out._total).toBe(180);
+    expect(out._page).toEqual({ limit: 50, offset: 50 });
+    expect(out[0]).not.toHaveProperty("_total");
+    // The label is added AFTER the total is split off, and it is the text searched.
+    expect(out[0].label).toBe("A-12-3-B");
+    const q = seen[0];
+    expect(q.sql).toContain(`(${LABEL_SQL}) ILIKE $3`);
+    expect(q.params).toEqual([50, 50, "%A-12%"]);
+    // A stable page: slots that share zone/aisle/rack/bin keep their order.
+    expect(q.sql).toMatch(/ORDER BY zone NULLS FIRST, aisle, rack, bin, location_id LIMIT \$1 OFFSET \$2/);
+  });
+
+  test("over HTTP: ?q= is accepted and the total reaches meta.total", async () => {
+    const locationRoutes = require("../../src/modules/wms/warehouse_location/warehouse_location.routes");
+    const rec = recorder(() => ({
+      rows: [{ location_id: "l1", zone: "C", aisle: "117", rack: "R1", bin: "B1", _total: "1" }],
+    }));
+    const a = express();
+    a.use((req, _res, next) => {
+      req.tenantDb = (fn) => fn(rec.client);
+      next();
+    });
+    a.use(locationRoutes.router);
+    a.use(errorHandler);
+    const res = await request(a).get("/?q=C-117&limit=50&offset=0");
+    expect(res.status).toBe(200);
+    expect(res.body.data[0]).toMatchObject({ location_id: "l1", label: "C-117-R1-B1" });
+    expect(res.body.data[0]).not.toHaveProperty("_total");
+    expect(res.body.meta).toMatchObject({ total: 1, limit: 50, offset: 0 });
+  });
+
+  test("a blank search is no search", async () => {
+    const { seen, client } = recorder(() => ({ rows: [] }));
+    const out = await locationRepo.list(client, { q: "   " });
+    expect(seen[0].sql).not.toMatch(/ILIKE/);
+    expect(out._total).toBe(0);
+  });
+
+  test("the zone filter and the search combine", async () => {
+    const { seen, client } = recorder(() => ({ rows: [] }));
+    await locationRepo.list(client, { zone: "A", q: "yard" });
+    expect(seen[0].sql).toMatch(/WHERE zone = \$3 AND \(CASE/);
+    expect(seen[0].params).toEqual([50, 0, "A", "%yard%"]);
+  });
+
+  test("LABEL_SQL is the SQL twin of label() — a yard wins, blanks are skipped", () => {
+    // Shape checks the two must agree on; a live database would prove it end to end.
+    expect(label({ yard: "Y1", zone: "A" })).toBe("Yard Y1");
+    expect(LABEL_SQL).toMatch(/WHEN COALESCE\(yard, ''\) <> '' THEN 'Yard ' \|\| yard/);
+    expect(label({ zone: "A", aisle: "", rack: "3", bin: null })).toBe("A-3");
+    expect(LABEL_SQL).toMatch(/concat_ws\('-', NULLIF\(zone, ''\), NULLIF\(aisle, ''\), NULLIF\(rack, ''\), NULLIF\(bin, ''\)\)/);
   });
 });

@@ -7,7 +7,10 @@
  * (`?location_id=`) and pages through the server's total; On hand ranks by
  * quantity; Capacity used is a percentage and stays inert; a row lands on
  * Inventory focused on the item, which opens it, and on the Equipment board
- * focused on the card, which is ringed.
+ * focused on the card, which is ringed. And the rail itself: it reads the slots
+ * a page at a time with the server's total, the search is the server's `?q=`
+ * (so slot 117 of 120 can be found), and a slot the URL names off the current
+ * page still opens, read by id.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { screen, within, waitFor } from "@testing-library/react";
@@ -18,12 +21,14 @@ import {
   apiClientMock,
   authContextMock,
   renderScreen,
+  type RouteFixture,
 } from "@/test/screen-harness";
 
 vi.mock("@/lib/api-client", async () => apiClientMock());
 vi.mock("@/app/auth/auth-context", async () => authContextMock());
 
 import * as apiClient from "@/lib/api-client";
+import { locationLabel, type WarehouseLocation } from "@/lib/wms-api";
 import { LocationsPage } from "./location-360";
 import { InventoryPage } from "./inventory";
 import { EquipmentPage } from "./equipment";
@@ -107,14 +112,34 @@ function Where() {
  * 50 lines.
  */
 let paged: string[] = [];
+/** The slots the server holds — the rail reads them a page at a time. */
+let slots: WarehouseLocation[] = LOCATIONS;
 beforeEach(() => {
   paged = [];
+  slots = LOCATIONS;
   vi.spyOn(apiClient, "tenantPaged").mockImplementation((async (
     path: string,
   ) => {
     paged.push(path);
     const q = new URLSearchParams(path.split("?")[1]);
     const loc = q.get("location_id");
+    if (path.startsWith("/locations?")) {
+      // The server's search: the label the rail shows, anywhere in it.
+      const needle = (q.get("q") || "").toLowerCase();
+      const limit = Number(q.get("limit"));
+      const offset = Number(q.get("offset"));
+      const hits = slots.filter((l) =>
+        locationLabel(l).toLowerCase().includes(needle),
+      );
+      return {
+        data: hits.slice(offset, offset + limit),
+        total: hits.length,
+        limit,
+        offset,
+        hasMore: offset + limit < hits.length,
+        meta: null,
+      };
+    }
     if (path.startsWith("/inventory")) {
       const rows = INVENTORY.filter((i) => i.location_id === loc);
       const sorted =
@@ -254,5 +279,104 @@ describe("the landing pages honour ?focus=", () => {
     );
     expect(card).toHaveAttribute("data-row-key", "eq1");
     expect(card?.className).toMatch(/ring-2/);
+  });
+});
+
+describe("the Locations rail is searched and paged on the server", () => {
+  /**
+   * 120 slots — more than one page of the rail, which is 50. Each carries the
+   * `label` the server's list adds (warehouse_location.rules), which is the
+   * text the rail shows and the text `?q=` searches.
+   */
+  const MANY: WarehouseLocation[] = Array.from({ length: 120 }, (_, i) => {
+    const aisle = String(i + 1).padStart(3, "0");
+    return {
+      location_id: `s${i + 1}`,
+      zone: "C",
+      aisle,
+      rack: "R1",
+      bin: "B1",
+      label: `C-${aisle}-R1-B1`,
+      capacity_units: 10,
+    };
+  });
+  const mount = (
+    path = "/wms/locations",
+    routes: Record<string, RouteFixture> = ROUTES,
+  ) =>
+    renderScreen(
+      <>
+        <LocationsPage />
+        <Where />
+      </>,
+      { routes, path },
+    );
+
+  it("reads one page, says how many there are, and pages to the next", async () => {
+    slots = MANY;
+    mount();
+    expect(await screen.findByText("C-001-R1-B1")).toBeInTheDocument();
+    expect(paged).toContain("/locations?limit=50&offset=0");
+    // The old rail stopped at slot 50 and said nothing.
+    expect(screen.queryByText("C-051-R1-B1")).toBeNull();
+    expect(screen.getByText("Showing 1–50 of 120")).toBeInTheDocument();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Next" }));
+    expect(await screen.findByText("C-051-R1-B1")).toBeInTheDocument();
+    expect(paged).toContain("/locations?limit=50&offset=50");
+    expect(screen.getByText("Showing 51–100 of 120")).toBeInTheDocument();
+  });
+
+  it("asks the server for the search — a slot past the first page is found", async () => {
+    slots = MANY;
+    mount();
+    await screen.findByText("C-001-R1-B1");
+    const user = userEvent.setup();
+    await user.type(
+      screen.getByRole("textbox", { name: "Search slots" }),
+      "C-117",
+    );
+    expect(await screen.findByText("C-117-R1-B1")).toBeInTheDocument();
+    // Debounced: one request for the settled term, from its first page.
+    expect(paged.filter((p) => p.includes("q="))).toEqual([
+      "/locations?limit=50&offset=0&q=C-117",
+    ]);
+    // The rail holds only what matched. (Slot C-001, opened on arrival, stays
+    // open in the detail pane — a search is not a reason to close it.)
+    expect(screen.queryByRole("button", { name: "C-001-R1-B1" })).toBeNull();
+    expect(
+      screen.getByRole("heading", { name: "C-001-R1-B1" }),
+    ).toBeInTheDocument();
+
+    await user.clear(screen.getByRole("textbox", { name: "Search slots" }));
+    await user.type(
+      screen.getByRole("textbox", { name: "Search slots" }),
+      "Z-9",
+    );
+    expect(
+      await screen.findByText("No slot matches “Z-9”."),
+    ).toBeInTheDocument();
+  });
+
+  it("opens a slot the URL names even when it is not on the page the rail holds", async () => {
+    slots = MANY;
+    const far = MANY[99];
+    mount("/wms/locations?focus=s100", {
+      ...ROUTES,
+      "/locations/s100": {
+        ...far,
+        stats: { items: 7, on_hand: 3, equipment: 0, cycle_counts: 0 },
+      },
+    });
+    // Not in the rail's first page…
+    await screen.findByRole("button", { name: "C-001-R1-B1" });
+    expect(screen.queryByRole("button", { name: "C-100-R1-B1" })).toBeNull();
+    // …but its detail is open, read by id.
+    const items = await screen.findByRole("button", {
+      name: /^open items stored$/i,
+    });
+    expect(await within(items).findByText("7")).toBeInTheDocument();
+    expect(screen.getByTestId("where")).toHaveTextContent("focus=s100");
   });
 });

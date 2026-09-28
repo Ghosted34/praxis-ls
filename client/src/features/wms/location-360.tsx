@@ -22,6 +22,8 @@ import { PageHeader } from "@/components/data-list";
 import { ScreenAi } from "@/components/screen-ai";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { useListPaged, useResource, errMsg } from "@/lib/use-resource";
+import { useDebounced } from "@/lib/use-debounced";
+import { Pagination } from "@/components/ui/pagination";
 import { num, dateFmt, enumLabel } from "@/lib/format";
 import * as api from "@/lib/wms-api";
 import {
@@ -557,12 +559,31 @@ function LocationDetail({ location }: { location: api.WarehouseLocation }) {
   );
 }
 
+/** Slots per page of the rail. */
+const RAIL_PAGE = 50;
+
 export function LocationsPage() {
-  const locs = useResource(() => api.listLocations(), []);
+  /*
+   * SEARCHED AND PAGED ON THE SERVER. The rail used to read the first 50 slots
+   * (the list default) and filter those in the browser, so a warehouse with
+   * more than 50 slots could neither see nor find the rest — slot 51 was not
+   * "on page two", it was nowhere. The search now runs against the label the
+   * list shows (`GET /locations?q=`, see warehouse_location.rules), and the
+   * pager walks the server's total.
+   */
   const [q, setQ] = React.useState("");
+  const search = useDebounced(q.trim(), 250);
+  const [page, setPage] = React.useState(0);
+  // A new search starts from its first page, not from wherever the last one was.
+  React.useEffect(() => setPage(0), [search]);
+  const locs = useListPaged<api.WarehouseLocation>(api.LOCATIONS_PATH, {
+    page,
+    pageSize: RAIL_PAGE,
+    q: search || undefined,
+  });
   const [creating, setCreating] = React.useState(false);
 
-  const rows = React.useMemo(() => locs.data || [], [locs.data]);
+  const rows = React.useMemo(() => locs.rows || [], [locs.rows]);
   /*
    * WHICH RECORD IS OPEN LIVES IN THE URL (`?focus=<id>`), not in state, so
    * that picking one from this list is a step the back and forward arrows can
@@ -577,11 +598,17 @@ export function LocationsPage() {
     close,
     preselect,
   } = useRecordParam(rows, (l) => l.location_id);
-  const filtered = q
-    ? rows.filter((l) =>
-        api.locationLabel(l).toLowerCase().includes(q.toLowerCase()),
-      )
-    : rows;
+  /*
+   * A slot the URL names but this page does not hold — a link from another
+   * screen to slot 180, or a search that has moved on. The rail pages now, so
+   * "not in the rows" no longer means "does not exist": read it by id.
+   */
+  const offPage = useResource(
+    () => (selId && !selected ? api.getLocation(selId) : Promise.resolve(null)),
+    [selId, !!selected],
+  );
+  const current: api.WarehouseLocation | null =
+    selected ?? (selId ? offPage.data : null) ?? null;
   // The list opens on its first row. `preselect` writes the same param with
   // `replace`: the user did not navigate here, so it must not become a step
   // the back arrow can land on. A desktop only — on a phone the slot opens as
@@ -591,18 +618,18 @@ export function LocationsPage() {
     if (!selId && rows.length && isDesktopNow()) preselect(rows[0]);
   }, [rows, selId, preselect]);
   // Names this step for the arrow tooltips and the hold-menu.
-  useTrailTitle(selected ? api.locationLabel(selected) : null);
+  useTrailTitle(current ? api.locationLabel(current) : null);
 
   const groups = React.useMemo(() => {
     const m: Record<string, api.WarehouseLocation[]> = {};
-    filtered.forEach((l) => {
+    rows.forEach((l) => {
       const k = l.zone || (l.yard ? "Yard" : "Unzoned");
       (m[k] || (m[k] = [])).push(l);
     });
     return Object.entries(m).sort(([a], [b]) =>
       a === "Yard" ? 1 : b === "Yard" ? -1 : a.localeCompare(b),
     );
-  }, [filtered]);
+  }, [rows]);
 
   return (
     <section className={shell}>
@@ -627,14 +654,15 @@ export function LocationsPage() {
           min={200}
           max={460}
           activeKind={tr("Location")}
-          active={!!selected}
+          active={!!current}
           onClose={close}
-          sheetTitle={selected ? api.locationLabel(selected) : null}
+          sheetTitle={current ? api.locationLabel(current) : null}
           selectionInUrl
         >
           <div className="space-y-2">
             <Input
               placeholder="Search slot…"
+              aria-label="Search slots"
               value={q}
               onChange={(e) => setQ(e.target.value)}
             />
@@ -642,7 +670,9 @@ export function LocationsPage() {
               {locs.loading ? (
                 <div className="px-3 py-4 micro">{tr("Loading…")}</div>
               ) : groups.length === 0 ? (
-                <div className="px-3 py-4 micro">No locations.</div>
+                <div className="px-3 py-4 micro">
+                  {search ? `No slot matches “${search}”.` : "No locations."}
+                </div>
               ) : (
                 groups.map(([zone, items]) => (
                   <div key={zone}>
@@ -663,9 +693,16 @@ export function LocationsPage() {
                 ))
               )}
             </div>
+            <Pagination
+              page={locs.page}
+              pageSize={locs.pageSize}
+              total={locs.total}
+              onPageChange={setPage}
+              className="mt-2 flex-wrap gap-2"
+            />
           </div>
-          {selected ? (
-            <LocationDetail location={selected} />
+          {current ? (
+            <LocationDetail location={current} />
           ) : (
             <EmptyState
               title="No location selected"

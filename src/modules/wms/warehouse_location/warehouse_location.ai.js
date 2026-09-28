@@ -10,7 +10,7 @@ module.exports = {
   screens: ["locations"],
 
   reads: [
-    { key: "list_locations", service: service.list, permission: { module: "MOD-34", action: "view" }, describe: "List warehouse locations (zone/aisle/rack/bin/yard)." },
+    { key: "list_locations", service: service.list, permission: { module: "MOD-34", action: "view" }, describe: "List warehouse locations (zone/aisle/rack/bin/yard), in slot order. Params: q (optional — matches the slot label, e.g. \"A-12\" or \"Yard\"), zone, limit, offset." },
     { key: "get_location", service: service.get, permission: { module: "MOD-34", action: "view" }, describe: "Get one location by id, with its occupancy and stats: items stored, total quantity on hand, equipment and cycle counts at the slot." },
   ],
 

@@ -66,7 +66,7 @@ const HOME = {
   billing: { totals: [], due_count: 0, overdue_count: 0, in_review_count: 0, next_due: null },
 };
 
-let routes: Record<string, (init?: RequestInit) => [number, Json]> = {};
+let routes: Record<string, (init?: RequestInit, url?: URL) => [number, Json]> = {};
 const calls: string[] = [];
 
 function stubApi(signedIn: boolean, extra: typeof routes = {}) {
@@ -84,7 +84,7 @@ function stubApi(signedIn: boolean, extra: typeof routes = {}) {
       const path = url.pathname.replace("/api/tenant", "");
       calls.push(`${init?.method || "GET"} ${path}`);
       const hit = routes[path];
-      const [status, body] = hit ? hit(init) : [404, { error: { code: "NOT_FOUND" } }];
+      const [status, body] = hit ? hit(init, url) : [404, { error: { code: "NOT_FOUND" } }];
       return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
     }),
   );
@@ -495,5 +495,165 @@ describe("a proposal", () => {
     fireEvent.click(await findByRole("button", { name: "The price" }));
     fireEvent.click(send);
     await waitFor(() => expect(declined).toEqual([{ reason_code: "PRICE" }]));
+  });
+});
+
+// Each case walks a whole sheet — several debounced searches end to end — so
+// the per-test ceiling is raised to match SLOW below.
+describe("the quote sheet's route", { timeout: 20000 }, () => {
+  const PLACE = (over: Record<string, unknown>) => ({
+    geo_place_id: "00000000-0000-4000-8000-000000000001",
+    name: "Douala",
+    country: "CM",
+    region: "Littoral",
+    kind: "AIRPORT",
+    unlocode: null,
+    formatted: "DLA · Douala International Airport",
+    latitude: 4.0,
+    longitude: 9.7,
+    ...over,
+  });
+  const CAN = PLACE({ geo_place_id: "00000000-0000-4000-8000-000000000002", name: "Guangzhou Baiyun", country: "CN", region: "Guangdong", formatted: "CAN · Guangzhou Baiyun International Airport" });
+  const DLA = PLACE({});
+  const EMPTY = { places: [], recent: [], popular: [], has_exact: false, provider: { requested: false, status: "NOT_REQUESTED", results: [] } };
+  /** The picker answers after its debounce (200 ms, 380 ms for a door), so
+   *  Testing Library's one-second default is too tight on a loaded runner. */
+  const SLOW = { timeout: 4000 };
+
+  /** The search, answered by what was asked — and every ask recorded. */
+  function placesRoute(asked: URLSearchParams[]) {
+    return (_init?: RequestInit, url?: URL): [number, Json] => {
+      const p = url!.searchParams;
+      asked.push(p);
+      const q = (p.get("q") || "").toLowerCase();
+      if (!q) return [200, { data: { ...EMPTY, popular: p.getAll("kind").includes("AIRPORT") ? [DLA] : [] } }];
+      if (q.startsWith("guang")) return [200, { data: { ...EMPTY, places: [CAN] } }];
+      if (q === "douala") return [200, { data: { ...EMPTY, places: [DLA], has_exact: true } }];
+      if (q.startsWith("bona") && p.get("provider") === "true") {
+        return [
+          200,
+          {
+            data: {
+              ...EMPTY,
+              provider: {
+                requested: true,
+                status: "OK",
+                results: [{ provider_place_id: "geo-77", name: "Rue 1.234", formatted: "Rue 1.234, Bonabéri, Douala, Cameroon", country: "CM", latitude: 4.07, longitude: 9.66, kind: "ADDRESS" }],
+              },
+            },
+          },
+        ];
+      }
+      return [200, { data: EMPTY }];
+    };
+  }
+
+  async function openAirImport(extra: typeof routes = {}) {
+    const sent: Record<string, unknown>[] = [];
+    const asked: URLSearchParams[] = [];
+    stubApi(true, {
+      "/portal/client/quote-requests": (init?: RequestInit) => {
+        if (init?.method === "POST") {
+          sent.push(JSON.parse(String(init.body)));
+          return [201, { data: {} }];
+        }
+        return [200, { data: [] }];
+      },
+      "/portal/client/proposals": () => [200, { data: [] }],
+      "/portal/client/places": placesRoute(asked),
+      ...extra,
+    });
+    sessionStorage.setItem("praxis.portal.token", "tok");
+    const view = await mount("/portal/quotes?new=1");
+    fireEvent.click(await view.findByRole("button", { name: en.mode.AIR }));
+    fireEvent.click(view.getByRole("button", { name: en.quote.dir.IMPORT }));
+    fireEvent.click(view.getByRole("button", { name: new RegExp(en.common.next) }));
+    return { ...view, sent, asked };
+  }
+
+  it("names the ends for the mode, and an airport field searches airports", async () => {
+    const { findByRole, findByText, asked } = await openAirImport();
+    fireEvent.click(await findByRole("button", { name: new RegExp(en.quote.route.aol) }));
+    // Before typing: the tenant's popular airports, one tap away.
+    const input = await findByRole("combobox", { name: en.quote.route.aol }, SLOW);
+    await findByText("Douala", undefined, SLOW);
+    fireEvent.change(input, { target: { value: "guang" } });
+    fireEvent.click(await findByRole("option", { name: /Guangzhou Baiyun/ }, SLOW));
+    const typed = asked.find((p) => p.get("q") === "guang")!;
+    expect(typed.getAll("kind")).toEqual(["AIRPORT"]);
+    // A port or airport field never spends the worldwide search on typing.
+    expect(typed.get("provider")).toBeNull();
+    // The choice reads back with the code on the booking.
+    const field = await findByRole("button", { name: new RegExp(`${en.quote.route.aol}.*Guangzhou Baiyun`) });
+    expect(field.textContent).toContain("CAN");
+  });
+
+  it("prices the whole journey: two airports and a door, each sent as a pick", async () => {
+    const { findByRole, getByRole, sent, asked } = await openAirImport();
+
+    fireEvent.click(await findByRole("button", { name: new RegExp(en.quote.route.aol) }));
+    fireEvent.change(await findByRole("combobox", { name: en.quote.route.aol }, SLOW), { target: { value: "guangzhou" } });
+    fireEvent.click(await findByRole("option", { name: /Guangzhou Baiyun/ }, SLOW));
+
+    fireEvent.click(await findByRole("button", { name: new RegExp(en.quote.route.aod) }));
+    fireEvent.change(await findByRole("combobox", { name: en.quote.route.aod }, SLOW), { target: { value: "Douala" } });
+    fireEvent.click(await findByRole("option", { name: /Douala/ }, SLOW));
+
+    // The door: added with one tap, and its search opens by itself.
+    fireEvent.click(getByRole("button", { name: new RegExp(en.quote.route.deliveryAdd) }));
+    fireEvent.change(await findByRole("combobox", { name: en.quote.route.delivery }, SLOW), { target: { value: "Bonaberi" } });
+    fireEvent.click(await findByRole("option", { name: /Rue 1\.234/ }, SLOW));
+    // A door searches addresses worldwide as they type.
+    expect(asked.some((p) => p.get("q") === "Bonaberi" && p.get("provider") === "true")).toBe(true);
+
+    fireEvent.click(getByRole("button", { name: new RegExp(en.common.next) }));
+    fireEvent.change(await findByRole("textbox", { name: en.quote.what }), { target: { value: "2 pallets of spare parts" } });
+    fireEvent.click(getByRole("button", { name: new RegExp(en.quote.send) }));
+    await waitFor(() => expect(sent).toHaveLength(1), SLOW);
+    expect(sent[0]).toMatchObject({
+      origin_location: "Guangzhou Baiyun",
+      origin_place: { geo_place_id: CAN.geo_place_id },
+      destination_location: "Douala",
+      destination_place: { geo_place_id: DLA.geo_place_id },
+      delivery_location: "Rue 1.234, Bonabéri, Douala, Cameroon",
+      // The provider's id and the words that found it — never the pin.
+      delivery_place: { provider_place_id: "geo-77", query: "Bonaberi", country: "CM" },
+    });
+    expect(sent[0]).not.toHaveProperty("collection_location");
+    expect(JSON.stringify(sent[0])).not.toMatch(/latitude|longitude/);
+  });
+
+  it("takes a place no map knows, as written, and says the desk will pin it", async () => {
+    const { findByRole, getByRole, findByText, sent } = await openAirImport();
+    fireEvent.click(await findByRole("button", { name: new RegExp(en.quote.route.aol) }));
+    fireEvent.change(await findByRole("combobox", { name: en.quote.route.aol }, SLOW), { target: { value: "Guangzhou" } });
+    fireEvent.click(await findByRole("option", { name: /Guangzhou Baiyun/ }, SLOW));
+    fireEvent.click(await findByRole("button", { name: new RegExp(en.quote.route.aod) }));
+    fireEvent.change(await findByRole("combobox", { name: en.quote.route.aod }, SLOW), { target: { value: "Douala" } });
+    fireEvent.click(await findByRole("option", { name: /Douala/ }, SLOW));
+
+    fireEvent.click(getByRole("button", { name: new RegExp(en.quote.route.collectionAdd) }));
+    const box = await findByRole("combobox", { name: en.quote.route.collection }, SLOW);
+    fireEvent.change(box, { target: { value: "Supplier yard, km 12" } });
+    const asWritten = en.place.useTyped.replace("{{term}}", "Supplier yard, km 12");
+    fireEvent.click(await findByRole("option", { name: new RegExp(asWritten.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")) }, SLOW));
+    await findByText(en.place.typed, undefined, SLOW);
+
+    fireEvent.click(getByRole("button", { name: new RegExp(en.common.next) }));
+    fireEvent.change(await findByRole("textbox", { name: en.quote.what }), { target: { value: "Machine parts" } });
+    fireEvent.click(getByRole("button", { name: new RegExp(en.quote.send) }));
+    await waitFor(() => expect(sent).toHaveLength(1), SLOW);
+    expect(sent[0].collection_location).toBe("Supplier yard, km 12");
+    expect(sent[0]).not.toHaveProperty("collection_place");
+  });
+
+  it("closes only the search on Escape — the half-filled quote survives", async () => {
+    const { findByRole, queryByRole, getByRole } = await openAirImport();
+    fireEvent.click(await findByRole("button", { name: new RegExp(en.quote.route.aol) }));
+    await findByRole("combobox", { name: en.quote.route.aol }, SLOW);
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => expect(queryByRole("combobox", { name: en.quote.route.aol })).toBeNull());
+    // Still on the route step of the same sheet.
+    expect(getByRole("button", { name: new RegExp(en.quote.route.aod) })).toBeTruthy();
   });
 });

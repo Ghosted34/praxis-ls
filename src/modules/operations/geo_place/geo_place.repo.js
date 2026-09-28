@@ -130,11 +130,17 @@ async function upsert(client, {
  * still resolving for the files that already point at it (findByKeys/findByIds
  * do not filter, and that is the difference between them and this).
  *
+ * `confirmedOnly` narrows the offer to places a human confirmed at the exact
+ * spot — verified, and not a reference point. The operator picker does not set
+ * it (an unverified row is exactly what it offers to upgrade); the client
+ * portal does, because a client should only ever be offered a place somebody
+ * on the desk vouched for.
+ *
  * Every LIKE pattern is built from `normalise`d text, which strips everything
  * outside [a-z0-9 ] — so `%` and `_` cannot reach the pattern and there is no
  * wildcard injection to escape. Values are bound, never interpolated.
  */
-async function search(client, { q = null, country = null, kinds = null, limit = 20, includeInactive = false } = {}) {
+async function search(client, { q = null, country = null, kinds = null, limit = 20, includeInactive = false, confirmedOnly = false } = {}) {
   const term = normalise(q);
   // Codes are matched whole: a UN/LOCODE is 5 chars, an IATA code is 3, and
   // "por" must not be treated as a code hunt for every three-letter word.
@@ -144,6 +150,7 @@ async function search(client, { q = null, country = null, kinds = null, limit = 
 
   const where = [];
   if (!includeInactive) where.push("is_active");
+  if (confirmedOnly) where.push("verified_at IS NOT NULL AND NOT is_reference_point");
   if (country) where.push("country = " + add(String(country).toUpperCase().slice(0, 2)));
   if (Array.isArray(kinds) && kinds.length) where.push("kind = ANY(" + add(kinds) + "::text[])");
 

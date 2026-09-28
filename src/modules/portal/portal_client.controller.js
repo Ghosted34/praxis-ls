@@ -13,6 +13,7 @@ const bundles = require("./invoice_bundle.service");
 const chat = require("./portal_chat.service");
 const proposals = require("./portal_proposal.service");
 const quoteFill = require("./portal_quote_fill.service");
+const places = require("./portal_places.service");
 const notify = require("./portal_notify.service");
 const authService = require("../portal_auth/portal_auth.service");
 const authController = require("../portal_auth/portal_auth.controller");
@@ -376,6 +377,17 @@ module.exports = {
   }),
   quoteFill: asyncHandler(async (req, res) => {
     res.json({ data: await req.tenantDb((c) => quoteFill.fill(c, { text: req.body.text, env: req.env || "live" })) });
+  }),
+  /**
+   * The quote sheet's place search. Two phases on purpose: the tenant
+   * connection is released BEFORE the worldwide search, so a slow provider
+   * waits on its own time and not on a pool slot (portal_places.service).
+   */
+  places: asyncHandler(async (req, res) => {
+    const cid = clientId(req);
+    const { q = "", kind, country, provider } = req.validatedQuery;
+    const local = await req.tenantDb((c) => places.searchLocal(c, { clientId: cid, q, kinds: kind }));
+    res.json({ data: await places.withProvider(local, { q, country: country || null, provider }) });
   }),
 
   // Notifications (14180). The switches are tenant data, keyed to this

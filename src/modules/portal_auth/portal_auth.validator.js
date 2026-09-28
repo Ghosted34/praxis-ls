@@ -94,6 +94,32 @@ function isPushService(value) {
 }
 const pushEndpoint = z.string().url().max(1024).refine(isPushService, "Not a browser push service");
 
+/** geo_place.kind — the vocabulary migration 0674 allows. */
+const PLACE_KINDS = [
+  "SEAPORT", "AIRPORT", "TERMINAL", "RAIL_TERMINAL", "BORDER_POST",
+  "WAREHOUSE", "INLAND", "CITY", "ADDRESS", "OTHER",
+];
+/*
+ * One place a client picked in the quote sheet, in one of two shapes: a place
+ * they were offered (its id — re-checked server-side, never trusted), or a
+ * worldwide suggestion (the provider's id and the text that produced it,
+ * NEVER a coordinate: the server re-asks the provider and stores its answer).
+ * Absent or null when they typed the place instead.
+ */
+const placePick = z
+  .union([
+    z.object({ geo_place_id: z.string().uuid() }).strict(),
+    z
+      .object({
+        provider_place_id: z.string().trim().min(1).max(300),
+        query: z.string().trim().min(1).max(200),
+        country: z.string().trim().regex(/^[A-Za-z]{2}$/).optional(),
+      })
+      .strict(),
+  ])
+  .nullable()
+  .optional();
+
 const schemas = {
   login: z.object({ email: z.string().email(), password: z.string().min(1), trust_device: trust }),
   refresh: z.object({ refresh_token: z.string().min(20).max(200) }),
@@ -149,12 +175,36 @@ const schemas = {
   portalQuote: z.object({
     service_category: z.string().min(1).max(80),
     service_type: z.string().optional(),
-    origin_location: z.string().min(1).max(120),
-    destination_location: z.string().min(1).max(120),
+    // 200, not 120: a picked address arrives as the provider's formatted line
+    // ("12 Rue de la Joie, Bonabéri, Douala, Littoral, Cameroon"), and cutting
+    // it would store a place the client did not choose.
+    origin_location: z.string().trim().min(1).max(200),
+    destination_location: z.string().trim().min(1).max(200),
+    // The doors either side of the main leg (14220). Optional: a port-to-port
+    // request names neither.
+    collection_location: optText(200),
+    delivery_location: optText(200),
+    origin_place: placePick,
+    destination_place: placePick,
+    collection_place: placePick,
+    delivery_place: placePick,
     estimated_weight: z.number().nonnegative().optional(),
     cargo_description: z.string().max(2000).optional(),
     incoterm: z.string().max(40).optional(),
   }),
+  // The quote sheet's place search. A GET, so every value is a string and
+  // `kind` is a string or an array depending on how many were sent.
+  places: z
+    .object({
+      q: z.string().trim().max(120).optional(),
+      kind: z
+        .union([z.enum(PLACE_KINDS), z.array(z.enum(PLACE_KINDS)).max(PLACE_KINDS.length)])
+        .optional()
+        .transform((k) => (k === undefined ? [] : Array.isArray(k) ? k : [k])),
+      country: z.string().trim().regex(/^[A-Za-z]{2}$/).optional(),
+      provider: z.enum(["true", "false"]).optional().transform((v) => v === "true"),
+    })
+    .strict(),
   // ── Client portal redesign (14150) ──
   // A file for a request: the file is the whole body.
   requestUpload: z.object({}),
@@ -278,6 +328,13 @@ const mw = (k) => (req, _res, next) => {
   req.body = p.data;
   return next();
 };
+/** The same, for a GET's query string — parsed into `req.validatedQuery`. */
+const mwQuery = (k) => (req, _res, next) => {
+  const p = schemas[k].safeParse(req.query);
+  if (!p.success) return next(new AppError("VALIDATION_ERROR", "Invalid query", 422, p.error.flatten().fieldErrors));
+  req.validatedQuery = p.data;
+  return next();
+};
 
 module.exports = {
   login: mw("login"), create: mw("create"), password: mw("password"), status: mw("status"),
@@ -295,6 +352,7 @@ module.exports = {
   chatSend: mw("chatSend"), chatRead: mw("chatRead"), staffChatSend: mw("staffChatSend"), staffChatRead: mw("staffChatRead"),
   proposalDecline: mw("proposalDecline"), proposalSignComplete: mw("proposalSignComplete"), quoteFill: mw("quoteFill"),
   notifySettings: mw("notifySettings"), pushSubscribe: mw("pushSubscribe"), pushUnsubscribe: mw("pushUnsubscribe"),
+  places: mwQuery("places"),
   isPushService,
   schemas,
 };

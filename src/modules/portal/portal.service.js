@@ -16,6 +16,8 @@ const report = require("../vault/report/report.service");
 const vault = require("../vault/document_vault/document_vault.service");
 const pdf = require("../../services/pdf.service");
 const quoteRequest = require("../sales/quote_request/quote_request.service");
+const portalPlaces = require("./portal_places.service");
+const geoPlaceRepo = require("../operations/geo_place/geo_place.repo");
 const receivables = require("../finance/smart_receivables/smart_receivables.service");
 const milestone = require("../operations/milestone/milestone.service");
 const qTicket = require("../operations/q_ticket/q_ticket.service");
@@ -261,21 +263,56 @@ function chatHtml(rows, tz = null) {
 
 // ── Self-service quoting (PRD §11.1) ─────────────────────────────────────────
 
-const clientQuoteRequests = (client, { clientId }) =>
-  repo.clientQuoteRequests(client, clientId);
+/**
+ * The client's quote requests, each end carrying the place behind it.
+ *
+ * The place ids are swapped for the places themselves (one lookup for the
+ * whole list), so "Same as last time" can put back what they PICKED — kind,
+ * code and all — rather than only the words, and re-send it as a pick the
+ * server will accept as theirs (portal_places.resolvePick).
+ */
+async function clientQuoteRequests(client, { clientId }) {
+  const rows = await repo.clientQuoteRequests(client, clientId);
+  const ends = ["origin", "destination", "collection", "delivery"];
+  const ids = [...new Set(rows.flatMap((r) => ends.map((e) => r[`${e}_place_id`])).filter(Boolean))];
+  const found = ids.length ? await geoPlaceRepo.findByIds(client, ids) : [];
+  const byId = new Map(found.map((p) => [p.geo_place_id, portalPlaces.toPlace(p)]));
+  return rows.map((r) => {
+    const out = { ...r };
+    for (const e of ends) {
+      out[`${e}_place`] = byId.get(r[`${e}_place_id`]) || null;
+      delete out[`${e}_place_id`];
+    }
+    return out;
+  });
+}
 
 /** A signed-in client books a quote for themselves. The request is filed
  *  against their client record with intake_channel PORTAL, so sales sees it in
- *  the same intake queue as website and manual requests. */
+ *  the same intake queue as website and manual requests.
+ *
+ *  Up to four places come with it — the two ends of the main leg and, for a
+ *  door-to-door move, where we collect and where we deliver (14220). Each one
+ *  the client PICKED is resolved to a verified place here, before
+ *  quoteRequest.create opens its transaction (a worldwide pick is a provider
+ *  call); each one they TYPED travels as text for the desk to pin. */
 async function createClientQuote(client, { clientId, data, actor }) {
   if (!clientId) throw new AppError("CLIENT_REQUIRED", "client_id required", 422);
   const { rows } = await client.query(
     "SELECT name, email FROM client_master WHERE client_id = $1", [clientId],
   );
   const cm = rows[0];
+  const places = await portalPlaces.resolveQuotePlaces(client, { clientId, data });
   const row = await quoteRequest.create(client, {
     data: {
       ...data,
+      ...places,
+      // The picks are not columns; resolveQuotePlaces has turned them into the
+      // place ids above, and a stray object must not reach the row builder.
+      origin_place: undefined,
+      destination_place: undefined,
+      collection_place: undefined,
+      delivery_place: undefined,
       // `quote_request.incoterm` is NOT NULL (0683) and the portal lets a
       // client say "not sure" — which is an answer for sales to follow up,
       // not a reason to fail the insert.

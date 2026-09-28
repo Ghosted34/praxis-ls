@@ -58,6 +58,13 @@ const codeLimiter = makeLimiter({ name: "portal-code", max: 8 });
 // its own resends too); the AI fill spends the tenant's AI budget.
 const signLimiter = makeLimiter({ name: "portal-sign", max: 12 });
 const fillLimiter = makeLimiter({ name: "portal-quote-fill", max: 20 });
+// The quote sheet's place search. Two budgets: the catalogue half is a cheap
+// indexed read that a person typing four places fires a few dozen times; the
+// worldwide half spends a provider key we pay for, so it gets the public
+// wizard's own ceiling (geo_place_public.routes) and counts only when asked.
+const placesLimiter = makeLimiter({ name: "portal-places", max: 300, windowMs: 15 * 60 * 1000 });
+const worldLimiter = makeLimiter({ name: "portal-places-world", max: 60, windowMs: 15 * 60 * 1000 });
+const worldBudget = (req, res, next) => (req.query.provider === "true" ? worldLimiter(req, res, next) : next());
 
 const router = express.Router();
 
@@ -173,6 +180,10 @@ router.post("/client/quote-requests", portalAuth("CLIENT"), v.portalQuote, contr
 // "Describe it in your own words" — reads a description into the quote
 // wizard's fields. Limited per caller: it may spend the tenant's AI budget.
 router.post("/client/quote-requests/fill", portalAuth("CLIENT"), fillLimiter, v.quoteFill, pc.quoteFill);
+// Places for the quote sheet's route: shared ports and airports, the client's
+// own past places, and — when they ask — a worldwide search for an address.
+// Never another client's door (portal_places.service).
+router.get("/client/places", portalAuth("CLIENT"), placesLimiter, worldBudget, v.places, pc.places);
 // Proposals the tenant sent this client: read, download, decline, accept. On
 // a tenant that offers a digital signature card for proposals, accepting IS
 // signing — an emailed code, then a stamp or a drawn mark, through the

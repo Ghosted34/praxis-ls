@@ -6,7 +6,7 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 1806 |
+| Routes | 1809 |
 | Modules mounted | 141 |
 | API version | v1 |
 
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 1806 mounted routes, grouped by path prefix.
+All 1809 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -1602,6 +1602,7 @@ All 1806 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/portal/client/onboarding` | — |
 | POST | `/api/tenant/portal/client/payment-proofs` | — |
 | GET | `/api/tenant/portal/client/payment-proofs/:id/file` | — |
+| GET | `/api/tenant/portal/client/places` | — |
 | GET | `/api/tenant/portal/client/proposals` | — |
 | GET | `/api/tenant/portal/client/proposals/:id` | — |
 | POST | `/api/tenant/portal/client/proposals/:id/accept` | — |
@@ -2008,6 +2009,8 @@ All 1806 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/signatures/print-jobs/:id/barcode` | — |
 | POST | `/api/tenant/signatures/print-jobs/:id/printed` | — |
 | POST | `/api/tenant/signatures/print-jobs/:id/reprint` | — |
+| POST | `/api/tenant/signatures/proof/options` | — |
+| POST | `/api/tenant/signatures/proof/otp` | — |
 | GET | `/api/tenant/signatures/qes/quote` | — |
 | GET | `/api/tenant/signatures/qes/usage` | — |
 | GET | `/api/tenant/signatures/reasons` | — |

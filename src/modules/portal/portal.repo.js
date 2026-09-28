@@ -157,8 +157,9 @@ async function insertClientMessage(client, { clientId, dossierId = null, directi
 async function clientQuoteRequests(client, clientId) {
   const { rows } = await client.query(
     `SELECT quote_request_id, public_ref, status, service_category, service_type,
-            origin_location, destination_location, estimated_weight,
-            cargo_description, created_at
+            origin_location, destination_location, collection_location, delivery_location,
+            origin_place_id, destination_place_id, collection_place_id, delivery_place_id,
+            incoterm, estimated_weight, cargo_description, created_at
        FROM quote_request
       WHERE client_id = $1
       ORDER BY created_at DESC LIMIT 50`,

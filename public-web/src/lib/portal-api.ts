@@ -685,6 +685,81 @@ export const portalChatAttachmentDownload = (id: string, filename: string) =>
 export const portalExportChat = () =>
   portalDownload("/client/messages/export", `conversation-${new Date().toISOString().slice(0, 10)}.pdf`);
 
+// ── Client: places for the quote sheet's route ─────────────────────────────
+
+/** geo_place.kind — the vocabulary the server's catalogue speaks. */
+export type PlaceKind =
+  | "SEAPORT"
+  | "AIRPORT"
+  | "TERMINAL"
+  | "RAIL_TERMINAL"
+  | "BORDER_POST"
+  | "WAREHOUSE"
+  | "INLAND"
+  | "CITY"
+  | "ADDRESS"
+  | "OTHER";
+
+/** A place the desk vouched for, or one of the client's own. */
+export type PortalPlace = {
+  geo_place_id: string;
+  name: string;
+  country: string | null;
+  region: string | null;
+  kind: PlaceKind | string | null;
+  /** UN/LOCODE where the place has one — CMDLA, CNSHA. */
+  unlocode: string | null;
+  /** The address line, or for an airport its IATA line ("DLA · Douala…"). */
+  formatted: string | null;
+  latitude: number;
+  longitude: number;
+};
+
+/**
+ * A worldwide suggestion. NOT a place yet: nothing is stored until the quote
+ * is sent, and then the server re-asks the provider and keeps ITS coordinate —
+ * so what travels back is the id and the text that found it, never the pin.
+ */
+export type PortalPlaceSuggestion = {
+  provider_place_id: string;
+  name: string | null;
+  formatted: string | null;
+  country: string | null;
+  latitude: number;
+  longitude: number;
+  kind: string | null;
+};
+
+export type PortalPlaceSearch = {
+  /** Shared infrastructure matching what they typed: ports, airports, cities. */
+  places: PortalPlace[];
+  /** Places already on the client's own requests and files, newest first. */
+  recent: PortalPlace[];
+  /** With nothing typed: where this tenant's shipments most often go. */
+  popular: PortalPlace[];
+  has_exact: boolean;
+  provider: {
+    requested: boolean;
+    /** UNAVAILABLE covers every provider failure; the sheet keeps taking text. */
+    status: "NOT_REQUESTED" | "OK" | "TOO_SHORT" | "UNAVAILABLE";
+    results: PortalPlaceSuggestion[];
+  };
+};
+
+export const portalPlaces = (params: { q?: string; kinds?: PlaceKind[]; provider?: boolean; signal?: AbortSignal }) => {
+  const qs = new URLSearchParams();
+  if (params.q && params.q.trim()) qs.set("q", params.q.trim());
+  (params.kinds || []).forEach((k) => qs.append("kind", k));
+  if (params.provider) qs.set("provider", "true");
+  const query = qs.toString();
+  return portalApi<PortalPlaceSearch>(`/client/places${query ? `?${query}` : ""}`, { signal: params.signal });
+};
+
+/** What travels back for one end of the route: a place's id, or a suggestion's. */
+export type PortalPlacePick = { geo_place_id: string } | { provider_place_id: string; query: string; country?: string };
+
+// ── Client: quote requests ─────────────────────────────────────────────────
+
 export type PortalQuoteRequest = {
   quote_request_id: string;
   public_ref: string | null;
@@ -693,6 +768,15 @@ export type PortalQuoteRequest = {
   service_type: string | null;
   origin_location: string | null;
   destination_location: string | null;
+  /** The doors either side of the main leg — null on a port-to-port request. */
+  collection_location: string | null;
+  delivery_location: string | null;
+  /** The place behind each end, when the client picked one. */
+  origin_place: PortalPlace | null;
+  destination_place: PortalPlace | null;
+  collection_place: PortalPlace | null;
+  delivery_place: PortalPlace | null;
+  incoterm: string | null;
   estimated_weight: number | null;
   cargo_description: string | null;
   created_at: string;
@@ -703,6 +787,12 @@ export const portalCreateQuote = (data: {
   service_type?: string;
   origin_location: string;
   destination_location: string;
+  collection_location?: string;
+  delivery_location?: string;
+  origin_place?: PortalPlacePick;
+  destination_place?: PortalPlacePick;
+  collection_place?: PortalPlacePick;
+  delivery_place?: PortalPlacePick;
   estimated_weight?: number;
   cargo_description?: string;
   incoterm?: string;

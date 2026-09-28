@@ -21,6 +21,8 @@ const WRITABLE = [
   "project_cargo_flag", "cargo_description", "incoterm", "owner_user_id",
   // 12756 — what a website request can carry that a phone call cannot.
   "additional_notes", "origin_place_id", "destination_place_id", "attachment_doc_id",
+  // 14220 — the two doors either side of the main leg (portal quote sheet).
+  "collection_location", "delivery_location", "collection_place_id", "delivery_place_id",
 ];
 
 /**
@@ -61,6 +63,13 @@ function insert(client, data) {
     // beside them, and NULL is the ordinary case rather than a broken one.
     origin_place_id: blankToNull(data.origin_place_id),
     destination_place_id: blankToNull(data.destination_place_id),
+    // 14220 — where we collect before the main leg and deliver after it. Same
+    // text + verified-place pairing as the two ends above, and just as
+    // optional: a port-to-port request has neither.
+    collection_location: blankToNull(data.collection_location),
+    collection_place_id: blankToNull(data.collection_place_id),
+    delivery_location: blankToNull(data.delivery_location),
+    delivery_place_id: blankToNull(data.delivery_place_id),
     attachment_doc_id: blankToNull(data.attachment_doc_id),
     incoterm: data.incoterm,
     status: "RECEIVED",

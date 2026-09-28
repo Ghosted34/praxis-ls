@@ -78,6 +78,14 @@ export function useLoad<T>(loader: () => Promise<T>, key: string): Load<T> {
 /* ── sheet ──────────────────────────────────────────────────────────────── */
 
 let openSheets = 0;
+/**
+ * Open sheets, oldest first. A sheet can open over another (the quote sheet's
+ * place search opens over the quote sheet), and both register a key handler on
+ * the document — so without this, Escape closed BOTH and threw away a
+ * half-filled quote, and the lower sheet's Tab trap fought the upper one's.
+ * Only the top of the stack answers keys.
+ */
+const sheetStack: symbol[] = [];
 
 export function Sheet({
   open,
@@ -112,10 +120,23 @@ export function Sheet({
   // back to the first field mid-word.
   const close = React.useRef(onClose);
   close.current = onClose;
+  /**
+   * How many sheets were already open when this one opened. Read at render,
+   * before this sheet's own effect pushes it, so the first paint is already
+   * right. A sheet opened over another has to sit ABOVE it, scrim included —
+   * with one shared z-index the upper scrim painted under the lower sheet and
+   * the search looked pasted onto an undimmed quote.
+   */
+  const depth = React.useRef(-1);
+  if (!open) depth.current = -1;
+  else if (depth.current < 0) depth.current = sheetStack.length;
+  const lift = depth.current > 0 ? depth.current * 2 : 0;
 
   React.useEffect(() => {
     if (!open) return;
     const opener = document.activeElement as HTMLElement | null;
+    const me = Symbol("sheet");
+    sheetStack.push(me);
     openSheets += 1;
     document.body.style.overflow = "hidden";
     // First focusable, or the panel itself, so a screen reader lands inside.
@@ -124,6 +145,7 @@ export function Sheet({
     );
     (first || panel.current)?.focus();
     const onKey = (e: KeyboardEvent) => {
+      if (sheetStack[sheetStack.length - 1] !== me) return;
       if (e.key === "Escape") {
         e.stopPropagation();
         close.current();
@@ -149,6 +171,7 @@ export function Sheet({
     document.addEventListener("keydown", onKey, true);
     return () => {
       document.removeEventListener("keydown", onKey, true);
+      sheetStack.splice(sheetStack.indexOf(me), 1);
       openSheets -= 1;
       if (openSheets <= 0) document.body.style.overflow = "";
       opener?.focus?.();
@@ -158,7 +181,7 @@ export function Sheet({
   if (!open) return null;
   const node = (
     <>
-      <div className="pt-scrim" onClick={onClose} aria-hidden="true" />
+      <div className="pt-scrim" onClick={onClose} aria-hidden="true" style={lift ? { zIndex: 60 + lift } : undefined} />
       <div
         ref={panel}
         role="dialog"
@@ -166,6 +189,7 @@ export function Sheet({
         aria-labelledby={labelledBy || (title ? titleId : undefined)}
         tabIndex={-1}
         className={cn("pt-sheet outline-none", className)}
+        style={lift ? { zIndex: 61 + lift } : undefined}
         data-full={full || undefined}
         data-wide={wide || undefined}
       >

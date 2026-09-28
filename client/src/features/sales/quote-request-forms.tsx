@@ -88,6 +88,10 @@ export function QuoteRequestForm({
   const [serviceCategory, setServiceCategory] = React.useState("");
   const [serviceType, setServiceType] = React.useState("");
   const [origin, setOrigin] = React.useState("");
+  // The doors either side of the main leg (14220) — where we collect and
+  // where we deliver. Blank on a port-to-port request.
+  const [collection, setCollection] = React.useState("");
+  const [delivery, setDelivery] = React.useState("");
   const [destination, setDestination] = React.useState("");
   const [warehouseLocation, setWarehouseLocation] = React.useState("");
   const [warehouseDuration, setWarehouseDuration] = React.useState("");
@@ -110,6 +114,8 @@ export function QuoteRequestForm({
     setServiceCategory(editing?.service_category ? String(editing.service_category) : "");
     setServiceType(editing?.service_type ? String(editing.service_type) : "");
     setOrigin(editing?.origin_location ? String(editing.origin_location) : "");
+    setCollection(editing?.collection_location ? String(editing.collection_location) : "");
+    setDelivery(editing?.delivery_location ? String(editing.delivery_location) : "");
     setDestination(editing?.destination_location ? String(editing.destination_location) : "");
     setWarehouseLocation(editing?.warehouse_location ? String(editing.warehouse_location) : "");
     setWarehouseDuration(editing?.warehouse_duration ? String(editing.warehouse_duration) : "");
@@ -138,6 +144,8 @@ export function QuoteRequestForm({
         service_type: serviceType || undefined,
         origin_location: origin || undefined,
         destination_location: destination || undefined,
+        collection_location: collection || undefined,
+        delivery_location: delivery || undefined,
         warehouse_location: warehouseLocation || undefined,
         warehouse_duration: warehouseDuration || undefined,
         estimated_weight: weight ? Number(weight) : undefined,
@@ -234,6 +242,20 @@ export function QuoteRequestForm({
             value={destination}
             onChange={(e) => setDestination(e.target.value)}
             placeholder="City, Country"
+          />
+        </Field>
+        <Field label="Place of collection" hint="Door to door: where we collect before the main leg.">
+          <Input
+            value={collection}
+            onChange={(e) => setCollection(e.target.value)}
+            placeholder="Address, town or warehouse"
+          />
+        </Field>
+        <Field label={tr("Place of delivery")} hint="Door to door: where we deliver after the main leg.">
+          <Input
+            value={delivery}
+            onChange={(e) => setDelivery(e.target.value)}
+            placeholder="Address, town or warehouse"
           />
         </Field>
         <Field label="Warehouse location">

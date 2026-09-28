@@ -111,6 +111,27 @@ export type QuoteRequest360Row = {
   converted_opportunity_id?: Id | null;
   created_at?: string;
 };
+/**
+ * One end of a quote's route: the words, and whether a place stands behind
+ * them. "Pinned" means the requester chose a verified place (a port, an
+ * airport, or an address the provider confirmed); "As written" is text the
+ * desk still has to find on the map before the request can become a file.
+ */
+function routeEnd(text: unknown, placeId: unknown): React.ReactNode {
+  const words = typeof text === "string" ? text.trim() : "";
+  if (!words) return "—";
+  return (
+    <>
+      <span className="min-w-0 truncate" title={words}>
+        {words}
+      </span>
+      <Pill tone={placeId ? "ok" : "mute"} className="shrink-0">
+        {placeId ? "Pinned" : "As written"}
+      </Pill>
+    </>
+  );
+}
+
 export type Enquiry360 = {
   contact_enquiry_id: Id;
   subject?: string | null;
@@ -1192,8 +1213,15 @@ export function IntakeDossier({
         <div className="rounded-xl border bg-card p-4">
           <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3">
             {[
-              { label: "Origin", value: cell(q.origin_location as string) },
-              { label: "Destination", value: cell(q.destination_location as string) },
+              // The route in the order the cargo travels it — the door we
+              // collect from, the two ends of the main leg, the door we
+              // deliver to (14220). Each end says whether the requester PICKED
+              // a place (pinned to a verified geo_place) or wrote it, which is
+              // the one the desk still has to find on the map.
+              { label: "Place of collection", value: routeEnd(q.collection_location, q.collection_place_id) },
+              { label: "Origin", value: routeEnd(q.origin_location, q.origin_place_id) },
+              { label: "Destination", value: routeEnd(q.destination_location, q.destination_place_id) },
+              { label: "Place of delivery", value: routeEnd(q.delivery_location, q.delivery_place_id) },
               { label: "Incoterm", value: cell(q.incoterm as string) },
               {
                 label: "Estimated weight",
@@ -1212,7 +1240,7 @@ export function IntakeDossier({
             ].map((f) => (
               <div key={f.label} className="min-w-0">
                 <dt className="micro">{f.label}</dt>
-                <dd className="truncate text-sm text-foreground">{f.value}</dd>
+                <dd className="flex min-w-0 items-center gap-1.5 text-sm text-foreground">{f.value}</dd>
               </div>
             ))}
           </dl>

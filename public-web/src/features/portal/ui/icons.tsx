@@ -453,3 +453,26 @@ export const InstallIcon = (p: Props) => (
     <path d="M12 8v6M9.5 11.5 12 14l2.5-2.5M10.5 18.5h3" />
   </Svg>
 );
+/** Three blocks of different heights — a town, as a place on a route. */
+export const CityIcon = (p: Props) => (
+  <Svg {...p}>
+    <path d="M3.5 20.5h17" />
+    <path d="M5 20.5V9l5-2.5v14" />
+    <path d="M10 20.5V11l5-2v11.5" />
+    <path d="M15 20.5V12l4 1.5v7" />
+  </Svg>
+);
+/** A flag on a pole — a border post. */
+export const FlagIcon = (p: Props) => (
+  <Svg {...p}>
+    <path d="M5.5 21V3.5" />
+    <path d="M5.5 4.5h12l-2.8 4 2.8 4h-12" />
+  </Svg>
+);
+/** A pencil — "use what I wrote". */
+export const PencilIcon = (p: Props) => (
+  <Svg {...p}>
+    <path d="M4 20l1-4.5L15.5 5a2.1 2.1 0 0 1 3 3L8 18.5z" />
+    <path d="M13.5 7l3 3" />
+  </Svg>
+);

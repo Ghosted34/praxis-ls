@@ -603,6 +603,202 @@ a.pt-row:hover {
   color: rgb(var(--warn));
 }
 
+/* ── places: the quote sheet's picker and route ─────────────────────────── */
+
+/* The closed picker: reads as a field, behaves as a button that opens the
+   search sheet. The glyph says what KIND of place was chosen before the name
+   is read — a ship, a plane, a pencil for "as written". */
+.pt-place-field {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 60px;
+  padding: 9px 12px 9px 9px;
+  text-align: left;
+  cursor: pointer;
+}
+.pt-place-field:hover {
+  border-color: color-mix(in srgb, var(--primary) 40%, var(--pt-line-strong));
+}
+.pt-place-glyph {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: var(--pt-tint);
+  color: var(--primary-ink);
+}
+.pt-place-field[data-empty] .pt-place-glyph,
+.pt-place-glyph[data-typed] {
+  background: var(--pt-soft);
+  color: var(--muted-foreground);
+}
+/* The search sheet keeps one height on a desk screen, so the dialog does not
+   jump and re-centre every time the list under the box grows or shrinks. On a
+   phone it is already full height (`data-full`). */
+@media (min-width: 768px) {
+  .pt-sheet.pt-place-sheet {
+    height: min(640px, calc(100dvh - 64px));
+  }
+}
+/* The code on the booking — CMDLA, DLA — the fact that tells two Doualas apart. */
+.pt-place-code {
+  flex-shrink: 0;
+  padding: 2px 7px;
+  border-radius: 8px;
+  border: 1px solid var(--pt-line-strong);
+  font-size: 0.75rem;
+  font-weight: 650;
+  color: var(--muted-foreground);
+}
+.pt-place-group {
+  padding: 4px 4px 6px;
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+.pt-place-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 56px;
+  padding: 8px;
+  border-radius: 14px;
+  text-align: left;
+  transition: background-color var(--pt-dur) var(--pt-ease);
+}
+.pt-place-option:hover,
+.pt-place-option[aria-selected="true"] {
+  background: var(--pt-soft);
+}
+.pt-place-option[data-typed] {
+  margin-top: 4px;
+  border: 1.5px dashed var(--pt-line-strong);
+}
+.pt-place-option[data-typed] .pt-place-glyph {
+  background: var(--pt-soft);
+  color: var(--muted-foreground);
+}
+/* What they typed, found inside a name. Emphasis, not a highlighter pen. */
+.pt-hl {
+  background: none;
+  color: var(--primary-ink);
+  font-weight: 750;
+}
+
+/* The route, top to bottom in the order the cargo travels it: the door we
+   collect from, the two ends of the main leg, the door we deliver to. Solid
+   rail between the two ends every request has; dashed into and out of a door,
+   because a door is only there if they asked for it.
+
+   Each stop draws the rail ABOVE its dot (::before) and BELOW it (::after), so
+   a segment can be solid on one side of a dot and dashed on the other, and the
+   dot can sit level with whatever the stop holds — centred on the 60px place
+   field (below its label), or on the 56px "add a door" button. */
+.pt-legs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.pt-leg {
+  --dot-y: 47px;
+  position: relative;
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  column-gap: 12px;
+  padding-bottom: 16px;
+}
+.pt-leg[data-add] {
+  --dot-y: 17px;
+}
+.pt-leg:last-child {
+  padding-bottom: 0;
+}
+.pt-leg::before,
+.pt-leg::after {
+  content: "";
+  position: absolute;
+  left: 10px;
+  width: 2px;
+  background: var(--pt-line-strong);
+}
+.pt-leg::before {
+  top: 0;
+  height: var(--dot-y);
+}
+.pt-leg::after {
+  top: calc(var(--dot-y) + 22px);
+  bottom: 0;
+}
+.pt-leg:first-child::before,
+.pt-leg:last-child::after {
+  display: none;
+}
+.pt-leg[data-dash-above]::before,
+.pt-leg[data-dash-below]::after {
+  background: repeating-linear-gradient(to bottom, var(--pt-line-strong) 0 4px, transparent 4px 8px);
+}
+.pt-leg-dot {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  margin-top: var(--dot-y);
+  border-radius: 999px;
+  border: 2px solid var(--primary);
+  background: var(--pt-surface);
+}
+.pt-leg-dot::after {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--primary);
+}
+.pt-leg-dot[data-door] {
+  border-radius: 7px;
+}
+.pt-leg-dot[data-door]::after {
+  border-radius: 2px;
+}
+.pt-leg[data-add] .pt-leg-dot {
+  border-style: dashed;
+  border-color: var(--pt-line-strong);
+}
+.pt-leg[data-add] .pt-leg-dot::after {
+  display: none;
+}
+.pt-leg-add {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 56px;
+  padding: 8px 12px 8px 8px;
+  border-radius: 14px;
+  border: 1.5px dashed var(--pt-line-strong);
+  background: transparent;
+  text-align: left;
+  transition:
+    border-color var(--pt-dur) var(--pt-ease),
+    background-color var(--pt-dur) var(--pt-ease);
+}
+.pt-leg-add:hover {
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--pt-line-strong));
+  background: var(--pt-soft);
+}
+.pt-leg-add:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
 /* A route drawn between two places: origin • ─── ✈ ─── • destination. */
 .pt-route {
   display: grid;

@@ -9,7 +9,9 @@ const actor = (req) => req.user || { user_id: null };
 /** The export's columns, in the order an operator expects to read them. */
 const EXPORT_COLUMNS = [
   "public_ref", "status", "intake_channel", "service_category", "service_type",
-  "incoterm", "origin_location", "destination_location", "estimated_weight",
+  // The route in the order the cargo travels it: door, port, port, door (14220).
+  "incoterm", "collection_location", "origin_location", "destination_location",
+  "delivery_location", "estimated_weight",
   "project_cargo_flag", "warehouse_location", "warehouse_duration",
   "requester_name", "requester_company", "requester_email", "requester_phone",
   "cargo_description", "created_at",

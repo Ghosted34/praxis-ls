@@ -40,6 +40,11 @@ const base = {
   service_type: text255,
   origin_location: text255,
   destination_location: text255,
+  // 14220 — the doors either side of the main leg. Text only, like the two
+  // ends above: the place ids beside them are written by the intake paths
+  // that resolve them (see the note at the end of this object).
+  collection_location: text255,
+  delivery_location: text255,
   warehouse_location: text255,
   warehouse_duration: z.enum(WAREHOUSE_DURATION).optional().nullable(),
   estimated_weight: z.number().nonnegative().optional().nullable(),
@@ -48,9 +53,10 @@ const base = {
   additional_notes: text5000,
   incoterm: text255,
   owner_user_id: z.string().uuid().optional().nullable(),
-  // origin_place_id / destination_place_id / attachment_doc_id are in the
-  // repo's WRITABLE list but deliberately NOT here. They are written by
-  // public_intake.service, which earns them: the coordinates come from
+  // origin_place_id / destination_place_id / attachment_doc_id (and 14220's
+  // collection_place_id / delivery_place_id) are in the repo's WRITABLE list
+  // but deliberately NOT here. They are written by public_intake.service and
+  // the portal's createClientQuote, which earn them: the coordinates come from
   // re-querying the provider and the document from the vault's own sniffing
   // write. A PATCH that could set attachment_doc_id to any uuid would let a
   // staff user hang any document in the vault off any quote request, which is

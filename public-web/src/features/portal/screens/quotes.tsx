@@ -22,15 +22,18 @@ import {
   portalQuoteFill,
   portalProposals,
   type PortalQuoteRequest,
+  type PortalPlace,
   type ProposalSummary,
   type ShipmentCard,
   type Mode,
+  type PlaceKind,
 } from "@/lib/portal-api";
 import { num } from "@/lib/format";
 import { usePortal } from "../lib/portal-context";
 import { usePageChrome, PageHeader, useSummary } from "../shell/portal-shell";
-import { Sheet, Pill, IconDisc, SkeletonCards, EmptyState, ErrorCard, TextField, TextArea, StepDots, Seg, useLoad, useToast, errorText, Busy, type Tone, type Load } from "../ui/kit";
-import { QuoteIcon, PlusIcon, ArrowRightIcon, ChevronRightIcon, CheckIcon, RefreshIcon, SparkIcon, ShipIcon } from "../ui/icons";
+import { Sheet, Pill, IconDisc, SkeletonCards, EmptyState, ErrorCard, TextArea, StepDots, Seg, useLoad, useToast, errorText, Busy, type Tone, type Load } from "../ui/kit";
+import { QuoteIcon, PlusIcon, ArrowRightIcon, ChevronRightIcon, CheckIcon, RefreshIcon, SparkIcon, ShipIcon, CloseIcon, PinIcon } from "../ui/icons";
+import { PlaceField, EMPTY_PLACE, placeValue, typedValue, pinExact, type PlaceValue } from "../ui/place-picker";
 import { relDayTitle } from "../lib/when";
 import { parseAmount } from "../lib/numbers";
 import { ModeIcon } from "./shipment-parts";
@@ -40,6 +43,63 @@ const MODES: Mode[] = ["SEA", "AIR", "ROAD", "CUSTOMS", "STORAGE", "OTHER"];
 const DIRECTIONS = ["IMPORT", "EXPORT", "LOCAL"] as const;
 type Direction = (typeof DIRECTIONS)[number];
 const INCOTERMS = ["EXW", "FOB", "CFR", "CIF", "DAP", "DDP"];
+
+/* ── the route step, per mode ────────────────────────────────────────────── */
+
+/**
+ * What the route step asks, and what each end may be.
+ *
+ * The same engine as the desk's operations file, which asks an air file for
+ * an ORIGIN AIRPORT and a sea file for a PORT OF LOADING, and asks both for a
+ * place of collection and a place of delivery. A quote asks the same four
+ * questions, because a client who has not shipped yet usually wants the whole
+ * journey priced — the factory to the warehouse — and the two text boxes this
+ * replaced could only hold the middle of it.
+ *
+ * `legs` offers the two doors either side of the main leg. Only sea and air
+ * have a "port" middle distinct from the doors; a road move IS door to door,
+ * so its two ends take addresses directly.
+ */
+type EndSpec = { label: string; hint: string; kinds?: PlaceKind[]; doors: boolean };
+type RouteSpec = { from: EndSpec; to: EndSpec; legs: boolean };
+
+/** A port field offers ports — and terminals and dry ports, which are where a
+ *  sea move genuinely starts or ends inland. */
+const PORT_KINDS: PlaceKind[] = ["SEAPORT", "TERMINAL", "INLAND"];
+const AIRPORT_KINDS: PlaceKind[] = ["AIRPORT"];
+/** A door: any address, and the shared places a door is often described by. */
+const DOOR_KINDS: PlaceKind[] = ["ADDRESS", "WAREHOUSE", "CITY", "INLAND", "TERMINAL", "BORDER_POST", "OTHER"];
+
+function routeSpec(mode: Mode | null): RouteSpec {
+  if (mode === "SEA") {
+    return {
+      from: { label: "portal.quote.route.pol", hint: "portal.quote.route.portHint", kinds: PORT_KINDS, doors: false },
+      to: { label: "portal.quote.route.pod", hint: "portal.quote.route.portHint", kinds: PORT_KINDS, doors: false },
+      legs: true,
+    };
+  }
+  if (mode === "AIR") {
+    return {
+      from: { label: "portal.quote.route.aol", hint: "portal.quote.route.airportHint", kinds: AIRPORT_KINDS, doors: false },
+      to: { label: "portal.quote.route.aod", hint: "portal.quote.route.airportHint", kinds: AIRPORT_KINDS, doors: false },
+      legs: true,
+    };
+  }
+  return {
+    from: { label: "portal.quote.from", hint: "portal.quote.route.placeHint", doors: true },
+    to: { label: "portal.quote.to", hint: "portal.quote.route.placeHint", doors: true },
+    legs: false,
+  };
+}
+
+/** A request's stored end, back as a value: the place it was pinned to, or
+ *  the words — or nothing. */
+const endOf = (text: string | null | undefined, place: PortalPlace | null | undefined): PlaceValue =>
+  place ? placeValue(place, text) : text ? typedValue(text) : EMPTY_PLACE;
+
+/** Does a picked place still fit the field after the mode changed? A Shanghai
+ *  SEAPORT is no answer to "Origin airport". */
+const fits = (v: PlaceValue, kinds?: PlaceKind[]) => !v.pick || !kinds || !v.kind || kinds.includes(v.kind as PlaceKind);
 
 const STATUS_TONE: Record<string, Tone> = {
   RECEIVED: "info",
@@ -191,6 +251,16 @@ function RequestsList({ list, onNew }: { list: Load<PortalQuoteRequest[]>; onNew
                       </Pill>
                     ) : null}
                     <Pill plain>{relDayTitle(q.created_at, 6)}</Pill>
+                    {q.collection_location || q.delivery_location ? (
+                      <Pill plain>
+                        <PinIcon size={13} />
+                        {q.collection_location && q.delivery_location
+                          ? t("portal.quote.route.doorToDoor")
+                          : q.collection_location
+                            ? t("portal.quote.route.withCollection")
+                            : t("portal.quote.route.withDelivery")}
+                      </Pill>
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -234,8 +304,11 @@ function QuoteSheet({
   const [step, setStep] = React.useState(0);
   const [mode, setMode] = React.useState<Mode | null>(null);
   const [direction, setDirection] = React.useState<Direction | null>(null);
-  const [origin, setOrigin] = React.useState("");
-  const [destination, setDestination] = React.useState("");
+  const [origin, setOrigin] = React.useState<PlaceValue>(EMPTY_PLACE);
+  const [destination, setDestination] = React.useState<PlaceValue>(EMPTY_PLACE);
+  // The doors either side of the main leg: null = not asked for.
+  const [collection, setCollection] = React.useState<PlaceValue | null>(null);
+  const [delivery, setDelivery] = React.useState<PlaceValue | null>(null);
   const [incoterm, setIncoterm] = React.useState<string | null>(null);
   const [cargo, setCargo] = React.useState("");
   const [weight, setWeight] = React.useState("");
@@ -251,8 +324,10 @@ function QuoteSheet({
     setStep(0);
     setMode(null);
     setDirection(null);
-    setOrigin("");
-    setDestination("");
+    setOrigin(EMPTY_PLACE);
+    setDestination(EMPTY_PLACE);
+    setCollection(null);
+    setDelivery(null);
     setIncoterm(null);
     setCargo("");
     setWeight("");
@@ -263,16 +338,46 @@ function QuoteSheet({
   }, [open]);
 
   const kg = parseAmount(weight);
-  const canNext = [!!mode && !!direction, origin.trim().length > 1 && destination.trim().length > 1, cargo.trim().length > 2 && (!weight || kg >= 0)][step];
+  const spec = routeSpec(mode);
+  const canNext = [!!mode && !!direction, origin.text.trim().length > 1 && destination.text.trim().length > 1, cargo.trim().length > 2 && (!weight || kg >= 0)][step];
 
-  /** The last request, every field of it. */
+  // A picked place that no longer answers the field's question once the mode
+  // changes goes back to being words, rather than telling the desk "Shanghai,
+  // seaport" under "Origin airport".
+  React.useEffect(() => {
+    const s = routeSpec(mode);
+    setOrigin((cur) => (fits(cur, s.from.kinds) ? cur : typedValue(cur.text)));
+    setDestination((cur) => (fits(cur, s.to.kinds) ? cur : typedValue(cur.text)));
+  }, [mode]);
+
+  /**
+   * Words that arrived without a pick — the AI fill, "Like PRX-…" — pinned when
+   * the places the client can see hold exactly that place. Applied only if the
+   * field still holds those words, so a pick they made meanwhile is never
+   * overwritten by a late answer.
+   */
+  function pin(which: "origin" | "destination", text: string | null | undefined, m: Mode | null) {
+    const words = typedValue(String(text || "")).text;
+    if (words.length < 2) return;
+    const s = routeSpec(m);
+    const set = which === "origin" ? setOrigin : setDestination;
+    void pinExact(words, which === "origin" ? s.from.kinds : s.to.kinds).then((v) => {
+      if (v) set((cur) => (cur.text === words && !cur.pick ? v : cur));
+    });
+  }
+
+  /** The last request, every field of it — the places it was pinned to included. */
   function sameAsLast() {
     if (!last) return;
     setMode(modeOf(last));
     const dir = directionOf(last);
     if (dir) setDirection(dir);
-    setOrigin(last.origin_location || "");
-    setDestination(last.destination_location || "");
+    setOrigin(endOf(last.origin_location, last.origin_place));
+    setDestination(endOf(last.destination_location, last.destination_place));
+    setCollection(last.collection_location ? endOf(last.collection_location, last.collection_place) : null);
+    setDelivery(last.delivery_location ? endOf(last.delivery_location, last.delivery_place) : null);
+    // "TBD" is what the server files for "Not sure" (portal.service) — not a term to offer back.
+    if (last.incoterm && last.incoterm !== "TBD") setIncoterm(last.incoterm);
     if (last.cargo_description) setCargo(last.cargo_description);
     if (last.estimated_weight) setWeight(String(last.estimated_weight));
     setFilled(true);
@@ -280,9 +385,12 @@ function QuoteSheet({
 
   /** One of their shipments as the starting point. */
   function like(s: ShipmentCard) {
-    if (MODES.includes(s.mode as Mode)) setMode(s.mode as Mode);
-    setOrigin(s.origin || "");
-    setDestination(s.destination || "");
+    const m = MODES.includes(s.mode as Mode) ? (s.mode as Mode) : mode;
+    if (m !== mode) setMode(m);
+    setOrigin(typedValue(s.origin || ""));
+    setDestination(typedValue(s.destination || ""));
+    pin("origin", s.origin, m);
+    pin("destination", s.destination, m);
     if (s.title) setCargo(s.title);
     setFilled(true);
   }
@@ -296,8 +404,15 @@ function QuoteSheet({
       const { fields } = await portalQuoteFill(text);
       if (fields.mode) setMode(fields.mode);
       if (fields.direction) setDirection(fields.direction);
-      if (fields.origin) setOrigin(fields.origin);
-      if (fields.destination) setDestination(fields.destination);
+      const m = fields.mode || mode;
+      if (fields.origin) {
+        setOrigin(typedValue(fields.origin));
+        pin("origin", fields.origin, m);
+      }
+      if (fields.destination) {
+        setDestination(typedValue(fields.destination));
+        pin("destination", fields.destination, m);
+      }
       if (fields.incoterm) setIncoterm(fields.incoterm);
       const what = [fields.containers, fields.cargo].filter(Boolean).join(" — ");
       if (what) setCargo(what.slice(0, 2000));
@@ -317,10 +432,18 @@ function QuoteSheet({
     setBusy(true);
     setError(null);
     try {
+      // A door counts only where the mode offers one, and only once it names a place.
+      const door = (v: PlaceValue | null) => (spec.legs && v && v.text.trim() ? v : null);
+      const from = door(collection);
+      const to = door(delivery);
       await portalCreateQuote({
         service_category: `${t(`portal.mode.${mode}`)} · ${t(`portal.quote.dir.${direction}`)}`,
-        origin_location: origin.trim(),
-        destination_location: destination.trim(),
+        origin_location: origin.text.trim(),
+        destination_location: destination.text.trim(),
+        ...(origin.pick ? { origin_place: origin.pick } : {}),
+        ...(destination.pick ? { destination_place: destination.pick } : {}),
+        ...(from ? { collection_location: from.text.trim(), ...(from.pick ? { collection_place: from.pick } : {}) } : {}),
+        ...(to ? { delivery_location: to.text.trim(), ...(to.pick ? { delivery_place: to.pick } : {}) } : {}),
         cargo_description: cargo.trim(),
         ...(weight && Number.isFinite(kg) ? { estimated_weight: kg } : {}),
         ...(incoterm ? { incoterm } : {}),
@@ -442,9 +565,18 @@ function QuoteSheet({
       ) : null}
 
       {step === 1 ? (
-        <div className="mt-5 grid gap-4">
-          <TextField label={t("portal.quote.from")} value={origin} onChange={(e) => setOrigin(e.target.value)} maxLength={120} placeholder={t("portal.quote.fromHint")} autoComplete="off" />
-          <TextField label={t("portal.quote.to")} value={destination} onChange={(e) => setDestination(e.target.value)} maxLength={120} placeholder={t("portal.quote.toHint")} autoComplete="off" />
+        <div className="mt-5 grid gap-6">
+          <RouteLegs
+            spec={spec}
+            origin={origin}
+            destination={destination}
+            collection={collection}
+            delivery={delivery}
+            onOrigin={setOrigin}
+            onDestination={setDestination}
+            onCollection={setCollection}
+            onDelivery={setDelivery}
+          />
           {mode === "SEA" || mode === "AIR" || mode === "ROAD" ? (
             <div>
               <p className="pt-label">{t("portal.quote.incoterm")}</p>
@@ -485,5 +617,105 @@ function QuoteSheet({
         </p>
       ) : null}
     </Sheet>
+  );
+}
+
+/**
+ * The route, drawn the way the cargo travels it: the door we collect from,
+ * the two ends of the main leg, the door we deliver to — joined by a rail.
+ *
+ * The two doors start as dashed "add" rows rather than as two more empty
+ * fields: most requests are port to port, and four boxes where two are
+ * optional reads as four questions. Adding one opens its search straight away;
+ * closing that search with nothing chosen takes the door back off, so an
+ * empty door never sits on the screen looking like a question left unanswered.
+ */
+function RouteLegs({
+  spec,
+  origin,
+  destination,
+  collection,
+  delivery,
+  onOrigin,
+  onDestination,
+  onCollection,
+  onDelivery,
+}: {
+  spec: RouteSpec;
+  origin: PlaceValue;
+  destination: PlaceValue;
+  collection: PlaceValue | null;
+  delivery: PlaceValue | null;
+  onOrigin: (v: PlaceValue) => void;
+  onDestination: (v: PlaceValue) => void;
+  onCollection: (v: PlaceValue | null) => void;
+  onDelivery: (v: PlaceValue | null) => void;
+}) {
+  const { t } = useTranslation();
+  // Which door was JUST added — its search opens on arrival. Only a door added
+  // by a tap does; one restored by "Same as last time" arrives filled and shut.
+  const [added, setAdded] = React.useState<"collection" | "delivery" | null>(null);
+
+  function door(which: "collection" | "delivery", value: PlaceValue | null, set: (v: PlaceValue | null) => void, dash: { above?: boolean; below?: boolean }) {
+    const label = t(`portal.quote.route.${which}`);
+    const rail = { "data-dash-above": dash.above || undefined, "data-dash-below": dash.below || undefined };
+    if (!value) {
+      return (
+        <li className="pt-leg" data-add {...rail}>
+          <span className="pt-leg-dot" data-door aria-hidden="true" />
+          <button
+            type="button"
+            className="pt-leg-add"
+            onClick={() => {
+              setAdded(which);
+              set(EMPTY_PLACE);
+            }}
+          >
+            <span className="pt-place-glyph">
+              <PlusIcon size={18} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block font-semibold text-foreground">{t(`portal.quote.route.${which}Add`)}</span>
+              <span className="block truncate text-xs text-muted-foreground">{t(`portal.quote.route.${which}AddHint`)}</span>
+            </span>
+          </button>
+        </li>
+      );
+    }
+    return (
+      <li className="pt-leg" {...rail}>
+        <span className="pt-leg-dot" data-door aria-hidden="true" />
+        <PlaceField
+          label={label}
+          value={value}
+          onChange={set}
+          kinds={DOOR_KINDS}
+          doors
+          placeholder={t("portal.quote.route.doorHint")}
+          autoOpen={added === which && !value.text}
+          onDismissEmpty={() => set(null)}
+          action={
+            <button type="button" className="pt-icon-btn -my-2.5 -mr-2 text-muted-foreground" aria-label={t("portal.quote.route.remove", { place: label })} onClick={() => set(null)}>
+              <CloseIcon size={18} />
+            </button>
+          }
+        />
+      </li>
+    );
+  }
+
+  return (
+    <ol className="pt-legs">
+      {spec.legs ? door("collection", collection, onCollection, { below: true }) : null}
+      <li className="pt-leg" data-dash-above={spec.legs || undefined}>
+        <span className="pt-leg-dot" aria-hidden="true" />
+        <PlaceField label={t(spec.from.label)} value={origin} onChange={onOrigin} kinds={spec.from.kinds} doors={spec.from.doors} placeholder={t(spec.from.hint)} />
+      </li>
+      <li className="pt-leg" data-dash-below={spec.legs || undefined}>
+        <span className="pt-leg-dot" aria-hidden="true" />
+        <PlaceField label={t(spec.to.label)} value={destination} onChange={onDestination} kinds={spec.to.kinds} doors={spec.to.doors} placeholder={t(spec.to.hint)} />
+      </li>
+      {spec.legs ? door("delivery", delivery, onDelivery, { above: true }) : null}
+    </ol>
   );
 }

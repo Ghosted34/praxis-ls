@@ -96,6 +96,14 @@ describe("coturn entrypoint (C3: credentials coturn can verify)", () => {
     ]);
   });
 
+  test("with TURN_EXTERNAL_IP it relays from that one address, never the Docker bridges or ::1", () => {
+    const pub = render({ ...BASE, TURN_EXTERNAL_IP: "203.0.113.7" });
+    expect(pub.lines.filter((l) => l.startsWith("relay-ip="))).toEqual(["relay-ip=203.0.113.7"]);
+    expect(pub.lines.some((l) => l.startsWith("listening-ip="))).toBe(false); // loopback health check keeps working
+    const nat = render({ ...BASE, TURN_EXTERNAL_IP: "203.0.113.7/10.0.0.5" });
+    expect(nat.lines.filter((l) => l.startsWith("relay-ip="))).toEqual(["relay-ip=10.0.0.5"]);
+  });
+
   test("TURN_LISTENING_IP binds that one address for listening and relay, and allows it", () => {
     const r = render({ ...BASE, TURN_LISTENING_IP: "203.0.113.8" });
     expect(r.lines).toEqual(expect.arrayContaining([
@@ -257,6 +265,31 @@ describe("scripts/turn-setup.sh (the one-time production setup), .env half", () 
     }));
   });
 
+  test("a .env without a final newline gets the secret on a line of its own", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "turn-setup-"));
+    fs.writeFileSync(path.join(dir, ".env"), "APP_BASE_DOMAIN=praxisls.com");
+    expect(run(dir, ["--host", "turn.example.com"]).status).toBe(0);
+    const env = envOf(dir);
+    expect(env.APP_BASE_DOMAIN).toBe("praxisls.com");
+    expect(env.TURN_CREDENTIAL_SECRET).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  test("stops on a TURN_ setting an earlier run glued onto another line, and the printed fix splits it", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "turn-setup-"));
+    const secret = "a".repeat(64);
+    fs.writeFileSync(path.join(dir, ".env"),
+      `APP_BASE_DOMAIN=praxisls.comTURN_CREDENTIAL_SECRET=${secret}\nTURN_HOST=turn.example.com\n`);
+    const out = run(dir, ["--host", "turn.example.com"]);
+    expect(out.status).toBe(1);
+    expect(out.stderr).toMatch(/line\(s\) 1 have a TURN_ setting glued/);
+    const fix = out.stderr.match(/(sed -i -E .*)$/m)[1];
+    expect(spawnSync("sh", ["-c", fix], { cwd: dir }).status).toBe(0);
+    expect(run(dir, ["--host", "turn.example.com"]).status).toBe(0);
+    const env = envOf(dir);
+    expect(env.APP_BASE_DOMAIN).toBe("praxisls.com");
+    expect(env.TURN_CREDENTIAL_SECRET).toBe(secret);
+  });
+
   test("refuses a host that is not a hostname", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "turn-setup-"));
     fs.writeFileSync(path.join(dir, ".env"), "\n");
@@ -346,6 +379,38 @@ describe("scripts/turn-setup.sh (the one-time production setup), .env half", () 
       expect(out.status).toBe(0);
       expect(envOf(out.dir).TURN_EXTERNAL_IP).toBe("203.0.113.7/10.0.0.5");
     });
+  });
+});
+
+describe("scripts/turn-check.sh: a wrong secret", () => {
+  const CHECK = path.join(ROOT, "scripts", "turn-check.sh");
+  /** A stand-in turnutils_uclient: the right secret allocates; a wrong one prints `wrong`. */
+  function check(wrong, { rightWorks = true } = {}) {
+    const bin = fs.mkdtempSync(path.join(os.tmpdir(), "turn-uclient-"));
+    const uclient = path.join(bin, "uclient");
+    fs.writeFileSync(uclient, `#!/bin/sh
+case "$2" in
+  good) ${rightWorks ? 'echo "allocate response received: success"; echo "tot_send_msgs=1"' : ":"} ;;
+  *) printf '%s\\n' ${JSON.stringify(wrong)} ;;
+esac
+`, { mode: 0o755 });
+    return spawnSync("sh", [CHECK], {
+      encoding: "utf8",
+      env: { PATH: process.env.PATH, TURN_CREDENTIAL_SECRET: "good", TURNUTILS_UCLIENT: uclient },
+    }).stdout;
+  }
+
+  test("coturn 4.18.0's uclient: silent retries until the timeout count as refused", () => {
+    expect(check("INFO uclient: sender pool disabled")).toMatch(/PASS: a wrong secret cannot allocate/);
+  });
+  test("an older uclient's 'Cannot complete Allocation' counts as refused", () => {
+    expect(check("Cannot complete Allocation")).toMatch(/PASS: a wrong secret cannot allocate/);
+  });
+  test("an allocation with the wrong secret fails the check", () => {
+    expect(check("tot_send_msgs=1")).toMatch(/FAIL: a credential signed with the wrong secret was NOT refused/);
+  });
+  test("silence proves nothing when the right secret did not allocate either", () => {
+    expect(check("", { rightWorks: false })).toMatch(/FAIL: a wrong secret: cannot tell/);
   });
 });
 

@@ -44,18 +44,26 @@ fail() { echo "FAIL: $1"; failed=1; }
 
 tag="check$(date +%s)"
 
+reachable=0
 out=$(run "${tag}a" "$SECRET" "$PUBLIC_PEER")
 if echo "$out" | grep -q "tot_send_msgs=1" && ! echo "$out" | grep -qi "error"; then
-  pass "allocation and relay to a public peer ($PUBLIC_PEER)"
+  pass "allocation and relay to a public peer ($PUBLIC_PEER)"; reachable=1
 else
   fail "no allocation or relay to $PUBLIC_PEER:"; echo "$out" | grep -i error | head -3
 fi
 
+# Refused = it never got an allocation. Older uclients give up with "Cannot
+# complete Allocation"; 4.18.0's retries the 401 every 0.5 s until `timeout`
+# kills it and prints nothing about it (the relay logs "credentials ... are
+# wrong"). Silence only proves a refusal when the right secret, a moment
+# ago, DID allocate — otherwise it is just a relay that is not answering.
 out=$(run "${tag}b" "wrong-$SECRET" "$PUBLIC_PEER")
-if echo "$out" | grep -qi "Cannot complete Allocation"; then
+if echo "$out" | grep -qE "tot_send_msgs=[1-9]|allocate response received: success"; then
+  fail "a credential signed with the wrong secret was NOT refused — anyone can use this relay"
+elif echo "$out" | grep -qi "Cannot complete Allocation" || [ "$reachable" = 1 ]; then
   pass "a wrong secret cannot allocate"
 else
-  fail "a credential signed with the wrong secret was not refused"
+  fail "a wrong secret: cannot tell, the relay did not answer the right secret either"
 fi
 
 # -y: two allocations, each sending to the other's relayed address. A 403

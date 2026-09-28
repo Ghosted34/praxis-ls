@@ -41,7 +41,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-die() { echo "FATAL: $*" >&2; exit 1; }
+die() { printf 'FATAL: %s\n' "$*" >&2; exit 1; }  # printf: dash's echo would eat \1 and \n
 [ -n "$HOST" ] || die "--host is required (the public DNS name clients reach, e.g. turn.example.com)"
 case "$HOST" in *[!A-Za-z0-9.-]*) die "--host '$HOST' is not a hostname" ;; esac
 case "$TLS_PORT" in ''|*[!0-9]*) die "--tls-port must be a number" ;; esac
@@ -90,6 +90,23 @@ backup="$ENV_FILE.bak-turn-$(date +%Y%m%d%H%M%S)"
 cp -p "$ENV_FILE" "$backup"
 echo "backed up $ENV_FILE to $backup"
 
+# Keys this script writes. An earlier run on a .env WITHOUT a final newline
+# appended the first of them onto the end of the last line
+# ("SOME_KEY=valueTURN_CREDENTIAL_SECRET=…"): compose then sees no secret and
+# the relay refuses to start, and the line it was glued to has a wrong value.
+# Refuse to go on over that — a re-run would mint a second secret and leave the
+# damaged line in place — and say exactly how to split it.
+OWN_KEYS='TURN_(CREDENTIAL_SECRET|HOST|REALM|PORT_UDP|PORT_TCP|EXTERNAL_IP|LISTENING_IP|TLS_PORT|TLS_DIR|TLS_CERT|TLS_KEY)'
+glued="$(grep -nE "^[A-Za-z_][A-Za-z0-9_]*=.+$OWN_KEYS=" "$ENV_FILE" | cut -d: -f1 | paste -sd, - || true)"
+if [ -n "$glued" ]; then
+  die "$ENV_FILE line(s) $glued have a TURN_ setting glued onto the end of another
+       setting (a previous run appended to a file without a final newline).
+       Split it, then run this again:
+         sed -i -E 's/(.)($OWN_KEYS=)/\\1\\n\\2/' $ENV_FILE"
+fi
+# Appending to a file without a final newline is what glued them.
+[ ! -s "$ENV_FILE" ] || [ -z "$(tail -c 1 "$ENV_FILE")" ] || echo >> "$ENV_FILE"
+
 get_env() { sed -n "s/^$1=//p" "$ENV_FILE" | tail -n 1; }
 set_env() { # replace KEY=... in place, or append; values here never contain | or newlines
   if grep -q "^$1=" "$ENV_FILE"; then
@@ -112,6 +129,8 @@ set_env TURN_REALM "$HOST"
 [ -n "$(get_env TURN_PORT_UDP)" ] || set_env TURN_PORT_UDP 3478
 [ -n "$(get_env TURN_PORT_TCP)" ] || set_env TURN_PORT_TCP 3478
 
+# A re-run keeps the address an earlier run found.
+[ -n "$EXTERNAL_IP" ] || EXTERNAL_IP="$(get_env TURN_EXTERNAL_IP)"
 if [ -z "$EXTERNAL_IP" ] && [ -z "$LISTEN_IP" ] && [ "$ENV_ONLY" = 0 ] && command -v curl >/dev/null; then
   public="$(curl -fsS --max-time 5 https://api.ipify.org 2>/dev/null || true)"
   if [ -n "$public" ] && ! ip -4 -o addr show 2>/dev/null | grep -q " $public/"; then
@@ -121,6 +140,11 @@ if [ -z "$EXTERNAL_IP" ] && [ -z "$LISTEN_IP" ] && [ "$ENV_ONLY" = 0 ] && comman
     private="$(ip -4 route get 1.1.1.1 2>/dev/null | sed -n 's/.* src \([0-9.]*\).*/\1/p')"
     EXTERNAL_IP="$public${private:+/$private}"
     echo "the public IP $public is not on a network interface (cloud NAT): TURN_EXTERNAL_IP=$EXTERNAL_IP"
+  elif [ -n "$public" ]; then
+    # On the interface (OVH, Hetzner…): still name it, so the relay relays
+    # from this address only and not also from the Docker bridges.
+    EXTERNAL_IP="$public"
+    echo "the public IP $public is on a network interface: TURN_EXTERNAL_IP=$EXTERNAL_IP"
   fi
 fi
 [ -z "$EXTERNAL_IP" ] || set_env TURN_EXTERNAL_IP "$EXTERNAL_IP"
@@ -176,7 +200,17 @@ fi
 
 # ── Start and prove ─────────────────────────────────────────────────────────
 docker compose --profile turn up -d --force-recreate turn
-sleep 3
+# coturn opens its relay ports one address at a time, about 2 s each, and
+# answers nothing until it is done: a fixed short sleep checked a relay that
+# was still starting and failed every check with "Connection refused".
+echo "waiting for the relay to finish starting..."
+i=0
+until docker compose --profile turn logs turn 2>/dev/null | grep -q "Total auth threads"; do
+  i=$((i + 1))
+  [ "$i" -le 60 ] || die "the relay did not finish starting in 60 s — see: docker compose --profile turn logs turn"
+  sleep 1
+done
+sleep 5  # its listeners open a couple of seconds after that line
 if ! docker compose --profile turn exec -T turn sh /check/turn-check.sh "${LISTEN_IP:-127.0.0.1}" "$udp"; then
   die "the relay check failed — see: docker compose logs turn"
 fi
